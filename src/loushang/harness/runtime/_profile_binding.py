@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from loushang.foundation.json import dump_json_value
+from loushang.harness.runtime._owned_tasks import _await_cancellation_atomic
 from loushang.harness.runtime._profile_types import (
     ResolvedRuntimeCapability,
     ResolvedRuntimeProfile,
@@ -18,7 +19,6 @@ from loushang.harness.runtime._profile_types import (
     _require_nonempty_string,
 )
 from loushang.harness.runtime.bindings import RuntimeBindingLease, RuntimeBindingState
-from loushang.harness.runtime.registration import _await_cancellation_atomic
 
 RuntimeCapabilityFactory = Callable[
     [RuntimeCapabilitySelection, object | None], object | Awaitable[object]

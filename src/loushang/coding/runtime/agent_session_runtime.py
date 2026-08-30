@@ -14,6 +14,22 @@ SessionFactory = Callable[..., AgentSession]
 _copy_import_file = copy_file_exclusive
 
 
+def _copy_session_import(
+    source: Path,
+    destination: Path,
+    *,
+    expected_source_fingerprint: str | None = None,
+) -> None:
+    if expected_source_fingerprint is None:
+        _copy_import_file(source, destination)
+    else:
+        _copy_import_file(
+            source,
+            destination,
+            expected_source_fingerprint=expected_source_fingerprint,
+        )
+
+
 class AgentSessionRuntime(
     AgentProductSessionRuntime[AgentSession, SessionManager],
 ):
@@ -38,10 +54,8 @@ class AgentSessionRuntime(
             persist=persist,
             current_session=current_session,
             diagnostics_service=diagnostics_service,
-            copy_file=lambda source, destination: _copy_import_file(
-                source,
-                destination,
-            ),
+            copy_file=_copy_session_import,
+            verified_copy_file=_copy_session_import,
             before_release=compose_multiagent_before_release(
                 resolve_runtime=lambda session: getattr(
                     session,

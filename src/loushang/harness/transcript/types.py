@@ -9,6 +9,7 @@ from typing import Literal, TypeAlias, cast
 from loushang.agent.types import AgentMessage, CustomAgentMessage
 from loushang.ai.types import ImagePart, Message, TextPart
 from loushang.foundation.json import JSONValue, require_json_mapping, require_json_value
+from loushang.harness.artifacts import SessionBlobRef
 from loushang.harness.conversation.types import (
     CommandExecutionRecord,
     ConversationRecord,
@@ -25,7 +26,6 @@ from loushang.harness.transcript.model_input_v2_types import (
 )
 from loushang.harness.transcript.model_usage_types import ModelCallAttemptUsage
 
-ContentBlock: TypeAlias = TextPart | ImagePart
 ApplicationDeliveryMode: TypeAlias = Literal[
     "direct",
     "trigger_turn",
@@ -34,6 +34,29 @@ ApplicationDeliveryMode: TypeAlias = Literal[
     "next_turn",
 ]
 AnnotationOperation: TypeAlias = Literal["set", "remove"]
+
+
+@dataclass(frozen=True, slots=True)
+class SessionImagePart:
+    """Harness-owned durable image placeholder, never an AI wire image."""
+
+    type: Literal["image"]
+    blob: SessionBlobRef
+
+    def __post_init__(self) -> None:
+        if self.type != "image":
+            raise ValueError("session image part type must be 'image'")
+        if not isinstance(self.blob, SessionBlobRef):
+            raise TypeError("session image part blob must be a SessionBlobRef")
+        if not self.blob.media_type.startswith("image/"):
+            raise ValueError("session image blob must have an image media type")
+
+    @property
+    def mime_type(self) -> str:
+        return self.blob.media_type
+
+
+ContentBlock: TypeAlias = TextPart | ImagePart | SessionImagePart
 
 
 def _require_text(value: object, *, name: str) -> str:
@@ -193,7 +216,8 @@ class ApplicationMessage(CustomAgentMessage):
         if isinstance(self.content, str):
             content: str | list[ContentBlock] = self.content
         elif isinstance(self.content, list) and all(
-            isinstance(part, TextPart | ImagePart) for part in self.content
+            isinstance(part, TextPart | ImagePart | SessionImagePart)
+            for part in self.content
         ):
             content = list(self.content)
         else:
@@ -398,6 +422,7 @@ __all__ = [
     "ModelSelectionSnapshot",
     "ModelCallOutcome",
     "RecordAnnotationPatch",
+    "SessionImagePart",
     "ThinkingSelectionSnapshot",
     "application_message_content_blocks",
     "require_agent_transcript_record",

@@ -17,7 +17,7 @@ def test_method_loader_discovers_skill_backed_methods_without_mutating_cache(tmp
         "Review code changes.",
         encoding="utf-8",
     )
-    loader = MethodLoader()
+    loader = MethodLoader(skill_authority="legacy_explicit")
 
     methods = loader.discover_methods(project)
 
@@ -34,7 +34,7 @@ def test_method_loader_reload_replaces_cached_snapshot(tmp_path) -> None:
     skill_dir = project / "skills" / "debug"
     skill_dir.mkdir(parents=True)
     (skill_dir / "SKILL.md").write_text("Debug failures.", encoding="utf-8")
-    loader = MethodLoader()
+    loader = MethodLoader(skill_authority="legacy_explicit")
 
     loaded = loader.reload_methods(project)
 
@@ -120,6 +120,17 @@ def test_method_loader_discovers_method_resources_and_ignores_future_manifests(t
     assert method.metadata["body"] == "Use method review guidance."
 
 
+def test_method_loader_default_does_not_create_a_peer_skill_authority(
+    tmp_path,
+) -> None:
+    project = tmp_path / "project"
+    skill_dir = project / "skills" / "review"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text("Legacy Skill body.", encoding="utf-8")
+
+    assert MethodLoader().discover_methods(project) == []
+
+
 def test_method_loader_method_resource_overrides_skill_with_same_name(tmp_path) -> None:
     project = tmp_path / "project"
     skill_dir = project / "skills" / "review"
@@ -132,7 +143,9 @@ def test_method_loader_method_resource_overrides_skill_with_same_name(tmp_path) 
         encoding="utf-8",
     )
 
-    methods = MethodLoader().discover_methods(project)
+    methods = MethodLoader(
+        skill_authority="legacy_explicit"
+    ).discover_methods(project)
 
     assert [method.id for method in methods] == ["method:task:review"]
     assert methods[0].kind == "method_resource"

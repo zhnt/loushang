@@ -5,12 +5,17 @@ from functools import partial
 from pathlib import Path
 from typing import Any, TextIO
 
+from loushang.coding.continuity_bootstrap import (
+    bind_coding_configured_continuity,
+    get_coding_configured_continuity_composition,
+)
 from loushang.coding.presentation.tui.plain import (
     PlainCodingUiRenderer,
 )
 from loushang.coding.ui.completion import coding_inline_completion_provider
 from loushang.coding.ui.plain_app import build_plain_coding_tui_app
 from loushang.coding.ui.product_binding import (
+    ScreenCodingDebugBinding,
     build_coding_ui_controller,
     build_screen_coding_action_host,
 )
@@ -19,6 +24,7 @@ from loushang.coding.ui.screen_input import CODING_SCREEN_RUN_PROFILE
 from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
 from loushang.coding.ui.startup import load_coding_tui_startup_view
 from loushang.foundation.observability import get_log, log_context
+from loushang.foundation.platform_paths import resolve_platform_paths
 from loushang.harness.diagnostics import observability_runtime
 from loushang.harnesstui.conversation.agent_application import (
     AgentPlainConversationApplicationBinding,
@@ -95,7 +101,51 @@ async def _run_screen_interactive_tui(
     verbose: bool,
     screen_run_profile: ConversationScreenRunProfile,
 ) -> int:
+    current = current_agent_runtime_session(runtime, session)
     snapshot = await load_coding_tui_startup_view(runtime=runtime, session=session)
+    composition = get_coding_configured_continuity_composition(runtime)
+    if composition is None:
+        composition = await bind_coding_configured_continuity(
+            runtime,
+            settings_manager=getattr(current, "settings_manager", None),
+            session_dir=getattr(
+                runtime,
+                "session_dir",
+                resolve_platform_paths().data / "sessions",
+            ),
+            cwd=snapshot.cwd,
+            diagnostics_service=getattr(current, "diagnostics_service", None),
+        )
+    continuity_reference = composition.hub.reference()
+    try:
+        return await _run_bound_screen_interactive_tui(
+            runtime=runtime,
+            session=session,
+            stdin=stdin,
+            stdout=stdout,
+            stderr=stderr,
+            verbose=verbose,
+            screen_run_profile=screen_run_profile,
+            continuity_reference=continuity_reference,
+            startup_snapshot=snapshot,
+        )
+    finally:
+        continuity_reference.release()
+
+
+async def _run_bound_screen_interactive_tui(
+    *,
+    runtime: Any,
+    session: Any,
+    stdin: TextIO,
+    stdout: TextIO,
+    stderr: TextIO,
+    verbose: bool,
+    screen_run_profile: ConversationScreenRunProfile,
+    continuity_reference: Any,
+    startup_snapshot: Any,
+) -> int:
+    snapshot = startup_snapshot
     app = ScreenCodingTuiApp(
         model_label=snapshot.model_label,
         cwd=snapshot.cwd,
@@ -111,17 +161,27 @@ async def _run_screen_interactive_tui(
         session=session,
         verbose=verbose,
     )
+
+    def current_session():
+        return current_agent_runtime_session(runtime, session)
+
     action_host = build_screen_coding_action_host(
         presenter=app,
         controller=controller,
         stderr=stderr,
         verbose=verbose,
+        debug=ScreenCodingDebugBinding(
+            current_session=current_session,
+            current_cwd=lambda: app.state.cwd,
+            enable=observability_runtime.enable_session_debug,
+            disable=observability_runtime.disable_session_debug,
+        ),
     )
     event_source = RebindableEventSource(session)
 
     def current_approval_interaction():
         return getattr(
-            current_agent_runtime_session(runtime, session),
+            current_session(),
             "approval_interaction",
             None,
         )
@@ -131,6 +191,7 @@ async def _run_screen_interactive_tui(
             app=app,
             session=session,
             runtime=runtime,
+            continuity_reference=continuity_reference,
             status_provider=status_provider,
             on_approval=lambda event: handle_agent_screen_approval(
                 current_approval_interaction(),
@@ -170,8 +231,8 @@ async def _run_screen_interactive_tui(
         approval_interaction_provider=current_approval_interaction,
         event_source=event_source,
         runtime=runtime,
-        completion_provider_loader=lambda next_session, cwd: (
-            _load_completion_provider(next_session, base_path=Path(cwd))
+        completion_provider_loader=lambda next_session, cwd: _load_completion_provider(
+            next_session, base_path=Path(cwd)
         ),
         report_rebind_problem=report_rebind_problem,
     ).prepare()

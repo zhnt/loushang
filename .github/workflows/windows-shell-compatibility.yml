@@ -49,6 +49,29 @@ jobs:
       - name: Reject empty, skipped, or failing native report
         run: uv run python scripts/dev/verify_pytest_xml.py .artifacts/windows-shell-native.xml
 
+      - name: Run machine-local runtime lifecycle tests
+        env:
+          PYTEST_ADDOPTS: >-
+            -o faulthandler_timeout=60
+            --junitxml=.artifacts/windows-runtime-lifecycle.xml
+        run: >-
+          uv run pytest
+          tests/foundation/test_runtime_scope.py
+          tests/harness/runtime/test_resources.py
+          tests/harness/machine_resources/test_control_plane.py
+          tests/harness/artifacts/test_store.py
+          tests/harness/artifacts/test_session_blobs.py
+          tests/harness/session/test_output_artifacts.py
+          tests/harness/transcript/test_session_images.py
+          tests/harness/diagnostics/test_export.py
+          -q
+
+      - name: Reject empty or failing runtime lifecycle report
+        run: >-
+          uv run python scripts/dev/verify_pytest_xml.py
+          .artifacts/windows-runtime-lifecycle.xml
+          --allow-skipped
+
       - name: Run PowerShell policy tests
         env:
           PYTEST_ADDOPTS: >-

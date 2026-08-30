@@ -629,13 +629,22 @@ Package registration contract.
 
 ### Plugin
 
-An optional, independently enabled contribution source resolved into resource
-roots and, where supported, extension contributions.
+An independently selectable activation identity that groups one or more typed
+contribution declarations and their management provenance. A Plugin may carry
+Resources, Tool or Command packs, Capability Providers, Extensions, or future
+owner-defined contribution kinds. It is not synonymous with its Package bytes,
+Resource roots, execution process, or any contributed Capability.
 
 A Plugin runs under Product and OEM activation and trust policy. It does not own
 the Product lifecycle, select the Active Product, or acquire execution authority
 merely by being installed. A Plugin is the manifest-backed identity and
 activation boundary, not the installed bytes or materialized directory itself.
+
+Create a Plugin identity only when independent selection, update, revocation,
+trust/execution decision, or atomic contribution grouping is required. Native
+Skills and other directly discovered Resources need no synthesized Plugin
+identity. Product-embedded contributions likewise remain Product build input
+unless the Product intentionally exposes independent Plugin lifecycle.
 
 Manifest parsing is inert. If a Plugin has an executable declaration
 entrypoint, Product/OEM enablement, source trust, immutable content identity,
@@ -683,18 +692,19 @@ Package. Product or OEM policy decides whether it is admitted and active. An
 Extension does not become a Product or acquire execution authority merely
 because its descriptor was discovered.
 
-The canonical resource relationship is:
+The canonical relationship is:
 
 ```text
-plugin source -> plugin manifest -> resource package root -> resource descriptors
-                                                        -> extension descriptors
+source authority -> immutable package artifact -> Plugin manifest
+                 -> typed declarations -> exact Capability/Resource/Tool/
+                                          Command/Extension owners
 ```
 
 Not every Resource Package is a Plugin: a configured package root can be
-consumed directly. Not every Plugin carries an Extension: it may provide only
-Skills, prompts, themes, or assets. Not every Extension needs a dedicated
-Package: built-in Product resources may contribute one through their existing
-Product Package.
+consumed directly. Not every Plugin carries a Resource or Extension: it may
+provide only a Capability Provider or Tool pack. Not every Extension needs a
+dedicated Package: built-in Product composition may contribute one without
+independent Plugin identity.
 
 ### Skill
 

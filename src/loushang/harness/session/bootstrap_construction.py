@@ -23,9 +23,11 @@ from loushang.harness.resources.activation import (
     SkillActivationRuntime,
 )
 from loushang.harness.resources.packages.materializer import PackageMaterializer
+from loushang.harness.resources.packages.roots import SelectedPluginPackageInput
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.runtime import ResolvedRuntimeProfile
 from loushang.harness.session.bootstrap_configuration import (
+    CatalogBootstrapProjectionPreparer,
     ExtensionFlagValues,
     SourceIdentityCheck,
     StandardAgentSessionConfigurationRequest,
@@ -460,6 +462,11 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
         session_id: str,
         cwd: str,
         extension_flag_values: ExtensionFlagValues | None,
+        catalog_authoritative: bool = False,
+        prepare_catalog_bootstrap_projection: (
+            CatalogBootstrapProjectionPreparer | None
+        ) = None,
+        selected_plugin_packages: Sequence[SelectedPluginPackageInput] = (),
         explicit_system_prompt: str | None,
         append_system_prompt: Sequence[str],
         model: Model | ModelSelection | None,
@@ -613,6 +620,11 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
                         create_extension_runtime=self.create_extension_runtime,
                         source_identity_check=self.source_identity_check,
                         extension_flag_values=extension_flag_values,
+                        catalog_authoritative=catalog_authoritative,
+                        prepare_catalog_bootstrap_projection=(
+                            prepare_catalog_bootstrap_projection
+                        ),
+                        selected_plugin_packages=tuple(selected_plugin_packages),
                     ),
                     ports=AgentProductConstructionPorts(
                         activate_resources=(

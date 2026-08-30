@@ -11,6 +11,10 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import TextIO
 
+from loushang.foundation.runtime_scope import (
+    RuntimeScope,
+    resolve_runtime_scope,
+)
 from loushang.harness.cli.agent_args import AgentCliArgs
 from loushang.harness.cli.command_execution import (
     CommandExecutionError,
@@ -81,6 +85,11 @@ from loushang.harness.cli.skill_listing import (
     list_skill_records,
 )
 from loushang.harness.diagnostics import export_diagnostics_bundle
+from loushang.harness.runtime.resources import (
+    DEFAULT_ARTIFACT_STORE_FACTORY,
+    ArtifactStoreFactory,
+    RuntimeResourceOwner,
+)
 from loushang.harness.session.model_selection import format_model_metadata_table
 from loushang.harness.transcript.session_catalog import try_project_session_record
 
@@ -139,7 +148,11 @@ async def run_agent_cli_early_operation(
         output.write(ports.format_help(extension_flags))
         return 0
     if args.version:
-        stdout.write(f"{ports.package_version()}\n")
+        if args.verbose:
+            identity = ports.runtime_identity(project_root)
+            stdout.write(ports.format_runtime_identity(identity) + "\n")
+        else:
+            stdout.write(f"{ports.package_version()}\n")
         return 0
     if args.source_info:
         source_identity = ports.runtime_identity(project_root)
@@ -164,20 +177,43 @@ def run_diagnostics_export_operation(
     stderr: TextIO,
     format_error: CliErrorFormatter = str,
     success_prefix: str = "Exported diagnostics to:",
+    runtime_scope_factory: Callable[[], RuntimeScope] = resolve_runtime_scope,
+    artifact_store_factory: ArtifactStoreFactory = DEFAULT_ARTIFACT_STORE_FACTORY,
 ) -> int | None:
     """Export diagnostics through the shared archive engine."""
 
     if not requested:
         return None
     try:
-        output_path = export_diagnostics_bundle(
-            project_root=project_root,
-            session_dir=session_dir,
-            output=output,
-            diagnostics_service=diagnostics_service,
-            debug_latest_path=debug_latest_path,
-            trace_latest_path=trace_latest_path,
-        )
+        scope = runtime_scope_factory()
+        with RuntimeResourceOwner.acquire(
+            scope,
+            artifact_store_factory=artifact_store_factory,
+        ) as runtime_resources:
+            snapshot_roots = (
+                (
+                    Path(debug_latest_path).expanduser().parent
+                    if debug_latest_path is not None
+                    else scope.paths.state / "debug"
+                ),
+                (
+                    Path(trace_latest_path).expanduser().parent
+                    if trace_latest_path is not None
+                    else scope.paths.state / "traces"
+                ),
+            )
+            output_path = export_diagnostics_bundle(
+                project_root=project_root,
+                session_dir=session_dir,
+                output=output,
+                diagnostics_service=diagnostics_service,
+                debug_latest_path=debug_latest_path,
+                trace_latest_path=trace_latest_path,
+                artifact_store=runtime_resources.artifact_snapshots(
+                    allowed_roots=snapshot_roots,
+                ),
+                platform_paths=scope.paths,
+            )
     except Exception as error:
         stderr.write(f"Error: {format_error(error)}\n")
         return 1
@@ -220,12 +256,17 @@ class StandardCliOperationRequest:
 
 def agent_session_listing_request(
     args: AgentCliArgs,
+    *,
+    default_cwd: str | Path | None = None,
 ) -> SessionListingOperationRequest | None:
     if not args.list_sessions:
         return None
+    cwd = args.session_cwd
+    if cwd is None and not args.all_sessions and default_cwd is not None:
+        cwd = str(Path(default_cwd).expanduser().resolve(strict=False))
     return SessionListingOperationRequest(
         output_format=args.list_sessions_format,
-        cwd=args.session_cwd,
+        cwd=cwd,
         name=args.session_name_filter,
         parent_session=args.session_parent,
         text=args.session_query,
@@ -243,13 +284,14 @@ def run_agent_cli_session_listing(
     *,
     stdout: TextIO,
     stderr: TextIO,
+    default_cwd: str | Path | None = None,
     format_error: CliErrorFormatter = str,
 ) -> int | None:
     """Run the session listing selected by standard Agent CLI arguments."""
 
     return run_session_listing_operation(
         runtime,
-        agent_session_listing_request(args),
+        agent_session_listing_request(args, default_cwd=default_cwd),
         stdout=stdout,
         stderr=stderr,
         format_error=format_error,

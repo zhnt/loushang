@@ -208,6 +208,9 @@ def build_standard_presented_conversation_action_host(
     stderr: TextIO,
     verbose: bool,
     attachments: Callable[[tuple[PromptImageAttachment, ...]], AttachmentsT],
+    dispatch_intent: (
+        Callable[[ConversationIntent], Awaitable[ConversationActionResultPort]] | None
+    ) = None,
     copy: ConversationActionPresentationCopy = STANDARD_CONVERSATION_ACTION_COPY,
 ) -> PresentedConversationActionHost[ConversationIntent, AttachmentsT]:
     """Bind standard intents to the existing immediate-presentation host."""
@@ -226,7 +229,7 @@ def build_standard_presented_conversation_action_host(
             exit_code=lambda intent: 0 if isinstance(intent, QuitIntent) else None,
             attachments=attachments,
             prepare=prepare,
-            dispatch=controller.dispatch,
+            dispatch=dispatch_intent or controller.dispatch,
             steer=controller.steer,
             follow_up=controller.follow_up,
             abort_intent=AbortIntent,

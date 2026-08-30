@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import pytest
@@ -8,6 +8,7 @@ import pytest
 from loushang.harnesstui.conversation.attachments import (
     PromptImageAttachment,
     PromptImageAttachmentOutcome,
+    persist_clipboard_image,
 )
 from loushang.harnesstui.conversation.input import (
     ConversationClipboardResult,
@@ -30,6 +31,7 @@ from loushang.harnesstui.conversation.input_policy import (
 )
 from loushang.harnesstui.conversation.screen_state import ScreenConversationState
 from loushang.tui import Composer, InputEvent, InputIntent, SurfaceHost
+from loushang.tui.clipboard_image import ClipboardImage
 
 
 @dataclass(slots=True)
@@ -93,6 +95,15 @@ def _attachment(tmp_path: Path, *, name: str = "image") -> PromptImageAttachment
     )
 
 
+def _owned_attachment(tmp_path: Path, *, name: str = "image") -> PromptImageAttachment:
+    return persist_clipboard_image(
+        ClipboardImage(bytes=name.encode(), mime_type="image/png"),
+        directory=tmp_path,
+        display_root=tmp_path,
+        name_token=name,
+    )
+
+
 def test_conversation_input_results_are_discriminated_and_payload_valid() -> None:
     from loushang.harnesstui.conversation.input import (
         ConversationAbortResult,
@@ -118,9 +129,12 @@ def test_conversation_input_results_are_discriminated_and_payload_valid() -> Non
     assert ConversationSurfaceResult(intent=InputIntent(kind="select")).kind == (
         "surface"
     )
-    assert ConversationClipboardResult(
-        outcome=PromptImageAttachmentOutcome(kind="empty")
-    ).kind == "clipboard"
+    assert (
+        ConversationClipboardResult(
+            outcome=PromptImageAttachmentOutcome(kind="empty")
+        ).kind
+        == "clipboard"
+    )
     assert ConversationAbortResult().kind == "abort"
     assert ConversationExitResult(exit_code=7).kind == "exit"
 
@@ -139,7 +153,9 @@ def test_conversation_input_router_submits_neutral_prompt_attachments(
     tmp_path: Path,
 ) -> None:
     app = _ConversationApp()
-    attachment = _attachment(tmp_path)
+    attachment = _owned_attachment(tmp_path)
+    attachment_path = attachment.path
+    assert attachment_path is not None
     router = ConversationInputRouter(
         app=app,
         should_exit=lambda _text: False,
@@ -157,10 +173,11 @@ def test_conversation_input_router_submits_neutral_prompt_attachments(
     assert isinstance(paste_result, ConversationClipboardResult)
     assert paste_result.outcome.attachment is attachment
     assert isinstance(submit_result, ConversationPromptResult)
-    assert submit_result.text == "@image.png describe"
-    assert submit_result.attachments == (attachment,)
+    assert submit_result.text == f"{attachment.marker} describe"
+    assert submit_result.attachments == (replace(attachment, path=None),)
     assert app.state.running is True
     assert app.composer.value == ""
+    assert attachment_path.exists() is False
 
 
 def test_conversation_input_router_preserves_running_followup_priority(
@@ -168,7 +185,9 @@ def test_conversation_input_router_preserves_running_followup_priority(
 ) -> None:
     app = _ConversationApp()
     app.start_prompt("question")
-    attachment = _attachment(tmp_path)
+    attachment = _owned_attachment(tmp_path)
+    attachment_path = attachment.path
+    assert attachment_path is not None
     router = ConversationInputRouter(
         app=app,
         should_exit=lambda _text: False,
@@ -184,9 +203,65 @@ def test_conversation_input_router_preserves_running_followup_priority(
     result = router.handle(InputEvent(kind="key", key="alt+enter"))
 
     assert isinstance(result, ConversationFollowupResult)
-    assert result.text == "@image.png later"
-    assert result.attachments == (attachment,)
-    assert app.state.pending_followups == ["@image.png later"]
+    assert result.text == f"{attachment.marker} later"
+    assert result.attachments == (replace(attachment, path=None),)
+    assert app.state.pending_followups == [f"{attachment.marker} later"]
+    assert attachment_path.exists() is False
+
+
+def test_conversation_input_router_clears_clipboard_draft_file_on_cancel(
+    tmp_path: Path,
+) -> None:
+    app = _ConversationApp()
+    attachment = _owned_attachment(tmp_path)
+    attachment_path = attachment.path
+    assert attachment_path is not None
+    router = ConversationInputRouter(
+        app=app,
+        should_exit=lambda _text: False,
+        prompt_image_stager=lambda: PromptImageAttachmentOutcome(
+            kind="attached",
+            attachment=attachment,
+            mime_type=attachment.mime_type,
+        ),
+    )
+    router.handle(InputEvent(kind="key", key="ctrl+v"))
+
+    result = router.handle(InputEvent(kind="key", key="escape"))
+
+    assert isinstance(result, ConversationInputHandled)
+    assert app.composer.value == ""
+    assert attachment_path.exists() is False
+
+
+def test_conversation_input_router_cleans_staged_image_when_paste_fails(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    app = _ConversationApp()
+    attachment = _owned_attachment(tmp_path)
+    attachment_path = attachment.path
+    assert attachment_path is not None
+    router = ConversationInputRouter(
+        app=app,
+        should_exit=lambda _text: False,
+        prompt_image_stager=lambda: PromptImageAttachmentOutcome(
+            kind="attached",
+            attachment=attachment,
+            mime_type=attachment.mime_type,
+        ),
+    )
+
+    def fail_paste(_composer: Composer, _text: str) -> None:
+        raise RuntimeError("paste failed")
+
+    monkeypatch.setattr(Composer, "paste", fail_paste)
+
+    with pytest.raises(RuntimeError, match="paste failed"):
+        router.handle(InputEvent(kind="key", key="ctrl+v"))
+
+    assert attachment_path.exists() is False
+    router.dispose()
 
 
 def test_conversation_input_router_defaults_running_submit_to_steer() -> None:
@@ -296,7 +371,9 @@ def test_conversation_input_router_keeps_exit_and_local_policy_injected() -> Non
     assert app.state.running is False
 
 
-def test_conversation_input_router_translates_shared_prompt_editing_to_handled() -> None:
+def test_conversation_input_router_translates_shared_prompt_editing_to_handled() -> (
+    None
+):
     app = _ConversationApp()
     app.composer.add_history("history")
     app.composer.insert_text("abc def")
@@ -371,6 +448,34 @@ def test_conversation_input_router_reports_unconfigured_clipboard_as_unhandled()
     result = router.handle(InputEvent(kind="key", key="ctrl+v"))
 
     assert isinstance(result, ConversationInputIgnored)
+
+
+def test_conversation_input_router_ignores_events_after_dispose(tmp_path: Path) -> None:
+    app = _ConversationApp()
+    calls = 0
+
+    def stage() -> PromptImageAttachmentOutcome:
+        nonlocal calls
+        calls += 1
+        attachment = _owned_attachment(tmp_path)
+        return PromptImageAttachmentOutcome(
+            kind="attached",
+            attachment=attachment,
+            mime_type=attachment.mime_type,
+        )
+
+    router = ConversationInputRouter(
+        app=app,
+        should_exit=lambda _text: False,
+        prompt_image_stager=stage,
+    )
+    router.dispose()
+
+    result = router.handle(InputEvent(kind="key", key="ctrl+v"))
+
+    assert isinstance(result, ConversationInputIgnored)
+    assert calls == 0
+    assert tuple(tmp_path.iterdir()) == ()
 
 
 def test_conversation_input_router_presents_each_clipboard_outcome_once(

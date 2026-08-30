@@ -141,6 +141,10 @@ class SessionPackagePort(Protocol):
         self, source: str, *, scope: str = "project"
     ) -> dict[str, object]: ...
 
+    async def uninstall_package_async(
+        self, source: str, *, scope: str = "project"
+    ) -> dict[str, object]: ...
+
 
 class SessionFacadeOptionalOperations:
     """Forward independently admitted capability groups with stable fallbacks."""
@@ -307,6 +311,14 @@ class SessionFacadeOptionalOperations:
         self, source: str, *, scope: str = "project"
     ) -> dict[str, object]:
         return self._require_packages().uninstall_package(source, scope=scope)
+
+    async def uninstall_package_async(
+        self, source: str, *, scope: str = "project"
+    ) -> dict[str, object]:
+        return await self._require_packages().uninstall_package_async(
+            source,
+            scope=scope,
+        )
 
     def _require_packages(self) -> SessionPackagePort:
         if self.packages is None:

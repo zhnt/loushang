@@ -21,9 +21,11 @@ from loushang.harness.capabilities.contribution_admission import (
 )
 from loushang.harness.config.agent import CapabilityMountMode
 from loushang.harness.runtime.registration import (
+    OwnerGenerationRetirementReceipt,
     RegistrationLease,
     RegistrationOwner,
     RegistrationScope,
+    registration_scope_retirement_receipt,
 )
 from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityConsumerCapture,
@@ -108,6 +110,12 @@ class _CodingLspToolSourceInfo:
 class _CodingLspToolGeneration:
     scope: RegistrationScope = field(repr=False)
 
+    def commit(self) -> None:
+        self.scope.commit()
+
+    def rollback_commit(self) -> None:
+        self.scope.rollback_commit()
+
     async def dispose(self) -> None:
         report = await self.scope.dispose()
         if report.has_failures:
@@ -170,6 +178,9 @@ class CodingLspToolOwner:
             authority_gate=self.authority_gate,
             stage=lambda captures: self._stage(captures, registration=registration),
             dispose=self._dispose,
+            retirement_receipt=self._retirement_receipt,
+            commit=self._commit,
+            rollback_commit=self._rollback_commit,
         )
 
     def _stage(
@@ -205,7 +216,6 @@ class CodingLspToolOwner:
                         source_info=source_info,
                     )
                 )
-            scope.commit()
         except BaseException as error:
             if scope.state == "committed":
                 scope.rollback_commit()
@@ -218,10 +228,31 @@ class CodingLspToolOwner:
             raise
         return _CodingLspToolGeneration(scope)
 
+    def _commit(self, value: object) -> None:
+        if not isinstance(value, _CodingLspToolGeneration):
+            raise TypeError("Coding LSP Tool owner received a foreign generation")
+        value.commit()
+
+    def _rollback_commit(self, value: object) -> None:
+        if not isinstance(value, _CodingLspToolGeneration):
+            raise TypeError("Coding LSP Tool owner received a foreign generation")
+        value.rollback_commit()
+
     async def _dispose(self, value: object) -> None:
         if not isinstance(value, _CodingLspToolGeneration):
             raise TypeError("Coding LSP Tool owner received a foreign generation")
         await value.dispose()
+
+    def _retirement_receipt(
+        self,
+        value: object,
+    ) -> OwnerGenerationRetirementReceipt:
+        if not isinstance(value, _CodingLspToolGeneration):
+            raise TypeError("Coding LSP Tool owner received a foreign generation")
+        return registration_scope_retirement_receipt(
+            value.scope,
+            contribution_ids=(self.admission.contribution_id,),
+        )
 
     def _runtime_from_captures(
         self,

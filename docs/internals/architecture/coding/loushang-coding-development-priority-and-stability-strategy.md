@@ -140,7 +140,7 @@
 - `CompactionCoordinator`
 - `ExtensionRunner`
 - `DiagnosticsService`
-- `SkillLoader`
+- `SkillCatalogConsumer`
 - `MethodRegistry`
 
 #### Mode Surfaces

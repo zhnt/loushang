@@ -28,6 +28,7 @@ from loushang.harness.conversation.replay import (
     ConversationCheckpoint,
     ConversationReplayFolder,
     ConversationReplayPorts,
+    ConversationReplayProjection,
 )
 from loushang.harness.conversation.types import (
     CommandExecutionRecord,
@@ -74,6 +75,7 @@ from loushang.harness.transcript.types import (
     ModelInputSnapshotV2,
     ModelSelectionSnapshot,
     RecordAnnotationPatch,
+    SessionImagePart,
     ThinkingSelectionSnapshot,
     application_message_content_blocks,
 )
@@ -215,11 +217,22 @@ class AgentTranscriptProfile:
         self,
         records: Sequence[AgentTranscriptRecord],
     ) -> AgentTranscriptContext:
-        projection = ConversationReplayFolder(self.replay_ports()).replay(records)
+        projection = self.replay_projection(records)
         return AgentTranscriptContext(
             messages=projection.items,
             state=projection.state,
         )
+
+    def replay_projection(
+        self,
+        records: Sequence[AgentTranscriptRecord],
+    ) -> ConversationReplayProjection[
+        AgentMessage,
+        AgentTranscriptState,
+    ]:
+        """Project context items together with their exact source record ids."""
+
+        return ConversationReplayFolder(self.replay_ports()).replay(records)
 
     def record_to_context_item(
         self,
@@ -442,17 +455,29 @@ def command_execution_to_text(command: CommandExecutionRecord) -> str:
         text += "\n\n(command cancelled)"
     elif command.exit_code not in (None, 0):
         text += f"\n\nCommand exited with code {command.exit_code}"
-    if command.truncated and command.full_output_path:
-        text += f"\n\n[Output truncated. Full output: {command.full_output_path}]"
+    retained_outputs = command.output_blobs
+    if command.truncated and retained_outputs:
+        text += (
+            "\n\n[Output truncated. Full output retained as session blob"
+            + ("s" if len(retained_outputs) > 1 else "")
+            + ": "
+            + ", ".join(blob.logical_name for blob in retained_outputs)
+            + "]"
+        )
+    elif command.truncated and command.full_output_path:
+        text += "\n\n[Output truncated. Legacy full output is not portable.]"
     return text
 
 
 def application_message_to_user_message(
     message: ApplicationMessage,
 ) -> UserMessage:
+    content = application_message_content_blocks(message)
+    if any(isinstance(part, SessionImagePart) for part in content):
+        raise ValueError("durable Session images must be hydrated before AI projection")
     return UserMessage(
         role="user",
-        content=application_message_content_blocks(message),
+        content=cast(list[TextPart | ImagePart], content),
         timestamp=message.timestamp,
     )
 
@@ -495,7 +520,7 @@ def _replace_message_images(message: Message, *, placeholder: TextPart) -> Messa
 
     filtered: list[TextPart | ImagePart] = []
     for block in content:
-        if isinstance(block, ImagePart):
+        if isinstance(block, ImagePart | SessionImagePart):
             if not (
                 filtered
                 and isinstance(filtered[-1], TextPart)
@@ -681,7 +706,7 @@ def _payload_tokens(record: AgentTranscriptRecord) -> int:
                 characters += len(part.thinking)
             elif isinstance(part, ToolCall):
                 characters += len(part.name) + len(str(part.arguments))
-            elif isinstance(part, ImagePart):
+            elif isinstance(part, ImagePart | SessionImagePart):
                 characters += 4_800
         return _characters_to_tokens(characters)
     if isinstance(payload, ToolResultMessage):
@@ -689,7 +714,9 @@ def _payload_tokens(record: AgentTranscriptRecord) -> int:
     return 0
 
 
-def _content_tokens(content: str | list[TextPart | ImagePart]) -> int:
+def _content_tokens(
+    content: str | Sequence[TextPart | ImagePart | SessionImagePart],
+) -> int:
     if isinstance(content, str):
         return _characters_to_tokens(len(content))
     characters = sum(

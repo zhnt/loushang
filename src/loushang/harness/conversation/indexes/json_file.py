@@ -3,7 +3,9 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import os
 import secrets
+import stat
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
@@ -27,6 +29,7 @@ from loushang.harness.conversation.store import (
 
 P = TypeVar("P")
 Q = TypeVar("Q")
+_MAX_CONVERSATION_INDEX_BYTES = 64 * 1024 * 1024
 
 
 class ProjectionCodec(Protocol, Generic[P]):
@@ -170,6 +173,7 @@ class JsonConversationIndex(Generic[P, Q]):
         version: int,
         codec: ProjectionCodec[P],
         query_items: IndexQuery[Q, P],
+        writable: bool = True,
     ) -> None:
         if version < 1:
             raise ValueError("conversation index version must be positive")
@@ -177,6 +181,7 @@ class JsonConversationIndex(Generic[P, Q]):
         self.version = version
         self.codec = codec
         self._query_items = query_items
+        self._writable = writable
         self._lock = Lock()
 
     async def upsert(self, item: IndexedProjection[P]) -> bool:
@@ -298,7 +303,12 @@ class JsonConversationIndex(Generic[P, Q]):
     def _read_state(
         self,
     ) -> _JsonConversationIndexState[P]:
-        if not self.path.exists():
+        try:
+            content = _read_stable_regular_file(
+                self.path,
+                max_bytes=_MAX_CONVERSATION_INDEX_BYTES,
+            )
+        except FileNotFoundError:
             return _JsonConversationIndexState(
                 items={},
                 tombstones={},
@@ -306,8 +316,16 @@ class JsonConversationIndex(Generic[P, Q]):
                 sequence=0,
                 index_state="unavailable",
             )
+        except OSError:
+            return _JsonConversationIndexState(
+                items={},
+                tombstones={},
+                generation="stale",
+                sequence=0,
+                index_state="stale",
+            )
         try:
-            payload = json.loads(self.path.read_text(encoding="utf-8"))
+            payload = json.loads(content.decode("utf-8"))
             if (
                 not isinstance(payload, Mapping)
                 or payload.get("version") != self.version
@@ -325,7 +343,8 @@ class JsonConversationIndex(Generic[P, Q]):
             if type(raw_sequence) is not int or raw_sequence < 0:
                 raise ValueError("conversation index sequence is invalid")
         except Exception:
-            self._preserve_corrupt()
+            if self._writable:
+                self._preserve_corrupt()
             return _JsonConversationIndexState(
                 items={},
                 tombstones={},
@@ -389,6 +408,8 @@ class JsonConversationIndex(Generic[P, Q]):
         generation: str,
         sequence: int,
     ) -> None:
+        if not self._writable:
+            raise RuntimeError("read-only conversation index cannot be modified")
         payload = {
             "version": self.version,
             "generated_at": _now_iso(),
@@ -441,6 +462,83 @@ class _JsonConversationIndexState(Generic[P]):
     generation: str
     sequence: int
     index_state: ConversationIndexState
+
+
+def _read_stable_regular_file(path: Path, *, max_bytes: int) -> bytes:
+    before = path.lstat()
+    if not _regular_file_status_no_follow(before):
+        raise OSError("conversation index must be a direct regular file")
+    if before.st_size > max_bytes:
+        raise OSError("conversation index exceeds the read limit")
+    descriptor = -1
+    parent_descriptor = -1
+    try:
+        descriptor, parent_descriptor = _open_file_no_follow(path)
+        opened = os.fstat(descriptor)
+        if not _same_file_status(before, opened):
+            raise OSError("conversation index identity changed")
+        remaining = opened.st_size
+        chunks: list[bytes] = []
+        while remaining:
+            chunk = os.read(descriptor, min(remaining, 1024 * 1024))
+            if not chunk:
+                raise OSError("conversation index was truncated")
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        after = os.fstat(descriptor)
+        current = path.lstat()
+        if not _same_file_status(before, after) or not _same_file_status(
+            before, current
+        ):
+            raise OSError("conversation index changed while reading")
+        return b"".join(chunks)
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        if parent_descriptor >= 0:
+            os.close(parent_descriptor)
+
+
+def _open_file_no_follow(path: Path) -> tuple[int, int]:
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
+    flags |= getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    directory_flag = getattr(os, "O_DIRECTORY", 0)
+    if os.name != "nt" and directory_flag:
+        parent_flags = os.O_RDONLY | directory_flag
+        parent_flags |= getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+        parent = os.open(path.parent, parent_flags)
+        try:
+            return os.open(path.name, flags, dir_fd=parent), parent
+        except BaseException:
+            os.close(parent)
+            raise
+    return os.open(path, flags), -1
+
+
+def _regular_file_status_no_follow(value: os.stat_result) -> bool:
+    return stat.S_ISREG(value.st_mode) and not (
+        stat.S_ISLNK(value.st_mode)
+        or bool(
+            getattr(value, "st_file_attributes", 0)
+            & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+        )
+    )
+
+
+def _same_file_status(left: os.stat_result, right: os.stat_result) -> bool:
+    return (
+        left.st_dev,
+        left.st_ino,
+        left.st_size,
+        left.st_mtime_ns,
+        left.st_ctime_ns,
+    ) == (
+        right.st_dev,
+        right.st_ino,
+        right.st_size,
+        right.st_mtime_ns,
+        right.st_ctime_ns,
+    )
 
 
 def _new_generation() -> str:

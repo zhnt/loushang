@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import sys
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, TextIO, cast
 
@@ -11,6 +12,10 @@ from loushang.ai.model import (
     parse_model_selection_reference,
 )
 from loushang.ai.model.registry import get_default_model_registry
+from loushang.coding._invocation_product_profile import (
+    CodingAgentInvocationProductProfile,
+    resolve_coding_agent_invocation_product_profile,
+)
 from loushang.coding.adapters.harnesswork import (
     create_coding_work_runtime,
     run_coding_work_channel,
@@ -20,15 +25,22 @@ from loushang.coding.arch.tool import INSPECT_IMPORT_GRAPH_TOOL_NAME
 from loushang.coding.arch.tool_pack import register_coding_arch_tools
 from loushang.coding.bootstrap import (
     BootstrapServices,
+    _create_agent_invocation_session_runtime,
+    _create_agent_session_services,
     create_agent_session_runtime,
-    create_agent_session_services,
     create_services,
 )
 from loushang.coding.capabilities import (
     CODING_ARCH_CAPABILITY,
     coding_capability_mount_mode,
 )
-from loushang.coding.cli.args import CliArgs, ExtensionFlag, help_text, parse_args
+from loushang.coding.cli.args import (
+    CliArgs,
+    ExtensionFlag,
+    help_text,
+    parse_args,
+    removed_legacy_resource_option,
+)
 from loushang.coding.cli.lsp import extract_lsp_argv, run_coding_lsp_command
 from loushang.coding.cli.multiagent import run_coding_multiagent_command
 from loushang.coding.cli.workspace import (
@@ -36,8 +48,10 @@ from loushang.coding.cli.workspace import (
     run_coding_workspace_command,
 )
 from loushang.coding.continuity import (
-    bind_coding_continuity,
     shutdown_coding_continuity,
+)
+from loushang.coding.continuity_bootstrap import (
+    bind_coding_configured_continuity,
 )
 from loushang.coding.control.settings_store import (
     default_global_settings_path,
@@ -62,7 +76,6 @@ from loushang.coding.prompt_command import (
     run_prompt_plan_command,
 )
 from loushang.coding.resource_runtime import collect_coding_package_entries
-from loushang.coding.tool_pack import register_coding_builtin_tools
 from loushang.coding.ui.mode import run_coding_tui
 from loushang.coding.workflow import run_prompt_steps_workflow
 from loushang.harness.approval import (
@@ -99,6 +112,7 @@ from loushang.harness.cli import (
     configure_agent_resource_loader,
     cwd_bound_services_factory,
     distribution_version,
+    extract_machine_resource_argv,
     extract_multiagent_argv,
     format_agent_cli_help,
     prepare_agent_cli_host_input,
@@ -107,6 +121,7 @@ from loushang.harness.cli import (
     resolve_effective_tui,
     run_agent_cli_application,
     run_diagnostics_export_operation,
+    run_machine_resource_command,
     run_method_listing,
     run_package_listing_operation,
     run_resource_toggle_operation,
@@ -123,6 +138,7 @@ from loushang.harness.diagnostics.observability_runtime import (
 )
 from loushang.harness.host.product_host import ProductHostLifecycle, stream_is_tty
 from loushang.harness.host.rpc import run_rpc_host
+from loushang.harness.machine_resources import resolve_machine_resource_layout
 from loushang.harness.policy_engine import PolicyEngine
 from loushang.harness.resources.packages import (
     record_package_source_policy_denial,
@@ -136,6 +152,10 @@ from loushang.harness.tools.workspace import (
     workspace_tool_runtime_settings,
 )
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
+from loushang.harness.transcript import (
+    SessionDiscoverySource,
+    session_origin_from_resource_id,
+)
 from loushang.harnesstui.continuity import run_continuity_picker
 from loushang.harnesstui.conversation.agent_binding import (
     run_agent_mode,
@@ -191,28 +211,6 @@ def build_builtin_tool_registry(
         resolved_approval_resolver,
         settings_manager,
     )
-    get_external_tool_policy = getattr(
-        settings_manager, "get_external_tool_policy", None
-    )
-    get_shell_path = getattr(settings_manager, "get_shell_path", None)
-    get_shell_command_prefix = getattr(
-        settings_manager,
-        "get_shell_command_prefix",
-        None,
-    )
-    register_coding_builtin_tools(
-        registry,
-        diagnostics_service=diagnostics_service,
-        external_tool_policy=get_external_tool_policy()
-        if callable(get_external_tool_policy)
-        else None,
-        shell_path=get_shell_path() if callable(get_shell_path) else None,
-        command_prefix=(
-            get_shell_command_prefix()
-            if callable(get_shell_command_prefix)
-            else None
-        ),
-    )
     register_coding_arch_tools(
         registry,
         mode=coding_capability_mount_mode(
@@ -260,27 +258,106 @@ def default_runtime_builder(
             runtime_tool_registry,
             parent_allowed_tools=registered_parent_tools,
         )
+    internal_profile_id = getattr(args, "agent_invocation_profile", None)
+    invocation_product_profile: CodingAgentInvocationProductProfile | None = (
+        resolve_coding_agent_invocation_product_profile(internal_profile_id)
+        if internal_profile_id is not None
+        else None
+    )
+    resource_profile_args = (
+        replace(args, no_context_files=True)
+        if invocation_product_profile is not None
+        else args
+    )
     resource_loader_options = configure_agent_resource_loader(
         services.resource_loader,
-        args,
+        resource_profile_args,
     )
     services_factory = cwd_bound_services_factory(
         services,
         resource_loader_options,
-        create_services=create_agent_session_services,
+        create_services=_create_agent_session_services,
+        create_services_options=(
+            {
+                "resource_catalog_source_policy": (
+                    invocation_product_profile.resource_catalog_source_policy
+                )
+            }
+            if invocation_product_profile is not None
+            else None
+        ),
     )
-    return create_agent_session_runtime(
+    runtime_factory = (
+        _create_agent_invocation_session_runtime
+        if invocation_product_profile is not None
+        else create_agent_session_runtime
+    )
+    runtime_options = dict(
         session_dir=session_dir,
         services=services,
         services_factory=services_factory,
         tool_registry=runtime_tool_registry,
         allowed_tool_names=allowed_tool_names,
         active_tool_names=active_tool_names,
+        no_tools=(
+            "all"
+            if getattr(args, "no_tools", False)
+            else "builtin"
+            if getattr(args, "no_builtin_tools", False)
+            else None
+        ),
         persist=not args.no_session,
         approval_resolver=approval_resolver,
         tool_policy_evaluator=tool_policy_evaluator,
         enable_multiagent=True,
     )
+    if invocation_product_profile is not None:
+        runtime_options["product_profile"] = invocation_product_profile
+    runtime = runtime_factory(**runtime_options)
+    resource_layout = resolve_machine_resource_layout(cwd=cwd)
+    platform_sessions = resource_layout.sessions
+    if session_dir.expanduser().resolve(strict=False) == platform_sessions:
+        platform_sessions.mkdir(mode=0o700, parents=True, exist_ok=True)
+        platform_sessions.chmod(0o700)
+        set_authority = getattr(runtime, "set_session_authority_source", None)
+        if callable(set_authority):
+            set_authority(
+                SessionDiscoverySource(
+                    source_id="sessions.global",
+                    root=platform_sessions,
+                    mode="canonical",
+                    origin="global",
+                    priority=0,
+                )
+            )
+        add_source = getattr(runtime, "add_session_discovery_source", None)
+        if callable(add_source):
+            for resource in resource_layout.resources:
+                if not (
+                    resource.resource_id.startswith("sessions.")
+                    and resource.mode == "compatibility"
+                ):
+                    continue
+                add_source(
+                    SessionDiscoverySource(
+                        source_id=resource.resource_id,
+                        root=resource.path,
+                        mode="compatibility",
+                        origin=session_origin_from_resource_id(resource.resource_id),
+                        priority=(
+                            10
+                            if resource.resource_id == "sessions.cwd_compatibility"
+                            else 20
+                            if resource.resource_id == "sessions.home_compatibility"
+                            else 100
+                        ),
+                    )
+                )
+        else:
+            add_legacy_source = getattr(runtime, "add_session_discovery_dir", None)
+            if callable(add_legacy_source):
+                add_legacy_source(cwd / ".loushang" / "sessions")
+    return runtime
 
 
 async def run_cli(
@@ -303,15 +380,27 @@ async def run_cli(
     multiagent_runner=run_coding_multiagent_command,
     workspace_runner=run_coding_workspace_command,
     lsp_runner=run_coding_lsp_command,
+    machine_resource_runner=run_machine_resource_command,
 ) -> int:
     raw_argv = tuple(argv or ())
+    resolved_stderr = stderr or sys.stderr
+    if _reject_removed_legacy_resource_input(raw_argv, resolved_stderr):
+        return 2
+    machine_resource_argv = extract_machine_resource_argv(raw_argv)
+    if machine_resource_argv is not None:
+        return await machine_resource_runner(
+            machine_resource_argv,
+            stdout=stdout or sys.stdout,
+            stderr=resolved_stderr,
+            cwd=cwd,
+        )
     workspace_argv = extract_workspace_argv(raw_argv)
     if workspace_argv is not None:
         return await workspace_runner(
             workspace_argv,
             stdin=stdin or sys.stdin,
             stdout=stdout or sys.stdout,
-            stderr=stderr or sys.stderr,
+            stderr=resolved_stderr,
             cwd=cwd,
         )
     lsp_argv = extract_lsp_argv(raw_argv)
@@ -320,7 +409,7 @@ async def run_cli(
             lsp_argv,
             stdin=stdin or sys.stdin,
             stdout=stdout or sys.stdout,
-            stderr=stderr or sys.stderr,
+            stderr=resolved_stderr,
             cwd=cwd,
             services=services,
             build_services=build_default_services,
@@ -331,7 +420,7 @@ async def run_cli(
             multiagent_argv,
             stdin=stdin or sys.stdin,
             stdout=stdout or sys.stdout,
-            stderr=stderr or sys.stderr,
+            stderr=resolved_stderr,
             cwd=cwd,
             services=services,
             build_services=build_default_services,
@@ -340,7 +429,7 @@ async def run_cli(
     host_lifecycle = ProductHostLifecycle.resolve(
         stdin=stdin,
         stdout=stdout,
-        stderr=stderr,
+        stderr=resolved_stderr,
     )
     state_preparation_ports = _coding_state_preparation_ports(workflow_runner)
     host_binding = AgentCliSessionHostBinding[
@@ -454,7 +543,29 @@ async def _run_coding_pre_session_bootstrap(
             "use --continue for the latest session or --resume <session>"
         )
 
-    composition = bind_coding_continuity(context.runtime)
+    settings_manager = context.state.settings_manager
+    try:
+        composition = await bind_coding_configured_continuity(
+            context.runtime,
+            settings_manager=settings_manager,
+            session_dir=context.state.session_dir,
+            cwd=context.bootstrap.project_root,
+            all_sessions=args.all_sessions,
+            diagnostics_service=getattr(
+                context.state.services,
+                "diagnostics_service",
+                None,
+            ),
+        )
+    except BaseException as bootstrap_error:
+        try:
+            await shutdown_coding_continuity(context.runtime)
+        except BaseException as cleanup_error:
+            bootstrap_error.add_note(
+                "Coding Continuity bootstrap cleanup also failed: "
+                f"{type(cleanup_error).__name__}"
+            )
+        raise
     continuity_reference = composition.hub.reference()
     activated = False
     try:
@@ -501,6 +612,8 @@ def _parse_application_args(
     extension_flags: Mapping[str, object] | None,
     allow_unknown: bool,
 ) -> CliParseResult[CliArgs]:
+    if _reject_removed_legacy_resource_input(tuple(argv), stderr):
+        return CliParseResult(args=None, exit_code=2)
     return capture_cli_parse(
         parse_args,
         argv,
@@ -511,6 +624,22 @@ def _parse_application_args(
         ),
         allow_unknown,
     )
+
+
+def _reject_removed_legacy_resource_input(
+    argv: tuple[str, ...],
+    stderr: TextIO,
+) -> bool:
+    removed_option = removed_legacy_resource_option(argv)
+    if removed_option is None:
+        return False
+    stderr.write(
+        "Error: coding_legacy_resource_input_removed: "
+        f"{removed_option} is no longer supported; use native "
+        ".loushang/resources roots or a verified Plugin with exact "
+        "contribution declarations.\n"
+    )
+    return True
 
 
 def _coding_state_preparation_ports(
@@ -543,8 +672,13 @@ def _coding_state_preparation_ports(
             )
         ),
         policy_factory=PolicyEngine,
-        build_interactive_approval_resolver=lambda: InteractiveApprovalResolver(
-            fallback=HeadlessApprovalResolver(mode="deny")
+        build_interactive_approval_resolver=lambda fallback=None: (
+            InteractiveApprovalResolver(
+                fallback=cast(
+                    ApprovalResolver,
+                    fallback or HeadlessApprovalResolver(mode="deny"),
+                )
+            )
         ),
         run_resource_toggle=run_resource_toggle_operation,
         evaluate_plugin_source=_package_source_policy_reason,
@@ -703,7 +837,10 @@ def _prepare_coding_host_input(
 ) -> CliPhaseResult[PreparedAgentCliHostInput]:
     args = context.args
     bootstrap = context.bootstrap
-    domain_app = CodingDomainApp(cwd=bootstrap.project_root)
+    domain_app = CodingDomainApp(
+        cwd=bootstrap.project_root,
+        method_loader=_coding_method_loader(),
+    )
     return prepare_agent_cli_host_input(
         resolve_input=lambda: resolve_agent_prompt_input(
             args,
@@ -825,7 +962,9 @@ def _run_method_visibility(
     try:
         result = run_method_listing(
             request,
-            discover_methods=lambda: MethodLoader().discover_methods(project_root),
+            discover_methods=lambda: _coding_method_loader().discover_methods(
+                project_root
+            ),
             compile_plan=lambda method: MethodCompiler().compile(
                 method, context=MethodContext(domain="coding")
             ),
@@ -835,6 +974,10 @@ def _run_method_visibility(
         return 1
     stdout.write(result.output)
     return 0
+
+
+def _coding_method_loader() -> MethodLoader:
+    return MethodLoader()
 
 
 def _run_list_packages(

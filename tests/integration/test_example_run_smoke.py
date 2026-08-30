@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import tomllib
@@ -79,9 +80,18 @@ def _run_example(example_id: str, *, dry_run: bool, artifact_root: Path) -> subp
     ]
     if dry_run:
         command.append("--dry-run")
+    env = os.environ.copy()
+    for name in (
+        "LOUSHANG_EXAMPLES_ARTIFACT_ROOT",
+        "LOUSHANG_EXAMPLES_EXTENSIONS_DIR",
+        "LOUSHANG_EXAMPLES_MODEL_CATALOG",
+        "LOUSHANG_EXAMPLES_SESSION_DIR",
+    ):
+        env.pop(name, None)
     return subprocess.run(
         command,
         capture_output=True,
+        env=env,
         text=True,
         check=False,
         timeout=90,

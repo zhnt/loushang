@@ -109,6 +109,27 @@ def test_retirement_plan_is_complete_sorted_and_exact() -> None:
         )
 
 
+def test_retirement_plan_allows_same_contribution_in_distinct_owner_generations(
+) -> None:
+    first = _target("a")
+    second = PluginOwnerRetirementTargetV1.create(
+        owner_reference="owner:b",
+        owner_generation_reference="owner-generation:b",
+        retirement_handle="retirement:b",
+        contribution_ids=first.contribution_ids,
+    )
+    targets = tuple(sorted((first, second), key=lambda item: item.target_id))
+
+    plan = PluginOwnerRetirementPlanV1.create(
+        retirement_id="1" * 64,
+        owner_closure_reference="closure:two-session-generations",
+        targets=targets,
+    )
+
+    assert len(plan.targets) == 2
+    assert plan.targets[0].contribution_ids == plan.targets[1].contribution_ids
+
+
 def test_retirement_set_open_is_source_checked_and_idempotent(
     tmp_path: Path,
 ) -> None:

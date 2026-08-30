@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import inspect
+import os
+import stat
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from shutil import copyfileobj
-from typing import Generic, TypeVar, Union, cast
+from typing import Generic, Protocol, TypeVar, Union, cast
+from uuid import uuid4
 
 from loushang.harness.runtime.transition import SessionTransitionHost
 
@@ -15,6 +18,19 @@ S = TypeVar("S")
 P = TypeVar("P")
 
 LifecycleCallback = Callable[[], Awaitable[None] | None]
+FileCopy = Callable[[Path, Path], None]
+
+
+class VerifiedFileCopy(Protocol):
+    """Optional copy capability that binds a discovered source identity."""
+
+    def __call__(
+        self,
+        source: Path,
+        destination: Path,
+        *,
+        expected_source_fingerprint: str,
+    ) -> None: ...
 
 
 class SessionOperationPhase(str, Enum):
@@ -219,28 +235,111 @@ class SessionOperationCoordinator(Generic[S]):
         )
 
 
-def copy_file_exclusive(source: Path, destination: Path) -> None:
-    created = False
+def copy_file_exclusive(
+    source: Path,
+    destination: Path,
+    *,
+    expected_source_fingerprint: str | None = None,
+) -> None:
+    """Durably publish a complete private copy without replacing a peer."""
+
+    temporary = destination.with_name(
+        f".{destination.name}.{uuid4().hex}.tmp"
+    )
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    flags |= getattr(os, "O_BINARY", 0)
+    flags |= getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = -1
+    source_descriptor = -1
+    parent_descriptor = -1
+    published = False
     try:
-        with source.open("rb") as input_handle:
-            with destination.open("xb") as output_handle:
-                created = True
-                copyfileobj(input_handle, output_handle)
-    except Exception:
-        if created:
-            with suppress(FileNotFoundError):
-                destination.unlink()
-        raise
+        source_metadata = source.lstat()
+        if not _is_regular_file_no_follow(source_metadata):
+            raise OSError("session import source must be a regular file")
+        if (
+            expected_source_fingerprint is not None
+            and file_status_fingerprint(source_metadata)
+            != expected_source_fingerprint
+        ):
+            raise OSError("session import source no longer matches discovery")
+        source_descriptor, parent_descriptor = _open_source_no_follow(source)
+        opened = os.fstat(source_descriptor)
+        if not _same_file_status(source_metadata, opened):
+            raise OSError("session import source identity changed")
+        descriptor = os.open(temporary, flags, 0o600)
+        with os.fdopen(descriptor, "wb") as output_handle:
+            descriptor = -1
+            bounded_source = _FixedLengthReader(source_descriptor, opened.st_size)
+            copyfileobj(bounded_source, output_handle)
+            if bounded_source.remaining:
+                raise OSError("session import source was truncated")
+            output_handle.flush()
+            os.fsync(output_handle.fileno())
+        after = os.fstat(source_descriptor)
+        current = source.lstat()
+        if not _same_file_status(opened, after) or not _same_file_status(
+            source_metadata,
+            current,
+        ):
+            raise OSError("session import source changed while copying")
+        _publish_file_exclusive(temporary, destination)
+        published = True
+        _sync_directory(destination.parent)
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        if source_descriptor >= 0:
+            os.close(source_descriptor)
+        if parent_descriptor >= 0:
+            os.close(parent_descriptor)
+        with suppress(FileNotFoundError):
+            temporary.unlink()
+        if published:
+            _sync_directory(destination.parent)
+
+
+def _publish_file_exclusive(temporary: Path, destination: Path) -> None:
+    if os.name == "nt":
+        # Windows rename does not replace an existing destination.
+        temporary.rename(destination)
+        return
+    # Same-directory hard-link publication is atomic and fails when the final
+    # path already exists. Both names briefly reference the complete inode.
+    os.link(temporary, destination)
+
+
+def _sync_directory(directory: Path) -> None:
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    try:
+        descriptor = os.open(directory, flags)
+    except OSError:
+        return
+    try:
+        os.fsync(descriptor)
+    except OSError:
+        return
+    finally:
+        os.close(descriptor)
 
 
 def stage_file_import(
     source: Path,
     destination_dir: Path,
     *,
-    copy_file: Callable[[Path, Path], None] = copy_file_exclusive,
+    copy_file: FileCopy = copy_file_exclusive,
+    verified_copy_file: VerifiedFileCopy | None = None,
+    expected_source_fingerprint: str | None = None,
 ) -> StagedFileImport:
     """Copy a file to an import-safe destination without overwriting a peer."""
-    source = source.resolve()
+    source = _absolute_path_preserving_leaf(source)
+    if expected_source_fingerprint is not None:
+        current = source.lstat()
+        if (
+            not _is_regular_file_no_follow(current)
+            or file_status_fingerprint(current) != expected_source_fingerprint
+        ):
+            raise OSError("session import source no longer matches discovery")
     destination_dir = destination_dir.resolve()
     destination_dir.mkdir(parents=True, exist_ok=True)
     for index in range(10_000):
@@ -251,7 +350,33 @@ def stage_file_import(
         if destination.exists():
             continue
         try:
-            copy_file(source, destination)
+            if copy_file is copy_file_exclusive:
+                copy_file_exclusive(
+                    source,
+                    destination,
+                    expected_source_fingerprint=expected_source_fingerprint,
+                )
+            elif (
+                expected_source_fingerprint is not None
+                and verified_copy_file is not None
+            ):
+                verified_copy_file(
+                    source,
+                    destination,
+                    expected_source_fingerprint=expected_source_fingerprint,
+                )
+            else:
+                copy_file(source, destination)
+                if expected_source_fingerprint is not None:
+                    current = source.lstat()
+                    if (
+                        not _is_regular_file_no_follow(current)
+                        or file_status_fingerprint(current)
+                        != expected_source_fingerprint
+                    ):
+                        raise OSError(
+                            "session import source no longer matches discovery"
+                        )
         except FileExistsError:
             continue
         except Exception:
@@ -260,6 +385,78 @@ def stage_file_import(
             raise
         return StagedFileImport(source, destination, copied=True)
     raise FileExistsError(f"No available import destination for {source}")
+
+
+def _absolute_path_preserving_leaf(path: str | Path) -> Path:
+    absolute = Path(os.path.abspath(Path(path).expanduser()))
+    return absolute.parent.resolve(strict=False) / absolute.name
+
+
+@dataclass
+class _FixedLengthReader:
+    descriptor: int
+    remaining: int
+
+    def read(self, size: int = -1) -> bytes:
+        if self.remaining <= 0:
+            return b""
+        requested = self.remaining if size < 0 else min(size, self.remaining)
+        chunk = os.read(self.descriptor, requested)
+        self.remaining -= len(chunk)
+        return chunk
+
+
+def _open_source_no_follow(source: Path) -> tuple[int, int]:
+    file_flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
+    file_flags |= getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    directory_flag = getattr(os, "O_DIRECTORY", 0)
+    if os.name != "nt" and directory_flag:
+        parent_flags = os.O_RDONLY | directory_flag
+        parent_flags |= getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+        parent_descriptor = os.open(source.parent, parent_flags)
+        try:
+            return os.open(source.name, file_flags, dir_fd=parent_descriptor), (
+                parent_descriptor
+            )
+        except BaseException:
+            os.close(parent_descriptor)
+            raise
+    return os.open(source, file_flags), -1
+
+
+def _is_regular_file_no_follow(metadata: os.stat_result) -> bool:
+    return stat.S_ISREG(metadata.st_mode) and not (
+        stat.S_ISLNK(metadata.st_mode)
+        or bool(
+            getattr(metadata, "st_file_attributes", 0)
+            & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+        )
+    )
+
+
+def file_status_fingerprint(metadata: os.stat_result) -> str:
+    """Encode the stable local identity carried by discovery projections."""
+
+    return (
+        f"stat-v1:{metadata.st_dev}:{metadata.st_ino}:{metadata.st_size}:"
+        f"{metadata.st_mtime_ns}:{metadata.st_ctime_ns}"
+    )
+
+
+def _same_file_status(left: os.stat_result, right: os.stat_result) -> bool:
+    return (
+        left.st_dev,
+        left.st_ino,
+        left.st_size,
+        left.st_mtime_ns,
+        left.st_ctime_ns,
+    ) == (
+        right.st_dev,
+        right.st_ino,
+        right.st_size,
+        right.st_mtime_ns,
+        right.st_ctime_ns,
+    )
 
 
 async def run_replacement_callbacks(
@@ -319,6 +516,7 @@ __all__ = [
     "StagedFileImport",
     "ReplacementCallbackFailure",
     "copy_file_exclusive",
+    "file_status_fingerprint",
     "run_replacement_callbacks",
     "stage_file_import",
 ]

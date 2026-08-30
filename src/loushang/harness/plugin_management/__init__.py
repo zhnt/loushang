@@ -3,6 +3,15 @@
 This package is intentionally absent from the public Plugin authoring surface.
 """
 
+from loushang.harness.plugin_management.continuity_mutation import (
+    PLUGIN_CONTINUITY_DELETION_EVENT_CODEC,
+    PluginContinuityDeletionAuthority,
+    PluginContinuityDeletionEventV1,
+    PluginContinuityDeletionJournal,
+    PluginContinuityDeletionJournalError,
+    PluginContinuityDeletionSnapshotV1,
+    plugin_continuity_deletion_journal_path,
+)
 from loushang.harness.plugin_management.instance_records import (
     PLUGIN_INSTANCE_ACTIVATION_VERSION,
     PLUGIN_INSTANCE_FAMILY_RELEASE_VERSION,
@@ -104,6 +113,14 @@ from loushang.harness.plugin_management.retirement_sets import (
     PluginRetirementSetRecordCodecError,
     PluginRetirementSetSnapshotV1,
 )
+from loushang.harness.plugin_management.security_acceptance import (
+    PLUGIN_INSTANCE_SECURITY_RETIREMENT_ACCEPTANCE_CODEC,
+    PluginInstanceSecurityRetirementAcceptanceV1,
+    PluginInstanceSecurityRetirementJournal,
+    PluginInstanceSecurityRetirementJournalError,
+    plugin_instance_security_acceptance_id,
+    validate_plugin_instance_revocations,
+)
 from loushang.harness.plugin_management.service import (
     PluginManagementError,
     PluginManagementService,
@@ -126,6 +143,7 @@ from loushang.harness.plugin_management.updates import (
 )
 
 __all__ = [
+    "PLUGIN_CONTINUITY_DELETION_EVENT_CODEC",
     "PLUGIN_CLEANUP_ATTEMPT_VERSION",
     "PLUGIN_CLEANUP_REPAIR_DECISION_VERSION",
     "PLUGIN_CLEANUP_TASK_VERSION",
@@ -143,6 +161,7 @@ __all__ = [
     "PLUGIN_INSTANCE_RETIREMENT_COMPLETION_VERSION",
     "PLUGIN_INSTANCE_REVOCATION_VERSION",
     "PLUGIN_INSTANCE_RUNTIME_EVENT_VERSION",
+    "PLUGIN_INSTANCE_SECURITY_RETIREMENT_ACCEPTANCE_CODEC",
     "PLUGIN_MANAGEMENT_COMMAND_VERSION",
     "PLUGIN_MANAGEMENT_OPERATION_EVENT_VERSION",
     "PLUGIN_MANAGEMENT_OPERATION_RESULT_VERSION",
@@ -188,7 +207,16 @@ __all__ = [
     "PluginInstanceRuntimeLedger",
     "PluginInstanceRuntimeRecordCodecError",
     "PluginInstanceRuntimeSnapshotV1",
+    "PluginInstanceSecurityRetirementAcceptanceV1",
+    "PluginInstanceSecurityRetirementJournal",
+    "PluginInstanceSecurityRetirementJournalError",
     "PluginLifecycleError",
+    "PluginContinuityDeletionAuthority",
+    "PluginContinuityDeletionEventV1",
+    "PluginContinuityDeletionJournal",
+    "PluginContinuityDeletionJournalError",
+    "PluginContinuityDeletionSnapshotV1",
+    "plugin_continuity_deletion_journal_path",
     "PluginManagementCommandV1",
     "PluginManagementError",
     "PluginManagementOperationEventV1",
@@ -225,4 +253,6 @@ __all__ = [
     "PluginUpdateOperationEventV2",
     "PluginUpdateOperationResultV2",
     "PluginUpdateRestartRequirementV1",
+    "plugin_instance_security_acceptance_id",
+    "validate_plugin_instance_revocations",
 ]

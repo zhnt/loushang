@@ -157,7 +157,7 @@ class AgentCliStatePreparationPorts(Generic[AgentArgsT]):
         object,
     ]
     policy_factory: Callable[..., ToolPolicyEvaluator]
-    build_interactive_approval_resolver: Callable[[], object]
+    build_interactive_approval_resolver: Callable[..., object]
     run_resource_toggle: Callable[..., int | None]
     evaluate_plugin_source: Callable[[str], str | None] | None = None
     is_remote_plugin_source: Callable[[str], bool] | None = None
@@ -233,19 +233,18 @@ async def prepare_agent_cli_application_state(
         policy_factory=ports.policy_factory,
     )
     configured_resolver = tool_settings.approval_resolver
-    interactive_resolver = (
-        ports.build_interactive_approval_resolver()
-        if configured_resolver is None
-        else None
+    interactive_resolver = invoke_cli_builder(
+        ports.build_interactive_approval_resolver,
+        required={},
+        optional={"fallback": configured_resolver},
     )
-    approval_resolver = configured_resolver or interactive_resolver
     tool_registry = (
         ports.build_empty_tool_registry()
         if runtime_args.no_builtin_tools
         else ports.build_tool_registry(
             resolved_services,
             tool_settings,
-            approval_resolver,
+            interactive_resolver,
         )
     )
     return CliPhaseResult.continue_with(
@@ -543,6 +542,7 @@ def build_agent_cli_application_ports(
             context.runtime,
             stdout=context.bootstrap.stdout,
             stderr=context.bootstrap.stderr,
+            default_cwd=context.bootstrap.project_root,
             format_error=binding.format_error,
         ),
         pre_session_bootstrap=(

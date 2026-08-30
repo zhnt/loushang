@@ -55,6 +55,9 @@ from loushang.harness.capabilities.session_contracts import (
     TRANSCRIPT_PROFILE_FACET,
 )
 from loushang.harness.runtime import RuntimeProfileSnapshot
+from loushang.harness.session.request_evidence import (
+    RESOURCE_EVIDENCE_COMPONENT,
+)
 from loushang.harness.session.turn_performance import TurnStartPerformanceRuntime
 from loushang.harness.transcript import (
     ModelCallAttemptUsage,
@@ -69,6 +72,9 @@ CurrentSessionPredicate = Callable[[], bool]
 RegistrationEntriesProvider = Callable[[], tuple[RegistrationInventoryEntry, ...]]
 CurrentProfileFingerprintProvider = Callable[[], str]
 SourcePublicationProvider = Callable[[], ScopedSourcePublicationReference | None]
+RequestEvidenceProvider = Callable[
+    [ModelCallPreparation], Mapping[str, object] | None
+]
 
 
 class ModelInputTranscriptPort(Protocol):
@@ -123,6 +129,7 @@ class SessionModelCallPreparer:
         registration_entries_provider: RegistrationEntriesProvider,
         profile_fingerprint_provider: CurrentProfileFingerprintProvider,
         turn_performance: TurnStartPerformanceRuntime | None = None,
+        request_evidence_provider: RequestEvidenceProvider | None = None,
     ) -> None:
         _require_transcript_port(transcript, name="model-call preparation")
         if not isinstance(projector, RuntimeCapabilityGraphProjector):
@@ -133,12 +140,17 @@ class SessionModelCallPreparer:
             raise TypeError("model-call preparation requires registration inventory")
         if not callable(profile_fingerprint_provider):
             raise TypeError("model-call preparation requires current Profile facts")
+        if request_evidence_provider is not None and not callable(
+            request_evidence_provider
+        ):
+            raise TypeError("model-call preparation request evidence must be callable")
         self._transcript = transcript
         self._projector = projector
         self._is_current = is_current
         self._registration_entries_provider = registration_entries_provider
         self._profile_fingerprint_provider = profile_fingerprint_provider
         self._turn_performance = turn_performance
+        self._request_evidence_provider = request_evidence_provider
 
     def __call__(self, preparation: ModelCallPreparation) -> CallOptions:
         if not isinstance(preparation, ModelCallPreparation):
@@ -158,9 +170,17 @@ class SessionModelCallPreparer:
                 self._projector.registration_inventory(),
                 self._registration_entries_provider(),
             )
+            logical_input = _logical_input(preparation)
+            if self._request_evidence_provider is not None:
+                evidence = self._request_evidence_provider(preparation)
+                if evidence is not None:
+                    logical_input[RESOURCE_EVIDENCE_COMPONENT] = require_json_mapping(
+                        evidence,
+                        name="Model Input Resource evidence",
+                    )
             committer = self._transcript.create_model_input_committer(
                 purpose=preparation.purpose,
-                logical_input=_logical_input(preparation),
+                logical_input=logical_input,
                 runtime_references=ModelInputRuntimeReferences.from_snapshots(
                     graph,
                     registrations,
@@ -326,6 +346,7 @@ def build_session_model_call_capability_binding(
     resources_provider: CapabilityBundleProvider | None = None,
     workspace_provider: CapabilityBundleProvider | None = None,
     turn_performance: TurnStartPerformanceRuntime | None = None,
+    request_evidence_provider: RequestEvidenceProvider | None = None,
 ) -> SessionModelCallCapabilityBinding:
     """Build data-only graph inputs without acquiring graph lifecycle authority."""
 
@@ -355,6 +376,10 @@ def build_session_model_call_capability_binding(
     ):
         if not callable(callback):
             raise TypeError(f"model-call binding requires {name}")
+    if request_evidence_provider is not None and not callable(
+        request_evidence_provider
+    ):
+        raise TypeError("model-call binding request evidence must be callable")
 
     resolved_conversation_id = conversation_id or getattr(
         getattr(transcript, "header", None),
@@ -391,6 +416,7 @@ def build_session_model_call_capability_binding(
                         registration_entries_provider=registration_entries_provider,
                         profile_fingerprint_provider=profile_fingerprint_provider,
                         turn_performance=turn_performance,
+                        request_evidence_provider=request_evidence_provider,
                     ),
                 ),
             )

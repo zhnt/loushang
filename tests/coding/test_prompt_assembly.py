@@ -34,6 +34,30 @@ def test_default_system_prompt_includes_exploration_progress_guidelines() -> Non
     assert "多步骤任务阶段结束时说明结果、验证和下一步或阻塞。" in system_prompt
 
 
+def test_plc6_kernel_prompt_has_no_unmounted_standard_tool_claims() -> None:
+    from loushang.coding.prompt import (
+        CODING_KERNEL_SYSTEM_PROMPT,
+        CODING_STANDARD_SYSTEM_PROMPT_FRAGMENT,
+        DEFAULT_CODING_SYSTEM_PROMPT,
+    )
+
+    for tool_claim in ("execute commands", "write new files", "bash"):
+        assert tool_claim not in CODING_KERNEL_SYSTEM_PROMPT
+        assert tool_claim not in CODING_STANDARD_SYSTEM_PROMPT_FRAGMENT
+
+    assert "Tool definitions exposed for this Session" in (
+        CODING_STANDARD_SYSTEM_PROMPT_FRAGMENT
+    )
+    assert "command or shell Tool" in CODING_STANDARD_SYSTEM_PROMPT_FRAGMENT
+
+    # The byte-stable compatibility string remains the explicit legacy-authority
+    # default; Catalog-owned standard Sessions select Kernel + coding.base.
+    assert DEFAULT_CODING_SYSTEM_PROMPT.startswith(
+        "You are an expert coding assistant operating inside loushang"
+    )
+    assert "You help users by reading files" in DEFAULT_CODING_SYSTEM_PROMPT
+
+
 def test_assemble_prompt_returns_prompt_assembly() -> None:
     from pathlib import Path
 
@@ -444,7 +468,9 @@ def test_preflight_user_input_expands_prompt_templates_and_skill_references() ->
         "/plan focus on retries", resource_bundle=resource_bundle
     )
     skill_result = preflight_user_input(
-        "/skill:debugging inspect the failing branch", resource_bundle=resource_bundle
+        "/skill:debugging inspect the failing branch",
+        resource_bundle=resource_bundle,
+        allow_legacy_skill_body=True,
     )
 
     assert (
@@ -585,10 +611,14 @@ def test_preflight_user_input_rejects_disabled_skills_but_allows_explicit_only_s
     )
 
     disabled_result = preflight_user_input(
-        "/skill:debugging inspect", resource_bundle=resource_bundle
+        "/skill:debugging inspect",
+        resource_bundle=resource_bundle,
+        allow_legacy_skill_body=True,
     )
     explicit_result = preflight_user_input(
-        "/skill:deploy ship", resource_bundle=resource_bundle
+        "/skill:deploy ship",
+        resource_bundle=resource_bundle,
+        allow_legacy_skill_body=True,
     )
     assembly = assemble_prompt(base_prompt="Base", resource_bundle=resource_bundle)
 

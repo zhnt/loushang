@@ -4,7 +4,7 @@ import asyncio
 import os
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SRC_ROOT = REPO_ROOT / "src"
@@ -24,7 +24,6 @@ from loushang.ai.model import (
 from loushang.ai.model.registry import ModelRegistry
 from loushang.ai.types import AssistantMessage, TextPart, ToolCall, Usage, UserMessage
 from loushang.coding import (
-    AgentSession,
     AgentSessionRuntime,
     create_agent_session_runtime,
     create_services,
@@ -33,6 +32,14 @@ from loushang.harness.tools.core import ToolDefinition
 
 ENV_EXAMPLES_MODEL_CATALOG = "LOUSHANG_EXAMPLES_MODEL_CATALOG"
 ENV_EXAMPLES_SESSION_DIR = "LOUSHANG_EXAMPLES_SESSION_DIR"
+
+
+class CodingSession(Protocol):
+    """Public example view of the factory-returned Coding Session."""
+
+    agent: Any
+
+    def __getattr__(self, name: str) -> Any: ...
 
 _OVERRIDE_REGISTRY: ModelRegistry | None = None
 
@@ -260,7 +267,6 @@ def build_runtime(
     tools: list[ToolDefinition] | None = None,
     persist: bool = False,
 ):
-    services = _build_bootstrap_services()
     return create_agent_session_runtime(
         session_dir=session_dir,
         model=offline_model(),
@@ -268,7 +274,6 @@ def build_runtime(
         system_prompt=system_prompt,
         tools=tools or [],
         persist=persist,
-        services=services,
     )
 
 
@@ -307,7 +312,7 @@ async def create_kimi_runtime_session(
     system_prompt: str,
     tools: list[AgentTool[Any]] | None = None,
     persist: bool = False,
-) -> tuple[AgentSessionRuntime, AgentSession]:
+) -> tuple[AgentSessionRuntime, CodingSession]:
     working_dir = Path(cwd).resolve()
     runtime = create_kimi_runtime(
         cwd=working_dir,
@@ -332,7 +337,7 @@ def print_messages(session) -> None:
 
 
 def attach_stream_printer(
-    session: AgentSession, *, show_thinking: bool = False
+    session: CodingSession, *, show_thinking: bool = False
 ) -> None:
     thinking_open = False
 

@@ -11,6 +11,7 @@ from loushang.harness.cli import (
     resolve_agent_cli_session,
     resolve_session,
 )
+from loushang.harness.transcript import SessionQuery
 
 
 class _Runtime:
@@ -105,3 +106,65 @@ def test_resolve_session_continue_requires_an_existing_session() -> None:
         asyncio.run(
             resolve_session(EmptyRuntime(), SessionResolutionRequest(continue_=True))
         )
+
+
+def test_resolve_session_continue_prefers_latest_session_in_current_cwd(
+    tmp_path: Path,
+) -> None:
+    class CwdRuntime(_Runtime):
+        def __init__(self) -> None:
+            super().__init__()
+            self.queries: list[SessionQuery] = []
+
+        def find_session_summaries(self, query: SessionQuery):
+            self.queries.append(query)
+            return [
+                type(
+                    "Summary",
+                    (),
+                    {"session_file": Path("/tmp/current-cwd.jsonl")},
+                )()
+            ]
+
+    runtime = CwdRuntime()
+
+    result = asyncio.run(
+        resolve_session(
+            runtime,
+            SessionResolutionRequest(continue_=True, cwd=tmp_path),
+        )
+    )
+
+    assert result == "restored:/tmp/current-cwd.jsonl"
+    assert runtime.queries == [
+        SessionQuery(cwd=str(tmp_path.resolve()), sort_by="recent")
+    ]
+
+
+def test_resolve_session_continue_can_select_global_latest() -> None:
+    class GlobalRuntime(_Runtime):
+        def __init__(self) -> None:
+            super().__init__()
+            self.queries: list[SessionQuery] = []
+
+        def find_discovered_session_summaries(self, query: SessionQuery):
+            self.queries.append(query)
+            return [
+                type(
+                    "Summary",
+                    (),
+                    {"session_file": Path("/tmp/global-latest.jsonl")},
+                )()
+            ]
+
+    runtime = GlobalRuntime()
+
+    result = asyncio.run(
+        resolve_session(
+            runtime,
+            SessionResolutionRequest(continue_=True, all_sessions=True),
+        )
+    )
+
+    assert result == "restored:/tmp/global-latest.jsonl"
+    assert runtime.queries == [SessionQuery(sort_by="recent")]

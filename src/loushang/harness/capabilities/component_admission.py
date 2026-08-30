@@ -18,6 +18,7 @@ from loushang.harness.capabilities.component_contracts import (
 from loushang.harness.resources.plugins.selection import PluginInstanceRevisionRef
 
 CAPABILITY_COMPONENT_CANDIDATE_VERSION = 1
+CAPABILITY_COMPONENT_CANDIDATE_VERSION_V2 = 2
 CAPABILITY_COMPONENT_ADMISSION_VERSION = 1
 CAPABILITY_COMPONENT_OWNER_SNAPSHOT_VERSION = 1
 
@@ -45,6 +46,10 @@ class CapabilityComponentCandidate:
     source_trusted: bool
     package_source_identity: str | None = None
     instance_revision_ref: PluginInstanceRevisionRef | None = None
+    plugin_candidate_fingerprint: str | None = None
+    declaration_fingerprint: str | None = None
+    declaration_evidence_fingerprint: str | None = None
+    allowed_authority_ceiling: tuple[str, ...] = ()
     requested_authorities: tuple[str, ...] = ()
     candidate_version: int = CAPABILITY_COMPONENT_CANDIDATE_VERSION
 
@@ -64,6 +69,11 @@ class CapabilityComponentCandidate:
             _require_nonempty(value, name=name)
         if not isinstance(self.source_trusted, bool):
             raise TypeError("Component source trust decision must be a bool")
+        if self.candidate_version not in {
+            CAPABILITY_COMPONENT_CANDIDATE_VERSION,
+            CAPABILITY_COMPONENT_CANDIDATE_VERSION_V2,
+        }:
+            raise ValueError("Unsupported Capability Component candidate version")
         if self.binding_spec.source_kind == "plugin":
             _require_nonempty(
                 self.package_source_identity,
@@ -75,33 +85,68 @@ class CapabilityComponentCandidate:
                 raise ValueError(
                     "Component instance revision must match its binding Plugin"
                 )
+            if self.candidate_version == CAPABILITY_COMPONENT_CANDIDATE_VERSION_V2:
+                for fingerprint_name, fingerprint_value in (
+                    (
+                        "Plugin candidate fingerprint",
+                        self.plugin_candidate_fingerprint,
+                    ),
+                    (
+                        "Plugin declaration fingerprint",
+                        self.declaration_fingerprint,
+                    ),
+                    (
+                        "Plugin declaration evidence fingerprint",
+                        self.declaration_evidence_fingerprint,
+                    ),
+                ):
+                    _require_sha256(fingerprint_value, name=fingerprint_name)
+            elif (
+                self.plugin_candidate_fingerprint is not None
+                or self.declaration_fingerprint is not None
+                or self.declaration_evidence_fingerprint is not None
+                or self.allowed_authority_ceiling
+            ):
+                raise ValueError(
+                    "Capability Component candidate v1 cannot carry v2 provenance"
+                )
         elif (
             self.package_source_identity is not None
             or self.instance_revision_ref is not None
+            or self.plugin_candidate_fingerprint is not None
+            or self.declaration_fingerprint is not None
+            or self.declaration_evidence_fingerprint is not None
         ):
             raise ValueError(
                 "First-party component must not carry Plugin instance provenance"
             )
+        ceiling = _normalized_names(
+            self.allowed_authority_ceiling,
+            name="component allowed authority ceiling",
+        )
         authorities = _normalized_names(
             self.requested_authorities,
             name="component requested authority",
         )
-        _require_exact_version(
-            self.candidate_version,
-            supported=CAPABILITY_COMPONENT_CANDIDATE_VERSION,
-            name="Capability Component candidate",
-        )
+        if self.candidate_version == CAPABILITY_COMPONENT_CANDIDATE_VERSION_V2 and (
+            self.binding_spec.source_kind != "plugin"
+            or not set(authorities).issubset(ceiling)
+        ):
+            raise ValueError(
+                "Component requested authorities exceed the Product ceiling"
+            )
+        object.__setattr__(self, "allowed_authority_ceiling", ceiling)
         object.__setattr__(self, "requested_authorities", authorities)
 
     @property
     def fingerprint(self) -> str:
         return _digest_document(
-            "loushang.capability-component-candidate/v1",
+            f"loushang.capability-component-candidate/v{self.candidate_version}",
             self.to_dict(),
         )
 
     def to_dict(self) -> dict[str, object]:
-        return {
+        document: dict[str, object] = {
             "bindingSpec": self.binding_spec.to_dict(),
             "candidateVersion": self.candidate_version,
             "componentId": self.component_id,
@@ -120,6 +165,22 @@ class CapabilityComponentCandidate:
             "sourceTrustPolicyRevision": self.source_trust_policy_revision,
             "sourceTrusted": self.source_trusted,
         }
+        if self.candidate_version == CAPABILITY_COMPONENT_CANDIDATE_VERSION_V2:
+            document.update(
+                {
+                    "allowedAuthorityCeiling": list(
+                        self.allowed_authority_ceiling
+                    ),
+                    "declarationEvidenceFingerprint": (
+                        self.declaration_evidence_fingerprint
+                    ),
+                    "declarationFingerprint": self.declaration_fingerprint,
+                    "pluginCandidateFingerprint": (
+                        self.plugin_candidate_fingerprint
+                    ),
+                }
+            )
+        return document
 
 
 @dataclass(frozen=True, slots=True)

@@ -32,7 +32,6 @@ def test_package_materializer_records_pending_remote_sources(tmp_path) -> None:
     from loushang.coding.resource_runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
-
     materializer = PackageMaterializer(install_root=tmp_path / "packages")
     source = "https://packages.example.invalid/review-pack.git"
 
@@ -497,7 +496,10 @@ def test_git_package_materializer_backend_clones_remote_plugin_source(tmp_path) 
     from loushang.harness.resources.packages.materializer import (
         GitPackageMaterializerBackend,
     )
-    from loushang.harness.resources.plugins import PluginManager
+    from loushang.harness.resources.plugins import (
+        PluginResolutionAuthority,
+        PluginSource,
+    )
 
     source_repo = tmp_path / "source"
     source_repo.mkdir()
@@ -526,10 +528,13 @@ def test_git_package_materializer_backend_clones_remote_plugin_source(tmp_path) 
     assert record.lifecycle == "installed"
     assert record.target_path == tmp_path / "packages" / "review-pack"
     assert (record.target_path / "plugin.json").is_file()
-    manager = PluginManager()
-    plugin = manager.add_plugin_source(record.target_path)
-    assert plugin.manifest.name == "review-pack"
-    assert plugin.manifest.version == "1.2.3"
+    inspection = PluginResolutionAuthority().inspect(
+        PluginSource(path=record.target_path)
+    )
+    inspection.raise_for_error()
+    assert inspection.package is not None
+    assert inspection.package.manifest.name == "review-pack"
+    assert inspection.package.manifest.version == "1.2.3"
 
 
 def test_package_materializer_updates_existing_git_checkout(tmp_path) -> None:
@@ -953,12 +958,31 @@ def test_package_materializer_reports_corrupt_lockfile_and_writes_atomically(tmp
     from loushang.coding.resource_runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
+    from loushang.harness.resources.plugins.manifest import PluginManifestError
 
     lockfile = tmp_path / "package-lock.json"
     lockfile.write_text("not json", encoding="utf-8")
     materializer = PackageMaterializer(install_root=tmp_path / "packages")
 
     assert materializer.get_lockfile_diagnostics()[0]["code"] == "package_lockfile_unreadable"
+
+    with pytest.raises(PluginManifestError) as caught:
+        materializer.prepare_remote_source(
+            "https://packages.example.invalid/review-pack.git"
+        )
+    assert caught.value.code == "plugin_binding_lock_invalid"
+    assert lockfile.read_text(encoding="utf-8") == "not json"
+
+    valid_lock = json.dumps(
+        {
+            "version": 4,
+            "packages": [],
+            "pluginBindings": [],
+            "pluginBindingHeads": [],
+        }
+    )
+    lockfile.write_text(valid_lock, encoding="utf-8")
+    materializer = PackageMaterializer(install_root=tmp_path / "packages")
 
     original_replace = Path.replace
 
@@ -972,7 +996,7 @@ def test_package_materializer_reports_corrupt_lockfile_and_writes_atomically(tmp
     with pytest.raises(RuntimeError, match="replace failed"):
         materializer.prepare_remote_source("https://packages.example.invalid/review-pack.git")
 
-    assert lockfile.read_text(encoding="utf-8") == "not json"
+    assert lockfile.read_text(encoding="utf-8") == valid_lock
 
 
 def test_package_materializer_skips_ref_pinned_update_checks(tmp_path) -> None:
@@ -1672,7 +1696,10 @@ def test_package_projection_reports_invalid_remote_manifest_diagnostics(tmp_path
 
     assert entries[0]["version"] == ""
     assert entries[0]["diagnostics"] == 1
-    assert entries[0]["manifestDiagnostics"][0]["code"] == "invalid_package_manifest"
+    assert (
+        entries[0]["manifestDiagnostics"][0]["code"]
+        == "plugin_declaration_invalid_json"
+    )
 
 
 def test_package_projection_reports_denied_materializer_security(tmp_path) -> None:

@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 
 import pytest
 
+from loushang.foundation.platform_paths import resolve_platform_paths
+from loushang.foundation.runtime_scope import RunLease, resolve_runtime_scope
 from loushang.harnesstui.conversation.input import bind_clipboard_image_input_router
 from loushang.harnesstui.conversation.screen_state import ScreenConversationState
 from loushang.harnesstui.testing.screen_loop_playback import (
@@ -178,13 +180,19 @@ def test_screen_loop_playback_routes_windows_alt_v_to_clipboard_image(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr("sys.platform", "win32")
+    paths = resolve_platform_paths(
+        environ={"LOUSHANG_RUNTIME_DIR": str(tmp_path / "runtime")},
+        home=tmp_path / "home",
+    )
+    scope = resolve_runtime_scope(paths=paths, run_id="c" * 32)
+    lease = RunLease.acquire(scope)
 
     def app_factory(*, now):
         app = _ScreenApp(clock=now)
         app.state.cwd = str(tmp_path)
         return app
 
-    clipboard_router = bind_clipboard_image_input_router()
+    clipboard_router = bind_clipboard_image_input_router(runtime_scope=scope)
 
     def input_router_factory(
         *, app, should_exit, is_local_command, keybindings, width, height
@@ -219,13 +227,16 @@ def test_screen_loop_playback_routes_windows_alt_v_to_clipboard_image(
         (0.01, ""),
     )
 
-    marker = "@.loushang/clipboard/clipboard-playback.png"
+    marker = "@clipboard/clipboard-playback.png"
     result.assert_exit_code(0)
     result.assert_composer_text(f"{marker} ")
-    assert (tmp_path / ".loushang" / "clipboard" / "clipboard-playback.png").read_bytes() == b"png"
     assert playback.app.state.status_message == (
-        "Attached clipboard image: .loushang/clipboard/clipboard-playback.png"
+        "Attached clipboard image: clipboard/clipboard-playback.png"
     )
+    assert not (scope.drafts / "clipboard" / "clipboard-playback.png").exists()
+    assert scope.run_dir.exists()
+    lease.close()
+    assert not scope.run_dir.exists()
 
 
 def test_screen_loop_scenario_builds_timed_input_recipe() -> None:

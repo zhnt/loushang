@@ -203,6 +203,10 @@ prepared-run contract，不引入第二套 `HarnessRunSpec`。原
 [Agent Harness and Product Adapter Boundaries](./agent/ARD-001-agent-harness-and-product-adapters.md)
 和
 [Harness Product Adapter Substrate](./agent/ARD-002-harness-product-adapter-substrate.md)。
+Agent loop 由 `loushang.agent` 拥有，其扩展形态为固定骨架加
+`AgentLoopConfig` 注入端口，不做可替换插件；此跨 `agent`/`harness` 所有权的
+决策记录于
+[ARD-001: Agent Loop Ownership And Extension Shape](./decisions/ARD-001-agent-loop-ownership-and-extension-shape.md)。
 后续 harness 迁移准则、shared capability 边界和 coding 迁移 inventory 见
 [Loushang Harness Architecture](./harness/README.md)。
 

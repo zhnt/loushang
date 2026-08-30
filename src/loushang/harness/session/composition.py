@@ -26,6 +26,7 @@ from loushang.ai.utils import is_context_overflow
 from loushang.ai.utils.capabilities import validate_image_input_compatibility
 from loushang.harness.approval import ApprovalResolver
 from loushang.harness.capabilities import StagedResourceCompositionCandidate
+from loushang.harness.capabilities.prompt_assembly import SkillPromptSummary
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.events import (
@@ -83,11 +84,16 @@ from loushang.harness.session.extension_composition import (
     compose_agent_session_extensions,
 )
 from loushang.harness.session.inspection import AgentSessionInspector
+from loushang.harness.session.request_evidence import RequestEvidenceRuntimePort
 from loushang.harness.session.resource_refresh import (
     ExtensionDeclarationPreflight,
+    ResourceCatalogRefresh,
     ResourceLoaderPort,
     ResourceSettingsPort,
     SessionResourceRefreshRuntime,
+)
+from loushang.harness.session.resource_refresh_gate import (
+    ResourceCatalogRefreshGatePort,
 )
 from loushang.harness.session.runtime import (
     AfterTurnPolicyPort,
@@ -232,6 +238,12 @@ class SessionFoundationInputs:
     set_resource_bundle: Callable[[ResourceBundle | None], None]
     record_extension_runtime_diagnostic: Callable[[DiagnosticDraft], None]
     extension_declaration_preflight: ExtensionDeclarationPreflight | None = None
+    get_effective_skills: (
+        Callable[[], Sequence[SkillPromptSummary] | None] | None
+    ) = None
+    request_evidence: RequestEvidenceRuntimePort | None = None
+    refresh_catalog: ResourceCatalogRefresh | None = None
+    resource_catalog_refresh_lock: ResourceCatalogRefreshGatePort | None = None
 
 
 @dataclass(frozen=True)
@@ -423,6 +435,13 @@ def _legacy_composition_inputs(
         record_extension_runtime_diagnostic=take("record_extension_runtime_diagnostic"),
         extension_declaration_preflight=remaining.pop(
             "extension_declaration_preflight",
+            None,
+        ),
+        get_effective_skills=remaining.pop("get_effective_skills", None),
+        request_evidence=remaining.pop("request_evidence", None),
+        refresh_catalog=remaining.pop("refresh_catalog", None),
+        resource_catalog_refresh_lock=remaining.pop(
+            "resource_catalog_refresh_lock",
             None,
         ),
     )
@@ -663,6 +682,7 @@ def compose_session_runtime(ports: SessionCompositionPorts) -> SessionCompositio
             ),
             check_auto_compaction=check_auto_compaction,
         ),
+        request_evidence=ports.foundation.request_evidence,
     )
     bindings = _build_product_bindings(
         ports,
@@ -726,6 +746,8 @@ def _build_foundation_runtimes(
         prepare_resource_refresh=inputs.prepare_resource_refresh,
         skill_activation_runtime=cast(Any, ports.resources.skill_activation),
         extension_declaration_preflight=inputs.extension_declaration_preflight,
+        refresh_catalog=inputs.refresh_catalog,
+        catalog_refresh_lock=inputs.resource_catalog_refresh_lock,
     )
     resource_watch_controller = ResourceChangeWatcher(
         get_paths=inputs.get_resource_watch_paths,
@@ -1029,6 +1051,7 @@ def _build_tool_controller(
         show_empty_tool_prompt=inputs.show_empty_tool_prompt,
         base_prompt=inputs.base_prompt,
         get_resource_bundle=inputs.get_resource_bundle,
+        get_effective_skills=inputs.get_effective_skills,
         get_diagnostics_service=lambda: inputs.diagnostics_service,
         get_exec_service=(
             (lambda: inputs.tool_exec_service)

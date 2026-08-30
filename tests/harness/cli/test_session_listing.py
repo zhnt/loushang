@@ -12,6 +12,10 @@ from loushang.harness.cli import (
     format_session_records,
     list_session_records,
 )
+from loushang.harness.transcript import (
+    SessionDiscoveryMetadata,
+    SessionLocator,
+)
 
 
 @dataclass
@@ -29,6 +33,7 @@ class _Record:
     parent_session: str | None = None
     leaf_id: str | None = "leaf-1"
     metadata: _Metadata = field(default_factory=_Metadata)
+    discovery: SessionDiscoveryMetadata | None = None
 
 
 class _Runtime:
@@ -77,3 +82,42 @@ def test_listing_runtime_keeps_tsv_shape_and_rejects_negative_limit() -> None:
 def test_listing_runtime_reports_missing_catalog_capability() -> None:
     with pytest.raises(SessionListingError, match="not available"):
         list_session_records(object(), SessionListingRequest())
+
+
+def test_listing_projects_session_provenance_for_json_and_tsv() -> None:
+    runtime = _Runtime()
+    record = _Record(
+        discovery=SessionDiscoveryMetadata(
+            locator=SessionLocator(
+                source_id="sessions.cwd_compatibility",
+                conversation_id="session-1",
+                session_file=Path("/tmp/session-1.jsonl"),
+                revision="revision-1",
+            ),
+            mode="compatibility",
+            origin="cwd",
+            health="legacy",
+        ),
+    )
+    runtime.list_session_summaries = lambda: [record]  # type: ignore[method-assign]
+
+    records = list_session_records(runtime, SessionListingRequest())
+
+    assert records[0]["discovery"] == {
+        "locator": {
+            "sourceId": "sessions.cwd_compatibility",
+            "conversationId": "session-1",
+            "sessionFile": "/tmp/session-1.jsonl",
+            "revision": "revision-1",
+        },
+        "mode": "compatibility",
+        "origin": "cwd",
+        "health": "legacy",
+        "resumable": True,
+        "aliases": [],
+        "conflicts": [],
+    }
+    assert format_session_records(records, "tsv") == (
+        "session-1\t/tmp/session-1.jsonl\t/tmp/project\t"
+        "2026-01-02T00:00:00Z\tdraft\n"
+    )

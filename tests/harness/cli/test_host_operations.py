@@ -2,10 +2,16 @@ from __future__ import annotations
 
 import asyncio
 import json
+from contextlib import nullcontext
 from io import StringIO
+from pathlib import Path
 from types import SimpleNamespace
 
+from loushang.foundation.platform_paths import resolve_platform_paths
+from loushang.foundation.runtime_scope import resolve_runtime_scope
 from loushang.harness.cli import (
+    AgentCliEarlyOperationPorts,
+    CliLaunchPlan,
     CliOperationInsertion,
     CliOperationStage,
     CommandExecutionRequest,
@@ -13,14 +19,19 @@ from loushang.harness.cli import (
     StandardCliOperationRequest,
     agent_session_listing_request,
     agent_standard_cli_operation_request,
+    run_agent_cli_early_operation,
     run_agent_cli_session_listing,
     run_command_operation,
+    run_diagnostics_export_operation,
     run_session_listing_operation,
     run_standard_cli_operations,
 )
 
 
 class _Runtime:
+    def __init__(self) -> None:
+        self.queries: list[object] = []
+
     def list_session_summaries(self) -> list[object]:
         return [
             "invalid",
@@ -38,10 +49,54 @@ class _Runtime:
             ),
         ]
 
+    def find_session_summaries(self, query: object) -> list[object]:
+        self.queries.append(query)
+        return self.list_session_summaries()
+
 
 class _Session:
     async def execute_command_async(self, name: str, args: str) -> object:
         return SimpleNamespace(result={"name": name, "args": args})
+
+
+def test_diagnostics_export_operation_releases_runtime_owner_on_failure(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from loushang.harness.cli import host_operations
+
+    paths = resolve_platform_paths(
+        environ={"LOUSHANG_RUNTIME_DIR": str(tmp_path / "runtime")},
+        home=tmp_path / "home",
+        temporary_root=tmp_path / "temporary",
+    )
+    scope = resolve_runtime_scope(paths=paths, run_id="c" * 32)
+
+    def fail_export(**_kwargs):
+        assert (scope.run_dir / ".lease").is_file()
+        raise RuntimeError("export failed")
+
+    monkeypatch.setattr(host_operations, "export_diagnostics_bundle", fail_export)
+    stdout = StringIO()
+    stderr = StringIO()
+
+    result = run_diagnostics_export_operation(
+        requested=True,
+        project_root=tmp_path,
+        session_dir=tmp_path / "sessions",
+        output=None,
+        diagnostics_service=None,
+        debug_latest_path=None,
+        trace_latest_path=None,
+        stdout=stdout,
+        stderr=stderr,
+        runtime_scope_factory=lambda: scope,
+    )
+
+    assert result == 1
+    assert stdout.getvalue() == ""
+    assert stderr.getvalue() == "Error: export failed\n"
+    assert not scope.run_dir.exists()
 
 
 def test_standard_agent_arguments_project_operation_requests() -> None:
@@ -144,6 +199,7 @@ def test_agent_session_listing_runs_the_standard_projected_request(
     stdout = StringIO()
     stderr = StringIO()
 
+    runtime = _Runtime()
     result = run_agent_cli_session_listing(
         SimpleNamespace(
             list_sessions=True,
@@ -158,15 +214,18 @@ def test_agent_session_listing_runs_the_standard_projected_request(
             session_index=False,
             refresh_session_index=False,
         ),
-        _Runtime(),
+        runtime,
         stdout=stdout,
         stderr=stderr,
+        default_cwd="/workspace/current",
     )
 
     assert result == 0
     assert [item["session_id"] for item in json.loads(stdout.getvalue())] == [
         "session-1"
     ]
+    assert len(runtime.queries) == 1
+    assert getattr(runtime.queries[0], "cwd") == "/workspace/current"
     assert stderr.getvalue() == ""
 
 
@@ -236,3 +295,80 @@ def test_standard_operation_pack_accepts_product_stage_insertions() -> None:
 
     assert result == 0
     assert calls == ["product_catalog"]
+
+
+def test_verbose_version_uses_product_provenance_before_bootstrap(tmp_path) -> None:
+    collected: list[object] = []
+    stdout = StringIO()
+    ports = AgentCliEarlyOperationPorts(
+        collect_help_flags=lambda _argv, _root: {},
+        format_help=lambda _flags: "help\n",
+        package_version=lambda: "1.2.3",
+        runtime_identity=lambda root: (
+            collected.append(root)
+            or {
+                "package_version": "1.2.3",
+                "provenance_schema_version": 1,
+            }
+        ),
+        format_runtime_identity=lambda identity: (
+            f"version={identity['package_version']} "
+            f"schema={identity['provenance_schema_version']}"
+        ),
+        output_guard=lambda _enabled: nullcontext(),
+    )
+
+    result = asyncio.run(
+        run_agent_cli_early_operation(
+            SimpleNamespace(
+                help=False,
+                version=True,
+                verbose=True,
+                source_info=False,
+            ),
+            raw_argv=("--version", "--verbose"),
+            launch_plan=CliLaunchPlan(),
+            project_root=tmp_path,
+            stdout=stdout,
+            stderr=StringIO(),
+            ports=ports,
+        )
+    )
+
+    assert result == 0
+    assert collected == [tmp_path]
+    assert stdout.getvalue() == "version=1.2.3 schema=1\n"
+
+
+def test_plain_version_does_not_collect_runtime_provenance(tmp_path) -> None:
+    ports = AgentCliEarlyOperationPorts(
+        collect_help_flags=lambda _argv, _root: {},
+        format_help=lambda _flags: "help\n",
+        package_version=lambda: "1.2.3",
+        runtime_identity=lambda _root: (_ for _ in ()).throw(
+            AssertionError("plain version must not collect provenance")
+        ),
+        format_runtime_identity=lambda _identity: "unreachable",
+        output_guard=lambda _enabled: nullcontext(),
+    )
+    stdout = StringIO()
+
+    result = asyncio.run(
+        run_agent_cli_early_operation(
+            SimpleNamespace(
+                help=False,
+                version=True,
+                verbose=False,
+                source_info=False,
+            ),
+            raw_argv=("--version",),
+            launch_plan=CliLaunchPlan(),
+            project_root=tmp_path,
+            stdout=stdout,
+            stderr=StringIO(),
+            ports=ports,
+        )
+    )
+
+    assert result == 0
+    assert stdout.getvalue() == "1.2.3\n"

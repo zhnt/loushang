@@ -21,7 +21,7 @@ from loushang.harness.capabilities.component_contracts import (
 from loushang.harness.capabilities.component_selection import (
     ResolvedCapabilityComponentSet,
 )
-from loushang.harness.runtime.registration import _await_cancellation_atomic
+from loushang.harness.runtime._owned_tasks import _await_cancellation_atomic
 
 OwnerComponentGenerationState = Literal["published", "retiring", "disposed"]
 

@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Generic, TypeVar
 from uuid import uuid4
 
+from loushang.harness.artifacts import SessionBlobHealth, session_blob_authority_id
 from loushang.harness.conversation import (
     ConversationHeader,
     ConversationKey,
@@ -27,6 +28,9 @@ from loushang.harness.transcript.jsonl_file import (
     load_agent_transcript_header,
 )
 from loushang.harness.transcript.profile import AgentTranscriptProfile
+from loushang.harness.transcript.session_artifacts import (
+    inspect_agent_transcript_session_blobs,
+)
 from loushang.harness.transcript.session_catalog import (
     agent_transcript_header_cwd,
     build_agent_transcript_label_indexes,
@@ -94,6 +98,7 @@ class AgentTranscriptLifecycleSession(Generic[ProductBindingT]):
     runtime_binding: AgentTranscriptRuntimeBinding[ProductBindingT]
     labels_by_target_id: dict[str, str]
     label_timestamps_by_target_id: dict[str, str]
+    session_blob_health: tuple[SessionBlobHealth, ...] = ()
     _disposed: bool = field(default=False, init=False, repr=False)
     _ownership_state: str = field(default="root_owned", init=False, repr=False)
     _dispose_lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False, repr=False)
@@ -211,7 +216,11 @@ class AgentTranscriptLifecycle(Generic[BindingInputT, ProductBindingT]):
     ) -> Path:
         """Return the Conversation JSONL filename without selecting a Product root."""
 
-        return Path(session_dir) / _default_session_filename(header)
+        root = Path(session_dir).expanduser().resolve(strict=False)
+        target = (root / _default_session_filename(header)).resolve(strict=False)
+        if target.parent != root:
+            raise ValueError("session filename escapes the selected session directory")
+        return target
 
     def conversation_jsonl_context(
         self,
@@ -368,12 +377,17 @@ def _lifecycle_session(
         runtime_binding=runtime_binding,
         labels_by_target_id=labels_by_target_id,
         label_timestamps_by_target_id=label_timestamps_by_target_id,
+        session_blob_health=inspect_agent_transcript_session_blobs(
+            session_dir=context.session_dir,
+            session_id=context.header.conversation_id,
+            records=transcript.records,
+        ),
     )
 
 
 def _default_session_filename(header: ConversationHeader) -> str:
     timestamp = header.created_at.replace(":", "-").replace(".", "-")
-    return f"{timestamp}_{header.conversation_id}.jsonl"
+    return f"{timestamp}_{session_blob_authority_id(header.conversation_id)}.jsonl"
 
 
 def _default_id() -> str:

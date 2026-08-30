@@ -9,12 +9,13 @@ session directories, summaries, and lifecycle policy.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from uuid import uuid4
 
+from loushang.agent.types import AgentMessage
 from loushang.ai.types import AssistantMessage, ToolResultMessage, UserMessage
-from loushang.foundation.json import require_json_value
+from loushang.foundation.json import JSONValue, require_json_value
 from loushang.harness.conversation import (
     BranchDelta,
     CommandExecutionRecord,
@@ -38,6 +39,7 @@ from loushang.harness.transcript.model_input import (
     RebuiltModelInput,
     rebuild_model_input,
 )
+from loushang.harness.transcript.model_input_blobs import SessionModelInputBlobCodec
 from loushang.harness.transcript.types import (
     AgentTranscriptContext,
     AgentTranscriptRecord,
@@ -130,6 +132,20 @@ class AgentTranscriptSession:
     def get_entries(self) -> list[AgentTranscriptRecord]:
         return list(self.entries)
 
+    def get_active_entries(self) -> list[AgentTranscriptRecord]:
+        """Return the selected transcript path in commit order."""
+
+        return list(self._transcript.active_path())
+
+    def get_context_message_bindings(
+        self,
+        records: Sequence[AgentTranscriptRecord] | None = None,
+    ) -> tuple[tuple[str, AgentMessage], ...]:
+        """Bind every projected context message to its exact source record."""
+
+        projection = self._transcript.replay_projection(records)
+        return tuple(zip(projection.item_record_ids, projection.items, strict=True))
+
     def get_children(self, parent_id: str) -> list[AgentTranscriptRecord]:
         return list(self._transcript.children(parent_id))
 
@@ -204,16 +220,27 @@ class AgentTranscriptSession:
             self._record_label_entry(entry)
         return self._complete_commit(commit)
 
-    async def append_message(self, message: object) -> str:
+    async def append_message(
+        self,
+        message: object,
+        *,
+        metadata: Mapping[str, JSONValue] | None = None,
+    ) -> str:
         if isinstance(message, ApplicationMessage):
+            if metadata:
+                raise TypeError(
+                    "application messages do not accept Agent message metadata"
+                )
             return (await self.commit_application_message(message)).record_id
         if isinstance(message, CommandExecutionRecord):
+            if metadata:
+                raise TypeError("command messages do not accept Agent message metadata")
             return self._complete_commit(
                 await self._transcript.append_command_execution(message)
             )
         if isinstance(message, UserMessage | AssistantMessage | ToolResultMessage):
             return self._complete_commit(
-                await self._transcript.append_agent_message(message)
+                await self._transcript.append_agent_message(message, metadata=metadata)
             )
         raise TypeError(f"Unsupported transcript message: {type(message)!r}")
 
@@ -301,9 +328,7 @@ class AgentTranscriptSession:
             display=display,
             timestamp=self._clock().timestamp(),
         )
-        return self._complete_application_commit(
-            await self._committer.commit_application_message(message)
-        )
+        return await self.append_message(message)
 
     async def append_label(self, target_id: str, label: str | None) -> str:
         if self._transcript.get(target_id) is None:
@@ -357,12 +382,27 @@ class AgentTranscriptSession:
                 logical_input=logical_input,
             ),
             runtime_references=runtime_references,
+            binary_codec=self._model_input_binary_codec(active_only=True),
         )
 
     def rebuild_model_input(self, snapshot_id: str) -> RebuiltModelInput:
         """Reconstruct one committed request through the Session boundary."""
 
-        return rebuild_model_input(self._transcript, snapshot_id)
+        return rebuild_model_input(
+            self._transcript,
+            snapshot_id,
+            binary_codec=self._model_input_binary_codec(active_only=False),
+        )
+
+    def _model_input_binary_codec(
+        self,
+        *,
+        active_only: bool,
+    ) -> SessionModelInputBlobCodec | None:
+        """Return a Product storage-edge codec when this Session persists blobs."""
+
+        del active_only
+        return None
 
     def get_model_call_invocations(
         self,

@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import inspect
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Literal, Protocol, TypeVar
+from typing import Literal, Protocol
 from uuid import uuid4
+
+from loushang.harness.runtime._owned_tasks import _await_cancellation_atomic
 
 RegistrationOwnerKind = Literal[
     "product",
@@ -66,6 +69,72 @@ class RegistrationOwner:
             raise TypeError("registration owner generation must be an integer")
         if self.generation < 0:
             raise ValueError("registration owner generation must not be negative")
+
+
+@dataclass(frozen=True, slots=True)
+class OwnerGenerationRetirementReceipt:
+    """Serializable identity of one exact owner generation and cleanup handle."""
+
+    owner_reference: str
+    owner_generation_reference: str
+    retirement_handle: str
+    contribution_ids: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        _require_nonempty(self.owner_reference, name="owner reference")
+        _require_nonempty(
+            self.owner_generation_reference,
+            name="owner generation reference",
+        )
+        _require_nonempty(self.retirement_handle, name="retirement handle")
+        if (
+            not self.contribution_ids
+            or self.contribution_ids
+            != tuple(sorted(set(self.contribution_ids)))
+            or any(
+                not isinstance(value, str) or not value.strip()
+                for value in self.contribution_ids
+            )
+        ):
+            raise ValueError(
+                "owner generation contribution ids must be sorted unique strings"
+            )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "contributionIds": list(self.contribution_ids),
+            "ownerGenerationReference": self.owner_generation_reference,
+            "ownerReference": self.owner_reference,
+            "retirementHandle": self.retirement_handle,
+        }
+
+    @classmethod
+    def from_dict(cls, value: object) -> OwnerGenerationRetirementReceipt:
+        if not isinstance(value, dict) or set(value) != {
+            "contributionIds",
+            "ownerGenerationReference",
+            "ownerReference",
+            "retirementHandle",
+        }:
+            raise ValueError("owner generation retirement receipt fields are invalid")
+        contribution_ids = value["contributionIds"]
+        if not isinstance(contribution_ids, list):
+            raise TypeError("owner generation contribution ids must be an array")
+        return cls(
+            owner_reference=_require_nonempty(
+                value["ownerReference"],
+                name="owner reference",
+            ),
+            owner_generation_reference=_require_nonempty(
+                value["ownerGenerationReference"],
+                name="owner generation reference",
+            ),
+            retirement_handle=_require_nonempty(
+                value["retirementHandle"],
+                name="retirement handle",
+            ),
+            contribution_ids=tuple(contribution_ids),
+        )
 
 
 @dataclass(frozen=True)
@@ -499,25 +568,48 @@ class RegistrationScope:
             await self.dispose()
 
 
-T = TypeVar("T")
+def registration_scope_retirement_receipt(
+    scope: RegistrationScope,
+    *,
+    contribution_ids: tuple[str, ...],
+    allow_open: bool = False,
+) -> OwnerGenerationRetirementReceipt:
+    """Mint exact retirement evidence from the scope that owns live leases."""
 
-
-async def _await_cancellation_atomic(task: asyncio.Task[T]) -> T:
-    """Join an owned cleanup task before propagating caller cancellation."""
-
-    cancellation: asyncio.CancelledError | None = None
-    caller = asyncio.current_task()
-    while not task.done():
-        try:
-            await asyncio.shield(task)
-        except asyncio.CancelledError as exc:
-            if caller is None or caller.cancelling() == 0:
-                return task.result()
-            cancellation = exc
-    result = task.result()
-    if cancellation is not None:
-        raise cancellation
-    return result
+    if not isinstance(scope, RegistrationScope):
+        raise TypeError("owner generation receipt requires a registration scope")
+    allowed_states = {"open", "committed"} if allow_open else {"committed"}
+    if scope.state not in allowed_states:
+        raise RuntimeError(
+            "owner generation retirement evidence requires a live scope"
+        )
+    owner = scope.owner
+    registrations = tuple(
+        sorted(
+            (
+                identity.surface,
+                identity.registration_id,
+                identity.public_key,
+            )
+            for _lease_owner, identity, _state in scope.inventory
+        )
+    )
+    if not registrations:
+        raise RuntimeError("owner generation has no exact registrations")
+    handle_digest = hashlib.sha256(
+        repr((owner, registrations)).encode("utf-8")
+    ).hexdigest()
+    owner_reference = (
+        f"registration-owner:{owner.owner_kind}:{owner.owner_id}:{owner.runtime_id}"
+    )
+    return OwnerGenerationRetirementReceipt(
+        owner_reference=owner_reference,
+        owner_generation_reference=(
+            f"{owner_reference}:generation:{owner.generation}"
+        ),
+        retirement_handle=f"registration-scope:{handle_digest}",
+        contribution_ids=contribution_ids,
+    )
 
 
 def _require_nonempty(value: object, *, name: str) -> str:
@@ -529,6 +621,7 @@ def _require_nonempty(value: object, *, name: str) -> str:
 
 
 __all__ = [
+    "OwnerGenerationRetirementReceipt",
     "RegistrationDisposalOutcome",
     "RegistrationDisposalResult",
     "RegistrationIdentity",
@@ -537,4 +630,5 @@ __all__ = [
     "RegistrationOwner",
     "RegistrationScope",
     "RegistrationScopeDisposalResult",
+    "registration_scope_retirement_receipt",
 ]

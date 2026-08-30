@@ -37,6 +37,13 @@ class ConversationReplayPorts(Generic[RecordT, ItemT, StateT]):
 class ConversationReplayProjection(Generic[ItemT, StateT]):
     items: tuple[ItemT, ...]
     state: StateT
+    item_record_ids: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.item_record_ids and len(self.items) != len(self.item_record_ids):
+            raise ValueError(
+                "conversation replay items and record ids must have equal length"
+            )
 
 
 class ConversationReplayFolder(Generic[RecordT, ItemT, StateT]):
@@ -73,9 +80,11 @@ class ConversationReplayFolder(Generic[RecordT, ItemT, StateT]):
 
         resolved = self._latest_checkpoint(all_records)
         if resolved is None:
+            projected_items, projected_record_ids = self._project_items(all_records)
             return ConversationReplayProjection(
-                items=self._project_items(all_records),
+                items=projected_items,
                 state=state,
+                item_record_ids=projected_record_ids,
             )
 
         checkpoint_index, checkpoint = resolved
@@ -90,10 +99,22 @@ class ConversationReplayFolder(Generic[RecordT, ItemT, StateT]):
         else:
             kept_records = all_records[boundary_index:checkpoint_index]
 
-        items = [checkpoint.summary_item]
-        items.extend(self._project_items(kept_records))
-        items.extend(self._project_items(all_records[checkpoint_index + 1 :]))
-        return ConversationReplayProjection(items=tuple(items), state=state)
+        items: list[ItemT] = [checkpoint.summary_item]
+        item_record_ids: list[str] = [
+            self._ports.record_id(all_records[checkpoint_index])
+        ]
+        for selected in (
+            kept_records,
+            all_records[checkpoint_index + 1 :],
+        ):
+            projected, projected_record_ids = self._project_items(selected)
+            items.extend(projected)
+            item_record_ids.extend(projected_record_ids)
+        return ConversationReplayProjection(
+            items=tuple(items),
+            state=state,
+            item_record_ids=tuple(item_record_ids),
+        )
 
     def _latest_checkpoint(
         self,
@@ -106,13 +127,18 @@ class ConversationReplayFolder(Generic[RecordT, ItemT, StateT]):
                 return index, checkpoint
         return None
 
-    def _project_items(self, records: Sequence[RecordT]) -> tuple[ItemT, ...]:
+    def _project_items(
+        self,
+        records: Sequence[RecordT],
+    ) -> tuple[tuple[ItemT, ...], tuple[str, ...]]:
         items: list[ItemT] = []
+        item_record_ids: list[str] = []
         for record in records:
             visible_item = self._ports.project_visible_item(record)
             if visible_item is not None:
                 items.append(visible_item)
-        return tuple(items)
+                item_record_ids.append(self._ports.record_id(record))
+        return tuple(items), tuple(item_record_ids)
 
     def _resolve_checkpoint(
         self, record: RecordT

@@ -73,6 +73,7 @@ class ExtensionResourceRouteContribution:
     route_order: int
     prompt_descriptors: tuple[PromptFragmentDescriptor, ...] = ()
     skills: tuple[SkillDescriptor, ...] = ()
+    skill_bodies: tuple[bytes | None, ...] = ()
     extensions: tuple[ExtensionDescriptor, ...] = ()
     prompts: tuple[PromptFragmentDescriptor, ...] = ()
     themes: tuple[ThemeDescriptor, ...] = ()
@@ -119,6 +120,20 @@ class ExtensionResourceRouteContribution:
             for item in values
         ):
             raise TypeError("Extension Resource contribution contains an invalid value")
+        if len(self.skill_bodies) != len(self.skills):
+            raise ValueError(
+                "Extension Resource Skill descriptors and bodies must align"
+            )
+        if any(body is not None and not isinstance(body, bytes) for body in self.skill_bodies):
+            raise TypeError("Extension Resource Skill bodies must use bytes")
+        if any(skill.content is not None for skill in self.skills):
+            raise ValueError(
+                "Extension Resource Catalog Skill descriptors must be body-free"
+            )
+        if any("body" in skill.metadata for skill in self.skills):
+            raise ValueError(
+                "Extension Resource Catalog Skill metadata must be body-free"
+            )
 
 
 ExtensionResourceDescriptorBinding: TypeAlias = ResourceProjectionDescriptorBinding
@@ -533,7 +548,13 @@ def _descriptor_records(
                 _freeze_metadata(descriptor.metadata),
             )
             _validate_descriptor_source_facts(route, descriptor)
-            body = _descriptor_body(resource_kind, descriptor)
+            body = _descriptor_body(
+                route,
+                resource_kind,
+                slot,
+                index,
+                descriptor,
+            )
             records.append(
                 _DescriptorRecord(
                     route=route,
@@ -657,18 +678,27 @@ def _validate_descriptor_source_facts(
 
 
 def _descriptor_body(
+    route: ExtensionResourceRouteContribution,
     resource_kind: str,
+    slot: str,
+    index: int,
     descriptor: ExtensionResourceDescriptor,
 ) -> bytes | None:
     if isinstance(descriptor, PromptFragmentDescriptor):
         return descriptor.text.encode("utf-8")
     if isinstance(descriptor, SkillDescriptor):
-        if descriptor.content is None:
+        if slot != "skills":
+            raise ExtensionResourceSourceError(
+                code="resource_source_snapshot_invalid",
+                reason="extension_skill_body_slot_invalid",
+            )
+        body = route.skill_bodies[index]
+        if body is None:
             raise ExtensionResourceSourceError(
                 code="resource_source_snapshot_invalid",
                 reason="extension_body_identity_missing",
             )
-        return descriptor.content.encode("utf-8")
+        return body
     if isinstance(descriptor, ThemeDescriptor) and descriptor.content is not None:
         return descriptor.content.encode("utf-8")
     if resource_kind not in {"extension", "theme"}:

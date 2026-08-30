@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import stat
+from pathlib import Path
 
 import pytest
 
@@ -9,8 +12,145 @@ from loushang.harness.runtime.session_operations import (
     SessionOperationCandidate,
     SessionOperationCoordinator,
     SessionOperationPhase,
+    copy_file_exclusive,
+    file_status_fingerprint,
+    stage_file_import,
 )
 from loushang.harness.runtime.transition import SessionTransitionHost
+
+
+def test_copy_file_exclusive_atomically_publishes_private_content(tmp_path) -> None:
+    source = tmp_path / "source.jsonl"
+    destination = tmp_path / "destination.jsonl"
+    source.write_bytes(b"complete transcript\n")
+
+    copy_file_exclusive(source, destination)
+
+    assert destination.read_bytes() == b"complete transcript\n"
+    if os.name == "posix":
+        assert stat.S_IMODE(destination.stat().st_mode) == 0o600
+    assert list(tmp_path.glob(f".{destination.name}.*.tmp")) == []
+
+
+def test_copy_file_exclusive_never_publishes_a_partial_copy(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from loushang.harness.runtime import session_operations
+
+    source = tmp_path / "source.jsonl"
+    destination = tmp_path / "destination.jsonl"
+    source.write_bytes(b"complete transcript\n")
+
+    def fail_after_partial_copy(_input, output) -> None:
+        output.write(b"partial")
+        raise OSError("copy interrupted")
+
+    monkeypatch.setattr(session_operations, "copyfileobj", fail_after_partial_copy)
+
+    with pytest.raises(OSError, match="copy interrupted"):
+        copy_file_exclusive(source, destination)
+
+    assert destination.exists() is False
+    assert list(tmp_path.glob(f".{destination.name}.*.tmp")) == []
+
+
+def test_copy_file_exclusive_does_not_replace_an_existing_destination(
+    tmp_path,
+) -> None:
+    source = tmp_path / "source.jsonl"
+    destination = tmp_path / "destination.jsonl"
+    source.write_bytes(b"new transcript\n")
+    destination.write_bytes(b"existing transcript\n")
+
+    with pytest.raises(FileExistsError):
+        copy_file_exclusive(source, destination)
+
+    assert destination.read_bytes() == b"existing transcript\n"
+    assert list(tmp_path.glob(f".{destination.name}.*.tmp")) == []
+
+
+def test_copy_file_exclusive_rejects_a_linked_source(tmp_path) -> None:
+    outside = tmp_path / "outside.jsonl"
+    linked = tmp_path / "linked.jsonl"
+    destination = tmp_path / "destination.jsonl"
+    outside.write_bytes(b"outside transcript\n")
+    try:
+        linked.symlink_to(outside)
+    except (NotImplementedError, OSError):
+        pytest.skip("file symlinks are unavailable")
+
+    with pytest.raises(OSError, match="regular file"):
+        copy_file_exclusive(linked, destination)
+
+    assert destination.exists() is False
+    assert outside.read_bytes() == b"outside transcript\n"
+
+
+def test_copy_file_exclusive_binds_the_discovered_source_identity(tmp_path) -> None:
+    source = tmp_path / "source.jsonl"
+    replacement = tmp_path / "replacement.jsonl"
+    destination = tmp_path / "destination.jsonl"
+    source.write_bytes(b"selected transcript\n")
+    expected = file_status_fingerprint(source.lstat())
+    replacement.write_bytes(b"replacement transcript\n")
+    replacement.replace(source)
+
+    with pytest.raises(OSError, match="no longer matches discovery"):
+        copy_file_exclusive(
+            source,
+            destination,
+            expected_source_fingerprint=expected,
+        )
+
+    assert destination.exists() is False
+
+
+def test_stage_file_import_preserves_legacy_two_argument_copy_port(tmp_path) -> None:
+    source = tmp_path / "source.jsonl"
+    destination_dir = tmp_path / "authority"
+    source.write_bytes(b"selected transcript\n")
+    expected = file_status_fingerprint(source.lstat())
+    calls: list[tuple[Path, Path]] = []
+
+    def legacy_copy(selected: Path, destination: Path) -> None:
+        calls.append((selected, destination))
+        destination.write_bytes(selected.read_bytes())
+
+    staged = stage_file_import(
+        source,
+        destination_dir,
+        copy_file=legacy_copy,
+        expected_source_fingerprint=expected,
+    )
+
+    assert calls == [(source, staged.destination)]
+    assert staged.destination.read_bytes() == b"selected transcript\n"
+
+
+def test_copy_file_exclusive_rejects_a_source_append_without_reading_to_eof(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from loushang.harness.runtime import session_operations
+
+    source = tmp_path / "source.jsonl"
+    destination = tmp_path / "destination.jsonl"
+    source.write_bytes(b"fixed snapshot\n")
+    copy = session_operations.copyfileobj
+
+    def append_during_copy(input_handle, output_handle) -> None:
+        with source.open("ab") as source_handle:
+            source_handle.write(b"racing append\n")
+        copy(input_handle, output_handle)
+
+    monkeypatch.setattr(session_operations, "copyfileobj", append_during_copy)
+
+    with pytest.raises(OSError, match="changed while copying"):
+        copy_file_exclusive(source, destination)
+
+    assert destination.exists() is False
+    assert list(tmp_path.glob(f".{destination.name}.*.tmp")) == []
 
 
 def test_session_operation_orders_prepare_replace_and_commit() -> None:

@@ -72,7 +72,6 @@ def _user_message(text: str) -> UserMessage:
 
 def test_agent_session_restores_persisted_context_on_init(tmp_path) -> None:
     from loushang.agent import Agent
-    from loushang.coding import AgentSession as PublicAgentSession
     from loushang.coding.session import AgentSession
     from loushang.coding.session_manager import SessionManager
 
@@ -92,7 +91,6 @@ def test_agent_session_restores_persisted_context_on_init(tmp_path) -> None:
     agent = Agent()
     session = AgentSession(agent=agent, session_manager=manager)
 
-    assert PublicAgentSession is AgentSession
     assert [getattr(message, "role", None) for message in agent.state.messages] == [
         "user"
     ]
@@ -5187,9 +5185,7 @@ def test_agent_session_records_reload_failures_as_diagnostics(tmp_path) -> None:
     assert records[0].type == "error"
 
 
-def test_agent_session_records_candidate_bind_failures_as_diagnostics(tmp_path) -> (
-    None
-):
+def test_agent_session_records_candidate_bind_failures_as_diagnostics(tmp_path) -> None:
     from pathlib import Path
 
     from loushang.agent import Agent
@@ -5409,6 +5405,8 @@ def test_agent_session_exposes_context_usage_and_stats(tmp_path) -> None:
             "cache_read": 5,
             "cache_write": 7,
             "total": 17,
+            "source": "legacy_derived",
+            "incomplete_attempts": True,
         },
         "cost": 0.25,
         "context_usage": None,
@@ -5614,8 +5612,11 @@ def test_agent_session_records_remote_package_manifest_diagnostics(tmp_path) -> 
 
     packages = session.get_packages()
 
-    assert packages[0]["manifestDiagnostics"][0]["code"] == "invalid_package_manifest"
-    records = diagnostics.get_diagnostics(code="invalid_package_manifest")
+    assert (
+        packages[0]["manifestDiagnostics"][0]["code"]
+        == "plugin_declaration_invalid_json"
+    )
+    records = diagnostics.get_diagnostics(code="plugin_declaration_invalid_json")
     assert len(records) == 1
     assert records[0].phase == "resource_loading"
     assert records[0].source == "package"

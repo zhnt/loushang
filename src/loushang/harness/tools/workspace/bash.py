@@ -1,11 +1,12 @@
 import inspect
 import os
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field, replace
 from typing import Any, NotRequired, Protocol, TypedDict, cast
 
 from loushang.agent.types import AgentToolResult, TextPart
 from loushang.ai.types import ToolCall
+from loushang.harness.artifacts import SessionBlobRef
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.effects import ProcessEffect
 from loushang.harness.policy import (
@@ -105,6 +106,9 @@ class BashToolDetails(TypedDict, total=False):
     stream: str
     stdio_complete: bool
     stdio_drain_reason: str | None
+    stdout_blob: dict[str, object]
+    stderr_blob: dict[str, object]
+    artifact_retention_error: str
 
 
 class BashOperations(Protocol):
@@ -316,21 +320,31 @@ class _BashAuthorizedHandler:
             signal=context.signal,
             on_update=_forward_exec_update,
         )
+        tool_result = _exec_result_to_tool_result(result)
         if result.timed_out:
-            raise TimeoutError(
-                _exec_result_error_message(
-                    result, _timeout_error_message(exec_request.timeout_seconds)
-                )
+            raise _exec_result_exception(
+                TimeoutError(
+                    _exec_result_error_message(
+                        result, _timeout_error_message(exec_request.timeout_seconds)
+                    )
+                ),
+                tool_result,
             )
         if result.cancelled:
-            raise RuntimeError(_exec_result_error_message(result, "Command aborted"))
-        if result.exit_code != 0 and not result.cancelled:
-            raise RuntimeError(
-                _exec_result_error_message(
-                    result, f"Command exited with code {result.exit_code}"
-                )
+            raise _exec_result_exception(
+                RuntimeError(_exec_result_error_message(result, "Command aborted")),
+                tool_result,
             )
-        return _exec_result_to_tool_result(result)
+        if result.exit_code != 0 and not result.cancelled:
+            raise _exec_result_exception(
+                RuntimeError(
+                    _exec_result_error_message(
+                        result, f"Command exited with code {result.exit_code}"
+                    )
+                ),
+                tool_result,
+            )
+        return tool_result
 
 
 def _optional_number(value: object, *, field_name: str) -> float | int | None:
@@ -664,7 +678,21 @@ def _exec_result_to_tool_result(result: ExecResult) -> AgentToolResult[dict[str,
         if result.stdout
         else stderr_preview
     )
-    full_output_path = result.stdout_artifact_path or result.stderr_artifact_path
+    stdout_blob = (
+        result.stdout_artifact_ref
+        if isinstance(result.stdout_artifact_ref, SessionBlobRef)
+        else None
+    )
+    stderr_blob = (
+        result.stderr_artifact_ref
+        if isinstance(result.stderr_artifact_ref, SessionBlobRef)
+        else None
+    )
+    full_output_path = (
+        None
+        if stdout_blob is not None or stderr_blob is not None
+        else result.stdout_artifact_path or result.stderr_artifact_path
+    )
     content = output_preview.content or "(no output)"
     truncated = (
         output_preview.truncated or stdout_preview.truncated or stderr_preview.truncated
@@ -684,6 +712,21 @@ def _exec_result_to_tool_result(result: ExecResult) -> AgentToolResult[dict[str,
             **_prefixed_truncation_details("stdout", stdout_preview),
             **_prefixed_truncation_details("stderr", stderr_preview),
             "stderr_artifact_path": result.stderr_artifact_path,
+            **(
+                {"stdout_blob": stdout_blob.manifest_entry()}
+                if stdout_blob is not None
+                else {}
+            ),
+            **(
+                {"stderr_blob": stderr_blob.manifest_entry()}
+                if stderr_blob is not None
+                else {}
+            ),
+            **(
+                {"artifact_retention_error": result.artifact_retention_error}
+                if result.artifact_retention_error is not None
+                else {}
+            ),
             "timed_out": result.timed_out,
             "cancelled": result.cancelled,
             "stdio_complete": result.stdio_complete,
@@ -726,6 +769,21 @@ def _exec_result_error_message(result: ExecResult, message: str) -> str:
         parts.append(output_preview.content.rstrip("\n"))
     parts.append(message)
     return "\n\n".join(parts)
+
+
+def _exec_result_exception(
+    error: RuntimeError | TimeoutError,
+    tool_result: AgentToolResult[dict[str, Any]],
+) -> RuntimeError | TimeoutError:
+    """Attach the same pathless details used by successful tool results."""
+
+    details = tool_result.details
+    setattr(
+        error,
+        "tool_result_details",
+        dict(details) if isinstance(details, Mapping) else {},
+    )
+    return error
 
 
 def _timeout_error_message(timeout_seconds: float | int | None) -> str:

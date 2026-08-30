@@ -177,6 +177,7 @@ if TYPE_CHECKING:
         ToolPolicyAuditSessionEvent,
     )
     from loushang.harness.session.export import (
+        export_session_to_bundle,
         export_session_to_html,
         export_session_to_jsonl,
     )
@@ -244,6 +245,7 @@ if TYPE_CHECKING:
         SessionLifecycleTransition,
         TransitionCandidateCallback,
         TransitionReleaseCallback,
+        VerifiedFileCopy,
         resolve_fork_target,
     )
     from loushang.harness.session.lifecycle_adapter import (
@@ -317,13 +319,21 @@ if TYPE_CHECKING:
     from loushang.harness.session.prompt_controller import PromptController
     from loushang.harness.session.queue_controller import QueueController
     from loushang.harness.session.resource_refresh import (
+        CatalogRefreshRequiresAsyncError,
         RefreshFailureRecorder,
         ResourceBundleProvider,
         ResourceLoaderPort,
         ResourceLoaderProvider,
+        ResourceRefreshRuntimeClosedError,
         ResourceSettingsPort,
         ResourceSettingsProvider,
+        SessionResourceRefreshOutcome,
         SessionResourceRefreshRuntime,
+    )
+    from loushang.harness.session.resource_refresh_gate import (
+        ResourceCatalogRefreshGate,
+        ResourceCatalogRefreshGateLoopError,
+        ResourceCatalogRefreshGatePort,
     )
     from loushang.harness.session.rpc_operations import SessionRpcOperationBinding
     from loushang.harness.session.runtime import (
@@ -443,6 +453,7 @@ _EXPORT_MODULES = {
     "ExtensionCommandResultFactory": "loushang.harness.session.command_sources",
     "ExtensionCommandSourceRuntime": "loushang.harness.session.command_sources",
     "FileCopy": "loushang.harness.session.lifecycle",
+    "VerifiedFileCopy": "loushang.harness.session.lifecycle",
     "ForkProfile": "loushang.harness.session.lifecycle",
     "ForkSelection": "loushang.harness.session.lifecycle",
     "ForkTargetResolver": "loushang.harness.session.lifecycle",
@@ -480,6 +491,7 @@ _EXPORT_MODULES = {
     "preferred_model_details": "loushang.harness.session.model_preferences",
     "preferred_model_selection": "loushang.harness.session.model_preferences",
     "QueueController": "loushang.harness.session.queue_controller",
+    "CatalogRefreshRequiresAsyncError": "loushang.harness.session.resource_refresh",
     "RefreshFailureRecorder": "loushang.harness.session.resource_refresh",
     "ResourceBundleProvider": "loushang.harness.session.resource_refresh",
     "ResourceCommandBundleProvider": "loushang.harness.session.command_sources",
@@ -492,6 +504,10 @@ _EXPORT_MODULES = {
     "ResourceLoaderProvider": "loushang.harness.session.resource_refresh",
     "ResourceSettingsPort": "loushang.harness.session.resource_refresh",
     "ResourceSettingsProvider": "loushang.harness.session.resource_refresh",
+    "ResourceRefreshRuntimeClosedError": "loushang.harness.session.resource_refresh",
+    "ResourceCatalogRefreshGate": "loushang.harness.session.resource_refresh_gate",
+    "ResourceCatalogRefreshGateLoopError": "loushang.harness.session.resource_refresh_gate",
+    "ResourceCatalogRefreshGatePort": "loushang.harness.session.resource_refresh_gate",
     "OutputCallback": "loushang.harness.session.facade",
     "ApprovalPresentationLease": "loushang.harness.session.facade",
     "ApprovalRequestDismisser": "loushang.harness.session.facade",
@@ -555,6 +571,7 @@ _EXPORT_MODULES = {
     "project_fork_candidates": "loushang.harness.session.inspection_projection",
     "project_session_stats": "loushang.harness.session.inspection_projection",
     "SessionResourceRefreshRuntime": "loushang.harness.session.resource_refresh",
+    "SessionResourceRefreshOutcome": "loushang.harness.session.resource_refresh",
     "dispose_session_only": "loushang.harness.session.product_runtime",
     "emit_session_shutdown": "loushang.harness.session.product_runtime",
     "invoke_session_factory": "loushang.harness.session.product_runtime",
@@ -627,6 +644,7 @@ _EXPORT_MODULES = {
     "should_emit_projected_event": "loushang.harness.session.event_projection",
     "should_emit_runtime_event_view": "loushang.harness.session.runtime_event_views",
     "export_session_to_html": "loushang.harness.session.export",
+    "export_session_to_bundle": "loushang.harness.session.export",
     "export_session_to_jsonl": "loushang.harness.session.export",
 }
 

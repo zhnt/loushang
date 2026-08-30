@@ -8,6 +8,9 @@ from typing import Protocol
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.resources.layout import resolve_user_resource_roots
+from loushang.harness.resources.packages.catalog_inputs import (
+    CatalogPluginPackageInput,
+)
 from loushang.harness.resources.packages.manifest import (
     project_plugin_diagnostics,
     resolve_package_manifest,
@@ -32,7 +35,11 @@ from loushang.harness.resources.plugins.revisions import (
     PluginRevisionError,
     VerifiedRevisionHandle,
 )
-from loushang.harness.resources.plugins.types import PluginSource
+from loushang.harness.resources.plugins.types import (
+    PluginSource,
+    PluginSourceBinding,
+    PublishedPluginPackage,
+)
 
 
 class ResourceRootSettingsSnapshot(Protocol):
@@ -65,6 +72,8 @@ class ResourceRootLoader(Protocol):
     def set_package_mounts(
         self,
         mounts: Sequence[PackageResourceMount],
+        *,
+        catalog_plugin_package_inputs: Sequence[CatalogPluginPackageInput] = (),
     ) -> None: ...
 
     def set_user_resource_roots(
@@ -75,9 +84,37 @@ class ResourceRootLoader(Protocol):
     ) -> None: ...
 
 
+@dataclass(frozen=True, slots=True)
+class SelectedPluginPackageInput:
+    """Product-selected published package evidence for Resource discovery.
+
+    The caller retains the package's original revision handle.  Root
+    configuration acquires an independent lease before transferring the mount
+    to the Resource loader.
+    """
+
+    package: PublishedPluginPackage
+    binding: PluginSourceBinding
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.package, PublishedPluginPackage):
+            raise TypeError("Selected Plugin input requires a published package")
+        if not isinstance(self.binding, PluginSourceBinding):
+            raise TypeError("Selected Plugin input requires a source binding")
+        if self.binding.plugin_id != self.package.manifest.name:
+            raise ValueError("Selected Plugin package binding does not match its package")
+        if (
+            self.binding.content_digest != self.package.content_digest
+            or self.binding.manifest_digest != self.package.manifest_digest
+            or self.binding.dependency_lock != self.package.dependency_lock
+        ):
+            raise ValueError("Selected Plugin package binding lineage is invalid")
+
+
 @dataclass(frozen=True)
 class ResolvedPackageResourceRoots:
     mounts: tuple[PackageResourceMount, ...] = ()
+    catalog_plugin_package_inputs: tuple[CatalogPluginPackageInput, ...] = ()
 
     @property
     def roots(self) -> tuple[str, ...]:
@@ -110,6 +147,7 @@ def configure_resource_loader_roots(
     materializer: PackageMaterializer,
     diagnostics_service: DiagnosticsService | None = None,
     session_id: str | None = None,
+    selected_plugin_packages: Sequence[SelectedPluginPackageInput] = (),
 ) -> ResolvedPackageResourceRoots:
     """Bind standard package and user resource roots to one loader."""
 
@@ -126,9 +164,13 @@ def configure_resource_loader_roots(
         disabled_plugins=settings.disabled_plugins,
         diagnostics_service=diagnostics_service,
         session_id=session_id,
+        selected_plugin_packages=selected_plugin_packages,
     )
     try:
-        resource_loader.set_package_mounts(resolved.mounts)
+        resource_loader.set_package_mounts(
+            resolved.mounts,
+            catalog_plugin_package_inputs=resolved.catalog_plugin_package_inputs,
+        )
     except Exception:
         _close_mounts(resolved.mounts)
         raise
@@ -165,7 +207,16 @@ def resolve_package_resource_roots(
     disabled_plugins: tuple[str, ...] = (),
     diagnostics_service: DiagnosticsService | None = None,
     session_id: str | None = None,
+    selected_plugin_packages: Sequence[SelectedPluginPackageInput] = (),
 ) -> ResolvedPackageResourceRoots:
+    selected_inputs = tuple(selected_plugin_packages)
+    if any(not isinstance(item, SelectedPluginPackageInput) for item in selected_inputs):
+        raise TypeError("Selected Plugin package inputs are invalid")
+    selected_plugin_ids = tuple(
+        item.package.manifest.name for item in selected_inputs
+    )
+    if len(set(selected_plugin_ids)) != len(selected_plugin_ids):
+        raise ValueError("Selected Plugin package inputs must be unique")
     mounts: list[PackageResourceMount] = []
     for configured_root in package_roots:
         _upsert_package_mount(
@@ -224,7 +275,33 @@ def resolve_package_resource_roots(
         )
         raise
     assert runtime_resolution is not None
+    configured_plugin_ids = {
+        package.manifest.name for package in runtime_resolution.packages
+    }
+    duplicate_plugin_ids = sorted(set(selected_plugin_ids) & configured_plugin_ids)
+    if duplicate_plugin_ids:
+        runtime_resolution.close()
+        raise ValueError(
+            "Product-selected Plugin duplicates a configured Plugin source: "
+            + ", ".join(duplicate_plugin_ids)
+        )
+    selected_packages: list[
+        tuple[PublishedPluginPackage, PluginSourceBinding]
+    ] = []
     try:
+        for selected_input in selected_inputs:
+            package = selected_input.package
+            revision_handle = package.revision_handle.acquire()
+            leased_package = replace(package, revision_handle=revision_handle)
+            _upsert_package_mount(
+                mounts,
+                PackageResourceMount(
+                    root=leased_package.package_root,
+                    content_digest=leased_package.content_digest,
+                    revision_handle=revision_handle,
+                ),
+            )
+            selected_packages.append((leased_package, selected_input.binding))
         for package, plugin in zip(
             runtime_resolution.packages,
             runtime_resolution.plugins,
@@ -246,6 +323,7 @@ def resolve_package_resource_roots(
             )
     except Exception:
         runtime_resolution.close()
+        _close_mounts(mounts)
         raise
     try:
         for package_source in package_sources:
@@ -273,8 +351,43 @@ def resolve_package_resource_roots(
             )
     except Exception:
         runtime_resolution.close()
+        _close_mounts(mounts)
         raise
-    return ResolvedPackageResourceRoots(mounts=tuple(mounts))
+    catalog_plugin_package_inputs: list[CatalogPluginPackageInput] = []
+    enabled_packages = [
+        *selected_packages,
+        *(
+            (package, binding)
+            for package, plugin, binding in zip(
+                runtime_resolution.packages,
+                runtime_resolution.plugins,
+                runtime_resolution.bindings,
+                strict=True,
+            )
+            if plugin.enabled
+        ),
+    ]
+    for package, binding in enabled_packages:
+        matching_orders = [
+            index
+            for index, mount in enumerate(mounts)
+            if mount.enabled and mount.revision_handle is package.revision_handle
+        ]
+        if len(matching_orders) != 1:
+            runtime_resolution.close()
+            _close_mounts(mounts)
+            raise ValueError("Published Plugin does not have one discovery mount")
+        catalog_plugin_package_inputs.append(
+            CatalogPluginPackageInput(
+                package=package,
+                binding=binding,
+                source_root_order=matching_orders[0],
+            )
+        )
+    return ResolvedPackageResourceRoots(
+        mounts=tuple(mounts),
+        catalog_plugin_package_inputs=tuple(catalog_plugin_package_inputs),
+    )
 
 
 def _upsert_package_mount(

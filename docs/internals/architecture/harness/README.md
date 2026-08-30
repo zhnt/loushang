@@ -36,113 +36,11 @@ planning, work event persistence, or AI provider behavior.
   records the completed CLA0-CLA8 convergence of Profile, Mount, Registration,
   and Extension/Resource construction authority around one publisher per owned
   live object while preserving independent fact clocks.
-- [Unified Plugin Architecture](unified-plugin-architecture.md) defines the
-  target single-path Source/Declaration/Selection/Owner-Binding system that
-  makes Coding base, LSP, Arch, OEM, and external contributions selectable
-  Plugins without replacing Runtime Profile, the typed Capability Graph, or
-  existing registration and projection authorities.
-- [Unified Plugin Authoring Primitives Delivery Plan](plugin-authoring-primitives-delivery-plan.md)
-  prioritizes the internal Definition / Provider / Consumer authoring bridge,
-  versions and groups document/in-process declaration sources, separates a
-  proposal/pending/fresh-accept protocol from decoded/evaluated evidence, gives
-  the Coordinator one finalize/abort/expire transition, keeps Resource/Tool/
-  Command contributions orthogonal to Capability Providers, and then proceeds
-  through durable execution approval, owner admission, and LSP production proof.
-  PAP5.5 now moves internal Resource Catalog/Skill-path convergence before LSP,
-  while the stable public SDK stays gated by broader production evidence.
-- [Resource Catalog And Source Pluginization Plan](resource-catalog-pluginization-plan.md)
-  defines PAP5.5/PLC4.5: one Resource-owner Catalog authority, an exclusive
-  Catalog-engine component, aggregate filesystem/package/embedded source
-  components, Extension-generation snapshot normalization, typed lazy loads and
-  Skill projection, exact-generation lifecycle, and manifest-free native
-  `SKILL.md` compatibility before LSP. RCP0-RCP3 are now implemented as private,
-  unpublished infrastructure, including verified-package and immutable embedded
-  sources plus Package Catalog's pure inventory bridge. RCP4's ten unpublished
-  foundations now prove candidate-owned generation transfer, the internal v2
-  Catalog/load Provider, exact Extension-owner route snapshots with retained
-  body reads, and a root-private joint Extension/Resource candidate through an
-  isolated real Graph. Exact borrow leases drain body reads independently from
-  Extension retirement; the joint candidate provides one synchronous visible
-  publication point plus cancellation-safe root/Graph rollback. Source-owned
-  descriptor sidecars now carry no winner authority: the Resource owner derives
-  an immutable final projection only from exact Catalog effective entries,
-  binds it to the Catalog snapshot, and exposes `ResourceBundle` only as a fresh
-  mutable compatibility copy. The joint commit carries that final projection.
-  A private optional Agent Session bootstrap adapter now prepares the exact v2
-  Resources graph input after owner-generation freeze and publishes the
-  Extension/Catalog/view tuple only after Graph capture; v1 remains unchanged
-  when the adapter is absent. A private reusable Product preparation adapter now
-  turns exact native/package/embedded selection specs into fresh per-Session
-  opaque handles under a synchronous construction-custody callback. Package
-  specs must exact-match the Resource admissions in one existing compiled
-  Product composition; the Coding seam no longer accepts a parallel
-  raw-admission list. One private Session/Product composition root now projects
-  a finalized Plugin selection through explicitly supplied exact Resource/Tool/
-  Command owners and the existing compiler. The private Coding initial shadow
-  accepts that assembly request and samples one evaluation time. It also
-  consumes one same-discovery, single-take source receipt and maps project/
-  context, user, captured built-in inputs, and clean verified package candidates
-  with exact owner admissions. Unverified, conventional, diagnostic-bearing,
-  incomplete, or Extension-bearing packages still reject, as do temporary,
-  kind-switch, and disabled-Skill inputs. The public Coding SDK and default path
-  remain v1.
-  Default Plugin selection/owner-binding wiring, refresh, broader policy parity,
-  typed production consumers, and cutover remain pending.
-- [Resource Catalog RCP0 Baseline](resource-catalog-rcp0-baseline.md) freezes
-  the implemented discovery/sink inventory, precedence and Extension parity,
-  Package-mount custody, and the exact RCP3/RCP4/RCP5 deletion ledger without
-  claiming that the target Catalog runtime exists.
-- [Plugin Declaration Foundation PLC1B Contract](plugin-declaration-foundation-plc1b-contract.md)
-  freezes the no-self-reference source/group identity layers, exact v2 wire and
-  hash records, canonical document bytes, accepted-attempt evidence, group-
-  claim/terminal protocol, version diagnostics, and forbidden old ingress paths
-  required before PLC1B-1 source work.
-- [Unified Plugin Lifecycle And Coding Pluginization Delivery Plan](plugin-lifecycle-coding-pluginization-plan.md)
-  coordinates the common install-to-retirement lifecycle with `coding.lsp`,
-  `coding.base`, and `coding.arch` production migrations. PLC1B first completes
-  the inert v2 declaration-source-group/Resource/consumer vocabulary and a
-  `coding.base` shadow package; its
-  [review](plugin-lifecycle-coding-pluginization-review.md) moves the minimum
-  management control core before the Base cutover while preserving exact-owner
-  binding, LSP as the first production Graph proof, and the later public SDK
-  gate. The implemented private PLC5.0 foundation now composes finalized
-  Provider declarations through exact Capability owners and explicit Product
-  selection, then binds externally issued activation decisions into the
-  existing Session inputs without issuing Approval or starting code.
-- [Plugin Lifecycle PLC2 Contract](plugin-lifecycle-plc2-contract.md) splits the
-  management critical path into an inert desired-state ledger, one typed
-  command authority, staged update, and retirement/cleanup recovery; PLC2-1
-  freezes strict Package/Installation/selection records, CAS and ledger-owned
-  Instance identity, PLC2-2 implements the sole durable install/enable/disable/
-  remove command core, and PLC2-3 adds inert staged update, versioned migration
-  fencing, atomic desired-selection cutover and exact conservative restart
-  evidence. PLC2-4A adds the durable exact-old-Instance retirement-intent
-  handoff without claiming runtime effectiveness or invoking an owner/cleanup
-  action. PLC2-4B adds the durable exact-owner retirement set, sealed owner
-  plan and retry-safe result aggregation. PLC2-4C adds the durable Product-host
-  Instance state gate, atomic multi-Instance lease families, graceful drain,
-  security revoke and zero-reference retirement proof. PLC2-4D adds durable
-  explicit Package Revision pins, write-ahead cleanup leases, retry/repair
-  evidence, a per-startup recovery barrier and revision-bound conservative GC
-  candidates without mutating package-cache bytes.
-- [Plugin Execution Trust PLC3 Contract](plugin-execution-trust-plc3-contract.md)
-  freezes the internal Approval-owned durable decision/use journal, atomic
-  one-shot consume/revoke linearization, aggregate-owned one-shot start permit,
-  strict use transitions, external-boot recovery, exact evaluated receipt and
-  PLC3-3's private verified-handle Definition evaluator/import realm. Mixed
-  document/executable batches now join before one internal finalization;
-  production Host ingress, owner binding, public SDK and MCP expansion stay
-  closed.
-- [Plugin Capability Admission PAP4 Contract](plugin-capability-admission-pap4-contract.md)
-  freezes the generic complete-Bundle candidate fingerprint, exact Capability-
-  owner eligibility/final admission, immutable binding spec, current owner-
-  policy snapshot and pure Product Provider-closure selection. PAP4-1 remains
-  inert: the `coding.lsp` owner adapter, Component Host, activation approval,
-  live Graph binding, public SDK and MCP expansion stay closed.
-- [Plugin Lifecycle PLC0 Baseline](plugin-lifecycle-plc0-baseline.md) records the
-  green parser/source-sink/authority inventory, frozen foundation exports,
-  forbidden peer routes, and inert published-Plugin fixture required before
-  typed declaration work begins.
+- [Plugin Architecture Hub](plugin/README.md) is the single entrypoint for the
+  active Plugin architecture, PLC delivery status, Resource/Skill convergence,
+  frozen declaration/lifecycle/execution/admission contracts, baselines, and
+  review evidence. It also records which cross-domain runtime boundaries remain
+  outside the Plugin directory under their exact owners.
 - [Composition Lifecycle Authority CLA0 Baseline](composition-lifecycle-authority-cla0-baseline.md)
   retains the executable inventory shape, revised through CLA8, for current
   construction/publication owners, supported entrypoint
@@ -161,6 +59,10 @@ planning, work event persistence, or AI provider behavior.
 - [Effective Runtime Diagnostics Boundary](effective-runtime-diagnostics-boundary.md)
   fixes PR9's four-clock composed view, explicit skew, explain, JSON, and diff
   semantics while retaining the existing graph projector as the only projector.
+- [Runtime Provenance Boundary](runtime-provenance-boundary.md) separates
+  pre-bootstrap installation identity from effective runtime component facts,
+  defines the strict-JSON contributor seam, and keeps Product/TUI presentation
+  outside Harness.
 - [Continuity Stable Reference Boundary](continuity-stable-reference-boundary.md)
   defines the implemented CLA7d process-owned typed stable
   continuity reference and the explicit Session-before-continuity shutdown
@@ -203,56 +105,10 @@ description.
   duplicate live construction paths. Its
   [independent review brief](composition-lifecycle-authority-review-brief.md)
   can be given to reviewers without prior conversation context.
-- [Unified Plugin Architecture](unified-plugin-architecture.md) defines one
-  manifest parser, immutable tagged declaration, existing-Profile selection,
-  exact-owner binding/retirement, complete Model Input persistence, and a
-  separate non-effective inventory for first-party and external Plugins.
-- [Unified Plugin Authoring Primitives Delivery Plan](plugin-authoring-primitives-delivery-plan.md)
-  turns the UPA Definition / Provider / Consumer authoring gap into staged,
-  owner-preserving implementation slices. Its
-  [self-review](plugin-authoring-primitives-plan-review.md) records the required
-  approval, production-sample, SDK-publication, Skill, and peer-route deletion
-  gates before implementation.
-- [Resource Catalog And Source Pluginization Plan](resource-catalog-pluginization-plan.md)
-  is the frozen PAP5.5/PLC4.5 contract and migration sequence for making the
-  Catalog engine and source/loading mechanisms owner-defined Plugin components
-  while keeping Resource items, native Skills, the Package Catalog, and the
-  single Session Graph in their existing authorities. RCP0-RCP2 are complete;
-  the first-party engine/native source now run only in an unpublished shadow
-  owner generation, with no production Resource cutover yet.
-- [Resource Catalog RCP0 Baseline](resource-catalog-rcp0-baseline.md) is the
-  source-backed legacy-authority and parity companion used to prevent a second
-  discovery, merge, Skill fallback, or Package-summary path during migration.
-- [Plugin Declaration Foundation PLC1B Contract](plugin-declaration-foundation-plc1b-contract.md)
-  is the normative PLC1B-1 schema/state companion to UPA and both delivery
-  plans; its final narrow freeze review passed at `3f53a5af` with zero P0/P1.
-  Regression-first source work is next after tracking-issue attachment.
-- [Unified Plugin Lifecycle And Coding Pluginization Delivery Plan](plugin-lifecycle-coding-pluginization-plan.md)
-  is the coordinating critical path across common declarations, management
-  state, executable trust, exact-owner binding, Coding production Plugins,
-  public SDK, and Skill convergence. Its
-  [self-review](plugin-lifecycle-coding-pluginization-review.md) records the
-  sequencing amendments, lifecycle linearization points, cutover gates, and
-  required deferrals.
-- [Plugin Lifecycle PLC2 Contract](plugin-lifecycle-plc2-contract.md) is the
-  normative record, linearization, idempotency, recovery and regression
-  companion for the four PLC2 delivery slices.
-- [Plugin Execution Trust PLC3 Contract](plugin-execution-trust-plc3-contract.md)
-  is the normative persistence, replay, CAS, atomic consumption, aggregate
-  pre-start and private verified Definition-evaluation boundary through PLC3-3.
-- [Plugin Capability Admission PAP4 Contract](plugin-capability-admission-pap4-contract.md)
-  is the normative PAP4-1 exact-owner eligibility/final-admission and pure
-  Product Provider-closure selection boundary.
-  Production ingress and live owner binding remain disabled.
-- [Plugin Lifecycle PLC0 Baseline](plugin-lifecycle-plc0-baseline.md) freezes the
-  implemented pre-PLC1 parser, verified-revision, public-export, inert-layer,
-  Graph-construction, and synthetic-fixture evidence. Any later inventory
-  change requires an exact owner and behavioral gate.
-- [Plugin Lifecycle PLC1A Baseline](plugin-lifecycle-plc1a-baseline.md) records
-  the inert typed Capability Provider codec, revision-bound symbol locators,
-  reservation-bound internal Builder, stable fingerprints, and the dependency-
-  graph placement correction. It adds no import, admission, binding, or public
-  SDK path.
+- [Plugin Architecture Hub](plugin/README.md) catalogs the canonical Plugin
+  architecture, sole delivery plan, exact incremental contracts, Resource/Skill
+  convergence, baselines, and reviews without duplicating their volatile status
+  in this Harness-wide catalog.
 - [Composition Lifecycle Authority CLA0 Baseline](composition-lifecycle-authority-cla0-baseline.md)
   is the executable inventory for that plan, revised through CLA8 to freeze the
   single-candidate authority and forbid removed peer construction paths.
@@ -560,6 +416,9 @@ description.
 - [Workspace And Terminal Platform Capabilities Boundary](workspace-platform-capabilities-boundary.md)
   defines canonical Harness Git and Native TUI clipboard ownership, direct
   Product adoption, and retired Coding platform paths.
+- [Machine-Local Runtime Storage](machine-local-runtime-storage.md) defines
+  lifecycle-based platform roots, injected run scopes, live leases, safe stale
+  sweeping, and bounded clipboard draft ownership.
 - [Workspace Tool Pack Boundary](workspace-tool-pack-boundary.md) defines
   reusable concrete read/search/edit/exec ownership and the product-owned
   activation and policy boundary.

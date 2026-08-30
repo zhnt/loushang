@@ -6,11 +6,13 @@ loading, settings, runtime discovery, diagnostics, and prompt/tool rebuilding.
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import inspect
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, TypeVar
 
 from loushang.harness.extensions.declarations import (
     ExtensionCapabilityDeclarationSnapshot,
@@ -23,6 +25,10 @@ from loushang.harness.resources.refresh import (
 from loushang.harness.resources.types import (
     PromptFragmentDescriptor,
     ResourceBundle,
+)
+from loushang.harness.session.resource_refresh_gate import (
+    ResourceCatalogRefreshGate,
+    ResourceCatalogRefreshGatePort,
 )
 
 
@@ -43,6 +49,37 @@ ResourceBundleProvider = Callable[[], ResourceBundle | None]
 ResourceSettingsProvider = Callable[[], ResourceSettingsPort | None]
 RefreshFailureRecorder = Callable[[Exception], None]
 ExtensionDeclarationPreflight = Callable[[ExtensionCapabilityDeclarationSnapshot], None]
+ResourceCatalogRefresh = Callable[[str], Awaitable[ResourceBundle | None]]
+RefreshTransactionReceipt = TypeVar("RefreshTransactionReceipt")
+
+
+class CatalogRefreshRequiresAsyncError(RuntimeError):
+    """A Catalog-owned refresh cannot be linearized synchronously."""
+
+
+class ResourceRefreshRuntimeClosedError(RuntimeError):
+    """The Session refresh authority has started its shutdown barrier."""
+
+
+@dataclass(frozen=True, slots=True)
+class SessionResourceRefreshOutcome:
+    """Exact result for one invocation under the Catalog publication lock."""
+
+    published: bool
+    error: BaseException | None = field(default=None, repr=False, compare=False)
+    settled: bool = True
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.published, bool):
+            raise TypeError("Session Resource publication flag must be a bool")
+        if self.error is not None and not isinstance(self.error, BaseException):
+            raise TypeError("Session Resource refresh error is invalid")
+        if not isinstance(self.settled, bool):
+            raise TypeError("Session Resource settlement flag must be a bool")
+        if not self.settled and self.error is None:
+            raise ValueError(
+                "Unsettled Session Resource refresh requires an error"
+            )
 
 
 @dataclass
@@ -63,12 +100,30 @@ class SessionResourceRefreshRuntime:
         default_factory=SkillActivationRuntime
     )
     extension_declaration_preflight: ExtensionDeclarationPreflight | None = None
+    refresh_catalog: ResourceCatalogRefresh | None = None
+    catalog_refresh_lock: ResourceCatalogRefreshGatePort | None = field(
+        default=None,
+        repr=False,
+    )
     _coordinator: ResourceRefreshCoordinator[ResourceBundle] = field(init=False)
     _discovery: RuntimeResourceDiscovery[ResourceBundle] = field(init=False)
     _resource_revision: int = field(init=False, default=0)
+    _catalog_refresh_lock: ResourceCatalogRefreshGatePort = field(init=False)
+    _closing: bool = field(init=False, default=False)
+    _closed: bool = field(init=False, default=False)
+    _close_task: asyncio.Task[None] | None = field(init=False, default=None)
+    _requested_refresh_task: asyncio.Task[None] | None = field(
+        init=False,
+        default=None,
+    )
+    _requested_refresh_running: bool = field(init=False, default=False)
+    _requested_refresh_pending: bool = field(init=False, default=False)
 
     def __post_init__(self) -> None:
         self._resource_revision = 1 if self.get_resource_bundle() is not None else 0
+        self._catalog_refresh_lock = (
+            self.catalog_refresh_lock or ResourceCatalogRefreshGate()
+        )
         self._discovery = RuntimeResourceDiscovery(self.get_extension_runtime)
         self._coordinator = ResourceRefreshCoordinator(
             load_resource=self._load_resource_bundle,
@@ -91,12 +146,173 @@ class SessionResourceRefreshRuntime:
         return []
 
     def refresh(self, *, reason: str = "refresh") -> None:
+        self._require_open()
+        if self.refresh_catalog is not None:
+            raise CatalogRefreshRequiresAsyncError(
+                "Catalog-owned Resource refresh requires refresh_async()"
+            )
         self._coordinator.refresh(reason=reason)
 
     async def refresh_async(self, *, reason: str = "refresh") -> None:
-        await self._coordinator.refresh_async(reason=reason)
+        outcome = await self.refresh_with_outcome(reason=reason)
+        _raise_refresh_outcome(outcome)
+
+    async def _refresh_async(self, *, reason: str, admitted: bool) -> None:
+        outcome = await self._refresh_with_outcome(
+            reason=reason,
+            admitted=admitted,
+        )
+        _raise_refresh_outcome(outcome)
+
+    async def refresh_with_outcome(
+        self,
+        *,
+        reason: str = "refresh",
+    ) -> SessionResourceRefreshOutcome:
+        """Return publication facts for this exact refresh invocation."""
+
+        return await self._refresh_with_outcome(reason=reason, admitted=False)
+
+    async def refresh_transaction_with_outcome(
+        self,
+        *,
+        begin: Callable[[], RefreshTransactionReceipt],
+        settle: Callable[
+            [RefreshTransactionReceipt, SessionResourceRefreshOutcome], object
+        ],
+        reason: str = "refresh",
+    ) -> SessionResourceRefreshOutcome:
+        """Run one synchronous mutation and its refresh as one Catalog transaction."""
+
+        self._require_open()
+        if self.refresh_catalog is None:
+            raise CatalogRefreshRequiresAsyncError(
+                "Resource refresh transactions require Catalog ownership"
+            )
+        async with self._catalog_refresh_lock:
+            self._require_open()
+            previous = self.get_resource_bundle()
+            receipt = begin()
+            _require_synchronous_result(
+                receipt,
+                operation="Resource refresh transaction begin",
+                allow_value=True,
+            )
+            outcome = await self._refresh_catalog_locked(
+                reason=reason,
+                previous=previous,
+            )
+            try:
+                settled = settle(receipt, outcome)
+                _require_synchronous_result(
+                    settled,
+                    operation="Resource refresh transaction settlement",
+                    allow_value=False,
+                )
+            except BaseException as settlement_error:
+                if outcome.error is not None:
+                    outcome.error.add_note(
+                        "Resource refresh transaction settlement also failed: "
+                        f"{settlement_error!r}"
+                    )
+                    error = outcome.error
+                else:
+                    error = settlement_error
+                outcome = SessionResourceRefreshOutcome(
+                    published=outcome.published,
+                    error=error,
+                    settled=False,
+                )
+            return outcome
+
+    async def _refresh_with_outcome(
+        self,
+        *,
+        reason: str,
+        admitted: bool,
+    ) -> SessionResourceRefreshOutcome:
+        if not admitted:
+            self._require_open()
+        elif self._closed:
+            raise ResourceRefreshRuntimeClosedError(
+                "Session Resource refresh runtime is closed"
+            )
+        catalog_refresh = self.refresh_catalog
+        if catalog_refresh is not None:
+            async with self._catalog_refresh_lock:
+                # close() may win the lock after the first check.  A refresh
+                # that had already entered the lock is allowed to finish;
+                # queued callers fail without starting a new generation.
+                if not admitted:
+                    self._require_open()
+                elif self._closed:
+                    raise ResourceRefreshRuntimeClosedError(
+                        "Session Resource refresh runtime is closed"
+                    )
+                previous = self.get_resource_bundle()
+                return await self._refresh_catalog_locked(
+                    reason=reason,
+                    previous=previous,
+                )
+        previous_revision = self._resource_revision
+        try:
+            await self._coordinator.refresh_async(reason=reason)
+        except BaseException as error:
+            return SessionResourceRefreshOutcome(
+                published=self._resource_revision != previous_revision,
+                error=error,
+            )
+        return SessionResourceRefreshOutcome(
+            published=self._resource_revision != previous_revision,
+        )
+
+    async def _refresh_catalog_locked(
+        self,
+        *,
+        reason: str,
+        previous: ResourceBundle | None,
+    ) -> SessionResourceRefreshOutcome:
+        catalog_refresh = self.refresh_catalog
+        if catalog_refresh is None:
+            raise RuntimeError("Resource Catalog refresh is not configured")
+        try:
+            if self.prepare_resource_refresh is not None:
+                prepared = self.prepare_resource_refresh()
+                if inspect.isawaitable(prepared):
+                    await prepared
+            await catalog_refresh(reason)
+        except BaseException as error:
+            published = self.get_resource_bundle() is not previous
+            if published:
+                self._resource_revision += 1
+            return SessionResourceRefreshOutcome(
+                published=published,
+                error=error,
+            )
+        self._resource_revision += 1
+        return SessionResourceRefreshOutcome(published=True)
 
     def request_refresh(self) -> None:
+        if self._closing or self._closed:
+            return
+        if self.refresh_catalog is not None:
+            task = self._requested_refresh_task
+            if task is not None and not task.done():
+                if self._requested_refresh_running:
+                    self._requested_refresh_pending = True
+                return
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                self.record_refresh_failure(
+                    CatalogRefreshRequiresAsyncError(
+                        "Catalog-owned Resource refresh requires a running event loop"
+                    )
+                )
+                return
+            task = loop.create_task(self._run_requested_catalog_refresh())
+            self._requested_refresh_task = task
+            return
         if self.get_resource_loader() is None:
             return
         try:
@@ -118,6 +334,11 @@ class SessionResourceRefreshRuntime:
         reason: str = "reload",
     ) -> ResourceBundle | None:
         """Stage, publish, then retire one Extension/resource generation."""
+
+        if self.refresh_catalog is not None:
+            del bindings
+            await self.refresh_async(reason=reason)
+            return self.get_resource_bundle()
 
         if self.prepare_resource_refresh is not None:
             prepared = self.prepare_resource_refresh()
@@ -207,6 +428,61 @@ class SessionResourceRefreshRuntime:
 
         self.request_refresh()
 
+    async def close(self, *, cancel: bool = False) -> None:
+        """Close refresh admission and join every entered Catalog refresh."""
+
+        if self._closed:
+            return
+        task = self._close_task
+        if task is None:
+            self._closing = True
+            task = asyncio.create_task(self._close_once(cancel=cancel))
+            self._close_task = task
+        await _join_close(task)
+
+    async def _close_once(self, *, cancel: bool) -> None:
+        try:
+            task = self._requested_refresh_task
+            if task is not None:
+                if cancel and not task.done():
+                    task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+            # Explicit refresh_async() callers are not owned tasks and must
+            # not be cancelled.  Taking the lock after closing admission is
+            # the join barrier for any one that already entered publication.
+            if self.refresh_catalog is not None:
+                async with self._catalog_refresh_lock:
+                    pass
+        finally:
+            self._requested_refresh_task = None
+            self._requested_refresh_pending = False
+            self._closed = True
+
+    async def _run_requested_catalog_refresh(self) -> None:
+        self._requested_refresh_running = True
+        try:
+            while True:
+                self._requested_refresh_pending = False
+                try:
+                    await self._refresh_async(reason="refresh", admitted=True)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    self.record_refresh_failure(exc)
+                else:
+                    self.sync_extension_diagnostics()
+                if not self._requested_refresh_pending:
+                    return
+        finally:
+            self._requested_refresh_running = False
+
+    def _require_open(self) -> None:
+        if self._closing or self._closed:
+            raise ResourceRefreshRuntimeClosedError(
+                "Session Resource refresh runtime is closed"
+            )
+
     def _load_resource_bundle(self) -> ResourceBundle | None:
         resource_loader = self.get_resource_loader()
         if resource_loader is None:
@@ -255,9 +531,49 @@ class SessionResourceRefreshRuntime:
         self._commit_resource_bundle(resource_bundle)
 
 
+async def _join_close(task: asyncio.Task[None]) -> None:
+    """Finish the Session-owned close barrier before propagating cancellation."""
+
+    cancellation: asyncio.CancelledError | None = None
+    caller = asyncio.current_task()
+    while not task.done():
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError as exc:
+            if caller is None or caller.cancelling() == 0:
+                return task.result()
+            cancellation = exc
+    task.result()
+    if cancellation is not None:
+        raise cancellation
+
+
+def _raise_refresh_outcome(outcome: SessionResourceRefreshOutcome) -> None:
+    if outcome.error is not None:
+        raise outcome.error
+
+
+def _require_synchronous_result(
+    result: object,
+    *,
+    operation: str,
+    allow_value: bool,
+) -> None:
+    if inspect.isawaitable(result):
+        if inspect.iscoroutine(result):
+            result.close()
+        raise TypeError(f"{operation} must be synchronous")
+    if not allow_value and result is not None:
+        raise TypeError(f"{operation} must return None")
+
+
 __all__ = [
+    "CatalogRefreshRequiresAsyncError",
+    "ResourceRefreshRuntimeClosedError",
+    "SessionResourceRefreshOutcome",
     "RefreshFailureRecorder",
     "ResourceBundleProvider",
+    "ResourceCatalogRefresh",
     "ResourceLoaderPort",
     "ResourceLoaderProvider",
     "ResourceSettingsPort",

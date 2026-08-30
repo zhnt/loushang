@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import date
 from html import escape
-from typing import Any
+from pathlib import Path
+from typing import Any, Protocol
 
 from loushang.agent.types import AgentTool
 from loushang.harness.capabilities.prompt import (
@@ -25,6 +27,20 @@ Guidelines:
 - Stop exploring and respond when you have enough evidence.
 - Follow project-specific instructions when provided.
 """
+
+
+class SkillPromptSummary(Protocol):
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def description(self) -> str | None: ...
+
+    @property
+    def model_invocable(self) -> bool: ...
+
+    @property
+    def source_path(self) -> Path: ...
 
 
 def _as_tuple_of_strings(
@@ -106,8 +122,21 @@ def _format_tool_prompt_guidelines(guidelines: tuple[str, ...]) -> list[str]:
     return lines
 
 
-def _build_skill_prompt(resource_activation: ResourceActivation) -> str:
-    visible_skills = resource_activation.model_visible_skills()
+def _build_skill_prompt(
+    resource_activation: ResourceActivation,
+    skill_summaries: Sequence[SkillPromptSummary] | None = None,
+) -> str:
+    visible_skills = (
+        tuple(
+            skill
+            for skill in skill_summaries
+            if skill.model_invocable
+            and isinstance(skill.description, str)
+            and skill.description.strip()
+        )
+        if skill_summaries is not None
+        else resource_activation.model_visible_skills()
+    )
     if not visible_skills:
         return ""
     lines = [
@@ -172,6 +201,7 @@ def assemble_prompt(
     tools: list[AgentTool[Any]] | None = None,
     tool_prompt: str | None = None,
     resource_activation: ResourceActivation | None = None,
+    skill_summaries: Sequence[SkillPromptSummary] | None = None,
     prompt_section_composer: PromptSectionComposer | None = None,
 ) -> PromptAssembly:
     """Build the standard Harness prompt, allowing every input to be overridden."""
@@ -211,7 +241,7 @@ def assemble_prompt(
             )
             resource_fragments.append(cleaned_fragment)
 
-    skill_prompt = _build_skill_prompt(activation)
+    skill_prompt = _build_skill_prompt(activation, skill_summaries)
     if skill_prompt:
         sections.append(PromptSection("available-skills", skill_prompt, kind="skill"))
         resource_fragments.append(skill_prompt)

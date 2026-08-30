@@ -25,6 +25,7 @@ from loushang.harness.resources.packages.catalog_diagnostics import (
 )
 from loushang.harness.resources.packages.materializer import PackageMaterializer
 from loushang.harness.resources.packages.roots import (
+    SelectedPluginPackageInput,
     configure_resource_loader_roots,
 )
 from loushang.harness.resources.packages.source_resolver import (
@@ -46,6 +47,7 @@ StandardExtensionT = TypeVar("StandardExtensionT", bound=StandardExtensionRuntim
 
 ExtensionFlagValues = Mapping[str, bool | str]
 SourceIdentityCheck = Callable[[str], StartupCheckResult]
+CatalogBootstrapProjectionPreparer = Callable[[ResourceLoader, Path], ResourceBundle]
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,6 +66,39 @@ class StandardAgentSessionConfigurationRequest(Generic[StandardExtensionT]):
     create_extension_runtime: Callable[[ResourceBundle], StandardExtensionT]
     source_identity_check: SourceIdentityCheck
     extension_flag_values: ExtensionFlagValues | None = None
+    catalog_authoritative: bool = False
+    prepare_catalog_bootstrap_projection: (
+        CatalogBootstrapProjectionPreparer | None
+    ) = None
+    selected_plugin_packages: tuple[SelectedPluginPackageInput, ...] = ()
+
+    def __post_init__(self) -> None:
+        selected_plugin_packages = tuple(self.selected_plugin_packages)
+        if any(
+            not isinstance(item, SelectedPluginPackageInput)
+            for item in selected_plugin_packages
+        ):
+            raise TypeError("Selected Plugin package inputs are invalid")
+        object.__setattr__(
+            self,
+            "selected_plugin_packages",
+            selected_plugin_packages,
+        )
+        if not isinstance(self.catalog_authoritative, bool):
+            raise TypeError("Catalog authority selection must be a bool")
+        if self.catalog_authoritative and not callable(
+            self.prepare_catalog_bootstrap_projection
+        ):
+            raise ValueError(
+                "Catalog authority requires a bootstrap projection preparer"
+            )
+        if (
+            not self.catalog_authoritative
+            and self.prepare_catalog_bootstrap_projection is not None
+        ):
+            raise ValueError(
+                "Legacy authority cannot receive a Catalog projection preparer"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -166,6 +201,7 @@ class StandardAgentSessionConfigurationRuntime(Generic[StandardExtensionT]):
             materializer=request.package_materializer,
             diagnostics_service=request.diagnostics_service,
             session_id=request.session_id,
+            selected_plugin_packages=request.selected_plugin_packages,
         )
 
     def _resources(
@@ -175,13 +211,25 @@ class StandardAgentSessionConfigurationRuntime(Generic[StandardExtensionT]):
     ) -> None:
         del selection
         request = context.request
-        result = create_standard_resource_bootstrap_runtime(
+        runtime = create_standard_resource_bootstrap_runtime(
             create_extension_runtime=request.create_extension_runtime,
             diagnostics_service=request.diagnostics_service,
             session_id=request.session_id,
-        ).discover(
+        )
+        catalog_preparer = request.prepare_catalog_bootstrap_projection
+        result = runtime.discover(
             loader=request.resource_loader,
             cwd=request.cwd,
+            discover_resources=(
+                (
+                    lambda _loader, cwd: catalog_preparer(
+                        request.resource_loader,
+                        cwd,
+                    )
+                )
+                if catalog_preparer is not None
+                else None
+            ),
             transform_bundle=lambda bundle: request.skill_activation_runtime.apply(
                 bundle,
                 request.settings.disabled_skills,

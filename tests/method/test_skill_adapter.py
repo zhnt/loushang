@@ -4,6 +4,13 @@ from pathlib import Path
 
 from loushang.harness.resources.types import SkillDescriptor
 from loushang.method import method_from_skill
+from loushang.method.skill_adapter import (
+    method_from_skill as compatibility_method_from_skill,
+)
+
+
+def test_historical_skill_adapter_import_forwards_to_explicit_legacy_adapter() -> None:
+    assert compatibility_method_from_skill is method_from_skill
 
 
 def test_method_from_skill_preserves_content_and_frontmatter_hints() -> None:

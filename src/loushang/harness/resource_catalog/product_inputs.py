@@ -8,7 +8,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import TypeVar
+from typing import Literal, TypeVar
 
 from loushang.harness.capabilities.consumer_requirements import (
     ProductCompositionCompilation,
@@ -16,6 +16,9 @@ from loushang.harness.capabilities.consumer_requirements import (
 from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAdmissionRecord,
     ResourceContributionSpec,
+)
+from loushang.harness.resource_catalog.bootstrap_projection import (
+    prepare_resource_catalog_bootstrap_projection,
 )
 from loushang.harness.resource_catalog.inputs import (
     AdmittedPackageResource,
@@ -38,6 +41,10 @@ from loushang.harness.resources._catalog_native_source import (
 )
 from loushang.harness.resources._catalog_package_source import (
     PackageResourceDiscoveryBudget,
+)
+from loushang.harness.resources._catalog_records import (
+    ResourceIdentity,
+    build_activation_policy_snapshot,
 )
 from loushang.harness.resources._discovery_conventions import (
     DEFAULT_CONTEXT_FILE_NAMES,
@@ -166,10 +173,12 @@ class InitialResourceCatalogProductSelection:
     native_roots: tuple[ProductNativeResourceRootSpec, ...] = ()
     package_resources: tuple[ProductAdmittedPackageResourceSpec, ...] = ()
     embedded_collections: tuple[ProductEmbeddedResourceCollectionSpec, ...] = ()
+    source_disposition: Literal["selected", "intentionally_empty"] = "selected"
     context_file_names: tuple[str, ...] = DEFAULT_CONTEXT_FILE_NAMES
     native_discovery_budget: NativeResourceDiscoveryBudget | None = None
     package_discovery_budget: PackageResourceDiscoveryBudget | None = None
     embedded_discovery_budget: EmbeddedResourceDiscoveryBudget | None = None
+    disabled_skill_selectors: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if (
@@ -200,8 +209,15 @@ class InitialResourceCatalogProductSelection:
             for item in embedded_collections
         ):
             raise TypeError("Product embedded Resource specifications are invalid")
-        if not native_roots and not package_resources and not embedded_collections:
+        if self.source_disposition not in {"selected", "intentionally_empty"}:
+            raise ValueError("Product Resource source disposition is invalid")
+        has_sources = bool(native_roots or package_resources or embedded_collections)
+        if not has_sources and self.source_disposition != "intentionally_empty":
             raise ValueError("Product Resource selection must contain a source")
+        if has_sources and self.source_disposition == "intentionally_empty":
+            raise ValueError(
+                "Product Resource selection cannot mark selected sources as empty"
+            )
         if len({item.handle_id for item in native_roots}) != len(native_roots):
             raise ValueError("Product native root ids must not repeat")
         if len({item.admission.fingerprint for item in package_resources}) != len(
@@ -262,10 +278,23 @@ class InitialResourceCatalogProductSelection:
             EmbeddedResourceDiscoveryBudget,
         ):
             raise TypeError("Product embedded Resource discovery budget is invalid")
+        disabled_skill_selectors = tuple(self.disabled_skill_selectors)
+        if any(
+            not isinstance(item, str) or not item.strip()
+            for item in disabled_skill_selectors
+        ):
+            raise ValueError("Product disabled Skill selectors must not be empty")
+        if len(set(disabled_skill_selectors)) != len(disabled_skill_selectors):
+            raise ValueError("Product disabled Skill selectors must not repeat")
         object.__setattr__(self, "native_roots", native_roots)
         object.__setattr__(self, "package_resources", package_resources)
         object.__setattr__(self, "embedded_collections", embedded_collections)
         object.__setattr__(self, "context_file_names", context_file_names)
+        object.__setattr__(
+            self,
+            "disabled_skill_selectors",
+            disabled_skill_selectors,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -301,6 +330,7 @@ class InitialResourceCatalogProductAdapter:
             product_id=product_id,
             session_id=session_id,
             base_resource_bundle=base_resource_bundle,
+            catalog_generation=1,
         )
         try:
             session = construct(bootstrap)
@@ -322,48 +352,26 @@ class InitialResourceCatalogProductAdapter:
             raise
         return session
 
-    def _mint_bootstrap(
+    def prepare_bootstrap_projection(
         self,
         *,
         product_id: str,
         session_id: str,
-        base_resource_bundle: ResourceBundle,
-    ) -> InitialSessionResourceCatalogBootstrap:
+        cwd: Path,
+    ) -> ResourceBundle:
+        """Produce the Catalog-owned synchronous seed for Extension bootstrap."""
+
         if not isinstance(product_id, str) or not product_id.strip():
             raise ValueError("initial Resource Catalog Product id must not be empty")
         if not isinstance(session_id, str) or not session_id.strip():
             raise ValueError("initial Resource Catalog Session id must not be empty")
-        if not isinstance(base_resource_bundle, ResourceBundle):
-            raise TypeError("initial Resource Catalog requires a base ResourceBundle")
+        if not isinstance(cwd, Path):
+            raise TypeError("initial Resource Catalog cwd must be a Path")
         now = self.clock()
         if isinstance(now, bool) or not isinstance(now, int):
             raise TypeError("initial Resource Catalog Product clock must return an int")
-
+        self._validate_product_selection(product_id=product_id, now=now)
         selection = self.selection
-        product_composition = selection.product_composition
-        if (
-            product_composition is not None
-            and product_composition.authority_context.product_id != product_id
-        ):
-            raise ValueError("Product Resource composition belongs elsewhere")
-        for spec in selection.package_resources:
-            admission = spec.admission
-            if admission.product_id != product_id:
-                raise ValueError("Product package Resource admission belongs elsewhere")
-            if (
-                admission.candidate.product_policy_revision
-                != selection.product_policy_revision
-            ):
-                raise ValueError("Product package Resource admission policy is stale")
-            if (
-                admission.consumer_scope != "session"
-                or admission.consumer_refresh_boundary != "sealed"
-            ):
-                raise ValueError(
-                    "Initial Product package Resource admission must be Session-sealed"
-                )
-            if not admission.issued_at <= now < admission.expires_at:
-                raise ValueError("Product package Resource admission is not active")
         root_handles = tuple(
             mint_native_resource_root_handle(
                 handle_id=spec.handle_id,
@@ -394,12 +402,133 @@ class InitialResourceCatalogProductAdapter:
                         source_root_order=embedded_spec.source_root_order,
                     )
                 )
+            return prepare_resource_catalog_bootstrap_projection(
+                product_id=product_id,
+                runtime_id=f"resource-bootstrap:{session_id}",
+                product_policy_revision=selection.product_policy_revision,
+                cwd=cwd,
+                root_handles=root_handles,
+                package_resources=tuple(package_resources),
+                embedded_collections=tuple(embedded_handles),
+                context_file_names=selection.context_file_names,
+                disabled_skill_selectors=selection.disabled_skill_selectors,
+            )
+        except BaseException as preparation_error:
+            for handle in reversed(embedded_handles):
+                if not handle.closed:
+                    try:
+                        handle.close()
+                    except BaseException as cleanup_error:
+                        preparation_error.add_note(
+                            "Catalog bootstrap embedded cleanup also failed: "
+                            f"{cleanup_error!r}"
+                        )
+            for resource in reversed(package_resources):
+                if not resource.revision_handle.closed:
+                    try:
+                        resource.close()
+                    except BaseException as cleanup_error:
+                        preparation_error.add_note(
+                            "Catalog bootstrap package cleanup also failed: "
+                            f"{cleanup_error!r}"
+                        )
+            raise
+
+    def prepare_session_bootstrap(
+        self,
+        *,
+        product_id: str,
+        session_id: str,
+        base_resource_bundle: ResourceBundle,
+        catalog_generation: int,
+    ) -> InitialSessionResourceCatalogBootstrap:
+        """Mint one exact next-generation bootstrap without constructing a Session."""
+
+        return self._mint_bootstrap(
+            product_id=product_id,
+            session_id=session_id,
+            base_resource_bundle=base_resource_bundle,
+            catalog_generation=catalog_generation,
+        )
+
+    def _mint_bootstrap(
+        self,
+        *,
+        product_id: str,
+        session_id: str,
+        base_resource_bundle: ResourceBundle,
+        catalog_generation: int,
+    ) -> InitialSessionResourceCatalogBootstrap:
+        if not isinstance(product_id, str) or not product_id.strip():
+            raise ValueError("initial Resource Catalog Product id must not be empty")
+        if not isinstance(session_id, str) or not session_id.strip():
+            raise ValueError("initial Resource Catalog Session id must not be empty")
+        if not isinstance(base_resource_bundle, ResourceBundle):
+            raise TypeError("initial Resource Catalog requires a base ResourceBundle")
+        if (
+            isinstance(catalog_generation, bool)
+            or not isinstance(catalog_generation, int)
+            or catalog_generation < 1
+        ):
+            raise ValueError("Session Resource Catalog generation must be positive")
+        now = self.clock()
+        if isinstance(now, bool) or not isinstance(now, int):
+            raise TypeError("initial Resource Catalog Product clock must return an int")
+
+        self._validate_product_selection(product_id=product_id, now=now)
+        selection = self.selection
+        root_handles = tuple(
+            mint_native_resource_root_handle(
+                handle_id=spec.handle_id,
+                root=spec.root,
+                source_class=spec.source_class,
+                root_kind=spec.root_kind,
+                source_root_order=spec.source_root_order,
+            )
+            for spec in selection.native_roots
+        )
+        package_resources: list[AdmittedPackageResource] = []
+        embedded_handles: list[EmbeddedResourceCollectionHandle] = []
+        disabled_skill_identities = tuple(
+            ResourceIdentity(
+                resource_kind="skill",
+                schema_id="loushang.resource.skill",
+                schema_version=1,
+                public_id=skill.id or skill.name,
+            )
+            for skill in base_resource_bundle.skills
+            if _skill_matches_selectors(
+                skill,
+                selection.disabled_skill_selectors,
+            )
+        )
+        try:
+            for package_spec in selection.package_resources:
+                package_resources.append(
+                    acquire_admitted_package_resource(
+                        admission=package_spec.admission,
+                        revision_handle=package_spec.revision_handle,
+                        source_root_order=package_spec.source_root_order,
+                    )
+                )
+            for embedded_spec in selection.embedded_collections:
+                embedded_handles.append(
+                    mint_embedded_resource_collection_handle(
+                        collection_id=embedded_spec.collection_id,
+                        embedded_revision=embedded_spec.embedded_revision,
+                        files=embedded_spec.files,
+                        source_root_order=embedded_spec.source_root_order,
+                    )
+                )
             return InitialSessionResourceCatalogBootstrap(
                 InitialSessionResourceCatalogInputs(
                     product_id=product_id,
                     scope_id=f"session:{session_id}",
-                    resource_runtime_id=f"resource-owner:{session_id}",
+                    resource_runtime_id=(
+                        f"resource-owner:{session_id}:catalog:{catalog_generation}"
+                    ),
                     product_policy_revision=selection.product_policy_revision,
+                    catalog_generation=catalog_generation,
                     root_handles=root_handles,
                     package_resources=tuple(package_resources),
                     embedded_collections=tuple(embedded_handles),
@@ -411,6 +540,12 @@ class InitialResourceCatalogProductAdapter:
                     package_discovery_budget=(selection.package_discovery_budget),
                     embedded_discovery_budget=(selection.embedded_discovery_budget),
                     context_file_names=selection.context_file_names,
+                    activation_policy=build_activation_policy_snapshot(
+                        policy_revision=(
+                            f"{selection.product_policy_revision}:skill-activation"
+                        ),
+                        disabled_identities=disabled_skill_identities,
+                    ),
                 )
             )
         except BaseException as preparation_error:
@@ -431,6 +566,50 @@ class InitialResourceCatalogProductAdapter:
                         f"{cleanup_error!r}"
                     )
             raise
+
+    def _validate_product_selection(self, *, product_id: str, now: int) -> None:
+        selection = self.selection
+        product_composition = selection.product_composition
+        if (
+            product_composition is not None
+            and product_composition.authority_context.product_id != product_id
+        ):
+            raise ValueError("Product Resource composition belongs elsewhere")
+        for spec in selection.package_resources:
+            admission = spec.admission
+            if admission.product_id != product_id:
+                raise ValueError("Product package Resource admission belongs elsewhere")
+            if (
+                admission.candidate.product_policy_revision
+                != selection.product_policy_revision
+            ):
+                raise ValueError("Product package Resource admission policy is stale")
+            if (
+                admission.consumer_scope != "session"
+                or admission.consumer_refresh_boundary != "sealed"
+            ):
+                raise ValueError(
+                    "Initial Product package Resource admission must be Session-sealed"
+                )
+            if not admission.issued_at <= now < admission.expires_at:
+                raise ValueError("Product package Resource admission is not active")
+
+
+def _skill_matches_selectors(
+    skill: object,
+    selectors: tuple[str, ...],
+) -> bool:
+    if not selectors:
+        return False
+    return bool(
+        set(selectors)
+        & {
+            str(getattr(skill, "name", "")),
+            str(getattr(skill, "id", "")),
+            str(getattr(skill, "canonical_name", "")),
+            str(getattr(skill, "source_path", "")),
+        }
+    )
 
 
 __all__ = [

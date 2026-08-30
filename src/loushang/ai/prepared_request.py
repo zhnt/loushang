@@ -33,6 +33,33 @@ PreparedModelCallDisposition: TypeAlias = Literal[
     "failed",
     "cancelled",
 ]
+PreparedRequestBinaryEncoding: TypeAlias = Literal["base64", "data_url"]
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedRequestBinaryField:
+    """Provider-owned location of one encoded binary field in a frozen payload."""
+
+    path: tuple[str | int, ...]
+    media_type: str
+    encoding: PreparedRequestBinaryEncoding
+
+    def __post_init__(self) -> None:
+        path = tuple(self.path)
+        if not path or any(
+            (isinstance(item, bool) or not isinstance(item, str | int))
+            or (isinstance(item, str) and not item)
+            or (isinstance(item, int) and item < 0)
+            for item in path
+        ):
+            raise ValueError("prepared binary field path is invalid")
+        if not isinstance(self.media_type, str) or not self.media_type.startswith(
+            "image/"
+        ):
+            raise ValueError("prepared binary field media type must be an image type")
+        if self.encoding not in {"base64", "data_url"}:
+            raise ValueError("prepared binary field encoding is invalid")
+        object.__setattr__(self, "path", path)
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,9 +133,7 @@ class PreparedModelCallOutcome:
 
     def __post_init__(self) -> None:
         if not isinstance(self.invocation_id, str) or not self.invocation_id:
-            raise ValueError(
-                "PreparedModelCallOutcome.invocation_id must be non-empty"
-            )
+            raise ValueError("PreparedModelCallOutcome.invocation_id must be non-empty")
         if self.schema_version != PREPARED_MODEL_CALL_OUTCOME_SCHEMA_VERSION:
             raise ValueError(
                 "unsupported PreparedModelCallOutcome schema version: "
@@ -231,6 +256,10 @@ class PreparedModelRequest:
     canonical_payload: str = field(init=False, repr=False)
     payload_hash: str = field(init=False)
     metrics: PreparedRequestMetrics = field(init=False)
+    binary_fields: tuple[PreparedRequestBinaryField, ...] = field(
+        init=False,
+        repr=False,
+    )
 
     def __post_init__(self) -> None:
         for name in (
@@ -273,6 +302,11 @@ class PreparedModelRequest:
         object.__setattr__(self, "payload", _freeze_json(projected))
         object.__setattr__(
             self,
+            "binary_fields",
+            _discover_prepared_binary_fields(projected),
+        )
+        object.__setattr__(
+            self,
             "model_visible_headers",
             MappingProxyType(model_visible_headers),
         )
@@ -290,8 +324,7 @@ class PreparedModelRequest:
         object.__setattr__(
             self,
             "payload_hash",
-            "sha256:"
-            + hashlib.sha256(canonical_payload.encode("utf-8")).hexdigest(),
+            "sha256:" + hashlib.sha256(canonical_payload.encode("utf-8")).hexdigest(),
         )
 
     @classmethod
@@ -322,9 +355,10 @@ class PreparedModelRequest:
     def payload_for_transport(self) -> dict[str, JSONValue]:
         """Return a fresh transport object without reordering adapter mappings."""
 
-        digest = "sha256:" + hashlib.sha256(
-            self.canonical_payload.encode("utf-8")
-        ).hexdigest()
+        digest = (
+            "sha256:"
+            + hashlib.sha256(self.canonical_payload.encode("utf-8")).hexdigest()
+        )
         if digest != self.payload_hash:
             raise RuntimeError("prepared model request payload hash mismatch")
         return _project_payload(self.payload)
@@ -504,6 +538,65 @@ def _estimate_image_bytes(value: object) -> int:
     return sum(_estimate_image_bytes(item) for item in value.values())
 
 
+def _discover_prepared_binary_fields(
+    value: JSONValue,
+    *,
+    path: tuple[str | int, ...] = (),
+) -> tuple[PreparedRequestBinaryField, ...]:
+    """Project provider wire details once into a stable AI-layer contract."""
+
+    if isinstance(value, str):
+        marker = ";base64,"
+        if value.startswith("data:image/") and marker in value:
+            prefix, _encoded = value.split(marker, 1)
+            return (
+                PreparedRequestBinaryField(
+                    path=path,
+                    media_type=prefix.removeprefix("data:"),
+                    encoding="data_url",
+                ),
+            )
+        return ()
+    if isinstance(value, list):
+        return tuple(
+            field
+            for index, item in enumerate(value)
+            for field in _discover_prepared_binary_fields(
+                item,
+                path=(*path, index),
+            )
+        )
+    if not isinstance(value, dict):
+        return ()
+    data = value.get("data")
+    media_type = value.get("media_type")
+    selected: tuple[PreparedRequestBinaryField, ...]
+    if (
+        value.get("type") == "base64"
+        and isinstance(data, str)
+        and isinstance(media_type, str)
+        and media_type.startswith("image/")
+    ):
+        selected = (
+            PreparedRequestBinaryField(
+                path=(*path, "data"),
+                media_type=media_type,
+                encoding="base64",
+            ),
+        )
+    else:
+        selected = ()
+    return selected + tuple(
+        field
+        for name, item in value.items()
+        if not (selected and name == "data")
+        for field in _discover_prepared_binary_fields(
+            item,
+            path=(*path, name),
+        )
+    )
+
+
 def _base64_decoded_size(value: str) -> int:
     encoded = value.strip()
     if not encoded:
@@ -627,6 +720,8 @@ __all__ = [
     "PreparedRequestLimits",
     "PreparedRequestMetrics",
     "PreparedRequestAdapter",
+    "PreparedRequestBinaryEncoding",
+    "PreparedRequestBinaryField",
     "PreparedRequestCommitter",
     "commit_prepared_request",
     "invoke_prepared_request",

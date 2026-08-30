@@ -9,6 +9,7 @@ from loushang.harness.journal.codec import (
 )
 from loushang.harness.journal.jsonl import (
     JournalFileError,
+    JournalLockUnavailable,
     JsonlJournal,
     LegacyJsonConstant,
     LegacyJsonlParsedLine,
@@ -16,6 +17,7 @@ from loushang.harness.journal.jsonl import (
     LockMode,
     append_jsonl_record,
     append_jsonl_records,
+    decode_jsonl,
     journal_file_lock,
     load_jsonl,
     parse_legacy_jsonl_line,
@@ -48,6 +50,7 @@ __all__ = [
     "JournalFormatProfile",
     "JournalHeaderCodec",
     "JournalLoadPolicy",
+    "JournalLockUnavailable",
     "JournalRecordCodec",
     "JsonlJournal",
     "JsonlSnapshot",
@@ -58,6 +61,7 @@ __all__ = [
     "LockMode",
     "append_jsonl_record",
     "append_jsonl_records",
+    "decode_jsonl",
     "journal_file_lock",
     "load_jsonl",
     "parse_legacy_jsonl_line",

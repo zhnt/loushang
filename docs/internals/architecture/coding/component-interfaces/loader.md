@@ -12,7 +12,8 @@
 - `loushang.coding.resources` 内置内容注册
 - standard/compatibility convention 的选择与默认激活
 - Coding 附加 roots、settings filters、trust/approval policy 的注入
-- Harness resource snapshot 到 Coding prompt/session 的投影
+- 配置到单次 Catalog input receipt 的规范化
+- 已发布 Catalog projection 的只读兼容转发
 
 标准根、目录布局、`AGENTS.md` discovery、descriptor、扫描、provenance、
 merge、diagnostics 与 package materialization 由 `loushang.harness.resources`
@@ -26,8 +27,10 @@ merge、diagnostics 与 package materialization 由 `loushang.harness.resources`
 
 ## Commands
 
-- 配置并调用 Harness `discover_resources(...)`
-- 配置并调用 Harness `reload_resources(...)`
+- `prepare_catalog_input_receipt(...)`
+- `adopt_catalog_projection(...)`
+- 显式 legacy compatibility 才可调用 `discover_resources(...)` /
+  `reload_resources(...)`
 
 ## Queries
 
@@ -65,8 +68,12 @@ merge、diagnostics 与 package materialization 由 `loushang.harness.resources`
 
 ## Reference Implementation Alignment
 
-- 语义上保留 `DefaultResourceLoader` 聚合查询面，但通用实现 owner 是
-  Harness；Coding facade 不保留第二套扫描与合并逻辑
+- 默认路径的 `DefaultResourceLoader` 只准备 source receipt，并在发布后转发
+  exact Catalog projection；不导入或执行 legacy effective-selection pipeline
+- 每个 loader 实例只允许单调选择一次 Catalog 或显式 legacy 权威；准备、发布或
+  回滚失败不会让同一实例切换到另一条路径，未发布 Catalog 查询返回有限错误
+- `BootstrapServices` 的共享 loader 只保存配置与准备 input receipt；每个 Catalog
+  Session 都创建独立 compatibility view，projection 发布/回滚不会跨 Session 串写
 - 保留显式 Coding loader adapter，避免产品配置散落进 bootstrap 或 session
 - Harness loader 是 package provenance 的源头；Coding session / RPC / CLI
   只做产品投影，不重新推断 package 来源

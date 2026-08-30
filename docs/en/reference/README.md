@@ -9,6 +9,9 @@ This page collects reference entry points for current users and contributors.
 ```bash
 loushang --help
 loushang --version
+loushang --version --verbose
+loushang --source-info
+loushang --source-info --source-info-format json
 loushang --list-models
 loushang --list-commands
 loushang --list-sessions
@@ -19,6 +22,14 @@ loushang --list-skills
 loushang --list-plugins
 loushang --list-packages
 ```
+
+Use `--version --verbose` when verifying which executable and Python environment
+are running. It reports the active entrypoint, shadowed `loushang` candidates,
+imported module paths, install/launch mode, source Git revision and dirty state,
+and bundled component contracts such as the Native TUI renderer. Bundled does
+not mean active. `/debug` shows the same compact installation provenance inside
+an interactive session; effective runtime/plugin state is reported separately
+after runtime composition.
 
 ## Output Formats
 

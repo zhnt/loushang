@@ -5,7 +5,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from loushang.ai.types import UserMessage
-from loushang.harness.conversation import ConversationKey, MemoryConversationStore
+from loushang.harness.artifacts import SessionBlobStore
+from loushang.harness.conversation import (
+    CommandExecutionRecord,
+    ConversationKey,
+    MemoryConversationStore,
+)
 from loushang.harness.transcript import (
     AgentTranscriptFileLayout,
     AgentTranscriptLifecycle,
@@ -153,5 +158,87 @@ def test_session_factory_validates_explicit_session_identity_before_binding(
         else:
             raise AssertionError("expected a blank session id to fail")
         assert bindings == []
+
+    asyncio.run(scenario())
+
+
+def test_session_factory_fork_copies_selected_blobs_and_resume_degrades_missing(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        session_dir = tmp_path / "data" / "sessions"
+
+        async def bind_runtime(context, binding: str):
+            del binding
+            layout = AgentTranscriptFileLayout(context.session_dir)
+            assert context.session_file is not None
+            key = layout.key(context.header.conversation_id)
+            layout.bind_create_path(key, context.session_file)
+
+            async def dispose() -> None:
+                return None
+
+            return AgentTranscriptRuntimeBinding(
+                store=create_agent_transcript_file_store(layout),
+                key=key,
+                profile=AgentTranscriptProfile.default(),
+                product_binding="binding",
+                dispose=dispose,
+            )
+
+        lifecycle = AgentTranscriptLifecycle(bind_runtime=bind_runtime)
+        factory = AgentTranscriptSessionFactory(
+            lifecycle=lifecycle,
+            resolve_binding_input=lambda _persist: "binding",
+            header_metadata=lambda _binding: {},
+            session_file_factory=lifecycle.default_jsonl_session_file,
+            clock=lambda: datetime(2026, 8, 27, tzinfo=UTC),
+            conversation_id_factory=lambda: "target-session",
+        )
+        source = await factory.new(
+            session_dir=session_dir,
+            cwd="/workspace",
+            session_id="source-session",
+        )
+        source_blobs = SessionBlobStore(tmp_path / "data", "source-session")
+        selected = source_blobs.put_bytes(
+            b"selected output",
+            logical_name="commands/output.txt",
+            kind="command-output",
+            media_type="text/plain",
+        )
+        command = await source.transcript.append_command_execution(
+            CommandExecutionRecord(
+                command="build",
+                output="selected...",
+                exit_code=0,
+                truncated=True,
+                full_output_blob=selected,
+            )
+        )
+
+        forked = await factory.fork(
+            source,
+            leaf_id=command.record.record_id,
+            binding_input="binding",
+        )
+
+        fork_payload = forked.transcript.records[0].payload
+        assert isinstance(fork_payload, CommandExecutionRecord)
+        cloned = fork_payload.full_output_blob
+        assert cloned is not None
+        assert cloned.session_id == "target-session"
+        target_blobs = SessionBlobStore(tmp_path / "data", "target-session")
+        assert target_blobs.read_bytes(cloned) == b"selected output"
+        assert forked.session_blob_health[0].state == "available"
+
+        assert forked.context.session_file is not None
+        target_blobs.objects_root.joinpath(cloned.blob_id).unlink()
+        await forked.dispose()
+        resumed = await factory.load(forked.context.session_file)
+        assert resumed.session_blob_health[0].state == "missing"
+
+        await resumed.dispose()
+        await source.dispose()
 
     asyncio.run(scenario())

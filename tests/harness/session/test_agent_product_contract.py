@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-from collections.abc import Mapping
+from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -13,9 +13,12 @@ import pytest
 
 from loushang.agent import Agent, ModelCallPreparation
 from loushang.ai import Context
-from loushang.ai.model import Capabilities, Model
+from loushang.ai.api_registry import get_default_api_registry
+from loushang.ai.json_codec import serialize_message
+from loushang.ai.model import Auth, Capabilities, Model
 from loushang.ai.options import CallOptions
 from loushang.ai.prepared_request import PreparedModelRequest
+from loushang.ai.provider.protocol import ProviderRequest
 from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
 from loushang.harness.approval.plugin_activation import (
     PluginActivationDecisionJournal,
@@ -66,6 +69,7 @@ from loushang.harness.config.agent import (
 )
 from loushang.harness.conversation import ConversationKey, MemoryConversationStore
 from loushang.harness.extensions.agent import ExtensionRunner
+from loushang.harness.extensions.runner import ExtensionGenerationRetirement
 from loushang.harness.plugin_authoring.capability_provider import (
     PLUGIN_PROVIDER_SELECTION_RULE,
     CapabilityProviderDeclarationPayload,
@@ -124,6 +128,7 @@ from loushang.harness.resources.plugins.types import (
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.runtime import (
     CancellationSignal,
+    OwnerGenerationRetirementReceipt,
     RegistrationIdentity,
     RegistrationOwner,
     RuntimeProfileResolver,
@@ -134,6 +139,9 @@ from loushang.harness.runtime.session_operations import (
 )
 from loushang.harness.runtime.transition import SessionTransitionHost
 from loushang.harness.session import AgentProductSession
+from loushang.harness.session.agent_product import (
+    ResourceCatalogRefreshRetirementError,
+)
 from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityCompositionInputs,
     SessionCapabilityConsumerCapture,
@@ -147,6 +155,11 @@ from loushang.harness.session.product_composition_assembly import (
     ProductContributionOwnerBinding,
     ProductPluginCompositionAssemblyRequest,
     assemble_product_plugin_composition,
+)
+from loushang.harness.session.request_evidence import (
+    RESOURCE_EVIDENCE_COMPONENT,
+    RESOURCE_EVIDENCE_METADATA_KEY,
+    RESOURCE_EVIDENCE_SCHEMA_ID,
 )
 from loushang.harness.transcript import (
     AgentTranscriptLifecycle,
@@ -192,6 +205,67 @@ class _Footer:
         self.disposed = True
 
 
+class _CatalogEvidencePreparedAdapter:
+    api = "catalog-evidence-prepared-test"
+
+    def prepare_request(self, request: ProviderRequest) -> PreparedModelRequest:
+        return PreparedModelRequest.from_provider_request(
+            request,
+            payload={
+                "messages": [
+                    serialize_message(message) for message in request.context.messages
+                ],
+                "model": request.model.id,
+            },
+        )
+
+    async def invoke_prepared_raw(
+        self,
+        request: ProviderRequest,
+        prepared: PreparedModelRequest,
+    ) -> AsyncIterator[dict[str, object]]:
+        del request
+        prepared.payload_for_transport()
+        yield {"type": "response_start", "response_id": "catalog-evidence"}
+        yield {"type": "text_delta", "text": "done"}
+        yield {"type": "stop_reason", "stop_reason": "stop"}
+        yield {"type": "response_done"}
+
+    async def invoke_raw(
+        self,
+        request: ProviderRequest,
+    ) -> AsyncIterator[dict[str, object]]:
+        prepared = self.prepare_request(request)
+        async for part in self.invoke_prepared_raw(request, prepared):
+            yield part
+
+
+class _BlockingCatalogEvidencePreparedAdapter(_CatalogEvidencePreparedAdapter):
+    api = "catalog-evidence-blocking-prepared-test"
+
+    def __init__(self) -> None:
+        self.first_started = asyncio.Event()
+        self.release_first = asyncio.Event()
+        self.call_count = 0
+
+    async def invoke_prepared_raw(
+        self,
+        request: ProviderRequest,
+        prepared: PreparedModelRequest,
+    ) -> AsyncIterator[dict[str, object]]:
+        del request
+        prepared.payload_for_transport()
+        self.call_count += 1
+        call = self.call_count
+        yield {"type": "response_start", "response_id": f"catalog-evidence-{call}"}
+        if call == 1:
+            self.first_started.set()
+            await self.release_first.wait()
+        yield {"type": "text_delta", "text": f"done-{call}"}
+        yield {"type": "stop_reason", "stop_reason": "stop"}
+        yield {"type": "response_done"}
+
+
 class _ContractProductSession(AgentProductSession):
     def __init__(
         self,
@@ -212,6 +286,7 @@ class _ContractProductSession(AgentProductSession):
         initial_resource_catalog_bootstrap: (
             InitialSessionResourceCatalogBootstrap | None
         ) = None,
+        agent: Agent | None = None,
     ) -> None:
         self.product_id = product_id
         self.executor_calls: list[tuple[str, str | None]] = []
@@ -251,7 +326,8 @@ class _ContractProductSession(AgentProductSession):
             del delay_ms, signal
 
         super().__init__(
-            agent=Agent(
+            agent=agent
+            or Agent(
                 initial_state={
                     "system_prompt": f"{product_id} prompt",
                     "model": _model(product_id),
@@ -657,6 +733,10 @@ def test_initial_catalog_bootstrap_publishes_one_graph_owned_session_view(
         assert session._staged_resource_candidate is None
         assert session._resource_catalog_snapshot is not None
         assert session._resource_catalog_projection is not None
+        statuses = session.list_skill_statuses()
+        assert [(status.name, status.status) for status in statuses] == [
+            ("review", "effective")
+        ]
         assert session.resource_bundle is not base_bundle
         assert session.resource_bundle is not None
         assert [skill.name for skill in session.resource_bundle.skills] == ["review"]
@@ -670,6 +750,112 @@ def test_initial_catalog_bootstrap_publishes_one_graph_owned_session_view(
         await session.dispose()
 
         assert capability_runtime.ownership_state == "disposed"
+        assert disposed_transcripts == [f"{product_id}-session"]
+
+    asyncio.run(scenario())
+
+
+def test_initial_catalog_retirement_failure_keeps_session_fail_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        disposed_transcripts: list[str] = []
+        _bind_transcript_factory(disposed_transcripts)
+        product_id = "catalog-retirement-failure"
+        transcript = await _new_transcript(tmp_path, product_id=product_id)
+        capability_runtime = _capability_runtime(product_id)
+        bootstrap, base_bundle = _initial_catalog_bootstrap(
+            tmp_path,
+            product_id=product_id,
+        )
+        extension_runner = ExtensionRunner([])
+        session = _ContractProductSession(
+            product_id=product_id,
+            transcript=transcript,
+            capability_runtime=capability_runtime,
+            reserve_tokens=1_111,
+            compact_percent=61.0,
+            resource_bundle=base_bundle,
+            extension_runner=extension_runner,
+            initial_resource_catalog_bootstrap=bootstrap,
+        )
+        original_retire = ExtensionGenerationRetirement.retire
+        attempts = 0
+
+        async def fail_once(self):  # type: ignore[no-untyped-def]
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                return (SimpleNamespace(has_failures=True),)
+            return await original_retire(self)
+
+        monkeypatch.setattr(ExtensionGenerationRetirement, "retire", fail_once)
+
+        with pytest.raises(
+            ResourceCatalogRefreshRetirementError,
+            match="Initial Extension generation retirement remains pending",
+        ):
+            await session.prepare_model_call_runtime()
+
+        assert session._model_call_consumer is None
+        assert len(session._pending_resource_catalog_retirements) == 1
+        assert capability_runtime.ownership_state != "graph_owned"
+
+        await session.dispose()
+        assert attempts >= 2
+        assert session._pending_resource_catalog_retirements == []
+        assert disposed_transcripts == [f"{product_id}-session"]
+
+    asyncio.run(scenario())
+
+
+def test_initial_catalog_retirement_exception_remains_disposable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        disposed_transcripts: list[str] = []
+        _bind_transcript_factory(disposed_transcripts)
+        product_id = "catalog-retirement-exception"
+        transcript = await _new_transcript(tmp_path, product_id=product_id)
+        capability_runtime = _capability_runtime(product_id)
+        bootstrap, base_bundle = _initial_catalog_bootstrap(
+            tmp_path,
+            product_id=product_id,
+        )
+        session = _ContractProductSession(
+            product_id=product_id,
+            transcript=transcript,
+            capability_runtime=capability_runtime,
+            reserve_tokens=1_111,
+            compact_percent=61.0,
+            resource_bundle=base_bundle,
+            extension_runner=ExtensionRunner([]),
+            initial_resource_catalog_bootstrap=bootstrap,
+        )
+        original_retire = ExtensionGenerationRetirement.retire
+        attempts = 0
+
+        async def raise_once(self):  # type: ignore[no-untyped-def]
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise RuntimeError("synthetic retirement failure")
+            return await original_retire(self)
+
+        monkeypatch.setattr(ExtensionGenerationRetirement, "retire", raise_once)
+
+        with pytest.raises(RuntimeError, match="synthetic retirement failure"):
+            await session.prepare_model_call_runtime()
+
+        assert session._model_call_consumer is None
+        assert len(session._pending_resource_catalog_retirements) == 1
+        assert capability_runtime.ownership_state != "graph_owned"
+
+        await session.dispose()
+        assert attempts >= 2
+        assert session._pending_resource_catalog_retirements == []
         assert disposed_transcripts == [f"{product_id}-session"]
 
     asyncio.run(scenario())
@@ -690,6 +876,14 @@ def test_product_input_adapter_carries_native_and_embedded_skills_through_sessio
             "---\nname: native\ndescription: Native skill\n---\nUse native.\n",
             encoding="utf-8",
         )
+        user_root = tmp_path / f"{product_id}-user"
+        user_skill_root = user_root / "skills" / "global"
+        user_skill_root.mkdir(parents=True)
+        (user_skill_root / "SKILL.md").write_text(
+            "---\nname: global\ndescription: User-global skill\n"
+            "---\nUse global.\n",
+            encoding="utf-8",
+        )
         transcript = await _new_transcript(tmp_path, product_id=product_id)
         capability_runtime = _capability_runtime(product_id)
         base_bundle = ResourceBundle(cwd=workspace)
@@ -702,6 +896,12 @@ def test_product_input_adapter_carries_native_and_embedded_skills_through_sessio
                         handle_id="project-resources",
                         root=workspace,
                         source_class="project_local",
+                        root_kind="standard",
+                    ),
+                    ProductNativeResourceRootSpec(
+                        handle_id="user-resources",
+                        root=user_root,
+                        source_class="user_global",
                         root_kind="standard",
                     ),
                 ),
@@ -742,13 +942,237 @@ def test_product_input_adapter_carries_native_and_embedded_skills_through_sessio
         assert session.resource_bundle is not None
         assert {skill.name for skill in session.resource_bundle.skills} == {
             "embedded",
+            "global",
             "native",
         }
+        session.resource_bundle.skills[:] = [
+            replace(skill, content="Forged compatibility body.")
+            for skill in session.resource_bundle.skills
+        ]
+        for skill_name, exact_body in (
+            ("native", "Use native."),
+            ("global", "Use global."),
+            ("embedded", "Use embedded."),
+        ):
+            preflight = await session._preflight_user_input_async(
+                f"/skill:{skill_name}"
+            )
+            assert exact_body in preflight.text
+            assert "Forged compatibility body." not in preflight.text
+            loaded = preflight.loaded_skills[0]
+            assert loaded.receipt.content_digest == (
+                loaded.summary.expected_content_digest
+            )
         assert capability_runtime.ownership_state == "graph_owned"
 
         await session.dispose()
         assert capability_runtime.ownership_state == "disposed"
         assert disposed_transcripts == [session_id]
+
+    asyncio.run(scenario())
+
+
+def test_catalog_prompt_commits_exact_resource_evidence_before_transport(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        disposed_transcripts: list[str] = []
+        _bind_transcript_factory(disposed_transcripts)
+        product_id = "catalog-evidence"
+        transcript = await _new_transcript(tmp_path, product_id=product_id)
+        capability_runtime = _capability_runtime(product_id)
+        bootstrap, base_bundle = _initial_catalog_bootstrap(
+            tmp_path,
+            product_id=product_id,
+        )
+        extension_runner = ExtensionRunner([])
+        adapter = _CatalogEvidencePreparedAdapter()
+        registry = get_default_api_registry()
+        source_id = "catalog-evidence-test-adapter"
+        registry.register_api_adapter(adapter, source_id=source_id)
+        agent = Agent(
+            initial_state={
+                "system_prompt": "catalog evidence prompt",
+                "model": Model(
+                    id="catalog-evidence-model",
+                    name="Catalog Evidence Model",
+                    provider="test",
+                    api=adapter.api,
+                    endpoint="test",
+                    base_url="https://provider.test/v1",
+                    auth=Auth(kind="none"),
+                    capabilities=Capabilities(
+                        input=("text",),
+                        output=("text",),
+                        context_window=128_000,
+                        stream=True,
+                    ),
+                ),
+                "thinking_level": "off",
+            }
+        )
+        session = _ContractProductSession(
+            product_id=product_id,
+            transcript=transcript,
+            capability_runtime=capability_runtime,
+            reserve_tokens=1_111,
+            compact_percent=61.0,
+            resource_bundle=base_bundle,
+            extension_runner=extension_runner,
+            initial_resource_catalog_bootstrap=bootstrap,
+            agent=agent,
+        )
+        try:
+            await session.prepare_model_call_runtime()
+            await session.prompt("/skill:review focus")
+
+            user_record = next(
+                entry
+                for entry in reversed(transcript.get_active_entries())
+                if entry.kind == "agent.message"
+                and getattr(entry.payload, "role", None) == "user"
+                and RESOURCE_EVIDENCE_METADATA_KEY in entry.metadata
+            )
+            anchor = user_record.metadata[RESOURCE_EVIDENCE_METADATA_KEY]
+            assert isinstance(anchor, Mapping)
+            assert anchor["schemaId"] == RESOURCE_EVIDENCE_SCHEMA_ID
+            assert anchor["modelVisibleText"].endswith("focus")
+
+            snapshot = next(
+                entry.payload
+                for entry in reversed(transcript.get_active_entries())
+                if entry.kind == "model.input.prepared"
+            )
+            rebuilt = transcript.rebuild_model_input(snapshot.snapshot_id)
+            component = rebuilt.logical_input[RESOURCE_EVIDENCE_COMPONENT]
+            assert component["schemaId"] == RESOURCE_EVIDENCE_SCHEMA_ID
+            assert component["schemaVersion"] == 1
+            message = component["messages"][0]
+            assert "Review carefully." in message["modelVisibleText"]
+            assert message["modelVisibleText"].endswith("focus")
+            assert rebuilt.logical_input["messages"][message["messageIndex"]][
+                "content"
+            ][0]["text"] == message["modelVisibleText"]
+            skill = message["skills"][0]
+            assert skill["expectedContentDigest"] == skill["observedContentDigest"]
+            assert skill["expectedContentLength"] == skill["observedContentLength"]
+            assert skill["activationPolicyFingerprint"]
+
+            skill_file = (
+                tmp_path
+                / product_id
+                / ".loushang"
+                / "skills"
+                / "review"
+                / "SKILL.md"
+            )
+            skill_file.unlink()
+            assert (
+                transcript.rebuild_model_input(snapshot.snapshot_id).logical_input[
+                    RESOURCE_EVIDENCE_COMPONENT
+                ]
+                == component
+            )
+        finally:
+            registry.unregister_api_adapters(source_id)
+            await session.dispose()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("streaming_behavior", ["steer", "followUp"])
+def test_catalog_queued_prompt_keeps_exact_resource_evidence(
+    tmp_path: Path,
+    streaming_behavior: str,
+) -> None:
+    async def scenario() -> None:
+        disposed_transcripts: list[str] = []
+        _bind_transcript_factory(disposed_transcripts)
+        product_id = f"catalog-evidence-{streaming_behavior.lower()}"
+        transcript = await _new_transcript(tmp_path, product_id=product_id)
+        capability_runtime = _capability_runtime(product_id)
+        bootstrap, base_bundle = _initial_catalog_bootstrap(
+            tmp_path,
+            product_id=product_id,
+        )
+        extension_runner = ExtensionRunner([])
+        adapter = _BlockingCatalogEvidencePreparedAdapter()
+        registry = get_default_api_registry()
+        source_id = f"catalog-evidence-{streaming_behavior}-adapter"
+        registry.register_api_adapter(adapter, source_id=source_id)
+        agent = Agent(
+            initial_state={
+                "system_prompt": "catalog evidence prompt",
+                "model": Model(
+                    id="catalog-evidence-queue-model",
+                    name="Catalog Evidence Queue Model",
+                    provider="test",
+                    api=adapter.api,
+                    endpoint="test",
+                    base_url="https://provider.test/v1",
+                    auth=Auth(kind="none"),
+                    capabilities=Capabilities(
+                        input=("text",),
+                        output=("text",),
+                        context_window=128_000,
+                        stream=True,
+                    ),
+                ),
+                "thinking_level": "off",
+            }
+        )
+        session = _ContractProductSession(
+            product_id=product_id,
+            transcript=transcript,
+            capability_runtime=capability_runtime,
+            reserve_tokens=1_111,
+            compact_percent=61.0,
+            resource_bundle=base_bundle,
+            extension_runner=extension_runner,
+            initial_resource_catalog_bootstrap=bootstrap,
+            agent=agent,
+        )
+        first_prompt: asyncio.Task[None] | None = None
+        try:
+            await session.prepare_model_call_runtime()
+            first_prompt = asyncio.create_task(session.prompt("plain first request"))
+            await asyncio.wait_for(adapter.first_started.wait(), timeout=5.0)
+            await session.prompt(
+                "/skill:review queued",
+                streaming_behavior=streaming_behavior,
+            )
+            adapter.release_first.set()
+            await asyncio.wait_for(first_prompt, timeout=5.0)
+
+            anchored = [
+                entry
+                for entry in transcript.get_active_entries()
+                if RESOURCE_EVIDENCE_METADATA_KEY in entry.metadata
+            ]
+            assert len(anchored) == 1
+            anchor = anchored[0].metadata[RESOURCE_EVIDENCE_METADATA_KEY]
+            assert isinstance(anchor, Mapping)
+            assert anchor["modelVisibleText"].endswith("queued")
+
+            components = []
+            for entry in transcript.get_active_entries():
+                if entry.kind != "model.input.prepared":
+                    continue
+                rebuilt = transcript.rebuild_model_input(entry.payload.snapshot_id)
+                component = rebuilt.logical_input.get(RESOURCE_EVIDENCE_COMPONENT)
+                if component is not None:
+                    components.append(component)
+            assert len(components) == 1
+            evidence_message = components[0]["messages"][-1]
+            assert evidence_message["messageRecordId"] == anchored[0].record_id
+            assert evidence_message["modelVisibleText"].endswith("queued")
+            assert adapter.call_count >= 2
+        finally:
+            adapter.release_first.set()
+            if first_prompt is not None and not first_prompt.done():
+                await first_prompt
+            registry.unregister_api_adapters(source_id)
+            await session.dispose()
 
     asyncio.run(scenario())
 
@@ -791,6 +1215,64 @@ def test_failed_graph_bind_rolls_back_initial_catalog_and_extension_candidates(
         assert capability_runtime.ownership_state == "disposed"
         assert session._capability_graph_runtime.snapshot is None
         assert session.resource_bundle is base_bundle
+
+        await session.dispose()
+        assert disposed_transcripts == [f"{product_id}-session"]
+
+    asyncio.run(scenario())
+
+
+def test_failed_extension_catalog_freeze_keeps_preflight_rollback_custody(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        disposed_transcripts: list[str] = []
+        _bind_transcript_factory(disposed_transcripts)
+        product_id = "catalog-freeze-failure"
+        transcript = await _new_transcript(tmp_path, product_id=product_id)
+        capability_runtime = _capability_runtime(product_id)
+        bootstrap, base_bundle = _initial_catalog_bootstrap(
+            tmp_path,
+            product_id=product_id,
+        )
+        extension_runner = ExtensionRunner([])
+        original_prepare = extension_runner.prepare_generation
+        candidates: list[object] = []
+
+        def prepare_failing_generation(extensions):  # type: ignore[no-untyped-def]
+            candidate = original_prepare(extensions)
+            candidates.append(candidate)
+
+            async def fail_catalog_freeze(
+                _bundle: ResourceBundle,
+                *,
+                product_id: str,
+            ) -> object:
+                del product_id
+                raise RuntimeError("Extension Catalog freeze failed")
+
+            candidate.prepare_resource_catalog_generation = fail_catalog_freeze  # type: ignore[method-assign]
+            return candidate
+
+        extension_runner.prepare_generation = prepare_failing_generation  # type: ignore[method-assign]
+        session = _ContractProductSession(
+            product_id=product_id,
+            transcript=transcript,
+            capability_runtime=capability_runtime,
+            reserve_tokens=1_111,
+            compact_percent=61.0,
+            resource_bundle=base_bundle,
+            extension_runner=extension_runner,
+            initial_resource_catalog_bootstrap=bootstrap,
+        )
+
+        with pytest.raises(RuntimeError, match="Extension Catalog freeze failed"):
+            await session.prepare_model_call_runtime()
+
+        assert len(candidates) == 1
+        assert candidates[0].lifecycle_state == "rolled_back"  # type: ignore[attr-defined]
+        assert bootstrap.state == "disposed"
+        assert capability_runtime.ownership_state == "disposed"
 
         await session.dispose()
         assert disposed_transcripts == [f"{product_id}-session"]
@@ -1789,6 +2271,16 @@ def test_foundation_plugin_reaches_one_session_graph_and_reverse_owner_unload(
                 ),
                 stage=stage_tools,
                 dispose=dispose_tools,
+                retirement_receipt=lambda _value: (
+                    OwnerGenerationRetirementReceipt(
+                        owner_reference="owner:product.tools",
+                        owner_generation_reference="generation:1",
+                        retirement_handle="retirement:1",
+                        contribution_ids=(owner_admission.contribution_id,),
+                    )
+                ),
+                commit=lambda _value: None,
+                rollback_commit=lambda _value: None,
             )
             transcript = await _new_transcript(tmp_path, product_id="coding")
             session = _ContractProductSession(

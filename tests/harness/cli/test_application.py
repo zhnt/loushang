@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from io import StringIO
 from types import SimpleNamespace
 
+from loushang.harness.approval import HeadlessApprovalResolver
 from loushang.harness.cli import (
     AgentCliApplicationBinding,
     AgentCliStatePreparationPorts,
@@ -384,7 +385,10 @@ def test_resource_settings_errors_are_reported_for_standard_operations() -> None
 
 def test_agent_application_state_preparation_binds_product_tools_and_approval(
     tmp_path,
+    monkeypatch,
 ) -> None:
+    platform_sessions = tmp_path / "user-home" / "data" / "sessions"
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "user-home"))
     calls: list[object] = []
     policy_engine = object()
     args = _ApplicationArgs()
@@ -423,11 +427,11 @@ def test_agent_application_state_preparation_binds_product_tools_and_approval(
 
     assert result.exit_code is None
     assert result.value is not None
-    assert result.value.session_dir == tmp_path / ".loushang" / "sessions"
+    assert result.value.session_dir == platform_sessions
     assert result.value.tool_registry == "registry"
     assert result.value.approval_resolver == "interactive"
     assert calls == [
-        ("pre_runtime", tmp_path / ".loushang" / "sessions"),
+        ("pre_runtime", platform_sessions),
         (
             "tools",
             WorkspaceToolRuntimeSettings(policy_engine=policy_engine),
@@ -489,11 +493,11 @@ def test_agent_application_state_preparation_resolves_tool_settings_once(
     assert result.value.tool_registry == "registry"
     assert policy_calls == [
         {
-                "blocked_tools": ("bash",),
-                "ask_tools": (),
-                "blocked_capabilities": ("workspace.command",),
-                "ask_capabilities": (),
-                "blocked_substrings": (),
+            "blocked_tools": ("bash",),
+            "ask_tools": (),
+            "blocked_capabilities": ("workspace.command",),
+            "ask_capabilities": (),
+            "blocked_substrings": (),
             "ask_substrings": (),
             "blocked_path_substrings": (),
             "ask_path_substrings": (),
@@ -503,6 +507,60 @@ def test_agent_application_state_preparation_resolves_tool_settings_once(
     assert isinstance(runtime_settings, WorkspaceToolRuntimeSettings)
     assert runtime_settings.policy_engine is policy_engine
     assert captured["approval_resolver"] == "interactive"
+
+
+def test_agent_application_state_wraps_configured_tool_approval_for_session(
+    tmp_path,
+) -> None:
+    captured: dict[str, object] = {}
+    session_resolver = object()
+    manager = SimpleNamespace(
+        get_settings=lambda: SimpleNamespace(session_dir=None),
+        get_tool_settings=lambda: SimpleNamespace(approval_mode="allow"),
+    )
+    services = SimpleNamespace(settings_manager=manager)
+    context = CliBootstrapContext(
+        raw_argv=(),
+        args=_ApplicationArgs(),
+        launch_plan=CliLaunchPlan(),
+        project_root=tmp_path,
+        stdin=StringIO(),
+        stdout=StringIO(),
+        stderr=StringIO(),
+    )
+
+    def build_session_resolver(*, fallback: object | None = None) -> object:
+        captured["fallback"] = fallback
+        return session_resolver
+
+    ports = AgentCliStatePreparationPorts(
+        build_services=lambda _root: services,
+        product_catalog_operation=lambda _args: False,
+        pre_runtime_operation=lambda _context: None,
+        build_empty_tool_registry=lambda: "empty",
+        build_tool_registry=lambda _services, runtime_settings, approval: (
+            captured.update(
+                runtime_settings=runtime_settings,
+                registry_approval=approval,
+            )
+            or "registry"
+        ),
+        policy_factory=lambda **_kwargs: object(),
+        build_interactive_approval_resolver=build_session_resolver,
+        run_resource_toggle=lambda *_args, **_kwargs: None,
+    )
+
+    result = asyncio.run(prepare_agent_cli_application_state(context, ports=ports))
+
+    assert result.value is not None
+    assert result.value.approval_resolver is session_resolver
+    assert captured["registry_approval"] is session_resolver
+    fallback = captured["fallback"]
+    assert isinstance(fallback, HeadlessApprovalResolver)
+    assert fallback.mode == "allow"
+    runtime_settings = captured["runtime_settings"]
+    assert isinstance(runtime_settings, WorkspaceToolRuntimeSettings)
+    assert runtime_settings.approval_resolver is fallback
 
 
 @dataclass(frozen=True)

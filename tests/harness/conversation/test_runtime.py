@@ -377,3 +377,23 @@ def test_conversation_contracts_reject_invalid_identity_and_query_limits() -> No
     payload = asdict(record)
     assert type(payload["metadata"]) is dict
     assert json.loads(json.dumps(payload))["metadata"] == payload["metadata"]
+
+
+def test_command_execution_record_preserves_all_legacy_positional_slots() -> None:
+    from loushang.harness.conversation import CommandExecutionRecord
+
+    record = CommandExecutionRecord(
+        "build",
+        "output",
+        0,
+        False,
+        True,
+        "/tmp/legacy-output",
+        True,
+        {"legacy": "metadata"},
+    )
+
+    assert record.full_output_path == "/tmp/legacy-output"
+    assert record.exclude_from_context is True
+    assert record.metadata == {"legacy": "metadata"}
+    assert record.full_output_blob is None

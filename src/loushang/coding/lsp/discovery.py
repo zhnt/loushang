@@ -17,6 +17,7 @@ from loushang.coding.lsp.definition_codec import (
     encode_lsp_server_definition,
 )
 from loushang.coding.lsp.model import LspServerDefinition
+from loushang.harness.environment import resolve_platform_home
 
 LspAdmissionState = Literal["admitted", "disabled", "rejected", "unavailable"]
 ExecutableResolver = Callable[[str, Mapping[str, str]], str | None]
@@ -86,7 +87,7 @@ class _Declaration:
 
 
 def default_global_lsp_config_path() -> Path:
-    return Path.home() / ".loushang" / "coding" / "lsp.json"
+    return resolve_platform_home() / "coding" / "lsp.json"
 
 
 def default_project_lsp_config_path(workspace_root: str | Path) -> Path:

@@ -5,6 +5,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field, replace
 from typing import Literal
 
+from loushang.harness.artifacts.references import RunArtifactRef, SessionBlobRef
 from loushang.harness.workspace.truncation import (
     DEFAULT_MAX_BYTES,
     DEFAULT_MAX_LINES,
@@ -199,6 +200,9 @@ class ExecResult:
     stderr_total_bytes: int | None = None
     stdio_complete: bool = True
     stdio_drain_reason: StdioDrainReason | None = None
+    stdout_artifact_ref: RunArtifactRef | SessionBlobRef | None = None
+    stderr_artifact_ref: RunArtifactRef | SessionBlobRef | None = None
+    artifact_retention_error: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -220,6 +224,18 @@ class ExecResult:
             raise ValueError("complete stdio cannot have a drain reason")
         if not self.stdio_complete and self.stdio_drain_reason is None:
             raise ValueError("incomplete stdio requires a drain reason")
+        for name, reference in (
+            ("stdout", self.stdout_artifact_ref),
+            ("stderr", self.stderr_artifact_ref),
+        ):
+            if reference is not None and not isinstance(
+                reference, RunArtifactRef | SessionBlobRef
+            ):
+                raise TypeError(f"{name} artifact ref is invalid")
+        if self.artifact_retention_error is not None and not isinstance(
+            self.artifact_retention_error, str
+        ):
+            raise TypeError("artifact retention error must be a string or None")
 
 
 __all__ = [

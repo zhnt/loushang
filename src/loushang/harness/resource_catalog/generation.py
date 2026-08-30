@@ -42,6 +42,12 @@ from loushang.harness.resources._catalog_source_contracts import (
 from loushang.harness.resources._discovery_conventions import (
     DEFAULT_CONTEXT_FILE_NAMES,
 )
+from loushang.harness.resources._skill_catalog_status import (
+    SkillCatalogStatusProjection,
+)
+from loushang.harness.runtime.registration import (
+    OwnerGenerationRetirementReceipt,
+)
 
 ResourceOwnerGenerationState = Literal[
     "root_owned",
@@ -73,6 +79,8 @@ class PreparedResourceOwnerGeneration:
     """
 
     _shadow: UnpublishedResourceCatalogShadowGeneration = field(repr=False)
+    runtime_id: str
+    catalog_generation: int
     provider_binding_fingerprint: str
     _ownership: ResourceOwnerGenerationState = field(
         default="root_owned",
@@ -89,6 +97,9 @@ class PreparedResourceOwnerGeneration:
     def _from_shadow(
         cls,
         shadow: UnpublishedResourceCatalogShadowGeneration,
+        *,
+        runtime_id: str,
+        catalog_generation: int,
     ) -> PreparedResourceOwnerGeneration:
         resolution = shadow.resolution
         fingerprint = fingerprint_catalog_value(
@@ -104,7 +115,36 @@ class PreparedResourceOwnerGeneration:
         )
         return cls(
             _shadow=shadow,
+            runtime_id=runtime_id,
+            catalog_generation=catalog_generation,
             provider_binding_fingerprint=fingerprint,
+        )
+
+    def retirement_receipt(
+        self,
+        *,
+        contribution_ids: tuple[str, ...],
+    ) -> OwnerGenerationRetirementReceipt:
+        if self._ownership not in {
+            "root_owned",
+            "graph_constructing",
+            "graph_owned",
+        }:
+            raise RuntimeError(
+                "Resource owner retirement evidence requires a live generation"
+            )
+        owner_reference = f"resource-catalog-owner:{self.runtime_id}"
+        return OwnerGenerationRetirementReceipt(
+            owner_reference=owner_reference,
+            owner_generation_reference=(
+                f"{owner_reference}:generation:{self.catalog_generation}:"
+                f"{self.provider_binding_fingerprint}"
+            ),
+            retirement_handle=(
+                "resource-catalog-generation:"
+                f"{self.provider_binding_fingerprint}"
+            ),
+            contribution_ids=contribution_ids,
         )
 
     @property
@@ -130,6 +170,16 @@ class PreparedResourceOwnerGeneration:
         }:
             raise RuntimeError("Resource owner generation is retiring or disposed")
         return self._shadow.catalog_projection
+
+    @property
+    def _skill_status_projection(self) -> SkillCatalogStatusProjection:
+        if self._ownership not in {
+            "root_owned",
+            "graph_constructing",
+            "graph_owned",
+        }:
+            raise RuntimeError("Resource owner generation is retiring or disposed")
+        return self._shadow.skill_status_projection
 
     def load_handle(self, identity: ResourceIdentity) -> ResourceLoadHandle:
         self._require_graph_owned()
@@ -195,6 +245,7 @@ async def prepare_first_party_resource_owner_generation(
     scope_id: str,
     runtime_id: str,
     product_policy_revision: str,
+    catalog_generation: int = 1,
     root_handles: tuple[NativeResourceRootHandle, ...],
     package_resources: tuple[AdmittedPackageResource, ...] = (),
     embedded_collections: tuple[EmbeddedResourceCollectionHandle, ...] = (),
@@ -222,6 +273,7 @@ async def prepare_first_party_resource_owner_generation(
         scope_id=scope_id,
         runtime_id=runtime_id,
         product_policy_revision=product_policy_revision,
+        catalog_generation=catalog_generation,
         root_handles=root_handles,
         package_resources=package_resources,
         embedded_collections=embedded_collections,
@@ -239,7 +291,11 @@ async def prepare_first_party_resource_owner_generation(
         extension_source_lease=extension_source_lease,
         projection_cwd=projection_cwd,
     )
-    prepared = PreparedResourceOwnerGeneration._from_shadow(shadow)
+    prepared = PreparedResourceOwnerGeneration._from_shadow(
+        shadow,
+        runtime_id=runtime_id,
+        catalog_generation=catalog_generation,
+    )
     try:
         staged_candidate._attach_prepared_owner_generation(prepared)
     except BaseException:

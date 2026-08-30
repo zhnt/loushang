@@ -222,6 +222,24 @@ def test_scoped_config_runtime_listener_failure_is_post_commit(tmp_path: Path) -
     assert runtime.value == _Config(name="committed")
 
 
+def test_scoped_config_runtime_rejects_reentrant_writes_inside_transform(
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime(tmp_path)
+    scope = runtime.scope("session")
+
+    def reentrant_transform(patch: dict[str, object]) -> dict[str, object]:
+        scope.update({"enabled": False})
+        return {**patch, "name": "outer"}
+
+    with pytest.raises(RuntimeError, match="cannot perform re-entrant writes"):
+        scope.transform(reentrant_transform)
+
+    assert runtime.revision == 0
+    assert runtime.value == _Config()
+    assert scope.patch == {}
+
+
 def test_scoped_config_runtime_drains_reentrant_changes_before_listener_error(
     tmp_path: Path,
 ) -> None:

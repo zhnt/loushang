@@ -118,6 +118,11 @@ from loushang.harness.cli.launch import (
     cli_static_error,
     resolve_effective_tui,
 )
+from loushang.harness.cli.machine_resources import (
+    MachineResourceCliUsageError,
+    extract_machine_resource_argv,
+    run_machine_resource_command,
+)
 from loushang.harness.cli.method_listing import (
     MethodListingError,
     MethodListingRequest,
@@ -337,6 +342,8 @@ __all__ = [
     "MultiAgentOutputFormat",
     "MultiAgentRecipesCommand",
     "MultiAgentRunCommand",
+    "MachineResourceCliUsageError",
+    "extract_machine_resource_argv",
     "extract_multiagent_argv",
     "multiagent_recipes_help",
     "multiagent_run_help",
@@ -348,6 +355,7 @@ __all__ = [
     "MethodListingError",
     "MethodListingRequest",
     "MethodListingResult",
+    "run_machine_resource_command",
     "run_method_listing",
     "PackageLifecycleError",
     "PackageLifecycleRequest",

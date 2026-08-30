@@ -7,6 +7,7 @@ how the Coding product selects and configures that reusable capability.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import replace
 from typing import Any, cast
 
@@ -43,6 +44,19 @@ CODING_BUILTIN_TOOL_NAMES: tuple[ToolName, ...] = (
     "grep",
     "write",
     "edit",
+)
+CODING_RESERVED_BASE_TOOL_NAMES: tuple[str, ...] = (
+    *CODING_BUILTIN_TOOL_NAMES,
+    "shell",
+)
+CODING_DEFAULT_ACTIVE_TOOL_NAMES: tuple[str, ...] = (
+    "read",
+    "ls",
+    "find",
+    "grep",
+    "bash",
+    "edit",
+    "write",
 )
 
 _CODING_TOOL_TEXT: dict[ToolName, tuple[str, str]] = {
@@ -85,9 +99,7 @@ _CODING_TOOL_TEXT: dict[ToolName, tuple[str, str]] = {
 def _decorate_coding_tool_definition(
     definition: ToolDefinition,
 ) -> ToolDefinition:
-    description, prompt_snippet = _CODING_TOOL_TEXT[
-        cast(ToolName, definition.name)
-    ]
+    description, prompt_snippet = _CODING_TOOL_TEXT[cast(ToolName, definition.name)]
     return replace(
         definition,
         description=description,
@@ -121,10 +133,37 @@ def coding_workspace_tool_profile(
             "shell" if name == "bash" else name for name in CODING_TOOL_NAMES
         ),
         builtin_tool_names=tuple(
-            "shell" if name == "bash" else name
-            for name in CODING_BUILTIN_TOOL_NAMES
+            "shell" if name == "bash" else name for name in CODING_BUILTIN_TOOL_NAMES
         ),
     )
+
+
+def coding_default_active_tool_names(
+    environment: HostEnvironment,
+) -> tuple[str, ...]:
+    """Return Coding's Product-selected default Tool intent for one host."""
+
+    return coding_platform_tool_names(CODING_DEFAULT_ACTIVE_TOOL_NAMES, environment)
+
+
+def coding_platform_tool_names(
+    tool_names: Iterable[str],
+    environment: HostEnvironment,
+) -> tuple[str, ...]:
+    """Resolve platform-neutral Coding Tool intents for one execution host."""
+
+    resolved: list[str] = []
+    seen: set[str] = set()
+    for name in tool_names:
+        platform_name = (
+            "shell"
+            if environment.os_family == "windows" and name == "bash"
+            else name
+        )
+        if platform_name not in seen:
+            resolved.append(platform_name)
+            seen.add(platform_name)
+    return tuple(resolved)
 
 
 def _profile_from_options(options: ToolsOptions | None) -> WorkspaceToolProfile:
@@ -159,6 +198,20 @@ def create_coding_tool_definitions(
     )
 
 
+def create_coding_builtin_tool_definitions(
+    *,
+    options: ToolsOptions | None = None,
+) -> list[ToolDefinition]:
+    """Create the complete admitted ``coding.builtin`` pack generation."""
+
+    profile = _profile_from_options(options)
+    return create_profiled_workspace_tool_definitions(
+        profile,
+        options=options,
+        tool_names=profile.builtin_tool_names,
+    )
+
+
 def create_coding_tools(
     *,
     cwd: str | None = None,
@@ -190,6 +243,12 @@ def register_coding_builtin_tools(
     shell_path: str | None = None,
     command_prefix: str | None = None,
 ) -> WorkspaceToolRegistry:
+    """Compatibility helper for standalone registries, not Coding Sessions.
+
+    Catalog-owned Coding construction rejects these reserved identities when
+    supplied through ``tool_registry`` or ``tools``. New callers should use
+    the public tool-definition factories for non-Session authoring.
+    """
     resolved_environment = host_environment or LocalHostEnvironmentProbe().detect()
     profile = coding_workspace_tool_profile(resolved_environment)
     options = ToolsOptions(
@@ -214,11 +273,15 @@ def register_coding_builtin_tools(
 __all__ = [
     "CODING_BUILTIN_TOOL_NAMES",
     "CODING_BUILTIN_TOOL_PACK",
+    "CODING_DEFAULT_ACTIVE_TOOL_NAMES",
+    "CODING_RESERVED_BASE_TOOL_NAMES",
     "CODING_TOOL_NAMES",
     "CODING_WORKSPACE_TOOL_PROFILE",
+    "coding_default_active_tool_names",
+    "coding_platform_tool_names",
     "coding_workspace_tool_profile",
     "create_coding_tool_definition",
     "create_coding_tool_definitions",
+    "create_coding_builtin_tool_definitions",
     "create_coding_tools",
-    "register_coding_builtin_tools",
 ]

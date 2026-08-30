@@ -43,6 +43,11 @@ Updates and replacements compose the complete candidate before persistence and
 publish it only after persistence succeeds. A composition or store failure does
 not expose a partial in-memory value. Reload validates loaded candidates and
 keeps the last valid patch when a persistent layer cannot be loaded or applied.
+`ConfigScope.transform()` keeps patch read, transformation, replacement,
+persistence, and change enqueue under one runtime lock. Its callback may read
+the runtime but cannot perform a re-entrant write; nested writes fail before
+either inner or outer state is published. Listener notification remains a
+post-commit boundary and may enqueue a later independent update.
 
 ### Declarative Product Schema Adapter
 

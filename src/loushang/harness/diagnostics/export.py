@@ -7,19 +7,62 @@ this module. The writer owns only archive safety and mandatory redaction.
 from __future__ import annotations
 
 import json
+import os
 import platform
 import re
+import stat
 import sys
 import zipfile
 from collections.abc import Callable, Iterable, Mapping
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as package_version
-from pathlib import Path, PurePosixPath
-from typing import cast
+from pathlib import Path, PurePosixPath, PureWindowsPath
+from typing import Literal, cast
+from uuid import uuid4
 
+from loushang.harness.artifacts import (
+    DEFAULT_ARTIFACT_RETENTION_POLICY,
+    ArtifactRef,
+    ArtifactRetentionPolicy,
+    ArtifactSnapshotStore,
+    ArtifactSourceRejected,
+    ArtifactStoreError,
+    sweep_managed_artifacts,
+)
 from loushang.harness.diagnostics.types import DiagnosticRecord
+from loushang.harness.environment import PlatformPaths, resolve_platform_paths
+
+_FileIdentity = tuple[int, int, int, int, int]
+
+
+def _safe_relative_directory(value: str) -> bool:
+    path = PurePosixPath(value)
+    return bool(
+        value
+        and "\\" not in value
+        and not any(ord(character) < 32 for character in value)
+        and not path.is_absolute()
+        and not PureWindowsPath(value).drive
+        and ".." not in path.parts
+        and path.as_posix() == value
+        and str(path) not in {"", "."}
+    )
+
+
+def _safe_filename_fragment(value: str) -> bool:
+    return bool(
+        value
+        and len(value) <= 128
+        and "/" not in value
+        and "\\" not in value
+        and value not in {".", ".."}
+        and not any(ord(character) < 32 for character in value)
+        and not any(character in '<>:"|?*' for character in value)
+        and value[-1] not in {".", " "}
+    )
 
 
 @dataclass(frozen=True)
@@ -27,7 +70,14 @@ class DiagnosticExportArtifact:
     """A text artifact to include under a safe relative archive name."""
 
     archive_name: str
-    source_path: Path
+    source_path: Path | None = None
+    content: bytes | None = None
+
+    def __post_init__(self) -> None:
+        if (self.source_path is None) == (self.content is None):
+            raise ValueError(
+                "diagnostics artifact requires exactly one source_path or content"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,21 +85,41 @@ class DiagnosticBundleProfile:
     """Stable archive identity shared by Loushang Product hosts."""
 
     package_name: str = "loushang"
-    archive_directory: str = ".loushang/diagnostics"
+    archive_root: Literal["project", "platform"] = "project"
+    archive_directory: str = "state/diagnostics"
     archive_prefix: str = "loushang-diag"
-    debug_directory: str = ".loushang/debug"
-    trace_directory: str = ".loushang/traces"
+    debug_directory: str = "state/debug"
+    trace_directory: str = "state/traces"
+    retention: ArtifactRetentionPolicy = DEFAULT_ARTIFACT_RETENTION_POLICY
     readme: str = (
         "Loushang diagnostics bundle\n"
         "\n"
         "This archive contains recent local debugging artifacts for troubleshooting.\n"
-        "It may include debug logs, structured trace events, the latest session JSONL,\n"
-        "and a diagnostics summary. Common bearer tokens and API key fields are redacted\n"
-        "on export, but review the archive before sharing it outside your machine.\n"
+        "It may include debug logs, structured trace events, and a diagnostics summary.\n"
+        "Conversation transcripts and prompt attachments are not included. Common bearer\n"
+        "tokens and API key fields are redacted on export, but review the archive before\n"
+        "sharing it outside your machine.\n"
     )
 
+    def __post_init__(self) -> None:
+        if self.archive_root not in {"project", "platform"}:
+            raise ValueError(f"unsupported diagnostics archive root: {self.archive_root!r}")
+        for name, value in (
+            ("archive_directory", self.archive_directory),
+            ("debug_directory", self.debug_directory),
+            ("trace_directory", self.trace_directory),
+        ):
+            if not _safe_relative_directory(value):
+                raise ValueError(
+                    f"diagnostics {name} must be a safe relative directory"
+                )
+        if not _safe_filename_fragment(self.archive_prefix):
+            raise ValueError("diagnostics archive_prefix must be a portable name")
 
-DEFAULT_DIAGNOSTIC_BUNDLE_PROFILE = DiagnosticBundleProfile()
+
+DEFAULT_DIAGNOSTIC_BUNDLE_PROFILE = DiagnosticBundleProfile(
+    archive_root="platform"
+)
 DEFAULT_DIAGNOSTICS_LIMIT = 50
 
 
@@ -61,6 +131,8 @@ def export_diagnostics_bundle(
     diagnostics_service: object | None = None,
     debug_latest_path: str | Path | None = None,
     trace_latest_path: str | Path | None = None,
+    artifact_store: ArtifactSnapshotStore | None = None,
+    platform_paths: PlatformPaths | None = None,
     now: Callable[[], datetime] | None = None,
     profile: DiagnosticBundleProfile = DEFAULT_DIAGNOSTIC_BUNDLE_PROFILE,
 ) -> Path:
@@ -71,13 +143,15 @@ def export_diagnostics_bundle(
     root = Path(project_root).expanduser().resolve()
     sessions = Path(session_dir).expanduser().resolve()
     generated_at = (now or utc_now)()
+    platform_home = (platform_paths or resolve_platform_paths()).home
     bundle_path = resolve_export_output_path(
-        root,
+        platform_home if profile.archive_root == "platform" else root,
         output,
         generated_at,
         directory=profile.archive_directory,
         prefix=profile.archive_prefix,
     )
+
     def serialize_record(record: object) -> Mapping[str, object]:
         return serialize_diagnostic(cast(DiagnosticRecord, record))
 
@@ -87,17 +161,29 @@ def export_diagnostics_bundle(
         limit=DEFAULT_DIAGNOSTICS_LIMIT,
     )
     debug_latest = (
-        Path.home() / profile.debug_directory / "latest"
+        platform_home / profile.debug_directory / "latest"
         if debug_latest_path is None
         else Path(debug_latest_path).expanduser()
     )
     trace_latest = (
-        Path.home() / profile.trace_directory / "latest"
+        platform_home / profile.trace_directory / "latest"
         if trace_latest_path is None
         else Path(trace_latest_path).expanduser()
     )
-    session_latest = sessions / "latest.jsonl"
-    return export_diagnostics_archive(
+    snapshots = _snapshot_observability_artifacts(
+        artifact_store,
+        debug_latest=debug_latest,
+        trace_latest=trace_latest,
+    )
+    debug_snapshot = next(
+        (item for item in snapshots if item.kind == "debug-log"),
+        None,
+    )
+    trace_snapshot = next(
+        (item for item in snapshots if item.kind == "trace-jsonl"),
+        None,
+    )
+    exported = export_diagnostics_archive(
         output_path=bundle_path,
         readme=profile.readme,
         manifest=_standard_manifest(
@@ -105,18 +191,37 @@ def export_diagnostics_bundle(
             project_root=root,
             session_dir=sessions,
             generated_at=generated_at,
-            debug_latest=debug_latest,
-            trace_latest=trace_latest,
-            session_latest=session_latest,
+            debug_included=(
+                debug_snapshot is not None
+                if artifact_store is not None
+                else path_exists(debug_latest)
+            ),
+            trace_included=(
+                trace_snapshot is not None
+                if artifact_store is not None
+                else path_exists(trace_latest)
+            ),
             diagnostics=diagnostics,
+            artifacts=snapshots,
         ),
         diagnostics=diagnostics,
-        artifacts=(
-            DiagnosticExportArtifact("debug/latest.log", debug_latest),
-            DiagnosticExportArtifact("traces/latest.jsonl", trace_latest),
-            DiagnosticExportArtifact("sessions/latest.jsonl", session_latest),
+        artifacts=_bundle_export_artifacts(
+            artifact_store,
+            debug_latest=debug_latest,
+            trace_latest=trace_latest,
+            debug_snapshot=debug_snapshot,
+            trace_snapshot=trace_snapshot,
         ),
     )
+    if output is None:
+        sweep_managed_artifacts(
+            exported.parent,
+            name_prefix=f"{profile.archive_prefix}-",
+            suffix=".zip",
+            policy=profile.retention,
+            preserve=(exported,),
+        )
+    return exported
 
 
 def export_diagnostics_archive(
@@ -135,19 +240,55 @@ def export_diagnostics_archive(
     diagnostic payload.
     """
 
-    resolved_output = Path(output_path).expanduser().resolve()
-    resolved_output.parent.mkdir(parents=True, exist_ok=True)
+    resolved_output = Path(output_path).expanduser().absolute()
+    resolved_output.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     redacted_manifest = redact_json_value(dict(manifest))
     redacted_diagnostics = [redact_json_value(dict(item)) for item in diagnostics]
 
-    with zipfile.ZipFile(
-        resolved_output, "w", compression=zipfile.ZIP_DEFLATED
-    ) as archive:
-        archive.writestr("README.txt", redact_text(readme))
-        archive.writestr("manifest.json", _json_text(redacted_manifest))
-        archive.writestr("diagnostics.json", _json_text(redacted_diagnostics))
-        for artifact in artifacts:
-            _write_text_artifact(archive, artifact)
+    temporary = resolved_output.with_name(
+        f".{resolved_output.name}.{uuid4().hex}.tmp"
+    )
+    descriptor = _open_new_private_file(temporary)
+    metadata = os.fstat(descriptor)
+    temporary_identity = _file_identity(metadata)
+    try:
+        with os.fdopen(descriptor, "w+b") as handle:
+            descriptor = -1
+            try:
+                with zipfile.ZipFile(
+                    handle,
+                    "w",
+                    compression=zipfile.ZIP_DEFLATED,
+                ) as archive:
+                    archive.writestr("README.txt", redact_text(readme))
+                    archive.writestr(
+                        "manifest.json",
+                        _json_text(redacted_manifest),
+                    )
+                    archive.writestr(
+                        "diagnostics.json",
+                        _json_text(redacted_diagnostics),
+                    )
+                    for artifact in artifacts:
+                        _write_text_artifact(archive, artifact)
+                handle.flush()
+                os.fsync(handle.fileno())
+            finally:
+                # Capture the last state reached through our still-open handle.
+                # Cleanup and publication must both reject a replacement path,
+                # even when its inode number was immediately reused.
+                temporary_identity = _file_identity(os.fstat(handle.fileno()))
+        temporary_identity = _publish_file_exclusive(
+            temporary,
+            resolved_output,
+            identity=temporary_identity,
+        )
+        _sync_directory(resolved_output.parent)
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        with suppress(OSError):
+            _unlink_owned_file(temporary, temporary_identity)
     return resolved_output
 
 
@@ -194,10 +335,18 @@ def resolve_export_output_path(
 ) -> Path:
     """Resolve an explicit or timestamped archive path without Product IO."""
 
+    if not _safe_relative_directory(directory):
+        raise ValueError("diagnostics directory must be a safe relative path")
+    if not _safe_filename_fragment(prefix):
+        raise ValueError("diagnostics prefix must be a portable name")
     if output is not None:
-        return Path(output).expanduser().resolve()
+        return Path(output).expanduser().absolute()
     timestamp = generated_at.strftime("%Y%m%dT%H%M%SZ")
-    return Path(project_root).expanduser().resolve() / directory / f"{prefix}-{timestamp}.zip"
+    return (
+        Path(project_root).expanduser().resolve()
+        / directory
+        / f"{prefix}-{timestamp}.zip"
+    )
 
 
 def path_exists(path: str | Path) -> bool:
@@ -221,10 +370,10 @@ def _standard_manifest(
     project_root: Path,
     session_dir: Path,
     generated_at: datetime,
-    debug_latest: Path,
-    trace_latest: Path,
-    session_latest: Path,
+    debug_included: bool,
+    trace_included: bool,
     diagnostics: list[dict[str, object]],
+    artifacts: tuple[ArtifactRef, ...],
 ) -> dict[str, object]:
     return {
         "schemaVersion": 1,
@@ -237,12 +386,141 @@ def _standard_manifest(
         "platform": platform.platform(),
         "loushangVersion": _package_version(profile.package_name),
         "included": {
-            "debugLatest": path_exists(debug_latest),
-            "traceLatest": path_exists(trace_latest),
-            "sessionLatest": path_exists(session_latest),
+            "debugLatest": debug_included,
+            "traceLatest": trace_included,
+            "sessionTranscript": False,
             "diagnostics": bool(diagnostics),
         },
+        "artifacts": [artifact.manifest_entry() for artifact in artifacts],
     }
+
+
+def _snapshot_observability_artifacts(
+    store: ArtifactSnapshotStore | None,
+    *,
+    debug_latest: Path,
+    trace_latest: Path,
+) -> tuple[ArtifactRef, ...]:
+    if store is None:
+        return ()
+    snapshots: list[ArtifactRef] = []
+    for path, logical_name, kind, media_type, source in (
+        (
+            debug_latest,
+            "debug/latest.log",
+            "debug-log",
+            "text/plain",
+            "observability.debug.latest",
+        ),
+        (
+            trace_latest,
+            "traces/latest.jsonl",
+            "trace-jsonl",
+            "application/x-ndjson",
+            "observability.trace.latest",
+        ),
+    ):
+        snapshot = _snapshot_latest(
+            store,
+            path,
+            logical_name=logical_name,
+            kind=kind,
+            media_type=media_type,
+            source=source,
+        )
+        if snapshot is not None:
+            snapshots.append(snapshot)
+    return tuple(snapshots)
+
+
+def _bundle_export_artifacts(
+    store: ArtifactSnapshotStore | None,
+    *,
+    debug_latest: Path,
+    trace_latest: Path,
+    debug_snapshot: ArtifactRef | None,
+    trace_snapshot: ArtifactRef | None,
+) -> tuple[DiagnosticExportArtifact, ...]:
+    artifacts: list[DiagnosticExportArtifact] = []
+    for archive_name, latest, snapshot in (
+        ("debug/latest.log", debug_latest, debug_snapshot),
+        ("traces/latest.jsonl", trace_latest, trace_snapshot),
+    ):
+        if store is None:
+            if path_exists(latest):
+                artifacts.append(
+                    DiagnosticExportArtifact(
+                        archive_name=archive_name,
+                        source_path=latest,
+                    )
+                )
+        elif snapshot is not None:
+            artifacts.append(
+                DiagnosticExportArtifact(
+                    archive_name=archive_name,
+                    content=store.read_bytes(snapshot),
+                )
+            )
+    return tuple(artifacts)
+
+
+def _snapshot_latest(
+    store: ArtifactSnapshotStore,
+    path: Path,
+    *,
+    logical_name: str,
+    kind: str,
+    media_type: str,
+    source: str,
+) -> ArtifactRef | None:
+    try:
+        source_path = _resolve_latest_source(path)
+    except (ArtifactSourceRejected, OSError):
+        return None
+    for _attempt in range(2):
+        try:
+            return store.snapshot_file(
+                source_path,
+                logical_name=logical_name,
+                kind=kind,
+                media_type=media_type,
+                disclosure="redact",
+                source=source,
+            )
+        except ArtifactSourceRejected:
+            continue
+        except (ArtifactStoreError, OSError):
+            return None
+    return None
+
+
+def _resolve_latest_source(path: Path) -> Path:
+    expanded = path.expanduser()
+    if expanded.is_symlink():
+        return expanded.resolve(strict=True)
+    if expanded.name != "latest" or not expanded.is_file():
+        return expanded
+    try:
+        with expanded.open("rb") as handle:
+            raw_pointer = handle.read(4097)
+    except (OSError, UnicodeError):
+        return expanded
+    if len(raw_pointer) > 4096:
+        return expanded
+    try:
+        pointer = raw_pointer.decode("utf-8").strip()
+    except UnicodeError:
+        return expanded
+    if not pointer or "\n" in pointer:
+        return expanded
+    target = Path(pointer)
+    if not target.is_absolute():
+        return expanded
+    root = expanded.parent.resolve(strict=True)
+    resolved_target = target.resolve(strict=True)
+    if resolved_target == root or resolved_target.is_relative_to(root):
+        return resolved_target
+    raise ArtifactSourceRejected("latest pointer is outside its state directory")
 
 
 def _package_version(package_name: str) -> str | None:
@@ -285,16 +563,33 @@ def _write_text_artifact(
     artifact: DiagnosticExportArtifact,
 ) -> None:
     archive_name = _safe_archive_name(artifact.archive_name)
-    try:
-        content = artifact.source_path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return
-    archive.writestr(archive_name, redact_text(content))
+    if artifact.content is not None:
+        content = artifact.content.decode("utf-8", errors="replace")
+    else:
+        assert artifact.source_path is not None
+        try:
+            content = artifact.source_path.read_text(
+                encoding="utf-8",
+                errors="replace",
+            )
+        except OSError:
+            return
+    portable_content = content.replace("\r\n", "\n").replace("\r", "\n")
+    archive.writestr(archive_name, redact_text(portable_content))
 
 
 def _safe_archive_name(value: str) -> str:
     path = PurePosixPath(value)
-    if not value or path.is_absolute() or ".." in path.parts or str(path) in {"", "."}:
+    if (
+        not value
+        or "\\" in value
+        or any(ord(character) < 32 for character in value)
+        or path.is_absolute()
+        or PureWindowsPath(value).drive
+        or ".." in path.parts
+        or path.as_posix() != value
+        or str(path) in {"", "."}
+    ):
         raise ValueError(
             f"diagnostics archive member must be a safe relative path: {value!r}"
         )
@@ -308,6 +603,85 @@ def _json_text(value: object) -> str:
         raise TypeError(
             "diagnostics export values must be JSON serializable"
         ) from error
+
+
+def _open_new_private_file(path: Path) -> int:
+    flags = os.O_RDWR | os.O_CREAT | os.O_EXCL
+    flags |= getattr(os, "O_BINARY", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+    return os.open(path, flags, 0o600)
+
+
+def _publish_file_exclusive(
+    temporary: Path,
+    destination: Path,
+    *,
+    identity: _FileIdentity,
+) -> _FileIdentity:
+    _validate_owned_file(temporary, identity)
+    if os.name == "nt":
+        temporary.rename(destination)
+    else:
+        os.link(temporary, destination, follow_symlinks=False)
+    try:
+        published = destination.lstat()
+        if not stat.S_ISREG(published.st_mode) or (
+            published.st_dev,
+            published.st_ino,
+            published.st_size,
+            published.st_mtime_ns,
+        ) != identity[:4]:
+            raise PermissionError(
+                f"diagnostics artifact identity changed: {destination}"
+            )
+        published_identity = _file_identity(published)
+        if os.name != "nt":
+            # Creating the exclusive hard link legitimately advances ctime.
+            # Both names must still resolve to the exact same post-link state.
+            _validate_owned_file(temporary, published_identity)
+        return published_identity
+    except OSError:
+        with suppress(OSError):
+            published = destination.lstat()
+            _unlink_owned_file(
+                destination,
+                _file_identity(published),
+            )
+        raise
+
+
+def _file_identity(metadata: os.stat_result) -> _FileIdentity:
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        metadata.st_size,
+        metadata.st_mtime_ns,
+        metadata.st_ctime_ns,
+    )
+
+
+def _validate_owned_file(path: Path, identity: _FileIdentity) -> None:
+    metadata = path.lstat()
+    if not stat.S_ISREG(metadata.st_mode) or _file_identity(metadata) != identity:
+        raise PermissionError(f"diagnostics artifact identity changed: {path}")
+
+
+def _unlink_owned_file(path: Path, identity: _FileIdentity) -> None:
+    _validate_owned_file(path, identity)
+    path.unlink()
+
+
+def _sync_directory(directory: Path) -> None:
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    try:
+        descriptor = os.open(directory, flags)
+    except OSError:
+        return
+    try:
+        with suppress(OSError):
+            os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 _SENSITIVE_KEY = re.compile(

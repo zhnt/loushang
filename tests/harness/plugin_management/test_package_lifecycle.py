@@ -1,12 +1,27 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from loushang.harness.continuity.plugin_provider import (
+    ContinuityPluginGenerationGate,
+)
+from loushang.harness.continuity.plugin_runtime import (
+    ContinuityPluginInstanceFamilyLease,
+    ContinuityPluginSecurityRetirementEvidence,
+    _create_continuity_plugin_publication,
+)
+from loushang.harness.plugin_management.continuity_adapter import (
+    PluginContinuitySecurityRetirementJournal,
+    PluginInstanceLedgerContinuityFamilyAuthority,
+    PluginInstanceLedgerContinuitySecurityRetirementAuthority,
+)
 from loushang.harness.plugin_management.instance_records import (
     PluginInstanceLeaseFamilyReleaseV1,
     PluginInstanceLeaseFamilyV1,
@@ -56,6 +71,137 @@ from loushang.harness.plugin_management.retirement_sets import (
 )
 from loushang.harness.plugin_management.service import PluginManagementService
 from loushang.harness.resources.plugins.selection import PluginInstanceRevisionRef
+
+
+def test_continuity_publication_security_close_hands_off_package_cleanup(
+    tmp_path: Path,
+) -> None:
+    asyncio.run(_continuity_publication_security_close_hands_off_cleanup(tmp_path))
+
+
+def test_continuity_family_authority_rejects_mixed_durable_source_graph(
+    tmp_path: Path,
+) -> None:
+    context = _context(tmp_path)
+    colliding_packages = PluginPackageLifecycleLedger(
+        context.security_acceptances.path,
+        startup_id="startup-collision",
+        desired_state=context.desired,
+        instance_runtime=context.runtime,
+        retirement_sets=context.sets,
+    )
+    with pytest.raises(ValueError, match="journals must be distinct"):
+        PluginInstanceLedgerContinuityFamilyAuthority(
+            ledger=context.runtime,
+            package_lifecycle=colliding_packages,
+            security_acceptance_journal=context.security_acceptances,
+        )
+
+    other_root = tmp_path / "other-runtime"
+    other_root.mkdir()
+    other = _context(other_root)
+    with pytest.raises(ValueError, match="another Instance ledger"):
+        PluginInstanceLedgerContinuityFamilyAuthority(
+            ledger=context.runtime,
+            package_lifecycle=other.packages,
+            security_acceptance_journal=context.security_acceptances,
+        )
+
+
+async def _continuity_publication_security_close_hands_off_cleanup(
+    tmp_path: Path,
+) -> None:
+    context = _context(tmp_path)
+    key = _key("plugin.a")
+    _install_enable(context, key)
+    active = _activate(context, key)
+    journal = context.security_acceptances
+    family_authority = PluginInstanceLedgerContinuityFamilyAuthority(
+        ledger=context.runtime,
+        package_lifecycle=context.packages,
+        security_acceptance_journal=journal,
+    )
+    family = await family_authority.acquire(
+        active.instance_revision_ref,
+        holder_reference="continuity-owner-generation:security-test",
+    )
+    revocation = PluginInstanceRevocationV1.create(
+        installation_key=key,
+        instance_revision_ref=active.instance_revision_ref,
+        operation_id="continuity-security-revoke",
+        idempotency_key="continuity-security-revoke-request",
+        authority_reference="security:continuity",
+        reason_code="source_revoked",
+    )
+    retirement = PluginInstanceLedgerContinuitySecurityRetirementAuthority(
+        ledger=context.runtime,
+        acceptance_journal=journal,
+        revocations=(revocation,),
+    )
+    generation = _ContinuitySecurityGeneration(
+        family=family,
+        instance_revision_ref=active.instance_revision_ref,
+    )
+    publication = _create_continuity_plugin_publication(
+        generation=generation,  # type: ignore[arg-type]
+        composition=object(),  # type: ignore[arg-type]
+        hub=_ContinuitySecurityHub(generation.events),  # type: ignore[arg-type]
+    )
+
+    await publication.security_revoke(
+        retirement=retirement,
+        quiesce_timeout=1.0,
+    )
+
+    assert journal.records()[0].revocations == (revocation,)
+    instance = context.runtime.snapshot().instance(active.instance_revision_ref)
+    assert instance is not None
+    assert instance.state == "REVOKING"
+    assert context.runtime.snapshot().family(family.family_id) is None
+    [cleanup] = context.packages.snapshot().cleanup_tasks
+    assert cleanup.task.coordination_kind == "security"
+    assert cleanup.task.coordination_id == revocation.revocation_id
+    assert cleanup.task.cleanup_kind == "continuity.owner.security_shutdown"
+    assert cleanup.lease_open is True
+    assert generation.events == ["hub-close", "security-handoff", "dispose"]
+
+
+@dataclass(slots=True)
+class _ContinuitySecurityGeneration:
+    family: ContinuityPluginInstanceFamilyLease
+    instance_revision_ref: PluginInstanceRevisionRef
+    events: list[str] = field(default_factory=list)
+    gate: ContinuityPluginGenerationGate = field(
+        default_factory=ContinuityPluginGenerationGate
+    )
+    security_evidence: ContinuityPluginSecurityRetirementEvidence | None = None
+
+    @property
+    def resolved(self) -> object:
+        candidate = SimpleNamespace(instance_revision_ref=self.instance_revision_ref)
+        component = SimpleNamespace(admission=SimpleNamespace(candidate=candidate))
+        return SimpleNamespace(resolved_set=SimpleNamespace(components=(component,)))
+
+    def authorize_security_cleanup(
+        self,
+        evidence: ContinuityPluginSecurityRetirementEvidence,
+    ) -> None:
+        self.security_evidence = evidence
+
+    async def dispose(self) -> None:
+        assert self.security_evidence is not None
+        await self.family.security_handoff(self.security_evidence)
+        self.events.append("security-handoff")
+        await self.family.close()
+        self.events.append("dispose")
+
+
+@dataclass(slots=True)
+class _ContinuitySecurityHub:
+    events: list[str]
+
+    async def close(self) -> None:
+        self.events.append("hub-close")
 
 
 def test_package_lifecycle_records_are_strict_derived_and_round_trip() -> None:
@@ -281,7 +427,9 @@ def test_failed_family_release_leaves_cleanup_lease_pinned(tmp_path: Path) -> No
 
     task = packages.snapshot().cleanup_tasks[0]
     assert task.lease_open
-    assert context.runtime.snapshot().family(prepared.owner_family.family_id) is not None
+    assert (
+        context.runtime.snapshot().family(prepared.owner_family.family_id) is not None
+    )
     assert (
         packages.handoff_cleanup_and_release(
             prepared.owner_family.family_id,
@@ -310,7 +458,9 @@ def test_graceful_cleanup_rejects_a_different_owner_generation(
         _handoff_owner(context, prepared)
     assert caught.value.code == "invalid_plugin_package_lifecycle_transition"
     assert context.packages.snapshot().journal_revision == 0
-    assert context.runtime.snapshot().family(prepared.owner_family.family_id) is not None
+    assert (
+        context.runtime.snapshot().family(prepared.owner_family.family_id) is not None
+    )
 
 
 def test_cleanup_retry_terminal_repair_and_safe_abandon(tmp_path: Path) -> None:
@@ -327,12 +477,18 @@ def test_cleanup_retry_terminal_repair_and_safe_abandon(tmp_path: Path) -> None:
         family_release=_family_release(prepared.direct_family, suffix="host"),
     )
 
-    assert context.packages.record_cleanup_attempt(
-        _attempt(owner_task, 1, "retryable_failure", suffix="owner-retry")
-    ).state == "retryable_failure"
-    assert context.packages.record_cleanup_attempt(
-        _attempt(owner_task, 2, "terminal_failure", suffix="owner-terminal")
-    ).state == "terminal_failure"
+    assert (
+        context.packages.record_cleanup_attempt(
+            _attempt(owner_task, 1, "retryable_failure", suffix="owner-retry")
+        ).state
+        == "retryable_failure"
+    )
+    assert (
+        context.packages.record_cleanup_attempt(
+            _attempt(owner_task, 2, "terminal_failure", suffix="owner-terminal")
+        ).state
+        == "terminal_failure"
+    )
     with pytest.raises(PluginPackageLifecycleError) as caught:
         context.packages.record_cleanup_attempt(
             _attempt(owner_task, 3, "succeeded", suffix="owner-too-early")
@@ -349,13 +505,19 @@ def test_cleanup_retry_terminal_repair_and_safe_abandon(tmp_path: Path) -> None:
         reason_code="repair.approved",
     )
     assert context.packages.record_repair_decision(retry).state == "retry_permitted"
-    assert context.packages.record_cleanup_attempt(
-        _attempt(owner_task, 3, "succeeded", suffix="owner-success")
-    ).state == "succeeded"
+    assert (
+        context.packages.record_cleanup_attempt(
+            _attempt(owner_task, 3, "succeeded", suffix="owner-success")
+        ).state
+        == "succeeded"
+    )
 
-    assert context.packages.record_cleanup_attempt(
-        _attempt(host_task, 1, "terminal_failure", suffix="host-terminal")
-    ).state == "terminal_failure"
+    assert (
+        context.packages.record_cleanup_attempt(
+            _attempt(host_task, 1, "terminal_failure", suffix="host-terminal")
+        ).state
+        == "terminal_failure"
+    )
     abandon = PluginCleanupRepairDecisionV1.create(
         cleanup_id=host_task.cleanup_id,
         repair_sequence=1,
@@ -593,6 +755,7 @@ class _Context:
     service: PluginManagementService
     runtime: PluginInstanceRuntimeLedger
     packages: PluginPackageLifecycleLedger
+    security_acceptances: PluginContinuitySecurityRetirementJournal
 
 
 @dataclass(frozen=True, slots=True)
@@ -643,12 +806,17 @@ def _context(tmp_path: Path, *, startup_id: str = "startup-1") -> _Context:
         retirement_intents=intents,
         retirement_sets=sets,
     )
+    runtime_path = tmp_path / "instance-runtime.jsonl"
+    security_acceptances = (
+        PluginContinuitySecurityRetirementJournal.for_instance_runtime(runtime_path)
+    )
     runtime = PluginInstanceRuntimeLedger(
-        tmp_path / "instance-runtime.jsonl",
+        runtime_path,
         management_operation_journal_path=operation_path,
         desired_state=desired,
         retirement_intents=intents,
         retirement_sets=sets,
+        security_acceptances=security_acceptances,
     )
     packages = PluginPackageLifecycleLedger(
         tmp_path / "packages.jsonl",
@@ -657,7 +825,15 @@ def _context(tmp_path: Path, *, startup_id: str = "startup-1") -> _Context:
         instance_runtime=runtime,
         retirement_sets=sets,
     )
-    return _Context(desired, intents, sets, service, runtime, packages)
+    return _Context(
+        desired,
+        intents,
+        sets,
+        service,
+        runtime,
+        packages,
+        security_acceptances,
+    )
 
 
 def _package_ledger(
@@ -841,7 +1017,9 @@ def _attempt(
         attempt=attempt,
         disposition=disposition,
         result_code=f"cleanup.{suffix}",
-        retry_not_before_epoch_ms=(1000 if disposition == "retryable_failure" else None),
+        retry_not_before_epoch_ms=(
+            1000 if disposition == "retryable_failure" else None
+        ),
         outcome_reference=f"outcome:{suffix}",
     )
 

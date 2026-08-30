@@ -14,7 +14,9 @@ from _support import (
     describe_model,
 )
 
-from loushang.coding import ToolRegistry, register_builtin_tools, run_print_mode
+from loushang.harnesstui.conversation.agent_binding import (
+    run_agent_plain_mode as run_print_mode,
+)
 
 EXAMPLE_REQUEST = "请生成一个手机登录的页面，放在 demo/index.html"
 
@@ -61,12 +63,10 @@ async def main(argv: list[str] | None = None) -> None:
 
     model = build_kimi_model()
     model_info = describe_model(model)
-    registry = ToolRegistry()
-    register_builtin_tools(registry)
     runtime, session = await create_kimi_runtime_session(
         cwd=Path.cwd(),
         model=model,
-        tools=[registry.get_tool("write")],
+        active_tool_names=["write"],
         persist=False,
     )
 

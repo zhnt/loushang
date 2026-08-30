@@ -99,6 +99,10 @@ def test_standard_session_command_pack_delegates_identity_and_transcript_operati
         calls.append(("export", ("jsonl", path)))
         return "/tmp/session.jsonl"
 
+    def _export_bundle(path: str | None) -> str:
+        calls.append(("export", ("bundle", path)))
+        return "/tmp/session.zip"
+
     async def _import(path: str, cwd: str | None) -> dict[str, object]:
         calls.append(("import", (path, cwd)))
         return {"session_id": "session-2"}
@@ -106,6 +110,7 @@ def test_standard_session_command_pack_delegates_identity_and_transcript_operati
     ports = StandardSessionCommandPorts(
         set_session_name=_set_name,
         export_jsonl=_export_jsonl,
+        export_bundle=_export_bundle,
         import_session=_import,
     )
 
@@ -114,6 +119,9 @@ def test_standard_session_command_pack_delegates_identity_and_transcript_operati
     )
     export = asyncio.run(
         execute_standard_session_command_async("export", "saved.jsonl", ports)
+    )
+    bundle_export = asyncio.run(
+        execute_standard_session_command_async("export", "saved.zip", ports)
     )
     imported = asyncio.run(
         execute_standard_session_command_async(
@@ -130,6 +138,10 @@ def test_standard_session_command_pack_delegates_identity_and_transcript_operati
     assert export.value == StandardSessionExport(
         format="jsonl", path="/tmp/session.jsonl"
     )
+    assert bundle_export is not None
+    assert bundle_export.value == StandardSessionExport(
+        format="bundle", path="/tmp/session.zip"
+    )
     assert imported is not None
     assert imported.value == {"session_id": "session-2"}
     assert invalid_import is not None
@@ -137,6 +149,7 @@ def test_standard_session_command_pack_delegates_identity_and_transcript_operati
     assert calls == [
         ("rename", "Alpha"),
         ("export", ("jsonl", "saved.jsonl")),
+        ("export", ("bundle", "saved.zip")),
         ("import", ("saved.jsonl", "/tmp/project")),
     ]
 

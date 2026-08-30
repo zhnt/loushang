@@ -37,7 +37,10 @@ from loushang.harness.transcript.directory import (
 from loushang.harness.transcript.product_session import (
     ProductTranscriptSession,
 )
-from loushang.harness.transcript.session_catalog import SessionSummary
+from loushang.harness.transcript.session_catalog import (
+    SessionSummary,
+    session_file_authority_fingerprint,
+)
 
 SessionT = TypeVar("SessionT")
 PayloadT = TypeVar("PayloadT")
@@ -56,6 +59,12 @@ TranscriptSessionBuilder = Callable[
     SessionT | Awaitable[SessionT],
 ]
 TranscriptSessionValidator = Callable[[TranscriptSessionT], None | Awaitable[None]]
+
+
+@dataclass(frozen=True)
+class ResolvedDiscoveredSessionFile:
+    path: Path
+    authority_fingerprint: str
 
 
 @dataclass(frozen=True)
@@ -111,6 +120,18 @@ class ProductTranscriptSessionBinding(Generic[ProductTranscriptSessionT]):
         session_ref: str | Path,
         cwd_override: str | None,
     ) -> ProductTranscriptSessionT:
+        source = Path(session_ref).expanduser()
+        if source.name.lower().endswith((".loushang.zip", ".zip")):
+            return await self.session_type.import_bundle(
+                source,
+                session_dir=self.session_dir,
+                cwd_override=(
+                    self.resolve_cwd_override(cwd_override)
+                    if cwd_override is not None
+                    else None
+                ),
+                persist=self.persist,
+            )
         return await self.session_type.open(
             session_ref,
             session_dir=self.session_dir,
@@ -405,12 +426,14 @@ class AgentTranscriptSessionRuntime(
         input_path: str | Path,
         *,
         cwd_override: str | None = None,
+        expected_source_fingerprint: str | None = None,
         metadata: dict[str, object] | None = None,
     ) -> SessionOperationResult[SessionT, PayloadT | None]:
         return await self._lifecycle.import_file(
             input_path,
             destination_dir=self.session_dir,
             cwd_override=cwd_override,
+            expected_source_fingerprint=expected_source_fingerprint,
             metadata=metadata,
         )
 
@@ -485,21 +508,140 @@ class AgentTranscriptSessionRuntime(
         return runtime.get_last_error_report() if runtime else None
 
     def resolve_session_file(self, session_ref: str | Path) -> Path:
-        """Resolve an exact path, filename, or unambiguous current-session id."""
+        """Resolve a mutation target from the writable authority only."""
+
+        resolved = self.resolve_discovered_session_source(session_ref).path
+        if self.is_authority_session_file(resolved):
+            return resolved
+        raise FileNotFoundError(
+            errno.ENOENT,
+            "No such session in the writable authority",
+            str(session_ref),
+        )
+
+    def resolve_discovered_session_file(self, session_ref: str | Path) -> Path:
+        """Resolve a restore source using authority-first compatibility reads."""
+
+        return self.resolve_discovered_session_source(session_ref).path
+
+    def resolve_discovered_session_source(
+        self,
+        session_ref: str | Path,
+    ) -> ResolvedDiscoveredSessionFile:
+        """Resolve a source together with the identity selected by discovery."""
+
+        candidate = Path(session_ref).expanduser()
+        summaries = (
+            []
+            if candidate.exists()
+            else self.list_discovered_session_summaries(
+                session_id_prefix=candidate.name
+            )
+        )
+        if not candidate.exists() and any(
+            issue.code == "discovery_truncated"
+            for issue in self.session_discovery_issues
+        ):
+            raise ValueError(
+                "Session discovery was truncated; use an exact file path or "
+                "reduce configured compatibility roots"
+            )
+        path = self._resolve_session_file_from_summaries(
+            session_ref,
+            summaries=summaries,
+            allow_external_path=True,
+        )
+        selected = next(
+            (
+                summary
+                for summary in summaries
+                if summary.session_file is not None
+                and summary.session_file.absolute() == path.absolute()
+            ),
+            None,
+        )
+        fingerprint = (
+            selected.authority_fingerprint
+            if selected is not None and selected.authority_fingerprint is not None
+            else session_file_authority_fingerprint(path)
+        )
+        return ResolvedDiscoveredSessionFile(path, fingerprint)
+
+    def _resolve_session_file_from_summaries(
+        self,
+        session_ref: str | Path,
+        *,
+        summaries: list[SessionSummary],
+        allow_external_path: bool,
+    ) -> Path:
+        """Apply one identity and authority policy to exact and prefix lookup."""
 
         candidate = Path(session_ref).expanduser()
         if candidate.exists():
-            return candidate.resolve()
+            resolved = candidate.absolute()
+            if allow_external_path or self.is_authority_session_file(resolved):
+                return resolved
+            raise FileNotFoundError(
+                errno.ENOENT,
+                "No such session in the writable authority",
+                str(candidate),
+            )
 
         session_name = candidate.name
-        matches = sorted(self.session_dir.glob(f"*_{session_name}.jsonl"))
-        if len(matches) == 1:
-            return matches[0]
-        if len(matches) > 1:
+        conflicted_ids = {
+            summary.session_id
+            for summary in summaries
+            if summary.discovery is not None
+            and summary.discovery.health == "conflict"
+            and (
+                summary.session_id == session_name
+                or summary.session_id.startswith(session_name)
+            )
+        }
+        if conflicted_ids:
+            raise ValueError(
+                "Ambiguous session reference across discovery sources: "
+                f"{session_name}"
+            )
+        authority_named = self.session_dir / session_name
+        if authority_named.is_file():
+            return authority_named
+        authority_suffix_matches = sorted(
+            self.session_dir.glob(f"*_{session_name}.jsonl")
+        )
+        if len(authority_suffix_matches) == 1:
+            return authority_suffix_matches[0]
+        if len(authority_suffix_matches) > 1:
+            raise ValueError(f"Ambiguous session reference: {session_name}")
+        exact_matches = [
+            summary
+            for summary in summaries
+            if summary.session_file is not None
+            and (
+                summary.session_id == session_name
+                or summary.session_file.name == session_name
+            )
+        ]
+        if len(exact_matches) == 1 and exact_matches[0].session_file is not None:
+            return exact_matches[0].session_file
+        if len(exact_matches) > 1:
+            exact_ids = {summary.session_id for summary in exact_matches}
+            if len(exact_ids) == 1:
+                authority = next(
+                    (
+                        summary.session_file
+                        for summary in exact_matches
+                        if summary.session_file is not None
+                        and self.is_authority_session_file(summary.session_file)
+                    ),
+                    None,
+                )
+                if authority is not None:
+                    return authority
             raise ValueError(f"Ambiguous session reference: {session_name}")
         prefix_matches = [
             summary
-            for summary in self.list_session_summaries()
+            for summary in summaries
             if summary.session_file is not None
             and summary.session_id.startswith(session_name)
         ]
@@ -535,6 +677,7 @@ __all__ = [
     "ProductTranscriptSessionBinding",
     "ProductTranscriptSessionLifecyclePorts",
     "ProductTranscriptSessionLifecycleStore",
+    "ResolvedDiscoveredSessionFile",
     "require_session_operation_session",
     "SessionDiagnosticsProvider",
 ]

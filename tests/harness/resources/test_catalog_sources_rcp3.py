@@ -242,7 +242,8 @@ async def _three_source_precedence_and_exact_unload(tmp_path: Path) -> None:
     compatibility = shadow.catalog_projection.to_compatibility_bundle()
     assert len(compatibility.skills) == 1
     assert compatibility.skills[0].source_kind == "project_local"
-    assert compatibility.skills[0].content.endswith("Native body")
+    assert compatibility.skills[0].content is None
+    assert "body" not in compatibility.skills[0].metadata
     assert [theme.content for theme in compatibility.themes] == [
         '{"background": "black"}\n'
     ]
@@ -260,6 +261,40 @@ def test_native_package_and_embedded_sources_share_one_owner_generation(
     tmp_path: Path,
 ) -> None:
     asyncio.run(_three_source_precedence_and_exact_unload(tmp_path))
+
+
+async def _embedded_extension_package_marker_is_not_a_resource(tmp_path: Path) -> None:
+    collection = mint_embedded_resource_collection_handle(
+        collection_id="coding.extensions",
+        embedded_revision="builtin-1",
+        files={
+            "extensions/__init__.py": b"# package marker\n",
+            "extensions/tool.py": b"def register(api):\n    del api\n",
+        },
+    )
+    shadow = await run_first_party_resource_catalog_shadow(
+        product_id="coding",
+        scope_id="workspace:test",
+        runtime_id="resource-shadow:embedded-extension-marker",
+        product_policy_revision="coding-resource-shadow-v1",
+        root_handles=(),
+        embedded_collections=(collection,),
+        issued_at=10,
+        expires_at=100,
+        now=20,
+        projection_cwd=tmp_path,
+    )
+    assert shadow.catalog_projection is not None
+    assert [
+        extension.name
+        for extension in shadow.catalog_projection.to_compatibility_bundle().extensions
+    ] == ["tool.py"]
+    assert await shadow.dispose() == ()
+    assert collection.closed is True
+
+
+def test_embedded_extension_package_marker_is_not_a_resource(tmp_path: Path) -> None:
+    asyncio.run(_embedded_extension_package_marker_is_not_a_resource(tmp_path))
 
 
 async def _same_precedence_package_conflict_is_rejected(tmp_path: Path) -> None:

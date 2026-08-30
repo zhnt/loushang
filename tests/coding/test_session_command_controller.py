@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -17,10 +18,17 @@ from loushang.harness.resources.types import (
     ResourceBundle,
     SkillDescriptor,
 )
+from loushang.harness.runtime.registration import RegistrationOwner
 from loushang.harness.session import (
     StandardSessionCommandController as CommandController,
 )
 from loushang.harness.session import StandardSessionCommandPorts
+from loushang.harness.session.command_controller import (
+    SessionCommandGenerationRegistry,
+)
+from loushang.harness.session.commands.catalog import (
+    list_standard_session_command_descriptors,
+)
 from loushang.tui.clipboard import ClipboardCopyResult
 
 
@@ -77,6 +85,7 @@ def test_command_controller_lists_extension_prompt_and_enabled_skill_commands(
         get_extension_runner=lambda: runner,
         get_resource_bundle=lambda: bundle,
         get_diagnostics_service=lambda: None,
+        skill_body_authority="legacy_explicit",
     )
 
     commands = controller.list_commands()
@@ -154,6 +163,49 @@ def test_command_controller_lists_builtin_commands_before_extension_and_resource
     }
     assert all(command.source == "builtin" for command in commands[:15])
     assert commands[0].source_info.source == "builtin"
+
+
+def test_command_controller_publishes_and_retires_one_exact_owner_generation(
+    tmp_path,
+) -> None:
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    generations = SessionCommandGenerationRegistry()
+    controller = CommandController(
+        session_manager=manager,
+        get_extension_runner=lambda: None,
+        get_resource_bundle=lambda: None,
+        get_diagnostics_service=lambda: None,
+        standard_ports=StandardSessionCommandPorts(),
+        command_generations=generations,
+    )
+    owner = RegistrationOwner(
+        owner_kind="product",
+        owner_id="commands.session",
+        runtime_id="session:test:coding.base:coding.standard",
+        generation=1,
+    )
+    lease = generations.stage_pack(
+        list_standard_session_command_descriptors(),
+        owner=owner,
+        pack_id="harness.session.standard",
+    )
+
+    assert controller.list_commands() == []
+    assert asyncio.run(controller.execute_command_async("session", "")) is None
+    assert generations.registration_inventory == ()
+
+    lease.activate()
+    assert "session" in {item.name for item in controller.list_commands()}
+    assert asyncio.run(controller.execute_command_async("session", "")) is not None
+    assert generations.registration_inventory == ((owner, lease.identity, "active"),)
+
+    result = asyncio.run(lease.dispose())
+    assert result.state == "removed"
+    assert controller.list_commands() == []
+    assert asyncio.run(controller.execute_command_async("session", "")) is None
+    assert generations.registration_inventory == ()
 
 
 def test_command_controller_exposes_prompt_argument_hint_from_frontmatter(
@@ -256,9 +308,7 @@ def test_command_controller_dispatches_extension_before_builtin_and_resource(
             LoadedExtension(
                 name="rename-ext",
                 source_path=Path("/tmp/project/extensions/rename.py"),
-                commands={
-                    "rename": RegisteredCommand(name="rename", handler=_handler)
-                },
+                commands={"rename": RegisteredCommand(name="rename", handler=_handler)},
             )
         ]
     )
@@ -277,18 +327,93 @@ def test_command_controller_dispatches_extension_before_builtin_and_resource(
         get_extension_runner=lambda: runner,
         get_resource_bundle=lambda: bundle,
         get_diagnostics_service=lambda: None,
-        standard_ports=StandardSessionCommandPorts(set_session_name=builtin_names.append),
+        standard_ports=StandardSessionCommandPorts(
+            set_session_name=builtin_names.append
+        ),
     )
 
-    result = asyncio.run(
-        controller.execute_command_async("/rename", "Project Alpha")
-    )
+    result = asyncio.run(controller.execute_command_async("/rename", "Project Alpha"))
 
     assert result is not None
     assert result.invocation_name == "rename"
     assert result.result is None
     assert calls == [("Project Alpha", "/tmp/project")]
     assert builtin_names == []
+
+
+def test_catalog_skill_namespace_precedes_extension_command(
+    tmp_path: Path,
+) -> None:
+    @dataclass(frozen=True)
+    class Summary:
+        id: str
+        name: str
+        canonical_name: str
+        source_path: Path
+
+    @dataclass(frozen=True)
+    class Loaded:
+        summary: Summary
+        content: str
+
+    extension_calls: list[str] = []
+    load_calls: list[str] = []
+
+    async def extension_handler(args: str, _context: object) -> None:
+        extension_calls.append(args)
+
+    async def load_skill_body(selector: str) -> Loaded:
+        load_calls.append(selector)
+        return Loaded(
+            summary=Summary(
+                id="review",
+                name="review",
+                canonical_name="review",
+                source_path=Path("/catalog/skills/review/SKILL.md"),
+            ),
+            content="Exact Catalog body.",
+        )
+
+    runner = ExtensionRunner(
+        [
+            LoadedExtension(
+                name="conflicting-ext",
+                source_path=Path("/tmp/project/extensions/conflicting.py"),
+                commands={
+                    "skill:review": RegisteredCommand(
+                        name="skill:review",
+                        handler=extension_handler,
+                    )
+                },
+            )
+        ]
+    )
+    controller = CommandController(
+        session_manager=asyncio.run(
+            SessionManager.new(
+                session_dir=tmp_path,
+                cwd="/tmp/project",
+                persist=False,
+            )
+        ),
+        get_extension_runner=lambda: runner,
+        get_resource_bundle=lambda: ResourceBundle(cwd=Path("/legacy")),
+        get_diagnostics_service=lambda: None,
+        get_skill_body_loader=lambda: load_skill_body,
+        skill_body_authority="catalog_required",
+    )
+
+    direct = asyncio.run(controller.execute_command_async("/skill:review", "direct"))
+    preflight = asyncio.run(
+        controller.preflight_user_input_async("/skill:review interactive")
+    )
+
+    assert direct is not None
+    assert direct.result["source"] == "skill"
+    assert "Exact Catalog body." in direct.result["text"]
+    assert "Exact Catalog body." in preflight.text
+    assert load_calls == ["review", "review"]
+    assert extension_calls == []
 
 
 def test_command_controller_executes_builtin_rename_session_and_unsupported_commands(
@@ -1052,9 +1177,7 @@ def test_command_controller_preflight_async_consumes_builtin_command(tmp_path) -
         standard_ports=StandardSessionCommandPorts(set_session_name=names.append),
     )
 
-    result = asyncio.run(
-        controller.preflight_user_input_async("/rename Project Alpha")
-    )
+    result = asyncio.run(controller.preflight_user_input_async("/rename Project Alpha"))
 
     assert result.consumed is True
     assert result.text == "/rename Project Alpha"

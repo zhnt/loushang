@@ -5,6 +5,7 @@ import json
 import os
 import subprocess
 import sys
+import zipfile
 from datetime import UTC, datetime
 from io import StringIO
 from pathlib import Path
@@ -12,7 +13,23 @@ from types import SimpleNamespace
 
 import pytest
 
+from loushang.ai.model import Capabilities, Model
 from loushang.harness.runtime import SessionOperationResult
+
+
+def _model() -> Model:
+    return Model(
+        id="faux-model",
+        name="Faux",
+        provider="faux",
+        endpoint="anthropic-messages",
+        capabilities=Capabilities(
+            reasoning=True,
+            input=("text",),
+            context_window=128000,
+            max_tokens=4096,
+        ),
+    )
 
 
 def _command_descriptor(item: dict[str, object]) -> SimpleNamespace:
@@ -30,6 +47,46 @@ def _command_descriptor(item: dict[str, object]) -> SimpleNamespace:
     )
 
 
+def _skill_status(
+    *,
+    name: str,
+    path: Path,
+    description: str,
+    canonical_name: str | None = None,
+    source_kind: str = "project_local",
+    source_scope: str = "project",
+    source: str = "filesystem",
+    source_root: Path | None = None,
+    declared_enabled: bool = True,
+    declared_model_invocable: bool = True,
+    effective: bool = True,
+    primary: bool = True,
+    status: str = "effective",
+    status_reason: str = "source_precedence",
+    diagnostics: tuple[object, ...] = (),
+) -> SimpleNamespace:
+    canonical = canonical_name or f"{name}/SKILL.md"
+    return SimpleNamespace(
+        name=name,
+        id=canonical,
+        canonical_name=canonical,
+        description=description,
+        source_path=path,
+        source_kind=source_kind,
+        source_scope=source_scope,
+        source=source,
+        source_root=source_root,
+        declared_enabled=declared_enabled,
+        declared_model_invocable=declared_model_invocable,
+        effective=effective,
+        primary=primary,
+        model_invocable=effective and declared_model_invocable,
+        status=status,
+        status_reason=status_reason,
+        diagnostics=diagnostics,
+    )
+
+
 class FakeSession:
     def __init__(self, session_id: str) -> None:
         self.session_id = session_id
@@ -42,7 +99,9 @@ class FakeSession:
         self.set_jsonl_export_calls: list[str | None] = []
         self.get_available_models_calls = 0
         self.list_commands_calls = 0
+        self.list_skill_statuses_calls = 0
         self.commands_payload = []
+        self.skill_statuses_payload: tuple[object, ...] = ()
         self.diagnostics_payload = []
         self.execute_command_calls: list[tuple[str, str]] = []
         self.execute_command_result: object | None = None
@@ -89,6 +148,10 @@ class FakeSession:
     def list_commands(self):
         self.list_commands_calls += 1
         return self.commands_payload
+
+    def list_skill_statuses(self) -> tuple[object, ...]:
+        self.list_skill_statuses_calls += 1
+        return self.skill_statuses_payload
 
     def get_last_diagnostics(self, limit: int = 50):
         return self.diagnostics_payload[-limit:]
@@ -856,6 +919,30 @@ def test_parse_args_supports_tooling_and_continuation_flags() -> None:
     assert args.messages == ("hello",)
 
 
+def test_cli_help_explains_runtime_provenance_flags() -> None:
+    from loushang.coding.cli.args import help_text
+
+    output = help_text()
+
+    assert (
+        "show package version; combine with --verbose for runtime provenance" in output
+    )
+    assert "show executable, import, Git, and bundled component provenance" in output
+    assert "with --version, show runtime provenance" in output
+    assert "--resource-authority-mode" not in output
+    for removed in (
+        "--extension",
+        "--no-extensions",
+        "--skill",
+        "--no-skills",
+        "--prompt-template",
+        "--no-prompt-templates",
+        "--theme",
+        "--no-themes",
+    ):
+        assert removed not in output
+
+
 def test_parse_args_supports_resume_session_reference() -> None:
     from loushang.coding.cli.args import parse_args
 
@@ -865,7 +952,7 @@ def test_parse_args_supports_resume_session_reference() -> None:
     assert args.messages == ()
 
 
-def test_parse_args_supports_pi_style_aliases_and_noop_fields() -> None:
+def test_parse_args_supports_pi_style_aliases_without_legacy_resource_fields() -> None:
     from loushang.coding.cli.args import parse_args
 
     args = parse_args(
@@ -874,18 +961,6 @@ def test_parse_args_supports_pi_style_aliases_and_noop_fields() -> None:
             "-v",
             "--models",
             "claude-3.5,gpt-4o",
-            "--extension",
-            "plugins/demo.py",
-            "--no-extensions",
-            "--skill",
-            "skill-a",
-            "--no-skills",
-            "--prompt-template",
-            "templates/default.md",
-            "--no-prompt-templates",
-            "--theme",
-            "themes/night",
-            "--no-themes",
             "--verbose",
             "--offline",
             "--system-prompt",
@@ -918,14 +993,14 @@ def test_parse_args_supports_pi_style_aliases_and_noop_fields() -> None:
     assert args.help is True
     assert args.version is True
     assert args.models == ("claude-3.5", "gpt-4o")
-    assert args.extensions == ("plugins/demo.py",)
-    assert args.no_extensions is True
-    assert args.skills == ("skill-a",)
-    assert args.no_skills is True
-    assert args.prompt_templates == ("templates/default.md",)
-    assert args.no_prompt_templates is True
-    assert args.themes == ("themes/night",)
-    assert args.no_themes is True
+    assert args.extensions == ()
+    assert args.no_extensions is False
+    assert args.skills == ()
+    assert args.no_skills is False
+    assert args.prompt_templates == ()
+    assert args.no_prompt_templates is False
+    assert args.themes == ()
+    assert args.no_themes is False
     assert args.verbose is True
     assert args.offline is True
     assert args.system_prompt == "sys"
@@ -992,18 +1067,16 @@ def test_parse_args_rewrites_diag_export_subcommand() -> None:
 
 def test_default_runtime_builder_maps_tools_to_allowed_and_active_tools(
     tmp_path,
+    monkeypatch,
 ) -> None:
     from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import default_runtime_builder
-    from loushang.coding.tool_pack import (
-        register_coding_builtin_tools as register_builtin_tools,
-    )
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
 
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "user-home"))
     registry = ToolRegistry()
-    register_builtin_tools(registry)
     runtime = default_runtime_builder(
         args=SimpleNamespace(no_tools=False, tools=("read", "grep"), no_session=True),
         cwd=tmp_path,
@@ -1015,13 +1088,14 @@ def test_default_runtime_builder_maps_tools_to_allowed_and_active_tools(
     session = asyncio.run(runtime.create_session(cwd=str(tmp_path)))
 
     assert session.get_active_tool_names() == ["read", "grep"]
-    assert [definition.name for definition in session.get_all_tools()] == [
+    assert {definition.name for definition in session.get_all_tools()} == {
         "read",
         "grep",
-    ]
+    }
     assert session.multiagent_runtime is not None
     assert session.multiagent_runtime.control.agent_type("explorer") is not None
     assert session.multiagent_runtime.control.agent_type("reviewer") is not None
+    assert runtime.discovery_session_dirs == ()
     assert not {
         "spawn_agent",
         "send_message",
@@ -1032,31 +1106,419 @@ def test_default_runtime_builder_maps_tools_to_allowed_and_active_tools(
     }.intersection(session.get_active_tool_names())
 
 
-def test_default_runtime_builder_maps_no_tools_to_empty_allowed_tools(tmp_path) -> None:
+def test_default_runtime_builder_projects_internal_delegate_resource_profile(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.agent import ModelCallPreparation, synthetic_model_transport
+    from loushang.ai.event_stream.stream import AssistantMessageEventStream
+    from loushang.ai.types import AssistantMessage, TextPart, Usage
     from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import default_runtime_builder
-    from loushang.coding.tool_pack import (
-        register_coding_builtin_tools as register_builtin_tools,
+    from loushang.coding.cli.args import parse_args
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "user-home"))
+    project_skill = tmp_path / "skills" / "project-marker" / "SKILL.md"
+    project_skill.parent.mkdir(parents=True)
+    project_skill.write_text(
+        "---\nname: project-marker\ndescription: PROJECT_RESOURCE_MARKER\n---\n",
+        encoding="utf-8",
+    )
+    user_root = tmp_path / "user-resources"
+    user_skill = user_root / "skills" / "user-marker" / "SKILL.md"
+    user_skill.parent.mkdir(parents=True)
+    user_skill.write_text(
+        "---\nname: user-marker\ndescription: USER_RESOURCE_MARKER\n---\n",
+        encoding="utf-8",
+    )
+    services = create_services(
+        settings_manager=SettingsManager(
+            ControlConfig(capabilities={"coding.lsp": "always"})
+        )
+    )
+    services.resource_loader.set_user_resource_roots(
+        (user_root,),
+        explicit_roots=(user_root,),
+    )
+    args = parse_args(
+        [
+            "--agent-invocation-profile",
+            "read-only-v1",
+            "--no-session",
+            "--no-context-files",
+            "--system-prompt",
+            "DELEGATE_ROLE_MARKER",
+            "--tools",
+            "read,grep",
+        ]
+    )
+    runtime = default_runtime_builder(
+        args=args,
+        cwd=tmp_path,
+        session_dir=tmp_path / "sessions",
+        services=services,
+        tool_registry=WorkspaceToolRegistry(),
+    )
+
+    assert services.resource_loader._no_extensions is False
+    assert services.resource_loader._no_skills is False
+    assert services.resource_loader._no_prompt_templates is False
+    assert services.resource_loader._no_themes is False
+    assert services.resource_loader._no_context_files is True
+
+    captured_model_inputs: list[ModelCallPreparation] = []
+
+    @synthetic_model_transport
+    async def stream_fn(model, context, options=None):  # type: ignore[no-untyped-def]
+        del context, options
+        message = AssistantMessage(
+            endpoint=model.endpoint_id,
+            role="assistant",
+            content=[TextPart(type="text", text="review complete")],
+            api=model.api or model.endpoint_id,
+            provider=model.provider_id,
+            model=model.id,
+            response_id=None,
+            usage=Usage(
+                input=0,
+                output=0,
+                cache_read=0,
+                cache_write=0,
+                total_tokens=0,
+                cost={},
+            ),
+            stop_reason="stop",
+            error_message=None,
+            timestamp=0.0,
+        )
+        stream = AssistantMessageEventStream()
+        stream.push({"type": "done", "reason": "stop", "message": message})
+        return stream
+
+    async def scenario() -> None:
+        session = await runtime.create_session(cwd=str(tmp_path))
+        try:
+            await session.prepare_model_call_runtime()
+            prepare_model_call = session.agent.prepare_model_call
+            assert prepare_model_call is not None
+
+            def capture_model_input(preparation):  # type: ignore[no-untyped-def]
+                captured_model_inputs.append(preparation)
+                return prepare_model_call(preparation)
+
+            session.agent.prepare_model_call = capture_model_input
+            session.agent.stream_fn = stream_fn
+            await session.prompt("review the workspace")
+
+            assert session.get_active_tool_names() == ["read", "grep"]
+            assert {item.name for item in session.get_all_tools()} == {
+                "read",
+                "grep",
+            }
+            assert session.resource_bundle is not None
+            assert session.resource_bundle.extensions == []
+            assert session.resource_bundle.prompts == []
+            assert session.resource_bundle.skills == []
+            assert session.resource_bundle.themes == []
+            assembly = session._coding_base_plugin_assembly
+            assert assembly is not None
+            assert {
+                item.contribution_id
+                for item in assembly.plan_seed.plan.selected_contributions
+            } == {assembly.tool_contribution_id}
+
+            [model_input] = captured_model_inputs
+            assert [item.name for item in model_input.context.tools] == [
+                "read",
+                "grep",
+            ]
+            system_prompt = model_input.context.system_prompt or ""
+            assert "DELEGATE_ROLE_MARKER" in system_prompt
+            assert "PROJECT_RESOURCE_MARKER" not in system_prompt
+            assert "USER_RESOURCE_MARKER" not in system_prompt
+            assert "selected standard Coding tool pack" not in system_prompt
+
+            await session.refresh_resources()
+            assert session.get_active_tool_names() == ["read", "grep"]
+            assert session.resource_bundle is not None
+            assert session.resource_bundle.extensions == []
+            assert session.resource_bundle.prompts == []
+            assert session.resource_bundle.skills == []
+            assert session.resource_bundle.themes == []
+        finally:
+            await runtime.dispose_session_runtime()
+
+    asyncio.run(scenario())
+
+
+def test_default_runtime_builder_declares_global_cwd_and_home_session_sources(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from loushang.ai.types import UserMessage
+    from loushang.coding.bootstrap import create_services
+    from loushang.coding.cli.__main__ import default_runtime_builder
+    from loushang.coding.continuity import (
+        bind_coding_continuity,
+        shutdown_coding_continuity,
+    )
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.continuity import ContinuityQuery
+    from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
+    from loushang.harness.transcript import SessionQuery
+
+    home = tmp_path / "user-home"
+    project = tmp_path / "project"
+    project.mkdir()
+    monkeypatch.setenv("LOUSHANG_HOME", str(home))
+    runtime = default_runtime_builder(
+        args=SimpleNamespace(no_tools=True, tools=(), no_session=False),
+        cwd=project,
+        session_dir=home / "data" / "sessions",
+        services=create_services(),
+        tool_registry=WorkspaceToolRegistry(),
+    )
+
+    assert runtime.authority_session_source.source_id == "sessions.global"
+    assert runtime.authority_session_source.origin == "global"
+    assert [source.source_id for source in runtime.discovery_session_sources] == [
+        "sessions.cwd_compatibility",
+        "sessions.home_compatibility",
+    ]
+    assert [source.origin for source in runtime.discovery_session_sources] == [
+        "cwd",
+        "home",
+    ]
+
+    source_roots = {
+        source.origin: source.root for source in runtime.discovery_session_sources
+    }
+
+    async def seed_and_restore() -> None:
+        async def seed(root: Path, session_id: str, cwd: str) -> Path:
+            manager = await SessionManager.new(
+                session_dir=root,
+                cwd=cwd,
+                persist=True,
+                session_id=session_id,
+            )
+            await manager.append_message(
+                UserMessage(role="user", content=session_id, timestamp=1.0)
+            )
+            path = manager.get_session_file()
+            assert path is not None
+            await manager.dispose_runtime_profile()
+            return path
+
+        await seed(runtime.session_dir, "global-session", "/workspace/global")
+        cwd_file = await seed(
+            source_roots["cwd"],
+            "cwd-session",
+            str(project),
+        )
+        await seed(source_roots["home"], "home-session", "/workspace/home")
+
+        summaries = runtime.list_discovered_session_summaries()
+        assert {
+            summary.session_id: summary.discovery.origin
+            for summary in summaries
+            if summary.discovery is not None
+        } == {
+            "global-session": "global",
+            "cwd-session": "cwd",
+            "home-session": "home",
+        }
+        assert [
+            summary.session_id
+            for summary in runtime.find_discovered_session_summaries(
+                SessionQuery(cwd=str(project))
+            )
+        ] == ["cwd-session"]
+
+        composition = bind_coding_continuity(runtime, all_sessions=True)
+        page = await composition.hub.query(
+            ContinuityQuery(
+                page_size=10,
+                required_actions=("activate",),
+            )
+        )
+        assert {item.target.opaque_id for item in page.items} == {
+            "global-session",
+            "cwd-session",
+            "home-session",
+        }
+
+        prepared = await runtime.prepare_restore_session_operation("cwd-session")
+        result = await prepared.consume()
+        assert result.current is not None
+        restored = result.current.session_manager.get_session_file()
+        assert restored is not None
+        assert restored.parent == runtime.session_dir.resolve()
+        assert restored != cwd_file
+        await shutdown_coding_continuity(runtime)
+        await runtime.dispose_session_runtime()
+
+    asyncio.run(seed_and_restore())
+
+
+@pytest.mark.parametrize("disable_mode", ("all", "builtin"))
+def test_default_runtime_builder_projects_catalog_disabled_tools_into_final_model_input(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    disable_mode: str,
+) -> None:
+    from loushang.agent import ModelCallPreparation, synthetic_model_transport
+    from loushang.ai.event_stream.stream import AssistantMessageEventStream
+    from loushang.ai.types import AssistantMessage, TextPart, Usage
+    from loushang.coding.bootstrap import create_services
+    from loushang.coding.cli.__main__ import default_runtime_builder
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.prompt import (
+        CODING_KERNEL_SYSTEM_PROMPT,
+        CODING_STANDARD_SYSTEM_PROMPT_FRAGMENT,
     )
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
 
     registry = ToolRegistry()
-    register_builtin_tools(registry)
-    runtime = default_runtime_builder(
-        args=SimpleNamespace(no_tools=True, tools=(), no_session=True),
-        cwd=tmp_path,
-        session_dir=tmp_path / "sessions",
-        services=create_services(),
-        tool_registry=registry,
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "missing-home"))
+    services = create_services(
+        settings_manager=SettingsManager(
+            ControlConfig(
+                capabilities={
+                    "coding.arch": "disabled",
+                    "coding.lsp": "disabled",
+                }
+            )
+        )
     )
+    captured_model_inputs: list[ModelCallPreparation] = []
 
-    session = asyncio.run(runtime.create_session(cwd=str(tmp_path)))
+    @synthetic_model_transport
+    async def stream_fn(model, context, options=None):  # type: ignore[no-untyped-def]
+        del context, options
+        message = AssistantMessage(
+            endpoint=model.endpoint_id,
+            role="assistant",
+            content=[TextPart(type="text", text="kernel-only")],
+            api=model.api or model.endpoint_id,
+            provider=model.provider_id,
+            model=model.id,
+            response_id=None,
+            usage=Usage(
+                input=0,
+                output=0,
+                cache_read=0,
+                cache_write=0,
+                total_tokens=0,
+                cost={},
+            ),
+            stop_reason="stop",
+            error_message=None,
+            timestamp=0.0,
+        )
+        stream = AssistantMessageEventStream()
+        stream.push({"type": "done", "reason": "stop", "message": message})
+        return stream
 
-    assert session.get_active_tool_names() == []
-    assert session.get_all_tools() == []
-    assert session.multiagent_runtime is not None
+    async def scenario() -> None:
+        runtime = default_runtime_builder(
+            args=SimpleNamespace(
+                no_tools=disable_mode == "all",
+                no_builtin_tools=disable_mode == "builtin",
+                tools=(),
+                no_session=True,
+            ),
+            cwd=tmp_path,
+            session_dir=tmp_path / "sessions",
+            services=services,
+            tool_registry=registry,
+        )
+        session = await runtime.create_session(cwd=str(tmp_path))
+        try:
+            await session.prepare_model_call_runtime()
+            prepare_model_call = session.agent.prepare_model_call
+            assert prepare_model_call is not None
+
+            def capture_model_input(preparation):  # type: ignore[no-untyped-def]
+                captured_model_inputs.append(preparation)
+                return prepare_model_call(preparation)
+
+            session.agent.prepare_model_call = capture_model_input
+            session.agent.stream_fn = stream_fn
+            await session.prompt("verify kernel-only input")
+
+            base_assembly = session._coding_base_plugin_assembly
+            assert base_assembly is not None
+            assert base_assembly.tool_contribution_id is None
+            assert base_assembly.tool_names == ()
+            assert session._coding_lsp_plugin_assembly is None
+            inputs = session._capability_composition_inputs
+            assert inputs is not None
+            assert {
+                (admission.contribution_kind, admission.contribution_id)
+                for admission in inputs.product_composition.catalog_admissions
+            } == {("command_pack", "coding.standard")}
+            assert {
+                (admission.contribution_kind, admission.contribution_id)
+                for admission in inputs.product_composition.resource_admissions
+            } == {("resource_item", "skill-standard")}
+            assert len(session._capability_owner_generations) == 1
+            assert (
+                session._capability_owner_generations[0].admission.contribution_kind
+                == "command_pack"
+            )
+            tool_inventory = session._composition.tool_controller.tool_registry.registration_inventory
+            assert "tools.workspace" not in {
+                owner.owner_id for owner, _identity, _state in tool_inventory
+            }
+            assert {
+                "bash",
+                "edit",
+                "find",
+                "grep",
+                "ls",
+                "read",
+                "shell",
+                "write",
+            }.isdisjoint(
+                identity.public_key for _owner, identity, _state in tool_inventory
+            )
+            command_registry = session._command_generation_registry
+            assert command_registry is not None
+            assert len(command_registry.registration_inventory) == 1
+            assert session.resource_bundle is not None
+            assert session.resource_bundle.prompts == []
+            assert [skill.name for skill in session.resource_bundle.skills] == [
+                "standard"
+            ]
+            assert session.get_active_tool_names() == []
+            assert session.get_all_tools() == []
+            assert "session" in {command.name for command in session.list_commands()}
+            assert session.get_lsp_status().enabled is False
+            assert session.multiagent_runtime is not None
+
+            [model_input] = captured_model_inputs
+            assert model_input.context.tools == []
+            assert model_input.context.system_prompt is not None
+            assert model_input.context.system_prompt.startswith(
+                CODING_KERNEL_SYSTEM_PROMPT.rstrip()
+            )
+            if disable_mode == "all":
+                assert "Available tools:\n(none)" in model_input.context.system_prompt
+            else:
+                assert "Available tools:" not in model_input.context.system_prompt
+            assert (
+                CODING_STANDARD_SYSTEM_PROMPT_FRAGMENT.rstrip()
+                not in model_input.context.system_prompt
+            )
+        finally:
+            await runtime.dispose_session_runtime()
+
+    asyncio.run(scenario())
 
 
 def test_default_runtime_builder_registers_delegate_only_when_explicitly_selected(
@@ -1064,16 +1526,12 @@ def test_default_runtime_builder_registers_delegate_only_when_explicitly_selecte
 ) -> None:
     from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import default_runtime_builder
-    from loushang.coding.tool_pack import (
-        register_coding_builtin_tools as register_builtin_tools,
-    )
     from loushang.harness.tools.agent_delegate import AGENT_DELEGATE_TOOL_NAME
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
 
     registry = ToolRegistry()
-    register_builtin_tools(registry)
     runtime = default_runtime_builder(
         args=SimpleNamespace(
             no_tools=False,
@@ -1126,12 +1584,9 @@ def test_default_runtime_builder_does_not_restore_delegate_when_builtins_disable
     }
 
 
-def test_default_runtime_builder_applies_resource_and_prompt_options(tmp_path) -> None:
+def test_default_runtime_builder_applies_prompt_options(tmp_path) -> None:
     from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import default_runtime_builder
-    from loushang.coding.tool_pack import (
-        register_coding_builtin_tools as register_builtin_tools,
-    )
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
@@ -1143,28 +1598,12 @@ def test_default_runtime_builder_applies_resource_and_prompt_options(tmp_path) -
     system_file.write_text("System from file", encoding="utf-8")
     append_file = tmp_path / "append.txt"
     append_file.write_text("Append from file", encoding="utf-8")
-    explicit_skill = tmp_path / "review-skill"
-    explicit_skill.mkdir()
-    (explicit_skill / "SKILL.md").write_text(
-        "---\nname: review\n---\n\nReview skill",
-        encoding="utf-8",
-    )
-
     registry = ToolRegistry()
-    register_builtin_tools(registry)
     runtime = default_runtime_builder(
         args=SimpleNamespace(
             no_tools=False,
             tools=(),
             no_session=True,
-            extensions=(),
-            no_extensions=True,
-            skills=(str(explicit_skill),),
-            no_skills=True,
-            prompt_templates=(),
-            no_prompt_templates=True,
-            themes=(),
-            no_themes=True,
             no_context_files=True,
             system_prompt=str(system_file),
             append_system_prompt=(str(append_file), "Inline append"),
@@ -1181,7 +1620,6 @@ def test_default_runtime_builder_applies_resource_and_prompt_options(tmp_path) -
         "System from file\n\nAppend from file\n\nInline append"
     )
     assert "Project guidance" not in session.agent.system_prompt
-    assert [skill.name for skill in session.resource_bundle.skills] == ["review"]
 
 
 def test_default_runtime_builder_rebuilds_project_bound_services_for_session_cwd(
@@ -1190,9 +1628,6 @@ def test_default_runtime_builder_rebuilds_project_bound_services_for_session_cwd
     from loushang.coding.cli.__main__ import (
         build_default_services,
         default_runtime_builder,
-    )
-    from loushang.coding.tool_pack import (
-        register_coding_builtin_tools as register_builtin_tools,
     )
     from loushang.harness.tools.agent_delegate import AGENT_DELEGATE_TOOL_NAME
     from loushang.harness.tools.multiagent import MULTIAGENT_TOOL_NAMES
@@ -1206,7 +1641,6 @@ def test_default_runtime_builder_rebuilds_project_bound_services_for_session_cwd
     project_b.mkdir()
     (project_b / "AGENTS.md").write_text("Project B guidance", encoding="utf-8")
     registry = ToolRegistry()
-    register_builtin_tools(registry)
     services = build_default_services(project_a)
 
     runtime = default_runtime_builder(
@@ -1267,6 +1701,7 @@ def test_cwd_bound_services_factory_uses_sdk_services_creation(
         base_services,
         resource_loader_options,
         create_services=fake_create_agent_session_services,
+        create_services_options={"marker": "catalog-only"},
     )
 
     assert factory is not None
@@ -1275,6 +1710,7 @@ def test_cwd_bound_services_factory_uses_sdk_services_creation(
         {
             "cwd": str(project_b),
             "resource_loader_options": resource_loader_options,
+            "marker": "catalog-only",
         }
     ]
 
@@ -1297,11 +1733,6 @@ def test_run_cli_sets_offline_environment_before_building_runtime(
         exit_code = await run_cli(
             [
                 "--offline",
-                "--extension",
-                "extensions/demo.py",
-                "--skill",
-                "skills/review",
-                "--no-skills",
                 "--list-sessions",
             ],
             stdin=StringIO(""),
@@ -1320,9 +1751,130 @@ def test_run_cli_sets_offline_environment_before_building_runtime(
 
     assert captured_args
     assert captured_args[0].offline is True
-    assert captured_args[0].extensions == ("extensions/demo.py",)
-    assert captured_args[0].skills == ("skills/review",)
-    assert captured_args[0].no_skills is True
+
+
+def test_delegate_agent_command_reaches_real_cli_dispatch_without_legacy_flags(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.coding.agent_invocation import CodingCliAgentInvocationAdapter
+    from loushang.coding.bootstrap import (
+        create_agent_session_services,
+        create_services,
+    )
+    from loushang.coding.cli.__main__ import default_runtime_builder, run_cli
+    from loushang.coding.control import SettingsManager
+    from loushang.harness.tools.agent_delegate import AgentInvocationRequest
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    project_settings = workspace / ".loushang" / "settings.json"
+    project_settings.parent.mkdir()
+    project_settings.write_text(
+        '{"capabilities": {"coding.lsp": "always"}}',
+        encoding="utf-8",
+    )
+    extension_import_marker = tmp_path / "extension-imported"
+    # Coding's current production profile intentionally retains its legacy
+    # workspace Resource root until the later layout migration.
+    extension_dir = workspace / "extensions"
+    extension_dir.mkdir()
+    (extension_dir / "side_effect.py").write_text(
+        "\n".join(
+            (
+                "from pathlib import Path",
+                f"Path({str(extension_import_marker)!r}).write_text('imported')",
+                "def register(api):",
+                "    api.register_flag('must-not-load', type='boolean', default=False)",
+            )
+        ),
+        encoding="utf-8",
+    )
+    executable = tmp_path / "loushang"
+    executable.write_text("#!/bin/sh\n", encoding="utf-8")
+    executable.chmod(0o755)
+    prepared = CodingCliAgentInvocationAdapter(
+        workspace_root=workspace,
+        parent_allowed_tools=("read", "grep"),
+        executable=executable,
+    ).prepare(
+        AgentInvocationRequest(
+            agent_type="reviewer",
+            task="review the parser",
+        ),
+        default_cwd=str(workspace),
+        model=None,
+    )
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "user-home"))
+    captured_args = []
+    captured_sessions = []
+
+    def runtime_builder(**kwargs):
+        captured_args.append(kwargs["args"])
+        return default_runtime_builder(**kwargs)
+
+    async def print_runner(**kwargs):
+        session = kwargs["session"]
+        captured_sessions.append(session)
+        await session.prepare_model_call_runtime()
+        assert session.get_active_tool_names() == ["read", "grep"]
+        assert {item.name for item in session.get_all_tools()} == {"read", "grep"}
+        assert session.resource_bundle is not None
+        assert session.resource_bundle.extensions == []
+        assert session.resource_bundle.prompts == []
+        assert session.resource_bundle.skills == []
+        assert session.resource_bundle.themes == []
+        assert session.extension_runner.get_flags() == []
+        assert session._coding_lsp_plugin_assembly is None
+        await session.refresh_resources()
+        assert session.get_active_tool_names() == ["read", "grep"]
+        assert {item.name for item in session.get_all_tools()} == {"read", "grep"}
+        assert session.resource_bundle.extensions == []
+        assert session.resource_bundle.prompts == []
+        assert session.resource_bundle.skills == []
+        assert session.resource_bundle.themes == []
+        assert session._coding_lsp_plugin_assembly is None
+        assert not extension_import_marker.exists()
+        return 0
+
+    async def scenario() -> None:
+        stderr = StringIO()
+        exit_code = await run_cli(
+            list(prepared.exec_request.command[1:]),
+            stdin=StringIO(prepared.exec_request.stdin or ""),
+            stdout=StringIO(),
+            stderr=stderr,
+            cwd=workspace,
+            services=create_services(
+                settings_manager=SettingsManager(
+                    global_settings_path=tmp_path / "global" / "settings.json",
+                    project_settings_path=project_settings,
+                )
+            ),
+            runtime_builder=runtime_builder,
+            print_runner=print_runner,
+        )
+
+        assert exit_code == 0
+        assert stderr.getvalue() == ""
+
+    asyncio.run(scenario())
+    assert not extension_import_marker.exists()
+
+    assert len(captured_args) == 1
+    assert captured_args[0].agent_invocation_profile == "read-only-v1"
+    assert captured_args[0].tools == ("read", "grep")
+    assert len(captured_sessions) == 1
+
+    standard_services = create_agent_session_services(
+        cwd=workspace,
+        global_settings_path=tmp_path / "global" / "settings.json",
+        project_settings_path=project_settings,
+    )
+    assert [flag.name for flag in standard_services.extension_runner.get_flags()] == [
+        "must-not-load"
+    ]
+    assert extension_import_marker.read_text(encoding="utf-8") == "imported"
 
 
 def test_run_cli_shares_interactive_approval_resolver_with_tools_and_runtime(
@@ -1402,22 +1954,29 @@ def test_run_cli_keeps_legacy_fixed_runtime_builder_signature(tmp_path) -> None:
     assert captured["cwd"] == tmp_path.resolve()
 
 
-def test_cli_builtin_tool_registry_uses_settings_external_tool_policy(
+def test_cli_base_tool_owner_uses_settings_without_direct_registry_publication(
+    tmp_path,
     monkeypatch,
 ) -> None:
+    import asyncio
+
+    import loushang.coding._base_plugin_owners as base_owners
+    from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.cli import __main__ as cli_main
     from loushang.coding.control import ControlConfig, SettingsManager, ToolSettings
+    from loushang.coding.session_manager import SessionManager
 
     captured: dict[str, object] = {}
+    create_definitions = base_owners.create_coding_builtin_tool_definitions
 
-    def fake_register_coding_builtin_tools(registry, **kwargs):
-        captured.update(kwargs)
-        return registry
+    def capture_definitions(*, options=None):
+        captured["options"] = options
+        return create_definitions(options=options)
 
     monkeypatch.setattr(
-        cli_main,
-        "register_coding_builtin_tools",
-        fake_register_coding_builtin_tools,
+        base_owners,
+        "create_coding_builtin_tool_definitions",
+        capture_definitions,
     )
     manager = SettingsManager(
         ControlConfig(
@@ -1427,90 +1986,115 @@ def test_cli_builtin_tool_registry_uses_settings_external_tool_policy(
         )
     )
 
-    cli_main.build_builtin_tool_registry(settings_manager=manager)
+    registry = cli_main.build_builtin_tool_registry(settings_manager=manager)
+    assert {item.name for item in registry.list_definitions()}.isdisjoint(
+        {"bash", "edit", "find", "grep", "ls", "read", "write"}
+    )
 
-    assert captured["external_tool_policy"] == "required"
-    assert captured["shell_path"] == r"C:\tools\pwsh.exe"
-    assert captured["command_prefix"] == "$ErrorActionPreference = 'Stop'"
+    async def scenario() -> None:
+        session = create_agent_session(
+            session_manager=await SessionManager.new(
+                session_dir=tmp_path / "sessions",
+                cwd=str(tmp_path),
+                persist=False,
+            ),
+            model=_model(),
+            services=create_services(settings_manager=manager),
+            tool_registry=registry,
+        )
+        try:
+            await session.prepare_model_call_runtime()
+            options = captured["options"]
+            assert getattr(options, "external_tool_policy") == "required"
+            assert getattr(options, "shell_path") == r"C:\tools\pwsh.exe"
+            assert (
+                getattr(options, "command_prefix") == "$ErrorActionPreference = 'Stop'"
+            )
+        finally:
+            await session.dispose()
+
+    asyncio.run(scenario())
 
 
 def test_cli_policy_settings_bind_to_an_explicit_execution_scope(
     tmp_path,
 ) -> None:
+    from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.cli import __main__ as cli_main
     from loushang.coding.control import ControlConfig, SettingsManager, ToolSettings
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.approval import InteractiveApprovalResolver
     from loushang.harness.policy_engine import PolicyEngine
-    from loushang.harness.tools.workspace import ToolContext
-    from loushang.harness.tools.workspace.authorization import (
-        create_workspace_tool_execution_host,
-    )
     from loushang.harness.tools.workspace.factory import (
         workspace_tool_runtime_settings,
     )
 
-    def context_provider(*, tool_call_id: str) -> ToolContext:
-        return ToolContext(tool_call_id=tool_call_id, cwd=str(tmp_path))
+    async def build_session(manager: SettingsManager, suffix: str):
+        runtime_settings = workspace_tool_runtime_settings(
+            manager,
+            policy_factory=PolicyEngine,
+        )
+        session = create_agent_session(
+            session_manager=await SessionManager.new(
+                session_dir=tmp_path / f"sessions-{suffix}",
+                cwd=str(tmp_path),
+                persist=False,
+            ),
+            model=_model(),
+            services=create_services(settings_manager=manager),
+            tool_registry=cli_main.build_builtin_tool_registry(
+                settings_manager=manager
+            ),
+            active_tool_names=["write"],
+            approval_resolver=InteractiveApprovalResolver(
+                fallback=runtime_settings.approval_resolver
+            ),
+            tool_policy_evaluator=runtime_settings.policy_engine,
+        )
+        await session.prepare_model_call_runtime()
+        tool = next(item for item in session.agent.tools if item.name == "write")
+        return session, tool
 
-    allow_manager = SettingsManager(
-        ControlConfig(
-            tools=ToolSettings(
-                ask_tools=("write",),
-                approval_mode="allow",
+    async def scenario() -> None:
+        allow_manager = SettingsManager(
+            ControlConfig(
+                tools=ToolSettings(
+                    ask_tools=("write",),
+                    approval_mode="allow",
+                )
             )
         )
-    )
-    allow_registry = cli_main.build_builtin_tool_registry(
-        settings_manager=allow_manager
-    )
-    allow_settings = workspace_tool_runtime_settings(
-        allow_manager,
-        policy_factory=PolicyEngine,
-    )
-    allow_registry.bind_execution_host(
-        create_workspace_tool_execution_host(
-            policy_evaluator=allow_settings.policy_engine,
-            approval_resolver=allow_settings.approval_resolver,
-        )
-    )
-    allow_tool = allow_registry.materialize_tool(
-        "write", context_provider=context_provider
-    )
+        allow_session, allow_tool = await build_session(allow_manager, "allow")
+        try:
+            await allow_tool.execute(
+                "call-allow", {"path": "allowed.txt", "content": "ok"}
+            )
+        finally:
+            await allow_session.dispose()
 
-    asyncio.run(
-        allow_tool.execute("call-allow", {"path": "allowed.txt", "content": "ok"})
-    )
-
-    deny_manager = SettingsManager(
-        ControlConfig(
-            tools=ToolSettings(
-                ask_tools=("write",),
-                approval_mode="deny",
-                approval_reason="headless policy denied",
+        deny_manager = SettingsManager(
+            ControlConfig(
+                tools=ToolSettings(
+                    ask_tools=("write",),
+                    approval_mode="deny",
+                    approval_reason="headless policy denied",
+                )
             )
         )
-    )
-    deny_registry = cli_main.build_builtin_tool_registry(settings_manager=deny_manager)
-    deny_settings = workspace_tool_runtime_settings(
-        deny_manager,
-        policy_factory=PolicyEngine,
-    )
-    deny_registry.bind_execution_host(
-        create_workspace_tool_execution_host(
-            policy_evaluator=deny_settings.policy_engine,
-            approval_resolver=deny_settings.approval_resolver,
-        )
-    )
-    deny_tool = deny_registry.materialize_tool(
-        "write", context_provider=context_provider
-    )
+        deny_session, deny_tool = await build_session(deny_manager, "deny")
+        try:
+            with pytest.raises(PermissionError, match="headless policy denied"):
+                await deny_tool.execute(
+                    "call-deny",
+                    {"path": "denied.txt", "content": "blocked"},
+                )
+        finally:
+            await deny_session.dispose()
 
-    with pytest.raises(PermissionError, match="headless policy denied"):
-        asyncio.run(
-            deny_tool.execute("call-deny", {"path": "denied.txt", "content": "blocked"})
-        )
+        assert (tmp_path / "allowed.txt").read_text(encoding="utf-8") == "ok"
+        assert not (tmp_path / "denied.txt").exists()
 
-    assert (tmp_path / "allowed.txt").read_text(encoding="utf-8") == "ok"
-    assert not (tmp_path / "denied.txt").exists()
+    asyncio.run(scenario())
 
 
 def test_parse_args_supports_command_dispatch_flags() -> None:
@@ -1586,6 +2170,87 @@ def test_parse_args_supports_command_dispatch_flags() -> None:
     assert args.command_args == "now"
     assert args.command_result_format == "json"
     assert args.messages == ("hello",)
+
+
+def test_parse_args_rejects_removed_resource_authority_mode() -> None:
+    from loushang.coding.cli.args import parse_args
+
+    with pytest.raises(SystemExit):
+        parse_args(["--resource-authority-mode", "legacy_explicit"])
+
+
+@pytest.mark.parametrize(
+    ("option", "value"),
+    (
+        ("--extension", "plugins/demo.py"),
+        ("--skill", "debug"),
+        ("--prompt-template", "prompts/demo.md"),
+        ("--theme", "themes/dark"),
+        ("--no-skills", None),
+    ),
+)
+def test_parse_args_rejects_removed_legacy_resource_options(
+    option: str,
+    value: str | None,
+) -> None:
+    from loushang.coding.cli.args import parse_args
+
+    argv = [option] if value is None else [option, value]
+    with pytest.raises(SystemExit):
+        parse_args(argv)
+
+
+@pytest.mark.parametrize(
+    ("argv", "expected_option"),
+    (
+        (("--skill", "debug"), "--skill"),
+        (("--resource-authority-mode", "legacy_explicit"), "--resource-authority-mode"),
+        (("--resource-authority-mode=legacy_explicit",), "--resource-authority-mode"),
+        (("-edebug.py",), "-e"),
+        (("lsp", "--skill", "debug"), "--skill"),
+    ),
+)
+def test_run_cli_rejects_removed_resource_input_before_special_dispatch(
+    tmp_path,
+    argv: tuple[str, ...],
+    expected_option: str,
+) -> None:
+    from io import StringIO
+
+    from loushang.coding.cli.__main__ import run_cli
+
+    runtime_built = False
+    lsp_ran = False
+
+    def build_runtime(**_kwargs: object) -> object:
+        nonlocal runtime_built
+        runtime_built = True
+        raise AssertionError("removed Resource input must fail before runtime creation")
+
+    async def run_lsp(*_args: object, **_kwargs: object) -> int:
+        nonlocal lsp_ran
+        lsp_ran = True
+        raise AssertionError("removed Resource input must fail before LSP dispatch")
+
+    stderr = StringIO()
+    exit_code = asyncio.run(
+        run_cli(
+            list(argv),
+            cwd=tmp_path,
+            stderr=stderr,
+            runtime_builder=build_runtime,
+            lsp_runner=run_lsp,
+        )
+    )
+
+    assert exit_code == 2
+    assert runtime_built is False
+    assert lsp_ran is False
+    assert stderr.getvalue() == (
+        f"Error: coding_legacy_resource_input_removed: {expected_option} is no longer "
+        "supported; use native .loushang/resources roots or a verified Plugin "
+        "with exact contribution declarations.\n"
+    )
 
 
 def test_parse_args_maps_pi_style_package_subcommands_to_package_manager_commands() -> (
@@ -1665,10 +2330,47 @@ def test_run_cli_prints_help_and_exits_before_runtime(tmp_path) -> None:
         assert "--list-sessions-format tsv|json" in stdout.getvalue()
         assert "--list-commands-format tsv|json" in stdout.getvalue()
         assert "--command-result-format raw|json" in stdout.getvalue()
-        assert "--export-format html|jsonl" in stdout.getvalue()
+        assert "--export-format bundle|html|jsonl" in stdout.getvalue()
         assert "--export-result-format text|json" in stdout.getvalue()
         assert stderr.getvalue() == ""
         assert not (tmp_path / ".loushang" / "sessions").exists()
+
+    asyncio.run(scenario())
+
+
+def test_run_cli_storage_paths_exits_before_services_or_session(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "global"))
+    monkeypatch.setenv("LOUSHANG_RUNTIME_DIR", str(tmp_path / "runtime"))
+    monkeypatch.setenv("LOUSHANG_TMPDIR", str(tmp_path / "scratch"))
+
+    async def scenario() -> None:
+        stdout = StringIO()
+        stderr = StringIO()
+        exit_code = await run_cli(
+            ["storage", "paths", "--format", "json"],
+            stdin=StringIO(),
+            stdout=stdout,
+            stderr=stderr,
+            cwd=tmp_path / "project",
+            services=object(),
+            runtime_builder=lambda **_kwargs: (_ for _ in ()).throw(
+                AssertionError("storage command must not construct a runtime")
+            ),
+        )
+
+        assert exit_code == 0
+        assert stderr.getvalue() == ""
+        value = json.loads(stdout.getvalue())
+        assert value["home"] == str((tmp_path / "global").resolve())
+        assert any(
+            resource["resourceId"] == "sessions.cwd_compatibility"
+            for resource in value["resources"]
+        )
 
     asyncio.run(scenario())
 
@@ -1859,9 +2561,9 @@ def test_run_cli_routes_machine_readable_command_runtime_stdout_chatter_to_stder
     from loushang.coding.cli.__main__ import run_cli
 
     class ChatteringRuntime(FakeRuntime):
-        def list_sessions(self) -> list[object]:
+        def find_session_summaries(self, query) -> list[object]:
             print("list chatter")
-            return super().list_sessions()
+            return super().find_session_summaries(query)
 
     runtime = ChatteringRuntime(FakeSession("session-1"), records=[])
     leaked_stdout = StringIO()
@@ -1904,6 +2606,45 @@ def test_run_cli_prints_version_and_exits_before_runtime(tmp_path) -> None:
         )
         assert exit_code == 0
         assert stdout.getvalue().strip() != ""
+
+    asyncio.run(scenario())
+
+
+def test_run_cli_prints_verbose_version_provenance_before_runtime(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    def runtime_builder(**kwargs):
+        del kwargs
+        raise AssertionError("verbose version should exit before runtime creation")
+
+    async def scenario() -> None:
+        stdout = StringIO()
+        stderr = StringIO()
+        exit_code = await run_cli(
+            ["--version", "--verbose"],
+            stdin=StringIO(),
+            stdout=stdout,
+            stderr=stderr,
+            cwd=tmp_path,
+            runtime_builder=runtime_builder,
+        )
+        assert exit_code == 0
+        output = stdout.getvalue()
+        assert "loushang source info" in output
+        assert "package_version:" in output
+        assert "entrypoint:" in output
+        assert "python_executable:" in output
+        assert "module_file:" in output
+        assert "launch_mode:" in output
+        assert "source_git_commit:" in output
+        assert "source_git_dirty:" in output
+        assert "provenance_scope: installation" in output
+        assert "components:" in output
+        assert "  native-screen:" in output
+        assert "    kind: renderer" in output
+        assert "    availability: bundled" in output
+        assert "    contract_version: 1" in output
+        assert stderr.getvalue() == ""
 
     asyncio.run(scenario())
 
@@ -1952,14 +2693,27 @@ def test_run_cli_prints_source_info_and_exits_before_runtime(
     assert "python_executable:" in output
     assert "module_file:" in output
     assert "package_root:" in output
+    assert "source_project_root:" in output
+    assert "source_git_branch:" in output
+    assert "source_git_commit:" in output
+    assert "source_git_dirty:" in output
     assert "project_root:" in output
     assert "git_branch:" in output
     assert "git_commit:" in output
+    assert "git_dirty:" in output
     assert "cwd:" in output
     assert "virtual_env:" in output
     assert "sys_prefix:" in output
     assert "package_version:" in output
     assert "install_mode:" in output
+    assert "launch_mode:" in output
+    assert "provenance_schema_version: 1" in output
+    assert "provenance_scope: installation" in output
+    assert "components:" in output
+    assert "  native-screen:" in output
+    assert "    kind: renderer" in output
+    assert "    availability: bundled" in output
+    assert "    contract_version: 1" in output
     assert f"{active} [active]" in output
     assert f"{shadowed} [shadowed]" in output
     assert stderr.getvalue() == ""
@@ -2002,6 +2756,11 @@ def test_run_cli_prints_source_info_as_json(tmp_path, monkeypatch) -> None:
         "status": "active",
         "active": True,
     }
+    assert payload["provenance_schema_version"] == 1
+    assert payload["provenance_scope"] == "installation"
+    assert payload["components"]["native-screen"]["kind"] == "renderer"
+    assert payload["components"]["native-screen"]["availability"] == "bundled"
+    assert payload["components"]["native-screen"]["contract_version"] == 1
     assert stderr.getvalue() == ""
 
 
@@ -2147,7 +2906,10 @@ def test_run_cli_exports_session_and_exits_early(tmp_path) -> None:
     asyncio.run(scenario())
 
 
-def test_run_cli_diag_export_exits_before_runtime_creation(tmp_path) -> None:
+def test_run_cli_diag_export_exits_before_runtime_creation(
+    tmp_path,
+    monkeypatch,
+) -> None:
     from loushang.coding.cli.__main__ import run_cli
 
     session_dir = tmp_path / "sessions"
@@ -2160,6 +2922,8 @@ def test_run_cli_diag_export_exits_before_runtime_creation(tmp_path) -> None:
     output = tmp_path / "diag.zip"
     stdout = StringIO()
     stderr = StringIO()
+    runtime_dir = tmp_path / "runtime"
+    monkeypatch.setenv("LOUSHANG_RUNTIME_DIR", str(runtime_dir))
 
     def runtime_builder(**kwargs):
         raise AssertionError("diag export should not create a runtime")
@@ -2190,6 +2954,10 @@ def test_run_cli_diag_export_exits_before_runtime_creation(tmp_path) -> None:
     assert output.exists()
     assert f"Exported diagnostics to: {output}" in stdout.getvalue()
     assert stderr.getvalue() == ""
+    assert tuple((runtime_dir / "runs").iterdir()) == ()
+    with zipfile.ZipFile(output) as archive:
+        manifest = json.loads(archive.read("manifest.json"))
+        assert manifest["artifacts"][0]["kind"] == "debug-log"
 
 
 def test_run_cli_exports_session_to_default_path_when_path_is_omitted(tmp_path) -> None:
@@ -2383,7 +3151,12 @@ def test_run_cli_lists_sessions_without_creating_new_session(tmp_path) -> None:
 
     asyncio.run(scenario())
 
-    assert runtime.list_sessions_calls == 1
+    from loushang.harness.transcript import SessionQuery
+
+    assert runtime.list_sessions_calls == 0
+    assert runtime.find_session_summaries_calls == [
+        SessionQuery(cwd=str(tmp_path.resolve()))
+    ]
     assert runtime.new_session_calls == []
     assert stdout.getvalue() == (
         "session-2\t/tmp/session-2.jsonl\t/tmp/project-b\t2026-05-22T10:00:00Z\tSecond\n"
@@ -2429,7 +3202,12 @@ def test_run_cli_lists_sessions_as_json_without_creating_new_session(tmp_path) -
 
     asyncio.run(scenario())
 
-    assert runtime.list_sessions_calls == 1
+    from loushang.harness.transcript import SessionQuery
+
+    assert runtime.list_sessions_calls == 0
+    assert runtime.find_session_summaries_calls == [
+        SessionQuery(cwd=str(tmp_path.resolve()))
+    ]
     assert runtime.new_session_calls == []
     assert json.loads(stdout.getvalue()) == [
         {
@@ -2575,7 +3353,9 @@ def test_run_cli_list_sessions_supports_no_diagnostics_filter(tmp_path) -> None:
 
     asyncio.run(scenario())
 
-    assert runtime.find_session_summaries_calls == [SessionQuery(has_diagnostics=False)]
+    assert runtime.find_session_summaries_calls == [
+        SessionQuery(cwd=str(tmp_path), has_diagnostics=False)
+    ]
     assert stdout.getvalue() == ""
     assert stderr.getvalue() == ""
 
@@ -2675,7 +3455,7 @@ def test_run_cli_list_sessions_can_use_session_index(tmp_path) -> None:
     asyncio.run(scenario())
 
     assert runtime.find_indexed_session_summaries_calls == [
-        SessionQuery(text="indexed")
+        SessionQuery(cwd=str(tmp_path.resolve()), text="indexed")
     ]
     assert runtime.find_session_summaries_calls == []
     assert json.loads(stdout.getvalue())[0]["session_id"] == "session-indexed"
@@ -2745,15 +3525,16 @@ def test_run_cli_list_sessions_rejects_invalid_session_limit(tmp_path) -> None:
 
 def test_run_cli_prefers_session_summaries_for_listing(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
+    from loushang.harness.transcript import SessionQuery
 
     class SummaryRuntime(FakeRuntime):
         def __init__(self, session: FakeSession, summaries: list[object]) -> None:
             super().__init__(session)
             self.session_summaries = list(summaries)
-            self.list_session_summaries_calls = 0
+            self.find_session_summaries_calls = []
 
-        def list_session_summaries(self) -> list[object]:
-            self.list_session_summaries_calls += 1
+        def find_session_summaries(self, query) -> list[object]:
+            self.find_session_summaries_calls.append(query)
             return self.session_summaries
 
     runtime = SummaryRuntime(
@@ -2792,7 +3573,9 @@ def test_run_cli_prefers_session_summaries_for_listing(tmp_path) -> None:
 
     asyncio.run(scenario())
 
-    assert runtime.list_session_summaries_calls == 1
+    assert runtime.find_session_summaries_calls == [
+        SessionQuery(cwd=str(tmp_path.resolve()))
+    ]
     assert runtime.list_sessions_calls == 0
     assert json.loads(stdout.getvalue()) == [
         {
@@ -2819,7 +3602,8 @@ def test_run_cli_reports_list_sessions_errors(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
 
     class BrokenListSessionsRuntime(FakeRuntime):
-        def list_sessions(self) -> list[object]:
+        def find_session_summaries(self, query) -> list[object]:
+            del query
             raise RuntimeError("session listing failed")
 
     runtime = BrokenListSessionsRuntime(FakeSession("unused"))
@@ -2848,7 +3632,8 @@ def test_run_cli_reports_list_sessions_unexpected_errors(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
 
     class BrokenListSessionsRuntime(FakeRuntime):
-        def list_sessions(self) -> list[object]:
+        def find_session_summaries(self, query) -> list[object]:
+            del query
             raise TypeError("session listing type error")
 
     runtime = BrokenListSessionsRuntime(FakeSession("unused"))
@@ -2877,7 +3662,8 @@ def test_run_cli_reports_list_sessions_invalid_payload(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
 
     class BrokenListSessionsRuntime(FakeRuntime):
-        def list_sessions(self):
+        def find_session_summaries(self, query):
+            del query
             return {"sessions": []}
 
     runtime = BrokenListSessionsRuntime(FakeSession("unused"))
@@ -4367,7 +5153,12 @@ def test_run_cli_dispatches_continue_by_restoring_latest_session(tmp_path) -> No
 
     asyncio.run(scenario())
 
-    assert runtime.list_sessions_calls == 1
+    from loushang.harness.transcript import SessionQuery
+
+    assert runtime.list_sessions_calls == 0
+    assert runtime.find_session_summaries_calls == [
+        SessionQuery(cwd=str(tmp_path.resolve()), sort_by="recent")
+    ]
     assert runtime.restore_session_calls == [str(latest)]
     assert print_runner.calls[0]["user_input"] == "hello"
 
@@ -4466,7 +5257,8 @@ def test_run_cli_reports_continue_errors_when_list_sessions_fails(tmp_path) -> N
     from loushang.coding.cli.__main__ import run_cli
 
     class BrokenListSessionsRuntime(FakeRuntime):
-        def list_sessions(self):
+        def find_session_summaries(self, query):
+            del query
             raise RuntimeError("session listing failed")
 
     runtime = BrokenListSessionsRuntime(FakeSession("session-1"))
@@ -4494,7 +5286,8 @@ def test_run_cli_reports_continue_invalid_list_sessions_payload(tmp_path) -> Non
     from loushang.coding.cli.__main__ import run_cli
 
     class BrokenListSessionsRuntime(FakeRuntime):
-        def list_sessions(self):
+        def find_session_summaries(self, query):
+            del query
             return {"sessions": []}
 
     runtime = BrokenListSessionsRuntime(FakeSession("session-1"))
@@ -4579,14 +5372,20 @@ def test_run_cli_reports_missing_cwd_from_runtime(tmp_path) -> None:
     assert str(missing_cwd.resolve()) in stderr.getvalue()
 
 
-def test_run_cli_dispatches_rpc_mode_and_creates_new_session(tmp_path) -> None:
+def test_run_cli_dispatches_rpc_mode_and_creates_new_session(
+    tmp_path,
+    monkeypatch,
+) -> None:
     from loushang.coding.cli.__main__ import run_cli
 
     runtime = FakeRuntime(FakeSession("session-1"))
     rpc_runner = FakeRunner()
 
+    platform_sessions = tmp_path / "user-home" / "data" / "sessions"
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "user-home"))
+
     def runtime_builder(**kwargs):
-        assert kwargs["session_dir"] == tmp_path / ".loushang" / "sessions"
+        assert kwargs["session_dir"] == platform_sessions
         return runtime
 
     async def scenario() -> None:
@@ -5955,6 +6754,164 @@ def test_run_cli_bare_resume_cancels_before_creating_placeholder_session(
     assert tui_runner.calls == []
 
 
+def test_run_cli_bare_resume_can_request_user_global_session_listing(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from loushang.coding.cli import __main__ as cli_main
+
+    runtime = FakeRuntime(FakeSession("placeholder"))
+    bindings: list[dict[str, object]] = []
+
+    class _Reference:
+        def release(self) -> None:
+            return None
+
+    class _Hub:
+        def reference(self):
+            return _Reference()
+
+    class _Composition:
+        hub = _Hub()
+
+        async def dispose(self) -> None:
+            return None
+
+    async def bind(_runtime, **kwargs):
+        bindings.append(kwargs)
+        return _Composition()
+
+    async def cancel_picker(**_kwargs):
+        return None
+
+    monkeypatch.setattr(cli_main, "bind_coding_configured_continuity", bind)
+
+    exit_code = asyncio.run(
+        cli_main.run_cli(
+            ["--resume", "--all-sessions"],
+            stdin=TtyStringIO(),
+            stdout=TtyStringIO(),
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+            tui_runner=FakeRunner(),
+            continuity_runner=cancel_picker,
+        )
+    )
+
+    assert exit_code == 0
+    assert len(bindings) == 1
+    assert bindings[0]["cwd"] == tmp_path.resolve()
+    assert bindings[0]["all_sessions"] is True
+    assert isinstance(bindings[0]["session_dir"], Path)
+
+
+def test_run_cli_bare_resume_awaits_configured_continuity_composition(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from loushang.coding.cli import __main__ as cli_main
+
+    runtime = FakeRuntime(FakeSession("placeholder"))
+    services = _fake_services(plugin_sources=("plugins/continuity",))
+    bindings: list[dict[str, object]] = []
+
+    class _Reference:
+        def release(self) -> None:
+            return None
+
+    class _Hub:
+        def reference(self):
+            return _Reference()
+
+    class _Composition:
+        hub = _Hub()
+
+        async def dispose(self) -> None:
+            return None
+
+    async def bind_configured(_runtime, **kwargs):
+        bindings.append(kwargs)
+        return _Composition()
+
+    async def cancel_picker(**_kwargs):
+        return None
+
+    monkeypatch.setattr(
+        cli_main,
+        "bind_coding_configured_continuity",
+        bind_configured,
+    )
+    exit_code = asyncio.run(
+        cli_main.run_cli(
+            ["--resume"],
+            stdin=TtyStringIO(),
+            stdout=TtyStringIO(),
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=services,
+            runtime_builder=lambda **kwargs: runtime,
+            tui_runner=FakeRunner(),
+            continuity_runner=cancel_picker,
+        )
+    )
+
+    assert exit_code == 0
+    assert len(bindings) == 1
+    assert bindings[0]["settings_manager"] is services.settings_manager
+    assert bindings[0]["cwd"] == tmp_path.resolve()
+    assert bindings[0]["all_sessions"] is False
+    assert bindings[0]["diagnostics_service"] is services.diagnostics_service
+    assert isinstance(bindings[0]["session_dir"], Path)
+
+
+def test_run_cli_bare_resume_retries_partial_continuity_cleanup_on_bind_failure(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from loushang.coding.cli import __main__ as cli_main
+    from loushang.coding.continuity_bootstrap import (
+        CodingContinuityBootstrapError,
+    )
+
+    runtime = FakeRuntime(FakeSession("placeholder"))
+    cleanup_calls: list[object] = []
+
+    async def fail_after_partial_bind(_runtime, **_kwargs):
+        raise CodingContinuityBootstrapError(
+            code="coding_continuity_binding_cleanup_retryable"
+        )
+
+    async def retry_cleanup(bound_runtime):
+        cleanup_calls.append(bound_runtime)
+
+    monkeypatch.setattr(
+        cli_main,
+        "bind_coding_configured_continuity",
+        fail_after_partial_bind,
+    )
+    monkeypatch.setattr(cli_main, "shutdown_coding_continuity", retry_cleanup)
+    stderr = StringIO()
+
+    exit_code = asyncio.run(
+        cli_main.run_cli(
+            ["--resume"],
+            stdin=TtyStringIO(),
+            stdout=TtyStringIO(),
+            stderr=stderr,
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+            tui_runner=FakeRunner(),
+        )
+    )
+
+    assert exit_code == 1
+    assert cleanup_calls == [runtime]
+    assert runtime.restore_session_calls == []
+
+
 def test_run_cli_bare_resume_activates_selection_before_starting_main_tui(
     tmp_path,
     monkeypatch,
@@ -6005,10 +6962,13 @@ def test_run_cli_bare_resume_activates_selection_before_starting_main_tui(
         result = await kwargs["activate"](target)
         return ContinuityPickerSelection(target=target, activation_result=result)
 
+    async def bind_configured(_runtime, **_kwargs):
+        return _Composition()
+
     monkeypatch.setattr(
         cli_main,
-        "bind_coding_continuity",
-        lambda _runtime: _Composition(),
+        "bind_coding_configured_continuity",
+        bind_configured,
     )
 
     exit_code = asyncio.run(
@@ -6186,6 +7146,34 @@ def test_run_cli_keeps_list_commands_out_of_default_tui(tmp_path) -> None:
     assert exit_code == 0
     assert tui_runner.calls == []
     assert "review" in stdout.getvalue()
+
+
+def test_run_cli_real_default_lists_owner_published_commands_on_first_start(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    project = tmp_path / "project"
+    project.mkdir()
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    stdout = StringIO()
+    stderr = StringIO()
+
+    exit_code = asyncio.run(
+        run_cli(
+            ["--list-commands", "--no-session"],
+            stdin=StringIO(""),
+            stdout=stdout,
+            stderr=stderr,
+            cwd=project,
+        )
+    )
+
+    assert exit_code == 0
+    command_names = {line.split("\t", 1)[0] for line in stdout.getvalue().splitlines()}
+    assert {"branch", "session", "tools"}.issubset(command_names)
+    assert "failed to prepare" not in stderr.getvalue().lower()
 
 
 def test_run_cli_configures_observability_for_tui_debug_trace(tmp_path) -> None:
@@ -7137,34 +8125,29 @@ def test_run_cli_lists_diagnostics_as_tsv_and_returns_early(tmp_path) -> None:
 
 def test_run_cli_lists_skills_as_json(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.harness.resources.diagnostics import resource_diagnostic
-    from loushang.harness.resources.types import SkillDescriptor
 
     session = FakeSession("session-1")
-    session.resource_bundle.skills = [
-        SkillDescriptor(
+    session.skill_statuses_payload = (
+        _skill_status(
             name="debug",
-            source_path=Path("/tmp/project/skills/debug/SKILL.md"),
-            content="Debug skill",
+            path=Path("/tmp/project/skills/debug/SKILL.md"),
             description="Debug failures by tracing the narrowest failing path.",
-            disable_model_invocation=True,
+            declared_model_invocable=False,
             source_kind="project_local",
             source_scope="project",
             source="filesystem",
             canonical_name="debug/SKILL.md",
             source_root=Path("/tmp/project/skills"),
             diagnostics=(
-                resource_diagnostic(
+                SimpleNamespace(
                     code="invalid_skill_description",
-                    message="Skill frontmatter description is required.",
-                    source_path=Path("/tmp/project/skills/debug/SKILL.md"),
-                    resource_type="skill",
-                    source_kind="project_local",
-                    metadata={"field": "description"},
+                    reason="Skill frontmatter description is required.",
+                    source_id="project-standard",
+                    details=(("field", "description"),),
                 ),
             ),
-        )
-    ]
+        ),
+    )
     runtime = FakeRuntime(session)
     stdout = StringIO()
     stderr = StringIO()
@@ -7179,7 +8162,7 @@ def test_run_cli_lists_skills_as_json(tmp_path) -> None:
             services=_fake_services(),
             runtime_builder=lambda **kwargs: runtime,
         )
-        assert exit_code == 0
+        assert exit_code == 0, (stdout.getvalue(), stderr.getvalue())
 
     asyncio.run(scenario())
 
@@ -7196,14 +8179,19 @@ def test_run_cli_lists_skills_as_json(tmp_path) -> None:
             "source_root": "/tmp/project/skills",
             "disable_model_invocation": True,
             "enabled": True,
+            "declared_enabled": True,
+            "declared_model_invocable": False,
+            "effective": True,
+            "primary": True,
+            "model_invocable": False,
+            "status": "effective",
+            "status_reason": "source_precedence",
             "diagnostics": [
                 {
                     "code": "invalid_skill_description",
-                    "message": "Skill frontmatter description is required.",
-                    "path": "/tmp/project/skills/debug/SKILL.md",
-                    "resource_type": "skill",
-                    "source_kind": "project_local",
-                    "metadata": {"field": "description"},
+                    "reason": "Skill frontmatter description is required.",
+                    "source_id": "project-standard",
+                    "details": {"field": "description"},
                 }
             ],
         }
@@ -7226,7 +8214,19 @@ def test_run_cli_lists_project_skill_provenance_as_json(tmp_path) -> None:
     loader = DefaultResourceLoader()
     bundle = loader.discover_resources(tmp_path)
     session = FakeSession("session-1")
-    session.resource_bundle = bundle
+    skill = bundle.skills[0]
+    session.skill_statuses_payload = (
+        _skill_status(
+            name=skill.name,
+            path=skill.source_path,
+            description=skill.description or "",
+            canonical_name=skill.canonical_name,
+            source_kind=skill.source_kind,
+            source_scope=skill.source_scope,
+            source=skill.source,
+            source_root=skill.source_root,
+        ),
+    )
     runtime = FakeRuntime(session)
     stdout = StringIO()
     stderr = StringIO()
@@ -7258,9 +8258,98 @@ def test_run_cli_lists_project_skill_provenance_as_json(tmp_path) -> None:
             "source_root": str(tmp_path / "skills"),
             "disable_model_invocation": False,
             "enabled": True,
+            "declared_enabled": True,
+            "declared_model_invocable": True,
+            "effective": True,
+            "primary": True,
+            "model_invocable": True,
+            "status": "effective",
+            "status_reason": "source_precedence",
             "diagnostics": [],
         }
     ]
+    assert stderr.getvalue() == ""
+
+
+def test_run_cli_lists_skills_from_real_catalog_session(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.ai.model import Endpoint, Model, ModelSelection, Provider
+    from loushang.ai.model.registry import ModelRegistry
+    from loushang.coding.bootstrap import create_services
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.coding.control import ControlConfig, SettingsManager
+
+    skill_dir = tmp_path / "skills" / "review"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        "---\nname: review\ndescription: Review through the real Catalog.\n---\n"
+        "Review body.\n",
+        encoding="utf-8",
+    )
+    endpoint = Endpoint(
+        id="test-endpoint",
+        provider="faux",
+        api="test",
+        models={
+            "beta": Model(
+                id="beta",
+                provider="faux",
+                endpoint="test-endpoint",
+            )
+        },
+    )
+    services = create_services(
+        ai_model_registry=ModelRegistry.from_providers(
+            {
+                "faux": Provider(
+                    id="faux",
+                    endpoints={endpoint.id: endpoint},
+                )
+            }
+        ),
+        settings_manager=SettingsManager(
+            ControlConfig(
+                default_model=ModelSelection(
+                    provider="faux",
+                    endpoint_id="test-endpoint",
+                    model_id="beta",
+                )
+            )
+        ),
+    )
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "missing-home"))
+    stdout = StringIO()
+    stderr = StringIO()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            [
+                "--no-session",
+                "--list-skills",
+                "--list-skills-format",
+                "json",
+            ],
+            stdin=StringIO(""),
+            stdout=stdout,
+            stderr=stderr,
+            cwd=tmp_path,
+            services=services,
+        )
+        assert exit_code == 0, stderr.getvalue()
+
+    asyncio.run(scenario())
+
+    skills = {item["name"]: item for item in json.loads(stdout.getvalue())}
+    assert "standard" in skills
+    skill = skills["review"]
+    assert (skill["name"], skill["status"], skill["effective"]) == (
+        "review",
+        "effective",
+        True,
+    )
+    assert skill["description"] == "Review through the real Catalog."
     assert stderr.getvalue() == ""
 
 
@@ -7426,9 +8515,9 @@ def test_run_cli_shows_method_json_with_applicability(tmp_path) -> None:
 def test_run_cli_shows_method_as_text(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
 
-    skill_dir = tmp_path / "skills" / "debug"
-    skill_dir.mkdir(parents=True)
-    (skill_dir / "SKILL.md").write_text(
+    method_dir = tmp_path / "methods" / "task" / "debug"
+    method_dir.mkdir(parents=True)
+    (method_dir / "SKILL.md").write_text(
         "---\n"
         "name: debug\n"
         "description: Debug failures.\n"
@@ -7462,8 +8551,8 @@ def test_run_cli_shows_method_as_text(tmp_path) -> None:
     asyncio.run(scenario())
 
     output = stdout.getvalue()
-    assert "id: skill:debug" in output
-    assert "kind: skill_backed" in output
+    assert "id: method:task:debug" in output
+    assert "kind: method_resource" in output
     assert "element_type: task" in output
     assert "applicability:" in output
     assert "  domains: coding" in output

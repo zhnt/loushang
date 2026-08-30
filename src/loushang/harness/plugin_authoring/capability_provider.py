@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from pathlib import PurePosixPath
-from typing import cast
 
 from loushang.harness.capabilities.providers import (
     CapabilityBundleProvider,
@@ -21,7 +19,6 @@ from loushang.harness.plugin_authoring.reservations import (
     _PluginAuthoringReservationView,
 )
 from loushang.harness.resources.plugins.declarations import (
-    PluginContributionExecutionModel,
     PluginContributionReservation,
     PluginDeclaration,
     PluginDeclarationCodecError,
@@ -30,114 +27,19 @@ from loushang.harness.resources.plugins.declarations import (
     _freeze_json_mapping,
     _thaw_json,
 )
-from loushang.harness.resources.plugins.locators import (
-    canonical_plugin_python_path,
-    canonical_plugin_symbol,
-)
 from loushang.harness.resources.plugins.selection import (
     PluginContributionCandidate,
     PluginContributionRef,
     PluginDeclarationSourceGroup,
     PluginSelection,
 )
+from loushang.harness.resources.plugins.symbol_reference import (
+    PLUGIN_SYMBOL_REFERENCE_VERSION,
+    PluginSymbolReference,
+)
 
 CAPABILITY_PROVIDER_PAYLOAD_VERSION = 2
-PLUGIN_SYMBOL_REFERENCE_VERSION = 2
 PLUGIN_PROVIDER_SELECTION_RULE = "Plugin declaration candidate"
-
-@dataclass(frozen=True, slots=True)
-class PluginSymbolReference:
-    """Package-internal symbol locator; the Host attaches revision identity."""
-
-    path: str
-    symbol: str
-    execution_model: PluginContributionExecutionModel
-    symbol_reference_version: int = PLUGIN_SYMBOL_REFERENCE_VERSION
-
-    def __post_init__(self) -> None:
-        path = _contained_python_path(self.path)
-        canonical_plugin_symbol(self.symbol)
-        if self.execution_model != "in_process":
-            raise ValueError("Unsupported Plugin symbol execution model")
-        if self.symbol_reference_version != PLUGIN_SYMBOL_REFERENCE_VERSION:
-            raise ValueError("Unsupported Plugin symbol reference version")
-        object.__setattr__(self, "path", path.as_posix())
-
-    @property
-    def relative_path(self) -> PurePosixPath:
-        return PurePosixPath(self.path)
-
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "executionModel": self.execution_model,
-            "path": self.path,
-            "symbol": self.symbol,
-            "symbolReferenceVersion": self.symbol_reference_version,
-        }
-
-    @classmethod
-    def from_dict(cls, value: object) -> PluginSymbolReference:
-        if not isinstance(value, dict):
-            raise PluginDeclarationCodecError(
-                "Plugin symbol reference must be an object",
-                code="plugin_declaration_field_type_mismatch",
-            )
-        version = value.get("symbolReferenceVersion")
-        if version is None:
-            raise PluginDeclarationCodecError(
-                "Plugin symbol reference version is missing",
-                code="unsupported_plugin_symbol_reference_version",
-            )
-        if not isinstance(version, int) or isinstance(version, bool):
-            raise PluginDeclarationCodecError(
-                "Plugin symbol reference version must be an integer",
-                code="plugin_declaration_field_type_mismatch",
-            )
-        if version != PLUGIN_SYMBOL_REFERENCE_VERSION:
-            raise PluginDeclarationCodecError(
-                "Unsupported Plugin symbol reference version",
-                code="unsupported_plugin_symbol_reference_version",
-            )
-        document = _wire_exact_document(
-            value,
-            name="Plugin symbol reference",
-            keys={
-                "executionModel",
-                "path",
-                "symbol",
-                "symbolReferenceVersion",
-            },
-        )
-        path = document["path"]
-        symbol = document["symbol"]
-        execution_model = document["executionModel"]
-        if not all(isinstance(item, str) for item in (path, symbol, execution_model)):
-            raise PluginDeclarationCodecError(
-                "Plugin symbol reference fields must be strings",
-                code="plugin_declaration_field_type_mismatch",
-            )
-        assert isinstance(path, str)
-        assert isinstance(symbol, str)
-        assert isinstance(execution_model, str)
-        if execution_model != "in_process":
-            raise PluginDeclarationCodecError(
-                "Unsupported Plugin symbol execution model",
-                code="unsupported_plugin_contribution_execution_model",
-            )
-        try:
-            return cls(
-                path=path,
-                symbol=symbol,
-                execution_model=cast(
-                    PluginContributionExecutionModel, execution_model
-                ),
-                symbol_reference_version=version,
-            )
-        except (TypeError, ValueError) as exc:
-            raise PluginDeclarationCodecError(
-                f"Invalid Plugin symbol reference: {exc}",
-                code="plugin_declaration_field_value_mismatch",
-            ) from exc
 
 
 @dataclass(frozen=True, slots=True)
@@ -562,15 +464,6 @@ def _wire_exact_document(
             code="plugin_declaration_exact_field_mismatch",
         )
     return value
-
-
-def _contained_python_path(value: object) -> PurePosixPath:
-    try:
-        return canonical_plugin_python_path(value)
-    except ValueError as exc:
-        raise ValueError(
-            "Plugin symbol path must be a contained relative Python path"
-        ) from exc
 
 
 __all__ = [

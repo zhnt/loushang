@@ -10,6 +10,7 @@ from loushang.harness.continuity import (
     ContinuityPreview,
     ContinuityPreviewSection,
     ContinuityProviderDescriptor,
+    ContinuityProviderSourceDescriptor,
     ContinuityQuery,
     ContinuitySummary,
     ContinuityTarget,
@@ -24,6 +25,7 @@ from loushang.harnesstui.continuity import (
 from loushang.harnesstui.continuity.keybindings import (
     CONTINUITY_DOMAIN_ACTION,
     CONTINUITY_PREVIEW_ACTION,
+    CONTINUITY_PROVIDER_ACTION,
     CONTINUITY_SORT_ACTION,
     continuity_keybinding_manager,
 )
@@ -48,11 +50,22 @@ def test_continuity_keybinding_catalog_owns_continuity_actions() -> None:
 
     assert manager.keys_for(CONTINUITY_PREVIEW_ACTION) == ("space",)
     assert manager.keys_for(CONTINUITY_DOMAIN_ACTION) == ("tab",)
+    assert manager.keys_for(CONTINUITY_PROVIDER_ACTION) == ("ctrl+p",)
     assert manager.keys_for(CONTINUITY_SORT_ACTION) == ("ctrl+s",)
     assert continuity_keybinding_manager(manager) is manager
 
 
 def _reference(hub: "_Hub") -> StableContinuityReference:
+    for index, bound in enumerate(hub.composition.continuity_providers):
+        if not hasattr(bound, "source"):
+            provider_id = bound.provider.descriptor.provider_id
+            bound.source = ContinuityProviderSourceDescriptor(
+                provider_id=provider_id,
+                source="product",
+                source_id="product:studio",
+                implementation=f"test-{index}",
+                implementation_version=1,
+            )
     return StableContinuityReference(hub)  # type: ignore[arg-type]
 
 
@@ -147,7 +160,7 @@ def test_common_resume_view_is_a_real_page_and_renders_loading_first() -> None:
     after = view.render(RenderConstraints(width=80, max_height=12))
 
     assert any("Review the parser" in line.text for line in after.lines)
-    assert hub.queries == [ContinuityQuery()]
+    assert hub.queries == [ContinuityQuery(required_actions=("activate",))]
     assert renders
 
 
@@ -164,6 +177,63 @@ def test_continuity_surface_can_exclude_non_selectable_summaries() -> None:
         await surface.start()
         assert surface.selected_target is None
         assert "delete" in surface.footer_help
+        surface.close()
+
+    asyncio.run(scenario())
+
+
+def test_delete_surface_filters_targets_by_advertised_action() -> None:
+    read_only_hub = _Hub()
+    read_only_hub.summary = replace(
+        read_only_hub.summary,
+        actions=("activate",),
+    )
+    read_only = ContinuitySurface(
+        reference=_reference(read_only_hub),
+        request_render=lambda _kind: None,
+        selection_action="delete",
+    )
+    deletable_hub = _Hub()
+    deletable_hub.summary = replace(
+        deletable_hub.summary,
+        actions=("activate", "delete"),
+    )
+    deletable = ContinuitySurface(
+        reference=_reference(deletable_hub),
+        request_render=lambda _kind: None,
+        selection_action="delete",
+    )
+
+    async def scenario() -> None:
+        await read_only.start()
+        await deletable.start()
+        assert read_only.selected_target is None
+        assert deletable.selected_target == deletable_hub.summary.target
+        read_only.close()
+        deletable.close()
+
+    asyncio.run(scenario())
+
+
+def test_delete_surface_requests_provider_side_action_filter() -> None:
+    hub = _Hub()
+    deletable = replace(
+        hub.summary,
+        target=replace(hub.summary.target, opaque_id="session-2"),
+        title="Delete the parser session",
+        actions=("activate", "delete"),
+    )
+    hub.summary = deletable
+    surface = ContinuitySurface(
+        reference=_reference(hub),
+        request_render=lambda _kind: None,
+        selection_action="delete",
+    )
+
+    async def scenario() -> None:
+        await surface.start()
+        assert surface.selected_target == deletable.target
+        assert hub.queries[0].required_actions == ("delete",)
         surface.close()
 
     asyncio.run(scenario())
@@ -309,11 +379,16 @@ def test_common_resume_distinguishes_empty_and_partial_responsive_views() -> Non
         message="Design history is temporarily unavailable",
         provider_id="design.canvases",
     )
+    secondary_diagnostic = ContinuityDiagnostic(
+        code="provider_stale",
+        message="Coding index is stale",
+        provider_id="coding.sessions",
+    )
     partial_hub = _PageHub(
         ContinuityPage(
             items=(empty_hub.summary,),
             next_cursor=None,
-            provider_diagnostics=(diagnostic,),
+            provider_diagnostics=(diagnostic, secondary_diagnostic),
             partial=True,
             ordering_complete=False,
             provider_states={
@@ -326,6 +401,19 @@ def test_common_resume_distinguishes_empty_and_partial_responsive_views() -> Non
             aggregate_index_state="fresh",
         )
     )
+    design = ContinuityProviderDescriptor(
+        provider_id="design.canvases",
+        experience_id="studio",
+        domain_ids=("design",),
+        label="Design",
+    )
+    partial_hub.composition = SimpleNamespace(
+        experience=partial_hub.composition.experience,
+        continuity_providers=(
+            *partial_hub.composition.continuity_providers,
+            SimpleNamespace(provider=_Provider(design)),
+        ),
+    )
     partial_view = build_continuity_surface_view(
         reference=_reference(partial_hub),
         request_render=lambda _kind: None,
@@ -333,6 +421,8 @@ def test_common_resume_distinguishes_empty_and_partial_responsive_views() -> Non
     asyncio.run(partial_view.content.start())
     wide = partial_view.render(RenderConstraints(width=120, max_height=24))
     assert any("Partial results:" in line.text for line in wide.lines)
+    assert any("Design:" in line.text for line in wide.lines)
+    assert any("(+1 more)" in line.text for line in wide.lines)
     assert all(visible_width(line.text) <= 120 for line in wide.lines)
 
 
@@ -393,9 +483,247 @@ def test_common_resume_adds_neutral_domain_filter_for_multi_provider_experience(
     toolbar = strip_control_sequences(rendered.lines[2].text)
 
     assert toolbar.startswith("Type to search")
+    assert "Provider: [All] Coding Design" in toolbar
     assert "Domain: [All] Coding Design" in toolbar
     assert toolbar.rstrip().endswith("Sort: [Updated] Created")
     assert "Cwd" not in toolbar
+
+
+def test_common_resume_filters_by_provider_without_widening_domain() -> None:
+    async def scenario() -> None:
+        hub = _Hub()
+        design = ContinuityProviderDescriptor(
+            provider_id="design.canvases",
+            experience_id="studio",
+            domain_ids=("design",),
+            label="Design",
+            supported_sorts=("updated", "created"),
+        )
+        hub.composition = SimpleNamespace(
+            experience=hub.composition.experience,
+            continuity_providers=(
+                *hub.composition.continuity_providers,
+                SimpleNamespace(provider=_Provider(design)),
+            ),
+        )
+        surface = ContinuitySurface(
+            reference=_reference(hub),
+            request_render=lambda _kind: None,
+        )
+        await surface.start()
+
+        surface.handle_input(InputEvent(kind="key", key="tab"))
+        assert surface.query.domain_ids == ("coding",)
+        intent = surface.handle_input(InputEvent(kind="key", key="ctrl+p"))
+        assert intent == InputIntent(
+            kind="consumed",
+            note="continuity_provider",
+        )
+        assert surface.query.provider_ids == ("coding.sessions",)
+        assert surface.query.domain_ids == ("coding",)
+        assert surface._query_task is not None
+        await surface._query_task
+        assert hub.queries[-1].provider_ids == ("coding.sessions",)
+
+        surface.handle_input(InputEvent(kind="key", key="ctrl+p"))
+        assert surface.query.provider_ids == ("design.canvases",)
+        assert surface.query.domain_ids == ()
+        surface.close()
+
+    asyncio.run(scenario())
+
+
+def test_provider_switch_invalidates_old_target_until_new_query_publishes() -> None:
+    class _SlowHub(_Hub):
+        def __init__(self) -> None:
+            super().__init__()
+            self.release = asyncio.Event()
+
+        async def query(self, request: ContinuityQuery) -> ContinuityPage:
+            if self.queries:
+                await self.release.wait()
+            return await super().query(request)
+
+    async def scenario() -> None:
+        hub = _SlowHub()
+        design = ContinuityProviderDescriptor(
+            provider_id="design.canvases",
+            experience_id="studio",
+            domain_ids=("design",),
+            label="Design",
+            supported_sorts=("updated", "created"),
+        )
+        hub.composition = SimpleNamespace(
+            experience=hub.composition.experience,
+            continuity_providers=(
+                *hub.composition.continuity_providers,
+                SimpleNamespace(provider=_Provider(design)),
+            ),
+        )
+        surface = ContinuitySurface(
+            reference=_reference(hub),
+            request_render=lambda _kind: None,
+        )
+        await surface.start()
+        assert surface.selected_target == hub.summary.target
+
+        surface.handle_input(InputEvent(kind="key", key="ctrl+p"))
+
+        assert surface.loading is True
+        assert surface.selected_target is None
+        assert surface.begin_activation() is False
+        surface.handle_input(InputEvent(kind="key", key="space"))
+        await asyncio.sleep(0)
+        assert hub.previewed == []
+        hub.release.set()
+        assert surface._query_task is not None
+        await surface._query_task
+        surface.close()
+
+    asyncio.run(scenario())
+
+
+def test_provider_switch_rejects_late_result_from_cancel_suppressing_query() -> None:
+    class _CancellationSuppressingHub(_Hub):
+        def __init__(self) -> None:
+            super().__init__()
+            self.old_started = asyncio.Event()
+            self.new_started = asyncio.Event()
+            self.release_old = asyncio.Event()
+            self.release_new = asyncio.Event()
+
+        async def query(self, request: ContinuityQuery) -> ContinuityPage:
+            page = await super().query(request)
+            query_number = len(self.queries)
+            if query_number == 2:
+                self.old_started.set()
+                try:
+                    await self.release_old.wait()
+                except asyncio.CancelledError:
+                    return page
+            elif query_number == 3:
+                self.new_started.set()
+                await self.release_new.wait()
+            return page
+
+    async def scenario() -> None:
+        hub = _CancellationSuppressingHub()
+        design = ContinuityProviderDescriptor(
+            provider_id="design.canvases",
+            experience_id="studio",
+            domain_ids=("design",),
+            label="Design",
+        )
+        hub.composition = SimpleNamespace(
+            experience=hub.composition.experience,
+            continuity_providers=(
+                *hub.composition.continuity_providers,
+                SimpleNamespace(provider=_Provider(design)),
+            ),
+        )
+        surface = ContinuitySurface(
+            reference=_reference(hub),
+            request_render=lambda _kind: None,
+        )
+        await surface.start()
+
+        surface.handle_input(InputEvent(kind="text", text="parser"))
+        await asyncio.wait_for(hub.old_started.wait(), timeout=1)
+        surface.handle_input(InputEvent(kind="key", key="ctrl+p"))
+        await asyncio.sleep(0)
+
+        assert surface.loading is True
+        assert surface.selected_target is None
+        assert surface.begin_activation() is False
+
+        await asyncio.wait_for(hub.new_started.wait(), timeout=1)
+        assert surface.loading is True
+        assert surface.selected_target is None
+        hub.release_new.set()
+        assert surface._query_task is not None
+        await surface._query_task
+        surface.close()
+
+    asyncio.run(scenario())
+
+
+def test_provider_switch_reindexes_compatible_domain_subset() -> None:
+    async def scenario() -> None:
+        hub = _Hub()
+        broad = ContinuityProviderDescriptor(
+            provider_id="coding.sessions",
+            experience_id="studio",
+            domain_ids=("coding", "design", "presentation"),
+            label="Coding",
+        )
+        narrow = ContinuityProviderDescriptor(
+            provider_id="design.canvases",
+            experience_id="studio",
+            domain_ids=("design", "presentation"),
+            label="Design",
+        )
+        hub.composition = SimpleNamespace(
+            experience=SimpleNamespace(
+                domain_ids=("coding", "design", "presentation")
+            ),
+            continuity_providers=(
+                SimpleNamespace(provider=_Provider(broad)),
+                SimpleNamespace(provider=_Provider(narrow)),
+            ),
+        )
+        surface = ContinuitySurface(
+            reference=_reference(hub),
+            request_render=lambda _kind: None,
+        )
+        await surface.start()
+
+        for _ in range(3):
+            surface.handle_input(InputEvent(kind="key", key="tab"))
+        assert surface.query.domain_ids == ("presentation",)
+
+        surface.handle_input(InputEvent(kind="key", key="ctrl+p"))
+        assert surface.query.provider_ids == ("coding.sessions",)
+        assert surface._domain_index == 3
+        surface.handle_input(InputEvent(kind="key", key="ctrl+p"))
+
+        assert surface.query.provider_ids == ("design.canvases",)
+        assert surface.query.domain_ids == ("presentation",)
+        assert surface._domain_options == (None, "design", "presentation")
+        assert surface._domain_index == 2
+        rendered = surface.render(RenderConstraints(width=120, max_height=14))
+        assert any(
+            "[Presentation]" in strip_control_sequences(line.text)
+            for line in rendered.lines
+        )
+        surface.close()
+
+    asyncio.run(scenario())
+
+
+def test_delete_surface_hides_activate_only_provider_filter() -> None:
+    hub = _Hub()
+    imported = ContinuityProviderDescriptor(
+        provider_id="cloud.sessions",
+        experience_id="studio",
+        domain_ids=("coding",),
+        label="Cloud",
+        supported_actions=("activate",),
+    )
+    hub.composition = SimpleNamespace(
+        experience=hub.composition.experience,
+        continuity_providers=(
+            *hub.composition.continuity_providers,
+            SimpleNamespace(provider=_Provider(imported)),
+        ),
+    )
+    surface = ContinuitySurface(
+        reference=_reference(hub),
+        request_render=lambda _kind: None,
+        selection_action="delete",
+    )
+
+    assert surface._provider_options == (None,)
+    assert "provider" not in surface.footer_help.lower()
 
 
 def test_common_resume_loads_next_page_without_wrapping_to_first_item() -> None:
@@ -638,7 +966,8 @@ def test_common_resume_surface_searches_provider_and_routes_typed_target() -> No
     async def scenario() -> None:
         await surface.start()
         surface.handle_input(InputEvent(kind="text", text="parser"))
-        assert surface.selected_target == hub.summary.target
+        assert surface.selected_target is None
+        assert surface.begin_activation() is False
         await asyncio.sleep(0.2)
 
         assert hub.queries[-1].text == "parser"

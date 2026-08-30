@@ -18,6 +18,7 @@ and [Extension Runtime Core Boundary](../harness/extension-runtime-core-boundary
 - [Loushang Coding System Context](loushang-coding-system-context.md)
 - [ARD-001: Loushang Coding Product Boundaries](ARD-001-coding-product-boundaries.md)
 - [ARD-004: Package And Plugin Boundary](ARD-004-package-plugin-boundary.md)
+  (superseded decision history)
 - [Loushang Coding Candidate Components](loushang-coding-candidate-components.md)
 - [Loushang Coding Deployment Unit Terminology](loushang-coding-du-terminology.md)
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -218,6 +218,32 @@ async def _federated_keyset_paging_does_not_skip_unemitted_items() -> None:
 
 def test_failed_provider_marks_page_partial_and_withholds_canonical_cursor() -> None:
     asyncio.run(_failed_provider_marks_page_partial_and_withholds_canonical_cursor())
+
+
+def test_provider_page_cannot_exceed_requested_limit() -> None:
+    class _OversizedProvider(_Provider):
+        async def query(self, request: ProviderQuery) -> ProviderPage:
+            page = await super().query(replace(request, limit=request.limit + 1))
+            return page
+
+    provider = _OversizedProvider(
+        "coding.sessions",
+        (
+            _summary("coding.sessions", "one", 0),
+            _summary("coding.sessions", "two", 1),
+        ),
+    )
+
+    page = asyncio.run(_hub(provider).query(ContinuityQuery(page_size=1)))
+
+    assert page.items == ()
+    assert page.partial is True
+    assert page.ordering_complete is False
+    assert page.next_cursor is None
+    assert page.provider_diagnostics[0].code == "continuity_provider_query_failed"
+    assert page.provider_diagnostics[0].message == (
+        "provider returned more items than the requested limit"
+    )
 
 
 async def _failed_provider_marks_page_partial_and_withholds_canonical_cursor() -> None:

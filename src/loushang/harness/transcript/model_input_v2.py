@@ -913,6 +913,7 @@ class ModelInputV2Writer:
         snapshot: ModelInputSnapshotV2,
         materialization: ModelInputV2Materialization,
         *,
+        logical_input_hash: str,
         prepared_payload_hash: str,
     ) -> None:
         """Prove the just-written snapshot from writer-verified graph roots."""
@@ -942,8 +943,8 @@ class ModelInputV2Writer:
             raise ModelInputIntegrityError(
                 "Model Input v2 snapshot changed its materialized roots"
             )
-        if snapshot.logical_input_hash != materialization.logical_input_hash:
-            raise ModelInputIntegrityError("Model Input v2 logical root hash changed")
+        if snapshot.logical_input_hash != logical_input_hash:
+            raise ModelInputIntegrityError("Model Input v2 logical input hash changed")
         if snapshot.prepared_payload_hash != prepared_payload_hash:
             raise ModelInputIntegrityError(
                 "Model Input v2 prepared request hash changed"

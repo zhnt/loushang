@@ -21,12 +21,6 @@ from loushang.ai import ApiKeyAuth, CallOptions
 from loushang.coding import (
     create_agent_session_runtime,
 )
-from loushang.coding import (
-    register_coding_builtin_tools as register_builtin_tools,
-)
-from loushang.harness.tools.workspace.registry import (
-    WorkspaceToolRegistry as ToolRegistry,
-)
 
 EXAMPLE_FIRST_REQUEST = (
     "当前目录有哪些文件？"
@@ -106,9 +100,6 @@ async def main(argv: list[str] | None = None) -> None:
 
     model = build_kimi_model()
     model_info = describe_model(model)
-    registry = ToolRegistry()
-    register_builtin_tools(registry)
-
     if args.resume is not None:
         session_file = args.resume.expanduser().resolve()
         if not session_file.is_file():
@@ -122,7 +113,6 @@ async def main(argv: list[str] | None = None) -> None:
         session_dir=session_dir,
         model=model,
         system_prompt=DEFAULT_SYSTEM_PROMPT,
-        tools=registry.list_enabled_tools(),
         persist=True,
     )
 

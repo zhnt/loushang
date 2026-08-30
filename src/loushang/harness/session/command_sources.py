@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Generic, Literal, Protocol, TypeVar
 
 from loushang.harness.capabilities.prompt_preflight import (
     PromptPreflightResult,
+    SkillBodyLoader,
     preflight_user_input,
+    preflight_user_input_async,
 )
 from loushang.harness.commands import (
     CommandDispatchOutcome,
@@ -17,6 +19,7 @@ from loushang.harness.commands import (
     list_resource_command_descriptors,
     split_slash_command,
 )
+from loushang.harness.commands.resources import SkillCommandSummary
 from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.extensions.commands import list_extension_command_descriptors
 from loushang.harness.extensions.types import ResolvedCommand
@@ -24,6 +27,11 @@ from loushang.harness.resources.types import ResourceBundle
 
 ResultT = TypeVar("ResultT")
 ResourceCommandKind = Literal["prompt", "skill"]
+ResourceSkillBodyAuthority = Literal["catalog_required", "legacy_explicit"]
+
+
+class ResourceSkillBodyAuthorityError(RuntimeError):
+    """A Resource command source cannot satisfy its selected body authority."""
 
 
 class ExtensionCommandProvider(Protocol):
@@ -98,6 +106,7 @@ class ExtensionCommandSourceRuntime(Generic[ResultT]):
 
 
 ResourceCommandBundleProvider = Callable[[], ResourceBundle | None]
+SkillBodyLoaderProvider = Callable[[], SkillBodyLoader | None]
 DiagnosticDraftRecorder = Callable[[tuple[DiagnosticDraft, ...]], None]
 ResourceCommandNotFoundRecorder = Callable[[str, str], None]
 ResourceCommandResultFactory = Callable[[str, ResourceCommandKind, str], ResultT]
@@ -111,9 +120,32 @@ class ResourceCommandSourceRuntime(Generic[ResultT]):
     record_diagnostics: DiagnosticDraftRecorder
     record_command_not_found: ResourceCommandNotFoundRecorder
     result_factory: ResourceCommandResultFactory[ResultT]
+    get_effective_skills: (
+        Callable[[], Sequence[SkillCommandSummary] | None] | None
+    ) = None
+    get_skill_body_loader: SkillBodyLoaderProvider | None = None
+    skill_body_authority: ResourceSkillBodyAuthority | None = None
+
+    def __post_init__(self) -> None:
+        if self.skill_body_authority not in {
+            None,
+            "catalog_required",
+            "legacy_explicit",
+        }:
+            raise ValueError("Resource Skill body authority is invalid")
 
     def list_descriptors(self) -> list[SessionCommandDescriptor]:
-        return list_resource_command_descriptors(self.get_resource_bundle())
+        return list_resource_command_descriptors(
+            self.get_resource_bundle(),
+            effective_skills=(
+                self.get_effective_skills()
+                if self.get_effective_skills is not None
+                else None
+            ),
+            allow_legacy_skill_body=(
+                self.skill_body_authority == "legacy_explicit"
+            ),
+        )
 
     def dispatch(
         self, invocation: ParsedSlashCommand
@@ -123,13 +155,65 @@ class ResourceCommandSourceRuntime(Generic[ResultT]):
             return CommandDispatchOutcome.unhandled()
         return CommandDispatchOutcome.handled_result(result)
 
+    async def dispatch_async(
+        self, invocation: ParsedSlashCommand
+    ) -> CommandDispatchOutcome[ResultT]:
+        result = await self.execute_async(invocation.name, invocation.args)
+        if result is None:
+            return CommandDispatchOutcome.unhandled()
+        return CommandDispatchOutcome.handled_result(result)
+
     def execute(self, invocation_name: str, args: str) -> ResultT | None:
         resource_bundle = self.get_resource_bundle()
-        if resource_bundle is None:
+        skill_body_loader = self._skill_body_loader()
+        if resource_bundle is None and skill_body_loader is None:
             self.record_command_not_found(invocation_name, args)
             return None
         command_text = f"/{invocation_name}{f' {args}' if args else ''}"
-        result = preflight_user_input(command_text, resource_bundle=resource_bundle)
+        result = preflight_user_input(
+            command_text,
+            resource_bundle=resource_bundle,
+            load_skill_body=skill_body_loader,
+            allow_legacy_skill_body=(
+                self.skill_body_authority == "legacy_explicit"
+            ),
+        )
+        return self._project_execution_result(
+            invocation_name,
+            args,
+            command_text,
+            result,
+        )
+
+    async def execute_async(self, invocation_name: str, args: str) -> ResultT | None:
+        resource_bundle = self.get_resource_bundle()
+        skill_body_loader = self._skill_body_loader()
+        if resource_bundle is None and skill_body_loader is None:
+            self.record_command_not_found(invocation_name, args)
+            return None
+        command_text = f"/{invocation_name}{f' {args}' if args else ''}"
+        result = await preflight_user_input_async(
+            command_text,
+            resource_bundle=resource_bundle,
+            load_skill_body=skill_body_loader,
+            allow_legacy_skill_body=(
+                self.skill_body_authority == "legacy_explicit"
+            ),
+        )
+        return self._project_execution_result(
+            invocation_name,
+            args,
+            command_text,
+            result,
+        )
+
+    def _project_execution_result(
+        self,
+        invocation_name: str,
+        args: str,
+        command_text: str,
+        result: PromptPreflightResult,
+    ) -> ResultT | None:
         self.record_diagnostics(result.diagnostics)
         if result.diagnostics:
             return None
@@ -145,9 +229,48 @@ class ResourceCommandSourceRuntime(Generic[ResultT]):
         result = preflight_user_input(
             user_input,
             resource_bundle=self.get_resource_bundle(),
+            load_skill_body=self._skill_body_loader(),
+            allow_legacy_skill_body=(
+                self.skill_body_authority == "legacy_explicit"
+            ),
         )
         self.record_diagnostics(result.diagnostics)
         return result
+
+    async def preflight_user_input_async(
+        self,
+        user_input: str,
+    ) -> PromptPreflightResult:
+        result = await preflight_user_input_async(
+            user_input,
+            resource_bundle=self.get_resource_bundle(),
+            load_skill_body=self._skill_body_loader(),
+            allow_legacy_skill_body=(
+                self.skill_body_authority == "legacy_explicit"
+            ),
+        )
+        self.record_diagnostics(result.diagnostics)
+        return result
+
+    def _skill_body_loader(self) -> SkillBodyLoader | None:
+        provider = self.get_skill_body_loader
+        loader = provider() if provider is not None else None
+        if self.skill_body_authority is None and loader is not None:
+            raise ResourceSkillBodyAuthorityError(
+                "Skill body loader requires an explicit body authority"
+            )
+        if self.skill_body_authority == "catalog_required" and loader is None:
+            raise ResourceSkillBodyAuthorityError(
+                "Catalog-required Skill body loader is unavailable"
+            )
+        if self.skill_body_authority == "legacy_explicit" and loader is not None:
+            raise ResourceSkillBodyAuthorityError(
+                "Legacy-explicit Skill commands cannot adopt Catalog body authority"
+            )
+        return loader
+
+    def has_skill_body_loader(self) -> bool:
+        return self._skill_body_loader() is not None
 
 
 __all__ = [
@@ -161,5 +284,7 @@ __all__ = [
     "ResourceCommandNotFoundRecorder",
     "ResourceCommandResultFactory",
     "ResourceCommandSourceRuntime",
+    "ResourceSkillBodyAuthority",
+    "ResourceSkillBodyAuthorityError",
     "DiagnosticDraftRecorder",
 ]

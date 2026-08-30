@@ -6,6 +6,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from loushang.agent.types import AgentMessage
 from loushang.ai.types import Message, UserMessage
 from loushang.foundation.json import JSONValue
 from loushang.harness.conversation import (
@@ -18,6 +19,7 @@ from loushang.harness.conversation import (
     StoreCommitOutcomeUnknown,
 )
 from loushang.harness.conversation.jsonl_codec import ConversationJsonlRecordCodec
+from loushang.harness.conversation.replay import ConversationReplayProjection
 from loushang.harness.conversation.repository import ConversationRepository
 from loushang.harness.conversation.types import (
     BranchDelta,
@@ -62,6 +64,7 @@ from loushang.harness.transcript.types import (
     AgentTranscriptContext,
     AgentTranscriptPayload,
     AgentTranscriptRecord,
+    AgentTranscriptState,
     ApplicationMessage,
     BranchContextSummary,
     ContextCompactionCheckpoint,
@@ -314,6 +317,15 @@ class AgentTranscriptUnitOfWork:
 
     def replay_context(self) -> AgentTranscriptContext:
         return self._profile.replay(self.active_path())
+
+    def replay_projection(
+        self,
+        records: Sequence[AgentTranscriptRecord] | None = None,
+    ) -> ConversationReplayProjection[AgentMessage, AgentTranscriptState]:
+        """Return the selected context items with exact transcript record ids."""
+
+        selected = self.active_path() if records is None else tuple(records)
+        return self._profile.replay_projection(selected)
 
     async def commit(self, record: AgentTranscriptRecord) -> AgentTranscriptCommit:
         """Durably append one prebuilt record, then advance runtime state."""

@@ -10,6 +10,15 @@ from loushang.harness.diagnostics.export import (
     resolve_export_output_path,
     utc_now,
 )
+from loushang.harness.diagnostics.runtime_provenance import (
+    RUNTIME_PROVENANCE_SCHEMA_VERSION,
+    RuntimeProvenanceComponent,
+    RuntimeProvenanceContributor,
+    RuntimeProvenanceError,
+    RuntimeProvenanceScope,
+    StaticRuntimeProvenanceContributor,
+    compose_runtime_provenance,
+)
 from loushang.harness.diagnostics.serialization import (
     serialize_diagnostic,
     serialize_diagnostic_summary,
@@ -43,6 +52,7 @@ __all__ = [
     "DiagnosticSummary",
     "DiagnosticsQuery",
     "DiagnosticsService",
+    "compose_runtime_provenance",
     "collect_diagnostics",
     "DEFAULT_DIAGNOSTIC_BUNDLE_PROFILE",
     "DEFAULT_DIAGNOSTICS_LIMIT",
@@ -56,6 +66,12 @@ __all__ = [
     "serialize_error_report",
     "path_exists",
     "resolve_export_output_path",
+    "RUNTIME_PROVENANCE_SCHEMA_VERSION",
+    "RuntimeProvenanceComponent",
+    "RuntimeProvenanceContributor",
+    "RuntimeProvenanceError",
+    "RuntimeProvenanceScope",
     "run_standard_startup_checks",
+    "StaticRuntimeProvenanceContributor",
     "utc_now",
 ]

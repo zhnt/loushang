@@ -15,12 +15,16 @@ from loushang.harness.capabilities import (
     stage_resource_composition_candidate,
     standard_capability_composition_plan,
 )
+from loushang.harness.capabilities.prompt_preflight import preflight_user_input_async
 from loushang.harness.capabilities.resources_consumers import (
     ResourceCatalogCapabilityConsumer,
+    ResourceSkillCatalogCapabilityConsumer,
 )
 from loushang.harness.capabilities.resources_contracts import (
     RESOURCES_CAPABILITY_DEFINITION_V2,
+    RESOURCES_CAPABILITY_DEFINITION_V3,
     RESOURCES_CATALOG_LOAD_REQUIREMENT,
+    RESOURCES_SKILL_CATALOG_LOAD_REQUIREMENT,
 )
 from loushang.harness.capabilities.resources_provider import (
     resources_capability_provider_binding,
@@ -49,6 +53,7 @@ from loushang.harness.resources._catalog_records import (
     ResourceIdentity,
     ResourceLoadHandle,
 )
+from loushang.harness.resources._skill_catalog_consumer import SkillCatalogConsumer
 from loushang.harness.resources.types import (
     PromptFragmentDescriptor,
     ResourceBundle,
@@ -103,6 +108,11 @@ def _route(
     diagnostics: tuple[DiagnosticDraft, ...] = (),
     source_class: ResourceSourceKind = "project_local",
 ) -> ExtensionResourceRouteContribution:
+    body_free_skills = tuple(replace(skill, content=None) for skill in skills)
+    skill_bodies = tuple(
+        skill.content.encode("utf-8") if skill.content is not None else None
+        for skill in skills
+    )
     return ExtensionResourceRouteContribution(
         extension_id="example.review",
         route_id="example.review:resources_discover:resources",
@@ -111,9 +121,20 @@ def _route(
         source_root_order=3,
         route_order=0,
         prompt_descriptors=prompts,
-        skills=skills,
+        skills=body_free_skills,
+        skill_bodies=skill_bodies,
         diagnostics=diagnostics,
     )
+
+
+def test_extension_route_rejects_duplicate_skill_body_metadata(tmp_path: Path) -> None:
+    skill = replace(
+        _skill(tmp_path / "SKILL.md", content="Exact body"),
+        metadata={"body": "HIDDEN DUPLICATE"},
+    )
+
+    with pytest.raises(ValueError, match="metadata must be body-free"):
+        _route(skills=(skill,))
 
 
 def test_extension_generation_freezes_exact_provenance_and_body_bytes(
@@ -310,7 +331,11 @@ async def _graph_owned_catalog_loads_extension_body(tmp_path: Path) -> None:
         extension_generation=1,
         extension_set_fingerprint=_digest("extension-set-graph"),
         route_contributions=(
-            _route(prompts=(_prompt(tmp_path / "review.md", text="graph body"),)),
+            _route(
+                skills=(
+                    _skill(tmp_path / "audit" / "SKILL.md", content="graph body"),
+                )
+            ),
         ),
     )
     profile = _profile()
@@ -326,17 +351,19 @@ async def _graph_owned_catalog_loads_extension_body(tmp_path: Path) -> None:
         expires_at=10,
         now=2,
         extension_source_lease=extension_generation.borrow(),
+        projection_cwd=tmp_path,
     )
     binding = resources_capability_provider_binding(
         profile=profile,
         scope_instance_id="session:test",
         staged_candidate=candidate,
+        enable_skill_catalog_v3=True,
     )
     plan = RuntimeCapabilityGraphPlanner().plan(
         CapabilityGraphPlanRequest(
             product_id="coding",
-            roots=(RESOURCES_CAPABILITY_DEFINITION_V2.capability_id,),
-            definitions=(RESOURCES_CAPABILITY_DEFINITION_V2,),
+            roots=(RESOURCES_CAPABILITY_DEFINITION_V3.capability_id,),
+            definitions=(RESOURCES_CAPABILITY_DEFINITION_V3,),
             providers=(binding.provider,),
         )
     )
@@ -347,18 +374,38 @@ async def _graph_owned_catalog_loads_extension_body(tmp_path: Path) -> None:
     )
     binder = RuntimeCapabilityGraphBinder()
     await binder.bind(runtime, plan, (binding,))
-    consumer = ResourceCatalogCapabilityConsumer(
-        runtime.capture(RESOURCES_CATALOG_LOAD_REQUIREMENT)
-    )
-    identity = ResourceIdentity(
-        resource_kind="prompt",
-        schema_id="loushang.resource.prompt",
-        schema_version=1,
-        public_id="review",
+    consumer = SkillCatalogConsumer(
+        ResourceSkillCatalogCapabilityConsumer(
+            runtime.capture(RESOURCES_SKILL_CATALOG_LOAD_REQUIREMENT)
+        )
     )
 
-    loaded = await consumer.load(consumer.load_handle(identity))
+    async def load_skill_body(selector: str):  # type: ignore[no-untyped-def]
+        summary = consumer.get_effective_skill(selector)
+        if summary is None:
+            return None
+        return await consumer.load(consumer.load_handle(summary))
+
+    preflight = await preflight_user_input_async(
+        "/skill:audit",
+        resource_bundle=ResourceBundle(
+            cwd=tmp_path,
+            skills=(
+                _skill(
+                    tmp_path / "forged" / "SKILL.md",
+                    content="forged compatibility body",
+                ),
+            ),
+        ),
+        load_skill_body=load_skill_body,
+    )
+    loaded = preflight.loaded_skills[0]
     assert loaded.body == b"graph body"
+    assert "graph body" in preflight.text
+    assert "forged compatibility body" not in preflight.text
+    assert loaded.receipt.source_generation_ref == (
+        extension_generation.source_generation_ref
+    )
     assert candidate.ownership_state == "graph_owned"
     assert extension_generation.is_disposed is False
 
@@ -449,6 +496,68 @@ def test_extension_runtime_prepares_defensive_exact_route_inputs(
     tmp_path: Path,
 ) -> None:
     asyncio.run(_extension_runtime_prepares_defensive_exact_route_inputs(tmp_path))
+
+
+def test_extension_owner_routes_skill_as_body_free_descriptor_and_exact_bytes(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        skill = replace(
+            _skill(tmp_path / "audit" / "SKILL.md", content="Exact owner bytes."),
+            metadata={
+                "frontmatter": {"name": "audit"},
+                "body": "Exact owner bytes.",
+            },
+        )
+
+        async def discover(_event, _context):  # type: ignore[no-untyped-def]
+            return ExtensionResourceContribution(skills=[skill])
+
+        extension = LoadedExtension(
+            name="example.audit",
+            source_path=tmp_path / "extension.py",
+            source="extension",
+            source_kind="project_local",
+            source_scope="project",
+            source_root=tmp_path,
+            source_root_order=2,
+            hooks={"resources_discover": [discover]},
+        )
+        runtime = ExtensionResourceRuntime([extension], diagnostics=[])
+        discovery = await runtime.prepare_catalog_inputs_async(
+            ResourceBundle(cwd=tmp_path),
+            context=object(),
+        )
+
+        routed = discovery.route_contributions[0]
+        assert routed.skills[0].content is None
+        assert "body" not in routed.skills[0].metadata
+        assert routed.skill_bodies == (b"Exact owner bytes.",)
+
+        generation = freeze_extension_resource_source_generation(
+            product_id="coding",
+            runtime_id="extension-runtime-sidecar",
+            extension_generation=1,
+            extension_set_fingerprint=_digest("extension-sidecar"),
+            route_contributions=discovery.route_contributions,
+        )
+        candidate = generation.source_snapshot.candidate_summaries[0]
+        projected = generation.descriptor_bindings[0].descriptor
+        assert isinstance(projected, SkillDescriptor)
+        assert projected.content is None
+        handle = ResourceLoadHandle.from_catalog(
+            catalog_handle=ResourceCatalogHandle(
+                catalog_generation=3,
+                snapshot_fingerprint=_digest("catalog-sidecar"),
+                identity=candidate.identity,
+                candidate_fingerprint=candidate.candidate_fingerprint,
+            ),
+            candidate=candidate,
+        )
+        assert generation.load(handle).body == b"Exact owner bytes."
+        generation.dispose()
+
+    asyncio.run(scenario())
 
 
 async def _extension_runtime_prepares_defensive_exact_route_inputs(

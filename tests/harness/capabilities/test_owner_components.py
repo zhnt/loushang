@@ -106,6 +106,17 @@ def _candidate(
     )
 
 
+def test_candidate_v1_projection_remains_compatible() -> None:
+    candidate = _candidate(_definition(), "native")
+    document = candidate.to_dict()
+
+    assert document["candidateVersion"] == 1
+    assert "allowedAuthorityCeiling" not in document
+    assert "pluginCandidateFingerprint" not in document
+    assert "declarationFingerprint" not in document
+    assert "declarationEvidenceFingerprint" not in document
+
+
 def _resolved(
     component_ids: tuple[str, ...],
     *,

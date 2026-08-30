@@ -7,6 +7,9 @@ from pathlib import Path
 import pytest
 
 from loushang.harness.diagnostics.service import DiagnosticsService
+from loushang.harness.resources._catalog_input_receipt import (
+    CatalogPluginPackageInput,
+)
 from loushang.harness.resources.loader import ResourceLoader
 from loushang.harness.resources.packages.materializer import (
     PackageMaterializationRecord,
@@ -15,10 +18,12 @@ from loushang.harness.resources.packages.materializer import (
 )
 from loushang.harness.resources.packages.mounts import PackageResourceMount
 from loushang.harness.resources.packages.roots import (
+    SelectedPluginPackageInput,
     configure_resource_loader_roots,
     resolve_package_resource_roots,
 )
 from loushang.harness.resources.packages.source import PackageSourceConfig
+from loushang.harness.resources.plugins.authority import PluginResolutionAuthority
 from loushang.harness.resources.plugins.dependencies import (
     lock_plugin_dependency_closure,
 )
@@ -27,6 +32,7 @@ from loushang.harness.resources.plugins.revisions import (
     PluginRevisionStore,
 )
 from loushang.harness.resources.plugins.types import (
+    PluginSource,
     PluginSourceBinding,
     PublishedPluginPackage,
     ResolvedPluginPackage,
@@ -64,7 +70,10 @@ class _Loader:
     def set_package_mounts(
         self,
         mounts: tuple[PackageResourceMount, ...],
+        *,
+        catalog_plugin_package_inputs: tuple[CatalogPluginPackageInput, ...] = (),
     ) -> None:
+        del catalog_plugin_package_inputs
         self.mounts = mounts
         self.package_roots = tuple(str(mount.root) for mount in mounts if mount.enabled)
 
@@ -100,6 +109,100 @@ def test_configure_resource_loader_roots_binds_standard_settings(tmp_path) -> No
     assert loader.package_roots == result.roots
     assert resource_root in loader.user_roots
     assert loader.explicit_roots == frozenset({resource_root})
+
+
+def test_product_selected_plugin_uses_independent_loader_lease(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "selected"
+    prompt = source / "prompts" / "standard.md"
+    prompt.parent.mkdir(parents=True)
+    prompt.write_text("selected prompt", encoding="utf-8")
+    (source / "plugin.json").write_text(
+        json.dumps({"name": "selected.base"}),
+        encoding="utf-8",
+    )
+    materializer = PackageMaterializer(install_root=tmp_path / "installed")
+    runtime = PluginResolutionAuthority().publish_runtime(
+        (PluginResolutionAuthority().inspect(PluginSource(path=source)),),
+        binding_store=materializer,
+    )
+    [package] = runtime.packages
+    [binding] = runtime.bindings
+    loader = ResourceLoader(user_resource_roots=())
+
+    resolved = configure_resource_loader_roots(
+        resource_loader=loader,
+        settings_manager=_SettingsManager(_Settings(package_roots=()), tmp_path),
+        materializer=materializer,
+        selected_plugin_packages=(
+            SelectedPluginPackageInput(package=package, binding=binding),
+        ),
+    )
+
+    [mount] = resolved.mounts
+    [catalog_input] = resolved.catalog_plugin_package_inputs
+    loader_handle = mount.revision_handle
+    assert loader_handle is not None
+    assert loader_handle is catalog_input.package.revision_handle
+    assert loader_handle is not package.revision_handle
+    assert catalog_input.binding is binding
+    assert catalog_input.source_root_order == 0
+    assert [item.text for item in loader.discover_resources(tmp_path).prompts] == [
+        "selected prompt"
+    ]
+    refreshed = configure_resource_loader_roots(
+        resource_loader=loader,
+        settings_manager=_SettingsManager(_Settings(package_roots=()), tmp_path),
+        materializer=materializer,
+        selected_plugin_packages=(
+            SelectedPluginPackageInput(package=package, binding=binding),
+        ),
+    )
+    [refreshed_handle] = refreshed.revision_handles
+    assert refreshed_handle is not loader_handle
+    assert loader_handle.closed is True
+    assert package.revision_handle.closed is False
+    loader.close()
+    assert refreshed_handle.closed is True
+    assert package.revision_handle.closed is False
+    runtime.close()
+
+
+def test_product_selected_plugin_rejects_configured_duplicate_without_closing_owner(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "selected"
+    source.mkdir()
+    (source / "plugin.json").write_text(
+        json.dumps({"name": "selected.base"}),
+        encoding="utf-8",
+    )
+    materializer = PackageMaterializer(install_root=tmp_path / "installed")
+    authority = PluginResolutionAuthority()
+    runtime = authority.publish_runtime(
+        (authority.inspect(PluginSource(path=source)),),
+        binding_store=materializer,
+    )
+    [package] = runtime.packages
+    [binding] = runtime.bindings
+
+    with pytest.raises(
+        ValueError,
+        match="Product-selected Plugin duplicates a configured Plugin source: selected.base",
+    ):
+        resolve_package_resource_roots(
+            package_roots=(),
+            plugin_sources=(str(source),),
+            package_sources=(),
+            materializer=materializer,
+            selected_plugin_packages=(
+                SelectedPluginPackageInput(package=package, binding=binding),
+            ),
+        )
+
+    assert package.revision_handle.closed is False
+    runtime.close()
 
 
 def test_materialized_remote_plugin_disabled_by_manifest_is_not_mounted(
@@ -232,8 +335,12 @@ def test_configured_plugin_mount_uses_leased_content_addressed_snapshot(
     assert mount.verified is True
     assert Path(mounted_root).parent.name == "sha256"
     assert len(resolved.revision_handles) == 1
+    [catalog_input] = resolved.catalog_plugin_package_inputs
+    assert catalog_input.source_root_order == 0
+    assert catalog_input.package.revision_handle is mount.revision_handle
     binding = materializer.get_plugin_binding(root)
     assert binding is not None
+    assert catalog_input.binding == binding
     assert binding.content_digest == resolved.revision_handles[0].content_digest
     assert binding.revision_kind == "content_sha256"
     prompt.write_text("review v2", encoding="utf-8")
@@ -255,6 +362,8 @@ def test_configured_plugin_mount_uses_leased_content_addressed_snapshot(
 
     monkeypatch.setattr(Path, "read_text", reject_path_reopen)
     bundle = loader.discover_resources(tmp_path)
+    receipt = loader._take_initial_resource_catalog_input_receipt()
+    assert receipt.catalog_plugin_package_inputs == (catalog_input,)
     assert [descriptor.text for descriptor in bundle.prompts] == ["review v1"]
     assert bundle.prompts[0].revision_ref is not None
     assert bundle.prompts[0].revision_ref.content_digest == mount.content_digest

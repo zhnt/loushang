@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+from pathlib import Path
 
 import pytest
 
+from loushang.harness.capabilities.prompt_preflight import preflight_user_input_async
 from loushang.harness.session import PromptController
 
 
@@ -191,6 +193,74 @@ def test_prompt_controller_streaming_steer_queues_prepared_input_without_compact
     assert preflight_results == [True]
     assert agent.prompted_messages == []
     assert compact_calls == 0
+
+
+def test_prompt_controller_streaming_queues_exact_catalog_skill_body() -> None:
+    @dataclass(frozen=True)
+    class Summary:
+        id: str
+        name: str
+        canonical_name: str
+        source_path: Path
+
+    @dataclass(frozen=True)
+    class Loaded:
+        summary: Summary
+        content: str
+
+    loaded = Loaded(
+        summary=Summary(
+            id="review",
+            name="review",
+            canonical_name="review",
+            source_path=Path("/catalog/skills/review/SKILL.md"),
+        ),
+        content="Exact Catalog body.",
+    )
+    agent = Agent(streaming=True)
+    queue = Queue()
+    load_calls: list[str] = []
+
+    async def load_skill_body(name: str) -> Loaded:
+        load_calls.append(name)
+        return loaded
+
+    async def preflight(text: str, **_kwargs: object):
+        return await preflight_user_input_async(
+            text,
+            load_skill_body=load_skill_body,
+        )
+
+    async def scenario() -> None:
+        controller = PromptController(
+            agent=agent,
+            queue_controller=queue,
+            get_extension_runner=lambda: None,
+            get_cwd=lambda: "/tmp/project",
+            extract_extension_command_invocation=lambda _text: None,
+            execute_command_async=lambda name, args: _record_async(
+                [], ("command", (name, args))
+            ),
+            preflight_user_input_async=preflight,
+            before_agent_start_system_prompt_options=lambda: {},
+            sync_extension_diagnostics=lambda **_kwargs: None,
+        )
+
+        await controller.prompt(
+            "/skill:review steer",
+            streaming_behavior="steer",
+        )
+        await controller.prompt(
+            "/skill:review follow-up",
+            streaming_behavior="followUp",
+        )
+
+    asyncio.run(scenario())
+
+    assert load_calls == ["review", "review"]
+    assert "Exact Catalog body." in queue.steering[0][0]
+    assert "Exact Catalog body." in queue.follow_up[0][0]
+    assert agent.prompted_messages == []
 
 
 def test_prompt_controller_input_handler_consumes_prompt_without_compaction() -> None:

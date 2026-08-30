@@ -10,6 +10,7 @@ import hashlib
 import importlib
 import json
 import os
+import stat as stat_module
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -35,6 +36,7 @@ from loushang.harness.journal import (
     JsonlJournal,
     JsonlSnapshot,
     LockMode,
+    decode_jsonl,
     journal_file_lock,
 )
 from loushang.harness.transcript.model_input_v2_index_file import (
@@ -84,6 +86,9 @@ _LOAD_INDEX_COMPATIBILITY_TOKEN = (
     f"{MODEL_INPUT_V2_PROJECTION_VERSION}:schema-{MODEL_INPUT_V2_SCHEMA_VERSION}:"
     "deferred-node-index-v1"
 )
+_MAX_HEADER_BYTES = 64 * 1024
+_MAX_DISCOVERY_DIRECTORY_ENTRIES = 8192
+_MAX_DISCOVERY_CANDIDATES = 4096
 
 
 @contextmanager
@@ -167,17 +172,54 @@ def load_agent_transcript_repository(
 
 def load_agent_transcript_file(
     path: Path,
+    *,
+    max_bytes: int | None = None,
 ) -> tuple[ConversationHeader, list[AgentTranscriptRecord]]:
+    target = Path(path)
+    if max_bytes is not None and (type(max_bytes) is not int or max_bytes < 1):
+        raise ValueError("transcript read limit must be positive")
     try:
-        snapshot: JsonlSnapshot[ConversationHeader, AgentTranscriptRecord] = (
-            agent_transcript_journal(path).load()
+        with agent_transcript_file_lock(target, "shared"):
+            content = _read_stable_regular_file(target, max_bytes=max_bytes)
+    except OSError as exc:
+        raise AgentTranscriptFileError(
+            "Transcript file could not be read safely",
+            path=target,
+            code="session_file_read_failed",
+        ) from exc
+    return decode_agent_transcript_bytes(content, source_path=target)
+
+
+def decode_agent_transcript_bytes(
+    content: bytes,
+    *,
+    source_path: str | Path,
+) -> tuple[ConversationHeader, list[AgentTranscriptRecord]]:
+    """Decode the exact bytes authorized by a caller's stable file read."""
+
+    target = Path(source_path)
+    try:
+        raw = bytes(content).decode(DEFAULT_JSONL_FORMAT.encoding)
+    except UnicodeDecodeError as exc:
+        raise AgentTranscriptFileError(
+            "Transcript file is not valid UTF-8",
+            path=target,
+            code="invalid_session_encoding",
+        ) from exc
+    try:
+        snapshot = decode_jsonl(
+            raw,
+            target=target,
+            record_codec=_RECORD_CODEC,
+            header_codec=_HEADER_CODEC,
+            load_policy=_READ_LOAD_POLICY,
         )
     except JournalFileError as exc:
         raise _agent_transcript_file_error(exc) from exc
     if snapshot.header is None:
         raise AgentTranscriptFileError(
             "Transcript file must start with a conversation header",
-            path=path,
+            path=target,
             code="missing_conversation_header",
         )
     return snapshot.header, list(snapshot.records)
@@ -189,8 +231,15 @@ def load_agent_transcript_header(path: Path) -> ConversationHeader:
     target = Path(path)
     try:
         with agent_transcript_file_lock(target, "shared"):
-            with target.open("r", encoding=DEFAULT_JSONL_FORMAT.encoding) as handle:
-                line = next((line for line in handle if line.strip()), "")
+            prefix = _read_stable_regular_prefix(
+                target,
+                max_bytes=_MAX_HEADER_BYTES,
+            )
+            line_bytes = next(
+                (line for line in prefix.splitlines() if line.strip()),
+                b"",
+            )
+            line = line_bytes.decode(DEFAULT_JSONL_FORMAT.encoding)
     except OSError as exc:
         raise AgentTranscriptFileError(
             "Transcript file could not be read",
@@ -239,6 +288,12 @@ def load_agent_transcript_header(path: Path) -> ConversationHeader:
 FilenameForKey = Callable[[ConversationKey], str]
 
 
+@dataclass(frozen=True)
+class AgentTranscriptCandidateScan:
+    paths: tuple[Path, ...]
+    complete: bool
+
+
 @dataclass
 class AgentTranscriptFileLayout:
     """Map transcript identities to Conversation JSONL paths.
@@ -252,7 +307,7 @@ class AgentTranscriptFileLayout:
     _known_paths: dict[ConversationKey, Path] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        self.root = self.root.expanduser().resolve(strict=False)
+        self.root = _absolute_path_preserving_leaf(self.root)
 
     @property
     def namespace(self) -> str:
@@ -266,7 +321,7 @@ class AgentTranscriptFileLayout:
 
     def bind_path(self, key: ConversationKey, path: str | Path) -> None:
         self._require_namespace(key)
-        self._known_paths[key] = Path(path).expanduser().resolve(strict=False)
+        self._known_paths[key] = _absolute_path_preserving_leaf(path)
 
     def create_path(self, key: ConversationKey) -> Path:
         self._require_namespace(key)
@@ -286,7 +341,7 @@ class AgentTranscriptFileLayout:
     def resolve_path(self, key: ConversationKey) -> Path | None:
         self._require_namespace(key)
         known = self._known_paths.get(key)
-        if known is not None and known.is_file():
+        if known is not None and _is_regular_file_no_follow(known):
             return known
         for path in self.scan_paths(key.namespace):
             try:
@@ -307,13 +362,48 @@ class AgentTranscriptFileLayout:
     def scan_candidate_paths(self, namespace: str) -> tuple[Path, ...]:
         """Discover possible transcripts without opening their contents."""
 
-        if namespace != self.namespace or not self.root.is_dir():
-            return ()
-        return tuple(
-            path
-            for path in sorted(self.root.glob("*.jsonl"))
-            if not path.name.endswith("-export.jsonl")
+        return self.scan_candidate_path_snapshot(namespace).paths
+
+    def scan_candidate_path_snapshot(
+        self,
+        namespace: str,
+        *,
+        max_candidates: int | None = None,
+    ) -> AgentTranscriptCandidateScan:
+        """Return bounded candidates and whether the directory was exhausted."""
+
+        if namespace != self.namespace or not _is_directory_no_follow(self.root):
+            return AgentTranscriptCandidateScan((), complete=True)
+        if max_candidates is not None and (
+            type(max_candidates) is not int or max_candidates < 0
+        ):
+            raise ValueError("candidate scan limit must be a non-negative integer")
+        candidate_limit = min(
+            _MAX_DISCOVERY_CANDIDATES,
+            max_candidates
+            if max_candidates is not None
+            else _MAX_DISCOVERY_CANDIDATES,
         )
+        if candidate_limit == 0:
+            return AgentTranscriptCandidateScan((), complete=False)
+        candidates: list[Path] = []
+        complete = True
+        try:
+            for inspected, path in enumerate(self.root.iterdir(), start=1):
+                if inspected > _MAX_DISCOVERY_DIRECTORY_ENTRIES:
+                    complete = False
+                    break
+                if path.suffix == ".jsonl" and not path.name.endswith(
+                    "-export.jsonl"
+                ):
+                    if len(candidates) >= candidate_limit:
+                        complete = False
+                        break
+                    if _is_regular_file_no_follow(path):
+                        candidates.append(path)
+        except OSError:
+            return AgentTranscriptCandidateScan((), complete=False)
+        return AgentTranscriptCandidateScan(tuple(sorted(candidates)), complete)
 
     def has_transcript_modified_after(self, modified_at_ns: int) -> bool:
         """Check local authority freshness without decoding transcript bodies."""
@@ -326,14 +416,18 @@ class AgentTranscriptFileLayout:
     ) -> tuple[Path, ...]:
         """List changed authority candidates using directory metadata only."""
 
-        if not self.root.is_dir():
-            return ()
         changed: list[Path] = []
-        for path in self.root.glob("*.jsonl"):
-            if path.name.endswith("-export.jsonl"):
-                continue
+        scan = self.scan_candidate_path_snapshot(self.namespace)
+        for path in scan.paths:
             try:
-                if path.is_file() and path.stat().st_mtime_ns > modified_at_ns:
+                status = path.lstat()
+                if (
+                    _status_is_regular_no_follow(status)
+                    and (
+                        status.st_mtime_ns > modified_at_ns
+                        or status.st_ctime_ns > modified_at_ns
+                    )
+                ):
                     changed.append(path)
             except OSError:
                 continue
@@ -347,7 +441,7 @@ class AgentTranscriptFileLayout:
         return key
 
     def bind_existing_path(self, path: str | Path) -> ConversationKey:
-        resolved = Path(path).expanduser().resolve(strict=False)
+        resolved = _absolute_path_preserving_leaf(path)
         return self.key_for_path(self.namespace, resolved)
 
     def bind_create_path(self, key: ConversationKey, path: str | Path) -> None:
@@ -440,13 +534,170 @@ def _agent_transcript_file_error(error: JournalFileError) -> AgentTranscriptFile
 def _is_conversation_jsonl_candidate(path: Path) -> bool:
     """Exclude other JSONL families; malformed Conversation files stay visible."""
 
+    if not _is_regular_file_no_follow(path):
+        return False
     try:
-        with path.open("r", encoding=DEFAULT_JSONL_FORMAT.encoding) as handle:
-            line = next((line for line in handle if line.strip()), "")
-        value = json.loads(line)
+        prefix = _read_stable_regular_prefix(path, max_bytes=_MAX_HEADER_BYTES)
+        line = next((line for line in prefix.splitlines() if line.strip()), b"")
+        value = json.loads(line.decode(DEFAULT_JSONL_FORMAT.encoding))
     except Exception:
         return True
     return not isinstance(value, dict) or value.get("type") == "conversation"
+
+
+def _is_regular_file_no_follow(path: Path) -> bool:
+    try:
+        return _status_is_regular_no_follow(path.lstat())
+    except OSError:
+        return False
+
+
+def _is_directory_no_follow(path: Path) -> bool:
+    try:
+        status = path.lstat()
+    except OSError:
+        return False
+    return stat_module.S_ISDIR(status.st_mode) and not (
+        stat_module.S_ISLNK(status.st_mode)
+        or bool(
+            getattr(status, "st_file_attributes", 0)
+            & getattr(stat_module, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+        )
+    )
+
+
+def _status_is_regular_no_follow(status: os.stat_result) -> bool:
+    return stat_module.S_ISREG(status.st_mode) and not (
+        stat_module.S_ISLNK(status.st_mode)
+        or bool(
+            getattr(status, "st_file_attributes", 0)
+            & getattr(stat_module, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+        )
+    )
+
+
+def _absolute_path_preserving_leaf(path: str | Path) -> Path:
+    absolute = Path(os.path.abspath(Path(path).expanduser()))
+    return absolute.parent.resolve(strict=False) / absolute.name
+
+
+def _read_stable_regular_file(
+    path: Path,
+    *,
+    max_bytes: int | None = None,
+) -> bytes:
+    before = path.lstat()
+    if not _status_is_regular_no_follow(before):
+        raise OSError("transcript source must be a regular file")
+    if max_bytes is not None and before.st_size > max_bytes:
+        raise AgentTranscriptFileError(
+            "Transcript file exceeds the selected read budget",
+            path=path,
+            code="session_file_too_large",
+        )
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+    descriptor, parent_descriptor = _open_file_no_follow(path, flags=flags)
+    try:
+        opened = os.fstat(descriptor)
+        if not _same_file_status(before, opened):
+            raise OSError("transcript source identity changed")
+        remaining = opened.st_size
+        chunks: list[bytes] = []
+        while remaining:
+            chunk = os.read(descriptor, min(remaining, 1024 * 1024))
+            if not chunk:
+                raise OSError("transcript source was truncated while reading")
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        after = os.fstat(descriptor)
+    finally:
+        os.close(descriptor)
+        if parent_descriptor >= 0:
+            os.close(parent_descriptor)
+    current = path.lstat()
+    if not _same_file_status(before, after) or not _same_file_status(before, current):
+        raise OSError("transcript source changed while reading")
+    return b"".join(chunks)
+
+
+def _read_stable_regular_prefix(path: Path, *, max_bytes: int) -> bytes:
+    before = path.lstat()
+    if not _status_is_regular_no_follow(before):
+        raise OSError("transcript source must be a regular file")
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+    descriptor, parent_descriptor = _open_file_no_follow(path, flags=flags)
+    try:
+        opened = os.fstat(descriptor)
+        if not _same_file_status(before, opened):
+            raise OSError("transcript source identity changed")
+        chunks: list[bytes] = []
+        consumed = 0
+        while consumed < max_bytes:
+            chunk = os.read(descriptor, min(4096, max_bytes - consumed))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            consumed += len(chunk)
+            content = b"".join(chunks)
+            if _has_complete_nonblank_line(content):
+                break
+        content = b"".join(chunks)
+        if (
+            consumed == max_bytes
+            and opened.st_size > consumed
+            and not _has_complete_nonblank_line(content)
+        ):
+            raise OSError("transcript header exceeds the read limit")
+        after = os.fstat(descriptor)
+        current = path.lstat()
+        if not _same_file_status(before, after) or not _same_file_status(
+            before, current
+        ):
+            raise OSError("transcript source changed while reading")
+        return content
+    finally:
+        os.close(descriptor)
+        if parent_descriptor >= 0:
+            os.close(parent_descriptor)
+
+
+def _has_complete_nonblank_line(content: bytes) -> bool:
+    return any(
+        line.strip() and line.endswith((b"\n", b"\r"))
+        for line in content.splitlines(keepends=True)
+    )
+
+
+def _open_file_no_follow(path: Path, *, flags: int) -> tuple[int, int]:
+    directory_flag = getattr(os, "O_DIRECTORY", 0)
+    if os.name != "nt" and directory_flag:
+        parent_flags = os.O_RDONLY | directory_flag
+        parent_flags |= getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+        parent = os.open(path.parent, parent_flags)
+        try:
+            return os.open(path.name, flags, dir_fd=parent), parent
+        except BaseException:
+            os.close(parent)
+            raise
+    return os.open(path, flags), -1
+
+
+def _same_file_status(left: os.stat_result, right: os.stat_result) -> bool:
+    return (
+        left.st_dev,
+        left.st_ino,
+        left.st_size,
+        left.st_mtime_ns,
+        left.st_ctime_ns,
+    ) == (
+        right.st_dev,
+        right.st_ino,
+        right.st_size,
+        right.st_mtime_ns,
+        right.st_ctime_ns,
+    )
 
 
 def _reject_json_constant(token: str) -> NoReturn:
@@ -478,6 +729,7 @@ def _load_msvcrt() -> Any:
 
 __all__ = [
     "AgentTranscriptFileError",
+    "AgentTranscriptCandidateScan",
     "AgentTranscriptFileLayout",
     "FilenameForKey",
     "LockMode",
@@ -485,6 +737,7 @@ __all__ = [
     "agent_transcript_journal",
     "create_agent_transcript_file_store",
     "create_agent_transcript_repository",
+    "decode_agent_transcript_bytes",
     "load_agent_transcript_file",
     "load_agent_transcript_repository",
     "load_agent_transcript_header",

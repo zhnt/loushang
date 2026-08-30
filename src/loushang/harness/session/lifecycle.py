@@ -2,19 +2,22 @@ from __future__ import annotations
 
 import errno
 import inspect
+import os
 from collections.abc import Awaitable, Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Generic, Literal, Protocol, TypeVar
 
 from loushang.harness.runtime import (
     CancelledSessionOperation,
+    FileCopy,
     SessionOperationCandidate,
     SessionOperationCoordinator,
     SessionOperationFailure,
     SessionOperationPhase,
     SessionOperationResult,
     SessionTransitionHost,
+    VerifiedFileCopy,
     copy_file_exclusive,
     stage_file_import,
 )
@@ -35,7 +38,9 @@ TransitionReleaseCallback = Callable[
     Awaitable[None] | None,
 ]
 LifecycleCallback = Callable[[], Awaitable[None] | None]
-FileCopy = Callable[[Path, Path], None]
+def _absolute_path_preserving_leaf(path: str | Path) -> Path:
+    absolute = Path(os.path.abspath(Path(path).expanduser()))
+    return absolute.parent.resolve(strict=False) / absolute.name
 
 
 @dataclass(frozen=True)
@@ -267,6 +272,7 @@ class SessionLifecycleRuntime(Generic[SessionT, PayloadT]):
         fork_profile: ForkProfile = DEFAULT_FORK_PROFILE,
         fork_target_resolver: ForkTargetResolver[SessionT, PayloadT] | None = None,
         copy_file: FileCopy = copy_file_exclusive,
+        verified_copy_file: VerifiedFileCopy | None = None,
     ) -> None:
         if hooks.dispose_session is None:
             raise ValueError("Session lifecycle hooks require dispose_session.")
@@ -276,6 +282,7 @@ class SessionLifecycleRuntime(Generic[SessionT, PayloadT]):
         self.fork_profile = fork_profile
         self._fork_target_resolver = fork_target_resolver or _default_fork_target
         self._copy_file = copy_file
+        self._verified_copy_file = verified_copy_file
         self._host = SessionTransitionHost(
             current_session,
             dispose=self._dispose_session,
@@ -416,6 +423,47 @@ class SessionLifecycleRuntime(Generic[SessionT, PayloadT]):
             candidate=candidate,
         )
 
+    async def prepare_import_file(
+        self,
+        input_path: str | Path,
+        *,
+        destination_dir: Path,
+        cwd_override: str | None = None,
+        expected_source_fingerprint: str | None = None,
+        metadata: Mapping[str, object] | None = None,
+    ) -> PreparedSessionLifecycleOperation[SessionT, PayloadT]:
+        """Stage an external transcript as an abortable authority restore."""
+
+        source = Path(input_path).expanduser()
+        staged = stage_file_import(
+            source,
+            destination_dir,
+            copy_file=self._copy_file,
+            verified_copy_file=self._verified_copy_file,
+            expected_source_fingerprint=expected_source_fingerprint,
+        )
+        try:
+            prepared = await self.prepare_restore(
+                staged.destination,
+                fallback_cwd=cwd_override,
+                missing_cwd="fallback" if cwd_override is not None else "error",
+                metadata=metadata,
+            )
+        except BaseException:
+            staged.cleanup()
+            raise
+        original_rollback = prepared._candidate.rollback
+
+        async def rollback() -> None:
+            try:
+                if original_rollback is not None:
+                    await _maybe_await(original_rollback())
+            finally:
+                staged.cleanup()
+
+        prepared._candidate = replace(prepared._candidate, rollback=rollback)
+        return prepared
+
     async def fork(
         self,
         entry_id: str | None = None,
@@ -454,9 +502,10 @@ class SessionLifecycleRuntime(Generic[SessionT, PayloadT]):
         *,
         destination_dir: Path,
         cwd_override: str | None = None,
+        expected_source_fingerprint: str | None = None,
         metadata: Mapping[str, object] | None = None,
     ) -> SessionOperationResult[SessionT, PayloadT | None]:
-        source = Path(input_path).expanduser().resolve()
+        source = _absolute_path_preserving_leaf(input_path)
         preflight = SessionLifecycleTransition(
             reason="resume",
             target_session_ref=str(source),
@@ -471,6 +520,8 @@ class SessionLifecycleRuntime(Generic[SessionT, PayloadT]):
                 source,
                 destination_dir,
                 copy_file=self._copy_file,
+                verified_copy_file=self._verified_copy_file,
+                expected_source_fingerprint=expected_source_fingerprint,
             )
         except Exception as exc:
             await self._notify_preflight_failure(preflight, exc)
@@ -697,9 +748,7 @@ class SessionLifecycleRuntime(Generic[SessionT, PayloadT]):
     ) -> bool:
         if self.hooks.before_transition is None:
             return False
-        decision = await _maybe_await(
-            self.hooks.before_transition(session, transition)
-        )
+        decision = await _maybe_await(self.hooks.before_transition(session, transition))
         return decision is not None and decision.cancelled
 
     def _missing_cwd_issue(
@@ -814,6 +863,7 @@ __all__ = [
     "SessionLifecycleRuntime",
     "SessionLifecycleStore",
     "SessionLifecycleTransition",
+    "VerifiedFileCopy",
     "TransitionCandidateCallback",
     "TransitionReleaseCallback",
 ]

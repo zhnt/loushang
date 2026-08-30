@@ -26,6 +26,7 @@ RCP2_MODULES = {
     ORCHESTRATION_ROOT / "shadow.py",
 }
 RCP3_MODULES = {
+    RESOURCE_ROOT / "_catalog_input_preparation.py",
     RESOURCE_ROOT / "_catalog_embedded_source.py",
     RESOURCE_ROOT / "_catalog_package_source.py",
     RESOURCE_ROOT / "_catalog_source_contracts.py",
@@ -39,10 +40,18 @@ RCP4_MODULES = {
     ORCHESTRATION_ROOT / "joint_generation.py",
     ORCHESTRATION_ROOT / "product_inputs.py",
     ORCHESTRATION_ROOT / "session_bootstrap.py",
+    ORCHESTRATION_ROOT / "bootstrap_projection.py",
     CAPABILITY_ROOT / "resources_consumers.py",
     EXTENSION_ROOT / "resources.py",
 }
-PRIVATE_CATALOG_MODULES = RCP1_MODULES | RCP2_MODULES | RCP3_MODULES | RCP4_MODULES
+RCP5_MODULES = {
+    RESOURCE_ROOT / "_skill_catalog_consumer.py",
+    RESOURCE_ROOT / "_skill_catalog_status.py",
+    CAPABILITY_ROOT / "resources_provider.py",
+}
+PRIVATE_CATALOG_MODULES = (
+    RCP1_MODULES | RCP2_MODULES | RCP3_MODULES | RCP4_MODULES | RCP5_MODULES
+)
 
 
 def _imports_catalog_module(path: Path) -> bool:

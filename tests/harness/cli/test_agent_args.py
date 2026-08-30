@@ -69,14 +69,18 @@ def test_agent_resource_options_preserve_partial_builder_inputs() -> None:
         "append_system_prompt": ["tail"],
     }
     assert loader.options == options
-    assert agent_resource_loader_options(SimpleNamespace())[
-        "additional_extension_paths"
-    ] == []
+    assert (
+        agent_resource_loader_options(SimpleNamespace())["additional_extension_paths"]
+        == []
+    )
 
 
 def test_agent_environment_and_settings_projections_are_product_neutral(
     tmp_path,
+    monkeypatch,
 ) -> None:
+    platform_home = tmp_path / "user-home"
+    monkeypatch.setenv("LOUSHANG_HOME", str(platform_home))
     environment: dict[str, str] = {}
     args = SimpleNamespace(offline=True, session_dir=None)
     settings = SimpleNamespace(
@@ -94,6 +98,47 @@ def test_agent_environment_and_settings_projections_are_product_neutral(
             project_root=tmp_path,
             settings_manager=manager,
         )
-        == tmp_path / ".loushang" / "sessions"
+        == platform_home / "data" / "sessions"
     )
     assert agent_image_auto_resize(manager) is False
+
+
+def test_agent_session_authority_ignores_project_settings(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    platform_home = tmp_path / "user-home"
+    monkeypatch.setenv("LOUSHANG_HOME", str(platform_home))
+    manager = SimpleNamespace(
+        get_session_settings=lambda: {},
+        get_global_settings=lambda: {},
+        get_project_settings=lambda: {"session_dir": str(tmp_path / "untrusted")},
+        get_settings=lambda: SimpleNamespace(session_dir=str(tmp_path / "untrusted")),
+    )
+
+    resolved = resolve_agent_session_dir(
+        SimpleNamespace(session_dir=None),
+        project_root=tmp_path,
+        settings_manager=manager,
+    )
+
+    assert resolved == platform_home / "data" / "sessions"
+
+
+def test_agent_session_authority_accepts_session_then_global_settings(
+    tmp_path,
+) -> None:
+    global_sessions = tmp_path / "global"
+    session_sessions = tmp_path / "session"
+    manager = SimpleNamespace(
+        get_session_settings=lambda: {"session_dir": str(session_sessions)},
+        get_global_settings=lambda: {"session_dir": str(global_sessions)},
+    )
+
+    resolved = resolve_agent_session_dir(
+        SimpleNamespace(session_dir=None),
+        project_root=tmp_path,
+        settings_manager=manager,
+    )
+
+    assert resolved == session_sessions

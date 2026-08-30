@@ -46,7 +46,7 @@ def test_plugin_source_binding_survives_restart_and_rejects_implicit_rename(
     restored = PackageMaterializer(install_root=tmp_path / "installed")
     assert restored.get_plugin_binding(root) == binding
     lockfile = json.loads((tmp_path / "package-lock.json").read_text(encoding="utf-8"))
-    assert lockfile["version"] == 3
+    assert lockfile["version"] == 4
     assert lockfile["pluginBindings"] == [
         {
             "contentDigest": binding.content_digest,
@@ -61,6 +61,13 @@ def test_plugin_source_binding_survives_restart_and_rejects_implicit_rename(
             "sourceKind": "local",
         }
     ]
+    assert lockfile["pluginBindingHeads"] == [
+        {
+            "historyKey": lockfile["pluginBindingHeads"][0]["historyKey"],
+            "sourceIdentity": binding.source_identity,
+        }
+    ]
+    assert len(lockfile["pluginBindingHeads"][0]["historyKey"]) == 64
 
     _write_manifest(root, name="renamed-pack")
     before = (tmp_path / "package-lock.json").read_bytes()
@@ -71,6 +78,124 @@ def test_plugin_source_binding_survives_restart_and_rejects_implicit_rename(
     assert caught.value.code == "plugin_identity_changed"
     assert restored.get_plugin_binding(root) == binding
     assert (tmp_path / "package-lock.json").read_bytes() == before
+
+
+def test_stale_materializers_merge_disjoint_plugin_bindings_without_lost_update(
+    tmp_path: Path,
+) -> None:
+    first_root = _plugin(tmp_path / "plugins" / "first", name="first-pack")
+    second_root = _plugin(tmp_path / "plugins" / "second", name="second-pack")
+    install_root = tmp_path / "installed"
+    first = PackageMaterializer(install_root=install_root)
+    second = PackageMaterializer(install_root=install_root)
+    first_package = _published_descriptor(first, first_root)
+    second_package = _published_descriptor(second, second_root)
+
+    [first_binding] = first.bind_plugin_packages((first_package,))
+    [second_binding] = second.bind_plugin_packages((second_package,))
+
+    restored = PackageMaterializer(install_root=install_root)
+    assert restored.get_plugin_binding(first_root) == first_binding
+    assert restored.get_plugin_binding(second_root) == second_binding
+    reopened_first = restored.reopen_plugin_package(first_binding)
+    reopened_second = restored.reopen_plugin_package(second_binding)
+    try:
+        assert reopened_first.manifest.name == "first-pack"
+        assert reopened_second.manifest.name == "second-pack"
+    finally:
+        reopened_second.revision_handle.close()
+        reopened_first.revision_handle.close()
+        second_package.revision_handle.close()
+        first_package.revision_handle.close()
+
+
+def test_stale_materializer_rejects_conflicting_same_binding_update(
+    tmp_path: Path,
+) -> None:
+    root = _plugin(tmp_path / "plugins" / "review", name="review-pack", version="1")
+    install_root = tmp_path / "installed"
+    initial = PackageMaterializer(install_root=install_root)
+    initial_package = _published_descriptor(initial, root)
+    initial.bind_plugin_packages((initial_package,))
+    initial_package.revision_handle.close()
+    first = PackageMaterializer(install_root=install_root)
+    second = PackageMaterializer(install_root=install_root)
+
+    _write_manifest(root, name="review-pack", version="2")
+    first_package = _published_descriptor(first, root)
+    _write_manifest(root, name="review-pack", version="3")
+    second_package = _published_descriptor(second, root)
+    first.bind_plugin_packages((first_package,))
+
+    with pytest.raises(PluginManifestError) as caught:
+        second.bind_plugin_packages((second_package,))
+
+    assert caught.value.code == "package_lockfile_concurrent_update"
+    restored = PackageMaterializer(install_root=install_root)
+    assert restored.get_plugin_binding(root).content_digest == (
+        first_package.content_digest
+    )
+    second_package.revision_handle.close()
+    first_package.revision_handle.close()
+
+
+def test_reopen_plugin_package_closes_revision_handle_on_binding_mismatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = _plugin(tmp_path / "plugins" / "review", name="review-pack")
+    materializer = PackageMaterializer(install_root=tmp_path / "installed")
+    published = _published_descriptor(materializer, root)
+    [binding] = materializer.bind_plugin_packages((published,))
+    published.revision_handle.close()
+    payload = json.loads(materializer.lockfile_path.read_text(encoding="utf-8"))
+    payload["pluginBindings"][0]["manifestDigest"] = "0" * 64
+    materializer.lockfile_path.write_text(json.dumps(payload), encoding="utf-8")
+    restored = PackageMaterializer(install_root=tmp_path / "installed")
+    replay_binding = restored.get_plugin_binding_by_identity(binding.source_identity)
+    assert replay_binding is not None
+    captured = []
+    original_reopen = restored._plugin_revision_store.reopen
+
+    def capture_reopen(*args, **kwargs):
+        revision = original_reopen(*args, **kwargs)
+        captured.append(revision.revision_handle)
+        return revision
+
+    monkeypatch.setattr(restored._plugin_revision_store, "reopen", capture_reopen)
+
+    with pytest.raises(PluginManifestError) as caught:
+        restored.reopen_plugin_package(replay_binding)
+
+    assert caught.value.code == "invalid_plugin_source_binding"
+    assert len(captured) == 1
+    assert captured[0].closed is True
+
+
+def test_reopen_plugin_package_rejects_dependency_lock_content_mismatch(
+    tmp_path: Path,
+) -> None:
+    root = _plugin(tmp_path / "plugins" / "review", name="review-pack")
+    materializer = PackageMaterializer(install_root=tmp_path / "installed")
+    published = _published_descriptor(materializer, root)
+    materializer.bind_plugin_packages((published,))
+    published.revision_handle.close()
+    payload = json.loads(materializer.lockfile_path.read_text(encoding="utf-8"))
+    binding = payload["pluginBindings"][0]
+    dependency_lock = binding["dependencyLock"]
+    dependency_lock["packageContentDigest"] = "f" * 64
+    binding["dependencyLockDigest"] = lock_plugin_dependency_closure(
+        package_content_digest="f" * 64,
+        installed_distributions=(),
+    ).digest
+    materializer.lockfile_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    restored = PackageMaterializer(install_root=tmp_path / "installed")
+
+    assert restored.get_plugin_binding(root) is None
+    assert restored.get_lockfile_diagnostics()[0]["code"] == (
+        "package_lockfile_invalid_plugin_binding"
+    )
 
 
 def test_remote_plugin_binding_uses_materialized_revision_and_normalized_source(
@@ -156,7 +281,7 @@ def test_plugin_binding_revalidates_dependency_closure_from_published_tree(
     assert materializer.get_plugin_binding(root) is None
 
 
-def test_v3_plugin_binding_rejects_missing_dependency_lock_on_restart(
+def test_v4_plugin_binding_rejects_removed_dependency_lock_on_restart(
     tmp_path: Path,
 ) -> None:
     root = _plugin(tmp_path / "plugins" / "review", name="review-pack")
@@ -173,7 +298,7 @@ def test_v3_plugin_binding_rejects_missing_dependency_lock_on_restart(
 
     assert restored.get_plugin_binding(root) is None
     assert restored.get_lockfile_diagnostics()[0]["code"] == (
-        "package_lockfile_invalid_plugin_binding"
+        "package_lockfile_invalid_plugin_binding_head"
     )
     with pytest.raises(PluginManifestError) as caught:
         restored.bind_plugin_packages((_published_descriptor(restored, root),))
@@ -217,12 +342,12 @@ def test_v2_plugin_binding_requires_verified_upgrade_to_v3(tmp_path: Path) -> No
 
     assert upgraded.dependency_lock is not None
     assert upgraded.content_digest is not None
-    assert json.loads(lockfile.read_text(encoding="utf-8"))["version"] == 3
+    assert json.loads(lockfile.read_text(encoding="utf-8"))["version"] == 4
     restored = PackageMaterializer(install_root=tmp_path / "installed")
     assert restored.get_plugin_binding(root) == upgraded
 
 
-def test_v2_plugin_binding_stays_v2_until_all_bindings_are_verified(
+def test_v2_plugin_binding_migrates_with_explicit_head_until_verified(
     tmp_path: Path,
 ) -> None:
     root = _plugin(tmp_path / "plugins" / "review", name="review-pack")
@@ -254,7 +379,10 @@ def test_v2_plugin_binding_stays_v2_until_all_bindings_are_verified(
     materializer.prepare_remote_source("https://github.com/acme/other-pack.git")
 
     payload = json.loads(lockfile.read_text(encoding="utf-8"))
-    assert payload["version"] == 2
+    assert payload["version"] == 4
+    assert payload["pluginBindingHeads"][0]["sourceIdentity"] == (
+        f"local:{root.resolve()}"
+    )
     restored = PackageMaterializer(install_root=tmp_path / "installed")
     assert restored.get_plugin_binding(root) == materializer.get_plugin_binding(root)
 
@@ -435,6 +563,33 @@ def test_same_plugin_identity_can_advance_its_bound_revision(tmp_path: Path) -> 
     assert updated.manifest_digest != initial.manifest_digest
     assert updated.revision == updated.content_digest
     assert materializer.get_plugin_binding(root) == updated
+
+    restored = PackageMaterializer(install_root=tmp_path / "installed")
+    exact_initial = restored.get_plugin_binding_by_revision(
+        initial.source_identity,
+        content_digest=initial.content_digest or "",
+        dependency_lock_digest=initial.dependency_lock.digest
+        if initial.dependency_lock is not None
+        else "",
+    )
+    exact_updated = restored.get_plugin_binding_by_revision(
+        updated.source_identity,
+        content_digest=updated.content_digest or "",
+        dependency_lock_digest=updated.dependency_lock.digest
+        if updated.dependency_lock is not None
+        else "",
+    )
+
+    assert exact_initial == initial
+    assert exact_updated == updated
+    reopened_initial = restored.reopen_plugin_package(initial)
+    reopened_updated = restored.reopen_plugin_package(updated)
+    try:
+        assert reopened_initial.manifest.version == "1"
+        assert reopened_updated.manifest.version == "2"
+    finally:
+        reopened_updated.revision_handle.close()
+        reopened_initial.revision_handle.close()
 
 
 def test_plugin_source_binding_can_be_explicitly_forgotten(tmp_path: Path) -> None:

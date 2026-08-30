@@ -52,8 +52,12 @@ if TYPE_CHECKING:
     from loushang.harness.resources.packages.operations import (
         PackageMaterializerPort,
         PackageMaterializerProvider,
+        PackageMutationRequiresAsyncError,
         PackageOperationsRuntime,
         PackageResourceRefresh,
+        PackageResourceRefreshOutcome,
+        PackageResourceRefreshTransaction,
+        PackageResourceRefreshTransactionRunner,
         PackageSourceRegistration,
         PackageUpdatePreparation,
     )
@@ -65,12 +69,17 @@ if TYPE_CHECKING:
     )
     from loushang.harness.resources.packages.roots import (
         ResolvedPackageResourceRoots,
+        SelectedPluginPackageInput,
         configure_resource_loader_roots,
         resolve_package_resource_roots,
     )
     from loushang.harness.resources.packages.security import (
         PackageSecurityPolicy,
         PackageSourceSecurityReport,
+    )
+    from loushang.harness.resources.packages.settings_mutation import (
+        PackageSourceMutationState,
+        PackageSourceSettingsMutation,
     )
     from loushang.harness.resources.packages.source import (
         PackageSourceConfig,
@@ -113,6 +122,7 @@ _EXPORT_MODULES = {
     "PackageResourceMount": "loushang.harness.resources.packages.mounts",
     "PackageResourceInventoryPort": "loushang.harness.resources.packages.inventory",
     "PackageMaterializerProvider": "loushang.harness.resources.packages.operations",
+    "PackageMutationRequiresAsyncError": "loushang.harness.resources.packages.operations",
     "PackageOperationsRuntime": "loushang.harness.resources.packages.operations",
     "PackageProgressEvent": "loushang.harness.resources.packages.materializer",
     "PackageResolveResult": "loushang.harness.resources.packages.source_resolver",
@@ -120,13 +130,19 @@ _EXPORT_MODULES = {
     "PackageSourceIdentity": "loushang.harness.resources.packages.source",
     "PackageSourcePolicy": "loushang.harness.resources.packages.materializer",
     "PackageResourceRefresh": "loushang.harness.resources.packages.operations",
+    "PackageResourceRefreshOutcome": "loushang.harness.resources.packages.operations",
+    "PackageResourceRefreshTransaction": "loushang.harness.resources.packages.operations",
+    "PackageResourceRefreshTransactionRunner": "loushang.harness.resources.packages.operations",
     "PackageSecurityPolicy": "loushang.harness.resources.packages.security",
     "PackageSourceSecurityReport": "loushang.harness.resources.packages.security",
     "PackageSourceRegistration": "loushang.harness.resources.packages.operations",
+    "PackageSourceMutationState": "loushang.harness.resources.packages.settings_mutation",
+    "PackageSourceSettingsMutation": "loushang.harness.resources.packages.settings_mutation",
     "PackageSourceResolver": "loushang.harness.resources.packages.source_resolver",
     "PackageUpdatePreparation": "loushang.harness.resources.packages.operations",
     "PythonPackageInstallerBackend": "loushang.harness.resources.packages.materializer",
     "ResolvedPackageResourceRoots": "loushang.harness.resources.packages.roots",
+    "SelectedPluginPackageInput": "loushang.harness.resources.packages.roots",
     "clone_source_and_ref": "loushang.harness.resources.packages.source",
     "collect_package_catalog": "loushang.harness.resources.packages.catalog",
     "collect_projected_package_entries": "loushang.harness.resources.packages.projection",

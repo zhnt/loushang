@@ -16,9 +16,11 @@ from typing import Generic, Protocol, TypeVar
 
 from loushang.ai.types import UserMessage
 from loushang.harness.runtime import (
+    FileCopy,
     SessionOperationFailure,
     SessionOperationPhase,
     SessionOperationResult,
+    VerifiedFileCopy,
     copy_file_exclusive,
 )
 from loushang.harness.session.diagnostics import SessionDiagnosticsRuntime
@@ -111,7 +113,8 @@ class ProductSessionRuntimePorts(Generic[SessionT, TranscriptT, PayloadT]):
     validate_restored_transcript: TranscriptValidator[TranscriptT] | None
     fork_profile: ForkProfile
     fork_target_resolver: ForkTargetResolver[SessionT, PayloadT]
-    copy_file: Callable[[Path, Path], None] = copy_file_exclusive
+    copy_file: FileCopy = copy_file_exclusive
+    verified_copy_file: VerifiedFileCopy | None = None
     hooks: SessionLifecycleHooks[SessionT, PayloadT] = SessionLifecycleHooks()
     diagnostics_runtime: SessionDiagnosticsRuntime | Callable[
         [SessionT | None], SessionDiagnosticsRuntime
@@ -174,6 +177,7 @@ class ProductSessionRuntime(
             fork_profile=ports.fork_profile,
             fork_target_resolver=ports.fork_target_resolver,
             copy_file=ports.copy_file,
+            verified_copy_file=ports.verified_copy_file,
             hooks=SessionLifecycleHooks(
                 before_transition=ports.hooks.before_transition,
                 prepare_session=ports.hooks.prepare_session,

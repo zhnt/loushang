@@ -113,8 +113,8 @@ Package, Plugin, and Extension contracts are owned by Harness.
 - [skill](component-interfaces/skill.md)
 - [loader](component-interfaces/loader.md)
 - [resources](component-interfaces/resources.md)
-- [extensions](component-interfaces/extensions.md)
-- [plugin](component-interfaces/plugin.md)
+- [extensions](component-interfaces/extensions.md) (superseded Coding topology)
+- [plugin](component-interfaces/plugin.md) (superseded Coding topology)
 - [package](component-interfaces/package.md)
 - [domain](component-interfaces/domain.md)
 

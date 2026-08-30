@@ -16,6 +16,7 @@ from loushang.harness.config.engine import LayeredConfig
 from loushang.harness.config.runtime import (
     ConfigChange,
     ConfigOperation,
+    ConfigPatchTransform,
     ConfigScope,
     ScopedConfigRuntime,
 )
@@ -68,6 +69,7 @@ __all__ = [
     "ConfigIssue",
     "ConfigLayer",
     "ConfigOperation",
+    "ConfigPatchTransform",
     "ConfigRefreshMode",
     "ConfigScope",
     "ConfigSnapshot",

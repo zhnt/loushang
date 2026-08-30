@@ -408,7 +408,11 @@ Its `binding_input_fingerprint` must cover:
 It excludes credentials, callbacks, arbitrary objects, and environment values.
 For `harness.resources`, it also excludes resource-bundle content,
 Extension/resource content generation, disabled-skill call data, and current
-registrations: those change derived content, not the selected mechanism. If a
+registrations.  In particular, the stable Mount fingerprint never includes an
+owner-generation binding fingerprint: exact generation provenance belongs to
+the Catalog capture/evidence while the Mount identity describes only its
+mechanism, Profile, scope, and slot.  Those excluded values change derived
+content, not the selected mechanism. If a
 Provider cannot fingerprint every input that can change the constructed live
 mechanism, it is not reusable. The Binder cannot infer completeness from a
 hash, so tests vary each declared construction input and prove that the
@@ -918,8 +922,9 @@ Implemented CLA7d evidence:
   frozen issuance-time observation descriptor;
 - the architecture gate
   `tests/architecture/test_composition_lifecycle_authority_cla0.py::test_cla7d_continuity_has_one_process_authority_and_typed_reference`
-  freezes `ContinuityHub` construction to `coding/continuity.py`, reference
-  issuance to `ContinuityHub.reference()`, and prohibits the `ContinuityHub`
+  freezes `ContinuityHub` construction to the Continuity-owned
+  `build_continuity_hub()` constructor, reference issuance to
+  `ContinuityHub.reference()`, and prohibits the `ContinuityHub`
   name across `harness/session/`, `harnesstui/`, `coding/cli/`, and
   `coding/ui/` sources;
 - the graph `stable_reference` requirement binding remains fail-closed

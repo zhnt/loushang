@@ -17,6 +17,7 @@ from loushang.harness.transcript import (
     TranscriptExportRequest,
     TranscriptHtmlExportProfile,
     TranscriptToolDefinition,
+    export_agent_transcript_bundle,
     export_agent_transcript_to_html,
     export_agent_transcript_to_jsonl,
 )
@@ -62,6 +63,28 @@ def export_session_to_jsonl(
         session.session_manager.get_header(),
         session.session_manager.get_branch(),
         path,
+    )
+
+
+def export_session_to_bundle(
+    session: SessionExportPort,
+    output_path: str | None = None,
+) -> str:
+    """Export a portable backup containing the active branch and its blobs."""
+
+    path = (
+        Path(output_path)
+        if output_path is not None
+        else _default_bundle_export_path(session)
+    )
+    return export_agent_transcript_bundle(
+        session.session_manager.get_header(),
+        session.session_manager.get_branch(),
+        session_dir=session.session_manager.get_session_dir(),
+        output_path=path,
+        # Selecting the bundle format is the explicit user action authorizing
+        # inclusion of private Session-owned bytes in this local backup.
+        allow_private=True,
     )
 
 
@@ -135,6 +158,18 @@ def _default_jsonl_export_path(session: SessionExportPort) -> Path:
     return cwd / f"session-{timestamp}.jsonl"
 
 
+def _default_bundle_export_path(session: SessionExportPort) -> Path:
+    cwd = Path(session.session_manager.get_cwd()).expanduser().resolve()
+    timestamp = (
+        datetime.now(UTC)
+        .isoformat()
+        .replace("+00:00", "Z")
+        .replace(":", "-")
+        .replace(".", "-")
+    )
+    return cwd / f"session-{timestamp}.loushang.zip"
+
+
 def _default_html_export_path(session: SessionExportPort) -> Path:
     return (
         session.session_manager.get_session_dir() / f"{session.session_id}-export.html"
@@ -156,4 +191,8 @@ def _export_theme(session: SessionExportPort) -> dict[str, str]:
     return {}
 
 
-__all__ = ["export_session_to_html", "export_session_to_jsonl"]
+__all__ = [
+    "export_session_to_bundle",
+    "export_session_to_html",
+    "export_session_to_jsonl",
+]

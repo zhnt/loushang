@@ -2,7 +2,10 @@
 
 ## Status
 
-Draft / exploratory.
+- Authority: proposed — non-normative architecture draft catalog
+- Design status: proposed
+- Implementation status: not-applicable
+- Owner: Loushang architecture
 
 This directory contains architecture drafts and research notes. They may be high
 value design inputs, but they are not accepted architecture unless a live ARD or
@@ -26,6 +29,8 @@ Current live references:
 
 ## Documents
 
+Standalone drafts:
+
 - [Foundation Refactor Plan](foundation-refactor-plan.md)
 - [Foundation Phase 0 Inventory](foundation-phase-0-inventory.md)
 - [Loushang Future Target Architecture v3](future-loushang-architecture-v3.md)
@@ -33,7 +38,6 @@ Current live references:
 - [AppService Hosted Boundary With An Embedded TUI](appservice-embedded-tui-hosted-boundary-plan.md)
 - [Loushang Runtime Architecture](loushang-runtime-architecture.md)
 - [Loushang Work / Method / Channel / Harness Architecture](loushang-work-method-channel-harness-architecture.md)
-- [Unified Product, Package, And Plugin Architecture](unified-product-package-plugin-architecture.md)
 - [Method / Ontology Action Driven Multi-Agent Collaboration Requirements](method-ontology-action-multi-agent-collaboration-requirements.md)
 - [P3 Fixed MethodPlan Flow Research](p3-fixed-methodplan-flow-research.md)
 - [Method Deviation And Evolution](method-deviation-and-evolution.md)
@@ -44,3 +48,4 @@ Current live references:
 - [Ontology-Driven Application Engineering](ontology-driven-application-engineering.md)
 - [Application Model And Artifact Compiler](application-model-and-artifact-compiler.md)
 - [Pluggable Transcript Compaction Strategies](pluggable-transcript-compaction-strategies.md)
+- [Project-Declared Configuration And Pluggable Conversation Persistence](project-declared-configuration-and-pluggable-conversation-persistence.md)

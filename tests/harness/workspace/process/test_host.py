@@ -4,6 +4,7 @@ import asyncio
 import os
 import sys
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -24,10 +25,21 @@ from loushang.harness.workspace.process.local import (
 )
 
 
+class _FakeReaderTransport:
+    def __init__(self, reader: _FakeReader) -> None:
+        self._reader = reader
+        self.close_calls = 0
+
+    def close(self) -> None:
+        self.close_calls += 1
+        self._reader.close()
+
+
 class _FakeReader:
     def __init__(self) -> None:
         self._chunks: asyncio.Queue[bytes | None] = asyncio.Queue()
         self._remainder = b""
+        self._transport = _FakeReaderTransport(self)
 
     def feed(self, content: bytes) -> None:
         self._chunks.put_nowait(content)
@@ -110,14 +122,21 @@ class _FakeTransport:
         self.kill_calls += 1
         self.finish(-9)
 
-    def finish(self, return_code: int, *, stderr: bytes = b"") -> None:
+    def finish(
+        self,
+        return_code: int,
+        *,
+        stderr: bytes = b"",
+        close_streams: bool = True,
+    ) -> None:
         if self._exit.done():
             return
         self.returncode = return_code
         if stderr:
             self.stderr.feed(stderr)
-        self.stdout.close()
-        self.stderr.close()
+        if close_streams:
+            self.stdout.close()
+            self.stderr.close()
         self._exit.set_result(return_code)
 
 
@@ -302,6 +321,48 @@ def test_natural_exit_closes_containment_exactly_once(tmp_path: Path) -> None:
         await handle.close()
         await host.close()
         assert close_count == 1
+
+    asyncio.run(scenario())
+
+
+def test_close_releases_reader_transports_when_descendant_holds_stdio(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        spawner = _FakeSpawner()
+        host = ProcessHost(spawner=spawner)
+        handle = await host.start(replace(_request(tmp_path), stream_stderr=True))
+        transport = spawner.transports[0]
+        transport.finish(0, close_streams=False)
+
+        assert (await handle.wait()).return_code == 0
+        await asyncio.wait_for(handle.close(), timeout=0.2)
+
+        assert transport.stdout._transport.close_calls == 1
+        assert transport.stderr._transport.close_calls == 1
+        await host.close()
+
+    asyncio.run(scenario())
+
+
+def test_requested_stderr_stream_preserves_full_bytes_and_bounded_tail(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        spawner = _FakeSpawner()
+        host = ProcessHost(spawner=spawner, stderr_max_bytes=4)
+        request = replace(_request(tmp_path), stream_stderr=True)
+        handle = await host.start(request)
+        transport = spawner.transports[0]
+        transport.finish(0, stderr=b"abcdef")
+
+        assert await handle.read_stderr(3) == b"abc"
+        assert await handle.read_stderr(3) == b"def"
+        assert await handle.read_stderr(3) == b""
+        assert (await handle.wait()).return_code == 0
+        assert handle.stderr_tail().content == b"cdef"
+        assert handle.stderr_tail().truncated is True
+        await host.close()
 
     asyncio.run(scenario())
 

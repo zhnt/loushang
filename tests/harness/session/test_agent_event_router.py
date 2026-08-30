@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
-from loushang.ai.types import AssistantMessage, TextPart, Usage
+from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
 from loushang.harness.session import AgentEventRouter
 from loushang.harness.transcript import ApplicationMessage, AutoRetryOutcome
 
@@ -130,6 +130,62 @@ def test_agent_event_router_preserves_assistant_message_end_ordering() -> None:
         "extension:message_end",
         "retry_finish_success",
         "compaction_clear_overflow",
+    ]
+
+
+def test_agent_event_router_binds_request_evidence_before_dispatch() -> None:
+    order: list[str] = []
+
+    class Evidence:
+        def prepare_message_commit(self, message: object) -> dict[str, object]:
+            order.append(f"prepare:{message.role}")
+            return {"resource": {"durable": True}}
+
+        def commit_message(self, message: object, record_id: str) -> bool:
+            order.append(f"evidence:{record_id}:{message.role}")
+            return True
+
+    async def scenario() -> None:
+        async def append_message(
+            _message: object,
+            *,
+            metadata: object | None = None,
+        ) -> str:
+            assert metadata == {"resource": {"durable": True}}
+            order.append("append")
+            return "record-1"
+
+        message = UserMessage(
+            role="user",
+            content=[TextPart(type="text", text="context")],
+            timestamp=0.0,
+        )
+        router = AgentEventRouter(
+            append_message=append_message,
+            dispatch_event=lambda _event, **_kwargs: _record_async(order, "dispatch"),
+            emit_extension_agent_event=lambda _event: _record_async(
+                order, "extension"
+            ),
+            record_tool_execution_error=lambda _event: None,
+            retry_controller=_RetryRecorder(order),
+            compaction_controller=_CompactionRecorder(order),
+            sync_extension_diagnostics=lambda **_kwargs: None,
+            record_assistant_response_error=lambda _message: None,
+            check_auto_compaction=lambda _message: _record_async(order, "compact"),
+            schedule_continue_run=lambda: _record_async(order, "continue"),
+            request_evidence=Evidence(),  # type: ignore[arg-type]
+        )
+
+        await router.handle({"type": "message_end", "message": message}, object())
+
+    asyncio.run(scenario())
+
+    assert order[:5] == [
+        "prepare:user",
+        "append",
+        "evidence:record-1:user",
+        "dispatch",
+        "extension",
     ]
 
 

@@ -505,8 +505,11 @@ Slash command：
 2. 可用 `/debug <scope-list>` 指定 scope，scope 用逗号或空格分隔。
 3. 可用 `/debug off` 关闭当前进程的 debug log sink；ProblemStore 不受影响。
 4. 显示 debug log 路径、latest symlink 和当前 scope。
-5. 显示最近若干行 error/warning/problem 摘要。
-6. 提示用户复现问题后可查看或导出。
+5. 显示 active entrypoint、Python executable、模块路径、源码 revision、dirty
+   状态和随安装提供的组件 contract；不得把 source revision 伪装成 build
+   revision，也不得把 bundled component 表述为 active runtime。
+6. 显示最近若干行 error/warning/problem 摘要。
+7. 提示用户复现问题后可查看或导出。
 
 示例输出：
 
@@ -514,6 +517,19 @@ Slash command：
 Debug logging enabled:
 ~/.loushang/debug/latest
 Scopes: all
+
+Runtime provenance:
+entrypoint: /path/to/.venv/bin/loushang
+python_executable: /path/to/.venv/bin/python
+module_file: /path/to/src/loushang/__init__.py
+source_git_commit: <git-sha>
+source_git_dirty: False
+provenance_scope: installation
+components:
+  native-screen:
+    kind: renderer
+    availability: bundled
+    contract_version: 1
 
 Diagnostics bundle:
 loushang diag export --cwd /path/to/project --output /path/to/project/.loushang/diagnostics/loushang-diag.zip --debug-file ~/.loushang/debug/<session_id>.log

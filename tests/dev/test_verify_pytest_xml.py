@@ -45,6 +45,34 @@ def test_verifier_rejects_skipped_failed_or_error_results(tmp_path: Path) -> Non
     assert "errors must be zero" in result.stderr
 
 
+def test_verifier_allows_platform_skips_when_at_least_one_test_passes(
+    tmp_path: Path,
+) -> None:
+    result = _run_verifier(
+        tmp_path,
+        '<testsuites><testsuite tests="11" skipped="10" failures="0" errors="0"/>'
+        "</testsuites>",
+        "--allow-skipped",
+    )
+
+    assert result.returncode == 0
+    assert "skipped=10" in result.stdout
+
+
+def test_verifier_rejects_all_skipped_report_even_when_skips_are_allowed(
+    tmp_path: Path,
+) -> None:
+    result = _run_verifier(
+        tmp_path,
+        '<testsuites><testsuite tests="10" skipped="10" failures="0" errors="0"/>'
+        "</testsuites>",
+        "--allow-skipped",
+    )
+
+    assert result.returncode == 1
+    assert "at least one test must pass" in result.stderr
+
+
 def test_verifier_rejects_wrong_required_property(tmp_path: Path) -> None:
     result = _run_verifier(
         tmp_path,

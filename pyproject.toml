@@ -92,4 +92,10 @@ where = ["src"]
   "plugin.json",
   "declarations/*.json",
 ]
+"loushang.coding._plugins.coding_base" = [
+  "plugin.json",
+  "declarations/*.json",
+  "prompts/*.md",
+  "skills/*/*.md",
+]
 "loushang.harness.transcript.export" = ["*.html", "*.css", "*.js"]

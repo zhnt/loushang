@@ -6,7 +6,7 @@ import json
 from dataclasses import dataclass
 from typing import Literal
 
-ExportFormat = Literal["html", "jsonl"]
+ExportFormat = Literal["bundle", "html", "jsonl"]
 ExportResultFormat = Literal["text", "json"]
 
 
@@ -27,9 +27,11 @@ class ExportResult:
 
 
 def export_session(session: object, request: ExportRequest) -> ExportResult:
-    method_name = (
-        "export_to_jsonl" if request.format == "jsonl" else "export_to_html"
-    )
+    method_name = {
+        "bundle": "export_to_bundle",
+        "html": "export_to_html",
+        "jsonl": "export_to_jsonl",
+    }[request.format]
     exporter = getattr(session, method_name, None)
     if not callable(exporter):
         raise ExportOperationError(

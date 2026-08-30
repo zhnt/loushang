@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Generic, TypeVar, cast
 
 from loushang.foundation.json import JSONValue, require_json_mapping, require_json_value
+from loushang.harness.artifacts.references import SessionBlobRef
 
 T = TypeVar("T")
 R = TypeVar("R")
@@ -159,6 +160,9 @@ class CommandExecutionRecord:
     full_output_path: str | None = None
     exclude_from_context: bool = False
     metadata: Mapping[str, JSONValue] = field(default_factory=dict, hash=False)
+    full_output_blob: SessionBlobRef | None = None
+    stdout_blob: SessionBlobRef | None = None
+    stderr_blob: SessionBlobRef | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.command, str):
@@ -180,11 +184,40 @@ class CommandExecutionRecord:
             self.full_output_path, str
         ):
             raise TypeError("command output path must be a string or None")
+        if self.full_output_blob is not None and not isinstance(
+            self.full_output_blob, SessionBlobRef
+        ):
+            raise TypeError("command output blob must be a SessionBlobRef or None")
+        for name, blob in (
+            ("stdout", self.stdout_blob),
+            ("stderr", self.stderr_blob),
+        ):
+            if blob is not None and not isinstance(blob, SessionBlobRef):
+                raise TypeError(f"command {name} blob must be a SessionBlobRef or None")
+        if self.full_output_path is not None and any(
+            blob is not None
+            for blob in (self.full_output_blob, self.stdout_blob, self.stderr_blob)
+        ):
+            raise ValueError("command output cannot have blobs and a legacy path")
+        if self.full_output_blob is not None and any(
+            blob is not None for blob in (self.stdout_blob, self.stderr_blob)
+        ):
+            raise ValueError(
+                "command output cannot mix a compatibility blob with stream blobs"
+            )
         object.__setattr__(self, "metadata", _freeze_metadata(self.metadata))
 
     @property
     def output_path(self) -> str | None:
         return self.full_output_path
+
+    @property
+    def output_blobs(self) -> tuple[SessionBlobRef, ...]:
+        return tuple(
+            blob
+            for blob in (self.stdout_blob, self.stderr_blob, self.full_output_blob)
+            if blob is not None
+        )
 
 
 __all__ = [

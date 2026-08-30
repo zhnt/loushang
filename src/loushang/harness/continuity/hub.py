@@ -127,7 +127,7 @@ class _TrackedActivationLease:
 
     async def consume(self) -> object:
         if self._hub._closing:
-            await self._inner.abort()
+            await self.abort()
             raise ActivationLeaseStateError("activation lease is closed")
         try:
             return await self._inner.consume()
@@ -135,10 +135,8 @@ class _TrackedActivationLease:
             self._hub._untrack_activation_lease(self)
 
     async def abort(self) -> None:
-        try:
-            await self._inner.abort()
-        finally:
-            self._hub._untrack_activation_lease(self)
+        await self._inner.abort()
+        self._hub._untrack_activation_lease(self)
 
     async def close(self) -> None:
         await self.abort()
@@ -265,6 +263,7 @@ class ContinuityHub:
                 descending=request.descending,
                 limit=request.page_size,
                 cursor=provider_cursor.cursor,
+                required_actions=request.required_actions,
             )
             try:
                 async with semaphore:
@@ -274,7 +273,7 @@ class ContinuityHub:
                         provider.query(provider_request),
                         timeout=self._provider_timeout,
                     )
-                self._validate_provider_page(provider, page)
+                self._validate_provider_page(provider, page, provider_request)
                 return _QueryResult(provider=provider, page=page, diagnostic=None)
             except Exception as exc:
                 return _QueryResult(
@@ -412,6 +411,8 @@ class ContinuityHub:
         target: ContinuityTarget,
     ) -> PreparedActivationLease:
         provider = self._provider_for_target(target)
+        if "activate" not in provider.descriptor.supported_actions:
+            raise RuntimeError("The selected continuity item cannot be activated")
         lease = await self._call_provider(
             provider,
             "prepare",
@@ -424,7 +425,10 @@ class ContinuityHub:
         """Delete a target only when its owning Provider explicitly supports it."""
 
         provider = self._provider_for_target(target)
-        if not isinstance(provider, ContinuityDeletionProvider):
+        if (
+            "delete" not in provider.descriptor.supported_actions
+            or not isinstance(provider, ContinuityDeletionProvider)
+        ):
             raise RuntimeError("The selected continuity item cannot be deleted")
         return await self._call_provider(
             provider,
@@ -475,6 +479,13 @@ class ContinuityHub:
                 for provider in candidates
                 if selected_domains.intersection(provider.descriptor.domain_ids)
             )
+        if request.required_actions:
+            required_actions = set(request.required_actions)
+            candidates = tuple(
+                provider
+                for provider in candidates
+                if required_actions.issubset(provider.descriptor.supported_actions)
+            )
         unsupported = tuple(
             provider.descriptor.provider_id
             for provider in candidates
@@ -491,9 +502,12 @@ class ContinuityHub:
         self,
         provider: ContinuityProvider,
         page: ProviderPage,
+        request: ProviderQuery,
     ) -> None:
         if not isinstance(page, ProviderPage):
             raise TypeError("continuity providers must return ProviderPage values")
+        if len(page.items) > request.limit:
+            raise ValueError("provider returned more items than the requested limit")
         descriptor = provider.descriptor
         provider_domains = set(descriptor.domain_ids)
         for item in page.items:
@@ -502,6 +516,10 @@ class ContinuityHub:
                 raise ValueError("provider returned a target owned by another provider")
             if not set(summary.domain_ids).issubset(provider_domains):
                 raise ValueError("provider returned a summary for an undeclared Domain")
+            if not set(summary.actions).issubset(descriptor.supported_actions):
+                raise ValueError("provider returned an unsupported target action")
+            if not set(request.required_actions).issubset(summary.actions):
+                raise ValueError("provider returned a summary without required actions")
 
     def _provider_for_target(self, target: ContinuityTarget) -> ContinuityProvider:
         try:
@@ -538,6 +556,7 @@ class ContinuityHub:
             "sort_id": request.sort_id,
             "descending": request.descending,
             "page_size": request.page_size,
+            "required_actions": list(request.required_actions),
         }
         return hashlib.sha256(_canonical_json(payload)).hexdigest()
 
@@ -553,9 +572,8 @@ class ContinuityHub:
                     "domain_ids": list(descriptor.domain_ids),
                     "implementation_version": descriptor.implementation_version,
                     "profile_version": descriptor.profile_version,
-                    "source": bound.provenance.source,
-                    "layer_id": bound.provenance.layer_id,
-                    "implementation": (bound.provenance.selection.implementation),
+                    "supported_actions": list(descriptor.supported_actions),
+                    "source": bound.source.to_dict(),
                 }
             )
         payload = {
@@ -672,6 +690,27 @@ class ContinuityHub:
         )
 
 
+def build_continuity_hub(
+    composition: ExperienceComposition,
+    *,
+    cursor_secret: bytes | None = None,
+    provider_timeout: float = 5.0,
+    activation_timeout: float | None = 120.0,
+    concurrency_limit: int = 8,
+    cursor_ttl: float = 900.0,
+) -> ContinuityHub:
+    """Sole production constructor for one process Continuity authority."""
+
+    return ContinuityHub(
+        composition,
+        cursor_secret=cursor_secret,
+        provider_timeout=provider_timeout,
+        activation_timeout=activation_timeout,
+        concurrency_limit=concurrency_limit,
+        cursor_ttl=cursor_ttl,
+    )
+
+
 def _parse_timestamp(value: str) -> float:
     try:
         normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
@@ -701,4 +740,4 @@ def _urlsafe_decode(value: str) -> bytes:
     return base64.urlsafe_b64decode(value + padding)
 
 
-__all__ = ["ContinuityHub", "InvalidContinuityCursor"]
+__all__ = ["ContinuityHub", "InvalidContinuityCursor", "build_continuity_hub"]

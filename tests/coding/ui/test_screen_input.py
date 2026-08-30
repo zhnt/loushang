@@ -5,8 +5,11 @@ from pathlib import Path
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.screen_input import (
     CODING_SCREEN_RUN_PROFILE,
+    build_runtime_screen_input_router,
     build_screen_input_router,
 )
+from loushang.foundation.observability.context import current_context
+from loushang.foundation.runtime_scope import RunLease, resolve_runtime_scope
 from loushang.harnesstui.conversation.agent_binding import (
     agent_image_parts_from_prompt_attachments,
 )
@@ -39,6 +42,15 @@ def test_coding_screen_profile_uses_the_standard_input_factory_contract() -> Non
     )
 
     assert router.handle(InputEvent(kind="text", text="hello")).kind == "handled"
+    assert CODING_SCREEN_RUN_PROFILE.runtime is not None
+    assert (
+        CODING_SCREEN_RUN_PROFILE.runtime.input_router_factory
+        is build_runtime_screen_input_router
+    )
+    scope = resolve_runtime_scope(run_id="a" * 32)
+    with CODING_SCREEN_RUN_PROFILE.runtime.context_factory(scope):
+        assert current_context().run_id == scope.run_id
+    assert current_context().run_id is None
 
 
 def test_prompt_image_attachments_convert_at_the_agent_boundary() -> None:
@@ -57,10 +69,17 @@ def test_prompt_image_attachments_convert_at_the_agent_boundary() -> None:
     assert images[0].data == "cG5n"
 
 
-def test_coding_input_binding_follows_a_replaced_app(tmp_path: Path) -> None:
+def test_coding_input_binding_follows_a_replaced_app(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    runtime_dir = tmp_path / "runtime"
+    monkeypatch.setenv("LOUSHANG_RUNTIME_DIR", str(runtime_dir))
     first_app = _app()
     replacement_app = _app(cwd=str(tmp_path))
-    router = build_screen_input_router(
+    scope = resolve_runtime_scope()
+    lease = RunLease.acquire(scope)
+    router = build_runtime_screen_input_router(scope)(
         first_app,
         should_exit=lambda _text: False,
         clipboard_image_reader=lambda: ClipboardImage(
@@ -73,11 +92,15 @@ def test_coding_input_binding_follows_a_replaced_app(tmp_path: Path) -> None:
 
     router.handle(InputEvent(kind="key", key="ctrl+v"))
 
-    expected = tmp_path / ".loushang" / "clipboard" / "clipboard-image.png"
+    expected = next(
+        (runtime_dir / "runs").glob("*/drafts/clipboard/clipboard-image.png")
+    )
     assert expected.read_bytes() == b"png"
     assert replacement_app.state.status_message == (
-        "Attached clipboard image: .loushang/clipboard/clipboard-image.png"
+        "Attached clipboard image: clipboard/clipboard-image.png"
     )
+    router.dispose()
+    lease.close()
 
 
 def test_coding_input_binding_uses_shared_clipboard_status_copy(
@@ -104,6 +127,7 @@ def test_coding_input_binding_uses_shared_clipboard_status_copy(
             app,
             should_exit=lambda _text: False,
             clipboard_image_reader=reader,
+            clipboard_image_dir=tmp_path / str(index) / "clips",
         )
 
         router.handle(InputEvent(kind="key", key="ctrl+v"))

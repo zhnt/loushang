@@ -61,7 +61,7 @@ EXPECTED_CONSTRUCTION_SITES = {
     "RuntimeProfileBinder": {
         (
             Path("src/loushang/coding/continuity.py"),
-            "bind_coding_continuity",
+            "_compose_coding_continuity_base",
         ),
         (
             Path("src/loushang/harness/capabilities/composition_runtime.py"),
@@ -84,6 +84,10 @@ EXPECTED_CONSTRUCTION_SITES = {
         (
             Path("src/loushang/harness/capabilities/composition_runtime.py"),
             "stage_resource_composition_candidate",
+        ),
+        (
+            Path("src/loushang/harness/capabilities/composition_runtime.py"),
+            "StagedResourceCompositionCandidate.stage_refresh_successor",
         ),
     },
 }
@@ -596,6 +600,8 @@ def test_generated_catalog_distinguishes_source_complete_from_mounted() -> None:
         ("harness.model_input", 1): "production-mounted",
         ("harness.resources", 1): "production-mounted",
         ("harness.resources", 2): "source-complete",
+        ("harness.resources", 3): "source-complete",
+        ("harness.resources", 4): "source-complete",
         ("harness.session", 4): "production-mounted",
         ("harness.workspace", 1): "production-mounted",
     }
@@ -739,8 +745,8 @@ def test_cla7d_continuity_has_one_process_authority_and_typed_reference() -> Non
     assert _construction_sites("ContinuityHub") == Counter(
         {
             (
-                Path("src/loushang/coding/continuity.py"),
-                "bind_coding_continuity",
+                Path("src/loushang/harness/continuity/hub.py"),
+                "build_continuity_hub",
             ): 1
         }
     )

@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Iterable, Mapping
+from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from loushang.ai.types import ToolCall
 from loushang.harness.approval import ApprovalResolver
 from loushang.harness.capabilities.prompt import PromptSectionComposer
-from loushang.harness.capabilities.prompt_assembly import assemble_prompt
+from loushang.harness.capabilities.prompt_assembly import (
+    SkillPromptSummary,
+    assemble_prompt,
+)
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.resources.activation import ResourceActivationRuntime
 from loushang.harness.resources.types import ResourceBundle
@@ -89,6 +92,9 @@ def create_tool_prompt_rebuilder(
     agent: AgentPort,
     base_prompt: str,
     get_resource_bundle: Callable[[], ResourceBundle | None],
+    get_effective_skills: (
+        Callable[[], Sequence[SkillPromptSummary] | None] | None
+    ) = None,
     show_empty_tool_prompt: bool = False,
     resource_activation_runtime: ResourceActivationRuntime | None = None,
     prompt_section_composer: PromptSectionComposer | None = None,
@@ -113,6 +119,11 @@ def create_tool_prompt_rebuilder(
             tool_definitions=active_definitions,
             tool_prompt=tool_prompt,
             resource_activation=activation.activate(bundle),
+            skill_summaries=(
+                get_effective_skills()
+                if get_effective_skills is not None
+                else None
+            ),
             prompt_section_composer=composer,
         )
         agent.system_prompt = assembly.system_prompt
@@ -146,6 +157,9 @@ class SessionToolController:
     get_approval_resolver: Callable[[], ApprovalResolver | None] | None = None
     policy_evaluator: ToolPolicyEvaluator | None = None
     operation_bindings: Mapping[str, object] = field(default_factory=dict)
+    get_effective_skills: (
+        Callable[[], Sequence[SkillPromptSummary] | None] | None
+    ) = None
     _runtime: SessionToolRuntime = field(init=False, repr=False)
     _execution_host: ToolExecutionHost = field(init=False, repr=False)
 
@@ -199,6 +213,7 @@ class SessionToolController:
                 agent=self.agent,
                 base_prompt=self.base_prompt,
                 get_resource_bundle=self.get_resource_bundle,
+                get_effective_skills=self.get_effective_skills,
                 show_empty_tool_prompt=self.show_empty_tool_prompt,
                 resource_activation_runtime=self.resource_activation_runtime,
                 prompt_section_composer=self.prompt_section_composer,

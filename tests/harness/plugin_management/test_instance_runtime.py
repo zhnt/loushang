@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -10,6 +11,17 @@ from typing import Literal
 
 import pytest
 
+from loushang.harness.continuity.plugin_runtime import (
+    ContinuityPluginSecurityRetirementEvidence,
+)
+from loushang.harness.journal import JournalCodecError
+from loushang.harness.plugin_management.continuity_adapter import (
+    PLUGIN_CONTINUITY_SECURITY_RETIREMENT_ACCEPTANCE_CODEC,
+    PluginContinuitySecurityRetirementAcceptanceV1,
+    PluginContinuitySecurityRetirementJournal,
+    PluginContinuitySecurityRetirementJournalError,
+    PluginInstanceLedgerContinuitySecurityRetirementAuthority,
+)
 from loushang.harness.plugin_management.instance_records import (
     PluginInstanceActivationV1,
     PluginInstanceLeaseFamilyReleaseV1,
@@ -114,6 +126,321 @@ def test_instance_runtime_records_are_strict_derived_and_round_trip() -> None:
         replace(activation.direct_host_family, source_inventory_revision=0)
     with pytest.raises(ValueError, match="not structural"):
         replace(revocation, reason_code="Source revoked!")
+
+
+def test_continuity_security_retirement_adapter_durably_accepts_before_revoking(
+    tmp_path: Path,
+) -> None:
+    asyncio.run(_continuity_security_retirement_adapter_durably_accepts(tmp_path))
+
+
+def test_continuity_security_acceptance_source_is_sealed_by_durable_identity(
+    tmp_path: Path,
+) -> None:
+    real_root = tmp_path / "real"
+    real_root.mkdir()
+    alias_root = tmp_path / "alias"
+    alias_root.symlink_to(real_root, target_is_directory=True)
+    context = _context(real_root)
+    path = context.security_acceptances.path
+    alias = PluginContinuitySecurityRetirementJournal.for_instance_runtime(
+        alias_root / "instance-runtime.jsonl"
+    )
+    assert alias.path == path
+    restarted_through_alias = PluginInstanceRuntimeLedger(
+        alias_root / "instance-runtime.jsonl",
+        management_operation_journal_path=alias_root / "operations.jsonl",
+        desired_state=context.desired,
+        retirement_intents=context.intents,
+        retirement_sets=context.sets,
+        security_acceptances=alias,
+    )
+    assert restarted_through_alias.path == context.runtime.path
+    assert (
+        restarted_through_alias.management_operation_journal_path
+        == context.runtime.management_operation_journal_path
+    )
+
+    context.runtime.bind_security_acceptance_source(alias)
+    context.runtime.bind_security_acceptance_source(
+        PluginContinuitySecurityRetirementJournal(path)
+    )
+    with pytest.raises(ValueError, match="canonical path"):
+        context.runtime.bind_security_acceptance_source(
+            PluginContinuitySecurityRetirementJournal(
+                tmp_path / "other-security-acceptance.jsonl"
+            )
+        )
+
+
+def test_continuity_security_alias_preserves_deployed_error_codes(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(JournalCodecError) as invalid_record:
+        PLUGIN_CONTINUITY_SECURITY_RETIREMENT_ACCEPTANCE_CODEC.decode_record({})
+    assert invalid_record.value.code == (
+        "invalid_plugin_continuity_security_acceptance_record"
+    )
+
+    corrupt = PluginContinuitySecurityRetirementJournal(
+        tmp_path / "corrupt-security.jsonl"
+    )
+    corrupt.path.write_text('{"unknown":true}\n', encoding="utf-8")
+    with pytest.raises(
+        PluginContinuitySecurityRetirementJournalError
+    ) as corrupt_error:
+        corrupt.records()
+    assert corrupt_error.value.code == (
+        "plugin_continuity_security_acceptance_journal_corrupt"
+    )
+
+    context = _context(tmp_path / "conflict")
+    key = _key("plugin.a")
+    _install_enable(context, key, start_revision=0, start_operation=1)
+    active = _activate(context, key, "continuity-security-code")
+    first = PluginInstanceRevocationV1.create(
+        installation_key=key,
+        instance_revision_ref=active.instance_revision_ref,
+        operation_id="revoke-code-a",
+        idempotency_key="revoke-code-request-a",
+        authority_reference="security:a",
+        reason_code="source_revoked",
+    )
+    second = PluginInstanceRevocationV1.create(
+        installation_key=key,
+        instance_revision_ref=active.instance_revision_ref,
+        operation_id="revoke-code-b",
+        idempotency_key="revoke-code-request-b",
+        authority_reference="security:b",
+        reason_code="digest_compromised",
+    )
+    context.security_acceptances._accept((first,))
+    [replayed] = PluginContinuitySecurityRetirementJournal(
+        context.security_acceptances.path
+    ).records()
+    assert isinstance(replayed, PluginContinuitySecurityRetirementAcceptanceV1)
+    with pytest.raises(
+        PluginContinuitySecurityRetirementJournalError
+    ) as conflict:
+        context.security_acceptances._accept((second,))
+    assert conflict.value.code == (
+        "plugin_continuity_security_acceptance_conflict"
+    )
+
+
+def test_instance_runtime_restart_cannot_omit_or_replace_security_identity(
+    tmp_path: Path,
+) -> None:
+    context = _context(tmp_path)
+
+    with pytest.raises(TypeError, match="security_acceptances"):
+        PluginInstanceRuntimeLedger(  # type: ignore[call-arg]
+            context.runtime.path,
+            management_operation_journal_path=(
+                context.runtime.management_operation_journal_path
+            ),
+            desired_state=context.desired,
+            retirement_intents=context.intents,
+            retirement_sets=context.sets,
+        )
+    with pytest.raises(ValueError, match="canonical path"):
+        PluginInstanceRuntimeLedger(
+            context.runtime.path,
+            management_operation_journal_path=(
+                context.runtime.management_operation_journal_path
+            ),
+            desired_state=context.desired,
+            retirement_intents=context.intents,
+            retirement_sets=context.sets,
+            security_acceptances=PluginContinuitySecurityRetirementJournal(
+                tmp_path / "replacement-security-acceptances.jsonl"
+            ),
+        )
+
+
+def test_continuity_security_acceptance_linearizes_before_new_acquisition(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asyncio.run(
+        _continuity_security_acceptance_linearizes_before_new_acquisition(
+            tmp_path,
+            monkeypatch,
+        )
+    )
+
+
+def test_continuity_security_aliases_share_one_cross_process_lock_identity(
+    tmp_path: Path,
+) -> None:
+    asyncio.run(_continuity_security_aliases_share_one_lock_identity(tmp_path))
+
+
+async def _continuity_security_aliases_share_one_lock_identity(
+    tmp_path: Path,
+) -> None:
+    real_root = tmp_path / "real"
+    real_root.mkdir()
+    alias_root = tmp_path / "alias"
+    alias_root.symlink_to(real_root, target_is_directory=True)
+    context = _context(real_root)
+    key = _key("plugin.a")
+    _install_enable(context, key, start_revision=0, start_operation=1)
+    active = _activate(context, key, "continuity-alias")
+    revocation = PluginInstanceRevocationV1.create(
+        installation_key=key,
+        instance_revision_ref=active.instance_revision_ref,
+        operation_id="continuity-alias-revoke",
+        idempotency_key="continuity-alias-revoke-request",
+        authority_reference="security:continuity",
+        reason_code="source_revoked",
+    )
+    alias_journal = PluginContinuitySecurityRetirementJournal.for_instance_runtime(
+        alias_root / "instance-runtime.jsonl"
+    )
+    assert alias_journal.path == context.security_acceptances.path
+    first = PluginInstanceLedgerContinuitySecurityRetirementAuthority(
+        ledger=context.runtime,
+        acceptance_journal=context.security_acceptances,
+        revocations=(revocation,),
+    )
+    second = PluginInstanceLedgerContinuitySecurityRetirementAuthority(
+        ledger=context.runtime,
+        acceptance_journal=alias_journal,
+        revocations=(revocation,),
+    )
+
+    first_evidence, second_evidence = await asyncio.gather(
+        first.accept_revocation(),
+        second.accept_revocation(),
+    )
+
+    assert first_evidence.evidence_fingerprint == second_evidence.evidence_fingerprint
+    assert len(context.security_acceptances.records()) == 1
+
+
+async def _continuity_security_acceptance_linearizes_before_new_acquisition(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = _context(tmp_path)
+    key = _key("plugin.a")
+    _install_enable(context, key, start_revision=0, start_operation=1)
+    active = _activate(context, key, "continuity-race")
+    revocation = PluginInstanceRevocationV1.create(
+        installation_key=key,
+        instance_revision_ref=active.instance_revision_ref,
+        operation_id="continuity-race-revoke",
+        idempotency_key="continuity-race-revoke-request",
+        authority_reference="security:continuity",
+        reason_code="source_revoked",
+    )
+    journal = context.security_acceptances
+    authority = PluginInstanceLedgerContinuitySecurityRetirementAuthority(
+        ledger=context.runtime,
+        acceptance_journal=journal,
+        revocations=(revocation,),
+    )
+    appended = Event()
+    allow_accept_return = Event()
+    original_accept = journal._accept
+
+    def blocking_accept(revocations):  # type: ignore[no-untyped-def]
+        record = original_accept(revocations)
+        appended.set()
+        assert allow_accept_return.wait(timeout=5)
+        return record
+
+    monkeypatch.setattr(journal, "_accept", blocking_accept)
+    acceptance = asyncio.create_task(authority.accept_revocation())
+    assert await asyncio.to_thread(appended.wait, 5)
+    acquisition = asyncio.create_task(
+        asyncio.to_thread(
+            context.runtime.acquire_current_family,
+            (key,),
+            lease_kind="owner_generation",
+            operation_id="continuity-racing-acquire",
+            idempotency_key="continuity-racing-acquire-request",
+            holder_reference="continuity:racing",
+        )
+    )
+    await asyncio.sleep(0.05)
+    assert not acquisition.done()
+
+    allow_accept_return.set()
+    assert (await acceptance).phase == "accepted"
+    with pytest.raises(PluginInstanceRuntimeError) as caught:
+        await acquisition
+    assert caught.value.code == "plugin_instance_acquisition_unavailable"
+
+
+async def _continuity_security_retirement_adapter_durably_accepts(
+    tmp_path: Path,
+) -> None:
+    context = _context(tmp_path)
+    key = _key("plugin.a")
+    _install_enable(context, key, start_revision=0, start_operation=1)
+    active = _activate(context, key, "continuity-security")
+    revocation = PluginInstanceRevocationV1.create(
+        installation_key=key,
+        instance_revision_ref=active.instance_revision_ref,
+        operation_id="continuity-security-revoke",
+        idempotency_key="continuity-security-revoke-request",
+        authority_reference="security:continuity",
+        reason_code="source_revoked",
+    )
+    journal = context.security_acceptances
+    authority = PluginInstanceLedgerContinuitySecurityRetirementAuthority(
+        ledger=context.runtime,
+        acceptance_journal=journal,
+        revocations=(revocation,),
+    )
+
+    acceptance = await authority.accept_revocation()
+    assert isinstance(acceptance, ContinuityPluginSecurityRetirementEvidence)
+    assert acceptance.phase == "accepted"
+    assert journal.records()[0].revocations == (revocation,)
+    assert context.runtime.snapshot().instance(active.instance_revision_ref).state == (
+        "ACTIVE"
+    )
+    assert (await authority.accept_revocation()).evidence_fingerprint == (
+        acceptance.evidence_fingerprint
+    )
+
+    # Simulate a crash after acceptance fsync but before the live publication
+    # enters REVOKING.  The durable source bars acquisition immediately, and
+    # startup reconciliation idempotently advances the Instance ledger.
+    restarted = PluginInstanceRuntimeLedger(
+        context.runtime.path,
+        management_operation_journal_path=(
+            context.runtime.management_operation_journal_path
+        ),
+        desired_state=context.desired,
+        retirement_intents=context.intents,
+        retirement_sets=context.sets,
+        security_acceptances=journal,
+    )
+    with pytest.raises(PluginInstanceRuntimeError) as caught:
+        restarted.acquire_current_family(
+            (key,),
+            lease_kind="owner_generation",
+            operation_id="continuity-after-acceptance",
+            idempotency_key="continuity-after-acceptance-request",
+            holder_reference="continuity:restarted",
+        )
+    assert caught.value.code == "plugin_instance_acquisition_unavailable"
+    recovered = journal.reconcile(restarted)
+    assert recovered[0].state == "REVOKING"
+
+    evidence = await authority.enter_revoking(acceptance)
+    assert evidence.phase == "revoking"
+    retired = context.runtime.snapshot().instance(active.instance_revision_ref)
+    assert retired is not None
+    assert retired.state == "REVOKING"
+    assert retired.revocation == revocation
+    assert (await authority.enter_revoking(acceptance)).evidence_fingerprint == (
+        evidence.evidence_fingerprint
+    )
 
 
 def test_activation_requires_current_enabled_selection_and_is_idempotent(
@@ -464,6 +791,7 @@ class _Context:
     sets: PluginRetirementSetLedger
     service: PluginManagementService
     runtime: PluginInstanceRuntimeLedger
+    security_acceptances: PluginContinuitySecurityRetirementJournal
 
 
 class _BlockAfterDisableCommit:
@@ -517,12 +845,17 @@ def _context(tmp_path: Path) -> _Context:
         retirement_intents=intents,
         retirement_sets=sets,
     )
+    runtime_path = tmp_path / "instance-runtime.jsonl"
+    security_acceptances = (
+        PluginContinuitySecurityRetirementJournal.for_instance_runtime(runtime_path)
+    )
     runtime = PluginInstanceRuntimeLedger(
-        tmp_path / "instance-runtime.jsonl",
+        runtime_path,
         management_operation_journal_path=operation_path,
         desired_state=desired,
         retirement_intents=intents,
         retirement_sets=sets,
+        security_acceptances=security_acceptances,
     )
     return _Context(
         desired=desired,
@@ -530,6 +863,7 @@ def _context(tmp_path: Path) -> _Context:
         sets=sets,
         service=service,
         runtime=runtime,
+        security_acceptances=security_acceptances,
     )
 
 
@@ -652,9 +986,7 @@ def _mutation(
         installation_key=key,
         desired_state=desired_states[action],
         package_revision=(
-            _package(key.plugin_id, digest_character)
-            if action == "install"
-            else None
+            _package(key.plugin_id, digest_character) if action == "install" else None
         ),
         actor_id="operator-1",
         policy_revision="policy-1",
