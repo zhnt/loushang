@@ -11,6 +11,7 @@ from types import SimpleNamespace
 
 import pytest
 
+import loushang.coding._plugin_lifecycle as plugin_lifecycle_module
 from loushang.coding._plugin_lifecycle import (
     resolve_coding_plugin_lifecycle_state_layout,
 )
@@ -819,17 +820,25 @@ def test_bootstrap_failure_is_redacted_and_explicit_retry_succeeds(
             )
         )
         runtime = _Runtime(tmp_path / "sessions")
+        retry_layout = _test_layout(
+            tmp_path / "retry-state",
+            tmp_path / "workspace",
+        )
+
+        def held_retry_startup_leases() -> tuple[Path, ...]:
+            with plugin_lifecycle_module._PROCESS_STARTUP_LEASES_LOCK:
+                return tuple(
+                    lease_path
+                    for lease_path in plugin_lifecycle_module._PROCESS_STARTUP_LEASES
+                    if lease_path.is_relative_to(retry_layout.root)
+                )
+
         kwargs = {
             "settings_manager": settings,
             "session_dir": runtime.session_dir,
             "cwd": tmp_path / "workspace",
-            "materializer": _materializer_for_layout(
-                _test_layout(tmp_path / "retry-state", tmp_path / "workspace")
-            ),
-            "state_layout": _test_layout(
-                tmp_path / "retry-state", tmp_path / "workspace"
-            ),
-            "runtime_id": "coding-process:test-retry",
+            "materializer": _materializer_for_layout(retry_layout),
+            "state_layout": retry_layout,
             "clock": lambda: 200,
         }
 
@@ -841,11 +850,13 @@ def test_bootstrap_failure_is_redacted_and_explicit_retry_succeeds(
         status = get_coding_continuity_bootstrap_status(runtime)
         assert status.state == "failed"
         assert status.retryable is False
+        [first_startup_lease] = held_retry_startup_leases()
 
         sources.pop()
         composition = await retry_coding_continuity_bootstrap(runtime, **kwargs)
         assert composition.plugin_publication is not None
         assert get_coding_continuity_bootstrap_status(runtime).state == "ready"
+        assert held_retry_startup_leases() == (first_startup_lease,)
         await shutdown_coding_continuity(runtime)
 
     asyncio.run(scenario())

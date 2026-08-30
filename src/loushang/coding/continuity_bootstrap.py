@@ -375,7 +375,7 @@ async def bind_coding_configured_continuity(
         )
         _prepare_private_state_layout(layout)
         _prepare_private_runtime_roots(layout)
-        lifecycle = _build_lifecycle(layout, runtime_id=resolved_runtime_id)
+        lifecycle = _build_lifecycle(layout)
         lifecycle.common.reconcile_retirements()
         replayed_runtime, inspections = _continuity_runtime_inputs(
             sources,
@@ -868,8 +868,6 @@ def _coding_continuity_materializer(
 
 def _build_lifecycle(
     layout: CodingContinuityStateLayout,
-    *,
-    runtime_id: str,
 ) -> _InstalledLifecycle:
     security = PluginContinuitySecurityRetirementJournal.for_instance_runtime(
         layout.instance_runtime
@@ -888,7 +886,6 @@ def _build_lifecycle(
             instance_runtime=layout.instance_runtime,
             package_lifecycle=layout.package_lifecycle,
         ),
-        startup_id=runtime_id,
         security_acceptances=security,
     )
     desired = common.desired
