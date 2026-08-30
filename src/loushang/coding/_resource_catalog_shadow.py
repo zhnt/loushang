@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import time
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Protocol, cast
 
@@ -73,6 +73,73 @@ _CODING_PACKAGE_TRUST_CLASS = "coding-configured-published"
 _CODING_PACKAGE_TRUST_POLICY_REVISION = "coding-resource-package-trust-v1"
 
 
+@dataclass(frozen=True, slots=True)
+class CodingResourceCatalogSourcePolicy:
+    """Product-authored admission policy for Catalog source classes."""
+
+    policy_id: str
+    product_policy_revision: str
+    include_native_resources: bool
+    include_package_resources: bool
+    include_embedded_resources: bool
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.policy_id, str)
+            or not self.policy_id.strip()
+            or not isinstance(self.product_policy_revision, str)
+            or not self.product_policy_revision.strip()
+        ):
+            raise ValueError("Coding Resource Catalog source policy is invalid")
+        for value in (
+            self.include_native_resources,
+            self.include_package_resources,
+            self.include_embedded_resources,
+        ):
+            if not isinstance(value, bool):
+                raise TypeError(
+                    "Coding Resource Catalog source policy flags must be bools"
+                )
+
+
+CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY = CodingResourceCatalogSourcePolicy(
+    policy_id="coding.standard",
+    product_policy_revision=_CODING_RESOURCE_CATALOG_POLICY_REVISION,
+    include_native_resources=True,
+    include_package_resources=True,
+    include_embedded_resources=True,
+)
+CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY = (
+    CodingResourceCatalogSourcePolicy(
+        policy_id="coding.agent.read-only-v1",
+        product_policy_revision="coding-resource-catalog-agent-read-only-v1",
+        include_native_resources=False,
+        include_package_resources=False,
+        include_embedded_resources=False,
+    )
+)
+_CODING_RESOURCE_CATALOG_SOURCE_POLICIES = {
+    item.policy_id: item
+    for item in (
+        CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY,
+        CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY,
+    )
+}
+
+
+def canonical_coding_resource_catalog_source_policy(
+    policy: CodingResourceCatalogSourcePolicy,
+) -> CodingResourceCatalogSourcePolicy:
+    """Reject forged Product policies while retaining immutable shared values."""
+
+    if not isinstance(policy, CodingResourceCatalogSourcePolicy):
+        raise TypeError("Coding Resource Catalog source policy is invalid")
+    canonical = _CODING_RESOURCE_CATALOG_SOURCE_POLICIES.get(policy.policy_id)
+    if canonical is None or policy != canonical:
+        raise ValueError("Coding Resource Catalog source policy must be canonical")
+    return canonical
+
+
 class _ResourceCatalogReceiptSource(Protocol):
     def _take_initial_resource_catalog_input_receipt(
         self,
@@ -100,6 +167,9 @@ def prepare_coding_initial_resource_catalog_adapter(
     product_selection: PluginSelection | None = None,
     admission_now: int | None = None,
     clock: Callable[[], int] | None = None,
+    source_policy: CodingResourceCatalogSourcePolicy = (
+        CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY
+    ),
 ) -> InitialResourceCatalogProductAdapter:
     """Consume exactly one owner-issued receipt for a Catalog-owned Session."""
 
@@ -119,6 +189,7 @@ def prepare_coding_initial_resource_catalog_adapter(
             int(time.time()) if admission_now is None else admission_now
         ),
         clock=clock,
+        source_policy=source_policy,
     )
 
 
@@ -131,11 +202,17 @@ def build_coding_initial_resource_catalog_adapter(
     product_selection: PluginSelection | None = None,
     package_admission_now: int | None = None,
     clock: Callable[[], int] | None = None,
+    source_policy: CodingResourceCatalogSourcePolicy = (
+        CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY
+    ),
 ) -> InitialResourceCatalogProductAdapter:
     """Map one exact loader receipt without reparsing its selected Bundle."""
 
     if not isinstance(receipt, ResourceCatalogInputReceipt):
         raise TypeError("Coding Resource Catalog requires an input receipt")
+    resolved_source_policy = canonical_coding_resource_catalog_source_policy(
+        source_policy
+    )
     if product_scope_id is not None and (
         not isinstance(product_scope_id, str) or not product_scope_id.strip()
     ):
@@ -160,7 +237,14 @@ def build_coding_initial_resource_catalog_adapter(
         raise ValueError(
             "Coding Resource Catalog cannot receive both a composition and selection"
         )
-    if product_composition is None:
+    if (
+        product_selection is not None
+        and not resolved_source_policy.include_package_resources
+    ):
+        raise ValueError(
+            "Coding Resource Catalog source policy excludes Product package selection"
+        )
+    if product_composition is None and resolved_source_policy.include_package_resources:
         product_composition = _compile_coding_package_product_composition(
             receipt,
             product_scope_id=product_scope_id,
@@ -179,7 +263,7 @@ def build_coding_initial_resource_catalog_adapter(
     product_policy_revision = (
         product_composition.authority_context.product_policy_revision
         if product_composition is not None
-        else _CODING_RESOURCE_CATALOG_POLICY_REVISION
+        else resolved_source_policy.product_policy_revision
     )
     if admissions and (
         isinstance(resolved_admission_now, bool)
@@ -192,21 +276,37 @@ def build_coding_initial_resource_catalog_adapter(
         and product_composition.authority_context.product_id != "coding"
     ):
         rejection_reasons.append("foreign_product_composition")
-    if receipt.has_temporary_inputs:
+    if receipt.has_temporary_inputs and any(
+        (
+            resolved_source_policy.include_native_resources,
+            resolved_source_policy.include_package_resources,
+            resolved_source_policy.include_embedded_resources,
+        )
+    ):
         rejection_reasons.append("temporary_sources")
     if receipt.has_resource_kind_switches:
         rejection_reasons.append("resource_kind_switches")
-    package_resources = _prepare_package_resources(
-        receipt,
-        admissions=admissions,
-        product_selection_present=product_composition is not None,
-        product_policy_revision=product_policy_revision,
-        admission_now=resolved_admission_now,
-        rejection_reasons=rejection_reasons,
+    if admissions and not resolved_source_policy.include_package_resources:
+        rejection_reasons.append("source_policy_package_admission_mismatch")
+    package_resources = (
+        _prepare_package_resources(
+            receipt,
+            admissions=admissions,
+            product_selection_present=product_composition is not None,
+            product_policy_revision=product_policy_revision,
+            admission_now=resolved_admission_now,
+            rejection_reasons=rejection_reasons,
+        )
+        if resolved_source_policy.include_package_resources
+        else ()
     )
 
     native_roots: list[ProductNativeResourceRootSpec] = []
-    for index, root in enumerate(receipt.user_resource_roots):
+    for index, root in enumerate(
+        receipt.user_resource_roots
+        if resolved_source_policy.include_native_resources
+        else ()
+    ):
         if not root.exists() or not root.is_dir():
             if root in receipt.explicit_user_resource_roots:
                 rejection_reasons.append("explicit_user_root_unavailable")
@@ -224,7 +324,11 @@ def build_coding_initial_resource_catalog_adapter(
             )
         )
 
-    for index, root in enumerate(receipt.project_context_roots):
+    for index, root in enumerate(
+        receipt.project_context_roots
+        if resolved_source_policy.include_native_resources
+        else ()
+    ):
         if not _is_admissible_native_root(root):
             rejection_reasons.append("project_context_root_unavailable")
             continue
@@ -238,25 +342,30 @@ def build_coding_initial_resource_catalog_adapter(
             )
         )
 
-    project_root = receipt.project_resource_root
-    if not _is_admissible_native_root(project_root):
-        rejection_reasons.append("project_resource_root_unavailable")
-    else:
-        native_roots.append(
-            ProductNativeResourceRootSpec(
-                handle_id="coding-project-standard",
-                root=project_root,
-                source_class="project_local",
-                root_kind="standard",
+    if resolved_source_policy.include_native_resources:
+        project_root = receipt.project_resource_root
+        if not _is_admissible_native_root(project_root):
+            rejection_reasons.append("project_resource_root_unavailable")
+        else:
+            native_roots.append(
+                ProductNativeResourceRootSpec(
+                    handle_id="coding-project-standard",
+                    root=project_root,
+                    source_class="project_local",
+                    root_kind="standard",
+                )
             )
-        )
 
     if rejection_reasons:
         raise CodingResourceCatalogAdmissionError(rejection_reasons)
 
-    embedded = tuple(
-        _capture_built_in_collection(package, source_root_order=index)
-        for index, package in enumerate(receipt.built_in_resource_packages)
+    embedded = (
+        tuple(
+            _capture_built_in_collection(package, source_root_order=index)
+            for index, package in enumerate(receipt.built_in_resource_packages)
+        )
+        if resolved_source_policy.include_embedded_resources
+        else ()
     )
     return InitialResourceCatalogProductAdapter(
         InitialResourceCatalogProductSelection(
@@ -460,6 +569,7 @@ def prepare_coding_package_plugin_plan_seed(
     evaluated_at: int,
     product_selection: PluginSelection | None = None,
     plan_seed: ProductPluginPlanSeed | None = None,
+    include_configured_resource_plugins: bool = True,
 ) -> ProductPluginPlanSeed | None:
     """Merge package facts into an inert plan without finalizing selection."""
 
@@ -477,6 +587,8 @@ def prepare_coding_package_plugin_plan_seed(
         return None
     if isinstance(evaluated_at, bool) or not isinstance(evaluated_at, int):
         raise TypeError("Coding package Resource admission time must be an integer")
+    if not isinstance(include_configured_resource_plugins, bool):
+        raise TypeError("Configured Resource Plugin selection flag must be a boolean")
 
     seed_plugin_ids = (
         tuple(seed_plan.selected_plugin_ids)
@@ -489,9 +601,12 @@ def prepare_coding_package_plugin_plan_seed(
                 item
                 for item in package_inputs
                 if item.package.manifest.name in seed_plugin_ids
-                or any(
-                    reservation.kind == "resource_item"
-                    for reservation in item.package.contribution_index.items
+                or (
+                    include_configured_resource_plugins
+                    and any(
+                        reservation.kind == "resource_item"
+                        for reservation in item.package.contribution_index.items
+                    )
                 )
             ),
             key=lambda item: item.package.manifest.name,
@@ -971,6 +1086,9 @@ prepare_coding_initial_resource_catalog_shadow_adapter = (
 
 
 __all__ = [
+    "CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY",
+    "CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY",
+    "CodingResourceCatalogSourcePolicy",
     "CodingResourceCatalogAdmissionError",
     "InitialResourceCatalogProductAdapter",
     "ResourceCatalogInputReceipt",

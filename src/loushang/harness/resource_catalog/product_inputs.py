@@ -208,8 +208,6 @@ class InitialResourceCatalogProductSelection:
             for item in embedded_collections
         ):
             raise TypeError("Product embedded Resource specifications are invalid")
-        if not native_roots and not package_resources and not embedded_collections:
-            raise ValueError("Product Resource selection must contain a source")
         if len({item.handle_id for item in native_roots}) != len(native_roots):
             raise ValueError("Product native root ids must not repeat")
         if len({item.admission.fingerprint for item in package_resources}) != len(

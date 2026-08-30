@@ -223,6 +223,39 @@ def test_product_selection_rejects_duplicate_native_and_embedded_identities(
         )
 
 
+def test_product_selection_can_explicitly_admit_no_resource_sources(
+    tmp_path: Path,
+) -> None:
+    adapter = InitialResourceCatalogProductAdapter(
+        InitialResourceCatalogProductSelection(
+            product_policy_revision="resource-free-policy-v1",
+        ),
+        clock=lambda: 10,
+    )
+
+    projection = adapter.prepare_bootstrap_projection(
+        product_id="resource-free-product",
+        session_id="resource-free-session",
+        cwd=tmp_path,
+    )
+    assert projection.cwd == tmp_path
+    assert projection.extensions == []
+    assert projection.prompts == []
+    assert projection.skills == []
+    assert projection.themes == []
+
+    bootstrap = adapter.construct_session(
+        product_id="resource-free-product",
+        session_id="resource-free-session",
+        base_resource_bundle=projection,
+        construct=lambda value: value,
+    )
+    assert bootstrap._inputs.root_handles == ()
+    assert bootstrap._inputs.package_resources == ()
+    assert bootstrap._inputs.embedded_collections == ()
+    bootstrap.close_unprepared()
+
+
 def test_product_selection_rejects_duplicate_package_admissions(
     tmp_path: Path,
 ) -> None:

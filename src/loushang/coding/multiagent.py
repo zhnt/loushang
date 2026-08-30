@@ -201,8 +201,14 @@ def coding_agent_types(
 
 def coding_multiagent_system_prompt(
     agent_types: AgentTypeRegistry,
+    *,
+    host_environment: HostEnvironment | None = None,
 ) -> str:
     """Describe the admitted Coding collaboration surface to the root model."""
+
+    resolved_host_environment = (
+        host_environment or LocalHostEnvironmentProbe().detect()
+    )
 
     role_descriptions = {
         "explorer": (
@@ -226,7 +232,8 @@ def coding_multiagent_system_prompt(
     }
     type_lines = "\n".join(
         f"- `{spec.name}`: {role_descriptions.get(spec.name, 'bounded Coding task')}; "
-        f"tools: {', '.join(spec.allowed_tools) or 'none'}; "
+        "tools: "
+        f"{', '.join(coding_platform_tool_names(spec.allowed_tools, resolved_host_environment)) or 'none'}; "
         f"maximum open children: {spec.maximum_children}"
         for spec in agent_types.values()
     )

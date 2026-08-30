@@ -210,6 +210,20 @@ def test_profiled_resource_loader_injects_product_conventions(tmp_path) -> None:
     )
 
 
+def test_resource_loader_treats_long_inline_prompt_as_text(tmp_path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    prompt = "Read-only delegate policy. " * 40
+    loader = ResourceLoader(
+        user_resource_roots=(),
+        system_prompt=prompt,
+    )
+
+    loader.prepare_catalog_input_receipt(workspace)
+
+    assert loader.get_system_prompt_override() == prompt
+
+
 def test_package_materializer_requires_product_policy(tmp_path) -> None:
     source = "https://packages.example.invalid/review-pack.git"
     calls: list[str] = []

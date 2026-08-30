@@ -832,6 +832,7 @@ def test_windows_catalog_session_prompt_matches_selected_shell_tool(
                     ControlConfig(capabilities={"coding.lsp": "disabled"})
                 )
             ),
+            enable_multiagent=True,
         )
         try:
             await session.prepare_model_call_runtime()
@@ -840,6 +841,7 @@ def test_windows_catalog_session_prompt_matches_selected_shell_tool(
             assert "bash" not in tool_names
             assert "bash" not in session.agent.system_prompt
             assert "command or shell Tool" in session.agent.system_prompt
+            assert "tools: shell, read, grep, find, ls" in session.agent.system_prompt
         finally:
             await session.dispose()
 

@@ -294,10 +294,11 @@ class AgentSession(AgentProductSession):
                 owner_bindings = (
                     base_owners.tool.bind(base_tool_registration_slot),
                 )
-            owner_bindings = (
-                *owner_bindings,
-                base_owners.command.bind(command_generations),
-            )
+            if base_owners.command is not None:
+                owner_bindings = (
+                    *owner_bindings,
+                    base_owners.command.bind(command_generations),
+                )
         if coding_lsp_plugin_assembly is not None:
             lsp_tool_registration_slot = CodingLspToolRegistrationSlot()
             owner_bindings = (

@@ -1110,18 +1110,46 @@ def test_default_runtime_builder_projects_internal_delegate_resource_profile(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from loushang.agent import ModelCallPreparation, synthetic_model_transport
+    from loushang.ai.event_stream.stream import AssistantMessageEventStream
+    from loushang.ai.types import AssistantMessage, TextPart, Usage
     from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import default_runtime_builder
     from loushang.coding.cli.args import parse_args
+    from loushang.coding.control import ControlConfig, SettingsManager
     from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "user-home"))
-    services = create_services()
+    project_skill = tmp_path / "skills" / "project-marker" / "SKILL.md"
+    project_skill.parent.mkdir(parents=True)
+    project_skill.write_text(
+        "---\nname: project-marker\ndescription: PROJECT_RESOURCE_MARKER\n---\n",
+        encoding="utf-8",
+    )
+    user_root = tmp_path / "user-resources"
+    user_skill = user_root / "skills" / "user-marker" / "SKILL.md"
+    user_skill.parent.mkdir(parents=True)
+    user_skill.write_text(
+        "---\nname: user-marker\ndescription: USER_RESOURCE_MARKER\n---\n",
+        encoding="utf-8",
+    )
+    services = create_services(
+        settings_manager=SettingsManager(
+            ControlConfig(capabilities={"coding.lsp": "disabled"})
+        )
+    )
+    services.resource_loader.set_user_resource_roots(
+        (user_root,),
+        explicit_roots=(user_root,),
+    )
     args = parse_args(
         [
             "--agent-invocation-profile",
             "read-only-v1",
             "--no-session",
+            "--no-context-files",
+            "--system-prompt",
+            "DELEGATE_ROLE_MARKER",
             "--tools",
             "read,grep",
         ]
@@ -1134,13 +1162,95 @@ def test_default_runtime_builder_projects_internal_delegate_resource_profile(
         tool_registry=WorkspaceToolRegistry(),
     )
 
-    assert services.resource_loader._no_extensions is True
-    assert services.resource_loader._no_skills is True
-    assert services.resource_loader._no_prompt_templates is True
-    assert services.resource_loader._no_themes is True
+    assert services.resource_loader._no_extensions is False
+    assert services.resource_loader._no_skills is False
+    assert services.resource_loader._no_prompt_templates is False
+    assert services.resource_loader._no_themes is False
     assert services.resource_loader._no_context_files is True
 
-    asyncio.run(runtime.dispose_session_runtime())
+    captured_model_inputs: list[ModelCallPreparation] = []
+
+    @synthetic_model_transport
+    async def stream_fn(model, context, options=None):  # type: ignore[no-untyped-def]
+        del context, options
+        message = AssistantMessage(
+            endpoint=model.endpoint_id,
+            role="assistant",
+            content=[TextPart(type="text", text="review complete")],
+            api=model.api or model.endpoint_id,
+            provider=model.provider_id,
+            model=model.id,
+            response_id=None,
+            usage=Usage(
+                input=0,
+                output=0,
+                cache_read=0,
+                cache_write=0,
+                total_tokens=0,
+                cost={},
+            ),
+            stop_reason="stop",
+            error_message=None,
+            timestamp=0.0,
+        )
+        stream = AssistantMessageEventStream()
+        stream.push({"type": "done", "reason": "stop", "message": message})
+        return stream
+
+    async def scenario() -> None:
+        session = await runtime.create_session(cwd=str(tmp_path))
+        try:
+            await session.prepare_model_call_runtime()
+            prepare_model_call = session.agent.prepare_model_call
+            assert prepare_model_call is not None
+
+            def capture_model_input(preparation):  # type: ignore[no-untyped-def]
+                captured_model_inputs.append(preparation)
+                return prepare_model_call(preparation)
+
+            session.agent.prepare_model_call = capture_model_input
+            session.agent.stream_fn = stream_fn
+            await session.prompt("review the workspace")
+
+            assert session.get_active_tool_names() == ["read", "grep"]
+            assert {item.name for item in session.get_all_tools()} == {
+                "read",
+                "grep",
+            }
+            assert session.resource_bundle is not None
+            assert session.resource_bundle.extensions == []
+            assert session.resource_bundle.prompts == []
+            assert session.resource_bundle.skills == []
+            assert session.resource_bundle.themes == []
+            assembly = session._coding_base_plugin_assembly
+            assert assembly is not None
+            assert {
+                item.contribution_id
+                for item in assembly.plan_seed.plan.selected_contributions
+            } == {assembly.tool_contribution_id}
+
+            [model_input] = captured_model_inputs
+            assert [item.name for item in model_input.context.tools] == [
+                "read",
+                "grep",
+            ]
+            system_prompt = model_input.context.system_prompt or ""
+            assert "DELEGATE_ROLE_MARKER" in system_prompt
+            assert "PROJECT_RESOURCE_MARKER" not in system_prompt
+            assert "USER_RESOURCE_MARKER" not in system_prompt
+            assert "selected standard Coding tool pack" not in system_prompt
+
+            await session.refresh_resources()
+            assert session.get_active_tool_names() == ["read", "grep"]
+            assert session.resource_bundle is not None
+            assert session.resource_bundle.extensions == []
+            assert session.resource_bundle.prompts == []
+            assert session.resource_bundle.skills == []
+            assert session.resource_bundle.themes == []
+        finally:
+            await runtime.dispose_session_runtime()
+
+    asyncio.run(scenario())
 
 
 def test_default_runtime_builder_declares_global_cwd_and_home_session_sources(
@@ -1361,9 +1471,7 @@ def test_default_runtime_builder_projects_catalog_disabled_tools_into_final_mode
                 session._capability_owner_generations[0].admission.contribution_kind
                 == "command_pack"
             )
-            tool_inventory = (
-                session._composition.tool_controller.tool_registry.registration_inventory
-            )
+            tool_inventory = session._composition.tool_controller.tool_registry.registration_inventory
             assert "tools.workspace" not in {
                 owner.owner_id for owner, _identity, _state in tool_inventory
             }
@@ -1647,9 +1755,12 @@ def test_run_cli_sets_offline_environment_before_building_runtime(
 
 def test_delegate_agent_command_reaches_real_cli_dispatch_without_legacy_flags(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from loushang.coding.agent_invocation import CodingCliAgentInvocationAdapter
-    from loushang.coding.cli.__main__ import run_cli
+    from loushang.coding.bootstrap import create_services
+    from loushang.coding.cli.__main__ import default_runtime_builder, run_cli
+    from loushang.coding.control import ControlConfig, SettingsManager
     from loushang.harness.tools.agent_delegate import AgentInvocationRequest
 
     workspace = tmp_path / "workspace"
@@ -1669,13 +1780,26 @@ def test_delegate_agent_command_reaches_real_cli_dispatch_without_legacy_flags(
         default_cwd=str(workspace),
         model=None,
     )
-    runtime = FakeRuntime(FakeSession("delegate-child"))
-    runner = FakeRunner()
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "user-home"))
     captured_args = []
+    captured_sessions = []
 
     def runtime_builder(**kwargs):
         captured_args.append(kwargs["args"])
-        return runtime
+        return default_runtime_builder(**kwargs)
+
+    async def print_runner(**kwargs):
+        session = kwargs["session"]
+        captured_sessions.append(session)
+        await session.prepare_model_call_runtime()
+        assert session.get_active_tool_names() == ["read", "grep"]
+        assert {item.name for item in session.get_all_tools()} == {"read", "grep"}
+        assert session.resource_bundle is not None
+        assert session.resource_bundle.extensions == []
+        assert session.resource_bundle.prompts == []
+        assert session.resource_bundle.skills == []
+        assert session.resource_bundle.themes == []
+        return 0
 
     async def scenario() -> None:
         stderr = StringIO()
@@ -1685,9 +1809,13 @@ def test_delegate_agent_command_reaches_real_cli_dispatch_without_legacy_flags(
             stdout=StringIO(),
             stderr=stderr,
             cwd=workspace,
-            services=_fake_services(),
+            services=create_services(
+                settings_manager=SettingsManager(
+                    ControlConfig(capabilities={"coding.lsp": "disabled"})
+                )
+            ),
             runtime_builder=runtime_builder,
-            print_runner=runner,
+            print_runner=print_runner,
         )
 
         assert exit_code == 0
@@ -1698,7 +1826,7 @@ def test_delegate_agent_command_reaches_real_cli_dispatch_without_legacy_flags(
     assert len(captured_args) == 1
     assert captured_args[0].agent_invocation_profile == "read-only-v1"
     assert captured_args[0].tools == ("read", "grep")
-    assert len(runner.calls) == 1
+    assert len(captured_sessions) == 1
 
 
 def test_run_cli_shares_interactive_approval_resolver_with_tools_and_runtime(
@@ -6995,9 +7123,7 @@ def test_run_cli_real_default_lists_owner_published_commands_on_first_start(
     )
 
     assert exit_code == 0
-    command_names = {
-        line.split("\t", 1)[0] for line in stdout.getvalue().splitlines()
-    }
+    command_names = {line.split("\t", 1)[0] for line in stdout.getvalue().splitlines()}
     assert {"branch", "session", "tools"}.issubset(command_names)
     assert "failed to prepare" not in stderr.getvalue().lower()
 
@@ -8167,10 +8293,7 @@ def test_run_cli_lists_skills_from_real_catalog_session(
 
     asyncio.run(scenario())
 
-    skills = {
-        item["name"]: item
-        for item in json.loads(stdout.getvalue())
-    }
+    skills = {item["name"]: item for item in json.loads(stdout.getvalue())}
     assert "standard" in skills
     skill = skills["review"]
     assert (skill["name"], skill["status"], skill["effective"]) == (

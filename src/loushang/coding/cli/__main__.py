@@ -21,6 +21,7 @@ from loushang.coding.arch.tool import INSPECT_IMPORT_GRAPH_TOOL_NAME
 from loushang.coding.arch.tool_pack import register_coding_arch_tools
 from loushang.coding.bootstrap import (
     BootstrapServices,
+    _create_agent_invocation_session_runtime,
     create_agent_session_runtime,
     create_agent_session_services,
     create_services,
@@ -253,17 +254,11 @@ def default_runtime_builder(
             runtime_tool_registry,
             parent_allowed_tools=registered_parent_tools,
         )
+    internal_read_only_profile = (
+        getattr(args, "agent_invocation_profile", None) == "read-only-v1"
+    )
     resource_profile_args = (
-        replace(
-            args,
-            no_extensions=True,
-            no_skills=True,
-            no_prompt_templates=True,
-            no_themes=True,
-            no_context_files=True,
-        )
-        if getattr(args, "agent_invocation_profile", None) == "read-only-v1"
-        else args
+        replace(args, no_context_files=True) if internal_read_only_profile else args
     )
     resource_loader_options = configure_agent_resource_loader(
         services.resource_loader,
@@ -274,7 +269,12 @@ def default_runtime_builder(
         resource_loader_options,
         create_services=create_agent_session_services,
     )
-    runtime = create_agent_session_runtime(
+    runtime_factory = (
+        _create_agent_invocation_session_runtime
+        if internal_read_only_profile
+        else create_agent_session_runtime
+    )
+    runtime = runtime_factory(
         session_dir=session_dir,
         services=services,
         services_factory=services_factory,

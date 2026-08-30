@@ -388,6 +388,16 @@ def test_coding_multiagent_prompt_names_the_admitted_roles_and_wait_discipline()
     assert "must not revert others' edits" in prompt
 
 
+def test_coding_multiagent_prompt_projects_platform_tool_names() -> None:
+    prompt = coding_multiagent_system_prompt(
+        coding_agent_types(),
+        host_environment=HostEnvironment("windows", "win32", "amd64"),
+    )
+
+    assert "tools: shell, read, grep, find, ls" in prompt
+    assert "tools: bash" not in prompt
+
+
 def test_coding_explorer_context_allows_investigative_bash_without_write_tools() -> (
     None
 ):
