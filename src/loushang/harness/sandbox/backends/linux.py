@@ -75,11 +75,19 @@ class LinuxBubblewrapBackend:
         )
         self._resolved_path: Path | None = None
         self._available = False
+        self._managed_process_bindings = False
+        self._managed_process_unavailable_reason: str | None = (
+            "bubblewrap managed-process features have not been probed"
+        )
         self._closed = False
 
     def probe(self, environment: HostEnvironment) -> SandboxBackendStatus:
         self._available = False
         self._resolved_path = None
+        self._managed_process_bindings = False
+        self._managed_process_unavailable_reason = (
+            "bubblewrap managed-process features have not been probed"
+        )
         if environment.os_family != "linux":
             return SandboxBackendStatus(
                 backend_id=self.backend_id,
@@ -127,41 +135,41 @@ class LinuxBubblewrapBackend:
                 reason=reason,
             )
 
-        try:
-            feature_probe = self._probe_runner(
-                (str(path), "--help"),
-                _PROBE_TIMEOUT_SECONDS,
-            )
-        except (OSError, subprocess.TimeoutExpired) as error:
-            return SandboxBackendStatus(
-                backend_id=self.backend_id,
-                state="unavailable",
-                reason=f"bubblewrap feature probe failed: {error}",
-            )
-        help_text = feature_probe.stdout or ""
-        missing_options = tuple(
-            option for option in _MANAGED_BIND_OPTIONS if option not in help_text
-        )
-        if feature_probe.returncode != 0 or missing_options:
-            detail = _safe_probe_detail(feature_probe.stderr)
-            reason = "bubblewrap lacks required managed-process bind options"
-            if missing_options:
-                reason = f"{reason}: {', '.join(missing_options)}"
-            elif detail:
-                reason = f"{reason}: {detail}"
-            return SandboxBackendStatus(
-                backend_id=self.backend_id,
-                state="unavailable",
-                reason=reason,
-            )
-
         self._resolved_path = path
         self._available = True
+        feature_reason = self._probe_managed_process_bindings(path)
+        self._managed_process_bindings = feature_reason is None
+        self._managed_process_unavailable_reason = feature_reason
         return SandboxBackendStatus(
             backend_id=self.backend_id,
             state="available",
             enforced_capabilities=_CAPABILITIES,
         )
+
+    def _probe_managed_process_bindings(self, path: Path) -> str | None:
+        try:
+            completed = self._probe_runner(
+                (str(path), "--help"),
+                _PROBE_TIMEOUT_SECONDS,
+            )
+        except subprocess.TimeoutExpired:
+            return "bubblewrap managed-process feature probe timed out"
+        except OSError as error:
+            return f"bubblewrap managed-process feature probe failed: {error}"
+        if completed.returncode != 0:
+            detail = _safe_probe_detail(completed.stderr)
+            reason = "bubblewrap managed-process feature probe failed"
+            return f"{reason}: {detail}" if detail else reason
+        help_text = completed.stdout or ""
+        missing_options = tuple(
+            option for option in _MANAGED_BIND_OPTIONS if option not in help_text
+        )
+        if missing_options:
+            return (
+                "bubblewrap lacks required managed-process bind options: "
+                + ", ".join(missing_options)
+            )
+        return None
 
     async def open_scope(
         self,

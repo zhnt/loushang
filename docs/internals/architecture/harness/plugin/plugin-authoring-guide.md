@@ -101,7 +101,10 @@ its managed-action sidecar. Environment literals have an author-enforced
 non-secret precondition—validation does not classify arbitrary strings or
 resolve secrets. Execution always requires Host Approval and required
 containment. PLC8 managed execution is currently admitted only on Linux with
-the Harness-owned Bubblewrap backend and immutable sealed-executable support.
+the Harness-owned Bubblewrap backend, immutable sealed-executable support, and
+Bubblewrap's `--ro-bind-data` plus `--ro-bind-fd` features. A Linux host missing
+those two managed-bind features may still use ordinary Sandbox execution, but
+it cannot acquire managed-action start authority.
 Other hosts may compile, inspect, and validate the declaration, but execution
 fails closed until they provide an equally strong owner-admitted mechanism.
 

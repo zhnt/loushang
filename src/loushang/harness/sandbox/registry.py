@@ -305,6 +305,8 @@ def _register_managed_resolution(
     )
     if (
         backend_state is None
+        or getattr(backend, "_managed_process_bindings", None) is not True
+        or getattr(backend, "_managed_process_unavailable_reason", None) is not None
         or registry_record.backend_type.__dict__.get("_plan_hosted_process")
         is not registry_record.provider
     ):
@@ -369,6 +371,8 @@ def _managed_backend_state(
         "_configured_path",
         "_executable_finder",
         "_local_backend",
+        "_managed_process_bindings",
+        "_managed_process_unavailable_reason",
         "_probe_runner",
         "_resolved_path",
     }
@@ -380,6 +384,8 @@ def _managed_backend_state(
         state["_executable_finder"],
         state["_probe_runner"],
         state["_local_backend"],
+        state["_managed_process_bindings"],
+        state["_managed_process_unavailable_reason"],
         state["_resolved_path"],
         state["_available"],
         state["_closed"],

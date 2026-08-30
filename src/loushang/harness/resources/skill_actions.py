@@ -118,6 +118,7 @@ class CatalogManagedSkillAction:
     skill_root: Path
     binding_source_fingerprint: str
     _script_body: bytes
+    _source_capture_fingerprint: str = field(repr=False, compare=False)
     _owner_identity: object = field(repr=False, compare=False)
     _owner_seal: _CatalogActionOwnerSeal = field(repr=False, compare=False)
     _skill_root_identity: tuple[int, int] = field(repr=False, compare=False)
@@ -171,6 +172,7 @@ class _CatalogActionOwnerSeal:
     _owner_identity: object = field(repr=False, compare=False)
     _binding_source_fingerprint: str
     _script_digest: str
+    _source_capture_fingerprint: str
     _skill_root: Path
     _skill_root_identity: tuple[int, int]
 
@@ -182,10 +184,9 @@ class _CatalogActionOwnerSeal:
             action is not self._action
             or action._owner_identity is not self._owner_identity
             or action.selection._owner_identity is not self._owner_identity
-            or action.binding_source_fingerprint
-            != self._binding_source_fingerprint
-            or hashlib.sha256(action._script_body).hexdigest()
-            != self._script_digest
+            or action.binding_source_fingerprint != self._binding_source_fingerprint
+            or hashlib.sha256(action._script_body).hexdigest() != self._script_digest
+            or action._source_capture_fingerprint != self._source_capture_fingerprint
             or action.skill_root != self._skill_root
             or action._skill_root_identity != self._skill_root_identity
         ):
@@ -204,7 +205,10 @@ class CapturedSkillAction:
             raise TypeError("Captured Skill action script must be bytes")
         if len(self.script_body) > MAX_SKILL_ACTION_SCRIPT_BYTES:
             raise ValueError("Captured Skill action script exceeds the byte limit")
-        if hashlib.sha256(self.script_body).hexdigest() != self.declaration.script_digest:
+        if (
+            hashlib.sha256(self.script_body).hexdigest()
+            != self.declaration.script_digest
+        ):
             raise ValueError("Captured Skill action script digest does not match")
 
 

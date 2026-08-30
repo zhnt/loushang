@@ -75,6 +75,13 @@ def _successful_probe(
 
 
 def test_linux_backend_probe_requires_managed_bind_options(tmp_path: Path) -> None:
+    captured: list[ExecRequest] = []
+
+    async def local_backend(request, **kwargs):
+        del kwargs
+        captured.append(request)
+        return ExecResult(exit_code=0, stdout="ordinary")
+
     def missing_feature(
         argv: tuple[str, ...],
         timeout_seconds: float,
@@ -84,13 +91,73 @@ def test_linux_backend_probe_requires_managed_bind_options(tmp_path: Path) -> No
             return subprocess.CompletedProcess(argv, 0, "--ro-bind-data", "")
         return subprocess.CompletedProcess(argv, 0, "", "")
 
-    status = LinuxBubblewrapBackend(
+    backend = LinuxBubblewrapBackend(
         bwrap_path=_fake_bwrap(tmp_path),
         probe_runner=missing_feature,
-    ).probe(_linux_environment())
+        local_backend=local_backend,
+    )
+    status = backend.probe(_linux_environment())
 
-    assert status.state == "unavailable"
-    assert "--ro-bind-fd" in (status.reason or "")
+    async def scenario() -> None:
+        scope = await backend.open_scope(
+            SandboxScopeRequest(
+                cwd=tmp_path,
+                readable_roots=(tmp_path,),
+            )
+        )
+        result = await scope(
+            materialize_exec_request(
+                ExecRequest(command=("/usr/bin/true",), cwd=str(tmp_path)),
+                environ={},
+            )
+        )
+        assert result.stdout == "ordinary"
+        await scope.close()
+
+    asyncio.run(scenario())
+
+    assert status.state == "available"
+    assert backend._managed_process_bindings is False
+    assert "--ro-bind-fd" in (backend._managed_process_unavailable_reason or "")
+    assert len(captured) == 1
+
+
+@pytest.mark.parametrize(
+    ("mode", "expected_reason"),
+    [
+        ("nonzero", "feature probe failed: unsupported option"),
+        ("timeout", "feature probe timed out"),
+        ("oserror", "feature probe failed: help unavailable"),
+    ],
+)
+def test_linux_backend_managed_feature_probe_diagnostics_do_not_disable_exec(
+    tmp_path: Path,
+    mode: str,
+    expected_reason: str,
+) -> None:
+    def feature_failure(
+        argv: tuple[str, ...],
+        timeout_seconds: float,
+    ) -> subprocess.CompletedProcess[str]:
+        del timeout_seconds
+        if argv[-1] != "--help":
+            return subprocess.CompletedProcess(argv, 0, "", "")
+        if mode == "timeout":
+            raise subprocess.TimeoutExpired(argv, 1)
+        if mode == "oserror":
+            raise OSError("help unavailable")
+        return subprocess.CompletedProcess(argv, 1, "", "unsupported option")
+
+    backend = LinuxBubblewrapBackend(
+        bwrap_path=_fake_bwrap(tmp_path),
+        probe_runner=feature_failure,
+    )
+
+    status = backend.probe(_linux_environment())
+
+    assert status.state == "available"
+    assert backend._managed_process_bindings is False
+    assert expected_reason in (backend._managed_process_unavailable_reason or "")
 
 
 def test_linux_backend_is_not_applicable_without_resolving_bwrap(

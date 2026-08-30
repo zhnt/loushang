@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import subprocess
 import sys
 from hashlib import sha256
 from pathlib import Path
@@ -10,6 +11,7 @@ import pytest
 
 import loushang.harness.resources._skill_action_authority as action_authority
 import loushang.harness.tools.skill_actions as skill_action_runtime
+import loushang.harness.workspace.process._sealed_executable as sealed_executable_runtime
 from loushang.harness.approval import ApprovalDecision
 from loushang.harness.authorization import (
     EffectiveExecutionProfile,
@@ -65,6 +67,7 @@ from loushang.harness.resources.skill_actions import (
     _CatalogActionOwnerSeal,
 )
 from loushang.harness.sandbox import (
+    LinuxBubblewrapBackend,
     SandboxBackendRegistration,
     SandboxBackendRegistry,
     SandboxBackendStatus,
@@ -440,7 +443,7 @@ def test_catalog_action_authority_cannot_be_publicly_forged() -> None:
 
 
 def test_catalog_action_owner_capability_rejects_non_consumer_binding() -> None:
-    with pytest.raises(TypeError, match="canonical Resource consumer"):
+    with pytest.raises(TypeError, match="bound Resource consumer"):
         action_authority._bind_catalog_action_owner(
             object(),
             owner_identity=object(),
@@ -458,6 +461,7 @@ def test_catalog_action_owner_seal_rejects_object_new_clone(tmp_path: Path) -> N
             "skill_root",
             "binding_source_fingerprint",
             "_script_body",
+            "_source_capture_fingerprint",
             "_owner_identity",
             "_owner_seal",
             "_skill_root_identity",
@@ -478,6 +482,30 @@ def test_catalog_action_rejects_mutated_owner_projection(tmp_path: Path) -> None
         consumer._managed_action_sources.clear()
 
         with pytest.raises(ValueError, match="live Resource-owner evidence"):
+            ManagedSkillActionBinding.bind(action)
+
+    asyncio.run(scenario())
+
+
+def test_catalog_action_rejects_nested_owner_fact_drift(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        action = await _catalog_action(b"print('owner')\n", root=tmp_path)
+        registration = action_authority._REGISTRATIONS[id(action)]
+        consumer = registration.consumer
+        [summary] = consumer.list_effective_skills()
+        source = consumer._managed_action_sources[summary.candidate_fingerprint]
+        [captured] = source.capture.actions
+        changed_body = b"print('changed')\n"
+        object.__setattr__(captured, "script_body", changed_body)
+        object.__setattr__(
+            captured.declaration,
+            "script_digest",
+            sha256(changed_body).hexdigest(),
+        )
+
+        with pytest.raises(ValueError, match="owner capability is not live"):
+            consumer.capture_managed_actions(summary)
+        with pytest.raises(ValueError, match="script evidence changed"):
             ManagedSkillActionBinding.bind(action)
 
     asyncio.run(scenario())
@@ -511,6 +539,10 @@ def test_catalog_action_rejects_fresh_self_signed_object_graph(tmp_path: Path) -
             ("skill_root", genuine.skill_root),
             ("binding_source_fingerprint", fingerprint),
             ("_script_body", genuine.read_script()),
+            (
+                "_source_capture_fingerprint",
+                genuine._source_capture_fingerprint,
+            ),
             ("_owner_identity", owner_identity),
             ("_skill_root_identity", genuine._skill_root_identity),
         ):
@@ -778,6 +810,118 @@ def test_managed_action_rejects_post_resolution_backend_shadow(
             await sandbox_runtime.close()
 
     asyncio.run(scenario())
+
+
+def test_managed_action_requires_managed_bubblewrap_features_before_approval(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable = tmp_path / "bwrap-without-fd-bind"
+    executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    executable.chmod(0o755)
+    original_init = LinuxBubblewrapBackend.__init__
+
+    def feature_limited_init(self, *args, **kwargs):
+        assert not args
+
+        def probe(argv, timeout_seconds):
+            del timeout_seconds
+            stdout = "--ro-bind-data FD DEST" if argv[-1] == "--help" else ""
+            return subprocess.CompletedProcess(argv, 0, stdout, "")
+
+        original_init(
+            self,
+            bwrap_path=executable,
+            probe_runner=probe,
+            local_backend=kwargs.get("local_backend"),
+        )
+
+    monkeypatch.setattr(LinuxBubblewrapBackend, "__init__", feature_limited_init)
+
+    async def scenario() -> None:
+        workspace_root = tmp_path / "workspace-feature-limited"
+        workspace_root.mkdir()
+        binding = ManagedSkillActionBinding.bind(
+            await _catalog_action(b"print('never')\n", root=tmp_path)
+        )
+        resolver = _ApprovalResolver()
+        sandbox_runtime, launcher = _launcher(resolver=resolver, root=tmp_path)
+        try:
+            assert sandbox_runtime.status().state == "enabled"
+            with pytest.raises(
+                ExecutionAuthorizationError,
+                match="Process-owner-minted launcher",
+            ):
+                await execute_managed_skill_action(
+                    binding,
+                    runtime=SkillRuntimeBinding.capture(
+                        runtime="python",
+                        executable=sys.executable,
+                    ),
+                    launcher=launcher,
+                    workspace_root=workspace_root,
+                    correlation_id="missing-managed-bwrap-features",
+                )
+            assert resolver.requests == []
+            assert not sandbox_runtime._process_host._reservations
+            assert not sandbox_runtime._process_host._registrations
+        finally:
+            await sandbox_runtime.close()
+
+    asyncio.run(scenario())
+
+
+def test_runtime_binding_capture_and_verify_are_streaming(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def unexpected_read_bytes(path: Path) -> bytes:
+        raise AssertionError(f"must not buffer complete runtime: {path}")
+
+    monkeypatch.setattr(Path, "read_bytes", unexpected_read_bytes)
+
+    runtime = SkillRuntimeBinding.capture(
+        runtime="python",
+        executable=sys.executable,
+    )
+    runtime.verify()
+
+
+def test_runtime_binding_rejects_sparse_oversize_before_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable = tmp_path / "oversize-runtime"
+    executable.touch()
+    with executable.open("r+b") as stream:
+        stream.truncate(sealed_executable_runtime._MAX_EXECUTABLE_BYTES + 1)
+
+    def unexpected_read(descriptor: int, size: int) -> bytes:
+        raise AssertionError(f"must reject fd {descriptor} before reading {size} bytes")
+
+    monkeypatch.setattr(sealed_executable_runtime.os, "read", unexpected_read)
+
+    with pytest.raises(ValueError, match="bounded stable regular file"):
+        SkillRuntimeBinding.capture(runtime="python", executable=executable)
+
+
+def test_runtime_binding_verify_rejects_sparse_oversize_before_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable = tmp_path / "replaced-runtime"
+    executable.write_bytes(b"#!/bin/sh\n")
+    runtime = SkillRuntimeBinding.capture(runtime="posix", executable=executable)
+    with executable.open("r+b") as stream:
+        stream.truncate(sealed_executable_runtime._MAX_EXECUTABLE_BYTES + 1)
+
+    def unexpected_read(descriptor: int, size: int) -> bytes:
+        raise AssertionError(f"must reject fd {descriptor} before reading {size} bytes")
+
+    monkeypatch.setattr(sealed_executable_runtime.os, "read", unexpected_read)
+
+    with pytest.raises(ManagedSkillActionError) as caught:
+        runtime.verify()
+    assert caught.value.code == "skill_action_runtime_changed"
 
 
 def test_managed_action_fails_closed_when_runtime_cannot_be_sealed(

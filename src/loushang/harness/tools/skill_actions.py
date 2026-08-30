@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -31,6 +30,7 @@ from loushang.harness.workspace.process._sealed_executable import (
     _capture_bound_process_directory,
     _capture_sealed_process_executable,
     _SealedProcessExecutable,
+    _stable_process_executable_digest,
 )
 
 _MAX_ACTION_OUTPUT_BYTES = 1_048_576
@@ -158,10 +158,16 @@ class SkillRuntimeBinding:
         path = Path(executable).expanduser().resolve(strict=True)
         if not path.is_file():
             raise ValueError("Skill runtime executable must be a regular file")
+        try:
+            digest, _ = _stable_process_executable_digest(path)
+        except (OSError, SealedProcessExecutableUnavailable) as exc:
+            raise ValueError(
+                "Skill runtime executable must be a bounded stable regular file"
+            ) from exc
         return cls(
             runtime=runtime,
             executable=path,
-            executable_digest=hashlib.sha256(path.read_bytes()).hexdigest(),
+            executable_digest=digest,
             environment=environment,
         )
 
@@ -178,8 +184,8 @@ class SkillRuntimeBinding:
 
     def verify(self) -> None:
         try:
-            digest = hashlib.sha256(self.executable.read_bytes()).hexdigest()
-        except OSError as exc:
+            digest, _ = _stable_process_executable_digest(self.executable)
+        except (OSError, SealedProcessExecutableUnavailable) as exc:
             raise ManagedSkillActionError(
                 "Managed Skill runtime could not be revalidated",
                 code="skill_action_runtime_changed",

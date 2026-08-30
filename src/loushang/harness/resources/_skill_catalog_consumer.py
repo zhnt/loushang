@@ -455,6 +455,11 @@ class SkillCatalogConsumer:
                 binding_fingerprint,
             )
             object.__setattr__(action, "_script_body", bytes(script_body))
+            object.__setattr__(
+                action,
+                "_source_capture_fingerprint",
+                source.capture.capture_fingerprint,
+            )
             object.__setattr__(action, "_owner_identity", owner_identity)
             object.__setattr__(action, "_skill_root_identity", root_identity)
             seal = object.__new__(_CatalogActionOwnerSeal)
@@ -466,6 +471,11 @@ class SkillCatalogConsumer:
                 binding_fingerprint,
             )
             object.__setattr__(seal, "_script_digest", declaration.script_digest)
+            object.__setattr__(
+                seal,
+                "_source_capture_fingerprint",
+                source.capture.capture_fingerprint,
+            )
             object.__setattr__(seal, "_skill_root", resolved_root)
             object.__setattr__(seal, "_skill_root_identity", root_identity)
             object.__setattr__(action, "_owner_seal", seal)
@@ -476,65 +486,6 @@ class SkillCatalogConsumer:
             action.verify()
             actions.append(action)
         return tuple(actions)
-
-    def _verify_managed_action_owner_candidate(self, action: object) -> None:
-        """Match one action to this consumer's exact captured Catalog source."""
-
-        if type(action) is not CatalogManagedSkillAction:
-            raise TypeError("Catalog action owner requires exact action evidence")
-        selection = action.selection
-        try:
-            summary = self._summary_by_candidate(selection.candidate_fingerprint)
-        except (AttributeError, KeyError) as exc:
-            raise ValueError("Catalog action is outside its Resource owner") from exc
-        source = self._managed_action_sources.get(summary.candidate_fingerprint)
-        if source is None:
-            raise ValueError("Catalog action candidate has no managed source")
-        matching_source = any(
-            item.declaration == action.declaration
-            and item.script_body == action._script_body
-            for item in source.capture.actions
-        )
-        resolved_root = source.skill_root.resolve(strict=True)
-        root_metadata = os.stat(resolved_root, follow_symlinks=False)
-        root_identity = (root_metadata.st_dev, root_metadata.st_ino)
-        expected_selection = (
-            summary.catalog_generation,
-            summary.catalog_snapshot_fingerprint,
-            summary.candidate_fingerprint,
-            summary.expected_content_digest,
-            source.capture.source_kind,
-            source.capture.source_revision,
-            self._managed_action_owner_identity,
-        )
-        actual_selection = (
-            selection.catalog_generation,
-            selection.catalog_snapshot_fingerprint,
-            selection.candidate_fingerprint,
-            selection.skill_content_digest,
-            selection.source_kind,
-            selection.source_revision,
-            selection._owner_identity,
-        )
-        expected_binding = _catalog_action_binding_fingerprint(
-            selection=selection,
-            declaration=action.declaration,
-            action_document_digest=source.capture.action_document_digest,
-        )
-        seal = getattr(action, "_owner_seal", None)
-        if action._skill_root_identity != root_identity:
-            raise ValueError("Catalog action root identity changed")
-        if (
-            not matching_source
-            or actual_selection != expected_selection
-            or action.action_document_digest != source.capture.action_document_digest
-            or action.skill_root != resolved_root
-            or action._owner_identity is not self._managed_action_owner_identity
-            or action.binding_source_fingerprint != expected_binding
-            or type(seal) is not _CatalogActionOwnerSeal
-        ):
-            raise ValueError("Catalog action does not match its Resource owner")
-        seal.verify(action)
 
     def _resolve_owned_summary(
         self,

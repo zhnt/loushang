@@ -2,19 +2,18 @@
 
 from __future__ import annotations
 
-import sys
+import hashlib
+import os
+import stat
 import weakref
 from collections.abc import Callable
 from dataclasses import dataclass
-
-_CONSUMER_MODULE = "loushang.harness.resources._skill_catalog_consumer"
-_CONSUMER_TYPE = "SkillCatalogConsumer"
-_CONSUMER_VERIFIER = "_verify_managed_action_owner_candidate"
+from pathlib import Path
 
 
 @dataclass(frozen=True, slots=True, init=False)
 class _CatalogActionOwnerCapability:
-    """Opaque capability held only by one exact Skill Catalog consumer."""
+    """Opaque capability held only by one Resource Catalog consumer."""
 
     owner_identity: object
 
@@ -23,18 +22,31 @@ class _CatalogActionOwnerCapability:
 
 
 @dataclass(frozen=True, slots=True)
+class _CatalogActionFact:
+    catalog_generation: int
+    catalog_snapshot_fingerprint: str
+    candidate_fingerprint: str
+    skill_content_digest: str
+    source_kind: str
+    source_revision: str
+    action_document_digest: str
+    capture_fingerprint: str
+    declaration: tuple[object, ...]
+    script_body: bytes
+    skill_root: str
+    skill_root_identity: tuple[int, int]
+
+
+@dataclass(frozen=True, slots=True)
 class _CatalogActionOwnerRecord:
     consumer_ref: Callable[[], object | None]
+    consumer_type: type[object]
     capability: _CatalogActionOwnerCapability
     owner_identity: object
-    verifier: Callable[[object, object], None]
-    consumer_type: type[object]
     catalog: object
     catalog_generation: int
     snapshot_fingerprint: str
-    projection_summaries: tuple[object, ...]
-    candidates: tuple[tuple[object, object], ...]
-    managed_action_sources: tuple[tuple[object, object], ...]
+    action_facts: tuple[_CatalogActionFact, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,11 +55,7 @@ class _CatalogActionRegistration:
     consumer: object
     capability: _CatalogActionOwnerCapability
     owner_identity: object
-    catalog_generation: int
-    catalog_snapshot_fingerprint: str
-    candidate_fingerprint: str
-    binding_source_fingerprint: str
-    skill_root_identity: tuple[int, int]
+    fact: _CatalogActionFact
 
 
 _OWNER_CAPABILITIES: dict[int, _CatalogActionOwnerRecord] = {}
@@ -59,39 +67,25 @@ def _bind_catalog_action_owner(
     *,
     owner_identity: object,
 ) -> _CatalogActionOwnerCapability:
-    """Bind action-mint authority to one canonical Resource Catalog consumer."""
+    """Freeze the action facts owned by one complete Catalog projection."""
 
-    consumer_type = type(consumer)
-    consumer_module = sys.modules.get(_CONSUMER_MODULE)
-    verifier = consumer_type.__dict__.get(_CONSUMER_VERIFIER)
     if (
-        consumer_type.__module__ != _CONSUMER_MODULE
-        or consumer_type.__name__ != _CONSUMER_TYPE
-        or consumer_module is None
-        or getattr(consumer_module, _CONSUMER_TYPE, None) is not consumer_type
-        or not callable(verifier)
-        or type(owner_identity) is not object
+        type(owner_identity) is not object
         or getattr(consumer, "_managed_action_owner_identity", None)
         is not owner_identity
         or getattr(consumer, "_managed_action_owner_capability", None) is not None
-        or _CONSUMER_VERIFIER in vars(consumer)
     ):
-        raise TypeError("Catalog action owner requires the canonical Resource consumer")
+        raise TypeError("Catalog action owner requires a bound Resource consumer")
     catalog = getattr(consumer, "_catalog", None)
     catalog_generation = getattr(consumer, "_catalog_generation", None)
     snapshot_fingerprint = getattr(consumer, "_snapshot_fingerprint", None)
-    skills = getattr(consumer, "_skills", None)
-    candidates = getattr(consumer, "_candidates", None)
-    managed_action_sources = getattr(consumer, "_managed_action_sources", None)
     if (
         catalog is None
         or type(catalog_generation) is not int
         or not isinstance(snapshot_fingerprint, str)
-        or type(skills) is not tuple
-        or type(candidates) is not dict
-        or type(managed_action_sources) is not dict
     ):
         raise TypeError("Catalog action owner consumer is not fully bound")
+    action_facts = _consumer_action_facts(consumer)
     capability = object.__new__(_CatalogActionOwnerCapability)
     object.__setattr__(capability, "owner_identity", owner_identity)
     capability_id = id(capability)
@@ -104,16 +98,13 @@ def _bind_catalog_action_owner(
     consumer_ref = weakref.ref(consumer, discard)
     _OWNER_CAPABILITIES[capability_id] = _CatalogActionOwnerRecord(
         consumer_ref=consumer_ref,
+        consumer_type=type(consumer),
         capability=capability,
         owner_identity=owner_identity,
-        verifier=verifier,
-        consumer_type=consumer_type,
         catalog=catalog,
         catalog_generation=catalog_generation,
         snapshot_fingerprint=snapshot_fingerprint,
-        projection_summaries=skills,
-        candidates=tuple(candidates.items()),
-        managed_action_sources=tuple(managed_action_sources.items()),
+        action_facts=action_facts,
     )
     return capability
 
@@ -128,13 +119,19 @@ def _register_catalog_managed_skill_action(
     owner = _verified_owner_record(owner_capability)
     if owner is None:
         raise ValueError("Catalog action owner capability is not live")
-    consumer = owner.consumer_ref()
-    assert consumer is not None
-    owner.verifier(consumer, action)
+    fact = _action_fact(action)
+    if (
+        fact not in owner.action_facts
+        or getattr(action, "_owner_identity", None) is not owner.owner_identity
+        or getattr(getattr(action, "selection", None), "_owner_identity", None)
+        is not owner.owner_identity
+    ):
+        raise ValueError("Catalog action does not match its Resource owner")
     action_id = id(action)
     if action_id in _REGISTRATIONS:
         raise RuntimeError("Catalog action identity is already registered")
-    selection = getattr(action, "selection")
+    consumer = owner.consumer_ref()
+    assert consumer is not None
 
     def discard(reference: weakref.ReferenceType[object]) -> None:
         current = _REGISTRATIONS.get(action_id)
@@ -147,43 +144,27 @@ def _register_catalog_managed_skill_action(
         consumer=consumer,
         capability=owner_capability,
         owner_identity=owner.owner_identity,
-        catalog_generation=getattr(selection, "catalog_generation"),
-        catalog_snapshot_fingerprint=getattr(
-            selection,
-            "catalog_snapshot_fingerprint",
-        ),
-        candidate_fingerprint=getattr(selection, "candidate_fingerprint"),
-        binding_source_fingerprint=getattr(action, "binding_source_fingerprint"),
-        skill_root_identity=getattr(action, "_skill_root_identity"),
+        fact=fact,
     )
 
 
 def _verify_catalog_managed_skill_action(action: object) -> None:
-    """Require a live exact registration minted by the Resource owner."""
+    """Require a live exact registration minted from frozen owner facts."""
 
     registration = _REGISTRATIONS.get(id(action))
-    selection = getattr(action, "selection", None)
+    if registration is None or registration.action_ref() is not action:
+        raise ValueError("Catalog action is not live Resource-owner evidence")
+    fact = _action_fact(action)
+    owner = _verified_owner_record(registration.capability)
     if (
-        registration is None
-        or registration.action_ref() is not action
-        or _verified_owner_record(registration.capability) is None
+        owner is None
+        or registration.fact not in owner.action_facts
+        or fact != registration.fact
         or getattr(action, "_owner_identity", None) is not registration.owner_identity
-        or getattr(selection, "_owner_identity", None)
+        or getattr(getattr(action, "selection", None), "_owner_identity", None)
         is not registration.owner_identity
-        or getattr(selection, "catalog_generation", None)
-        != registration.catalog_generation
-        or getattr(selection, "catalog_snapshot_fingerprint", None)
-        != registration.catalog_snapshot_fingerprint
-        or getattr(selection, "candidate_fingerprint", None)
-        != registration.candidate_fingerprint
-        or getattr(action, "binding_source_fingerprint", None)
-        != registration.binding_source_fingerprint
-        or getattr(action, "_skill_root_identity", None)
-        != registration.skill_root_identity
     ):
         raise ValueError("Catalog action is not live Resource-owner evidence")
-    owner = _OWNER_CAPABILITIES[id(registration.capability)]
-    owner.verifier(registration.consumer, action)
 
 
 def _verified_owner_record(
@@ -193,14 +174,11 @@ def _verified_owner_record(
         return None
     record = _OWNER_CAPABILITIES.get(id(capability))
     consumer = record.consumer_ref() if record is not None else None
-    consumer_type = type(consumer) if consumer is not None else None
-    consumer_module = sys.modules.get(_CONSUMER_MODULE)
-    candidates = getattr(consumer, "_candidates", None)
-    managed_action_sources = getattr(consumer, "_managed_action_sources", None)
     if (
         record is None
         or record.capability is not capability
         or consumer is None
+        or type(consumer) is not record.consumer_type
         or capability.owner_identity is not record.owner_identity
         or getattr(consumer, "_managed_action_owner_identity", None)
         is not record.owner_identity
@@ -209,19 +187,143 @@ def _verified_owner_record(
         or getattr(consumer, "_catalog_generation", None) != record.catalog_generation
         or getattr(consumer, "_snapshot_fingerprint", None)
         != record.snapshot_fingerprint
-        or getattr(consumer, "_skills", None) is not record.projection_summaries
-        or type(candidates) is not dict
-        or tuple(candidates.items()) != record.candidates
-        or type(managed_action_sources) is not dict
-        or tuple(managed_action_sources.items()) != record.managed_action_sources
-        or consumer_type is not record.consumer_type
-        or consumer_module is None
-        or getattr(consumer_module, _CONSUMER_TYPE, None) is not consumer_type
-        or _CONSUMER_VERIFIER in vars(consumer)
-        or consumer_type.__dict__.get(_CONSUMER_VERIFIER) is not record.verifier
     ):
         return None
-    return record
+    try:
+        current_facts = _consumer_action_facts(consumer)
+    except (AttributeError, OSError, TypeError, ValueError):
+        return None
+    return record if current_facts == record.action_facts else None
+
+
+def _consumer_action_facts(consumer: object) -> tuple[_CatalogActionFact, ...]:
+    summaries = getattr(consumer, "_skills", None)
+    sources = getattr(consumer, "_managed_action_sources", None)
+    if type(summaries) is not tuple or type(sources) is not dict:
+        raise TypeError("Catalog action owner facts require a complete projection")
+    summaries_by_candidate = {
+        getattr(summary, "candidate_fingerprint"): summary for summary in summaries
+    }
+    if len(summaries_by_candidate) != len(summaries):
+        raise ValueError("Catalog action owner candidates must be unique")
+    facts: list[_CatalogActionFact] = []
+    for candidate_fingerprint, source in sources.items():
+        summary = summaries_by_candidate.get(candidate_fingerprint)
+        if (
+            summary is None
+            or getattr(source, "candidate_fingerprint", None) != candidate_fingerprint
+        ):
+            raise ValueError("Catalog action source is outside its owner projection")
+        capture = getattr(source, "capture")
+        root, root_identity = _root_fact(getattr(source, "skill_root"))
+        actions = getattr(capture, "actions")
+        if type(actions) is not tuple or not actions:
+            raise ValueError("Catalog action source capture must not be empty")
+        for item in actions:
+            declaration = getattr(item, "declaration")
+            script_body = getattr(item, "script_body")
+            if type(script_body) is not bytes or hashlib.sha256(
+                script_body
+            ).hexdigest() != getattr(declaration, "script_digest", None):
+                raise ValueError("Catalog action source script evidence changed")
+            facts.append(
+                _CatalogActionFact(
+                    catalog_generation=getattr(summary, "catalog_generation"),
+                    catalog_snapshot_fingerprint=getattr(
+                        summary,
+                        "catalog_snapshot_fingerprint",
+                    ),
+                    candidate_fingerprint=candidate_fingerprint,
+                    skill_content_digest=getattr(
+                        summary,
+                        "expected_content_digest",
+                    ),
+                    source_kind=getattr(capture, "source_kind"),
+                    source_revision=getattr(capture, "source_revision"),
+                    action_document_digest=getattr(
+                        capture,
+                        "action_document_digest",
+                    ),
+                    capture_fingerprint=getattr(capture, "capture_fingerprint"),
+                    declaration=_declaration_fact(declaration),
+                    script_body=script_body,
+                    skill_root=root,
+                    skill_root_identity=root_identity,
+                )
+            )
+    ordered = tuple(
+        sorted(
+            facts,
+            key=lambda fact: (
+                fact.candidate_fingerprint,
+                str(fact.declaration[1]),
+            ),
+        )
+    )
+    if len(set(ordered)) != len(ordered):
+        raise ValueError("Catalog action owner facts must be unique")
+    return ordered
+
+
+def _action_fact(action: object) -> _CatalogActionFact:
+    selection = getattr(action, "selection")
+    declaration = getattr(action, "declaration")
+    script_body = getattr(action, "_script_body")
+    if type(script_body) is not bytes or hashlib.sha256(
+        script_body
+    ).hexdigest() != getattr(declaration, "script_digest", None):
+        raise ValueError("Catalog action script evidence changed")
+    root, root_identity = _root_fact(getattr(action, "skill_root"))
+    if getattr(action, "_skill_root_identity", None) != root_identity:
+        raise ValueError("Catalog action root identity changed")
+    return _CatalogActionFact(
+        catalog_generation=getattr(selection, "catalog_generation"),
+        catalog_snapshot_fingerprint=getattr(
+            selection,
+            "catalog_snapshot_fingerprint",
+        ),
+        candidate_fingerprint=getattr(selection, "candidate_fingerprint"),
+        skill_content_digest=getattr(selection, "skill_content_digest"),
+        source_kind=getattr(selection, "source_kind"),
+        source_revision=getattr(selection, "source_revision"),
+        action_document_digest=getattr(action, "action_document_digest"),
+        capture_fingerprint=getattr(action, "_source_capture_fingerprint"),
+        declaration=_declaration_fact(declaration),
+        script_body=script_body,
+        skill_root=root,
+        skill_root_identity=root_identity,
+    )
+
+
+def _declaration_fact(declaration: object) -> tuple[object, ...]:
+    effects = tuple(
+        (getattr(effect, "kind"), getattr(effect, "target"))
+        for effect in getattr(declaration, "effects")
+    )
+    return (
+        getattr(declaration, "declaration_version"),
+        getattr(declaration, "action_id"),
+        getattr(declaration, "script"),
+        getattr(declaration, "script_digest"),
+        getattr(declaration, "runtime"),
+        tuple(getattr(declaration, "argv")),
+        getattr(declaration, "cwd_policy"),
+        tuple(tuple(item) for item in getattr(declaration, "environment")),
+        effects,
+        getattr(declaration, "containment"),
+    )
+
+
+def _root_fact(root: object) -> tuple[str, tuple[int, int]]:
+    if not isinstance(root, str | os.PathLike):
+        raise TypeError("Catalog action root must be path-like")
+    path = Path(root)
+    if not path.is_absolute() or path.resolve(strict=True) != path:
+        raise ValueError("Catalog action root must be a resolved absolute directory")
+    metadata = os.stat(path, follow_symlinks=False)
+    if not stat.S_ISDIR(metadata.st_mode):
+        raise ValueError("Catalog action root must be a directory")
+    return str(path), (metadata.st_dev, metadata.st_ino)
 
 
 __all__: list[str] = []

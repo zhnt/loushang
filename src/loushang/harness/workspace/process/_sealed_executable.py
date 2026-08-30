@@ -381,6 +381,25 @@ def _contained_request_owner_payload(
 
 
 def _copy_stable_executable(path: Path, destination: int) -> tuple[str, int]:
+    return _read_stable_executable(
+        path,
+        write_chunk=lambda chunk: _write_all(destination, chunk),
+        rewind=lambda: os.lseek(destination, 0, os.SEEK_SET),
+    )
+
+
+def _stable_process_executable_digest(path: Path) -> tuple[str, int]:
+    """Digest one bounded executable without buffering its complete body."""
+
+    return _read_stable_executable(path)
+
+
+def _read_stable_executable(
+    path: Path,
+    *,
+    write_chunk: Callable[[bytes], None] | None = None,
+    rewind: Callable[[], object] | None = None,
+) -> tuple[str, int]:
     flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_CLOEXEC", 0)
     flags |= getattr(os, "O_NOFOLLOW", 0)
     source = os.open(path, flags)
@@ -397,7 +416,8 @@ def _copy_stable_executable(path: Path, destination: int) -> tuple[str, int]:
             if not chunk:
                 break
             digest.update(chunk)
-            _write_all(destination, chunk)
+            if write_chunk is not None:
+                write_chunk(chunk)
             copied += len(chunk)
         extra = os.read(source, 1)
         after = os.fstat(source)
@@ -415,7 +435,8 @@ def _copy_stable_executable(path: Path, destination: int) -> tuple[str, int]:
         raise SealedProcessExecutableUnavailable(
             "managed runtime changed during immutable capture"
         )
-    os.lseek(destination, 0, os.SEEK_SET)
+    if rewind is not None:
+        rewind()
     return digest.hexdigest(), copied
 
 
@@ -423,7 +444,12 @@ def _write_all(descriptor: int, body: bytes) -> None:
     view = memoryview(body)
     written = 0
     while written < len(view):
-        written += os.write(descriptor, view[written:])
+        count = os.write(descriptor, view[written:])
+        if count <= 0:
+            raise SealedProcessExecutableUnavailable(
+                "sealed process executable could not be written completely"
+            )
+        written += count
 
 
 def _descriptor_digest(descriptor: int, *, size: int) -> str:
