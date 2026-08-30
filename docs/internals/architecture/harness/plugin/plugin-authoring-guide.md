@@ -100,7 +100,10 @@ skill_root.mkdir(parents=True, exist_ok=True)
 its managed-action sidecar. Environment literals have an author-enforced
 non-secret precondition—validation does not classify arbitrary strings or
 resolve secrets. Execution always requires Host Approval and required
-containment.
+containment. PLC8 managed execution is currently admitted only on Linux with
+the Harness-owned Bubblewrap backend and immutable sealed-executable support.
+Other hosts may compile, inspect, and validate the declaration, but execution
+fails closed until they provide an equally strong owner-admitted mechanism.
 
 ## Validate Before Execution
 

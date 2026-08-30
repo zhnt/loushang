@@ -23,6 +23,7 @@ def build_bubblewrap_command(
     command: tuple[str, ...],
     *,
     sealed_executable: tuple[int, Path] | None = None,
+    bound_cwd_directory: tuple[int, Path] | None = None,
 ) -> tuple[str, ...]:
     readable_roots = _collapse_roots(scope.readable_roots)
     writable_roots = _collapse_roots(scope.writable_roots)
@@ -74,6 +75,12 @@ def build_bubblewrap_command(
                 str(destination),
             )
         )
+
+    if bound_cwd_directory is not None:
+        descriptor, destination = bound_cwd_directory
+        if descriptor < 0 or destination != scope.cwd:
+            raise SandboxUnavailableError("bound cwd directory is invalid")
+        args.extend(("--ro-bind-fd", str(descriptor), str(destination)))
 
     effective_visible_roots = (
         (Path("/"),)

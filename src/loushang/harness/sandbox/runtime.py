@@ -17,6 +17,7 @@ from loushang.harness.workspace.exec import (
     ExecRequest,
     ExecService,
     ExecUpdateCallback,
+    LocalExecBackend,
 )
 from loushang.harness.workspace.process import AuthorizedProcessLauncher
 from loushang.harness.workspace.process.host import ProcessHost
@@ -157,6 +158,12 @@ class _ExecServiceBackend:
 
     def __init__(self, service: ExecService) -> None:
         self._service = service
+
+    def _uses_builtin_local_backend(self) -> bool:
+        return (
+            type(self._service) is ExecService
+            and type(self._service._backend) is LocalExecBackend
+        )
 
     async def __call__(
         self,

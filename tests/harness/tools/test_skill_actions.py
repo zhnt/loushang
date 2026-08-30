@@ -8,6 +8,7 @@ from uuid import uuid4
 
 import pytest
 
+import loushang.harness.tools.skill_actions as skill_action_runtime
 from loushang.harness.approval import ApprovalDecision
 from loushang.harness.authorization import (
     EffectiveExecutionProfile,
@@ -15,11 +16,14 @@ from loushang.harness.authorization import (
 )
 from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAuthority,
-    OwnerContributionCandidateEnvelope,
     OwnerContributionPolicy,
     ResourceContributionSpec,
 )
 from loushang.harness.environment import HostEnvironment, LocalHostEnvironmentProbe
+from loushang.harness.plugin_authoring.contribution_admission import (
+    prepare_owner_contribution_candidate,
+)
+from loushang.harness.plugin_authoring.host import PluginDeclarationHost
 from loushang.harness.resource_catalog.inputs import (
     acquire_admitted_package_resource,
 )
@@ -29,13 +33,28 @@ from loushang.harness.resource_catalog.shadow import (
 from loushang.harness.resources._catalog_native_source import (
     mint_native_resource_root_handle,
 )
+from loushang.harness.resources._skill_action_authority import (
+    _CatalogActionOwnerCredential,
+    _register_catalog_managed_skill_action,
+)
 from loushang.harness.resources._skill_catalog_consumer import (
     SkillCatalogConsumer,
     build_effective_skill_catalog_projection,
 )
-from loushang.harness.resources.plugins.manifest import PluginManifestParser
-from loushang.harness.resources.plugins.revisions import PluginRevisionStore
-from loushang.harness.resources.plugins.selection import PluginInstanceRevisionRef
+from loushang.harness.resources.packages.materializer import PackageMaterializer
+from loushang.harness.resources.plugins.authority import PluginResolutionAuthority
+from loushang.harness.resources.plugins.selection import (
+    PendingOnlyPluginExecutionDecisionLookup,
+    PluginContributionRef,
+    PluginEffectiveConfigurationEntry,
+    PluginEffectiveConfigurationSetV1,
+    PluginInstanceRevisionRef,
+    PluginPreflightContextV1,
+    PluginSelection,
+    PluginSelectionPlanV2,
+    PluginSourceTrustSnapshotV1,
+)
+from loushang.harness.resources.plugins.types import PluginSource
 from loushang.harness.resources.skill_actions import (
     CatalogManagedSkillAction,
     SkillActionCatalogSelection,
@@ -53,6 +72,7 @@ from loushang.harness.sandbox import (
     SandboxSettings,
     SandboxUnavailableError,
     bind_sandbox_execution_runtime,
+    default_sandbox_backend_registry,
 )
 from loushang.harness.tools.process_hosting import (
     ProcessExecutionScope,
@@ -66,6 +86,9 @@ from loushang.harness.tools.skill_actions import (
     execute_managed_skill_action,
 )
 from loushang.harness.workspace.exec import ExecRequest, ExecService
+from loushang.harness.workspace.process._sealed_executable import (
+    SealedProcessExecutableUnavailable,
+)
 from loushang.harness.workspace.process.host import ProcessHost
 from loushang.harness.workspace.process.local import ProcessContainmentPlan
 from loushang.plugin import package, resource, skill_action, skill_action_effect
@@ -227,43 +250,66 @@ async def _catalog_package_action(
     script_path.parent.mkdir(parents=True)
     script_path.write_bytes(script)
 
-    published = PluginRevisionStore(root / f"revisions-{plugin_id}").publish(
-        PluginManifestParser().parse(source)
-    )
-    revision = published.revision_handle
-    assert revision is not None
-    contribution = ResourceContributionSpec(
-        resource_kind="skill",
-        locator=locator,
-        locator_kind="directory",
-        media_type="text/markdown",
-        schema_id="loushang.resource.skill",
-        schema_version=1,
-        managed_skill_actions=True,
-    )
-    candidate = OwnerContributionCandidateEnvelope(
-        owner_id="resources.skill",
-        plugin_id=plugin_id,
-        contribution_id=contribution_id,
-        contribution=contribution,
-        plugin_candidate_fingerprint="1" * 64,
-        declaration_fingerprint="2" * 64,
-        declaration_evidence_fingerprint="3" * 64,
-        package_content_digest=revision.content_digest,
-        dependency_lock_digest="4" * 64,
-        product_id="coding",
-        scope_id="workspace:test",
-        product_policy_revision="managed-action-test-v1",
-        instance_revision_ref=PluginInstanceRevisionRef(
-            instance_id=f"{plugin_id}@product",
-            plugin_id=plugin_id,
-            revision=1,
+    authority = PluginResolutionAuthority()
+    inspection = authority.inspect(PluginSource(path=source))
+    plugin_runtime = authority.publish_runtime(
+        (inspection,),
+        binding_store=PackageMaterializer(
+            install_root=root / f"installed-{plugin_id}",
+            plugin_revision_root=root / f"revisions-{plugin_id}",
         ),
-        package_source_identity=f"test:{plugin_id}",
-        source_trust_class="test_trusted",
-        source_trust_policy_revision="test-trust-v1",
-        source_trusted=True,
     )
+    [published_package] = plugin_runtime.packages
+    [source_binding] = plugin_runtime.bindings
+    [reservation] = published_package.contribution_index.items
+    revision = published_package.revision_handle
+    assert revision is not None
+    plan = PluginSelectionPlanV2(
+        context=PluginPreflightContextV1(
+            product_id="coding",
+            scope_id="workspace:test",
+            policy_revision="managed-action-test-v1",
+            instance_revision_refs=(
+                PluginInstanceRevisionRef(
+                    instance_id=f"{plugin_id}@product",
+                    plugin_id=plugin_id,
+                    revision=1,
+                ),
+            ),
+        ),
+        selected_plugin_ids=(plugin_id,),
+        selected_contributions=(PluginContributionRef(plugin_id, contribution_id),),
+        source_trust_snapshots=(
+            PluginSourceTrustSnapshotV1(
+                plugin_id=plugin_id,
+                package_source_identity=source_binding.source_identity,
+                source_trust_class="host-equivalent-local",
+                source_trust_policy_revision="test-trust-v1",
+                trusted=True,
+            ),
+        ),
+        effective_configuration_set=PluginEffectiveConfigurationSetV1(
+            entries=(
+                PluginEffectiveConfigurationEntry(
+                    plugin_id=plugin_id,
+                    contribution_id=contribution_id,
+                    configuration={},
+                ),
+            )
+        ),
+        allowed_authority_ceiling=reservation.requested_authorities,
+    )
+    selection = PluginDeclarationHost().resolve(
+        (published_package,),
+        bindings=(source_binding,),
+        plan=plan,
+        decision_lookup=PendingOnlyPluginExecutionDecisionLookup(),
+    )
+    assert isinstance(selection, PluginSelection)
+    [plugin_candidate] = selection.candidates
+    candidate = prepare_owner_contribution_candidate(selection, plugin_candidate)
+    assert isinstance(candidate.contribution, ResourceContributionSpec)
+    assert candidate.contribution.managed_skill_actions is True
     admission = OwnerContributionAuthority(
         OwnerContributionPolicy(
             owner_id="resources.skill",
@@ -271,7 +317,7 @@ async def _catalog_package_action(
             product_id="coding",
             policy_revision="resource-skill-owner-v1",
             revocation_epoch=0,
-            allowed_source_trust_classes=("test_trusted",),
+            allowed_source_trust_classes=("host-equivalent-local",),
             allowed_collection_ids=("loushang.resource.skill",),
             allowed_requirement_bindings=("direct",),
             consumer_scope="session",
@@ -318,7 +364,7 @@ async def _catalog_package_action(
         return action
     finally:
         resource_input.close()
-        revision.close()
+        plugin_runtime.close()
 
 
 def _launcher(
@@ -382,6 +428,13 @@ def test_catalog_action_authority_cannot_be_publicly_forged() -> None:
     forged = object.__new__(CatalogManagedSkillAction)
     with pytest.raises(ValueError, match="owner evidence"):
         forged.verify()
+    with pytest.raises(TypeError, match="Resource-owner-minted"):
+        _CatalogActionOwnerCredential()
+    with pytest.raises(TypeError, match="owner credential"):
+        _register_catalog_managed_skill_action(
+            forged,
+            owner_credential=object(),  # type: ignore[arg-type]
+        )
 
 
 def test_catalog_action_owner_seal_rejects_object_new_clone(tmp_path: Path) -> None:
@@ -600,54 +653,114 @@ def test_managed_action_rejects_fake_launcher_and_weak_containment(
             await host.close()
 
         backend = _HostedSandboxBackend()
-        registry = SandboxBackendRegistry(
-            (
-                SandboxBackendRegistration(
-                    backend_id=backend.backend_id,
-                    os_families=frozenset({"linux"}),
-                    factory=lambda: backend,
-                ),
-            )
+        registration = SandboxBackendRegistration(
+            backend_id=backend.backend_id,
+            os_families=frozenset({"linux"}),
+            factory=lambda: backend,
         )
         profile = EffectiveExecutionProfile(
             readable_roots=(tmp_path,),
             writable_roots=(tmp_path,),
         )
-        custom_runtime = bind_sandbox_execution_runtime(
-            base_exec_service=ExecService(execution_profile=profile),
-            settings=SandboxSettings(enabled=True, requirement="required"),
-            registry=registry,
-            environment_probe=LocalHostEnvironmentProbe(
-                platform_name="linux",
-                architecture="x86_64",
-                environ={},
+        for label, registry in (
+            ("public", SandboxBackendRegistry((registration,))),
+            (
+                "injected-builtin",
+                default_sandbox_backend_registry(
+                    local_backend=ExecService(execution_profile=profile),
+                ),
             ),
-            scope_request_factory=lambda request: _sandbox_scope(tmp_path, request),
-            execution_profile=profile,
-        )
-        custom_launcher = custom_runtime.bind_process_launcher(
-            ProcessExecutionScope(
-                approval_resolver=_ApprovalResolver(),
-                execution_profile_ceiling=profile,
-                require_approval=True,
+        ):
+            custom_runtime = bind_sandbox_execution_runtime(
+                base_exec_service=ExecService(execution_profile=profile),
+                settings=SandboxSettings(enabled=True, requirement="required"),
+                registry=registry,
+                environment_probe=LocalHostEnvironmentProbe(
+                    platform_name="linux",
+                    architecture="x86_64",
+                    environ={},
+                ),
+                scope_request_factory=lambda request: _sandbox_scope(tmp_path, request),
+                execution_profile=profile,
             )
-        )
-        try:
-            with pytest.raises(
-                ExecutionAuthorizationError,
-                match="Process-owner-minted launcher",
-            ):
-                await execute_managed_skill_action(
-                    binding,
-                    runtime=runtime,
-                    launcher=custom_launcher,
-                    workspace_root=workspace_root,
-                    correlation_id="untrusted-custom-backend",
+            custom_launcher = custom_runtime.bind_process_launcher(
+                ProcessExecutionScope(
+                    approval_resolver=_ApprovalResolver(),
+                    execution_profile_ceiling=profile,
+                    require_approval=True,
                 )
-        finally:
-            await custom_runtime.close()
+            )
+            try:
+                assert custom_launcher._managed_owner_authority is None
+                with pytest.raises(
+                    ExecutionAuthorizationError,
+                    match="Process-owner-minted launcher",
+                ):
+                    await execute_managed_skill_action(
+                        binding,
+                        runtime=runtime,
+                        launcher=custom_launcher,
+                        workspace_root=workspace_root,
+                        correlation_id=f"untrusted-custom-backend:{label}",
+                    )
+            finally:
+                await custom_runtime.close()
 
     asyncio.run(weak_scenario())
+
+
+def test_managed_action_fails_closed_when_runtime_cannot_be_sealed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        workspace_root = tmp_path / "unsealable-workspace"
+        workspace_root.mkdir()
+        binding = ManagedSkillActionBinding.bind(
+            await _catalog_action(b"print('never')\n", root=tmp_path)
+        )
+        resolver = _ApprovalResolver()
+        host = ProcessHost()
+        launcher = ScopeBoundProcessLauncher(
+            scope=ProcessExecutionScope(
+                approval_resolver=resolver,
+                require_approval=True,
+            ),
+            host=host,
+            containment=_Containment(),
+        )
+        launcher._managed_owner_authority = object()
+        launcher._managed_plan_verifier = lambda plan, authority: None
+
+        def unavailable(*args, **kwargs):
+            del args, kwargs
+            raise SealedProcessExecutableUnavailable("unsupported host")
+
+        monkeypatch.setattr(
+            skill_action_runtime,
+            "_capture_sealed_process_executable",
+            unavailable,
+        )
+        try:
+            with pytest.raises(ManagedSkillActionError) as caught:
+                await execute_managed_skill_action(
+                    binding,
+                    runtime=SkillRuntimeBinding.capture(
+                        runtime="python",
+                        executable=sys.executable,
+                    ),
+                    launcher=launcher,
+                    workspace_root=workspace_root,
+                    correlation_id="unsealable-runtime",
+                )
+            assert caught.value.code == "skill_action_runtime_unsealable"
+            assert resolver.requests == []
+            assert not host._reservations
+            assert not host._registrations
+        finally:
+            await host.close()
+
+    asyncio.run(scenario())
 
 
 def test_runtime_executes_sealed_bytes_when_source_changes_after_approval(
@@ -684,6 +797,42 @@ def test_runtime_executes_sealed_bytes_when_source_changes_after_approval(
             assert result.stdout == b"ok\n"
             assert executable.read_bytes() == b"changed"
             assert len(resolver.requests) == 1
+        finally:
+            await sandbox_runtime.close()
+
+    asyncio.run(scenario())
+
+
+def test_skill_root_replacement_during_approval_fails_before_spawn(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        workspace_root = tmp_path / "workspace-root-race"
+        workspace_root.mkdir()
+        action = await _catalog_action(b"print('never')\n", root=tmp_path)
+        original_root = action.skill_root.with_name("review-approved")
+
+        def replace_root() -> None:
+            action.skill_root.rename(original_root)
+            action.skill_root.mkdir()
+
+        resolver = _ApprovalResolver(on_resolve=replace_root)
+        sandbox_runtime, launcher = _launcher(resolver=resolver, root=tmp_path)
+        try:
+            with pytest.raises(ValueError, match="root identity changed"):
+                await execute_managed_skill_action(
+                    ManagedSkillActionBinding.bind(action),
+                    runtime=SkillRuntimeBinding.capture(
+                        runtime="python",
+                        executable=sys.executable,
+                    ),
+                    launcher=launcher,
+                    workspace_root=workspace_root,
+                    correlation_id="skill-root-race",
+                )
+            assert len(resolver.requests) == 1
+            assert not sandbox_runtime._process_host._reservations
+            assert not sandbox_runtime._process_host._registrations
         finally:
             await sandbox_runtime.close()
 
@@ -785,7 +934,7 @@ def test_posix_action_drains_output_while_large_stdin_is_still_writing(
         workspace_root.mkdir()
         output_block = "x" * 64
         script = (
-            "i=0; while [ \"$i\" -lt 2048 ]; do "
+            'i=0; while [ "$i" -lt 2048 ]; do '
             f"printf '{output_block}'; i=$((i + 1)); done\n"
             + "#"
             + ("p" * 850_000)
@@ -836,9 +985,7 @@ def test_real_process_host_terminates_output_overflow_without_pipe_deadlock(
         workspace_root = tmp_path / "workspace"
         workspace_root.mkdir()
         script = (
-            b"import sys\n"
-            b"sys.stdout.buffer.write(b'x' * 1100000)\n"
-            b"sys.stdout.flush()\n"
+            b"import sys\nsys.stdout.buffer.write(b'x' * 1100000)\nsys.stdout.flush()\n"
         )
         action = await _catalog_action(script, root=tmp_path)
         sandbox_runtime, launcher = _launcher(
@@ -905,9 +1052,7 @@ def test_managed_action_cancellation_reclaims_process_and_pipe_tasks(
             deadline = asyncio.get_running_loop().time() + 5
             while True:
                 live_names = {
-                    item.get_name()
-                    for item in asyncio.all_tasks()
-                    if not item.done()
+                    item.get_name() for item in asyncio.all_tasks() if not item.done()
                 }
                 if (
                     sandbox_runtime._process_host._registrations
@@ -917,7 +1062,9 @@ def test_managed_action_cancellation_reclaims_process_and_pipe_tasks(
                 if task.done():
                     await task
                 if asyncio.get_running_loop().time() >= deadline:
-                    raise AssertionError("managed action did not reach live pipe ownership")
+                    raise AssertionError(
+                        "managed action did not reach live pipe ownership"
+                    )
                 await asyncio.sleep(0)
             task.cancel()
             with pytest.raises(asyncio.CancelledError):

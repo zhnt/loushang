@@ -10,6 +10,7 @@ from loushang.harness.workspace.exec import ExecRequest
 from loushang.harness.workspace.process import ProcessLaunchRequest
 from loushang.harness.workspace.process.local import ProcessContainmentPlan
 
+from .backends.linux import LinuxBubblewrapBackend
 from .exec_backend import SandboxScopeRequestFactory
 from .registry import SandboxBackendResolution
 from .service import SandboxDiagnosticSink
@@ -45,6 +46,7 @@ class HostedProcessContainmentPlanner:
         backend_authority = (
             resolution._claim_managed_process_backend_authority()
             if resolution is not None
+            and type(resolution.backend) is LinuxBubblewrapBackend
             else None
         )
         self._managed_process_owner_authority = (

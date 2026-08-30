@@ -18,6 +18,8 @@ from loushang.harness.workspace.exec import (
 )
 from loushang.harness.workspace.process import ProcessLaunchRequest
 from loushang.harness.workspace.process._sealed_executable import (
+    _bound_process_directory_from_request,
+    _contained_process_launch_request,
     _sealed_process_executable_from_request,
 )
 from loushang.harness.workspace.process.local import ProcessContainmentPlan
@@ -162,8 +164,9 @@ class LinuxBubblewrapBackend:
             )
         validate_bubblewrap_scope_request(scope)
         artifact = _sealed_process_executable_from_request(request)
+        bound_cwd = _bound_process_directory_from_request(request)
         return ProcessContainmentPlan(
-            replace(
+            _contained_process_launch_request(
                 request,
                 command=build_bubblewrap_command(
                     self._resolved_path,
@@ -172,6 +175,11 @@ class LinuxBubblewrapBackend:
                     sealed_executable=(
                         (artifact.descriptor, artifact.logical_path)
                         if artifact is not None
+                        else None
+                    ),
+                    bound_cwd_directory=(
+                        (bound_cwd.descriptor, bound_cwd.logical_path)
+                        if bound_cwd is not None
                         else None
                     ),
                 ),

@@ -189,11 +189,32 @@ class SandboxBackendRegistry:
 
 
 def _builtin_sandbox_backend_registry(
-    registrations: Iterable[SandboxBackendRegistration],
+    local_backend: object | None = None,
 ) -> SandboxBackendRegistry:
-    """Admit only Harness-owned backend registrations for managed processes."""
+    """Build the one non-injectable backend set admitted for managed processes."""
 
-    registry = SandboxBackendRegistry(registrations)
+    from loushang.harness.workspace.exec import LocalExecBackend
+
+    from .backends.linux import LinuxBubblewrapBackend
+    from .runtime import _ExecServiceBackend
+
+    trusted_backend = local_backend is None or type(local_backend) is LocalExecBackend
+    if type(local_backend) is _ExecServiceBackend:
+        trusted_backend = local_backend._uses_builtin_local_backend()
+    if not trusted_backend:
+        raise TypeError("managed Sandbox registry requires the builtin local backend")
+
+    registry = SandboxBackendRegistry(
+        (
+            SandboxBackendRegistration(
+                backend_id=LinuxBubblewrapBackend.backend_id,
+                os_families=frozenset({"linux"}),
+                factory=lambda: LinuxBubblewrapBackend(
+                    local_backend=local_backend,  # type: ignore[arg-type]
+                ),
+            ),
+        )
+    )
     registry._managed_process_backend_authority = (
         _BUILTIN_MANAGED_PROCESS_BACKEND_AUTHORITY
     )

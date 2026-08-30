@@ -38,6 +38,7 @@ from loushang.harness.tools.workspace.authorization import (
     WorkspaceToolAuthorizationGateway,
 )
 from loushang.harness.workspace.process._sealed_executable import (
+    _BoundProcessDirectory,
     _SealedProcessExecutable,
 )
 from loushang.harness.workspace.process.host import ProcessHost
@@ -111,6 +112,11 @@ class _ManagedProcessLaunchRequest(ProcessLaunchRequest):
         repr=False,
         compare=False,
     )
+    _bound_cwd_directory: _BoundProcessDirectory | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
 
     def __post_init__(self) -> None:
         super(_ManagedProcessLaunchRequest, self).__post_init__()
@@ -118,10 +124,7 @@ class _ManagedProcessLaunchRequest(ProcessLaunchRequest):
         if any(
             not isinstance(
                 effect,
-                FilesystemEffect
-                | NetworkEffect
-                | ProcessEffect
-                | PublicationEffect,
+                FilesystemEffect | NetworkEffect | ProcessEffect | PublicationEffect,
             )
             for effect in effects
         ):
@@ -134,7 +137,28 @@ class _ManagedProcessLaunchRequest(ProcessLaunchRequest):
             raise TypeError("managed process pre-start validator must be callable")
         if type(self._sealed_executable) is not _SealedProcessExecutable:
             raise TypeError("managed process requires a sealed executable")
-        self._sealed_executable.verify()
+        executable_payload = self._sealed_executable.authorization_payload()
+        cwd_payload = (
+            self._bound_cwd_directory.authorization_payload()
+            if self._bound_cwd_directory is not None
+            else None
+        )
+        if (
+            self.command[0] != executable_payload["logicalPath"]
+            or self.authorization_metadata.get("runtimeDigest")
+            != executable_payload["digest"]
+            or self.authorization_metadata.get("runtimeSize")
+            != executable_payload["size"]
+        ):
+            raise ValueError(
+                "managed process executable does not match authorization facts"
+            )
+        if cwd_payload is not None and (
+            self.cwd != cwd_payload["logicalPath"]
+            or self.authorization_metadata.get("cwdDevice") != cwd_payload["device"]
+            or self.authorization_metadata.get("cwdInode") != cwd_payload["inode"]
+        ):
+            raise ValueError("managed process cwd does not match authorization facts")
         object.__setattr__(self, "declared_effects", effects)
         object.__setattr__(
             self,
@@ -152,6 +176,7 @@ def _managed_process_launch_request(
     authorization_metadata: Mapping[str, object],
     pre_start_validator: Callable[[], None],
     sealed_executable: _SealedProcessExecutable,
+    bound_cwd_directory: _BoundProcessDirectory | None = None,
 ) -> ProcessLaunchRequest:
     """Build the private Approval envelope without widening the public request."""
 
@@ -163,6 +188,7 @@ def _managed_process_launch_request(
         authorization_metadata=authorization_metadata,
         pre_start_validator=pre_start_validator,
         _sealed_executable=sealed_executable,
+        _bound_cwd_directory=bound_cwd_directory,
         stream_stderr=True,
     )
 
@@ -215,7 +241,9 @@ class ScopeBoundProcessLauncher:
         signal: object | None = None,
     ) -> ProcessHandle:
         if isinstance(request, _ManagedProcessLaunchRequest):
-            raise TypeError("managed process requests require the owner-only start path")
+            raise TypeError(
+                "managed process requests require the owner-only start path"
+            )
         return await self._start_authorized(
             request,
             correlation_id=correlation_id,
@@ -229,12 +257,20 @@ class ScopeBoundProcessLauncher:
         correlation_id: str,
         signal: object | None = None,
     ) -> ProcessHandle:
+        self._verify_managed_start_authority()
+        if type(request) is not _ManagedProcessLaunchRequest:
+            raise TypeError("managed process start requires an owner-minted request")
+        return await self._start_authorized(
+            request,
+            correlation_id=correlation_id,
+            signal=signal,
+        )
+
+    def _verify_managed_start_authority(self) -> None:
         if self._managed_owner_authority is None:
             raise ExecutionAuthorizationError(
                 "managed process start requires a Process-owner-minted launcher"
             )
-        if type(request) is not _ManagedProcessLaunchRequest:
-            raise TypeError("managed process start requires an owner-minted request")
         if not self._scope.require_approval:
             raise ExecutionAuthorizationError(
                 "managed process start requires mandatory Approval"
@@ -243,11 +279,6 @@ class ScopeBoundProcessLauncher:
             raise ExecutionAuthorizationError(
                 "managed process start requires required containment"
             )
-        return await self._start_authorized(
-            request,
-            correlation_id=correlation_id,
-            signal=signal,
-        )
 
     async def _start_authorized(
         self,
@@ -317,6 +348,10 @@ class ScopeBoundProcessLauncher:
                             "managed process containment is not Sandbox-owner-bound"
                         )
                     verifier(containment_plan, self._managed_owner_authority)
+                    if _process_launch_fingerprint(request) != launch_fingerprint:
+                        raise ExecutionAuthorizationError(
+                            "managed process executable changed during containment"
+                        )
                 # Approval and containment planning may be arbitrarily slow.  Keep
                 # mutable host-runtime evidence fresh at the final owner boundary,
                 # immediately before ProcessHost hands the plan to its spawner.
@@ -368,6 +403,7 @@ def _process_launch_fingerprint(request: ProcessLaunchRequest) -> str:
                 effect_snapshot(effect) for effect in _declared_effects(request)
             ],
             "authorization_metadata": dict(_authorization_metadata(request)),
+            "executable_artifact": _executable_artifact_payload(request),
         },
         ensure_ascii=False,
         sort_keys=True,
@@ -393,6 +429,21 @@ def _pre_start_validator(
 ) -> Callable[[], None] | None:
     if isinstance(request, _ManagedProcessLaunchRequest):
         return request.pre_start_validator
+    return None
+
+
+def _executable_artifact_payload(
+    request: ProcessLaunchRequest,
+) -> Mapping[str, object] | None:
+    if isinstance(request, _ManagedProcessLaunchRequest):
+        return {
+            "cwd": (
+                request._bound_cwd_directory.authorization_payload()
+                if request._bound_cwd_directory is not None
+                else None
+            ),
+            "executable": request._sealed_executable.authorization_payload(),
+        }
     return None
 
 

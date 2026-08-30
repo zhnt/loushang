@@ -27,6 +27,8 @@ from loushang.harness.tools.process_hosting import (
 )
 from loushang.harness.workspace.process._sealed_executable import (
     SealedProcessExecutableUnavailable,
+    _BoundProcessDirectory,
+    _capture_bound_process_directory,
     _capture_sealed_process_executable,
     _SealedProcessExecutable,
 )
@@ -131,6 +133,10 @@ class ManagedSkillActionBinding:
         self._validate()
         return self._catalog_action.read_script()
 
+    def _skill_root_identity(self) -> tuple[int, int]:
+        self._validate()
+        return self._catalog_action._skill_root_identity
+
 
 @dataclass(frozen=True, slots=True)
 class SkillRuntimeBinding:
@@ -222,6 +228,7 @@ async def execute_managed_skill_action(
         raise TypeError("Managed Skill execution requires a runtime binding")
     if type(launcher) is not ScopeBoundProcessLauncher:
         raise TypeError("Managed Skill execution requires the Process owner launcher")
+    launcher._verify_managed_start_authority()
     declaration = binding.declaration
     if runtime.runtime != declaration.runtime:
         raise ManagedSkillActionError(
@@ -242,7 +249,26 @@ async def execute_managed_skill_action(
         *declaration.argv,
     )
     sealed_executable = runtime._capture_sealed_executable()
+    bound_cwd: _BoundProcessDirectory | None = None
     try:
+        if declaration.cwd_policy == "skill":
+            try:
+                bound_cwd = _capture_bound_process_directory(
+                    binding.skill_root,
+                    expected_identity=binding._skill_root_identity(),
+                )
+            except (OSError, SealedProcessExecutableUnavailable) as exc:
+                raise ManagedSkillActionError(
+                    "Managed Skill cwd could not be bound",
+                    code="skill_action_cwd_unsealable",
+                ) from exc
+
+        def validate_start_evidence() -> None:
+            sealed_executable.verify()
+            if bound_cwd is not None:
+                bound_cwd.verify()
+            binding._validate()
+
         request = _managed_process_launch_request(
             command=command,
             cwd=str(cwd),
@@ -261,14 +287,18 @@ async def execute_managed_skill_action(
                 "catalogGeneration": binding.catalog_generation,
                 "catalogSnapshotFingerprint": binding.catalog_snapshot_fingerprint,
                 "catalogSourceRevision": binding.catalog_source_revision,
+                "cwdDevice": bound_cwd.device if bound_cwd is not None else None,
+                "cwdInode": bound_cwd.inode if bound_cwd is not None else None,
                 "runtimeDigest": runtime.executable_digest,
+                "runtimeSize": sealed_executable.size,
                 "scriptDigest": declaration.script_digest,
                 "skillContentDigest": binding.skill_content_digest,
                 "sourceKind": binding.source_kind,
                 "sourceRevision": binding.source_revision,
             },
-            pre_start_validator=sealed_executable.verify,
+            pre_start_validator=validate_start_evidence,
             sealed_executable=sealed_executable,
+            bound_cwd_directory=bound_cwd,
         )
         handle = await launcher._start_managed(
             request,
@@ -276,6 +306,8 @@ async def execute_managed_skill_action(
             signal=signal,
         )
     except BaseException:
+        if bound_cwd is not None:
+            bound_cwd.close()
         sealed_executable.close()
         raise
     try:
@@ -313,6 +345,8 @@ async def execute_managed_skill_action(
         try:
             await handle.close()
         finally:
+            if bound_cwd is not None:
+                bound_cwd.close()
             sealed_executable.close()
 
 

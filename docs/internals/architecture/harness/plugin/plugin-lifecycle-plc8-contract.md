@@ -145,8 +145,14 @@ executes the digest-bound immutable image even if the original path changes
 after Approval or queues a replacement immediately before spawn. Hosts without
 an accepted immutable executable mechanism fail closed. Script bytes cross
 stdin (`python -` or `sh -s --`) so mutable script paths are never re-opened by
-the child. Cwd, environment, argv, effects, source facts, and binding digest
-enter the existing Process authorization fingerprint.
+the child. The immutable executable's exact logical path, digest, size, and
+owner-sealed descriptor identity enter the Process authorization fingerprint
+alongside cwd, environment, argv, effects, source facts, and binding digest.
+The Catalog action and Skill-root identity are revalidated after Approval at
+the final Process-owner start boundary. For `cwdPolicy: skill`, Process also
+retains an open directory descriptor and Bubblewrap mounts that exact directory
+read-only with `--ro-bind-fd` before `chdir`; a late path replacement therefore
+cannot redirect the child between validation and spawn.
 
 Managed actions require both:
 
@@ -201,8 +207,9 @@ before and after the read.
   generation/revision/digest identity.
 - Action tests prove caller-forged evidence and launchers are rejected, exact
   Approval metadata and required containment are enforced, runtime replacement
-  during Approval fails before spawn, and real ProcessHost execution drains
-  large stdout/stderr while large stdin is still writing, preserves non-zero
-  exit, and terminates output overflow.
+  during Approval still executes the approved sealed image, Skill-root
+  replacement fails before spawn, and real ProcessHost execution drains large
+  stdout/stderr while large stdin is still writing, preserves non-zero exit,
+  and terminates output overflow.
 - PLC9 cannot start until architecture, correctness/security, and Product/test
   reviewers pass this slice and re-review every blocking fix.

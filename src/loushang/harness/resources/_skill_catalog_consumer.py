@@ -20,6 +20,7 @@ from loushang.harness.resources._catalog_records import (
     ResourceLoadReceipt,
 )
 from loushang.harness.resources._skill_action_authority import (
+    _mint_catalog_action_owner_credential,
     _register_catalog_managed_skill_action,
 )
 from loushang.harness.resources._skill_catalog_status import (
@@ -150,8 +151,7 @@ class EffectiveSkillCatalogProjection:
             raise ValueError("Skill projection Catalog generation must be positive")
         if any(
             skill.catalog_generation != self.catalog_generation
-            or skill.catalog_snapshot_fingerprint
-            != self.catalog_snapshot_fingerprint
+            or skill.catalog_snapshot_fingerprint != self.catalog_snapshot_fingerprint
             for skill in self.skills
         ):
             raise ValueError("Skill projection summaries must share one Catalog")
@@ -247,8 +247,7 @@ class SkillCatalogConsumer:
             raise SkillCatalogConsumerError("Skill Consumer Catalog is incomplete")
         if (
             projection.catalog_generation != snapshot.catalog_generation
-            or projection.catalog_snapshot_fingerprint
-            != snapshot.snapshot_fingerprint
+            or projection.catalog_snapshot_fingerprint != snapshot.snapshot_fingerprint
         ):
             raise SkillCatalogConsumerError(
                 "Skill projection belongs to another Catalog generation"
@@ -349,7 +348,9 @@ class SkillCatalogConsumer:
             )
         summary = self._summary_by_candidate(handle.candidate_fingerprint)
         if summary.identity != handle.identity:
-            raise SkillCatalogConsumerError("Skill load handle identity is inconsistent")
+            raise SkillCatalogConsumerError(
+                "Skill load handle identity is inconsistent"
+            )
         candidate = self._candidate_for_summary(summary)
         _validate_resource_handle(summary, candidate, handle.resource_handle)
         canonical_handle = self._catalog.load_handle(summary.identity)
@@ -392,8 +393,7 @@ class SkillCatalogConsumer:
             if (
                 not isinstance(script_body, bytes)
                 or len(script_body) > MAX_SKILL_ACTION_SCRIPT_BYTES
-                or hashlib.sha256(script_body).hexdigest()
-                != declaration.script_digest
+                or hashlib.sha256(script_body).hexdigest() != declaration.script_digest
             ):
                 raise SkillCatalogConsumerError(
                     "Catalog action source contains invalid script evidence"
@@ -465,13 +465,18 @@ class SkillCatalogConsumer:
             object.__setattr__(seal, "_skill_root", resolved_root)
             object.__setattr__(seal, "_skill_root_identity", root_identity)
             object.__setattr__(action, "_owner_seal", seal)
-            _register_catalog_managed_skill_action(
+            owner_credential = _mint_catalog_action_owner_credential(
                 action,
                 owner_identity=owner_identity,
                 catalog_generation=summary.catalog_generation,
                 catalog_snapshot_fingerprint=summary.catalog_snapshot_fingerprint,
+                candidate_fingerprint=summary.candidate_fingerprint,
                 binding_source_fingerprint=binding_fingerprint,
                 skill_root_identity=root_identity,
+            )
+            _register_catalog_managed_skill_action(
+                action,
+                owner_credential=owner_credential,
             )
             action.verify()
             actions.append(action)
@@ -544,16 +549,13 @@ def build_effective_skill_catalog_projection(
         descriptor = binding.descriptor
         if not isinstance(descriptor, SkillDescriptor):
             raise SkillCatalogConsumerError("Skill projection descriptor is invalid")
-        candidate = snapshot.candidate_by_fingerprint(
-            binding.candidate_fingerprint
-        )
+        candidate = snapshot.candidate_by_fingerprint(binding.candidate_fingerprint)
         effective = effective_by_identity.get(candidate.identity)
         if (
             effective is None
             or candidate.candidate_fingerprint
             != effective.primary_candidate_fingerprint
-            or candidate.candidate_fingerprint
-            not in effective.candidate_fingerprints
+            or candidate.candidate_fingerprint not in effective.candidate_fingerprints
         ):
             raise SkillCatalogConsumerError(
                 "Skill projection is not effective in its Catalog"
@@ -655,9 +657,7 @@ def _bind_projection_to_snapshot(
     candidates: dict[str, ResourceCandidateSummary] = {}
     for summary in projection.skills:
         try:
-            candidate = snapshot.candidate_by_fingerprint(
-                summary.candidate_fingerprint
-            )
+            candidate = snapshot.candidate_by_fingerprint(summary.candidate_fingerprint)
         except KeyError as error:
             raise SkillCatalogConsumerError(
                 "Skill projection names a foreign Catalog candidate"
@@ -665,14 +665,12 @@ def _bind_projection_to_snapshot(
         effective = effective_by_identity.get(summary.identity)
         if (
             effective is None
-            or effective.primary_candidate_fingerprint
-            != summary.candidate_fingerprint
+            or effective.primary_candidate_fingerprint != summary.candidate_fingerprint
             or candidate.identity != summary.identity
             or candidate.canonical_name != summary.canonical_name
             or candidate.description != summary.description
             or candidate.media_type != summary.media_type
-            or candidate.expected_content_digest
-            != summary.expected_content_digest
+            or candidate.expected_content_digest != summary.expected_content_digest
             or candidate.expected_content_length != summary.expected_content_length
             or candidate.source_class != summary.source_kind
             or candidate.scope_id != summary.source_scope
@@ -732,16 +730,13 @@ def _bind_status_projection_to_snapshot(
             )
         effective = effective_by_identity.get(candidate.identity)
         expected_effective = (
-            status.candidate_fingerprint
-            in decision.effective_candidate_fingerprints
+            status.candidate_fingerprint in decision.effective_candidate_fingerprints
         )
         expected_primary = (
             status.candidate_fingerprint == decision.winner_candidate_fingerprint
         )
         expected_model_invocable = bool(
-            expected_effective
-            and effective is not None
-            and effective.model_invocable
+            expected_effective and effective is not None and effective.model_invocable
         )
         if (
             status.identity != candidate.identity
@@ -755,10 +750,8 @@ def _bind_status_projection_to_snapshot(
             or status.model_invocable != expected_model_invocable
             or status.status_reason != decision.reason
             or status.media_type != candidate.media_type
-            or status.expected_content_digest
-            != candidate.expected_content_digest
-            or status.expected_content_length
-            != candidate.expected_content_length
+            or status.expected_content_digest != candidate.expected_content_digest
+            or status.expected_content_length != candidate.expected_content_length
             or status.source_kind != candidate.source_class
             or status.source_scope != candidate.scope_id
             or status.source_root_order != candidate.source_root_order
