@@ -290,7 +290,10 @@ def _prepare_package_resources(
         if admissions:
             rejection_reasons.append("package_admissions_without_source")
         return ()
-    if receipt.package_diagnostic_codes:
+    if receipt.package_diagnostic_codes and not _only_empty_code_plugin_diagnostics(
+        receipt,
+        enabled_mounts=enabled_mounts,
+    ):
         rejection_reasons.append("package_discovery_diagnostics")
     if len({item.fingerprint for item in admissions}) != len(admissions):
         rejection_reasons.append("duplicate_package_admissions")
@@ -317,9 +320,10 @@ def _prepare_package_resources(
     if invalid_mounts:
         return ()
 
+    all_facts = tuple(receipt.package_resource_candidates)
     facts = tuple(
         fact
-        for fact in receipt.package_resource_candidates
+        for fact in all_facts
         if fact.resource_kind in {"prompt", "skill", "theme"}
     )
     matched_facts: set[int] = set()
@@ -384,16 +388,69 @@ def _prepare_package_resources(
                 source_root_order=fact.source_root_order,
             )
         )
-    # Before Product selection exists, every discovered package Resource must
-    # fail closed because no authority selected it.  Once an exact Product
-    # composition is present, its admissions are the allowlist: verified facts
-    # without a matching admission are intentionally unselected and remain
-    # invisible, while every admission must still match exactly one fact below.
+    # A selected Plugin may leave an exactly reserved optional Resource
+    # unselected, but it may not silently acquire legacy filesystem content
+    # that has no contribution reservation. Count reservations per verified
+    # package/kind; selected declarations are already path-matched above.
+    declared_counts: dict[tuple[int, str], int] = {}
+    for plugin_input in receipt.catalog_plugin_package_inputs:
+        for reservation in plugin_input.package.contribution_index.items:
+            if reservation.kind != "resource_item" or not reservation.owner.startswith(
+                "resources."
+            ):
+                continue
+            key = (
+                plugin_input.source_root_order,
+                reservation.owner.removeprefix("resources."),
+            )
+            declared_counts[key] = declared_counts.get(key, 0) + 1
+    selected_counts: dict[tuple[int, str], int] = {}
+    for fact_index in matched_facts:
+        fact = facts[fact_index]
+        key = (fact.source_root_order, fact.resource_kind)
+        selected_counts[key] = selected_counts.get(key, 0) + 1
+    for key, count in selected_counts.items():
+        declared_counts[key] = max(declared_counts.get(key, 0), count)
+    observed_counts: dict[tuple[int, str], int] = {}
+    for fact in all_facts:
+        key = (fact.source_root_order, fact.resource_kind)
+        observed_counts[key] = observed_counts.get(key, 0) + 1
+    has_undeclared_fact = any(
+        count > declared_counts.get(key, 0)
+        for key, count in observed_counts.items()
+    )
     if not product_selection_present and len(matched_facts) != len(facts):
         rejection_reasons.append("package_candidate_without_admission")
+    elif has_undeclared_fact:
+        rejection_reasons.append("undeclared_plugin_resources")
     if len(specs) != len(admissions):
         return ()
     return tuple(specs)
+
+
+def _only_empty_code_plugin_diagnostics(
+    receipt: ResourceCatalogInputReceipt,
+    *,
+    enabled_mounts: Mapping[int, PackageResourceMount],
+) -> bool:
+    """Ignore legacy empty-root noise for verified Plugins with no Resources."""
+
+    diagnostic_codes = receipt.package_diagnostic_codes
+    if not diagnostic_codes or any(
+        code != "empty_package_root" for code in diagnostic_codes
+    ):
+        return False
+    resource_orders = {
+        fact.source_root_order for fact in receipt.package_resource_candidates
+    }
+    empty_mount_orders = set(enabled_mounts).difference(resource_orders)
+    plugin_orders = {
+        item.source_root_order for item in receipt.catalog_plugin_package_inputs
+    }
+    return (
+        len(diagnostic_codes) == len(empty_mount_orders)
+        and empty_mount_orders.issubset(plugin_orders)
+    )
 
 
 def prepare_coding_package_plugin_plan_seed(

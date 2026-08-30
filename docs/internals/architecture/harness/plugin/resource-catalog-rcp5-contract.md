@@ -180,19 +180,18 @@ command enumeration. The CLI has no bundle-or-loader fallback. Missing,
 incompatible, or malformed v4 state fails with a finite error. Explicit command
 and body execution remain on the compatibility bundle, as frozen for RCP5.3.
 
-RCP5.2B default ingress is complete. Coding uses `catalog_required` by default,
-and verified local or materialized remote Plugin Resource declarations compile
-through exact Product owner admissions from the same discovery receipt.
-Unverified package paths and receipt-less custom ResourceLoader inputs are
-available only behind caller-selected `legacy_explicit`; neither case can
-trigger a forbidden silent legacy fallback. Source-backed entry, CLI, SDK,
-architecture, and lifecycle tests pass together with the full Harness gate.
-RCP5.3 body authority and RCP5.4 refresh authority remain separate work.
+The following RCP5.2B ingress section records the historical staged-cutover
+checkpoint. At that checkpoint Coding used `catalog_required` by default while
+an explicit `legacy_explicit` rollback surface still existed. PLC6E supersedes
+that Product API: Coding now has no authority selector, raw constructor, or
+production legacy caller. The generic Harness compatibility adapter remains
+available to other Products, but cannot enter a Coding Session.
 
-### RCP5.2B default ingress authority
+### RCP5.2B historical default-ingress authority
 
-Coding construction has exactly two explicit Resource authority modes. There
-is no input-sensitive or exception-driven `auto` mode:
+At the RCP5.2B checkpoint, Coding construction had exactly two explicit
+Resource authority modes. There was no input-sensitive or exception-driven
+`auto` mode:
 
 - `catalog_required` is the public default. The default Coding ResourceLoader
   must transfer one unclaimed, source-complete discovery receipt, and Product
@@ -206,12 +205,11 @@ is no input-sensitive or exception-driven `auto` mode:
   composition inputs. Its name is deliberately visible at the construction
   boundary so compatibility debt cannot masquerade as the Product default.
 
-The mode is Product policy, not a ResourceLoader type test. The Product does
-not infer it from `isinstance`, receipt-method presence, discovery output,
-package diagnostics, or a caught Catalog exception. A custom loader used with
-`catalog_required` implements the same one-shot receipt protocol as the
-default loader; otherwise its caller selects `legacy_explicit` before
-discovery.
+This historical mode boundary was Product policy, not a ResourceLoader type
+test. PLC6E removes it rather than inferring authority from `isinstance`,
+receipt-method presence, discovery output, package diagnostics, or a caught
+Catalog exception. A custom loader used by Coding now implements the same
+one-shot receipt protocol as the default loader or fails closed.
 
 Verified Plugin sources enter the Catalog only through the exact published
 revision, finalized declaration selection, Product owner admissions, and the
@@ -223,19 +221,20 @@ the Extension authority and do not themselves block Catalog ownership of
 separately admitted Resource declarations.
 
 Raw `package_roots` and non-Plugin `package_sources` have neither a verified
-revision nor Product admission. RCP5.2B does not bless mutable paths by
-re-reading or hashing them after discovery. Callers using those compatibility
-inputs must select `legacy_explicit` until a later source-ingress migration
-publishes a verified revision and exact admission. Likewise, temporary
-Resource paths and per-kind discovery switches remain finite
-`catalog_required` errors rather than implicit fallback signals.
+revision nor Product admission. RCP5.2B did not bless mutable paths by
+re-reading or hashing them after discovery; PLC6E now rejects those Coding
+inputs outright until source ingress publishes a verified revision and exact
+admission. Temporary Resource paths and per-kind discovery switches are removed
+from Coding CLI grammar and remain finite SDK errors rather than fallback
+signals.
 
 Default-ingress exit requires tests for default cwd and user-global native
 roots, admitted local and materialized remote Plugin Resources, disabled and
 invalid Plugin sources, an admission mismatch, a custom receipt-capable loader,
 an explicitly legacy custom loader, and a real CLI all-Skills listing. Tests
-must also prove `catalog_required` cannot construct a legacy-only Session and
-`legacy_explicit` cannot consume Catalog composition inputs.
+also proved the staged modes could not cross. PLC6E architecture tests replace
+that historical assertion with the stronger condition that neither mode name
+nor selector is present in Coding production source.
 
 ### RCP5.3 — body and Model Input evidence
 
@@ -447,13 +446,13 @@ compensation, while commit validates that no same-key listener drift occurred.
 Commit watches the package operation key even when the mutation itself is a
 no-op. A remote checkout is removed only after that uninstall has both published
 and settled its settings receipt; post-publication retirement failure does not
-revoke an otherwise successful settlement. The
-synchronous `uninstall_package()` compatibility entry point
-remains available to `legacy_explicit`; Catalog callers fail before mutation and
-the async CLI resolves `uninstall_package_async()` first; RPC preserves runtime
-owner precedence while each owner may expose either async-compatible name. The
-legacy coordinator, direct loader reload, and independent disabled-name overlay
-remain reachable only when the caller explicitly selected `legacy_explicit`.
+revoke an otherwise successful settlement. At the RCP5.4 checkpoint, the
+synchronous `uninstall_package()` compatibility entry point remained available
+to `legacy_explicit`; Catalog callers failed before mutation and the async CLI
+resolved `uninstall_package_async()` first. PLC6E removes the Coding caller of
+that path. The legacy coordinator, direct loader reload, and independent
+disabled-name overlay now remain only in generic Harness compatibility code and
+are unreachable from Coding CLI, SDK factories, or production Session assembly.
 
 The shared gate owns an event-loop epoch rather than a permanently bound bare
 `asyncio.Lock`. Root and child holders/waiters in one active epoch serialize;

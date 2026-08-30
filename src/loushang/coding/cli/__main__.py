@@ -28,7 +28,13 @@ from loushang.coding.capabilities import (
     CODING_ARCH_CAPABILITY,
     coding_capability_mount_mode,
 )
-from loushang.coding.cli.args import CliArgs, ExtensionFlag, help_text, parse_args
+from loushang.coding.cli.args import (
+    CliArgs,
+    ExtensionFlag,
+    help_text,
+    parse_args,
+    removed_legacy_resource_option,
+)
 from loushang.coding.cli.lsp import extract_lsp_argv, run_coding_lsp_command
 from loushang.coding.cli.multiagent import run_coding_multiagent_command
 from loushang.coding.cli.workspace import (
@@ -569,6 +575,15 @@ def _parse_application_args(
     extension_flags: Mapping[str, object] | None,
     allow_unknown: bool,
 ) -> CliParseResult[CliArgs]:
+    removed_option = removed_legacy_resource_option(tuple(argv))
+    if removed_option is not None:
+        stderr.write(
+            "Error: coding_legacy_resource_input_removed: "
+            f"{removed_option} is no longer supported; use native "
+            ".loushang/resources roots or a verified Plugin with exact "
+            "contribution declarations.\n"
+        )
+        return CliParseResult(args=None, exit_code=2)
     return capture_cli_parse(
         parse_args,
         argv,

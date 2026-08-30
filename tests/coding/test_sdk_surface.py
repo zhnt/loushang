@@ -34,7 +34,6 @@ def test_coding_top_level_exports_stable_sdk_surface() -> None:
     import loushang.coding as coding
 
     expected_names = {
-        "AgentSession",
         "AgentSessionRuntime",
         "AgentSessionServices",
         "BootstrapServices",
@@ -59,13 +58,16 @@ def test_coding_top_level_exports_stable_sdk_surface() -> None:
         "create_coding_tool_definition",
         "create_coding_tool_definitions",
         "create_coding_tools",
-        "register_coding_builtin_tools",
         "resolve_coding_composition_set",
         "create_services",
     }
 
     assert expected_names.issubset(set(coding.__all__))
     assert {name for name in expected_names if not hasattr(coding, name)} == set()
+    assert "AgentSession" not in coding.__all__
+    assert "register_coding_builtin_tools" not in coding.__all__
+    assert not hasattr(coding, "AgentSession")
+    assert not hasattr(coding, "register_coding_builtin_tools")
 
 
 def test_coding_top_level_exposes_sdk_surface_snapshot() -> None:
@@ -75,7 +77,7 @@ def test_coding_top_level_exposes_sdk_surface_snapshot() -> None:
 
     assert isinstance(snapshot, coding.SdkSurfaceSnapshot)
     assert snapshot.missing_exports == ()
-    assert "AgentSession" in snapshot.export_names
+    assert "AgentSession" not in snapshot.export_names
     assert snapshot.entry_signatures["create_agent_session_runtime"] == (
         "session_dir",
         "model",
@@ -107,7 +109,7 @@ def test_coding_sdk_surface_compatibility_report_flags_contract_drift() -> None:
     import loushang.coding as coding
 
     report = coding.check_sdk_surface_compatibility(
-        required_exports=("AgentSession", "missing_surface"),
+        required_exports=("SessionManager", "missing_surface"),
         required_entry_signatures={
             "create_services": (
                 "ai_model_registry",
@@ -253,6 +255,7 @@ def test_coding_top_level_sdk_smoke_covers_session_runtime_tools_and_diagnostics
     tmp_path,
 ) -> None:
     import loushang.coding as coding
+    from loushang.coding.session import AgentSession
     from loushang.harness.diagnostics import DiagnosticsQuery
 
     project_root = tmp_path / "project"
@@ -267,7 +270,7 @@ def test_coding_top_level_sdk_smoke_covers_session_runtime_tools_and_diagnostics
             cwd=str(project_root),
             persist=True,
         )
-        standalone_sessions: list[coding.AgentSession] = []
+        standalone_sessions: list[AgentSession] = []
         runtime = None
         imported_manager = None
         try:
@@ -294,7 +297,7 @@ def test_coding_top_level_sdk_smoke_covers_session_runtime_tools_and_diagnostics
                 services=services,
             )
             standalone_sessions.append(direct_session)
-            assert isinstance(direct_session, coding.AgentSession)
+            assert isinstance(direct_session, AgentSession)
             assert direct_session.session_manager is session_manager
             assert direct_session.get_lsp_status().scope == "session"
             assert direct_session.get_lsp_status().servers == ()

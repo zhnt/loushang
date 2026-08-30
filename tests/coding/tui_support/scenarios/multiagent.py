@@ -1821,8 +1821,15 @@ def _child_approval_playback() -> object:
                 backend=exec_backend,
                 execution_profile=getattr(profile, "execution_profile_ceiling"),
             )
-            child_registry = kwargs["tool_registry"]
-            assert isinstance(child_registry, WorkspaceToolRegistry)
+            peer_registry = kwargs["tool_registry"]
+            assert isinstance(peer_registry, WorkspaceToolRegistry)
+            assert peer_registry.list_definitions() == []
+            catalog_registry = WorkspaceToolRegistry()
+            register_coding_builtin_tools(
+                catalog_registry,
+                exec_service=exec_service,
+            )
+            child_registry = catalog_registry.select(kwargs["allowed_tool_names"])
             from loushang.harness.tools.workspace.authorization import (
                 create_workspace_tool_execution_host,
             )
@@ -2040,8 +2047,22 @@ def _concurrent_child_approval_playback() -> object:
                 if "/allowed@" in actor_id
                 else "rm -r denied-delete"
             )
-            child_registry = kwargs["tool_registry"]
-            assert isinstance(child_registry, WorkspaceToolRegistry)
+            peer_registry = kwargs["tool_registry"]
+            assert isinstance(peer_registry, WorkspaceToolRegistry)
+            assert peer_registry.list_definitions() == []
+            exec_service = ExecService(
+                backend=exec_backend,
+                execution_profile=getattr(
+                    profile,
+                    "execution_profile_ceiling",
+                ),
+            )
+            catalog_registry = WorkspaceToolRegistry()
+            register_coding_builtin_tools(
+                catalog_registry,
+                exec_service=exec_service,
+            )
+            child_registry = catalog_registry.select(kwargs["allowed_tool_names"])
             from loushang.harness.tools.workspace.authorization import (
                 create_workspace_tool_execution_host,
             )
@@ -2057,13 +2078,7 @@ def _concurrent_child_approval_playback() -> object:
                 commands=(command,),
                 registry=child_registry,
                 approval_resolver=kwargs["approval_resolver"],
-                exec_service=ExecService(
-                    backend=exec_backend,
-                    execution_profile=getattr(
-                        profile,
-                        "execution_profile_ceiling",
-                    ),
-                ),
+                exec_service=exec_service,
                 audit_events=audit_events,
             )
             runtime = _ApprovalPlaybackRuntime(session)

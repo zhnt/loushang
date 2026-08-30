@@ -3722,6 +3722,13 @@ def test_plc6e_catalog_session_has_no_peer_base_tool_or_command_publisher() -> N
     agent_session = Path("src/loushang/coding/session/agent_session.py").read_text(
         encoding="utf-8"
     )
+    coding_sdk = Path("src/loushang/coding/__init__.py").read_text(encoding="utf-8")
+    coding_bootstrap = Path("src/loushang/coding/bootstrap.py").read_text(
+        encoding="utf-8"
+    )
+    tool_pack = Path("src/loushang/coding/tool_pack.py").read_text(
+        encoding="utf-8"
+    )
     agent_product = Path("src/loushang/harness/session/agent_product.py").read_text(
         encoding="utf-8"
     )
@@ -3732,9 +3739,13 @@ def test_plc6e_catalog_session_has_no_peer_base_tool_or_command_publisher() -> N
         and "legacy_explicit" not in path.read_text(encoding="utf-8")
         for path in coding_sources
     )
-    # PLC6E removes the last peer Tool publisher. Coding can expose the
-    # registrar as an authoring helper, but no production caller may invoke it.
+    # PLC6E removes the last peer Tool publisher from the stable SDK and rejects
+    # reserved compatibility definitions at Catalog construction.
     assert tool_calls == []
+    assert '"AgentSession",' not in coding_sdk
+    assert '"register_coding_builtin_tools",' not in coding_sdk
+    assert '"register_coding_builtin_tools",' not in tool_pack
+    assert "peer_base_tool_publisher" in coding_bootstrap
     assert set(command_stage_calls) == {
         Path("src/loushang/coding/_base_plugin_owners.py")
     }

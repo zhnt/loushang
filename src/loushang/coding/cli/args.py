@@ -28,6 +28,22 @@ MethodPlanShowFormat = Literal["text", "json"]
 WorkLogInspectFormat = Literal["text", "json", "plans", "plans-json"]
 ExtensionFlag: TypeAlias = RegisteredFlag | ResolvedFlag
 _BUILTIN_FLAG_NAMES = CODING_CLI_PROFILE.option_names
+_REMOVED_LEGACY_RESOURCE_OPTIONS = frozenset(
+    {
+        "--extension",
+        "-e",
+        "--no-extensions",
+        "-ne",
+        "--skill",
+        "--no-skills",
+        "-ns",
+        "--prompt-template",
+        "--no-prompt-templates",
+        "-np",
+        "--theme",
+        "--no-themes",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -56,6 +72,20 @@ def build_parser() -> ArgumentParser:
 
 def help_text() -> str:
     return _build_parser().format_help()
+
+
+def removed_legacy_resource_option(
+    argv: list[str] | tuple[str, ...],
+) -> str | None:
+    """Return the first removed raw Resource option before ``--``."""
+
+    for value in argv:
+        if value == "--":
+            return None
+        option = value.split("=", 1)[0]
+        if option in _REMOVED_LEGACY_RESOURCE_OPTIONS:
+            return option
+    return None
 
 
 def parse_args(
@@ -120,6 +150,16 @@ def _build_parser() -> ArgumentParser:
     )
     parser.add_argument("messages", nargs="*")
     register_profile_arguments(parser, CODING_CLI_PROFILE)
+    parser.set_defaults(
+        extension=[],
+        no_extensions=False,
+        skill=[],
+        no_skills=False,
+        prompt_template=[],
+        no_prompt_templates=False,
+        theme=[],
+        no_themes=False,
+    )
     return parser
 
 

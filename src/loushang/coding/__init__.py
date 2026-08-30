@@ -38,7 +38,6 @@ from loushang.coding.sdk_surface import (
     get_sdk_surface_snapshot,
 )
 from loushang.coding.session import (
-    AgentSession,
     CompactionDecision,
     ContextUsage,
     ContextUsageSnapshot,
@@ -54,7 +53,6 @@ from loushang.coding.tool_pack import (
     create_coding_tool_definition,
     create_coding_tool_definitions,
     create_coding_tools,
-    register_coding_builtin_tools,
 )
 from loushang.harness.config.agent import (
     CapabilityMountMode,
@@ -65,7 +63,6 @@ from loushang.harness.config.agent import (
 )
 
 __all__ = [
-    "AgentSession",
     "AgentSessionServices",
     "AgentSessionRuntime",
     "BootstrapServices",
@@ -112,7 +109,6 @@ __all__ = [
     "create_services",
     "check_sdk_surface_compatibility",
     "get_sdk_surface_snapshot",
-    "register_coding_builtin_tools",
     "register_coding_arch_tools",
     "resolve_coding_composition_set",
 ]

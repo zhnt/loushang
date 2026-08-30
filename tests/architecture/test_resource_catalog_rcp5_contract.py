@@ -94,10 +94,10 @@ def test_rcp5_contract_freezes_conservative_order_and_authority() -> None:
     assert "RCP5.2B \u2014 exact-v4 read-only cutover" in contract
     assert "exact-v2 and exact-v3 Graph contracts remain unchanged" in contract
     assert "never a legacy fallback" in contract
-    assert "RCP5.2B default ingress is complete" in contract
+    assert "historical staged-cutover checkpoint" in normalized_contract
     assert "admitted initial Resource Catalog" in normalized_contract
-    assert "forbidden silent legacy fallback" in contract
-    assert "RCP5.2B default ingress authority" in contract
+    assert "cannot enter a Coding Session" in normalized_contract
+    assert "RCP5.2B historical default-ingress authority" in contract
     assert "RCP5.3A — exact asynchronous body preflight" in contract
     assert "RCP5.3B — request-bound durable evidence" in contract
     assert "RCP5.3C — eager-body sink deletion" in contract
@@ -107,8 +107,13 @@ def test_rcp5_contract_freezes_conservative_order_and_authority() -> None:
     assert "same asynchronous authority" in contract
     assert "`catalog_required` is the public default" in contract
     assert "`legacy_explicit` is a caller-selected compatibility boundary" in contract
-    assert "input-sensitive or exception-driven `auto` mode" in contract
-    assert "The mode is Product policy, not a ResourceLoader type test" in contract
+    assert "input-sensitive or exception-driven `auto` mode" in normalized_contract
+    assert "historical mode boundary was Product policy" in contract
+    assert (
+        "Coding now has no authority selector, raw constructor, or production "
+        "legacy caller"
+        in normalized_contract
+    )
     assert "Raw `package_roots` and non-Plugin `package_sources`" in contract
     assert "RCP5.5 \u2014 peer deletion" in contract
     assert "PLC6E then removes Coding's explicit legacy authority" in contract

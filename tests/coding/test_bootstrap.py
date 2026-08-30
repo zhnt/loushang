@@ -327,7 +327,6 @@ def test_coding_session_mounts_workspace_and_rejects_process_cwd_outside_root(
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import ControlConfig, SettingsManager
     from loushang.coding.session_manager import SessionManager
-    from loushang.coding.tool_pack import register_coding_builtin_tools
     from loushang.harness.authorization import ExecutionAuthorizationError
     from loushang.harness.sandbox import SandboxSettings
     from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
@@ -345,7 +344,6 @@ def test_coding_session_mounts_workspace_and_rejects_process_cwd_outside_root(
             persist=False,
         )
         registry = WorkspaceToolRegistry()
-        register_coding_builtin_tools(registry)
         session = create_agent_session(
             session_manager=manager,
             model=_model(),
@@ -357,6 +355,7 @@ def test_coding_session_mounts_workspace_and_rejects_process_cwd_outside_root(
             ),
         )
         try:
+            await session.prepare_model_call_runtime()
             read_tool = next(
                 tool for tool in session.agent.tools if tool.name == "read"
             )
@@ -1669,7 +1668,6 @@ def test_coding_multiagent_child_uses_the_product_stream_and_read_only_tools(
     tmp_path,
 ) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime
-    from loushang.coding.tool_pack import register_coding_builtin_tools
     from loushang.harness.multiagent import AgentPath
     from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 
@@ -1684,7 +1682,6 @@ def test_coding_multiagent_child_uses_the_product_stream_and_read_only_tools(
         project = tmp_path / "project"
         project.mkdir()
         registry = WorkspaceToolRegistry()
-        register_coding_builtin_tools(registry)
         runtime = create_agent_session_runtime(
             session_dir=tmp_path / "sessions",
             model=_model(),
@@ -1734,9 +1731,6 @@ def test_create_agent_session_injects_settings_and_agents_md_into_system_prompt(
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.prompt import CODING_STANDARD_SYSTEM_PROMPT_FRAGMENT
     from loushang.coding.session_manager import SessionManager
-    from loushang.coding.tool_pack import (
-        register_coding_builtin_tools as register_builtin_tools,
-    )
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
@@ -1753,7 +1747,6 @@ def test_create_agent_session_injects_settings_and_agents_md_into_system_prompt(
         )
     )
     registry = ToolRegistry()
-    register_builtin_tools(registry)
 
     session = create_agent_session(
         session_manager=manager,
@@ -1762,6 +1755,16 @@ def test_create_agent_session_injects_settings_and_agents_md_into_system_prompt(
         tool_registry=registry,
         active_tool_names=["bash"],
     )
+
+    from loushang.harness.resources.loader import ResourceLoaderCompatibilityError
+
+    with pytest.raises(
+        ResourceLoaderCompatibilityError,
+        match="catalog_projection_not_published",
+    ):
+        services.resource_loader.get_resource_bundle()
+
+    asyncio.run(session.prepare_model_call_runtime())
 
     expected_context = (
         "# Project Context\n\n"
@@ -1778,15 +1781,6 @@ def test_create_agent_session_injects_settings_and_agents_md_into_system_prompt(
         f"{_runtime_footer(str(nested))}"
     )
     assert session.get_active_tool_names() == ["bash"]
-    from loushang.harness.resources.loader import ResourceLoaderCompatibilityError
-
-    with pytest.raises(
-        ResourceLoaderCompatibilityError,
-        match="catalog_projection_not_published",
-    ):
-        services.resource_loader.get_resource_bundle()
-
-    asyncio.run(session.prepare_model_call_runtime())
     assert (
         session.resource_loader.get_resource_bundle().agents_md
         == "Use repo conventions."
@@ -1803,9 +1797,6 @@ def test_create_agent_session_applies_allowed_tool_names_to_default_active_tools
 ) -> None:
     from loushang.coding.bootstrap import create_agent_session
     from loushang.coding.session_manager import SessionManager
-    from loushang.coding.tool_pack import (
-        register_coding_builtin_tools as register_builtin_tools,
-    )
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
@@ -1814,7 +1805,6 @@ def test_create_agent_session_applies_allowed_tool_names_to_default_active_tools
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
     registry = ToolRegistry()
-    register_builtin_tools(registry)
 
     session = create_agent_session(
         session_manager=manager,
@@ -1822,13 +1812,14 @@ def test_create_agent_session_applies_allowed_tool_names_to_default_active_tools
         tool_registry=registry,
         allowed_tool_names=["read", "grep"],
     )
+    asyncio.run(session.prepare_model_call_runtime())
 
     assert session.get_active_tool_names() == ["read", "grep"]
     assert [tool.name for tool in session.agent.tools] == ["read", "grep"]
-    assert [definition.name for definition in session.get_all_tools()] == [
+    assert {definition.name for definition in session.get_all_tools()} == {
         "read",
         "grep",
-    ]
+    }
     assert "- bash:" not in session.agent.system_prompt
 
 
@@ -1842,9 +1833,6 @@ def test_create_agent_session_no_tools_builtin_keeps_dynamic_extension_tools(
         CodingResourceLoader as DefaultResourceLoader,
     )
     from loushang.coding.session_manager import SessionManager
-    from loushang.coding.tool_pack import (
-        register_coding_builtin_tools as register_builtin_tools,
-    )
     from loushang.harness.resources.types import (
         ExtensionDescriptor,
         ResourceBundle,
@@ -1900,7 +1888,6 @@ def test_create_agent_session_no_tools_builtin_keeps_dynamic_extension_tools(
             return bundle
 
     registry = ToolRegistry()
-    register_builtin_tools(registry)
     session = create_agent_session(
         session_manager=asyncio.run(
             SessionManager.new(
@@ -1918,7 +1905,7 @@ def test_create_agent_session_no_tools_builtin_keeps_dynamic_extension_tools(
     asyncio.run(session.start_extension_runtime())
 
     assert "dynamic_tool" in [definition.name for definition in session.get_all_tools()]
-    assert "read" in [definition.name for definition in session.get_all_tools()]
+    assert "read" not in [definition.name for definition in session.get_all_tools()]
     assert session.get_active_tool_names() == ["dynamic_tool"]
     assert "- dynamic_tool: Run dynamic behavior" in session.agent.system_prompt
     assert "- read:" not in session.agent.system_prompt
@@ -1935,9 +1922,6 @@ def test_create_agent_session_no_tools_all_hides_dynamic_extension_tools_and_pro
         CodingResourceLoader as DefaultResourceLoader,
     )
     from loushang.coding.session_manager import SessionManager
-    from loushang.coding.tool_pack import (
-        register_coding_builtin_tools as register_builtin_tools,
-    )
     from loushang.harness.resources.types import (
         ExtensionDescriptor,
         ResourceBundle,
@@ -1993,7 +1977,6 @@ def test_create_agent_session_no_tools_all_hides_dynamic_extension_tools_and_pro
             return bundle
 
     registry = ToolRegistry()
-    register_builtin_tools(registry)
     session = create_agent_session(
         session_manager=asyncio.run(
             SessionManager.new(
@@ -2021,9 +2004,6 @@ def test_create_agent_session_runtime_applies_allowed_tool_names(tmp_path) -> No
 
     from loushang.coding.bootstrap import create_agent_session_runtime
     from loushang.coding.session_manager import SessionManager
-    from loushang.coding.tool_pack import (
-        register_coding_builtin_tools as register_builtin_tools,
-    )
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
@@ -2031,7 +2011,6 @@ def test_create_agent_session_runtime_applies_allowed_tool_names(tmp_path) -> No
     project = tmp_path / "project"
     project.mkdir()
     registry = ToolRegistry()
-    register_builtin_tools(registry)
 
     runtime = create_agent_session_runtime(
         session_dir=tmp_path / "sessions",
@@ -2042,13 +2021,14 @@ def test_create_agent_session_runtime_applies_allowed_tool_names(tmp_path) -> No
     )
 
     session = asyncio.run(runtime.create_session(cwd=str(project)))
+    asyncio.run(session.prepare_model_call_runtime())
 
     assert isinstance(session.session_manager, SessionManager)
     assert session.get_active_tool_names() == ["read", "grep"]
-    assert [definition.name for definition in session.get_all_tools()] == [
+    assert {definition.name for definition in session.get_all_tools()} == {
         "read",
         "grep",
-    ]
+    }
 
 
 def test_create_agent_session_rejects_unverified_package_roots(
@@ -2224,11 +2204,14 @@ def test_create_agent_session_rejects_unverified_package_sources_with_filters(
     assert captured.value.reasons == ("unverified_package_sources",)
 
 
-def test_manifest_only_plugin_source_has_no_implicit_resource_authority(
+def test_manifest_only_plugin_source_with_legacy_resources_fails_closed(
     tmp_path,
 ) -> None:
     import json
 
+    from loushang.coding._resource_catalog_shadow import (
+        CodingResourceCatalogAdmissionError,
+    )
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import SettingsManager
     from loushang.coding.session_manager import SessionManager
@@ -2279,16 +2262,66 @@ def test_manifest_only_plugin_source_has_no_implicit_resource_authority(
         )
     )
 
+    with pytest.raises(CodingResourceCatalogAdmissionError) as captured:
+        create_agent_session(
+            session_manager=manager,
+            services=services,
+            model=_model(),
+        )
+
+    assert captured.value.reasons == ("undeclared_plugin_resources",)
+    records = services.diagnostics_service.get_diagnostics(
+        code="coding_resource_catalog_unsupported"
+    )
+    assert len(records) == 1
+    assert records[0].details == {"reasons": ["undeclared_plugin_resources"]}
+
+
+def test_manifest_only_code_plugin_without_legacy_resources_starts_cleanly(
+    tmp_path,
+) -> None:
+    import json
+
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import SettingsManager
+    from loushang.coding.session_manager import SessionManager
+
+    project_root = tmp_path / "project"
+    plugin_root = tmp_path / "plugins" / "code-only"
+    project_root.mkdir()
+    plugin_root.mkdir(parents=True)
+    (plugin_root / "plugin.json").write_text(
+        json.dumps({"name": "code-only"}), encoding="utf-8"
+    )
+    project_settings_path = tmp_path / "project-settings.json"
+    project_settings_path.write_text(
+        json.dumps({"plugin_sources": [str(plugin_root)]}),
+        encoding="utf-8",
+    )
+
+    services = create_services(
+        settings_manager=SettingsManager(project_settings_path=project_settings_path),
+    )
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+        )
+    )
+
     session = create_agent_session(
         session_manager=manager,
         services=services,
         model=_model(),
     )
 
-    bundle = session.resource_bundle
-    assert "Plugin debug prompt" not in session.agent.system_prompt
-    assert "debug" not in {skill.name for skill in bundle.skills}
-    assert "deploy" not in {command.name for command in session.list_commands()}
+    assert session.resource_bundle is not None
+    assert session.resource_bundle.extensions == []
+    assert [prompt.name for prompt in session.resource_bundle.prompts] == ["standard"]
+    assert [skill.name for skill in session.resource_bundle.skills] == ["standard"]
+    assert [theme.name for theme in session.resource_bundle.themes] == ["themes"]
+    assert services.diagnostics_service.get_diagnostics(
+        code="coding_resource_catalog_unsupported"
+    ) == []
 
 
 def test_create_agent_session_materializes_git_package_sources_by_default(
@@ -2487,45 +2520,17 @@ def test_create_agent_session_marks_disabled_skills(tmp_path) -> None:
     assert statuses["standard"].status == "effective"
 
 
-def test_create_agent_session_includes_tool_prompt_from_registry(tmp_path) -> None:
-    from loushang.coding.bootstrap import create_agent_session, create_services
-    from loushang.coding.session_manager import SessionManager
-    from loushang.coding.tool_pack import (
-        register_coding_builtin_tools as register_builtin_tools,
-    )
-    from loushang.harness.tools.workspace.registry import (
-        WorkspaceToolRegistry as ToolRegistry,
-    )
-
-    services = create_services(system_prompt="Base system prompt.")
-    manager = asyncio.run(
-        SessionManager.new(
-            session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
-        )
-    )
-    registry = ToolRegistry()
-    register_builtin_tools(registry)
-
-    session = create_agent_session(
-        session_manager=manager,
-        services=services,
-        model=_model(),
-        tool_registry=registry,
-        active_tool_names=["bash"],
-    )
-
-    assert "Available tools:" in session.agent.system_prompt
-    assert "bash" in session.agent.system_prompt
-
-
-def test_create_agent_session_synthesizes_definitions_from_legacy_tools(
+@pytest.mark.parametrize("input_kind", ("registry", "tools"))
+def test_create_agent_session_rejects_peer_base_tool_publishers(
     tmp_path,
+    input_kind: str,
 ) -> None:
+    from loushang.coding._resource_catalog_shadow import (
+        CodingResourceCatalogAdmissionError,
+    )
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.session_manager import SessionManager
-    from loushang.coding.tool_pack import (
-        register_coding_builtin_tools as register_builtin_tools,
-    )
+    from loushang.coding.tool_pack import register_coding_builtin_tools
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
@@ -2537,37 +2542,29 @@ def test_create_agent_session_synthesizes_definitions_from_legacy_tools(
         )
     )
     registry = ToolRegistry()
-    register_builtin_tools(registry)
+    register_coding_builtin_tools(registry)
 
-    session = create_agent_session(
-        session_manager=manager,
-        services=services,
-        model=_model(),
-        tools=registry.list_enabled_definitions(),
+    kwargs = (
+        {"tool_registry": registry}
+        if input_kind == "registry"
+        else {"tools": registry.list_enabled_definitions()}
     )
+    with pytest.raises(CodingResourceCatalogAdmissionError) as captured:
+        create_agent_session(
+            session_manager=manager,
+            services=services,
+            model=_model(),
+            **kwargs,
+        )
 
-    assert session.get_active_tool_names() == [
-        "read",
-        "ls",
-        "find",
-        "grep",
-        "bash",
-        "edit",
-        "write",
-    ]
-    asyncio.run(session.prepare_model_call_runtime())
-    assert [definition.name for definition in session.get_all_tools()] == [
-        "bash",
-        "read",
-        "ls",
-        "find",
-        "grep",
-        "write",
-        "edit",
-        "document_outline",
-        "inspect_symbol",
-    ]
-    assert "Available tools:" in session.agent.system_prompt
+    assert captured.value.reasons == ("peer_base_tool_publisher",)
+    records = services.diagnostics_service.get_diagnostics(
+        code="coding_resource_catalog_unsupported"
+    )
+    assert len(records) == 1
+    assert records[0].phase == "startup"
+    assert records[0].source == "bootstrap"
+    assert records[0].details == {"reasons": ["peer_base_tool_publisher"]}
 
 
 def test_create_agent_session_defaults_custom_tools_active_without_defaulting_all_builtins(
@@ -2576,7 +2573,6 @@ def test_create_agent_session_defaults_custom_tools_active_without_defaulting_al
     from loushang.agent.types import AgentToolResult
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.session_manager import SessionManager
-    from loushang.coding.tool_pack import register_coding_builtin_tools
     from loushang.harness.tools.workspace import ToolDefinition
     from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 
@@ -2593,7 +2589,6 @@ def test_create_agent_session_defaults_custom_tools_active_without_defaulting_al
         )
     )
     registry = WorkspaceToolRegistry()
-    register_coding_builtin_tools(registry)
     registry.register_tool(
         ToolDefinition(
             name="custom_tool",
@@ -2615,6 +2610,7 @@ def test_create_agent_session_defaults_custom_tools_active_without_defaulting_al
         model=_model(),
         tool_registry=registry,
     )
+    asyncio.run(session.prepare_model_call_runtime())
 
     assert session.get_active_tool_names() == [
         "read",
@@ -2626,8 +2622,7 @@ def test_create_agent_session_defaults_custom_tools_active_without_defaulting_al
         "write",
         "custom_tool",
     ]
-    asyncio.run(session.prepare_model_call_runtime())
-    assert [definition.name for definition in session.get_all_tools()] == [
+    assert {definition.name for definition in session.get_all_tools()} == {
         "bash",
         "read",
         "ls",
@@ -2638,7 +2633,7 @@ def test_create_agent_session_defaults_custom_tools_active_without_defaulting_al
         "custom_tool",
         "document_outline",
         "inspect_symbol",
-    ]
+    }
     assert "- custom_tool:" not in session.agent.system_prompt
     assert "- grep:" in session.agent.system_prompt
 
@@ -2650,9 +2645,6 @@ def test_create_agent_session_marks_failing_builtin_tool_result_as_error(
 
     from loushang.coding import SessionManager
     from loushang.coding.bootstrap import create_agent_session
-    from loushang.coding.tool_pack import (
-        register_coding_builtin_tools as register_builtin_tools,
-    )
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
@@ -2675,7 +2667,6 @@ def test_create_agent_session_marks_failing_builtin_tool_result_as_error(
         )
     )
     registry = ToolRegistry()
-    register_builtin_tools(registry)
 
     session = create_agent_session(
         session_manager=manager,
@@ -2875,9 +2866,6 @@ def test_create_agent_session_marks_failing_mutation_builtin_tool_result_as_erro
 
     from loushang.coding import SessionManager
     from loushang.coding.bootstrap import create_agent_session
-    from loushang.coding.tool_pack import (
-        register_coding_builtin_tools as register_builtin_tools,
-    )
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
@@ -2906,7 +2894,6 @@ def test_create_agent_session_marks_failing_mutation_builtin_tool_result_as_erro
         )
     )
     registry = ToolRegistry()
-    register_builtin_tools(registry)
 
     session = create_agent_session(
         session_manager=manager,

@@ -412,7 +412,7 @@ def test_factory_projects_explorer_bash_into_the_child_runtime(tmp_path: Path) -
     assert captured["active_tool_names"] == expected
     assert [
         definition.name for definition in captured["tool_registry"].list_definitions()
-    ] == expected
+    ] == []
 
 
 def test_factory_binds_shared_approval_resolver_to_child_incarnation(
@@ -724,7 +724,7 @@ def test_factory_builds_a_non_persistent_child_and_uses_existing_session_rounds(
     assert captured["active_tool_names"] == ["read", "grep", "find", "ls"]
     assert [
         definition.name for definition in captured["tool_registry"].list_definitions()
-    ] == ["read", "grep", "find", "ls"]
+    ] == []
     assert "independent read-only code reviewer" in str(captured["system_prompt"])
     assert runtime.create_cwds == [str(tmp_path.resolve())]
     assert session.prompt_calls == [("Review this design.", "multiagent:initial")]

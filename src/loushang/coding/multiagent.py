@@ -13,6 +13,7 @@ from loushang.coding.prompt.defaults import DEFAULT_CODING_SYSTEM_PROMPT
 from loushang.coding.runtime import AgentSessionRuntime
 from loushang.coding.sandbox import coding_workspace_execution_profile
 from loushang.coding.session import AgentSession
+from loushang.coding.tool_pack import CODING_RESERVED_BASE_TOOL_NAMES
 from loushang.harness.approval import (
     ActorBoundApprovalResolver,
     DenyApprovalResolver,
@@ -608,7 +609,10 @@ def _select_tool_registry(
         raise ValueError(
             "Coding child tools are not registered and enabled: " + ", ".join(missing)
         )
-    return source.select(allowed_tools)
+    peer_tool_names = tuple(
+        name for name in allowed_tools if name not in CODING_RESERVED_BASE_TOOL_NAMES
+    )
+    return source.select(peer_tool_names)
 
 
 __all__ = [

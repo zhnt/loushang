@@ -83,6 +83,10 @@ from loushang.coding.sandbox import (
 )
 from loushang.coding.session import AgentSession
 from loushang.coding.session_manager import SessionManager
+from loushang.coding.tool_pack import (
+    CODING_RESERVED_BASE_TOOL_NAMES,
+    coding_default_active_tool_names,
+)
 from loushang.coding.workspace_operations import CodingWorkspaceOperations
 from loushang.harness.approval import (
     InteractiveApprovalResolver,
@@ -158,6 +162,29 @@ _SESSION_MANAGER_PLUGIN_OWNER_ATTRIBUTE = "_loushang_coding_plugin_owner_id"
 AgentFactory = Callable[..., Agent]
 ServicesFactory = Callable[[str], "BootstrapServices"]
 NoToolsMode = Literal["all", "builtin"]
+_RESERVED_CODING_BASE_TOOL_NAMES = frozenset(CODING_RESERVED_BASE_TOOL_NAMES)
+
+
+def _reject_peer_coding_base_tools(
+    *,
+    tool_registry: WorkspaceToolRegistry | None,
+    tools: Iterable[object] | None,
+) -> None:
+    """Keep reserved base Tool identities under the exact Plugin owner."""
+
+    supplied_names = {
+        definition.name
+        for definition in (
+            tool_registry.list_definitions() if tool_registry is not None else ()
+        )
+    }
+    supplied_names.update(
+        name
+        for definition in tools or ()
+        if isinstance((name := getattr(definition, "name", None)), str)
+    )
+    if supplied_names.intersection(_RESERVED_CODING_BASE_TOOL_NAMES):
+        raise CodingResourceCatalogAdmissionError(("peer_base_tool_publisher",))
 ExtensionFlagValues = Mapping[str, bool | str]
 CwdBoundServicesAuditIssue = _CwdBoundServicesAuditIssue
 _CODING_PLUGIN_HOST_BOOT_ID = secrets.token_hex(16)
@@ -687,7 +714,7 @@ def _create_agent_session(
     )
     prepared_resource_catalog_adapters: list[InitialResourceCatalogProductAdapter] = []
 
-    def prepare_initial_resource_catalog_projection(
+    def _prepare_initial_resource_catalog_projection(
         loader: ResourceLoader,
         resolved_cwd: Path,
     ) -> ResourceBundle:
@@ -696,6 +723,10 @@ def _create_agent_session(
             raise RuntimeError(
                 "Initial Resource Catalog projection was already prepared"
             )
+        _reject_peer_coding_base_tools(
+            tool_registry=session_tool_registry,
+            tools=construction_tools,
+        )
         try:
             receipt = loader.prepare_catalog_input_receipt(resolved_cwd)
         except (AttributeError, RuntimeError) as exc:
@@ -760,6 +791,23 @@ def _create_agent_session(
         )
         prepared_resource_catalog_adapters.append(adapter)
         return projection
+
+    def prepare_initial_resource_catalog_projection(
+        loader: ResourceLoader,
+        resolved_cwd: Path,
+    ) -> ResourceBundle:
+        try:
+            return _prepare_initial_resource_catalog_projection(loader, resolved_cwd)
+        except CodingResourceCatalogAdmissionError as error:
+            services.diagnostics_service.capture_failure(
+                code=error.code,
+                error=str(error),
+                phase="startup",
+                source="bootstrap",
+                session_id=session_id,
+                details={"reasons": list(error.reasons)},
+            )
+            raise
 
     def _create_session(
         capability_runtime: StagedResourceCompositionCandidate,
@@ -949,6 +997,31 @@ def _create_agent_session(
         def construct_child_session(
             initial_resource_catalog_bootstrap: Any | None = None,
         ) -> AgentSession:
+            resolved_initial_active_tool_names = initial_active_tool_names
+            if (
+                resolved_initial_active_tool_names is None
+                and coding_base_plugin_assembly is not None
+                and coding_base_plugin_assembly.tool_names
+            ):
+                base_tool_names = set(coding_base_plugin_assembly.tool_names)
+                resolved_initial_active_tool_names = [
+                    *(
+                        name
+                        for name in coding_default_active_tool_names(
+                            coding_base_plugin_assembly.host_environment
+                        )
+                        if name in base_tool_names
+                    ),
+                    *(
+                        definition.name
+                        for definition in (
+                            registry.list_enabled_definitions()
+                            if registry is not None
+                            else ()
+                        )
+                        if definition.name not in base_tool_names
+                    ),
+                ]
             return AgentSession(
                 agent=agent,
                 session_manager=session_manager,
@@ -961,7 +1034,7 @@ def _create_agent_session(
                 allowed_tool_names=[]
                 if session_no_tools_mode == "all"
                 else allowed_tool_names,
-                active_tool_names=initial_active_tool_names,
+                active_tool_names=resolved_initial_active_tool_names,
                 default_activate_new_tools=(
                     session_no_tools_mode != "all" and active_tool_names is None
                 ),

@@ -10,7 +10,29 @@ from __future__ import annotations
 from loushang.coding.capabilities import parse_capability_mount
 from loushang.harness.cli import STANDARD_CLI_PROFILE, CliArgumentSpec, CliProfile
 
-CODING_CLI_PROFILE: CliProfile = STANDARD_CLI_PROFILE.augment(
+_REMOVED_LEGACY_RESOURCE_ARGUMENT_IDS = frozenset(
+    {
+        "resources.extension",
+        "resources.no_extensions",
+        "resources.skill",
+        "resources.no_skills",
+        "resources.prompt_template",
+        "resources.no_prompt_templates",
+        "resources.theme",
+        "resources.no_themes",
+    }
+)
+_CODING_STANDARD_CLI_PROFILE = CliProfile(
+    profile_id="coding.standard",
+    root_arguments=tuple(
+        argument
+        for argument in STANDARD_CLI_PROFILE.root_arguments
+        if argument.argument_id not in _REMOVED_LEGACY_RESOURCE_ARGUMENT_IDS
+    ),
+    commands=STANDARD_CLI_PROFILE.commands,
+)
+
+CODING_CLI_PROFILE: CliProfile = _CODING_STANDARD_CLI_PROFILE.augment(
     profile_id="coding",
     root_arguments=(
         CliArgumentSpec(
