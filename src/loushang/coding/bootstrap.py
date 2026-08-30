@@ -15,9 +15,15 @@ from loushang.ai.model import Model, ModelSelection
 from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
 from loushang.coding._base_plugin import (
     CodingBasePluginAssembly,
-    prepare_coding_base_plugin_assembly,
+    CodingBasePluginAssemblyError,
     prepare_coding_base_plugin_session,
     prepare_coding_base_resource_plan_seed,
+    prepare_managed_coding_base_plugin_assembly,
+)
+from loushang.coding._plugin_lifecycle import (
+    build_coding_plugin_lifecycle,
+    resolve_coding_plugin_lifecycle_state_layout,
+    resolve_ephemeral_coding_plugin_lifecycle_state_layout,
 )
 from loushang.coding._resource_catalog_shadow import (
     CodingResourceCatalogAdmissionError,
@@ -514,18 +520,121 @@ def _create_agent_session(
         session_id=session_id,
     )
     coding_base_plugin_assembly: CodingBasePluginAssembly | None = None
+    base_ephemeral_state = None
+    base_state_cleanup: Callable[[], None] | None = None
     if (
         resource_authority_mode == "catalog_required"
         and initial_resource_catalog_product_composition_assembly is None
         and "coding.base" in requested_plugin_ids
     ):
-        coding_base_plugin_assembly = prepare_coding_base_plugin_assembly(
-            resolved_composition_set,
-            session_id=session_id,
-            package_materializer=resolved_package_materializer,
-            include_tool_contribution=session_no_tools_mode is None,
-            include_tool_claim_prompt=session_no_tools_mode is None,
+        # Transcript persistence is independent from Product desired state.
+        # A configured settings runtime is the production persistence seam;
+        # explicitly in-memory service fixtures retain disposable evidence.
+        base_ephemeral_state = (
+            None
+            if (
+                session_manager.persist
+                or services.settings_manager.global_base_dir is not None
+            )
+            else TemporaryDirectory(prefix="loushang-coding-plugin-")
         )
+        base_package_materializer: PackageMaterializer | None = None
+        recorded_base_lockfile_diagnostics: list[dict[str, object]] = []
+        try:
+            lifecycle_layout = (
+                resolve_coding_plugin_lifecycle_state_layout(
+                    session_manager.get_cwd()
+                )
+                if base_ephemeral_state is None
+                else resolve_ephemeral_coding_plugin_lifecycle_state_layout(
+                    base_ephemeral_state.name,
+                    cwd=session_manager.get_cwd(),
+                )
+            )
+            if (
+                base_ephemeral_state is None
+                and package_materializer is not None
+                and not package_materializer.uses_storage_authority(
+                    install_root=lifecycle_layout.package_install_root,
+                    lockfile_path=lifecycle_layout.package_lockfile,
+                    plugin_revision_root=lifecycle_layout.plugin_revision_root,
+                )
+            ):
+                raise CodingBasePluginAssemblyError(
+                    "Durable Coding base package storage must use the canonical "
+                    "workspace authority",
+                    code="coding_base_package_authority_mismatch",
+                )
+            base_package_materializer = package_materializer or PackageMaterializer(
+                install_root=lifecycle_layout.package_install_root,
+                lockfile_path=lifecycle_layout.package_lockfile,
+                plugin_revision_root=lifecycle_layout.plugin_revision_root,
+                backend=GitPackageMaterializerBackend(),
+            )
+            if base_package_materializer is not resolved_package_materializer:
+                recorded_base_lockfile_diagnostics = (
+                    base_package_materializer.get_lockfile_diagnostics()
+                )
+                record_package_lockfile_diagnostics(
+                    recorded_base_lockfile_diagnostics,
+                    diagnostics_service=services.diagnostics_service,
+                    session_id=session_id,
+                )
+            lifecycle = build_coding_plugin_lifecycle(lifecycle_layout)
+            if base_ephemeral_state is not None:
+                ephemeral_lifecycle = lifecycle
+                ephemeral_state = base_ephemeral_state
+
+                def cleanup_ephemeral_base_state() -> None:
+                    ephemeral_lifecycle.release_owned_process_startup_lease()
+                    ephemeral_state.cleanup()
+
+                base_state_cleanup = cleanup_ephemeral_base_state
+            lifecycle.reconcile_retirements()
+            lifecycle.complete_startup_recovery()
+            coding_base_plugin_assembly = prepare_managed_coding_base_plugin_assembly(
+                resolved_composition_set,
+                session_id=session_id,
+                package_materializer=base_package_materializer,
+                lifecycle=lifecycle,
+                include_tool_contribution=session_no_tools_mode is None,
+                include_tool_claim_prompt=session_no_tools_mode is None,
+                state_cleanup=base_state_cleanup,
+            )
+        except BaseException as error:
+            if isinstance(error, CodingBasePluginAssemblyError):
+                services.diagnostics_service.capture_failure(
+                    code=error.code,
+                    error=str(error),
+                    phase="startup",
+                    source="bootstrap",
+                    session_id=session_id,
+                    details={
+                        "check": "coding_base_exact_replay",
+                        "ok": False,
+                    },
+                )
+            # Exact-replay validation refreshes the durable lock after the
+            # initial bootstrap diagnostic pass.  Preserve the public startup
+            # diagnostic contract when that refresh discovers corruption.
+            if base_package_materializer is not None:
+                refreshed_diagnostics = (
+                    base_package_materializer.get_lockfile_diagnostics()
+                )
+                record_package_lockfile_diagnostics(
+                    [
+                        diagnostic
+                        for diagnostic in refreshed_diagnostics
+                        if diagnostic not in recorded_base_lockfile_diagnostics
+                    ],
+                    diagnostics_service=services.diagnostics_service,
+                    session_id=session_id,
+                )
+            if base_state_cleanup is not None:
+                base_state_cleanup()
+            elif base_ephemeral_state is not None:
+                base_ephemeral_state.cleanup()
+            raise
 
     def coding_plugin_clock() -> int:
         return time.time_ns() // 1_000_000

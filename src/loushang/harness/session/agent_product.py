@@ -1228,11 +1228,16 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 else:
                     self._capability_owner_generations = ()
                     self._external_consumer_captures = ()
-            self._resource_capability_ports.invalidate()
-            try:
-                await self._retire_resource_catalog_replacements()
-            except BaseException as exc:
-                errors.append(exc)
+            # Tool owner disposal rebuilds the prompt after removing each exact
+            # registration.  Keep its Resource ports live when any owner
+            # generation remains retryable; invalidating them here would turn a
+            # transient Tool cleanup failure into a permanent retry failure.
+            if not owner_cleanup_failed:
+                self._resource_capability_ports.invalidate()
+                try:
+                    await self._retire_resource_catalog_replacements()
+                except BaseException as exc:
+                    errors.append(exc)
             catalog_rollback_handled = False
             catalog_bootstrap = self._initial_resource_catalog_bootstrap
             if (
@@ -1490,6 +1495,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                     except SessionCapabilityOwnerGenerationStagingError as exc:
                         owner_generations = exc.pending_generations
                         raise
+                self._prepare_session_owner_generation_evidence(owner_generations)
                 if catalog_bootstrap is not None:
                     retirement = catalog_bootstrap.publish(
                         InitialSessionResourcePublication(
@@ -1514,6 +1520,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                     self._pending_resource_catalog_retirements.remove(retirement)
                 else:
                     commit_session_capability_owner_generations(owner_generations)
+                    self._commit_session_owner_generation_evidence()
             except BaseException as error:
                 owner_cleanup_failed = False
                 if owner_generations:
@@ -2025,6 +2032,21 @@ class AgentProductSession(AgentSessionAdapterMixin):
 
         self._commit_initial_resource_publication(catalog, projection, bundle)
         commit_session_capability_owner_generations(owner_generations)
+        self._commit_session_owner_generation_evidence()
+
+    def _prepare_session_owner_generation_evidence(
+        self,
+        owner_generations: tuple[
+            StagedSessionCapabilityOwnerGeneration,
+            ...,
+        ],
+    ) -> None:
+        """Product hook for write-ahead exact-owner retirement evidence."""
+
+        del owner_generations
+
+    def _commit_session_owner_generation_evidence(self) -> None:
+        """Product hook sealing write-ahead evidence after publication."""
 
     def _restore_initial_resource_publication(self, previous: object) -> None:
         if not isinstance(previous, tuple) or len(previous) != 3:

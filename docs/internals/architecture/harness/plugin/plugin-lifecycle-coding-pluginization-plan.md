@@ -37,12 +37,14 @@
   both `always` and `on_demand` modes through Tool execution, status, explicit
   stop and exact-generation retirement. The Product-owned exact-policy Approval
   owner, default cutover and deletion of the deferred runtime, early Tool
-  registrar and legacy cleanup input are implemented. PLC6A through PLC6C now
+  registrar and legacy cleanup input are implemented. PLC6A through PLC6D now
   freeze the inert Composition Set request and Kernel/Base Prompt boundary,
   publish Prompt/Skill through Resource Catalog and publish Tool/Command only
-  through their exact Session owners. PLC6 management-state binding and final
-  legacy cleanup, PLC7 through PLC9, and the public Plugin SDK remain
-  unimplemented.
+  through their exact Session owners. PLC6D binds the requested base package to
+  the common durable desired-state/Instance authority, preserves explicit
+  disable and remove, pins active Session families across update, and reopens
+  selected immutable revisions after mutable source removal. PLC6 final legacy
+  cleanup, PLC7 through PLC9, and the public Plugin SDK remain unimplemented.
 - Scope: one delivery order for the common Plugin lifecycle, ordinary
   Definition / Provider / Consumer authoring primitives, `coding.lsp`,
   `coding.base`, `coding.arch`, management control, pre-LSP internal Resource/
@@ -1302,7 +1304,7 @@ This remains the first production Graph proof.
 
 ### PLC6: `coding.base` Production Resource Plugin
 
-PLC6A through PLC6C implementation status (2026-08-29): the conservative production
+PLC6A through PLC6D implementation status (2026-08-30): the conservative production
 boundary is frozen in the
 [PLC6 contract](plugin-lifecycle-plc6-contract.md). Coding now exposes one
 canonical, fingerprinted and side-effect-free expansion for
@@ -1326,8 +1328,15 @@ Session composition commits, retire through their exact registration leases,
 and appear in effective-runtime provenance. The CLI no longer registers the
 base Tool pack directly, and the standard Catalog-owned Session no longer
 obtains Commands from an unconditional peer publisher. Management desired-state
-binding, the explicitly selected legacy Resource authority cleanup, and final
-production review remain PLC6D and PLC6E.
+binding now consumes the same durable Coding Product snapshot used by the
+common Harness management and Instance ledgers. Only a never-seen first-party
+Installation receives idempotent default install/enable commands; explicit
+disable and remove remain authoritative. Active Sessions retain a durable
+family over their old revision and return an exact restart-required diagnostic,
+while new Sessions select the current revision or omit the base package. Replay
+opens the content-addressed revision through its durable binding after mutable
+source deletion. The explicitly selected legacy Resource authority cleanup and
+final production review remain PLC6E.
 
 Scope:
 

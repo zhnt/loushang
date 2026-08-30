@@ -22,9 +22,11 @@ from loushang.harness.capabilities.workspace_contracts import (
     WORKSPACE_WRITE_FACET,
 )
 from loushang.harness.runtime.registration import (
+    OwnerGenerationRetirementReceipt,
     RegistrationLease,
     RegistrationOwner,
     RegistrationScope,
+    registration_scope_retirement_receipt,
 )
 from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityConsumerCapture,
@@ -187,6 +189,21 @@ class _CodingBaseGeneration:
                 f"Coding base {self.kind} generation disposal remains incomplete",
                 code=f"coding_base_{self.kind}_generation_disposal_failed",
             )
+
+    def retirement_receipt(
+        self,
+        *,
+        contribution_id: str,
+    ) -> OwnerGenerationRetirementReceipt:
+        if self.scope.state not in {"open", "committed"}:
+            raise RuntimeError(
+                "Coding base retirement evidence requires a live generation"
+            )
+        return registration_scope_retirement_receipt(
+            self.scope,
+            contribution_ids=(contribution_id,),
+            allow_open=True,
+        )
 
 
 @dataclass(slots=True)
@@ -427,6 +444,10 @@ def _owner_binding(
         authority_gate=authority_gate,
         stage=stage,
         dispose=dispose,
+        retirement_receipt=lambda value: _retirement_receipt(
+            value,
+            contribution_id=admission.contribution_id,
+        ),
         commit=lambda value: _commit_generation(value),
         rollback_commit=lambda value: _rollback_generation_commit(value),
     )
@@ -442,6 +463,16 @@ def _rollback_generation_commit(value: object) -> None:
     if not isinstance(value, _CodingBaseGeneration):
         raise TypeError("Coding base owner received a foreign generation")
     value.rollback_commit()
+
+
+def _retirement_receipt(
+    value: object,
+    *,
+    contribution_id: str,
+) -> OwnerGenerationRetirementReceipt:
+    if not isinstance(value, _CodingBaseGeneration):
+        raise TypeError("Coding base owner received a foreign generation")
+    return value.retirement_receipt(contribution_id=contribution_id)
 
 
 def _registration_owner(

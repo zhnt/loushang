@@ -559,7 +559,11 @@ def test_prepared_owner_generation_retains_status_until_disposal(
             expires_at=100,
             now=20,
         )
-        generation = PreparedResourceOwnerGeneration._from_shadow(shadow)
+        generation = PreparedResourceOwnerGeneration._from_shadow(
+            shadow,
+            runtime_id="resource-owner:skill-status",
+            catalog_generation=1,
+        )
 
         assert generation.catalog_projection is None
         projection = generation._skill_status_projection

@@ -8,11 +8,14 @@ from typing import Any
 from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.resources.source import SourceInfo
 from loushang.harness.runtime.bindings import RuntimeBindingLease
+from loushang.harness.runtime.exec_contracts import (
+    RuntimeExecResult,
+    RuntimeExecUpdateCallback,
+)
 from loushang.harness.runtime.registration import (
     RegistrationLease,
     RegistrationLeaseCollector,
 )
-from loushang.harness.workspace.exec import ExecResult, ExecUpdateCallback
 
 
 def _normalize_exec_args(args: Sequence[str]) -> list[str]:
@@ -69,13 +72,13 @@ class UnboundProductRuntimeContext:
         timeout_seconds: float | None = None,
         stdin: str | None = None,
         signal: object | None = None,
-        on_update: ExecUpdateCallback | None = None,
+        on_update: RuntimeExecUpdateCallback | None = None,
         preview_max_lines: int = 2000,
         preview_max_bytes: int = 50 * 1024,
         artifact_dir: str | None = None,
         capture_full_output: bool = True,
         rolling_max_bytes: int = 100 * 1024,
-    ) -> ExecResult:
+    ) -> RuntimeExecResult:
         del command, args, cwd, env, timeout_seconds, stdin, signal, on_update
         del (
             preview_max_lines,
@@ -301,13 +304,13 @@ class BoundProductRuntimeContext:
         timeout_seconds: float | None = None,
         stdin: str | None = None,
         signal: object | None = None,
-        on_update: ExecUpdateCallback | None = None,
+        on_update: RuntimeExecUpdateCallback | None = None,
         preview_max_lines: int = 2000,
         preview_max_bytes: int = 50 * 1024,
         artifact_dir: str | None = None,
         capture_full_output: bool = True,
         rolling_max_bytes: int = 100 * 1024,
-    ) -> ExecResult:
+    ) -> RuntimeExecResult:
         callback = self._require_bindings().exec_command
         if callback is None:
             raise RuntimeError("Extension runtime does not provide exec_command.")

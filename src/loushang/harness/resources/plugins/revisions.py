@@ -18,6 +18,7 @@ from loushang.harness.resources.plugins.locators import (
 )
 from loushang.harness.resources.plugins.manifest import PluginManifestParser
 from loushang.harness.resources.plugins.types import (
+    PluginSource,
     ResolvedPluginPackage,
     VerifiedPluginRevision,
 )
@@ -350,6 +351,74 @@ class PluginRevisionStore:
             raise
         return tuple(published)
 
+    def reopen(
+        self,
+        content_digest: str,
+        *,
+        source: PluginSource,
+    ) -> VerifiedPluginRevision:
+        """Reopen one exact immutable revision without consulting mutable source.
+
+        Durable Product desired state carries the content digest while the
+        binding lock carries the original source descriptor.  Reconstructing
+        from both facts keeps replay independent of the mutable checkout and
+        preserves the source identity used by selection and Approval evidence.
+        """
+
+        if not _is_sha256_digest(content_digest):
+            raise ValueError("Plugin revision digest must be lowercase SHA-256")
+        if not isinstance(source, PluginSource):
+            raise TypeError("Plugin revision source descriptor is required")
+        published_root = self.revision_root / content_digest
+        try:
+            if _supports_descriptor_relative_revision_io():
+                root_fd = _open_directory(published_root)
+                try:
+                    entries = _capture_tree(root_fd)
+                finally:
+                    os.close(root_fd)
+            else:
+                entries = _capture_tree_portable(published_root)
+        except Exception as exc:
+            raise PluginRevisionError(
+                f"Plugin revision could not be reopened: {published_root}: {exc}",
+                code="plugin_revision_unavailable",
+                path=published_root,
+            ) from exc
+        if _tree_digest(entries) != content_digest:
+            raise PluginRevisionError(
+                f"Plugin revision content changed after publication: {published_root}",
+                code="plugin_revision_changed",
+                path=published_root,
+            )
+        try:
+            package = PluginManifestParser().parse(published_root)
+            package = replace(package, source=source)
+            handle = VerifiedRevisionHandle(
+                root=published_root,
+                content_digest=content_digest,
+                entries=entries,
+            )
+            try:
+                handle.verify()
+                return _project_verified_revision(
+                    package,
+                    published_root=published_root,
+                    content_digest=content_digest,
+                    handle=handle,
+                )
+            except Exception:
+                handle.close()
+                raise
+        except PluginRevisionError:
+            raise
+        except Exception as exc:
+            raise PluginRevisionError(
+                f"Plugin revision could not be reconstructed: {published_root}: {exc}",
+                code="plugin_revision_replay_failed",
+                path=published_root,
+            ) from exc
+
 
 def _supports_descriptor_relative_revision_io() -> bool:
     """Return whether the host exposes the complete POSIX-style safe-open set."""
@@ -364,6 +433,14 @@ def _supports_descriptor_relative_revision_io() -> bool:
         and os.stat in supports_dir_fd
         and os.stat in supports_follow_symlinks
         and os.listdir in supports_fd
+    )
+
+
+def _is_sha256_digest(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(character in "0123456789abcdef" for character in value)
     )
 
 

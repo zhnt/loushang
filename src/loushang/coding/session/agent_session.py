@@ -8,6 +8,7 @@ from loushang.ai import PreparedRequestLimits
 from loushang.ai.api_registry import APIRegistry
 from loushang.coding._base_plugin import (
     CodingBasePluginAssembly,
+    CodingBasePluginAssemblyError,
     CodingBasePluginSessionAssembly,
     build_coding_base_plugin_owners,
 )
@@ -51,6 +52,7 @@ from loushang.harness.capabilities.graph_runtime import CapabilityFacetSet
 from loushang.harness.commands import normalize_command_name
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.diagnostics.service import DiagnosticsService
+from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.events import RuntimeEvent
 from loushang.harness.extensions.agent import ExtensionRunner
 from loushang.harness.extensions.context import SessionStartEvent
@@ -60,10 +62,14 @@ from loushang.harness.policy import PolicyEvaluator
 from loushang.harness.resources.loader import ResourceLoader
 from loushang.harness.resources.packages.roots import SelectedPluginPackageInput
 from loushang.harness.resources.types import ResourceBundle
+from loushang.harness.runtime.registration import (
+    OwnerGenerationRetirementReceipt,
+)
 from loushang.harness.sandbox import SandboxExecutionRuntime, SandboxStatus
 from loushang.harness.session import AgentProductSession
 from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityOwnerGenerationBinding,
+    StagedSessionCapabilityOwnerGeneration,
 )
 from loushang.harness.session.changelog import read_changelog_for_cwd
 from loushang.harness.session.command_controller import (
@@ -209,6 +215,14 @@ class AgentSession(AgentProductSession):
         self._lsp_access: CodingLspSessionAccess | None = None
         self._coding_lsp_plugin_assembly = coding_lsp_plugin_assembly
         self._coding_base_plugin_assembly = coding_base_plugin_assembly
+        self._coding_base_owner_retirement_receipts: tuple[
+            OwnerGenerationRetirementReceipt,
+            ...,
+        ] = ()
+        self._coding_base_owner_generations_prepared = False
+        self._coding_base_owner_generations_published = False
+        self._coding_base_owner_generations_retired = False
+        self._coding_base_owner_publication_error: BaseException | None = None
         self._coding_lsp_plugin_capture: CapabilityFacetSet | None = None
         self.delegated_execution_profile = delegated_execution_profile
         self.cwd_bound_services_audit: CwdBoundServicesAudit | None = None
@@ -220,7 +234,15 @@ class AgentSession(AgentProductSession):
         lsp_tool_registration_slot: CodingLspToolRegistrationSlot | None = None
         owner_bindings: tuple[SessionCapabilityOwnerGenerationBinding, ...] = ()
         base_tool_registration_slot: CodingBaseToolRegistrationSlot | None = None
-        command_generations: SessionCommandGenerationRegistry | None = None
+        # Catalog-owned Sessions must never fall back to the historical
+        # unconditional standard-command publisher.  An empty registry is the
+        # explicit Product selection when ``coding.base`` is absent; the base
+        # owner stages its exact command generation into the same registry.
+        command_generations = (
+            SessionCommandGenerationRegistry()
+            if initial_resource_catalog_bootstrap is not None
+            else None
+        )
         plugin_assembly = (
             coding_lsp_plugin_assembly.plugin_assembly
             if coding_lsp_plugin_assembly is not None
@@ -233,7 +255,8 @@ class AgentSession(AgentProductSession):
         if coding_base_plugin_assembly is not None:
             if plugin_assembly is None or coding_plugin_clock is None:
                 raise ValueError("Coding base Plugin owner inputs are unavailable")
-            command_generations = SessionCommandGenerationRegistry()
+            if command_generations is None:
+                command_generations = SessionCommandGenerationRegistry()
             get_external_tool_policy = getattr(
                 settings_manager,
                 "get_external_tool_policy",
@@ -485,14 +508,189 @@ class AgentSession(AgentProductSession):
 
         await self._dispatch_event(dict(event))
 
+    def _prepare_resource_refresh(self) -> None:
+        base_plugin = self._coding_base_plugin_assembly
+        if base_plugin is not None:
+            change = base_plugin.evaluate_management_change()
+            if change is not None and change.disposition == "restart_required":
+                self._record_extension_runtime_diagnostic(
+                    DiagnosticDraft(
+                        code="coding_base_management_restart_required",
+                        message=(
+                            "coding.base management state changed; the active "
+                            "Session retains its pinned generation and must restart."
+                        ),
+                        details=change.diagnostic_details(),
+                    )
+                )
+                raise CodingBasePluginAssemblyError(
+                    "Active Coding Session requires restart after coding.base change",
+                    code="coding_base_management_restart_required",
+                )
+        super()._prepare_resource_refresh()
+
+    async def prepare_model_call_runtime(self) -> None:
+        await super().prepare_model_call_runtime()
+        self._publish_coding_base_owner_retirement_receipts()
+
+    def _prepare_session_owner_generation_evidence(
+        self,
+        owner_generations: tuple[
+            StagedSessionCapabilityOwnerGeneration,
+            ...,
+        ],
+    ) -> None:
+        super()._prepare_session_owner_generation_evidence(owner_generations)
+        assembly = self._coding_base_plugin_assembly
+        if assembly is None or assembly.management_lease is None:
+            return
+        receipts = self._capture_coding_base_owner_retirement_receipts(
+            owner_generations,
+            candidate=self._staged_resource_candidate,
+            prepared=True,
+        )
+        self._coding_base_owner_retirement_receipts = receipts
+        assembly.management_lease.prepare_owner_generations(receipts)
+        self._coding_base_owner_generations_prepared = True
+
+    def _commit_session_owner_generation_evidence(self) -> None:
+        super()._commit_session_owner_generation_evidence()
+        assembly = self._coding_base_plugin_assembly
+        if (
+            assembly is None
+            or assembly.management_lease is None
+            or not self._coding_base_owner_retirement_receipts
+            or self._coding_base_owner_generations_published
+        ):
+            return
+        try:
+            assembly.management_lease.publish_owner_generations(
+                self._coding_base_owner_retirement_receipts
+            )
+        except BaseException as error:
+            # Publication already has durable prepared evidence.  Preserve the
+            # committed graph so the Coding boundary can surface this failure
+            # once and retry only the evidence append on the next prepare.
+            self._coding_base_owner_publication_error = error
+        else:
+            self._coding_base_owner_generations_published = True
+
+    def _publish_coding_base_owner_retirement_receipts(self) -> None:
+        assembly = self._coding_base_plugin_assembly
+        if assembly is None or assembly.management_lease is None:
+            return
+        publication_error = self._coding_base_owner_publication_error
+        if publication_error is not None:
+            self._coding_base_owner_publication_error = None
+            raise publication_error
+        if self._coding_base_owner_retirement_receipts:
+            if not self._coding_base_owner_generations_prepared:
+                assembly.management_lease.prepare_owner_generations(
+                    self._coding_base_owner_retirement_receipts
+                )
+                self._coding_base_owner_generations_prepared = True
+            if not self._coding_base_owner_generations_published:
+                assembly.management_lease.publish_owner_generations(
+                    self._coding_base_owner_retirement_receipts
+                )
+                self._coding_base_owner_generations_published = True
+            return
+        canonical = self._capture_coding_base_owner_retirement_receipts(
+            self._capability_owner_generations,
+            candidate=self._mounted_resource_candidate,
+            prepared=False,
+        )
+        self._coding_base_owner_retirement_receipts = canonical
+        if not self._coding_base_owner_generations_prepared:
+            assembly.management_lease.prepare_owner_generations(canonical)
+            self._coding_base_owner_generations_prepared = True
+        assembly.management_lease.publish_owner_generations(canonical)
+        self._coding_base_owner_generations_published = True
+
+    def _capture_coding_base_owner_retirement_receipts(
+        self,
+        owner_generations: tuple[
+            StagedSessionCapabilityOwnerGeneration,
+            ...,
+        ],
+        *,
+        candidate: StagedResourceCompositionCandidate | None,
+        prepared: bool,
+    ) -> tuple[OwnerGenerationRetirementReceipt, ...]:
+        receipts = [
+            (
+                generation.capture_prepared_retirement_receipt()
+                if prepared
+                else generation.capture_retirement_receipt()
+            )
+            for generation in owner_generations
+            if generation.binding.plugin_id == "coding.base"
+        ]
+        assembly = self._coding_base_plugin_assembly
+        if assembly is None or assembly.management_lease is None:
+            return ()
+        resource_contribution_ids = tuple(
+            sorted(
+                {
+                    contribution_id
+                    for owner_reference, contribution_ids in (
+                        assembly.management_lease.owner_contributions
+                    )
+                    if owner_reference.startswith("resources.")
+                    for contribution_id in contribution_ids
+                }
+            )
+        )
+        if resource_contribution_ids:
+            if candidate is None:
+                raise RuntimeError(
+                    "Coding base Resource owner generation is not mounted"
+                )
+            receipts.append(
+                candidate.resource_owner_generation_retirement_receipt(
+                    contribution_ids=resource_contribution_ids,
+                )
+            )
+        canonical = tuple(
+            sorted(
+                receipts,
+                key=lambda item: (
+                    item.owner_reference,
+                    item.owner_generation_reference,
+                    item.retirement_handle,
+                ),
+            )
+        )
+        return canonical
+
     async def _dispose_session_runtime_profile(self) -> None:
         primary_error: BaseException | None = None
         try:
             await super()._dispose_session_runtime_profile()
         except BaseException as exc:
             primary_error = exc
+        base_plugin_assembly = getattr(self, "_coding_base_plugin_assembly", None)
+        if (
+            primary_error is None
+            and base_plugin_assembly is not None
+            and base_plugin_assembly.management_lease is not None
+            and self._coding_base_owner_retirement_receipts
+            and not self._coding_base_owner_generations_retired
+        ):
+            try:
+                if not self._coding_base_owner_generations_prepared:
+                    base_plugin_assembly.management_lease.prepare_owner_generations(
+                        self._coding_base_owner_retirement_receipts
+                    )
+                    self._coding_base_owner_generations_prepared = True
+                base_plugin_assembly.management_lease.retire_owner_generations(
+                    self._coding_base_owner_retirement_receipts
+                )
+                self._coding_base_owner_generations_retired = True
+            except BaseException as cleanup_error:
+                primary_error = cleanup_error
         plugin_assembly = getattr(self, "_coding_lsp_plugin_assembly", None)
-        if plugin_assembly is not None:
+        if primary_error is None and plugin_assembly is not None:
             try:
                 plugin_assembly.close()
             except BaseException as cleanup_error:
@@ -505,8 +703,7 @@ class AgentSession(AgentProductSession):
                     )
             self._coding_lsp_plugin_capture = None
             self._lsp_access = None
-        base_plugin_assembly = getattr(self, "_coding_base_plugin_assembly", None)
-        if base_plugin_assembly is not None:
+        if primary_error is None and base_plugin_assembly is not None:
             try:
                 base_plugin_assembly.close()
             except BaseException as cleanup_error:

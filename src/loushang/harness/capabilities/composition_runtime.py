@@ -31,6 +31,7 @@ from loushang.harness.runtime import (
     SIDE_QUESTION_PROVIDER_SLOT,
     SKILL_ACTIVATION_SLOT,
     TOOL_PACKS_SLOT,
+    OwnerGenerationRetirementReceipt,
     ProductRuntimePlan,
     ResolvedRuntimeProfile,
     RuntimeCapabilityImplementation,
@@ -103,6 +104,12 @@ class _PreparedResourceOwnerGeneration(Protocol):
     async def dispose_root_owned(self) -> None: ...
 
     async def _dispose_graph_owned(self) -> None: ...
+
+    def retirement_receipt(
+        self,
+        *,
+        contribution_ids: tuple[str, ...],
+    ) -> OwnerGenerationRetirementReceipt: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -373,6 +380,18 @@ class StagedResourceCompositionCandidate:
         if generation is None:
             return None
         return generation.provider_binding_fingerprint
+
+    def resource_owner_generation_retirement_receipt(
+        self,
+        *,
+        contribution_ids: tuple[str, ...],
+    ) -> OwnerGenerationRetirementReceipt:
+        receipt = self._require_prepared_owner_generation().retirement_receipt(
+            contribution_ids=contribution_ids,
+        )
+        if not isinstance(receipt, OwnerGenerationRetirementReceipt):
+            raise TypeError("Resource owner generation retirement receipt is invalid")
+        return receipt
 
     def _assert_can_attach_prepared_owner_generation(self) -> None:
         if self.__candidate.ownership != "root_owned":

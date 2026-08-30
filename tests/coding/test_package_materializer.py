@@ -32,7 +32,6 @@ def test_package_materializer_records_pending_remote_sources(tmp_path) -> None:
     from loushang.coding.resource_runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
-
     materializer = PackageMaterializer(install_root=tmp_path / "packages")
     source = "https://packages.example.invalid/review-pack.git"
 
@@ -959,12 +958,31 @@ def test_package_materializer_reports_corrupt_lockfile_and_writes_atomically(tmp
     from loushang.coding.resource_runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
+    from loushang.harness.resources.plugins.manifest import PluginManifestError
 
     lockfile = tmp_path / "package-lock.json"
     lockfile.write_text("not json", encoding="utf-8")
     materializer = PackageMaterializer(install_root=tmp_path / "packages")
 
     assert materializer.get_lockfile_diagnostics()[0]["code"] == "package_lockfile_unreadable"
+
+    with pytest.raises(PluginManifestError) as caught:
+        materializer.prepare_remote_source(
+            "https://packages.example.invalid/review-pack.git"
+        )
+    assert caught.value.code == "plugin_binding_lock_invalid"
+    assert lockfile.read_text(encoding="utf-8") == "not json"
+
+    valid_lock = json.dumps(
+        {
+            "version": 4,
+            "packages": [],
+            "pluginBindings": [],
+            "pluginBindingHeads": [],
+        }
+    )
+    lockfile.write_text(valid_lock, encoding="utf-8")
+    materializer = PackageMaterializer(install_root=tmp_path / "packages")
 
     original_replace = Path.replace
 
@@ -978,7 +996,7 @@ def test_package_materializer_reports_corrupt_lockfile_and_writes_atomically(tmp
     with pytest.raises(RuntimeError, match="replace failed"):
         materializer.prepare_remote_source("https://packages.example.invalid/review-pack.git")
 
-    assert lockfile.read_text(encoding="utf-8") == "not json"
+    assert lockfile.read_text(encoding="utf-8") == valid_lock
 
 
 def test_package_materializer_skips_ref_pinned_update_checks(tmp_path) -> None:

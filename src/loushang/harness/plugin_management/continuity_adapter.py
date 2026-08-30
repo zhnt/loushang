@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-from dataclasses import dataclass, field, replace
-from pathlib import Path
+from dataclasses import dataclass, field
 from typing import cast
 
 from loushang.harness.continuity.plugin_runtime import (
@@ -15,15 +14,9 @@ from loushang.harness.continuity.plugin_runtime import (
 )
 from loushang.harness.journal import (
     DURABLE_LOCKED_JOURNAL,
-    SORTED_UNICODE_JSONL_FORMAT,
     FunctionalJournalRecordCodec,
     JournalCodecError,
-    JournalFileError,
-    JournalLoadPolicy,
-    JsonlSnapshot,
-    append_jsonl_record,
     journal_file_lock,
-    load_jsonl,
 )
 from loushang.harness.plugin_management.instance_records import (
     PluginInstanceLeaseFamilyReleaseV1,
@@ -33,15 +26,70 @@ from loushang.harness.plugin_management.instance_records import (
 from loushang.harness.plugin_management.instance_runtime import (
     PluginInstanceRuntimeLedger,
     PluginInstanceRuntimeSnapshotV1,
-    plugin_instance_security_acceptance_journal_path,
 )
 from loushang.harness.plugin_management.package_lifecycle import (
     PluginPackageLifecycleLedger,
+)
+from loushang.harness.plugin_management.security_acceptance import (
+    PluginInstanceSecurityRetirementAcceptanceV1,
+    PluginInstanceSecurityRetirementJournal,
+    PluginInstanceSecurityRetirementJournalError,
 )
 from loushang.harness.resources.plugins._strict_json import StrictPluginJsonCodec
 from loushang.harness.resources.plugins.selection import (
     PluginInstanceRevisionRef,
 )
+
+
+class PluginContinuitySecurityRetirementJournalError(
+    PluginInstanceSecurityRetirementJournalError
+):
+    """Compatibility error retaining Continuity's deployed stable codes."""
+
+
+class PluginContinuitySecurityRetirementAcceptanceV1(
+    PluginInstanceSecurityRetirementAcceptanceV1
+):
+    """Wire-compatible record with the legacy decode diagnostic namespace."""
+
+    @classmethod
+    def from_dict(
+        cls,
+        value: object,
+    ) -> PluginContinuitySecurityRetirementAcceptanceV1:
+        try:
+            return cast(
+                PluginContinuitySecurityRetirementAcceptanceV1,
+                super().from_dict(value),
+            )
+        except JournalCodecError as exc:
+            raise JournalCodecError(
+                str(exc),
+                code="invalid_plugin_continuity_security_acceptance_record",
+            ) from exc
+
+
+PLUGIN_CONTINUITY_SECURITY_RETIREMENT_ACCEPTANCE_CODEC = (
+    FunctionalJournalRecordCodec[PluginContinuitySecurityRetirementAcceptanceV1](
+        encoder=PluginContinuitySecurityRetirementAcceptanceV1.to_dict,
+        decoder=PluginContinuitySecurityRetirementAcceptanceV1.from_dict,
+    )
+)
+
+
+class PluginContinuitySecurityRetirementJournal(
+    PluginInstanceSecurityRetirementJournal
+):
+    """Generic authority projected through Continuity's compatibility surface."""
+
+    _record_type = PluginContinuitySecurityRetirementAcceptanceV1
+    _record_codec = PLUGIN_CONTINUITY_SECURITY_RETIREMENT_ACCEPTANCE_CODEC
+    _error_type = PluginContinuitySecurityRetirementJournalError
+    _recovery_invalid_code = "plugin_continuity_security_recovery_invalid"
+    _journal_corrupt_code = (
+        "plugin_continuity_security_acceptance_journal_corrupt"
+    )
+    _conflict_code = "plugin_continuity_security_acceptance_conflict"
 
 
 @dataclass(slots=True)
@@ -201,237 +249,6 @@ class PluginInstanceLedgerContinuityFamilyAuthority:
         )
 
 
-class PluginContinuitySecurityRetirementJournalError(RuntimeError):
-    """Fail-closed durable security-acceptance journal error."""
-
-    def __init__(self, message: str, *, code: str, path: Path) -> None:
-        super().__init__(message)
-        self.code = code
-        self.path = path
-
-
-@dataclass(frozen=True, slots=True)
-class PluginContinuitySecurityRetirementAcceptanceV1:
-    """Durable acceptance of one exact Plugin Instance revocation set."""
-
-    journal_revision: int
-    acceptance_id: str
-    revocations: tuple[PluginInstanceRevocationV1, ...]
-    record_version: int = 1
-
-    def __post_init__(self) -> None:
-        if (
-            not isinstance(self.journal_revision, int)
-            or isinstance(self.journal_revision, bool)
-            or self.journal_revision <= 0
-        ):
-            raise ValueError("Continuity security acceptance revision must be positive")
-        if self.record_version != 1:
-            raise ValueError("Unsupported Continuity security acceptance version")
-        _validate_revocations(self.revocations)
-        if self.acceptance_id != _security_acceptance_id(self.revocations):
-            raise ValueError("Continuity security acceptance id does not match")
-
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "acceptanceId": self.acceptance_id,
-            "journalRevision": self.journal_revision,
-            "recordVersion": self.record_version,
-            "revocations": [item.to_dict() for item in self.revocations],
-        }
-
-    @classmethod
-    def from_dict(
-        cls,
-        value: object,
-    ) -> PluginContinuitySecurityRetirementAcceptanceV1:
-        try:
-            if not isinstance(value, dict) or set(value) != {
-                "acceptanceId",
-                "journalRevision",
-                "recordVersion",
-                "revocations",
-            }:
-                raise ValueError("Continuity security acceptance fields are invalid")
-            revocations = value["revocations"]
-            if not isinstance(revocations, list):
-                raise TypeError("Continuity security revocations must be an array")
-            return cls(
-                journal_revision=cast(int, value["journalRevision"]),
-                acceptance_id=cast(str, value["acceptanceId"]),
-                revocations=tuple(
-                    PluginInstanceRevocationV1.from_dict(item) for item in revocations
-                ),
-                record_version=cast(int, value["recordVersion"]),
-            )
-        except JournalCodecError:
-            raise
-        except (TypeError, ValueError) as exc:
-            raise JournalCodecError(
-                str(exc),
-                code="invalid_plugin_continuity_security_acceptance_record",
-            ) from exc
-
-
-PLUGIN_CONTINUITY_SECURITY_RETIREMENT_ACCEPTANCE_CODEC = FunctionalJournalRecordCodec[
-    PluginContinuitySecurityRetirementAcceptanceV1
-](
-    encoder=PluginContinuitySecurityRetirementAcceptanceV1.to_dict,
-    decoder=PluginContinuitySecurityRetirementAcceptanceV1.from_dict,
-)
-
-
-class PluginContinuitySecurityRetirementJournal:
-    """Append-only durable handoff before a Continuity generation is poisoned."""
-
-    def __init__(self, path: str | Path) -> None:
-        # Canonicalize once so every alias derives the same journal and sidecar
-        # lock identities.  Instance runtimes additionally require the one path
-        # deterministically derived from their own durable ledger identity.
-        self._path = Path(path).resolve()
-        self._unlocked_durability = replace(DURABLE_LOCKED_JOURNAL, locking=False)
-        self._load_policy = JournalLoadPolicy(partial_tail="repair")
-
-    @classmethod
-    def for_instance_runtime(
-        cls,
-        runtime_path: str | Path,
-    ) -> PluginContinuitySecurityRetirementJournal:
-        return cls(plugin_instance_security_acceptance_journal_path(runtime_path))
-
-    @property
-    def path(self) -> Path:
-        return self._path
-
-    def _accept(
-        self,
-        revocations: tuple[PluginInstanceRevocationV1, ...],
-    ) -> PluginContinuitySecurityRetirementAcceptanceV1:
-        _validate_revocations(revocations)
-        acceptance_id = _security_acceptance_id(revocations)
-        with journal_file_lock(
-            self._path,
-            "exclusive",
-            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
-        ):
-            records = self._load_unlocked()
-            for record in records:
-                if record.acceptance_id == acceptance_id:
-                    if record.revocations != revocations:
-                        raise self._conflict(
-                            "Continuity security acceptance identity was reused"
-                        )
-                    return record
-                if set(_revocation_refs(record.revocations)) & set(
-                    _revocation_refs(revocations)
-                ):
-                    raise self._conflict(
-                        "Plugin Instance revision has another security acceptance"
-                    )
-            record = PluginContinuitySecurityRetirementAcceptanceV1(
-                journal_revision=len(records) + 1,
-                acceptance_id=acceptance_id,
-                revocations=revocations,
-            )
-            append_jsonl_record(
-                self._path,
-                record,
-                record_codec=PLUGIN_CONTINUITY_SECURITY_RETIREMENT_ACCEPTANCE_CODEC,
-                format_profile=SORTED_UNICODE_JSONL_FORMAT,
-                durability=self._unlocked_durability,
-            )
-            return record
-
-    def records(
-        self,
-    ) -> tuple[PluginContinuitySecurityRetirementAcceptanceV1, ...]:
-        with journal_file_lock(
-            self._path,
-            "exclusive",
-            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
-        ):
-            return self._load_unlocked()
-
-    def accepted_instance_revision_refs(
-        self,
-    ) -> tuple[PluginInstanceRevisionRef, ...]:
-        refs = {item.instance_revision_ref for item in self.accepted_revocations()}
-        return tuple(sorted(refs, key=_instance_ref_sort_key))
-
-    def accepted_revocations(self) -> tuple[PluginInstanceRevocationV1, ...]:
-        return tuple(
-            revocation
-            for record in self.records()
-            for revocation in record.revocations
-        )
-
-    def reconcile(
-        self,
-        ledger: PluginInstanceRuntimeLedger,
-    ) -> tuple[PluginInstanceRuntimeSnapshotV1, ...]:
-        """Replay every accepted revocation before runtime acquisition."""
-
-        if not isinstance(ledger, PluginInstanceRuntimeLedger):
-            raise TypeError("Continuity security recovery requires Instance ledger")
-        revocations = self.accepted_revocations()
-        if not revocations:
-            return ()
-        snapshots = ledger.apply_accepted_security_revocations(revocations)
-        for revocation, snapshot in zip(revocations, snapshots, strict=True):
-            if (
-                snapshot.instance_revision_ref != revocation.instance_revision_ref
-                or snapshot.installation_key != revocation.installation_key
-                or snapshot.state not in {"REVOKING", "RETIRED"}
-                or snapshot.revocation != revocation
-            ):
-                raise PluginContinuitySecurityRetirementJournalError(
-                    "Recovered security revocation evidence is invalid.",
-                    code="plugin_continuity_security_recovery_invalid",
-                    path=self._path,
-                )
-        return snapshots
-
-    def _load_unlocked(
-        self,
-    ) -> tuple[PluginContinuitySecurityRetirementAcceptanceV1, ...]:
-        if not self._path.exists():
-            return ()
-        try:
-            snapshot: JsonlSnapshot[
-                None,
-                PluginContinuitySecurityRetirementAcceptanceV1,
-            ] = load_jsonl(
-                self._path,
-                record_codec=PLUGIN_CONTINUITY_SECURITY_RETIREMENT_ACCEPTANCE_CODEC,
-                format_profile=SORTED_UNICODE_JSONL_FORMAT,
-                durability=self._unlocked_durability,
-                load_policy=self._load_policy,
-            )
-            records = snapshot.records
-            if any(
-                item.journal_revision != index
-                for index, item in enumerate(records, start=1)
-            ):
-                raise ValueError("Continuity security revisions are not contiguous")
-            return records
-        except (JournalCodecError, JournalFileError, ValueError) as exc:
-            raise PluginContinuitySecurityRetirementJournalError(
-                "Continuity security acceptance journal is corrupt.",
-                code="plugin_continuity_security_acceptance_journal_corrupt",
-                path=self._path,
-            ) from exc
-
-    def _conflict(
-        self,
-        message: str,
-    ) -> PluginContinuitySecurityRetirementJournalError:
-        return PluginContinuitySecurityRetirementJournalError(
-            message,
-            code="plugin_continuity_security_acceptance_conflict",
-            path=self._path,
-        )
-
-
 @dataclass(frozen=True, slots=True)
 class PluginInstanceLedgerContinuitySecurityRetirementAuthority:
     """Durably accept and enter REVOKING for one exact Instance set."""
@@ -581,7 +398,10 @@ def _accept_under_instance_operation_gate(
         "exclusive",
         lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
     ):
-        return journal._accept(revocations)
+        return cast(
+            PluginContinuitySecurityRetirementAcceptanceV1,
+            journal._accept(revocations),
+        )
 
 
 def _validate_revocations(

@@ -10,6 +10,7 @@ from typing import Literal
 
 import pytest
 
+import loushang.coding._plugin_lifecycle as plugin_lifecycle_module
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import (
     Capabilities,
@@ -566,7 +567,9 @@ def test_lsp_preparation_failure_closes_the_prepared_base_revision(
     from loushang.coding.session_manager import SessionManager
 
     prepared = []
-    prepare_base = coding_bootstrap.prepare_coding_base_plugin_assembly
+    with plugin_lifecycle_module._PROCESS_STARTUP_LEASES_LOCK:
+        original_lease_count = len(plugin_lifecycle_module._PROCESS_STARTUP_LEASES)
+    prepare_base = coding_bootstrap.prepare_managed_coding_base_plugin_assembly
 
     def capture_base(*args, **kwargs):
         assembly = prepare_base(*args, **kwargs)
@@ -578,7 +581,7 @@ def test_lsp_preparation_failure_closes_the_prepared_base_revision(
 
     monkeypatch.setattr(
         coding_bootstrap,
-        "prepare_coding_base_plugin_assembly",
+        "prepare_managed_coding_base_plugin_assembly",
         capture_base,
     )
     monkeypatch.setattr(
@@ -607,6 +610,86 @@ def test_lsp_preparation_failure_closes_the_prepared_base_revision(
 
     assert len(prepared) == 1
     assert prepared[0].package.revision_handle.closed is True
+    lifecycle = prepared[0].management_lease.lifecycle
+    startup_lease_path = plugin_lifecycle_module._startup_lease_path(
+        lifecycle.layout,
+        startup_id=lifecycle.startup_id,
+    )
+    assert lifecycle.layout.root.exists() is False
+    with plugin_lifecycle_module._PROCESS_STARTUP_LEASES_LOCK:
+        assert startup_lease_path not in (
+            plugin_lifecycle_module._PROCESS_STARTUP_LEASES
+        )
+        assert (
+            len(plugin_lifecycle_module._PROCESS_STARTUP_LEASES)
+            == original_lease_count
+        )
+
+
+def test_base_assembly_failure_releases_ephemeral_startup_lease_and_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import loushang.coding.bootstrap as coding_bootstrap
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.session_manager import SessionManager
+
+    captured_lifecycles = []
+    with plugin_lifecycle_module._PROCESS_STARTUP_LEASES_LOCK:
+        original_lease_count = len(plugin_lifecycle_module._PROCESS_STARTUP_LEASES)
+
+    def reject_base_assembly(*_args, **kwargs):
+        lifecycle = kwargs["lifecycle"]
+        captured_lifecycles.append(lifecycle)
+        startup_lease_path = plugin_lifecycle_module._startup_lease_path(
+            lifecycle.layout,
+            startup_id=lifecycle.startup_id,
+        )
+        with plugin_lifecycle_module._PROCESS_STARTUP_LEASES_LOCK:
+            assert startup_lease_path in (
+                plugin_lifecycle_module._PROCESS_STARTUP_LEASES
+            )
+        raise RuntimeError("injected base assembly failure")
+
+    monkeypatch.setattr(
+        coding_bootstrap,
+        "prepare_managed_coding_base_plugin_assembly",
+        reject_base_assembly,
+    )
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(tmp_path),
+            persist=False,
+        )
+    )
+
+    with pytest.raises(RuntimeError, match="injected base assembly failure"):
+        create_agent_session(
+            session_manager=manager,
+            model=_model(),
+            services=create_services(
+                settings_manager=SettingsManager(
+                    ControlConfig(capabilities={"coding.lsp": "disabled"})
+                )
+            ),
+        )
+
+    [lifecycle] = captured_lifecycles
+    startup_lease_path = plugin_lifecycle_module._startup_lease_path(
+        lifecycle.layout,
+        startup_id=lifecycle.startup_id,
+    )
+    assert lifecycle.layout.root.exists() is False
+    with plugin_lifecycle_module._PROCESS_STARTUP_LEASES_LOCK:
+        assert startup_lease_path not in (
+            plugin_lifecycle_module._PROCESS_STARTUP_LEASES
+        )
+        assert (
+            len(plugin_lifecycle_module._PROCESS_STARTUP_LEASES)
+            == original_lease_count
+        )
 
 
 def test_catalog_default_publishes_base_tools_and_commands_as_owner_generations(

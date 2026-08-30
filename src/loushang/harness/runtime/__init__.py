@@ -63,6 +63,7 @@ from loushang.harness.runtime.profile import (
     standard_runtime_capability_slots,
 )
 from loushang.harness.runtime.registration import (
+    OwnerGenerationRetirementReceipt,
     RegistrationDisposalOutcome,
     RegistrationDisposalResult,
     RegistrationIdentity,
@@ -70,6 +71,7 @@ from loushang.harness.runtime.registration import (
     RegistrationOwner,
     RegistrationScope,
     RegistrationScopeDisposalResult,
+    registration_scope_retirement_receipt,
 )
 from loushang.harness.runtime.retry import RetryCoordinator, RetryPolicy
 from loushang.harness.runtime.scheduling import CoalescingScheduler
@@ -109,6 +111,7 @@ from loushang.harness.runtime.turn import (
 from loushang.harness.runtime.types import HostSnapshot, QueueMode, RunState
 
 __all__ = [
+    "OwnerGenerationRetirementReceipt",
     "AGENT_TRANSCRIPT_PROFILE_SLOT",
     "COMMAND_PACKS_SLOT",
     "BoundProductRuntimeContext",
@@ -138,6 +141,7 @@ __all__ = [
     "RegistrationOwner",
     "RegistrationScope",
     "RegistrationScopeDisposalResult",
+    "registration_scope_retirement_receipt",
     "ReplacementCallbackFailure",
     "ResolvedRuntimeCapability",
     "ResolvedRuntimeProfile",

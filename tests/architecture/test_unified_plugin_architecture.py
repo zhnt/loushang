@@ -125,7 +125,7 @@ EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS = {
     ): "package-materializer",
     (
         Path("src/loushang/harness/resources/packages/materializer.py"),
-        "PackageMaterializer._load_lockfile",
+        "PackageMaterializer._load_lockfile_unlocked",
     ): "package-materializer",
     (
         Path("src/loushang/harness/resources/packages/catalog.py"),
@@ -214,12 +214,12 @@ EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_CALL_COUNTS = {
     ): 1,
     (
         Path("src/loushang/harness/resources/packages/materializer.py"),
-        "PackageMaterializer._load_lockfile",
+        "PackageMaterializer._load_lockfile_unlocked",
         "json_decode",
     ): 1,
     (
         Path("src/loushang/harness/resources/packages/materializer.py"),
-        "PackageMaterializer._load_lockfile",
+        "PackageMaterializer._load_lockfile_unlocked",
         "path_read",
     ): 1,
     (
@@ -3635,17 +3635,19 @@ def test_pap55_review_corrections_freeze_single_catalog_ingress_and_custody() ->
     assert "delete direct post-Catalog bundle merge authority" in plan
 
 
-def test_plc6abc_freezes_sets_and_proves_exact_owner_cutovers() -> None:
+def test_plc6abcd_freezes_sets_owners_and_management_cutover() -> None:
     lifecycle_plan = LIFECYCLE_PLAN_PATH.read_text(encoding="utf-8")
     contract = PLC6_CONTRACT_PATH.read_text(encoding="utf-8")
 
-    assert "PLC6A through PLC6C implementation status (2026-08-29)" in (lifecycle_plan)
-    assert "final\nproduction review remain PLC6D and PLC6E" in lifecycle_plan
+    assert "PLC6A through PLC6D implementation status (2026-08-30)" in (lifecycle_plan)
+    assert "final production review remain PLC6E" in lifecycle_plan
     assert "without mutating settings or rediscovering a source" in lifecycle_plan
     assert "publishes its Prompt and Skill through the sole Resource Catalog" in (
         lifecycle_plan
     )
-    assert "PLC6A through PLC6C are implemented" in contract
+    assert "PLC6A through PLC6D are implemented" in contract
+    assert "disabled or removed Installation is never resurrected" in contract
+    assert "without consulting a deleted mutable source" in contract
     assert "publish atomically with the\nusable Session" in contract
     assert "enter effective-runtime provenance" in contract
     for required in (
