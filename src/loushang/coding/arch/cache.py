@@ -61,8 +61,20 @@ class ImportFactCacheSnapshot:
 class ImportFactCache:
     """In-memory fact cache with optional atomic JSON persistence."""
 
-    def __init__(self, path: str | Path | None = None) -> None:
+    def __init__(
+        self,
+        path: str | Path | None = None,
+        *,
+        max_bytes: int | None = None,
+    ) -> None:
+        if max_bytes is not None and (
+            isinstance(max_bytes, bool)
+            or not isinstance(max_bytes, int)
+            or max_bytes < 1
+        ):
+            raise ValueError("import fact cache max_bytes must be a positive integer")
         self.path = Path(path).expanduser() if path is not None else None
+        self.max_bytes = max_bytes
         self._snapshots: dict[ImportFactCacheNamespace, ImportFactCacheSnapshot] = {}
         self._disk_loaded = False
         self._persisted_snapshot: ImportFactCacheSnapshot | None = None
@@ -75,22 +87,28 @@ class ImportFactCache:
         return self._snapshots.get(namespace)
 
     def replace(self, snapshot: ImportFactCacheSnapshot) -> None:
+        self._load_disk_once()
         if (
             self._snapshots.get(snapshot.namespace) == snapshot
             and self.last_error is None
         ):
             return
-        self._snapshots[snapshot.namespace] = snapshot
         if self.path is None:
+            self._snapshots[snapshot.namespace] = snapshot
             return
         if self._persisted_snapshot == snapshot:
             self.last_error = None
             return
         try:
-            _write_snapshot(self.path, snapshot)
+            _write_snapshot(
+                self.path,
+                snapshot,
+                max_bytes=self.max_bytes,
+            )
         except OSError as exc:
             self.last_error = str(exc)
         else:
+            self._snapshots[snapshot.namespace] = snapshot
             self._persisted_snapshot = snapshot
             self.last_error = None
 
@@ -141,22 +159,34 @@ def fingerprint_source(content: bytes) -> ImportFileFingerprint:
     )
 
 
-def _write_snapshot(path: Path, snapshot: ImportFactCacheSnapshot) -> None:
+def _write_snapshot(
+    path: Path,
+    snapshot: ImportFactCacheSnapshot,
+    *,
+    max_bytes: int | None,
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    payload = _snapshot_payload(snapshot)
+    encoded = (
+        json.dumps(
+            _snapshot_payload(snapshot),
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        + b"\n"
+    )
+    if max_bytes is not None and len(encoded) > max_bytes:
+        raise OSError("import fact cache exceeds the private-state byte quota")
     temporary_path: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(
-            mode="w",
-            encoding="utf-8",
+            mode="wb",
             dir=path.parent,
             prefix=f".{path.name}.",
             suffix=".tmp",
             delete=False,
         ) as stream:
             temporary_path = Path(stream.name)
-            json.dump(payload, stream, sort_keys=True, separators=(",", ":"))
-            stream.write("\n")
+            stream.write(encoded)
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary_path, path)

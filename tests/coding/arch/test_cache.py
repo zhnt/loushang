@@ -204,3 +204,19 @@ def test_refresh_cache_reparses_every_file(tmp_path: Path) -> None:
     assert refreshed.cache_stats.hits == 0
     assert refreshed.cache_stats.misses == 3
     assert refreshed.cache_stats.invalidated == 3
+
+
+def test_disk_cache_quota_preserves_the_last_complete_snapshot(tmp_path: Path) -> None:
+    package = _package(tmp_path)
+    cache_path = tmp_path / "cache" / "facts.json"
+    _analyzer(ImportFactCache(cache_path)).analyze(package, package_prefix="pkg")
+    preserved = cache_path.read_bytes()
+
+    _write(package, "large.py", "\n".join(f"import dependency_{i}" for i in range(200)))
+    constrained = ImportFactCache(cache_path, max_bytes=len(preserved))
+    result = _analyzer(constrained).analyze(package, package_prefix="pkg")
+
+    assert result.cache_stats.error == (
+        "import fact cache exceeds the private-state byte quota"
+    )
+    assert cache_path.read_bytes() == preserved
