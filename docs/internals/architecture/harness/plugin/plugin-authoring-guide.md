@@ -105,6 +105,11 @@ the Harness-owned Bubblewrap backend, immutable sealed-executable support, and
 Bubblewrap's `--ro-bind-data` plus `--ro-bind-fd` features. A Linux host missing
 those two managed-bind features may still use ordinary Sandbox execution, but
 it cannot acquire managed-action start authority.
+Managed actions are also available only from the exact Resource-owner Catalog
+capture: that capture contributes a private single-use grant tied to its
+snapshot and Skill projection. Copying Catalog fields into another consumer
+does not create action-owner authority, and no such grant is part of the public
+author SDK.
 Other hosts may compile, inspect, and validate the declaration, but execution
 fails closed until they provide an equally strong owner-admitted mechanism.
 

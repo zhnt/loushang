@@ -225,6 +225,14 @@ class ResourceSkillCatalogCapabilityConsumer:
             raise RuntimeError("body-free Skill Catalog projection is not available")
         return value
 
+    @property
+    def _skill_action_owner_catalog(self) -> object:
+        return self._capture
+
+    @property
+    def _skill_action_owner_grant(self) -> object:
+        return getattr(self._capture, "_skill_action_owner_grant", None)
+
     def load_handle(self, identity: ResourceIdentity) -> ResourceLoadHandle:
         self.facets.require(RESOURCE_LOAD_FACET)
         return self._capture.load_handle(identity)
@@ -283,6 +291,14 @@ class ResourceSkillStatusCatalogCapabilityConsumer:
         if not isinstance(value, SkillCatalogStatusProjection):
             raise RuntimeError("body-free Skill status projection is not available")
         return value
+
+    @property
+    def _skill_action_owner_catalog(self) -> object:
+        return self._capture
+
+    @property
+    def _skill_action_owner_grant(self) -> object:
+        return getattr(self._capture, "_skill_action_owner_grant", None)
 
     def load_handle(self, identity: ResourceIdentity) -> ResourceLoadHandle:
         self.facets.require(RESOURCE_LOAD_FACET)

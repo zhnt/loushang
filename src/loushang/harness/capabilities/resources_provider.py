@@ -42,6 +42,9 @@ from loushang.harness.capabilities.resources_contracts import (
 )
 from loushang.harness.resources._catalog_projection import ResourceCatalogProjection
 from loushang.harness.resources._catalog_records import ResourceCatalogSnapshot
+from loushang.harness.resources._resource_owner_grants import (
+    _mint_resource_catalog_owner_grant,
+)
 from loushang.harness.resources._skill_catalog_consumer import (
     EffectiveSkillCatalogProjection,
     build_effective_skill_catalog_projection,
@@ -194,12 +197,22 @@ class _ResourceCatalogFacetV4:
         )
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class _CapturedResourceCatalogView:
     _generation: ResourceCatalogGenerationCapture = field(repr=False, compare=False)
     snapshot: ResourceCatalogSnapshot
     skill_projection: EffectiveSkillCatalogProjection | None = None
     skill_status_projection: SkillCatalogStatusProjection | None = None
+    _skill_action_owner_grant: object | None = field(
+        default=None,
+        init=False,
+        repr=False,
+        compare=False,
+    )
+
+    @property
+    def _skill_action_owner_catalog(self) -> object:
+        return self
 
     def load_handle(self, identity: object) -> object:
         return self._generation.load_handle(identity)
@@ -239,12 +252,23 @@ def _capture_resource_catalog(
         ):
             raise RuntimeError("Skill status projection belongs to another Catalog")
         skill_status = status
-    return _CapturedResourceCatalogView(
+    captured = _CapturedResourceCatalogView(
         _generation=generation,
         snapshot=snapshot,
         skill_projection=skill_projection,
         skill_status_projection=skill_status,
     )
+    if skill_projection is not None and skill_projection.managed_action_sources:
+        object.__setattr__(
+            captured,
+            "_skill_action_owner_grant",
+            _mint_resource_catalog_owner_grant(
+                captured,
+                snapshot=snapshot,
+                skill_projection=skill_projection,
+            ),
+        )
+    return captured
 
 
 @dataclass(frozen=True)

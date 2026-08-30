@@ -494,18 +494,7 @@ async def _package_skill_actions_are_catalog_captured(tmp_path: Path) -> None:
         projection=shadow.catalog_projection,
     )
 
-    class _ShadowCatalog:
-        def __init__(self) -> None:
-            self.snapshot = shadow.catalog_snapshot
-            self.skill_projection = skill_projection
-
-        def load_handle(self, identity):
-            return shadow.load_handle(identity)
-
-        async def load(self, handle):
-            return await shadow.load(handle)
-
-    consumer = SkillCatalogConsumer(_ShadowCatalog())
+    consumer = SkillCatalogConsumer(shadow.capture_skill_catalog(skill_projection))
     [summary] = consumer.list_effective_skills()
     [catalog_action] = consumer.capture_managed_actions(summary)
     binding = ManagedSkillActionBinding.bind(catalog_action)

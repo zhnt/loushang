@@ -25,6 +25,9 @@ SKILL_CONSUMER = Path(
 ACTION_AUTHORITY = Path(
     "src/loushang/harness/resources/_skill_action_authority.py"
 )
+CATALOG_OWNER_AUTHORITY = Path(
+    "src/loushang/harness/resources/_resource_owner_grants.py"
+)
 
 
 def _imports(path: Path) -> set[str]:
@@ -97,6 +100,9 @@ def test_managed_action_consumes_catalog_facts_and_existing_host_authorities() -
     process_source = PROCESS_RUNTIME.read_text(encoding="utf-8")
     consumer_source = SKILL_CONSUMER.read_text(encoding="utf-8")
     authority_source = ACTION_AUTHORITY.read_text(encoding="utf-8")
+    catalog_owner_authority_source = CATALOG_OWNER_AUTHORITY.read_text(
+        encoding="utf-8"
+    )
 
     assert "CatalogManagedSkillAction" in action_source
     assert "SkillCatalogConsumer" not in action_source
@@ -117,6 +123,10 @@ def test_managed_action_consumes_catalog_facts_and_existing_host_authorities() -
     assert "_CatalogActionOwnerSeal" in consumer_source
     assert "_register_catalog_managed_skill_action" in consumer_source
     assert "_REGISTRATIONS" in authority_source
+    assert "_consume_resource_catalog_owner_grant" in authority_source
+    assert "_mint_resource_catalog_owner_grant" not in authority_source
+    assert "SkillCatalogConsumer" not in catalog_owner_authority_source
+    assert "_OWNER_GRANTS" in catalog_owner_authority_source
 
 
 def test_public_process_request_contract_is_not_widened_for_skill_actions() -> None:

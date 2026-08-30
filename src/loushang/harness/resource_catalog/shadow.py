@@ -65,6 +65,9 @@ from loushang.harness.resources._catalog_source_contracts import (
 from loushang.harness.resources._discovery_conventions import (
     DEFAULT_CONTEXT_FILE_NAMES,
 )
+from loushang.harness.resources._resource_owner_grants import (
+    _mint_resource_catalog_owner_grant,
+)
 from loushang.harness.resources._skill_catalog_status import (
     SkillCatalogStatusProjection,
     build_skill_catalog_status_projection,
@@ -113,6 +116,39 @@ class UnpublishedResourceCatalogShadowGeneration:
 
     def _borrows_extension_source_lease(self, source: object) -> bool:
         return self._extension_source_lease is source
+
+    def capture_skill_catalog(
+        self,
+        projection: object,
+    ) -> _UnpublishedSkillCatalogCapture:
+        """Issue a single-use managed-action grant from this exact owner."""
+
+        if self._retiring or self._disposed or self._runtime.is_closed:
+            raise RuntimeError(
+                "Unpublished Resource shadow generation is retiring or disposed"
+            )
+        if (
+            getattr(projection, "catalog_generation", None)
+            != self.catalog_snapshot.catalog_generation
+            or getattr(projection, "catalog_snapshot_fingerprint", None)
+            != self.catalog_snapshot.snapshot_fingerprint
+        ):
+            raise ValueError("Resource shadow Skill projection names another Catalog")
+        captured = _UnpublishedSkillCatalogCapture(
+            _owner=self,
+            snapshot=self.catalog_snapshot,
+            skill_projection=projection,
+        )
+        object.__setattr__(
+            captured,
+            "_skill_action_owner_grant",
+            _mint_resource_catalog_owner_grant(
+                captured,
+                snapshot=captured.snapshot,
+                skill_projection=captured.skill_projection,
+            ),
+        )
+        return captured
 
     def load_handle(self, identity: ResourceIdentity) -> ResourceLoadHandle:
         """Mint a narrow load handle for one effective, body-bearing candidate."""
@@ -250,6 +286,34 @@ class UnpublishedResourceCatalogShadowGeneration:
                     self._extension_source_lease.release()
                 self._extension_source_lease = None
             return codes
+
+
+@dataclass(frozen=True, slots=True, weakref_slot=True)
+class _UnpublishedSkillCatalogCapture:
+    """Focused exact-generation view issued by an unpublished Resource owner."""
+
+    _owner: UnpublishedResourceCatalogShadowGeneration = field(
+        repr=False,
+        compare=False,
+    )
+    snapshot: ResourceCatalogSnapshot
+    skill_projection: object
+    _skill_action_owner_grant: object | None = field(
+        default=None,
+        init=False,
+        repr=False,
+        compare=False,
+    )
+
+    @property
+    def _skill_action_owner_catalog(self) -> object:
+        return self
+
+    def load_handle(self, identity: ResourceIdentity) -> ResourceLoadHandle:
+        return self._owner.load_handle(identity)
+
+    async def load(self, handle: ResourceLoadHandle) -> LoadedResource:
+        return await self._owner.load(handle)
 
 
 async def run_first_party_resource_catalog_shadow(

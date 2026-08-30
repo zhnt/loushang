@@ -61,6 +61,12 @@ class _ResourceCatalogLoadConsumer(Protocol):
 
     async def load(self, handle: ResourceLoadHandle) -> LoadedResource: ...
 
+    @property
+    def _skill_action_owner_catalog(self) -> object: ...
+
+    @property
+    def _skill_action_owner_grant(self) -> object: ...
+
 
 @dataclass(frozen=True, slots=True)
 class SkillCatalogSummary:
@@ -253,6 +259,8 @@ class SkillCatalogConsumer:
                 "Skill projection belongs to another Catalog generation"
             )
         self._catalog = catalog
+        self._catalog_snapshot = snapshot
+        self._skill_projection = projection
         self._catalog_generation = snapshot.catalog_generation
         self._snapshot_fingerprint = snapshot.snapshot_fingerprint
         self._skills = projection.skills
@@ -278,10 +286,14 @@ class SkillCatalogConsumer:
                 status_projection=status_projection,
             )
         self._managed_action_owner_identity = object()
-        self._managed_action_owner_capability = _bind_catalog_action_owner(
-            self,
-            owner_identity=self._managed_action_owner_identity,
-        )
+        self._managed_action_owner_capability = None
+        if self._managed_action_sources:
+            self._managed_action_owner_capability = _bind_catalog_action_owner(
+                self,
+                owner_identity=self._managed_action_owner_identity,
+                catalog_owner=getattr(catalog, "_skill_action_owner_catalog", None),
+                owner_grant=getattr(catalog, "_skill_action_owner_grant", None),
+            )
 
     @property
     def catalog_generation(self) -> int:
@@ -481,11 +493,19 @@ class SkillCatalogConsumer:
             object.__setattr__(action, "_owner_seal", seal)
             _register_catalog_managed_skill_action(
                 action,
-                owner_capability=self._managed_action_owner_capability,
+                owner_capability=self._require_managed_action_owner_capability(),
             )
             action.verify()
             actions.append(action)
         return tuple(actions)
+
+    def _require_managed_action_owner_capability(self):  # type: ignore[no-untyped-def]
+        capability = self._managed_action_owner_capability
+        if capability is None:
+            raise SkillCatalogConsumerError(
+                "Catalog managed actions require Resource owner evidence"
+            )
+        return capability
 
     def _resolve_owned_summary(
         self,

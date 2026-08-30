@@ -203,17 +203,7 @@ async def _catalog_action(
         projection=shadow.catalog_projection,
     )
 
-    class _ShadowCatalog:
-        snapshot = shadow.catalog_snapshot
-        skill_projection = projection
-
-        def load_handle(self, identity):
-            return shadow.load_handle(identity)
-
-        async def load(self, handle):
-            return await shadow.load(handle)
-
-    consumer = SkillCatalogConsumer(_ShadowCatalog())
+    consumer = SkillCatalogConsumer(shadow.capture_skill_catalog(projection))
     [summary] = consumer.list_effective_skills()
     [action] = consumer.capture_managed_actions(summary)
     assert await shadow.dispose() == ()
@@ -351,17 +341,7 @@ async def _catalog_package_action(
             projection=shadow.catalog_projection,
         )
 
-        class _ShadowCatalog:
-            snapshot = shadow.catalog_snapshot
-            skill_projection = projection
-
-            def load_handle(self, identity):
-                return shadow.load_handle(identity)
-
-            async def load(self, handle):
-                return await shadow.load(handle)
-
-        consumer = SkillCatalogConsumer(_ShadowCatalog())
+        consumer = SkillCatalogConsumer(shadow.capture_skill_catalog(projection))
         [summary] = consumer.list_effective_skills()
         [action] = consumer.capture_managed_actions(summary)
         assert await shadow.dispose() == ()
@@ -448,6 +428,41 @@ def test_catalog_action_owner_capability_rejects_non_consumer_binding() -> None:
             object(),
             owner_identity=object(),
         )
+
+
+def test_catalog_action_owner_capability_rejects_complete_lookalike(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        action = await _catalog_action(b"print('owner')\n", root=tmp_path)
+        registration = action_authority._REGISTRATIONS[id(action)]
+        genuine = registration.consumer
+
+        class Lookalike:
+            pass
+
+        fake = Lookalike()
+        fake._catalog = genuine._catalog
+        fake._catalog_snapshot = genuine._catalog_snapshot
+        fake._skill_projection = genuine._skill_projection
+        fake._catalog_generation = genuine._catalog_generation
+        fake._snapshot_fingerprint = genuine._snapshot_fingerprint
+        fake._skills = genuine._skills
+        fake._managed_action_sources = dict(genuine._managed_action_sources)
+        fake._managed_action_owner_identity = object()
+        fake._managed_action_owner_capability = None
+        owner_catalog = genuine._catalog._skill_action_owner_catalog
+        consumed_grant = genuine._catalog._skill_action_owner_grant
+
+        with pytest.raises(TypeError, match="live Resource owner grant"):
+            action_authority._bind_catalog_action_owner(
+                fake,
+                owner_identity=fake._managed_action_owner_identity,
+                catalog_owner=owner_catalog,
+                owner_grant=consumed_grant,
+            )
+
+    asyncio.run(scenario())
 
 
 def test_catalog_action_owner_seal_rejects_object_new_clone(tmp_path: Path) -> None:

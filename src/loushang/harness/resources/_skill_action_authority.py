@@ -10,6 +10,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from loushang.harness.resources._resource_owner_grants import (
+    _consume_resource_catalog_owner_grant,
+)
+
 
 @dataclass(frozen=True, slots=True, init=False)
 class _CatalogActionOwnerCapability:
@@ -66,6 +70,8 @@ def _bind_catalog_action_owner(
     consumer: object,
     *,
     owner_identity: object,
+    catalog_owner: object | None = None,
+    owner_grant: object | None = None,
 ) -> _CatalogActionOwnerCapability:
     """Freeze the action facts owned by one complete Catalog projection."""
 
@@ -86,6 +92,13 @@ def _bind_catalog_action_owner(
     ):
         raise TypeError("Catalog action owner consumer is not fully bound")
     action_facts = _consumer_action_facts(consumer)
+    projection = getattr(consumer, "_skill_projection", None)
+    _consume_resource_catalog_owner_grant(
+        owner_grant,
+        owner=catalog_owner,
+        snapshot=getattr(consumer, "_catalog_snapshot", None),
+        skill_projection=projection,
+    )
     capability = object.__new__(_CatalogActionOwnerCapability)
     object.__setattr__(capability, "owner_identity", owner_identity)
     capability_id = id(capability)

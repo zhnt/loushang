@@ -116,22 +116,26 @@ def test_concurrent_posix_spawns_inherit_only_their_owned_descriptor(
     child = """import os
 import sys
 
-own, other, dev, inode = map(int, sys.argv[1:])
+own, other, own_dev, own_inode, other_dev, other_inode = map(int, sys.argv[1:])
 
-def matches(descriptor):
+def matches(descriptor, dev, inode):
     try:
         value = os.fstat(descriptor)
     except OSError:
         return False
     return (value.st_dev, value.st_ino) == (dev, inode)
 
-print(f"{int(matches(own))}:{int(matches(other))}")
+print(
+    f"{int(matches(own, own_dev, own_inode))}:"
+    f"{int(matches(other, other_dev, other_inode))}"
+)
 """
 
     async def spawn(index: int):
         own = descriptors[index]
         other = descriptors[1 - index]
         identity = identities[index]
+        other_identity = identities[1 - index]
         process = await _local_process.spawn_local_process(
             command=(
                 sys.executable,
@@ -141,6 +145,8 @@ print(f"{int(matches(own))}:{int(matches(other))}")
                 str(other),
                 str(identity.st_dev),
                 str(identity.st_ino),
+                str(other_identity.st_dev),
+                str(other_identity.st_ino),
             ),
             cwd=str(tmp_path),
             environment=dict(os.environ),
