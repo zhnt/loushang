@@ -65,6 +65,11 @@ Neither may silently override a narrower implemented owner contract.
   `coding.arch.default` identities, typed facets, shared single-Graph Product
   composition, private indexed-state policy, direct-path deletion, and review
   gates.
+- [PLC8 Public SDK And Managed Skill Action Contract](plugin-lifecycle-plc8-contract.md)
+  freezes the public author namespace, engine negotiation, inert validation,
+  single-Catalog action selection, and Approval/containment execution boundary.
+- [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
+  stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)
   freezes exact Capability-owner admission and Product Provider selection.
 - [Phase 5B Continuity Provider Foundation](continuity-provider-phase5b-contract.md)

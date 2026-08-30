@@ -1,0 +1,126 @@
+from __future__ import annotations
+
+import ast
+from dataclasses import fields
+from pathlib import Path
+
+import loushang.plugin as plugin_sdk
+from loushang.harness.workspace.process import ProcessLaunchRequest
+
+CONTRACT = Path(
+    "docs/internals/architecture/harness/plugin/"
+    "plugin-lifecycle-plc8-contract.md"
+)
+GUIDE = Path(
+    "docs/internals/architecture/harness/plugin/plugin-authoring-guide.md"
+)
+README = Path("docs/internals/architecture/harness/plugin/README.md")
+VALIDATION = Path("src/loushang/plugin/_validation.py")
+CONFORMANCE = Path("src/loushang/plugin/_conformance.py")
+ACTION_RUNTIME = Path("src/loushang/harness/tools/skill_actions.py")
+PROCESS_RUNTIME = Path("src/loushang/harness/tools/process_hosting.py")
+SKILL_CONSUMER = Path(
+    "src/loushang/harness/resources/_skill_catalog_consumer.py"
+)
+
+
+def _imports(path: Path) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    return {
+        node.module
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module is not None
+    } | {
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    }
+
+
+def test_plc8_contract_and_author_guide_are_canonical_entries() -> None:
+    contract = CONTRACT.read_text(encoding="utf-8")
+    guide = GUIDE.read_text(encoding="utf-8")
+    readme = README.read_text(encoding="utf-8")
+
+    assert "manifestVersion` | `1" in contract
+    assert "engine.declarationIrVersion` | `2" in contract
+    assert "SkillActionCatalogSelection" in contract
+    assert "public four-field `ProcessLaunchRequest` remains unchanged" in contract
+    assert "loushang-plugin validate" in guide
+    assert "--approve-execution" in guide
+    assert readme.count("plugin-lifecycle-plc8-contract.md") == 1
+    assert readme.count("plugin-authoring-guide.md") == 1
+
+
+def test_public_sdk_has_no_owner_authority_exports() -> None:
+    forbidden = {
+        "Approval",
+        "Graph",
+        "PluginContext",
+        "PluginRegistry",
+        "RegistrationScope",
+        "Sandbox",
+        "Session",
+    }
+    assert not forbidden.intersection(plugin_sdk.__all__)
+    assert {
+        "capability_provider",
+        "capability_requirement",
+        "package",
+        "plugin_definition",
+        "resource",
+        "skill_action",
+        "validate_package",
+    }.issubset(plugin_sdk.__all__)
+
+
+def test_validation_is_inert_and_conformance_is_explicitly_gated() -> None:
+    validation_imports = _imports(VALIDATION)
+    validation_source = VALIDATION.read_text(encoding="utf-8")
+    conformance_source = CONFORMANCE.read_text(encoding="utf-8")
+
+    assert not validation_imports & {"importlib", "runpy", "subprocess"}
+    assert "eval(" not in validation_source
+    assert "exec(" not in validation_source
+    assert "run_execution_conformance" not in validation_source
+    assert conformance_source.index("execution_approved is not True") < (
+        conformance_source.index("runpy.run_path")
+    )
+
+
+def test_managed_action_consumes_catalog_facts_and_existing_host_authorities() -> None:
+    action_source = ACTION_RUNTIME.read_text(encoding="utf-8")
+    process_source = PROCESS_RUNTIME.read_text(encoding="utf-8")
+    consumer_source = SKILL_CONSUMER.read_text(encoding="utf-8")
+
+    assert "SkillActionCatalogSelection" in action_source
+    assert "SkillCatalogConsumer" not in action_source
+    assert "selection.source_revision != actual_revision" in action_source
+    assert "catalogSnapshotFingerprint" in action_source
+    assert "approval_required" in action_source
+    assert 'containment_requirement", None) != "required"' in action_source
+    assert "subprocess" not in action_source
+    assert "_managed_process_launch_request" in action_source
+    assert "_ManagedProcessLaunchRequest" in process_source
+    assert "managed_action_selection" in consumer_source
+    assert "SkillActionCatalogSelection(" in consumer_source
+
+
+def test_public_process_request_contract_is_not_widened_for_skill_actions() -> None:
+    assert {field.name for field in fields(ProcessLaunchRequest)} == {
+        "command",
+        "cwd",
+        "effective_environment",
+        "stream_stderr",
+    }
+
+
+def test_production_definitions_use_the_public_author_namespace() -> None:
+    for path in (
+        Path("src/loushang/coding/_plugins/coding_lsp_default/definition.py"),
+        Path("src/loushang/coding/_plugins/coding_arch_default/definition.py"),
+    ):
+        imports = _imports(path)
+        assert "loushang.plugin" in imports
+        assert "loushang.harness.plugin_authoring.builder" not in imports

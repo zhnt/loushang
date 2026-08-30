@@ -48,8 +48,11 @@
   Tool publisher. PLC6 production validation and its terminal three-view review
   completed on 2026-08-30. PLC7's second Provider, shared Capability-Plugin
   composition, Arch Tool owner, source-backed private index and optional LSP
-  edge are implemented as a review candidate; PLC7's terminal review and PLC8
-  through PLC9 remain open.
+  edge are implemented, terminally reviewed, and merged. PLC8's public author
+  SDK, exact engine negotiation, inert validation, managed Skill-action
+  declaration/execution path, and Resource-owner Catalog selection binding are
+  implemented as a review candidate; PLC8's terminal review and PLC9 remain
+  open.
 - Scope: one delivery order for the common Plugin lifecycle, ordinary
   Definition / Provider / Consumer authoring primitives, `coding.lsp`,
   `coding.base`, `coding.arch`, management control, pre-LSP internal Resource/
