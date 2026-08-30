@@ -862,6 +862,7 @@ async def test_runtime_list_sessions_skips_invalid_session_files(tmp_path) -> No
 @_async_test
 async def test_runtime_fork_session_switches_to_selected_branch(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.coding.prompt import CODING_STANDARD_SYSTEM_PROMPT_FRAGMENT
 
     project_root = tmp_path / "project"
     nested = project_root / "app"
@@ -906,7 +907,9 @@ async def test_runtime_fork_session_switches_to_selected_branch(tmp_path) -> Non
         "Keep edits minimal."
     )
     assert forked.agent.system_prompt == (
-        f"Base instructions.\n\n{expected_context}\n\n{_runtime_footer(nested)}"
+        f"Base instructions.\n\n{expected_context}\n\n"
+        f"{CODING_STANDARD_SYSTEM_PROMPT_FRAGMENT.rstrip()}\n\n"
+        f"{_runtime_footer(nested)}"
     )
 
 

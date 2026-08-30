@@ -13,13 +13,29 @@ from typing import Any, Literal, cast
 from loushang.agent import Agent, StreamFn, ThinkingLevel
 from loushang.ai.model import Model, ModelSelection
 from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
+from loushang.coding._base_plugin import (
+    CodingBasePluginAssembly,
+    prepare_coding_base_plugin_assembly,
+    prepare_coding_base_plugin_session,
+    prepare_coding_base_resource_plan_seed,
+)
 from loushang.coding._resource_catalog_shadow import (
     CodingResourceCatalogAdmissionError,
+    InitialResourceCatalogProductAdapter,
+    ResourceCatalogInputReceipt,
     build_coding_initial_resource_catalog_adapter,
+    finalize_coding_package_plugin_plan_seed,
+    prepare_coding_package_plugin_plan_seed,
 )
 from loushang.coding.capabilities import (
     CODING_LSP_CAPABILITY,
     coding_capability_mount_mode,
+)
+from loushang.coding.composition_sets import (
+    CODING_KERNEL_PROMPT_REVISION,
+    CodingCompositionSetId,
+    CodingCompositionSetPlan,
+    resolve_coding_composition_set,
 )
 from loushang.coding.control.settings_store import (
     default_global_settings_path,
@@ -27,8 +43,8 @@ from loushang.coding.control.settings_store import (
 )
 from loushang.coding.diagnostics.profile import coding_runtime_identity
 from loushang.coding.lsp._plugin_opt_in import (
-    assemble_coding_lsp_plugin_opt_in,
     create_coding_lsp_default_plugin_opt_in_request,
+    prepare_coding_lsp_plugin_opt_in,
 )
 from loushang.coding.lsp._provider_api import CodingLspPluginConfigV1
 from loushang.coding.lsp.discovery import (
@@ -39,7 +55,10 @@ from loushang.coding.lsp.discovery import (
 from loushang.coding.lsp.model import LspServerDefinition
 from loushang.coding.lsp.ports import WorkspaceTextReader
 from loushang.coding.product_plan import CODING_CAPABILITY_PROFILE, CODING_PRODUCT_ID
-from loushang.coding.prompt.defaults import DEFAULT_CODING_SYSTEM_PROMPT
+from loushang.coding.prompt.defaults import (
+    CODING_KERNEL_SYSTEM_PROMPT,
+    DEFAULT_CODING_SYSTEM_PROMPT,
+)
 from loushang.coding.resource_authority import (
     RESOURCE_AUTHORITY_MODES,
     ResourceAuthorityMode,
@@ -86,16 +105,15 @@ from loushang.harness.extensions.agent import ExtensionRunner
 from loushang.harness.extensions.context import SessionStartEvent
 from loushang.harness.multiagent import DelegatedExecutionProfile
 from loushang.harness.policy import PolicyEvaluator
-from loushang.harness.resource_catalog.product_inputs import (
-    InitialResourceCatalogProductAdapter,
-)
-from loushang.harness.resources._catalog_input_receipt import (
-    ResourceCatalogInputReceipt,
+from loushang.harness.resources.loader import ResourceLoader
+from loushang.harness.resources.packages.catalog_diagnostics import (
+    record_package_lockfile_diagnostics,
 )
 from loushang.harness.resources.packages.materializer import (
     GitPackageMaterializerBackend,
     resolve_session_package_install_root,
 )
+from loushang.harness.resources.packages.roots import SelectedPluginPackageInput
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.session import (
     AgentProductConstructionBinding,
@@ -122,6 +140,7 @@ from loushang.harness.session import (
 from loushang.harness.session.legacy_side_question import LegacySideQuestionBinding
 from loushang.harness.session.product_composition_assembly import (
     ProductCompositionAssemblyRequest,
+    ProductPluginPlanSeed,
     assemble_product_composition,
 )
 from loushang.harness.tools.core import ToolDefinition
@@ -162,33 +181,38 @@ def create_services(
 
 
 def _prepare_coding_catalog_projection(
-    resource_loader: DefaultResourceLoader,
+    resource_loader: ResourceLoader,
     *,
     cwd: Path,
     session_id: str,
     disabled_skills: tuple[str, ...] | list[str] = (),
     product_composition: object | None = None,
+    product_selection: object | None = None,
     admission_now: int | None = None,
+    clock: Callable[[], int] | None = None,
+    receipt: ResourceCatalogInputReceipt | None = None,
 ) -> tuple[InitialResourceCatalogProductAdapter, ResourceBundle]:
     """Prepare one Catalog adapter and its disposable bootstrap projection."""
 
     evaluated_at = int(time.time()) if admission_now is None else admission_now
-    try:
-        receipt = resource_loader.prepare_catalog_input_receipt(cwd)
-    except (AttributeError, RuntimeError) as exc:
-        raise CodingResourceCatalogAdmissionError(
-            ("catalog_receipt_unavailable",)
-        ) from exc
-    if not isinstance(receipt, ResourceCatalogInputReceipt):
-        raise CodingResourceCatalogAdmissionError(
-            ("catalog_receipt_unavailable",)
-        )
+    resolved_receipt = receipt
+    if resolved_receipt is None:
+        try:
+            resolved_receipt = resource_loader.prepare_catalog_input_receipt(cwd)
+        except (AttributeError, RuntimeError) as exc:
+            raise CodingResourceCatalogAdmissionError(
+                ("catalog_receipt_unavailable",)
+            ) from exc
+    if not isinstance(resolved_receipt, ResourceCatalogInputReceipt):
+        raise CodingResourceCatalogAdmissionError(("catalog_receipt_unavailable",))
     adapter = build_coding_initial_resource_catalog_adapter(
-        receipt,
+        resolved_receipt,
         product_scope_id=session_id,
         disabled_skills=disabled_skills,
         product_composition=cast(Any, product_composition),
+        product_selection=cast(Any, product_selection),
         package_admission_now=evaluated_at,
+        clock=clock,
     )
     bundle = adapter.prepare_bootstrap_projection(
         product_id=CODING_PRODUCT_ID,
@@ -298,6 +322,25 @@ def audit_cwd_bound_services(
     )
 
 
+def _canonical_coding_composition_set(
+    plan: CodingCompositionSetPlan | None,
+) -> CodingCompositionSetPlan:
+    if plan is None:
+        return resolve_coding_composition_set()
+    if not isinstance(plan, CodingCompositionSetPlan):
+        raise TypeError("Coding Session composition set is invalid")
+    canonical = resolve_coding_composition_set(plan.set_id)
+    if plan != canonical or plan.fingerprint != canonical.fingerprint:
+        raise ValueError("Coding Session composition set must be a canonical plan")
+    return canonical
+
+
+def _resolve_coding_kernel_prompt(plan: CodingCompositionSetPlan) -> str:
+    if plan.kernel_prompt_revision != CODING_KERNEL_PROMPT_REVISION:
+        raise ValueError("Unsupported Coding Kernel Prompt revision")
+    return CODING_KERNEL_SYSTEM_PROMPT
+
+
 def _create_agent_session(
     *,
     session_manager: SessionManager,
@@ -328,6 +371,7 @@ def _create_agent_session(
     initial_resource_catalog_product_composition_assembly: (
         ProductCompositionAssemblyRequest | None
     ) = None,
+    composition_set: CodingCompositionSetPlan | None = None,
 ) -> AgentSession:
     if (
         not isinstance(resource_authority_mode, str)
@@ -352,10 +396,16 @@ def _create_agent_session(
             "initial Resource Catalog Product composition assembly requires "
             "catalog_required authority"
         )
+    session_no_tools_mode = normalize_no_tools(no_tools)
+    resolved_composition_set = _canonical_coding_composition_set(composition_set)
+    coding_kernel_prompt = _resolve_coding_kernel_prompt(resolved_composition_set)
+    requested_plugin_ids = {
+        item.plugin_id for item in resolved_composition_set.plugin_requests
+    }
     enable_multiagent_tools = (
         enable_multiagent
         and allowed_tool_names is None
-        and normalize_no_tools(no_tools) is None
+        and session_no_tools_mode is None
     )
     if delegated_execution_profile is not None:
         if tuple(allowed_tool_names or ()) != delegated_execution_profile.allowed_tools:
@@ -380,7 +430,9 @@ def _create_agent_session(
         else default_lsp_environment()
     )
     lsp_enabled_for_session = (
-        lsp_mode != "disabled" and normalize_no_tools(no_tools) != "all"
+        "coding.lsp.default" in requested_plugin_ids
+        and lsp_mode != "disabled"
+        and session_no_tools_mode != "all"
     )
     if lsp_enabled_for_session and lsp_read_text is not None:
         raise ValueError("Coding LSP reads only through harness.workspace")
@@ -452,36 +504,184 @@ def _create_agent_session(
         package_materializer or _default_package_materializer(session_manager)
     )
     session_id = session_manager.get_header().conversation_id
-    prepared_resource_catalog_adapters: list[
-        InitialResourceCatalogProductAdapter
-    ] = []
+    # PLC6 prepares Product-selected package evidence before the standard
+    # activation graph reaches its startup-check step. Preserve the existing
+    # diagnostic-before-failure contract when a corrupt binding lock prevents
+    # that preparation from completing.
+    record_package_lockfile_diagnostics(
+        resolved_package_materializer.get_lockfile_diagnostics(),
+        diagnostics_service=services.diagnostics_service,
+        session_id=session_id,
+    )
+    coding_base_plugin_assembly: CodingBasePluginAssembly | None = None
+    if (
+        resource_authority_mode == "catalog_required"
+        and initial_resource_catalog_product_composition_assembly is None
+        and "coding.base" in requested_plugin_ids
+    ):
+        coding_base_plugin_assembly = prepare_coding_base_plugin_assembly(
+            resolved_composition_set,
+            session_id=session_id,
+            package_materializer=resolved_package_materializer,
+            include_tool_contribution=session_no_tools_mode is None,
+            include_tool_claim_prompt=session_no_tools_mode is None,
+        )
+
+    def coding_plugin_clock() -> int:
+        return time.time_ns() // 1_000_000
+
+    lsp_ephemeral_state = None
+    lsp_plugin_preparation = None
+    base_plugin_session_preparation = None
+    lsp_preparation_started = False
+
+    def prepare_lsp_plugin(
+        plan_seed: ProductPluginPlanSeed | None = None,
+    ) -> Any:
+        nonlocal lsp_ephemeral_state, lsp_preparation_started
+        if lsp_preparation_started:
+            raise RuntimeError("Coding LSP Plugin was already prepared")
+        lsp_preparation_started = True
+        lsp_ephemeral_state = (
+            TemporaryDirectory(prefix="loushang-coding-lsp-")
+            if not session_manager.persist
+            else None
+        )
+        policy_revision = (
+            plan_seed.plan.context.policy_revision
+            if plan_seed is not None
+            else None
+        )
+        lsp_request = (
+            create_coding_lsp_default_plugin_opt_in_request(
+                clock=coding_plugin_clock,
+                product_policy_revision=policy_revision,
+            )
+            if policy_revision is not None
+            else create_coding_lsp_default_plugin_opt_in_request(
+                clock=coding_plugin_clock
+            )
+        )
+        return prepare_coding_lsp_plugin_opt_in(
+            lsp_request,
+            session_id=session_id,
+            config=CodingLspPluginConfigV1.from_runtime_inputs(
+                workspace_root=session_manager.get_cwd(),
+                definitions=resolved_lsp_definitions,
+                baseline_environment=resolved_lsp_environment,
+            ),
+            package_materializer=resolved_package_materializer,
+            state_root=(
+                Path(lsp_ephemeral_state.name)
+                if lsp_ephemeral_state is not None
+                else _coding_lsp_plugin_state_root(
+                    session_manager,
+                    session_id=session_id,
+                )
+            ),
+            clock=coding_plugin_clock,
+            coding_base_plugin_assembly=coding_base_plugin_assembly,
+            coding_product_plan_seed=plan_seed,
+            state_cleanup=(
+                lsp_ephemeral_state.cleanup if lsp_ephemeral_state is not None else None
+            ),
+        )
+
+    # Legacy Resource authority does not run the Catalog receipt phase that
+    # combines Product-selected Resource packages. Its LSP path remains an
+    # isolated compatibility assembly.
+    if lsp_enabled_for_session and resource_authority_mode != "catalog_required":
+        try:
+            lsp_plugin_preparation = prepare_lsp_plugin()
+        except BaseException:
+            if lsp_ephemeral_state is not None:
+                lsp_ephemeral_state.cleanup()
+            raise
+    catalog_product_composition_assembly = (
+        initial_resource_catalog_product_composition_assembly
+    )
+    selected_plugin_packages = (
+        (
+            SelectedPluginPackageInput(
+                package=coding_base_plugin_assembly.package,
+                binding=coding_base_plugin_assembly.binding,
+            ),
+        )
+        if coding_base_plugin_assembly is not None
+        else ()
+    )
+    prepared_resource_catalog_adapters: list[InitialResourceCatalogProductAdapter] = []
 
     def prepare_initial_resource_catalog_projection(
-        loader: DefaultResourceLoader,
+        loader: ResourceLoader,
         resolved_cwd: Path,
     ) -> ResourceBundle:
+        nonlocal lsp_plugin_preparation, base_plugin_session_preparation
         if prepared_resource_catalog_adapters:
             raise RuntimeError(
                 "Initial Resource Catalog projection was already prepared"
             )
-        evaluated_at = int(time.time())
-        product_composition = (
-            assemble_product_composition(
-                initial_resource_catalog_product_composition_assembly,
+        try:
+            receipt = loader.prepare_catalog_input_receipt(resolved_cwd)
+        except (AttributeError, RuntimeError) as exc:
+            raise CodingResourceCatalogAdmissionError(
+                ("catalog_receipt_unavailable",)
+            ) from exc
+        if not isinstance(receipt, ResourceCatalogInputReceipt):
+            raise CodingResourceCatalogAdmissionError(("catalog_receipt_unavailable",))
+        evaluated_at = (
+            coding_plugin_clock()
+            if coding_base_plugin_assembly is not None
+            else int(time.time())
+        )
+        product_composition = None
+        if coding_base_plugin_assembly is not None:
+            plan_seed = prepare_coding_package_plugin_plan_seed(
+                receipt,
+                product_scope_id=session_id,
+                evaluated_at=evaluated_at,
+                plan_seed=coding_base_plugin_assembly.plan_seed,
+            )
+            if plan_seed is None:
+                raise CodingResourceCatalogAdmissionError(
+                    ("product_selected_package_missing",)
+                )
+            if lsp_enabled_for_session:
+                lsp_plugin_preparation = prepare_lsp_plugin(plan_seed)
+                product_composition = lsp_plugin_preparation.product_composition
+            else:
+                selection_seed = finalize_coding_package_plugin_plan_seed(plan_seed)
+                base_plugin_session_preparation = prepare_coding_base_plugin_session(
+                    coding_base_plugin_assembly,
+                    evaluated_at=evaluated_at,
+                    selection_seed=selection_seed,
+                )
+                product_composition = (
+                    base_plugin_session_preparation.product_composition
+                )
+        elif catalog_product_composition_assembly is not None:
+            product_composition = assemble_product_composition(
+                catalog_product_composition_assembly,
                 evaluated_at=evaluated_at,
             )
-            if initial_resource_catalog_product_composition_assembly is not None
-            else None
-        )
+            if lsp_enabled_for_session:
+                lsp_plugin_preparation = prepare_lsp_plugin()
+        elif lsp_enabled_for_session:
+            lsp_plugin_preparation = prepare_lsp_plugin()
+
         adapter, projection = _prepare_coding_catalog_projection(
             loader,
             cwd=resolved_cwd,
             session_id=session_id,
-            disabled_skills=(
-                services.settings_manager.get_settings().disabled_skills
-            ),
+            disabled_skills=(services.settings_manager.get_settings().disabled_skills),
             product_composition=product_composition,
-            admission_now=evaluated_at,
+            admission_now=(
+                product_composition.authority_context.evaluated_at
+                if product_composition is not None
+                else evaluated_at
+            ),
+            clock=(coding_plugin_clock if coding_base_plugin_assembly else None),
+            receipt=receipt,
         )
         prepared_resource_catalog_adapters.append(adapter)
         return projection
@@ -512,22 +712,60 @@ def _create_agent_session(
                 raise RuntimeError(
                     "Resource Catalog refresh requires catalog_required authority"
                 )
-            evaluated_at = int(time.time())
-            product_composition = (
-                assemble_product_composition(
-                    initial_resource_catalog_product_composition_assembly,
+            resolved_cwd = Path(session_manager.get_cwd())
+            try:
+                receipt = services.resource_loader.prepare_catalog_input_receipt(
+                    resolved_cwd
+                )
+            except (AttributeError, RuntimeError) as exc:
+                raise CodingResourceCatalogAdmissionError(
+                    ("catalog_receipt_unavailable",)
+                ) from exc
+            if not isinstance(receipt, ResourceCatalogInputReceipt):
+                raise CodingResourceCatalogAdmissionError(
+                    ("catalog_receipt_unavailable",)
+                )
+            evaluated_at = (
+                coding_plugin_clock()
+                if coding_base_plugin_assembly is not None
+                else int(time.time())
+            )
+            product_composition = None
+            if coding_base_plugin_assembly is not None:
+                resource_plan_seed = prepare_coding_package_plugin_plan_seed(
+                    receipt,
+                    product_scope_id=session_id,
+                    evaluated_at=evaluated_at,
+                    plan_seed=prepare_coding_base_resource_plan_seed(
+                        coding_base_plugin_assembly
+                    ),
+                )
+                if resource_plan_seed is None:
+                    raise CodingResourceCatalogAdmissionError(
+                        ("product_selected_package_missing",)
+                    )
+                resource_selection_seed = finalize_coding_package_plugin_plan_seed(
+                    resource_plan_seed
+                )
+                product_composition = prepare_coding_base_plugin_session(
+                    coding_base_plugin_assembly,
+                    evaluated_at=evaluated_at,
+                    selection_seed=resource_selection_seed,
+                ).product_composition
+            elif catalog_product_composition_assembly is not None:
+                product_composition = assemble_product_composition(
+                    catalog_product_composition_assembly,
                     evaluated_at=evaluated_at,
                 )
-                if initial_resource_catalog_product_composition_assembly is not None
-                else None
-            )
             adapter, refreshed_bundle = _prepare_coding_catalog_projection(
                 services.resource_loader,
-                cwd=Path(session_manager.get_cwd()),
+                cwd=resolved_cwd,
                 session_id=session_id,
                 disabled_skills=services.settings_manager.get_settings().disabled_skills,
                 product_composition=product_composition,
                 admission_now=evaluated_at,
+                clock=(coding_plugin_clock if coding_base_plugin_assembly else None),
+                receipt=receipt,
             )
             return adapter.prepare_session_bootstrap(
                 product_id=CODING_PRODUCT_ID,
@@ -535,6 +773,7 @@ def _create_agent_session(
                 base_resource_bundle=refreshed_bundle,
                 catalog_generation=catalog_generation,
             )
+
         base_exec_service = services.exec_service or ExecService()
         workspace_root_path = Path(session_manager.get_cwd()).resolve()
         workspace_execution_profile = (
@@ -622,45 +861,19 @@ def _create_agent_session(
             source_id="coding",
         )
 
-        def lsp_plugin_clock() -> int:
-            return time.time_ns() // 1_000_000
-
-        lsp_ephemeral_state = (
-            TemporaryDirectory(prefix="loushang-coding-lsp-")
-            if lsp_enabled_for_session and not session_manager.persist
-            else None
-        )
         lsp_plugin_assembly = (
-            assemble_coding_lsp_plugin_opt_in(
-                create_coding_lsp_default_plugin_opt_in_request(
-                    clock=lsp_plugin_clock
-                ),
-                session_id=session_id,
-                config=CodingLspPluginConfigV1.from_runtime_inputs(
-                    workspace_root=session_manager.get_cwd(),
-                    definitions=resolved_lsp_definitions,
-                    baseline_environment=resolved_lsp_environment,
-                ),
-                package_materializer=resolved_package_materializer,
+            lsp_plugin_preparation.bind_workspace(
                 workspace_binding=workspace_binding,
-                state_root=(
-                    Path(lsp_ephemeral_state.name)
-                    if lsp_ephemeral_state is not None
-                    else _coding_lsp_plugin_state_root(
-                        session_manager,
-                        session_id=session_id,
-                    )
-                ),
                 host_boot_id=_CODING_PLUGIN_HOST_BOOT_ID,
                 tool_mode=lsp_mode,
-                clock=lsp_plugin_clock,
-                state_cleanup=(
-                    lsp_ephemeral_state.cleanup
-                    if lsp_ephemeral_state is not None
-                    else None
-                ),
+                clock=coding_plugin_clock,
             )
-            if lsp_enabled_for_session
+            if lsp_plugin_preparation is not None
+            else None
+        )
+        base_plugin_session_assembly = (
+            base_plugin_session_preparation.bind_workspace(workspace_binding)
+            if base_plugin_session_preparation is not None
             else None
         )
 
@@ -695,6 +908,9 @@ def _create_agent_session(
                 side_question_binding=side_question_binding,
                 sandbox_runtime=sandbox_runtime,
                 coding_lsp_plugin_assembly=lsp_plugin_assembly,
+                coding_base_plugin_assembly=coding_base_plugin_assembly,
+                coding_base_plugin_session_assembly=(base_plugin_session_assembly),
+                coding_plugin_clock=coding_plugin_clock,
                 delegated_execution_profile=delegated_execution_profile,
                 workspace_capability_binding=workspace_binding,
                 initial_resource_catalog_bootstrap=(initial_resource_catalog_bootstrap),
@@ -703,9 +919,7 @@ def _create_agent_session(
                     if resource_authority_mode == "catalog_required"
                     else None
                 ),
-                resource_catalog_refresh_lock=(
-                    services.resource_catalog_refresh_lock
-                ),
+                resource_catalog_refresh_lock=(services.resource_catalog_refresh_lock),
             )
 
         try:
@@ -725,51 +939,69 @@ def _create_agent_session(
         process_session = child_session
         return child_session
 
-    result = _CODING_AGENT_PRODUCT_CONSTRUCTION.construct(
-        services=services,
-        package_materializer=resolved_package_materializer,
-        session_id=session_id,
-        cwd=session_manager.get_cwd(),
-        extension_flag_values=extension_flag_values,
-        catalog_authoritative=(resource_authority_mode == "catalog_required"),
-        prepare_catalog_bootstrap_projection=(
-            prepare_initial_resource_catalog_projection
-            if resource_authority_mode == "catalog_required"
-            else None
-        ),
-        explicit_system_prompt=system_prompt,
-        append_system_prompt=resolved_append_system_prompt,
-        model=model,
-        thinking_level=thinking_level,
-        tools=construction_tools,
-        tool_registry=session_tool_registry,
-        allowed_tool_names=allowed_tool_names,
-        active_tool_names=active_tool_names,
-        no_tools=no_tools,
-        stream_fn=stream_fn,
-        convert_to_llm=lambda messages: context_items_to_model_messages(
-            messages,
-            image_placeholder=(
-                "Image reading is disabled."
-                if services.settings_manager.get_block_images()
+    construction_binding = (
+        replace(
+            _CODING_AGENT_PRODUCT_CONSTRUCTION,
+            default_system_prompt=coding_kernel_prompt,
+        )
+        if resource_authority_mode == "catalog_required"
+        else _CODING_AGENT_PRODUCT_CONSTRUCTION
+    )
+    try:
+        result = construction_binding.construct(
+            services=services,
+            package_materializer=resolved_package_materializer,
+            session_id=session_id,
+            cwd=session_manager.get_cwd(),
+            extension_flag_values=extension_flag_values,
+            catalog_authoritative=(resource_authority_mode == "catalog_required"),
+            prepare_catalog_bootstrap_projection=(
+                prepare_initial_resource_catalog_projection
+                if resource_authority_mode == "catalog_required"
                 else None
             ),
-        ),
-        agent_factory=agent_factory,
-        session_factory=_create_session,
-        on_default_model_unavailable=lambda selection, error, reason: (
-            record_default_model_unavailable(
-                selection,
-                error=error,
-                reason=reason,
-                diagnostics_service=services.diagnostics_service,
-                session_id=session_id,
-            )
-        ),
-        set_scoped_models=lambda session, scoped_models: session.set_scoped_models(
-            cast(list[dict[str, object]], scoped_models)
-        ),
-    )
+            selected_plugin_packages=selected_plugin_packages,
+            explicit_system_prompt=system_prompt,
+            append_system_prompt=resolved_append_system_prompt,
+            model=model,
+            thinking_level=thinking_level,
+            tools=construction_tools,
+            tool_registry=session_tool_registry,
+            allowed_tool_names=allowed_tool_names,
+            active_tool_names=active_tool_names,
+            no_tools=no_tools,
+            stream_fn=stream_fn,
+            convert_to_llm=lambda messages: context_items_to_model_messages(
+                messages,
+                image_placeholder=(
+                    "Image reading is disabled."
+                    if services.settings_manager.get_block_images()
+                    else None
+                ),
+            ),
+            agent_factory=agent_factory,
+            session_factory=_create_session,
+            on_default_model_unavailable=lambda selection, error, reason: (
+                record_default_model_unavailable(
+                    selection,
+                    error=error,
+                    reason=reason,
+                    diagnostics_service=services.diagnostics_service,
+                    session_id=session_id,
+                )
+            ),
+            set_scoped_models=lambda session, scoped_models: session.set_scoped_models(
+                cast(list[dict[str, object]], scoped_models)
+            ),
+        )
+    except BaseException:
+        if lsp_plugin_preparation is not None:
+            lsp_plugin_preparation.close()
+        elif lsp_ephemeral_state is not None:
+            lsp_ephemeral_state.cleanup()
+        if coding_base_plugin_assembly is not None:
+            coding_base_plugin_assembly.close()
+        raise
     result.session.cwd_bound_services_audit = (
         result.configuration.cwd_bound_services_audit
     )
@@ -800,6 +1032,7 @@ def _create_agent_session(
                     agent_factory=agent_factory,
                     tool_policy_evaluator=tool_policy_evaluator,
                     resource_authority_mode=resource_authority_mode,
+                    composition_set=resolved_composition_set,
                 ),
             ),
             agent_types=multiagent_types,
@@ -820,6 +1053,7 @@ def create_agent_session(
     allowed_tool_names: list[str] | None = None,
     active_tool_names: list[str] | None = None,
     no_tools: NoToolsMode | bool | None = None,
+    composition_set: CodingCompositionSetId | None = None,
     services: BootstrapServices | None = None,
     agent_factory: AgentFactory = Agent,
     session_start_event: SessionStartEvent | None = None,
@@ -845,6 +1079,9 @@ def create_agent_session(
         allowed_tool_names=allowed_tool_names,
         active_tool_names=active_tool_names,
         no_tools=no_tools,
+        composition_set=resolve_coding_composition_set(
+            "coding-standard" if composition_set is None else composition_set
+        ),
         services=services,
         agent_factory=agent_factory,
         session_start_event=session_start_event,
@@ -875,6 +1112,7 @@ def create_agent_session_from_services(
     allowed_tool_names: list[str] | None = None,
     active_tool_names: list[str] | None = None,
     no_tools: NoToolsMode | bool | None = None,
+    composition_set: CodingCompositionSetId | None = None,
     agent_factory: AgentFactory = Agent,
     session_start_event: SessionStartEvent | None = None,
     package_materializer: PackageMaterializer | None = None,
@@ -914,6 +1152,7 @@ def create_agent_session_from_services(
         allowed_tool_names=allowed_tool_names,
         active_tool_names=active_tool_names,
         no_tools=no_tools,
+        composition_set=composition_set,
         services=agent_services.services,
         agent_factory=agent_factory,
         session_start_event=session_start_event,
@@ -942,6 +1181,7 @@ def create_agent_session_result(
     allowed_tool_names: list[str] | None = None,
     active_tool_names: list[str] | None = None,
     no_tools: NoToolsMode | bool | None = None,
+    composition_set: CodingCompositionSetId | None = None,
     services: BootstrapServices | None = None,
     agent_factory: AgentFactory = Agent,
     session_start_event: SessionStartEvent | None = None,
@@ -968,6 +1208,7 @@ def create_agent_session_result(
         allowed_tool_names=allowed_tool_names,
         active_tool_names=active_tool_names,
         no_tools=no_tools,
+        composition_set=composition_set,
         services=resolved_services,
         agent_factory=agent_factory,
         session_start_event=session_start_event,
@@ -1065,6 +1306,7 @@ def _create_agent_session_runtime(
     allowed_tool_names: list[str] | None = None,
     active_tool_names: list[str] | None = None,
     no_tools: NoToolsMode | bool | None = None,
+    composition_set: CodingCompositionSetPlan | None = None,
     services: BootstrapServices | None = None,
     services_factory: ServicesFactory | None = None,
     agent_factory: AgentFactory = Agent,
@@ -1101,6 +1343,7 @@ def _create_agent_session_runtime(
                 allowed_tool_names=allowed_tool_names,
                 active_tool_names=active_tool_names,
                 no_tools=no_tools,
+                composition_set=composition_set,
                 services=session_services,
                 agent_factory=agent_factory,
                 session_start_event=cast(SessionStartEvent | None, start_event),
@@ -1140,6 +1383,7 @@ def create_agent_session_runtime(
     allowed_tool_names: list[str] | None = None,
     active_tool_names: list[str] | None = None,
     no_tools: NoToolsMode | bool | None = None,
+    composition_set: CodingCompositionSetId | None = None,
     services: BootstrapServices | None = None,
     services_factory: ServicesFactory | None = None,
     agent_factory: AgentFactory = Agent,
@@ -1164,6 +1408,9 @@ def create_agent_session_runtime(
         allowed_tool_names=allowed_tool_names,
         active_tool_names=active_tool_names,
         no_tools=no_tools,
+        composition_set=resolve_coding_composition_set(
+            "coding-standard" if composition_set is None else composition_set
+        ),
         services=services,
         services_factory=services_factory,
         agent_factory=agent_factory,

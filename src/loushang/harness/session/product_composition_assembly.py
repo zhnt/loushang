@@ -40,9 +40,13 @@ from loushang.harness.plugin_authoring.provider_admission import (
 )
 from loushang.harness.resources.plugins.selection import (
     PluginSelection,
+    PluginSelectionPlanV2,
     PluginSourceTrustSnapshotV1,
 )
-from loushang.harness.resources.plugins.types import PublishedPluginPackage
+from loushang.harness.resources.plugins.types import (
+    PluginSourceBinding,
+    PublishedPluginPackage,
+)
 from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityComponentRequest,
     SessionCapabilityCompositionInputs,
@@ -151,6 +155,102 @@ class ProductCompositionAssemblyRequest:
 
 
 @dataclass(frozen=True, slots=True)
+class ProductPluginPlanSeed:
+    """Inert Product plan plus exact package and owner evidence.
+
+    This value deliberately carries no :class:`PluginSelection`. Products may
+    merge plan fragments while packages are still being discovered, then run
+    the declaration host exactly once after the complete package set is known.
+    """
+
+    plan: PluginSelectionPlanV2
+    packages: tuple[PublishedPluginPackage, ...]
+    bindings: tuple[PluginSourceBinding, ...]
+    owner_bindings: tuple[ProductContributionOwnerBinding, ...]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.plan, PluginSelectionPlanV2):
+            raise TypeError("Product Plugin seed plan is invalid")
+        packages, bindings, owners = _validate_product_plugin_seed_evidence(
+            plugin_ids=self.plan.selected_plugin_ids,
+            packages=self.packages,
+            bindings=self.bindings,
+            owner_bindings=self.owner_bindings,
+        )
+        object.__setattr__(self, "packages", packages)
+        object.__setattr__(self, "bindings", bindings)
+        object.__setattr__(self, "owner_bindings", owners)
+
+
+@dataclass(frozen=True, slots=True)
+class ProductPluginSelectionSeed:
+    """One finalized selection plus its exact package and owner evidence."""
+
+    selection: PluginSelection
+    packages: tuple[PublishedPluginPackage, ...]
+    bindings: tuple[PluginSourceBinding, ...]
+    owner_bindings: tuple[ProductContributionOwnerBinding, ...]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.selection, PluginSelection):
+            raise TypeError("Product Plugin seed selection is invalid")
+        packages, bindings, owners = _validate_product_plugin_seed_evidence(
+            plugin_ids=self.selection.plan.selected_plugin_ids,
+            packages=self.packages,
+            bindings=self.bindings,
+            owner_bindings=self.owner_bindings,
+        )
+        object.__setattr__(self, "packages", packages)
+        object.__setattr__(self, "bindings", bindings)
+        object.__setattr__(self, "owner_bindings", owners)
+
+
+def _validate_product_plugin_seed_evidence(
+    *,
+    plugin_ids: tuple[str, ...],
+    packages: tuple[PublishedPluginPackage, ...],
+    bindings: tuple[PluginSourceBinding, ...],
+    owner_bindings: tuple[ProductContributionOwnerBinding, ...],
+) -> tuple[
+    tuple[PublishedPluginPackage, ...],
+    tuple[PluginSourceBinding, ...],
+    tuple[ProductContributionOwnerBinding, ...],
+]:
+    """Validate lineage shared by inert and finalized Product seeds."""
+
+    packages = tuple(packages)
+    bindings = tuple(bindings)
+    owners = tuple(owner_bindings)
+    if not packages or any(
+        not isinstance(item, PublishedPluginPackage) for item in packages
+    ):
+        raise TypeError("Product Plugin seed packages are invalid")
+    if len(packages) != len(bindings) or any(
+        not isinstance(item, PluginSourceBinding) for item in bindings
+    ):
+        raise TypeError("Product Plugin seed bindings are invalid")
+    if tuple(item.manifest.name for item in packages) != plugin_ids:
+        raise ValueError("Product Plugin seed packages do not match plan")
+    if tuple(item.plugin_id for item in bindings) != plugin_ids:
+        raise ValueError("Product Plugin seed bindings do not match plan")
+    for package, binding in zip(packages, bindings, strict=True):
+        if (
+            binding.content_digest != package.content_digest
+            or binding.manifest_digest != package.manifest_digest
+            or binding.dependency_lock != package.dependency_lock
+        ):
+            raise ValueError("Product Plugin seed binding lineage is invalid")
+    if any(
+        not isinstance(item, ProductContributionOwnerBinding) for item in owners
+    ):
+        raise TypeError("Product Plugin seed contribution owners are invalid")
+    owner_keys = tuple(item.owner_key for item in owners)
+    if len(owner_keys) != len(set(owner_keys)):
+        raise ValueError("Product Plugin seed contribution owners repeat")
+    return packages, bindings, owners
+
+
+@dataclass(frozen=True, slots=True)
 class ProductCapabilityProviderOwnerBinding:
     """One exact Capability owner plus bounded eligibility/admission lifetimes."""
 
@@ -230,8 +330,6 @@ class ProductPluginCompositionAssemblyRequest:
         roots = tuple(self.provider_roots)
         if any(not isinstance(item, str) for item in roots):
             raise TypeError("Product Capability Provider roots are invalid")
-        if not roots:
-            raise ValueError("Product Capability Provider roots must not be empty")
         host_ids = tuple(self.host_capability_ids)
         if any(not isinstance(item, str) for item in host_ids):
             raise TypeError("Product host Capability ids are invalid")
@@ -291,12 +389,27 @@ class ProductPluginCompositionAssembly:
     product_composition: ProductCompositionCompilation
     resolved_providers: ResolvedCapabilityProviderSet
     component_candidates: tuple[ProductCapabilityComponentCandidate, ...]
+    contribution_request: ProductCompositionAssemblyRequest = field(
+        repr=False,
+        compare=False,
+    )
 
     def __post_init__(self) -> None:
         if not isinstance(self.product_composition, ProductCompositionCompilation):
             raise TypeError("Product Plugin composition compilation is invalid")
         if not isinstance(self.resolved_providers, ResolvedCapabilityProviderSet):
             raise TypeError("Product Plugin resolved Providers are invalid")
+        if not isinstance(self.contribution_request, ProductCompositionAssemblyRequest):
+            raise TypeError("Product Plugin contribution request is invalid")
+        selection_context = self.contribution_request.selection.plan.context
+        authority_context = self.product_composition.authority_context
+        if (
+            selection_context.product_id != authority_context.product_id
+            or selection_context.scope_id != authority_context.scope_id
+            or selection_context.policy_revision
+            != authority_context.product_policy_revision
+        ):
+            raise ValueError("Product Plugin request does not match compilation")
         candidates = tuple(self.component_candidates)
         if any(
             not isinstance(item, ProductCapabilityComponentCandidate)
@@ -342,6 +455,110 @@ class ProductPluginCompositionAssembly:
                 item.bind_activation(activation_decision_ids[item.capability_id])
                 for item in self.component_candidates
             ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _PreparedCapabilityProviderCandidate:
+    candidate: CapabilityProviderCandidateEnvelope
+    package: PublishedPluginPackage = field(repr=False, compare=False)
+    trust_snapshot: PluginSourceTrustSnapshotV1
+
+
+@dataclass(frozen=True, slots=True)
+class ProductPluginCompositionPreparation:
+    """One compiled Product closure awaiting only host Provider bindings.
+
+    Product contribution admission and compilation happen exactly once.  A
+    Product may then construct its host-owned Provider values and bind them to
+    the already compiled closure without rebuilding or merging composition
+    evidence.
+    """
+
+    request: ProductPluginCompositionAssemblyRequest = field(
+        repr=False,
+        compare=False,
+    )
+    product_composition: ProductCompositionCompilation
+    provider_admissions: tuple[CapabilityProviderAdmissionRecord, ...]
+    provider_candidates: tuple[_PreparedCapabilityProviderCandidate, ...] = field(
+        repr=False,
+        compare=False,
+    )
+    provider_choices: tuple[ProductCapabilityProviderChoice, ...]
+    evaluated_at: int
+
+    def bind_host_providers(
+        self,
+        prebound_providers: tuple[CapabilityBundleProvider, ...] | None = None,
+    ) -> ProductPluginCompositionAssembly:
+        """Resolve the exact prepared closure against Product host Providers."""
+
+        request = self.request
+        supplied_prebound = (
+            request.prebound_providers
+            if prebound_providers is None
+            else tuple(prebound_providers)
+        )
+        if any(
+            not isinstance(item, CapabilityBundleProvider) for item in supplied_prebound
+        ):
+            raise TypeError("Product prebound Capability Providers are invalid")
+        contribution_request = request.contribution_request
+        selection = contribution_request.selection
+        resolved = ProductCapabilityProviderResolver().resolve(
+            ProductCapabilityProviderSelectionPlanV1(
+                product_id=selection.plan.context.product_id,
+                roots=request.provider_roots,
+                choices=self.provider_choices,
+                policy_revision=selection.plan.context.policy_revision,
+            ),
+            definitions=contribution_request.definitions,
+            admissions=self.provider_admissions,
+            owner_snapshots=tuple(
+                item.authority.snapshot() for item in request.provider_owner_bindings
+            ),
+            evaluated_at=self.evaluated_at,
+            prebound_providers=supplied_prebound,
+        )
+        validate_session_capability_composition_closure(
+            self.product_composition,
+            resolved,
+            host_capability_ids=request.host_capability_ids,
+            host_providers=supplied_prebound,
+        )
+        bindings_by_capability = {
+            item.capability_id: item for item in request.provider_owner_bindings
+        }
+        component_facts = {
+            admission.candidate_fingerprint: (
+                prepared.package,
+                bindings_by_capability[admission.capability_id].authority.snapshot(),
+                prepared.trust_snapshot,
+            )
+            for admission, prepared in zip(
+                self.provider_admissions,
+                self.provider_candidates,
+                strict=True,
+            )
+        }
+        return ProductPluginCompositionAssembly(
+            product_composition=self.product_composition,
+            resolved_providers=resolved,
+            component_candidates=tuple(
+                ProductCapabilityComponentCandidate(
+                    resolved=item,
+                    package=component_facts[item.admission.candidate_fingerprint][0],
+                    owner_snapshot=component_facts[
+                        item.admission.candidate_fingerprint
+                    ][1],
+                    trust_snapshot=component_facts[
+                        item.admission.candidate_fingerprint
+                    ][2],
+                )
+                for item in resolved.entries
+            ),
+            contribution_request=contribution_request,
         )
 
 
@@ -418,12 +635,12 @@ def assemble_product_composition(
     )
 
 
-def assemble_product_plugin_composition(
+def prepare_product_plugin_composition(
     request: ProductPluginCompositionAssemblyRequest,
     *,
     evaluated_at: int,
-) -> ProductPluginCompositionAssembly:
-    """Compile external Consumers and exact Capability Providers at one time."""
+) -> ProductPluginCompositionPreparation:
+    """Compile and admit once before Product host Providers are constructed."""
 
     if not isinstance(request, ProductPluginCompositionAssemblyRequest):
         raise TypeError("Product Plugin composition assembly request is invalid")
@@ -505,57 +722,36 @@ def assemble_product_plugin_composition(
         )
         for candidate, _package, _trust in provider_candidates
     )
-    choices = tuple(request.select_capability_providers(provider_admissions))
-    resolved = ProductCapabilityProviderResolver().resolve(
-        ProductCapabilityProviderSelectionPlanV1(
-            product_id=selection.plan.context.product_id,
-            roots=request.provider_roots,
-            choices=choices,
-            policy_revision=selection.plan.context.policy_revision,
+    return ProductPluginCompositionPreparation(
+        request=request,
+        product_composition=product_composition,
+        provider_admissions=provider_admissions,
+        provider_candidates=tuple(
+            _PreparedCapabilityProviderCandidate(
+                candidate=candidate,
+                package=package,
+                trust_snapshot=trust,
+            )
+            for candidate, package, trust in provider_candidates
         ),
-        definitions=contribution_request.definitions,
-        admissions=provider_admissions,
-        owner_snapshots=tuple(
-            item.authority.snapshot() for item in request.provider_owner_bindings
+        provider_choices=tuple(
+            request.select_capability_providers(provider_admissions)
         ),
         evaluated_at=evaluated_at,
-        prebound_providers=request.prebound_providers,
     )
-    validate_session_capability_composition_closure(
-        product_composition,
-        resolved,
-        host_capability_ids=request.host_capability_ids,
-        host_providers=request.prebound_providers,
-    )
-    component_facts = {
-        admission.candidate_fingerprint: (
-            package,
-            bindings_by_capability[admission.capability_id].authority.snapshot(),
-            trust,
-        )
-        for admission, (_candidate, package, trust) in zip(
-            provider_admissions,
-            provider_candidates,
-            strict=True,
-        )
-    }
-    return ProductPluginCompositionAssembly(
-        product_composition=product_composition,
-        resolved_providers=resolved,
-        component_candidates=tuple(
-            ProductCapabilityComponentCandidate(
-                resolved=item,
-                package=component_facts[item.admission.candidate_fingerprint][0],
-                owner_snapshot=(
-                    component_facts[item.admission.candidate_fingerprint][1]
-                ),
-                trust_snapshot=(
-                    component_facts[item.admission.candidate_fingerprint][2]
-                ),
-            )
-            for item in resolved.entries
-        ),
-    )
+
+
+def assemble_product_plugin_composition(
+    request: ProductPluginCompositionAssemblyRequest,
+    *,
+    evaluated_at: int,
+) -> ProductPluginCompositionAssembly:
+    """Compile external Consumers and bind Product host Providers atomically."""
+
+    return prepare_product_plugin_composition(
+        request,
+        evaluated_at=evaluated_at,
+    ).bind_host_providers()
 
 
 __all__: list[str] = []

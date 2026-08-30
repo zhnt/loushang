@@ -87,6 +87,7 @@ class _HostedProcess(ProcessHandle):
         max_read_bytes: int,
         max_write_bytes: int,
         stderr_max_bytes: int,
+        stream_stderr: bool,
         termination_grace_seconds: float,
         containment: ProcessContainmentPlan | None,
         on_exit: Callable[[_HostedProcess], Awaitable[None]],
@@ -98,6 +99,7 @@ class _HostedProcess(ProcessHandle):
         self._containment = containment
         self._on_exit = on_exit
         self._stderr_tail = _BoundedByteTail(stderr_max_bytes)
+        self._stream_stderr = stream_stderr
         self._stdin_lock = asyncio.Lock()
         self._lifecycle_lock = asyncio.Lock()
         self._stdin_closed = False
@@ -107,9 +109,13 @@ class _HostedProcess(ProcessHandle):
         )
         self._termination_task: asyncio.Task[ProcessExit] | None = None
         self._close_task: asyncio.Task[None] | None = None
-        self._stderr_task = asyncio.create_task(
-            self._drain_stderr(),
-            name="harness-hosted-process-stderr",
+        self._stderr_task = (
+            None
+            if stream_stderr
+            else asyncio.create_task(
+                self._drain_stderr(),
+                name="harness-hosted-process-stderr",
+            )
         )
         self._finalizer_task = asyncio.create_task(
             self._finalize(),
@@ -128,6 +134,25 @@ class _HostedProcess(ProcessHandle):
         if stream is None:
             return b""
         return await stream.read(max_bytes)
+
+    async def read_stderr(self, max_bytes: int = 64 * 1024) -> bytes:
+        if not self._stream_stderr:
+            raise ProcessHostError(
+                "stderr streaming was not requested for this process"
+            )
+        if (
+            not isinstance(max_bytes, int)
+            or isinstance(max_bytes, bool)
+            or max_bytes < 1
+            or max_bytes > self._max_read_bytes
+        ):
+            raise ValueError(f"max_bytes must be between 1 and {self._max_read_bytes}")
+        stream = self._transport.stderr
+        if stream is None:
+            return b""
+        chunk = await stream.read(max_bytes)
+        self._stderr_tail.append(chunk)
+        return chunk
 
     async def write_stdin(self, data: bytes) -> None:
         if not isinstance(data, bytes):
@@ -211,13 +236,14 @@ class _HostedProcess(ProcessHandle):
                 return_code = await self._transport.wait()
             except BaseException as exc:
                 primary_error = exc
-            try:
-                await self._stderr_task
-            except BaseException as exc:
-                if primary_error is None:
-                    primary_error = exc
-                else:
-                    primary_error.add_note(f"stderr cleanup also failed: {exc}")
+            if self._stderr_task is not None:
+                try:
+                    await self._stderr_task
+                except BaseException as exc:
+                    if primary_error is None:
+                        primary_error = exc
+                    else:
+                        primary_error.add_note(f"stderr cleanup also failed: {exc}")
             if self._containment is not None:
                 try:
                     await self._containment.close()
@@ -281,6 +307,18 @@ class _HostedProcess(ProcessHandle):
                 exc,
                 context="process termination also failed",
             )
+        for stream_name, reader in (
+            ("stdout", self._transport.stdout),
+            ("stderr", self._transport.stderr),
+        ):
+            try:
+                _close_process_reader_transport(reader)
+            except BaseException as exc:
+                primary_error = _record_cleanup_error(
+                    primary_error,
+                    exc,
+                    context=f"process {stream_name} transport close also failed",
+                )
         try:
             await self._finalizer_task
         except BaseException as exc:
@@ -291,6 +329,17 @@ class _HostedProcess(ProcessHandle):
             )
         if primary_error is not None:
             raise primary_error
+
+
+def _close_process_reader_transport(reader: object | None) -> None:
+    """Close asyncio's owned pipe transport so inherited descriptors cannot leak."""
+
+    if reader is None:
+        return
+    transport = getattr(reader, "_transport", None)
+    close = getattr(transport, "close", None)
+    if callable(close):
+        close()
 
 
 class ProcessHost:
@@ -375,6 +424,7 @@ class ProcessHost:
                 max_read_bytes=self._max_read_bytes,
                 max_write_bytes=self._max_write_bytes,
                 stderr_max_bytes=self._stderr_max_bytes,
+                stream_stderr=request.stream_stderr,
                 termination_grace_seconds=self._termination_grace_seconds,
                 containment=reservation.containment,
                 on_exit=self._release,

@@ -24,31 +24,15 @@ EXPECTED_CALL_SITES = {
     "discover_resources": {
         (
             Path("src/loushang/harness/bootstrap.py"),
-            "ResourceBootstrapRuntime.discover",
-        ),
-        (
-            Path("src/loushang/harness/bootstrap.py"),
             "create_standard_resource_bootstrap_runtime",
         ),
         (
             Path("src/loushang/harness/resources/loader.py"),
             "ResourceLoader.reload_resources",
         ),
-        (
-            Path("src/loushang/harness/resources/skills.py"),
-            "SkillLoader.discover_skills",
-        ),
         (Path("src/loushang/method/loader.py"), "MethodLoader.discover_methods"),
     },
     "reload_resources": {
-        (
-            Path("src/loushang/coding/bootstrap.py"),
-            "_create_agent_session._create_session.prepare_resource_catalog_refresh",
-        ),
-        (
-            Path("src/loushang/harness/resources/skills.py"),
-            "SkillLoader.reload_skills",
-        ),
         (
             Path("src/loushang/harness/session/resource_refresh.py"),
             "SessionResourceRefreshRuntime._load_resource_bundle",
@@ -61,30 +45,18 @@ EXPECTED_CALL_SITES = {
         ),
         (
             Path("src/loushang/harness/resources/loader.py"),
-            "ResourceLoader.get_extensions",
-        ),
-        (
-            Path("src/loushang/harness/resources/loader.py"),
             "ResourceLoader.get_package_resource_summaries",
         ),
         (
             Path("src/loushang/harness/resources/loader.py"),
             "ResourceLoader.get_resource_bundle",
         ),
-        (
-            Path("src/loushang/harness/resources/loader.py"),
-            "ResourceLoader.get_resource_diagnostics",
-        ),
-        (
-            Path("src/loushang/harness/resources/loader.py"),
-            "ResourceLoader.get_skills",
-        ),
-        (
-            Path("src/loushang/harness/resources/skills.py"),
-            "SkillLoader.list_skills",
-        ),
     },
     "get_resource_bundle": {
+        (
+            Path("src/loushang/harness/resources/loader.py"),
+            "CatalogSessionResourceLoaderView.get_system_prompt",
+        ),
         (
             Path("src/loushang/harness/resources/loader.py"),
             "ProfiledResourceLoader.get_system_prompt",
@@ -99,7 +71,19 @@ EXPECTED_CALL_SITES = {
         ),
         (
             Path("src/loushang/harness/resources/loader.py"),
+            "ResourceLoader.get_diagnostics",
+        ),
+        (
+            Path("src/loushang/harness/resources/loader.py"),
+            "ResourceLoader.get_extensions",
+        ),
+        (
+            Path("src/loushang/harness/resources/loader.py"),
             "ResourceLoader.get_prompts",
+        ),
+        (
+            Path("src/loushang/harness/resources/loader.py"),
+            "ResourceLoader.get_skills",
         ),
         (
             Path("src/loushang/harness/session/command_sources.py"),
@@ -157,6 +141,14 @@ EXPECTED_CALL_SITES = {
 }
 
 EXPECTED_SKILLS_ATTRIBUTE_LOAD_SITES = {
+    # The Catalog bootstrap projects immutable Skill summaries for the
+    # compatibility Bundle; it does not discover or load Skill bodies.
+    (
+        Path(
+            "src/loushang/harness/resource_catalog/bootstrap_projection.py"
+        ),
+        "prepare_resource_catalog_bootstrap_projection",
+    ),
     # The Product adapter compiles legacy disabled-name settings to typed
     # activation identities before Catalog composition; it does not select the
     # effective Skill set.
@@ -251,6 +243,10 @@ EXPECTED_SKILLS_ATTRIBUTE_LOAD_SITES = {
         "_legacy_package_resource_candidate_facts",
     ),
     (
+        Path("src/loushang/harness/resources/loader.py"),
+        "ResourceLoader.get_skills",
+    ),
+    (
         Path("src/loushang/harness/resources/activation.py"),
         "ResourceActivation.active_skills",
     ),
@@ -323,12 +319,12 @@ EXPECTED_LEGACY_LOADER_IMPORT_EDGES = {
         ("_loader_pipeline.py", "_loader_discovery_temporary"),
         ("_loader_pipeline.py", "_loader_resolution"),
         ("_loader_pipeline.py", "_loader_types"),
+        ("_catalog_input_preparation.py", "_loader_discovery"),
         ("_loader_precedence.py", "_loader_types"),
         ("_loader_resolution.py", "_loader_precedence"),
         ("_loader_resolution.py", "_loader_types"),
         ("loader.py", "_loader_package_policy"),
         ("loader.py", "_loader_pipeline"),
-        ("loader.py", "_loader_types"),
     )
 }
 
@@ -739,11 +735,16 @@ def test_rcp0_refresh_mount_mutation_and_close_inventory_is_exact() -> None:
         ),
     }
     assert _call_sites(sources, "set_package_mounts") == {
+        (
+            loader_path,
+            "CatalogSessionResourceLoaderView.set_package_mounts",
+        ),
         (loader_path, "ResourceLoader.set_package_roots"),
         (roots_path, "configure_resource_loader_roots"),
     }
     assert _call_sites(sources, "_close_mounts") == {
-        (roots_path, "configure_resource_loader_roots")
+        (roots_path, "configure_resource_loader_roots"),
+        (roots_path, "resolve_package_resource_roots"),
     }
     assert _call_sites(
         {loader_path: sources[loader_path], roots_path: sources[roots_path]},

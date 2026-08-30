@@ -23,6 +23,7 @@ from loushang.harness.resources.activation import (
     SkillActivationRuntime,
 )
 from loushang.harness.resources.packages.materializer import PackageMaterializer
+from loushang.harness.resources.packages.roots import SelectedPluginPackageInput
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.runtime import ResolvedRuntimeProfile
 from loushang.harness.session.bootstrap_configuration import (
@@ -465,6 +466,7 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
         prepare_catalog_bootstrap_projection: (
             CatalogBootstrapProjectionPreparer | None
         ) = None,
+        selected_plugin_packages: Sequence[SelectedPluginPackageInput] = (),
         explicit_system_prompt: str | None,
         append_system_prompt: Sequence[str],
         model: Model | ModelSelection | None,
@@ -622,6 +624,7 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
                         prepare_catalog_bootstrap_projection=(
                             prepare_catalog_bootstrap_projection
                         ),
+                        selected_plugin_packages=tuple(selected_plugin_packages),
                     ),
                     ports=AgentProductConstructionPorts(
                         activate_resources=(

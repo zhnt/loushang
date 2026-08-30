@@ -85,9 +85,7 @@ _CODING_TOOL_TEXT: dict[ToolName, tuple[str, str]] = {
 def _decorate_coding_tool_definition(
     definition: ToolDefinition,
 ) -> ToolDefinition:
-    description, prompt_snippet = _CODING_TOOL_TEXT[
-        cast(ToolName, definition.name)
-    ]
+    description, prompt_snippet = _CODING_TOOL_TEXT[cast(ToolName, definition.name)]
     return replace(
         definition,
         description=description,
@@ -121,8 +119,7 @@ def coding_workspace_tool_profile(
             "shell" if name == "bash" else name for name in CODING_TOOL_NAMES
         ),
         builtin_tool_names=tuple(
-            "shell" if name == "bash" else name
-            for name in CODING_BUILTIN_TOOL_NAMES
+            "shell" if name == "bash" else name for name in CODING_BUILTIN_TOOL_NAMES
         ),
     )
 
@@ -156,6 +153,20 @@ def create_coding_tool_definitions(
     return create_profiled_workspace_tool_definitions(
         _profile_from_options(options),
         options=options,
+    )
+
+
+def create_coding_builtin_tool_definitions(
+    *,
+    options: ToolsOptions | None = None,
+) -> list[ToolDefinition]:
+    """Create the complete admitted ``coding.builtin`` pack generation."""
+
+    profile = _profile_from_options(options)
+    return create_profiled_workspace_tool_definitions(
+        profile,
+        options=options,
+        tool_names=profile.builtin_tool_names,
     )
 
 
@@ -219,6 +230,7 @@ __all__ = [
     "coding_workspace_tool_profile",
     "create_coding_tool_definition",
     "create_coding_tool_definitions",
+    "create_coding_builtin_tool_definitions",
     "create_coding_tools",
     "register_coding_builtin_tools",
 ]

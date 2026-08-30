@@ -438,9 +438,11 @@ async def _rollback_preflight_candidate(
 
 
 __all__ = [
+    "ExtensionGenerationRetirementPort",
     "InitialExtensionGenerationHost",
     "InitialSessionResourceCatalogBootstrap",
     "InitialSessionResourceCatalogBootstrapState",
     "InitialSessionResourceCatalogInputs",
     "InitialSessionResourcePublication",
+    "ResourceCatalogProjection",
 ]

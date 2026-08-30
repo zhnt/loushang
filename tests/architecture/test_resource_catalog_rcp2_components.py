@@ -19,6 +19,7 @@ PREPARED_GENERATION_PATH = ORCHESTRATION_ROOT / "generation.py"
 JOINT_GENERATION_PATH = ORCHESTRATION_ROOT / "joint_generation.py"
 PRODUCT_INPUTS_PATH = ORCHESTRATION_ROOT / "product_inputs.py"
 SESSION_BOOTSTRAP_PATH = ORCHESTRATION_ROOT / "session_bootstrap.py"
+BOOTSTRAP_PROJECTION_PATH = ORCHESTRATION_ROOT / "bootstrap_projection.py"
 AGENT_PRODUCT_SESSION_PATH = Path("src/loushang/harness/session/agent_product.py")
 PRODUCT_COMPOSITION_ASSEMBLY_PATH = Path(
     "src/loushang/harness/session/product_composition_assembly.py"
@@ -27,6 +28,7 @@ EXTENSION_RESOURCE_SOURCE_PATH = RESOURCE_ROOT / "_catalog_extension_source.py"
 EXTENSION_RESOURCE_RUNTIME_PATH = Path("src/loushang/harness/extensions/resources.py")
 CODING_SHADOW_ADAPTER_PATH = Path("src/loushang/coding/_resource_catalog_shadow.py")
 CODING_BOOTSTRAP_PATH = Path("src/loushang/coding/bootstrap.py")
+CODING_BASE_PLUGIN_PATH = Path("src/loushang/coding/_base_plugin.py")
 CODING_RESOURCE_AUTHORITY_PATH = Path(
     "src/loushang/coding/resource_authority.py"
 )
@@ -127,6 +129,7 @@ def test_rcp2_shadow_runner_is_private_and_has_no_production_importer() -> None:
         JOINT_GENERATION_PATH,
         PRODUCT_INPUTS_PATH,
         SESSION_BOOTSTRAP_PATH,
+        BOOTSTRAP_PROJECTION_PATH,
         RESOURCE_ROOT / "_catalog_engine.py",
         RESOURCE_ROOT / "_catalog_records.py",
         RESOURCE_ROOT / "_catalog_shadow.py",
@@ -292,6 +295,7 @@ def test_rcp4_plc5_product_composition_assembly_is_one_private_product_root() ->
         in _imported_modules(path)
     } == {
         CODING_BOOTSTRAP_PATH,
+        CODING_BASE_PLUGIN_PATH,
         CODING_LSP_PLUGIN_OPT_IN_PATH,
         CODING_SHADOW_ADAPTER_PATH,
     }

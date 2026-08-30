@@ -37,8 +37,12 @@
   both `always` and `on_demand` modes through Tool execution, status, explicit
   stop and exact-generation retirement. The Product-owned exact-policy Approval
   owner, default cutover and deletion of the deferred runtime, early Tool
-  registrar and legacy cleanup input are implemented. PLC6 through PLC9 and the
-  public Plugin SDK remain unimplemented.
+  registrar and legacy cleanup input are implemented. PLC6A through PLC6C now
+  freeze the inert Composition Set request and Kernel/Base Prompt boundary,
+  publish Prompt/Skill through Resource Catalog and publish Tool/Command only
+  through their exact Session owners. PLC6 management-state binding and final
+  legacy cleanup, PLC7 through PLC9, and the public Plugin SDK remain
+  unimplemented.
 - Scope: one delivery order for the common Plugin lifecycle, ordinary
   Definition / Provider / Consumer authoring primitives, `coding.lsp`,
   `coding.base`, `coding.arch`, management control, pre-LSP internal Resource/
@@ -1297,6 +1301,33 @@ owner-correct disposal, and deletion of deferred/early-binding peers.
 This remains the first production Graph proof.
 
 ### PLC6: `coding.base` Production Resource Plugin
+
+PLC6A through PLC6C implementation status (2026-08-29): the conservative production
+boundary is frozen in the
+[PLC6 contract](plugin-lifecycle-plc6-contract.md). Coding now exposes one
+canonical, fingerprinted and side-effect-free expansion for
+`coding-minimal`, `coding-standard`, and `coding-architecture`. The records are
+Product requests only: they do not mutate management desired state or perform
+Plugin selection, admission, publication, refresh, or retirement. PLC6B adds a
+generic Product-selected package ingress that takes an independent verified
+revision lease without mutating settings or rediscovering a source. The
+default Catalog-owned `coding-standard` Session now mounts the checked-in
+`coding.base`, seeds one combined Product selection with configured Resource
+Plugins, publishes its Prompt and Skill through the sole Resource Catalog, and
+assembles Kernel plus the admitted standard fragment exactly once. Refresh
+reacquires the loader lease while the sealed Session retains its Product-owned
+package evidence until disposal. PLC6C captures the configured Resource receipt,
+combines its verified packages with `coding.base` and optional
+`coding.lsp.default`, then prepares one Product compilation before workspace
+Provider construction. It binds that exact compilation to Resource Catalog and
+the Session, and stages the admitted base Tool and Command packs through
+`tools.workspace` and `commands.session`. Both generations become visible only when the usable
+Session composition commits, retire through their exact registration leases,
+and appear in effective-runtime provenance. The CLI no longer registers the
+base Tool pack directly, and the standard Catalog-owned Session no longer
+obtains Commands from an unconditional peer publisher. Management desired-state
+binding, the explicitly selected legacy Resource authority cleanup, and final
+production review remain PLC6D and PLC6E.
 
 Scope:
 

@@ -31,7 +31,29 @@ from loushang.harness.capabilities.provider_selection import (
 from loushang.harness.resources.plugins.selection import PluginInstanceRevisionRef
 
 
-def test_product_resolver_selects_required_closure_and_records_optional_absence() -> None:
+def test_product_resolver_represents_an_empty_external_provider_closure() -> None:
+    resolved = ProductCapabilityProviderResolver().resolve(
+        ProductCapabilityProviderSelectionPlanV1(
+            product_id="app",
+            roots=(),
+            choices=(),
+            policy_revision="app-provider-policy-v1",
+        ),
+        definitions=(),
+        admissions=(),
+        owner_snapshots=(),
+        evaluated_at=150,
+    )
+
+    assert resolved.roots == ()
+    assert resolved.entries == ()
+    assert resolved.prebound_providers == ()
+    assert resolved.optional_decisions == ()
+
+
+def test_product_resolver_selects_required_closure_and_records_optional_absence() -> (
+    None
+):
     admissions, snapshots, definitions = _admitted_graph()
     plan = _plan(
         _choice(admissions, "app.root"),
@@ -54,9 +76,9 @@ def test_product_resolver_selects_required_closure_and_records_optional_absence(
         "app.root",
         "harness.base",
     )
-    assert [(item.capability_id, item.satisfied) for item in resolved.optional_decisions] == [
-        ("harness.optional", False)
-    ]
+    assert [
+        (item.capability_id, item.satisfied) for item in resolved.optional_decisions
+    ] == [("harness.optional", False)]
     assert resolved.closure_fingerprint == resolved.to_dict()["closureFingerprint"]
     reevaluated = ProductCapabilityProviderResolver().resolve(
         plan,
@@ -101,18 +123,16 @@ def test_product_resolver_includes_an_explicitly_selected_optional_dependency() 
         "harness.base",
         "harness.optional",
     )
-    assert [(item.capability_id, item.satisfied) for item in resolved.optional_decisions] == [
-        ("harness.optional", True)
-    ]
+    assert [
+        (item.capability_id, item.satisfied) for item in resolved.optional_decisions
+    ] == [("harness.optional", True)]
 
 
 def test_product_resolver_satisfies_plugin_dependency_from_prebound_provider() -> None:
     admissions, snapshots, definitions = _admitted_graph()
     root = next(item for item in admissions if item.capability_id == "app.root")
     base = next(item for item in admissions if item.capability_id == "harness.base")
-    root_snapshot = next(
-        item for item in snapshots if item.capability_id == "app.root"
-    )
+    root_snapshot = next(item for item in snapshots if item.capability_id == "app.root")
 
     resolved = ProductCapabilityProviderResolver().resolve(
         _plan(_choice(admissions, "app.root")),
@@ -478,9 +498,7 @@ def _choice(
     admissions: tuple[CapabilityProviderAdmissionRecord, ...],
     capability_id: str,
 ) -> ProductCapabilityProviderChoice:
-    admission = next(
-        item for item in admissions if item.capability_id == capability_id
-    )
+    admission = next(item for item in admissions if item.capability_id == capability_id)
     return ProductCapabilityProviderChoice(
         capability_id=capability_id,
         provider_id=admission.provider.provider_id,

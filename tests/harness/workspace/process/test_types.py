@@ -53,6 +53,16 @@ def test_launch_request_freezes_shell_free_process_state(tmp_path: Path) -> None
             ValueError,
             "unique",
         ),
+        (
+            {
+                "command": ("server",),
+                "cwd": "/tmp",
+                "effective_environment": (),
+                "stream_stderr": "yes",
+            },
+            TypeError,
+            "stream_stderr",
+        ),
     ],
 )
 def test_launch_request_rejects_ambiguous_process_state(
@@ -73,4 +83,5 @@ def test_public_contract_does_not_expose_host_or_caller_controlled_limits() -> N
         "command",
         "cwd",
         "effective_environment",
+        "stream_stderr",
     }

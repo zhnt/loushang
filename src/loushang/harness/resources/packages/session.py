@@ -30,6 +30,7 @@ from loushang.harness.resources.packages.projection import (
 from loushang.harness.resources.packages.roots import (
     ResourceRootSettingsManager,
     ResourceRootSettingsSnapshot,
+    SelectedPluginPackageInput,
     configure_resource_loader_roots,
 )
 from loushang.harness.resources.packages.settings_mutation import (
@@ -78,12 +79,19 @@ class SessionPackageController:
     get_resource_loader: ResourceLoaderProvider
     get_diagnostics_service: DiagnosticsServiceProvider
     refresh_resources: ResourceRefresh
+    selected_plugin_packages: tuple[SelectedPluginPackageInput, ...] = ()
     refresh_resource_transaction: PackageResourceRefreshTransactionRunner | None = None
     summary_provider: PackageSummaryProvider | None = None
     supports_synchronous_refresh: Callable[[], bool] = lambda: True
     _operations: PackageOperationsRuntime = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
+        self.selected_plugin_packages = tuple(self.selected_plugin_packages)
+        if any(
+            not isinstance(item, SelectedPluginPackageInput)
+            for item in self.selected_plugin_packages
+        ):
+            raise TypeError("Selected Plugin package inputs are invalid")
         self._operations = PackageOperationsRuntime(
             get_materializer=self.get_package_materializer,
             add_source=self._add_package_source,
@@ -290,6 +298,7 @@ class SessionPackageController:
                 materializer=materializer,
                 diagnostics_service=self.get_diagnostics_service(),
                 session_id=self.session_id,
+                selected_plugin_packages=self.selected_plugin_packages,
             )
 
 

@@ -26,6 +26,7 @@ RCP2_MODULES = {
     ORCHESTRATION_ROOT / "shadow.py",
 }
 RCP3_MODULES = {
+    RESOURCE_ROOT / "_catalog_input_preparation.py",
     RESOURCE_ROOT / "_catalog_embedded_source.py",
     RESOURCE_ROOT / "_catalog_package_source.py",
     RESOURCE_ROOT / "_catalog_source_contracts.py",
@@ -39,6 +40,7 @@ RCP4_MODULES = {
     ORCHESTRATION_ROOT / "joint_generation.py",
     ORCHESTRATION_ROOT / "product_inputs.py",
     ORCHESTRATION_ROOT / "session_bootstrap.py",
+    ORCHESTRATION_ROOT / "bootstrap_projection.py",
     CAPABILITY_ROOT / "resources_consumers.py",
     EXTENSION_ROOT / "resources.py",
 }

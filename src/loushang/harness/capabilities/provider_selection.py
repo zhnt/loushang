@@ -70,10 +70,10 @@ class ProductCapabilityProviderSelectionPlanV1:
     def __post_init__(self) -> None:
         product_id = _require_nonempty(self.product_id, name="Product id")
         roots = _normalized_names(self.roots, name="Product Capability roots")
-        if not roots:
-            raise ValueError("Product Capability roots must not be empty")
         choices = tuple(self.choices)
-        if any(not isinstance(item, ProductCapabilityProviderChoice) for item in choices):
+        if any(
+            not isinstance(item, ProductCapabilityProviderChoice) for item in choices
+        ):
             raise TypeError("Product Provider choices have invalid type")
         _require_nonempty(
             self.policy_revision,
@@ -124,9 +124,7 @@ class CapabilityOptionalRequirementDecision:
                 name="optional selected candidate fingerprint",
             )
         elif self.selected_candidate_fingerprint is not None:
-            raise ValueError(
-                "Unsatisfied optional requirement cannot name a candidate"
-            )
+            raise ValueError("Unsatisfied optional requirement cannot name a candidate")
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -167,8 +165,7 @@ class ResolvedCapabilityProvider:
             or self.binding_spec != self.admission.binding_spec
             or self.choice.capability_id != self.provider.capability_id
             or self.choice.provider_id != self.provider.provider_id
-            or self.choice.candidate_fingerprint
-            != self.admission.candidate_fingerprint
+            or self.choice.candidate_fingerprint != self.admission.candidate_fingerprint
         ):
             raise ValueError("Resolved Capability Provider facts do not exact-match")
 
@@ -214,8 +211,6 @@ class ResolvedCapabilityProviderSet:
     def __post_init__(self) -> None:
         _require_nonempty(self.product_id, name="Product id")
         roots = _normalized_names(self.roots, name="Product Capability roots")
-        if not roots:
-            raise ValueError("Resolved Provider roots must not be empty")
         _require_nonempty(
             self.product_policy_revision,
             name="Product Provider-selection policy revision",
@@ -292,9 +287,7 @@ class ResolvedCapabilityProviderSet:
         return {
             "entries": [item.to_dict() for item in self.entries],
             "evaluatedAt": self.evaluated_at,
-            "optionalDecisions": [
-                item.to_dict() for item in self.optional_decisions
-            ],
+            "optionalDecisions": [item.to_dict() for item in self.optional_decisions],
             "preboundProviders": [
                 _capability_bundle_provider_to_dict(item)
                 for item in self.prebound_providers
@@ -343,9 +336,7 @@ class ProductCapabilityProviderResolver:
             prebound_providers,
             definitions_by_id=definitions_by_id,
         )
-        choices_by_capability: dict[
-            str, list[ProductCapabilityProviderChoice]
-        ] = {}
+        choices_by_capability: dict[str, list[ProductCapabilityProviderChoice]] = {}
         for choice in plan.choices:
             choices_by_capability.setdefault(choice.capability_id, []).append(choice)
 
@@ -369,9 +360,7 @@ class ProductCapabilityProviderResolver:
                                 satisfied=True,
                                 selected_candidate_fingerprint=(
                                     _prebound_provider_fingerprint(
-                                        prebound_by_capability[
-                                            requirement.capability
-                                        ]
+                                        prebound_by_capability[requirement.capability]
                                     )
                                 ),
                             )
@@ -447,8 +436,7 @@ class ProductCapabilityProviderResolver:
                 for admission in admission_values
                 if admission.capability_id == capability_id
                 and admission.provider.provider_id == choice.provider_id
-                and admission.candidate_fingerprint
-                == choice.candidate_fingerprint
+                and admission.candidate_fingerprint == choice.candidate_fingerprint
             )
             if not matches:
                 _raise_selection(

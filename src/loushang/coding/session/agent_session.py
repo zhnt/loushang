@@ -6,6 +6,12 @@ from typing import Any
 from loushang.agent import Agent, PrepareModelCallFn
 from loushang.ai import PreparedRequestLimits
 from loushang.ai.api_registry import APIRegistry
+from loushang.coding._base_plugin import (
+    CodingBasePluginAssembly,
+    CodingBasePluginSessionAssembly,
+    build_coding_base_plugin_owners,
+)
+from loushang.coding._base_plugin_owners import CodingBaseToolRegistrationSlot
 from loushang.coding.compaction.adapter import (
     execute_coding_branch_summary,
 )
@@ -52,6 +58,7 @@ from loushang.harness.model_catalog import ModelCatalog as ModelRegistry
 from loushang.harness.multiagent import DelegatedExecutionProfile
 from loushang.harness.policy import PolicyEvaluator
 from loushang.harness.resources.loader import ResourceLoader
+from loushang.harness.resources.packages.roots import SelectedPluginPackageInput
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.sandbox import SandboxExecutionRuntime, SandboxStatus
 from loushang.harness.session import AgentProductSession
@@ -59,6 +66,9 @@ from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityOwnerGenerationBinding,
 )
 from loushang.harness.session.changelog import read_changelog_for_cwd
+from loushang.harness.session.command_controller import (
+    SessionCommandGenerationRegistry,
+)
 from loushang.harness.session.composition import sleep_for_retry
 from loushang.harness.session.cwd_audit import CwdBoundServicesAudit
 from loushang.harness.session.event_types import AgentSessionEvent
@@ -71,6 +81,7 @@ from loushang.harness.session.model_call import SessionModelCallCapabilityConsum
 from loushang.harness.session.resource_refresh_gate import (
     ResourceCatalogRefreshGatePort,
 )
+from loushang.harness.tools.workspace.factory import ToolsOptions
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.harness.transcript import (
     BranchSummaryOutput,
@@ -161,6 +172,11 @@ class AgentSession(AgentProductSession):
         side_question_binding: LegacySideQuestionBinding | None = None,
         sandbox_runtime: SandboxExecutionRuntime | None = None,
         coding_lsp_plugin_assembly: CodingLspPluginOptInAssembly | None = None,
+        coding_base_plugin_assembly: CodingBasePluginAssembly | None = None,
+        coding_base_plugin_session_assembly: (
+            CodingBasePluginSessionAssembly | None
+        ) = None,
+        coding_plugin_clock: Callable[[], int] | None = None,
         delegated_execution_profile: DelegatedExecutionProfile | None = None,
         workspace_capability_binding: CapabilityBundleProviderBinding | None = None,
         initial_resource_catalog_bootstrap: Any | None = None,
@@ -172,9 +188,27 @@ class AgentSession(AgentProductSession):
             CodingLspPluginOptInAssembly,
         ):
             raise TypeError("Coding LSP Plugin assembly is invalid")
+        if coding_base_plugin_assembly is not None and not isinstance(
+            coding_base_plugin_assembly,
+            CodingBasePluginAssembly,
+        ):
+            raise TypeError("Coding base Plugin assembly is invalid")
+        if coding_base_plugin_session_assembly is not None and not isinstance(
+            coding_base_plugin_session_assembly,
+            CodingBasePluginSessionAssembly,
+        ):
+            raise TypeError("Coding base Plugin Session assembly is invalid")
+        if coding_base_plugin_assembly is not None and (
+            coding_lsp_plugin_assembly is None
+            and coding_base_plugin_session_assembly is None
+        ):
+            raise ValueError("Coding base Plugin requires one Session composition")
+        if coding_plugin_clock is not None and not callable(coding_plugin_clock):
+            raise TypeError("Coding Plugin clock is invalid")
         self._sandbox_runtime = sandbox_runtime
         self._lsp_access: CodingLspSessionAccess | None = None
         self._coding_lsp_plugin_assembly = coding_lsp_plugin_assembly
+        self._coding_base_plugin_assembly = coding_base_plugin_assembly
         self._coding_lsp_plugin_capture: CapabilityFacetSet | None = None
         self.delegated_execution_profile = delegated_execution_profile
         self.cwd_bound_services_audit: CwdBoundServicesAudit | None = None
@@ -184,10 +218,66 @@ class AgentSession(AgentProductSession):
         ) = None
         locally_created_side_question_binding: LegacySideQuestionBinding | None = None
         lsp_tool_registration_slot: CodingLspToolRegistrationSlot | None = None
-        lsp_owner_bindings: tuple[SessionCapabilityOwnerGenerationBinding, ...] = ()
+        owner_bindings: tuple[SessionCapabilityOwnerGenerationBinding, ...] = ()
+        base_tool_registration_slot: CodingBaseToolRegistrationSlot | None = None
+        command_generations: SessionCommandGenerationRegistry | None = None
+        plugin_assembly = (
+            coding_lsp_plugin_assembly.plugin_assembly
+            if coding_lsp_plugin_assembly is not None
+            else (
+                coding_base_plugin_session_assembly.plugin_assembly
+                if coding_base_plugin_session_assembly is not None
+                else None
+            )
+        )
+        if coding_base_plugin_assembly is not None:
+            if plugin_assembly is None or coding_plugin_clock is None:
+                raise ValueError("Coding base Plugin owner inputs are unavailable")
+            command_generations = SessionCommandGenerationRegistry()
+            get_external_tool_policy = getattr(
+                settings_manager,
+                "get_external_tool_policy",
+                None,
+            )
+            get_shell_path = getattr(settings_manager, "get_shell_path", None)
+            get_shell_command_prefix = getattr(
+                settings_manager,
+                "get_shell_command_prefix",
+                None,
+            )
+            base_owners = build_coding_base_plugin_owners(
+                coding_base_plugin_assembly,
+                plugin_assembly,
+                clock=coding_plugin_clock,
+                tool_options=ToolsOptions(
+                    diagnostics_service=diagnostics_service,
+                    external_tool_policy=(
+                        get_external_tool_policy()
+                        if callable(get_external_tool_policy)
+                        else None
+                    ),
+                    host_environment=coding_base_plugin_assembly.host_environment,
+                    shell_path=(get_shell_path() if callable(get_shell_path) else None),
+                    command_prefix=(
+                        get_shell_command_prefix()
+                        if callable(get_shell_command_prefix)
+                        else None
+                    ),
+                ),
+            )
+            if base_owners.tool is not None:
+                base_tool_registration_slot = CodingBaseToolRegistrationSlot()
+                owner_bindings = (
+                    base_owners.tool.bind(base_tool_registration_slot),
+                )
+            owner_bindings = (
+                *owner_bindings,
+                base_owners.command.bind(command_generations),
+            )
         if coding_lsp_plugin_assembly is not None:
             lsp_tool_registration_slot = CodingLspToolRegistrationSlot()
-            lsp_owner_bindings = (
+            owner_bindings = (
+                *owner_bindings,
                 coding_lsp_plugin_assembly.tool_owner.bind(lsp_tool_registration_slot),
             )
         resolution = None
@@ -241,17 +331,31 @@ class AgentSession(AgentProductSession):
                 base_prompt=base_prompt,
                 diagnostics_service=diagnostics_service,
                 package_materializer=package_materializer,
+                selected_plugin_packages=(
+                    (
+                        SelectedPluginPackageInput(
+                            package=coding_base_plugin_assembly.package,
+                            binding=coding_base_plugin_assembly.binding,
+                        ),
+                    )
+                    if coding_base_plugin_assembly is not None
+                    else ()
+                ),
                 session_start_event=session_start_event,
                 api_registry=api_registry,
                 exec_service=exec_service,
                 tool_exec_service=(
-                    exec_service
-                    if (
-                        sandbox_runtime is not None
-                        and sandbox_runtime.status().state != "disabled"
+                    None
+                    if coding_base_plugin_session_assembly is not None
+                    else (
+                        exec_service
+                        if (
+                            sandbox_runtime is not None
+                            and sandbox_runtime.status().state != "disabled"
+                        )
+                        or getattr(exec_service, "execution_profile", None) is not None
+                        else None
                     )
-                    or getattr(exec_service, "execution_profile", None) is not None
-                    else None
                 ),
                 approval_resolver=approval_resolver,
                 tool_policy_evaluator=tool_policy_evaluator,
@@ -259,14 +363,19 @@ class AgentSession(AgentProductSession):
                 capability_composition_inputs=(
                     coding_lsp_plugin_assembly.session_inputs
                     if coding_lsp_plugin_assembly is not None
-                    else None
+                    else (
+                        coding_base_plugin_session_assembly.session_inputs
+                        if coding_base_plugin_session_assembly is not None
+                        else None
+                    )
                 ),
                 capability_component_host=(
                     coding_lsp_plugin_assembly.component_host
                     if coding_lsp_plugin_assembly is not None
                     else None
                 ),
-                capability_owner_generation_bindings=lsp_owner_bindings,
+                capability_owner_generation_bindings=owner_bindings,
+                command_generation_registry=command_generations,
                 initial_resource_catalog_bootstrap=(initial_resource_catalog_bootstrap),
                 resource_catalog_refresh_bootstrap_factory=(
                     resource_catalog_refresh_bootstrap_factory
@@ -282,9 +391,13 @@ class AgentSession(AgentProductSession):
             )
             if lsp_tool_registration_slot is not None:
                 lsp_tool_registration_slot.bind(self._composition.tool_controller)
+            if base_tool_registration_slot is not None:
+                base_tool_registration_slot.bind(self._composition.tool_controller)
         except BaseException as error:
             if coding_lsp_plugin_assembly is not None:
                 coding_lsp_plugin_assembly.close()
+            if coding_base_plugin_assembly is not None:
+                coding_base_plugin_assembly.close()
             if locally_created_side_question_binding is not None:
                 try:
                     locally_created_side_question_binding.dispose()
@@ -359,6 +472,7 @@ class AgentSession(AgentProductSession):
         invocation_name: str,
         args: str,
     ) -> object | None:
+        await self.prepare_model_call_runtime()
         if normalize_command_name(invocation_name) == LSP_SESSION_COMMAND_NAME:
             return await execute_lsp_session_command(self._lsp_access, args)
         return await super().execute_command_async(invocation_name, args)
@@ -391,6 +505,18 @@ class AgentSession(AgentProductSession):
                     )
             self._coding_lsp_plugin_capture = None
             self._lsp_access = None
+        base_plugin_assembly = getattr(self, "_coding_base_plugin_assembly", None)
+        if base_plugin_assembly is not None:
+            try:
+                base_plugin_assembly.close()
+            except BaseException as cleanup_error:
+                if primary_error is None:
+                    primary_error = cleanup_error
+                else:
+                    primary_error.add_note(
+                        "Coding base Plugin evidence cleanup also failed: "
+                        f"{cleanup_error}"
+                    )
         if self._sandbox_runtime is not None:
             try:
                 await self._sandbox_runtime.close()

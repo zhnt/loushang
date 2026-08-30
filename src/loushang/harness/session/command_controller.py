@@ -27,6 +27,13 @@ from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.extensions.types import ResolvedCommand
 from loushang.harness.resources.types import ResourceBundle
+from loushang.harness.runtime.registration import (
+    RegistrationDisposalResult,
+    RegistrationIdentity,
+    RegistrationLease,
+    RegistrationLeaseState,
+    RegistrationOwner,
+)
 from loushang.harness.session.command_sources import (
     ExtensionCommandProvider,
     ExtensionCommandSourceRuntime,
@@ -74,6 +81,120 @@ BuiltinCommandExecutor = Callable[[str, str], Awaitable[ResultT | None]]
 BuiltinCommandMatcher = Callable[[str], bool]
 
 
+@dataclass(frozen=True)
+class _RegisteredSessionCommandPack:
+    owner: RegistrationOwner
+    identity: RegistrationIdentity
+    descriptors: tuple[SessionCommandDescriptor, ...]
+
+
+class SessionCommandGenerationRegistry:
+    """Owner-scoped, generation-atomic standard Command publication."""
+
+    def __init__(self) -> None:
+        self._staged: dict[str, _RegisteredSessionCommandPack] = {}
+        self._active: dict[str, _RegisteredSessionCommandPack] = {}
+
+    def stage_pack(
+        self,
+        descriptors: Sequence[SessionCommandDescriptor],
+        *,
+        owner: RegistrationOwner,
+        pack_id: str,
+    ) -> RegistrationLease:
+        values = tuple(descriptors)
+        if not isinstance(owner, RegistrationOwner):
+            raise TypeError("Command generation owner is invalid")
+        if not isinstance(pack_id, str) or not pack_id.strip():
+            raise ValueError("Command generation pack id is invalid")
+        if not values:
+            raise ValueError("Command generation pack must not be empty")
+        if any(not isinstance(item, SessionCommandDescriptor) for item in values):
+            raise TypeError("Command generation descriptors are invalid")
+        names = tuple(normalize_command_name(item.name) for item in values)
+        if len(names) != len(set(names)):
+            raise ValueError("Command generation descriptors must be unique")
+        identity = RegistrationIdentity.create(
+            surface="session_command_pack",
+            public_key=pack_id,
+        )
+        registration_id = identity.registration_id
+        record = _RegisteredSessionCommandPack(
+            owner=owner,
+            identity=identity,
+            descriptors=values,
+        )
+        self._staged[registration_id] = record
+
+        def activate() -> None:
+            current = self._staged.get(registration_id)
+            if current is not record:
+                raise RuntimeError("Staged Command generation is unavailable")
+            existing_names = {
+                normalize_command_name(descriptor.name)
+                for active in self._active.values()
+                if active.identity.public_key != pack_id
+                for descriptor in active.descriptors
+            }
+            if set(names).intersection(existing_names):
+                raise ValueError("Command generation conflicts with an active pack")
+            if any(
+                active.identity.public_key == pack_id
+                for active in self._active.values()
+            ):
+                raise ValueError("Command generation pack is already active")
+            self._staged.pop(registration_id)
+            self._active[registration_id] = record
+
+        def deactivate() -> None:
+            current = self._active.get(registration_id)
+            if current is not record:
+                raise RuntimeError("Active Command generation is unavailable")
+            self._active.pop(registration_id)
+            self._staged[registration_id] = record
+
+        def remove() -> RegistrationDisposalResult:
+            removed = self._active.pop(registration_id, None)
+            if removed is None:
+                removed = self._staged.pop(registration_id, None)
+            return RegistrationDisposalResult(
+                state="removed" if removed is not None else "already_removed"
+            )
+
+        return RegistrationLease(
+            owner=owner,
+            identity=identity,
+            activate=activate,
+            deactivate=deactivate,
+            dispose=remove,
+            rollback=remove,
+        )
+
+    def list_descriptors(self) -> list[SessionCommandDescriptor]:
+        return [
+            descriptor
+            for pack in self._active.values()
+            for descriptor in pack.descriptors
+        ]
+
+    def contains(self, name: str) -> bool:
+        normalized = normalize_command_name(name)
+        return any(
+            normalize_command_name(descriptor.name) == normalized
+            for descriptor in self.list_descriptors()
+        )
+
+    @property
+    def registration_inventory(
+        self,
+    ) -> tuple[
+        tuple[RegistrationOwner, RegistrationIdentity, RegistrationLeaseState], ...
+    ]:
+        return tuple(
+            (pack.owner, pack.identity, "active") for pack in self._active.values()
+        )
+
+
 @dataclass
 class SessionCommandController(Generic[ResultT]):
     """Compose builtin, extension, and resource command sources.
@@ -96,9 +217,9 @@ class SessionCommandController(Generic[ResultT]):
     pack_composer: CapabilityPackComposer = field(
         default_factory=CapabilityPackComposer
     )
-    get_effective_skills: (
-        Callable[[], Sequence[SkillCommandSummary] | None] | None
-    ) = None
+    get_effective_skills: Callable[[], Sequence[SkillCommandSummary] | None] | None = (
+        None
+    )
     get_skill_body_loader: Callable[[], SkillBodyLoader | None] | None = None
     skill_body_authority: ResourceSkillBodyAuthority | None = None
     _runtime: SessionCommandRuntime[SessionCommandDescriptor, ResultT] = field(
@@ -212,7 +333,7 @@ class SessionCommandController(Generic[ResultT]):
     async def execute_builtin_command_async(
         self, invocation_name: str, args: str
     ) -> ResultT | None:
-        if self.builtin_executor is None:
+        if self.builtin_executor is None or not self.builtin_matcher(invocation_name):
             return None
         return await self.builtin_executor(invocation_name, args)
 
@@ -317,6 +438,7 @@ class StandardSessionCommandController(
         get_resource_bundle: Callable[[], ResourceBundle | None],
         get_diagnostics_service: Callable[[], DiagnosticsService | None],
         standard_ports: StandardSessionCommandPorts | None = None,
+        command_generations: SessionCommandGenerationRegistry | None = None,
         diagnostics_runtime: SessionDiagnosticsRuntime | None = None,
         pack_composer: CapabilityPackComposer | None = None,
         get_effective_skills: (
@@ -339,9 +461,13 @@ class StandardSessionCommandController(
                 result=None,
             ),
             builtin_descriptors=(
-                list_standard_session_command_descriptors
-                if standard_ports is not None
-                else (lambda: [])
+                command_generations.list_descriptors
+                if command_generations is not None
+                else (
+                    list_standard_session_command_descriptors
+                    if standard_ports is not None
+                    else (lambda: [])
+                )
             ),
             builtin_executor=(
                 (
@@ -354,7 +480,11 @@ class StandardSessionCommandController(
                 if standard_ports is not None
                 else None
             ),
-            builtin_matcher=is_standard_session_command,
+            builtin_matcher=(
+                command_generations.contains
+                if command_generations is not None
+                else is_standard_session_command
+            ),
             diagnostics_runtime=diagnostics_runtime,
             pack_composer=pack_composer or CapabilityPackComposer(),
             get_effective_skills=get_effective_skills,
@@ -388,6 +518,7 @@ __all__ = [
     "BuiltinCommandMatcher",
     "BuiltinDescriptorProvider",
     "SessionCommandController",
+    "SessionCommandGenerationRegistry",
     "SessionCommandStorePort",
     "StandardSessionCommandController",
 ]

@@ -11,14 +11,30 @@ from pathlib import Path
 
 import pytest
 
+from loushang.agent import synthetic_model_transport
+from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import Capabilities, Model
+from loushang.ai.types import AssistantMessage, TextPart, Usage
+from loushang.coding._base_plugin import prepare_coding_base_plugin_assembly
 from loushang.coding._resource_catalog_shadow import (
     CodingResourceCatalogAdmissionError,
     CodingResourceCatalogShadowAdmissionError,
+    _owner_binding_covers,
     build_coding_initial_resource_catalog_shadow_adapter,
+    complete_coding_package_plugin_selection_seed,
 )
-from loushang.coding.bootstrap import _create_agent_session, create_services
+from loushang.coding.bootstrap import (
+    _create_agent_session,
+    create_agent_session,
+    create_services,
+)
+from loushang.coding.composition_sets import resolve_coding_composition_set
 from loushang.coding.control import SettingsManager
+from loushang.coding.prompt import (
+    CODING_KERNEL_SYSTEM_PROMPT,
+    CODING_STANDARD_SYSTEM_PROMPT_FRAGMENT,
+)
+from loushang.coding.resource_runtime import CodingPackageMaterializer
 from loushang.coding.session_manager import SessionManager
 from loushang.harness.capabilities.consumer_requirements import (
     ProductCompositionAuthorityContext,
@@ -92,10 +108,214 @@ _CODING_BASE_SHADOW_ROOT = (
 )
 
 
+def test_configured_owner_binding_must_exact_match_product_boundary() -> None:
+    policy = OwnerContributionPolicy(
+        owner_id="resources.skill",
+        contribution_kind="resource_item",
+        product_id="coding",
+        policy_revision="resource-owner-v1",
+        revocation_epoch=0,
+        allowed_source_trust_classes=("configured",),
+        allowed_collection_ids=("loushang.resource.skill",),
+        allowed_requirement_bindings=("direct",),
+        consumer_scope="session",
+        consumer_refresh_boundary="sealed",
+    )
+
+    def covers(candidate: OwnerContributionPolicy) -> bool:
+        return _owner_binding_covers(
+            ProductContributionOwnerBinding(
+                OwnerContributionAuthority(candidate)
+            ),
+            owner_id="resources.skill",
+            contribution_kind="resource_item",
+            trust_classes={"configured"},
+            collection_ids={"loushang.resource.skill"},
+        )
+
+    assert covers(policy) is True
+    assert covers(
+        replace(
+            policy,
+            allowed_collection_ids=(
+                "loushang.resource.prompt",
+                "loushang.resource.skill",
+            ),
+        )
+    ) is False
+    assert covers(replace(policy, consumer_refresh_boundary="turn")) is False
+
+
+@pytest.mark.parametrize(
+    "policy_change,reason",
+    (
+        (
+            {"consumer_refresh_boundary": "turn"},
+            "product_owner_binding_boundary_mismatch",
+        ),
+        (
+            {
+                "allowed_collection_ids": (
+                    "harness.workspace.core",
+                    "loushang.resource.prompt",
+                )
+            },
+            "product_owner_binding_boundary_mismatch",
+        ),
+    ),
+)
+def test_supplied_product_owner_boundary_mismatch_fails_closed(
+    tmp_path: Path,
+    policy_change: dict[str, object],
+    reason: str,
+) -> None:
+    assembly = prepare_coding_base_plugin_assembly(
+        resolve_coding_composition_set(),
+        session_id="owner-boundary",
+        package_materializer=CodingPackageMaterializer(
+            install_root=tmp_path / "installed",
+            plugin_revision_root=tmp_path / "revisions",
+        ),
+    )
+    try:
+        selection = PluginDeclarationHost().resolve(
+            assembly.plan_seed.packages,
+            bindings=assembly.plan_seed.bindings,
+            plan=assembly.plan_seed.plan,
+            decision_lookup=PendingOnlyPluginExecutionDecisionLookup(),
+        )
+        assert isinstance(selection, PluginSelection)
+        tool_binding = next(
+            item
+            for item in assembly.plan_seed.owner_bindings
+            if item.owner_key[:2] == ("tools.workspace", "tool_pack")
+        )
+        changed = ProductContributionOwnerBinding(
+            authority=OwnerContributionAuthority(
+                replace(tool_binding.authority.policy, **policy_change)
+            ),
+            admission_ttl_seconds=tool_binding.admission_ttl_seconds,
+        )
+        seed = replace(
+            assembly.plan_seed,
+            owner_bindings=tuple(
+                changed if item is tool_binding else item
+                for item in assembly.plan_seed.owner_bindings
+            ),
+        )
+
+        with pytest.raises(CodingResourceCatalogAdmissionError) as captured:
+            complete_coding_package_plugin_selection_seed(
+                seed,
+                selection=selection,
+            )
+
+        assert captured.value.reasons == (reason,)
+    finally:
+        assembly.runtime.close()
+
+
+def test_duplicate_product_owner_pair_across_products_is_rejected(
+    tmp_path: Path,
+) -> None:
+    assembly = prepare_coding_base_plugin_assembly(
+        resolve_coding_composition_set(),
+        session_id="duplicate-owner",
+        package_materializer=CodingPackageMaterializer(
+            install_root=tmp_path / "installed",
+            plugin_revision_root=tmp_path / "revisions",
+        ),
+    )
+    try:
+        selection = PluginDeclarationHost().resolve(
+            assembly.plan_seed.packages,
+            bindings=assembly.plan_seed.bindings,
+            plan=assembly.plan_seed.plan,
+            decision_lookup=PendingOnlyPluginExecutionDecisionLookup(),
+        )
+        assert isinstance(selection, PluginSelection)
+        [tool_binding] = [
+            item
+            for item in assembly.plan_seed.owner_bindings
+            if item.owner_key[:2] == ("tools.workspace", "tool_pack")
+        ]
+        duplicate = ProductContributionOwnerBinding(
+            authority=OwnerContributionAuthority(
+                replace(tool_binding.authority.policy, product_id="another-product")
+            )
+        )
+        seed = replace(
+            assembly.plan_seed,
+            owner_bindings=(*assembly.plan_seed.owner_bindings, duplicate),
+        )
+
+        with pytest.raises(CodingResourceCatalogAdmissionError) as captured:
+            complete_coding_package_plugin_selection_seed(
+                seed,
+                selection=selection,
+            )
+
+        assert captured.value.reasons == (
+            "duplicate_product_owner_binding",
+        )
+    finally:
+        assembly.runtime.close()
+
+
+def test_selection_completion_rejects_unused_unique_owner_binding(
+    tmp_path: Path,
+) -> None:
+    assembly = prepare_coding_base_plugin_assembly(
+        resolve_coding_composition_set(),
+        session_id="extra-owner",
+        package_materializer=CodingPackageMaterializer(
+            install_root=tmp_path / "installed",
+            plugin_revision_root=tmp_path / "revisions",
+        ),
+    )
+    try:
+        selection = PluginDeclarationHost().resolve(
+            assembly.plan_seed.packages,
+            bindings=assembly.plan_seed.bindings,
+            plan=assembly.plan_seed.plan,
+            decision_lookup=PendingOnlyPluginExecutionDecisionLookup(),
+        )
+        assert isinstance(selection, PluginSelection)
+        extra = ProductContributionOwnerBinding(
+            OwnerContributionAuthority(
+                OwnerContributionPolicy(
+                    owner_id="resources.extra",
+                    contribution_kind="resource_item",
+                    product_id="coding",
+                    policy_revision="extra-owner-v1",
+                    revocation_epoch=0,
+                    allowed_source_trust_classes=("host-equivalent-local",),
+                    allowed_collection_ids=("loushang.resource.prompt",),
+                    allowed_requirement_bindings=("direct",),
+                    consumer_scope="session",
+                    consumer_refresh_boundary="sealed",
+                )
+            )
+        )
+        seed = replace(
+            assembly.plan_seed,
+            owner_bindings=(*assembly.plan_seed.owner_bindings, extra),
+        )
+
+        with pytest.raises(CodingResourceCatalogAdmissionError) as captured:
+            complete_coding_package_plugin_selection_seed(seed, selection=selection)
+
+        assert captured.value.reasons == ("product_owner_binding_extra",)
+    finally:
+        assembly.runtime.close()
+
+
 def _copy_resource_only_plugin(target: Path) -> None:
     shutil.copytree(_CODING_BASE_SHADOW_ROOT, target)
+    plugin_id = "coding.test.resources"
     manifest_path = target / "plugin.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["name"] = plugin_id
     manifest["contributionIndex"]["items"] = [
         item
         for item in manifest["contributionIndex"]["items"]
@@ -110,12 +330,23 @@ def _copy_resource_only_plugin(target: Path) -> None:
     declarations["declarations"] = [
         item for item in declarations["declarations"] if item["kind"] == "resource_item"
     ]
+    for declaration in declarations["declarations"]:
+        declaration["pluginId"] = plugin_id
+        if declaration["contributionId"] == "prompt-standard":
+            declaration["payload"]["locator"] = "prompts/package-standard.md"
+        if declaration["contributionId"] == "skill-standard":
+            declaration["payload"]["locator"] = "skills/package-standard/SKILL.md"
     declarations_path.write_text(
         json.dumps(declarations, sort_keys=True, separators=(",", ":")),
         encoding="utf-8",
     )
-    (target / "skills" / "standard" / "SKILL.md").write_text(
-        "---\nname: standard\n"
+    (target / "prompts" / "standard.md").rename(
+        target / "prompts" / "package-standard.md"
+    )
+    skill_root = target / "skills" / "package-standard"
+    (target / "skills" / "standard").rename(skill_root)
+    (skill_root / "SKILL.md").write_text(
+        "---\nname: package-standard\n"
         "description: Automatically admitted package Skill.\n---\n"
         "Use the admitted package Skill.\n",
         encoding="utf-8",
@@ -630,16 +861,21 @@ def test_coding_initial_catalog_shadow_publishes_project_context_and_skill(
             assert session._resource_catalog_snapshot is not None
             statuses = session.list_skill_statuses()
             assert [(status.name, status.status) for status in statuses] == [
-                ("review", "effective")
+                ("review", "effective"),
+                ("standard", "effective"),
             ]
             assert session.resource_bundle is not None
             assert [skill.name for skill in session.resource_bundle.skills] == [
-                "review"
+                "review",
+                "standard",
             ]
             assert [
                 descriptor.text
                 for descriptor in session.resource_bundle.prompt_descriptors
-            ] == ["Project guidance"]
+            ] == [
+                "Project guidance",
+                CODING_STANDARD_SYSTEM_PROMPT_FRAGMENT.rstrip(),
+            ]
             assert "Review code" in session.agent.system_prompt
             assert "Review carefully." not in session.agent.system_prompt
             assert "skill:review" in {
@@ -930,8 +1166,8 @@ def test_coding_initial_catalog_applies_disabled_skill_in_owner_status(
             await session.prepare_model_call_runtime()
 
             statuses = session.list_skill_statuses()
-            assert len(statuses) == 1
-            status = statuses[0]
+            assert {item.name for item in statuses} == {"review", "standard"}
+            status = next(item for item in statuses if item.name == "review")
             assert (status.name, status.status, status.status_reason) == (
                 "review",
                 "inactive_activation",
@@ -939,6 +1175,8 @@ def test_coding_initial_catalog_applies_disabled_skill_in_owner_status(
             )
             assert status.declared_enabled is True
             assert status.effective is False
+            standard_status = next(item for item in statuses if item.name == "standard")
+            assert standard_status.status == "effective"
             assert "Review code" not in session.agent.system_prompt
             assert "skill:review" not in {
                 command.name for command in session.list_commands()
@@ -994,6 +1232,24 @@ def test_coding_catalog_refresh_publishes_one_exact_next_generation(
             assert mounted is not None
             assert old_consumer.catalog_generation == 1
             graph_generation = session._capability_graph_runtime.generation
+            owner_generations = session._capability_owner_generations
+            owner_generation_values = tuple(
+                generation.value for generation in owner_generations
+            )
+            tool_registry = session._composition.tool_controller.tool_registry
+            command_registry = session._command_generation_registry
+            assert tool_registry is not None
+            assert command_registry is not None
+            tool_inventory = tool_registry.registration_inventory
+            command_inventory = command_registry.registration_inventory
+            effective_runtime = session.get_effective_runtime_view()
+            assert effective_runtime.source_publication is not None
+            assert effective_runtime.source_publication.resource_revision == 1
+            owner_registration_provenance = tuple(
+                entry
+                for entry in effective_runtime.registrations
+                if entry.surface in {"tool", "session_command_pack"}
+            )
 
             skill_file.write_text(
                 "---\nname: review\ndescription: Review v2\n---\nReview v2 body.\n",
@@ -1007,14 +1263,61 @@ def test_coding_catalog_refresh_publishes_one_exact_next_generation(
             assert new_consumer is not None
             assert new_consumer is not old_consumer
             assert new_consumer.catalog_generation == 2
-            assert [
-                item.description for item in old_consumer.list_effective_skills()
-            ] == ["Review v1"]
-            assert [
-                item.description for item in new_consumer.list_effective_skills()
-            ] == ["Review v2"]
+            assert {
+                item.name: item.description
+                for item in old_consumer.list_effective_skills()
+            }["review"] == "Review v1"
+            assert {
+                item.name: item.description
+                for item in new_consumer.list_effective_skills()
+            }["review"] == "Review v2"
             assert session._capability_graph_runtime.generation == graph_generation
             assert session._composition.resource_refresh_runtime.resource_revision == 2
+            assert session._capability_owner_generations is owner_generations
+            assert tuple(
+                generation.value
+                for generation in session._capability_owner_generations
+            ) == owner_generation_values
+            assert all(
+                current is frozen
+                for current, frozen in zip(
+                    (
+                        generation.value
+                        for generation in session._capability_owner_generations
+                    ),
+                    owner_generation_values,
+                    strict=True,
+                )
+            )
+            assert tool_registry.registration_inventory == tool_inventory
+            assert command_registry.registration_inventory == command_inventory
+            refreshed_runtime = session.get_effective_runtime_view()
+            assert tuple(
+                entry
+                for entry in refreshed_runtime.registrations
+                if entry.surface in {"tool", "session_command_pack"}
+            ) == owner_registration_provenance
+            runtime_diff = session.diff_effective_runtime(
+                effective_runtime,
+                refreshed_runtime,
+            )
+            assert runtime_diff.source_publication_changed is True
+            assert runtime_diff.after_source_publication is not None
+            assert runtime_diff.after_source_publication.resource_revision == 2
+            assert runtime_diff.profile_changed is False
+            assert runtime_diff.mount_graph_changed is False
+            assert runtime_diff.mount_generation_changed is False
+            assert runtime_diff.registration_revision_changed is False
+            assert runtime_diff.model_surface_changed is False
+            assert runtime_diff.added_profile_slots == ()
+            assert runtime_diff.removed_profile_slots == ()
+            assert runtime_diff.replaced_profile_slots == ()
+            assert runtime_diff.added_capability_ids == ()
+            assert runtime_diff.removed_capability_ids == ()
+            assert runtime_diff.replaced_capability_ids == ()
+            assert runtime_diff.added_registration_ids == ()
+            assert runtime_diff.removed_registration_ids == ()
+            assert runtime_diff.replaced_registration_ids == ()
             assert mounted.ownership_state == "graph_owned"
             assert await mounted.retire_replaced_owner_generations() == ()
             loaded = await session._preflight_user_input_async(
@@ -1024,6 +1327,99 @@ def test_coding_catalog_refresh_publishes_one_exact_next_generation(
             assert "Review v1 body." not in loaded.text
             with pytest.raises(RuntimeError, match="not graph-owned"):
                 old_consumer.load_handle(old_consumer.list_effective_skills()[0])
+        finally:
+            await session.dispose()
+            services.resource_loader.close()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize(
+    ("lsp_mode", "expected_outcomes"),
+    (
+        ("disabled", ("PluginSelection",)),
+        (
+            "always",
+            (
+                "PluginPreflightPendingApprovalOutcome",
+                "PluginSelection",
+            ),
+        ),
+    ),
+)
+def test_catalog_product_records_every_resolve_but_finalizes_and_compiles_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    lsp_mode: str,
+    expected_outcomes: tuple[str, ...],
+) -> None:
+    outcomes: list[object] = []
+    compilations: list[ProductCompositionCompilation] = []
+    resolve = PluginDeclarationHost.resolve
+    compile_product = ProductCompositionCompiler.compile
+
+    def recording_resolve(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        outcome = resolve(self, *args, **kwargs)
+        outcomes.append(outcome)
+        return outcome
+
+    def recording_compile(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        compilation = compile_product(self, *args, **kwargs)
+        compilations.append(compilation)
+        return compilation
+
+    monkeypatch.setattr(PluginDeclarationHost, "resolve", recording_resolve)
+    monkeypatch.setattr(ProductCompositionCompiler, "compile", recording_compile)
+
+    async def scenario() -> None:
+        project_root = tmp_path / f"project-{lsp_mode}"
+        project_root.mkdir()
+        project_settings_path = tmp_path / f"project-{lsp_mode}.json"
+        project_settings_path.write_text(
+            json.dumps({"capabilities": {"coding.lsp": lsp_mode}}),
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "missing-home"))
+        services = create_services(
+            settings_manager=SettingsManager(
+                global_settings_path=tmp_path / "global-settings.json",
+                project_settings_path=project_settings_path,
+            )
+        )
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(project_root),
+            persist=False,
+        )
+        session = _create_agent_session(
+            session_manager=manager,
+            services=services,
+            model=_model(),
+        )
+        try:
+            assert tuple(type(outcome).__name__ for outcome in outcomes) == (
+                expected_outcomes
+            )
+            selections = [
+                outcome for outcome in outcomes if isinstance(outcome, PluginSelection)
+            ]
+            assert len(selections) == 1
+            assert len(compilations) == 1
+            inputs = session._capability_composition_inputs
+            assert inputs is not None
+            assert inputs.product_composition is compilations[0]
+            if lsp_mode == "always":
+                assert session._coding_lsp_plugin_assembly is not None
+                assert session._coding_lsp_plugin_assembly.selection is selections[0]
+            else:
+                assert session._coding_lsp_plugin_assembly is None
+
+            await session.prepare_model_call_runtime()
+
+            assert tuple(type(outcome).__name__ for outcome in outcomes) == (
+                expected_outcomes
+            )
+            assert len(compilations) == 1
         finally:
             await session.dispose()
             services.resource_loader.close()
@@ -1231,6 +1627,26 @@ def test_coding_catalog_package_mutations_publish_before_return(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    counts = {"selection": 0, "compilation": 0}
+    compilations: list[ProductCompositionCompilation] = []
+    resolve = PluginDeclarationHost.resolve
+    compile_product = ProductCompositionCompiler.compile
+
+    def counted_resolve(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        outcome = resolve(self, *args, **kwargs)
+        if isinstance(outcome, PluginSelection):
+            counts["selection"] += 1
+        return outcome
+
+    def counted_compile(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        counts["compilation"] += 1
+        result = compile_product(self, *args, **kwargs)
+        compilations.append(result)
+        return result
+
+    monkeypatch.setattr(PluginDeclarationHost, "resolve", counted_resolve)
+    monkeypatch.setattr(ProductCompositionCompiler, "compile", counted_compile)
+
     async def scenario() -> None:
         project_root = tmp_path / "project-package-refresh"
         project_root.mkdir()
@@ -1257,31 +1673,37 @@ def test_coding_catalog_package_mutations_publish_before_return(
             services=services,
             model=_model(),
         )
+        assert counts == {"selection": 1, "compilation": 1}
+        assert compilations[0].catalog_admissions
         try:
             await session.prepare_model_call_runtime()
             initial = session._skill_catalog_consumer
             assert initial is not None
             assert initial.catalog_generation == 1
             assert [item.name for item in initial.list_effective_skills()] == [
-                "standard"
+                "package-standard",
+                "standard",
             ]
 
-            (package_root / "skills" / "standard" / "SKILL.md").write_text(
-                "---\nname: standard\n"
+            (package_root / "skills" / "package-standard" / "SKILL.md").write_text(
+                "---\nname: package-standard\n"
                 "description: Updated admitted package Skill.\n---\n"
                 "Use the updated admitted package Skill.\n",
                 encoding="utf-8",
             )
             updated = await session.update_package(str(package_root))
+            assert counts == {"selection": 2, "compilation": 2}
+            assert compilations[1].catalog_admissions == ()
             after_update = session._skill_catalog_consumer
             assert updated["lifecycle"] == "installed"
             assert after_update is not None
             assert after_update.catalog_generation == 2
             assert [item.name for item in after_update.list_effective_skills()] == [
-                "standard"
+                "package-standard",
+                "standard",
             ]
             loaded = await session._preflight_user_input_async(
-                "/skill:standard package generation"
+                "/skill:package-standard package generation"
             )
             assert "Use the updated admitted package Skill." in loaded.text
 
@@ -1317,7 +1739,8 @@ def test_coding_catalog_package_mutations_publish_before_return(
             assert after_uninstall is not None
             assert after_uninstall.catalog_generation == 3
             assert [item.name for item in after_uninstall.list_effective_skills()] == [
-                "standard"
+                "package-standard",
+                "standard",
             ]
             assert settings.get_package_sources() == []
 
@@ -1377,7 +1800,10 @@ def test_coding_catalog_refresh_reloads_disabled_skill_policy(
             await session.prepare_model_call_runtime()
             initial = session._skill_catalog_consumer
             assert initial is not None
-            assert [item.name for item in initial.list_effective_skills()] == ["review"]
+            assert [item.name for item in initial.list_effective_skills()] == [
+                "review",
+                "standard",
+            ]
 
             settings.update_settings(
                 scope="project",
@@ -1388,8 +1814,12 @@ def test_coding_catalog_refresh_reloads_disabled_skill_policy(
             consumer = session._skill_catalog_consumer
             assert consumer is not None
             assert consumer.catalog_generation == 2
-            assert consumer.list_effective_skills() == ()
-            status = session.list_skill_statuses()[0]
+            assert [item.name for item in consumer.list_effective_skills()] == [
+                "standard"
+            ]
+            status = next(
+                item for item in session.list_skill_statuses() if item.name == "review"
+            )
             assert (status.status, status.status_reason) == (
                 "inactive_activation",
                 "activation_disabled",
@@ -1542,7 +1972,12 @@ def test_coding_initial_catalog_compiles_configured_plugin_resource_admissions(
         _copy_resource_only_plugin(plugin_root)
         project_settings_path = tmp_path / "project-settings.json"
         project_settings_path.write_text(
-            json.dumps({"plugin_sources": [str(plugin_root)]}),
+            json.dumps(
+                {
+                    "capabilities": {"coding.lsp": "always"},
+                    "plugin_sources": [str(plugin_root)],
+                }
+            ),
             encoding="utf-8",
         )
         monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "missing-home"))
@@ -1563,15 +1998,47 @@ def test_coding_initial_catalog_compiles_configured_plugin_resource_admissions(
             model=_model(),
         )
         try:
+            inputs = session._capability_composition_inputs
+            assert inputs is not None
+            assert inputs.product_composition.authority_context.product_id == "coding"
+            assert session._coding_lsp_plugin_assembly is not None
+            assert (
+                session._coding_lsp_plugin_assembly.selection.plan.selected_plugin_ids
+                == (
+                    "coding.base",
+                    "coding.lsp.default",
+                    "coding.test.resources",
+                )
+            )
+            assert {
+                (item.plugin_id, item.contribution_id)
+                for item in inputs.product_composition.catalog_admissions
+            } == {
+                ("coding.base", "coding.builtin"),
+                ("coding.base", "coding.standard"),
+                ("coding.lsp.default", "coding-lsp-tools"),
+            }
+            assert {
+                (item.plugin_id, item.contribution_id)
+                for item in inputs.product_composition.resource_admissions
+            } == {
+                ("coding.base", "prompt-standard"),
+                ("coding.base", "skill-standard"),
+                ("coding.test.resources", "prompt-standard"),
+                ("coding.test.resources", "skill-standard"),
+            }
             await session.prepare_model_call_runtime()
 
             assert [
                 (item.name, item.status) for item in session.list_skill_statuses()
-            ] == [("standard", "effective")]
+            ] == [
+                ("package-standard", "effective"),
+                ("standard", "effective"),
+            ]
             assert (
                 "Automatically admitted package Skill." in session.agent.system_prompt
             )
-            assert "skill:standard" in {
+            assert "skill:package-standard" in {
                 command.name for command in session.list_commands()
             }
         finally:
@@ -1652,10 +2119,207 @@ def test_coding_initial_catalog_admits_materialized_remote_plugin_resources(
             await session.prepare_model_call_runtime()
             assert [
                 (item.name, item.status) for item in session.list_skill_statuses()
-            ] == [("standard", "effective")]
+            ] == [
+                ("package-standard", "effective"),
+                ("standard", "effective"),
+            ]
         finally:
             await session.dispose()
             services.resource_loader.close()
+
+    asyncio.run(scenario())
+
+
+def test_coding_minimal_starts_a_real_kernel_only_catalog_session(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        captured_contexts: list[object] = []
+
+        @synthetic_model_transport
+        async def stream_fn(model, context, options=None):  # type: ignore[no-untyped-def]
+            del options
+            captured_contexts.append(context)
+            message = AssistantMessage(
+                endpoint=model.endpoint_id,
+                role="assistant",
+                content=[TextPart(type="text", text="minimal")],
+                api=model.api or model.endpoint_id,
+                provider=model.provider_id,
+                model=model.id,
+                response_id=None,
+                usage=Usage(
+                    input=0,
+                    output=0,
+                    cache_read=0,
+                    cache_write=0,
+                    total_tokens=0,
+                    cost={},
+                ),
+                stop_reason="stop",
+                error_message=None,
+                timestamp=0.0,
+            )
+            stream = AssistantMessageEventStream()
+            stream.push({"type": "done", "reason": "stop", "message": message})
+            return stream
+
+        project_root = tmp_path / "minimal-project"
+        project_root.mkdir()
+        project_settings_path = tmp_path / "minimal-settings.json"
+        project_settings_path.write_text(
+            json.dumps({"capabilities": {"coding.lsp": "always"}}),
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "missing-home"))
+        services = create_services(
+            settings_manager=SettingsManager(
+                global_settings_path=tmp_path / "global-settings.json",
+                project_settings_path=project_settings_path,
+            )
+        )
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "minimal-sessions",
+            cwd=str(project_root),
+            persist=False,
+        )
+        session = create_agent_session(
+            session_manager=manager,
+            services=services,
+            model=_model(),
+            stream_fn=stream_fn,
+            composition_set="coding-minimal",
+        )
+        try:
+            await session.prompt("verify minimal model input")
+
+            assert session._coding_base_plugin_assembly is None
+            assert session._coding_lsp_plugin_assembly is None
+            assert session._capability_composition_inputs is None
+            assert session._capability_owner_generations == ()
+            assert session._command_generation_registry is None
+            tool_registry = session._composition.tool_controller.tool_registry
+            assert tool_registry is None or tool_registry.registration_inventory == ()
+            assert session.resource_bundle is not None
+            assert session.resource_bundle.prompts == []
+            assert session.resource_bundle.skills == []
+            assert session.get_all_tools() == []
+            assert session.get_active_tool_names() == []
+            assert session.get_lsp_status().enabled is False
+            assert session.agent.system_prompt.startswith(
+                CODING_KERNEL_SYSTEM_PROMPT.rstrip()
+            )
+            assert (
+                CODING_STANDARD_SYSTEM_PROMPT_FRAGMENT.rstrip()
+                not in session.agent.system_prompt
+            )
+            [model_context] = captured_contexts
+            assert model_context.tools == []
+            assert model_context.system_prompt is not None
+            assert model_context.system_prompt.startswith(
+                CODING_KERNEL_SYSTEM_PROMPT.rstrip()
+            )
+            assert (
+                CODING_STANDARD_SYSTEM_PROMPT_FRAGMENT.rstrip()
+                not in model_context.system_prompt
+            )
+        finally:
+            await session.dispose()
+            services.resource_loader.close()
+
+    asyncio.run(scenario())
+
+
+def test_session_boundary_rejects_forged_composition_set_plan(
+    tmp_path: Path,
+) -> None:
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "forged-sessions",
+            cwd=str(tmp_path),
+            persist=False,
+        )
+    )
+    minimal = resolve_coding_composition_set("coding-minimal")
+    standard = resolve_coding_composition_set("coding-standard")
+    forged = replace(
+        minimal,
+        plugin_requests=standard.plugin_requests,
+        kernel_prompt_revision="future-kernel",
+    )
+
+    with pytest.raises(ValueError, match="canonical plan"):
+        _create_agent_session(
+            session_manager=manager,
+            model=_model(),
+            composition_set=forged,
+        )
+
+
+def test_default_coding_standard_publishes_base_without_hidden_settings_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        project_root = tmp_path / "project"
+        project_root.mkdir()
+        monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "missing-home"))
+        services = create_services(
+            settings_manager=SettingsManager(
+                global_settings_path=tmp_path / "global-settings.json",
+                project_settings_path=tmp_path / "project-settings.json",
+            )
+        )
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(project_root),
+            persist=False,
+        )
+
+        session = _create_agent_session(
+            session_manager=manager,
+            services=services,
+            model=_model(),
+        )
+        assembly = session._coding_base_plugin_assembly
+        assert assembly is not None
+        owner_handle = assembly.package.revision_handle
+        [loader_mount] = services.resource_loader._package_mounts
+        loader_handle = loader_mount.revision_handle
+        assert loader_handle is not None
+        assert loader_handle is not owner_handle
+        assert services.settings_manager.get_settings().plugin_sources == ()
+        assert assembly.scope_id == f"session:{manager.get_header().conversation_id}"
+        assert session.agent.system_prompt.startswith(
+            CODING_KERNEL_SYSTEM_PROMPT.rstrip()
+        )
+        assert (
+            session.agent.system_prompt.count(
+                CODING_STANDARD_SYSTEM_PROMPT_FRAGMENT.rstrip()
+            )
+            == 1
+        )
+        assert "You help users by reading files" not in session.agent.system_prompt
+        assert owner_handle.closed is False
+
+        try:
+            await session.prepare_model_call_runtime()
+            assert [
+                (item.name, item.status) for item in session.list_skill_statuses()
+            ] == [("standard", "effective")]
+            assert session.resource_bundle is not None
+            [base_skill] = session.resource_bundle.skills
+            assert base_skill.name == "standard"
+            assert base_skill.source_kind == "external_package"
+            assert owner_handle.closed is False
+        finally:
+            await session.dispose()
+
+        assert owner_handle.closed is True
+        assert loader_handle.closed is False
+        services.resource_loader.close()
+        assert loader_handle.closed is True
 
     asyncio.run(scenario())
 

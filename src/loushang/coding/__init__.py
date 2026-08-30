@@ -21,6 +21,11 @@ from loushang.coding.bootstrap import (
     create_services,
 )
 from loushang.coding.capabilities import CODING_ARCH_CAPABILITY, CODING_LSP_CAPABILITY
+from loushang.coding.composition_sets import (
+    CodingCompositionSetId,
+    CodingCompositionSetPlan,
+    resolve_coding_composition_set,
+)
 from loushang.coding.prompt import assemble_system_prompt
 from loushang.coding.resource_authority import ResourceAuthorityMode
 from loushang.coding.resource_runtime import (
@@ -72,6 +77,8 @@ __all__ = [
     "CODING_LSP_CAPABILITY",
     "CODING_TOOL_NAMES",
     "CapabilityMountMode",
+    "CodingCompositionSetId",
+    "CodingCompositionSetPlan",
     "CompactionDecision",
     "ContextUsage",
     "ContextUsageSnapshot",
@@ -109,4 +116,5 @@ __all__ = [
     "get_sdk_surface_snapshot",
     "register_coding_builtin_tools",
     "register_coding_arch_tools",
+    "resolve_coding_composition_set",
 ]

@@ -64,7 +64,10 @@ from loushang.coding.prompt_command import (
     run_prompt_plan_command,
 )
 from loushang.coding.resource_runtime import collect_coding_package_entries
-from loushang.coding.tool_pack import register_coding_builtin_tools
+from loushang.coding.tool_pack import (
+    CODING_BUILTIN_TOOL_NAMES,
+    register_coding_builtin_tools,
+)
 from loushang.coding.ui.mode import run_coding_tui
 from loushang.coding.workflow import run_prompt_steps_workflow
 from loushang.harness.approval import (
@@ -200,26 +203,6 @@ def build_builtin_tool_registry(
         resolved_approval_resolver,
         settings_manager,
     )
-    get_external_tool_policy = getattr(
-        settings_manager, "get_external_tool_policy", None
-    )
-    get_shell_path = getattr(settings_manager, "get_shell_path", None)
-    get_shell_command_prefix = getattr(
-        settings_manager,
-        "get_shell_command_prefix",
-        None,
-    )
-    register_coding_builtin_tools(
-        registry,
-        diagnostics_service=diagnostics_service,
-        external_tool_policy=get_external_tool_policy()
-        if callable(get_external_tool_policy)
-        else None,
-        shell_path=get_shell_path() if callable(get_shell_path) else None,
-        command_prefix=(
-            get_shell_command_prefix() if callable(get_shell_command_prefix) else None
-        ),
-    )
     register_coding_arch_tools(
         registry,
         mode=coding_capability_mount_mode(
@@ -253,6 +236,47 @@ def default_runtime_builder(
         )
     allowed_tool_names, active_tool_names = agent_tool_selection(args)
     runtime_tool_registry = tool_registry.copy()
+    resource_authority_mode = getattr(
+        args,
+        "resource_authority_mode",
+        "catalog_required",
+    )
+    if (
+        resource_authority_mode == "legacy_explicit"
+        and not getattr(args, "no_tools", False)
+        and not getattr(args, "no_builtin_tools", False)
+        and not any(
+            definition.name in {*CODING_BUILTIN_TOOL_NAMES, "shell"}
+            for definition in runtime_tool_registry.list_definitions()
+        )
+    ):
+        settings_manager = getattr(services, "settings_manager", None)
+        get_external_tool_policy = getattr(
+            settings_manager,
+            "get_external_tool_policy",
+            None,
+        )
+        get_shell_path = getattr(settings_manager, "get_shell_path", None)
+        get_shell_command_prefix = getattr(
+            settings_manager,
+            "get_shell_command_prefix",
+            None,
+        )
+        register_coding_builtin_tools(
+            runtime_tool_registry,
+            diagnostics_service=getattr(services, "diagnostics_service", None),
+            external_tool_policy=(
+                get_external_tool_policy()
+                if callable(get_external_tool_policy)
+                else None
+            ),
+            shell_path=get_shell_path() if callable(get_shell_path) else None,
+            command_prefix=(
+                get_shell_command_prefix()
+                if callable(get_shell_command_prefix)
+                else None
+            ),
+        )
     if (
         not getattr(args, "no_builtin_tools", False)
         and allowed_tool_names is not None
@@ -271,11 +295,6 @@ def default_runtime_builder(
         services.resource_loader,
         args,
     )
-    resource_authority_mode = getattr(
-        args,
-        "resource_authority_mode",
-        "catalog_required",
-    )
     services_factory = cwd_bound_services_factory(
         services,
         resource_loader_options,
@@ -291,6 +310,13 @@ def default_runtime_builder(
         tool_registry=runtime_tool_registry,
         allowed_tool_names=allowed_tool_names,
         active_tool_names=active_tool_names,
+        no_tools=(
+            "all"
+            if getattr(args, "no_tools", False)
+            else "builtin"
+            if getattr(args, "no_builtin_tools", False)
+            else None
+        ),
         persist=not args.no_session,
         approval_resolver=approval_resolver,
         tool_policy_evaluator=tool_policy_evaluator,
@@ -634,8 +660,13 @@ def _coding_state_preparation_ports(
             )
         ),
         policy_factory=PolicyEngine,
-        build_interactive_approval_resolver=lambda: InteractiveApprovalResolver(
-            fallback=HeadlessApprovalResolver(mode="deny")
+        build_interactive_approval_resolver=lambda fallback=None: (
+            InteractiveApprovalResolver(
+                fallback=cast(
+                    ApprovalResolver,
+                    fallback or HeadlessApprovalResolver(mode="deny"),
+                )
+            )
         ),
         run_resource_toggle=run_resource_toggle_operation,
         evaluate_plugin_source=_package_source_policy_reason,

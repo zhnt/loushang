@@ -108,6 +108,12 @@ class _CodingLspToolSourceInfo:
 class _CodingLspToolGeneration:
     scope: RegistrationScope = field(repr=False)
 
+    def commit(self) -> None:
+        self.scope.commit()
+
+    def rollback_commit(self) -> None:
+        self.scope.rollback_commit()
+
     async def dispose(self) -> None:
         report = await self.scope.dispose()
         if report.has_failures:
@@ -170,6 +176,8 @@ class CodingLspToolOwner:
             authority_gate=self.authority_gate,
             stage=lambda captures: self._stage(captures, registration=registration),
             dispose=self._dispose,
+            commit=self._commit,
+            rollback_commit=self._rollback_commit,
         )
 
     def _stage(
@@ -205,7 +213,6 @@ class CodingLspToolOwner:
                         source_info=source_info,
                     )
                 )
-            scope.commit()
         except BaseException as error:
             if scope.state == "committed":
                 scope.rollback_commit()
@@ -217,6 +224,16 @@ class CodingLspToolOwner:
                     )
             raise
         return _CodingLspToolGeneration(scope)
+
+    def _commit(self, value: object) -> None:
+        if not isinstance(value, _CodingLspToolGeneration):
+            raise TypeError("Coding LSP Tool owner received a foreign generation")
+        value.commit()
+
+    def _rollback_commit(self, value: object) -> None:
+        if not isinstance(value, _CodingLspToolGeneration):
+            raise TypeError("Coding LSP Tool owner received a foreign generation")
+        value.rollback_commit()
 
     async def _dispose(self, value: object) -> None:
         if not isinstance(value, _CodingLspToolGeneration):
