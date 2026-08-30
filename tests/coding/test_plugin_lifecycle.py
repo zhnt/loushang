@@ -587,6 +587,7 @@ def test_same_session_manager_allows_one_prepared_runtime_at_a_time(
 
 def test_session_owner_unlock_failure_drops_invalid_process_authority(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     lifecycle = _lifecycle(tmp_path)
     key = lifecycle.installation_key("coding.base")
@@ -615,21 +616,52 @@ def test_session_owner_unlock_failure_drops_invalid_process_authority(
         state = plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES[lease_path]
         state.lease = UnlockThenFailLease(state.lease)
 
-    with pytest.raises(OSError, match="injected unlock report failure"):
-        lease.close()
-    with plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES_LOCK:
-        assert lease_path not in plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES
+    failed_release_completed = threading.Event()
+    allow_old_wrapper_check = threading.Event()
+    release_owner_lease = plugin_lifecycle_module._release_session_owner_lease
 
-    replacement = _lifecycle(tmp_path).acquire_session(
-        key,
-        session_id="unlock-failure",
-        lease_attempt_id="attempt-after-failed-unlock",
-        owner_contributions=_TEST_OWNER_CONTRIBUTIONS,
-        session_owner_id="session-manager:second",
+    def release_then_pause(*args, **kwargs) -> None:
+        try:
+            release_owner_lease(*args, **kwargs)
+        except OSError:
+            failed_release_completed.set()
+            assert allow_old_wrapper_check.wait(timeout=20)
+            raise
+
+    monkeypatch.setattr(
+        plugin_lifecycle_module,
+        "_release_session_owner_lease",
+        release_then_pause,
     )
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        failed_close = executor.submit(lease.close)
+        assert failed_release_completed.wait(timeout=20)
+        with plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES_LOCK:
+            assert (
+                lease_path
+                not in plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES
+            )
+
+        replacement = _lifecycle(tmp_path).acquire_session(
+            key,
+            session_id="unlock-failure",
+            lease_attempt_id="attempt-after-failed-unlock",
+            owner_contributions=_TEST_OWNER_CONTRIBUTIONS,
+            session_owner_id="session-manager:first",
+        )
+        replacement_authority_id = replacement._session_owner_lease.authority_id
+        allow_old_wrapper_check.set()
+        with pytest.raises(OSError, match="injected unlock report failure"):
+            failed_close.result(timeout=20)
+
     # The first Session family release succeeded before platform unlock
     # reported its error; retrying its close must not touch the new owner.
     lease.close()
+    with plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES_LOCK:
+        state = plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES[lease_path]
+        assert state.owner_id == "session-manager:first"
+        assert state.authority_id == replacement_authority_id
+        assert state.references == 1
     replacement.close()
 
 

@@ -57,6 +57,7 @@ _PROCESS_SESSION_OWNER_LEASES_LOCK = threading.Lock()
 @dataclass(slots=True)
 class _ProcessSessionOwnerLeaseState:
     owner_id: str
+    authority_id: str
     lease: AbstractContextManager[None]
     references: int = 1
     runtime_claim_id: str | None = None
@@ -69,44 +70,57 @@ _PROCESS_SESSION_OWNER_LEASES: dict[Path, _ProcessSessionOwnerLeaseState] = {}
 class _ProcessSessionOwnerLease(AbstractContextManager[None]):
     path: Path
     owner_id: str
+    authority_id: str
     _runtime_claim_id: str | None = field(default=None, init=False, repr=False)
     _closed: bool = field(default=False, init=False, repr=False)
+    _state_lock: threading.Lock = field(
+        default_factory=threading.Lock,
+        init=False,
+        repr=False,
+    )
 
     def claim_runtime(self, claim_id: str) -> None:
-        if self._closed:
-            raise RuntimeError("Closed Coding Session owner cannot claim a runtime")
-        normalized_claim_id = _nonempty(claim_id, name="Session runtime claim id")
-        _claim_session_owner_runtime(
-            self.path,
-            owner_id=self.owner_id,
-            claim_id=normalized_claim_id,
-        )
-        self._runtime_claim_id = normalized_claim_id
-
-    def __exit__(self, *_args: object) -> None:
-        if self._closed:
-            return
-        try:
-            _release_session_owner_lease(
+        with self._state_lock:
+            if self._closed:
+                raise RuntimeError("Closed Coding Session owner cannot claim a runtime")
+            normalized_claim_id = _nonempty(
+                claim_id,
+                name="Session runtime claim id",
+            )
+            _claim_session_owner_runtime(
                 self.path,
                 owner_id=self.owner_id,
-                runtime_claim_id=self._runtime_claim_id,
+                authority_id=self.authority_id,
+                claim_id=normalized_claim_id,
             )
-        except BaseException:
-            with _PROCESS_SESSION_OWNER_LEASES_LOCK:
-                current = _PROCESS_SESSION_OWNER_LEASES.get(self.path)
-                authority_was_removed = (
-                    current is None or current.owner_id != self.owner_id
+            self._runtime_claim_id = normalized_claim_id
+
+    def __exit__(self, *_args: object) -> None:
+        with self._state_lock:
+            if self._closed:
+                return
+            try:
+                _release_session_owner_lease(
+                    self.path,
+                    owner_id=self.owner_id,
+                    authority_id=self.authority_id,
+                    runtime_claim_id=self._runtime_claim_id,
                 )
-            # journal_file_lock closes its handle even when platform unlock
-            # reports an error. In that case the registry entry was removed
-            # and this wrapper no longer owns a retryable authority. Preserve
-            # retryability for invariant failures that left its state intact.
-            if authority_was_removed:
+            except BaseException:
+                with _PROCESS_SESSION_OWNER_LEASES_LOCK:
+                    current = _PROCESS_SESSION_OWNER_LEASES.get(self.path)
+                    authority_was_removed = (
+                        current is None
+                        or current.authority_id != self.authority_id
+                    )
+                # journal_file_lock closes its handle even when platform
+                # unlock reports an error. In that case the exact authority
+                # incarnation was removed and this wrapper cannot retry it.
+                if authority_was_removed:
+                    self._closed = True
+                raise
+            else:
                 self._closed = True
-            raise
-        else:
-            self._closed = True
 
 
 class CodingPluginLifecycleError(RuntimeError):
@@ -1188,6 +1202,7 @@ def _acquire_session_owner_lease(
             return _ProcessSessionOwnerLease(
                 path=lease_path,
                 owner_id=normalized_owner_id,
+                authority_id=existing.authority_id,
             )
         lease = journal_file_lock(
             lease_path,
@@ -1202,15 +1217,18 @@ def _acquire_session_owner_lease(
                 "Coding Session is already active in another runtime",
                 code="coding_plugin_session_already_active",
             ) from exc
+        authority_id = secrets.token_hex(16)
         _PROCESS_SESSION_OWNER_LEASES[lease_path] = (
             _ProcessSessionOwnerLeaseState(
                 owner_id=normalized_owner_id,
+                authority_id=authority_id,
                 lease=lease,
             )
         )
         return _ProcessSessionOwnerLease(
             path=lease_path,
             owner_id=normalized_owner_id,
+            authority_id=authority_id,
         )
 
 
@@ -1218,11 +1236,16 @@ def _claim_session_owner_runtime(
     path: Path,
     *,
     owner_id: str,
+    authority_id: str,
     claim_id: str,
 ) -> None:
     with _PROCESS_SESSION_OWNER_LEASES_LOCK:
         existing = _PROCESS_SESSION_OWNER_LEASES.get(path)
-        if existing is None or existing.owner_id != owner_id:
+        if (
+            existing is None
+            or existing.owner_id != owner_id
+            or existing.authority_id != authority_id
+        ):
             raise RuntimeError("Coding Session owner lease ownership was lost")
         if existing.runtime_claim_id is None:
             existing.runtime_claim_id = claim_id
@@ -1238,11 +1261,16 @@ def _release_session_owner_lease(
     path: Path,
     *,
     owner_id: str,
+    authority_id: str,
     runtime_claim_id: str | None,
 ) -> None:
     with _PROCESS_SESSION_OWNER_LEASES_LOCK:
         existing = _PROCESS_SESSION_OWNER_LEASES.get(path)
-        if existing is None or existing.owner_id != owner_id:
+        if (
+            existing is None
+            or existing.owner_id != owner_id
+            or existing.authority_id != authority_id
+        ):
             raise RuntimeError("Coding Session owner lease ownership was lost")
         if runtime_claim_id is not None:
             if existing.runtime_claim_id != runtime_claim_id:
