@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import secrets
+import threading
 import time
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import replace
@@ -156,6 +157,8 @@ from loushang.harness.transcript import context_items_to_model_messages
 from loushang.harness.workspace.exec import ExecService
 from loushang.harness.workspace.operations import LOCAL_TOOL_OPERATIONS
 
+_SESSION_MANAGER_PLUGIN_OWNER_LOCK = threading.Lock()
+_SESSION_MANAGER_PLUGIN_OWNER_ATTRIBUTE = "_loushang_coding_plugin_owner_id"
 AgentFactory = Callable[..., Agent]
 ServicesFactory = Callable[[str], "BootstrapServices"]
 NoToolsMode = Literal["all", "builtin"]
@@ -600,7 +603,7 @@ def _create_agent_session(
                 include_tool_contribution=session_no_tools_mode is None,
                 include_tool_claim_prompt=session_no_tools_mode is None,
                 state_cleanup=base_state_cleanup,
-                session_owner_id=f"session-manager:{id(session_manager):x}",
+                session_owner_id=_session_manager_plugin_owner_id(session_manager),
             )
         except BaseException as error:
             if isinstance(error, CodingBasePluginAssemblyError):
@@ -1149,6 +1152,25 @@ def _create_agent_session(
             register_tools=enable_multiagent_tools,
         )
     return result.session
+
+
+def _session_manager_plugin_owner_id(session_manager: SessionManager) -> str:
+    with _SESSION_MANAGER_PLUGIN_OWNER_LOCK:
+        owner_id = getattr(
+            session_manager,
+            _SESSION_MANAGER_PLUGIN_OWNER_ATTRIBUTE,
+            None,
+        )
+        if owner_id is None:
+            owner_id = f"session-manager:{secrets.token_hex(16)}"
+            setattr(
+                session_manager,
+                _SESSION_MANAGER_PLUGIN_OWNER_ATTRIBUTE,
+                owner_id,
+            )
+        if not isinstance(owner_id, str) or not owner_id:
+            raise RuntimeError("Coding SessionManager Plugin owner id is invalid")
+        return owner_id
 
 
 def create_agent_session(

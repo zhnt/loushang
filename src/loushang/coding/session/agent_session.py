@@ -530,6 +530,9 @@ class AgentSession(AgentProductSession):
         super()._prepare_resource_refresh()
 
     async def prepare_model_call_runtime(self) -> None:
+        assembly = self._coding_base_plugin_assembly
+        if assembly is not None and assembly.management_lease is not None:
+            assembly.management_lease.claim_runtime()
         await super().prepare_model_call_runtime()
         self._publish_coding_base_owner_retirement_receipts()
 

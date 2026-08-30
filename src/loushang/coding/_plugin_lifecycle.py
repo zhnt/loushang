@@ -59,6 +59,7 @@ class _ProcessSessionOwnerLeaseState:
     owner_id: str
     lease: AbstractContextManager[None]
     references: int = 1
+    runtime_claim_id: str | None = None
 
 
 _PROCESS_SESSION_OWNER_LEASES: dict[Path, _ProcessSessionOwnerLeaseState] = {}
@@ -68,13 +69,44 @@ _PROCESS_SESSION_OWNER_LEASES: dict[Path, _ProcessSessionOwnerLeaseState] = {}
 class _ProcessSessionOwnerLease(AbstractContextManager[None]):
     path: Path
     owner_id: str
+    _runtime_claim_id: str | None = field(default=None, init=False, repr=False)
     _closed: bool = field(default=False, init=False, repr=False)
+
+    def claim_runtime(self, claim_id: str) -> None:
+        if self._closed:
+            raise RuntimeError("Closed Coding Session owner cannot claim a runtime")
+        normalized_claim_id = _nonempty(claim_id, name="Session runtime claim id")
+        _claim_session_owner_runtime(
+            self.path,
+            owner_id=self.owner_id,
+            claim_id=normalized_claim_id,
+        )
+        self._runtime_claim_id = normalized_claim_id
 
     def __exit__(self, *_args: object) -> None:
         if self._closed:
             return
-        _release_session_owner_lease(self.path, owner_id=self.owner_id)
-        self._closed = True
+        try:
+            _release_session_owner_lease(
+                self.path,
+                owner_id=self.owner_id,
+                runtime_claim_id=self._runtime_claim_id,
+            )
+        except BaseException:
+            with _PROCESS_SESSION_OWNER_LEASES_LOCK:
+                current = _PROCESS_SESSION_OWNER_LEASES.get(self.path)
+                authority_was_removed = (
+                    current is None or current.owner_id != self.owner_id
+                )
+            # journal_file_lock closes its handle even when platform unlock
+            # reports an error. In that case the registry entry was removed
+            # and this wrapper no longer owns a retryable authority. Preserve
+            # retryability for invariant failures that left its state intact.
+            if authority_was_removed:
+                self._closed = True
+            raise
+        else:
+            self._closed = True
 
 
 class CodingPluginLifecycleError(RuntimeError):
@@ -671,10 +703,18 @@ class CodingPluginSessionLease:
     package_revision: PluginPackageRevisionRefV1
     instance_revision_ref: PluginInstanceRevisionRef
     owner_contributions: tuple[tuple[str, tuple[str, ...]], ...]
-    _session_owner_lease: AbstractContextManager[None] = field(
+    _session_owner_lease: _ProcessSessionOwnerLease = field(
         repr=False,
     )
     _closed: bool = field(default=False, init=False, repr=False)
+
+    def claim_runtime(self) -> None:
+        if self._closed:
+            raise CodingPluginLifecycleError(
+                "Closed Coding Session cannot claim a runtime",
+                code="coding_plugin_session_lease_closed",
+            )
+        self._session_owner_lease.claim_runtime(self.family.family_id)
 
     def evaluate_management_change(self) -> CodingPluginManagementChange:
         snapshot = self.lifecycle.desired.snapshot()
@@ -1133,7 +1173,7 @@ def _acquire_session_owner_lease(
     *,
     session_id: str,
     owner_id: str,
-) -> AbstractContextManager[None]:
+) -> _ProcessSessionOwnerLease:
     lease_path = _session_owner_lease_path(layout, session_id=session_id)
     normalized_owner_id = _nonempty(owner_id, name="Session owner id")
     with _PROCESS_SESSION_OWNER_LEASES_LOCK:
@@ -1174,11 +1214,40 @@ def _acquire_session_owner_lease(
         )
 
 
-def _release_session_owner_lease(path: Path, *, owner_id: str) -> None:
+def _claim_session_owner_runtime(
+    path: Path,
+    *,
+    owner_id: str,
+    claim_id: str,
+) -> None:
     with _PROCESS_SESSION_OWNER_LEASES_LOCK:
         existing = _PROCESS_SESSION_OWNER_LEASES.get(path)
         if existing is None or existing.owner_id != owner_id:
             raise RuntimeError("Coding Session owner lease ownership was lost")
+        if existing.runtime_claim_id is None:
+            existing.runtime_claim_id = claim_id
+            return
+        if existing.runtime_claim_id != claim_id:
+            raise CodingPluginLifecycleError(
+                "Coding Session already has another prepared runtime",
+                code="coding_plugin_session_runtime_already_active",
+            )
+
+
+def _release_session_owner_lease(
+    path: Path,
+    *,
+    owner_id: str,
+    runtime_claim_id: str | None,
+) -> None:
+    with _PROCESS_SESSION_OWNER_LEASES_LOCK:
+        existing = _PROCESS_SESSION_OWNER_LEASES.get(path)
+        if existing is None or existing.owner_id != owner_id:
+            raise RuntimeError("Coding Session owner lease ownership was lost")
+        if runtime_claim_id is not None:
+            if existing.runtime_claim_id != runtime_claim_id:
+                raise RuntimeError("Coding Session runtime claim ownership was lost")
+            existing.runtime_claim_id = None
         if existing.references > 1:
             existing.references -= 1
             return
@@ -1186,8 +1255,13 @@ def _release_session_owner_lease(path: Path, *, owner_id: str) -> None:
         # actually released. A replacement acquisition then waits on this
         # mutex instead of observing an empty registry and failing against the
         # still-held non-blocking file lock.
-        existing.lease.__exit__(None, None, None)
-        del _PROCESS_SESSION_OWNER_LEASES[path]
+        try:
+            existing.lease.__exit__(None, None, None)
+        finally:
+            # The journal lock context always closes its file handle on exit.
+            # Never retain a ref-countable state after a reported unlock
+            # failure because the cross-process authority is already gone.
+            del _PROCESS_SESSION_OWNER_LEASES[path]
 
 
 def _hold_process_startup_lease(
