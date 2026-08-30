@@ -61,6 +61,10 @@ Neither may silently override a narrower implemented owner contract.
 - [PLC3 Execution Trust Contract](plugin-execution-trust-plc3-contract.md)
   freezes one-shot execution decisions, use consumption, verified Definition
   evaluation, and recovery.
+- [PLC7 Second-Provider Contract](plugin-lifecycle-plc7-contract.md) freezes the
+  `coding.arch.default` identities, typed facets, shared single-Graph Product
+  composition, private indexed-state policy, direct-path deletion, and review
+  gates.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)
   freezes exact Capability-owner admission and Product Provider selection.
 - [Phase 5B Continuity Provider Foundation](continuity-provider-phase5b-contract.md)

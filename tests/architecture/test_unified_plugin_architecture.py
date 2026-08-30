@@ -34,6 +34,9 @@ PLC3_CONTRACT_PATH = Path(
 PLC6_CONTRACT_PATH = Path(
     "docs/internals/architecture/harness/plugin/plugin-lifecycle-plc6-contract.md"
 )
+PLC7_CONTRACT_PATH = Path(
+    "docs/internals/architecture/harness/plugin/plugin-lifecycle-plc7-contract.md"
+)
 PAP4_CONTRACT_PATH = Path(
     "docs/internals/architecture/harness/plugin/plugin-capability-admission-pap4-contract.md"
 )
@@ -1582,6 +1585,25 @@ def test_unified_plugin_architecture_defines_the_owner_preserving_pipeline() -> 
     assert all(phase in architecture for phase in phases)
     assert [architecture.index(phase) for phase in phases] == sorted(
         architecture.index(phase) for phase in phases
+    )
+
+
+def test_plc7_contract_freezes_second_provider_without_a_peer_graph() -> None:
+    contract = PLC7_CONTRACT_PATH.read_text(encoding="utf-8")
+    contract_text = " ".join(contract.split())
+    readme = README_PATH.read_text(encoding="utf-8")
+
+    for invariant in (
+        "one Coding Capability-Plugin composition",
+        "coding.arch -> harness.workspace(read, list, search)",
+        "only the `tool-runtime` facet",
+        "No CLI/bootstrap caller may directly call `register_coding_arch_tools()`",
+        "quota is checked before publication",
+        "three-view re-review pass",
+    ):
+        assert invariant in contract_text
+    assert "[PLC7 Second-Provider Contract](plugin-lifecycle-plc7-contract.md)" in (
+        readme
     )
 
 
