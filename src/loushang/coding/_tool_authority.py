@@ -8,10 +8,13 @@ from loushang.coding.lsp.tools import (
 )
 from loushang.coding.tool_pack import CODING_RESERVED_BASE_TOOL_NAMES
 
-CODING_EXACT_OWNER_TOOL_NAMES: tuple[str, ...] = (
-    *CODING_RESERVED_BASE_TOOL_NAMES,
+CODING_LSP_EXACT_OWNER_TOOL_NAMES: tuple[str, ...] = (
     DOCUMENT_OUTLINE_TOOL_NAME,
     INSPECT_SYMBOL_TOOL_NAME,
+)
+CODING_EXACT_OWNER_TOOL_NAMES: tuple[str, ...] = (
+    *CODING_RESERVED_BASE_TOOL_NAMES,
+    *CODING_LSP_EXACT_OWNER_TOOL_NAMES,
 )
 
 
@@ -22,4 +25,8 @@ def coding_peer_tool_names(tool_names: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(name for name in tool_names if name not in exact_names)
 
 
-__all__ = ["CODING_EXACT_OWNER_TOOL_NAMES", "coding_peer_tool_names"]
+__all__ = [
+    "CODING_EXACT_OWNER_TOOL_NAMES",
+    "CODING_LSP_EXACT_OWNER_TOOL_NAMES",
+    "coding_peer_tool_names",
+]

@@ -207,6 +207,45 @@ def test_catalog_owned_tool_examples_import_without_compatibility_exports(
     assert completed.returncode == 0, completed.stderr
 
 
+def test_example_active_tool_intent_resolves_to_the_host_catalog(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.harness.environment import LocalHostEnvironmentProbe
+
+    monkeypatch.delenv("LOUSHANG_EXAMPLES_MODEL_CATALOG", raising=False)
+    monkeypatch.delenv("LOUSHANG_EXAMPLES_ARTIFACT_ROOT", raising=False)
+    monkeypatch.delenv("LOUSHANG_EXAMPLES_SESSION_DIR", raising=False)
+    module = _load_module(
+        Path("examples/coding/_support.py"),
+        "examples_coding_support_active_catalog",
+    )
+    command_tool_name = (
+        "shell"
+        if LocalHostEnvironmentProbe().detect().os_family == "windows"
+        else "bash"
+    )
+
+    async def scenario() -> list[str]:
+        runtime = module.create_kimi_runtime(
+            cwd=tmp_path,
+            model=module.build_kimi_model(),
+            active_tool_names=["bash", "write"],
+            persist=False,
+        )
+        try:
+            session = await runtime.create_session(cwd=str(tmp_path))
+            await session.prepare_model_call_runtime()
+            return [tool.name for tool in session.agent.tools]
+        finally:
+            await runtime.dispose_session_runtime()
+
+    active_tools = asyncio.run(scenario())
+
+    assert set(active_tools) == {command_tool_name, "write"}
+    assert len(active_tools) == 2
+
+
 def test_usage_inspect_example_marks_unknown_cost(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

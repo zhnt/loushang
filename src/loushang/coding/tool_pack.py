@@ -152,10 +152,18 @@ def coding_platform_tool_names(
 ) -> tuple[str, ...]:
     """Resolve platform-neutral Coding Tool intents for one execution host."""
 
-    return tuple(
-        "shell" if environment.os_family == "windows" and name == "bash" else name
-        for name in tool_names
-    )
+    resolved: list[str] = []
+    seen: set[str] = set()
+    for name in tool_names:
+        platform_name = (
+            "shell"
+            if environment.os_family == "windows" and name == "bash"
+            else name
+        )
+        if platform_name not in seen:
+            resolved.append(platform_name)
+            seen.add(platform_name)
+    return tuple(resolved)
 
 
 def _profile_from_options(options: ToolsOptions | None) -> WorkspaceToolProfile:

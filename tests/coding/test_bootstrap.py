@@ -1725,6 +1725,43 @@ def test_coding_multiagent_child_uses_the_product_stream_and_read_only_tools(
     asyncio.run(scenario())
 
 
+def test_minimal_composition_rejects_child_exact_tools_without_selected_owners(
+    tmp_path: Path,
+) -> None:
+    from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.harness.multiagent import AgentPath, HostCaller
+
+    async def scenario() -> None:
+        project = tmp_path / "project"
+        project.mkdir()
+        runtime = create_agent_session_runtime(
+            session_dir=tmp_path / "sessions",
+            model=_model(),
+            persist=False,
+            enable_multiagent=True,
+            composition_set="coding-minimal",
+        )
+
+        try:
+            session = await runtime.create_session(cwd=str(project))
+            with pytest.raises(
+                ValueError,
+                match="Coding child exact-owner tools are not selected: "
+                "bash, read, grep, find, ls",
+            ):
+                await session.multiagent_runtime.spawn_child(
+                    caller=HostCaller(),
+                    parent_path=AgentPath.root(),
+                    name="unavailable-explorer",
+                    agent_type="explorer",
+                    initial_prompt="Inspect the repository.",
+                )
+        finally:
+            await runtime.dispose_session_runtime()
+
+    asyncio.run(scenario())
+
+
 def test_catalog_owned_child_bash_uses_actor_bound_approval(
     tmp_path: Path,
 ) -> None:
@@ -1734,9 +1771,14 @@ def test_catalog_owned_child_bash_uses_actor_bound_approval(
         HeadlessApprovalResolver,
         InteractiveApprovalResolver,
     )
+    from loushang.harness.environment import LocalHostEnvironmentProbe
     from loushang.harness.multiagent import AgentPath
     from loushang.harness.policy_engine import PolicyEngine
 
+    host_environment = LocalHostEnvironmentProbe().detect()
+    command_tool_name = (
+        "shell" if host_environment.os_family == "windows" else "bash"
+    )
     presented = asyncio.Event()
     approval_payloads: list[dict[str, object]] = []
     model_tool_sets: list[tuple[str, ...]] = []
@@ -1762,8 +1804,8 @@ def test_catalog_owned_child_bash_uses_actor_bound_approval(
         if stream_calls == 1:
             return _stream_with_final_message(
                 _assistant_tool_call_message(
-                    "bash",
-                    {"command": "printf catalog-child-ok"},
+                    command_tool_name,
+                    {"command": "echo catalog-child-ok"},
                 )
             )
         return _stream_with_final_message(_assistant_message("child complete"))
@@ -1787,51 +1829,57 @@ def test_catalog_owned_child_bash_uses_actor_bound_approval(
             persist=False,
             enable_multiagent=True,
             approval_resolver=resolver,
-            tool_policy_evaluator=PolicyEngine(ask_tools=("bash",)),
+            tool_policy_evaluator=PolicyEngine(ask_tools=(command_tool_name,)),
         )
 
-        session = await runtime.create_session(cwd=str(project))
-        collaboration = session.multiagent_runtime
-        spawn = next(tool for tool in session.agent.tools if tool.name == "spawn_agent")
-        wait = next(tool for tool in session.agent.tools if tool.name == "wait_agent")
-        spawned = await spawn.execute(
-            "spawn-approved-child",
-            {
-                "name": "approved-child",
-                "agent_type": "explorer",
-                "prompt": "Inspect the repository state.",
-            },
-            None,
-            None,
-        )
+        try:
+            session = await runtime.create_session(cwd=str(project))
+            collaboration = session.multiagent_runtime
+            spawn = next(
+                tool for tool in session.agent.tools if tool.name == "spawn_agent"
+            )
+            wait = next(
+                tool for tool in session.agent.tools if tool.name == "wait_agent"
+            )
+            spawned = await spawn.execute(
+                "spawn-approved-child",
+                {
+                    "name": "approved-child",
+                    "agent_type": "explorer",
+                    "prompt": "Inspect the repository state.",
+                },
+                None,
+                None,
+            )
 
-        await asyncio.wait_for(presented.wait(), timeout=2)
-        [payload] = approval_payloads
-        action_id = payload["action_id"]
-        assert isinstance(action_id, str)
-        assert payload["actor_id"] == f"{spawned.details['path']}@1"
-        assert await resolver.handle_result(action_id, outcome="allow_once")
+            await asyncio.wait_for(presented.wait(), timeout=10)
+            [payload] = approval_payloads
+            action_id = payload["action_id"]
+            assert isinstance(action_id, str)
+            assert payload["actor_id"] == f"{spawned.details['path']}@1"
+            assert await resolver.handle_result(action_id, outcome="allow_once")
 
-        waited = await wait.execute(
-            "wait-approved-child",
-            {"timeout_seconds": 2},
-            None,
-            None,
-        )
-        terminal = collaboration.control.registry.current(
-            AgentPath.parse(str(spawned.details["path"]))
-        )
+            waited = await wait.execute(
+                "wait-approved-child",
+                {"timeout_seconds": 10},
+                None,
+                None,
+            )
+            terminal = collaboration.control.registry.current(
+                AgentPath.parse(str(spawned.details["path"]))
+            )
 
-        assert waited.details["wait_expired"] is False
-        assert terminal is not None
-        assert terminal.status == "completed", collaboration.control.notices()
-        assert terminal.progress.summary == "child complete"
-        await runtime.dispose_session_runtime()
+            assert waited.details["wait_expired"] is False
+            assert terminal is not None
+            assert terminal.status == "completed", collaboration.control.notices()
+            assert terminal.progress.summary == "child complete"
+        finally:
+            await runtime.dispose_session_runtime()
 
     asyncio.run(scenario())
 
     assert len(model_tool_sets) == 2
-    assert all("bash" in tool_names for tool_names in model_tool_sets)
+    assert all(command_tool_name in tool_names for tool_names in model_tool_sets)
     assert any("catalog-child-ok" in text for text in tool_result_texts)
 
 

@@ -29,6 +29,8 @@ from loushang.coding import (
     create_agent_session_runtime,
     create_services,
 )
+from loushang.coding.tool_pack import coding_platform_tool_names
+from loushang.harness.environment import LocalHostEnvironmentProbe
 
 
 class CodingSession(Protocol):
@@ -44,6 +46,19 @@ ENV_EXAMPLES_SESSION_DIR = "LOUSHANG_EXAMPLES_SESSION_DIR"
 ENV_EXAMPLES_ARTIFACT_ROOT = "LOUSHANG_EXAMPLES_ARTIFACT_ROOT"
 
 _OVERRIDE_REGISTRY: ModelRegistry | None = None
+
+
+def _resolve_active_tool_names(
+    tool_names: list[str] | None,
+) -> list[str] | None:
+    if tool_names is None:
+        return None
+    return list(
+        coding_platform_tool_names(
+            tool_names,
+            LocalHostEnvironmentProbe().detect(),
+        )
+    )
 
 
 def _resolve_session_dir(default_session_dir: Path) -> Path:
@@ -212,7 +227,7 @@ def create_kimi_session(
         system_prompt=system_prompt or DEFAULT_SYSTEM_PROMPT,
         thinking_level=thinking_level,
         tools=list(tools or []),
-        active_tool_names=active_tool_names,
+        active_tool_names=_resolve_active_tool_names(active_tool_names),
         services=_build_bootstrap_services(),
     )
     session.agent.call_options = CallOptions(auth=ApiKeyAuth(resolve_api_key()))
@@ -237,7 +252,7 @@ def create_kimi_runtime(
         system_prompt=system_prompt or DEFAULT_SYSTEM_PROMPT,
         thinking_level=thinking_level,
         tools=list(tools or []),
-        active_tool_names=active_tool_names,
+        active_tool_names=_resolve_active_tool_names(active_tool_names),
         persist=persist,
         services=_build_bootstrap_services(),
     )

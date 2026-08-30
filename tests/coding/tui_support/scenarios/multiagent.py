@@ -18,13 +18,17 @@ from loushang.coding.multiagent import (
     CodingSubagentFactory,
     coding_agent_types,
 )
-from loushang.coding.tool_pack import register_coding_builtin_tools
+from loushang.coding.tool_pack import (
+    coding_workspace_tool_profile,
+    register_coding_builtin_tools,
+)
 from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
 from loushang.coding.worktree import CodingGitWorktreeLeasePort
 from loushang.harness.approval import (
     HeadlessApprovalResolver,
     InteractiveApprovalResolver,
 )
+from loushang.harness.environment import LocalHostEnvironmentProbe
 from loushang.harness.multiagent import (
     AgentCaller,
     AgentCompletionNotice,
@@ -84,6 +88,9 @@ _RESULTS = {
 }
 _COMPLETION_ORDER = ("random-1", "random-3", "random-2")
 _NOW = datetime(2026, 7, 27, tzinfo=UTC)
+_SELECTED_EXACT_TOOL_NAMES = coding_workspace_tool_profile(
+    LocalHostEnvironmentProbe().detect()
+).builtin_tool_names
 
 
 @dataclass(frozen=True, slots=True)
@@ -971,6 +978,7 @@ def _shared_workspace_playback() -> MultiAgentPlaybackResult:
                     cwd=root,
                     tool_registry=_shared_tool_registry(spec.allowed_tools),
                     runtime_builder=build_runtime,
+                    selected_exact_tool_names=_SELECTED_EXACT_TOOL_NAMES,
                 ),
                 root_input=AgentInputFacade(
                     queue=root_queue,
@@ -1078,6 +1086,7 @@ def _isolated_artifact_playback() -> MultiAgentPlaybackResult:
                     tool_registry=_shared_tool_registry(spec.allowed_tools),
                     runtime_builder=lambda **_kwargs: child_runtime,
                     workspace_leases=leases,
+                    selected_exact_tool_names=_SELECTED_EXACT_TOOL_NAMES,
                 ),
                 root_input=AgentInputFacade(
                     queue=root_queue,
@@ -1223,6 +1232,7 @@ def _shared_parallel_writers_playback() -> MultiAgentPlaybackResult:
                     cwd=root,
                     tool_registry=_shared_tool_registry(spec.allowed_tools),
                     runtime_builder=build_runtime,
+                    selected_exact_tool_names=_SELECTED_EXACT_TOOL_NAMES,
                 ),
                 root_input=AgentInputFacade(
                     queue=root_queue,
@@ -1858,6 +1868,7 @@ def _child_approval_playback() -> object:
             tool_registry=root_registry,
             runtime_builder=build_runtime,
             approval_resolver=resolver,
+            selected_exact_tool_names=_SELECTED_EXACT_TOOL_NAMES,
         )
         types = coding_agent_types(maximum_children=3)
         control = MultiAgentControl(agent_types=types)
@@ -2091,6 +2102,7 @@ def _concurrent_child_approval_playback() -> object:
             tool_registry=root_registry,
             runtime_builder=build_runtime,
             approval_resolver=resolver,
+            selected_exact_tool_names=_SELECTED_EXACT_TOOL_NAMES,
         )
         control = MultiAgentControl(agent_types=coding_agent_types(maximum_children=3))
         runtime = SessionMultiAgentRuntime(

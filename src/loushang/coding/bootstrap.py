@@ -34,7 +34,10 @@ from loushang.coding._resource_catalog_shadow import (
     finalize_coding_package_plugin_plan_seed,
     prepare_coding_package_plugin_plan_seed,
 )
-from loushang.coding._tool_authority import CODING_EXACT_OWNER_TOOL_NAMES
+from loushang.coding._tool_authority import (
+    CODING_EXACT_OWNER_TOOL_NAMES,
+    CODING_LSP_EXACT_OWNER_TOOL_NAMES,
+)
 from loushang.coding.capabilities import (
     CODING_LSP_CAPABILITY,
     coding_capability_mount_mode,
@@ -1155,6 +1158,18 @@ def _create_agent_session(
                     coding_base_plugin_assembly.host_environment
                     if coding_base_plugin_assembly is not None
                     else None
+                ),
+                selected_exact_tool_names=(
+                    *(
+                        coding_base_plugin_assembly.tool_names
+                        if coding_base_plugin_assembly is not None
+                        else ()
+                    ),
+                    *(
+                        CODING_LSP_EXACT_OWNER_TOOL_NAMES
+                        if lsp_plugin_preparation is not None
+                        else ()
+                    ),
                 ),
                 workspace_leases=CodingGitWorktreeLeasePort(
                     cwd=session_manager.get_cwd(),
