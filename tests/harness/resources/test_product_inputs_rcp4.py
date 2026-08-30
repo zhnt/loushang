@@ -226,9 +226,15 @@ def test_product_selection_rejects_duplicate_native_and_embedded_identities(
 def test_product_selection_can_explicitly_admit_no_resource_sources(
     tmp_path: Path,
 ) -> None:
+    with pytest.raises(ValueError, match="must contain a source"):
+        InitialResourceCatalogProductSelection(
+            product_policy_revision="resource-free-policy-v1",
+        )
+
     adapter = InitialResourceCatalogProductAdapter(
         InitialResourceCatalogProductSelection(
             product_policy_revision="resource-free-policy-v1",
+            source_disposition="intentionally_empty",
         ),
         clock=lambda: 10,
     )

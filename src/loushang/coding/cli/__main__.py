@@ -12,6 +12,10 @@ from loushang.ai.model import (
     parse_model_selection_reference,
 )
 from loushang.ai.model.registry import get_default_model_registry
+from loushang.coding._invocation_product_profile import (
+    CodingAgentInvocationProductProfile,
+    resolve_coding_agent_invocation_product_profile,
+)
 from loushang.coding.adapters.harnesswork import (
     create_coding_work_runtime,
     run_coding_work_channel,
@@ -254,11 +258,16 @@ def default_runtime_builder(
             runtime_tool_registry,
             parent_allowed_tools=registered_parent_tools,
         )
-    internal_read_only_profile = (
-        getattr(args, "agent_invocation_profile", None) == "read-only-v1"
+    internal_profile_id = getattr(args, "agent_invocation_profile", None)
+    invocation_product_profile: CodingAgentInvocationProductProfile | None = (
+        resolve_coding_agent_invocation_product_profile(internal_profile_id)
+        if internal_profile_id is not None
+        else None
     )
     resource_profile_args = (
-        replace(args, no_context_files=True) if internal_read_only_profile else args
+        replace(args, no_context_files=True)
+        if invocation_product_profile is not None
+        else args
     )
     resource_loader_options = configure_agent_resource_loader(
         services.resource_loader,
@@ -268,13 +277,22 @@ def default_runtime_builder(
         services,
         resource_loader_options,
         create_services=create_agent_session_services,
+        create_services_options=(
+            {
+                "resource_catalog_source_policy": (
+                    invocation_product_profile.resource_catalog_source_policy
+                )
+            }
+            if invocation_product_profile is not None
+            else None
+        ),
     )
     runtime_factory = (
         _create_agent_invocation_session_runtime
-        if internal_read_only_profile
+        if invocation_product_profile is not None
         else create_agent_session_runtime
     )
-    runtime = runtime_factory(
+    runtime_options = dict(
         session_dir=session_dir,
         services=services,
         services_factory=services_factory,
@@ -293,6 +311,9 @@ def default_runtime_builder(
         tool_policy_evaluator=tool_policy_evaluator,
         enable_multiagent=True,
     )
+    if invocation_product_profile is not None:
+        runtime_options["product_profile"] = invocation_product_profile
+    runtime = runtime_factory(**runtime_options)
     resource_layout = resolve_machine_resource_layout(cwd=cwd)
     platform_sessions = resource_layout.sessions
     if session_dir.expanduser().resolve(strict=False) == platform_sessions:

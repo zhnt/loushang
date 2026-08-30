@@ -374,6 +374,17 @@ def build_coding_initial_resource_catalog_adapter(
             native_roots=tuple(native_roots),
             package_resources=package_resources,
             embedded_collections=embedded,
+            source_disposition=(
+                "intentionally_empty"
+                if not any(
+                    (
+                        resolved_source_policy.include_native_resources,
+                        resolved_source_policy.include_package_resources,
+                        resolved_source_policy.include_embedded_resources,
+                    )
+                )
+                else "selected"
+            ),
             context_file_names=receipt.context_file_names,
             disabled_skill_selectors=tuple(item for item in disabled_skills if item),
         ),

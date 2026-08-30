@@ -8,7 +8,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import TypeVar
+from typing import Literal, TypeVar
 
 from loushang.harness.capabilities.consumer_requirements import (
     ProductCompositionCompilation,
@@ -173,6 +173,7 @@ class InitialResourceCatalogProductSelection:
     native_roots: tuple[ProductNativeResourceRootSpec, ...] = ()
     package_resources: tuple[ProductAdmittedPackageResourceSpec, ...] = ()
     embedded_collections: tuple[ProductEmbeddedResourceCollectionSpec, ...] = ()
+    source_disposition: Literal["selected", "intentionally_empty"] = "selected"
     context_file_names: tuple[str, ...] = DEFAULT_CONTEXT_FILE_NAMES
     native_discovery_budget: NativeResourceDiscoveryBudget | None = None
     package_discovery_budget: PackageResourceDiscoveryBudget | None = None
@@ -208,6 +209,15 @@ class InitialResourceCatalogProductSelection:
             for item in embedded_collections
         ):
             raise TypeError("Product embedded Resource specifications are invalid")
+        if self.source_disposition not in {"selected", "intentionally_empty"}:
+            raise ValueError("Product Resource source disposition is invalid")
+        has_sources = bool(native_roots or package_resources or embedded_collections)
+        if not has_sources and self.source_disposition != "intentionally_empty":
+            raise ValueError("Product Resource selection must contain a source")
+        if has_sources and self.source_disposition == "intentionally_empty":
+            raise ValueError(
+                "Product Resource selection cannot mark selected sources as empty"
+            )
         if len({item.handle_id for item in native_roots}) != len(native_roots):
             raise ValueError("Product native root ids must not repeat")
         if len({item.admission.fingerprint for item in package_resources}) != len(

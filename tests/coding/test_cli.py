@@ -1135,7 +1135,7 @@ def test_default_runtime_builder_projects_internal_delegate_resource_profile(
     )
     services = create_services(
         settings_manager=SettingsManager(
-            ControlConfig(capabilities={"coding.lsp": "disabled"})
+            ControlConfig(capabilities={"coding.lsp": "always"})
         )
     )
     services.resource_loader.set_user_resource_roots(
@@ -1760,11 +1760,31 @@ def test_delegate_agent_command_reaches_real_cli_dispatch_without_legacy_flags(
     from loushang.coding.agent_invocation import CodingCliAgentInvocationAdapter
     from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import default_runtime_builder, run_cli
-    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.control import SettingsManager
     from loushang.harness.tools.agent_delegate import AgentInvocationRequest
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
+    project_settings = workspace / ".loushang" / "settings.json"
+    project_settings.parent.mkdir()
+    project_settings.write_text(
+        '{"capabilities": {"coding.lsp": "disabled"}}',
+        encoding="utf-8",
+    )
+    extension_import_marker = tmp_path / "extension-imported"
+    extension_dir = workspace / "extensions"
+    extension_dir.mkdir()
+    (extension_dir / "side_effect.py").write_text(
+        "\n".join(
+            (
+                "from pathlib import Path",
+                f"Path({str(extension_import_marker)!r}).write_text('imported')",
+                "def register(api):",
+                "    api.register_flag('must-not-load', type='boolean', default=False)",
+            )
+        ),
+        encoding="utf-8",
+    )
     executable = tmp_path / "loushang"
     executable.write_text("#!/bin/sh\n", encoding="utf-8")
     executable.chmod(0o755)
@@ -1799,6 +1819,7 @@ def test_delegate_agent_command_reaches_real_cli_dispatch_without_legacy_flags(
         assert session.resource_bundle.prompts == []
         assert session.resource_bundle.skills == []
         assert session.resource_bundle.themes == []
+        assert session.extension_runner.get_flags() == []
         return 0
 
     async def scenario() -> None:
@@ -1811,7 +1832,8 @@ def test_delegate_agent_command_reaches_real_cli_dispatch_without_legacy_flags(
             cwd=workspace,
             services=create_services(
                 settings_manager=SettingsManager(
-                    ControlConfig(capabilities={"coding.lsp": "disabled"})
+                    global_settings_path=tmp_path / "global" / "settings.json",
+                    project_settings_path=project_settings,
                 )
             ),
             runtime_builder=runtime_builder,
@@ -1822,6 +1844,7 @@ def test_delegate_agent_command_reaches_real_cli_dispatch_without_legacy_flags(
         assert stderr.getvalue() == ""
 
     asyncio.run(scenario())
+    assert not extension_import_marker.exists()
 
     assert len(captured_args) == 1
     assert captured_args[0].agent_invocation_profile == "read-only-v1"

@@ -22,19 +22,24 @@ from loushang.coding._base_plugin import (
     prepare_managed_coding_base_plugin_assembly,
 )
 from loushang.coding._cleanup import run_cleanup_steps
+from loushang.coding._invocation_product_profile import (
+    CODING_READ_ONLY_AGENT_INVOCATION_PRODUCT_PROFILE,
+    CodingAgentInvocationProductProfile,
+    canonical_coding_agent_invocation_product_profile,
+)
 from loushang.coding._plugin_lifecycle import (
     build_coding_plugin_lifecycle,
     resolve_coding_plugin_lifecycle_state_layout,
     resolve_ephemeral_coding_plugin_lifecycle_state_layout,
 )
 from loushang.coding._resource_catalog_shadow import (
-    CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY,
     CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY,
     CodingResourceCatalogAdmissionError,
     CodingResourceCatalogSourcePolicy,
     InitialResourceCatalogProductAdapter,
     ResourceCatalogInputReceipt,
     build_coding_initial_resource_catalog_adapter,
+    canonical_coding_resource_catalog_source_policy,
     finalize_coding_package_plugin_plan_seed,
     prepare_coding_package_plugin_plan_seed,
 )
@@ -279,16 +284,36 @@ def create_agent_session_services(
     project_settings_path: str | Path | None = None,
     resource_loader_options: dict[str, object] | None = None,
     extension_flag_values: ExtensionFlagValues | None = None,
+    resource_catalog_source_policy: CodingResourceCatalogSourcePolicy = (
+        CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY
+    ),
 ) -> AgentSessionServices:
+    resolved_source_policy = canonical_coding_resource_catalog_source_policy(
+        resource_catalog_source_policy
+    )
+
     def prepare_catalog_preview(
         loader: DefaultResourceLoader,
         resolved_cwd: Path,
     ) -> ResourceBundle:
+        if not any(
+            (
+                resolved_source_policy.include_native_resources,
+                resolved_source_policy.include_package_resources,
+                resolved_source_policy.include_embedded_resources,
+            )
+        ):
+            # This compatibility preview exists only to collect Extension
+            # flags before the Product Session is constructed.  A Product
+            # profile that admits no Resource sources must not import an
+            # excluded Extension merely to discover those flags.
+            return ResourceBundle(cwd=resolved_cwd)
         preview_id = hashlib.sha256(str(resolved_cwd).encode("utf-8")).hexdigest()
         _, bundle = _prepare_coding_catalog_projection(
             loader,
             cwd=resolved_cwd,
             session_id=f"services-preview:{preview_id}",
+            source_policy=resolved_source_policy,
         )
         return bundle
 
@@ -407,6 +432,7 @@ def _create_agent_session(
     resource_catalog_source_policy: CodingResourceCatalogSourcePolicy = (
         CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY
     ),
+    invocation_product_profile: CodingAgentInvocationProductProfile | None = None,
 ) -> AgentSession:
     if (
         initial_resource_catalog_product_composition_assembly is not None
@@ -420,14 +446,33 @@ def _create_agent_session(
         )
     session_no_tools_mode = normalize_no_tools(no_tools)
     resolved_composition_set = _canonical_coding_composition_set(composition_set)
-    if (
-        resource_catalog_source_policy
-        == CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY
-        and resolved_composition_set.set_id != "coding-standard"
-    ):
-        raise ValueError(
-            "Coding read-only agent Resource policy requires coding-standard"
-        )
+    resolved_invocation_profile = (
+        canonical_coding_agent_invocation_product_profile(invocation_product_profile)
+        if invocation_product_profile is not None
+        else None
+    )
+    if resolved_invocation_profile is not None:
+        if (
+            resolved_composition_set.set_id
+            != resolved_invocation_profile.composition_set_id
+        ):
+            raise ValueError(
+                "Coding agent invocation profile composition set is inconsistent"
+            )
+        if (
+            resource_catalog_source_policy
+            != resolved_invocation_profile.resource_catalog_source_policy
+        ):
+            raise ValueError(
+                "Coding agent invocation profile Resource policy is inconsistent"
+            )
+        if (
+            sandbox_workspace_writable
+            != resolved_invocation_profile.sandbox_workspace_writable
+        ):
+            raise ValueError(
+                "Coding agent invocation profile sandbox policy is inconsistent"
+            )
     if (
         resource_catalog_source_policy != CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY
         and initial_resource_catalog_product_composition_assembly is not None
@@ -469,6 +514,10 @@ def _create_agent_session(
     )
     lsp_enabled_for_session = (
         "coding.lsp.default" in requested_plugin_ids
+        and (
+            resolved_invocation_profile is None
+            or resolved_invocation_profile.include_lsp_provider
+        )
         and lsp_mode != "disabled"
         and session_no_tools_mode != "all"
     )
@@ -632,19 +681,27 @@ def _create_agent_session(
                 package_materializer=base_package_materializer,
                 lifecycle=lifecycle,
                 host_environment=session_host_environment,
-                include_tool_contribution=session_no_tools_mode is None,
+                include_tool_contribution=(
+                    session_no_tools_mode is None
+                    and (
+                        resolved_invocation_profile is None
+                        or resolved_invocation_profile.include_base_tool_contribution
+                    )
+                ),
                 include_tool_claim_prompt=(
                     session_no_tools_mode is None
-                    and resource_catalog_source_policy
-                    == CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY
+                    and (
+                        resolved_invocation_profile is None
+                        or resolved_invocation_profile.include_base_tool_claim_prompt
+                    )
                 ),
                 include_skill_contribution=(
-                    resource_catalog_source_policy
-                    == CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY
+                    resolved_invocation_profile is None
+                    or resolved_invocation_profile.include_base_skill_contribution
                 ),
                 include_command_contribution=(
-                    resource_catalog_source_policy
-                    == CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY
+                    resolved_invocation_profile is None
+                    or resolved_invocation_profile.include_base_command_contribution
                 ),
                 state_cleanup=base_state_cleanup,
                 session_owner_id=_session_manager_plugin_owner_id(session_manager),
@@ -796,7 +853,9 @@ def _create_agent_session(
                 else None
             ),
             include_configured_resource_plugins=(
-                resource_catalog_source_policy.include_package_resources
+                resolved_invocation_profile.include_configured_resource_plugins
+                if resolved_invocation_profile is not None
+                else resource_catalog_source_policy.include_package_resources
             ),
         )
         if coding_base_plugin_assembly is not None and plan_seed is None:
@@ -914,7 +973,9 @@ def _create_agent_session(
                         evaluated_at=evaluated_at,
                         plan_seed=base_resource_plan_seed,
                         include_configured_resource_plugins=(
-                            resource_catalog_source_policy.include_package_resources
+                            resolved_invocation_profile.include_configured_resource_plugins
+                            if resolved_invocation_profile is not None
+                            else resource_catalog_source_policy.include_package_resources
                         ),
                     )
                     if base_resource_plan_seed is not None
@@ -1552,7 +1613,20 @@ def _create_agent_session_runtime(
     resource_catalog_source_policy: CodingResourceCatalogSourcePolicy = (
         CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY
     ),
+    invocation_product_profile: CodingAgentInvocationProductProfile | None = None,
 ) -> AgentSessionRuntime:
+    resolved_invocation_profile = (
+        canonical_coding_agent_invocation_product_profile(invocation_product_profile)
+        if invocation_product_profile is not None
+        else None
+    )
+    if resolved_invocation_profile is not None:
+        resource_catalog_source_policy = (
+            resolved_invocation_profile.resource_catalog_source_policy
+        )
+        sandbox_workspace_writable = (
+            resolved_invocation_profile.sandbox_workspace_writable
+        )
     fixed_services = services if services is not None else create_services()
     fixed_lsp_definitions = tuple(lsp_definitions)
     fixed_lsp_environment = (
@@ -1588,6 +1662,7 @@ def _create_agent_session_runtime(
                 lsp_baseline_environment=fixed_lsp_environment,
                 lsp_read_text=lsp_read_text,
                 resource_catalog_source_policy=resource_catalog_source_policy,
+                invocation_product_profile=resolved_invocation_profile,
             )
         ),
         session_cwd=lambda manager: cast(SessionManager, manager).get_cwd(),
@@ -1615,14 +1690,20 @@ def _create_agent_invocation_session_runtime(
     approval_resolver: InteractiveApprovalResolver | None,
     tool_policy_evaluator: PolicyEvaluator | None,
     enable_multiagent: bool,
+    product_profile: CodingAgentInvocationProductProfile = (
+        CODING_READ_ONLY_AGENT_INVOCATION_PRODUCT_PROFILE
+    ),
 ) -> AgentSessionRuntime:
     """Build the Catalog-native one-shot delegate runtime."""
 
+    resolved_profile = canonical_coding_agent_invocation_product_profile(
+        product_profile
+    )
+
     return _create_agent_session_runtime(
         session_dir=session_dir,
-        composition_set=resolve_coding_composition_set("coding-standard"),
-        resource_catalog_source_policy=(
-            CODING_READ_ONLY_AGENT_RESOURCE_CATALOG_SOURCE_POLICY
+        composition_set=resolve_coding_composition_set(
+            resolved_profile.composition_set_id
         ),
         services=services,
         services_factory=services_factory,
@@ -1634,7 +1715,7 @@ def _create_agent_invocation_session_runtime(
         approval_resolver=approval_resolver,
         tool_policy_evaluator=tool_policy_evaluator,
         enable_multiagent=enable_multiagent,
-        sandbox_workspace_writable=False,
+        invocation_product_profile=resolved_profile,
     )
 
 
