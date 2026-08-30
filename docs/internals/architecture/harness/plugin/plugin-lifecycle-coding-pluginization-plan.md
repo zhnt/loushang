@@ -45,8 +45,9 @@
   disable and remove, pins active Session families across update, and reopens
   selected immutable revisions after mutable source removal. PLC6E now removes
   Coding's Resource authority mode, legacy Resource discovery, and peer CLI
-  Tool publisher. Final production validation, PLC7 through PLC9, and the
-  public Plugin SDK remain unimplemented.
+  Tool publisher. PLC6 production validation and its terminal three-view review
+  completed on 2026-08-30. PLC7 through PLC9 and the public Plugin SDK remain
+  unimplemented.
 - Scope: one delivery order for the common Plugin lifecycle, ordinary
   Definition / Provider / Consumer authoring primitives, `coding.lsp`,
   `coding.base`, `coding.arch`, management control, pre-LSP internal Resource/
@@ -1341,7 +1342,13 @@ source deletion. PLC6E removes the Coding SDK/CLI Resource-authority selector,
 the peer CLI Tool registrar, legacy Method adaptation, and every Coding
 bootstrap branch that could execute legacy Resource discovery. Catalog receipt
 preparation, publication, refresh, Prompt/Skill body reads, and Base/LSP Product
-composition are now one mandatory path. Final production review remains.
+composition are now one mandatory path. Production validation and the terminal
+architecture, correctness/security, and Product/test review completed on
+2026-08-30. The final regressions cover exact delegate argv through the real
+file-backed CLI/Catalog Session, canonical read-only Product policy before cwd
+Extension preview, refresh-stable Resource and Tool isolation, platform-native
+multi-agent prompts, public management update/disable/remove, cleanup retry,
+and the one-compilation/no-Base paths.
 
 Scope:
 

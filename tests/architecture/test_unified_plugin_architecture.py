@@ -3640,7 +3640,9 @@ def test_plc6abcde_freezes_sets_owners_management_and_authority_cutover() -> Non
     contract = PLC6_CONTRACT_PATH.read_text(encoding="utf-8")
 
     assert "PLC6A through PLC6E implementation status (2026-08-30)" in (lifecycle_plan)
-    assert "Final production review remains" in lifecycle_plan
+    assert "PLC6 production validation and its terminal three-view review" in (
+        lifecycle_plan
+    )
     assert "without mutating settings or rediscovering a source" in lifecycle_plan
     assert "publishes its Prompt and Skill through the sole Resource Catalog" in (
         lifecycle_plan

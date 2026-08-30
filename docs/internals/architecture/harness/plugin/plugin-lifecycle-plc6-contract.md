@@ -39,7 +39,14 @@ the durable binding lock without consulting a deleted mutable source. PLC6E
 removes the Coding Resource-authority type, SDK/CLI parameter, peer CLI Tool
 registrar, legacy Method adaptation, and conditional bootstrap/LSP/refresh
 branches. Every Coding Session now requires one Catalog input receipt and one
-Catalog-owned publication. Final production review remains.
+Catalog-owned publication. PLC6 production validation and the terminal
+architecture, correctness/security, and Product/test review completed on
+2026-08-30 with all P0-P2 findings closed. The exact delegate command now runs
+through the real file-backed CLI and Catalog Session under one canonical
+read-only Product profile; that profile excludes cwd Extension preview,
+configured and native Resources, Base Prompt/Skill/Command, LSP, and workspace
+writes while retaining only the admitted Base Tool contribution selected down
+to `read` and `grep`. Refresh preserves the same boundary.
 
 ## First principles
 
@@ -136,6 +143,6 @@ No slice may retain two effective writers for rollback convenience.
 - source scans prove no old caller can independently publish or dispose a base
   Prompt, Skill, Tool, or Command.
 
-After implementation, PLC6 receives fresh architecture, correctness/security,
-and Product/test reviews. All P0-P2 findings are fixed before the complete
-Harness and relevant Coding gates pass.
+The 2026-08-30 terminal architecture, correctness/security, and Product/test
+reviews passed after all P0-P2 findings were fixed. The complete Harness and
+relevant Coding gates then passed on the reviewed production head.
