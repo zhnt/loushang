@@ -235,6 +235,39 @@ def test_sweep_removes_expired_leased_run_but_preserves_unprovable_legacy_run(
     assert legacy.exists()
 
 
+def test_sweep_snapshots_decision_time_after_collecting_candidate_metadata(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _inactive_run(tmp_path, run_id="a" * 32, modified_at=10.0)
+    inspect = runtime_scope_module._inspect_inactive_run
+    inspected = False
+
+    def observe_inspection(*args, **kwargs):
+        nonlocal inspected
+        candidate = inspect(*args, **kwargs)
+        inspected = True
+        return candidate
+
+    def decision_time() -> float:
+        assert inspected is True
+        return 100.0
+
+    monkeypatch.setattr(
+        runtime_scope_module,
+        "_inspect_inactive_run",
+        observe_inspection,
+    )
+
+    report = sweep_runtime_runs(
+        _scope(tmp_path, "b" * 32),
+        policy=RuntimeSweepPolicy(stale_after_seconds=0),
+        now=decision_time,
+    )
+
+    assert report.removed == 1
+
+
 def test_sweep_quarantines_a_candidate_before_releasing_its_lease_lock(
     tmp_path: Path,
     monkeypatch,

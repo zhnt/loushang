@@ -259,7 +259,6 @@ def sweep_runtime_runs(
         return RuntimeSweepReport()
     inspected = active = skipped = failed = 0
     inactive: list[_InactiveRun] = []
-    current_time = now()
     try:
         try:
             with os.scandir(scope.runs_root) as entries:
@@ -301,6 +300,10 @@ def sweep_runtime_runs(
         except OSError:
             return RuntimeSweepReport(failed=failed + 1)
 
+        # Snapshot the decision clock after metadata collection. Files may be
+        # updated while they are inspected, so taking it before the scan makes
+        # a zero-second policy nondeterministically retain a newly inactive run.
+        current_time = now()
         selected: set[Path] = {
             candidate.path
             for candidate in inactive
