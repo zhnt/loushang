@@ -1588,7 +1588,7 @@ def test_bottom_frame_hides_status_while_completion_list_is_visible() -> None:
     assert "model" not in rendered
 
 
-def test_bottom_frame_keeps_completion_height_floor_after_completion_closes() -> None:
+def test_bottom_frame_releases_completion_height_after_completion_closes() -> None:
     composer = Composer(prompt="> ")
     composer.insert_text("/")
     frame = BottomFrame(
@@ -1619,7 +1619,6 @@ def test_bottom_frame_keeps_completion_height_floor_after_completion_closes() ->
         "> ",
         "",
         "model",
-        "",
     )
 
 

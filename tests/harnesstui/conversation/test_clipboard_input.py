@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
+import pytest
+
 from loushang.foundation.platform_paths import resolve_platform_paths
 from loushang.foundation.runtime_scope import RunLease, resolve_runtime_scope
 from loushang.harnesstui.conversation.attachments import (
@@ -100,10 +102,11 @@ def test_clipboard_builder_satisfies_standard_router_factory_contract() -> None:
 
 def test_standard_clipboard_image_profile_is_harnesstui_owned(
     tmp_path: Path,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     runtime_dir = tmp_path / "runtime"
     monkeypatch.setenv("LOUSHANG_RUNTIME_DIR", str(runtime_dir))
+    monkeypatch.setattr("sys.platform", "win32")
     app = _ConversationApp(str(tmp_path))
     assert STANDARD_CLIPBOARD_IMAGE_INPUT_PROFILE.status_copy.attached_prefix == (
         "Attached clipboard image: "
@@ -120,7 +123,7 @@ def test_standard_clipboard_image_profile_is_harnesstui_owned(
         clipboard_image_name_factory=lambda: "shared",
     )
 
-    result = router.handle(InputEvent(kind="key", key="ctrl+v"))
+    result = router.handle(InputEvent(kind="key", key="alt+v"))
 
     expected = next(
         (runtime_dir / "runs").glob("*/drafts/clipboard/clipboard-shared.png")
@@ -248,7 +251,9 @@ def test_standard_clipboard_binding_rejects_oversized_image_before_disk(
 
 def test_clipboard_image_uses_the_conversation_action_override(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr("sys.platform", "win32")
     app = _ConversationApp(str(tmp_path))
     router = _builder()(
         app,
@@ -261,10 +266,12 @@ def test_clipboard_image_uses_the_conversation_action_override(
         clipboard_image_name_factory=lambda: "override",
     )
 
-    ignored = router.handle(InputEvent(kind="key", key="ctrl+v"))
+    ignored_ctrl = router.handle(InputEvent(kind="key", key="ctrl+v"))
+    ignored_alt = router.handle(InputEvent(kind="key", key="alt+v"))
     attached = router.handle(InputEvent(kind="key", key="ctrl+p"))
 
-    assert ignored.kind == "ignored"
+    assert ignored_ctrl.kind == "ignored"
+    assert ignored_alt.kind == "ignored"
     assert isinstance(attached, ConversationClipboardResult)
 
 

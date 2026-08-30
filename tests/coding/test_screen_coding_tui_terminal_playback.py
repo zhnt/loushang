@@ -302,7 +302,7 @@ def test_screen_coding_tui_long_stream_commits_history_without_partial_scroll_re
     assert all(TerminalOperation.clear_screen() not in step.diagnostics.operations for step in protected_steps)
 
 
-def test_screen_coding_tui_completion_close_keeps_footer_height_and_cursor_anchor() -> None:
+def test_screen_coding_tui_completion_close_reclaims_rows_and_keeps_cursor_synced() -> None:
     app = _app()
     app.composer.set_completion_provider(
         CompletionProvider(
@@ -314,7 +314,7 @@ def test_screen_coding_tui_completion_close_keeps_footer_height_and_cursor_ancho
     )
     app.start_prompt("previous", started_at=0.0)
     app.begin_assistant()
-    app.append_assistant_chunk("done")
+    app.append_assistant_chunk("\n".join(f"done {index}" for index in range(16)))
     app.end_assistant()
     app.complete_run(elapsed_seconds=1.0)
     router = build_screen_input_router(app, should_exit=lambda text: text == "/quit", is_local_command=lambda text: text.startswith("/"))
@@ -330,12 +330,21 @@ def test_screen_coding_tui_completion_close_keeps_footer_height_and_cursor_ancho
 
     visible = tuple(strip_control_sequences(line).rstrip() for line in port.screen.visible_lines)
 
-    assert len(collapsed.diagnostics.current_logical_lines) == len(expanded.diagnostics.current_logical_lines)
+    assert len(collapsed.diagnostics.current_logical_lines) < len(
+        expanded.diagnostics.current_logical_lines
+    )
     assert collapsed.frame is not None
-    assert collapsed.frame.screen_after.cursor_row == collapsed.diagnostics.hardware_cursor_row
+    assert collapsed.frame.screen_after.cursor_row == (
+        collapsed.diagnostics.hardware_cursor_row
+        - collapsed.diagnostics.viewport_top
+    )
     assert recalled.frame is not None
-    assert recalled.frame.screen_after.cursor_row == recalled.diagnostics.hardware_cursor_row
+    assert recalled.frame.screen_after.cursor_row == (
+        recalled.diagnostics.hardware_cursor_row
+        - recalled.diagnostics.viewport_top
+    )
     assert visible.count("kimi | repo | main | abcd | idle | perm=standard") == 1
+    assert visible[-1] == "kimi | repo | main | abcd | idle | perm=standard"
 
 
 def test_screen_coding_tui_active_window_trim_rewrites_viewport_without_clearing_screen() -> None:

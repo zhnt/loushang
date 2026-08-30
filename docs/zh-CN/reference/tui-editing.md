@@ -90,7 +90,8 @@ follow-up 使用 `conversation.input.followUp`（默认 Alt+Enter）。空闲时
 `TUI_CORE_KEYBINDING_CATALOG`；HarnessTUI 在构造会话或 continuity surface 时
 追加相应 catalog。重复 action 定义会在组合时直接失败，用户覆盖则保留到对应
 catalog 加载后再解析。剪贴板图片粘贴使用会话 action
-`conversation.input.pasteImage`（默认 Ctrl+V）。
+`conversation.input.pasteImage`（默认 Ctrl+V；原生 Windows 还支持 Alt+V
+备用键，供终端拦截 Ctrl+V 时使用）。
 
 ### 输入意图契约
 

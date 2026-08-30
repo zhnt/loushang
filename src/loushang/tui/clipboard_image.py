@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import ctypes
 import os
+import struct
 import subprocess
 import sys
 import tempfile
+import time
 import uuid
 from collections.abc import Callable, Mapping
 from contextlib import suppress
@@ -14,6 +17,16 @@ from pathlib import Path
 from typing import Protocol
 
 SUPPORTED_IMAGE_MIME_TYPES = ("image/png", "image/jpeg", "image/webp", "image/gif")
+
+_CF_DIB = 8
+_CF_DIBV5 = 17
+_WINDOWS_PNG_CLIPBOARD_FORMATS = ("PNG", "image/png")
+_WINDOWS_CLIPBOARD_OPEN_ATTEMPTS = 5
+_WINDOWS_CLIPBOARD_RETRY_SECONDS = 0.05
+_BITMAP_FILE_HEADER_SIZE = 14
+_BITMAP_INFO_HEADER_SIZE = 40
+_BI_BITFIELDS = 3
+_BI_ALPHABITFIELDS = 6
 
 _MACOS_CLIPBOARD_IMAGE_SCRIPT = r'''
 ObjC.import("AppKit")
@@ -101,6 +114,7 @@ class _ClipboardImageReadContext:
     environment: Mapping[str, str]
     runner: CommandRunner
     native_reader: NativeClipboardReader | None
+    allow_host_native: bool
 
 
 class _ClipboardImageBackend(Protocol):
@@ -144,6 +158,7 @@ def read_clipboard_image(
         environment=environment,
         runner=_run_command if runner is None else runner,
         native_reader=native_reader,
+        allow_host_native=runner is None,
     )
     for backend in _resolve_clipboard_image_backends(host_kind):
         image = backend(context)
@@ -238,13 +253,17 @@ def _read_clipboard_image_via_wsl_powershell(context: _ClipboardImageReadContext
             "Add-Type -AssemblyName System.Windows.Forms; "
             "Add-Type -AssemblyName System.Drawing; "
             "$path = $env:LOUSHANG_WSL_CLIPBOARD_IMAGE_PATH; "
-            "$img = [System.Windows.Forms.Clipboard]::GetImage(); "
+            "$img = $null; "
+            "for ($attempt = 0; $attempt -lt 5 -and -not $img; $attempt++) { "
+            "try { $img = [System.Windows.Forms.Clipboard]::GetImage() } catch {}; "
+            "if (-not $img) { Start-Sleep -Milliseconds 50 } "
+            "}; "
             "if ($img) { $img.Save($path, [System.Drawing.Imaging.ImageFormat]::Png); Write-Output 'ok' } "
             "else { Write-Output 'empty' }"
         )
         result = context.runner(
             "powershell.exe",
-            ("-NoProfile", "-Command", script),
+            ("-NoProfile", "-STA", "-Command", script),
             timeout_seconds=5.0,
             env={**dict(context.environment), "LOUSHANG_WSL_CLIPBOARD_IMAGE_PATH": windows_path},
         )
@@ -259,6 +278,140 @@ def _read_clipboard_image_via_wsl_powershell(context: _ClipboardImageReadContext
             path.unlink()
 
 
+def _read_clipboard_image_via_windows_native(
+    context: _ClipboardImageReadContext,
+) -> ClipboardImage | None:
+    if not context.allow_host_native:
+        return None
+    try:
+        user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+        kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+        _configure_windows_clipboard_api(user32, kernel32)
+    except (AttributeError, OSError, TypeError):
+        return None
+    opened = False
+    for _attempt in range(_WINDOWS_CLIPBOARD_OPEN_ATTEMPTS):
+        try:
+            opened = bool(user32.OpenClipboard(None))
+        except (OSError, TypeError, ValueError):
+            return None
+        if opened:
+            break
+        time.sleep(_WINDOWS_CLIPBOARD_RETRY_SECONDS)
+    if not opened:
+        return None
+    try:
+        for format_name in _WINDOWS_PNG_CLIPBOARD_FORMATS:
+            format_id = int(user32.RegisterClipboardFormatW(format_name))
+            payload = _windows_clipboard_payload(
+                user32,
+                kernel32,
+                format_id,
+            )
+            if payload:
+                return ClipboardImage(bytes=payload, mime_type="image/png")
+        for format_id in (_CF_DIBV5, _CF_DIB):
+            dib = _windows_clipboard_payload(user32, kernel32, format_id)
+            if not dib:
+                continue
+            bitmap = _windows_dib_to_bmp(dib)
+            if bitmap is not None:
+                return ClipboardImage(bytes=bitmap, mime_type="image/bmp")
+    except (OSError, TypeError, ValueError):
+        return None
+    finally:
+        with suppress(Exception):
+            user32.CloseClipboard()
+    return None
+
+
+def _configure_windows_clipboard_api(user32: object, kernel32: object) -> None:
+    user32.OpenClipboard.argtypes = [ctypes.c_void_p]  # type: ignore[attr-defined]
+    user32.OpenClipboard.restype = ctypes.c_int  # type: ignore[attr-defined]
+    user32.CloseClipboard.argtypes = []  # type: ignore[attr-defined]
+    user32.CloseClipboard.restype = ctypes.c_int  # type: ignore[attr-defined]
+    user32.RegisterClipboardFormatW.argtypes = [ctypes.c_wchar_p]  # type: ignore[attr-defined]
+    user32.RegisterClipboardFormatW.restype = ctypes.c_uint  # type: ignore[attr-defined]
+    user32.IsClipboardFormatAvailable.argtypes = [ctypes.c_uint]  # type: ignore[attr-defined]
+    user32.IsClipboardFormatAvailable.restype = ctypes.c_int  # type: ignore[attr-defined]
+    user32.GetClipboardData.argtypes = [ctypes.c_uint]  # type: ignore[attr-defined]
+    user32.GetClipboardData.restype = ctypes.c_void_p  # type: ignore[attr-defined]
+    kernel32.GlobalSize.argtypes = [ctypes.c_void_p]  # type: ignore[attr-defined]
+    kernel32.GlobalSize.restype = ctypes.c_size_t  # type: ignore[attr-defined]
+    kernel32.GlobalLock.argtypes = [ctypes.c_void_p]  # type: ignore[attr-defined]
+    kernel32.GlobalLock.restype = ctypes.c_void_p  # type: ignore[attr-defined]
+    kernel32.GlobalUnlock.argtypes = [ctypes.c_void_p]  # type: ignore[attr-defined]
+    kernel32.GlobalUnlock.restype = ctypes.c_int  # type: ignore[attr-defined]
+
+
+def _windows_clipboard_payload(
+    user32: object,
+    kernel32: object,
+    format_id: int,
+) -> bytes | None:
+    if format_id <= 0 or not user32.IsClipboardFormatAvailable(format_id):  # type: ignore[attr-defined]
+        return None
+    handle = user32.GetClipboardData(format_id)  # type: ignore[attr-defined]
+    if not handle:
+        return None
+    size = int(kernel32.GlobalSize(handle))  # type: ignore[attr-defined]
+    if size <= 0:
+        return None
+    pointer = kernel32.GlobalLock(handle)  # type: ignore[attr-defined]
+    if not pointer:
+        return None
+    try:
+        return ctypes.string_at(pointer, size)
+    finally:
+        kernel32.GlobalUnlock(handle)  # type: ignore[attr-defined]
+
+
+def _windows_dib_to_bmp(dib: bytes) -> bytes | None:
+    if len(dib) < 12:
+        return None
+    dib_header_size = struct.unpack_from("<I", dib)[0]
+    if dib_header_size == 12:
+        if len(dib) < 12:
+            return None
+        bit_count = struct.unpack_from("<H", dib, 10)[0]
+        palette_entry_size = 3
+        compression = 0
+        colors_used = 0
+    elif dib_header_size >= _BITMAP_INFO_HEADER_SIZE:
+        if len(dib) < _BITMAP_INFO_HEADER_SIZE or dib_header_size > len(dib):
+            return None
+        bit_count = struct.unpack_from("<H", dib, 14)[0]
+        compression = struct.unpack_from("<I", dib, 16)[0]
+        colors_used = struct.unpack_from("<I", dib, 32)[0]
+        palette_entry_size = 4
+    else:
+        return None
+    palette_entries = colors_used or (1 << bit_count if bit_count <= 8 else 0)
+    mask_size = (
+        (16 if compression == _BI_ALPHABITFIELDS else 12)
+        if dib_header_size == _BITMAP_INFO_HEADER_SIZE
+        and compression in {_BI_BITFIELDS, _BI_ALPHABITFIELDS}
+        else 0
+    )
+    pixel_offset = (
+        _BITMAP_FILE_HEADER_SIZE
+        + dib_header_size
+        + mask_size
+        + palette_entries * palette_entry_size
+    )
+    if pixel_offset > _BITMAP_FILE_HEADER_SIZE + len(dib):
+        return None
+    file_size = _BITMAP_FILE_HEADER_SIZE + len(dib)
+    file_header = b"BM" + struct.pack(
+        "<IHHI",
+        file_size,
+        0,
+        0,
+        pixel_offset,
+    )
+    return file_header + dib
+
+
 def _read_clipboard_image_via_windows_powershell(context: _ClipboardImageReadContext) -> ClipboardImage | None:
     path = Path(tempfile.gettempdir()) / f"loushang-win-clip-{uuid.uuid4().hex}.png"
     try:
@@ -266,14 +419,18 @@ def _read_clipboard_image_via_windows_powershell(context: _ClipboardImageReadCon
             "Add-Type -AssemblyName System.Windows.Forms; "
             "Add-Type -AssemblyName System.Drawing; "
             "$path = $env:LOUSHANG_CLIPBOARD_IMAGE_PATH; "
-            "$img = [System.Windows.Forms.Clipboard]::GetImage(); "
+            "$img = $null; "
+            "for ($attempt = 0; $attempt -lt 5 -and -not $img; $attempt++) { "
+            "try { $img = [System.Windows.Forms.Clipboard]::GetImage() } catch {}; "
+            "if (-not $img) { Start-Sleep -Milliseconds 50 } "
+            "}; "
             "if ($img) { $img.Save($path, [System.Drawing.Imaging.ImageFormat]::Png); Write-Output 'ok' } "
             "else { Write-Output 'empty' }"
         )
         for command in ("powershell.exe", "powershell"):
             result = context.runner(
                 command,
-                ("-NoProfile", "-Command", script),
+                ("-NoProfile", "-STA", "-Command", script),
                 timeout_seconds=5.0,
                 env={**dict(context.environment), "LOUSHANG_CLIPBOARD_IMAGE_PATH": str(path)},
             )
@@ -298,6 +455,8 @@ def _resolve_clipboard_host_kind(
 ) -> _ClipboardHostKind:
     if _is_macos(platform_name):
         return _ClipboardHostKind.MACOS
+    if platform_name.startswith("win"):
+        return _ClipboardHostKind.WINDOWS
     if _is_wsl(environment, probe_proc=probe_proc):
         return _ClipboardHostKind.WSL
     if _is_native_windows(platform_name, environment):
@@ -326,6 +485,7 @@ def _resolve_clipboard_image_backends(
             )
         case _ClipboardHostKind.WINDOWS:
             return (
+                _read_clipboard_image_via_windows_native,
                 _read_clipboard_image_via_windows_powershell,
                 _read_clipboard_image_via_injected_reader,
             )

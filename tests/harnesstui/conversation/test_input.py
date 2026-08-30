@@ -58,11 +58,22 @@ class _ConversationApp:
         self.state.queue_steer(text)
 
 
-def test_conversation_keybinding_catalog_owns_conversation_actions() -> None:
-    manager = conversation_keybinding_manager()
+@pytest.mark.parametrize(
+    ("platform_name", "paste_keys"),
+    [
+        ("linux", ("ctrl+v",)),
+        ("darwin", ("ctrl+v",)),
+        ("win32", ("ctrl+v", "alt+v")),
+    ],
+)
+def test_conversation_keybinding_catalog_owns_conversation_actions(
+    platform_name: str,
+    paste_keys: tuple[str, ...],
+) -> None:
+    manager = conversation_keybinding_manager(platform_name=platform_name)
 
     assert manager.keys_for(CONVERSATION_FOLLOW_UP_ACTION) == ("alt+enter",)
-    assert manager.keys_for(CONVERSATION_PASTE_IMAGE_ACTION) == ("ctrl+v",)
+    assert manager.keys_for(CONVERSATION_PASTE_IMAGE_ACTION) == paste_keys
     assert manager.keys_for(CONVERSATION_QUEUE_EDIT_LAST_ACTION) == ("alt+up",)
     assert manager.keys_for("app.clipboard.pasteImage") == ()
 

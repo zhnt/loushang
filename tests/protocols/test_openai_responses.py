@@ -90,8 +90,8 @@ def test_openai_responses_parser_closes_owned_event_iterator() -> None:
         source = process_responses_stream(event_stream)
         while (await anext(source))["type"] != "response_done":
             pass
-        await source.aclose()
         assert event_stream.closed is True
+        await source.aclose()
 
     asyncio.run(_run())
 
@@ -350,7 +350,20 @@ def test_openai_responses_payload_uses_resolved_capabilities_for_images(
 def test_openai_responses_closes_nested_stream_and_owned_client_at_terminal(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _fake_openai_module(monkeypatch)
+    _fake_openai_module(
+        monkeypatch,
+        events=[
+            SimpleNamespace(
+                type="response.completed",
+                response=SimpleNamespace(
+                    id="resp_1",
+                    status="completed",
+                    usage=None,
+                ),
+            ),
+            RuntimeError("trailing transport failure"),
+        ],
+    )
     _patch_resolved_request(monkeypatch, base_url="https://api.openai.test/v1")
 
     async def _run() -> None:
@@ -366,8 +379,9 @@ def test_openai_responses_closes_nested_stream_and_owned_client_at_terminal(
         )
         while (await anext(source))["type"] != "response_done":
             pass
-        await source.aclose()
         assert _FakeStream.last_instance is not None
+        assert _FakeStream.last_instance.inner_close_calls == 1
+        await source.aclose()
         assert _FakeStream.last_instance.close_calls == 1
         assert _FakeStream.last_instance.iter_calls == 0
         assert _FakeAsyncOpenAI.last_instance is not None
@@ -2131,10 +2145,12 @@ class _FakeStream:
 
     def __init__(self, events: list[object]) -> None:
         type(self).last_instance = self
-        self._iterator = iter(events)
+        self._events = events
+        self._iterator = self._iterate_events()
         self.close_calls = 0
         self.iter_calls = 0
         self.iter_close_calls = 0
+        self.inner_close_calls = 0
 
     def __aiter__(self):
         return self._iterate()
@@ -2147,14 +2163,17 @@ class _FakeStream:
         finally:
             self.iter_close_calls += 1
 
-    async def __anext__(self):
+    async def _iterate_events(self):
         try:
-            event = next(self._iterator)
-        except StopIteration as exc:
-            raise StopAsyncIteration from exc
-        if isinstance(event, BaseException):
-            raise event
-        return event
+            for event in self._events:
+                if isinstance(event, BaseException):
+                    raise event
+                yield event
+        finally:
+            self.inner_close_calls += 1
+
+    async def __anext__(self):
+        return await self._iterator.__anext__()
 
     async def close(self) -> None:
         self.close_calls += 1

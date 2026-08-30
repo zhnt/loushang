@@ -106,7 +106,8 @@ Keybinding defaults are composed by owner. Generic TUI provides the Core
 catalogs when those surfaces are constructed. Duplicate action definitions
 fail during catalog composition, while user overrides are retained until the
 owning catalog is available. Clipboard-image paste is the conversation action
-`conversation.input.pasteImage` (Ctrl+V by default).
+`conversation.input.pasteImage` (Ctrl+V by default; native Windows also provides
+Alt+V as a fallback when the terminal intercepts Ctrl+V).
 
 ### Input intent contract
 
