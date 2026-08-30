@@ -521,6 +521,7 @@ def _create_agent_session(
     )
     coding_base_plugin_assembly: CodingBasePluginAssembly | None = None
     base_ephemeral_state = None
+    base_state_cleanup: Callable[[], None] | None = None
     if (
         resource_authority_mode == "catalog_required"
         and initial_resource_catalog_product_composition_assembly is None
@@ -580,6 +581,15 @@ def _create_agent_session(
                     session_id=session_id,
                 )
             lifecycle = build_coding_plugin_lifecycle(lifecycle_layout)
+            if base_ephemeral_state is not None:
+                ephemeral_lifecycle = lifecycle
+                ephemeral_state = base_ephemeral_state
+
+                def cleanup_ephemeral_base_state() -> None:
+                    ephemeral_lifecycle.release_owned_process_startup_lease()
+                    ephemeral_state.cleanup()
+
+                base_state_cleanup = cleanup_ephemeral_base_state
             lifecycle.reconcile_retirements()
             lifecycle.complete_startup_recovery()
             coding_base_plugin_assembly = prepare_managed_coding_base_plugin_assembly(
@@ -589,11 +599,7 @@ def _create_agent_session(
                 lifecycle=lifecycle,
                 include_tool_contribution=session_no_tools_mode is None,
                 include_tool_claim_prompt=session_no_tools_mode is None,
-                state_cleanup=(
-                    None
-                    if base_ephemeral_state is None
-                    else base_ephemeral_state.cleanup
-                ),
+                state_cleanup=base_state_cleanup,
             )
         except BaseException as error:
             if isinstance(error, CodingBasePluginAssemblyError):
@@ -624,7 +630,9 @@ def _create_agent_session(
                     diagnostics_service=services.diagnostics_service,
                     session_id=session_id,
                 )
-            if base_ephemeral_state is not None:
+            if base_state_cleanup is not None:
+                base_state_cleanup()
+            elif base_ephemeral_state is not None:
                 base_ephemeral_state.cleanup()
             raise
 

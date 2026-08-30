@@ -2039,6 +2039,7 @@ def test_ephemeral_public_session_releases_family_before_removing_state_root(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    import loushang.coding.bootstrap as bootstrap_module
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import ControlConfig, SettingsManager
     from loushang.coding.session_manager import SessionManager
@@ -2046,37 +2047,76 @@ def test_ephemeral_public_session_releases_family_before_removing_state_root(
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "loushang-home"))
     workspace = tmp_path / "workspace"
     workspace.mkdir()
+    original_temporary_cleanup = bootstrap_module.TemporaryDirectory.cleanup
+
+    def cleanup_only_after_startup_lease_release(temporary_state) -> None:
+        temporary_root = Path(temporary_state.name)
+        with plugin_lifecycle_module._PROCESS_STARTUP_LEASES_LOCK:
+            assert all(
+                not lease_path.is_relative_to(temporary_root)
+                for lease_path in plugin_lifecycle_module._PROCESS_STARTUP_LEASES
+            )
+        original_temporary_cleanup(temporary_state)
+
+    monkeypatch.setattr(
+        bootstrap_module.TemporaryDirectory,
+        "cleanup",
+        cleanup_only_after_startup_lease_release,
+    )
 
     async def scenario() -> None:
-        manager = await SessionManager.new(
-            session_dir=tmp_path / "sessions",
-            cwd=str(workspace),
-            persist=False,
-        )
-        session = create_agent_session(
-            session_manager=manager,
-            model=_model(),
-            services=create_services(
-                settings_manager=SettingsManager(
-                    ControlConfig(capabilities={"coding.lsp": "disabled"})
+        with plugin_lifecycle_module._PROCESS_STARTUP_LEASES_LOCK:
+            original_lease_count = len(
+                plugin_lifecycle_module._PROCESS_STARTUP_LEASES
+            )
+
+        for sequence in range(3):
+            manager = await SessionManager.new(
+                session_dir=tmp_path / f"sessions-{sequence}",
+                cwd=str(workspace),
+                persist=False,
+            )
+            session = create_agent_session(
+                session_manager=manager,
+                model=_model(),
+                services=create_services(
+                    settings_manager=SettingsManager(
+                        ControlConfig(capabilities={"coding.lsp": "disabled"})
+                    )
+                ),
+            )
+            await session.prepare_model_call_runtime()
+            assembly = session._coding_base_plugin_assembly
+            assert assembly is not None
+            lease = assembly.management_lease
+            assert lease is not None
+            lifecycle = lease.lifecycle
+            ephemeral_root = lifecycle.layout.root
+            startup_lease_path = plugin_lifecycle_module._startup_lease_path(
+                lifecycle.layout,
+                startup_id=lifecycle.startup_id,
+            )
+            assert ephemeral_root.exists()
+            with plugin_lifecycle_module._PROCESS_STARTUP_LEASES_LOCK:
+                assert startup_lease_path in (
+                    plugin_lifecycle_module._PROCESS_STARTUP_LEASES
                 )
-            ),
-        )
-        await session.prepare_model_call_runtime()
-        assembly = session._coding_base_plugin_assembly
-        assert assembly is not None
-        lease = assembly.management_lease
-        assert lease is not None
-        ephemeral_root = lease.lifecycle.layout.root
-        assert ephemeral_root.exists()
 
-        await session.dispose()
+            await session.dispose()
 
-        assert assembly._closed is True
-        assert assembly._runtime_closed is True
-        assert assembly._management_released is True
-        assert assembly._state_cleaned is True
-        assert ephemeral_root.exists() is False
+            assert assembly._closed is True
+            assert assembly._runtime_closed is True
+            assert assembly._management_released is True
+            assert assembly._state_cleaned is True
+            assert ephemeral_root.exists() is False
+            with plugin_lifecycle_module._PROCESS_STARTUP_LEASES_LOCK:
+                assert startup_lease_path not in (
+                    plugin_lifecycle_module._PROCESS_STARTUP_LEASES
+                )
+                assert (
+                    len(plugin_lifecycle_module._PROCESS_STARTUP_LEASES)
+                    == original_lease_count
+                )
 
     asyncio.run(scenario())
 

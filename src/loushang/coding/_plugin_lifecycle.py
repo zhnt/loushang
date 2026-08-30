@@ -111,6 +111,23 @@ class CodingPluginLifecycle:
     packages: PluginPackageLifecycleLedger = field(repr=False)
     security: PluginInstanceSecurityRetirementJournal = field(repr=False)
     owner_evidence: CodingOwnerGenerationEvidenceLedger = field(repr=False)
+    _owns_process_startup_lease: bool = field(repr=False)
+
+    def release_owned_process_startup_lease(self) -> None:
+        """Release a startup lease acquired specifically by this lifecycle.
+
+        Durable Coding state deliberately keeps its startup lease for the
+        process lifetime. Disposable composition roots instead call this
+        before removing their private state directory.
+        """
+
+        if not self._owns_process_startup_lease:
+            return
+        _release_process_startup_lease(
+            self.layout,
+            startup_id=self.startup_id,
+        )
+        self._owns_process_startup_lease = False
 
     def complete_startup_recovery(self) -> None:
         """Seal Package recovery after the composition root reconciles Instances."""
@@ -845,28 +862,40 @@ def build_coding_plugin_lifecycle(
         security_acceptances=security,
     )
     resolved_startup_id = startup_id or _CODING_PLUGIN_RUNTIME_BOOT_ID
-    _hold_process_startup_lease(layout, startup_id=resolved_startup_id)
-    packages = PluginPackageLifecycleLedger(
-        layout.package_lifecycle,
+    owns_process_startup_lease = _hold_process_startup_lease(
+        layout,
         startup_id=resolved_startup_id,
-        desired_state=desired,
-        instance_runtime=instances,
-        retirement_sets=retirement_sets,
     )
-    owner_evidence = CodingOwnerGenerationEvidenceLedger(
-        layout.owner_generation_evidence
-    )
-    return CodingPluginLifecycle(
-        layout=layout,
-        startup_id=resolved_startup_id,
-        desired=desired,
-        management=management,
-        instances=instances,
-        retirement_sets=retirement_sets,
-        packages=packages,
-        security=security,
-        owner_evidence=owner_evidence,
-    )
+    try:
+        packages = PluginPackageLifecycleLedger(
+            layout.package_lifecycle,
+            startup_id=resolved_startup_id,
+            desired_state=desired,
+            instance_runtime=instances,
+            retirement_sets=retirement_sets,
+        )
+        owner_evidence = CodingOwnerGenerationEvidenceLedger(
+            layout.owner_generation_evidence
+        )
+        return CodingPluginLifecycle(
+            layout=layout,
+            startup_id=resolved_startup_id,
+            desired=desired,
+            management=management,
+            instances=instances,
+            retirement_sets=retirement_sets,
+            packages=packages,
+            security=security,
+            owner_evidence=owner_evidence,
+            _owns_process_startup_lease=owns_process_startup_lease,
+        )
+    except BaseException:
+        if owns_process_startup_lease:
+            _release_process_startup_lease(
+                layout,
+                startup_id=resolved_startup_id,
+            )
+        raise
 
 
 def package_revision_ref(
@@ -1098,11 +1127,11 @@ def _hold_process_startup_lease(
     layout: CodingPluginLifecycleStateLayout,
     *,
     startup_id: str,
-) -> None:
+) -> bool:
     lease_path = _startup_lease_path(layout, startup_id=startup_id)
     with _PROCESS_STARTUP_LEASES_LOCK:
         if lease_path in _PROCESS_STARTUP_LEASES:
-            return
+            return False
         lease = journal_file_lock(
             lease_path,
             "exclusive",
@@ -1117,6 +1146,19 @@ def _hold_process_startup_lease(
                 code="coding_plugin_startup_already_active",
             ) from exc
         _PROCESS_STARTUP_LEASES[lease_path] = lease
+        return True
+
+
+def _release_process_startup_lease(
+    layout: CodingPluginLifecycleStateLayout,
+    *,
+    startup_id: str,
+) -> None:
+    lease_path = _startup_lease_path(layout, startup_id=startup_id)
+    with _PROCESS_STARTUP_LEASES_LOCK:
+        lease = _PROCESS_STARTUP_LEASES.pop(lease_path, None)
+    if lease is not None:
+        lease.__exit__(None, None, None)
 
 
 def _startup_lease_is_inactive(
