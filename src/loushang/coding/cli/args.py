@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from typing import Literal, TypeAlias
 
 from loushang.coding.cli.profile import CODING_CLI_PROFILE
-from loushang.coding.resource_authority import ResourceAuthorityMode
 from loushang.harness.cli import (
     extract_unknown_long_options,
     project_extension_flag_values,
@@ -36,7 +35,6 @@ class CliArgs(AgentCliArgs):
     """Standard Agent CLI values plus Coding's Method/Work additions."""
 
     capability_modes: tuple[tuple[str, CapabilityMountMode], ...]
-    resource_authority_mode: ResourceAuthorityMode
     method: str | None
     no_method: bool
     prompt_steps: str | None
@@ -98,7 +96,6 @@ def parse_args(
             extension_flag_values=extension_flag_values,
         ),
         capability_modes=tuple(namespace.capability),
-        resource_authority_mode=namespace.resource_authority_mode,
         method=namespace.method,
         no_method=namespace.no_method,
         prompt_steps=namespace.prompt_steps,

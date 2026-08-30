@@ -3635,17 +3635,17 @@ def test_pap55_review_corrections_freeze_single_catalog_ingress_and_custody() ->
     assert "delete direct post-Catalog bundle merge authority" in plan
 
 
-def test_plc6abcd_freezes_sets_owners_and_management_cutover() -> None:
+def test_plc6abcde_freezes_sets_owners_management_and_authority_cutover() -> None:
     lifecycle_plan = LIFECYCLE_PLAN_PATH.read_text(encoding="utf-8")
     contract = PLC6_CONTRACT_PATH.read_text(encoding="utf-8")
 
-    assert "PLC6A through PLC6D implementation status (2026-08-30)" in (lifecycle_plan)
-    assert "final production review remain PLC6E" in lifecycle_plan
+    assert "PLC6A through PLC6E implementation status (2026-08-30)" in (lifecycle_plan)
+    assert "Final production review remains" in lifecycle_plan
     assert "without mutating settings or rediscovering a source" in lifecycle_plan
     assert "publishes its Prompt and Skill through the sole Resource Catalog" in (
         lifecycle_plan
     )
-    assert "PLC6A through PLC6D are implemented" in contract
+    assert "PLC6A through PLC6E are implemented" in contract
     assert "disabled or removed Installation is never resurrected" in contract
     assert "without consulting a deleted mutable source" in contract
     assert "publish atomically with the\nusable Session" in contract
@@ -3665,94 +3665,13 @@ def test_plc6abcd_freezes_sets_owners_and_management_cutover() -> None:
         assert required in contract
 
 
-def test_plc6c_catalog_session_has_no_peer_base_tool_or_command_publisher() -> None:
-    def is_exact_legacy_authority_comparison(node: ast.AST) -> bool:
-        return (
-            isinstance(node, ast.Compare)
-            and isinstance(node.left, ast.Name)
-            and node.left.id == "resource_authority_mode"
-            and len(node.ops) == 1
-            and isinstance(node.ops[0], ast.Eq)
-            and len(node.comparators) == 1
-            and isinstance(node.comparators[0], ast.Constant)
-            and node.comparators[0].value == "legacy_explicit"
-        )
-
-    def is_positive_legacy_authority_guard(node: ast.AST) -> bool:
-        if is_exact_legacy_authority_comparison(node):
-            return True
-        if not isinstance(node, ast.BoolOp) or not isinstance(node.op, ast.And):
-            return False
-        if any(
-            isinstance(candidate, ast.BoolOp) and isinstance(candidate.op, ast.Or)
-            for candidate in ast.walk(node)
-        ):
-            return False
-        return any(
-            is_positive_legacy_authority_guard(value) for value in node.values
-        )
-
-    def contains_node(branch: list[ast.stmt], target: ast.AST) -> bool:
-        return any(
-            candidate is target
-            for statement in branch
-            for candidate in ast.walk(statement)
-        )
-
-    def has_positive_legacy_guard(
-        call: ast.Call,
-        parents: dict[ast.AST, ast.AST],
-    ) -> bool:
-        parent = parents.get(call)
-        while parent is not None:
-            if (
-                isinstance(parent, ast.If)
-                and is_positive_legacy_authority_guard(parent.test)
-                and contains_node(parent.body, call)
-                and not contains_node(parent.orelse, call)
-            ):
-                return True
-            parent = parents.get(parent)
-        return False
-
-    assert is_positive_legacy_authority_guard(
-        ast.parse(
-            'resource_authority_mode == "legacy_explicit"', mode="eval"
-        ).body
-    )
-    assert is_positive_legacy_authority_guard(
-        ast.parse(
-            'enabled and resource_authority_mode == "legacy_explicit"', mode="eval"
-        ).body
-    )
-    assert not is_positive_legacy_authority_guard(
-        ast.parse(
-            'not resource_authority_mode == "legacy_explicit"', mode="eval"
-        ).body
-    )
-    assert not is_positive_legacy_authority_guard(
-        ast.parse(
-            'resource_authority_mode == "legacy_explicit" or enabled', mode="eval"
-        ).body
-    )
-    assert not is_positive_legacy_authority_guard(
-        ast.parse(
-            'resource_authority_mode == "legacy_explicit" and (enabled or forced)',
-            mode="eval",
-        ).body
-    )
-
+def test_plc6e_catalog_session_has_no_peer_base_tool_or_command_publisher() -> None:
     coding_sources = tuple(Path("src/loushang/coding").rglob("*.py"))
-    tool_calls: list[tuple[Path, bool]] = []
+    tool_calls: list[Path] = []
     command_stage_calls: list[Path] = []
     standard_command_catalog_calls: list[Path] = []
     for path in coding_sources:
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        parents = {
-            child: parent
-            for parent in ast.walk(tree)
-            for child in ast.iter_child_nodes(parent)
-        }
         tool_names: set[str] = set()
         tool_modules: set[str] = set()
         command_catalog_names: set[str] = set()
@@ -3792,7 +3711,7 @@ def test_plc6c_catalog_session_has_no_peer_base_tool_or_command_publisher() -> N
                 and node.func.value.id in tool_modules
             )
             if is_tool_call:
-                tool_calls.append((path, has_positive_legacy_guard(node, parents)))
+                tool_calls.append(path)
             if isinstance(node.func, ast.Attribute) and node.func.attr == "stage_pack":
                 command_stage_calls.append(path)
             if (
@@ -3807,10 +3726,15 @@ def test_plc6c_catalog_session_has_no_peer_base_tool_or_command_publisher() -> N
         encoding="utf-8"
     )
 
-    # PLC6E still owns deletion of the explicit legacy compatibility path.  AST
-    # import resolution freezes it as the sole caller and proves that its call
-    # remains beneath the exact legacy authority guard.
-    assert tool_calls == [(Path("src/loushang/coding/cli/__main__.py"), True)]
+    assert not Path("src/loushang/coding/resource_authority.py").exists()
+    assert all(
+        "resource_authority_mode" not in path.read_text(encoding="utf-8")
+        and "legacy_explicit" not in path.read_text(encoding="utf-8")
+        for path in coding_sources
+    )
+    # PLC6E removes the last peer Tool publisher. Coding can expose the
+    # registrar as an authoring helper, but no production caller may invoke it.
+    assert tool_calls == []
     assert set(command_stage_calls) == {
         Path("src/loushang/coding/_base_plugin_owners.py")
     }

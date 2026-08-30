@@ -929,8 +929,7 @@ def test_cli_help_explains_runtime_provenance_flags() -> None:
     )
     assert "show executable, import, Git, and bundled component provenance" in output
     assert "with --version, show runtime provenance" in output
-    assert "--resource-authority-mode" in output
-    assert "Select Catalog authority (default)" in output
+    assert "--resource-authority-mode" not in output
 
 
 def test_parse_args_supports_resume_session_reference() -> None:
@@ -1434,68 +1433,7 @@ def test_default_runtime_builder_does_not_restore_delegate_when_builtins_disable
     }
 
 
-def test_default_runtime_builder_restores_builtin_registrar_only_for_legacy_mode(
-    tmp_path,
-) -> None:
-    from loushang.coding.bootstrap import create_services
-    from loushang.coding.cli.__main__ import default_runtime_builder
-    from loushang.coding.tool_pack import CODING_BUILTIN_TOOL_NAMES
-    from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
-
-    runtime = default_runtime_builder(
-        args=SimpleNamespace(
-            no_tools=False,
-            tools=(),
-            no_builtin_tools=False,
-            no_session=True,
-            resource_authority_mode="legacy_explicit",
-        ),
-        cwd=tmp_path,
-        session_dir=tmp_path / "sessions",
-        services=create_services(),
-        tool_registry=WorkspaceToolRegistry(),
-    )
-
-    session = asyncio.run(runtime.create_session(cwd=str(tmp_path)))
-
-    assert set(CODING_BUILTIN_TOOL_NAMES).issubset(
-        definition.name for definition in session.get_all_tools()
-    )
-
-
-@pytest.mark.parametrize("disabled_flag", ["no_tools", "no_builtin_tools"])
-def test_default_runtime_builder_does_not_restore_legacy_builtins_when_disabled(
-    tmp_path,
-    disabled_flag,
-) -> None:
-    from loushang.coding.bootstrap import create_services
-    from loushang.coding.cli.__main__ import default_runtime_builder
-    from loushang.coding.tool_pack import CODING_BUILTIN_TOOL_NAMES
-    from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
-
-    flags = {"no_tools": False, "no_builtin_tools": False}
-    flags[disabled_flag] = True
-    runtime = default_runtime_builder(
-        args=SimpleNamespace(
-            **flags,
-            tools=(),
-            no_session=True,
-            resource_authority_mode="legacy_explicit",
-        ),
-        cwd=tmp_path,
-        session_dir=tmp_path / "sessions",
-        services=create_services(),
-        tool_registry=WorkspaceToolRegistry(),
-    )
-
-    session = asyncio.run(runtime.create_session(cwd=str(tmp_path)))
-
-    assert not set(CODING_BUILTIN_TOOL_NAMES).intersection(
-        definition.name for definition in session.get_all_tools()
-    )
-
-
-def test_default_runtime_builder_applies_resource_and_prompt_options(tmp_path) -> None:
+def test_default_runtime_builder_applies_prompt_options(tmp_path) -> None:
     from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import default_runtime_builder
     from loushang.coding.tool_pack import (
@@ -1512,13 +1450,6 @@ def test_default_runtime_builder_applies_resource_and_prompt_options(tmp_path) -
     system_file.write_text("System from file", encoding="utf-8")
     append_file = tmp_path / "append.txt"
     append_file.write_text("Append from file", encoding="utf-8")
-    explicit_skill = tmp_path / "review-skill"
-    explicit_skill.mkdir()
-    (explicit_skill / "SKILL.md").write_text(
-        "---\nname: review\n---\n\nReview skill",
-        encoding="utf-8",
-    )
-
     registry = ToolRegistry()
     register_builtin_tools(registry)
     runtime = default_runtime_builder(
@@ -1526,18 +1457,9 @@ def test_default_runtime_builder_applies_resource_and_prompt_options(tmp_path) -
             no_tools=False,
             tools=(),
             no_session=True,
-            extensions=(),
-            no_extensions=True,
-            skills=(str(explicit_skill),),
-            no_skills=True,
-            prompt_templates=(),
-            no_prompt_templates=True,
-            themes=(),
-            no_themes=True,
             no_context_files=True,
             system_prompt=str(system_file),
             append_system_prompt=(str(append_file), "Inline append"),
-            resource_authority_mode="legacy_explicit",
         ),
         cwd=project_root,
         session_dir=tmp_path / "sessions",
@@ -1551,7 +1473,6 @@ def test_default_runtime_builder_applies_resource_and_prompt_options(tmp_path) -
         "System from file\n\nAppend from file\n\nInline append"
     )
     assert "Project guidance" not in session.agent.system_prompt
-    assert [skill.name for skill in session.resource_bundle.skills] == ["review"]
 
 
 def test_default_runtime_builder_rebuilds_project_bound_services_for_session_cwd(
@@ -1637,7 +1558,7 @@ def test_cwd_bound_services_factory_uses_sdk_services_creation(
         base_services,
         resource_loader_options,
         create_services=fake_create_agent_session_services,
-        create_services_options={"resource_authority_mode": "legacy_explicit"},
+        create_services_options={"marker": "catalog-only"},
     )
 
     assert factory is not None
@@ -1646,7 +1567,7 @@ def test_cwd_bound_services_factory_uses_sdk_services_creation(
         {
             "cwd": str(project_b),
             "resource_loader_options": resource_loader_options,
-            "resource_authority_mode": "legacy_explicit",
+            "marker": "catalog-only",
         }
     ]
 
@@ -1923,8 +1844,6 @@ def test_parse_args_supports_command_dispatch_flags() -> None:
     args = parse_args(
         [
             "--source-info",
-            "--resource-authority-mode",
-            "legacy_explicit",
             "--source-info-format",
             "json",
             "--list-commands",
@@ -1969,7 +1888,6 @@ def test_parse_args_supports_command_dispatch_flags() -> None:
     )
 
     assert args.source_info is True
-    assert args.resource_authority_mode == "legacy_explicit"
     assert args.source_info_format == "json"
     assert args.list_commands is True
     assert args.list_commands_format == "json"
@@ -1995,12 +1913,11 @@ def test_parse_args_supports_command_dispatch_flags() -> None:
     assert args.messages == ("hello",)
 
 
-def test_parse_args_defaults_to_catalog_resource_authority() -> None:
+def test_parse_args_rejects_removed_resource_authority_mode() -> None:
     from loushang.coding.cli.args import parse_args
 
-    args = parse_args([])
-
-    assert args.resource_authority_mode == "catalog_required"
+    with pytest.raises(SystemExit):
+        parse_args(["--resource-authority-mode", "legacy_explicit"])
 
 
 def test_parse_args_maps_pi_style_package_subcommands_to_package_manager_commands() -> (
@@ -8270,9 +8187,9 @@ def test_run_cli_shows_method_json_with_applicability(tmp_path) -> None:
 def test_run_cli_shows_method_as_text(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
 
-    skill_dir = tmp_path / "skills" / "debug"
-    skill_dir.mkdir(parents=True)
-    (skill_dir / "SKILL.md").write_text(
+    method_dir = tmp_path / "methods" / "task" / "debug"
+    method_dir.mkdir(parents=True)
+    (method_dir / "SKILL.md").write_text(
         "---\n"
         "name: debug\n"
         "description: Debug failures.\n"
@@ -8293,13 +8210,7 @@ def test_run_cli_shows_method_as_text(tmp_path) -> None:
 
     async def scenario() -> None:
         exit_code = await run_cli(
-            [
-                "method",
-                "show",
-                "debug",
-                "--resource-authority-mode",
-                "legacy_explicit",
-            ],
+            ["method", "show", "debug"],
             stdin=StringIO(""),
             stdout=stdout,
             stderr=stderr,
@@ -8312,8 +8223,8 @@ def test_run_cli_shows_method_as_text(tmp_path) -> None:
     asyncio.run(scenario())
 
     output = stdout.getvalue()
-    assert "id: skill:debug" in output
-    assert "kind: skill_backed" in output
+    assert "id: method:task:debug" in output
+    assert "kind: method_resource" in output
     assert "element_type: task" in output
     assert "applicability:" in output
     assert "  domains: coding" in output

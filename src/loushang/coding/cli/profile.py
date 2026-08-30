@@ -8,7 +8,6 @@ owned by the Coding application.
 from __future__ import annotations
 
 from loushang.coding.capabilities import parse_capability_mount
-from loushang.coding.resource_authority import RESOURCE_AUTHORITY_MODES
 from loushang.harness.cli import STANDARD_CLI_PROFILE, CliArgumentSpec, CliProfile
 
 CODING_CLI_PROFILE: CliProfile = STANDARD_CLI_PROFILE.augment(
@@ -24,18 +23,6 @@ CODING_CLI_PROFILE: CliProfile = STANDARD_CLI_PROFILE.augment(
             default=[],
             metavar="CAPABILITY=MODE",
             help=("Set a Product capability mount to disabled, on_demand, or always."),
-        ),
-        CliArgumentSpec(
-            "coding.resource_authority_mode",
-            ("--resource-authority-mode",),
-            "resource_authority_mode",
-            owner="product",
-            choices=RESOURCE_AUTHORITY_MODES,
-            default="catalog_required",
-            help=(
-                "Select Catalog authority (default) or explicitly retain legacy "
-                "resource loading."
-            ),
         ),
         CliArgumentSpec(
             "coding.method",

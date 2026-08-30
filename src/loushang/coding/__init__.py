@@ -27,7 +27,6 @@ from loushang.coding.composition_sets import (
     resolve_coding_composition_set,
 )
 from loushang.coding.prompt import assemble_system_prompt
-from loushang.coding.resource_authority import ResourceAuthorityMode
 from loushang.coding.resource_runtime import (
     CodingResourceLoader as DefaultResourceLoader,
 )
@@ -92,7 +91,6 @@ __all__ = [
     "INSPECT_IMPORT_GRAPH_TOOL_NAME",
     "ImportGraphToolRuntime",
     "ModelSelection",
-    "ResourceAuthorityMode",
     "ToolSettings",
     "TreeNavigationResult",
     "SessionManager",

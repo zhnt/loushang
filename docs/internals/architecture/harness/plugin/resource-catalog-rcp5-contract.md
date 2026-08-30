@@ -10,8 +10,11 @@ status substrate. RCP5.2B now mounts exact-v4 for the default admitted Coding
 Resource Catalog and routes read-only Skill consumers to one captured
 generation. RCP5.3A/B/C move explicit body loading to the exact asynchronous
 Consumer, persist request-bound evidence, and remove eager body sinks from the
-Catalog projection and neutral consumers. RCP5.4 now moves live refresh to
-monotonic Catalog generations. Compatibility-loader deletion remains RCP5.5.
+Catalog projection and neutral consumers. RCP5.4 moves live refresh to
+monotonic Catalog generations. RCP5.5 removes the independent Skill loader and
+peer default loader path. PLC6E then removes Coding's explicit legacy authority
+selector and every production caller of legacy discovery; generic Harness
+compatibility adapters remain outside the Coding Session path.
 
 Production cutover starts only after the RCP5.1 contract and implementation
 receive a fresh source-backed review. Stable public Resource authoring remains

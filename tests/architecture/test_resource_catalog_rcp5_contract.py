@@ -111,6 +111,7 @@ def test_rcp5_contract_freezes_conservative_order_and_authority() -> None:
     assert "The mode is Product policy, not a ResourceLoader type test" in contract
     assert "Raw `package_roots` and non-Plugin `package_sources`" in contract
     assert "RCP5.5 \u2014 peer deletion" in contract
+    assert "PLC6E then removes Coding's explicit legacy authority" in contract
     assert "Production cutover starts only after" in contract
     assert "Only then is PLC6" in contract
     assert readme.count("resource-catalog-rcp5-contract.md") == 1
@@ -292,7 +293,7 @@ def test_rcp53c_catalog_projection_and_consumers_are_body_free() -> None:
     assert 'ResourceSkillBodyAuthority = Literal["catalog_required", "legacy_explicit"]' in (
         command_source
     )
-    assert "_coding_method_loader(args)" in coding_cli
+    assert "_coding_method_loader()" in coding_cli
 
     legacy_target = "loushang.harness.resources._legacy_skill_body"
     legacy_importers = {
@@ -373,4 +374,4 @@ def test_rcp55_default_path_has_no_peer_loader_or_skill_authority() -> None:
     assert "_disabled_skill_winner_descriptors" in bootstrap_source
     assert "class CatalogSessionResourceLoaderView" in loader_source
     assert "create_catalog_session_view()" in product_source
-    assert "resource_authority_mode" in services_source
+    assert "resource_authority_mode" not in services_source
