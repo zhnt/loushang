@@ -1758,7 +1758,10 @@ def test_delegate_agent_command_reaches_real_cli_dispatch_without_legacy_flags(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from loushang.coding.agent_invocation import CodingCliAgentInvocationAdapter
-    from loushang.coding.bootstrap import create_services
+    from loushang.coding.bootstrap import (
+        create_agent_session_services,
+        create_services,
+    )
     from loushang.coding.cli.__main__ import default_runtime_builder, run_cli
     from loushang.coding.control import SettingsManager
     from loushang.harness.tools.agent_delegate import AgentInvocationRequest
@@ -1768,10 +1771,12 @@ def test_delegate_agent_command_reaches_real_cli_dispatch_without_legacy_flags(
     project_settings = workspace / ".loushang" / "settings.json"
     project_settings.parent.mkdir()
     project_settings.write_text(
-        '{"capabilities": {"coding.lsp": "disabled"}}',
+        '{"capabilities": {"coding.lsp": "always"}}',
         encoding="utf-8",
     )
     extension_import_marker = tmp_path / "extension-imported"
+    # Coding's current production profile intentionally retains its legacy
+    # workspace Resource root until the later layout migration.
     extension_dir = workspace / "extensions"
     extension_dir.mkdir()
     (extension_dir / "side_effect.py").write_text(
@@ -1820,6 +1825,16 @@ def test_delegate_agent_command_reaches_real_cli_dispatch_without_legacy_flags(
         assert session.resource_bundle.skills == []
         assert session.resource_bundle.themes == []
         assert session.extension_runner.get_flags() == []
+        assert session._coding_lsp_plugin_assembly is None
+        await session.refresh_resources()
+        assert session.get_active_tool_names() == ["read", "grep"]
+        assert {item.name for item in session.get_all_tools()} == {"read", "grep"}
+        assert session.resource_bundle.extensions == []
+        assert session.resource_bundle.prompts == []
+        assert session.resource_bundle.skills == []
+        assert session.resource_bundle.themes == []
+        assert session._coding_lsp_plugin_assembly is None
+        assert not extension_import_marker.exists()
         return 0
 
     async def scenario() -> None:
@@ -1850,6 +1865,16 @@ def test_delegate_agent_command_reaches_real_cli_dispatch_without_legacy_flags(
     assert captured_args[0].agent_invocation_profile == "read-only-v1"
     assert captured_args[0].tools == ("read", "grep")
     assert len(captured_sessions) == 1
+
+    standard_services = create_agent_session_services(
+        cwd=workspace,
+        global_settings_path=tmp_path / "global" / "settings.json",
+        project_settings_path=project_settings,
+    )
+    assert [flag.name for flag in standard_services.extension_runner.get_flags()] == [
+        "must-not-load"
+    ]
+    assert extension_import_marker.read_text(encoding="utf-8") == "imported"
 
 
 def test_run_cli_shares_interactive_approval_resolver_with_tools_and_runtime(

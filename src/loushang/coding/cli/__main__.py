@@ -26,8 +26,8 @@ from loushang.coding.arch.tool_pack import register_coding_arch_tools
 from loushang.coding.bootstrap import (
     BootstrapServices,
     _create_agent_invocation_session_runtime,
+    _create_agent_session_services,
     create_agent_session_runtime,
-    create_agent_session_services,
     create_services,
 )
 from loushang.coding.capabilities import (
@@ -276,7 +276,7 @@ def default_runtime_builder(
     services_factory = cwd_bound_services_factory(
         services,
         resource_loader_options,
-        create_services=create_agent_session_services,
+        create_services=_create_agent_session_services,
         create_services_options=(
             {
                 "resource_catalog_source_policy": (

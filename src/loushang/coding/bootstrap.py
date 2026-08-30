@@ -269,7 +269,7 @@ def _prepare_coding_catalog_projection(
     return adapter, bundle
 
 
-def create_agent_session_services(
+def _create_agent_session_services(
     *,
     cwd: str | Path,
     services: BootstrapServices | None = None,
@@ -362,6 +362,44 @@ def create_agent_session_services(
         ),
         prepare_catalog_projection=prepare_catalog_preview,
         extension_flag_values=extension_flag_values,
+    )
+
+
+def create_agent_session_services(
+    *,
+    cwd: str | Path,
+    services: BootstrapServices | None = None,
+    ai_model_registry: AiModelRegistry | None = None,
+    resource_loader: DefaultResourceLoader | None = None,
+    settings_manager: SettingsManager | None = None,
+    exec_service: ExecService | None = None,
+    default_model: ModelSelection | None = None,
+    thinking_level: ThinkingLevel = "off",
+    system_prompt: str = "",
+    global_settings_path: str | Path | None = None,
+    project_settings_path: str | Path | None = None,
+    resource_loader_options: dict[str, object] | None = None,
+    extension_flag_values: ExtensionFlagValues | None = None,
+) -> AgentSessionServices:
+    """Prepare standard cwd-bound services through the stable Coding SDK."""
+
+    return _create_agent_session_services(
+        cwd=cwd,
+        services=services,
+        ai_model_registry=ai_model_registry,
+        resource_loader=resource_loader,
+        settings_manager=settings_manager,
+        exec_service=exec_service,
+        default_model=default_model,
+        thinking_level=thinking_level,
+        system_prompt=system_prompt,
+        global_settings_path=global_settings_path,
+        project_settings_path=project_settings_path,
+        resource_loader_options=resource_loader_options,
+        extension_flag_values=extension_flag_values,
+        resource_catalog_source_policy=(
+            CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY
+        ),
     )
 
 
