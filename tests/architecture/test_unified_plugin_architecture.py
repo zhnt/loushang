@@ -1563,6 +1563,10 @@ def test_unified_plugin_architecture_document_is_indexed() -> None:
     assert "one strict `plugin.json`" in architecture
     assert "A Plugin is an independently selectable activation identity" in architecture
     assert "Installed is not enabled; enabled is not admitted" in architecture
+    assert "accepted by the owner under issue `#502`" in architecture
+    assert "owner accepted under issue `#502`" in readme
+    assert "ready for owner acceptance" not in architecture
+    assert "ready for owner acceptance" not in readme
 
 
 def test_unified_plugin_architecture_defines_the_owner_preserving_pipeline() -> None:

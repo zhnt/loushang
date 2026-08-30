@@ -5,9 +5,9 @@
 - Authority: normative catalog for active Harness Plugin documents; it does
   not make a proposed child design accepted.
 - Design status: mixed and explicitly labeled per document. Architecture V2 is
-  independently reviewed and ready for owner acceptance; incremental contracts
-  record implemented slices; plans remain delivery records; baselines are
-  implementation evidence.
+  independently reviewed and owner accepted under issue `#502`; incremental
+  contracts record implemented slices; plans remain delivery records; baselines
+  are implementation evidence.
 - Implementation status: partial, summarized by `architecture.md` and tracked
   in the lifecycle plan.
 - Owner: `loushang.harness` Plugin architecture scope; contribution runtime
