@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import secrets
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -298,6 +299,15 @@ def prepare_managed_coding_base_plugin_assembly(
             lifecycle.bootstrap_first_party_default(key, revision)
             state = lifecycle.desired.snapshot().installation(key)
         else:
+            retained_package = state.selection.package_revision
+            if (
+                state.selection.desired_state == "installed_disabled"
+                and retained_package is not None
+            ):
+                # Recover a crash between the Product's own default install
+                # and enable without consulting the mutable package source.
+                lifecycle.bootstrap_first_party_default(key, retained_package)
+                state = lifecycle.desired.snapshot().installation(key)
             lifecycle.reconcile_retirements()
         if state.selection.desired_state != "installed_enabled":
             if runtime is not None:
@@ -341,7 +351,16 @@ def prepare_managed_coding_base_plugin_assembly(
                 "Replayed Coding base package is not the selected revision",
                 code="coding_base_selected_revision_mismatch",
             )
-        lease = lifecycle.acquire_session(key, session_id=normalized_session_id)
+        lease = lifecycle.acquire_session(
+            key,
+            session_id=normalized_session_id,
+            lease_attempt_id=secrets.token_hex(16),
+            owner_contributions=_selected_owner_contributions(
+                host_environment=environment,
+                include_tools=include_tool_contribution,
+                include_prompt=include_tool_claim_prompt,
+            ),
+        )
         if (
             lease.package_revision != selected_revision
             or lease.instance_revision_ref != selected_instance
@@ -749,6 +768,32 @@ def _owner_bindings(
         )
         for owner_id, contribution_kind, collection_id in selected_specs
     )
+
+
+def _selected_owner_contributions(
+    *,
+    host_environment: HostEnvironment,
+    include_tools: bool,
+    include_prompt: bool,
+) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    values: list[tuple[str, tuple[str, ...]]] = [
+        ("commands.session", ("coding.standard",)),
+        ("resources.skill", ("skill-standard",)),
+    ]
+    if include_prompt:
+        values.append(("resources.prompt", ("prompt-standard",)))
+    if include_tools:
+        values.append(
+            (
+                "tools.workspace",
+                (
+                    "coding.builtin.windows"
+                    if host_environment.os_family == "windows"
+                    else "coding.builtin",
+                ),
+            )
+        )
+    return tuple(sorted(values))
 
 
 def _normalized(value: str, *, name: str) -> str:

@@ -78,8 +78,6 @@ from loushang.harness.plugin_management import (
     PluginManagementService,
     PluginPackageLifecycleLedger,
     PluginPackageRevisionRefV1,
-    PluginRetirementIntentLedger,
-    PluginRetirementSetLedger,
 )
 from loushang.harness.plugin_management.continuity_adapter import (
     PluginInstanceLedgerContinuityFamilyAuthority,
@@ -671,6 +669,8 @@ def _build_lifecycle(
         CodingPluginLifecycleStateLayout(
             root=layout.root,
             private_state_base=layout.private_state_base,
+            package_root=layout.root / "plugin-packages",
+            private_data_base=layout.private_state_base,
             scope_id=layout.scope_id,
             desired_state=layout.desired_state,
             management_operations=layout.management_operations,
@@ -678,24 +678,14 @@ def _build_lifecycle(
             retirement_sets=layout.retirement_sets,
             instance_runtime=layout.instance_runtime,
             package_lifecycle=layout.package_lifecycle,
-        )
+        ),
+        startup_id=runtime_id,
     )
     desired = common.desired
-    intents = PluginRetirementIntentLedger(layout.retirement_intents)
-    retirement_sets = PluginRetirementSetLedger(
-        layout.retirement_sets,
-        retirement_intents=intents,
-    )
     management = common.management
     security = common.security
     instances = common.instances
-    packages = PluginPackageLifecycleLedger(
-        layout.package_lifecycle,
-        startup_id=runtime_id,
-        desired_state=desired,
-        instance_runtime=instances,
-        retirement_sets=retirement_sets,
-    )
+    packages = common.packages
     family_authority = PluginInstanceLedgerContinuityFamilyAuthority(
         ledger=instances,
         package_lifecycle=packages,

@@ -125,7 +125,7 @@ EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS = {
     ): "package-materializer",
     (
         Path("src/loushang/harness/resources/packages/materializer.py"),
-        "PackageMaterializer._load_lockfile",
+        "PackageMaterializer._load_lockfile_unlocked",
     ): "package-materializer",
     (
         Path("src/loushang/harness/resources/packages/catalog.py"),
@@ -214,12 +214,12 @@ EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_CALL_COUNTS = {
     ): 1,
     (
         Path("src/loushang/harness/resources/packages/materializer.py"),
-        "PackageMaterializer._load_lockfile",
+        "PackageMaterializer._load_lockfile_unlocked",
         "json_decode",
     ): 1,
     (
         Path("src/loushang/harness/resources/packages/materializer.py"),
-        "PackageMaterializer._load_lockfile",
+        "PackageMaterializer._load_lockfile_unlocked",
         "path_read",
     ): 1,
     (

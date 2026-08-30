@@ -222,7 +222,15 @@ class AgentSession(AgentProductSession):
         lsp_tool_registration_slot: CodingLspToolRegistrationSlot | None = None
         owner_bindings: tuple[SessionCapabilityOwnerGenerationBinding, ...] = ()
         base_tool_registration_slot: CodingBaseToolRegistrationSlot | None = None
-        command_generations: SessionCommandGenerationRegistry | None = None
+        # Catalog-owned Sessions must never fall back to the historical
+        # unconditional standard-command publisher.  An empty registry is the
+        # explicit Product selection when ``coding.base`` is absent; the base
+        # owner stages its exact command generation into the same registry.
+        command_generations = (
+            SessionCommandGenerationRegistry()
+            if initial_resource_catalog_bootstrap is not None
+            else None
+        )
         plugin_assembly = (
             coding_lsp_plugin_assembly.plugin_assembly
             if coding_lsp_plugin_assembly is not None
@@ -235,7 +243,8 @@ class AgentSession(AgentProductSession):
         if coding_base_plugin_assembly is not None:
             if plugin_assembly is None or coding_plugin_clock is None:
                 raise ValueError("Coding base Plugin owner inputs are unavailable")
-            command_generations = SessionCommandGenerationRegistry()
+            if command_generations is None:
+                command_generations = SessionCommandGenerationRegistry()
             get_external_tool_policy = getattr(
                 settings_manager,
                 "get_external_tool_policy",

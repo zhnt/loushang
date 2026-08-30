@@ -14,8 +14,9 @@ from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal, Protocol, TypedDict, cast
+from typing import Literal, Protocol, TypedDict, TypeVar, cast
 
+from loushang.harness.journal import DURABLE_LOCKED_JOURNAL, journal_file_lock
 from loushang.harness.policy import PolicyDecision
 from loushang.harness.resources.packages.source import (
     PackageSourceIdentity,
@@ -64,6 +65,8 @@ PackageMaterializationLifecycle = Literal[
 PackageProgressEventType = Literal["start", "progress", "complete", "error"]
 PackageProgressAction = Literal["install", "update", "remove", "check", "resolve"]
 PackageSourceType = Literal["git", "python", "local"]
+_LockValueT = TypeVar("_LockValueT")
+_MISSING_LOCK_VALUE = object()
 
 
 class _PythonDistributionMetadata(TypedDict):
@@ -439,6 +442,8 @@ class PackageMaterializer:
         self._plugin_bindings: dict[str, PluginSourceBinding] = {}
         self._plugin_binding_lock_error: str | None = None
         self._lockfile_diagnostics: list[dict[str, object]] = []
+        self._persisted_records: dict[str, PackageMaterializationRecord] = {}
+        self._persisted_plugin_bindings: dict[str, PluginSourceBinding] = {}
         self._load_lockfile()
 
     def set_progress_callback(
@@ -509,6 +514,7 @@ class PackageMaterializer:
 
         if not isinstance(source_identity, str) or not source_identity:
             raise ValueError("Plugin source identity must be non-empty")
+        self._refresh_lockfile()
         return self._plugin_bindings.get(source_identity)
 
     def reopen_plugin_package(
@@ -601,7 +607,7 @@ class PackageMaterializer:
         if allow_plugin_id_change:
             self._plugin_binding_lock_error = None
         try:
-            self._save_lockfile()
+            self._save_lockfile(allow_invalid_repair=allow_plugin_id_change)
         except Exception:
             self._plugin_bindings = previous
             self._plugin_binding_lock_error = previous_lock_error
@@ -1334,6 +1340,33 @@ class PackageMaterializer:
         return tuple(value for value in values if isinstance(value, str))
 
     def _load_lockfile(self) -> None:
+        with journal_file_lock(
+            self.lockfile_path,
+            "shared",
+            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+        ):
+            self._replace_lockfile_state_from_disk_unlocked()
+        self._persisted_records = dict(self._records)
+        self._persisted_plugin_bindings = dict(self._plugin_bindings)
+
+    def _refresh_lockfile(self) -> None:
+        with journal_file_lock(
+            self.lockfile_path,
+            "shared",
+            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+        ):
+            self._replace_lockfile_state_from_disk_unlocked()
+        self._persisted_records = dict(self._records)
+        self._persisted_plugin_bindings = dict(self._plugin_bindings)
+
+    def _replace_lockfile_state_from_disk_unlocked(self) -> None:
+        self._records = {}
+        self._plugin_bindings = {}
+        self._plugin_binding_lock_error = None
+        self._lockfile_diagnostics = []
+        self._load_lockfile_unlocked()
+
+    def _load_lockfile_unlocked(self) -> None:
         try:
             payload = json.loads(self.lockfile_path.read_text(encoding="utf-8"))
         except FileNotFoundError:
@@ -1479,7 +1512,74 @@ class PackageMaterializer:
                 continue
             self._plugin_bindings[binding.source_identity] = binding
 
-    def _save_lockfile(self) -> None:
+    def _save_lockfile(self, *, allow_invalid_repair: bool = False) -> None:
+        """Merge this instance's exact delta under one cross-process lock."""
+
+        local_records = dict(self._records)
+        local_bindings = dict(self._plugin_bindings)
+        local_lock_error = self._plugin_binding_lock_error
+        local_diagnostics = list(self._lockfile_diagnostics)
+        baseline_records = dict(self._persisted_records)
+        baseline_bindings = dict(self._persisted_plugin_bindings)
+        changed_records = {
+            key
+            for key in set(local_records) | set(baseline_records)
+            if local_records.get(key) != baseline_records.get(key)
+        }
+        changed_bindings = {
+            key
+            for key in set(local_bindings) | set(baseline_bindings)
+            if local_bindings.get(key) != baseline_bindings.get(key)
+        }
+        try:
+            with journal_file_lock(
+                self.lockfile_path,
+                "exclusive",
+                lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+            ):
+                self._replace_lockfile_state_from_disk_unlocked()
+                if (
+                    self._plugin_binding_lock_error is not None
+                    and not allow_invalid_repair
+                ):
+                    raise PluginManifestError(
+                        self._plugin_binding_lock_error,
+                        code="plugin_binding_lock_invalid",
+                        path=self.lockfile_path,
+                    )
+                disk_records = dict(self._records)
+                disk_bindings = dict(self._plugin_bindings)
+                _merge_lockfile_delta(
+                    disk_records,
+                    baseline=baseline_records,
+                    local=local_records,
+                    changed_keys=changed_records,
+                    path=self.lockfile_path,
+                    subject="package record",
+                )
+                _merge_lockfile_delta(
+                    disk_bindings,
+                    baseline=baseline_bindings,
+                    local=local_bindings,
+                    changed_keys=changed_bindings,
+                    path=self.lockfile_path,
+                    subject="Plugin binding",
+                )
+                self._records = disk_records
+                self._plugin_bindings = disk_bindings
+                self._plugin_binding_lock_error = None
+                self._lockfile_diagnostics = []
+                self._write_lockfile_unlocked()
+        except Exception:
+            self._records = local_records
+            self._plugin_bindings = local_bindings
+            self._plugin_binding_lock_error = local_lock_error
+            self._lockfile_diagnostics = local_diagnostics
+            raise
+        self._persisted_records = dict(self._records)
+        self._persisted_plugin_bindings = dict(self._plugin_bindings)
+
+    def _write_lockfile_unlocked(self) -> None:
         self.lockfile_path.parent.mkdir(parents=True, exist_ok=True)
         temp_path = self.lockfile_path.with_name(
             f"{self.lockfile_path.name}.{id(self)}.tmp"
@@ -1555,6 +1655,31 @@ class PackageMaterializer:
         finally:
             if temp_path.exists():
                 temp_path.unlink()
+
+
+def _merge_lockfile_delta(
+    target: dict[str, _LockValueT],
+    *,
+    baseline: dict[str, _LockValueT],
+    local: dict[str, _LockValueT],
+    changed_keys: set[str],
+    path: Path,
+    subject: str,
+) -> None:
+    for key in changed_keys:
+        before = baseline.get(key, _MISSING_LOCK_VALUE)
+        current = target.get(key, _MISSING_LOCK_VALUE)
+        requested = local.get(key, _MISSING_LOCK_VALUE)
+        if current != before and current != requested:
+            raise PluginManifestError(
+                f"Package lockfile {subject} changed concurrently: {key}",
+                code="package_lockfile_concurrent_update",
+                path=path,
+            )
+        if requested is _MISSING_LOCK_VALUE:
+            target.pop(key, None)
+        else:
+            target[key] = cast(_LockValueT, requested)
 
 
 class _DenyUnconfiguredPackageSourcePolicy:

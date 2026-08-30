@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
+import secrets
 import stat
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -12,25 +14,32 @@ from typing import Literal
 from loushang.coding.product_plan import CODING_PRODUCT_ID
 from loushang.foundation.platform_paths import PlatformPaths, resolve_platform_paths
 from loushang.harness.plugin_management import (
+    PluginCleanupAttemptV1,
     PluginDesiredStateLedger,
     PluginDesiredStateMutationV1,
     PluginInstallationKeyV1,
     PluginInstanceLeaseFamilyReleaseV1,
     PluginInstanceLeaseFamilyV1,
+    PluginInstanceRetirementCompletionV1,
     PluginInstanceRuntimeLedger,
     PluginManagementCommandV1,
     PluginManagementService,
+    PluginOwnerRetirementOutcomeV1,
+    PluginOwnerRetirementPlanV1,
+    PluginOwnerRetirementTargetV1,
+    PluginPackageLifecycleLedger,
     PluginPackageRevisionRefV1,
     PluginRetirementIntentLedger,
     PluginRetirementSetLedger,
 )
-from loushang.harness.plugin_management.continuity_adapter import (
-    PluginContinuitySecurityRetirementJournal,
+from loushang.harness.plugin_management.security_acceptance import (
+    PluginInstanceSecurityRetirementJournal,
 )
 from loushang.harness.resources.plugins import PluginInstanceRevisionRef
 
 _PRODUCT_POLICY_REVISION = "coding-plugin-lifecycle-v1"
 _DEFAULT_APPROVAL_REFERENCE = "coding-first-party-default"
+_CODING_PLUGIN_RUNTIME_BOOT_ID = secrets.token_hex(16)
 
 
 class CodingPluginLifecycleError(RuntimeError):
@@ -47,6 +56,8 @@ class CodingPluginLifecycleStateLayout:
 
     root: Path
     private_state_base: Path
+    package_root: Path
+    private_data_base: Path
     scope_id: str
     desired_state: Path
     management_operations: Path
@@ -55,16 +66,40 @@ class CodingPluginLifecycleStateLayout:
     instance_runtime: Path
     package_lifecycle: Path
 
+    @property
+    def package_install_root(self) -> Path:
+        return self.package_root / "installed"
+
+    @property
+    def package_lockfile(self) -> Path:
+        return self.package_root / "package-lock.json"
+
+    @property
+    def plugin_revision_root(self) -> Path:
+        return self.package_root / "plugin-revisions"
+
 
 @dataclass(slots=True)
 class CodingPluginLifecycle:
     """Installed common Harness authorities bound to Coding Product policy."""
 
     layout: CodingPluginLifecycleStateLayout
+    startup_id: str
     desired: PluginDesiredStateLedger = field(repr=False)
     management: PluginManagementService = field(repr=False)
     instances: PluginInstanceRuntimeLedger = field(repr=False)
-    security: PluginContinuitySecurityRetirementJournal = field(repr=False)
+    retirement_sets: PluginRetirementSetLedger = field(repr=False)
+    packages: PluginPackageLifecycleLedger = field(repr=False)
+    security: PluginInstanceSecurityRetirementJournal = field(repr=False)
+
+    def complete_startup_recovery(self) -> None:
+        """Seal Package recovery after the composition root reconciles Instances."""
+
+        self.packages.complete_startup_recovery(
+            operation_id=f"coding-package-recovery:{self.startup_id}",
+            idempotency_key=f"coding-package-recovery:{self.startup_id}",
+            recovery_reference=f"coding-runtime:{self.startup_id}",
+        )
 
     def installation_key(self, plugin_id: str) -> PluginInstallationKeyV1:
         return PluginInstallationKeyV1(
@@ -85,29 +120,80 @@ class CodingPluginLifecycle:
         therefore never resurrected by Product composition.
         """
 
-        snapshot = self.desired.snapshot()
-        if any(item.installation_key == key for item in snapshot.installations):
-            return
-        self._submit_default(
-            key,
-            action="install",
-            desired_state="installed_disabled",
-            package_revision=package_revision,
-        )
-        state = self.desired.snapshot().installation(key)
-        if (
-            state.selection.desired_state != "installed_disabled"
-            or state.selection.package_revision != package_revision
-        ):
-            raise CodingPluginLifecycleError(
-                "First-party Plugin install did not retain its exact package",
-                code="coding_plugin_default_install_conflict",
+        # The two management commands are individually durable.  This loop is
+        # the Product transaction coordinator: it resumes only its own exact
+        # default install, stops at any operator-authored state, and retries a
+        # CAS race with a fresh operation identity.
+        for _attempt in range(32):
+            snapshot = self.desired.snapshot()
+            state = snapshot.installation(key)
+            seen = any(
+                item.installation_key == key for item in snapshot.installations
             )
-        self._submit_default(
-            key,
-            action="enable",
-            desired_state="installed_enabled",
-            package_revision=None,
+            if not seen:
+                error = self._submit_default(
+                    key,
+                    action="install",
+                    desired_state="installed_disabled",
+                    package_revision=package_revision,
+                    expected_inventory_revision=snapshot.inventory_revision,
+                )
+                if error == "plugin_inventory_revision_conflict":
+                    continue
+                if error is not None:
+                    raise CodingPluginLifecycleError(
+                        "First-party Plugin bootstrap install failed",
+                        code=error,
+                    )
+                continue
+            if state.selection.desired_state == "installed_enabled":
+                return
+            if not self._is_own_default_install(
+                key,
+                package_revision=package_revision,
+            ):
+                return
+            error = self._submit_default(
+                key,
+                action="enable",
+                desired_state="installed_enabled",
+                package_revision=None,
+                expected_inventory_revision=snapshot.inventory_revision,
+            )
+            if error == "plugin_inventory_revision_conflict":
+                continue
+            if error is not None:
+                raise CodingPluginLifecycleError(
+                    "First-party Plugin bootstrap enable failed",
+                    code=error,
+                )
+            return
+        raise CodingPluginLifecycleError(
+            "First-party Plugin bootstrap could not linearize",
+            code="coding_plugin_default_bootstrap_busy",
+        )
+
+    def _is_own_default_install(
+        self,
+        key: PluginInstallationKeyV1,
+        *,
+        package_revision: PluginPackageRevisionRefV1,
+    ) -> bool:
+        matching = tuple(
+            transition
+            for transition in self.desired.transitions()
+            if transition.mutation.installation_key == key
+        )
+        if not matching:
+            return False
+        mutation = matching[-1].mutation
+        return (
+            isinstance(mutation, PluginDesiredStateMutationV1)
+            and mutation.desired_state == "installed_disabled"
+            and mutation.package_revision == package_revision
+            and mutation.actor_id == "product:coding"
+            and mutation.policy_revision == _PRODUCT_POLICY_REVISION
+            and mutation.approval_reference == _DEFAULT_APPROVAL_REFERENCE
         )
 
     def reconcile_retirements(self) -> None:
@@ -119,8 +205,180 @@ class CodingPluginLifecycle:
             instance = runtime.instance(intent.instance_revision_ref)
             if instance is None or instance.state in {"REVOKING", "RETIRED"}:
                 continue
-            self.instances.begin_drain(intent)
+            if instance.state == "ACTIVE":
+                self.instances.begin_drain(intent)
             runtime = self.instances.snapshot()
+            self._ensure_owner_retirement_plan(intent, runtime)
+            self._complete_ready_retirement(intent)
+            runtime = self.instances.snapshot()
+
+    def retire_session_owner_generations(
+        self,
+        family: PluginInstanceLeaseFamilyV1,
+    ) -> None:
+        """Record owner disposal after the Session runtime closed its owners."""
+
+        if not isinstance(family, PluginInstanceLeaseFamilyV1):
+            raise TypeError("Coding owner retirement requires a Session family")
+        self.reconcile_retirements()
+        [member] = family.members
+        intent = next(
+            (
+                item
+                for item in self.management_retirement_intents()
+                if item.instance_revision_ref == member.instance_revision_ref
+            ),
+            None,
+        )
+        if intent is None:
+            return
+        retirement_set = self.retirement_sets.snapshot().retirement_set(
+            intent.retirement_id
+        )
+        if retirement_set is None or retirement_set.plan is None:
+            raise CodingPluginLifecycleError(
+                "Coding owner retirement plan is unavailable",
+                code="coding_plugin_owner_retirement_plan_unavailable",
+            )
+        runtime = self.instances.snapshot()
+        [member] = family.members
+        open_session_families = {
+            candidate.family_id
+            for candidate in runtime.open_families
+            if candidate.lease_kind == "session_membership"
+            and any(
+                candidate_member.instance_revision_ref
+                == member.instance_revision_ref
+                for candidate_member in candidate.members
+            )
+        }
+        if open_session_families != {family.family_id}:
+            return
+        for target in retirement_set.plan.targets:
+            identity = hashlib.sha256(
+                repr((intent.retirement_id, target.target_id)).encode("utf-8")
+            ).hexdigest()
+            self.retirement_sets.record_outcome(
+                PluginOwnerRetirementOutcomeV1(
+                    retirement_id=intent.retirement_id,
+                    target_id=target.target_id,
+                    operation_id=f"coding-owner-retired:{identity}",
+                    idempotency_key=f"coding-owner-retired:{identity}",
+                    attempt=1,
+                    disposition="succeeded",
+                    result_code="coding.owner.retired",
+                    owner_outcome_reference=(
+                        "coding-owner-outcome:"
+                        f"{member.instance_revision_ref.instance_id}:"
+                        f"{member.instance_revision_ref.revision}:"
+                        f"{target.owner_reference}"
+                    ),
+                )
+            )
+
+    def _ensure_owner_retirement_plan(self, intent, runtime) -> None:
+        retirement_set = self.retirement_sets.snapshot().retirement_set(
+            intent.retirement_id
+        )
+        if retirement_set is None:
+            raise CodingPluginLifecycleError(
+                "Coding retirement set is unavailable",
+                code="coding_plugin_retirement_set_unavailable",
+            )
+        if retirement_set.plan is not None:
+            return
+        contributions_by_owner: dict[str, set[str]] = {}
+        for family in runtime.open_families:
+            if family.lease_kind != "session_membership" or not any(
+                member.instance_revision_ref == intent.instance_revision_ref
+                for member in family.members
+            ):
+                continue
+            for owner_reference, contribution_ids in _session_holder_owners(
+                family.holder_reference
+            ):
+                contributions_by_owner.setdefault(owner_reference, set()).update(
+                    contribution_ids
+                )
+        targets = tuple(
+            PluginOwnerRetirementTargetV1.create(
+                owner_reference=owner_reference,
+                owner_generation_reference=(
+                    "coding-instance:"
+                    f"{intent.instance_revision_ref.instance_id}:"
+                    f"{intent.instance_revision_ref.revision}:owner:"
+                    f"{owner_reference}"
+                ),
+                retirement_handle=(
+                    "coding-owner-retirement:"
+                    f"{intent.instance_revision_ref.instance_id}:"
+                    f"{intent.instance_revision_ref.revision}:"
+                    f"{owner_reference}"
+                ),
+                contribution_ids=tuple(sorted(contribution_ids)),
+            )
+            for owner_reference, contribution_ids in sorted(
+                contributions_by_owner.items()
+            )
+        )
+        canonical_targets = tuple(sorted(targets, key=lambda item: item.target_id))
+        closure_digest = hashlib.sha256(
+            repr(tuple(item.target_id for item in canonical_targets)).encode("utf-8")
+        ).hexdigest()
+        self.retirement_sets.commit_plan(
+            PluginOwnerRetirementPlanV1.create(
+                retirement_id=intent.retirement_id,
+                owner_closure_reference=f"coding-owner-closure:{closure_digest}",
+                targets=canonical_targets,
+            )
+        )
+
+    def _complete_ready_retirement(self, intent) -> None:
+        retirement_set = self.retirement_sets.snapshot().retirement_set(
+            intent.retirement_id
+        )
+        if retirement_set is None or retirement_set.state != "succeeded":
+            return
+        runtime = self.instances.snapshot()
+        instance = runtime.instance(intent.instance_revision_ref)
+        if instance is None or instance.state == "RETIRED":
+            return
+        direct_family = instance.activation.direct_host_family
+        if set(instance.open_family_ids) != {direct_family.family_id}:
+            return
+        identity = intent.retirement_id
+        task = self.packages.handoff_cleanup_and_release(
+            direct_family.family_id,
+            retirement_target_id=None,
+            cleanup_kind="coding.product_host.shutdown",
+            operation_id=f"coding-host-cleanup:{identity}",
+            idempotency_key=f"coding-host-cleanup:{identity}",
+            cleanup_reference=f"coding-host:{self.layout.scope_id}",
+            family_release=_family_release(direct_family),
+        )
+        self.packages.record_cleanup_attempt(
+            PluginCleanupAttemptV1(
+                cleanup_id=task.cleanup_id,
+                operation_id=f"coding-host-cleaned:{identity}",
+                idempotency_key=f"coding-host-cleaned:{identity}",
+                attempt=1,
+                disposition="succeeded",
+                result_code="coding.host.retired",
+                retry_not_before_epoch_ms=None,
+                outcome_reference=f"coding-host-outcome:{self.layout.scope_id}",
+            )
+        )
+        self.instances.complete_retirement(
+            PluginInstanceRetirementCompletionV1.create(
+                completion_kind="graceful",
+                coordination_id=intent.retirement_id,
+                installation_key=instance.installation_key,
+                instance_revision_ref=instance.instance_revision_ref,
+                operation_id=f"coding-instance-retired:{identity}",
+                idempotency_key=f"coding-instance-retired:{identity}",
+                completion_reference=f"coding-instance:{self.layout.scope_id}",
+            )
+        )
 
     def management_retirement_intents(self):
         return PluginRetirementIntentLedger(
@@ -132,6 +390,8 @@ class CodingPluginLifecycle:
         key: PluginInstallationKeyV1,
         *,
         session_id: str,
+        lease_attempt_id: str,
+        owner_contributions: tuple[tuple[str, tuple[str, ...]], ...],
     ) -> CodingPluginSessionLease:
         self.reconcile_retirements()
         state = self.desired.snapshot().installation(key)
@@ -142,25 +402,41 @@ class CodingPluginLifecycle:
                 code="coding_plugin_not_enabled",
             )
         instance = self.instances.snapshot().instance(ref)
-        identity = _identity(key, ref, session_id)
+        activation_identity = _activation_identity(key, ref)
         if instance is None:
             instance = self.instances.activate_current(
                 key,
-                operation_id=f"coding-plugin-activate:{identity}",
-                idempotency_key=f"coding-plugin-activate:{identity}",
-                direct_host_reference=f"coding-plugin-host:{self.layout.scope_id}",
+                operation_id=f"coding-plugin-activate:{activation_identity}",
+                idempotency_key=f"coding-plugin-activate:{activation_identity}",
+                direct_host_reference=(
+                    "coding-plugin-host:"
+                    f"{self.layout.scope_id}:{ref.instance_id}:{ref.revision}"
+                ),
             )
         if instance.state != "ACTIVE" or instance.instance_revision_ref != ref:
             raise CodingPluginLifecycleError(
                 "Selected Plugin Instance is not ACTIVE",
                 code="coding_plugin_instance_not_active",
             )
+        owners = _normalize_owner_contributions(owner_contributions)
+        identity = _lease_identity(
+            key,
+            ref,
+            session_id,
+            lease_attempt_id,
+            owners,
+        )
+        holder_reference = _session_holder_reference(
+            session_id=session_id,
+            lease_attempt_id=lease_attempt_id,
+            owner_contributions=owners,
+        )
         family = self.instances.acquire_current_family(
             (key,),
             lease_kind="session_membership",
             operation_id=f"coding-plugin-session:{identity}",
             idempotency_key=f"coding-plugin-session:{identity}",
-            holder_reference=f"coding-session:{_nonempty(session_id, name='Session id')}",
+            holder_reference=holder_reference,
         )
         [member] = family.members
         if member.instance_revision_ref != ref:
@@ -176,6 +452,7 @@ class CodingPluginLifecycle:
             family=family,
             package_revision=member.package_revision,
             instance_revision_ref=member.instance_revision_ref,
+            owner_contributions=owners,
         )
 
     def _submit_default(
@@ -185,10 +462,12 @@ class CodingPluginLifecycle:
         action: Literal["install", "enable"],
         desired_state: Literal["installed_disabled", "installed_enabled"],
         package_revision: PluginPackageRevisionRefV1 | None,
-    ) -> None:
-        revision = self.desired.snapshot().inventory_revision
+        expected_inventory_revision: int,
+    ) -> str | None:
         identity = hashlib.sha256(
-            repr((key, action, package_revision)).encode("utf-8")
+            repr(
+                (key, action, package_revision, expected_inventory_revision)
+            ).encode("utf-8")
         ).hexdigest()
         event = self.management.submit(
             PluginManagementCommandV1(
@@ -196,7 +475,7 @@ class CodingPluginLifecycle:
                 mutation=PluginDesiredStateMutationV1(
                     operation_id=f"coding-default:{identity}",
                     idempotency_key=f"coding-default:{identity}",
-                    expected_inventory_revision=revision,
+                    expected_inventory_revision=expected_inventory_revision,
                     installation_key=key,
                     desired_state=desired_state,
                     package_revision=package_revision,
@@ -207,15 +486,11 @@ class CodingPluginLifecycle:
             )
         )
         result = getattr(event, "result", None)
-        if result is None or result.disposition != "succeeded":
-            raise CodingPluginLifecycleError(
-                "First-party Plugin bootstrap management command failed",
-                code=getattr(
-                    result,
-                    "error_code",
-                    "coding_plugin_default_management_failed",
-                ),
-            )
+        if result is None:
+            return "coding_plugin_default_management_failed"
+        if result.disposition != "succeeded":
+            return result.error_code or "coding_plugin_default_management_failed"
+        return None
 
 
 @dataclass(slots=True)
@@ -227,6 +502,7 @@ class CodingPluginSessionLease:
     family: PluginInstanceLeaseFamilyV1
     package_revision: PluginPackageRevisionRefV1
     instance_revision_ref: PluginInstanceRevisionRef
+    owner_contributions: tuple[tuple[str, tuple[str, ...]], ...]
     _closed: bool = field(default=False, init=False, repr=False)
 
     def evaluate_management_change(self) -> CodingPluginManagementChange:
@@ -262,7 +538,9 @@ class CodingPluginSessionLease:
     def close(self) -> None:
         if self._closed:
             return
+        self.lifecycle.retire_session_owner_generations(self.family)
         self.lifecycle.instances.release_family(_family_release(self.family))
+        self.lifecycle.reconcile_retirements()
         self._closed = True
 
 
@@ -312,6 +590,7 @@ def resolve_coding_plugin_lifecycle_state_layout(
     ).hexdigest()
     paths = platform_paths or resolve_platform_paths()
     root = paths.state / "plugins" / "coding" / "continuity" / "workspaces" / digest
+    package_root = paths.data / "plugins" / "coding" / "workspaces" / digest
     private_state_base = (
         paths.home
         if paths.state == paths.home or paths.home in paths.state.parents
@@ -320,6 +599,12 @@ def resolve_coding_plugin_lifecycle_state_layout(
     return CodingPluginLifecycleStateLayout(
         root=root,
         private_state_base=private_state_base,
+        package_root=package_root,
+        private_data_base=(
+            paths.home
+            if paths.data == paths.home or paths.home in paths.data.parents
+            else paths.data
+        ),
         scope_id=f"workspace:{digest}",
         desired_state=root / "desired-state.jsonl",
         management_operations=root / "management-operations.jsonl",
@@ -346,6 +631,8 @@ def resolve_ephemeral_coding_plugin_lifecycle_state_layout(
     return CodingPluginLifecycleStateLayout(
         root=root,
         private_state_base=base,
+        package_root=base / "plugin-packages" / "coding-lifecycle",
+        private_data_base=base,
         scope_id=f"workspace:{digest}",
         desired_state=root / "desired-state.jsonl",
         management_operations=root / "management-operations.jsonl",
@@ -358,6 +645,8 @@ def resolve_ephemeral_coding_plugin_lifecycle_state_layout(
 
 def build_coding_plugin_lifecycle(
     layout: CodingPluginLifecycleStateLayout,
+    *,
+    startup_id: str | None = None,
 ) -> CodingPluginLifecycle:
     if not isinstance(layout, CodingPluginLifecycleStateLayout):
         raise TypeError("Coding Plugin lifecycle layout is required")
@@ -375,7 +664,7 @@ def build_coding_plugin_lifecycle(
         retirement_sets=retirement_sets,
     )
     management.recover()
-    security = PluginContinuitySecurityRetirementJournal.for_instance_runtime(
+    security = PluginInstanceSecurityRetirementJournal.for_instance_runtime(
         layout.instance_runtime
     )
     instances = PluginInstanceRuntimeLedger(
@@ -386,11 +675,22 @@ def build_coding_plugin_lifecycle(
         retirement_sets=retirement_sets,
         security_acceptances=security,
     )
+    resolved_startup_id = startup_id or _CODING_PLUGIN_RUNTIME_BOOT_ID
+    packages = PluginPackageLifecycleLedger(
+        layout.package_lifecycle,
+        startup_id=resolved_startup_id,
+        desired_state=desired,
+        instance_runtime=instances,
+        retirement_sets=retirement_sets,
+    )
     return CodingPluginLifecycle(
         layout=layout,
+        startup_id=resolved_startup_id,
         desired=desired,
         management=management,
         instances=instances,
+        retirement_sets=retirement_sets,
+        packages=packages,
         security=security,
     )
 
@@ -423,24 +723,153 @@ def _family_release(
     )
 
 
-def _identity(
+def _activation_identity(
+    key: PluginInstallationKeyV1,
+    ref: PluginInstanceRevisionRef,
+) -> str:
+    return hashlib.sha256(repr((key, ref)).encode("utf-8")).hexdigest()
+
+
+def _lease_identity(
     key: PluginInstallationKeyV1,
     ref: PluginInstanceRevisionRef,
     session_id: str,
+    lease_attempt_id: str,
+    owner_contributions: tuple[tuple[str, tuple[str, ...]], ...],
 ) -> str:
     return hashlib.sha256(
-        repr((key, ref, _nonempty(session_id, name="Session id"))).encode("utf-8")
+        repr(
+            (
+                key,
+                ref,
+                _nonempty(session_id, name="Session id"),
+                _nonempty(lease_attempt_id, name="Lease attempt id"),
+                owner_contributions,
+            )
+        ).encode("utf-8")
     ).hexdigest()
 
 
+def _normalize_owner_contributions(
+    values: tuple[tuple[str, tuple[str, ...]], ...],
+) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    if not isinstance(values, tuple):
+        raise TypeError("Coding owner contributions must be a tuple")
+    normalized: list[tuple[str, tuple[str, ...]]] = []
+    for owner_reference, contribution_ids in values:
+        owner = _nonempty(owner_reference, name="Owner reference")
+        if (
+            not isinstance(contribution_ids, tuple)
+            or not contribution_ids
+            or any(
+                not isinstance(item, str) or not item or item.strip() != item
+                for item in contribution_ids
+            )
+        ):
+            raise ValueError("Owner contribution ids must be non-empty strings")
+        canonical_ids = tuple(sorted(set(contribution_ids)))
+        normalized.append((owner, canonical_ids))
+    canonical = tuple(sorted(normalized))
+    if len({owner for owner, _items in canonical}) != len(canonical):
+        raise ValueError("Coding owner references must be unique")
+    return canonical
+
+
+_SESSION_HOLDER_PREFIX = "coding-session-owner-family:v1:"
+
+
+def _session_holder_reference(
+    *,
+    session_id: str,
+    lease_attempt_id: str,
+    owner_contributions: tuple[tuple[str, tuple[str, ...]], ...],
+) -> str:
+    payload = {
+        "leaseAttemptId": _nonempty(lease_attempt_id, name="Lease attempt id"),
+        "owners": [
+            {
+                "contributionIds": list(contribution_ids),
+                "ownerReference": owner_reference,
+            }
+            for owner_reference, contribution_ids in owner_contributions
+        ],
+        "sessionId": _nonempty(session_id, name="Session id"),
+    }
+    return _SESSION_HOLDER_PREFIX + json.dumps(
+        payload,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+
+
+def _session_holder_owners(
+    holder_reference: str,
+) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    if not holder_reference.startswith(_SESSION_HOLDER_PREFIX):
+        raise CodingPluginLifecycleError(
+            "Coding Session family lacks owner retirement evidence",
+            code="coding_plugin_session_owner_evidence_invalid",
+        )
+    try:
+        payload = json.loads(holder_reference[len(_SESSION_HOLDER_PREFIX) :])
+        if not isinstance(payload, dict) or set(payload) != {
+            "leaseAttemptId",
+            "owners",
+            "sessionId",
+        }:
+            raise ValueError("invalid Session holder fields")
+        _nonempty(payload["leaseAttemptId"], name="Lease attempt id")
+        _nonempty(payload["sessionId"], name="Session id")
+        owners = payload["owners"]
+        if not isinstance(owners, list):
+            raise ValueError("owners must be an array")
+        values = tuple(
+            (
+                item["ownerReference"],
+                tuple(item["contributionIds"]),
+            )
+            for item in owners
+            if isinstance(item, dict)
+            and set(item) == {"contributionIds", "ownerReference"}
+            and isinstance(item["contributionIds"], list)
+        )
+        if len(values) != len(owners):
+            raise ValueError("invalid owner entry")
+        return _normalize_owner_contributions(values)
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise CodingPluginLifecycleError(
+            "Coding Session family owner evidence is invalid",
+            code="coding_plugin_session_owner_evidence_invalid",
+        ) from exc
+
+
 def _prepare_private_state_layout(layout: CodingPluginLifecycleStateLayout) -> None:
-    base = layout.private_state_base.expanduser().absolute()
-    root = layout.root.expanduser().absolute()
+    _prepare_private_tree(
+        layout.root,
+        private_base=layout.private_state_base,
+        label="state",
+    )
+    _prepare_private_tree(
+        layout.package_root,
+        private_base=layout.private_data_base,
+        label="data",
+    )
+
+
+def _prepare_private_tree(
+    path: Path,
+    *,
+    private_base: Path,
+    label: str,
+) -> None:
+    base = private_base.expanduser().absolute()
+    root = path.expanduser().absolute()
     try:
         relative = root.relative_to(base)
     except ValueError:
         raise CodingPluginLifecycleError(
-            "Coding Plugin state root is outside its private base",
+            f"Coding Plugin {label} root is outside its private base",
             code="coding_plugin_state_permissions_failed",
         ) from None
     current = base

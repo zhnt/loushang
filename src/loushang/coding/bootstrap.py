@@ -525,9 +525,15 @@ def _create_agent_session(
         and initial_resource_catalog_product_composition_assembly is None
         and "coding.base" in requested_plugin_ids
     ):
+        # Transcript persistence is independent from Product desired state.
+        # A configured settings runtime is the production persistence seam;
+        # explicitly in-memory service fixtures retain disposable evidence.
         base_ephemeral_state = (
             None
-            if session_manager.persist
+            if (
+                session_manager.persist
+                or services.settings_manager.global_base_dir is not None
+            )
             else TemporaryDirectory(prefix="loushang-coding-plugin-")
         )
         try:
@@ -541,11 +547,26 @@ def _create_agent_session(
                     cwd=session_manager.get_cwd(),
                 )
             )
+            base_package_materializer = package_materializer or PackageMaterializer(
+                install_root=lifecycle_layout.package_install_root,
+                lockfile_path=lifecycle_layout.package_lockfile,
+                plugin_revision_root=lifecycle_layout.plugin_revision_root,
+                backend=GitPackageMaterializerBackend(),
+            )
+            if base_package_materializer is not resolved_package_materializer:
+                record_package_lockfile_diagnostics(
+                    base_package_materializer.get_lockfile_diagnostics(),
+                    diagnostics_service=services.diagnostics_service,
+                    session_id=session_id,
+                )
+            lifecycle = build_coding_plugin_lifecycle(lifecycle_layout)
+            lifecycle.reconcile_retirements()
+            lifecycle.complete_startup_recovery()
             coding_base_plugin_assembly = prepare_managed_coding_base_plugin_assembly(
                 resolved_composition_set,
                 session_id=session_id,
-                package_materializer=resolved_package_materializer,
-                lifecycle=build_coding_plugin_lifecycle(lifecycle_layout),
+                package_materializer=base_package_materializer,
+                lifecycle=lifecycle,
                 include_tool_contribution=session_no_tools_mode is None,
                 include_tool_claim_prompt=session_no_tools_mode is None,
                 state_cleanup=(

@@ -13,6 +13,7 @@ from loushang.harness.resources.plugins.revisions import (
     PluginRevisionError,
     PluginRevisionStore,
 )
+from loushang.harness.resources.plugins.types import PluginSource
 
 
 def test_revision_store_publishes_content_addressed_snapshot_and_keeps_source_identity(
@@ -191,6 +192,67 @@ def test_published_revision_isolated_from_later_source_changes(tmp_path: Path) -
     handle.verify()
     with handle.open_file("resources/prompts/review.md") as stream:
         assert stream.read() == b"review v1"
+
+
+def test_revision_store_reopen_rejects_invalid_and_missing_exact_digest(
+    tmp_path: Path,
+) -> None:
+    store = PluginRevisionStore(tmp_path / "revisions")
+    source = PluginSource(path=tmp_path / "deleted-source")
+
+    with pytest.raises(ValueError, match="lowercase SHA-256"):
+        store.reopen("not-a-digest", source=source)
+
+    with pytest.raises(PluginRevisionError) as missing:
+        store.reopen("a" * 64, source=source)
+    assert missing.value.code == "plugin_revision_unavailable"
+
+
+def test_revision_store_reopen_rehashes_complete_published_tree(
+    tmp_path: Path,
+) -> None:
+    source_root = _plugin(tmp_path / "source")
+    store = PluginRevisionStore(tmp_path / "revisions")
+    published = store.publish(PluginManifestParser().parse(source_root))
+    digest = published.content_digest
+    published.revision_handle.close()
+    prompt = published.root / "resources" / "prompts" / "review.md"
+    prompt.parent.chmod(0o700)
+    prompt.chmod(0o600)
+    prompt.write_text("tampered after close", encoding="utf-8")
+
+    with pytest.raises(PluginRevisionError) as caught:
+        store.reopen(digest, source=PluginSource(path=source_root))
+
+    assert caught.value.code == "plugin_revision_changed"
+
+
+def test_portable_revision_reopen_rejects_reparse_entry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import loushang.harness.resources.plugins.revisions as revisions_module
+
+    source_root = _plugin(tmp_path / "source")
+    store = PluginRevisionStore(tmp_path / "revisions")
+    published = store.publish(PluginManifestParser().parse(source_root))
+    digest = published.content_digest
+    published.revision_handle.close()
+    prompt = published.root / "resources" / "prompts" / "review.md"
+    prompt.parent.chmod(0o700)
+    prompt.chmod(0o600)
+    prompt.unlink()
+    prompt.symlink_to(source_root / "resources" / "prompts" / "review.md")
+    monkeypatch.setattr(
+        revisions_module,
+        "_supports_descriptor_relative_revision_io",
+        lambda: False,
+    )
+
+    with pytest.raises(PluginRevisionError) as caught:
+        store.reopen(digest, source=PluginSource(path=source_root))
+
+    assert caught.value.code == "plugin_revision_unavailable"
 
 
 def test_revision_handle_rejects_host_ambiguous_logical_path(tmp_path: Path) -> None:
