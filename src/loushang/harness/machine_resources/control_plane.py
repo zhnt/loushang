@@ -926,7 +926,7 @@ def _clean_orphan_session_assets(
                     skipped += 1
                     continue
                 try:
-                    metadata = entry.stat(follow_symlinks=False)
+                    metadata = Path(entry.path).lstat()
                     require_portable_artifact_id(
                         entry.name,
                         name="session asset authority",

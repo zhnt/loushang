@@ -560,7 +560,8 @@ def _write_text_artifact(
             )
         except OSError:
             return
-    archive.writestr(archive_name, redact_text(content))
+    portable_content = content.replace("\r\n", "\n").replace("\r", "\n")
+    archive.writestr(archive_name, redact_text(portable_content))
 
 
 def _safe_archive_name(value: str) -> str:

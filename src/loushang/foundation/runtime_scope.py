@@ -201,6 +201,12 @@ class RunLease:
             return
         self._descriptor = None
         quarantined: Path | None = None
+        # Windows will not rename a directory while a child lease handle is
+        # open, even when that handle permits shared deletion.  The lease
+        # identity is revalidated by the quarantine operation after release.
+        if os.name == "nt":
+            _unlock_and_close(descriptor)
+            descriptor = -1
         try:
             quarantined = _quarantine_run_tree(
                 self.scope.run_dir,
@@ -211,7 +217,8 @@ class RunLease:
         except (OSError, ValueError):
             pass
         finally:
-            _unlock_and_close(descriptor)
+            if descriptor >= 0:
+                _unlock_and_close(descriptor)
         if quarantined is not None:
             # Normal shutdown must not be replaced by best-effort cleanup. A
             # quarantined residue remains eligible for the next sweep.
@@ -328,6 +335,10 @@ def sweep_runtime_runs(
             if candidate.size < 0 or candidate.path not in selected:
                 continue
             try:
+                # See RunLease.close: Windows requires child handles to be
+                # closed before its parent directory can be quarantined.
+                if os.name == "nt":
+                    _release_candidate(candidate)
                 if not candidate.quarantined:
                     candidate.path = _quarantine_run_tree(
                         candidate.path,

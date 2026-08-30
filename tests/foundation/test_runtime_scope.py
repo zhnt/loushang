@@ -270,7 +270,10 @@ def test_sweep_quarantines_a_candidate_before_releasing_its_lease_lock(
         now=lambda: 100.0,
     )
 
-    assert observed_locked is True
+    # POSIX can atomically quarantine the directory while retaining its child
+    # lease lock. Windows requires closing that child handle first; lease
+    # identity validation still makes the subsequent rename conditional.
+    assert observed_locked is (os.name != "nt")
     assert report.removed == 1
     assert not run_dir.exists()
 

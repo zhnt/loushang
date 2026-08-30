@@ -141,6 +141,26 @@ def test_diagnostics_artifact_rejects_ambiguous_content_authority() -> None:
         )
 
 
+def test_diagnostics_text_artifacts_normalize_platform_newlines(tmp_path) -> None:
+    output = tmp_path / "diagnostics.zip"
+
+    export_diagnostics_archive(
+        output_path=output,
+        readme="diagnostics",
+        manifest={},
+        diagnostics=(),
+        artifacts=(
+            DiagnosticExportArtifact(
+                "logs/debug.log",
+                content=b"first\r\nsecond\rlast\n",
+            ),
+        ),
+    )
+
+    with zipfile.ZipFile(output) as archive:
+        assert archive.read("logs/debug.log") == b"first\nsecond\nlast\n"
+
+
 def test_standard_bundle_snapshots_observability_through_artifact_store(
     tmp_path,
 ) -> None:
