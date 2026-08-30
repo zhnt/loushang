@@ -29,6 +29,9 @@ EXTENSION_RESOURCE_RUNTIME_PATH = Path("src/loushang/harness/extensions/resource
 CODING_SHADOW_ADAPTER_PATH = Path("src/loushang/coding/_resource_catalog_shadow.py")
 CODING_BOOTSTRAP_PATH = Path("src/loushang/coding/bootstrap.py")
 CODING_BASE_PLUGIN_PATH = Path("src/loushang/coding/_base_plugin.py")
+CODING_CAPABILITY_PLUGIN_COMPOSITION_PATH = Path(
+    "src/loushang/coding/_capability_plugin_composition.py"
+)
 CODING_LSP_PLUGIN_OPT_IN_PATH = Path("src/loushang/coding/lsp/_plugin_opt_in.py")
 
 
@@ -292,6 +295,7 @@ def test_rcp4_plc5_product_composition_assembly_is_one_private_product_root() ->
     } == {
         CODING_BOOTSTRAP_PATH,
         CODING_BASE_PLUGIN_PATH,
+        CODING_CAPABILITY_PLUGIN_COMPOSITION_PATH,
         CODING_LSP_PLUGIN_OPT_IN_PATH,
         CODING_SHADOW_ADAPTER_PATH,
     }

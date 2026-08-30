@@ -48,7 +48,13 @@ from loushang.harness.resources._skill_catalog_consumer import (
     SkillCatalogLoadHandle,
     build_effective_skill_catalog_projection,
 )
+from loushang.harness.resources.skill_actions import (
+    SkillActionDocument,
+    SkillActionDocumentCodec,
+)
 from loushang.harness.runtime import RuntimeProfileResolver
+from loushang.harness.tools.skill_actions import ManagedSkillActionBinding
+from loushang.plugin import skill_action
 
 
 def _sha(value: str) -> str:
@@ -94,6 +100,7 @@ async def _mounted_skill_consumer(
     *,
     disabled_review: bool = False,
     second_skill_with_same_name: bool = False,
+    action_script: bytes | None = None,
 ) -> tuple[
     SkillCatalogConsumer,
     ResourceSkillCatalogCapabilityConsumer,
@@ -109,6 +116,21 @@ async def _mounted_skill_consumer(
         b"---\nname: review\ndescription: Review changes\n---\nReview carefully.\n"
     )
     (skill_root / "SKILL.md").write_bytes(skill_body)
+    if action_script is not None:
+        script_path = skill_root / "scripts" / "review.py"
+        script_path.parent.mkdir()
+        script_path.write_bytes(action_script)
+        declaration = skill_action(
+            id="review",
+            script="scripts/review.py",
+            script_digest=hashlib.sha256(action_script).hexdigest(),
+            runtime="python",
+        )
+        (skill_root / "actions.json").write_bytes(
+            SkillActionDocumentCodec.encode_bytes(
+                SkillActionDocument(actions=(declaration,))
+            )
+        )
     if second_skill_with_same_name:
         second_root = resource_root / "skills" / "audit"
         second_root.mkdir(parents=True)
@@ -206,16 +228,8 @@ def test_typed_skill_consumer_lists_metadata_and_loads_exact_body_lazily(
         assert not hasattr(summary, "content")
         assert not hasattr(summary, "body")
         assert not hasattr(summary, "metadata")
-        action_selection = summary.managed_action_selection()
-        assert action_selection.catalog_generation == summary.catalog_generation
-        assert (
-            action_selection.catalog_snapshot_fingerprint
-            == summary.catalog_snapshot_fingerprint
-        )
-        assert action_selection.candidate_fingerprint == summary.candidate_fingerprint
-        assert action_selection.skill_content_digest == summary.expected_content_digest
-        assert action_selection.source_kind == "native"
-        assert action_selection.source_revision == summary.candidate_fingerprint
+        assert not hasattr(summary, "managed_action_selection")
+        assert consumer.capture_managed_actions(summary) == ()
 
         handle = consumer.load_handle(summary)
         loaded = await consumer.load(handle)
@@ -232,6 +246,31 @@ def test_typed_skill_consumer_lists_metadata_and_loads_exact_body_lazily(
         assert await binder.dispose(runtime) == ()
         with pytest.raises(RuntimeError, match="Capability Mount graph is disposed"):
             await consumer.load(handle)
+
+    asyncio.run(scenario())
+
+
+def test_native_catalog_captures_actions_before_tool_binding(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        script = b"print('catalog captured')\n"
+        consumer, _catalog, binder, runtime, _skill_body = (
+            await _mounted_skill_consumer(tmp_path, action_script=script)
+        )
+        [summary] = consumer.list_effective_skills()
+
+        [catalog_action] = consumer.capture_managed_actions(summary)
+        binding = ManagedSkillActionBinding.bind(catalog_action)
+        skill_root = summary.source_path.parent
+        (skill_root / "scripts" / "review.py").write_bytes(b"print('changed')\n")
+        (skill_root / "actions.json").write_text("{}", encoding="utf-8")
+
+        assert binding.read_verified_script() == script
+        assert binding.candidate_fingerprint == summary.candidate_fingerprint
+        assert binding.catalog_generation == consumer.catalog_generation
+        assert binding.source_kind == "native"
+        assert binding.action_document_digest == catalog_action.action_document_digest
+
+        assert await binder.dispose(runtime) == ()
 
     asyncio.run(scenario())
 

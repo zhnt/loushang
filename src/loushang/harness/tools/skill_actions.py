@@ -4,12 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import json
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from pathlib import Path, PurePosixPath
-from types import MappingProxyType
-from typing import Literal, Protocol, cast
+from pathlib import Path
+from typing import Literal
 
 from loushang.harness.effects import (
     FilesystemEffect,
@@ -17,22 +15,19 @@ from loushang.harness.effects import (
     PublicationEffect,
     ToolEffect,
 )
-from loushang.harness.resources.plugins.locators import (
-    canonical_plugin_relative_path,
-)
-from loushang.harness.resources.plugins.revisions import VerifiedRevisionHandle
 from loushang.harness.resources.skill_actions import (
+    CatalogManagedSkillAction,
     ManagedSkillActionDeclaration,
-    SkillActionCatalogSelection,
     SkillActionEffect,
     SkillActionRuntime,
 )
 from loushang.harness.tools.process_hosting import (
+    ScopeBoundProcessLauncher,
     _managed_process_launch_request,
 )
-from loushang.harness.workspace.process import AuthorizedProcessLauncher
 
 _MAX_ACTION_OUTPUT_BYTES = 1_048_576
+_ACTION_OUTPUT_CHUNK_BYTES = 64 * 1024
 
 
 class ManagedSkillActionError(RuntimeError):
@@ -41,98 +36,9 @@ class ManagedSkillActionError(RuntimeError):
         self.code = code
 
 
-class _SkillActionSource(Protocol):
-    source_kind: Literal["native", "package"]
-    source_revision: str
-    skill_content_digest: str
-
-    @property
-    def skill_root(self) -> Path: ...
-
-    def read_script(self, relative_path: PurePosixPath) -> bytes: ...
-
-
-@dataclass(frozen=True, slots=True)
-class NativeSkillActionSource:
-    """Catalog-captured native scripts, detached from later filesystem mutation."""
-
-    source_revision: str
-    skill_content_digest: str
-    skill_root: Path
-    scripts: Mapping[str, bytes] = field(repr=False)
-    source_kind: Literal["native"] = "native"
-
-    def __post_init__(self) -> None:
-        _require_digest(self.source_revision, name="Native Skill source revision")
-        _require_digest(self.skill_content_digest, name="Skill content digest")
-        root = _absolute_directory(self.skill_root, name="Native Skill root")
-        if not isinstance(self.scripts, Mapping):
-            raise TypeError("Native Skill action scripts must be a mapping")
-        scripts: dict[str, bytes] = {}
-        for locator, body in self.scripts.items():
-            path = canonical_plugin_relative_path(locator).as_posix()
-            if not isinstance(body, bytes):
-                raise TypeError("Native Skill action script bodies must be bytes")
-            if path in scripts:
-                raise ValueError("Native Skill action script locators must be unique")
-            scripts[path] = body
-        object.__setattr__(self, "skill_root", root)
-        object.__setattr__(self, "scripts", MappingProxyType(scripts))
-
-    def read_script(self, relative_path: PurePosixPath) -> bytes:
-        try:
-            return self.scripts[
-                canonical_plugin_relative_path(relative_path).as_posix()
-            ]
-        except KeyError as exc:
-            raise ManagedSkillActionError(
-                "Native Skill action script is not in the captured source revision",
-                code="skill_action_script_not_captured",
-            ) from exc
-
-
-@dataclass(frozen=True, slots=True)
-class PackageSkillActionSource:
-    """One admitted package revision and its exact Skill Resource identity."""
-
-    source_revision: str
-    skill_content_digest: str
-    skill_root_locator: str
-    package_content_digest: str
-    revision_handle: VerifiedRevisionHandle = field(repr=False, compare=False)
-    source_kind: Literal["package"] = "package"
-
-    def __post_init__(self) -> None:
-        _require_nonempty(self.source_revision, name="Package Skill source revision")
-        _require_digest(self.skill_content_digest, name="Skill content digest")
-        _require_digest(self.package_content_digest, name="Package content digest")
-        if not isinstance(self.revision_handle, VerifiedRevisionHandle):
-            raise TypeError("Package Skill action requires a verified revision handle")
-        if self.revision_handle.closed:
-            raise ValueError("Package Skill action revision handle must be live")
-        if self.package_content_digest != self.revision_handle.content_digest:
-            raise ValueError("Package Skill action revision digest does not match")
-        root = canonical_plugin_relative_path(self.skill_root_locator)
-        if self.revision_handle.entry_kind(root) != "directory":
-            raise ValueError("Package Skill action root must be a revision directory")
-        object.__setattr__(self, "skill_root_locator", root.as_posix())
-
-    @property
-    def skill_root(self) -> Path:
-        return self.revision_handle.root / self.skill_root_locator
-
-    def read_script(self, relative_path: PurePosixPath) -> bytes:
-        self.revision_handle.verify()
-        locator = PurePosixPath(
-            self.skill_root_locator
-        ) / canonical_plugin_relative_path(relative_path)
-        with self.revision_handle.open_file(locator) as stream:
-            return stream.read()
-
-
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class ManagedSkillActionBinding:
-    """Exact Catalog revision, action declaration, and source reader binding."""
+    """Tool-layer view of Resource-owner-minted Catalog action evidence."""
 
     declaration: ManagedSkillActionDeclaration
     source_kind: Literal["native", "package"]
@@ -142,93 +48,83 @@ class ManagedSkillActionBinding:
     catalog_snapshot_fingerprint: str
     candidate_fingerprint: str
     catalog_source_revision: str
+    action_document_digest: str
     binding_fingerprint: str
-    _source: _SkillActionSource = field(repr=False, compare=False)
+    _catalog_action: CatalogManagedSkillAction = field(repr=False, compare=False)
+
+    def __init__(self) -> None:
+        raise TypeError("Managed Skill bindings require Catalog-owner evidence")
 
     @classmethod
     def bind(
         cls,
-        declaration: ManagedSkillActionDeclaration,
-        *,
-        selection: SkillActionCatalogSelection,
-        source: NativeSkillActionSource | PackageSkillActionSource,
+        catalog_action: CatalogManagedSkillAction,
     ) -> ManagedSkillActionBinding:
-        if not isinstance(declaration, ManagedSkillActionDeclaration):
-            raise TypeError("Managed Skill action binding requires a declaration")
-        if not isinstance(source, NativeSkillActionSource | PackageSkillActionSource):
-            raise TypeError("Managed Skill action binding requires a supported source")
-        if not isinstance(selection, SkillActionCatalogSelection):
-            raise TypeError("Managed Skill action binding requires a Catalog selection")
-        actual_revision = (
-            source.package_content_digest
-            if isinstance(source, PackageSkillActionSource)
-            else source.source_revision
-        )
-        if (
-            selection.source_kind != source.source_kind
-            or selection.source_revision != actual_revision
-            or selection.skill_content_digest != source.skill_content_digest
+        if not isinstance(catalog_action, CatalogManagedSkillAction):
+            raise TypeError("Managed Skill action requires Catalog-owner evidence")
+        catalog_action.verify()
+        selection = catalog_action.selection
+        binding = object.__new__(cls)
+        for name, value in (
+            ("declaration", catalog_action.declaration),
+            ("source_kind", selection.source_kind),
+            ("source_revision", selection.source_revision),
+            ("skill_content_digest", selection.skill_content_digest),
+            ("catalog_generation", selection.catalog_generation),
+            (
+                "catalog_snapshot_fingerprint",
+                selection.catalog_snapshot_fingerprint,
+            ),
+            ("candidate_fingerprint", selection.candidate_fingerprint),
+            ("catalog_source_revision", selection.source_revision),
+            ("action_document_digest", catalog_action.action_document_digest),
+            ("binding_fingerprint", catalog_action.binding_source_fingerprint),
+            ("_catalog_action", catalog_action),
         ):
-            raise ManagedSkillActionError(
-                "Managed Skill action source does not match its Catalog selection",
-                code="skill_action_catalog_selection_mismatch",
-            )
-        script = source.read_script(declaration.relative_script)
-        _verify_script_digest(declaration, script)
-        fingerprint = _fingerprint(
-            {
-                "action": declaration.to_dict(),
-                "candidateFingerprint": selection.candidate_fingerprint,
-                "catalogGeneration": selection.catalog_generation,
-                "catalogSnapshotFingerprint": (
-                    selection.catalog_snapshot_fingerprint
-                ),
-                "catalogSourceRevision": selection.source_revision,
-                "domain": "loushang.managed-skill-action-binding/v1",
-                "skillContentDigest": source.skill_content_digest,
-                "sourceKind": source.source_kind,
-                "sourceRevision": source.source_revision,
-            }
-        )
-        return cls(
-            declaration=declaration,
-            source_kind=source.source_kind,
-            source_revision=source.source_revision,
-            skill_content_digest=source.skill_content_digest,
-            catalog_generation=selection.catalog_generation,
-            catalog_snapshot_fingerprint=(selection.catalog_snapshot_fingerprint),
-            candidate_fingerprint=selection.candidate_fingerprint,
-            catalog_source_revision=selection.source_revision,
-            binding_fingerprint=fingerprint,
-            _source=cast(_SkillActionSource, source),
-        )
+            object.__setattr__(binding, name, value)
+        binding._validate()
+        return binding
 
-    @property
-    def skill_root(self) -> Path:
-        return self._source.skill_root
-
-    def read_verified_script(self) -> bytes:
-        script = self._source.read_script(self.declaration.relative_script)
-        _verify_script_digest(self.declaration, script)
-        expected = _fingerprint(
-            {
-                "action": self.declaration.to_dict(),
-                "candidateFingerprint": self.candidate_fingerprint,
-                "catalogGeneration": self.catalog_generation,
-                "catalogSnapshotFingerprint": self.catalog_snapshot_fingerprint,
-                "catalogSourceRevision": self.catalog_source_revision,
-                "domain": "loushang.managed-skill-action-binding/v1",
-                "skillContentDigest": self.skill_content_digest,
-                "sourceKind": self.source_kind,
-                "sourceRevision": self.source_revision,
-            }
+    def _validate(self) -> None:
+        self._catalog_action.verify()
+        selection = self._catalog_action.selection
+        expected = (
+            self._catalog_action.declaration,
+            selection.source_kind,
+            selection.source_revision,
+            selection.skill_content_digest,
+            selection.catalog_generation,
+            selection.catalog_snapshot_fingerprint,
+            selection.candidate_fingerprint,
+            selection.source_revision,
+            self._catalog_action.action_document_digest,
+            self._catalog_action.binding_source_fingerprint,
         )
-        if expected != self.binding_fingerprint:
+        actual = (
+            self.declaration,
+            self.source_kind,
+            self.source_revision,
+            self.skill_content_digest,
+            self.catalog_generation,
+            self.catalog_snapshot_fingerprint,
+            self.candidate_fingerprint,
+            self.catalog_source_revision,
+            self.action_document_digest,
+            self.binding_fingerprint,
+        )
+        if actual != expected:
             raise ManagedSkillActionError(
                 "Managed Skill action binding identity changed",
                 code="skill_action_binding_changed",
             )
-        return script
+
+    @property
+    def skill_root(self) -> Path:
+        return self._catalog_action.skill_root
+
+    def read_verified_script(self) -> bytes:
+        self._validate()
+        return self._catalog_action.read_script()
 
 
 @dataclass(frozen=True, slots=True)
@@ -295,7 +191,7 @@ async def execute_managed_skill_action(
     binding: ManagedSkillActionBinding,
     *,
     runtime: SkillRuntimeBinding,
-    launcher: AuthorizedProcessLauncher,
+    launcher: ScopeBoundProcessLauncher,
     workspace_root: str | Path,
     correlation_id: str,
     signal: object | None = None,
@@ -304,18 +200,11 @@ async def execute_managed_skill_action(
 
     if not isinstance(binding, ManagedSkillActionBinding):
         raise TypeError("Managed Skill execution requires an action binding")
+    binding._validate()
     if not isinstance(runtime, SkillRuntimeBinding):
         raise TypeError("Managed Skill execution requires a runtime binding")
-    if getattr(launcher, "approval_required", False) is not True:
-        raise ManagedSkillActionError(
-            "Managed Skill action launcher does not require Approval",
-            code="skill_action_approval_not_required",
-        )
-    if getattr(launcher, "containment_requirement", None) != "required":
-        raise ManagedSkillActionError(
-            "Managed Skill action requires enforced containment",
-            code="skill_action_containment_required",
-        )
+    if type(launcher) is not ScopeBoundProcessLauncher:
+        raise TypeError("Managed Skill execution requires the Process owner launcher")
     declaration = binding.declaration
     if runtime.runtime != declaration.runtime:
         raise ManagedSkillActionError(
@@ -348,6 +237,7 @@ async def execute_managed_skill_action(
         authorization_metadata={
             "actionBindingFingerprint": binding.binding_fingerprint,
             "actionId": declaration.action_id,
+            "actionDocumentDigest": binding.action_document_digest,
             "candidateFingerprint": binding.candidate_fingerprint,
             "catalogGeneration": binding.catalog_generation,
             "catalogSnapshotFingerprint": binding.catalog_snapshot_fingerprint,
@@ -358,8 +248,9 @@ async def execute_managed_skill_action(
             "sourceKind": binding.source_kind,
             "sourceRevision": binding.source_revision,
         },
+        pre_start_validator=runtime.verify,
     )
-    handle = await launcher.start(
+    handle = await launcher._start_managed(
         request,
         correlation_id=correlation_id,
         signal=signal,
@@ -367,29 +258,51 @@ async def execute_managed_skill_action(
     try:
         await handle.write_stdin(script)
         await handle.close_stdin()
-        stdout, stderr, exit_status = await asyncio.gather(
-            handle.read_stdout(_MAX_ACTION_OUTPUT_BYTES),
-            handle.read_stderr(_MAX_ACTION_OUTPUT_BYTES),
-            handle.wait(),
+        stdout_task = asyncio.create_task(
+            _drain_action_output(handle.read_stdout, stream="stdout")
         )
+        stderr_task = asyncio.create_task(
+            _drain_action_output(handle.read_stderr, stream="stderr")
+        )
+        wait_task = asyncio.create_task(handle.wait())
+        tasks = (stdout_task, stderr_task, wait_task)
+        try:
+            stdout, stderr, exit_status = await asyncio.gather(*tasks)
+        except BaseException:
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            raise
         return ManagedSkillActionResult(
             return_code=exit_status.return_code,
             stdout=stdout,
             stderr=stderr,
         )
+    except ManagedSkillActionError:
+        await handle.terminate()
+        raise
     finally:
         await handle.close()
 
 
-def _verify_script_digest(
-    declaration: ManagedSkillActionDeclaration,
-    body: bytes,
-) -> None:
-    if hashlib.sha256(body).hexdigest() != declaration.script_digest:
-        raise ManagedSkillActionError(
-            "Managed Skill action script does not match its declaration",
-            code="skill_action_script_digest_mismatch",
-        )
+async def _drain_action_output(
+    reader: Callable[[int], Awaitable[bytes]],
+    *,
+    stream: Literal["stderr", "stdout"],
+) -> bytes:
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = await reader(_ACTION_OUTPUT_CHUNK_BYTES)
+        if not chunk:
+            return b"".join(chunks)
+        total += len(chunk)
+        if total > _MAX_ACTION_OUTPUT_BYTES:
+            raise ManagedSkillActionError(
+                f"Managed Skill action {stream} exceeds the byte limit",
+                code="skill_action_output_limit_exceeded",
+            )
+        chunks.append(chunk)
 
 
 def _tool_effect(
@@ -475,28 +388,10 @@ def _require_digest(value: object, *, name: str) -> str:
     return value
 
 
-def _require_nonempty(value: object, *, name: str) -> str:
-    if not isinstance(value, str) or not value:
-        raise ValueError(f"{name} must be a non-empty string")
-    return value
-
-
-def _fingerprint(value: object) -> str:
-    encoded = json.dumps(
-        value,
-        ensure_ascii=True,
-        separators=(",", ":"),
-        sort_keys=True,
-    ).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
-
-
 __all__ = [
     "ManagedSkillActionBinding",
     "ManagedSkillActionError",
     "ManagedSkillActionResult",
-    "NativeSkillActionSource",
-    "PackageSkillActionSource",
     "SkillRuntimeBinding",
     "execute_managed_skill_action",
 ]

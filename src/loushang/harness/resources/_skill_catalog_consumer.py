@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
@@ -21,7 +21,11 @@ from loushang.harness.resources._skill_catalog_status import (
     SkillCatalogStatusProjection,
     SkillCatalogStatusSummary,
 )
-from loushang.harness.resources.skill_actions import SkillActionCatalogSelection
+from loushang.harness.resources.skill_actions import (
+    CatalogManagedSkillAction,
+    SkillActionSourceCapture,
+    _mint_catalog_managed_skill_action,
+)
 from loushang.harness.resources.types import (
     ResourceSourceKind,
     ResourceSourceScope,
@@ -102,23 +106,22 @@ class SkillCatalogSummary:
     def disable_model_invocation(self) -> bool:
         return not self.model_invocable
 
-    def managed_action_selection(self) -> SkillActionCatalogSelection:
-        """Mint action facts from this exact Resource-owner Catalog selection."""
 
-        revision = self.revision_ref
-        return SkillActionCatalogSelection(
-            catalog_generation=self.catalog_generation,
-            catalog_snapshot_fingerprint=self.catalog_snapshot_fingerprint,
-            candidate_fingerprint=self.candidate_fingerprint,
-            skill_content_digest=self.expected_content_digest,
-            source_kind="package" if revision is not None else "native",
-            source_revision=(
-                revision.content_digest
-                if revision is not None
-                else self.candidate_fingerprint
-            ),
-        )
+@dataclass(frozen=True, slots=True)
+class SkillCatalogActionSource:
+    candidate_fingerprint: str
+    skill_root: Path
+    capture: SkillActionSourceCapture
 
+    def __post_init__(self) -> None:
+        if _SHA256_RE.fullmatch(self.candidate_fingerprint) is None:
+            raise ValueError("Skill action source candidate must be a digest")
+        if not isinstance(self.capture, SkillActionSourceCapture):
+            raise TypeError("Skill action source requires a Resource capture")
+        root = Path(self.skill_root)
+        if not root.is_absolute() or not root.is_dir():
+            raise ValueError("Skill action source root must be an absolute directory")
+        object.__setattr__(self, "skill_root", root.resolve(strict=True))
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,6 +131,10 @@ class EffectiveSkillCatalogProjection:
     catalog_generation: int
     catalog_snapshot_fingerprint: str
     skills: tuple[SkillCatalogSummary, ...]
+    managed_action_sources: tuple[SkillCatalogActionSource, ...] = field(
+        default=(),
+        repr=False,
+    )
 
     def __post_init__(self) -> None:
         if self.catalog_generation < 1:
@@ -145,6 +152,18 @@ class EffectiveSkillCatalogProjection:
             raise ValueError("Skill projection identities must be unique")
         if len(set(candidates)) != len(candidates):
             raise ValueError("Skill projection candidates must be unique")
+        action_candidates = tuple(
+            item.candidate_fingerprint for item in self.managed_action_sources
+        )
+        if (
+            any(
+                not isinstance(item, SkillCatalogActionSource)
+                for item in self.managed_action_sources
+            )
+            or len(action_candidates) != len(set(action_candidates))
+            or not set(action_candidates).issubset(candidates)
+        ):
+            raise ValueError("Skill action sources must belong to this projection")
 
 
 @dataclass(frozen=True, slots=True)
@@ -233,6 +252,10 @@ class SkillCatalogConsumer:
             snapshot=snapshot,
             projection=projection,
         )
+        self._managed_action_sources = {
+            item.candidate_fingerprint: item
+            for item in projection.managed_action_sources
+        }
         status_projection = getattr(catalog, "skill_status_projection", None)
         if status_projection is None:
             self._skill_statuses: tuple[SkillCatalogStatusSummary, ...] | None = None
@@ -338,6 +361,32 @@ class SkillCatalogConsumer:
             content=content,
         )
 
+    def capture_managed_actions(
+        self,
+        skill: SkillCatalogSummary | str,
+    ) -> tuple[CatalogManagedSkillAction, ...]:
+        """Mint per-action evidence only from this captured Catalog projection."""
+
+        summary = self._resolve_owned_summary(skill)
+        source = self._managed_action_sources.get(summary.candidate_fingerprint)
+        if source is None:
+            return ()
+        return tuple(
+            _mint_catalog_managed_skill_action(
+                catalog_generation=summary.catalog_generation,
+                catalog_snapshot_fingerprint=summary.catalog_snapshot_fingerprint,
+                candidate_fingerprint=summary.candidate_fingerprint,
+                skill_content_digest=summary.expected_content_digest,
+                source_kind=source.capture.source_kind,
+                source_revision=source.capture.source_revision,
+                declaration=item.declaration,
+                action_document_digest=source.capture.action_document_digest,
+                script_body=item.script_body,
+                skill_root=source.skill_root,
+            )
+            for item in source.capture.actions
+        )
+
     def _resolve_owned_summary(
         self,
         skill: SkillCatalogSummary | str,
@@ -398,6 +447,7 @@ def build_effective_skill_catalog_projection(
         if entry.identity.resource_kind == "skill"
     }
     summaries: list[SkillCatalogSummary] = []
+    managed_action_sources: list[SkillCatalogActionSource] = []
     for binding in projection.selected_bindings:
         if binding.resource_kind != "skill":
             continue
@@ -449,6 +499,24 @@ def build_effective_skill_catalog_projection(
                 revision_ref=descriptor.revision_ref,
             )
         )
+        if descriptor.managed_action_source is not None:
+            expected_action_source_kind = (
+                "package" if candidate.source_class == "external_package" else "native"
+            )
+            if (
+                descriptor.managed_action_source.source_kind
+                != expected_action_source_kind
+            ):
+                raise SkillCatalogConsumerError(
+                    "Skill action source class does not match its Catalog candidate"
+                )
+            managed_action_sources.append(
+                SkillCatalogActionSource(
+                    candidate_fingerprint=candidate.candidate_fingerprint,
+                    skill_root=descriptor.source_path.parent,
+                    capture=descriptor.managed_action_source,
+                )
+            )
     if len(summaries) != len(effective_by_identity):
         raise SkillCatalogConsumerError(
             "Catalog Skill selection and projection do not match"
@@ -457,6 +525,7 @@ def build_effective_skill_catalog_projection(
         catalog_generation=snapshot.catalog_generation,
         catalog_snapshot_fingerprint=snapshot.snapshot_fingerprint,
         skills=tuple(summaries),
+        managed_action_sources=tuple(managed_action_sources),
     )
 
 

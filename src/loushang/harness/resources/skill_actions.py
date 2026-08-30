@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import dataclass
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from typing import Literal, NoReturn, cast
 
 from loushang.harness.resources.plugins._strict_json import (
@@ -18,6 +19,7 @@ from loushang.harness.resources.plugins.locators import (
 SKILL_ACTION_DOCUMENT_VERSION = 1
 SKILL_ACTION_DECLARATION_VERSION = 1
 MAX_SKILL_ACTION_DOCUMENT_BYTES = 262_144
+MAX_SKILL_ACTION_SCRIPT_BYTES = 1_048_576
 
 SkillActionRuntime = Literal["posix", "python"]
 SkillActionCwdPolicy = Literal["skill", "workspace"]
@@ -55,7 +57,7 @@ class SkillActionCodecError(ValueError):
         self.code = code
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class SkillActionCatalogSelection:
     """Resource-owner-minted facts for one exact Catalog Skill selection."""
 
@@ -66,7 +68,10 @@ class SkillActionCatalogSelection:
     source_kind: SkillActionSourceKind
     source_revision: str
 
-    def __post_init__(self) -> None:
+    def __init__(self) -> None:
+        raise TypeError("Skill action Catalog selections are Resource-owner-minted")
+
+    def _validate(self) -> None:
         if type(self.catalog_generation) is not int or self.catalog_generation < 1:
             raise ValueError("Skill action Catalog generation must be positive")
         _require_digest(
@@ -84,6 +89,143 @@ class SkillActionCatalogSelection:
             self.source_revision,
             name="Skill action Catalog source revision",
         )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "candidateFingerprint": self.candidate_fingerprint,
+            "catalogGeneration": self.catalog_generation,
+            "catalogSnapshotFingerprint": self.catalog_snapshot_fingerprint,
+            "skillContentDigest": self.skill_content_digest,
+            "sourceKind": self.source_kind,
+            "sourceRevision": self.source_revision,
+        }
+
+
+@dataclass(frozen=True, slots=True, init=False)
+class CatalogManagedSkillAction:
+    """Opaque Resource-owner evidence for one captured Catalog action."""
+
+    selection: SkillActionCatalogSelection
+    declaration: ManagedSkillActionDeclaration
+    action_document_digest: str
+    skill_root: Path
+    binding_source_fingerprint: str
+    _script_body: bytes
+
+    def __init__(self) -> None:
+        raise TypeError("Managed Skill action evidence is Resource-owner-minted")
+
+    def read_script(self) -> bytes:
+        self.verify()
+        return self._script_body
+
+    def verify(self) -> None:
+        self.selection._validate()
+        _require_digest(
+            self.action_document_digest,
+            name="Skill action document digest",
+        )
+        if not isinstance(self.declaration, ManagedSkillActionDeclaration):
+            raise TypeError("Catalog action declaration is invalid")
+        if (
+            not isinstance(self._script_body, bytes)
+            or len(self._script_body) > MAX_SKILL_ACTION_SCRIPT_BYTES
+            or hashlib.sha256(self._script_body).hexdigest()
+            != self.declaration.script_digest
+        ):
+            raise ValueError("Catalog action script evidence is invalid")
+        if self.binding_source_fingerprint != _catalog_action_binding_fingerprint(
+            selection=self.selection,
+            declaration=self.declaration,
+            action_document_digest=self.action_document_digest,
+        ):
+            raise ValueError("Catalog action binding evidence is invalid")
+        root = Path(self.skill_root)
+        if not root.is_absolute() or not root.is_dir() or root.resolve() != root:
+            raise ValueError("Catalog action Skill root evidence is invalid")
+
+
+@dataclass(frozen=True, slots=True)
+class CapturedSkillAction:
+    declaration: ManagedSkillActionDeclaration
+    script_body: bytes
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.declaration, ManagedSkillActionDeclaration):
+            raise TypeError("Captured Skill action requires a declaration")
+        if not isinstance(self.script_body, bytes):
+            raise TypeError("Captured Skill action script must be bytes")
+        if len(self.script_body) > MAX_SKILL_ACTION_SCRIPT_BYTES:
+            raise ValueError("Captured Skill action script exceeds the byte limit")
+        if hashlib.sha256(self.script_body).hexdigest() != self.declaration.script_digest:
+            raise ValueError("Captured Skill action script digest does not match")
+
+
+@dataclass(frozen=True, slots=True)
+class SkillActionSourceCapture:
+    """Resource-source-owned action sidecar and exact script capture."""
+
+    source_kind: SkillActionSourceKind
+    source_revision: str
+    action_document_digest: str
+    actions: tuple[CapturedSkillAction, ...]
+    capture_fingerprint: str
+
+    @classmethod
+    def capture(
+        cls,
+        *,
+        source_kind: SkillActionSourceKind,
+        source_revision: str,
+        action_document: bytes,
+        actions: tuple[CapturedSkillAction, ...],
+    ) -> SkillActionSourceCapture:
+        if not isinstance(action_document, bytes):
+            raise TypeError("Skill action document capture must be bytes")
+        if len(action_document) > MAX_SKILL_ACTION_DOCUMENT_BYTES:
+            raise ValueError("Skill action document exceeds the byte limit")
+        document_digest = hashlib.sha256(action_document).hexdigest()
+        return cls(
+            source_kind=source_kind,
+            source_revision=source_revision,
+            action_document_digest=document_digest,
+            actions=actions,
+            capture_fingerprint=_skill_action_source_capture_fingerprint(
+                source_kind=source_kind,
+                source_revision=source_revision,
+                action_document_digest=document_digest,
+                actions=actions,
+            ),
+        )
+
+    def __post_init__(self) -> None:
+        if self.source_kind not in {"native", "package"}:
+            raise ValueError("Skill action capture source kind is unsupported")
+        _require_digest(self.source_revision, name="Skill action source revision")
+        _require_digest(
+            self.action_document_digest,
+            name="Skill action document digest",
+        )
+        _require_digest(
+            self.capture_fingerprint,
+            name="Skill action source capture fingerprint",
+        )
+        if not self.actions:
+            raise ValueError("Skill action source capture must not be empty")
+        if any(not isinstance(item, CapturedSkillAction) for item in self.actions):
+            raise TypeError("Skill action source capture contains invalid actions")
+        identities = tuple(item.declaration.action_id for item in self.actions)
+        if identities != tuple(sorted(identities)) or len(identities) != len(
+            set(identities)
+        ):
+            raise ValueError("Captured Skill actions must be sorted and unique")
+        if self.capture_fingerprint != _skill_action_source_capture_fingerprint(
+            source_kind=self.source_kind,
+            source_revision=self.source_revision,
+            action_document_digest=self.action_document_digest,
+            actions=self.actions,
+        ):
+            raise ValueError("Skill action source capture fingerprint does not match")
 
 
 @dataclass(frozen=True, slots=True)
@@ -275,6 +417,98 @@ class ManagedSkillActionDeclaration:
             _raise("skill_action_field_value_mismatch", str(exc), cause=exc)
 
 
+def _mint_catalog_managed_skill_action(
+    *,
+    catalog_generation: int,
+    catalog_snapshot_fingerprint: str,
+    candidate_fingerprint: str,
+    skill_content_digest: str,
+    source_kind: SkillActionSourceKind,
+    source_revision: str,
+    declaration: ManagedSkillActionDeclaration,
+    action_document_digest: str,
+    script_body: bytes,
+    skill_root: Path,
+) -> CatalogManagedSkillAction:
+    """Mint evidence only after the Resource owner captures sidecar and script."""
+
+    if not isinstance(declaration, ManagedSkillActionDeclaration):
+        raise TypeError("Catalog action evidence requires a managed declaration")
+    _require_digest(action_document_digest, name="Skill action document digest")
+    if not isinstance(script_body, bytes):
+        raise TypeError("Catalog action script capture must be bytes")
+    if len(script_body) > MAX_SKILL_ACTION_SCRIPT_BYTES:
+        raise ValueError("Catalog action script exceeds the byte limit")
+    if hashlib.sha256(script_body).hexdigest() != declaration.script_digest:
+        raise ValueError("Catalog action script does not match its declaration")
+    resolved_root = Path(skill_root).resolve(strict=True)
+    if not resolved_root.is_dir():
+        raise ValueError("Catalog action Skill root must be a directory")
+    selection = object.__new__(SkillActionCatalogSelection)
+    object.__setattr__(selection, "catalog_generation", catalog_generation)
+    object.__setattr__(
+        selection,
+        "catalog_snapshot_fingerprint",
+        catalog_snapshot_fingerprint,
+    )
+    object.__setattr__(selection, "candidate_fingerprint", candidate_fingerprint)
+    object.__setattr__(selection, "skill_content_digest", skill_content_digest)
+    object.__setattr__(selection, "source_kind", source_kind)
+    object.__setattr__(selection, "source_revision", source_revision)
+    selection._validate()
+    binding_fingerprint = _catalog_action_binding_fingerprint(
+        selection=selection,
+        declaration=declaration,
+        action_document_digest=action_document_digest,
+    )
+    action = object.__new__(CatalogManagedSkillAction)
+    object.__setattr__(action, "selection", selection)
+    object.__setattr__(action, "declaration", declaration)
+    object.__setattr__(action, "action_document_digest", action_document_digest)
+    object.__setattr__(action, "skill_root", resolved_root)
+    object.__setattr__(action, "binding_source_fingerprint", binding_fingerprint)
+    object.__setattr__(action, "_script_body", bytes(script_body))
+    return action
+
+
+def _catalog_action_binding_fingerprint(
+    *,
+    selection: SkillActionCatalogSelection,
+    declaration: ManagedSkillActionDeclaration,
+    action_document_digest: str,
+) -> str:
+    return hashlib.sha256(
+        StrictPluginJsonCodec.encode(
+            {
+                "action": declaration.to_dict(),
+                "actionDocumentDigest": action_document_digest,
+                "domain": "loushang.catalog-managed-skill-action/v1",
+                "selection": selection.to_dict(),
+            }
+        )
+    ).hexdigest()
+
+
+def _skill_action_source_capture_fingerprint(
+    *,
+    source_kind: SkillActionSourceKind,
+    source_revision: str,
+    action_document_digest: str,
+    actions: tuple[CapturedSkillAction, ...],
+) -> str:
+    return hashlib.sha256(
+        StrictPluginJsonCodec.encode(
+            {
+                "actionDocumentDigest": action_document_digest,
+                "actions": [item.declaration.to_dict() for item in actions],
+                "domain": "loushang.skill-action-source-capture/v1",
+                "sourceKind": source_kind,
+                "sourceRevision": source_revision,
+            }
+        )
+    ).hexdigest()
+
+
 @dataclass(frozen=True, slots=True)
 class SkillActionDocument:
     actions: tuple[ManagedSkillActionDeclaration, ...]
@@ -447,7 +681,10 @@ def _raise(
 
 
 __all__ = [
+    "CatalogManagedSkillAction",
+    "CapturedSkillAction",
     "MAX_SKILL_ACTION_DOCUMENT_BYTES",
+    "MAX_SKILL_ACTION_SCRIPT_BYTES",
     "SKILL_ACTION_DECLARATION_VERSION",
     "SKILL_ACTION_DOCUMENT_VERSION",
     "ManagedSkillActionDeclaration",
@@ -459,5 +696,6 @@ __all__ = [
     "SkillActionEffect",
     "SkillActionEffectKind",
     "SkillActionRuntime",
+    "SkillActionSourceCapture",
     "SkillActionSourceKind",
 ]

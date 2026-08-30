@@ -13,6 +13,12 @@ from loushang.harness.resources.plugins.declarations import (
     PluginContributionIndex,
     PluginDeclarationCodecError,
 )
+from loushang.harness.resources.plugins.engine import inspect_plugin_engine_contract
+from loushang.harness.resources.plugins.safe_files import (
+    CapturedRegularFile,
+    ContainedFileCaptureError,
+    capture_contained_regular_file,
+)
 from loushang.harness.resources.plugins.types import (
     PluginManifest,
     PluginSource,
@@ -37,6 +43,7 @@ class PluginManifestParser:
         root: str | Path,
         *,
         source: PluginSource | None = None,
+        _manifest_capture: CapturedRegularFile | None = None,
     ) -> ResolvedPluginPackage:
         unresolved_root = Path(root).expanduser()
         try:
@@ -76,14 +83,28 @@ class PluginManifestParser:
                 package_root_identity=root_identity,
             )
 
-        resolved_manifest_path = manifest_path.resolve()
         try:
-            encoded = resolved_manifest_path.read_bytes()
-        except OSError as exc:
+            capture = _manifest_capture or capture_contained_regular_file(
+                resolved_root,
+                "plugin.json",
+                max_bytes=1_048_576,
+            )
+            if (
+                capture.path != manifest_path
+                or capture.relative_path != "plugin.json"
+            ):
+                raise ContainedFileCaptureError(
+                    "Captured Plugin manifest belongs to another path",
+                    code="contained_file_identity_changed",
+                    path=manifest_path,
+                )
+            encoded = capture.body
+            resolved_manifest_path = capture.path
+        except ContainedFileCaptureError as exc:
             raise PluginManifestError(
-                f"Plugin manifest could not be read: {resolved_manifest_path}: {exc}",
-                code="unreadable_plugin_manifest",
-                path=resolved_manifest_path,
+                f"Plugin manifest could not be read safely: {manifest_path}: {exc}",
+                code=exc.code,
+                path=manifest_path,
             ) from exc
         try:
             payload = StrictPluginJsonCodec.decode_bytes(encoded)
@@ -99,6 +120,8 @@ class PluginManifestParser:
                 code="invalid_plugin_manifest",
                 path=resolved_manifest_path,
             )
+
+        _require_engine_contract(payload, path=resolved_manifest_path)
 
         package_root, package_root_relative = _package_root(
             resolved_root,
@@ -123,6 +146,11 @@ class PluginManifestParser:
             payload,
             root=resolved_root,
             manifest_path=resolved_manifest_path,
+        )
+        _require_engine_contract(
+            payload,
+            path=resolved_manifest_path,
+            contribution_index=contribution_index,
         )
         manifest = PluginManifest(
             name=name,
@@ -171,14 +199,13 @@ class PluginManifestParser:
                     expected_manifest_path,
                     "Plugin manifest path changed after package resolution.",
                 )
-            if expected_manifest_path.is_symlink() or not expected_manifest_path.is_file():
-                _raise_changed(
-                    expected_manifest_path,
-                    "Plugin manifest disappeared or became a symbolic link.",
-                )
             try:
-                encoded = expected_manifest_path.read_bytes()
-            except OSError as exc:
+                encoded = capture_contained_regular_file(
+                    package.root,
+                    "plugin.json",
+                    max_bytes=1_048_576,
+                ).body
+            except ContainedFileCaptureError as exc:
                 raise PluginManifestError(
                     f"Plugin manifest could not be revalidated: "
                     f"{expected_manifest_path}: {exc}",
@@ -231,6 +258,25 @@ def _resolved_source(root: Path, source: PluginSource | None) -> PluginSource:
         kind="remote",
         enabled=source.enabled,
     )
+
+
+def _require_engine_contract(
+    payload: Mapping[object, object],
+    *,
+    path: Path,
+    contribution_index: PluginContributionIndex | None = None,
+) -> None:
+    _contract, diagnostics = inspect_plugin_engine_contract(
+        payload,
+        contribution_index=contribution_index,
+    )
+    if diagnostics:
+        diagnostic = diagnostics[0]
+        raise PluginManifestError(
+            f"{diagnostic.message}: {path}",
+            code=diagnostic.code,
+            path=path,
+        )
 
 
 def _package_root(

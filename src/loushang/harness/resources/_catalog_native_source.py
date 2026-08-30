@@ -56,6 +56,13 @@ from loushang.harness.resources._skill_ignore import (
     is_skill_path_ignored,
     normalize_skill_ignore_pattern,
 )
+from loushang.harness.resources.skill_actions import (
+    MAX_SKILL_ACTION_DOCUMENT_BYTES,
+    MAX_SKILL_ACTION_SCRIPT_BYTES,
+    CapturedSkillAction,
+    SkillActionDocumentCodec,
+    SkillActionSourceCapture,
+)
 from loushang.harness.resources.types import (
     ExtensionDescriptor,
     PromptFragmentDescriptor,
@@ -802,6 +809,17 @@ def _discover_skill_directory(
             return
         if drafts:
             descriptor = replace(descriptor, diagnostics=tuple(drafts))
+        action_source = _capture_native_skill_actions(
+            current,
+            root=root,
+            control=control,
+            diagnostics=diagnostics,
+        )
+        if action_source is not None:
+            descriptor = replace(
+                descriptor,
+                managed_action_source=action_source,
+            )
         discovered.append(
             (
                 "skill",
@@ -839,6 +857,56 @@ def _discover_skill_directory(
             discovered=discovered,
             diagnostics=diagnostics,
         )
+
+
+def _capture_native_skill_actions(
+    skill_root: Path,
+    *,
+    root: NativeResourceRootHandle,
+    control: _DiscoveryControl,
+    diagnostics: list[ResourceCatalogDiagnostic],
+) -> SkillActionSourceCapture | None:
+    action_path = skill_root / "actions.json"
+    if not action_path.exists():
+        return None
+    if not _is_regular_file(action_path, root=root):
+        diagnostics.append(_source_diagnostic(root, "invalid_skill_action_document"))
+        return None
+    try:
+        if action_path.stat(follow_symlinks=False).st_size > MAX_SKILL_ACTION_DOCUMENT_BYTES:
+            raise ValueError("action document too large")
+        action_document = _stable_read(action_path, root=root, control=control)
+        document = SkillActionDocumentCodec.decode_bytes(action_document)
+        captured: list[CapturedSkillAction] = []
+        revision_hasher = hashlib.sha256()
+        revision_hasher.update(b"loushang.native-skill-actions/v1\0")
+        revision_hasher.update(action_document)
+        for declaration in document.actions:
+            script_path = skill_root / declaration.relative_script
+            if (
+                not _is_regular_file(script_path, root=root)
+                or script_path.stat(follow_symlinks=False).st_size
+                > MAX_SKILL_ACTION_SCRIPT_BYTES
+            ):
+                raise ValueError("action script is unavailable or too large")
+            script = _stable_read(script_path, root=root, control=control)
+            action = CapturedSkillAction(
+                declaration=declaration,
+                script_body=script,
+            )
+            captured.append(action)
+            revision_hasher.update(declaration.action_id.encode("utf-8"))
+            revision_hasher.update(b"\0")
+            revision_hasher.update(script)
+        return SkillActionSourceCapture.capture(
+            source_kind="native",
+            source_revision=revision_hasher.hexdigest(),
+            action_document=action_document,
+            actions=tuple(captured),
+        )
+    except (OSError, TypeError, ValueError):
+        diagnostics.append(_source_diagnostic(root, "invalid_skill_action_document"))
+        return None
 
 
 def _read_native_skill_ignore_patterns(
@@ -1154,6 +1222,12 @@ def _build_native_candidate(
     ) and not (
         isinstance(descriptor, SkillDescriptor) and descriptor.disable_model_invocation
     )
+    managed_action_fingerprint = (
+        descriptor.managed_action_source.capture_fingerprint
+        if isinstance(descriptor, SkillDescriptor)
+        and descriptor.managed_action_source is not None
+        else None
+    )
     return build_candidate_summary(
         identity=identity,
         canonical_name=descriptor.canonical_name or descriptor.name,
@@ -1181,6 +1255,7 @@ def _build_native_candidate(
                 "bodyLength": length,
                 "discoveryRequestFingerprint": request.request_fingerprint,
                 "identity": identity.to_payload(),
+                "managedActionSourceFingerprint": managed_action_fingerprint,
                 "opaqueLocator": locator,
                 "rootPolicyFingerprint": root.root_policy_fingerprint,
             },

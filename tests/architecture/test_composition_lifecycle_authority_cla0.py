@@ -596,6 +596,7 @@ def test_generated_catalog_distinguishes_source_complete_from_mounted() -> None:
         )
     }
     assert statuses == {
+        ("coding.arch", 1): "production-mounted",
         ("coding.lsp", 1): "production-mounted",
         ("harness.model_input", 1): "production-mounted",
         ("harness.resources", 1): "production-mounted",

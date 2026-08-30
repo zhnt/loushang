@@ -45,6 +45,7 @@ from loushang.harness.workspace.process.local import (
 from loushang.harness.workspace.process.types import ProcessHandle, ProcessLaunchRequest
 
 _PROCESS_START_ACTION = "process.host.start"
+_PROCESS_OWNER_AUTHORITY = object()
 ProcessAuditSink = Callable[
     [Mapping[str, object]],
     Awaitable[None] | None,
@@ -96,13 +97,14 @@ class _ExecutionProfileCarrier:
     execution_profile: EffectiveExecutionProfile | None
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class _ManagedProcessLaunchRequest(ProcessLaunchRequest):
     declared_effects: tuple[ToolEffect, ...] = ()
     authorization_metadata: Mapping[str, object] = field(
         default_factory=lambda: MappingProxyType({}),
         repr=False,
     )
+    pre_start_validator: Callable[[], None] = field(repr=False, compare=False)
 
     def __post_init__(self) -> None:
         super(_ManagedProcessLaunchRequest, self).__post_init__()
@@ -122,6 +124,8 @@ class _ManagedProcessLaunchRequest(ProcessLaunchRequest):
             not isinstance(key, str) for key in self.authorization_metadata
         ):
             raise TypeError("managed process metadata must be a string-key mapping")
+        if not callable(self.pre_start_validator):
+            raise TypeError("managed process pre-start validator must be callable")
         object.__setattr__(self, "declared_effects", effects)
         object.__setattr__(
             self,
@@ -137,6 +141,7 @@ def _managed_process_launch_request(
     effective_environment: tuple[tuple[str, str], ...],
     declared_effects: tuple[ToolEffect, ...],
     authorization_metadata: Mapping[str, object],
+    pre_start_validator: Callable[[], None],
 ) -> ProcessLaunchRequest:
     """Build the private Approval envelope without widening the public request."""
 
@@ -146,6 +151,8 @@ def _managed_process_launch_request(
         effective_environment=effective_environment,
         declared_effects=declared_effects,
         authorization_metadata=authorization_metadata,
+        pre_start_validator=pre_start_validator,
+        stream_stderr=True,
     )
 
 
@@ -164,6 +171,7 @@ class ScopeBoundProcessLauncher:
         self._scope = scope
         self._host = host
         self._containment = containment
+        self._managed_owner_authority: object | None = None
         self._gateway = WorkspaceToolAuthorizationGateway(
             policy_evaluator=(
                 _MandatoryProcessApprovalPolicy(scope.policy_evaluator)
@@ -186,6 +194,48 @@ class ScopeBoundProcessLauncher:
         return self._scope.actor_id
 
     async def start(
+        self,
+        request: ProcessLaunchRequest,
+        *,
+        correlation_id: str,
+        signal: object | None = None,
+    ) -> ProcessHandle:
+        if isinstance(request, _ManagedProcessLaunchRequest):
+            raise TypeError("managed process requests require the owner-only start path")
+        return await self._start_authorized(
+            request,
+            correlation_id=correlation_id,
+            signal=signal,
+        )
+
+    async def _start_managed(
+        self,
+        request: ProcessLaunchRequest,
+        *,
+        correlation_id: str,
+        signal: object | None = None,
+    ) -> ProcessHandle:
+        if self._managed_owner_authority is not _PROCESS_OWNER_AUTHORITY:
+            raise ExecutionAuthorizationError(
+                "managed process start requires a Process-owner-minted launcher"
+            )
+        if type(request) is not _ManagedProcessLaunchRequest:
+            raise TypeError("managed process start requires an owner-minted request")
+        if not self._scope.require_approval:
+            raise ExecutionAuthorizationError(
+                "managed process start requires mandatory Approval"
+            )
+        if self.containment_requirement != "required":
+            raise ExecutionAuthorizationError(
+                "managed process start requires required containment"
+            )
+        return await self._start_authorized(
+            request,
+            correlation_id=correlation_id,
+            signal=signal,
+        )
+
+    async def _start_authorized(
         self,
         request: ProcessLaunchRequest,
         *,
@@ -237,14 +287,21 @@ class ScopeBoundProcessLauncher:
                     "process launch material changed before execution"
                 )
             _validate_process_cwd(request, action.execution_profile)
+            validator = _pre_start_validator(request)
 
             async def plan(
                 frozen_request: ProcessLaunchRequest,
             ) -> ProcessContainmentPlan:
-                return await self._containment.plan(
+                containment_plan = await self._containment.plan(
                     frozen_request,
                     execution_profile=action.execution_profile,
                 )
+                # Approval and containment planning may be arbitrarily slow.  Keep
+                # mutable host-runtime evidence fresh at the final owner boundary,
+                # immediately before ProcessHost hands the plan to its spawner.
+                if validator is not None:
+                    validator()
+                return containment_plan
 
             return await self._host.start(
                 request,
@@ -252,6 +309,25 @@ class ScopeBoundProcessLauncher:
             )
 
         return await self._gateway.execute(prepared, launch, context)
+
+
+def _bind_process_owner_launcher(
+    *,
+    scope: ProcessExecutionScope,
+    host: ProcessHost,
+    containment: HostedProcessContainmentPort,
+) -> ScopeBoundProcessLauncher:
+    """Mint the managed-start authority only at the Sandbox/Process owner seam."""
+
+    if type(host) is not ProcessHost:
+        raise TypeError("managed process owner requires the exact ProcessHost")
+    launcher = ScopeBoundProcessLauncher(
+        scope=scope,
+        host=host,
+        containment=containment,
+    )
+    launcher._managed_owner_authority = _PROCESS_OWNER_AUTHORITY
+    return launcher
 
 
 def _process_launch_fingerprint(request: ProcessLaunchRequest) -> str:
@@ -282,6 +358,14 @@ def _authorization_metadata(request: ProcessLaunchRequest) -> Mapping[str, objec
     if isinstance(request, _ManagedProcessLaunchRequest):
         return request.authorization_metadata
     return MappingProxyType({})
+
+
+def _pre_start_validator(
+    request: ProcessLaunchRequest,
+) -> Callable[[], None] | None:
+    if isinstance(request, _ManagedProcessLaunchRequest):
+        return request.pre_start_validator
+    return None
 
 
 @dataclass(frozen=True, slots=True)

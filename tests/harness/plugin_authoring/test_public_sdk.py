@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, replace
 from hashlib import sha256
 from pathlib import Path
 
@@ -9,7 +9,14 @@ import pytest
 import loushang.plugin as plugin_sdk
 from loushang.harness.capabilities.contracts import CapabilityRequirement
 from loushang.harness.resources.plugins._strict_json import StrictPluginJsonCodec
-from loushang.harness.resources.plugins.manifest import PluginManifestParser
+from loushang.harness.resources.plugins.declarations import (
+    PluginDeclarationDocument,
+    PluginDeclarationDocumentCodec,
+)
+from loushang.harness.resources.plugins.manifest import (
+    PluginManifestError,
+    PluginManifestParser,
+)
 from loushang.plugin import (
     CapabilityProviderSpec,
     PluginPackageSpec,
@@ -138,6 +145,148 @@ def test_validation_is_inert_and_engine_versions_are_explicit() -> None:
         "unsupported_plugin_declaration_ir_version",
         "unsupported_plugin_engine_api_version",
         "unsupported_plugin_manifest_version",
+    }
+    with pytest.raises(PluginManifestError) as caught:
+        PluginManifestParser().parse(_FIXTURES / "sdk_v0_ir1")
+    assert caught.value.code == "unsupported_plugin_manifest_version"
+
+
+def test_runtime_and_public_validator_share_fail_closed_engine_negotiation(
+    tmp_path: Path,
+) -> None:
+    skill = resource.skill(
+        contribution_id="review-skill",
+        locator="skills/review",
+    )
+    compiled = package(
+        id="org.example.review",
+        version="1",
+        contributions=(skill,),
+    )
+    manifest = StrictPluginJsonCodec.decode_bytes(compiled.read("plugin.json"))
+    assert isinstance(manifest, dict)
+    engine = manifest["engine"]
+    assert isinstance(engine, dict)
+    engine["requiredFeatures"] = ["future-engine-v9"]
+    (tmp_path / "plugin.json").write_bytes(StrictPluginJsonCodec.encode(manifest))
+    (tmp_path / "definition.py").write_text("def declare(plugin): pass\n")
+
+    result = validate_package(tmp_path)
+    with pytest.raises(PluginManifestError) as caught:
+        PluginManifestParser().parse(tmp_path)
+
+    assert {item.code for item in result.diagnostics} == {
+        "unsupported_plugin_engine_feature"
+    }
+    assert caught.value.code == "unsupported_plugin_engine_feature"
+
+    missing_root = tmp_path / "missing-feature"
+    missing_root.mkdir()
+    for artifact in compiled.artifacts:
+        target = missing_root / artifact.path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(artifact.content)
+    missing_manifest = StrictPluginJsonCodec.decode_bytes(compiled.read("plugin.json"))
+    assert isinstance(missing_manifest, dict)
+    missing_engine = missing_manifest["engine"]
+    assert isinstance(missing_engine, dict)
+    missing_engine["requiredFeatures"] = ["declaration-document-v1"]
+    (missing_root / "plugin.json").write_bytes(
+        StrictPluginJsonCodec.encode(missing_manifest)
+    )
+    missing_result = validate_package(missing_root)
+    with pytest.raises(PluginManifestError) as missing_caught:
+        PluginManifestParser().parse(missing_root)
+    assert {item.code for item in missing_result.diagnostics} == {
+        "plugin_engine_feature_declaration_incomplete"
+    }
+    assert (
+        missing_caught.value.code
+        == "plugin_engine_feature_declaration_incomplete"
+    )
+
+
+def test_validation_rejects_known_but_unused_engine_features(tmp_path: Path) -> None:
+    skill = resource.skill(
+        contribution_id="review-skill",
+        locator="skills/review",
+    )
+    compiled = package(
+        id="org.example.review",
+        version="1",
+        contributions=(skill,),
+    )
+    for artifact in compiled.artifacts:
+        target = tmp_path / artifact.path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(artifact.content)
+    skill_root = tmp_path / "skills" / "review"
+    skill_root.mkdir(parents=True)
+    (skill_root / "SKILL.md").write_text("# Review\n")
+    manifest_path = tmp_path / "plugin.json"
+    manifest = StrictPluginJsonCodec.decode_bytes(manifest_path.read_bytes())
+    assert isinstance(manifest, dict)
+    engine = manifest["engine"]
+    assert isinstance(engine, dict)
+    features = engine["requiredFeatures"]
+    assert isinstance(features, list)
+    engine["requiredFeatures"] = sorted([*features, "catalog-consumer-v1"])
+    manifest_path.write_bytes(StrictPluginJsonCodec.encode(manifest))
+
+    result = validate_package(tmp_path)
+
+    assert {item.code for item in result.diagnostics} == {
+        "plugin_engine_feature_declaration_extraneous"
+    }
+
+
+def test_validation_rejects_oversized_manifest_before_json_decode(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "plugin.json").write_bytes(b"x" * (1_048_576 + 1))
+
+    result = validate_package(tmp_path)
+    with pytest.raises(PluginManifestError) as caught:
+        PluginManifestParser().parse(tmp_path)
+
+    assert {item.code for item in result.diagnostics} == {
+        "plugin_manifest_too_large"
+    }
+    assert caught.value.code == "contained_file_too_large"
+
+
+def test_validation_rejects_declarations_not_reserved_by_manifest(
+    tmp_path: Path,
+) -> None:
+    skill = resource.skill(
+        contribution_id="review-skill",
+        locator="skills/review",
+    )
+    compiled = package(
+        id="org.example.review",
+        version="1",
+        contributions=(skill,),
+    )
+    for artifact in compiled.artifacts:
+        target = tmp_path / artifact.path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(artifact.content)
+    skill_root = tmp_path / "skills" / "review"
+    skill_root.mkdir(parents=True)
+    (skill_root / "SKILL.md").write_text("# Review\n")
+    document_path = tmp_path / "declarations" / "resources.json"
+    document = PluginDeclarationDocumentCodec.decode_bytes(document_path.read_bytes())
+    [declaration] = document.declarations
+    extra = replace(declaration, contribution_id="zzz-extra-skill")
+    document_path.write_bytes(
+        PluginDeclarationDocumentCodec.encode_bytes(
+            PluginDeclarationDocument(declarations=(declaration, extra))
+        )
+    )
+    result = validate_package(tmp_path)
+
+    assert "plugin_declaration_reservation_mismatch" in {
+        item.code for item in result.diagnostics
     }
 
 

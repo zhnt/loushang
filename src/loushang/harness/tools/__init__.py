@@ -1,7 +1,5 @@
 """Product-neutral tool authoring and hosted-execution contracts."""
 
-from loushang.harness.resources.skill_actions import SkillActionCatalogSelection
-
 from .agent_delegate import (
     AGENT_DELEGATE_TOOL_NAME,
     AGENT_DELEGATE_TOOL_PACK,
@@ -29,8 +27,6 @@ from .skill_actions import (
     ManagedSkillActionBinding,
     ManagedSkillActionError,
     ManagedSkillActionResult,
-    NativeSkillActionSource,
-    PackageSkillActionSource,
     SkillRuntimeBinding,
     execute_managed_skill_action,
 )
@@ -46,11 +42,9 @@ __all__ = [
     "ManagedSkillActionBinding",
     "ManagedSkillActionError",
     "ManagedSkillActionResult",
-    "NativeSkillActionSource",
     "NetworkActionAdapter",
     "ProcessActionAdapter",
     "PublicationActionAdapter",
-    "PackageSkillActionSource",
     "PreparedAgentInvocation",
     "ToolContext",
     "ToolContextProvider",
@@ -58,7 +52,6 @@ __all__ = [
     "ToolEventSink",
     "ToolExecutionHost",
     "ToolRegistry",
-    "SkillActionCatalogSelection",
     "SkillRuntimeBinding",
     "authorized_tool",
     "direct_tool",

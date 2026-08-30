@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
-from typing import Final
 
 from loushang.harness.plugin_authoring.resource_item import (
     ResourceItemDeclarationPayload,
@@ -15,46 +14,33 @@ from loushang.harness.resources.plugins._strict_json import (
     StrictPluginJsonCodec,
 )
 from loushang.harness.resources.plugins.declarations import (
-    PLUGIN_DECLARATION_IR_VERSION,
+    MAX_PLUGIN_DECLARATION_DOCUMENT_BYTES,
     PluginDeclarationCodecError,
     PluginDeclarationDocumentCodec,
+)
+from loushang.harness.resources.plugins.engine import (
+    PLUGIN_ENGINE_API_VERSION,
+    PLUGIN_ENGINE_FEATURES,
+    PLUGIN_MANIFEST_VERSION,
+    inspect_plugin_engine_contract,
+    required_plugin_engine_features,
 )
 from loushang.harness.resources.plugins.manifest import (
     PluginManifestError,
     PluginManifestParser,
 )
+from loushang.harness.resources.plugins.safe_files import (
+    ContainedFileCaptureError,
+    capture_contained_regular_file,
+)
 from loushang.harness.resources.skill_actions import (
+    MAX_SKILL_ACTION_DOCUMENT_BYTES,
+    MAX_SKILL_ACTION_SCRIPT_BYTES,
     SkillActionCodecError,
     SkillActionDocumentCodec,
 )
 
-PLUGIN_MANIFEST_VERSION: Final = 1
-PLUGIN_ENGINE_API_VERSION: Final = 1
-PLUGIN_ENGINE_FEATURES: Final = frozenset(
-    {
-        "capability-provider-v2",
-        "catalog-consumer-v1",
-        "declaration-document-v1",
-        "in-process-definition-v1",
-        "managed-skill-action-v1",
-        "resource-item-v1",
-        "symbol-reference-v2",
-    }
-)
 _MAX_PUBLIC_MANIFEST_BYTES = 1_048_576
-_MANIFEST_FIELDS = {
-    "contributionIndex",
-    "engine",
-    "manifestVersion",
-    "name",
-    "packageRoot",
-    "version",
-}
-_ENGINE_FIELDS = {
-    "apiVersion",
-    "declarationIrVersion",
-    "requiredFeatures",
-}
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,40 +111,25 @@ def validate_package(path: str | Path) -> PluginValidationResult:
                 ),
             ),
         )
-    if manifest_path.is_symlink() or not manifest_path.is_file():
-        return _result(
-            root,
-            manifest_path,
-            diagnostics=(
-                _diagnostic(
-                    "plugin_manifest_missing_or_link",
-                    "Stable Plugin packages require a regular plugin.json",
-                    manifest_path,
-                ),
-            ),
-        )
     try:
-        encoded = manifest_path.read_bytes()
-    except OSError:
-        return _result(
+        manifest_capture = capture_contained_regular_file(
             root,
-            manifest_path,
-            diagnostics=(
-                _diagnostic(
-                    "plugin_manifest_unreadable",
-                    "Plugin manifest could not be read",
-                    manifest_path,
-                ),
-            ),
+            "plugin.json",
+            max_bytes=_MAX_PUBLIC_MANIFEST_BYTES,
         )
-    if len(encoded) > _MAX_PUBLIC_MANIFEST_BYTES:
+        encoded = manifest_capture.body
+    except ContainedFileCaptureError as exc:
         return _result(
             root,
             manifest_path,
             diagnostics=(
                 _diagnostic(
-                    "plugin_manifest_too_large",
-                    "Plugin manifest exceeds the public SDK byte limit",
+                    (
+                        "plugin_manifest_too_large"
+                        if exc.code == "contained_file_too_large"
+                        else "plugin_manifest_missing_or_link"
+                    ),
+                    "Stable Plugin packages require a bounded regular plugin.json",
                     manifest_path,
                 ),
             ),
@@ -188,44 +159,41 @@ def validate_package(path: str | Path) -> PluginValidationResult:
     plugin_version = (
         payload.get("version") if isinstance(payload.get("version"), str) else None
     )
-    manifest_fields = set(payload)
-    if manifest_fields != _MANIFEST_FIELDS:
-        diagnostics.append(
-            _diagnostic(
-                "plugin_manifest_exact_field_mismatch",
-                "Stable Plugin manifest fields do not match version 1",
-                manifest_path,
-            )
-        )
-    manifest_version = payload.get("manifestVersion")
-    if manifest_version != PLUGIN_MANIFEST_VERSION or isinstance(
-        manifest_version, bool
-    ):
-        diagnostics.append(
-            _diagnostic(
-                "unsupported_plugin_manifest_version",
-                "Unsupported Plugin manifest version",
-                manifest_path,
-            )
-        )
     engine = payload.get("engine")
-    if not isinstance(engine, dict):
-        diagnostics.append(
-            _diagnostic(
-                "plugin_engine_contract_missing",
-                "Stable Plugin manifest requires an engine contract",
-                manifest_path,
-            )
+    if isinstance(engine, dict):
+        raw_api = engine.get("apiVersion")
+        raw_declaration = engine.get("declarationIrVersion")
+        raw_features = engine.get("requiredFeatures")
+        engine_version = raw_api if type(raw_api) is int else None
+        declaration_version = (
+            raw_declaration if type(raw_declaration) is int else None
         )
-    else:
-        engine_version, declaration_version, features = _validate_engine(
-            engine,
-            path=manifest_path,
+        if isinstance(raw_features, list) and all(
+            isinstance(item, str) for item in raw_features
+        ):
+            features = tuple(raw_features)
+    _contract, engine_diagnostics = inspect_plugin_engine_contract(payload)
+    diagnostics.extend(
+        _diagnostic(item.code, item.message, manifest_path)
+        for item in engine_diagnostics
+    )
+    if engine_diagnostics:
+        return _result(
+            root,
+            manifest_path,
+            plugin_id=plugin_id,
+            plugin_version=plugin_version,
+            engine_version=engine_version,
+            declaration_version=declaration_version,
+            features=features,
             diagnostics=diagnostics,
         )
 
     try:
-        package = PluginManifestParser().parse(root)
+        package = PluginManifestParser().parse(
+            root,
+            _manifest_capture=manifest_capture,
+        )
     except (FileNotFoundError, PluginManifestError) as exc:
         diagnostics.append(
             _diagnostic(
@@ -245,32 +213,19 @@ def validate_package(path: str | Path) -> PluginValidationResult:
             diagnostics=diagnostics,
         )
 
-    missing_features = tuple(
-        sorted(
-            _required_index_features(package.contribution_index.items) - set(features)
-        )
-    )
-    if missing_features:
-        diagnostics.append(
-            _diagnostic(
-                "plugin_engine_feature_declaration_incomplete",
-                "Plugin engine contract omits required features: "
-                + ", ".join(missing_features),
-                manifest_path,
-            )
-        )
-
     decoded_documents: dict[Path, object] = {}
     action_documents_found = False
     for reservation in package.contribution_index.items:
         source = reservation.declaration_source
         if source.kind == "in_process":
             source_path = package.package_root / source.relative_path
-            if (
-                source_path.is_symlink()
-                or not source_path.is_file()
-                or not _is_within(source_path, package.package_root)
-            ):
+            try:
+                _capture_package_file(
+                    package.package_root,
+                    source_path,
+                    max_bytes=MAX_PLUGIN_DECLARATION_DOCUMENT_BYTES,
+                )
+            except ContainedFileCaptureError:
                 diagnostics.append(
                     _diagnostic(
                         "plugin_definition_source_unreadable",
@@ -284,16 +239,14 @@ def validate_package(path: str | Path) -> PluginValidationResult:
         assert source.locator is not None
         document_path = package.package_root / source.locator
         try:
-            if (
-                document_path.is_symlink()
-                or not document_path.is_file()
-                or not _is_within(document_path, package.package_root)
-            ):
-                raise OSError("declaration document is not a regular file")
             document = decoded_documents.get(document_path)
             if document is None:
                 document = PluginDeclarationDocumentCodec.decode_bytes(
-                    document_path.read_bytes()
+                    _capture_package_file(
+                        package.package_root,
+                        document_path,
+                        max_bytes=MAX_PLUGIN_DECLARATION_DOCUMENT_BYTES,
+                    )
                 )
                 decoded_documents[document_path] = document
             assert hasattr(document, "declarations")
@@ -356,7 +309,7 @@ def validate_package(path: str | Path) -> PluginValidationResult:
                     owner=reservation.owner,
                 )
             )
-        except OSError:
+        except (ContainedFileCaptureError, OSError):
             diagnostics.append(
                 _diagnostic(
                     "plugin_declaration_document_unreadable",
@@ -367,11 +320,52 @@ def validate_package(path: str | Path) -> PluginValidationResult:
                 )
             )
 
+    reservations_by_document: dict[Path, set[tuple[str, str]]] = {}
+    for reservation in package.contribution_index.items:
+        source = reservation.declaration_source
+        if source.kind != "document":
+            continue
+        assert source.locator is not None
+        reservations_by_document.setdefault(
+            package.package_root / source.locator,
+            set(),
+        ).add((package.manifest.name, reservation.contribution_id))
+    for document_path, document in decoded_documents.items():
+        assert hasattr(document, "declarations")
+        actual = tuple(
+            (declaration.plugin_id, declaration.contribution_id)
+            for declaration in document.declarations
+        )
+        expected = reservations_by_document.get(document_path, set())
+        if len(actual) != len(set(actual)) or set(actual) != expected:
+            diagnostics.append(
+                _diagnostic(
+                    "plugin_declaration_reservation_mismatch",
+                    "Declaration document must exactly fulfill its reservations",
+                    document_path,
+                )
+            )
+
     if "managed-skill-action-v1" in features and not action_documents_found:
         diagnostics.append(
             _diagnostic(
                 "plugin_skill_action_feature_unused",
                 "Plugin declares managed Skill actions but has no action document",
+                manifest_path,
+            )
+        )
+    expected_features = set(
+        required_plugin_engine_features(package.contribution_index)
+    )
+    if action_documents_found:
+        expected_features.add("managed-skill-action-v1")
+    extra_features = tuple(sorted(set(features) - expected_features))
+    if extra_features:
+        diagnostics.append(
+            _diagnostic(
+                "plugin_engine_feature_declaration_extraneous",
+                "Plugin engine contract declares unused features: "
+                + ", ".join(extra_features),
                 manifest_path,
             )
         )
@@ -385,90 +379,6 @@ def validate_package(path: str | Path) -> PluginValidationResult:
         features=features,
         diagnostics=diagnostics,
     )
-
-
-def _validate_engine(
-    engine: dict[object, object],
-    *,
-    path: Path,
-    diagnostics: list[PluginValidationDiagnostic],
-) -> tuple[int | None, int | None, tuple[str, ...]]:
-    if set(engine) != _ENGINE_FIELDS:
-        diagnostics.append(
-            _diagnostic(
-                "plugin_engine_exact_field_mismatch",
-                "Plugin engine contract fields do not match version 1",
-                path,
-            )
-        )
-    api_version = engine.get("apiVersion")
-    declaration_version = engine.get("declarationIrVersion")
-    api_result = api_version if type(api_version) is int else None
-    declaration_result = (
-        declaration_version if type(declaration_version) is int else None
-    )
-    if api_version != PLUGIN_ENGINE_API_VERSION or isinstance(api_version, bool):
-        diagnostics.append(
-            _diagnostic(
-                "unsupported_plugin_engine_api_version",
-                "Unsupported Plugin engine API version",
-                path,
-            )
-        )
-    if declaration_version != PLUGIN_DECLARATION_IR_VERSION or isinstance(
-        declaration_version, bool
-    ):
-        diagnostics.append(
-            _diagnostic(
-                "unsupported_plugin_declaration_ir_version",
-                "Unsupported Plugin declaration IR version",
-                path,
-            )
-        )
-    required = engine.get("requiredFeatures")
-    if (
-        not isinstance(required, list)
-        or any(not isinstance(item, str) for item in required)
-        or required != sorted(set(required))
-    ):
-        diagnostics.append(
-            _diagnostic(
-                "plugin_engine_features_not_canonical",
-                "Plugin required features must be sorted unique strings",
-                path,
-            )
-        )
-        return api_result, declaration_result, ()
-    features = tuple(required)
-    unsupported = tuple(item for item in features if item not in PLUGIN_ENGINE_FEATURES)
-    if unsupported:
-        diagnostics.append(
-            _diagnostic(
-                "unsupported_plugin_engine_feature",
-                "Plugin requires unsupported engine features: "
-                + ", ".join(unsupported),
-                path,
-            )
-        )
-    return api_result, declaration_result, features
-
-
-def _required_index_features(items: tuple[object, ...]) -> set[str]:
-    features: set[str] = set()
-    for item in items:
-        kind = getattr(item, "kind", None)
-        source = getattr(item, "declaration_source", None)
-        if kind == "capability_provider":
-            features.update({"capability-provider-v2", "symbol-reference-v2"})
-        elif kind in {"command_pack", "tool_pack"}:
-            features.add("catalog-consumer-v1")
-        elif kind == "resource_item":
-            features.add("resource-item-v1")
-        if getattr(source, "kind", None) == "document":
-            features.add("declaration-document-v1")
-        elif getattr(source, "kind", None) == "in_process":
-            features.add("in-process-definition-v1")
-    return features
 
 
 def _validate_resource_locator(
@@ -515,11 +425,13 @@ def _validate_resource_locator(
         return False
     if resource.resource_kind == "skill":
         skill_file = target if resource.locator_kind == "file" else target / "SKILL.md"
-        if (
-            skill_file.is_symlink()
-            or not skill_file.is_file()
-            or not _is_within(skill_file, package_root)
-        ):
+        try:
+            _capture_package_file(
+                package_root,
+                skill_file,
+                max_bytes=MAX_SKILL_ACTION_SCRIPT_BYTES,
+            )
+        except ContainedFileCaptureError:
             diagnostics.append(
                 _diagnostic(
                     "plugin_skill_document_unreadable",
@@ -567,13 +479,13 @@ def _validate_skill_actions(
             )
         )
     try:
-        if (
-            action_path.is_symlink()
-            or not action_path.is_file()
-            or not _is_within(action_path, package_root)
-        ):
-            raise OSError("action document is not a contained regular file")
-        document = SkillActionDocumentCodec.decode_bytes(action_path.read_bytes())
+        document = SkillActionDocumentCodec.decode_bytes(
+            _capture_package_file(
+                package_root,
+                action_path,
+                max_bytes=MAX_SKILL_ACTION_DOCUMENT_BYTES,
+            )
+        )
     except SkillActionCodecError as exc:
         diagnostics.append(
             _diagnostic(
@@ -585,7 +497,7 @@ def _validate_skill_actions(
             )
         )
         return
-    except OSError:
+    except (ContainedFileCaptureError, OSError):
         diagnostics.append(
             _diagnostic(
                 "plugin_skill_action_document_unreadable",
@@ -599,15 +511,14 @@ def _validate_skill_actions(
     for action in document.actions:
         script_path = skill_root / action.script
         try:
-            if (
-                script_path.is_symlink()
-                or not script_path.is_file()
-                or not _is_within(script_path, skill_root)
-                or not _is_within(script_path, package_root)
-            ):
-                raise OSError("script is not a contained regular file")
-            digest = sha256(script_path.read_bytes()).hexdigest()
-        except OSError:
+            script = _capture_package_file(
+                package_root,
+                script_path,
+                max_bytes=MAX_SKILL_ACTION_SCRIPT_BYTES,
+            )
+            script_path.relative_to(skill_root)
+            digest = sha256(script).hexdigest()
+        except (ContainedFileCaptureError, OSError, ValueError):
             diagnostics.append(
                 _diagnostic(
                     "plugin_skill_action_script_unreadable",
@@ -637,6 +548,22 @@ def _is_within(path: Path, root: Path) -> bool:
     except (OSError, RuntimeError, ValueError):
         return False
     return True
+
+
+def _capture_package_file(root: Path, path: Path, *, max_bytes: int) -> bytes:
+    try:
+        relative = path.relative_to(root)
+    except ValueError as exc:
+        raise ContainedFileCaptureError(
+            "Package file is outside its root",
+            code="contained_file_path_escape",
+            path=path,
+        ) from exc
+    return capture_contained_regular_file(
+        root,
+        relative.as_posix(),
+        max_bytes=max_bytes,
+    ).body
 
 
 def _diagnostic(

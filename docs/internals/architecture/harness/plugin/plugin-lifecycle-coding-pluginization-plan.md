@@ -1415,8 +1415,10 @@ Scope:
 - compile public builders to the same canonical manifest and declaration IR;
   validation/inspection remain inert and execution conformance is explicit;
   and
-- expose a small Product build facade that distinguishes embedded contributions
-  without Plugin identity from independently selectable built-in Plugins.
+- defer the small Product build facade that distinguishes embedded
+  contributions without Plugin identity from independently selectable built-in
+  Plugins to an explicit PLC9/follow-up delivery; it is not part of issue
+  `#508` and PLC8 must not claim it implicitly.
 
 Exit gate:
 

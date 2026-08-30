@@ -36,6 +36,7 @@ graph TD
     PKG_HARNESSWORK["loushang.harnesswork"]
     PKG_METHOD["loushang.method"]
     PKG_ONTOLOGY["loushang.ontology"]
+    PKG_PLUGIN["loushang.plugin"]
     PKG_RESOURCE["loushang.resource"]
     PKG_TUI["loushang.tui"]
     PKG_WORK["loushang.work"]
@@ -54,6 +55,7 @@ graph TD
     PKG_CODING --> PKG_HARNESSTUI
     PKG_CODING --> PKG_HARNESSWORK
     PKG_CODING --> PKG_METHOD
+    PKG_CODING --> PKG_PLUGIN
     PKG_CODING --> PKG_TUI
     PKG_HARNESS --> PKG_AGENT
     PKG_HARNESS --> PKG_AI
@@ -68,6 +70,7 @@ graph TD
     PKG_HARNESSWORK --> PKG_HARNESS
     PKG_METHOD --> PKG_HARNESS
     PKG_ONTOLOGY --> PKG_FOUNDATION
+    PKG_PLUGIN --> PKG_HARNESS
     PKG_RESOURCE --> PKG_HARNESS
     PKG_TUI --> PKG_FOUNDATION
     PKG_WORK --> PKG_HARNESSWORK
@@ -80,13 +83,14 @@ graph TD
 | `loushang.agent` | `loushang.ai`, `loushang.foundation` |
 | `loushang.ai` | `loushang.foundation` |
 | `loushang.channel` | `loushang.foundation`, `loushang.harness`, `loushang.harnesswork` |
-| `loushang.coding` | `loushang.agent`, `loushang.ai`, `loushang.channel`, `loushang.foundation`, `loushang.harness`, `loushang.harnesstui`, `loushang.harnesswork`, `loushang.method`, `loushang.tui` |
+| `loushang.coding` | `loushang.agent`, `loushang.ai`, `loushang.channel`, `loushang.foundation`, `loushang.harness`, `loushang.harnesstui`, `loushang.harnesswork`, `loushang.method`, `loushang.plugin`, `loushang.tui` |
 | `loushang.foundation` | None |
 | `loushang.harness` | `loushang.agent`, `loushang.ai`, `loushang.foundation` |
 | `loushang.harnesstui` | `loushang.agent`, `loushang.foundation`, `loushang.harness`, `loushang.tui` |
 | `loushang.harnesswork` | `loushang.agent`, `loushang.ai`, `loushang.foundation`, `loushang.harness` |
 | `loushang.method` | `loushang.harness` |
 | `loushang.ontology` | `loushang.foundation` |
+| `loushang.plugin` | `loushang.harness` |
 | `loushang.resource` | `loushang.harness` |
 | `loushang.tui` | `loushang.foundation` |
 | `loushang.work` | `loushang.harnesswork` |
@@ -96,6 +100,7 @@ graph TD
 | Command | Implementation |
 | --- | --- |
 | `loushang` | `loushang.coding.cli.__main__:main` |
+| `loushang-plugin` | `loushang.plugin.__main__:main` |
 | `loushang-tui` | `loushang.coding.ui.cli:main` |
 
 ## Interpretation Rules

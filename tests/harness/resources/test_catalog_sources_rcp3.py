@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 from pathlib import Path
 
@@ -44,12 +45,22 @@ from loushang.harness.resources._catalog_records import (
     NativeHostOrigin,
     VerifiedPluginResourceOrigin,
 )
+from loushang.harness.resources._skill_catalog_consumer import (
+    SkillCatalogConsumer,
+    build_effective_skill_catalog_projection,
+)
 from loushang.harness.resources.plugins.manifest import PluginManifestParser
 from loushang.harness.resources.plugins.revisions import (
     PluginRevisionStore,
     VerifiedRevisionHandle,
 )
 from loushang.harness.resources.plugins.selection import PluginInstanceRevisionRef
+from loushang.harness.resources.skill_actions import (
+    SkillActionDocument,
+    SkillActionDocumentCodec,
+)
+from loushang.harness.tools.skill_actions import ManagedSkillActionBinding
+from loushang.plugin import skill_action
 
 
 def _skill_body(name: str, description: str, body: str) -> bytes:
@@ -63,6 +74,7 @@ def _admitted_package_skill(
     public_name: str,
     description: str,
     source_root_order: int = 0,
+    action_script: bytes | None = None,
 ) -> tuple[AdmittedPackageResource, bytes, VerifiedRevisionHandle]:
     body = _skill_body(public_name, description, f"{description} body")
     return _admitted_package_file(
@@ -70,11 +82,17 @@ def _admitted_package_skill(
         plugin_id=plugin_id,
         contribution_id=f"{plugin_id}.skill",
         resource_kind="skill",
-        locator=f"skills/{public_name}/SKILL.md",
+        locator=(
+            f"skills/{public_name}"
+            if action_script is not None
+            else f"skills/{public_name}/SKILL.md"
+        ),
         body=body,
         media_type="text/markdown",
         schema_id="loushang.resource.skill",
         source_root_order=source_root_order,
+        locator_kind="directory" if action_script is not None else "file",
+        action_script=action_script,
     )
 
 
@@ -89,11 +107,35 @@ def _admitted_package_file(
     media_type: str,
     schema_id: str,
     source_root_order: int = 0,
+    locator_kind: str = "file",
+    action_script: bytes | None = None,
 ) -> tuple[AdmittedPackageResource, bytes, VerifiedRevisionHandle]:
     source = tmp_path / f"source-{plugin_id}"
-    item = source / locator
+    item = (
+        source / locator / "SKILL.md"
+        if locator_kind == "directory"
+        else source / locator
+    )
     item.parent.mkdir(parents=True)
     item.write_bytes(body)
+    if action_script is not None:
+        if locator_kind != "directory":
+            raise ValueError("Package action fixture requires a directory Skill")
+        skill_root = source / locator
+        script_path = skill_root / "scripts" / "review.py"
+        script_path.parent.mkdir()
+        script_path.write_bytes(action_script)
+        declaration = skill_action(
+            id="review",
+            script="scripts/review.py",
+            script_digest=hashlib.sha256(action_script).hexdigest(),
+            runtime="python",
+        )
+        (skill_root / "actions.json").write_bytes(
+            SkillActionDocumentCodec.encode_bytes(
+                SkillActionDocument(actions=(declaration,))
+            )
+        )
     (source / "plugin.json").write_text(
         json.dumps({"name": plugin_id, "version": "1"}),
         encoding="utf-8",
@@ -111,7 +153,7 @@ def _admitted_package_file(
     contribution = ResourceContributionSpec(
         resource_kind=resource_kind,
         locator=locator,
-        locator_kind="file",
+        locator_kind=locator_kind,  # type: ignore[arg-type]
         media_type=media_type,
         schema_id=schema_id,
         schema_version=1,
@@ -395,6 +437,75 @@ async def _package_and_embedded_lazy_reads_pin_exact_sources(tmp_path: Path) -> 
 
 def test_package_and_embedded_lazy_reads_pin_exact_sources(tmp_path: Path) -> None:
     asyncio.run(_package_and_embedded_lazy_reads_pin_exact_sources(tmp_path))
+
+
+async def _package_skill_actions_are_catalog_captured(tmp_path: Path) -> None:
+    script = b"print('published action')\n"
+    resource_input, _body, revision = _admitted_package_skill(
+        tmp_path,
+        plugin_id="package-actions",
+        public_name="package-review",
+        description="Package actions",
+        action_script=script,
+    )
+    shadow = await run_first_party_resource_catalog_shadow(
+        product_id="coding",
+        scope_id="workspace:test",
+        runtime_id="resource-shadow:package-actions",
+        product_policy_revision="coding-resource-shadow-v1",
+        root_handles=(),
+        package_resources=(resource_input,),
+        issued_at=10,
+        expires_at=100,
+        now=20,
+        projection_cwd=tmp_path,
+    )
+    assert shadow.catalog_projection is not None
+    skill_projection = build_effective_skill_catalog_projection(
+        snapshot=shadow.catalog_snapshot,
+        projection=shadow.catalog_projection,
+    )
+
+    class _ShadowCatalog:
+        def __init__(self) -> None:
+            self.snapshot = shadow.catalog_snapshot
+            self.skill_projection = skill_projection
+
+        def load_handle(self, identity):
+            return shadow.load_handle(identity)
+
+        async def load(self, handle):
+            return await shadow.load(handle)
+
+    consumer = SkillCatalogConsumer(_ShadowCatalog())
+    [summary] = consumer.list_effective_skills()
+    [catalog_action] = consumer.capture_managed_actions(summary)
+    binding = ManagedSkillActionBinding.bind(catalog_action)
+
+    mutable_script = (
+        tmp_path
+        / "source-package-actions"
+        / "skills"
+        / "package-review"
+        / "scripts"
+        / "review.py"
+    )
+    mutable_script.write_bytes(b"print('mutable source changed')\n")
+
+    assert binding.read_verified_script() == script
+    assert binding.source_kind == "package"
+    assert binding.source_revision == revision.content_digest
+    assert binding.catalog_source_revision == revision.content_digest
+    assert binding.candidate_fingerprint == summary.candidate_fingerprint
+
+    assert await shadow.dispose() == ()
+    assert resource_input.revision_handle.closed is True
+    assert revision.closed is False
+    revision.close()
+
+
+def test_package_skill_actions_are_catalog_captured(tmp_path: Path) -> None:
+    asyncio.run(_package_skill_actions_are_catalog_captured(tmp_path))
 
 
 async def _package_theme_projects_from_verified_body(tmp_path: Path) -> None:

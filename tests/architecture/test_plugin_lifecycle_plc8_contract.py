@@ -45,7 +45,7 @@ def test_plc8_contract_and_author_guide_are_canonical_entries() -> None:
 
     assert "manifestVersion` | `1" in contract
     assert "engine.declarationIrVersion` | `2" in contract
-    assert "SkillActionCatalogSelection" in contract
+    assert "CatalogManagedSkillAction" in contract
     assert "public four-field `ProcessLaunchRequest` remains unchanged" in contract
     assert "loushang-plugin validate" in guide
     assert "--approve-execution" in guide
@@ -94,17 +94,17 @@ def test_managed_action_consumes_catalog_facts_and_existing_host_authorities() -
     process_source = PROCESS_RUNTIME.read_text(encoding="utf-8")
     consumer_source = SKILL_CONSUMER.read_text(encoding="utf-8")
 
-    assert "SkillActionCatalogSelection" in action_source
+    assert "CatalogManagedSkillAction" in action_source
     assert "SkillCatalogConsumer" not in action_source
-    assert "selection.source_revision != actual_revision" in action_source
     assert "catalogSnapshotFingerprint" in action_source
-    assert "approval_required" in action_source
-    assert 'containment_requirement", None) != "required"' in action_source
+    assert "type(launcher) is not ScopeBoundProcessLauncher" in action_source
     assert "subprocess" not in action_source
     assert "_managed_process_launch_request" in action_source
+    assert "_start_managed" in action_source
     assert "_ManagedProcessLaunchRequest" in process_source
-    assert "managed_action_selection" in consumer_source
-    assert "SkillActionCatalogSelection(" in consumer_source
+    assert "pre_start_validator" in process_source
+    assert "capture_managed_actions" in consumer_source
+    assert "_mint_catalog_managed_skill_action" in consumer_source
 
 
 def test_public_process_request_contract_is_not_widened_for_skill_actions() -> None:

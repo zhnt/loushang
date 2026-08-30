@@ -14,6 +14,14 @@ from loushang.plugin import (
 )
 
 
+class EchoProvider:
+    def echo(self, value: str) -> str:
+        return value
+
+    async def close(self) -> None:
+        return None
+
+
 @plugin_definition
 def declare(plugin: PluginDefinitionBuilder) -> None:
     plugin.add(
@@ -28,6 +36,14 @@ def declare(plugin: PluginDefinitionBuilder) -> None:
             disposer="definition.py:dispose_provider",
         )
     )
+
+
+def create_provider():
+    return EchoProvider()
+
+
+async def dispose_provider(provider) -> None:
+    await provider.close()
 ```
 
 The Definition receives only the narrow builder. It does not receive a Graph,
@@ -37,6 +53,7 @@ registry, Product context, Approval store, Sandbox, secrets, or live owner.
 
 ```python
 from hashlib import sha256
+from pathlib import Path
 
 from loushang.plugin import package, resource, skill_action, skill_action_effect
 
@@ -65,13 +82,24 @@ generated = package(
     version="1.0.0",
     contributions=(review,),
 )
+
+package_root = Path("my-plugin")
+for artifact in generated.artifacts:
+    target = package_root / artifact.path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(artifact.content)
+
+skill_root = package_root / "skills" / "review"
+skill_root.mkdir(parents=True, exist_ok=True)
+(skill_root / "SKILL.md").write_text("# Review\n", encoding="utf-8")
+(skill_root / "scripts").mkdir()
+(skill_root / "scripts" / "review.py").write_bytes(script)
 ```
 
-Write `generated.artifacts` under the package root, then add
-`skills/review/SKILL.md` and the exact script bytes at
-`skills/review/scripts/review.py`. `SKILL.md` remains the Resource identity;
-the generated `actions.json` is only its managed-action sidecar. Environment
-literals are non-secret. Execution always requires Host Approval and required
+`SKILL.md` remains the Resource identity; the generated `actions.json` is only
+its managed-action sidecar. Environment literals have an author-enforced
+non-secret precondition—validation does not classify arbitrary strings or
+resolve secrets. Execution always requires Host Approval and required
 containment.
 
 ## Validate Before Execution
