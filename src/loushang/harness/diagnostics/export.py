@@ -35,6 +35,8 @@ from loushang.harness.artifacts import (
 from loushang.harness.diagnostics.types import DiagnosticRecord
 from loushang.harness.environment import PlatformPaths, resolve_platform_paths
 
+_FileIdentity = tuple[int, int, int, int, int]
+
 
 def _safe_relative_directory(value: str) -> bool:
     path = PurePosixPath(value)
@@ -248,23 +250,35 @@ def export_diagnostics_archive(
     )
     descriptor = _open_new_private_file(temporary)
     metadata = os.fstat(descriptor)
-    temporary_identity = (metadata.st_dev, metadata.st_ino)
+    temporary_identity = _file_identity(metadata)
     try:
         with os.fdopen(descriptor, "w+b") as handle:
             descriptor = -1
-            with zipfile.ZipFile(
-                handle,
-                "w",
-                compression=zipfile.ZIP_DEFLATED,
-            ) as archive:
-                archive.writestr("README.txt", redact_text(readme))
-                archive.writestr("manifest.json", _json_text(redacted_manifest))
-                archive.writestr("diagnostics.json", _json_text(redacted_diagnostics))
-                for artifact in artifacts:
-                    _write_text_artifact(archive, artifact)
-            handle.flush()
-            os.fsync(handle.fileno())
-        _publish_file_exclusive(
+            try:
+                with zipfile.ZipFile(
+                    handle,
+                    "w",
+                    compression=zipfile.ZIP_DEFLATED,
+                ) as archive:
+                    archive.writestr("README.txt", redact_text(readme))
+                    archive.writestr(
+                        "manifest.json",
+                        _json_text(redacted_manifest),
+                    )
+                    archive.writestr(
+                        "diagnostics.json",
+                        _json_text(redacted_diagnostics),
+                    )
+                    for artifact in artifacts:
+                        _write_text_artifact(archive, artifact)
+                handle.flush()
+                os.fsync(handle.fileno())
+            finally:
+                # Capture the last state reached through our still-open handle.
+                # Cleanup and publication must both reject a replacement path,
+                # even when its inode number was immediately reused.
+                temporary_identity = _file_identity(os.fstat(handle.fileno()))
+        temporary_identity = _publish_file_exclusive(
             temporary,
             resolved_output,
             identity=temporary_identity,
@@ -602,35 +616,57 @@ def _publish_file_exclusive(
     temporary: Path,
     destination: Path,
     *,
-    identity: tuple[int, int],
-) -> None:
+    identity: _FileIdentity,
+) -> _FileIdentity:
     _validate_owned_file(temporary, identity)
     if os.name == "nt":
         temporary.rename(destination)
     else:
         os.link(temporary, destination, follow_symlinks=False)
     try:
-        _validate_owned_file(destination, identity)
+        published = destination.lstat()
+        if not stat.S_ISREG(published.st_mode) or (
+            published.st_dev,
+            published.st_ino,
+            published.st_size,
+            published.st_mtime_ns,
+        ) != identity[:4]:
+            raise PermissionError(
+                f"diagnostics artifact identity changed: {destination}"
+            )
+        published_identity = _file_identity(published)
+        if os.name != "nt":
+            # Creating the exclusive hard link legitimately advances ctime.
+            # Both names must still resolve to the exact same post-link state.
+            _validate_owned_file(temporary, published_identity)
+        return published_identity
     except OSError:
         with suppress(OSError):
             published = destination.lstat()
             _unlink_owned_file(
                 destination,
-                (published.st_dev, published.st_ino),
+                _file_identity(published),
             )
         raise
 
 
-def _validate_owned_file(path: Path, identity: tuple[int, int]) -> None:
-    metadata = path.lstat()
-    if not stat.S_ISREG(metadata.st_mode) or (
+def _file_identity(metadata: os.stat_result) -> _FileIdentity:
+    return (
         metadata.st_dev,
         metadata.st_ino,
-    ) != identity:
+        metadata.st_size,
+        metadata.st_mtime_ns,
+        metadata.st_ctime_ns,
+    )
+
+
+def _validate_owned_file(path: Path, identity: _FileIdentity) -> None:
+    metadata = path.lstat()
+    if not stat.S_ISREG(metadata.st_mode) or _file_identity(metadata) != identity:
         raise PermissionError(f"diagnostics artifact identity changed: {path}")
 
 
-def _unlink_owned_file(path: Path, identity: tuple[int, int]) -> None:
+def _unlink_owned_file(path: Path, identity: _FileIdentity) -> None:
     _validate_owned_file(path, identity)
     path.unlink()
 
