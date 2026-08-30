@@ -327,7 +327,6 @@ def test_coding_session_mounts_workspace_and_rejects_process_cwd_outside_root(
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import ControlConfig, SettingsManager
     from loushang.coding.session_manager import SessionManager
-    from loushang.coding.tool_pack import register_coding_builtin_tools
     from loushang.harness.authorization import ExecutionAuthorizationError
     from loushang.harness.sandbox import SandboxSettings
     from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
@@ -345,7 +344,6 @@ def test_coding_session_mounts_workspace_and_rejects_process_cwd_outside_root(
             persist=False,
         )
         registry = WorkspaceToolRegistry()
-        register_coding_builtin_tools(registry)
         session = create_agent_session(
             session_manager=manager,
             model=_model(),
@@ -357,6 +355,7 @@ def test_coding_session_mounts_workspace_and_rejects_process_cwd_outside_root(
             ),
         )
         try:
+            await session.prepare_model_call_runtime()
             read_tool = next(
                 tool for tool in session.agent.tools if tool.name == "read"
             )
@@ -1242,28 +1241,29 @@ def test_default_lsp_plugin_rolls_back_graph_when_tool_staging_fails(
 def test_create_agent_session_result_returns_sdk_creation_snapshot(tmp_path) -> None:
     from loushang.coding import CreateAgentSessionResult, create_agent_session_result
     from loushang.coding.bootstrap import create_services
-    from loushang.coding.control import ControlConfig, SettingsManager
     from loushang.coding.session_manager import SessionManager
 
     project_root = tmp_path / "project"
-    missing_package_root = tmp_path / "missing-package"
     project_root.mkdir()
-    services = create_services(
-        settings_manager=SettingsManager(
-            ControlConfig(package_roots=(str(missing_package_root),))
-        )
-    )
+    services = create_services()
     manager = asyncio.run(
         SessionManager.new(
             session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
         )
+    )
+    services.diagnostics_service.capture_failure(
+        code="sdk_snapshot_warning",
+        error="snapshot",
+        phase="startup",
+        source="bootstrap",
+        level="warning",
+        session_id=manager.get_header().conversation_id,
     )
 
     result = create_agent_session_result(
         session_manager=manager,
         services=services,
         model=_model(),
-        resource_authority_mode="legacy_explicit",
     )
 
     assert isinstance(result, CreateAgentSessionResult)
@@ -1274,7 +1274,7 @@ def test_create_agent_session_result_returns_sdk_creation_snapshot(tmp_path) -> 
         record.code
         for record in result.diagnostics
         if record.phase == "startup" and record.type != "info"
-    ] == ["package_root_unavailable"]
+    ] == ["sdk_snapshot_warning"]
 
     services.diagnostics_service.capture_failure(
         code="later_warning",
@@ -1289,7 +1289,7 @@ def test_create_agent_session_result_returns_sdk_creation_snapshot(tmp_path) -> 
         record.code
         for record in result.diagnostics
         if record.phase == "startup" and record.type != "info"
-    ] == ["package_root_unavailable"]
+    ] == ["sdk_snapshot_warning"]
 
 
 def test_create_agent_session_services_builds_cwd_bound_services(tmp_path) -> None:
@@ -1311,7 +1311,6 @@ def test_create_agent_session_services_builds_cwd_bound_services(tmp_path) -> No
 
     assert isinstance(services, AgentSessionServices)
     assert services.cwd == str(project_root.resolve())
-    assert services.resource_authority_mode == "catalog_required"
     assert services.settings_manager.get_settings().system_prompt == "Project prompt."
     assert services.resource_bundle is not None
     assert services.resource_bundle.agents_md == "Project guidance"
@@ -1350,67 +1349,6 @@ def test_create_agent_session_from_services_uses_cwd_bound_services(tmp_path) ->
         agent_services.cwd
     )
     assert result.session.session_manager is manager
-
-
-def test_create_agent_session_from_services_inherits_and_validates_authority(
-    tmp_path,
-) -> None:
-    from loushang.coding import (
-        create_agent_session_from_services,
-        create_agent_session_services,
-    )
-    from loushang.coding.session_manager import SessionManager
-
-    legacy_project = tmp_path / "legacy-project"
-    legacy_project.mkdir()
-    legacy_services = create_agent_session_services(
-        cwd=legacy_project,
-        global_settings_path=tmp_path / "global-legacy" / "settings.json",
-        resource_authority_mode="legacy_explicit",
-    )
-    legacy_manager = asyncio.run(
-        SessionManager.new(
-            session_dir=tmp_path / "legacy-sessions",
-            cwd=str(legacy_project),
-            persist=False,
-        )
-    )
-    legacy_result = create_agent_session_from_services(
-        agent_services=legacy_services,
-        session_manager=legacy_manager,
-        model=_model(),
-    )
-    assert legacy_services.resource_authority_mode == "legacy_explicit"
-    assert legacy_result.session._initial_resource_catalog_bootstrap is None
-
-    catalog_project = tmp_path / "catalog-project"
-    catalog_project.mkdir()
-    catalog_services = create_agent_session_services(
-        cwd=catalog_project,
-        global_settings_path=tmp_path / "global-catalog" / "settings.json",
-    )
-    catalog_manager = asyncio.run(
-        SessionManager.new(
-            session_dir=tmp_path / "catalog-sessions",
-            cwd=str(catalog_project),
-            persist=False,
-        )
-    )
-    with pytest.raises(ValueError, match="must match prepared services"):
-        create_agent_session_from_services(
-            agent_services=legacy_services,
-            session_manager=legacy_manager,
-            model=_model(),
-            resource_authority_mode="catalog_required",
-        )
-    with pytest.raises(ValueError, match="must match prepared services"):
-        create_agent_session_from_services(
-            agent_services=catalog_services,
-            session_manager=catalog_manager,
-            model=_model(),
-            resource_authority_mode="legacy_explicit",
-        )
-    asyncio.run(legacy_result.session.dispose())
 
 
 def test_create_agent_session_services_loads_extension_flags_and_values(
@@ -1730,7 +1668,6 @@ def test_coding_multiagent_child_uses_the_product_stream_and_read_only_tools(
     tmp_path,
 ) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime
-    from loushang.coding.tool_pack import register_coding_builtin_tools
     from loushang.harness.multiagent import AgentPath
     from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 
@@ -1745,7 +1682,6 @@ def test_coding_multiagent_child_uses_the_product_stream_and_read_only_tools(
         project = tmp_path / "project"
         project.mkdir()
         registry = WorkspaceToolRegistry()
-        register_coding_builtin_tools(registry)
         runtime = create_agent_session_runtime(
             session_dir=tmp_path / "sessions",
             model=_model(),
@@ -1789,15 +1725,170 @@ def test_coding_multiagent_child_uses_the_product_stream_and_read_only_tools(
     asyncio.run(scenario())
 
 
+def test_minimal_composition_rejects_child_exact_tools_without_selected_owners(
+    tmp_path: Path,
+) -> None:
+    from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.harness.multiagent import AgentPath, HostCaller
+
+    async def scenario() -> None:
+        project = tmp_path / "project"
+        project.mkdir()
+        runtime = create_agent_session_runtime(
+            session_dir=tmp_path / "sessions",
+            model=_model(),
+            persist=False,
+            enable_multiagent=True,
+            composition_set="coding-minimal",
+        )
+
+        try:
+            session = await runtime.create_session(cwd=str(project))
+            with pytest.raises(
+                ValueError,
+                match="Coding child exact-owner tools are not selected: "
+                "bash, read, grep, find, ls",
+            ):
+                await session.multiagent_runtime.spawn_child(
+                    caller=HostCaller(),
+                    parent_path=AgentPath.root(),
+                    name="unavailable-explorer",
+                    agent_type="explorer",
+                    initial_prompt="Inspect the repository.",
+                )
+        finally:
+            await runtime.dispose_session_runtime()
+
+    asyncio.run(scenario())
+
+
+def test_catalog_owned_child_bash_uses_actor_bound_approval(
+    tmp_path: Path,
+) -> None:
+    from loushang.coding.bootstrap import create_agent_session_runtime, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.harness.approval import (
+        HeadlessApprovalResolver,
+        InteractiveApprovalResolver,
+    )
+    from loushang.harness.environment import LocalHostEnvironmentProbe
+    from loushang.harness.multiagent import AgentPath
+    from loushang.harness.policy_engine import PolicyEngine
+
+    host_environment = LocalHostEnvironmentProbe().detect()
+    command_tool_name = (
+        "shell" if host_environment.os_family == "windows" else "bash"
+    )
+    presented = asyncio.Event()
+    approval_payloads: list[dict[str, object]] = []
+    model_tool_sets: list[tuple[str, ...]] = []
+    tool_result_texts: list[str] = []
+    stream_calls = 0
+
+    def present(payload: dict[str, object]) -> None:
+        approval_payloads.append(dict(payload))
+        presented.set()
+
+    async def stream_fn(model, context, options=None):
+        nonlocal stream_calls
+        del model, options
+        stream_calls += 1
+        model_tool_sets.append(tuple(tool.name for tool in context.tools or ()))
+        tool_result_texts.extend(
+            part.text
+            for message in context.messages
+            if getattr(message, "role", None) == "toolResult"
+            for part in message.content
+            if isinstance(part, TextPart)
+        )
+        if stream_calls == 1:
+            return _stream_with_final_message(
+                _assistant_tool_call_message(
+                    command_tool_name,
+                    {"command": "echo catalog-child-ok"},
+                )
+            )
+        return _stream_with_final_message(_assistant_message("child complete"))
+
+    async def scenario() -> None:
+        project = tmp_path / "project"
+        project.mkdir()
+        resolver = InteractiveApprovalResolver(
+            fallback=HeadlessApprovalResolver(mode="deny")
+        )
+        resolver.set_request_presenter(present)
+        runtime = create_agent_session_runtime(
+            session_dir=tmp_path / "sessions",
+            model=_model(),
+            stream_fn=stream_fn,
+            services=create_services(
+                settings_manager=SettingsManager(
+                    ControlConfig(capabilities={"coding.lsp": "disabled"})
+                ),
+            ),
+            persist=False,
+            enable_multiagent=True,
+            approval_resolver=resolver,
+            tool_policy_evaluator=PolicyEngine(ask_tools=(command_tool_name,)),
+        )
+
+        try:
+            session = await runtime.create_session(cwd=str(project))
+            collaboration = session.multiagent_runtime
+            spawn = next(
+                tool for tool in session.agent.tools if tool.name == "spawn_agent"
+            )
+            wait = next(
+                tool for tool in session.agent.tools if tool.name == "wait_agent"
+            )
+            spawned = await spawn.execute(
+                "spawn-approved-child",
+                {
+                    "name": "approved-child",
+                    "agent_type": "explorer",
+                    "prompt": "Inspect the repository state.",
+                },
+                None,
+                None,
+            )
+
+            await asyncio.wait_for(presented.wait(), timeout=10)
+            [payload] = approval_payloads
+            action_id = payload["action_id"]
+            assert isinstance(action_id, str)
+            assert payload["actor_id"] == f"{spawned.details['path']}@1"
+            assert await resolver.handle_result(action_id, outcome="allow_once")
+
+            waited = await wait.execute(
+                "wait-approved-child",
+                {"timeout_seconds": 10},
+                None,
+                None,
+            )
+            terminal = collaboration.control.registry.current(
+                AgentPath.parse(str(spawned.details["path"]))
+            )
+
+            assert waited.details["wait_expired"] is False
+            assert terminal is not None
+            assert terminal.status == "completed", collaboration.control.notices()
+            assert terminal.progress.summary == "child complete"
+        finally:
+            await runtime.dispose_session_runtime()
+
+    asyncio.run(scenario())
+
+    assert len(model_tool_sets) == 2
+    assert all(command_tool_name in tool_names for tool_names in model_tool_sets)
+    assert any("catalog-child-ok" in text for text in tool_result_texts)
+
+
 def test_create_agent_session_injects_settings_and_agents_md_into_system_prompt(
     tmp_path,
 ) -> None:
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.prompt import CODING_STANDARD_SYSTEM_PROMPT_FRAGMENT
     from loushang.coding.session_manager import SessionManager
-    from loushang.coding.tool_pack import (
-        register_coding_builtin_tools as register_builtin_tools,
-    )
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
@@ -1814,7 +1905,6 @@ def test_create_agent_session_injects_settings_and_agents_md_into_system_prompt(
         )
     )
     registry = ToolRegistry()
-    register_builtin_tools(registry)
 
     session = create_agent_session(
         session_manager=manager,
@@ -1823,6 +1913,16 @@ def test_create_agent_session_injects_settings_and_agents_md_into_system_prompt(
         tool_registry=registry,
         active_tool_names=["bash"],
     )
+
+    from loushang.harness.resources.loader import ResourceLoaderCompatibilityError
+
+    with pytest.raises(
+        ResourceLoaderCompatibilityError,
+        match="catalog_projection_not_published",
+    ):
+        services.resource_loader.get_resource_bundle()
+
+    asyncio.run(session.prepare_model_call_runtime())
 
     expected_context = (
         "# Project Context\n\n"
@@ -1839,15 +1939,6 @@ def test_create_agent_session_injects_settings_and_agents_md_into_system_prompt(
         f"{_runtime_footer(str(nested))}"
     )
     assert session.get_active_tool_names() == ["bash"]
-    from loushang.harness.resources.loader import ResourceLoaderCompatibilityError
-
-    with pytest.raises(
-        ResourceLoaderCompatibilityError,
-        match="catalog_projection_not_published",
-    ):
-        services.resource_loader.get_resource_bundle()
-
-    asyncio.run(session.prepare_model_call_runtime())
     assert (
         session.resource_loader.get_resource_bundle().agents_md
         == "Use repo conventions."
@@ -1864,9 +1955,6 @@ def test_create_agent_session_applies_allowed_tool_names_to_default_active_tools
 ) -> None:
     from loushang.coding.bootstrap import create_agent_session
     from loushang.coding.session_manager import SessionManager
-    from loushang.coding.tool_pack import (
-        register_coding_builtin_tools as register_builtin_tools,
-    )
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
@@ -1875,7 +1963,6 @@ def test_create_agent_session_applies_allowed_tool_names_to_default_active_tools
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
     registry = ToolRegistry()
-    register_builtin_tools(registry)
 
     session = create_agent_session(
         session_manager=manager,
@@ -1883,13 +1970,14 @@ def test_create_agent_session_applies_allowed_tool_names_to_default_active_tools
         tool_registry=registry,
         allowed_tool_names=["read", "grep"],
     )
+    asyncio.run(session.prepare_model_call_runtime())
 
     assert session.get_active_tool_names() == ["read", "grep"]
     assert [tool.name for tool in session.agent.tools] == ["read", "grep"]
-    assert [definition.name for definition in session.get_all_tools()] == [
+    assert {definition.name for definition in session.get_all_tools()} == {
         "read",
         "grep",
-    ]
+    }
     assert "- bash:" not in session.agent.system_prompt
 
 
@@ -1903,9 +1991,6 @@ def test_create_agent_session_no_tools_builtin_keeps_dynamic_extension_tools(
         CodingResourceLoader as DefaultResourceLoader,
     )
     from loushang.coding.session_manager import SessionManager
-    from loushang.coding.tool_pack import (
-        register_coding_builtin_tools as register_builtin_tools,
-    )
     from loushang.harness.resources.types import (
         ExtensionDescriptor,
         ResourceBundle,
@@ -1961,7 +2046,6 @@ def test_create_agent_session_no_tools_builtin_keeps_dynamic_extension_tools(
             return bundle
 
     registry = ToolRegistry()
-    register_builtin_tools(registry)
     session = create_agent_session(
         session_manager=asyncio.run(
             SessionManager.new(
@@ -1974,13 +2058,12 @@ def test_create_agent_session_no_tools_builtin_keeps_dynamic_extension_tools(
         model=_model(),
         tool_registry=registry,
         no_tools="builtin",
-        resource_authority_mode="legacy_explicit",
     )
 
     asyncio.run(session.start_extension_runtime())
 
     assert "dynamic_tool" in [definition.name for definition in session.get_all_tools()]
-    assert "read" in [definition.name for definition in session.get_all_tools()]
+    assert "read" not in [definition.name for definition in session.get_all_tools()]
     assert session.get_active_tool_names() == ["dynamic_tool"]
     assert "- dynamic_tool: Run dynamic behavior" in session.agent.system_prompt
     assert "- read:" not in session.agent.system_prompt
@@ -1997,9 +2080,6 @@ def test_create_agent_session_no_tools_all_hides_dynamic_extension_tools_and_pro
         CodingResourceLoader as DefaultResourceLoader,
     )
     from loushang.coding.session_manager import SessionManager
-    from loushang.coding.tool_pack import (
-        register_coding_builtin_tools as register_builtin_tools,
-    )
     from loushang.harness.resources.types import (
         ExtensionDescriptor,
         ResourceBundle,
@@ -2055,7 +2135,6 @@ def test_create_agent_session_no_tools_all_hides_dynamic_extension_tools_and_pro
             return bundle
 
     registry = ToolRegistry()
-    register_builtin_tools(registry)
     session = create_agent_session(
         session_manager=asyncio.run(
             SessionManager.new(
@@ -2068,7 +2147,6 @@ def test_create_agent_session_no_tools_all_hides_dynamic_extension_tools_and_pro
         model=_model(),
         tool_registry=registry,
         no_tools="all",
-        resource_authority_mode="legacy_explicit",
     )
 
     asyncio.run(session.start_extension_runtime())
@@ -2084,9 +2162,6 @@ def test_create_agent_session_runtime_applies_allowed_tool_names(tmp_path) -> No
 
     from loushang.coding.bootstrap import create_agent_session_runtime
     from loushang.coding.session_manager import SessionManager
-    from loushang.coding.tool_pack import (
-        register_coding_builtin_tools as register_builtin_tools,
-    )
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
@@ -2094,7 +2169,6 @@ def test_create_agent_session_runtime_applies_allowed_tool_names(tmp_path) -> No
     project = tmp_path / "project"
     project.mkdir()
     registry = ToolRegistry()
-    register_builtin_tools(registry)
 
     runtime = create_agent_session_runtime(
         session_dir=tmp_path / "sessions",
@@ -2105,20 +2179,24 @@ def test_create_agent_session_runtime_applies_allowed_tool_names(tmp_path) -> No
     )
 
     session = asyncio.run(runtime.create_session(cwd=str(project)))
+    asyncio.run(session.prepare_model_call_runtime())
 
     assert isinstance(session.session_manager, SessionManager)
     assert session.get_active_tool_names() == ["read", "grep"]
-    assert [definition.name for definition in session.get_all_tools()] == [
+    assert {definition.name for definition in session.get_all_tools()} == {
         "read",
         "grep",
-    ]
+    }
 
 
-def test_create_agent_session_uses_settings_package_roots_for_external_package_prompts(
+def test_create_agent_session_rejects_unverified_package_roots(
     tmp_path,
 ) -> None:
     import json
 
+    from loushang.coding._resource_catalog_shadow import (
+        CodingResourceCatalogAdmissionError,
+    )
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import SettingsManager
     from loushang.coding.session_manager import SessionManager
@@ -2150,24 +2228,14 @@ def test_create_agent_session_uses_settings_package_roots_for_external_package_p
         )
     )
 
-    session = create_agent_session(
-        session_manager=manager,
-        services=services,
-        model=_model(),
-        resource_authority_mode="legacy_explicit",
-    )
+    with pytest.raises(CodingResourceCatalogAdmissionError) as captured:
+        create_agent_session(
+            session_manager=manager,
+            services=services,
+            model=_model(),
+        )
 
-    assert "Base system prompt." in session.agent.system_prompt
-    assert "Package review rules" in session.agent.system_prompt
-    assert [
-        descriptor.source_kind
-        for descriptor in services.resource_loader.get_resource_bundle().prompts
-    ] == ["external_package"]
-    assert [
-        (command.name, command.source_info.origin, command.source_info.base_dir)
-        for command in session.list_commands()
-        if command.source != "builtin"
-    ] == [("review", "package", str(prompts_dir))]
+    assert "unverified_package_sources" in captured.value.reasons
 
 
 def test_reload_extension_runtime_reloads_settings_resource_roots(tmp_path) -> None:
@@ -2233,11 +2301,14 @@ def test_reload_extension_runtime_reloads_settings_resource_roots(tmp_path) -> N
     assert "Fresh global prompt" in session.agent.system_prompt
 
 
-def test_create_agent_session_uses_settings_package_sources_with_filters(
+def test_create_agent_session_rejects_unverified_package_sources_with_filters(
     tmp_path,
 ) -> None:
     import json
 
+    from loushang.coding._resource_catalog_shadow import (
+        CodingResourceCatalogAdmissionError,
+    )
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import SettingsManager
     from loushang.coding.session_manager import SessionManager
@@ -2281,25 +2352,24 @@ def test_create_agent_session_uses_settings_package_sources_with_filters(
         )
     )
 
-    session = create_agent_session(
-        session_manager=manager,
-        services=services,
-        model=_model(),
-        resource_authority_mode="legacy_explicit",
-    )
+    with pytest.raises(CodingResourceCatalogAdmissionError) as captured:
+        create_agent_session(
+            session_manager=manager,
+            services=services,
+            model=_model(),
+        )
 
-    bundle = services.resource_loader.get_resource_bundle()
-    assert "Package review rules" in session.agent.system_prompt
-    assert "Package debug rules" not in session.agent.system_prompt
-    assert [prompt.name for prompt in bundle.prompts] == ["review"]
-    assert [skill.name for skill in bundle.skills] == ["review"]
+    assert captured.value.reasons == ("unverified_package_sources",)
 
 
-def test_create_agent_session_uses_settings_plugin_sources_for_external_package_resources(
+def test_manifest_only_plugin_source_with_legacy_resources_fails_closed(
     tmp_path,
 ) -> None:
     import json
 
+    from loushang.coding._resource_catalog_shadow import (
+        CodingResourceCatalogAdmissionError,
+    )
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import SettingsManager
     from loushang.coding.session_manager import SessionManager
@@ -2350,30 +2420,99 @@ def test_create_agent_session_uses_settings_plugin_sources_for_external_package_
         )
     )
 
+    with pytest.raises(CodingResourceCatalogAdmissionError) as captured:
+        create_agent_session(
+            session_manager=manager,
+            services=services,
+            model=_model(),
+        )
+
+    assert captured.value.reasons == ("undeclared_plugin_resources",)
+    records = services.diagnostics_service.get_diagnostics(
+        code="coding_resource_catalog_unsupported"
+    )
+    assert len(records) == 1
+    assert records[0].details == {"reasons": ["undeclared_plugin_resources"]}
+
+
+def test_non_resource_code_plugin_does_not_acquire_resource_authority(
+    tmp_path,
+) -> None:
+    import json
+
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import SettingsManager
+    from loushang.coding.session_manager import SessionManager
+
+    project_root = tmp_path / "project"
+    plugin_root = tmp_path / "plugins" / "code-only"
+    project_root.mkdir()
+    plugin_root.mkdir(parents=True)
+    (plugin_root / "provider.py").write_text(
+        "raise AssertionError('Resource discovery must not import Plugin code')\n",
+        encoding="utf-8",
+    )
+    (plugin_root / "plugin.json").write_text(
+        json.dumps(
+            {
+                "name": "code-only",
+                "contributionIndex": {
+                    "version": 2,
+                    "items": [
+                        {
+                            "id": "review-provider",
+                            "kind": "capability_provider",
+                            "owner": "coding.review",
+                            "contributionExecutionModel": "in_process",
+                            "declarationSource": {
+                                "entrypoint": "provider.py:declare",
+                                "kind": "in_process",
+                                "sourceVersion": 1,
+                            },
+                            "requestedAuthorities": [],
+                            "configuration": {},
+                            "required": True,
+                        }
+                    ],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    project_settings_path = tmp_path / "project-settings.json"
+    project_settings_path.write_text(
+        json.dumps({"plugin_sources": [str(plugin_root)]}),
+        encoding="utf-8",
+    )
+
+    services = create_services(
+        settings_manager=SettingsManager(project_settings_path=project_settings_path),
+    )
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+        )
+    )
+
     session = create_agent_session(
         session_manager=manager,
         services=services,
         model=_model(),
-        resource_authority_mode="legacy_explicit",
     )
 
-    bundle = services.resource_loader.get_resource_bundle()
-    assert "Plugin debug prompt" in session.agent.system_prompt
-    assert [skill.name for skill in bundle.skills] == ["debug"]
-    assert bundle.skills[0].source_kind == "external_package"
-    extension_commands = [
-        command for command in session.list_commands() if command.source == "extension"
-    ]
-    assert len(extension_commands) == 1
-    [command] = extension_commands
-    assert (command.name, command.source_info.origin) == ("deploy", "package")
-    revision_extensions = Path(command.source_info.base_dir)
-    assert revision_extensions.name == "extensions"
-    assert revision_extensions.parent.parent == tmp_path / "plugin-revisions/sha256"
-    assert revision_extensions != extensions_dir
-    assert (revision_extensions / "deploy.py").read_text(encoding="utf-8") == (
-        extensions_dir / "deploy.py"
-    ).read_text(encoding="utf-8")
+    try:
+        assert session.resource_bundle is not None
+        assert session.resource_bundle.extensions == []
+        assert [prompt.name for prompt in session.resource_bundle.prompts] == [
+            "standard"
+        ]
+        assert [skill.name for skill in session.resource_bundle.skills] == ["standard"]
+        assert [theme.name for theme in session.resource_bundle.themes] == ["themes"]
+        assert services.diagnostics_service.get_diagnostics(
+            code="coding_resource_catalog_unsupported"
+        ) == []
+    finally:
+        asyncio.run(session.dispose())
 
 
 def test_create_agent_session_materializes_git_package_sources_by_default(
@@ -2415,11 +2554,14 @@ def test_create_agent_session_materializes_git_package_sources_by_default(
     )
 
 
-def test_create_agent_session_auto_materializes_configured_remote_package_sources(
+def test_create_agent_session_rejects_configured_remote_legacy_package_sources(
     tmp_path,
 ) -> None:
     import json
 
+    from loushang.coding._resource_catalog_shadow import (
+        CodingResourceCatalogAdmissionError,
+    )
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import SettingsManager
     from loushang.coding.session_manager import SessionManager
@@ -2465,16 +2607,14 @@ def test_create_agent_session_auto_materializes_configured_remote_package_source
         )
     )
 
-    session = create_agent_session(
-        session_manager=manager,
-        services=services,
-        model=_model(),
-        resource_authority_mode="legacy_explicit",
-    )
+    with pytest.raises(CodingResourceCatalogAdmissionError) as captured:
+        create_agent_session(
+            session_manager=manager,
+            services=services,
+            model=_model(),
+        )
 
-    assert "Remote package prompt" in session.agent.system_prompt
-    assert "Ignored root prompt" not in session.agent.system_prompt
-    assert session.get_packages()[0]["lifecycle"] == "installed"
+    assert captured.value.reasons == ("unverified_package_sources",)
 
 
 def test_create_agent_session_applies_disabled_plugin_sources(tmp_path) -> None:
@@ -2571,45 +2711,19 @@ def test_create_agent_session_marks_disabled_skills(tmp_path) -> None:
     assert statuses["standard"].status == "effective"
 
 
-def test_create_agent_session_includes_tool_prompt_from_registry(tmp_path) -> None:
-    from loushang.coding.bootstrap import create_agent_session, create_services
-    from loushang.coding.session_manager import SessionManager
-    from loushang.coding.tool_pack import (
-        register_coding_builtin_tools as register_builtin_tools,
-    )
-    from loushang.harness.tools.workspace.registry import (
-        WorkspaceToolRegistry as ToolRegistry,
-    )
-
-    services = create_services(system_prompt="Base system prompt.")
-    manager = asyncio.run(
-        SessionManager.new(
-            session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
-        )
-    )
-    registry = ToolRegistry()
-    register_builtin_tools(registry)
-
-    session = create_agent_session(
-        session_manager=manager,
-        services=services,
-        model=_model(),
-        tool_registry=registry,
-        active_tool_names=["bash"],
-    )
-
-    assert "Available tools:" in session.agent.system_prompt
-    assert "bash" in session.agent.system_prompt
-
-
-def test_create_agent_session_synthesizes_definitions_from_legacy_tools(
+@pytest.mark.parametrize("tool_name", ("read", "inspect_symbol"))
+@pytest.mark.parametrize("input_kind", ("registry", "tools"))
+def test_create_agent_session_rejects_peer_exact_tool_publishers(
     tmp_path,
+    input_kind: str,
+    tool_name: str,
 ) -> None:
+    from loushang.coding._resource_catalog_shadow import (
+        CodingResourceCatalogAdmissionError,
+    )
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.session_manager import SessionManager
-    from loushang.coding.tool_pack import (
-        register_coding_builtin_tools as register_builtin_tools,
-    )
+    from loushang.coding.tool_pack import create_coding_tool_definition
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
@@ -2621,37 +2735,31 @@ def test_create_agent_session_synthesizes_definitions_from_legacy_tools(
         )
     )
     registry = ToolRegistry()
-    register_builtin_tools(registry)
-
-    session = create_agent_session(
-        session_manager=manager,
-        services=services,
-        model=_model(),
-        tools=registry.list_enabled_definitions(),
+    registry.register_tool(
+        replace(create_coding_tool_definition("read"), name=tool_name)
     )
 
-    assert session.get_active_tool_names() == [
-        "read",
-        "ls",
-        "find",
-        "grep",
-        "bash",
-        "edit",
-        "write",
-    ]
-    asyncio.run(session.prepare_model_call_runtime())
-    assert [definition.name for definition in session.get_all_tools()] == [
-        "bash",
-        "read",
-        "ls",
-        "find",
-        "grep",
-        "write",
-        "edit",
-        "document_outline",
-        "inspect_symbol",
-    ]
-    assert "Available tools:" in session.agent.system_prompt
+    kwargs = (
+        {"tool_registry": registry}
+        if input_kind == "registry"
+        else {"tools": registry.list_enabled_definitions()}
+    )
+    with pytest.raises(CodingResourceCatalogAdmissionError) as captured:
+        create_agent_session(
+            session_manager=manager,
+            services=services,
+            model=_model(),
+            **kwargs,
+        )
+
+    assert captured.value.reasons == ("peer_exact_tool_publisher",)
+    records = services.diagnostics_service.get_diagnostics(
+        code="coding_resource_catalog_unsupported"
+    )
+    assert len(records) == 1
+    assert records[0].phase == "startup"
+    assert records[0].source == "bootstrap"
+    assert records[0].details == {"reasons": ["peer_exact_tool_publisher"]}
 
 
 def test_create_agent_session_defaults_custom_tools_active_without_defaulting_all_builtins(
@@ -2660,7 +2768,6 @@ def test_create_agent_session_defaults_custom_tools_active_without_defaulting_al
     from loushang.agent.types import AgentToolResult
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.session_manager import SessionManager
-    from loushang.coding.tool_pack import register_coding_builtin_tools
     from loushang.harness.tools.workspace import ToolDefinition
     from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 
@@ -2677,7 +2784,6 @@ def test_create_agent_session_defaults_custom_tools_active_without_defaulting_al
         )
     )
     registry = WorkspaceToolRegistry()
-    register_coding_builtin_tools(registry)
     registry.register_tool(
         ToolDefinition(
             name="custom_tool",
@@ -2699,6 +2805,7 @@ def test_create_agent_session_defaults_custom_tools_active_without_defaulting_al
         model=_model(),
         tool_registry=registry,
     )
+    asyncio.run(session.prepare_model_call_runtime())
 
     assert session.get_active_tool_names() == [
         "read",
@@ -2710,8 +2817,7 @@ def test_create_agent_session_defaults_custom_tools_active_without_defaulting_al
         "write",
         "custom_tool",
     ]
-    asyncio.run(session.prepare_model_call_runtime())
-    assert [definition.name for definition in session.get_all_tools()] == [
+    assert {definition.name for definition in session.get_all_tools()} == {
         "bash",
         "read",
         "ls",
@@ -2722,7 +2828,7 @@ def test_create_agent_session_defaults_custom_tools_active_without_defaulting_al
         "custom_tool",
         "document_outline",
         "inspect_symbol",
-    ]
+    }
     assert "- custom_tool:" not in session.agent.system_prompt
     assert "- grep:" in session.agent.system_prompt
 
@@ -2734,9 +2840,6 @@ def test_create_agent_session_marks_failing_builtin_tool_result_as_error(
 
     from loushang.coding import SessionManager
     from loushang.coding.bootstrap import create_agent_session
-    from loushang.coding.tool_pack import (
-        register_coding_builtin_tools as register_builtin_tools,
-    )
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
@@ -2759,7 +2862,6 @@ def test_create_agent_session_marks_failing_builtin_tool_result_as_error(
         )
     )
     registry = ToolRegistry()
-    register_builtin_tools(registry)
 
     session = create_agent_session(
         session_manager=manager,
@@ -2959,9 +3061,6 @@ def test_create_agent_session_marks_failing_mutation_builtin_tool_result_as_erro
 
     from loushang.coding import SessionManager
     from loushang.coding.bootstrap import create_agent_session
-    from loushang.coding.tool_pack import (
-        register_coding_builtin_tools as register_builtin_tools,
-    )
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
@@ -2990,7 +3089,6 @@ def test_create_agent_session_marks_failing_mutation_builtin_tool_result_as_erro
         )
     )
     registry = ToolRegistry()
-    register_builtin_tools(registry)
 
     session = create_agent_session(
         session_manager=manager,
@@ -3221,77 +3319,18 @@ def test_create_agent_session_convert_to_llm_blocks_images_when_configured(
     ]
 
 
-def test_create_agent_session_merges_extension_resources_and_tools(tmp_path) -> None:
-    from pathlib import Path
-
+def test_create_agent_session_never_calls_legacy_loader_discovery(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.resource_runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
     from loushang.coding.session_manager import SessionManager
-    from loushang.harness.resources.types import (
-        ExtensionDescriptor,
-        PromptFragmentDescriptor,
-        ResourceBundle,
-    )
-    from loushang.harness.tools.workspace import ToolDefinition
-
-    async def _execute_tool(
-        tool_name: str, arguments: dict[str, object], context, signal
-    ):
-        return {"tool_name": tool_name, "arguments": arguments}
-
-    class _Extension:
-        def resources_discover(self, bundle):
-            from loushang.harness.extensions.agent import ExtensionResourceContribution
-
-            return ExtensionResourceContribution(
-                prompt_descriptors=[
-                    PromptFragmentDescriptor(
-                        name="extension-rules",
-                        source_path=Path("/tmp/extensions/demo"),
-                        text="Extension rules",
-                    )
-                ]
-            )
-
-        def get_tools(self):
-            return [
-                ToolDefinition(
-                    name="ext_tool",
-                    label="Extension Tool",
-                    description="Tool from extension",
-                    parameters={},
-                    execution=direct_execution(_execute_tool),
-                )
-            ]
 
     class _Loader(DefaultResourceLoader):
         def discover_resources(self, cwd):
-            bundle = ResourceBundle(
-                cwd=Path(cwd),
-                prompt_fragments=["Repo rules"],
-                prompt_descriptors=[
-                    PromptFragmentDescriptor(
-                        name="AGENTS.md",
-                        source_path=Path("/tmp/project/AGENTS.md"),
-                        text="Repo rules",
-                    )
-                ],
-                extensions=[
-                    ExtensionDescriptor(
-                        name="demo",
-                        source_path=Path("/tmp/extensions/demo"),
-                        metadata={"extension": _Extension()},
-                    )
-                ],
-            )
-            self._bundle = bundle
-            return bundle
+            raise AssertionError("legacy discovery must not run")
 
-    services = create_services(
-        resource_loader=_Loader(), system_prompt="Base system prompt."
-    )
+    services = create_services(resource_loader=_Loader())
     manager = asyncio.run(
         SessionManager.new(
             session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
@@ -3302,31 +3341,10 @@ def test_create_agent_session_merges_extension_resources_and_tools(tmp_path) -> 
         session_manager=manager,
         services=services,
         model=_model(),
-        resource_authority_mode="legacy_explicit",
     )
 
-    assert (
-        "Base system prompt.\n\nRepo rules\n\nExtension rules"
-        in session.agent.system_prompt
-    )
-    assert session.get_active_tool_names() == ["ext_tool"]
-    asyncio.run(session.prepare_model_call_runtime())
-    assert [definition.name for definition in session.get_all_tools()] == [
-        "ext_tool",
-        "document_outline",
-        "inspect_symbol",
-    ]
-    extension_info = next(
-        info for info in session.get_all_tool_infos() if info["name"] == "ext_tool"
-    )
-    assert extension_info["sourceInfo"] == {
-        "path": "/tmp/extensions/demo",
-        "source": "filesystem",
-        "scope": "project",
-        "origin": "top-level",
-        "baseDir": None,
-    }
-    assert session.resource_bundle.prompt_fragments == ["Repo rules", "Extension rules"]
+    assert session._initial_resource_catalog_bootstrap is not None
+    assert session.resource_bundle is not None
 
 
 def test_create_agent_session_wires_extension_tool_interception_into_agent(
@@ -3456,7 +3474,6 @@ def test_create_agent_session_wires_extension_tool_interception_into_agent(
         model=_model(),
         stream_fn=stream_fn,
         tools=[base_tool],
-        resource_authority_mode="legacy_explicit",
     )
 
     async def scenario() -> None:
@@ -3578,7 +3595,6 @@ def test_create_agent_session_records_nonfatal_extension_tool_conflicts(
         services=services,
         model=_model(),
         tools=[base_tool],
-        resource_authority_mode="legacy_explicit",
     )
 
     assert session.resource_bundle.extensions
@@ -3940,7 +3956,9 @@ def test_create_agent_session_applies_enabled_models_as_scoped_models(tmp_path) 
     ]
 
 
-def test_create_agent_session_records_resource_loading_diagnostics(tmp_path) -> None:
+def test_create_agent_session_ignores_legacy_loader_discovery_diagnostics(
+    tmp_path,
+) -> None:
     from pathlib import Path
 
     from loushang.coding.bootstrap import create_agent_session, create_services
@@ -3977,21 +3995,21 @@ def test_create_agent_session_records_resource_loading_diagnostics(tmp_path) -> 
         session_manager=manager,
         services=services,
         model=_model(),
-        resource_authority_mode="legacy_explicit",
     )
 
     diagnostics = services.diagnostics_service.get_diagnostics(
         phase="resource_loading", source="loader"
     )
 
-    assert len(diagnostics) == 1
-    assert diagnostics[0].code == "duplicate_prompt"
-    assert diagnostics[0].session_id == manager.get_header().conversation_id
+    assert diagnostics == []
 
 
 def test_create_agent_session_records_startup_package_root_diagnostics(
     tmp_path,
 ) -> None:
+    from loushang.coding._resource_catalog_shadow import (
+        CodingResourceCatalogAdmissionError,
+    )
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import SettingsManager
     from loushang.coding.session_manager import SessionManager
@@ -4014,12 +4032,15 @@ def test_create_agent_session_records_startup_package_root_diagnostics(
         )
     )
 
-    create_agent_session(
-        session_manager=manager,
-        services=services,
-        model=_model(),
-        resource_authority_mode="legacy_explicit",
-    )
+    with pytest.raises(CodingResourceCatalogAdmissionError) as captured:
+        create_agent_session(
+            session_manager=manager,
+            services=services,
+            model=_model(),
+        )
+
+    assert "package_discovery_diagnostics" in captured.value.reasons
+    assert "unverified_package_sources" in captured.value.reasons
 
     diagnostics = services.diagnostics_service.get_diagnostics(
         phase="startup",

@@ -72,7 +72,6 @@ def _user_message(text: str) -> UserMessage:
 
 def test_agent_session_restores_persisted_context_on_init(tmp_path) -> None:
     from loushang.agent import Agent
-    from loushang.coding import AgentSession as PublicAgentSession
     from loushang.coding.session import AgentSession
     from loushang.coding.session_manager import SessionManager
 
@@ -92,7 +91,6 @@ def test_agent_session_restores_persisted_context_on_init(tmp_path) -> None:
     agent = Agent()
     session = AgentSession(agent=agent, session_manager=manager)
 
-    assert PublicAgentSession is AgentSession
     assert [getattr(message, "role", None) for message in agent.state.messages] == [
         "user"
     ]

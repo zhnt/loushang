@@ -14,18 +14,13 @@ from _support import (
     describe_model,
 )
 
-from loushang.coding import ToolRegistry, register_builtin_tools
-
 
 async def main() -> None:
     model = build_kimi_model()
     model_info = describe_model(model)
-    registry = ToolRegistry()
-    register_builtin_tools(registry)
 
     session = create_kimi_session(
         model=model,
-        tools=registry.list_enabled_tools(),
     )
     attach_stream_printer(session)
 

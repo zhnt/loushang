@@ -10,15 +10,9 @@ if __package__ in {None, ""}:
 
 from _support import build_kimi_model, create_kimi_runtime_session
 
-from loushang.coding import (
-    register_coding_builtin_tools as register_builtin_tools,
-)
-from loushang.coding import (
-    run_print_mode,
-)
-from loushang.harness.events import select_events
-from loushang.harness.tools.workspace.registry import (
-    WorkspaceToolRegistry as ToolRegistry,
+from loushang.harness.session import select_events
+from loushang.harnesstui.conversation.agent_binding import (
+    run_agent_plain_mode as run_print_mode,
 )
 
 EXAMPLE_REQUEST = (
@@ -98,12 +92,9 @@ async def main(argv: list[str] | None = None) -> None:
     if not user_request:
         raise SystemExit(2)
 
-    registry = ToolRegistry()
-    register_builtin_tools(registry)
     runtime, session = await create_kimi_runtime_session(
         cwd=Path.cwd(),
         model=build_kimi_model(),
-        tools=registry.list_enabled_tools(),
         persist=False,
     )
 

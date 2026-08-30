@@ -29,9 +29,6 @@ EXTENSION_RESOURCE_RUNTIME_PATH = Path("src/loushang/harness/extensions/resource
 CODING_SHADOW_ADAPTER_PATH = Path("src/loushang/coding/_resource_catalog_shadow.py")
 CODING_BOOTSTRAP_PATH = Path("src/loushang/coding/bootstrap.py")
 CODING_BASE_PLUGIN_PATH = Path("src/loushang/coding/_base_plugin.py")
-CODING_RESOURCE_AUTHORITY_PATH = Path(
-    "src/loushang/coding/resource_authority.py"
-)
 CODING_LSP_PLUGIN_OPT_IN_PATH = Path("src/loushang/coding/lsp/_plugin_opt_in.py")
 
 
@@ -270,12 +267,11 @@ def test_rcp4_product_input_adapter_is_explicit_private_and_source_narrow() -> N
     coding_source = CODING_SHADOW_ADAPTER_PATH.read_text(encoding="utf-8")
     assert "prepare_coding_initial_resource_catalog_adapter" in coding_source
     bootstrap_source = CODING_BOOTSTRAP_PATH.read_text(encoding="utf-8")
-    assert "resource_authority_mode: ResourceAuthorityMode" in bootstrap_source
-    assert "loushang.coding.resource_authority" in _imported_modules(
+    assert "resource_authority_mode" not in bootstrap_source
+    assert "loushang.coding.resource_authority" not in _imported_modules(
         CODING_BOOTSTRAP_PATH
     )
-    authority_source = CODING_RESOURCE_AUTHORITY_PATH.read_text(encoding="utf-8")
-    assert 'Literal["catalog_required", "legacy_explicit"]' in authority_source
+    assert not Path("src/loushang/coding/resource_authority.py").exists()
     assert "enable_initial_resource_catalog_shadow" not in bootstrap_source
     assert "initial_resource_catalog_product_composition_assembly" in bootstrap_source
     assert "initial_resource_catalog_product_composition:" not in bootstrap_source

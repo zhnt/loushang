@@ -6,9 +6,10 @@
   Plugin lifecycle, exact-owner admission, Session Graph, Resource generation,
   and Model Input boundaries. It does not amend those boundaries implicitly.
 - Design status: RCP0 contract frozen; final narrow freeze re-review passed.
-- Implementation status: RCP0 through RCP4 are complete on the Harness lane;
-  RCP5.1, RCP5.2A/B, RCP5.3A/B/C, and RCP5.4 are implemented on the Harness
-  lane. Peer deletion remains RCP5.5.
+- Implementation status: RCP0 through RCP5.5 are complete on the Harness lane.
+  RCP5.5 removes `SkillLoader`, leaves the generic `ResourceLoader` only as a
+  source-input/forwarding compatibility adapter, and PLC6E removes that legacy
+  authority from every Coding SDK, CLI, bootstrap, Method, Tool, and LSP path.
   RCP2's first unpublished foundation slice implements the generic
   `CapabilityComponentDefinition`, exact candidate/admission/selection/binding
   records, atomic owner generations, cancellation-safe reverse rollback,

@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from typing import Literal, TypeAlias
 
 from loushang.coding.cli.profile import CODING_CLI_PROFILE
-from loushang.coding.resource_authority import ResourceAuthorityMode
 from loushang.harness.cli import (
     extract_unknown_long_options,
     project_extension_flag_values,
@@ -29,6 +28,23 @@ MethodPlanShowFormat = Literal["text", "json"]
 WorkLogInspectFormat = Literal["text", "json", "plans", "plans-json"]
 ExtensionFlag: TypeAlias = RegisteredFlag | ResolvedFlag
 _BUILTIN_FLAG_NAMES = CODING_CLI_PROFILE.option_names
+_REMOVED_LEGACY_RESOURCE_OPTIONS = frozenset(
+    {
+        "--extension",
+        "-e",
+        "--no-extensions",
+        "-ne",
+        "--skill",
+        "--no-skills",
+        "-ns",
+        "--prompt-template",
+        "--no-prompt-templates",
+        "-np",
+        "--theme",
+        "--no-themes",
+        "--resource-authority-mode",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -36,7 +52,6 @@ class CliArgs(AgentCliArgs):
     """Standard Agent CLI values plus Coding's Method/Work additions."""
 
     capability_modes: tuple[tuple[str, CapabilityMountMode], ...]
-    resource_authority_mode: ResourceAuthorityMode
     method: str | None
     no_method: bool
     prompt_steps: str | None
@@ -58,6 +73,22 @@ def build_parser() -> ArgumentParser:
 
 def help_text() -> str:
     return _build_parser().format_help()
+
+
+def removed_legacy_resource_option(
+    argv: list[str] | tuple[str, ...],
+) -> str | None:
+    """Return the first removed raw Resource option before ``--``."""
+
+    for value in argv:
+        if value == "--":
+            return None
+        option = value.split("=", 1)[0]
+        if option in _REMOVED_LEGACY_RESOURCE_OPTIONS:
+            return option
+        if value.startswith("-e") and not value.startswith("--") and value != "-e":
+            return "-e"
+    return None
 
 
 def parse_args(
@@ -98,7 +129,6 @@ def parse_args(
             extension_flag_values=extension_flag_values,
         ),
         capability_modes=tuple(namespace.capability),
-        resource_authority_mode=namespace.resource_authority_mode,
         method=namespace.method,
         no_method=namespace.no_method,
         prompt_steps=namespace.prompt_steps,
@@ -123,6 +153,16 @@ def _build_parser() -> ArgumentParser:
     )
     parser.add_argument("messages", nargs="*")
     register_profile_arguments(parser, CODING_CLI_PROFILE)
+    parser.set_defaults(
+        extension=[],
+        no_extensions=False,
+        skill=[],
+        no_skills=False,
+        prompt_template=[],
+        no_prompt_templates=False,
+        theme=[],
+        no_themes=False,
+    )
     return parser
 
 

@@ -8,10 +8,31 @@ owned by the Coding application.
 from __future__ import annotations
 
 from loushang.coding.capabilities import parse_capability_mount
-from loushang.coding.resource_authority import RESOURCE_AUTHORITY_MODES
 from loushang.harness.cli import STANDARD_CLI_PROFILE, CliArgumentSpec, CliProfile
 
-CODING_CLI_PROFILE: CliProfile = STANDARD_CLI_PROFILE.augment(
+_REMOVED_LEGACY_RESOURCE_ARGUMENT_IDS = frozenset(
+    {
+        "resources.extension",
+        "resources.no_extensions",
+        "resources.skill",
+        "resources.no_skills",
+        "resources.prompt_template",
+        "resources.no_prompt_templates",
+        "resources.theme",
+        "resources.no_themes",
+    }
+)
+_CODING_STANDARD_CLI_PROFILE = CliProfile(
+    profile_id="coding.standard",
+    root_arguments=tuple(
+        argument
+        for argument in STANDARD_CLI_PROFILE.root_arguments
+        if argument.argument_id not in _REMOVED_LEGACY_RESOURCE_ARGUMENT_IDS
+    ),
+    commands=STANDARD_CLI_PROFILE.commands,
+)
+
+CODING_CLI_PROFILE: CliProfile = _CODING_STANDARD_CLI_PROFILE.augment(
     profile_id="coding",
     root_arguments=(
         CliArgumentSpec(
@@ -24,18 +45,6 @@ CODING_CLI_PROFILE: CliProfile = STANDARD_CLI_PROFILE.augment(
             default=[],
             metavar="CAPABILITY=MODE",
             help=("Set a Product capability mount to disabled, on_demand, or always."),
-        ),
-        CliArgumentSpec(
-            "coding.resource_authority_mode",
-            ("--resource-authority-mode",),
-            "resource_authority_mode",
-            owner="product",
-            choices=RESOURCE_AUTHORITY_MODES,
-            default="catalog_required",
-            help=(
-                "Select Catalog authority (default) or explicitly retain legacy "
-                "resource loading."
-            ),
         ),
         CliArgumentSpec(
             "coding.method",

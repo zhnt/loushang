@@ -4,7 +4,7 @@ import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 while not (REPO_ROOT / "src").exists() and REPO_ROOT.parent != REPO_ROOT:
@@ -23,19 +23,42 @@ from loushang.ai.model import (
 )
 from loushang.ai.model.registry import ModelRegistry
 from loushang.coding import (
-    AgentSession,
     AgentSessionRuntime,
     SessionManager,
     create_agent_session,
     create_agent_session_runtime,
     create_services,
 )
+from loushang.coding.tool_pack import coding_platform_tool_names
+from loushang.harness.environment import LocalHostEnvironmentProbe
+
+
+class CodingSession(Protocol):
+    """Public example view of the factory-returned Coding Session."""
+
+    agent: Any
+    session_manager: Any
+
+    def __getattr__(self, name: str) -> Any: ...
 
 ENV_EXAMPLES_MODEL_CATALOG = "LOUSHANG_EXAMPLES_MODEL_CATALOG"
 ENV_EXAMPLES_SESSION_DIR = "LOUSHANG_EXAMPLES_SESSION_DIR"
 ENV_EXAMPLES_ARTIFACT_ROOT = "LOUSHANG_EXAMPLES_ARTIFACT_ROOT"
 
 _OVERRIDE_REGISTRY: ModelRegistry | None = None
+
+
+def _resolve_active_tool_names(
+    tool_names: list[str] | None,
+) -> list[str] | None:
+    if tool_names is None:
+        return None
+    return list(
+        coding_platform_tool_names(
+            tool_names,
+            LocalHostEnvironmentProbe().detect(),
+        )
+    )
 
 
 def _resolve_session_dir(default_session_dir: Path) -> Path:
@@ -189,7 +212,8 @@ def create_kimi_session(
     system_prompt: str | None = None,
     thinking_level: ThinkingLevel = "off",
     tools: list[AgentTool[Any]] | None = None,
-) -> AgentSession:
+    active_tool_names: list[str] | None = None,
+) -> CodingSession:
     working_dir = Path(cwd or Path.cwd()).resolve()
     session_dir = _resolve_session_dir(working_dir / ".loushang-sessions")
     session_manager = SessionManager.new(
@@ -203,6 +227,7 @@ def create_kimi_session(
         system_prompt=system_prompt or DEFAULT_SYSTEM_PROMPT,
         thinking_level=thinking_level,
         tools=list(tools or []),
+        active_tool_names=_resolve_active_tool_names(active_tool_names),
         services=_build_bootstrap_services(),
     )
     session.agent.call_options = CallOptions(auth=ApiKeyAuth(resolve_api_key()))
@@ -216,6 +241,7 @@ def create_kimi_runtime(
     system_prompt: str | None = None,
     thinking_level: ThinkingLevel = "off",
     tools: list[AgentTool[Any]] | None = None,
+    active_tool_names: list[str] | None = None,
     persist: bool = False,
 ) -> AgentSessionRuntime:
     working_dir = Path(cwd or Path.cwd()).resolve()
@@ -226,6 +252,7 @@ def create_kimi_runtime(
         system_prompt=system_prompt or DEFAULT_SYSTEM_PROMPT,
         thinking_level=thinking_level,
         tools=list(tools or []),
+        active_tool_names=_resolve_active_tool_names(active_tool_names),
         persist=persist,
         services=_build_bootstrap_services(),
     )
@@ -245,8 +272,9 @@ async def create_kimi_runtime_session(
     system_prompt: str | None = None,
     thinking_level: ThinkingLevel = "off",
     tools: list[AgentTool[Any]] | None = None,
+    active_tool_names: list[str] | None = None,
     persist: bool = False,
-) -> tuple[AgentSessionRuntime, AgentSession]:
+) -> tuple[AgentSessionRuntime, CodingSession]:
     working_dir = Path(cwd or Path.cwd()).resolve()
     runtime = create_kimi_runtime(
         cwd=working_dir,
@@ -254,6 +282,7 @@ async def create_kimi_runtime_session(
         system_prompt=system_prompt,
         thinking_level=thinking_level,
         tools=tools,
+        active_tool_names=active_tool_names,
         persist=persist,
     )
     session = await runtime.create_session(cwd=str(working_dir))
@@ -261,7 +290,9 @@ async def create_kimi_runtime_session(
     return runtime, session
 
 
-def attach_stream_printer(session: AgentSession, *, show_thinking: bool = False) -> None:
+def attach_stream_printer(
+    session: CodingSession, *, show_thinking: bool = False
+) -> None:
     thinking_open = False
 
     def on_event(event: dict) -> None:
@@ -301,7 +332,7 @@ def attach_stream_printer(session: AgentSession, *, show_thinking: bool = False)
     session.subscribe(on_event)
 
 
-def print_message_summary(session: AgentSession) -> None:
+def print_message_summary(session: CodingSession) -> None:
     messages = session.get_session_context().messages
     print("Messages:")
     for index, message in enumerate(messages, start=1):

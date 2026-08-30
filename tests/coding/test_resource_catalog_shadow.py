@@ -2052,6 +2052,9 @@ def test_coding_initial_catalog_admits_materialized_remote_plugin_resources(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from loushang.coding._plugin_lifecycle import (
+        resolve_coding_plugin_lifecycle_state_layout,
+    )
     from loushang.coding.resource_runtime import CodingPackageMaterializer
     from loushang.harness.resources.packages.materializer import (
         GitPackageMaterializerBackend,
@@ -2085,9 +2088,12 @@ def test_coding_initial_catalog_admits_materialized_remote_plugin_resources(
             text=True,
         )
         source = remote_root.as_uri()
+        monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "missing-home"))
+        lifecycle_layout = resolve_coding_plugin_lifecycle_state_layout(project_root)
         materializer = CodingPackageMaterializer(
-            install_root=tmp_path / "installed",
-            plugin_revision_root=tmp_path / "plugin-revisions",
+            install_root=lifecycle_layout.package_install_root,
+            lockfile_path=lifecycle_layout.package_lockfile,
+            plugin_revision_root=lifecycle_layout.plugin_revision_root,
             backend=GitPackageMaterializerBackend(),
         )
         record = materializer.materialize_remote_source_sync(source)
@@ -2097,7 +2103,6 @@ def test_coding_initial_catalog_admits_materialized_remote_plugin_resources(
             json.dumps({"plugin_sources": [source]}),
             encoding="utf-8",
         )
-        monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "missing-home"))
         services = create_services(
             settings_manager=SettingsManager(
                 global_settings_path=tmp_path / "global-settings.json",
@@ -2198,7 +2203,8 @@ def test_coding_minimal_starts_a_real_kernel_only_catalog_session(
             assert session._coding_lsp_plugin_assembly is None
             assert session._capability_composition_inputs is None
             assert session._capability_owner_generations == ()
-            assert session._command_generation_registry is None
+            assert session._command_generation_registry is not None
+            assert session._command_generation_registry.registration_inventory == ()
             tool_registry = session._composition.tool_controller.tool_registry
             assert tool_registry is None or tool_registry.registration_inventory == ()
             assert session.resource_bundle is not None
@@ -2324,59 +2330,7 @@ def test_default_coding_standard_publishes_base_without_hidden_settings_source(
     asyncio.run(scenario())
 
 
-def test_coding_resource_authority_modes_are_explicit(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    project_root = tmp_path / "project"
-    skill_root = project_root / "skills" / "legacy"
-    skill_root.mkdir(parents=True)
-    (skill_root / "SKILL.md").write_text(
-        "---\nname: legacy\n---\nLegacy explicit body.\n",
-        encoding="utf-8",
-    )
-    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "missing-home"))
-    services = create_services(
-        settings_manager=SettingsManager(
-            global_settings_path=tmp_path / "global-settings.json",
-            project_settings_path=tmp_path / "project-settings.json",
-        )
-    )
-    manager = asyncio.run(
-        SessionManager.new(
-            session_dir=tmp_path / "sessions",
-            cwd=str(project_root),
-            persist=False,
-        )
-    )
-
-    with pytest.raises(ValueError, match="authority mode is invalid"):
-        _create_agent_session(
-            session_manager=manager,
-            services=services,
-            model=_model(),
-            resource_authority_mode="auto",  # type: ignore[arg-type]
-        )
-
-    session = _create_agent_session(
-        session_manager=manager,
-        services=services,
-        model=_model(),
-        resource_authority_mode="legacy_explicit",
-    )
-    assert session._initial_resource_catalog_bootstrap is None
-    assert session._composition.resource_refresh_runtime.refresh_catalog is None
-    legacy_preflight = session._preflight_user_input("/skill:legacy")
-    assert "Legacy explicit body." in legacy_preflight.text
-    assert legacy_preflight.loaded_skills == ()
-    session.steer("/skill:legacy steer")
-    session.follow_up("/skill:legacy follow-up")
-    assert "Legacy explicit body." in session.get_steering_messages()[0]
-    assert "Legacy explicit body." in session.get_follow_up_messages()[0]
-    asyncio.run(session.dispose())
-
-
-def test_coding_catalog_required_reports_missing_custom_loader_receipt(
+def test_coding_reports_missing_custom_loader_receipt(
     tmp_path: Path,
 ) -> None:
     from loushang.harness.resources.types import ResourceBundle
@@ -2401,30 +2355,6 @@ def test_coding_catalog_required_reports_missing_custom_loader_receipt(
         )
 
     assert captured.value.reasons == ("catalog_receipt_unavailable",)
-
-
-def test_coding_legacy_authority_rejects_catalog_composition_inputs(
-    tmp_path: Path,
-) -> None:
-    assembly, plugin_runtime = _coding_base_composition_assembly(tmp_path)
-    manager = asyncio.run(
-        SessionManager.new(
-            session_dir=tmp_path / "sessions",
-            cwd=str(tmp_path),
-            persist=False,
-        )
-    )
-    try:
-        with pytest.raises(ValueError, match="requires catalog_required authority"):
-            _create_agent_session(
-                session_manager=manager,
-                services=create_services(),
-                model=_model(),
-                resource_authority_mode="legacy_explicit",
-                initial_resource_catalog_product_composition_assembly=assembly,
-            )
-    finally:
-        plugin_runtime.close()
 
 
 def test_coding_initial_catalog_shadow_adopts_exact_admitted_package_skill(

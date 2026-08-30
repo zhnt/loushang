@@ -28,7 +28,13 @@ from loushang.coding.capabilities import (
     CODING_ARCH_CAPABILITY,
     coding_capability_mount_mode,
 )
-from loushang.coding.cli.args import CliArgs, ExtensionFlag, help_text, parse_args
+from loushang.coding.cli.args import (
+    CliArgs,
+    ExtensionFlag,
+    help_text,
+    parse_args,
+    removed_legacy_resource_option,
+)
 from loushang.coding.cli.lsp import extract_lsp_argv, run_coding_lsp_command
 from loushang.coding.cli.multiagent import run_coding_multiagent_command
 from loushang.coding.cli.workspace import (
@@ -64,10 +70,6 @@ from loushang.coding.prompt_command import (
     run_prompt_plan_command,
 )
 from loushang.coding.resource_runtime import collect_coding_package_entries
-from loushang.coding.tool_pack import (
-    CODING_BUILTIN_TOOL_NAMES,
-    register_coding_builtin_tools,
-)
 from loushang.coding.ui.mode import run_coding_tui
 from loushang.coding.workflow import run_prompt_steps_workflow
 from loushang.harness.approval import (
@@ -236,47 +238,6 @@ def default_runtime_builder(
         )
     allowed_tool_names, active_tool_names = agent_tool_selection(args)
     runtime_tool_registry = tool_registry.copy()
-    resource_authority_mode = getattr(
-        args,
-        "resource_authority_mode",
-        "catalog_required",
-    )
-    if (
-        resource_authority_mode == "legacy_explicit"
-        and not getattr(args, "no_tools", False)
-        and not getattr(args, "no_builtin_tools", False)
-        and not any(
-            definition.name in {*CODING_BUILTIN_TOOL_NAMES, "shell"}
-            for definition in runtime_tool_registry.list_definitions()
-        )
-    ):
-        settings_manager = getattr(services, "settings_manager", None)
-        get_external_tool_policy = getattr(
-            settings_manager,
-            "get_external_tool_policy",
-            None,
-        )
-        get_shell_path = getattr(settings_manager, "get_shell_path", None)
-        get_shell_command_prefix = getattr(
-            settings_manager,
-            "get_shell_command_prefix",
-            None,
-        )
-        register_coding_builtin_tools(
-            runtime_tool_registry,
-            diagnostics_service=getattr(services, "diagnostics_service", None),
-            external_tool_policy=(
-                get_external_tool_policy()
-                if callable(get_external_tool_policy)
-                else None
-            ),
-            shell_path=get_shell_path() if callable(get_shell_path) else None,
-            command_prefix=(
-                get_shell_command_prefix()
-                if callable(get_shell_command_prefix)
-                else None
-            ),
-        )
     if (
         not getattr(args, "no_builtin_tools", False)
         and allowed_tool_names is not None
@@ -299,9 +260,6 @@ def default_runtime_builder(
         services,
         resource_loader_options,
         create_services=create_agent_session_services,
-        create_services_options={
-            "resource_authority_mode": resource_authority_mode,
-        },
     )
     runtime = create_agent_session_runtime(
         session_dir=session_dir,
@@ -321,7 +279,6 @@ def default_runtime_builder(
         approval_resolver=approval_resolver,
         tool_policy_evaluator=tool_policy_evaluator,
         enable_multiagent=True,
-        resource_authority_mode=resource_authority_mode,
     )
     resource_layout = resolve_machine_resource_layout(cwd=cwd)
     platform_sessions = resource_layout.sessions
@@ -392,12 +349,15 @@ async def run_cli(
     machine_resource_runner=run_machine_resource_command,
 ) -> int:
     raw_argv = tuple(argv or ())
+    resolved_stderr = stderr or sys.stderr
+    if _reject_removed_legacy_resource_input(raw_argv, resolved_stderr):
+        return 2
     machine_resource_argv = extract_machine_resource_argv(raw_argv)
     if machine_resource_argv is not None:
         return await machine_resource_runner(
             machine_resource_argv,
             stdout=stdout or sys.stdout,
-            stderr=stderr or sys.stderr,
+            stderr=resolved_stderr,
             cwd=cwd,
         )
     workspace_argv = extract_workspace_argv(raw_argv)
@@ -406,7 +366,7 @@ async def run_cli(
             workspace_argv,
             stdin=stdin or sys.stdin,
             stdout=stdout or sys.stdout,
-            stderr=stderr or sys.stderr,
+            stderr=resolved_stderr,
             cwd=cwd,
         )
     lsp_argv = extract_lsp_argv(raw_argv)
@@ -415,7 +375,7 @@ async def run_cli(
             lsp_argv,
             stdin=stdin or sys.stdin,
             stdout=stdout or sys.stdout,
-            stderr=stderr or sys.stderr,
+            stderr=resolved_stderr,
             cwd=cwd,
             services=services,
             build_services=build_default_services,
@@ -426,7 +386,7 @@ async def run_cli(
             multiagent_argv,
             stdin=stdin or sys.stdin,
             stdout=stdout or sys.stdout,
-            stderr=stderr or sys.stderr,
+            stderr=resolved_stderr,
             cwd=cwd,
             services=services,
             build_services=build_default_services,
@@ -435,7 +395,7 @@ async def run_cli(
     host_lifecycle = ProductHostLifecycle.resolve(
         stdin=stdin,
         stdout=stdout,
-        stderr=stderr,
+        stderr=resolved_stderr,
     )
     state_preparation_ports = _coding_state_preparation_ports(workflow_runner)
     host_binding = AgentCliSessionHostBinding[
@@ -618,6 +578,8 @@ def _parse_application_args(
     extension_flags: Mapping[str, object] | None,
     allow_unknown: bool,
 ) -> CliParseResult[CliArgs]:
+    if _reject_removed_legacy_resource_input(tuple(argv), stderr):
+        return CliParseResult(args=None, exit_code=2)
     return capture_cli_parse(
         parse_args,
         argv,
@@ -628,6 +590,22 @@ def _parse_application_args(
         ),
         allow_unknown,
     )
+
+
+def _reject_removed_legacy_resource_input(
+    argv: tuple[str, ...],
+    stderr: TextIO,
+) -> bool:
+    removed_option = removed_legacy_resource_option(argv)
+    if removed_option is None:
+        return False
+    stderr.write(
+        "Error: coding_legacy_resource_input_removed: "
+        f"{removed_option} is no longer supported; use native "
+        ".loushang/resources roots or a verified Plugin with exact "
+        "contribution declarations.\n"
+    )
+    return True
 
 
 def _coding_state_preparation_ports(
@@ -827,7 +805,7 @@ def _prepare_coding_host_input(
     bootstrap = context.bootstrap
     domain_app = CodingDomainApp(
         cwd=bootstrap.project_root,
-        method_loader=_coding_method_loader(args),
+        method_loader=_coding_method_loader(),
     )
     return prepare_agent_cli_host_input(
         resolve_input=lambda: resolve_agent_prompt_input(
@@ -950,7 +928,7 @@ def _run_method_visibility(
     try:
         result = run_method_listing(
             request,
-            discover_methods=lambda: _coding_method_loader(args).discover_methods(
+            discover_methods=lambda: _coding_method_loader().discover_methods(
                 project_root
             ),
             compile_plan=lambda method: MethodCompiler().compile(
@@ -964,14 +942,8 @@ def _run_method_visibility(
     return 0
 
 
-def _coding_method_loader(args: CliArgs) -> MethodLoader:
-    return MethodLoader(
-        skill_authority=(
-            "legacy_explicit"
-            if args.resource_authority_mode == "legacy_explicit"
-            else "none"
-        )
-    )
+def _coding_method_loader() -> MethodLoader:
+    return MethodLoader()
 
 
 def _run_list_packages(

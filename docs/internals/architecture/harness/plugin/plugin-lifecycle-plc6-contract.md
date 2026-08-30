@@ -13,7 +13,7 @@ PLC6 does not publish the general Plugin SDK, implement `coding.arch.default`,
 or move Product identity, safety, workspace ceilings, Session correctness, or
 Model Input commit out of the Coding Kernel.
 
-Implementation checkpoint (2026-08-30): PLC6A through PLC6D are implemented. The
+Implementation checkpoint (2026-08-30): PLC6A through PLC6E are implemented. The
 checked-in data-only package is selected by the default `coding-standard`
 request and enters Resource discovery through an independent verified lease,
 without a hidden settings source. The Catalog-owned production path now uses
@@ -35,8 +35,11 @@ disabled or removed Installation is never resurrected. New Sessions activate
 and lease the exact selected Instance Revision, while an existing Session pins
 its old family and reports `coding_base_management_restart_required` after an
 update, disable, or remove. Selected content-addressed revisions reopen from
-the durable binding lock without consulting a deleted mutable source. Legacy
-Resource-authority cleanup and final production review remain PLC6E.
+the durable binding lock without consulting a deleted mutable source. PLC6E
+removes the Coding Resource-authority type, SDK/CLI parameter, peer CLI Tool
+registrar, legacy Method adaptation, and conditional bootstrap/LSP/refresh
+branches. Every Coding Session now requires one Catalog input receipt and one
+Catalog-owned publication. Final production review remains.
 
 ## First principles
 
@@ -96,9 +99,8 @@ PLC6A originally exposed this split as a shadow target while preserving the
 compatibility prompt byte-for-byte. PLC6B atomically changed the Catalog-owned
 production default to the Kernel and supplies the standard fragment through
 the Catalog generation; there is no interval in which both fragments publish.
-The explicit legacy Resource-authority mode retains the byte-stable
-compatibility prompt as an isolated rollback surface and is not active in the
-Catalog-owned Session.
+PLC6E deletes the former Coding rollback selector, so the compatibility Prompt
+cannot become a second production writer.
 
 ## Owner cutover order
 
@@ -113,6 +115,8 @@ Catalog-owned Session.
 4. Bind Composition Set selection to management desired state, including
    disable, update, remove, active-Session `restart_required`, and exact replay
    after source removal.
+5. Delete the Coding legacy Resource-authority selector and every production
+   caller of legacy discovery or direct Tool publication.
 
 No slice may retain two effective writers for rollback convenience.
 

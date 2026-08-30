@@ -37,14 +37,16 @@
   both `always` and `on_demand` modes through Tool execution, status, explicit
   stop and exact-generation retirement. The Product-owned exact-policy Approval
   owner, default cutover and deletion of the deferred runtime, early Tool
-  registrar and legacy cleanup input are implemented. PLC6A through PLC6D now
+  registrar and legacy cleanup input are implemented. PLC6A through PLC6E now
   freeze the inert Composition Set request and Kernel/Base Prompt boundary,
   publish Prompt/Skill through Resource Catalog and publish Tool/Command only
   through their exact Session owners. PLC6D binds the requested base package to
   the common durable desired-state/Instance authority, preserves explicit
   disable and remove, pins active Session families across update, and reopens
-  selected immutable revisions after mutable source removal. PLC6 final legacy
-  cleanup, PLC7 through PLC9, and the public Plugin SDK remain unimplemented.
+  selected immutable revisions after mutable source removal. PLC6E now removes
+  Coding's Resource authority mode, legacy Resource discovery, and peer CLI
+  Tool publisher. Final production validation, PLC7 through PLC9, and the
+  public Plugin SDK remain unimplemented.
 - Scope: one delivery order for the common Plugin lifecycle, ordinary
   Definition / Provider / Consumer authoring primitives, `coding.lsp`,
   `coding.base`, `coding.arch`, management control, pre-LSP internal Resource/
@@ -1304,7 +1306,7 @@ This remains the first production Graph proof.
 
 ### PLC6: `coding.base` Production Resource Plugin
 
-PLC6A through PLC6D implementation status (2026-08-30): the conservative production
+PLC6A through PLC6E implementation status (2026-08-30): the conservative production
 boundary is frozen in the
 [PLC6 contract](plugin-lifecycle-plc6-contract.md). Coding now exposes one
 canonical, fingerprinted and side-effect-free expansion for
@@ -1335,8 +1337,11 @@ disable and remove remain authoritative. Active Sessions retain a durable
 family over their old revision and return an exact restart-required diagnostic,
 while new Sessions select the current revision or omit the base package. Replay
 opens the content-addressed revision through its durable binding after mutable
-source deletion. The explicitly selected legacy Resource authority cleanup and
-final production review remain PLC6E.
+source deletion. PLC6E removes the Coding SDK/CLI Resource-authority selector,
+the peer CLI Tool registrar, legacy Method adaptation, and every Coding
+bootstrap branch that could execute legacy Resource discovery. Catalog receipt
+preparation, publication, refresh, Prompt/Skill body reads, and Base/LSP Product
+composition are now one mandatory path. Final production review remains.
 
 Scope:
 

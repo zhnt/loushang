@@ -9,15 +9,21 @@ from typing import Any, cast
 
 from loushang.ai.model import Model, ModelSelection, parse_model_selection_reference
 from loushang.ai.types import Message
+from loushang.coding._tool_authority import (
+    CODING_EXACT_OWNER_TOOL_NAMES,
+    coding_peer_tool_names,
+)
 from loushang.coding.prompt.defaults import DEFAULT_CODING_SYSTEM_PROMPT
 from loushang.coding.runtime import AgentSessionRuntime
 from loushang.coding.sandbox import coding_workspace_execution_profile
 from loushang.coding.session import AgentSession
+from loushang.coding.tool_pack import coding_platform_tool_names
 from loushang.harness.approval import (
     ActorBoundApprovalResolver,
     DenyApprovalResolver,
     InteractiveApprovalResolver,
 )
+from loushang.harness.environment import HostEnvironment, LocalHostEnvironmentProbe
 from loushang.harness.multiagent import (
     AgentInputMessage,
     AgentTypeRegistry,
@@ -300,6 +306,8 @@ class CodingSubagentFactory(SessionSubagentFactory):
         services: BootstrapServices | None = None,
         approval_resolver: InteractiveApprovalResolver | None = None,
         workspace_leases: WorkspaceLeasePort | None = None,
+        host_environment: HostEnvironment | None = None,
+        selected_exact_tool_names: tuple[str, ...],
     ) -> None:
         resolved_cwd = Path(cwd).expanduser().resolve()
         if not resolved_cwd.is_dir():
@@ -312,6 +320,23 @@ class CodingSubagentFactory(SessionSubagentFactory):
         self._approval_resolver = approval_resolver
         self._runtime_builder = runtime_builder
         self._workspace_leases = workspace_leases
+        self._host_environment = (
+            host_environment or LocalHostEnvironmentProbe().detect()
+        )
+        selected_exact_names = tuple(selected_exact_tool_names)
+        if len(set(selected_exact_names)) != len(selected_exact_names):
+            raise ValueError("selected exact Tool names must not contain duplicates")
+        unknown_exact_names = tuple(
+            name
+            for name in selected_exact_names
+            if name not in CODING_EXACT_OWNER_TOOL_NAMES
+        )
+        if unknown_exact_names:
+            raise ValueError(
+                "selected exact Tool names are not Coding exact-owner identities: "
+                + ", ".join(unknown_exact_names)
+            )
+        self._selected_exact_tool_names = frozenset(selected_exact_names)
 
     async def create(
         self,
@@ -338,7 +363,21 @@ class CodingSubagentFactory(SessionSubagentFactory):
                 )
                 child_cwd = Path(workspace_lease.execution_ref)
             plan = request.context_plan
-            allowed_tools = _resolve_allowed_tools(request)
+            allowed_tools = coding_platform_tool_names(
+                _resolve_allowed_tools(request),
+                self._host_environment,
+            )
+            unavailable_exact_tools = tuple(
+                name
+                for name in allowed_tools
+                if name in CODING_EXACT_OWNER_TOOL_NAMES
+                and name not in self._selected_exact_tool_names
+            )
+            if unavailable_exact_tools:
+                raise ValueError(
+                    "Coding child exact-owner tools are not selected: "
+                    + ", ".join(unavailable_exact_tools)
+                )
             model_ref = plan.model if plan is not None else None
             if model_ref is None:
                 model_ref = request.agent_type.default_model
@@ -602,13 +641,14 @@ def _select_tool_registry(
     source: WorkspaceToolRegistry,
     allowed_tools: tuple[str, ...],
 ) -> WorkspaceToolRegistry:
+    peer_tool_names = coding_peer_tool_names(allowed_tools)
     enabled = {definition.name for definition in source.list_enabled_definitions()}
-    missing = tuple(name for name in allowed_tools if name not in enabled)
+    missing = tuple(name for name in peer_tool_names if name not in enabled)
     if missing:
         raise ValueError(
             "Coding child tools are not registered and enabled: " + ", ".join(missing)
         )
-    return source.select(allowed_tools)
+    return source.select(peer_tool_names)
 
 
 __all__ = [

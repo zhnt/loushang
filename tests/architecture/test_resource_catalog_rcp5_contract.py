@@ -94,10 +94,10 @@ def test_rcp5_contract_freezes_conservative_order_and_authority() -> None:
     assert "RCP5.2B \u2014 exact-v4 read-only cutover" in contract
     assert "exact-v2 and exact-v3 Graph contracts remain unchanged" in contract
     assert "never a legacy fallback" in contract
-    assert "RCP5.2B default ingress is complete" in contract
+    assert "historical staged-cutover checkpoint" in normalized_contract
     assert "admitted initial Resource Catalog" in normalized_contract
-    assert "forbidden silent legacy fallback" in contract
-    assert "RCP5.2B default ingress authority" in contract
+    assert "cannot enter a Coding Session" in normalized_contract
+    assert "RCP5.2B historical default-ingress authority" in contract
     assert "RCP5.3A — exact asynchronous body preflight" in contract
     assert "RCP5.3B — request-bound durable evidence" in contract
     assert "RCP5.3C — eager-body sink deletion" in contract
@@ -107,10 +107,16 @@ def test_rcp5_contract_freezes_conservative_order_and_authority() -> None:
     assert "same asynchronous authority" in contract
     assert "`catalog_required` is the public default" in contract
     assert "`legacy_explicit` is a caller-selected compatibility boundary" in contract
-    assert "input-sensitive or exception-driven `auto` mode" in contract
-    assert "The mode is Product policy, not a ResourceLoader type test" in contract
+    assert "input-sensitive or exception-driven `auto` mode" in normalized_contract
+    assert "historical mode boundary was Product policy" in contract
+    assert (
+        "Coding now has no authority selector, raw constructor, or production "
+        "legacy caller"
+        in normalized_contract
+    )
     assert "Raw `package_roots` and non-Plugin `package_sources`" in contract
     assert "RCP5.5 \u2014 peer deletion" in contract
+    assert "PLC6E then removes Coding's explicit legacy authority" in contract
     assert "Production cutover starts only after" in contract
     assert "Only then is PLC6" in contract
     assert readme.count("resource-catalog-rcp5-contract.md") == 1
@@ -292,7 +298,7 @@ def test_rcp53c_catalog_projection_and_consumers_are_body_free() -> None:
     assert 'ResourceSkillBodyAuthority = Literal["catalog_required", "legacy_explicit"]' in (
         command_source
     )
-    assert "_coding_method_loader(args)" in coding_cli
+    assert "_coding_method_loader()" in coding_cli
 
     legacy_target = "loushang.harness.resources._legacy_skill_body"
     legacy_importers = {
@@ -373,4 +379,4 @@ def test_rcp55_default_path_has_no_peer_loader_or_skill_authority() -> None:
     assert "_disabled_skill_winner_descriptors" in bootstrap_source
     assert "class CatalogSessionResourceLoaderView" in loader_source
     assert "create_catalog_session_view()" in product_source
-    assert "resource_authority_mode" in services_source
+    assert "resource_authority_mode" not in services_source
