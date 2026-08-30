@@ -2769,7 +2769,10 @@ def test_create_agent_session_marks_disabled_skills(tmp_path) -> None:
     assert statuses["standard"].status == "effective"
 
 
-@pytest.mark.parametrize("tool_name", ("read", "inspect_symbol"))
+@pytest.mark.parametrize(
+    "tool_name",
+    ("read", "inspect_symbol", "inspect_import_graph"),
+)
 @pytest.mark.parametrize("input_kind", ("registry", "tools"))
 def test_create_agent_session_rejects_peer_exact_tool_publishers(
     tmp_path,

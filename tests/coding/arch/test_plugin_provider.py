@@ -10,7 +10,6 @@ from loushang.coding.arch._provider_api import (
     CODING_ARCH_ANALYSIS_FACET,
     CODING_ARCH_CAPABILITY_DEFINITION,
     CODING_ARCH_DIAGNOSTICS_FACET,
-    CODING_ARCH_LSP_SEMANTIC_REQUIREMENT,
     CODING_ARCH_TOOL_RUNTIME_FACET,
     CODING_ARCH_TOOL_RUNTIME_REQUIREMENT,
     CODING_ARCH_WORKSPACE_REQUIREMENT,
@@ -119,11 +118,7 @@ def test_arch_provider_descriptor_matches_the_declared_capability() -> None:
     assert provider.capability_id == CODING_ARCH_CAPABILITY_DEFINITION.capability_id
     assert provider.provider_id == "coding.arch.default"
     assert provider.facets == CODING_ARCH_CAPABILITY_DEFINITION.facets
-    assert provider.requirements == (
-        CODING_ARCH_WORKSPACE_REQUIREMENT,
-        CODING_ARCH_LSP_SEMANTIC_REQUIREMENT,
-    )
-    assert CODING_ARCH_LSP_SEMANTIC_REQUIREMENT.optional is True
+    assert provider.requirements == (CODING_ARCH_WORKSPACE_REQUIREMENT,)
     assert provider.required_authorities == frozenset({"filesystem"})
     assert provider.source_id == "plugin:coding.arch.default"
     assert provider.selection_rule == PLUGIN_PROVIDER_SELECTION_RULE
@@ -272,6 +267,93 @@ def test_arch_provider_reads_virtual_sources_only_through_workspace_facets(
     assert result["nodes"] == 1
     assert read_paths == [source_path]
     assert source_path.exists() is False
+    dispose_coding_arch_provider(bundle)
+
+
+def test_arch_provider_cancellation_stops_before_cache_publication(
+    tmp_path: Path,
+) -> None:
+    workspace_root = (tmp_path / "cancelled-workspace").resolve()
+    source_paths = (workspace_root / "first.py", workspace_root / "second.py")
+
+    class Signal:
+        aborted = False
+
+    signal = Signal()
+
+    class CancellingRead:
+        reads = 0
+
+        def exists(self, path: Path) -> bool:
+            return path == workspace_root or path in source_paths
+
+        def is_file(self, path: Path) -> bool:
+            return path in source_paths
+
+        def read_bytes(self, path: Path) -> bytes:
+            assert path in source_paths
+            self.reads += 1
+            signal.aborted = True
+            return b"import os\n"
+
+    class Search:
+        def exists(self, path: Path) -> bool:
+            return path == workspace_root or path in source_paths
+
+        def is_file(self, path: Path) -> bool:
+            return path in source_paths
+
+        def is_dir(self, path: Path) -> bool:
+            return path == workspace_root
+
+        def read_text(self, path: Path, *, newline: str | None = None) -> str:
+            del newline
+            return path.read_text(encoding="utf-8")
+
+        def walk_files(self, path: Path):
+            assert path == workspace_root
+            return source_paths
+
+    read = CancellingRead()
+    workspace = CapabilityBundleValue(
+        (
+            CapabilityFacetBinding("read", read),
+            CapabilityFacetBinding("list", _WorkspaceList()),
+            CapabilityFacetBinding("search", Search()),
+        )
+    )
+    base = _context(tmp_path)
+    context = CapabilityProviderContext(
+        product_id=base.product_id,
+        runtime_id=base.runtime_id,
+        generation=base.generation,
+        registrations=base.registrations,
+        dependencies=(
+            CapabilityDependencyBinding(
+                requirement=CODING_ARCH_WORKSPACE_REQUIREMENT,
+                _value=workspace,
+            ),
+        ),
+        binding_inputs=CodingArchPluginConfigV1.from_runtime_inputs(
+            workspace_root=workspace_root,
+            private_data_root=tmp_path / "cancelled-private",
+            private_state_quota_bytes=4096,
+        ).to_dict(),
+    )
+    bundle = create_coding_arch_provider(context)
+
+    with pytest.raises(RuntimeError, match="aborted"):
+        asyncio.run(
+            bundle.require(CODING_ARCH_TOOL_RUNTIME_FACET).inspect(
+                workspace=workspace_root,
+                root=".",
+                query="summary",
+                signal=signal,
+            )
+        )
+
+    assert read.reads == 1
+    assert (tmp_path / "cancelled-private" / "import-facts-v1.json").exists() is False
     dispose_coding_arch_provider(bundle)
 
 

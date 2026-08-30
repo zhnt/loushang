@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from loushang.agent.types import AgentToolResult
-from loushang.ai.model import ModelSelection
+from loushang.ai.model import Capabilities, Model, ModelSelection
 from loushang.ai.types import (
     AssistantMessage,
     TextPart,
@@ -16,7 +17,10 @@ from loushang.ai.types import (
     Usage,
     UserMessage,
 )
-from loushang.coding._tool_authority import CODING_LSP_EXACT_OWNER_TOOL_NAMES
+from loushang.coding._tool_authority import (
+    CODING_ARCH_EXACT_OWNER_TOOL_NAMES,
+    CODING_LSP_EXACT_OWNER_TOOL_NAMES,
+)
 from loushang.coding.multiagent import (
     CodingSubagentFactory,
     coding_agent_types,
@@ -64,11 +68,13 @@ _WINDOWS_HOST = HostEnvironment(
 def _selected_exact_tool_names(
     environment: HostEnvironment = _LINUX_HOST,
     *,
+    include_arch: bool = True,
     include_lsp: bool = True,
 ) -> tuple[str, ...]:
     return (
         *coding_workspace_tool_profile(environment).builtin_tool_names,
         *(CODING_LSP_EXACT_OWNER_TOOL_NAMES if include_lsp else ()),
+        *(CODING_ARCH_EXACT_OWNER_TOOL_NAMES if include_arch else ()),
     )
 
 
@@ -526,7 +532,13 @@ def test_factory_filters_all_exact_owner_tools_from_peer_registry(
 
     spec = AgentTypeSpec(
         name="reviewer",
-        allowed_tools=("read", "inspect_symbol", "document_outline", "custom"),
+        allowed_tools=(
+            "read",
+            "inspect_symbol",
+            "document_outline",
+            "inspect_import_graph",
+            "custom",
+        ),
     )
     factory = CodingSubagentFactory(
         session_dir=tmp_path / "sessions",
@@ -545,11 +557,82 @@ def test_factory_filters_all_exact_owner_tools_from_peer_registry(
     ] == ["custom"]
 
 
+def test_factory_builds_arch_exact_tool_through_child_product_composition(
+    tmp_path: Path,
+) -> None:
+    from loushang.coding import bootstrap as coding_bootstrap
+    from loushang.coding.arch import INSPECT_IMPORT_GRAPH_TOOL_NAME
+    from loushang.coding.bootstrap import create_services
+    from loushang.coding.composition_sets import resolve_coding_composition_set
+    from loushang.coding.control import ControlConfig, SettingsManager
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    model = Model(
+        id="faux-model",
+        name="Faux",
+        provider="faux",
+        endpoint="anthropic-messages",
+        capabilities=Capabilities(
+            reasoning=True,
+            input=("text",),
+            context_window=128000,
+            max_tokens=4096,
+        ),
+    )
+    factory = CodingSubagentFactory(
+        session_dir=tmp_path / "sessions",
+        cwd=workspace,
+        tool_registry=_tool_registry(),
+        runtime_builder=partial(
+            coding_bootstrap._create_agent_session_runtime,
+            composition_set=resolve_coding_composition_set("coding-architecture"),
+        ),
+        default_model=model,
+        services=create_services(
+            settings_manager=SettingsManager(
+                ControlConfig(
+                    capabilities={
+                        "coding.arch": "always",
+                        "coding.lsp": "disabled",
+                    }
+                )
+            )
+        ),
+        selected_exact_tool_names=_selected_exact_tool_names(include_lsp=False),
+    )
+    spec = AgentTypeSpec(
+        name="reviewer",
+        allowed_tools=(INSPECT_IMPORT_GRAPH_TOOL_NAME,),
+    )
+
+    async def scenario() -> None:
+        binding = await factory.create(_request(spec=spec))
+        child = getattr(binding.driver, "_session")
+        try:
+            await child.prepare_model_call_runtime()
+            assembly = child._coding_capability_plugin_assembly
+            assert assembly is not None
+            assert frozenset(assembly.tool_owners) == {"coding.arch.default"}
+            assert [tool.name for tool in child.agent.tools] == [
+                INSPECT_IMPORT_GRAPH_TOOL_NAME
+            ]
+        finally:
+            disposed = await binding.driver.dispose()
+            assert disposed.dispose_error is None
+
+    asyncio.run(scenario())
+
+
 @pytest.mark.parametrize(
     ("tool_name", "selected_exact_tool_names"),
     (
         ("read", ()),
         ("inspect_symbol", _selected_exact_tool_names(include_lsp=False)),
+        (
+            "inspect_import_graph",
+            _selected_exact_tool_names(include_arch=False),
+        ),
         ("shell", _selected_exact_tool_names()),
     ),
 )

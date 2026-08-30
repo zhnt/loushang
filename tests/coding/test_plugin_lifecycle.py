@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import gc
 import json
 import shutil
 import subprocess
@@ -113,8 +114,13 @@ _TEST_OWNER_CONTRIBUTIONS = (
 )
 
 
-def _disable_or_remove(lifecycle, *, action: str) -> object:
-    key = lifecycle.installation_key("coding.base")
+def _disable_or_remove(
+    lifecycle,
+    *,
+    action: str,
+    plugin_id: str = "coding.base",
+) -> object:
+    key = lifecycle.installation_key(plugin_id)
     snapshot = lifecycle.desired.snapshot()
     desired_state = "installed_disabled" if action == "disable" else "absent"
     event = lifecycle.management.submit(
@@ -136,6 +142,648 @@ def _disable_or_remove(lifecycle, *, action: str) -> object:
     assert event.result is not None
     assert event.result.disposition == "succeeded"
     return event
+
+
+@pytest.mark.parametrize(
+    ("action", "reason"),
+    (("disable", "plugin_disabled"), ("remove", "plugin_removed")),
+)
+def test_arch_management_change_pins_active_session_and_blocks_new_mount(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    action: str,
+    reason: str,
+) -> None:
+    from loushang.coding._capability_plugin_composition import (
+        CodingCapabilityPluginCompositionError,
+    )
+    from loushang.coding.arch import INSPECT_IMPORT_GRAPH_TOOL_NAME
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.session_manager import SessionManager
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "loushang-home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "sample.py").write_text("import os\n", encoding="utf-8")
+
+    async def scenario() -> None:
+        settings = SettingsManager(
+            ControlConfig(
+                capabilities={"coding.arch": "always", "coding.lsp": "disabled"}
+            )
+        )
+        first_manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions-a",
+            cwd=str(workspace),
+            persist=True,
+        )
+        active = create_agent_session(
+            session_manager=first_manager,
+            model=_model(),
+            services=create_services(settings_manager=settings),
+            composition_set="coding-architecture",
+        )
+        await active.prepare_model_call_runtime()
+        assembly = active._coding_capability_plugin_assembly
+        assert assembly is not None
+        arch_lease = assembly.management_leases["coding.arch.default"]
+        pinned_ref = arch_lease.instance_revision_ref
+        before_tools = tuple(active.get_active_tool_names())
+
+        observer = build_coding_plugin_lifecycle(
+            resolve_coding_plugin_lifecycle_state_layout(workspace)
+        )
+        _disable_or_remove(
+            observer,
+            action=action,
+            plugin_id="coding.arch.default",
+        )
+        with pytest.raises(
+            CodingCapabilityPluginCompositionError,
+            match="requires restart",
+        ):
+            await active.refresh_resources()
+        diagnostics = [
+            item
+            for item in active.get_session_diagnostics()
+            if item.code == "coding_capability_management_restart_required"
+        ]
+        assert len(diagnostics) == 1
+        assert diagnostics[0].details["pluginId"] == "coding.arch.default"
+        assert diagnostics[0].details["reason"] == reason
+        assert diagnostics[0].details["restartRequired"] is True
+        assert tuple(active.get_active_tool_names()) == before_tools
+
+        second_manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions-b",
+            cwd=str(workspace),
+            persist=True,
+        )
+        replacement = create_agent_session(
+            session_manager=second_manager,
+            model=_model(),
+            services=create_services(settings_manager=settings),
+            composition_set="coding-architecture",
+        )
+        assert replacement._coding_capability_plugin_assembly is None
+        assert INSPECT_IMPORT_GRAPH_TOOL_NAME not in {
+            tool.name for tool in replacement.get_all_tools()
+        }
+        await replacement.dispose()
+        await active.dispose()
+
+        retired = observer.instances.snapshot().instance(pinned_ref)
+        assert retired is not None
+        assert retired.state == "RETIRED"
+
+    asyncio.run(scenario())
+
+
+def test_arch_management_disable_keeps_selected_lsp_sibling_mountable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.coding.arch import INSPECT_IMPORT_GRAPH_TOOL_NAME
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.session_manager import SessionManager
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "loushang-home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    settings = SettingsManager(
+        ControlConfig(
+            capabilities={"coding.arch": "always", "coding.lsp": "always"}
+        )
+    )
+
+    async def scenario() -> None:
+        first = create_agent_session(
+            session_manager=await SessionManager.new(
+                session_dir=tmp_path / "sessions-a",
+                cwd=str(workspace),
+                persist=True,
+            ),
+            model=_model(),
+            services=create_services(settings_manager=settings),
+            composition_set="coding-architecture",
+        )
+        await first.prepare_model_call_runtime()
+        await first.dispose()
+
+        lifecycle = build_coding_plugin_lifecycle(
+            resolve_coding_plugin_lifecycle_state_layout(workspace)
+        )
+        _disable_or_remove(
+            lifecycle,
+            action="disable",
+            plugin_id="coding.arch.default",
+        )
+        replacement = create_agent_session(
+            session_manager=await SessionManager.new(
+                session_dir=tmp_path / "sessions-b",
+                cwd=str(workspace),
+                persist=True,
+            ),
+            model=_model(),
+            services=create_services(settings_manager=settings),
+            composition_set="coding-architecture",
+        )
+        assembly = replacement._coding_capability_plugin_assembly
+        assert assembly is not None
+        assert frozenset(assembly.management_leases) == {
+            "coding.lsp.default"
+        }
+        assert tuple(
+            item.capability_id
+            for item in assembly.plugin_assembly.resolved_providers.entries
+        ) == ("coding.lsp",)
+        assert INSPECT_IMPORT_GRAPH_TOOL_NAME not in {
+            tool.name for tool in replacement.get_all_tools()
+        }
+        await replacement.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_base_lsp_and_arch_share_one_session_runtime_claim(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.session_manager import SessionManager
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "loushang-home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    async def scenario() -> None:
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(workspace),
+            persist=True,
+        )
+        session = create_agent_session(
+            session_manager=manager,
+            model=_model(),
+            services=create_services(
+                settings_manager=SettingsManager(
+                    ControlConfig(
+                        capabilities={
+                            "coding.arch": "always",
+                            "coding.lsp": "always",
+                        }
+                    )
+                )
+            ),
+            composition_set="coding-architecture",
+        )
+        await session.prepare_model_call_runtime()
+        base = session._coding_base_plugin_assembly
+        capability = session._coding_capability_plugin_assembly
+        assert base is not None
+        assert base.management_lease is not None
+        assert capability is not None
+        assert frozenset(capability.management_leases) == {
+            "coding.lsp.default",
+            "coding.arch.default",
+        }
+        lease_path = plugin_lifecycle_module._session_owner_lease_path(
+            base.management_lease.lifecycle.layout,
+            session_id=manager.get_header().conversation_id,
+        )
+        with plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES_LOCK:
+            claim = plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES[lease_path]
+            assert claim.references == 3
+            assert claim.runtime_claim_references == 3
+            assert claim.runtime_claim_id == (
+                "coding-session-runtime:"
+                f"{manager.get_header().conversation_id}"
+            )
+        await session.dispose()
+        with plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES_LOCK:
+            assert lease_path not in plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES
+
+    asyncio.run(scenario())
+
+
+def test_arch_update_selects_a_new_instance_while_active_session_stays_pinned(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.coding._capability_plugin_composition import (
+        CodingCapabilityPluginCompositionError,
+    )
+    from loushang.coding._capability_plugin_specs import (
+        CODING_CAPABILITY_PLUGIN_SPEC_BY_ID,
+    )
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.plugin_dependency_grants import (
+        CoDistributedPluginDependencyGrantResolver,
+        coding_lsp_default_plugin_root,
+        coding_plugin_distribution_evidence_resolver,
+    )
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.resources.packages.materializer import (
+        GitPackageMaterializerBackend,
+    )
+    from loushang.harness.resources.plugins.distribution_evidence import (
+        InstalledPythonDistributionEvidence,
+    )
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "loushang-home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    settings = SettingsManager(
+        ControlConfig(
+            capabilities={"coding.arch": "always", "coding.lsp": "disabled"}
+        )
+    )
+
+    async def scenario() -> None:
+        first_manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions-a",
+            cwd=str(workspace),
+            persist=True,
+        )
+        active = create_agent_session(
+            session_manager=first_manager,
+            model=_model(),
+            services=create_services(settings_manager=settings),
+            composition_set="coding-architecture",
+        )
+        await active.prepare_model_call_runtime()
+        assembly = active._coding_capability_plugin_assembly
+        assert assembly is not None
+        lease = assembly.management_leases["coding.arch.default"]
+        old_ref = lease.instance_revision_ref
+        lifecycle = build_coding_plugin_lifecycle(
+            resolve_coding_plugin_lifecycle_state_layout(workspace)
+        )
+        key = lifecycle.installation_key("coding.arch.default")
+        expected = lifecycle.desired.snapshot().installation(
+            key
+        ).selection.package_revision
+        assert expected is not None
+
+        updated_source = tmp_path / "coding-arch-v2"
+        shutil.copytree(
+            CODING_CAPABILITY_PLUGIN_SPEC_BY_ID[
+                "coding.arch.default"
+            ].source_root(),
+            updated_source,
+        )
+        manifest_path = updated_source / "plugin.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["version"] = "2.0.0"
+        manifest_path.write_text(
+            json.dumps(manifest, sort_keys=True, separators=(",", ":")),
+            encoding="utf-8",
+        )
+        layout = lifecycle.layout
+        [installed_loushang, *_] = (
+            coding_plugin_distribution_evidence_resolver().resolve_all("loushang")
+        )
+
+        class UpdatedSourceEvidenceResolver:
+            def resolve(
+                self,
+                distribution: str,
+                *,
+                expected_version: str | None = None,
+                required_paths: tuple[Path, ...] = (),
+            ) -> InstalledPythonDistributionEvidence:
+                assert distribution == "loushang"
+                assert expected_version is None
+                return InstalledPythonDistributionEvidence(
+                    distribution=installed_loushang.distribution,
+                    install_mode="record",
+                    top_level_packages=("loushang",),
+                    _recorded_paths=tuple(path.resolve() for path in required_paths),
+                )
+
+        materializer = CodingPackageMaterializer(
+            install_root=layout.package_install_root,
+            lockfile_path=layout.package_lockfile,
+            plugin_revision_root=layout.plugin_revision_root,
+            backend=GitPackageMaterializerBackend(),
+            co_distributed_dependency_grant_resolver=(
+                CoDistributedPluginDependencyGrantResolver(
+                    coding_lsp_source=coding_lsp_default_plugin_root(),
+                    coding_arch_source=updated_source,
+                )
+            ),
+            installed_distribution_evidence_resolver=(
+                UpdatedSourceEvidenceResolver()
+            ),
+        )
+        authority = PluginResolutionAuthority()
+        updated_runtime = authority.publish_runtime(
+            (authority.inspect(PluginSource(path=updated_source)),),
+            binding_store=materializer,
+        )
+        [updated_package] = updated_runtime.packages
+        [updated_binding] = updated_runtime.bindings
+        staged = package_revision_ref(
+            plugin_id=updated_package.manifest.name,
+            plugin_version=updated_package.manifest.version,
+            package_content_digest=updated_package.content_digest,
+            dependency_lock_digest=updated_package.dependency_lock.digest,
+            package_source_identity=updated_binding.source_identity,
+        )
+        updated_runtime.close()
+        snapshot = lifecycle.desired.snapshot()
+        event = lifecycle.management.submit(
+            PluginManagementUpdateCommandV2(
+                operation_id="test-arch-update",
+                idempotency_key="test-arch-update",
+                expected_inventory_revision=snapshot.inventory_revision,
+                installation_key=key,
+                expected_package_revision=expected,
+                staged_package_revision=staged,
+                actor_id="test:operator",
+                policy_revision="test-policy-v1",
+                approval_reference="test",
+            )
+        )
+        assert event.result is not None
+        assert event.result.disposition == "restart_required"
+
+        with pytest.raises(
+            CodingCapabilityPluginCompositionError,
+            match="requires restart",
+        ):
+            await active.refresh_resources()
+        assert assembly.management_leases[
+            "coding.arch.default"
+        ].instance_revision_ref == old_ref
+
+        second_manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions-b",
+            cwd=str(workspace),
+            persist=True,
+        )
+        replacement = create_agent_session(
+            session_manager=second_manager,
+            model=_model(),
+            services=create_services(settings_manager=settings),
+            composition_set="coding-architecture",
+        )
+        replacement_assembly = replacement._coding_capability_plugin_assembly
+        assert replacement_assembly is not None
+        replacement_lease = replacement_assembly.management_leases[
+            "coding.arch.default"
+        ]
+        assert replacement_lease.package_revision == staged
+        assert replacement_lease.instance_revision_ref.revision == old_ref.revision + 1
+
+        await replacement.dispose()
+        await active.dispose()
+        retired = lifecycle.instances.snapshot().instance(old_ref)
+        assert retired is not None
+        assert retired.state == "RETIRED"
+
+    asyncio.run(scenario())
+
+
+def test_arch_owner_cleanup_failure_preserves_private_state_until_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.coding.arch import INSPECT_IMPORT_GRAPH_TOOL_NAME
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.session_manager import SessionManager
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "sample.py").write_text("import os\n", encoding="utf-8")
+
+    async def scenario() -> None:
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(workspace),
+            persist=False,
+        )
+        active = create_agent_session(
+            session_manager=manager,
+            model=_model(),
+            services=create_services(
+                settings_manager=SettingsManager(
+                    ControlConfig(
+                        capabilities={
+                            "coding.arch": "always",
+                            "coding.lsp": "disabled",
+                        }
+                    )
+                )
+            ),
+            composition_set="coding-architecture",
+        )
+        await active.prepare_model_call_runtime()
+        assembly = active._coding_capability_plugin_assembly
+        assert assembly is not None
+        arch_tool = next(
+            tool
+            for tool in active.agent.tools
+            if tool.name == INSPECT_IMPORT_GRAPH_TOOL_NAME
+        )
+        await arch_tool.execute(
+            "arch-private-retry",
+            {"root": ".", "query": "summary"},
+        )
+        arch_config = next(
+            item.configuration
+            for item in assembly.selection.plan.effective_configuration_set.entries
+            if item.plugin_id == "coding.arch.default"
+            and item.contribution_id == "coding-arch-default"
+        )
+        private_root = Path(str(arch_config["privateDataRoot"]))
+        assert (private_root / "import-facts-v1.json").is_file()
+
+        tool_generation = next(
+            generation
+            for generation in active._capability_owner_generations
+            if generation.binding.plugin_id == "coding.arch.default"
+        )
+        failing_lease = tool_generation.value.scope._leases[0]
+        original_disposer = failing_lease._dispose
+        assert original_disposer is not None
+        attempts = 0
+
+        def fail_once():
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise RuntimeError("transient Arch owner cleanup failure")
+            return original_disposer()
+
+        failing_lease._dispose = fail_once
+
+        with pytest.raises(
+            RuntimeError,
+            match="generation disposal remains incomplete",
+        ):
+            await active.dispose()
+
+        assert attempts == 1
+        assert private_root.is_dir()
+        assert assembly._management_released is False
+        assert assembly._private_state_cleaned is False
+
+        arch_management_lease = assembly.management_leases["coding.arch.default"]
+        lifecycle_type = type(arch_management_lease.lifecycle)
+        original_release = lifecycle_type.release_session_family_and_reconcile
+        release_attempts = 0
+
+        def fail_management_release_once(self, family):  # type: ignore[no-untyped-def]
+            nonlocal release_attempts
+            if family.family_id == arch_management_lease.family.family_id:
+                release_attempts += 1
+                if release_attempts == 1:
+                    raise RuntimeError("transient Arch management release failure")
+            return original_release(self, family)
+
+        monkeypatch.setattr(
+            lifecycle_type,
+            "release_session_family_and_reconcile",
+            fail_management_release_once,
+        )
+
+        with pytest.raises(
+            RuntimeError,
+            match="transient Arch management release failure",
+        ):
+            await active.dispose()
+
+        assert attempts == 2
+        assert release_attempts == 1
+        assert private_root.is_dir()
+        assert assembly._management_released is False
+        assert assembly._private_state_cleaned is False
+
+        await active.dispose()
+
+        assert attempts == 2
+        assert release_attempts == 2
+        assert assembly._management_released is True
+        assert assembly._private_state_cleaned is True
+        assert private_root.exists() is False
+
+    asyncio.run(scenario())
+
+
+def test_failed_arch_management_cleanup_cannot_gc_delete_owned_roots(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import loushang.coding.bootstrap as bootstrap_module
+    from loushang.coding.arch import INSPECT_IMPORT_GRAPH_TOOL_NAME
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.session_manager import SessionManager
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "sample.py").write_text("import os\n", encoding="utf-8")
+
+    async def scenario() -> None:
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(workspace),
+            persist=False,
+        )
+        active = create_agent_session(
+            session_manager=manager,
+            model=_model(),
+            services=create_services(
+                settings_manager=SettingsManager(
+                    ControlConfig(
+                        capabilities={
+                            "coding.arch": "always",
+                            "coding.lsp": "disabled",
+                        }
+                    )
+                )
+            ),
+            composition_set="coding-architecture",
+        )
+        await active.prepare_model_call_runtime()
+        assembly = active._coding_capability_plugin_assembly
+        assert assembly is not None
+        arch_tool = next(
+            tool
+            for tool in active.agent.tools
+            if tool.name == INSPECT_IMPORT_GRAPH_TOOL_NAME
+        )
+        await arch_tool.execute(
+            "arch-private-gc-gate",
+            {"root": ".", "query": "summary"},
+        )
+        arch_config = next(
+            item.configuration
+            for item in assembly.selection.plan.effective_configuration_set.entries
+            if item.plugin_id == "coding.arch.default"
+            and item.contribution_id == "coding-arch-default"
+        )
+        private_root = Path(str(arch_config["privateDataRoot"]))
+        lease = assembly.management_leases["coding.arch.default"]
+        lifecycle = lease.lifecycle
+        lifecycle_owner_root = lifecycle.layout.private_state_base
+        session_owner_lease_path = lease._session_owner_lease.path
+        original_release = type(lifecycle).release_session_family_and_reconcile
+        attempts = 0
+
+        def fail_once(self, family):  # type: ignore[no-untyped-def]
+            nonlocal attempts
+            if family.family_id == lease.family.family_id:
+                attempts += 1
+                if attempts == 1:
+                    raise RuntimeError("transient Arch management GC-gate failure")
+            return original_release(self, family)
+
+        monkeypatch.setattr(
+            type(lifecycle),
+            "release_session_family_and_reconcile",
+            fail_once,
+        )
+
+        try:
+            await active.dispose()
+        except RuntimeError as error:
+            assert "transient Arch management GC-gate failure" in str(error)
+            error.__traceback__ = None
+        else:
+            pytest.fail("injected management cleanup failure was not observed")
+
+        assert assembly._management_released is False
+        assert assembly._private_state_cleaned is False
+        assert private_root.is_dir()
+        assert lifecycle_owner_root.is_dir()
+        del active
+        del assembly
+        gc.collect()
+
+        assert private_root.is_dir()
+        assert lifecycle_owner_root.is_dir()
+
+        # Teardown uses the retained lifecycle evidence, and only then removes
+        # the roots whose Product owners were deliberately discarded above.
+        lease.close()
+        assert attempts == 2
+        with plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES_LOCK:
+            assert session_owner_lease_path not in (
+                plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES
+            )
+        lifecycle.release_owned_process_startup_lease()
+        cleanup_tree = getattr(bootstrap_module._TemporaryDirectoryCleanup, "_rmtree")
+        cleanup_tree(str(private_root))
+        cleanup_tree(str(lifecycle_owner_root))
+
+    asyncio.run(scenario())
 
 
 def _managed_base(
@@ -1888,6 +2536,112 @@ def test_public_session_dispose_then_resume_reacquires_a_fresh_live_lease(
     asyncio.run(scenario())
 
 
+def test_arch_resume_reuses_exact_instance_and_persistent_private_cache(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.ai.types import TextPart, UserMessage
+    from loushang.coding.arch import INSPECT_IMPORT_GRAPH_TOOL_NAME
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.session_manager import SessionManager
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "loushang-home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "sample.py").write_text("import os\n", encoding="utf-8")
+    session_dir = tmp_path / "sessions"
+    services = create_services(
+        settings_manager=SettingsManager(
+            ControlConfig(
+                capabilities={"coding.arch": "always", "coding.lsp": "disabled"}
+            )
+        )
+    )
+
+    async def scenario() -> None:
+        first_manager = await SessionManager.new(
+            session_dir=session_dir,
+            cwd=str(workspace),
+            persist=True,
+        )
+        await first_manager.append_message(
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="resume Arch cache")],
+                timestamp=0.0,
+            )
+        )
+        first = create_agent_session(
+            session_manager=first_manager,
+            model=_model(),
+            services=services,
+            composition_set="coding-architecture",
+        )
+        await first.prepare_model_call_runtime()
+        first_assembly = first._coding_capability_plugin_assembly
+        assert first_assembly is not None
+        first_lease = first_assembly.management_leases["coding.arch.default"]
+        first_tool = next(
+            tool
+            for tool in first.agent.tools
+            if tool.name == INSPECT_IMPORT_GRAPH_TOOL_NAME
+        )
+        cold = await first_tool.execute(
+            "arch-resume-cold",
+            {"root": ".", "query": "summary"},
+        )
+        first_config = next(
+            item.configuration
+            for item in first_assembly.selection.plan.effective_configuration_set.entries
+            if item.plugin_id == "coding.arch.default"
+            and item.contribution_id == "coding-arch-default"
+        )
+        private_root = Path(str(first_config["privateDataRoot"]))
+        assert cold.details["cache"]["misses"] == 1
+        assert (private_root / "import-facts-v1.json").is_file()
+        session_file = first_manager.get_session_file()
+        first_family_id = first_lease.family.family_id
+        selected_ref = first_lease.instance_revision_ref
+        await first.dispose()
+        assert private_root.is_dir()
+
+        resumed_manager = await SessionManager.load(session_file)
+        resumed = create_agent_session(
+            session_manager=resumed_manager,
+            model=_model(),
+            services=services,
+            composition_set="coding-architecture",
+        )
+        await resumed.prepare_model_call_runtime()
+        resumed_assembly = resumed._coding_capability_plugin_assembly
+        assert resumed_assembly is not None
+        resumed_lease = resumed_assembly.management_leases["coding.arch.default"]
+        resumed_config = next(
+            item.configuration
+            for item in resumed_assembly.selection.plan.effective_configuration_set.entries
+            if item.plugin_id == "coding.arch.default"
+            and item.contribution_id == "coding-arch-default"
+        )
+        assert Path(str(resumed_config["privateDataRoot"])) == private_root
+        assert resumed_lease.instance_revision_ref == selected_ref
+        assert resumed_lease.family.family_id != first_family_id
+        resumed_tool = next(
+            tool
+            for tool in resumed.agent.tools
+            if tool.name == INSPECT_IMPORT_GRAPH_TOOL_NAME
+        )
+        warm = await resumed_tool.execute(
+            "arch-resume-warm",
+            {"root": ".", "query": "summary"},
+        )
+        assert warm.details["cache"]["hits"] == 1
+        await resumed.dispose()
+        assert private_root.is_dir()
+
+    asyncio.run(scenario())
+
+
 @pytest.mark.parametrize(
     ("action", "reason"),
     (("disable", "plugin_disabled"), ("remove", "plugin_removed")),
@@ -2413,7 +3167,7 @@ def test_ephemeral_public_session_releases_family_before_removing_state_root(
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "loushang-home"))
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    original_temporary_cleanup = bootstrap_module.TemporaryDirectory.cleanup
+    original_temporary_cleanup = bootstrap_module._ExplicitTemporaryDirectory.cleanup
 
     def cleanup_only_after_startup_lease_release(temporary_state) -> None:
         temporary_root = Path(temporary_state.name)
@@ -2425,7 +3179,7 @@ def test_ephemeral_public_session_releases_family_before_removing_state_root(
         original_temporary_cleanup(temporary_state)
 
     monkeypatch.setattr(
-        bootstrap_module.TemporaryDirectory,
+        bootstrap_module._ExplicitTemporaryDirectory,
         "cleanup",
         cleanup_only_after_startup_lease_release,
     )
@@ -2485,6 +3239,244 @@ def test_ephemeral_public_session_releases_family_before_removing_state_root(
                 )
 
     asyncio.run(scenario())
+
+
+def test_explicit_ephemeral_root_is_not_deleted_by_gc() -> None:
+    import loushang.coding.bootstrap as bootstrap_module
+
+    owner = bootstrap_module._ExplicitTemporaryDirectory(
+        prefix="loushang-coding-no-finalizer-test-"
+    )
+    root = Path(owner.name)
+    assert root.is_dir()
+
+    del owner
+    gc.collect()
+
+    assert root.is_dir()
+    shutil.rmtree(root)
+
+
+def test_ephemeral_lifecycle_root_cleanup_is_retryable_after_release(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import loushang.coding.bootstrap as bootstrap_module
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.session_manager import SessionManager
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    async def scenario() -> None:
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(workspace),
+            persist=False,
+        )
+        active = create_agent_session(
+            session_manager=manager,
+            model=_model(),
+            services=create_services(
+                settings_manager=SettingsManager(
+                    ControlConfig(capabilities={"coding.lsp": "disabled"})
+                )
+            ),
+        )
+        await active.prepare_model_call_runtime()
+        assembly = active._coding_base_plugin_assembly
+        assert assembly is not None
+        lease = assembly.management_lease
+        assert lease is not None
+        lifecycle = lease.lifecycle
+        state_owner_root = lifecycle.layout.private_state_base
+        startup_lease_path = plugin_lifecycle_module._startup_lease_path(
+            lifecycle.layout,
+            startup_id=lifecycle.startup_id,
+        )
+        original_cleanup = bootstrap_module._ExplicitTemporaryDirectory.cleanup
+        attempts = 0
+
+        def fail_target_cleanup_once(temporary_state) -> None:
+            nonlocal attempts
+            if Path(temporary_state.name) == state_owner_root:
+                attempts += 1
+                if attempts == 1:
+                    raise RuntimeError("transient ephemeral root cleanup failure")
+            original_cleanup(temporary_state)
+
+        monkeypatch.setattr(
+            bootstrap_module._ExplicitTemporaryDirectory,
+            "cleanup",
+            fail_target_cleanup_once,
+        )
+
+        with pytest.raises(
+            RuntimeError,
+            match="transient ephemeral root cleanup failure",
+        ):
+            await active.dispose()
+
+        assert lease._closed is True
+        assert assembly._management_released is True
+        assert assembly._state_cleaned is False
+        assert state_owner_root.is_dir()
+        with plugin_lifecycle_module._PROCESS_STARTUP_LEASES_LOCK:
+            assert startup_lease_path not in (
+                plugin_lifecycle_module._PROCESS_STARTUP_LEASES
+            )
+
+        await active.dispose()
+
+        assert attempts == 2
+        assert assembly._management_released is True
+        assert state_owner_root.exists() is False
+
+    asyncio.run(scenario())
+
+
+def test_failed_second_provider_retains_one_retryable_cleanup_custodian(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.coding._capability_plugin_composition import (
+        coding_capability_plugin_failure_custodian,
+    )
+    from loushang.coding._plugin_lifecycle import CodingPluginLifecycle
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.session_manager import SessionManager
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(workspace),
+            persist=False,
+        )
+    )
+    original_acquire = CodingPluginLifecycle.acquire_session
+    original_release = CodingPluginLifecycle.release_session_family_and_reconcile
+    captured_leases = []
+    release_attempts = 0
+
+    def reject_arch_after_lsp(self, key, **kwargs):  # type: ignore[no-untyped-def]
+        if key.plugin_id == "coding.arch.default":
+            raise RuntimeError("injected Arch acquisition failure")
+        lease = original_acquire(self, key, **kwargs)
+        if key.plugin_id == "coding.lsp.default":
+            captured_leases.append(lease)
+        return lease
+
+    def fail_lsp_release_twice(self, family):  # type: ignore[no-untyped-def]
+        nonlocal release_attempts
+        if captured_leases and family.family_id == captured_leases[0].family.family_id:
+            release_attempts += 1
+            if release_attempts <= 2:
+                raise RuntimeError("transient LSP preparation release failure")
+        return original_release(self, family)
+
+    monkeypatch.setattr(CodingPluginLifecycle, "acquire_session", reject_arch_after_lsp)
+    monkeypatch.setattr(
+        CodingPluginLifecycle,
+        "release_session_family_and_reconcile",
+        fail_lsp_release_twice,
+    )
+
+    with pytest.raises(RuntimeError, match="injected Arch acquisition failure") as caught:
+        create_agent_session(
+            session_manager=manager,
+            model=_model(),
+            services=create_services(
+                settings_manager=SettingsManager(
+                    ControlConfig(
+                        capabilities={
+                            "coding.lsp": "always",
+                            "coding.arch": "always",
+                        }
+                    )
+                )
+            ),
+            composition_set="coding-architecture",
+        )
+
+    assert len(captured_leases) == 1
+    lease = captured_leases[0]
+    custodian = coding_capability_plugin_failure_custodian(caught.value)
+    assert custodian is not None
+    assert custodian.management_leases == {"coding.lsp.default": lease}
+    lifecycle_owner_root = lease.lifecycle.layout.private_state_base
+    private_cleanup_owner = getattr(custodian.private_state_cleanup, "__self__")
+    private_root = Path(private_cleanup_owner.name)
+
+    gc.collect()
+
+    assert release_attempts == 2
+    assert lease._closed is False
+    assert lifecycle_owner_root.is_dir()
+    assert private_root.is_dir()
+
+    custodian.close()
+
+    assert release_attempts == 3
+    assert lease._closed is True
+    assert lifecycle_owner_root.exists() is False
+    assert private_root.exists() is False
+
+
+def test_failure_custodian_gates_every_cleanup_stage_on_runtime_close() -> None:
+    from loushang.coding._capability_plugin_composition import (
+        CodingCapabilityPluginCleanupCustodian,
+    )
+
+    events: list[str] = []
+
+    class Runtime:
+        attempts = 0
+
+        def close(self) -> None:
+            events.append("runtime")
+            self.attempts += 1
+            if self.attempts == 1:
+                raise RuntimeError("transient runtime close failure")
+
+    class Lease:
+        def close(self) -> None:
+            events.append("lease")
+
+    custodian = CodingCapabilityPluginCleanupCustodian(
+        runtime=Runtime(),  # type: ignore[arg-type]
+        management_leases={"coding.lsp.default": Lease()},  # type: ignore[dict-item]
+        management_state_cleanup=lambda: events.append("management"),
+        state_cleanup=lambda: events.append("state"),
+        private_state_cleanup=lambda: events.append("private"),
+    )
+
+    with pytest.raises(RuntimeError, match="transient runtime close failure"):
+        custodian.close()
+
+    assert events == ["runtime"]
+    assert custodian._runtime_closed is False
+    assert custodian._management_released is False
+    assert custodian._state_cleaned is False
+    assert custodian._private_state_cleaned is False
+
+    custodian.close()
+
+    assert events == [
+        "runtime",
+        "runtime",
+        "lease",
+        "management",
+        "state",
+        "private",
+    ]
+    assert custodian._runtime_closed is True
+    assert custodian._management_released is True
+    assert custodian._state_cleaned is True
+    assert custodian._private_state_cleaned is True
 
 
 def test_owner_evidence_publication_failure_retries_before_retirement(

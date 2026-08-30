@@ -40,6 +40,9 @@ PLC7_CONTRACT_PATH = Path(
 CODING_CAPABILITY_COMPOSER_PATH = Path(
     "src/loushang/coding/_capability_plugin_composition.py"
 )
+CODING_CAPABILITY_SPECS_PATH = Path(
+    "src/loushang/coding/_capability_plugin_specs.py"
+)
 CODING_BOOTSTRAP_PATH = Path("src/loushang/coding/bootstrap.py")
 CODING_LSP_COMPATIBILITY_PATH = Path("src/loushang/coding/lsp/_plugin_opt_in.py")
 PAP4_CONTRACT_PATH = Path(
@@ -1609,12 +1612,17 @@ def test_plc7_contract_freezes_second_provider_without_a_peer_graph() -> None:
 
 def test_plc7_uses_one_neutral_composer_and_has_no_direct_arch_publisher() -> None:
     composer = CODING_CAPABILITY_COMPOSER_PATH.read_text(encoding="utf-8")
+    specs = CODING_CAPABILITY_SPECS_PATH.read_text(encoding="utf-8")
     bootstrap = CODING_BOOTSTRAP_PATH.read_text(encoding="utf-8")
     compatibility = CODING_LSP_COMPATIBILITY_PATH.read_text(encoding="utf-8")
     bootstrap_tree = ast.parse(bootstrap, filename=str(CODING_BOOTSTRAP_PATH))
 
-    assert "CODING_LSP_CAPABILITY_DEFINITION" in composer
-    assert "CODING_ARCH_CAPABILITY_DEFINITION" in composer
+    assert "CODING_LSP_CAPABILITY_DEFINITION" not in composer
+    assert "CODING_ARCH_CAPABILITY_DEFINITION" not in composer
+    assert "coding_lsp_" not in composer
+    assert "CODING_LSP_CAPABILITY_DEFINITION" in specs
+    assert "CODING_ARCH_CAPABILITY_DEFINITION" in specs
+    assert "ordered_coding_capability_plugin_specs" in composer
     assert "prepare_coding_capability_plugin_composition" in bootstrap
     assert "prepare_coding_lsp_plugin_opt_in" not in bootstrap
     assert "_assembly_request" not in compatibility

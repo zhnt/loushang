@@ -200,7 +200,7 @@ def test_inspect_import_graph_restricts_roots_to_workspace(tmp_path: Path) -> No
     try:
         symlink.symlink_to(outside, target_is_directory=True)
     except OSError:
-        return
+        pytest.skip("directory symbolic links are unavailable")
     with pytest.raises(PermissionError, match="within the coding workspace"):
         runtime.inspect(workspace=workspace, root="escaped")
 

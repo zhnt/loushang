@@ -25,6 +25,7 @@ from loushang.harness.tools.authoring import (
     authorized_tool,
 )
 from loushang.harness.tools.core import ToolDefinition, tool
+from loushang.harness.tools.workspace.runtime import raise_if_tool_aborted
 
 INSPECT_IMPORT_GRAPH_TOOL_NAME = "inspect_import_graph"
 MAX_INSPECT_IMPORT_GRAPH_LIMIT = 200
@@ -57,6 +58,7 @@ class ImportGraphInspectionRuntime(Protocol):
         excludes: list[str] | None = None,
         boundary_rules: list[BoundaryRuleInput] | None = None,
         refresh_cache: bool = False,
+        signal: object | None = None,
     ) -> dict[str, object] | Awaitable[dict[str, object]]: ...
 
 
@@ -82,7 +84,9 @@ class ImportGraphToolRuntime:
         excludes: list[str] | None = None,
         boundary_rules: list[BoundaryRuleInput] | None = None,
         refresh_cache: bool = False,
+        signal: object | None = None,
     ) -> dict[str, object]:
+        raise_if_tool_aborted(signal)
         resolved_root = _resolve_workspace_root(workspace, root)
         validate_import_graph_inspection_request(
             granularity=granularity,
@@ -101,6 +105,7 @@ class ImportGraphToolRuntime:
             excludes=tuple(excludes or ()),
             refresh_cache=refresh_cache,
         )
+        raise_if_tool_aborted(signal)
         return project_import_graph_inspection_result(
             graph,
             query=query,
@@ -202,6 +207,7 @@ def create_inspect_import_graph_tool_definition(
             excludes=excludes,
             boundary_rules=boundary_rules,
             refresh_cache=refresh_cache,
+            signal=ctx.signal,
         )
         return await result if inspect.isawaitable(result) else result
 

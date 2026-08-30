@@ -30,7 +30,6 @@ from loushang.coding.arch.tool import (
     validate_import_graph_inspection_request,
 )
 from loushang.coding.capabilities import CODING_ARCH_CAPABILITY
-from loushang.coding.lsp._provider_api import CODING_LSP_SEMANTIC_FACET
 from loushang.coding.product_plan import CODING_PRODUCT_ID
 from loushang.harness.capabilities.contracts import (
     CapabilityContractRange,
@@ -76,12 +75,6 @@ CODING_ARCH_WORKSPACE_REQUIREMENT = CapabilityRequirement(
     capability="harness.workspace",
     facets=(WORKSPACE_READ_FACET, WORKSPACE_LIST_FACET, WORKSPACE_SEARCH_FACET),
     compatible_contract=CapabilityContractRange.exact(1),
-)
-CODING_ARCH_LSP_SEMANTIC_REQUIREMENT = CapabilityRequirement(
-    capability="coding.lsp",
-    facets=(CODING_LSP_SEMANTIC_FACET,),
-    compatible_contract=CapabilityContractRange.exact(1),
-    optional=True,
 )
 CODING_ARCH_CAPABILITY_DEFINITION = CapabilityDefinition(
     capability_id=CODING_ARCH_CAPABILITY,
@@ -229,6 +222,7 @@ class CodingArchToolRuntimePort(Protocol):
         excludes: list[str] | None = None,
         boundary_rules: list[BoundaryRuleInput] | None = None,
         refresh_cache: bool = False,
+        signal: object | None = None,
     ) -> dict[str, object] | Awaitable[dict[str, object]]: ...
 
 
@@ -275,7 +269,6 @@ class _CodingArchProviderRuntimeOwner:
     workspace_read: WorkspacePythonReadPort = field(repr=False)
     workspace_search: WorkspacePythonSearchPort = field(repr=False)
     cache: ImportFactCache = field(repr=False)
-    lsp_semantic: object | None = field(default=None, repr=False)
     _diagnostics: tuple[ArchitectureDiagnostic, ...] = field(
         default=(),
         init=False,
@@ -293,6 +286,7 @@ class _CodingArchProviderRuntimeOwner:
         imports: ImportSelection = "eager",
         excludes: tuple[str, ...] = (),
         refresh_cache: bool = False,
+        signal: object | None = None,
     ) -> ImportGraph:
         self._require_open()
         resolved_root = _contained_root(self.config.workspace_root, root)
@@ -309,6 +303,7 @@ class _CodingArchProviderRuntimeOwner:
             search=self.workspace_search,
             cache=self.cache,
             refresh_cache=refresh_cache,
+            signal=signal,
         )
         graph = project_import_provider_scan(
             scan,
@@ -336,6 +331,7 @@ class _CodingArchProviderRuntimeOwner:
         excludes: list[str] | None = None,
         boundary_rules: list[BoundaryRuleInput] | None = None,
         refresh_cache: bool = False,
+        signal: object | None = None,
     ) -> dict[str, object]:
         self._require_open()
         if Path(workspace).expanduser().resolve() != self.config.workspace_root:
@@ -358,6 +354,7 @@ class _CodingArchProviderRuntimeOwner:
             imports=cast(ImportSelection, imports),
             excludes=tuple(excludes or ()),
             refresh_cache=refresh_cache,
+            signal=signal,
         )
         return project_import_graph_inspection_result(
             graph,
@@ -394,6 +391,7 @@ class _CodingArchAnalysisView:
         imports: ImportSelection = "eager",
         excludes: tuple[str, ...] = (),
         refresh_cache: bool = False,
+        signal: object | None = None,
     ) -> ImportGraph:
         return await self._owner.analyze(
             root=root,
@@ -403,6 +401,7 @@ class _CodingArchAnalysisView:
             imports=imports,
             excludes=excludes,
             refresh_cache=refresh_cache,
+            signal=signal,
         )
 
 
@@ -426,6 +425,7 @@ class _CodingArchToolRuntimeView:
         excludes: list[str] | None = None,
         boundary_rules: list[BoundaryRuleInput] | None = None,
         refresh_cache: bool = False,
+        signal: object | None = None,
     ) -> dict[str, object]:
         return await self._owner.inspect(
             workspace=workspace,
@@ -441,6 +441,7 @@ class _CodingArchToolRuntimeView:
             excludes=excludes,
             boundary_rules=boundary_rules,
             refresh_cache=refresh_cache,
+            signal=signal,
         )
 
 
@@ -463,7 +464,6 @@ def coding_arch_capability_provider() -> CapabilityBundleProvider:
         facets=CODING_ARCH_CAPABILITY_DEFINITION.facets,
         requirements=(
             CODING_ARCH_WORKSPACE_REQUIREMENT,
-            CODING_ARCH_LSP_SEMANTIC_REQUIREMENT,
         ),
         required_authorities=frozenset({"filesystem"}),
         source_id="plugin:coding.arch.default",
@@ -498,21 +498,6 @@ def create_coding_arch_provider(
     ):
         for member in members:
             _require_callable_member(value, member, name=name)
-    lsp_semantic: object | None = None
-    try:
-        lsp_dependency = context.dependency(
-            CODING_ARCH_LSP_SEMANTIC_REQUIREMENT.capability
-        )
-    except KeyError:
-        pass
-    else:
-        lsp_semantic = lsp_dependency.require(CODING_LSP_SEMANTIC_FACET)
-        _require_callable_member(
-            lsp_semantic,
-            "status",
-            name="optional Coding LSP semantic facet",
-        )
-
     cache = ImportFactCache(
         config.private_data_root
         / f"import-facts-v{config.private_state_schema_version}.json",
@@ -523,7 +508,6 @@ def create_coding_arch_provider(
         workspace_read=read,
         workspace_search=search,
         cache=cache,
-        lsp_semantic=lsp_semantic,
     )
     return CapabilityBundleValue(
         (
@@ -610,7 +594,6 @@ __all__ = [
     "CODING_ARCH_DEFAULT_PRIVATE_STATE_QUOTA_BYTES",
     "CODING_ARCH_DIAGNOSTICS_FACET",
     "CODING_ARCH_MAX_PRIVATE_STATE_QUOTA_BYTES",
-    "CODING_ARCH_LSP_SEMANTIC_REQUIREMENT",
     "CODING_ARCH_PLUGIN_CONFIG_VERSION",
     "CODING_ARCH_PRIVATE_STATE_SCHEMA_VERSION",
     "CODING_ARCH_TOOL_RUNTIME_FACET",

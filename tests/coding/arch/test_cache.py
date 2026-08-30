@@ -220,3 +220,44 @@ def test_disk_cache_quota_preserves_the_last_complete_snapshot(tmp_path: Path) -
         "import fact cache exceeds the private-state byte quota"
     )
     assert cache_path.read_bytes() == preserved
+
+
+def test_reopening_with_a_lower_quota_fences_the_existing_snapshot(
+    tmp_path: Path,
+) -> None:
+    package = _package(tmp_path)
+    cache_path = tmp_path / "cache" / "facts.json"
+    _analyzer(ImportFactCache(cache_path)).analyze(package, package_prefix="pkg")
+    preserved = cache_path.read_bytes()
+
+    result = _analyzer(
+        ImportFactCache(cache_path, max_bytes=len(preserved) - 1)
+    ).analyze(package, package_prefix="pkg")
+
+    assert result.cache_stats.hits == 0
+    assert result.cache_stats.misses == 3
+    assert result.cache_stats.error == (
+        "import fact cache exceeds the private-state byte quota"
+    )
+    assert cache_path.read_bytes() == preserved
+
+
+def test_disk_cache_never_follows_a_symbolic_link(tmp_path: Path) -> None:
+    package = _package(tmp_path)
+    target = tmp_path / "outside.json"
+    target.write_text("{}", encoding="utf-8")
+    cache_path = tmp_path / "cache" / "facts.json"
+    cache_path.parent.mkdir(parents=True)
+    try:
+        cache_path.symlink_to(target)
+    except (NotImplementedError, OSError) as exc:
+        pytest.skip(f"symbolic links are unavailable: {exc}")
+
+    result = _analyzer(ImportFactCache(cache_path, max_bytes=4096)).analyze(
+        package,
+        package_prefix="pkg",
+    )
+
+    assert result.cache_stats.hits == 0
+    assert result.cache_stats.error is not None
+    assert target.read_text(encoding="utf-8") == "{}"

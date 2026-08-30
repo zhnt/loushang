@@ -31,6 +31,7 @@ from loushang.coding.arch.model import (
     ImportProviderScan,
     SourceEvidence,
 )
+from loushang.harness.tools.workspace.runtime import raise_if_tool_aborted
 from loushang.harness.workspace.operations import OperationResult, resolve_operation
 
 PYTHON_IMPORT_PROVIDER_VERSION = 1
@@ -238,16 +239,20 @@ async def scan_python_workspace(
     excludes: tuple[str, ...] = (),
     cache: ImportFactCache | None = None,
     refresh_cache: bool = False,
+    signal: object | None = None,
 ) -> ImportProviderScan:
     """Extract Python facts only through admitted workspace facets."""
 
+    raise_if_tool_aborted(signal)
     resolved_root = Path(root).expanduser().resolve()
     is_directory = await resolve_operation(search.is_dir(resolved_root))
+    raise_if_tool_aborted(signal)
     if not isinstance(is_directory, bool):
         raise TypeError("workspace search facet must return bool for is_dir")
     if not is_directory:
         raise ValueError(f"import graph root is not a directory: {root}")
     raw_paths = await resolve_operation(search.walk_files(resolved_root))
+    raise_if_tool_aborted(signal)
     try:
         source_paths = _workspace_python_files(
             resolved_root,
@@ -263,11 +268,13 @@ async def scan_python_workspace(
         package_prefix,
         read=read,
     )
+    raise_if_tool_aborted(signal)
     discovery_diagnostics: list[ArchitectureDiagnostic] = []
     module_index: list[tuple[str, str | None]] = []
     sources_by_module: dict[str, _PythonSourceFile] = {}
 
     for path in source_paths:
+        raise_if_tool_aborted(signal)
         relative_path = path.relative_to(resolved_root).as_posix()
         module = _module_name(relative_path, prefix)
         module_index.append((relative_path, module))
@@ -323,9 +330,11 @@ async def scan_python_workspace(
     hits = 0
     misses = 0
     for module in sorted(sources_by_module):
+        raise_if_tool_aborted(signal)
         source_file = sources_by_module[module]
         try:
             content = await resolve_operation(read.read_bytes(source_file.path))
+            raise_if_tool_aborted(signal)
             if not isinstance(content, bytes):
                 raise TypeError("workspace read facet must return bytes")
         except OSError as exc:
@@ -361,6 +370,7 @@ async def scan_python_workspace(
         current_entries[source_file.relative_path] = entry
 
     if cache is not None:
+        raise_if_tool_aborted(signal)
         cache.replace(
             ImportFactCacheSnapshot(
                 namespace=namespace,
@@ -368,6 +378,7 @@ async def scan_python_workspace(
                 entries=tuple(sorted(current_entries.items())),
             )
         )
+        raise_if_tool_aborted(signal)
         cache_error = cache.last_error or cache_error
 
     modules: list[ImportModuleFact] = []

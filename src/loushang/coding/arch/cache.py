@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import stat
 import tempfile
 from contextlib import suppress
 from dataclasses import asdict, dataclass
@@ -116,10 +117,12 @@ class ImportFactCache:
         if self._disk_loaded:
             return
         self._disk_loaded = True
-        if self.path is None or not self.path.is_file():
+        if self.path is None:
             return
         try:
-            snapshot = _read_snapshot(self.path)
+            snapshot = _read_snapshot(self.path, max_bytes=self.max_bytes)
+        except FileNotFoundError:
+            return
         except (OSError, TypeError, ValueError) as exc:
             self.last_error = str(exc)
             return
@@ -197,8 +200,38 @@ def _write_snapshot(
                 temporary_path.unlink()
 
 
-def _read_snapshot(path: Path) -> ImportFactCacheSnapshot:
-    payload = json.loads(path.read_text(encoding="utf-8"))
+def _read_snapshot(
+    path: Path,
+    *,
+    max_bytes: int | None,
+) -> ImportFactCacheSnapshot:
+    path_metadata = os.lstat(path)
+    reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    if stat.S_ISLNK(path_metadata.st_mode) or (
+        reparse_flag
+        and getattr(path_metadata, "st_file_attributes", 0) & reparse_flag
+    ):
+        raise OSError("import fact cache must not be a symbolic link")
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(path, flags)
+    try:
+        metadata = os.fstat(descriptor)
+        if (metadata.st_dev, metadata.st_ino) != (
+            path_metadata.st_dev,
+            path_metadata.st_ino,
+        ):
+            raise OSError("import fact cache changed during secure open")
+        if not stat.S_ISREG(metadata.st_mode):
+            raise OSError("import fact cache must be a regular file")
+        if max_bytes is not None and metadata.st_size > max_bytes:
+            raise OSError("import fact cache exceeds the private-state byte quota")
+        with os.fdopen(descriptor, "rb", closefd=False) as stream:
+            encoded = stream.read(None if max_bytes is None else max_bytes + 1)
+        if max_bytes is not None and len(encoded) > max_bytes:
+            raise OSError("import fact cache exceeds the private-state byte quota")
+    finally:
+        os.close(descriptor)
+    payload = json.loads(encoded.decode("utf-8"))
     if not isinstance(payload, dict):
         raise ValueError("import fact cache must contain a JSON object")
     if payload.get("schema_version") != IMPORT_FACT_CACHE_SCHEMA_VERSION:

@@ -252,6 +252,7 @@ class CodingLspToolOwner:
         return registration_scope_retirement_receipt(
             value.scope,
             contribution_ids=(self.admission.contribution_id,),
+            allow_open=True,
         )
 
     def _runtime_from_captures(

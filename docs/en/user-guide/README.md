@@ -75,6 +75,27 @@ loushang --tools bash,write -p "Inspect this project."
 loushang --no-tools -p "Explain the repository from context only."
 ```
 
+### Architecture Analysis Tool
+
+`coding.arch` provides the bounded `inspect_import_graph` tool. It defaults to
+`on_demand`; activate it for a Coding Session with:
+
+```bash
+loushang --capability coding.arch=always \
+  -p "Use inspect_import_graph to summarize this repository's dependencies."
+```
+
+For deterministic analysis without a model or Session, use the standalone
+module CLI:
+
+```bash
+uv run python -m loushang.coding.arch src/loushang \
+  --package-prefix loushang --query summary --pretty
+```
+
+Both surfaces keep roots inside the selected workspace. `--no-tools` and
+`coding.arch=disabled` skip the Arch Plugin entirely.
+
 ### LSP Semantic Tools
 
 `coding.lsp` is an optional, high-frequency Coding capability that provides

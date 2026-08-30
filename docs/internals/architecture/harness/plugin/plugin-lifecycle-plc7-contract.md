@@ -25,14 +25,16 @@ Capability-Plugin composition that accepts an ordered set of first-party
 Provider specifications. LSP and Arch may keep private Product adapters, but
 they cannot own peer composition roots or independently publish Session graphs.
 
-The Arch Bundle is initially independent of LSP:
+The Arch Bundle is independent of LSP in PLC7:
 
 ```text
 coding.arch -> harness.workspace(read, list, search)
 ```
 
-Only after independent operation is proven may the same Provider declaration
-add this optional typed edge without adding a fallback lookup:
+Review found that LSP's current `semantic` facet is a session-control surface,
+not a neutral architecture-fact protocol. PLC7 therefore does not declare a
+synthetic peer dependency. A later tranche may add an optional edge only after
+Coding accepts a narrow consumer-owned fact port and an LSP adapter for it:
 
 ```text
 coding.arch -. optional .-> coding.lsp(semantic)
@@ -135,8 +137,9 @@ receipts settle; cleanup retry cannot report a false terminal state.
    composer into one multi-Provider Product composition and prove one Graph.
 4. **PLC7D — production cutover.** Select Arch through `coding-architecture`,
    bind its Tool owner, and delete every direct Tool publication caller.
-5. **PLC7E — private-state and optional-dependency proof.** Close quota,
-   migration fencing, rollback, absent-LSP, and optional-LSP behavior.
+5. **PLC7E — private-state and dependency-boundary proof.** Close quota,
+   migration fencing, rollback, absent-LSP behavior, and prove that no private
+   LSP implementation dependency substitutes for a neutral fact port.
 6. **PLC7F — production validation and three-view review.** Run cross-platform
    gates, then architecture, correctness/security, and Product/test review;
    fix and re-review every blocking finding before PLC8.
@@ -147,8 +150,8 @@ PLC7 is complete only when executable evidence proves:
 
 - a second Capability required no new Plugin lifecycle or Graph path;
 - Arch works deterministically with LSP absent or disabled;
-- the optional LSP edge, when enabled, is a typed requirement rather than an
-  ambient lookup;
+- Arch declares no LSP dependency until a neutral semantic-fact port exists;
+  any future edge must be typed and cannot use an ambient lookup;
 - `inspect_import_graph` is never visible without its exact live Arch runtime;
 - direct `register_coding_arch_tools()` production callers are deleted;
 - private state is versioned, quota-bounded, rollback-safe, and not implicitly
