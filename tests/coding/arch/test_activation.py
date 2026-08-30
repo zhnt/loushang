@@ -117,7 +117,7 @@ def test_cli_capability_mount_is_applied_as_session_config_overlay(
         "coding.review": "on_demand",
         "coding.arch": "always",
     }
-    assert INSPECT_IMPORT_GRAPH_TOOL_NAME in {
+    assert INSPECT_IMPORT_GRAPH_TOOL_NAME not in {
         definition.name
         for definition in build_builtin_tool_registry(
             settings_manager=manager
@@ -177,3 +177,109 @@ def test_arch_pack_remains_available_without_builtin_tools(tmp_path: Path) -> No
     assert not {"bash", "read", "ls", "find", "grep", "write", "edit"}.intersection(
         active
     )
+
+
+def test_arch_and_lsp_share_one_product_composition_and_session_graph(
+    tmp_path: Path,
+) -> None:
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "__init__.py").write_text("from . import child\n", encoding="utf-8")
+    (package / "child.py").write_text("VALUE = 1\n", encoding="utf-8")
+    session = _create_cli_session(tmp_path, mode="always")
+    assembly = session._coding_capability_plugin_assembly
+
+    assert assembly is not None
+    assert session._coding_lsp_plugin_assembly is assembly
+    assert {
+        item.capability_id for item in assembly.plugin_assembly.resolved_providers.entries
+    } == {"coding.arch", "coding.lsp"}
+    arch_provider = next(
+        item.provider
+        for item in assembly.plugin_assembly.resolved_providers.entries
+        if item.capability_id == "coding.arch"
+    )
+    assert tuple(
+        (requirement.capability, requirement.facets, requirement.optional)
+        for requirement in arch_provider.requirements
+    ) == (
+        ("coding.lsp", ("semantic",), True),
+        ("harness.workspace", ("list", "read", "search"), False),
+    )
+    assert {
+        item.candidate.contribution.collection_id
+        for item in assembly.plugin_assembly.product_composition.catalog_admissions
+        if item.plugin_id in {"coding.arch.default", "coding.lsp.default"}
+    } == {"coding.arch.tools", "coding.lsp.tools"}
+    assert (
+        assembly.session_inputs.product_composition
+        is assembly.plugin_assembly.product_composition
+    )
+    assert len(assembly.session_inputs.component_requests) == 2
+    assert assembly.arch_tool_owner is not None
+    assert assembly.lsp_tool_owner is not None
+
+    arch_tool = next(
+        tool
+        for tool in session.agent.tools
+        if tool.name == INSPECT_IMPORT_GRAPH_TOOL_NAME
+    )
+    result = asyncio.run(
+        arch_tool.execute(
+            "arch-production-call",
+            {
+                "root": "pkg",
+                "package_prefix": "pkg",
+                "query": "summary",
+            },
+        )
+    )
+    arch_config = next(
+        item.configuration
+        for item in assembly.selection.plan.effective_configuration_set.entries
+        if item.plugin_id == "coding.arch.default"
+        and item.contribution_id == "coding-arch-default"
+    )
+    private_root = Path(str(arch_config["privateDataRoot"]))
+    assert result.details["nodes"] == 2
+    assert (private_root / "import-facts-v1.json").is_file()
+    assert assembly._private_state_cleaned is False
+
+    asyncio.run(session.dispose())
+
+    assert assembly._private_state_cleaned is True
+    assert private_root.exists() is False
+
+
+def test_arch_provider_and_tool_work_when_lsp_is_disabled(tmp_path: Path) -> None:
+    (tmp_path / "module.py").write_text("import os\n", encoding="utf-8")
+    settings = SettingsManager(
+        ControlConfig(
+            capabilities={"coding.arch": "always", "coding.lsp": "disabled"}
+        )
+    )
+    services = create_services(settings_manager=settings)
+    runtime = default_runtime_builder(
+        args=_runtime_args(),
+        cwd=tmp_path,
+        session_dir=tmp_path / "sessions",
+        services=services,
+        tool_registry=build_builtin_tool_registry(settings_manager=settings),
+    )
+
+    session = asyncio.run(runtime.create_session(cwd=str(tmp_path)))
+    assembly = session._coding_capability_plugin_assembly
+
+    assert assembly is not None
+    assert session._coding_lsp_plugin_assembly is None
+    assert tuple(
+        item.capability_id for item in assembly.plugin_assembly.resolved_providers.entries
+    ) == ("coding.arch",)
+    assert assembly.lsp_tool_owner is None
+    assert assembly.arch_tool_owner is not None
+    assert INSPECT_IMPORT_GRAPH_TOOL_NAME in session.get_active_tool_names()
+    assert {"document_outline", "inspect_symbol"}.isdisjoint(
+        tool.name for tool in session.get_all_tools()
+    )
+
+    asyncio.run(session.dispose())

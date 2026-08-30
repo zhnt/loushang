@@ -61,7 +61,11 @@ def _session(
         )
     )
     registry = WorkspaceToolRegistry()
-    register_coding_arch_tools(registry, mode=mode)
+    if mode != "disabled":
+        registry.register_tool(
+            create_inspect_import_graph_tool_definition(),
+            enabled=mode == "always",
+        )
     agent = Agent(
         initial_state={
             "system_prompt": "Coding base prompt",
@@ -100,6 +104,11 @@ def test_arch_tool_pack_is_separate_and_schema_is_bounded() -> None:
         "boundaries",
     ]
     assert definition.parameters["properties"]["limit"]["maximum"] == 200
+
+
+def test_direct_arch_tool_publisher_is_a_non_authoritative_compatibility_stub() -> None:
+    with pytest.raises(RuntimeError, match="coding-architecture composition"):
+        register_coding_arch_tools(WorkspaceToolRegistry(), mode="always")
 
 
 def test_arch_mount_modes_and_live_agent_rebinding(tmp_path: Path) -> None:

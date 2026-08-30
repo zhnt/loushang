@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from copy import deepcopy
 from pathlib import Path
 
@@ -9,6 +10,7 @@ from loushang.coding.arch._provider_api import (
     CODING_ARCH_ANALYSIS_FACET,
     CODING_ARCH_CAPABILITY_DEFINITION,
     CODING_ARCH_DIAGNOSTICS_FACET,
+    CODING_ARCH_LSP_SEMANTIC_REQUIREMENT,
     CODING_ARCH_TOOL_RUNTIME_FACET,
     CODING_ARCH_TOOL_RUNTIME_REQUIREMENT,
     CODING_ARCH_WORKSPACE_REQUIREMENT,
@@ -117,7 +119,11 @@ def test_arch_provider_descriptor_matches_the_declared_capability() -> None:
     assert provider.capability_id == CODING_ARCH_CAPABILITY_DEFINITION.capability_id
     assert provider.provider_id == "coding.arch.default"
     assert provider.facets == CODING_ARCH_CAPABILITY_DEFINITION.facets
-    assert provider.requirements == (CODING_ARCH_WORKSPACE_REQUIREMENT,)
+    assert provider.requirements == (
+        CODING_ARCH_WORKSPACE_REQUIREMENT,
+        CODING_ARCH_LSP_SEMANTIC_REQUIREMENT,
+    )
+    assert CODING_ARCH_LSP_SEMANTIC_REQUIREMENT.optional is True
     assert provider.required_authorities == frozenset({"filesystem"})
     assert provider.source_id == "plugin:coding.arch.default"
     assert provider.selection_rule == PLUGIN_PROVIDER_SELECTION_RULE
@@ -170,7 +176,9 @@ def test_arch_provider_publishes_one_shared_lazy_bundle(tmp_path: Path) -> None:
         CODING_ARCH_DIAGNOSTICS_FACET,
     )
     tool_runtime = bundle.require(CODING_ARCH_TOOL_RUNTIME_FACET)
-    result = tool_runtime.inspect(root=".", query="summary")
+    result = asyncio.run(
+        tool_runtime.inspect(workspace=workspace, root=".", query="summary")
+    )
     assert result["schema_version"] == 1
     assert result["root"] == str(workspace.resolve())
     assert (tmp_path / "private" / "import-facts-v1.json").is_file()
@@ -178,7 +186,93 @@ def test_arch_provider_publishes_one_shared_lazy_bundle(tmp_path: Path) -> None:
     dispose_coding_arch_provider(bundle)
 
     with pytest.raises(RuntimeError, match="disposed"):
-        tool_runtime.inspect(root=".", query="summary")
+        asyncio.run(
+            tool_runtime.inspect(workspace=workspace, root=".", query="summary")
+        )
+
+
+def test_arch_provider_reads_virtual_sources_only_through_workspace_facets(
+    tmp_path: Path,
+) -> None:
+    workspace_root = (tmp_path / "virtual-workspace").resolve()
+    source_path = workspace_root / "virtual.py"
+    read_paths: list[Path] = []
+
+    class VirtualRead:
+        def exists(self, path: Path) -> bool:
+            return path in {workspace_root, source_path}
+
+        def is_file(self, path: Path) -> bool:
+            return path == source_path
+
+        def read_bytes(self, path: Path) -> bytes:
+            read_paths.append(path)
+            if path != source_path:
+                raise FileNotFoundError(path)
+            return b"import os\n"
+
+    class VirtualSearch:
+        def exists(self, path: Path) -> bool:
+            return path == workspace_root
+
+        def is_file(self, path: Path) -> bool:
+            return path == source_path
+
+        def is_dir(self, path: Path) -> bool:
+            return path == workspace_root
+
+        def read_text(self, path: Path, *, newline: str | None = None) -> str:
+            del newline
+            return VirtualRead().read_bytes(path).decode("utf-8")
+
+        def walk_files(self, path: Path):
+            assert path == workspace_root
+            return (source_path,)
+
+    workspace = CapabilityBundleValue(
+        (
+            CapabilityFacetBinding("read", VirtualRead()),
+            CapabilityFacetBinding("list", _WorkspaceList()),
+            CapabilityFacetBinding("search", VirtualSearch()),
+        )
+    )
+    owner = RegistrationOwner(
+        owner_kind="capability",
+        owner_id="coding.arch",
+        runtime_id="runtime-virtual",
+        generation=1,
+    )
+    context = CapabilityProviderContext(
+        product_id="coding",
+        runtime_id="runtime-virtual",
+        generation=1,
+        registrations=CapabilityRegistrationCollector(RegistrationScope(owner)),
+        dependencies=(
+            CapabilityDependencyBinding(
+                requirement=CODING_ARCH_WORKSPACE_REQUIREMENT,
+                _value=workspace,
+            ),
+        ),
+        binding_inputs=CodingArchPluginConfigV1.from_runtime_inputs(
+            workspace_root=workspace_root,
+            private_data_root=tmp_path / "private-virtual",
+            private_state_quota_bytes=4096,
+        ).to_dict(),
+    )
+
+    bundle = create_coding_arch_provider(context)
+    result = asyncio.run(
+        bundle.require(CODING_ARCH_TOOL_RUNTIME_FACET).inspect(
+            workspace=workspace_root,
+            root=".",
+            query="summary",
+        )
+    )
+
+    assert result["nodes"] == 1
+    assert read_paths == [source_path]
+    assert source_path.exists() is False
+    dispose_coding_arch_provider(bundle)
 
 
 def test_arch_tool_consumer_captures_only_tool_runtime() -> None:

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import inspect
+from collections.abc import Awaitable
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
-from typing import NotRequired, TypedDict, cast
+from typing import NotRequired, Protocol, TypedDict, cast
 
 from loushang.coding.arch.import_graph import (
     ImportGraphAnalyzer,
@@ -13,6 +15,7 @@ from loushang.coding.arch.import_graph import (
 from loushang.coding.arch.model import (
     BoundaryRule,
     ImportGranularity,
+    ImportGraph,
     ImportGraphQuery,
     ImportSelection,
 )
@@ -33,6 +36,28 @@ class BoundaryRuleInput(TypedDict):
     source: str
     target: str
     rule_id: NotRequired[str]
+
+
+class ImportGraphInspectionRuntime(Protocol):
+    """Structural runtime accepted by the direct and Capability Tool paths."""
+
+    def inspect(
+        self,
+        *,
+        workspace: str | Path,
+        root: str = ".",
+        package_prefix: str | None = None,
+        language: str = "auto",
+        granularity: str = "module",
+        imports: str = "eager",
+        query: str = "summary",
+        source: str | None = None,
+        target: str | None = None,
+        limit: int = 100,
+        excludes: list[str] | None = None,
+        boundary_rules: list[BoundaryRuleInput] | None = None,
+        refresh_cache: bool = False,
+    ) -> dict[str, object] | Awaitable[dict[str, object]]: ...
 
 
 @dataclass
@@ -59,7 +84,7 @@ class ImportGraphToolRuntime:
         refresh_cache: bool = False,
     ) -> dict[str, object]:
         resolved_root = _resolve_workspace_root(workspace, root)
-        _validate_request(
+        validate_import_graph_inspection_request(
             granularity=granularity,
             imports=imports,
             query=query,
@@ -76,22 +101,19 @@ class ImportGraphToolRuntime:
             excludes=tuple(excludes or ()),
             refresh_cache=refresh_cache,
         )
-        result = query_import_graph(
+        return project_import_graph_inspection_result(
             graph,
-            cast(ImportGraphQuery, query),
+            query=query,
             source=source,
             target=target,
             limit=limit,
-            boundary_rules=_boundary_rules(boundary_rules or []),
+            boundary_rules=boundary_rules,
         )
-        _bound_tool_payload(result, query=cast(ImportGraphQuery, query), limit=limit)
-        result["cache"] = asdict(graph.cache_stats)
-        return result
 
 
 def create_inspect_import_graph_tool_definition(
     *,
-    runtime: ImportGraphToolRuntime | None = None,
+    runtime: ImportGraphInspectionRuntime | None = None,
 ) -> ToolDefinition:
     """Create the optional Coding architecture tool definition."""
 
@@ -149,7 +171,7 @@ def create_inspect_import_graph_tool_definition(
             }
         },
     )
-    def inspect_import_graph(
+    async def inspect_import_graph(
         ctx: ToolContext,
         root: str,
         package_prefix: str | None = None,
@@ -166,7 +188,7 @@ def create_inspect_import_graph_tool_definition(
     ) -> dict[str, object]:
         if ctx.cwd is None:
             raise RuntimeError("inspect_import_graph requires a coding workspace")
-        return shared_runtime.inspect(
+        result = shared_runtime.inspect(
             workspace=ctx.cwd,
             root=root,
             package_prefix=package_prefix,
@@ -181,6 +203,7 @@ def create_inspect_import_graph_tool_definition(
             boundary_rules=boundary_rules,
             refresh_cache=refresh_cache,
         )
+        return await result if inspect.isawaitable(result) else result
 
     definition = authorized_tool(
         inspect_import_graph,
@@ -206,7 +229,7 @@ def _resolve_workspace_root(workspace: str | Path, root: str) -> Path:
     return resolved
 
 
-def _validate_request(
+def validate_import_graph_inspection_request(
     *,
     granularity: str,
     imports: str,
@@ -241,6 +264,30 @@ def _validate_request(
             "too many boundary rules; maximum is "
             f"{MAX_INSPECT_IMPORT_GRAPH_BOUNDARY_RULES}"
         )
+
+
+def project_import_graph_inspection_result(
+    graph: ImportGraph,
+    *,
+    query: str,
+    source: str | None,
+    target: str | None,
+    limit: int,
+    boundary_rules: list[BoundaryRuleInput] | None,
+) -> dict[str, object]:
+    """Project a source-backed graph into the bounded Tool result contract."""
+
+    result = query_import_graph(
+        graph,
+        cast(ImportGraphQuery, query),
+        source=source,
+        target=target,
+        limit=limit,
+        boundary_rules=_boundary_rules(boundary_rules or []),
+    )
+    _bound_tool_payload(result, query=cast(ImportGraphQuery, query), limit=limit)
+    result["cache"] = asdict(graph.cache_stats)
+    return result
 
 
 def _boundary_rules(values: list[BoundaryRuleInput]) -> tuple[BoundaryRule, ...]:
@@ -307,5 +354,8 @@ __all__ = [
     "MAX_INSPECT_IMPORT_GRAPH_LIMIT",
     "BoundaryRuleInput",
     "ImportGraphToolRuntime",
+    "ImportGraphInspectionRuntime",
     "create_inspect_import_graph_tool_definition",
+    "project_import_graph_inspection_result",
+    "validate_import_graph_inspection_request",
 ]

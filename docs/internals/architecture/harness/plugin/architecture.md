@@ -11,10 +11,11 @@
   immutable revision evidence, desired-state and Instance ledgers, execution
   Approval consumption, exact Capability-owner admission, Provider selection,
   Resource component foundations, the `coding.lsp` production path, the single
-  Resource Catalog cutover, and the production `coding.base` lifecycle exist.
-  `coding.arch`, the public SDK and managed Skill actions, isolated Plugin
-  Workers, and complete operations projection remain PLC7 through PLC9 delivery
-  work.
+  Resource Catalog cutover, the production `coding.base` lifecycle, and the
+  review-candidate `coding.arch` second-Provider path exist. The public SDK,
+  managed Skill actions, isolated Plugin Workers, and complete operations
+  projection remain PLC8 through PLC9 delivery work; PLC7 still requires its
+  terminal review gate.
 - Current-runtime authority: source, tests, and narrower accepted boundary and
   contract documents remain authoritative for implemented behavior. Target
   clauses in this document do not make an unimplemented execution shape or API

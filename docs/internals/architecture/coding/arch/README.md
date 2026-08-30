@@ -99,7 +99,7 @@ Read in this order:
   slice and remains proposed until reviewed as the canonical Target;
 - non-Python provider demand has not yet demonstrated another concrete
   provider;
-- the optional `coding.arch -> coding.lsp` semantic-fact port is not part of the
-  initial Current graph;
+- the optional `coding.arch -> coding.lsp(semantic)` edge is now a typed graph
+  requirement and is omitted cleanly when LSP is absent;
 - architectural fact persistence remains a rebuildable cache, not a durable
   cross-run knowledge or Ontology store.

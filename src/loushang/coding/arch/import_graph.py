@@ -92,7 +92,7 @@ class ImportGraphAnalyzer:
             refresh_cache=refresh_cache,
         )
         _validate_scan(scan, provider_language=provider.language)
-        return _project_scan(
+        return project_import_provider_scan(
             scan,
             root=resolved_root,
             package_prefix=package_prefix,
@@ -143,6 +143,31 @@ def analyze_import_graph(
         imports=imports,
         excludes=excludes,
         refresh_cache=refresh_cache,
+    )
+
+
+def project_import_provider_scan(
+    scan: ImportProviderScan,
+    *,
+    root: str | Path,
+    package_prefix: str | None,
+    granularity: ImportGranularity,
+    imports: ImportSelection,
+) -> ImportGraph:
+    """Project source-backed Provider facts without reopening source files."""
+
+    resolved_root = Path(root).expanduser().resolve()
+    if granularity not in {"module", "subsystem"}:
+        raise ValueError(f"unsupported import graph granularity: {granularity!r}")
+    if imports not in {"eager", "all"}:
+        raise ValueError(f"unsupported import selection: {imports!r}")
+    _validate_scan(scan, provider_language=scan.language)
+    return _project_scan(
+        scan,
+        root=resolved_root,
+        package_prefix=package_prefix,
+        granularity=granularity,
+        imports=imports,
     )
 
 
@@ -642,5 +667,6 @@ __all__ = [
     "IMPORT_GRAPH_SCHEMA_VERSION",
     "ImportGraphAnalyzer",
     "analyze_import_graph",
+    "project_import_provider_scan",
     "query_import_graph",
 ]

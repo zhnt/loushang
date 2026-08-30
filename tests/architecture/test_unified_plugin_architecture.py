@@ -37,6 +37,11 @@ PLC6_CONTRACT_PATH = Path(
 PLC7_CONTRACT_PATH = Path(
     "docs/internals/architecture/harness/plugin/plugin-lifecycle-plc7-contract.md"
 )
+CODING_CAPABILITY_COMPOSER_PATH = Path(
+    "src/loushang/coding/_capability_plugin_composition.py"
+)
+CODING_BOOTSTRAP_PATH = Path("src/loushang/coding/bootstrap.py")
+CODING_LSP_COMPATIBILITY_PATH = Path("src/loushang/coding/lsp/_plugin_opt_in.py")
 PAP4_CONTRACT_PATH = Path(
     "docs/internals/architecture/harness/plugin/plugin-capability-admission-pap4-contract.md"
 )
@@ -349,11 +354,6 @@ EXPECTED_EXTENSION_DECLARATION_METHODS = {
     "register_message_renderer",
 }
 EXPECTED_LIVE_BINDING_SINK_INVENTORY = {
-    (
-        Path("src/loushang/coding/arch/tool_pack.py"),
-        "register_coding_arch_tools",
-        "register_tool",
-    ),
     (
         Path("src/loushang/coding/bootstrap.py"),
         "_create_agent_session",
@@ -1604,6 +1604,29 @@ def test_plc7_contract_freezes_second_provider_without_a_peer_graph() -> None:
         assert invariant in contract_text
     assert "[PLC7 Second-Provider Contract](plugin-lifecycle-plc7-contract.md)" in (
         readme
+    )
+
+
+def test_plc7_uses_one_neutral_composer_and_has_no_direct_arch_publisher() -> None:
+    composer = CODING_CAPABILITY_COMPOSER_PATH.read_text(encoding="utf-8")
+    bootstrap = CODING_BOOTSTRAP_PATH.read_text(encoding="utf-8")
+    compatibility = CODING_LSP_COMPATIBILITY_PATH.read_text(encoding="utf-8")
+    bootstrap_tree = ast.parse(bootstrap, filename=str(CODING_BOOTSTRAP_PATH))
+
+    assert "CODING_LSP_CAPABILITY_DEFINITION" in composer
+    assert "CODING_ARCH_CAPABILITY_DEFINITION" in composer
+    assert "prepare_coding_capability_plugin_composition" in bootstrap
+    assert "prepare_coding_lsp_plugin_opt_in" not in bootstrap
+    assert "_assembly_request" not in compatibility
+    assert not any(
+        isinstance(node, ast.Call)
+        and (
+            isinstance(node.func, ast.Name)
+            and node.func.id == "register_coding_arch_tools"
+            or isinstance(node.func, ast.Attribute)
+            and node.func.attr == "register_coding_arch_tools"
+        )
+        for node in ast.walk(bootstrap_tree)
     )
 
 
