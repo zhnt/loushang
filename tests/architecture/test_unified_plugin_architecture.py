@@ -3665,7 +3665,7 @@ def test_plc6abcde_freezes_sets_owners_management_and_authority_cutover() -> Non
         assert required in contract
 
 
-def test_plc6e_catalog_session_has_no_peer_base_tool_or_command_publisher() -> None:
+def test_plc6e_catalog_session_has_no_peer_exact_tool_or_command_publisher() -> None:
     coding_sources = tuple(Path("src/loushang/coding").rglob("*.py"))
     tool_calls: list[Path] = []
     command_stage_calls: list[Path] = []
@@ -3740,12 +3740,12 @@ def test_plc6e_catalog_session_has_no_peer_base_tool_or_command_publisher() -> N
         for path in coding_sources
     )
     # PLC6E removes the last peer Tool publisher from the stable SDK and rejects
-    # reserved compatibility definitions at Catalog construction.
+    # every exact-owner compatibility definition at Catalog construction.
     assert tool_calls == []
     assert '"AgentSession",' not in coding_sdk
     assert '"register_coding_builtin_tools",' not in coding_sdk
     assert '"register_coding_builtin_tools",' not in tool_pack
-    assert "peer_base_tool_publisher" in coding_bootstrap
+    assert "peer_exact_tool_publisher" in coding_bootstrap
     assert set(command_stage_calls) == {
         Path("src/loushang/coding/_base_plugin_owners.py")
     }

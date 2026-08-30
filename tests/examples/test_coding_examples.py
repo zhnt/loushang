@@ -153,6 +153,60 @@ def test_kimi_code_examples_use_the_builtin_catalog(
         assert model.id == "kimi-for-coding"
 
 
+@pytest.mark.parametrize(
+    "example",
+    (
+        "examples/coding/08_online_resume_repo_session.py",
+        "examples/coding/09_print_mode_text.py",
+        "examples/coding/10_print_mode_json.py",
+        "examples/coding/14_simple_code_writer.py",
+        "examples/coding/15_simple_write_tool.py",
+        "examples/coding/16_write_tool_trace.py",
+    ),
+)
+def test_catalog_owned_tool_examples_start_and_render_help(example: str) -> None:
+    completed = subprocess.run(
+        [sys.executable, example, "--help"],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert "usage:" in completed.stdout.lower()
+
+
+@pytest.mark.parametrize(
+    "example",
+    (
+        "examples/coding/04_builtin_bash_tool.py",
+        "examples/coding/05_model_with_builtin_bash.py",
+        "examples/coding/06_nl_with_builtin_bash.py",
+        "examples/coding/extensions/11_online_tool_guard.py",
+        "examples/coding/extensions/12_online_dynamic_resources.py",
+        "examples/coding/extensions/13_online_resume_with_extension.py",
+    ),
+)
+def test_catalog_owned_tool_examples_import_without_compatibility_exports(
+    example: str,
+) -> None:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import runpy,sys; runpy.run_path(sys.argv[1], run_name='example_smoke')",
+            example,
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+
+
 def test_usage_inspect_example_marks_unknown_cost(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

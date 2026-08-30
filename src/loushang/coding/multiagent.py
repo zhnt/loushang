@@ -9,16 +9,18 @@ from typing import Any, cast
 
 from loushang.ai.model import Model, ModelSelection, parse_model_selection_reference
 from loushang.ai.types import Message
+from loushang.coding._tool_authority import coding_peer_tool_names
 from loushang.coding.prompt.defaults import DEFAULT_CODING_SYSTEM_PROMPT
 from loushang.coding.runtime import AgentSessionRuntime
 from loushang.coding.sandbox import coding_workspace_execution_profile
 from loushang.coding.session import AgentSession
-from loushang.coding.tool_pack import CODING_RESERVED_BASE_TOOL_NAMES
+from loushang.coding.tool_pack import coding_platform_tool_names
 from loushang.harness.approval import (
     ActorBoundApprovalResolver,
     DenyApprovalResolver,
     InteractiveApprovalResolver,
 )
+from loushang.harness.environment import HostEnvironment, LocalHostEnvironmentProbe
 from loushang.harness.multiagent import (
     AgentInputMessage,
     AgentTypeRegistry,
@@ -301,6 +303,7 @@ class CodingSubagentFactory(SessionSubagentFactory):
         services: BootstrapServices | None = None,
         approval_resolver: InteractiveApprovalResolver | None = None,
         workspace_leases: WorkspaceLeasePort | None = None,
+        host_environment: HostEnvironment | None = None,
     ) -> None:
         resolved_cwd = Path(cwd).expanduser().resolve()
         if not resolved_cwd.is_dir():
@@ -313,6 +316,9 @@ class CodingSubagentFactory(SessionSubagentFactory):
         self._approval_resolver = approval_resolver
         self._runtime_builder = runtime_builder
         self._workspace_leases = workspace_leases
+        self._host_environment = (
+            host_environment or LocalHostEnvironmentProbe().detect()
+        )
 
     async def create(
         self,
@@ -339,7 +345,10 @@ class CodingSubagentFactory(SessionSubagentFactory):
                 )
                 child_cwd = Path(workspace_lease.execution_ref)
             plan = request.context_plan
-            allowed_tools = _resolve_allowed_tools(request)
+            allowed_tools = coding_platform_tool_names(
+                _resolve_allowed_tools(request),
+                self._host_environment,
+            )
             model_ref = plan.model if plan is not None else None
             if model_ref is None:
                 model_ref = request.agent_type.default_model
@@ -603,15 +612,13 @@ def _select_tool_registry(
     source: WorkspaceToolRegistry,
     allowed_tools: tuple[str, ...],
 ) -> WorkspaceToolRegistry:
+    peer_tool_names = coding_peer_tool_names(allowed_tools)
     enabled = {definition.name for definition in source.list_enabled_definitions()}
-    missing = tuple(name for name in allowed_tools if name not in enabled)
+    missing = tuple(name for name in peer_tool_names if name not in enabled)
     if missing:
         raise ValueError(
             "Coding child tools are not registered and enabled: " + ", ".join(missing)
         )
-    peer_tool_names = tuple(
-        name for name in allowed_tools if name not in CODING_RESERVED_BASE_TOOL_NAMES
-    )
     return source.select(peer_tool_names)
 
 

@@ -24,6 +24,7 @@ from loushang.coding.multiagent import (
     coding_recipe_context_plan,
     install_coding_multiagent_session,
 )
+from loushang.harness.environment import HostEnvironment
 from loushang.harness.multiagent import (
     AgentInputMessage,
     AgentPath,
@@ -396,7 +397,7 @@ def test_factory_projects_explorer_bash_into_the_child_runtime(tmp_path: Path) -
     factory = CodingSubagentFactory(
         session_dir=tmp_path / "sessions",
         cwd=tmp_path,
-        tool_registry=_tool_registry("bash", "read", "grep", "find", "ls"),
+        tool_registry=_tool_registry(),
         runtime_builder=build_runtime,
     )
 
@@ -413,6 +414,72 @@ def test_factory_projects_explorer_bash_into_the_child_runtime(tmp_path: Path) -
     assert [
         definition.name for definition in captured["tool_registry"].list_definitions()
     ] == []
+
+
+def test_factory_maps_neutral_bash_intent_to_windows_shell(tmp_path: Path) -> None:
+    session = _Session(
+        responses=[_assistant("Exploration complete.", input_tokens=1, output_tokens=1)]
+    )
+    captured: dict[str, object] = {}
+
+    def build_runtime(**kwargs: object) -> _Runtime:
+        captured.update(kwargs)
+        return _Runtime(session)
+
+    spec = coding_read_only_agent_types().resolve("explorer")
+    assert spec is not None
+    factory = CodingSubagentFactory(
+        session_dir=tmp_path / "sessions",
+        cwd=tmp_path,
+        tool_registry=_tool_registry(),
+        runtime_builder=build_runtime,
+        host_environment=HostEnvironment(
+            os_family="windows",
+            platform_name="win32",
+            architecture="amd64",
+        ),
+    )
+
+    binding = asyncio.run(factory.create(_request(spec=spec)))
+    asyncio.run(binding.driver.dispose())
+
+    expected = ["shell", "read", "grep", "find", "ls"]
+    assert captured["allowed_tool_names"] == expected
+    assert captured["active_tool_names"] == expected
+    delegated = captured["delegated_execution_profile"]
+    assert isinstance(delegated, DelegatedExecutionProfile)
+    assert delegated.allowed_tools == tuple(expected)
+    assert captured["tool_registry"].list_definitions() == []
+
+
+def test_factory_filters_all_exact_owner_tools_from_peer_registry(
+    tmp_path: Path,
+) -> None:
+    session = _Session(responses=[_assistant("Done.", input_tokens=1, output_tokens=1)])
+    captured: dict[str, object] = {}
+
+    def build_runtime(**kwargs: object) -> _Runtime:
+        captured.update(kwargs)
+        return _Runtime(session)
+
+    spec = AgentTypeSpec(
+        name="reviewer",
+        allowed_tools=("read", "inspect_symbol", "document_outline", "custom"),
+    )
+    factory = CodingSubagentFactory(
+        session_dir=tmp_path / "sessions",
+        cwd=tmp_path,
+        tool_registry=_tool_registry("custom"),
+        runtime_builder=build_runtime,
+    )
+
+    binding = asyncio.run(factory.create(_request(spec=spec)))
+    asyncio.run(binding.driver.dispose())
+
+    assert captured["allowed_tool_names"] == list(spec.allowed_tools)
+    assert [
+        definition.name for definition in captured["tool_registry"].list_definitions()
+    ] == ["custom"]
 
 
 def test_factory_binds_shared_approval_resolver_to_child_incarnation(
@@ -676,7 +743,7 @@ def test_factory_builds_a_non_persistent_child_and_uses_existing_session_rounds(
     factory = CodingSubagentFactory(
         session_dir=tmp_path / "sessions",
         cwd=tmp_path,
-        tool_registry=_tool_registry("read", "grep", "find", "ls"),
+        tool_registry=_tool_registry(),
         runtime_builder=build_runtime,
     )
 
@@ -940,12 +1007,12 @@ def test_factory_rejects_an_admitted_tool_missing_from_the_product_registry(
     )
     spec = AgentTypeSpec(
         name="reviewer",
-        allowed_tools=("read", "grep"),
+        allowed_tools=("read", "custom_lookup"),
     )
 
     with pytest.raises(
         ValueError,
-        match="Coding child tools are not registered and enabled: grep",
+        match="Coding child tools are not registered and enabled: custom_lookup",
     ):
         asyncio.run(factory.create(_request(spec=spec)))
 
@@ -974,13 +1041,13 @@ def test_factory_releases_isolated_workspace_when_preflight_fails(
     )
     spec = AgentTypeSpec(
         name="implementation_worker",
-        allowed_tools=("read", "write"),
+        allowed_tools=("read", "custom_write"),
         workspace_mode="isolated",
     )
 
     with pytest.raises(
         ValueError,
-        match="Coding child tools are not registered and enabled: write",
+        match="Coding child tools are not registered and enabled: custom_write",
     ):
         asyncio.run(factory.create(_request(spec=spec)))
 

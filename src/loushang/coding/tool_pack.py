@@ -7,6 +7,7 @@ how the Coding product selects and configures that reusable capability.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import replace
 from typing import Any, cast
 
@@ -142,9 +143,18 @@ def coding_default_active_tool_names(
 ) -> tuple[str, ...]:
     """Return Coding's Product-selected default Tool intent for one host."""
 
+    return coding_platform_tool_names(CODING_DEFAULT_ACTIVE_TOOL_NAMES, environment)
+
+
+def coding_platform_tool_names(
+    tool_names: Iterable[str],
+    environment: HostEnvironment,
+) -> tuple[str, ...]:
+    """Resolve platform-neutral Coding Tool intents for one execution host."""
+
     return tuple(
         "shell" if environment.os_family == "windows" and name == "bash" else name
-        for name in CODING_DEFAULT_ACTIVE_TOOL_NAMES
+        for name in tool_names
     )
 
 
@@ -260,6 +270,7 @@ __all__ = [
     "CODING_TOOL_NAMES",
     "CODING_WORKSPACE_TOOL_PROFILE",
     "coding_default_active_tool_names",
+    "coding_platform_tool_names",
     "coding_workspace_tool_profile",
     "create_coding_tool_definition",
     "create_coding_tool_definitions",

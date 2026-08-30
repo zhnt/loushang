@@ -14,8 +14,6 @@ from _support import (
     describe_model,
 )
 
-from loushang.coding import ToolRegistry, register_builtin_tools
-
 EXAMPLE_REQUEST = (
     "当前目录有哪些文件？"
     "如果有 docs 目录，列出 docs 目录中的文件；"
@@ -55,12 +53,9 @@ async def main(argv: list[str] | None = None) -> None:
 
     model = build_kimi_model()
     model_info = describe_model(model)
-    registry = ToolRegistry()
-    register_builtin_tools(registry)
 
     session = create_kimi_session(
         model=model,
-        tools=registry.list_enabled_tools(),
     )
     attach_stream_printer(session)
 

@@ -15,8 +15,6 @@ from _support import (
     describe_model,
 )
 
-from loushang.coding import ToolRegistry, register_builtin_tools
-
 EXTENSION_SOURCE = """
 from pathlib import Path
 
@@ -67,15 +65,12 @@ async def main() -> None:
         extension_file = extensions_dir / "online_dynamic_resources.py"
         extension_file.write_text(EXTENSION_SOURCE.strip() + "\n", encoding="utf-8")
 
-        registry = ToolRegistry()
-        register_builtin_tools(registry)
         model = build_kimi_model()
         model_info = describe_model(model)
         runtime, session = await create_kimi_runtime_session(
             cwd=project_root,
             model=model,
             system_prompt="Online dynamic resources extension example.",
-            tools=registry.list_enabled_tools(),
             persist=False,
         )
         attach_stream_printer(session)

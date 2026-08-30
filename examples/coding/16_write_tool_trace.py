@@ -18,8 +18,6 @@ from _support import (
     describe_model,
 )
 
-from loushang.coding import ToolRegistry, register_builtin_tools
-
 EXAMPLE_REQUEST = "请生成一个手机登录的页面，放在 demo/index.html"
 HEARTBEAT_SECONDS = 5.0
 
@@ -232,12 +230,10 @@ async def main(argv: list[str] | None = None) -> None:
 
     model = build_kimi_model()
     model_info = describe_model(model)
-    registry = ToolRegistry()
-    register_builtin_tools(registry)
     runtime, session = await create_kimi_runtime_session(
         cwd=Path.cwd(),
         model=model,
-        tools=[registry.get_tool("bash"), registry.get_tool("write")],
+        active_tool_names=["bash", "write"],
         persist=False,
     )
 

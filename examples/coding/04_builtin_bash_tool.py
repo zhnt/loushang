@@ -11,7 +11,7 @@ SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from loushang.coding import ToolRegistry, register_builtin_tools
+from loushang.coding import create_coding_tools
 
 
 def _result_text(result) -> str:
@@ -29,9 +29,7 @@ async def _run_tool_command(tool, tool_call_id: str, params: dict[str, object]) 
 
 
 async def main() -> None:
-    registry = ToolRegistry()
-    register_builtin_tools(registry)
-    bash_tool = registry.get_tool("bash")
+    bash_tool = next(tool for tool in create_coding_tools() if tool.name == "bash")
 
     allowed_result = await bash_tool.execute(
         "call-allow",

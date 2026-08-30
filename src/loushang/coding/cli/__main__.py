@@ -349,12 +349,15 @@ async def run_cli(
     machine_resource_runner=run_machine_resource_command,
 ) -> int:
     raw_argv = tuple(argv or ())
+    resolved_stderr = stderr or sys.stderr
+    if _reject_removed_legacy_resource_input(raw_argv, resolved_stderr):
+        return 2
     machine_resource_argv = extract_machine_resource_argv(raw_argv)
     if machine_resource_argv is not None:
         return await machine_resource_runner(
             machine_resource_argv,
             stdout=stdout or sys.stdout,
-            stderr=stderr or sys.stderr,
+            stderr=resolved_stderr,
             cwd=cwd,
         )
     workspace_argv = extract_workspace_argv(raw_argv)
@@ -363,7 +366,7 @@ async def run_cli(
             workspace_argv,
             stdin=stdin or sys.stdin,
             stdout=stdout or sys.stdout,
-            stderr=stderr or sys.stderr,
+            stderr=resolved_stderr,
             cwd=cwd,
         )
     lsp_argv = extract_lsp_argv(raw_argv)
@@ -372,7 +375,7 @@ async def run_cli(
             lsp_argv,
             stdin=stdin or sys.stdin,
             stdout=stdout or sys.stdout,
-            stderr=stderr or sys.stderr,
+            stderr=resolved_stderr,
             cwd=cwd,
             services=services,
             build_services=build_default_services,
@@ -383,7 +386,7 @@ async def run_cli(
             multiagent_argv,
             stdin=stdin or sys.stdin,
             stdout=stdout or sys.stdout,
-            stderr=stderr or sys.stderr,
+            stderr=resolved_stderr,
             cwd=cwd,
             services=services,
             build_services=build_default_services,
@@ -392,7 +395,7 @@ async def run_cli(
     host_lifecycle = ProductHostLifecycle.resolve(
         stdin=stdin,
         stdout=stdout,
-        stderr=stderr,
+        stderr=resolved_stderr,
     )
     state_preparation_ports = _coding_state_preparation_ports(workflow_runner)
     host_binding = AgentCliSessionHostBinding[
@@ -575,14 +578,7 @@ def _parse_application_args(
     extension_flags: Mapping[str, object] | None,
     allow_unknown: bool,
 ) -> CliParseResult[CliArgs]:
-    removed_option = removed_legacy_resource_option(tuple(argv))
-    if removed_option is not None:
-        stderr.write(
-            "Error: coding_legacy_resource_input_removed: "
-            f"{removed_option} is no longer supported; use native "
-            ".loushang/resources roots or a verified Plugin with exact "
-            "contribution declarations.\n"
-        )
+    if _reject_removed_legacy_resource_input(tuple(argv), stderr):
         return CliParseResult(args=None, exit_code=2)
     return capture_cli_parse(
         parse_args,
@@ -594,6 +590,22 @@ def _parse_application_args(
         ),
         allow_unknown,
     )
+
+
+def _reject_removed_legacy_resource_input(
+    argv: tuple[str, ...],
+    stderr: TextIO,
+) -> bool:
+    removed_option = removed_legacy_resource_option(argv)
+    if removed_option is None:
+        return False
+    stderr.write(
+        "Error: coding_legacy_resource_input_removed: "
+        f"{removed_option} is no longer supported; use native "
+        ".loushang/resources roots or a verified Plugin with exact "
+        "contribution declarations.\n"
+    )
+    return True
 
 
 def _coding_state_preparation_ports(

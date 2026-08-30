@@ -1725,6 +1725,116 @@ def test_coding_multiagent_child_uses_the_product_stream_and_read_only_tools(
     asyncio.run(scenario())
 
 
+def test_catalog_owned_child_bash_uses_actor_bound_approval(
+    tmp_path: Path,
+) -> None:
+    from loushang.coding.bootstrap import create_agent_session_runtime, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.harness.approval import (
+        HeadlessApprovalResolver,
+        InteractiveApprovalResolver,
+    )
+    from loushang.harness.multiagent import AgentPath
+    from loushang.harness.policy_engine import PolicyEngine
+
+    presented = asyncio.Event()
+    approval_payloads: list[dict[str, object]] = []
+    model_tool_sets: list[tuple[str, ...]] = []
+    tool_result_texts: list[str] = []
+    stream_calls = 0
+
+    def present(payload: dict[str, object]) -> None:
+        approval_payloads.append(dict(payload))
+        presented.set()
+
+    async def stream_fn(model, context, options=None):
+        nonlocal stream_calls
+        del model, options
+        stream_calls += 1
+        model_tool_sets.append(tuple(tool.name for tool in context.tools or ()))
+        tool_result_texts.extend(
+            part.text
+            for message in context.messages
+            if getattr(message, "role", None) == "toolResult"
+            for part in message.content
+            if isinstance(part, TextPart)
+        )
+        if stream_calls == 1:
+            return _stream_with_final_message(
+                _assistant_tool_call_message(
+                    "bash",
+                    {"command": "printf catalog-child-ok"},
+                )
+            )
+        return _stream_with_final_message(_assistant_message("child complete"))
+
+    async def scenario() -> None:
+        project = tmp_path / "project"
+        project.mkdir()
+        resolver = InteractiveApprovalResolver(
+            fallback=HeadlessApprovalResolver(mode="deny")
+        )
+        resolver.set_request_presenter(present)
+        runtime = create_agent_session_runtime(
+            session_dir=tmp_path / "sessions",
+            model=_model(),
+            stream_fn=stream_fn,
+            services=create_services(
+                settings_manager=SettingsManager(
+                    ControlConfig(capabilities={"coding.lsp": "disabled"})
+                ),
+            ),
+            persist=False,
+            enable_multiagent=True,
+            approval_resolver=resolver,
+            tool_policy_evaluator=PolicyEngine(ask_tools=("bash",)),
+        )
+
+        session = await runtime.create_session(cwd=str(project))
+        collaboration = session.multiagent_runtime
+        spawn = next(tool for tool in session.agent.tools if tool.name == "spawn_agent")
+        wait = next(tool for tool in session.agent.tools if tool.name == "wait_agent")
+        spawned = await spawn.execute(
+            "spawn-approved-child",
+            {
+                "name": "approved-child",
+                "agent_type": "explorer",
+                "prompt": "Inspect the repository state.",
+            },
+            None,
+            None,
+        )
+
+        await asyncio.wait_for(presented.wait(), timeout=2)
+        [payload] = approval_payloads
+        action_id = payload["action_id"]
+        assert isinstance(action_id, str)
+        assert payload["actor_id"] == f"{spawned.details['path']}@1"
+        assert await resolver.handle_result(action_id, outcome="allow_once")
+
+        waited = await wait.execute(
+            "wait-approved-child",
+            {"timeout_seconds": 2},
+            None,
+            None,
+        )
+        terminal = collaboration.control.registry.current(
+            AgentPath.parse(str(spawned.details["path"]))
+        )
+
+        assert waited.details["wait_expired"] is False
+        assert terminal is not None
+        assert terminal.status == "completed", collaboration.control.notices()
+        assert terminal.progress.summary == "child complete"
+        await runtime.dispose_session_runtime()
+
+    asyncio.run(scenario())
+
+    assert len(model_tool_sets) == 2
+    assert all("bash" in tool_names for tool_names in model_tool_sets)
+    assert any("catalog-child-ok" in text for text in tool_result_texts)
+
+
 def test_create_agent_session_injects_settings_and_agents_md_into_system_prompt(
     tmp_path,
 ) -> None:
@@ -2277,7 +2387,7 @@ def test_manifest_only_plugin_source_with_legacy_resources_fails_closed(
     assert records[0].details == {"reasons": ["undeclared_plugin_resources"]}
 
 
-def test_manifest_only_code_plugin_without_legacy_resources_starts_cleanly(
+def test_non_resource_code_plugin_does_not_acquire_resource_authority(
     tmp_path,
 ) -> None:
     import json
@@ -2290,8 +2400,36 @@ def test_manifest_only_code_plugin_without_legacy_resources_starts_cleanly(
     plugin_root = tmp_path / "plugins" / "code-only"
     project_root.mkdir()
     plugin_root.mkdir(parents=True)
+    (plugin_root / "provider.py").write_text(
+        "raise AssertionError('Resource discovery must not import Plugin code')\n",
+        encoding="utf-8",
+    )
     (plugin_root / "plugin.json").write_text(
-        json.dumps({"name": "code-only"}), encoding="utf-8"
+        json.dumps(
+            {
+                "name": "code-only",
+                "contributionIndex": {
+                    "version": 2,
+                    "items": [
+                        {
+                            "id": "review-provider",
+                            "kind": "capability_provider",
+                            "owner": "coding.review",
+                            "contributionExecutionModel": "in_process",
+                            "declarationSource": {
+                                "entrypoint": "provider.py:declare",
+                                "kind": "in_process",
+                                "sourceVersion": 1,
+                            },
+                            "requestedAuthorities": [],
+                            "configuration": {},
+                            "required": True,
+                        }
+                    ],
+                },
+            }
+        ),
+        encoding="utf-8",
     )
     project_settings_path = tmp_path / "project-settings.json"
     project_settings_path.write_text(
@@ -2314,14 +2452,19 @@ def test_manifest_only_code_plugin_without_legacy_resources_starts_cleanly(
         model=_model(),
     )
 
-    assert session.resource_bundle is not None
-    assert session.resource_bundle.extensions == []
-    assert [prompt.name for prompt in session.resource_bundle.prompts] == ["standard"]
-    assert [skill.name for skill in session.resource_bundle.skills] == ["standard"]
-    assert [theme.name for theme in session.resource_bundle.themes] == ["themes"]
-    assert services.diagnostics_service.get_diagnostics(
-        code="coding_resource_catalog_unsupported"
-    ) == []
+    try:
+        assert session.resource_bundle is not None
+        assert session.resource_bundle.extensions == []
+        assert [prompt.name for prompt in session.resource_bundle.prompts] == [
+            "standard"
+        ]
+        assert [skill.name for skill in session.resource_bundle.skills] == ["standard"]
+        assert [theme.name for theme in session.resource_bundle.themes] == ["themes"]
+        assert services.diagnostics_service.get_diagnostics(
+            code="coding_resource_catalog_unsupported"
+        ) == []
+    finally:
+        asyncio.run(session.dispose())
 
 
 def test_create_agent_session_materializes_git_package_sources_by_default(
@@ -2520,17 +2663,19 @@ def test_create_agent_session_marks_disabled_skills(tmp_path) -> None:
     assert statuses["standard"].status == "effective"
 
 
+@pytest.mark.parametrize("tool_name", ("read", "inspect_symbol"))
 @pytest.mark.parametrize("input_kind", ("registry", "tools"))
-def test_create_agent_session_rejects_peer_base_tool_publishers(
+def test_create_agent_session_rejects_peer_exact_tool_publishers(
     tmp_path,
     input_kind: str,
+    tool_name: str,
 ) -> None:
     from loushang.coding._resource_catalog_shadow import (
         CodingResourceCatalogAdmissionError,
     )
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.session_manager import SessionManager
-    from loushang.coding.tool_pack import register_coding_builtin_tools
+    from loushang.coding.tool_pack import create_coding_tool_definition
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
@@ -2542,7 +2687,9 @@ def test_create_agent_session_rejects_peer_base_tool_publishers(
         )
     )
     registry = ToolRegistry()
-    register_coding_builtin_tools(registry)
+    registry.register_tool(
+        replace(create_coding_tool_definition("read"), name=tool_name)
+    )
 
     kwargs = (
         {"tool_registry": registry}
@@ -2557,14 +2704,14 @@ def test_create_agent_session_rejects_peer_base_tool_publishers(
             **kwargs,
         )
 
-    assert captured.value.reasons == ("peer_base_tool_publisher",)
+    assert captured.value.reasons == ("peer_exact_tool_publisher",)
     records = services.diagnostics_service.get_diagnostics(
         code="coding_resource_catalog_unsupported"
     )
     assert len(records) == 1
     assert records[0].phase == "startup"
     assert records[0].source == "bootstrap"
-    assert records[0].details == {"reasons": ["peer_base_tool_publisher"]}
+    assert records[0].details == {"reasons": ["peer_exact_tool_publisher"]}
 
 
 def test_create_agent_session_defaults_custom_tools_active_without_defaulting_all_builtins(

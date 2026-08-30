@@ -34,6 +34,7 @@ from loushang.coding._resource_catalog_shadow import (
     finalize_coding_package_plugin_plan_seed,
     prepare_coding_package_plugin_plan_seed,
 )
+from loushang.coding._tool_authority import CODING_EXACT_OWNER_TOOL_NAMES
 from loushang.coding.capabilities import (
     CODING_LSP_CAPABILITY,
     coding_capability_mount_mode,
@@ -83,10 +84,7 @@ from loushang.coding.sandbox import (
 )
 from loushang.coding.session import AgentSession
 from loushang.coding.session_manager import SessionManager
-from loushang.coding.tool_pack import (
-    CODING_RESERVED_BASE_TOOL_NAMES,
-    coding_default_active_tool_names,
-)
+from loushang.coding.tool_pack import coding_default_active_tool_names
 from loushang.coding.workspace_operations import CodingWorkspaceOperations
 from loushang.harness.approval import (
     InteractiveApprovalResolver,
@@ -162,15 +160,15 @@ _SESSION_MANAGER_PLUGIN_OWNER_ATTRIBUTE = "_loushang_coding_plugin_owner_id"
 AgentFactory = Callable[..., Agent]
 ServicesFactory = Callable[[str], "BootstrapServices"]
 NoToolsMode = Literal["all", "builtin"]
-_RESERVED_CODING_BASE_TOOL_NAMES = frozenset(CODING_RESERVED_BASE_TOOL_NAMES)
+_RESERVED_CODING_EXACT_TOOL_NAMES = frozenset(CODING_EXACT_OWNER_TOOL_NAMES)
 
 
-def _reject_peer_coding_base_tools(
+def _reject_peer_coding_exact_tools(
     *,
     tool_registry: WorkspaceToolRegistry | None,
     tools: Iterable[object] | None,
 ) -> None:
-    """Keep reserved base Tool identities under the exact Plugin owner."""
+    """Keep reserved Tool identities under their exact Plugin owners."""
 
     supplied_names = {
         definition.name
@@ -183,8 +181,8 @@ def _reject_peer_coding_base_tools(
         for definition in tools or ()
         if isinstance((name := getattr(definition, "name", None)), str)
     )
-    if supplied_names.intersection(_RESERVED_CODING_BASE_TOOL_NAMES):
-        raise CodingResourceCatalogAdmissionError(("peer_base_tool_publisher",))
+    if supplied_names.intersection(_RESERVED_CODING_EXACT_TOOL_NAMES):
+        raise CodingResourceCatalogAdmissionError(("peer_exact_tool_publisher",))
 ExtensionFlagValues = Mapping[str, bool | str]
 CwdBoundServicesAuditIssue = _CwdBoundServicesAuditIssue
 _CODING_PLUGIN_HOST_BOOT_ID = secrets.token_hex(16)
@@ -723,7 +721,7 @@ def _create_agent_session(
             raise RuntimeError(
                 "Initial Resource Catalog projection was already prepared"
             )
-        _reject_peer_coding_base_tools(
+        _reject_peer_coding_exact_tools(
             tool_registry=session_tool_registry,
             tools=construction_tools,
         )
@@ -1153,6 +1151,11 @@ def _create_agent_session(
                 default_model_provider=lambda: result.session.agent.model,
                 services=services,
                 approval_resolver=approval_resolver,
+                host_environment=(
+                    coding_base_plugin_assembly.host_environment
+                    if coding_base_plugin_assembly is not None
+                    else None
+                ),
                 workspace_leases=CodingGitWorktreeLeasePort(
                     cwd=session_manager.get_cwd(),
                     exec_service=services.exec_service,

@@ -16,8 +16,6 @@ from _support import (
     latest_tool_results,
 )
 
-from loushang.coding import ToolRegistry, register_builtin_tools
-
 EXTENSION_SOURCE = """
 from loushang.agent.types import AgentToolResult
 from loushang.ai.types import TextPart
@@ -67,15 +65,12 @@ async def main() -> None:
         extension_file = extensions_dir / "online_tool_guard.py"
         extension_file.write_text(EXTENSION_SOURCE.strip() + "\n", encoding="utf-8")
 
-        registry = ToolRegistry()
-        register_builtin_tools(registry)
         model = build_kimi_model()
         model_info = describe_model(model)
         runtime, session = await create_kimi_runtime_session(
             cwd=project_root,
             model=model,
             system_prompt="Online extension tool interception example.",
-            tools=registry.list_enabled_tools(),
             persist=False,
         )
         attach_stream_printer(session)

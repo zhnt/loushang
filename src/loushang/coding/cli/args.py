@@ -42,6 +42,7 @@ _REMOVED_LEGACY_RESOURCE_OPTIONS = frozenset(
         "-np",
         "--theme",
         "--no-themes",
+        "--resource-authority-mode",
     }
 )
 
@@ -85,6 +86,8 @@ def removed_legacy_resource_option(
         option = value.split("=", 1)[0]
         if option in _REMOVED_LEGACY_RESOURCE_OPTIONS:
             return option
+        if value.startswith("-e") and not value.startswith("--") and value != "-e":
+            return "-e"
     return None
 
 

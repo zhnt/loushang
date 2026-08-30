@@ -1931,34 +1931,54 @@ def test_parse_args_rejects_removed_legacy_resource_options(
         parse_args(argv)
 
 
-def test_run_cli_rejects_removed_resource_input_before_runtime_creation(
+@pytest.mark.parametrize(
+    ("argv", "expected_option"),
+    (
+        (("--skill", "debug"), "--skill"),
+        (("--resource-authority-mode", "legacy_explicit"), "--resource-authority-mode"),
+        (("--resource-authority-mode=legacy_explicit",), "--resource-authority-mode"),
+        (("-edebug.py",), "-e"),
+        (("lsp", "--skill", "debug"), "--skill"),
+    ),
+)
+def test_run_cli_rejects_removed_resource_input_before_special_dispatch(
     tmp_path,
+    argv: tuple[str, ...],
+    expected_option: str,
 ) -> None:
     from io import StringIO
 
     from loushang.coding.cli.__main__ import run_cli
 
     runtime_built = False
+    lsp_ran = False
 
     def build_runtime(**_kwargs: object) -> object:
         nonlocal runtime_built
         runtime_built = True
         raise AssertionError("removed Resource input must fail before runtime creation")
 
+    async def run_lsp(*_args: object, **_kwargs: object) -> int:
+        nonlocal lsp_ran
+        lsp_ran = True
+        raise AssertionError("removed Resource input must fail before LSP dispatch")
+
     stderr = StringIO()
     exit_code = asyncio.run(
         run_cli(
-            ["--skill", "debug"],
+            list(argv),
             cwd=tmp_path,
             stderr=stderr,
             runtime_builder=build_runtime,
+            lsp_runner=run_lsp,
         )
     )
 
     assert exit_code == 2
     assert runtime_built is False
+    assert lsp_ran is False
     assert stderr.getvalue() == (
-        "Error: coding_legacy_resource_input_removed: --skill is no longer "
+        f"Error: coding_legacy_resource_input_removed: {expected_option} is no longer "
         "supported; use native .loushang/resources roots or a verified Plugin "
         "with exact contribution declarations.\n"
     )
