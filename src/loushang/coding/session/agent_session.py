@@ -13,6 +13,7 @@ from loushang.coding._base_plugin import (
     build_coding_base_plugin_owners,
 )
 from loushang.coding._base_plugin_owners import CodingBaseToolRegistrationSlot
+from loushang.coding._cleanup import run_cleanup_steps
 from loushang.coding.compaction.adapter import (
     execute_coding_branch_summary,
 )
@@ -293,10 +294,11 @@ class AgentSession(AgentProductSession):
                 owner_bindings = (
                     base_owners.tool.bind(base_tool_registration_slot),
                 )
-            owner_bindings = (
-                *owner_bindings,
-                base_owners.command.bind(command_generations),
-            )
+            if base_owners.command is not None:
+                owner_bindings = (
+                    *owner_bindings,
+                    base_owners.command.bind(command_generations),
+                )
         if coding_lsp_plugin_assembly is not None:
             lsp_tool_registration_slot = CodingLspToolRegistrationSlot()
             owner_bindings = (
@@ -417,26 +419,51 @@ class AgentSession(AgentProductSession):
             if base_tool_registration_slot is not None:
                 base_tool_registration_slot.bind(self._composition.tool_controller)
         except BaseException as error:
-            if coding_lsp_plugin_assembly is not None:
-                coding_lsp_plugin_assembly.close()
-            if coding_base_plugin_assembly is not None:
-                coding_base_plugin_assembly.close()
-            if locally_created_side_question_binding is not None:
-                try:
-                    locally_created_side_question_binding.dispose()
-                except BaseException as cleanup_error:
-                    error.add_note(
-                        "direct Session side-question cleanup also failed: "
-                        f"{cleanup_error}"
-                    )
-            if locally_created_capability_runtime is not None:
-                try:
-                    locally_created_capability_runtime.dispose()
-                except BaseException as cleanup_error:
-                    error.add_note(
-                        "direct Session capability cleanup also failed: "
-                        f"{cleanup_error}"
-                    )
+            run_cleanup_steps(
+                error,
+                (
+                    *(
+                        (
+                            (
+                                "Coding LSP Plugin evidence cleanup",
+                                coding_lsp_plugin_assembly.close,
+                            ),
+                        )
+                        if coding_lsp_plugin_assembly is not None
+                        else ()
+                    ),
+                    *(
+                        (
+                            (
+                                "Coding base Plugin evidence cleanup",
+                                coding_base_plugin_assembly.close,
+                            ),
+                        )
+                        if coding_base_plugin_assembly is not None
+                        else ()
+                    ),
+                    *(
+                        (
+                            (
+                                "direct Session side-question cleanup",
+                                locally_created_side_question_binding.dispose,
+                            ),
+                        )
+                        if locally_created_side_question_binding is not None
+                        else ()
+                    ),
+                    *(
+                        (
+                            (
+                                "direct Session capability cleanup",
+                                locally_created_capability_runtime.dispose,
+                            ),
+                        )
+                        if locally_created_capability_runtime is not None
+                        else ()
+                    ),
+                ),
+            )
             raise
 
     async def _ensure_session_graph_prepared(
@@ -445,17 +472,24 @@ class AgentSession(AgentProductSession):
         assembly = self._coding_lsp_plugin_assembly
         try:
             consumer = await super()._ensure_session_graph_prepared()
-        except BaseException:
-            if assembly is not None:
-                assembly.close()
+        except BaseException as error:
+            run_cleanup_steps(
+                error,
+                (
+                    (("Coding LSP Plugin evidence cleanup", assembly.close),)
+                    if assembly is not None
+                    else ()
+                ),
+            )
             raise
         if assembly is not None and self._coding_lsp_plugin_capture is None:
             capture = self._capability_graph_runtime.capture(
                 CODING_LSP_SESSION_REQUIREMENT
             )
-            self._lsp_access = CodingLspSessionCapabilityConsumer(capture).access
-            self._coding_lsp_plugin_capture = capture
+            access = CodingLspSessionCapabilityConsumer(capture).access
             assembly.close()
+            self._lsp_access = access
+            self._coding_lsp_plugin_capture = capture
         return consumer
 
     def get_sandbox_status(self) -> SandboxStatus:
@@ -513,7 +547,7 @@ class AgentSession(AgentProductSession):
         if base_plugin is not None:
             change = base_plugin.evaluate_management_change()
             if change is not None and change.disposition == "restart_required":
-                self._record_extension_runtime_diagnostic(
+                self._record_runtime_diagnostic(
                     DiagnosticDraft(
                         code="coding_base_management_restart_required",
                         message=(
@@ -521,7 +555,9 @@ class AgentSession(AgentProductSession):
                             "Session retains its pinned generation and must restart."
                         ),
                         details=change.diagnostic_details(),
-                    )
+                    ),
+                    source="session",
+                    level="error",
                 )
                 raise CodingBasePluginAssemblyError(
                     "Active Coding Session requires restart after coding.base change",
@@ -680,7 +716,7 @@ class AgentSession(AgentProductSession):
             and self._coding_base_owner_retirement_receipts
             and not self._coding_base_owner_generations_retired
         ):
-            try:
+            def retire_base_owner_generations() -> None:
                 if not self._coding_base_owner_generations_prepared:
                     base_plugin_assembly.management_lease.prepare_owner_generations(
                         self._coding_base_owner_retirement_receipts
@@ -690,33 +726,29 @@ class AgentSession(AgentProductSession):
                     self._coding_base_owner_retirement_receipts
                 )
                 self._coding_base_owner_generations_retired = True
-            except BaseException as cleanup_error:
-                primary_error = cleanup_error
+
+            primary_error = run_cleanup_steps(
+                primary_error,
+                (
+                    (
+                        "Coding base owner-generation retirement",
+                        retire_base_owner_generations,
+                    ),
+                ),
+            )
         plugin_assembly = getattr(self, "_coding_lsp_plugin_assembly", None)
-        if primary_error is None and plugin_assembly is not None:
-            try:
-                plugin_assembly.close()
-            except BaseException as cleanup_error:
-                if primary_error is None:
-                    primary_error = cleanup_error
-                else:
-                    primary_error.add_note(
-                        "Coding LSP Plugin evidence cleanup also failed: "
-                        f"{cleanup_error}"
-                    )
+        if plugin_assembly is not None:
+            primary_error = run_cleanup_steps(
+                primary_error,
+                (("Coding LSP Plugin evidence cleanup", plugin_assembly.close),),
+            )
             self._coding_lsp_plugin_capture = None
             self._lsp_access = None
-        if primary_error is None and base_plugin_assembly is not None:
-            try:
-                base_plugin_assembly.close()
-            except BaseException as cleanup_error:
-                if primary_error is None:
-                    primary_error = cleanup_error
-                else:
-                    primary_error.add_note(
-                        "Coding base Plugin evidence cleanup also failed: "
-                        f"{cleanup_error}"
-                    )
+        if base_plugin_assembly is not None:
+            primary_error = run_cleanup_steps(
+                primary_error,
+                (("Coding base Plugin evidence cleanup", base_plugin_assembly.close),),
+            )
         if self._sandbox_runtime is not None:
             try:
                 await self._sandbox_runtime.close()

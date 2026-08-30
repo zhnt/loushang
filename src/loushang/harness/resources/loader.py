@@ -89,9 +89,10 @@ def _resolve_prompt_input(source: str | None, *, cwd: Path) -> str | None:
     candidate = Path(source).expanduser()
     if not candidate.is_absolute():
         candidate = cwd / candidate
-    if not candidate.exists():
-        return source
-    if not candidate.is_file():
+    try:
+        if not candidate.exists() or not candidate.is_file():
+            return source
+    except OSError:
         return source
     try:
         return candidate.read_text(encoding="utf-8")

@@ -801,6 +801,53 @@ def test_catalog_default_publishes_base_tools_and_commands_as_owner_generations(
     asyncio.run(scenario())
 
 
+def test_windows_catalog_session_prompt_matches_selected_shell_tool(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.environment import HostEnvironment, LocalHostEnvironmentProbe
+
+    monkeypatch.setattr(
+        LocalHostEnvironmentProbe,
+        "detect",
+        lambda _self: HostEnvironment("windows", "win32", "amd64"),
+    )
+
+    async def scenario() -> None:
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(workspace),
+            persist=False,
+        )
+        session = create_agent_session(
+            session_manager=manager,
+            model=_model(),
+            services=create_services(
+                settings_manager=SettingsManager(
+                    ControlConfig(capabilities={"coding.lsp": "disabled"})
+                )
+            ),
+            enable_multiagent=True,
+        )
+        try:
+            await session.prepare_model_call_runtime()
+            tool_names = {item.name for item in session.get_all_tools()}
+            assert "shell" in tool_names
+            assert "bash" not in tool_names
+            assert "bash" not in session.agent.system_prompt
+            assert "command or shell Tool" in session.agent.system_prompt
+            assert "tools: shell, read, grep, find, ls" in session.agent.system_prompt
+        finally:
+            await session.dispose()
+
+    asyncio.run(scenario())
+
+
 def test_base_tool_midstage_failure_leaves_no_visible_or_owned_generation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1672,10 +1719,12 @@ def test_coding_multiagent_child_uses_the_product_stream_and_read_only_tools(
     from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 
     calls: list[tuple[str, str]] = []
+    system_prompts: list[str] = []
 
     async def stream_fn(model, context, options=None):
         del options
         calls.append((model.id, context.messages[-1].content[0].text))
+        system_prompts.append(context.system_prompt or "")
         return _stream_with_final_message(_assistant_message("child complete"))
 
     async def scenario() -> None:
@@ -1720,6 +1769,13 @@ def test_coding_multiagent_child_uses_the_product_stream_and_read_only_tools(
         assert terminal.status == "completed", collaboration.control.notices()
         assert terminal.progress.summary == "child complete"
         assert calls == [("faux-model", "Review this change.")]
+        [child_prompt] = system_prompts
+        assert child_prompt.count(
+            "Use only the Tool definitions exposed for this Session"
+        ) == 1
+        assert "You help users by reading files" not in child_prompt
+        assert "writing new files" not in child_prompt
+        assert "independent read-only code reviewer" in child_prompt
         await runtime.dispose_session_runtime()
 
     asyncio.run(scenario())

@@ -1106,6 +1106,153 @@ def test_default_runtime_builder_maps_tools_to_allowed_and_active_tools(
     }.intersection(session.get_active_tool_names())
 
 
+def test_default_runtime_builder_projects_internal_delegate_resource_profile(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.agent import ModelCallPreparation, synthetic_model_transport
+    from loushang.ai.event_stream.stream import AssistantMessageEventStream
+    from loushang.ai.types import AssistantMessage, TextPart, Usage
+    from loushang.coding.bootstrap import create_services
+    from loushang.coding.cli.__main__ import default_runtime_builder
+    from loushang.coding.cli.args import parse_args
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "user-home"))
+    project_skill = tmp_path / "skills" / "project-marker" / "SKILL.md"
+    project_skill.parent.mkdir(parents=True)
+    project_skill.write_text(
+        "---\nname: project-marker\ndescription: PROJECT_RESOURCE_MARKER\n---\n",
+        encoding="utf-8",
+    )
+    user_root = tmp_path / "user-resources"
+    user_skill = user_root / "skills" / "user-marker" / "SKILL.md"
+    user_skill.parent.mkdir(parents=True)
+    user_skill.write_text(
+        "---\nname: user-marker\ndescription: USER_RESOURCE_MARKER\n---\n",
+        encoding="utf-8",
+    )
+    services = create_services(
+        settings_manager=SettingsManager(
+            ControlConfig(capabilities={"coding.lsp": "always"})
+        )
+    )
+    services.resource_loader.set_user_resource_roots(
+        (user_root,),
+        explicit_roots=(user_root,),
+    )
+    args = parse_args(
+        [
+            "--agent-invocation-profile",
+            "read-only-v1",
+            "--no-session",
+            "--no-context-files",
+            "--system-prompt",
+            "DELEGATE_ROLE_MARKER",
+            "--tools",
+            "read,grep",
+        ]
+    )
+    runtime = default_runtime_builder(
+        args=args,
+        cwd=tmp_path,
+        session_dir=tmp_path / "sessions",
+        services=services,
+        tool_registry=WorkspaceToolRegistry(),
+    )
+
+    assert services.resource_loader._no_extensions is False
+    assert services.resource_loader._no_skills is False
+    assert services.resource_loader._no_prompt_templates is False
+    assert services.resource_loader._no_themes is False
+    assert services.resource_loader._no_context_files is True
+
+    captured_model_inputs: list[ModelCallPreparation] = []
+
+    @synthetic_model_transport
+    async def stream_fn(model, context, options=None):  # type: ignore[no-untyped-def]
+        del context, options
+        message = AssistantMessage(
+            endpoint=model.endpoint_id,
+            role="assistant",
+            content=[TextPart(type="text", text="review complete")],
+            api=model.api or model.endpoint_id,
+            provider=model.provider_id,
+            model=model.id,
+            response_id=None,
+            usage=Usage(
+                input=0,
+                output=0,
+                cache_read=0,
+                cache_write=0,
+                total_tokens=0,
+                cost={},
+            ),
+            stop_reason="stop",
+            error_message=None,
+            timestamp=0.0,
+        )
+        stream = AssistantMessageEventStream()
+        stream.push({"type": "done", "reason": "stop", "message": message})
+        return stream
+
+    async def scenario() -> None:
+        session = await runtime.create_session(cwd=str(tmp_path))
+        try:
+            await session.prepare_model_call_runtime()
+            prepare_model_call = session.agent.prepare_model_call
+            assert prepare_model_call is not None
+
+            def capture_model_input(preparation):  # type: ignore[no-untyped-def]
+                captured_model_inputs.append(preparation)
+                return prepare_model_call(preparation)
+
+            session.agent.prepare_model_call = capture_model_input
+            session.agent.stream_fn = stream_fn
+            await session.prompt("review the workspace")
+
+            assert session.get_active_tool_names() == ["read", "grep"]
+            assert {item.name for item in session.get_all_tools()} == {
+                "read",
+                "grep",
+            }
+            assert session.resource_bundle is not None
+            assert session.resource_bundle.extensions == []
+            assert session.resource_bundle.prompts == []
+            assert session.resource_bundle.skills == []
+            assert session.resource_bundle.themes == []
+            assembly = session._coding_base_plugin_assembly
+            assert assembly is not None
+            assert {
+                item.contribution_id
+                for item in assembly.plan_seed.plan.selected_contributions
+            } == {assembly.tool_contribution_id}
+
+            [model_input] = captured_model_inputs
+            assert [item.name for item in model_input.context.tools] == [
+                "read",
+                "grep",
+            ]
+            system_prompt = model_input.context.system_prompt or ""
+            assert "DELEGATE_ROLE_MARKER" in system_prompt
+            assert "PROJECT_RESOURCE_MARKER" not in system_prompt
+            assert "USER_RESOURCE_MARKER" not in system_prompt
+            assert "selected standard Coding tool pack" not in system_prompt
+
+            await session.refresh_resources()
+            assert session.get_active_tool_names() == ["read", "grep"]
+            assert session.resource_bundle is not None
+            assert session.resource_bundle.extensions == []
+            assert session.resource_bundle.prompts == []
+            assert session.resource_bundle.skills == []
+            assert session.resource_bundle.themes == []
+        finally:
+            await runtime.dispose_session_runtime()
+
+    asyncio.run(scenario())
+
+
 def test_default_runtime_builder_declares_global_cwd_and_home_session_sources(
     tmp_path,
     monkeypatch,
@@ -1324,9 +1471,7 @@ def test_default_runtime_builder_projects_catalog_disabled_tools_into_final_mode
                 session._capability_owner_generations[0].admission.contribution_kind
                 == "command_pack"
             )
-            tool_inventory = (
-                session._composition.tool_controller.tool_registry.registration_inventory
-            )
+            tool_inventory = session._composition.tool_controller.tool_registry.registration_inventory
             assert "tools.workspace" not in {
                 owner.owner_id for owner, _identity, _state in tool_inventory
             }
@@ -1606,6 +1751,130 @@ def test_run_cli_sets_offline_environment_before_building_runtime(
 
     assert captured_args
     assert captured_args[0].offline is True
+
+
+def test_delegate_agent_command_reaches_real_cli_dispatch_without_legacy_flags(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.coding.agent_invocation import CodingCliAgentInvocationAdapter
+    from loushang.coding.bootstrap import (
+        create_agent_session_services,
+        create_services,
+    )
+    from loushang.coding.cli.__main__ import default_runtime_builder, run_cli
+    from loushang.coding.control import SettingsManager
+    from loushang.harness.tools.agent_delegate import AgentInvocationRequest
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    project_settings = workspace / ".loushang" / "settings.json"
+    project_settings.parent.mkdir()
+    project_settings.write_text(
+        '{"capabilities": {"coding.lsp": "always"}}',
+        encoding="utf-8",
+    )
+    extension_import_marker = tmp_path / "extension-imported"
+    # Coding's current production profile intentionally retains its legacy
+    # workspace Resource root until the later layout migration.
+    extension_dir = workspace / "extensions"
+    extension_dir.mkdir()
+    (extension_dir / "side_effect.py").write_text(
+        "\n".join(
+            (
+                "from pathlib import Path",
+                f"Path({str(extension_import_marker)!r}).write_text('imported')",
+                "def register(api):",
+                "    api.register_flag('must-not-load', type='boolean', default=False)",
+            )
+        ),
+        encoding="utf-8",
+    )
+    executable = tmp_path / "loushang"
+    executable.write_text("#!/bin/sh\n", encoding="utf-8")
+    executable.chmod(0o755)
+    prepared = CodingCliAgentInvocationAdapter(
+        workspace_root=workspace,
+        parent_allowed_tools=("read", "grep"),
+        executable=executable,
+    ).prepare(
+        AgentInvocationRequest(
+            agent_type="reviewer",
+            task="review the parser",
+        ),
+        default_cwd=str(workspace),
+        model=None,
+    )
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "user-home"))
+    captured_args = []
+    captured_sessions = []
+
+    def runtime_builder(**kwargs):
+        captured_args.append(kwargs["args"])
+        return default_runtime_builder(**kwargs)
+
+    async def print_runner(**kwargs):
+        session = kwargs["session"]
+        captured_sessions.append(session)
+        await session.prepare_model_call_runtime()
+        assert session.get_active_tool_names() == ["read", "grep"]
+        assert {item.name for item in session.get_all_tools()} == {"read", "grep"}
+        assert session.resource_bundle is not None
+        assert session.resource_bundle.extensions == []
+        assert session.resource_bundle.prompts == []
+        assert session.resource_bundle.skills == []
+        assert session.resource_bundle.themes == []
+        assert session.extension_runner.get_flags() == []
+        assert session._coding_lsp_plugin_assembly is None
+        await session.refresh_resources()
+        assert session.get_active_tool_names() == ["read", "grep"]
+        assert {item.name for item in session.get_all_tools()} == {"read", "grep"}
+        assert session.resource_bundle.extensions == []
+        assert session.resource_bundle.prompts == []
+        assert session.resource_bundle.skills == []
+        assert session.resource_bundle.themes == []
+        assert session._coding_lsp_plugin_assembly is None
+        assert not extension_import_marker.exists()
+        return 0
+
+    async def scenario() -> None:
+        stderr = StringIO()
+        exit_code = await run_cli(
+            list(prepared.exec_request.command[1:]),
+            stdin=StringIO(prepared.exec_request.stdin or ""),
+            stdout=StringIO(),
+            stderr=stderr,
+            cwd=workspace,
+            services=create_services(
+                settings_manager=SettingsManager(
+                    global_settings_path=tmp_path / "global" / "settings.json",
+                    project_settings_path=project_settings,
+                )
+            ),
+            runtime_builder=runtime_builder,
+            print_runner=print_runner,
+        )
+
+        assert exit_code == 0
+        assert stderr.getvalue() == ""
+
+    asyncio.run(scenario())
+    assert not extension_import_marker.exists()
+
+    assert len(captured_args) == 1
+    assert captured_args[0].agent_invocation_profile == "read-only-v1"
+    assert captured_args[0].tools == ("read", "grep")
+    assert len(captured_sessions) == 1
+
+    standard_services = create_agent_session_services(
+        cwd=workspace,
+        global_settings_path=tmp_path / "global" / "settings.json",
+        project_settings_path=project_settings,
+    )
+    assert [flag.name for flag in standard_services.extension_runner.get_flags()] == [
+        "must-not-load"
+    ]
+    assert extension_import_marker.read_text(encoding="utf-8") == "imported"
 
 
 def test_run_cli_shares_interactive_approval_resolver_with_tools_and_runtime(
@@ -6902,9 +7171,7 @@ def test_run_cli_real_default_lists_owner_published_commands_on_first_start(
     )
 
     assert exit_code == 0
-    command_names = {
-        line.split("\t", 1)[0] for line in stdout.getvalue().splitlines()
-    }
+    command_names = {line.split("\t", 1)[0] for line in stdout.getvalue().splitlines()}
     assert {"branch", "session", "tools"}.issubset(command_names)
     assert "failed to prepare" not in stderr.getvalue().lower()
 
@@ -8074,10 +8341,7 @@ def test_run_cli_lists_skills_from_real_catalog_session(
 
     asyncio.run(scenario())
 
-    skills = {
-        item["name"]: item
-        for item in json.loads(stdout.getvalue())
-    }
+    skills = {item["name"]: item for item in json.loads(stdout.getvalue())}
     assert "standard" in skills
     skill = skills["review"]
     assert (skill["name"], skill["status"], skill["effective"]) == (

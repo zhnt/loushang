@@ -12,6 +12,7 @@ from loushang.coding.lsp._plugin_opt_in import (
     CodingLspPluginOptInRequest,
     assemble_coding_lsp_plugin_opt_in,
     create_coding_lsp_default_plugin_opt_in_request,
+    prepare_coding_lsp_plugin_opt_in,
 )
 from loushang.coding.lsp._provider_api import (
     CODING_LSP_TOOL_RUNTIME_FACET,
@@ -276,6 +277,101 @@ def test_product_opt_in_composer_reaches_approved_session_inputs_without_start(
     assert revision_handle.closed is True
     assembled.close()
     assert cleanup_calls == ["cleanup"]
+
+
+def test_product_opt_in_preparation_retries_failed_state_cleanup(
+    tmp_path: Path,
+) -> None:
+    attempts = 0
+
+    def flaky_cleanup() -> None:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise OSError("injected transient state cleanup failure")
+
+    preparation = prepare_coding_lsp_plugin_opt_in(
+        CodingLspPluginOptInRequest(approval_owner=_ApprovalOwner(2_500)),
+        session_id="session-test",
+        config=CodingLspPluginConfigV1.from_runtime_inputs(
+            workspace_root=tmp_path,
+            definitions=(),
+            baseline_environment={"PATH": "/admitted/bin"},
+        ),
+        package_materializer=CodingPackageMaterializer(
+            install_root=tmp_path / "installed",
+            plugin_revision_root=tmp_path / "revisions",
+        ),
+        state_root=tmp_path / "state",
+        clock=lambda: 2_500,
+        state_cleanup=flaky_cleanup,
+    )
+    [revision_handle] = (
+        package.revision_handle for package in preparation.runtime.packages
+    )
+
+    with pytest.raises(OSError, match="transient state cleanup failure"):
+        preparation.close()
+
+    assert revision_handle.closed is True
+    assert preparation._runtime_closed is True
+    assert preparation._state_cleaned is False
+    assert preparation._closed is False
+
+    preparation.close()
+
+    assert attempts == 2
+    assert preparation._state_cleaned is True
+    assert preparation._closed is True
+
+
+def test_product_opt_in_assembly_retries_failed_state_cleanup(tmp_path: Path) -> None:
+    attempts = 0
+
+    def flaky_cleanup() -> None:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise OSError("injected transient assembly cleanup failure")
+
+    assembled = assemble_coding_lsp_plugin_opt_in(
+        CodingLspPluginOptInRequest(approval_owner=_ApprovalOwner(2_500)),
+        session_id="session-test",
+        config=CodingLspPluginConfigV1.from_runtime_inputs(
+            workspace_root=tmp_path,
+            definitions=(),
+            baseline_environment={"PATH": "/admitted/bin"},
+        ),
+        package_materializer=CodingPackageMaterializer(
+            install_root=tmp_path / "installed",
+            plugin_revision_root=tmp_path / "revisions",
+        ),
+        workspace_binding=workspace_capability_provider_binding(
+            operations=LocalToolOperations(),
+            process_launcher=_UnusedWorkspaceLauncher(),
+            scope_instance_id="workspace:test",
+            binding_input_fingerprint="9" * 64,
+            source_id="coding-lsp-opt-in-test",
+        ),
+        state_root=tmp_path / "state",
+        host_boot_id="3" * 32,
+        tool_mode="on_demand",
+        clock=lambda: 2_500,
+        state_cleanup=flaky_cleanup,
+    )
+
+    with pytest.raises(OSError, match="transient assembly cleanup failure"):
+        assembled.close()
+
+    assert assembled._runtime_closed is True
+    assert assembled._state_cleaned is False
+    assert assembled._closed is False
+
+    assembled.close()
+
+    assert attempts == 2
+    assert assembled._state_cleaned is True
+    assert assembled._closed is True
 
 
 def test_product_opt_in_tool_owner_stages_complete_generation_and_retires_reverse(

@@ -41,14 +41,14 @@ def test_plc6_kernel_prompt_has_no_unmounted_standard_tool_claims() -> None:
         DEFAULT_CODING_SYSTEM_PROMPT,
     )
 
-    for tool_claim in (
-        "execute commands",
-        "write new files",
-        "Prefer specialized tools over bash",
-        "before editing",
-    ):
+    for tool_claim in ("execute commands", "write new files", "bash"):
         assert tool_claim not in CODING_KERNEL_SYSTEM_PROMPT
-        assert tool_claim in CODING_STANDARD_SYSTEM_PROMPT_FRAGMENT
+        assert tool_claim not in CODING_STANDARD_SYSTEM_PROMPT_FRAGMENT
+
+    assert "Tool definitions exposed for this Session" in (
+        CODING_STANDARD_SYSTEM_PROMPT_FRAGMENT
+    )
+    assert "command or shell Tool" in CODING_STANDARD_SYSTEM_PROMPT_FRAGMENT
 
     # The byte-stable compatibility string remains the explicit legacy-authority
     # default; Catalog-owned standard Sessions select Kernel + coding.base.

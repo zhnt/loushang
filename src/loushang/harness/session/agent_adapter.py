@@ -20,7 +20,12 @@ from loushang.harness.approval import (
     InteractiveApprovalResolver,
 )
 from loushang.harness.diagnostics.service import DiagnosticsService
-from loushang.harness.diagnostics.types import DiagnosticDraft, DiagnosticPhase
+from loushang.harness.diagnostics.types import (
+    DiagnosticDraft,
+    DiagnosticLevel,
+    DiagnosticPhase,
+    DiagnosticSource,
+)
 from loushang.harness.events import (
     PackageProgressChanged,
     project_session_runtime_event,
@@ -851,6 +856,19 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
     def _record_extension_runtime_diagnostic(self, diagnostic: DiagnosticDraft) -> None:
         self._composition.diagnostics_bridge.record_extension_runtime_diagnostic(
             diagnostic
+        )
+
+    def _record_runtime_diagnostic(
+        self,
+        diagnostic: DiagnosticDraft,
+        *,
+        source: DiagnosticSource,
+        level: DiagnosticLevel,
+    ) -> None:
+        self._composition.diagnostics_bridge.record_runtime_diagnostic(
+            diagnostic,
+            source=source,
+            level=level,
         )
 
     def _wire_extension_hooks(self) -> None:

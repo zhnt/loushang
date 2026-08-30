@@ -180,7 +180,7 @@ class CodingBasePluginSessionAssembly:
 @dataclass(frozen=True, slots=True)
 class CodingBasePluginOwners:
     tool: CodingBaseToolOwner | None = field(repr=False)
-    command: CodingBaseCommandOwner = field(repr=False)
+    command: CodingBaseCommandOwner | None = field(repr=False)
 
 
 def coding_base_plugin_root() -> Path:
@@ -199,6 +199,8 @@ def prepare_coding_base_plugin_assembly(
     host_environment: HostEnvironment | None = None,
     include_tool_contribution: bool = True,
     include_tool_claim_prompt: bool = True,
+    include_skill_contribution: bool = True,
+    include_command_contribution: bool = True,
 ) -> CodingBasePluginAssembly:
     """Publish and plan the checked-in data-only package without live owners."""
 
@@ -214,6 +216,10 @@ def prepare_coding_base_plugin_assembly(
         raise TypeError("Coding base Tool selection flag must be a boolean")
     if not isinstance(include_tool_claim_prompt, bool):
         raise TypeError("Coding base Tool-claim Prompt flag must be a boolean")
+    if not isinstance(include_skill_contribution, bool):
+        raise TypeError("Coding base Skill selection flag must be a boolean")
+    if not isinstance(include_command_contribution, bool):
+        raise TypeError("Coding base Command selection flag must be a boolean")
     normalized_session_id = _normalized(session_id, name="Coding Session id")
     resolved_environment = host_environment or LocalHostEnvironmentProbe().detect()
     _validate_base_request(composition_set)
@@ -232,6 +238,8 @@ def prepare_coding_base_plugin_assembly(
             host_environment=resolved_environment,
             include_tool_contribution=include_tool_contribution,
             include_tool_claim_prompt=include_tool_claim_prompt,
+            include_skill_contribution=include_skill_contribution,
+            include_command_contribution=include_command_contribution,
             instance_revision_ref=None,
             management_lease=None,
             state_cleanup=None,
@@ -250,6 +258,8 @@ def prepare_managed_coding_base_plugin_assembly(
     host_environment: HostEnvironment | None = None,
     include_tool_contribution: bool = True,
     include_tool_claim_prompt: bool = True,
+    include_skill_contribution: bool = True,
+    include_command_contribution: bool = True,
     state_cleanup: Callable[[], None] | None = None,
     session_owner_id: str | None = None,
 ) -> CodingBasePluginAssembly | None:
@@ -263,6 +273,12 @@ def prepare_managed_coding_base_plugin_assembly(
         raise TypeError("Managed Coding base assembly requires a lifecycle")
     if state_cleanup is not None and not callable(state_cleanup):
         raise TypeError("Managed Coding base state cleanup must be callable")
+    for name, value in (
+        ("Skill", include_skill_contribution),
+        ("Command", include_command_contribution),
+    ):
+        if not isinstance(value, bool):
+            raise TypeError(f"Coding base {name} selection flag must be a boolean")
     _validate_base_request(composition_set)
     normalized_session_id = _normalized(session_id, name="Coding Session id")
     environment = host_environment or LocalHostEnvironmentProbe().detect()
@@ -376,6 +392,8 @@ def prepare_managed_coding_base_plugin_assembly(
                 host_environment=environment,
                 include_tools=include_tool_contribution,
                 include_prompt=include_tool_claim_prompt,
+                include_skill=include_skill_contribution,
+                include_command=include_command_contribution,
             ),
             session_owner_id=session_owner_id,
         )
@@ -394,6 +412,8 @@ def prepare_managed_coding_base_plugin_assembly(
             host_environment=environment,
             include_tool_contribution=include_tool_contribution,
             include_tool_claim_prompt=include_tool_claim_prompt,
+            include_skill_contribution=include_skill_contribution,
+            include_command_contribution=include_command_contribution,
             instance_revision_ref=selected_instance,
             management_lease=lease,
             state_cleanup=state_cleanup,
@@ -462,7 +482,7 @@ def prepare_coding_base_plugin_session(
 
 def prepare_coding_base_resource_plan_seed(
     assembly: CodingBasePluginAssembly,
-) -> ProductPluginPlanSeed:
+) -> ProductPluginPlanSeed | None:
     """Project the pinned base package into a Resource-owner refresh plan."""
 
     if not isinstance(assembly, CodingBasePluginAssembly):
@@ -479,10 +499,7 @@ def prepare_coding_base_resource_plan_seed(
         if item.plugin_id == _PLUGIN_ID and item.contribution_id in resource_ids
     )
     if not selected_resources:
-        raise CodingBasePluginAssemblyError(
-            "The Coding base selection has no Resource contribution",
-            code="coding_base_resource_selection_empty",
-        )
+        return None
     return ProductPluginPlanSeed(
         plan=replace(
             seed.plan,
@@ -530,10 +547,19 @@ def build_coding_base_plugin_owners(
     command_admission = admissions.get(
         ("commands.session", "command_pack", "coding.standard")
     )
-    expected_admissions = 2 if assembly.tool_contribution_id is not None else 1
+    selected_contribution_ids = {
+        item.contribution_id
+        for item in assembly.plan_seed.plan.selected_contributions
+        if item.plugin_id == _PLUGIN_ID
+    }
+    command_selected = "coding.standard" in selected_contribution_ids
+    expected_admissions = int(assembly.tool_contribution_id is not None) + int(
+        command_selected
+    )
     if (
-        command_admission is None
-        or len(admissions) != expected_admissions
+        len(admissions) != expected_admissions
+        or (command_selected and command_admission is None)
+        or (not command_selected and command_admission is not None)
         or (
             assembly.tool_contribution_id is not None
             and tool_admission is None
@@ -593,10 +619,14 @@ def build_coding_base_plugin_owners(
             if tool_admission is not None
             else None
         ),
-        command=CodingBaseCommandOwner(
-            admission=command_admission,
-            authority_gate=gate,
-            scope_id=assembly.scope_id,
+        command=(
+            CodingBaseCommandOwner(
+                admission=command_admission,
+                authority_gate=gate,
+                scope_id=assembly.scope_id,
+            )
+            if command_admission is not None
+            else None
         ),
     )
 
@@ -610,6 +640,8 @@ def _build_selection_plan(
     host_environment: HostEnvironment,
     include_tool_contribution: bool,
     include_tool_claim_prompt: bool,
+    include_skill_contribution: bool,
+    include_command_contribution: bool,
     instance_revision_ref: PluginInstanceRevisionRef | None = None,
 ) -> tuple[PluginSelectionPlanV2, str | None, tuple[str, ...]]:
     contributions = package.contribution_index.items
@@ -618,10 +650,11 @@ def _build_selection_plan(
         if host_environment.os_family == "windows"
         else "coding.builtin"
     )
-    selected_ids = {
-        "coding.standard",
-        "skill-standard",
-    }
+    selected_ids = set()
+    if include_command_contribution:
+        selected_ids.add("coding.standard")
+    if include_skill_contribution:
+        selected_ids.add("skill-standard")
     if include_tool_contribution:
         selected_ids.add(tool_contribution_id)
     if include_tool_claim_prompt:
@@ -643,6 +676,21 @@ def _build_selection_plan(
     policy_revision = (
         f"coding-base-plc6-v1:{composition_set.set_id}:{composition_set.fingerprint}"
     )
+    if not all(
+        (
+            include_tool_contribution,
+            include_tool_claim_prompt,
+            include_skill_contribution,
+            include_command_contribution,
+        )
+    ):
+        policy_revision += (
+            ":contributions="
+            f"t{int(include_tool_contribution)}"
+            f"p{int(include_tool_claim_prompt)}"
+            f"s{int(include_skill_contribution)}"
+            f"c{int(include_command_contribution)}"
+        )
     plan = PluginSelectionPlanV2(
         context=PluginPreflightContextV1(
             product_id=CODING_PRODUCT_ID,
@@ -695,6 +743,8 @@ def _assemble_base_runtime(
     host_environment: HostEnvironment,
     include_tool_contribution: bool,
     include_tool_claim_prompt: bool,
+    include_skill_contribution: bool,
+    include_command_contribution: bool,
     instance_revision_ref: PluginInstanceRevisionRef | None,
     management_lease: CodingPluginSessionLease | None,
     state_cleanup: Callable[[], None] | None,
@@ -710,6 +760,8 @@ def _assemble_base_runtime(
         host_environment=host_environment,
         include_tool_contribution=include_tool_contribution,
         include_tool_claim_prompt=include_tool_claim_prompt,
+        include_skill_contribution=include_skill_contribution,
+        include_command_contribution=include_command_contribution,
         instance_revision_ref=instance_revision_ref,
     )
     return CodingBasePluginAssembly(
@@ -723,6 +775,8 @@ def _assemble_base_runtime(
             owner_bindings=_owner_bindings(
                 include_tools=include_tool_contribution,
                 include_prompt=include_tool_claim_prompt,
+                include_skill=include_skill_contribution,
+                include_command=include_command_contribution,
             ),
         ),
         scope_id=scope_id,
@@ -759,12 +813,16 @@ def _owner_bindings(
     *,
     include_tools: bool,
     include_prompt: bool,
+    include_skill: bool,
+    include_command: bool,
 ) -> tuple[ProductContributionOwnerBinding, ...]:
     selected_specs = tuple(
         spec
         for spec in _OWNER_SPECS
         if (include_tools or spec[0] != "tools.workspace")
         and (include_prompt or spec[0] != "resources.prompt")
+        and (include_skill or spec[0] != "resources.skill")
+        and (include_command or spec[0] != "commands.session")
     )
     return tuple(
         ProductContributionOwnerBinding(
@@ -793,11 +851,14 @@ def _selected_owner_contributions(
     host_environment: HostEnvironment,
     include_tools: bool,
     include_prompt: bool,
+    include_skill: bool,
+    include_command: bool,
 ) -> tuple[tuple[str, tuple[str, ...]], ...]:
-    values: list[tuple[str, tuple[str, ...]]] = [
-        ("commands.session", ("coding.standard",)),
-        ("resources.skill", ("skill-standard",)),
-    ]
+    values: list[tuple[str, tuple[str, ...]]] = []
+    if include_command:
+        values.append(("commands.session", ("coding.standard",)))
+    if include_skill:
+        values.append(("resources.skill", ("skill-standard",)))
     if include_prompt:
         values.append(("resources.prompt", ("prompt-standard",)))
     if include_tools:
