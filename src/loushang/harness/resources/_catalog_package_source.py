@@ -85,6 +85,7 @@ class VerifiedPackageResourceInput:
     media_type: str
     schema_id: str
     schema_version: int
+    managed_skill_actions: bool
     revision_handle: VerifiedRevisionHandle = field(repr=False, compare=False)
     source_root_order: int = 0
 
@@ -108,6 +109,10 @@ class VerifiedPackageResourceInput:
                 raise ValueError(f"{name} fingerprint must be SHA-256")
         if self.resource_kind not in _RESOURCE_KINDS:
             raise ValueError("Package Resource kind is unsupported")
+        if type(self.managed_skill_actions) is not bool:
+            raise TypeError("Package Resource action marker must be a bool")
+        if self.managed_skill_actions and self.resource_kind != "skill":
+            raise ValueError("Package managed actions require a Skill Resource")
         if self.locator_kind not in {"directory", "file"}:
             raise ValueError("Package Resource locator kind is unsupported")
         locator = canonical_plugin_relative_path(self.locator)
@@ -138,6 +143,7 @@ class VerifiedPackageResourceInput:
             "instanceRevisionRef": self.plugin_instance_revision_ref,
             "locator": self.locator,
             "locatorKind": self.locator_kind,
+            "managedSkillActions": self.managed_skill_actions,
             "packageContentDigest": self.package_content_digest,
             "sourceRootOrder": self.source_root_order,
         }
@@ -156,6 +162,7 @@ def acquire_verified_package_resource_input(
     media_type: str,
     schema_id: str,
     schema_version: int,
+    managed_skill_actions: bool = False,
     source_root_order: int,
 ) -> VerifiedPackageResourceInput:
     """Acquire the source-owned revision lease without consuming package custody."""
@@ -174,6 +181,7 @@ def acquire_verified_package_resource_input(
             media_type=media_type,
             schema_id=schema_id,
             schema_version=schema_version,
+            managed_skill_actions=managed_skill_actions,
             revision_handle=owned_handle,
             source_root_order=source_root_order,
         )
@@ -793,8 +801,18 @@ def _capture_package_skill_actions(
         )
     except PluginRevisionError as exc:
         if exc.code == "invalid_plugin_revision_path":
+            if resource.managed_skill_actions:
+                raise PackageResourceSourceError(
+                    code="resource_source_snapshot_invalid",
+                    reason="declared_skill_action_document_missing",
+                ) from exc
             return None
         raise
+    if not resource.managed_skill_actions:
+        raise PackageResourceSourceError(
+            code="resource_source_snapshot_invalid",
+            reason="undeclared_skill_action_document",
+        )
     if action_size > MAX_SKILL_ACTION_DOCUMENT_BYTES:
         raise PackageResourceSourceError(
             code="resource_source_snapshot_invalid",

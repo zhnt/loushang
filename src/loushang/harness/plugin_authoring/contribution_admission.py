@@ -19,6 +19,9 @@ from loushang.harness.plugin_authoring.resource_item import (
 from loushang.harness.resources.plugins.declarations import (
     PluginDeclarationCodecError,
 )
+from loushang.harness.resources.plugins.engine import (
+    MANAGED_SKILL_ACTION_CONFIGURATION_KEY,
+)
 from loushang.harness.resources.plugins.selection import (
     PluginContributionCandidate,
     PluginSelection,
@@ -45,6 +48,11 @@ def prepare_owner_contribution_candidate(
     try:
         if declaration.kind == "resource_item":
             resource_payload = ResourceItemDeclarationPayload.from_candidate(candidate)
+            reservation = next(
+                item
+                for item in candidate.package.contribution_index.items
+                if item.contribution_id == declaration.contribution_id
+            )
             contribution = ResourceContributionSpec(
                 resource_kind=resource_payload.resource_kind,
                 locator=resource_payload.locator,
@@ -52,6 +60,12 @@ def prepare_owner_contribution_candidate(
                 media_type=resource_payload.media_type,
                 schema_id=resource_payload.schema_id,
                 schema_version=resource_payload.schema_version,
+                managed_skill_actions=(
+                    reservation.configuration.get(
+                        MANAGED_SKILL_ACTION_CONFIGURATION_KEY
+                    )
+                    is True
+                ),
             )
         elif declaration.kind == "tool_pack":
             tool_payload = ToolPackDeclarationPayload.from_candidate(candidate)

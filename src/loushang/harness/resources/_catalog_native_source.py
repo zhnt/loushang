@@ -56,6 +56,10 @@ from loushang.harness.resources._skill_ignore import (
     is_skill_path_ignored,
     normalize_skill_ignore_pattern,
 )
+from loushang.harness.resources.plugins.safe_files import (
+    ContainedFileCaptureError,
+    capture_contained_regular_file,
+)
 from loushang.harness.resources.skill_actions import (
     MAX_SKILL_ACTION_DOCUMENT_BYTES,
     MAX_SKILL_ACTION_SCRIPT_BYTES,
@@ -1098,65 +1102,47 @@ def _stable_read(
     root: NativeResourceRootHandle,
     control: _DiscoveryControl,
 ) -> bytes:
-    root._verify_live_root()
     try:
-        resolved = path.resolve(strict=True)
-        resolved.relative_to(root._root)
-    except (OSError, ValueError) as exc:
+        relative = path.relative_to(root._root)
+    except ValueError as exc:
         raise NativeResourceSourceError(
             code="resource_source_discovery_failed",
             reason="locator_escape",
         ) from exc
-    if resolved != path:
+    remaining = (
+        control.request.budget.maximum_metadata_bytes - control.metadata_bytes
+    )
+    if remaining < 1:
         raise NativeResourceSourceError(
-            code="resource_source_discovery_failed",
-            reason="symlink_not_allowed",
+            code="resource_source_discovery_budget_exceeded",
+            reason="metadata_bytes_exceeded",
         )
-    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
-    flags |= getattr(os, "O_CLOEXEC", 0)
-    flags |= getattr(os, "O_NOFOLLOW", 0)
+    root._verify_live_root()
     try:
-        descriptor = os.open(path, flags)
-        try:
-            before = os.fstat(descriptor)
-            if not stat.S_ISREG(before.st_mode):
-                raise NativeResourceSourceError(
-                    code="resource_source_discovery_failed",
-                    reason="body_not_regular_file",
-                )
-            control.reserve_bytes(before.st_size)
-            chunks: list[bytes] = []
-            remaining = before.st_size + 1
-            while remaining:
-                control.check()
-                chunk = os.read(descriptor, min(remaining, 64 * 1024))
-                if not chunk:
-                    break
-                chunks.append(chunk)
-                remaining -= len(chunk)
-            body = b"".join(chunks)
-            after = os.fstat(descriptor)
-        finally:
-            os.close(descriptor)
-    except NativeResourceSourceError:
-        raise
-    except OSError as exc:
+        captured = capture_contained_regular_file(
+            root._root,
+            relative.as_posix(),
+            max_bytes=remaining,
+            read_probe=control.check,
+        )
+    except ContainedFileCaptureError as exc:
+        if exc.code == "contained_file_too_large":
+            raise NativeResourceSourceError(
+                code="resource_source_discovery_budget_exceeded",
+                reason="metadata_bytes_exceeded",
+            ) from exc
         raise NativeResourceSourceError(
             code="resource_source_discovery_failed",
             reason="stable_read_failed",
         ) from exc
-    if (
-        len(body) != before.st_size
-        or before.st_dev != after.st_dev
-        or before.st_ino != after.st_ino
-        or before.st_size != after.st_size
-        or before.st_mtime_ns != after.st_mtime_ns
-    ):
+    except (OSError, ValueError) as exc:
         raise NativeResourceSourceError(
             code="resource_source_discovery_failed",
-            reason="body_changed_during_discovery",
-        )
-    return body
+            reason="stable_read_failed",
+        ) from exc
+    control.reserve_bytes(len(captured.body))
+    root._verify_live_root()
+    return captured.body
 
 
 def _is_regular_file(path: Path, *, root: NativeResourceRootHandle) -> bool:

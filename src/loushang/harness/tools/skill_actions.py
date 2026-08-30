@@ -134,7 +134,7 @@ class SkillRuntimeBinding:
     runtime: SkillActionRuntime
     executable: Path
     executable_digest: str
-    environment: tuple[tuple[str, str], ...] = ()
+    environment: tuple[tuple[str, str], ...] = field(default=(), repr=False)
 
     @classmethod
     def capture(
@@ -256,33 +256,49 @@ async def execute_managed_skill_action(
         signal=signal,
     )
     try:
-        await handle.write_stdin(script)
-        await handle.close_stdin()
         stdout_task = asyncio.create_task(
-            _drain_action_output(handle.read_stdout, stream="stdout")
+            _drain_action_output(handle.read_stdout, stream="stdout"),
+            name="managed-skill-action-stdout",
         )
         stderr_task = asyncio.create_task(
-            _drain_action_output(handle.read_stderr, stream="stderr")
+            _drain_action_output(handle.read_stderr, stream="stderr"),
+            name="managed-skill-action-stderr",
         )
-        wait_task = asyncio.create_task(handle.wait())
-        tasks = (stdout_task, stderr_task, wait_task)
+        writer_task = asyncio.create_task(
+            _write_action_input(handle, script),
+            name="managed-skill-action-stdin",
+        )
+        wait_task = asyncio.create_task(
+            handle.wait(),
+            name="managed-skill-action-wait",
+        )
+        tasks = (writer_task, stdout_task, stderr_task, wait_task)
         try:
-            stdout, stderr, exit_status = await asyncio.gather(*tasks)
+            _, stdout, stderr, exit_status = await asyncio.gather(*tasks)
         except BaseException:
             for task in tasks:
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
+            await handle.terminate()
             raise
         return ManagedSkillActionResult(
             return_code=exit_status.return_code,
             stdout=stdout,
             stderr=stderr,
         )
-    except ManagedSkillActionError:
-        await handle.terminate()
-        raise
     finally:
         await handle.close()
+
+
+async def _write_action_input(handle: object, script: bytes) -> None:
+    write_stdin = getattr(handle, "write_stdin", None)
+    close_stdin = getattr(handle, "close_stdin", None)
+    if not callable(write_stdin) or not callable(close_stdin):
+        raise TypeError("Managed Skill process handle has no stdin owner")
+    try:
+        await write_stdin(script)
+    finally:
+        await close_stdin()
 
 
 async def _drain_action_output(

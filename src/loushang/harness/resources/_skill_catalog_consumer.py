@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -22,9 +23,13 @@ from loushang.harness.resources._skill_catalog_status import (
     SkillCatalogStatusSummary,
 )
 from loushang.harness.resources.skill_actions import (
+    MAX_SKILL_ACTION_SCRIPT_BYTES,
     CatalogManagedSkillAction,
+    ManagedSkillActionDeclaration,
+    SkillActionCatalogSelection,
     SkillActionSourceCapture,
-    _mint_catalog_managed_skill_action,
+    _catalog_action_binding_fingerprint,
+    _CatalogActionOwnerSeal,
 )
 from loushang.harness.resources.types import (
     ResourceSourceKind,
@@ -371,21 +376,89 @@ class SkillCatalogConsumer:
         source = self._managed_action_sources.get(summary.candidate_fingerprint)
         if source is None:
             return ()
-        return tuple(
-            _mint_catalog_managed_skill_action(
-                catalog_generation=summary.catalog_generation,
-                catalog_snapshot_fingerprint=summary.catalog_snapshot_fingerprint,
-                candidate_fingerprint=summary.candidate_fingerprint,
-                skill_content_digest=summary.expected_content_digest,
-                source_kind=source.capture.source_kind,
-                source_revision=source.capture.source_revision,
-                declaration=item.declaration,
-                action_document_digest=source.capture.action_document_digest,
-                script_body=item.script_body,
-                skill_root=source.skill_root,
+        actions: list[CatalogManagedSkillAction] = []
+        for item in source.capture.actions:
+            declaration = item.declaration
+            script_body = item.script_body
+            if not isinstance(declaration, ManagedSkillActionDeclaration):
+                raise SkillCatalogConsumerError(
+                    "Catalog action source contains an invalid declaration"
+                )
+            if (
+                not isinstance(script_body, bytes)
+                or len(script_body) > MAX_SKILL_ACTION_SCRIPT_BYTES
+                or hashlib.sha256(script_body).hexdigest()
+                != declaration.script_digest
+            ):
+                raise SkillCatalogConsumerError(
+                    "Catalog action source contains invalid script evidence"
+                )
+            owner_identity = object()
+            selection = object.__new__(SkillActionCatalogSelection)
+            object.__setattr__(
+                selection,
+                "catalog_generation",
+                summary.catalog_generation,
             )
-            for item in source.capture.actions
-        )
+            object.__setattr__(
+                selection,
+                "catalog_snapshot_fingerprint",
+                summary.catalog_snapshot_fingerprint,
+            )
+            object.__setattr__(
+                selection,
+                "candidate_fingerprint",
+                summary.candidate_fingerprint,
+            )
+            object.__setattr__(
+                selection,
+                "skill_content_digest",
+                summary.expected_content_digest,
+            )
+            object.__setattr__(selection, "source_kind", source.capture.source_kind)
+            object.__setattr__(
+                selection,
+                "source_revision",
+                source.capture.source_revision,
+            )
+            object.__setattr__(selection, "_owner_identity", owner_identity)
+            selection._validate()
+            binding_fingerprint = _catalog_action_binding_fingerprint(
+                selection=selection,
+                declaration=declaration,
+                action_document_digest=source.capture.action_document_digest,
+            )
+            resolved_root = source.skill_root.resolve(strict=True)
+            action = object.__new__(CatalogManagedSkillAction)
+            object.__setattr__(action, "selection", selection)
+            object.__setattr__(action, "declaration", declaration)
+            object.__setattr__(
+                action,
+                "action_document_digest",
+                source.capture.action_document_digest,
+            )
+            object.__setattr__(action, "skill_root", resolved_root)
+            object.__setattr__(
+                action,
+                "binding_source_fingerprint",
+                binding_fingerprint,
+            )
+            object.__setattr__(action, "_script_body", bytes(script_body))
+            object.__setattr__(action, "_owner_identity", owner_identity)
+            seal = object.__new__(_CatalogActionOwnerSeal)
+            object.__setattr__(seal, "_action", action)
+            object.__setattr__(seal, "_owner_identity", owner_identity)
+            object.__setattr__(
+                seal,
+                "_binding_source_fingerprint",
+                binding_fingerprint,
+            )
+            object.__setattr__(seal, "_script_digest", declaration.script_digest)
+            object.__setattr__(seal, "_skill_root", resolved_root)
+            object.__setattr__(action, "_owner_seal", seal)
+            action.verify()
+            actions.append(action)
+        return tuple(actions)
 
     def _resolve_owned_summary(
         self,

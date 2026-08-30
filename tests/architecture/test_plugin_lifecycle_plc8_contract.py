@@ -104,7 +104,8 @@ def test_managed_action_consumes_catalog_facts_and_existing_host_authorities() -
     assert "_ManagedProcessLaunchRequest" in process_source
     assert "pre_start_validator" in process_source
     assert "capture_managed_actions" in consumer_source
-    assert "_mint_catalog_managed_skill_action" in consumer_source
+    assert "_mint_catalog_managed_skill_action" not in consumer_source
+    assert "_CatalogActionOwnerSeal" in consumer_source
 
 
 def test_public_process_request_contract_is_not_widened_for_skill_actions() -> None:

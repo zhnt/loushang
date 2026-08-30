@@ -19,16 +19,17 @@ from loushang.harness.resources.plugins.declarations import (
     PluginDeclarationDocumentCodec,
     PluginDeclarationSource,
 )
+from loushang.harness.resources.plugins.engine import (
+    MANAGED_SKILL_ACTION_CONFIGURATION_KEY,
+    PLUGIN_ENGINE_API_VERSION,
+    PLUGIN_MANIFEST_VERSION,
+)
 from loushang.harness.resources.plugins.locators import parse_plugin_entrypoint
 from loushang.harness.resources.skill_actions import (
     SkillActionDocument,
     SkillActionDocumentCodec,
 )
 from loushang.plugin._authoring import CapabilityProviderSpec, ResourceItemSpec
-from loushang.plugin._validation import (
-    PLUGIN_ENGINE_API_VERSION,
-    PLUGIN_MANIFEST_VERSION,
-)
 
 _RESOURCE_DOCUMENT = "declarations/resources.json"
 
@@ -176,7 +177,11 @@ def _reservation(
         declaration_source=PluginDeclarationSource.document(_RESOURCE_DOCUMENT),
         contribution_execution_model="data_only",
         requested_authorities=(),
-        configuration={},
+        configuration=(
+            {MANAGED_SKILL_ACTION_CONFIGURATION_KEY: True}
+            if spec.actions
+            else {}
+        ),
         required=False,
     )
 

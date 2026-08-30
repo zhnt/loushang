@@ -42,6 +42,7 @@ class HostedProcessContainmentPlanner:
         self._plans: set[ProcessContainmentPlan] = set()
         self._state = "open"
         self._lock = asyncio.Lock()
+        self._managed_process_owner_authority = object()
 
     @property
     def requirement(self) -> str:
@@ -49,6 +50,33 @@ class HostedProcessContainmentPlanner:
 
     def status_override(self) -> SandboxStatus | None:
         return self._status_override
+
+    def _claim_managed_process_owner_authority(self) -> object | None:
+        if (
+            self._state != "open"
+            or not self._settings.enabled
+            or self._settings.requirement != "required"
+            or self._resolution is None
+            or self._resolution.backend is None
+            or self._resolution.selected_status is None
+            or self._scope_request_factory is None
+        ):
+            return None
+        return self._managed_process_owner_authority
+
+    def _verify_managed_process_plan(
+        self,
+        plan: ProcessContainmentPlan,
+        authority: object | None,
+    ) -> None:
+        if (
+            type(plan) is not _SandboxOwnedProcessContainmentPlan
+            or authority is not self._managed_process_owner_authority
+            or plan._managed_process_owner_authority is not authority
+        ):
+            raise SandboxUnavailableError(
+                "managed process containment plan is not Sandbox-owner-bound"
+            )
 
     async def plan(
         self,
@@ -146,7 +174,11 @@ class HostedProcessContainmentPlanner:
                 async with self._lock:
                     self._plans.discard(tracked)
 
-        tracked = ProcessContainmentPlan(plan.request, close=close_tracked)
+        tracked = _SandboxOwnedProcessContainmentPlan(
+            plan.request,
+            managed_process_owner_authority=self._managed_process_owner_authority,
+            close=close_tracked,
+        )
         async with self._lock:
             if self._state == "open":
                 self._plans.add(tracked)
@@ -183,6 +215,18 @@ class HostedProcessContainmentPlanner:
                 )
             )
         return await self._track(ProcessContainmentPlan(request))
+
+
+class _SandboxOwnedProcessContainmentPlan(ProcessContainmentPlan):
+    def __init__(
+        self,
+        request: ProcessLaunchRequest,
+        *,
+        managed_process_owner_authority: object,
+        close,
+    ) -> None:
+        super().__init__(request, close=close)
+        self._managed_process_owner_authority = managed_process_owner_authority
 
 
 __all__: list[str] = []

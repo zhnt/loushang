@@ -13,6 +13,7 @@ from loushang.harness.resources.plugins.declarations import (
 
 PLUGIN_MANIFEST_VERSION: Final = 1
 PLUGIN_ENGINE_API_VERSION: Final = 1
+MANAGED_SKILL_ACTION_CONFIGURATION_KEY: Final = "managedSkillActions"
 PLUGIN_ENGINE_FEATURES: Final = frozenset(
     {
         "capability-provider-v2",
@@ -145,15 +146,39 @@ def inspect_plugin_engine_contract(
                 )
             )
     if contribution_index is not None:
-        missing = tuple(
-            sorted(required_plugin_engine_features(contribution_index) - set(features))
-        )
+        for item in contribution_index.items:
+            if MANAGED_SKILL_ACTION_CONFIGURATION_KEY not in item.configuration:
+                continue
+            if (
+                item.kind != "resource_item"
+                or item.configuration[MANAGED_SKILL_ACTION_CONFIGURATION_KEY] is not True
+            ):
+                diagnostics.append(
+                    PluginEngineDiagnostic(
+                        code="plugin_engine_feature_configuration_invalid",
+                        message=(
+                            "managedSkillActions is reserved for Resource items "
+                            "that declare managed Skill actions"
+                        ),
+                    )
+                )
+        expected_features = required_plugin_engine_features(contribution_index)
+        missing = tuple(sorted(expected_features - set(features)))
         if missing:
             diagnostics.append(
                 PluginEngineDiagnostic(
                     code="plugin_engine_feature_declaration_incomplete",
                     message="Plugin engine contract omits required features: "
                     + ", ".join(missing),
+                )
+            )
+        extra = tuple(sorted(set(features) - expected_features))
+        if extra:
+            diagnostics.append(
+                PluginEngineDiagnostic(
+                    code="plugin_engine_feature_declaration_extraneous",
+                    message="Plugin engine contract declares unused features: "
+                    + ", ".join(extra),
                 )
             )
     contract = (
@@ -180,6 +205,8 @@ def required_plugin_engine_features(
             features.add("catalog-consumer-v1")
         elif item.kind == "resource_item":
             features.add("resource-item-v1")
+            if item.configuration.get(MANAGED_SKILL_ACTION_CONFIGURATION_KEY) is True:
+                features.add("managed-skill-action-v1")
         if item.declaration_source.kind == "document":
             features.add("declaration-document-v1")
         elif item.declaration_source.kind == "in_process":
@@ -191,6 +218,7 @@ __all__ = [
     "PLUGIN_ENGINE_API_VERSION",
     "PLUGIN_ENGINE_FEATURES",
     "PLUGIN_MANIFEST_VERSION",
+    "MANAGED_SKILL_ACTION_CONFIGURATION_KEY",
     "STABLE_PLUGIN_MANIFEST_FIELDS",
     "PluginEngineContract",
     "PluginEngineDiagnostic",

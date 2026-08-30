@@ -60,6 +60,7 @@ class ResourceContributionSpec:
     media_type: str
     schema_id: str
     schema_version: int
+    managed_skill_actions: bool = False
 
     def __post_init__(self) -> None:
         if self.resource_kind not in _RESOURCE_KINDS:
@@ -73,6 +74,10 @@ class ResourceContributionSpec:
         ):
             _require_nonempty(value, name=name)
         _require_positive_integer(self.schema_version, name="Resource schema version")
+        if type(self.managed_skill_actions) is not bool:
+            raise TypeError("Resource managed-Skill-action marker must be a bool")
+        if self.managed_skill_actions and self.resource_kind != "skill":
+            raise ValueError("Managed Skill actions require a Skill Resource")
 
     @property
     def contribution_kind(self) -> Literal["resource_item"]:
@@ -96,6 +101,7 @@ class ResourceContributionSpec:
             "locator": self.locator,
             "locatorKind": self.locator_kind,
             "mediaType": self.media_type,
+            "managedSkillActions": self.managed_skill_actions,
             "resourceKind": self.resource_kind,
             "schemaId": self.schema_id,
             "schemaVersion": self.schema_version,

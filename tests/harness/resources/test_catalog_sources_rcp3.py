@@ -60,7 +60,7 @@ from loushang.harness.resources.skill_actions import (
     SkillActionDocumentCodec,
 )
 from loushang.harness.tools.skill_actions import ManagedSkillActionBinding
-from loushang.plugin import skill_action
+from loushang.plugin import package, resource, skill_action
 
 
 def _skill_body(name: str, description: str, body: str) -> bytes:
@@ -75,6 +75,7 @@ def _admitted_package_skill(
     description: str,
     source_root_order: int = 0,
     action_script: bytes | None = None,
+    legacy_action_contract: bool = False,
 ) -> tuple[AdmittedPackageResource, bytes, VerifiedRevisionHandle]:
     body = _skill_body(public_name, description, f"{description} body")
     return _admitted_package_file(
@@ -93,6 +94,7 @@ def _admitted_package_skill(
         source_root_order=source_root_order,
         locator_kind="directory" if action_script is not None else "file",
         action_script=action_script,
+        legacy_action_contract=legacy_action_contract,
     )
 
 
@@ -109,6 +111,7 @@ def _admitted_package_file(
     source_root_order: int = 0,
     locator_kind: str = "file",
     action_script: bytes | None = None,
+    legacy_action_contract: bool = False,
 ) -> tuple[AdmittedPackageResource, bytes, VerifiedRevisionHandle]:
     source = tmp_path / f"source-{plugin_id}"
     item = (
@@ -136,10 +139,32 @@ def _admitted_package_file(
                 SkillActionDocument(actions=(declaration,))
             )
         )
-    (source / "plugin.json").write_text(
-        json.dumps({"name": plugin_id, "version": "1"}),
-        encoding="utf-8",
-    )
+        if not legacy_action_contract:
+            compiled = package(
+                id=plugin_id,
+                version="1",
+                contributions=(
+                    resource.skill(
+                        contribution_id=contribution_id,
+                        locator=locator,
+                        actions=(declaration,),
+                    ),
+                ),
+            )
+            for artifact in compiled.artifacts:
+                target = source / artifact.path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(artifact.content)
+        else:
+            (source / "plugin.json").write_text(
+                json.dumps({"name": plugin_id, "version": "1"}),
+                encoding="utf-8",
+            )
+    else:
+        (source / "plugin.json").write_text(
+            json.dumps({"name": plugin_id, "version": "1"}),
+            encoding="utf-8",
+        )
     published = PluginRevisionStore(tmp_path / "revisions").publish(
         PluginManifestParser().parse(source)
     )
@@ -157,6 +182,9 @@ def _admitted_package_file(
         media_type=media_type,
         schema_id=schema_id,
         schema_version=1,
+        managed_skill_actions=(
+            action_script is not None and not legacy_action_contract
+        ),
     )
     owner_id = f"resources.{resource_kind}"
     candidate = OwnerContributionCandidateEnvelope(
@@ -506,6 +534,38 @@ async def _package_skill_actions_are_catalog_captured(tmp_path: Path) -> None:
 
 def test_package_skill_actions_are_catalog_captured(tmp_path: Path) -> None:
     asyncio.run(_package_skill_actions_are_catalog_captured(tmp_path))
+
+
+def test_legacy_package_cannot_publish_managed_skill_actions(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        resource_input, _body, revision = _admitted_package_skill(
+            tmp_path,
+            plugin_id="legacy-package-actions",
+            public_name="legacy-review",
+            description="Legacy package actions",
+            action_script=b"print('legacy bypass')\n",
+            legacy_action_contract=True,
+        )
+        try:
+            with pytest.raises(PackageResourceSourceError) as caught:
+                await run_first_party_resource_catalog_shadow(
+                    product_id="coding",
+                    scope_id="workspace:test",
+                    runtime_id="resource-shadow:legacy-actions",
+                    product_policy_revision="coding-resource-shadow-v1",
+                    root_handles=(),
+                    package_resources=(resource_input,),
+                    issued_at=10,
+                    expires_at=100,
+                    now=20,
+                    projection_cwd=tmp_path,
+                )
+            assert caught.value.reason == "undeclared_skill_action_document"
+        finally:
+            resource_input.close()
+            revision.close()
+
+    asyncio.run(scenario())
 
 
 async def _package_theme_projects_from_verified_body(tmp_path: Path) -> None:

@@ -53,6 +53,14 @@ features, missing required features, or extra stable declarations. Legacy
 internal manifests that claim neither field remain migration substrate, not
 part of this stable author contract.
 
+`managed-skill-action-v1` is closed over the Contribution Index rather than
+inferred later from a mutable sidecar. A Skill reservation with actions carries
+the exact `configuration.managedSkillActions: true` marker, so the shared
+negotiator rejects both missing and extra known features in runtime parsing and
+public validation. Admitted package input retains that marker. A stable package
+whose sidecar and marker disagree, and a legacy package that attempts to
+publish an action sidecar, both fail before Catalog publication.
+
 ## One Compiler And Inert Validation
 
 `package(...)` emits the same canonical `plugin.json`, Contribution Index v2,
@@ -99,6 +107,11 @@ constructors cannot mint either the selection or the action evidence. The Tool
 layer consumes only that opaque record; it cannot supply a declaration or
 source, import the private Catalog projection, list or enable a Skill, refresh
 the Catalog, or mint replacement Catalog facts.
+Each action additionally carries a Resource-owner identity and an
+identity-bound seal over that exact evidence object. Every verification checks
+the seal. Copying fields, recomputing fingerprints, using `object.__new__`, or
+copying another action's seal cannot create acceptable evidence, and there is
+no module-level action mint helper callable by an ordinary consumer.
 The historical explicit eager-body compatibility path is not an action source
 and is not a peer path for package/native managed actions; its final unrelated
 adapter cleanup remains PLC9 work.
@@ -133,6 +146,14 @@ Managed actions require both:
    path configured for mandatory Approval; and
 2. a containment planner whose requirement is exactly `required`.
 
+Managed-start authority additionally requires the exact
+`HostedProcessContainmentPlanner` from an active required Sandbox binding. Each
+plan is sealed to that planner and checked before Process Host receives it; a
+structural object that merely reports `requirement = "required"` or returns a
+raw no-op plan cannot acquire managed authority. Disabled and best-effort
+Sandbox runtimes retain their ordinary process launcher, but it carries no
+managed-start capability.
+
 An ordinary allow or absent policy becomes an explicit Approval request; deny
 and ask remain deny and ask. Weak/best-effort containment fails before process
 start. The public four-field `ProcessLaunchRequest` remains unchanged; managed
@@ -140,11 +161,22 @@ effects and authorization metadata live only in a private Process-tool
 envelope. Process Host, Approval, Policy, effects, execution profile, and
 Sandbox remain their existing exact owners.
 
-Stdout and streamed stderr are drained concurrently in ProcessHost-compatible
-64 KiB reads through EOF. Each stream has a 1 MiB accumulated limit; overflow
-terminates and closes the owned process without leaving a blocked pipe or
-background drain task. Non-zero process exits are returned as action results,
-not confused with hosting failure.
+Stdin writing, stdout draining, streamed-stderr draining, and process waiting
+begin concurrently. Both output streams use ProcessHost-compatible 64 KiB
+reads through EOF. Each stream has a 1 MiB accumulated limit; overflow,
+cancellation, or any pipe failure cancels sibling tasks, terminates the child,
+and closes the owned process. This prevents a POSIX shell that emits early
+output while a near-limit script is still entering stdin from deadlocking the
+parent. Non-zero process exits are returned as action results, not confused
+with hosting failure.
+
+Native source capture uses the same bounded descriptor-relative no-follow
+reader as stable package validation. Every ancestor directory and the final
+regular file are opened relative to the trusted root descriptor; post-read
+identity, size, mtime, and ctime are rechecked. Replacing an ancestor with a
+symlink during capture cannot redirect action or script bytes outside the
+Resource root. The portable fallback repeats link/reparse and identity checks
+before and after the read.
 
 ## Exit Evidence
 
@@ -159,6 +191,7 @@ not confused with hosting failure.
 - Action tests prove caller-forged evidence and launchers are rejected, exact
   Approval metadata and required containment are enforced, runtime replacement
   during Approval fails before spawn, and real ProcessHost execution drains
-  large stdout/stderr, preserves non-zero exit, and terminates output overflow.
+  large stdout/stderr while large stdin is still writing, preserves non-zero
+  exit, and terminates output overflow.
 - PLC9 cannot start until architecture, correctness/security, and Product/test
   reviewers pass this slice and re-review every blocking fix.

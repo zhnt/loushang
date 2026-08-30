@@ -45,7 +45,6 @@ from loushang.harness.workspace.process.local import (
 from loushang.harness.workspace.process.types import ProcessHandle, ProcessLaunchRequest
 
 _PROCESS_START_ACTION = "process.host.start"
-_PROCESS_OWNER_AUTHORITY = object()
 ProcessAuditSink = Callable[
     [Mapping[str, object]],
     Awaitable[None] | None,
@@ -215,7 +214,7 @@ class ScopeBoundProcessLauncher:
         correlation_id: str,
         signal: object | None = None,
     ) -> ProcessHandle:
-        if self._managed_owner_authority is not _PROCESS_OWNER_AUTHORITY:
+        if self._managed_owner_authority is None:
             raise ExecutionAuthorizationError(
                 "managed process start requires a Process-owner-minted launcher"
             )
@@ -296,6 +295,17 @@ class ScopeBoundProcessLauncher:
                     frozen_request,
                     execution_profile=action.execution_profile,
                 )
+                if isinstance(request, _ManagedProcessLaunchRequest):
+                    verifier = getattr(
+                        self._containment,
+                        "_verify_managed_process_plan",
+                        None,
+                    )
+                    if not callable(verifier):
+                        raise ExecutionAuthorizationError(
+                            "managed process containment is not Sandbox-owner-bound"
+                        )
+                    verifier(containment_plan, self._managed_owner_authority)
                 # Approval and containment planning may be arbitrarily slow.  Keep
                 # mutable host-runtime evidence fresh at the final owner boundary,
                 # immediately before ProcessHost hands the plan to its spawner.
@@ -321,12 +331,20 @@ def _bind_process_owner_launcher(
 
     if type(host) is not ProcessHost:
         raise TypeError("managed process owner requires the exact ProcessHost")
+    # Import lazily to keep Sandbox -> Tool composition acyclic at module load.
+    from loushang.harness.sandbox.process import HostedProcessContainmentPlanner
+
+    if type(containment) is not HostedProcessContainmentPlanner:
+        raise TypeError(
+            "managed process owner requires the exact Sandbox containment planner"
+        )
+    managed_owner_authority = containment._claim_managed_process_owner_authority()
     launcher = ScopeBoundProcessLauncher(
         scope=scope,
         host=host,
         containment=containment,
     )
-    launcher._managed_owner_authority = _PROCESS_OWNER_AUTHORITY
+    launcher._managed_owner_authority = managed_owner_authority
     return launcher
 
 

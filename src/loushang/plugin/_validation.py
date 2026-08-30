@@ -23,7 +23,6 @@ from loushang.harness.resources.plugins.engine import (
     PLUGIN_ENGINE_FEATURES,
     PLUGIN_MANIFEST_VERSION,
     inspect_plugin_engine_contract,
-    required_plugin_engine_features,
 )
 from loushang.harness.resources.plugins.manifest import (
     PluginManifestError,
@@ -351,21 +350,6 @@ def validate_package(path: str | Path) -> PluginValidationResult:
             _diagnostic(
                 "plugin_skill_action_feature_unused",
                 "Plugin declares managed Skill actions but has no action document",
-                manifest_path,
-            )
-        )
-    expected_features = set(
-        required_plugin_engine_features(package.contribution_index)
-    )
-    if action_documents_found:
-        expected_features.add("managed-skill-action-v1")
-    extra_features = tuple(sorted(set(features) - expected_features))
-    if extra_features:
-        diagnostics.append(
-            _diagnostic(
-                "plugin_engine_feature_declaration_extraneous",
-                "Plugin engine contract declares unused features: "
-                + ", ".join(extra_features),
                 manifest_path,
             )
         )
