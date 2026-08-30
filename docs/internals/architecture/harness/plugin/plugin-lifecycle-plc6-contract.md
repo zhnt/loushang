@@ -13,7 +13,7 @@ PLC6 does not publish the general Plugin SDK, implement `coding.arch.default`,
 or move Product identity, safety, workspace ceilings, Session correctness, or
 Model Input commit out of the Coding Kernel.
 
-Implementation checkpoint (2026-08-29): PLC6A through PLC6C are implemented. The
+Implementation checkpoint (2026-08-30): PLC6A through PLC6D are implemented. The
 checked-in data-only package is selected by the default `coding-standard`
 request and enters Resource discovery through an independent verified lease,
 without a hidden settings source. The Catalog-owned production path now uses
@@ -28,8 +28,15 @@ through `tools.workspace` and `commands.session`, publish atomically with the
 usable Session, enter effective-runtime provenance, and retire through their
 exact generations. The peer CLI Tool registrar and unconditional standard
 Command publication are absent from the Catalog-owned production path.
-Management-state binding, legacy Resource-authority cleanup, and final
-production review remain PLC6D and PLC6E.
+PLC6D now intersects the standard request with the one durable Coding Product
+management snapshot. A truly unseen first-party Installation is installed and
+enabled only by idempotent `PluginManagementService` commands; a retained
+disabled or removed Installation is never resurrected. New Sessions activate
+and lease the exact selected Instance Revision, while an existing Session pins
+its old family and reports `coding_base_management_restart_required` after an
+update, disable, or remove. Selected content-addressed revisions reopen from
+the durable binding lock without consulting a deleted mutable source. Legacy
+Resource-authority cleanup and final production review remain PLC6E.
 
 ## First principles
 

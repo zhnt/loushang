@@ -20,6 +20,11 @@ from pathlib import Path
 from time import time_ns
 from typing import Literal, Protocol
 
+from loushang.coding._plugin_lifecycle import (
+    CodingPluginLifecycleStateLayout,
+    build_coding_plugin_lifecycle,
+    resolve_coding_plugin_lifecycle_state_layout,
+)
 from loushang.coding.continuity import (
     CODING_EXPERIENCE_ID,
     CodingContinuityComposition,
@@ -77,7 +82,6 @@ from loushang.harness.plugin_management import (
     PluginRetirementSetLedger,
 )
 from loushang.harness.plugin_management.continuity_adapter import (
-    PluginContinuitySecurityRetirementJournal,
     PluginInstanceLedgerContinuityFamilyAuthority,
 )
 from loushang.harness.resources.packages.materializer import (
@@ -199,32 +203,26 @@ def resolve_coding_continuity_state_layout(
 ) -> CodingContinuityStateLayout:
     """Resolve a redacted workspace namespace under canonical machine state."""
 
-    workspace = Path(cwd).expanduser().resolve(strict=False)
-    digest = hashlib.sha256(
-        b"loushang.coding-continuity-workspace/v1\0" + os.fsencode(str(workspace))
-    ).hexdigest()
     paths = platform_paths or resolve_platform_paths()
-    state_root = (
-        paths.state / "plugins" / "coding" / "continuity" / "workspaces" / digest
+    lifecycle = resolve_coding_plugin_lifecycle_state_layout(
+        cwd,
+        platform_paths=paths,
     )
-    private_state_base = (
-        paths.home
-        if paths.state == paths.home or paths.home in paths.state.parents
-        else paths.state
-    )
+    digest = lifecycle.scope_id.removeprefix("workspace:")
+    state_root = lifecycle.root
     return CodingContinuityStateLayout(
         root=state_root,
-        private_state_base=private_state_base,
-        scope_id=f"workspace:{digest}",
+        private_state_base=lifecycle.private_state_base,
+        scope_id=lifecycle.scope_id,
         runtime_root=paths.runtime,
         temporary_base=paths.temporary,
         temporary_root=paths.temporary / "continuity-import" / digest,
-        desired_state=state_root / "desired-state.jsonl",
-        management_operations=state_root / "management-operations.jsonl",
-        retirement_intents=state_root / "retirement-intents.jsonl",
-        retirement_sets=state_root / "retirement-sets.jsonl",
-        instance_runtime=state_root / "instance-runtime.jsonl",
-        package_lifecycle=state_root / "package-lifecycle.jsonl",
+        desired_state=lifecycle.desired_state,
+        management_operations=lifecycle.management_operations,
+        retirement_intents=lifecycle.retirement_intents,
+        retirement_sets=lifecycle.retirement_sets,
+        instance_runtime=lifecycle.instance_runtime,
+        package_lifecycle=lifecycle.package_lifecycle,
         definition_decisions=state_root / "definition-decisions.jsonl",
         activation_decisions=state_root / "activation-decisions.jsonl",
     )
@@ -669,30 +667,28 @@ def _build_lifecycle(
     *,
     runtime_id: str,
 ) -> _InstalledLifecycle:
-    desired = PluginDesiredStateLedger(layout.desired_state)
+    common = build_coding_plugin_lifecycle(
+        CodingPluginLifecycleStateLayout(
+            root=layout.root,
+            private_state_base=layout.private_state_base,
+            scope_id=layout.scope_id,
+            desired_state=layout.desired_state,
+            management_operations=layout.management_operations,
+            retirement_intents=layout.retirement_intents,
+            retirement_sets=layout.retirement_sets,
+            instance_runtime=layout.instance_runtime,
+            package_lifecycle=layout.package_lifecycle,
+        )
+    )
+    desired = common.desired
     intents = PluginRetirementIntentLedger(layout.retirement_intents)
     retirement_sets = PluginRetirementSetLedger(
         layout.retirement_sets,
         retirement_intents=intents,
     )
-    management = PluginManagementService(
-        desired_state=desired,
-        operation_journal_path=layout.management_operations,
-        retirement_intents=intents,
-        retirement_sets=retirement_sets,
-    )
-    management.recover()
-    security = PluginContinuitySecurityRetirementJournal.for_instance_runtime(
-        layout.instance_runtime
-    )
-    instances = PluginInstanceRuntimeLedger(
-        layout.instance_runtime,
-        management_operation_journal_path=layout.management_operations,
-        desired_state=desired,
-        retirement_intents=intents,
-        retirement_sets=retirement_sets,
-        security_acceptances=security,
-    )
+    management = common.management
+    security = common.security
+    instances = common.instances
     packages = PluginPackageLifecycleLedger(
         layout.package_lifecycle,
         startup_id=runtime_id,
@@ -742,8 +738,12 @@ def _reconcile_enabled_instances(
             dependency_lock_digest=package.dependency_lock.digest,
             package_source_identity=binding.source_identity,
         )
-        state = lifecycle.desired.snapshot().installation(key)
-        if state.selection.desired_state == "absent":
+        snapshot = lifecycle.desired.snapshot()
+        state = snapshot.installation(key)
+        unseen = not any(
+            item.installation_key == key for item in snapshot.installations
+        )
+        if unseen:
             _submit_management(
                 lifecycle.management,
                 lifecycle.desired,
@@ -752,13 +752,6 @@ def _reconcile_enabled_instances(
                 package_revision=package_revision,
             )
             state = lifecycle.desired.snapshot().installation(key)
-        current_package = state.selection.package_revision
-        if current_package != package_revision:
-            raise CodingContinuityBootstrapError(
-                code="coding_continuity_plugin_revision_not_selected",
-                retryable=False,
-            )
-        if state.selection.desired_state == "installed_disabled":
             _submit_management(
                 lifecycle.management,
                 lifecycle.desired,
@@ -767,6 +760,12 @@ def _reconcile_enabled_instances(
                 package_revision=None,
             )
             state = lifecycle.desired.snapshot().installation(key)
+        current_package = state.selection.package_revision
+        if current_package != package_revision:
+            raise CodingContinuityBootstrapError(
+                code="coding_continuity_plugin_revision_not_selected",
+                retryable=False,
+            )
         ref = state.selection.instance_revision_ref
         if state.selection.desired_state != "installed_enabled" or ref is None:
             raise CodingContinuityBootstrapError(

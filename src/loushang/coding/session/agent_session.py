@@ -8,6 +8,7 @@ from loushang.ai import PreparedRequestLimits
 from loushang.ai.api_registry import APIRegistry
 from loushang.coding._base_plugin import (
     CodingBasePluginAssembly,
+    CodingBasePluginAssemblyError,
     CodingBasePluginSessionAssembly,
     build_coding_base_plugin_owners,
 )
@@ -51,6 +52,7 @@ from loushang.harness.capabilities.graph_runtime import CapabilityFacetSet
 from loushang.harness.commands import normalize_command_name
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.diagnostics.service import DiagnosticsService
+from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.events import RuntimeEvent
 from loushang.harness.extensions.agent import ExtensionRunner
 from loushang.harness.extensions.context import SessionStartEvent
@@ -484,6 +486,27 @@ class AgentSession(AgentProductSession):
         """Route a Product-owned runtime action through the session event stream."""
 
         await self._dispatch_event(dict(event))
+
+    def _prepare_resource_refresh(self) -> None:
+        base_plugin = self._coding_base_plugin_assembly
+        if base_plugin is not None:
+            change = base_plugin.evaluate_management_change()
+            if change is not None and change.disposition == "restart_required":
+                self._record_extension_runtime_diagnostic(
+                    DiagnosticDraft(
+                        code="coding_base_management_restart_required",
+                        message=(
+                            "coding.base management state changed; the active "
+                            "Session retains its pinned generation and must restart."
+                        ),
+                        details=change.diagnostic_details(),
+                    )
+                )
+                raise CodingBasePluginAssemblyError(
+                    "Active Coding Session requires restart after coding.base change",
+                    code="coding_base_management_restart_required",
+                )
+        super()._prepare_resource_refresh()
 
     async def _dispose_session_runtime_profile(self) -> None:
         primary_error: BaseException | None = None

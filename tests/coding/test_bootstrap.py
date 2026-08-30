@@ -566,7 +566,7 @@ def test_lsp_preparation_failure_closes_the_prepared_base_revision(
     from loushang.coding.session_manager import SessionManager
 
     prepared = []
-    prepare_base = coding_bootstrap.prepare_coding_base_plugin_assembly
+    prepare_base = coding_bootstrap.prepare_managed_coding_base_plugin_assembly
 
     def capture_base(*args, **kwargs):
         assembly = prepare_base(*args, **kwargs)
@@ -578,7 +578,7 @@ def test_lsp_preparation_failure_closes_the_prepared_base_revision(
 
     monkeypatch.setattr(
         coding_bootstrap,
-        "prepare_coding_base_plugin_assembly",
+        "prepare_managed_coding_base_plugin_assembly",
         capture_base,
     )
     monkeypatch.setattr(

@@ -501,6 +501,68 @@ class PackageMaterializer:
     ) -> PluginSourceBinding | None:
         return self._plugin_bindings.get(plugin_source_identity(source))
 
+    def get_plugin_binding_by_identity(
+        self,
+        source_identity: str,
+    ) -> PluginSourceBinding | None:
+        """Return durable binding evidence without reopening its mutable source."""
+
+        if not isinstance(source_identity, str) or not source_identity:
+            raise ValueError("Plugin source identity must be non-empty")
+        return self._plugin_bindings.get(source_identity)
+
+    def reopen_plugin_package(
+        self,
+        binding: PluginSourceBinding,
+    ) -> PublishedPluginPackage:
+        """Reopen a bound immutable package for exact desired-state replay."""
+
+        if not isinstance(binding, PluginSourceBinding):
+            raise TypeError("Plugin source binding is required")
+        self._assert_plugin_binding_lock_valid()
+        if self._plugin_bindings.get(binding.source_identity) != binding:
+            raise PluginManifestError(
+                "Plugin source binding is not present in the durable lock",
+                code="invalid_plugin_source_binding",
+                path=self.lockfile_path,
+            )
+        content_digest = binding.content_digest
+        dependency_lock = binding.dependency_lock
+        if content_digest is None or dependency_lock is None:
+            raise PluginManifestError(
+                "Plugin source binding lacks complete immutable replay evidence",
+                code="unverified_plugin_dependency_closure",
+                path=self.lockfile_path,
+            )
+        source = (
+            PluginSource(url=binding.source, kind="remote")
+            if binding.source_kind == "remote"
+            else PluginSource(path=Path(binding.source))
+        )
+        revision = self._plugin_revision_store.reopen(
+            content_digest,
+            source=source,
+        )
+        try:
+            package = PublishedPluginPackage.from_verified_revision(
+                revision,
+                dependency_lock=dependency_lock,
+            )
+            if (
+                package.manifest.name != binding.plugin_id
+                or package.manifest_digest != binding.manifest_digest
+                or package.content_digest != binding.content_digest
+            ):
+                raise PluginManifestError(
+                    "Reopened Plugin revision does not match its durable binding",
+                    code="invalid_plugin_source_binding",
+                    path=package.root,
+                )
+            return package
+        except Exception:
+            revision.revision_handle.close()
+            raise
+
     def forget_plugin_binding(self, source: str | Path | PluginSource) -> None:
         key = plugin_source_identity(source)
         if key not in self._plugin_bindings:

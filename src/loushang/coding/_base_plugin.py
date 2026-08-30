@@ -10,6 +10,12 @@ from loushang.coding._base_plugin_owners import (
     CodingBaseCommandOwner,
     CodingBaseToolOwner,
 )
+from loushang.coding._plugin_lifecycle import (
+    CodingPluginLifecycle,
+    CodingPluginManagementChange,
+    CodingPluginSessionLease,
+    package_revision_ref,
+)
 from loushang.coding.composition_sets import CodingCompositionSetPlan
 from loushang.coding.product_plan import CODING_PRODUCT_ID
 from loushang.coding.resource_runtime import CodingPackageMaterializer
@@ -95,13 +101,53 @@ class CodingBasePluginAssembly:
     host_environment: HostEnvironment
     tool_contribution_id: str | None
     tool_names: tuple[str, ...]
+    management_lease: CodingPluginSessionLease | None = field(
+        default=None,
+        repr=False,
+    )
+    state_cleanup: Callable[[], None] | None = field(
+        default=None,
+        repr=False,
+    )
     _closed: bool = field(default=False, init=False, repr=False)
+
+    def evaluate_management_change(self) -> CodingPluginManagementChange | None:
+        if self.management_lease is None:
+            return None
+        return self.management_lease.evaluate_management_change()
 
     def close(self) -> None:
         if self._closed:
             return
-        self.runtime.close()
-        self._closed = True
+        primary_error: BaseException | None = None
+        try:
+            if self.management_lease is not None:
+                self.management_lease.close()
+        except BaseException as exc:
+            primary_error = exc
+        try:
+            self.runtime.close()
+        except BaseException as cleanup_error:
+            if primary_error is None:
+                primary_error = cleanup_error
+            else:
+                primary_error.add_note(
+                    f"Coding base revision cleanup also failed: {cleanup_error}"
+                )
+        try:
+            if self.state_cleanup is not None:
+                self.state_cleanup()
+        except BaseException as cleanup_error:
+            if primary_error is None:
+                primary_error = cleanup_error
+            else:
+                primary_error.add_note(
+                    f"Coding base state cleanup also failed: {cleanup_error}"
+                )
+        finally:
+            self._closed = True
+        if primary_error is not None:
+            raise primary_error
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,23 +223,7 @@ def prepare_coding_base_plugin_assembly(
         raise TypeError("Coding base Tool-claim Prompt flag must be a boolean")
     normalized_session_id = _normalized(session_id, name="Coding Session id")
     resolved_environment = host_environment or LocalHostEnvironmentProbe().detect()
-    requests = {item.plugin_id: item for item in composition_set.plugin_requests}
-    base_request = requests.get(_PLUGIN_ID)
-    if base_request is None:
-        raise CodingBasePluginAssemblyError(
-            "The selected Coding composition set does not request coding.base",
-            code="coding_base_not_requested",
-        )
-    if (
-        base_request.plugin_kind != "resource"
-        or not base_request.required
-        or base_request.capability_id is not None
-        or base_request.mount_mode is not None
-    ):
-        raise CodingBasePluginAssemblyError(
-            "The Coding base request does not match the reserved Product policy",
-            code="coding_base_request_mismatch",
-        )
+    _validate_base_request(composition_set)
 
     authority = PluginResolutionAuthority()
     inspection = authority.inspect(PluginSource(path=coding_base_plugin_root()))
@@ -202,40 +232,151 @@ def prepare_coding_base_plugin_assembly(
         binding_store=package_materializer,
     )
     try:
-        [package] = runtime.packages
-        [binding] = runtime.bindings
-        scope_id = f"session:{normalized_session_id}"
-        plan, tool_contribution_id, tool_names = _build_selection_plan(
-            package,
-            binding=binding,
-            scope_id=scope_id,
+        return _assemble_base_runtime(
+            runtime=runtime,
             composition_set=composition_set,
+            session_id=normalized_session_id,
             host_environment=resolved_environment,
             include_tool_contribution=include_tool_contribution,
             include_tool_claim_prompt=include_tool_claim_prompt,
-        )
-        plan_seed = ProductPluginPlanSeed(
-            plan=plan,
-            packages=(package,),
-            bindings=(binding,),
-            owner_bindings=_owner_bindings(
-                include_tools=include_tool_contribution,
-                include_prompt=include_tool_claim_prompt,
-            ),
-        )
-        return CodingBasePluginAssembly(
-            runtime=runtime,
-            package=package,
-            binding=binding,
-            plan_seed=plan_seed,
-            scope_id=scope_id,
-            composition_set_fingerprint=composition_set.fingerprint,
-            host_environment=resolved_environment,
-            tool_contribution_id=tool_contribution_id,
-            tool_names=tool_names,
+            instance_revision_ref=None,
+            management_lease=None,
+            state_cleanup=None,
         )
     except BaseException:
         runtime.close()
+        raise
+
+
+def prepare_managed_coding_base_plugin_assembly(
+    composition_set: CodingCompositionSetPlan,
+    *,
+    session_id: str,
+    package_materializer: CodingPackageMaterializer,
+    lifecycle: CodingPluginLifecycle,
+    host_environment: HostEnvironment | None = None,
+    include_tool_contribution: bool = True,
+    include_tool_claim_prompt: bool = True,
+    state_cleanup: Callable[[], None] | None = None,
+) -> CodingBasePluginAssembly | None:
+    """Intersect the Product request with one durable management snapshot."""
+
+    if not isinstance(composition_set, CodingCompositionSetPlan):
+        raise TypeError("Managed Coding base assembly requires a composition set")
+    if not isinstance(package_materializer, CodingPackageMaterializer):
+        raise TypeError("Managed Coding base assembly requires a materializer")
+    if not isinstance(lifecycle, CodingPluginLifecycle):
+        raise TypeError("Managed Coding base assembly requires a lifecycle")
+    if state_cleanup is not None and not callable(state_cleanup):
+        raise TypeError("Managed Coding base state cleanup must be callable")
+    _validate_base_request(composition_set)
+    normalized_session_id = _normalized(session_id, name="Coding Session id")
+    environment = host_environment or LocalHostEnvironmentProbe().detect()
+    key = lifecycle.installation_key(_PLUGIN_ID)
+    snapshot = lifecycle.desired.snapshot()
+    state = snapshot.installation(key)
+    seen = any(item.installation_key == key for item in snapshot.installations)
+    runtime: PluginRuntimeResolution | None = None
+    lease: CodingPluginSessionLease | None = None
+    try:
+        if not seen:
+            authority = PluginResolutionAuthority()
+            inspection = authority.inspect(PluginSource(path=coding_base_plugin_root()))
+            runtime = authority.publish_runtime(
+                (inspection,),
+                binding_store=package_materializer,
+            )
+            [package] = runtime.packages
+            [binding] = runtime.bindings
+            revision = package_revision_ref(
+                plugin_id=package.manifest.name,
+                plugin_version=package.manifest.version,
+                package_content_digest=package.content_digest,
+                dependency_lock_digest=package.dependency_lock.digest,
+                package_source_identity=binding.source_identity,
+            )
+            lifecycle.bootstrap_first_party_default(key, revision)
+            state = lifecycle.desired.snapshot().installation(key)
+        else:
+            lifecycle.reconcile_retirements()
+        if state.selection.desired_state != "installed_enabled":
+            if runtime is not None:
+                runtime.close()
+            if state_cleanup is not None:
+                state_cleanup()
+            return None
+        selected_revision = state.selection.package_revision
+        selected_instance = state.selection.instance_revision_ref
+        if selected_revision is None or selected_instance is None:
+            raise CodingBasePluginAssemblyError(
+                "Enabled Coding base selection lacks exact lifecycle evidence",
+                code="coding_base_management_selection_incomplete",
+            )
+        if runtime is None:
+            replay_binding = package_materializer.get_plugin_binding_by_identity(
+                selected_revision.package_source_identity
+            )
+            if replay_binding is None:
+                raise CodingBasePluginAssemblyError(
+                    "Selected Coding base binding is unavailable for replay",
+                    code="coding_base_binding_replay_unavailable",
+                )
+            package = package_materializer.reopen_plugin_package(replay_binding)
+            runtime = PluginRuntimeResolution(
+                packages=(package,),
+                plugins=(),
+                bindings=(replay_binding,),
+            )
+        [package] = runtime.packages
+        [binding] = runtime.bindings
+        actual_revision = package_revision_ref(
+            plugin_id=package.manifest.name,
+            plugin_version=package.manifest.version,
+            package_content_digest=package.content_digest,
+            dependency_lock_digest=package.dependency_lock.digest,
+            package_source_identity=binding.source_identity,
+        )
+        if actual_revision != selected_revision:
+            raise CodingBasePluginAssemblyError(
+                "Replayed Coding base package is not the selected revision",
+                code="coding_base_selected_revision_mismatch",
+            )
+        lease = lifecycle.acquire_session(key, session_id=normalized_session_id)
+        if (
+            lease.package_revision != selected_revision
+            or lease.instance_revision_ref != selected_instance
+        ):
+            raise CodingBasePluginAssemblyError(
+                "Coding base Session lease is outside the management snapshot",
+                code="coding_base_session_lease_mismatch",
+            )
+        return _assemble_base_runtime(
+            runtime=runtime,
+            composition_set=composition_set,
+            session_id=normalized_session_id,
+            host_environment=environment,
+            include_tool_contribution=include_tool_contribution,
+            include_tool_claim_prompt=include_tool_claim_prompt,
+            instance_revision_ref=selected_instance,
+            management_lease=lease,
+            state_cleanup=state_cleanup,
+        )
+    except BaseException as error:
+        if lease is not None:
+            try:
+                lease.close()
+            except BaseException as cleanup_error:
+                error.add_note(f"Coding base Session lease cleanup failed: {cleanup_error}")
+        if runtime is not None:
+            try:
+                runtime.close()
+            except BaseException as cleanup_error:
+                error.add_note(f"Coding base revision cleanup failed: {cleanup_error}")
+        if state_cleanup is not None:
+            try:
+                state_cleanup()
+            except BaseException as cleanup_error:
+                error.add_note(f"Coding base state cleanup failed: {cleanup_error}")
         raise
 
 
@@ -432,6 +573,7 @@ def _build_selection_plan(
     host_environment: HostEnvironment,
     include_tool_contribution: bool,
     include_tool_claim_prompt: bool,
+    instance_revision_ref: PluginInstanceRevisionRef | None = None,
 ) -> tuple[PluginSelectionPlanV2, str | None, tuple[str, ...]]:
     contributions = package.contribution_index.items
     tool_contribution_id = (
@@ -470,7 +612,8 @@ def _build_selection_plan(
             scope_id=scope_id,
             policy_revision=policy_revision,
             instance_revision_refs=(
-                PluginInstanceRevisionRef(
+                instance_revision_ref
+                or PluginInstanceRevisionRef(
                     instance_id=f"{_PLUGIN_ID}@{scope_id}",
                     plugin_id=_PLUGIN_ID,
                     revision=1,
@@ -505,6 +648,74 @@ def _build_selection_plan(
         tool_contribution_id if include_tool_contribution else None,
         selected_tool_names,
     )
+
+
+def _assemble_base_runtime(
+    *,
+    runtime: PluginRuntimeResolution,
+    composition_set: CodingCompositionSetPlan,
+    session_id: str,
+    host_environment: HostEnvironment,
+    include_tool_contribution: bool,
+    include_tool_claim_prompt: bool,
+    instance_revision_ref: PluginInstanceRevisionRef | None,
+    management_lease: CodingPluginSessionLease | None,
+    state_cleanup: Callable[[], None] | None,
+) -> CodingBasePluginAssembly:
+    [package] = runtime.packages
+    [binding] = runtime.bindings
+    scope_id = f"session:{session_id}"
+    plan, tool_contribution_id, tool_names = _build_selection_plan(
+        package,
+        binding=binding,
+        scope_id=scope_id,
+        composition_set=composition_set,
+        host_environment=host_environment,
+        include_tool_contribution=include_tool_contribution,
+        include_tool_claim_prompt=include_tool_claim_prompt,
+        instance_revision_ref=instance_revision_ref,
+    )
+    return CodingBasePluginAssembly(
+        runtime=runtime,
+        package=package,
+        binding=binding,
+        plan_seed=ProductPluginPlanSeed(
+            plan=plan,
+            packages=(package,),
+            bindings=(binding,),
+            owner_bindings=_owner_bindings(
+                include_tools=include_tool_contribution,
+                include_prompt=include_tool_claim_prompt,
+            ),
+        ),
+        scope_id=scope_id,
+        composition_set_fingerprint=composition_set.fingerprint,
+        host_environment=host_environment,
+        tool_contribution_id=tool_contribution_id,
+        tool_names=tool_names,
+        management_lease=management_lease,
+        state_cleanup=state_cleanup,
+    )
+
+
+def _validate_base_request(composition_set: CodingCompositionSetPlan) -> None:
+    requests = {item.plugin_id: item for item in composition_set.plugin_requests}
+    base_request = requests.get(_PLUGIN_ID)
+    if base_request is None:
+        raise CodingBasePluginAssemblyError(
+            "The selected Coding composition set does not request coding.base",
+            code="coding_base_not_requested",
+        )
+    if (
+        base_request.plugin_kind != "resource"
+        or not base_request.required
+        or base_request.capability_id is not None
+        or base_request.mount_mode is not None
+    ):
+        raise CodingBasePluginAssemblyError(
+            "The Coding base request does not match the reserved Product policy",
+            code="coding_base_request_mismatch",
+        )
 
 
 def _owner_bindings(
@@ -558,6 +769,7 @@ __all__ = [
     "build_coding_base_plugin_owners",
     "coding_base_plugin_root",
     "prepare_coding_base_plugin_assembly",
+    "prepare_managed_coding_base_plugin_assembly",
     "prepare_coding_base_resource_plan_seed",
     "prepare_coding_base_plugin_session",
 ]
