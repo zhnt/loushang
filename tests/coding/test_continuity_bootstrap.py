@@ -571,6 +571,9 @@ def test_removed_continuity_tombstone_never_reinspects_configured_source(
         lifecycle.common.release_owned_process_startup_lease()
         assert removed.result is not None
         assert removed.result.disposition == "succeeded"
+        forgotten = _materializer_for_layout(layout)
+        forgotten.forget_plugin_binding(plugin_root)
+        assert forgotten.get_plugin_binding(plugin_root) is None
 
         def reject_inspection(*_args, **_kwargs):
             raise AssertionError("removed source was reinspected")
@@ -591,7 +594,9 @@ def test_removed_continuity_tombstone_never_reinspects_configured_source(
         )
 
         assert restarted.plugin_publication is None
-        assert get_coding_continuity_bootstrap_status(restarted_runtime).plugin_count == 0
+        assert (
+            get_coding_continuity_bootstrap_status(restarted_runtime).plugin_count == 0
+        )
         await shutdown_coding_continuity(restarted_runtime)
 
     asyncio.run(scenario())
@@ -1013,13 +1018,37 @@ def test_changed_source_replays_selected_revision_until_management_update(
     asyncio.run(scenario())
 
 
-def _settings(plugin_root: Path) -> object:
-    return SimpleNamespace(
-        get_settings=lambda: SimpleNamespace(
+class _ContinuitySettings:
+    def __init__(self, plugin_root: Path) -> None:
+        self.value = SimpleNamespace(
             plugin_sources=(str(plugin_root),),
             disabled_plugins=(),
         )
-    )
+
+    def get_settings(self):
+        return self.value
+
+    def bind_plugin_enablement_legacy_mutation_guard(self, authority, guard):
+        assert authority is not None
+        self.guard = guard
+
+        def publish(projection):
+            migrated = set(projection.migrated_plugin_ids)
+            retained = {
+                item for item in self.value.disabled_plugins if item not in migrated
+            }
+            self.value = SimpleNamespace(
+                plugin_sources=self.value.plugin_sources,
+                disabled_plugins=tuple(
+                    sorted(retained | set(projection.disabled_plugin_ids))
+                ),
+            )
+
+        return publish
+
+
+def _settings(plugin_root: Path) -> object:
+    return _ContinuitySettings(plugin_root)
 
 
 def _test_layout(state_root: Path, workspace: Path):

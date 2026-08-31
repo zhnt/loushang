@@ -836,9 +836,16 @@ def _project_installation(
         unknown.append("instances")
     if packages_supported and selected_package is not None and not retention:
         unknown.append("packages")
+    if (
+        packages is not None
+        and selected_package is not None
+        and not _package_observes_selection(packages, key, selected_package)
+    ):
+        unknown.append("packages")
     convergence = _convergence(
         desired_state=desired_state,
         enablement_migration_phase=(None if migration is None else migration.phase),
+        instances_supported=instances_supported,
         source=source,
         selected_instance=selected_instance,
         instances=instance_summaries,
@@ -879,6 +886,7 @@ def _convergence(
     *,
     desired_state: str,
     enablement_migration_phase: PluginManagementMigrationPhase | None,
+    instances_supported: bool,
     source: PluginManagementSourceRecordV1 | None,
     selected_instance: PluginInstanceRevisionRef | None,
     instances: tuple[PluginManagementInstanceSummaryV1, ...],
@@ -890,6 +898,8 @@ def _convergence(
         return "cleanup_debt"
     if source is not None and source.availability == "unavailable":
         return "stale"
+    if not instances_supported:
+        return "unknown"
     states = {item.state for item in instances}
     if "REVOKING" in states:
         return "revoking"
@@ -943,8 +953,10 @@ def _projection_skew(
                 )
             )
         selected_package = desired.selection.package_revision
-        if packages is not None and selected_package is not None and not any(
-            item.package_revision == selected_package for item in packages.packages
+        if (
+            packages is not None
+            and selected_package is not None
+            and not _package_observes_selection(packages, key, selected_package)
         ):
             skew.append(
                 PluginManagementSkewV1(
@@ -999,6 +1011,17 @@ def _projection_skew(
                     )
                 )
     return tuple(sorted(skew, key=_skew_sort_key))
+
+
+def _package_observes_selection(
+    packages: PluginPackageLifecycleSnapshotV1,
+    key: PluginInstallationKeyV1,
+    selected_package: PluginPackageRevisionRefV1,
+) -> bool:
+    return any(
+        item.package_revision == selected_package and key in item.desired_installations
+        for item in packages.packages
+    )
 
 
 def _operation_installation_key(

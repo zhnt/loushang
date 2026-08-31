@@ -108,11 +108,15 @@ seeded disabled, and left unmounted.
 
 `src/loushang/coding/plugin_enablement_compatibility.py::CodingPluginEnablementCompatibilityWriter`
 is the Product-owned compatibility publisher. It serializes projection and
-publication under the workspace coordination lock, preserves only unmigrated
-legacy ids, and binds the settings-owner mutation fence. Coding startup and CLI
-binding always reconcile it, so a crash or write failure after a canonical
-commit is repaired from the durable receipt and desired journal. The command
-still fails visibly with
+publication under the workspace coordination lock and sends a typed projection
+to the settings owner. The settings owner then takes its cross-process settings
+lock, reloads persistent layers, preserves only unmigrated legacy ids, clears a
+stale session legacy overlay, publishes the project downgrade view, and verifies
+the effective migrated values. Its opaque object capability cannot be reclaimed
+by repeating a caller-chosen string. Coding startup, Continuity startup, and CLI
+binding always reconcile it; an existing receipt with a non-fence settings owner
+fails closed. A crash or write failure after a canonical commit is repaired from
+the durable receipt and desired journal. The command still fails visibly with
 `plugin_enablement_compatibility_publish_failed`; it never rolls canonical
 state back or reports runtime convergence.
 
@@ -151,6 +155,8 @@ only that desired state committed and never claims runtime convergence.
 - Command retry uses the caller's operation/idempotency identity; correlation
   identity may change when an operator resumes the same operation.
 - A terminal command result does not assert runtime convergence.
+- Without an Instance owner, runtime convergence is `unknown`; an empty
+  supported Instance snapshot may establish an inactive observation.
 - An `absent` tombstone remains authoritative on restart: a still-configured
   mutable Source is neither reinspected nor republished.
 - Unsupported backup, private-data, or Worker dimensions remain named as such.

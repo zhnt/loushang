@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 
 from loushang.coding._plugin_lifecycle import (
@@ -10,14 +9,26 @@ from loushang.coding._plugin_lifecycle import (
     project_coding_plugin_enablement_compatibility,
 )
 from loushang.coding.product_plan import CODING_PRODUCT_ID
+from loushang.harness.config.agent.manager import (
+    LegacyPluginCompatibilityProjectionV1,
+)
 from loushang.harness.journal import journal_file_lock
 from loushang.harness.plugin_management import (
     PluginEnablementMigrationJournal,
     PluginInstallationKeyV1,
 )
 
-_COMPATIBILITY_AUTHORITY_VERSION = "coding-plugin-enablement-compatibility-v1"
-CompatibilityPublisher = Callable[[Iterable[str], str], None]
+_COMPATIBILITY_CACHE_ATTRIBUTE = (
+    "_loushang_coding_plugin_enablement_compatibility_writer"
+)
+
+
+class CodingPluginEnablementCompatibilityError(RuntimeError):
+    """Stable failure to establish the minimum fence-aware runtime."""
+
+    def __init__(self, message: str, *, code: str) -> None:
+        super().__init__(message)
+        self.code = code
 
 
 @dataclass(slots=True)
@@ -26,7 +37,7 @@ class CodingPluginEnablementCompatibilityWriter:
 
     layout: CodingPluginLifecycleStateLayout
     settings_manager: object = field(repr=False)
-    _publish: CompatibilityPublisher = field(init=False, repr=False)
+    _publish: object = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         bind = getattr(
@@ -38,21 +49,31 @@ class CodingPluginEnablementCompatibilityWriter:
             raise TypeError(
                 "Coding Plugin compatibility requires a fence-aware settings owner"
             )
-        authority_id = f"{_COMPATIBILITY_AUTHORITY_VERSION}:{self.layout.scope_id}"
-        self._publish = bind(authority_id, self._assert_legacy_mutation_allowed)
+        self._publish = bind(self, self._assert_legacy_mutation_allowed)
+        if not callable(self._publish):
+            raise TypeError("Coding Plugin compatibility publisher is unavailable")
 
     def reconcile(self) -> None:
         """Publish the latest canonical view under the Product coordination lock."""
 
+        if not self.layout.root.exists():
+            return
         with journal_file_lock(self.layout.coordination_lock, "exclusive"):
             projection, migrated = project_coding_plugin_enablement_compatibility(
                 self.layout
             )
-            current = self._current_disabled_plugins()
-            retained = {item for item in current if item not in migrated}
-            disabled = tuple(sorted(retained | set(projection.disabled_plugin_ids)))
-            if disabled != current:
-                self._publish(disabled, "project")
+            if not migrated:
+                return
+            publish = self._publish
+            assert callable(publish)
+            publish(
+                LegacyPluginCompatibilityProjectionV1(
+                    disabled_plugin_ids=projection.disabled_plugin_ids,
+                    migrated_plugin_ids=tuple(sorted(migrated)),
+                    desired_inventory_revision=projection.desired_inventory_revision,
+                    migration_journal_revision=(projection.migration_journal_revision),
+                )
+            )
 
     def _assert_legacy_mutation_allowed(self, plugin_id: str) -> None:
         journal = PluginEnablementMigrationJournal(self.layout.enablement_migration)
@@ -65,37 +86,54 @@ class CodingPluginEnablementCompatibilityWriter:
             )
         )
 
-    def _current_disabled_plugins(self) -> tuple[str, ...]:
-        get_settings = getattr(self.settings_manager, "get_settings", None)
-        if not callable(get_settings):
-            raise TypeError("Coding Plugin compatibility settings read is unavailable")
-        values = getattr(get_settings(), "disabled_plugins", ())
-        if not isinstance(values, (list, tuple)) or any(
-            not isinstance(item, str) or not item for item in values
-        ):
-            raise TypeError("Coding Plugin compatibility settings are invalid")
-        return tuple(values)
-
 
 def bind_coding_plugin_enablement_compatibility(
     layout: CodingPluginLifecycleStateLayout,
     settings_manager: object | None,
 ) -> CodingPluginEnablementCompatibilityWriter | None:
-    """Bind the writer when the Product settings owner supports the fence."""
+    """Bind one exact writer or fail closed for an existing legacy peer."""
 
     if settings_manager is None:
         return None
+    cached = getattr(settings_manager, _COMPATIBILITY_CACHE_ATTRIBUTE, None)
+    if cached is not None:
+        if not isinstance(cached, CodingPluginEnablementCompatibilityWriter):
+            raise CodingPluginEnablementCompatibilityError(
+                "Coding Plugin compatibility authority cache is invalid",
+                code="coding_plugin_compatibility_authority_conflict",
+            )
+        if cached.layout != layout:
+            raise CodingPluginEnablementCompatibilityError(
+                "Settings owner is already bound to another Plugin workspace",
+                code="coding_plugin_compatibility_scope_conflict",
+            )
+        return cached
     bind = getattr(
         settings_manager,
         "bind_plugin_enablement_legacy_mutation_guard",
         None,
     )
     if not callable(bind):
+        _projection, migrated = project_coding_plugin_enablement_compatibility(layout)
+        if migrated:
+            raise CodingPluginEnablementCompatibilityError(
+                "Existing Plugin migration requires a fence-aware settings owner",
+                code="coding_plugin_compatibility_fence_unavailable",
+            )
         return None
-    return CodingPluginEnablementCompatibilityWriter(layout, settings_manager)
+    writer = CodingPluginEnablementCompatibilityWriter(layout, settings_manager)
+    try:
+        setattr(settings_manager, _COMPATIBILITY_CACHE_ATTRIBUTE, writer)
+    except (AttributeError, TypeError) as exc:
+        raise CodingPluginEnablementCompatibilityError(
+            "Fence-aware settings owner cannot retain its compatibility authority",
+            code="coding_plugin_compatibility_authority_unavailable",
+        ) from exc
+    return writer
 
 
 __all__ = [
+    "CodingPluginEnablementCompatibilityError",
     "CodingPluginEnablementCompatibilityWriter",
     "bind_coding_plugin_enablement_compatibility",
 ]

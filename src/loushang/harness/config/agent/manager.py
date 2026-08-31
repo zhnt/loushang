@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from contextlib import AbstractContextManager, nullcontext
 from copy import deepcopy
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -50,6 +51,7 @@ from loushang.harness.config.agent.types import (
     WarningSettings,
 )
 from loushang.harness.config.engine import merge_config_patch
+from loushang.harness.journal import journal_file_lock
 from loushang.harness.permissions import (
     PermissionProfileCeiling,
     PermissionProfileId,
@@ -71,9 +73,38 @@ SettingsScope = Literal["session", "global", "project"]
 ThinkingBudgetKey = Literal["minimal", "low", "medium", "high"]
 LegacyPluginMutationGuard = Callable[[str], None]
 LegacyPluginCompatibilityPublisher = Callable[
-    [Iterable[str], SettingsScope],
-    None,
+    ["LegacyPluginCompatibilityProjectionV1"], None
 ]
+
+
+@dataclass(frozen=True, slots=True)
+class LegacyPluginCompatibilityProjectionV1:
+    """Typed derived view accepted by the sole legacy settings sink."""
+
+    disabled_plugin_ids: tuple[str, ...]
+    migrated_plugin_ids: tuple[str, ...]
+    desired_inventory_revision: int
+    migration_journal_revision: int
+
+    def __post_init__(self) -> None:
+        for values, name in (
+            (self.disabled_plugin_ids, "disabled Plugin ids"),
+            (self.migrated_plugin_ids, "migrated Plugin ids"),
+        ):
+            if values != tuple(sorted(set(values))) or any(not item for item in values):
+                raise ValueError(f"Legacy compatibility {name} must be normalized")
+        if not set(self.disabled_plugin_ids).issubset(self.migrated_plugin_ids):
+            raise ValueError("Disabled compatibility ids must be migrated")
+        for revision, name in (
+            (self.desired_inventory_revision, "desired revision"),
+            (self.migration_journal_revision, "migration revision"),
+        ):
+            if (
+                not isinstance(revision, int)
+                or isinstance(revision, bool)
+                or revision < 0
+            ):
+                raise ValueError(f"Legacy compatibility {name} must be non-negative")
 
 
 @dataclass(frozen=True)
@@ -104,7 +135,7 @@ class SettingsManager:
         self._permission_profile_ceiling = (
             permission_profile_ceiling or PermissionProfileCeiling()
         )
-        self._legacy_plugin_guard_authority_id: str | None = None
+        self._legacy_plugin_guard_authority: object | None = None
         self._legacy_plugin_mutation_guard: LegacyPluginMutationGuard | None = None
         self._legacy_plugin_compatibility_publisher: (
             LegacyPluginCompatibilityPublisher | None
@@ -141,10 +172,9 @@ class SettingsManager:
         )
         patch, removed_messages = prepare_override_patch(patch)
         disabled_plugins = patch.get("disabled_plugins")
-        if isinstance(disabled_plugins, (list, tuple)) and all(
+        changes_legacy_plugins = isinstance(disabled_plugins, (list, tuple)) and all(
             isinstance(item, str) for item in disabled_plugins
-        ):
-            self._guard_legacy_plugin_changes(tuple(disabled_plugins))
+        )
         self._adapter_errors.extend(
             SettingsError(
                 scope="session",
@@ -153,7 +183,17 @@ class SettingsManager:
             )
             for message in removed_messages
         )
-        self._config.update("session", patch)
+        lock = (
+            self._legacy_plugin_mutation_lock()
+            if changes_legacy_plugins
+            else nullcontext()
+        )
+        with lock:
+            if changes_legacy_plugins:
+                self._config.reload()
+                assert isinstance(disabled_plugins, (list, tuple))
+                self._guard_legacy_plugin_changes(tuple(disabled_plugins))
+            self._config.update("session", patch)
 
     def drain_errors(self) -> list[SettingsError]:
         errors = list(self._adapter_errors)
@@ -224,58 +264,69 @@ class SettingsManager:
         disabled_skills: Iterable[str] | Unset = UNSET,
         disabled_plugins: Iterable[str] | Unset = UNSET,
     ) -> None:
-        if not isinstance(disabled_plugins, Unset):
+        changes_legacy_plugins = not isinstance(disabled_plugins, Unset)
+        if changes_legacy_plugins:
+            assert not isinstance(disabled_plugins, Unset)
             disabled_plugins = tuple(disabled_plugins)
-            self._guard_legacy_plugin_changes(disabled_plugins)
-        patch = build_settings_patch(
-            AgentSettingsUpdate(
-                default_model=default_model,
-                thinking_level=thinking_level,
-                steering_mode=steering_mode,
-                follow_up_mode=follow_up_mode,
-                theme=theme,
-                system_prompt=system_prompt,
-                hide_thinking_block=hide_thinking_block,
-                shell_path=shell_path,
-                quiet_startup=quiet_startup,
-                shell_command_prefix=shell_command_prefix,
-                npm_command=npm_command,
-                collapse_changelog=collapse_changelog,
-                enable_install_telemetry=enable_install_telemetry,
-                enable_skill_commands=enable_skill_commands,
-                enabled_models=enabled_models,
-                double_escape_action=double_escape_action,
-                tree_filter_mode=tree_filter_mode,
-                show_hardware_cursor=show_hardware_cursor,
-                editor_padding_x=editor_padding_x,
-                autocomplete_max_visible=autocomplete_max_visible,
-                keybindings=keybindings,
-                capabilities=capabilities,
-                thinking_budgets=thinking_budgets,
-                compaction=compaction,
-                branch_summary=branch_summary,
-                retry=retry,
-                images=images,
-                terminal=terminal,
-                markdown=markdown,
-                warnings=warnings,
-                method=method,
-                permissions=permissions,
-                tools=tools,
-                sandbox=sandbox,
-                statusline=statusline,
-                session_dir=session_dir,
-                resource_roots=resource_roots,
-                package_roots=package_roots,
-                package_sources=package_sources,
-                plugin_sources=plugin_sources,
-                disabled_skills=disabled_skills,
-                disabled_plugins=disabled_plugins,
-            )
+        lock = (
+            self._legacy_plugin_mutation_lock()
+            if changes_legacy_plugins
+            else nullcontext()
         )
+        with lock:
+            if changes_legacy_plugins:
+                self._config.reload()
+                assert not isinstance(disabled_plugins, Unset)
+                self._guard_legacy_plugin_changes(tuple(disabled_plugins))
+            patch = build_settings_patch(
+                AgentSettingsUpdate(
+                    default_model=default_model,
+                    thinking_level=thinking_level,
+                    steering_mode=steering_mode,
+                    follow_up_mode=follow_up_mode,
+                    theme=theme,
+                    system_prompt=system_prompt,
+                    hide_thinking_block=hide_thinking_block,
+                    shell_path=shell_path,
+                    quiet_startup=quiet_startup,
+                    shell_command_prefix=shell_command_prefix,
+                    npm_command=npm_command,
+                    collapse_changelog=collapse_changelog,
+                    enable_install_telemetry=enable_install_telemetry,
+                    enable_skill_commands=enable_skill_commands,
+                    enabled_models=enabled_models,
+                    double_escape_action=double_escape_action,
+                    tree_filter_mode=tree_filter_mode,
+                    show_hardware_cursor=show_hardware_cursor,
+                    editor_padding_x=editor_padding_x,
+                    autocomplete_max_visible=autocomplete_max_visible,
+                    keybindings=keybindings,
+                    capabilities=capabilities,
+                    thinking_budgets=thinking_budgets,
+                    compaction=compaction,
+                    branch_summary=branch_summary,
+                    retry=retry,
+                    images=images,
+                    terminal=terminal,
+                    markdown=markdown,
+                    warnings=warnings,
+                    method=method,
+                    permissions=permissions,
+                    tools=tools,
+                    sandbox=sandbox,
+                    statusline=statusline,
+                    session_dir=session_dir,
+                    resource_roots=resource_roots,
+                    package_roots=package_roots,
+                    package_sources=package_sources,
+                    plugin_sources=plugin_sources,
+                    disabled_skills=disabled_skills,
+                    disabled_plugins=disabled_plugins,
+                )
+            )
 
-        layer = scope if scope in {"global", "project"} else "session"
-        self._config.update(layer, patch)
+            layer = scope if scope in {"global", "project"} else "session"
+            self._config.update(layer, patch)
 
     def set_default_model(
         self, selection: ModelSelection | None, *, scope: SettingsScope = "session"
@@ -709,8 +760,7 @@ class SettingsManager:
             return {
                 key
                 for key in previous_patch.keys() | applied_patch.keys()
-                if previous_patch.get(key, UNSET)
-                != applied_patch.get(key, UNSET)
+                if previous_patch.get(key, UNSET) != applied_patch.get(key, UNSET)
             }
 
         try:
@@ -773,8 +823,7 @@ class SettingsManager:
                 sorted(
                     key
                     for key in changed_keys
-                    if current_patch.get(key, UNSET)
-                    != applied_patch.get(key, UNSET)
+                    if current_patch.get(key, UNSET) != applied_patch.get(key, UNSET)
                 )
             )
             if conflicts:
@@ -814,34 +863,29 @@ class SettingsManager:
     def set_disabled_plugins(
         self, names: Iterable[str], *, scope: SettingsScope = "global"
     ) -> None:
-        normalized = tuple(names)
-        self.update_settings(scope=scope, disabled_plugins=normalized)
+        self._replace_legacy_disabled_plugins(tuple(names), scope=scope)
 
     def bind_plugin_enablement_legacy_mutation_guard(
         self,
-        authority_id: str,
+        authority: object,
         guard: LegacyPluginMutationGuard,
     ) -> LegacyPluginCompatibilityPublisher:
         """Fence peer writes and return the sole derived compatibility writer."""
 
-        if not isinstance(authority_id, str) or not authority_id:
-            raise ValueError("Plugin enablement guard authority id must be non-empty")
+        if authority is None:
+            raise ValueError("Plugin enablement guard authority is required")
         if not callable(guard):
             raise TypeError("Plugin enablement legacy mutation guard is required")
-        if self._legacy_plugin_guard_authority_id is not None:
-            if self._legacy_plugin_guard_authority_id != authority_id:
+        if self._legacy_plugin_guard_authority is not None:
+            if self._legacy_plugin_guard_authority is not authority:
                 raise RuntimeError("Plugin enablement guard authority already bound")
             assert self._legacy_plugin_compatibility_publisher is not None
             return self._legacy_plugin_compatibility_publisher
 
-        def publish(names: Iterable[str], scope: SettingsScope) -> None:
-            patch = build_settings_patch(
-                AgentSettingsUpdate(disabled_plugins=tuple(names))
-            )
-            layer = scope if scope in {"global", "project"} else "session"
-            self._config.update(layer, patch)
+        def publish(projection: LegacyPluginCompatibilityProjectionV1) -> None:
+            self._publish_legacy_plugin_compatibility(projection)
 
-        self._legacy_plugin_guard_authority_id = authority_id
+        self._legacy_plugin_guard_authority = authority
         self._legacy_plugin_mutation_guard = guard
         self._legacy_plugin_compatibility_publisher = publish
         return publish
@@ -875,17 +919,90 @@ class SettingsManager:
         )
 
     def enable_plugin(self, name: str, *, scope: SettingsScope = "project") -> None:
-        self._guard_legacy_plugin_mutation(name)
-        self.update_settings(
-            scope=scope,
-            disabled_plugins=_without_name(self._settings.disabled_plugins, name),
-        )
+        self._mutate_legacy_plugin(name, disabled=False, scope=scope)
 
     def disable_plugin(self, name: str, *, scope: SettingsScope = "project") -> None:
-        self._guard_legacy_plugin_mutation(name)
-        self.update_settings(
-            scope=scope,
-            disabled_plugins=_with_name(self._settings.disabled_plugins, name),
+        self._mutate_legacy_plugin(name, disabled=True, scope=scope)
+
+    def _replace_legacy_disabled_plugins(
+        self,
+        names: tuple[str, ...],
+        *,
+        scope: SettingsScope,
+    ) -> None:
+        with self._legacy_plugin_mutation_lock():
+            self._config.reload()
+            self._guard_legacy_plugin_changes(names)
+            self._write_legacy_disabled_plugins(names, scope=scope)
+
+    def _mutate_legacy_plugin(
+        self,
+        name: str,
+        *,
+        disabled: bool,
+        scope: SettingsScope,
+    ) -> None:
+        with self._legacy_plugin_mutation_lock():
+            self._config.reload()
+            self._guard_legacy_plugin_mutation(name)
+            current = self._settings.disabled_plugins
+            names = (
+                _with_name(current, name) if disabled else _without_name(current, name)
+            )
+            self._write_legacy_disabled_plugins(names, scope=scope)
+
+    def _write_legacy_disabled_plugins(
+        self,
+        names: Iterable[str],
+        *,
+        scope: SettingsScope,
+    ) -> None:
+        patch = build_settings_patch(AgentSettingsUpdate(disabled_plugins=tuple(names)))
+        layer = scope if scope in {"global", "project"} else "session"
+        self._config.update(layer, patch)
+
+    def _publish_legacy_plugin_compatibility(
+        self,
+        projection: LegacyPluginCompatibilityProjectionV1,
+    ) -> None:
+        if not isinstance(projection, LegacyPluginCompatibilityProjectionV1):
+            raise TypeError("Legacy Plugin compatibility projection is required")
+        migrated = set(projection.migrated_plugin_ids)
+        disabled = set(projection.disabled_plugin_ids)
+        with self._legacy_plugin_mutation_lock():
+            self._config.reload()
+            retained = {
+                item for item in self._settings.disabled_plugins if item not in migrated
+            }
+            target = tuple(sorted(retained | disabled))
+            project = self._config.scope("project")
+            if project.path is not None:
+                self._write_legacy_disabled_plugins(target, scope="project")
+                self._config.scope("session").transform(
+                    lambda patch: {
+                        key: value
+                        for key, value in patch.items()
+                        if key != "disabled_plugins"
+                    }
+                )
+            else:
+                self._write_legacy_disabled_plugins(target, scope="session")
+            effective = set(self._settings.disabled_plugins)
+            if effective.intersection(migrated) != disabled:
+                raise RuntimeError(
+                    "Legacy Plugin compatibility projection did not become effective"
+                )
+
+    def _legacy_plugin_mutation_lock(self) -> AbstractContextManager[None]:
+        project = self._config.scope("project").path
+        global_path = self._config.scope("global").path
+        path = project if project is not None else global_path
+        if path is None:
+            return nullcontext()
+        return journal_file_lock(
+            path,
+            "exclusive",
+            lock_suffix=".plugin-enablement.lock",
         )
 
     def _guard_legacy_plugin_changes(self, names: tuple[str, ...]) -> None:

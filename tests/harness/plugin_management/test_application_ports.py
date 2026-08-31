@@ -22,6 +22,7 @@ from loushang.harness.plugin_management import (
     PluginManagementSourceRecordV1,
     PluginManagementSourceSnapshotV1,
     PluginPackageLifecycleSnapshotV1,
+    PluginPackageRetentionSnapshotV1,
     PluginPackageRevisionRefV1,
 )
 from loushang.harness.resources.plugins.selection import PluginInstanceRevisionRef
@@ -128,7 +129,7 @@ def test_correlated_projection_joins_owner_snapshots_without_new_state_clock(
     assert installed.desired_state == "installed_enabled"
     assert installed.enablement_migration_phase == "compatibility_window"
     assert installed.selected_package_revision == _package()
-    assert installed.convergence == "inactive"
+    assert installed.convergence == "unknown"
     assert installed.unknown_dimensions == ("instances", "packages", "retirement")
     assert tuple(item.operation_id for item in installed.operations) == (
         "operation-1",
@@ -137,7 +138,7 @@ def test_correlated_projection_joins_owner_snapshots_without_new_state_clock(
     document = projection.to_dict()
     assert document["projectionVersion"] == 1
     assert document["ownerRevisions"]["desiredState"] == 2
-    assert document["installations"][0]["convergence"] == "inactive"
+    assert document["installations"][0]["convergence"] == "unknown"
     assert not (tmp_path / "management-projection.json").exists()
 
 
@@ -237,6 +238,54 @@ def test_projection_reports_selected_facts_missing_from_supported_owners(
     )
     [view] = projection.installations
     assert "instances" in view.unknown_dimensions
+    assert "packages" in view.unknown_dimensions
+    assert view.convergence == "inactive"
+
+
+def test_projection_requires_package_owner_to_observe_selected_installation(
+    tmp_path: Path,
+) -> None:
+    desired, service = _management(tmp_path)
+    commands = PluginManagementCommandApplication(service)
+    commands.submit(
+        PluginManagementApplicationCommandV1(
+            correlation_id="install",
+            command=_command(action="install", revision=0, package=_package()),
+        )
+    )
+    queries = PluginManagementReadModelProjector(
+        desired_state=desired,
+        operations=service,
+        packages=_PackageOwner(
+            PluginPackageLifecycleSnapshotV1(
+                journal_revision=1,
+                startup_id="test-startup",
+                recovery_barrier=None,
+                open_pins=(),
+                cleanup_tasks=(),
+                packages=(
+                    PluginPackageRetentionSnapshotV1(
+                        package_revision=_package(),
+                        desired_installations=(),
+                        nonretired_instances=(),
+                        open_runtime_family_ids=(),
+                        open_pin_ids=(),
+                        open_cleanup_ids=(),
+                        terminal_failure_cleanup_ids=(),
+                        recovery_complete=False,
+                        gc_candidate=None,
+                    ),
+                ),
+            )
+        ),
+    )
+
+    projection = queries.snapshot(_query(correlation_id="package-owner-skew"))
+
+    assert tuple(item.code for item in projection.skew) == (
+        "desired_selected_package_not_observed",
+    )
+    [view] = projection.installations
     assert "packages" in view.unknown_dimensions
 
 

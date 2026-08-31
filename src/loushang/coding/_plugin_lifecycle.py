@@ -1080,7 +1080,15 @@ def project_coding_plugin_enablement_compatibility(
 
     if not isinstance(layout, CodingPluginLifecycleStateLayout):
         raise TypeError("Coding Plugin lifecycle layout is required")
-    _prepare_private_state_layout(layout)
+    if not layout.root.exists():
+        return (
+            PluginEnablementCompatibilityProjectionV1(
+                desired_inventory_revision=0,
+                migration_journal_revision=0,
+                disabled_plugin_ids=(),
+            ),
+            frozenset(),
+        )
     desired = PluginDesiredStateLedger(layout.desired_state)
     journal = PluginEnablementMigrationJournal(layout.enablement_migration)
     projection = PluginEnablementCompatibilityProjector(

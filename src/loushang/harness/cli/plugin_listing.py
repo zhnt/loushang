@@ -38,13 +38,10 @@ def _project_cli_record(view: object) -> dict[str, object]:
     )
     plugin_version = (
         package.plugin_version
-        if source is None and package is not None
-        else (
-            None
-            if source is None
-            else source.plugin_version
-            or (None if package is None else package.plugin_version)
-        )
+        if package is not None
+        else None
+        if source is None
+        else source.plugin_version
     )
     desired_state = getattr(view, "desired_state")
     enabled = {

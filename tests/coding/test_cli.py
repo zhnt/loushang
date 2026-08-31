@@ -9076,7 +9076,189 @@ def test_run_cli_reports_settings_load_warnings_once_for_plugin_toggles(
 
     assert stdout.getvalue() == "added plugin source\tplugins/debug-pack\n"
     assert stderr.getvalue().count("Warning (package command, project settings):") == 1
+    assert "plugin_enablement_migration_required:" in stderr.getvalue()
     assert "plugin Installation is not migrated: legacy" in stderr.getvalue()
+
+
+def test_run_cli_reports_migration_in_progress_code(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.coding._plugin_lifecycle import (
+        build_coding_plugin_lifecycle,
+        resolve_coding_plugin_lifecycle_state_layout,
+    )
+    from loushang.coding.bootstrap import create_services
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.coding.control import SettingsManager
+    from loushang.harness.plugin_management import (
+        PluginDesiredStateMutationV1,
+        PluginEnablementMigrationRequestV1,
+        PluginManagementCommandV1,
+        PluginPackageRevisionRefV1,
+        plugin_enablement_legacy_input_fingerprint,
+    )
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    settings = SettingsManager(
+        project_settings_path=tmp_path / ".loushang" / "settings.json"
+    )
+    services = create_services(settings_manager=settings)
+    layout = resolve_coding_plugin_lifecycle_state_layout(tmp_path)
+    lifecycle = build_coding_plugin_lifecycle(layout, startup_id="cli-in-progress")
+    key = lifecycle.installation_key("managed-pack")
+    package = PluginPackageRevisionRefV1(
+        plugin_id="managed-pack",
+        plugin_version="1.0.0",
+        package_content_digest="1" * 64,
+        dependency_lock_digest="2" * 64,
+        package_source_identity="test:managed-pack",
+    )
+    installed = lifecycle.management.submit(
+        PluginManagementCommandV1(
+            action="install",
+            mutation=PluginDesiredStateMutationV1(
+                operation_id="install-managed-pack",
+                idempotency_key="install-managed-pack",
+                expected_inventory_revision=0,
+                installation_key=key,
+                desired_state="installed_disabled",
+                package_revision=package,
+                actor_id="test",
+                policy_revision="test",
+            ),
+        )
+    )
+    assert installed.result is not None
+    fingerprint = plugin_enablement_legacy_input_fingerprint(
+        key,
+        legacy_disabled=True,
+        manifest_enabled_default=True,
+    )
+    lifecycle.enablement_migrations.journal.accept(
+        PluginEnablementMigrationRequestV1(
+            installation_key=key,
+            package_revision=package,
+            legacy_disabled=True,
+            manifest_enabled_default=True,
+            legacy_input_fingerprint=fingerprint,
+        ),
+        accepted_desired_inventory_revision=1,
+        prior_desired_history_revision=1,
+    )
+    lifecycle.release_owned_process_startup_lease()
+    stderr = StringIO()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--disable-plugin", "managed-pack"],
+            stdin=StringIO(""),
+            stdout=StringIO(),
+            stderr=stderr,
+            cwd=tmp_path,
+            services=services,
+            runtime_builder=lambda **kwargs: FakeRuntime(FakeSession("session-1")),
+        )
+        assert exit_code == 1
+
+    asyncio.run(scenario())
+
+    assert stderr.getvalue() == (
+        "Error: plugin_enablement_migration_in_progress: "
+        "plugin enablement migration is in progress: managed-pack\n"
+    )
+
+
+def test_run_cli_reports_compatibility_publish_failure_after_commit(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.coding._plugin_lifecycle import (
+        build_coding_plugin_lifecycle,
+        resolve_coding_plugin_lifecycle_state_layout,
+    )
+    from loushang.coding.bootstrap import create_services
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.coding.control import SettingsManager
+    from loushang.harness.plugin_management import (
+        PluginPackageRevisionRefV1,
+        plugin_enablement_legacy_input_fingerprint,
+    )
+
+    class FailingCompatibilitySettingsManager(SettingsManager):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self.publication_count = 0
+
+        def bind_plugin_enablement_legacy_mutation_guard(self, authority, guard):
+            publish = super().bind_plugin_enablement_legacy_mutation_guard(
+                authority,
+                guard,
+            )
+
+            def fail_after_initial_repair(projection):
+                self.publication_count += 1
+                if self.publication_count > 1:
+                    raise OSError("compatibility sink unavailable")
+                publish(projection)
+
+            return fail_after_initial_repair
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    settings_path = tmp_path / ".loushang" / "settings.json"
+    settings = FailingCompatibilitySettingsManager(
+        project_settings_path=settings_path
+    )
+    settings.set_disabled_plugins(("managed-pack",), scope="project")
+    services = create_services(settings_manager=settings)
+    layout = resolve_coding_plugin_lifecycle_state_layout(tmp_path)
+    lifecycle = build_coding_plugin_lifecycle(layout, startup_id="cli-publish-failure")
+    key = lifecycle.installation_key("managed-pack")
+    package = PluginPackageRevisionRefV1(
+        plugin_id="managed-pack",
+        plugin_version="1.0.0",
+        package_content_digest="1" * 64,
+        dependency_lock_digest="2" * 64,
+        package_source_identity="test:managed-pack",
+    )
+    try:
+        lifecycle.migrate_legacy_enablement(
+            key,
+            package,
+            legacy_disabled=True,
+            manifest_enabled_default=True,
+            legacy_input_fingerprint=plugin_enablement_legacy_input_fingerprint(
+                key,
+                legacy_disabled=True,
+                manifest_enabled_default=True,
+            ),
+        )
+    finally:
+        lifecycle.release_owned_process_startup_lease()
+    stderr = StringIO()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--enable-plugin", "managed-pack"],
+            stdin=StringIO(""),
+            stdout=StringIO(),
+            stderr=stderr,
+            cwd=tmp_path,
+            services=services,
+            runtime_builder=lambda **kwargs: FakeRuntime(FakeSession("session-1")),
+        )
+        assert exit_code == 1
+
+    asyncio.run(scenario())
+
+    assert stderr.getvalue() == (
+        "Error: plugin_enablement_compatibility_publish_failed: "
+        "plugin desired state committed but compatibility projection failed: "
+        "managed-pack\n"
+    )
+    assert lifecycle.desired.snapshot().installation(key).selection.desired_state == (
+        "installed_enabled"
+    )
 
 
 def test_run_cli_remove_missing_plugin_source_returns_stable_error(tmp_path) -> None:

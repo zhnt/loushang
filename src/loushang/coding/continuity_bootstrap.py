@@ -90,6 +90,7 @@ from loushang.harness.plugin_management.continuity_adapter import (
 from loushang.harness.resources.packages.materializer import (
     GitPackageMaterializerBackend,
     PackageMaterializer,
+    plugin_source_identity,
 )
 from loushang.harness.resources.plugins import (
     InstalledPlugin,
@@ -663,12 +664,7 @@ def _continuity_runtime_inputs(
     plugin_ids: set[str] = set()
     try:
         for source in sources:
-            current_binding = materializer.get_plugin_binding(source)
-            desired = (
-                None
-                if current_binding is None
-                else desired_by_source.get(current_binding.source_identity)
-            )
+            desired = desired_by_source.get(plugin_source_identity(source))
             if desired is not None and desired.selection.desired_state == "absent":
                 # A remove tombstone is authoritative.  Do not inspect or
                 # republish the mutable Source merely because the selected

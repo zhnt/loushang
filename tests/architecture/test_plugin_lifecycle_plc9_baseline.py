@@ -62,7 +62,6 @@ LEGACY_DISABLED_PLUGIN_FILES = {
     Path("src/loushang/coding/bootstrap.py"),
     Path("src/loushang/coding/cli/__main__.py"),
     Path("src/loushang/coding/continuity_bootstrap.py"),
-    Path("src/loushang/coding/plugin_enablement_compatibility.py"),
     Path("src/loushang/harness/config/agent/_settings_codec.py"),
     Path("src/loushang/harness/config/agent/_settings_patch.py"),
     Path("src/loushang/harness/config/agent/manager.py"),
@@ -124,10 +123,6 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS = Counter(
         ): 2,
         (Path("src/loushang/coding/bootstrap.py"), "_create_agent_session"): 1,
         (
-            Path("src/loushang/coding/plugin_enablement_compatibility.py"),
-            "CodingPluginEnablementCompatibilityWriter._current_disabled_plugins",
-        ): 1,
-        (
             Path("src/loushang/harness/resources/packages/roots.py"),
             "resolve_package_resource_roots",
         ): 3,
@@ -163,22 +158,14 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS = Counter(
         (
             Path("src/loushang/harness/config/agent/manager.py"),
             "SettingsManager.update_settings",
-        ): 7,
+        ): 9,
         (
             Path("src/loushang/harness/config/agent/manager.py"),
             "SettingsManager.apply_overrides",
-        ): 5,
+        ): 6,
         (
             Path("src/loushang/harness/config/agent/manager.py"),
             "SettingsManager.get_disabled_plugins",
-        ): 1,
-        (
-            Path("src/loushang/harness/config/agent/manager.py"),
-            "SettingsManager.set_disabled_plugins",
-        ): 1,
-        (
-            Path("src/loushang/harness/config/agent/manager.py"),
-            "SettingsManager.bind_plugin_enablement_legacy_mutation_guard.publish",
         ): 1,
         (
             Path("src/loushang/harness/config/agent/manager.py"),
@@ -186,12 +173,16 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS = Counter(
         ): 1,
         (
             Path("src/loushang/harness/config/agent/manager.py"),
-            "SettingsManager.enable_plugin",
-        ): 2,
+            "SettingsManager._mutate_legacy_plugin",
+        ): 1,
         (
             Path("src/loushang/harness/config/agent/manager.py"),
-            "SettingsManager.disable_plugin",
-        ): 2,
+            "SettingsManager._write_legacy_disabled_plugins",
+        ): 1,
+        (
+            Path("src/loushang/harness/config/agent/manager.py"),
+            "SettingsManager._publish_legacy_plugin_compatibility",
+        ): 3,
         (
             Path("src/loushang/harness/resources/packages/projection.py"),
             "collect_projected_package_entries",

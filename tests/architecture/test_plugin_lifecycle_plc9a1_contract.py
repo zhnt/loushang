@@ -20,6 +20,9 @@ CODING_BINDING = Path("src/loushang/coding/plugin_management_cli.py")
 CODING_COMPATIBILITY = Path(
     "src/loushang/coding/plugin_enablement_compatibility.py"
 )
+CODING_BOOTSTRAP = Path("src/loushang/coding/bootstrap.py")
+CODING_CONTINUITY = Path("src/loushang/coding/continuity_bootstrap.py")
+SETTINGS_MANAGER = Path("src/loushang/harness/config/agent/manager.py")
 CODING_LIFECYCLE = Path("src/loushang/coding/_plugin_lifecycle.py")
 
 
@@ -47,6 +50,8 @@ def test_plc9a1_contract_and_new_owner_sites_are_indexed() -> None:
         "CodingPluginEnablementCompatibilityWriter" in inventory
     )
     assert "build_coding_plugin_management_cli_binding" in inventory
+    assert "bootstrap.py::_create_agent_session" in inventory
+    assert "continuity_bootstrap.py::bind_coding_configured_continuity" in inventory
 
 
 def test_plc9a1_application_is_transport_neutral_and_projection_only() -> None:
@@ -152,6 +157,7 @@ def test_plc9a1_coding_transport_adapter_does_not_construct_owner_stores() -> No
     adapter = _source(CODING_BINDING)
     compatibility = _source(CODING_COMPATIBILITY)
     lifecycle = _source(CODING_LIFECYCLE)
+    settings = _source(SETTINGS_MANAGER)
 
     for forbidden in (
         "PluginDesiredStateLedger(",
@@ -164,6 +170,12 @@ def test_plc9a1_coding_transport_adapter_does_not_construct_owner_stores() -> No
     assert "class CodingPluginEnablementCompatibilityWriter:" in compatibility
     assert "with journal_file_lock(self.layout.coordination_lock" in compatibility
     assert "bind_plugin_enablement_legacy_mutation_guard" in compatibility
+    assert "bind(self, self._assert_legacy_mutation_allowed)" in compatibility
+    assert "authority_id" not in compatibility
+    assert "LegacyPluginCompatibilityProjectionV1(" in compatibility
+    assert "self._legacy_plugin_guard_authority is not authority" in settings
+    assert 'lock_suffix=".plugin-enablement.lock"' in settings
+    assert "self._config.reload()" in settings
     assert "def build_coding_plugin_management_application(" in lifecycle
     assert "def project_coding_plugin_enablement_compatibility(" in lifecycle
 
@@ -179,6 +191,21 @@ def test_plc9a1_documents_and_tests_the_compatibility_floor() -> None:
         "`absent` tombstone remains authoritative on restart",
     ):
         assert boundary in contract
+
+
+def test_plc9a1_all_durable_coding_callers_bind_the_fence() -> None:
+    binding = _source(CODING_BINDING)
+    bootstrap = _source(CODING_BOOTSTRAP)
+    continuity = _source(CODING_CONTINUITY)
+
+    assert "bind_coding_plugin_enablement_compatibility(" in binding
+    assert "resolve_coding_plugin_lifecycle_state_layout(" in bootstrap
+    assert "bind_coding_plugin_enablement_compatibility(" in bootstrap
+    assert continuity.count("bind_coding_plugin_enablement_compatibility(") == 1
+    assert continuity.count("compatibility.reconcile()") == 2
+    assert "coding_plugin_compatibility_fence_unavailable" in _source(
+        CODING_COMPATIBILITY
+    )
 
 
 def test_plc9a1_preserves_source_aliases_and_package_command_boundary() -> None:

@@ -1067,13 +1067,15 @@ def _create_agent_session(
             )
             product_composition = base_plugin_session_preparation.product_composition
 
-        if coding_plugin_lifecycle is not None:
-            compatibility = bind_coding_plugin_enablement_compatibility(
-                coding_plugin_lifecycle.layout,
-                services.settings_manager,
-            )
-            if compatibility is not None:
-                compatibility.reconcile()
+        compatibility_layout = resolve_coding_plugin_lifecycle_state_layout(
+            resolved_cwd
+        )
+        compatibility = bind_coding_plugin_enablement_compatibility(
+            compatibility_layout,
+            services.settings_manager,
+        )
+        if compatibility is not None:
+            compatibility.reconcile()
 
         adapter, projection = _prepare_coding_catalog_projection(
             loader,
