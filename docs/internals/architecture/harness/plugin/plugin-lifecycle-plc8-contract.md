@@ -116,12 +116,16 @@ Skill-root identity. The graph-owned `PreparedResourceOwnerGeneration`
 atomically derives those facts, constructs the canonical consumer itself,
 prepares a single-use binding in the action authority's external owner registry,
 and consumes it for that exact projection before returning the consumer. Owner
-provenance begins only when the nominal Resource generation is attached to the
-nominal `StagedResourceCompositionCandidate`: that exact attachment prepares an
-opaque, single-use receipt, and the generation must consume the receipt before
-the authority records its root-owned lifecycle. There is no owner registrar to
-claim during module import and no function that accepts an arbitrary owner as a
-new provenance root. The registry records owner provenance and
+provenance begins only when an exact factory-recorded Resource generation is
+attached to an exact staging-factory `StagedResourceCompositionCandidate`.
+Neither type is subclassable for this authority path; the structural owner
+Protocol remains a typing seam only and is never an admission check. That exact
+attachment prepares an opaque, single-use receipt. Receipt consumption first
+creates an unpublished `attachment_pending` enrollment; only a successful
+return to the candidate commits it as the root-owned lifecycle, while an
+exception cancels both the receipt and any pending enrollment. There is no
+owner registrar to claim during module import and no function that accepts an
+arbitrary owner as a new provenance root. The registry records owner provenance and
 graph-owned/retired lifecycle state; no mutable registration dictionary lives
 on the owner instance. No transferable grant, caller-provided snapshot, or
 caller-provided consumer crosses that construction boundary. A structural

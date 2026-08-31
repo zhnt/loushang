@@ -523,7 +523,10 @@ def test_catalog_action_authority_cannot_be_publicly_forged() -> None:
     with pytest.raises(TypeError, match="candidate-minted"):
         action_authority._CatalogActionOwnerAttachmentReceipt()
     with pytest.raises(TypeError, match="composition-minted"):
-        action_authority._CatalogActionOwnerCandidate()
+        action_authority._CatalogActionOwnerCandidateIdentity()
+    with pytest.raises(TypeError, match="factory-minted"):
+        action_authority._CatalogActionOwnerGenerationFactoryIdentity()
+    assert not hasattr(action_authority, "_CatalogActionOwnerCandidate")
     with pytest.raises(TypeError, match="Resource-owner-minted"):
         action_authority._CatalogActionOwnerBinding()
     with pytest.raises(TypeError, match="Resource-owner-minted"):
@@ -572,7 +575,161 @@ def test_fake_owner_cannot_enroll_through_structural_attachment() -> None:
 
     with pytest.raises(TypeError, match="requires a prepared owner generation"):
         genuine_candidate._attach_prepared_owner_generation(StructuralGeneration())
+
+    class RogueCandidate(type(genuine_candidate)):
+        pass
+
+    with pytest.raises(TypeError, match="cannot be subclassed"):
+        RogueCandidate(
+            binding=genuine_candidate.binding,
+            _binder=genuine_candidate._binder,
+            _profile=profile,
+        )
     genuine_candidate.dispose()
+
+
+def test_attachment_enrollment_rolls_back_after_receipt_consumption(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        profile = RuntimeProfileResolver().resolve(
+            standard_capability_composition_plan(product_id="coding")
+        )
+        candidate = stage_resource_composition_candidate(profile)
+        captured_owners = []
+        captured_receipts = []
+        original_accept = PreparedResourceOwnerGeneration._accept_candidate_attachment
+
+        def consume_then_fail(self, receipt):  # type: ignore[no-untyped-def]
+            captured_owners.append(self)
+            captured_receipts.append(receipt)
+            original_accept(self, receipt)
+            raise RuntimeError("injected after receipt consumption")
+
+        monkeypatch.setattr(
+            PreparedResourceOwnerGeneration,
+            "_accept_candidate_attachment",
+            consume_then_fail,
+        )
+        with pytest.raises(RuntimeError, match="injected after receipt consumption"):
+            await prepare_first_party_resource_owner_generation(
+                staged_candidate=candidate,
+                product_id="coding",
+                scope_id="workspace:test",
+                runtime_id="managed-action:attachment-rollback",
+                product_policy_revision="managed-action-test-v1",
+                root_handles=(),
+                issued_at=10,
+                expires_at=100,
+                now=20,
+                projection_cwd=tmp_path,
+            )
+        [owner] = captured_owners
+        [receipt] = captured_receipts
+        assert not candidate.has_prepared_owner_generation
+        assert owner._skill_action_owner_lifecycle is None
+        with pytest.raises(TypeError, match="not live exact evidence"):
+            action_authority._consume_catalog_action_owner_attachment(
+                receipt,
+                owner=owner,
+            )
+        forged_lifecycle = object.__new__(
+            action_authority._CatalogActionOwnerGenerationLifecycle
+        )
+        with pytest.raises(TypeError, match="not authority-recorded"):
+            action_authority._begin_catalog_action_owner_generation(
+                forged_lifecycle,
+                owner=owner,
+            )
+        candidate.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_authority_first_cold_import_mounts_exact_resource_owner() -> None:
+    script = """
+import asyncio
+import loushang.harness.resources._skill_action_authority
+from hashlib import sha256
+from pathlib import Path
+from loushang.harness.capabilities import (
+    CapabilityGraphPlanRequest,
+    RuntimeCapabilityGraphBinder,
+    RuntimeCapabilityGraphPlanner,
+    RuntimeCapabilityGraphRuntime,
+    stage_resource_composition_candidate,
+    standard_capability_composition_plan,
+)
+from loushang.harness.capabilities.resources_consumers import (
+    ResourceSkillStatusCatalogCapabilityConsumer,
+)
+from loushang.harness.capabilities.resources_contracts import (
+    RESOURCES_CAPABILITY_DEFINITION_V4,
+    RESOURCES_SKILL_STATUS_CATALOG_LOAD_REQUIREMENT,
+)
+from loushang.harness.capabilities.resources_provider import (
+    resources_capability_provider_binding,
+)
+from loushang.harness.resource_catalog.generation import (
+    prepare_first_party_resource_owner_generation,
+)
+from loushang.harness.runtime import RuntimeProfileResolver
+
+async def main():
+    profile = RuntimeProfileResolver().resolve(
+        standard_capability_composition_plan(product_id="coding")
+    )
+    candidate = stage_resource_composition_candidate(profile)
+    await prepare_first_party_resource_owner_generation(
+        staged_candidate=candidate,
+        product_id="coding",
+        scope_id="workspace:cold-import",
+        runtime_id="resource-owner:cold-import",
+        product_policy_revision="cold-import-v1",
+        root_handles=(),
+        issued_at=10,
+        expires_at=100,
+        now=20,
+        projection_cwd=Path.cwd(),
+    )
+    binding = resources_capability_provider_binding(
+        profile=profile,
+        scope_instance_id="session:cold-import",
+        staged_candidate=candidate,
+        enable_skill_catalog_v4=True,
+    )
+    plan = RuntimeCapabilityGraphPlanner().plan(
+        CapabilityGraphPlanRequest(
+            product_id="coding",
+            roots=(RESOURCES_CAPABILITY_DEFINITION_V4.capability_id,),
+            definitions=(RESOURCES_CAPABILITY_DEFINITION_V4,),
+            providers=(binding.provider,),
+        )
+    )
+    runtime = RuntimeCapabilityGraphRuntime(
+        product_id="coding",
+        runtime_id="coding-session:cold-import",
+        profile_fingerprint=sha256(b"cold-import-profile").hexdigest(),
+    )
+    binder = RuntimeCapabilityGraphBinder()
+    await binder.bind(runtime, plan, (binding,))
+    catalog = ResourceSkillStatusCatalogCapabilityConsumer(
+        runtime.capture(RESOURCES_SKILL_STATUS_CATALOG_LOAD_REQUIREMENT)
+    )
+    assert not catalog.skill_consumer.list_effective_skills()
+    assert await binder.dispose(runtime) == ()
+
+asyncio.run(main())
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=Path.cwd(),
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr
 
 
 def test_catalog_action_owner_capability_rejects_unregistered_binding() -> None:
@@ -612,6 +769,14 @@ def test_catalog_action_owner_capability_rejects_complete_lookalike(
             fake_owner,
             "_skill_action_owner_lifecycle",
             owner_generation._skill_action_owner_lifecycle,
+        )
+        object.__setattr__(
+            fake_owner,
+            "_skill_action_owner_factory_identity",
+            owner_generation._skill_action_owner_factory_identity,
+        )
+        assert not action_authority._is_catalog_action_owner_generation_factory_recorded(
+            fake_owner
         )
         with pytest.raises(TypeError, match="not authority-recorded"):
             action_authority._prepare_catalog_action_owner_binding(

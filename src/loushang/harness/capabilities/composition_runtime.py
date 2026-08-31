@@ -8,9 +8,10 @@ owns only the neutral factories and their configuration contracts.
 
 from __future__ import annotations
 
+import weakref
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, replace
-from typing import Any, Literal, TypeVar
+from typing import Any, Literal, Protocol, TypeVar, cast
 
 from loushang.harness.capabilities.packs import (
     CapabilityPack,
@@ -19,8 +20,11 @@ from loushang.harness.capabilities.packs import (
 )
 from loushang.harness.capabilities.prompt import PromptSectionComposer
 from loushang.harness.resources._skill_action_authority import (
+    _OWNER_CANDIDATES,
     _cancel_catalog_action_owner_attachment,
-    _CatalogActionOwnerCandidate,
+    _CatalogActionOwnerCandidateIdentity,
+    _CatalogActionOwnerCandidateRecord,
+    _is_catalog_action_owner_generation_factory_recorded,
     _prepare_catalog_action_owner_attachment,
 )
 from loushang.harness.resources.activation import (
@@ -70,75 +74,62 @@ T = TypeVar("T")
 TValue = TypeVar("TValue")
 
 
-class _PreparedResourceOwnerGeneration:
-    """Nominal lifecycle seam for the candidate-owned Catalog generation.
+class _PreparedResourceOwnerGeneration(Protocol):
+    """Typing-only lifecycle seam for the candidate-owned Catalog generation.
 
     The concrete implementation lives below ``resource_catalog``.  Keeping
-    this nominal seam here prevents structural lookalikes from entering the
-    ownership graph without importing Resource source implementations back
-    into the Capability layer.
+    the interface here prevents the Capability layer from importing Resource
+    source implementations. Runtime authority comes from the external exact
+    factory-identity registry, never from this structural interface.
     """
-
-    __slots__ = ()
 
     provider_binding_fingerprint: str
 
     @property
-    def ownership_state(self) -> str:
-        raise NotImplementedError
+    def ownership_state(self) -> str: ...
 
     @property
-    def catalog_snapshot(self) -> object:
-        raise NotImplementedError
+    def catalog_snapshot(self) -> object: ...
 
     @property
-    def catalog_projection(self) -> object:
-        raise NotImplementedError
+    def catalog_projection(self) -> object: ...
 
     @property
-    def _skill_status_projection(self) -> object:
-        raise NotImplementedError
+    def _skill_status_projection(self) -> object: ...
 
-    def load_handle(self, identity: Any) -> Any:
-        raise NotImplementedError
+    def load_handle(self, identity: Any) -> Any: ...
 
-    async def load(self, handle: Any) -> Any:
-        raise NotImplementedError
+    async def load(self, handle: Any) -> Any: ...
 
     def _construct_skill_catalog_consumer(
         self,
         *,
         include_status: bool,
-    ) -> object:
-        raise NotImplementedError
+    ) -> object: ...
 
-    def _borrows_extension_source_lease(self, source: object) -> bool:
-        raise NotImplementedError
+    def _borrows_extension_source_lease(self, source: object) -> bool: ...
 
-    def _accept_candidate_attachment(self, receipt: object) -> None:
-        raise NotImplementedError
+    def _accept_candidate_attachment(self, receipt: object) -> None: ...
 
-    def _begin_graph_construction(self) -> None:
-        raise NotImplementedError
+    def _commit_candidate_attachment(self) -> None: ...
 
-    def _commit_graph_ownership(self) -> None:
-        raise NotImplementedError
+    def _rollback_candidate_attachment(self) -> None: ...
 
-    def _restore_root_ownership(self) -> None:
-        raise NotImplementedError
+    def _begin_graph_construction(self) -> None: ...
 
-    async def dispose_root_owned(self) -> None:
-        raise NotImplementedError
+    def _commit_graph_ownership(self) -> None: ...
 
-    async def _dispose_graph_owned(self) -> None:
-        raise NotImplementedError
+    def _restore_root_ownership(self) -> None: ...
+
+    async def dispose_root_owned(self) -> None: ...
+
+    async def _dispose_graph_owned(self) -> None: ...
 
     def retirement_receipt(
         self,
         *,
         contribution_ids: tuple[str, ...],
-    ) -> OwnerGenerationRetirementReceipt:
-        raise NotImplementedError
+    ) -> OwnerGenerationRetirementReceipt: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -345,7 +336,7 @@ class _RootOwnedResourceCapabilityHandles:
         self._runtime.dispose()
 
 
-class StagedResourceCompositionCandidate(_CatalogActionOwnerCandidate):
+class StagedResourceCompositionCandidate:
     """Staged resource mechanisms with exactly one transferable owner.
 
     Synchronous Product bootstrap owns the candidate initially.  The Session
@@ -362,12 +353,35 @@ class StagedResourceCompositionCandidate(_CatalogActionOwnerCandidate):
         _binder: RuntimeProfileBinder,
         _profile: ResolvedRuntimeProfile,
     ) -> None:
-        super().__init__()
+        if type(self) is not StagedResourceCompositionCandidate:
+            raise TypeError("Resource composition candidates cannot be subclassed")
         self.__candidate = _CapabilityCompositionCandidate(
             binding=binding,
             binder=_binder,
             profile=_profile,
         )
+        identity = object.__new__(_CatalogActionOwnerCandidateIdentity)
+        identity_id = id(identity)
+
+        def discard(
+            reference: weakref.ReferenceType[StagedResourceCompositionCandidate],
+        ) -> None:
+            current = _OWNER_CANDIDATES.get(identity_id)
+            if current is not None and current.candidate_ref is reference:
+                _OWNER_CANDIDATES.pop(identity_id, None)
+
+        candidate_ref = weakref.ref(self, discard)
+        _OWNER_CANDIDATES[identity_id] = _CatalogActionOwnerCandidateRecord(
+            candidate_ref=candidate_ref,
+            identity=identity,
+        )
+        self.__catalog_action_owner_candidate_identity = identity
+
+    @property
+    def _catalog_action_owner_candidate_identity(
+        self,
+    ) -> _CatalogActionOwnerCandidateIdentity:
+        return self.__catalog_action_owner_candidate_identity
 
     @property
     def binding(self) -> RuntimeProfileBinding:
@@ -444,21 +458,24 @@ class StagedResourceCompositionCandidate(_CatalogActionOwnerCandidate):
         """Take exclusive root custody of one unpublished owner generation."""
 
         self._assert_can_attach_prepared_owner_generation()
-        if not isinstance(generation, _PreparedResourceOwnerGeneration):
+        if not _is_catalog_action_owner_generation_factory_recorded(generation):
             raise TypeError("Resource candidate requires a prepared owner generation")
-        if generation.ownership_state != "root_owned":
+        prepared = cast(_PreparedResourceOwnerGeneration, generation)
+        if prepared.ownership_state != "root_owned":
             raise RuntimeError("Prepared owner generation is not root-owned")
-        self.__candidate.owner_generation = generation
+        self.__candidate.owner_generation = prepared
         attachment = None
         try:
             attachment = _prepare_catalog_action_owner_attachment(
                 candidate=self,
-                owner=generation,
+                owner=prepared,
             )
-            generation._accept_candidate_attachment(attachment)
+            prepared._accept_candidate_attachment(attachment)
+            prepared._commit_candidate_attachment()
         except BaseException:
             if attachment is not None:
                 _cancel_catalog_action_owner_attachment(attachment)
+            prepared._rollback_candidate_attachment()
             self.__candidate.owner_generation = None
             raise
 

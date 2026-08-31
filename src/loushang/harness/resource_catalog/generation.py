@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import weakref
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -9,7 +10,6 @@ from typing import Literal
 
 from loushang.harness.capabilities.composition_runtime import (
     StagedResourceCompositionCandidate,
-    _PreparedResourceOwnerGeneration,
 )
 from loushang.harness.resource_catalog.inputs import AdmittedPackageResource
 from loushang.harness.resource_catalog.shadow import (
@@ -44,15 +44,20 @@ from loushang.harness.resources._discovery_conventions import (
     DEFAULT_CONTEXT_FILE_NAMES,
 )
 from loushang.harness.resources._skill_action_authority import (
+    _OWNER_GENERATION_FACTORIES,
     _begin_catalog_action_owner_generation,
     _cancel_catalog_action_owner_binding,
     _CatalogActionOwnerAttachmentReceipt,
+    _CatalogActionOwnerGenerationFactoryIdentity,
+    _CatalogActionOwnerGenerationFactoryRecord,
     _CatalogActionOwnerGenerationLifecycle,
+    _commit_catalog_action_owner_attachment,
     _commit_catalog_action_owner_generation,
     _consume_catalog_action_owner_attachment,
     _prepare_catalog_action_owner_binding,
     _restore_catalog_action_owner_generation,
     _retire_catalog_action_owner_generation,
+    _rollback_catalog_action_owner_attachment,
 )
 from loushang.harness.resources._skill_catalog_consumer import (
     EffectiveSkillCatalogProjection,
@@ -103,7 +108,7 @@ class _PreparedSkillCatalogOwnerView:
 
 
 @dataclass(slots=True, weakref_slot=True)
-class PreparedResourceOwnerGeneration(_PreparedResourceOwnerGeneration):
+class PreparedResourceOwnerGeneration:
     """One unpublished Catalog generation with exactly one transfer path.
 
     Instances are created only by the preparation function below and are
@@ -130,6 +135,37 @@ class PreparedResourceOwnerGeneration(_PreparedResourceOwnerGeneration):
         init=False,
         repr=False,
     )
+    _skill_action_owner_factory_identity: (
+        _CatalogActionOwnerGenerationFactoryIdentity
+    ) = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        if type(self) is not PreparedResourceOwnerGeneration:
+            raise TypeError("Prepared Resource owner generations cannot be subclassed")
+        identity = object.__new__(_CatalogActionOwnerGenerationFactoryIdentity)
+        identity_id = id(identity)
+
+        def discard(
+            reference: weakref.ReferenceType[PreparedResourceOwnerGeneration],
+        ) -> None:
+            current = _OWNER_GENERATION_FACTORIES.get(identity_id)
+            if current is not None and current.owner_ref is reference:
+                _OWNER_GENERATION_FACTORIES.pop(identity_id, None)
+
+        owner_ref = weakref.ref(self, discard)
+        _OWNER_GENERATION_FACTORIES[identity_id] = (
+            _CatalogActionOwnerGenerationFactoryRecord(
+                owner_ref=owner_ref,
+                identity=identity,
+            )
+        )
+        self._skill_action_owner_factory_identity = identity
+
+    @property
+    def _catalog_action_owner_generation_factory_identity(
+        self,
+    ) -> _CatalogActionOwnerGenerationFactoryIdentity:
+        return self._skill_action_owner_factory_identity
 
     @classmethod
     def _from_shadow(
@@ -169,6 +205,16 @@ class PreparedResourceOwnerGeneration(_PreparedResourceOwnerGeneration):
         self._skill_action_owner_lifecycle = (
             _consume_catalog_action_owner_attachment(receipt, owner=self)
         )
+
+    def _commit_candidate_attachment(self) -> None:
+        _commit_catalog_action_owner_attachment(
+            self._require_skill_action_owner_lifecycle(),
+            owner=self,
+        )
+
+    def _rollback_candidate_attachment(self) -> None:
+        if _rollback_catalog_action_owner_attachment(owner=self):
+            self._skill_action_owner_lifecycle = None
 
     def retirement_receipt(
         self,

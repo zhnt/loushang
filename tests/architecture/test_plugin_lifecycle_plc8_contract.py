@@ -146,6 +146,9 @@ def test_managed_action_consumes_catalog_facts_and_existing_host_authorities() -
     assert "_managed_action_owner_capability" not in authority_source
     assert "consumer_ref" not in authority_source
     assert "_CatalogActionOwnerAttachmentReceipt" in authority_source
+    assert "_CatalogActionOwnerGenerationFactoryIdentity" in authority_source
+    assert "attachment_pending" in authority_source
+    assert "_rollback_catalog_action_owner_attachment" in authority_source
     assert "_prepare_catalog_action_owner_attachment" in authority_source
     assert "_consume_catalog_action_owner_attachment" in authority_source
     assert "_new_catalog_action_owner_generation_lifecycle" not in authority_source
@@ -154,9 +157,17 @@ def test_managed_action_consumes_catalog_facts_and_existing_host_authorities() -
     assert "_skill_action_owner_registrations" not in owner_source
     assert "_consume_catalog_action_owner_attachment" in owner_source
     assert "_prepare_catalog_action_owner_binding" in owner_source
-    assert "class _PreparedResourceOwnerGeneration:" in composition_source
-    assert "class _PreparedResourceOwnerGeneration(Protocol)" not in composition_source
-    assert "generation._accept_candidate_attachment(attachment)" in composition_source
+    assert "class _PreparedResourceOwnerGeneration(Protocol)" in composition_source
+    assert "isinstance(generation, _PreparedResourceOwnerGeneration)" not in (
+        composition_source
+    )
+    assert "_is_catalog_action_owner_generation_factory_recorded" in (
+        composition_source
+    )
+    assert "type(self) is not StagedResourceCompositionCandidate" in composition_source
+    assert "prepared._accept_candidate_attachment(attachment)" in composition_source
+    assert "prepared._commit_candidate_attachment()" in composition_source
+    assert "prepared._rollback_candidate_attachment()" in composition_source
     assert "skill_consumer=skill_consumer" in provider_source
     assert product_source.count(
         "self._skill_catalog_consumer = skill_catalog.skill_consumer"

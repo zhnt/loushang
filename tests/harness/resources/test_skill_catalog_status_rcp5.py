@@ -565,6 +565,16 @@ def test_prepared_owner_generation_retains_status_until_disposal(
             catalog_generation=1,
         )
 
+        class RogueGeneration(PreparedResourceOwnerGeneration):
+            pass
+
+        with pytest.raises(TypeError, match="cannot be subclassed"):
+            RogueGeneration._from_shadow(
+                shadow,
+                runtime_id="resource-owner:rogue-skill-status",
+                catalog_generation=1,
+            )
+
         assert generation.catalog_projection is None
         projection = generation._skill_status_projection
         assert isinstance(projection, SkillCatalogStatusProjection)

@@ -12,21 +12,20 @@ from pathlib import Path
 from typing import Literal
 
 
-class _CatalogActionOwnerCandidate:
-    """Nominal provenance root for one Resource composition candidate."""
-
-    __slots__ = ()
+@dataclass(frozen=True, slots=True, init=False)
+class _CatalogActionOwnerCandidateIdentity:
+    """Opaque identity created inline by the exact Resource candidate."""
 
     def __init__(self) -> None:
-        if type(self) is _CatalogActionOwnerCandidate:
-            raise TypeError("Catalog action owner candidates are composition-minted")
-        candidate_id = id(self)
+        raise TypeError("Catalog action owner candidates are composition-minted")
 
-        def discard(reference: weakref.ReferenceType[object]) -> None:
-            if _OWNER_CANDIDATES.get(candidate_id) is reference:
-                _OWNER_CANDIDATES.pop(candidate_id, None)
 
-        _OWNER_CANDIDATES[candidate_id] = weakref.ref(self, discard)
+@dataclass(frozen=True, slots=True, init=False)
+class _CatalogActionOwnerGenerationFactoryIdentity:
+    """Opaque identity created inline by the exact Resource owner factory."""
+
+    def __init__(self) -> None:
+        raise TypeError("Catalog action owner generations are factory-minted")
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -107,6 +106,7 @@ class _CatalogActionOwnerGenerationRecord:
     owner_ref: Callable[[], object | None]
     lifecycle: _CatalogActionOwnerGenerationLifecycle
     state: Literal[
+        "attachment_pending",
         "root_owned",
         "graph_constructing",
         "graph_owned",
@@ -120,6 +120,18 @@ class _CatalogActionOwnerAttachmentRecord:
     candidate_ref: Callable[[], object | None]
     owner_ref: Callable[[], object | None]
     receipt: _CatalogActionOwnerAttachmentReceipt
+
+
+@dataclass(frozen=True, slots=True)
+class _CatalogActionOwnerCandidateRecord:
+    candidate_ref: Callable[[], object | None]
+    identity: _CatalogActionOwnerCandidateIdentity
+
+
+@dataclass(frozen=True, slots=True)
+class _CatalogActionOwnerGenerationFactoryRecord:
+    owner_ref: Callable[[], object | None]
+    identity: _CatalogActionOwnerGenerationFactoryIdentity
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,7 +151,11 @@ class _CatalogActionRegistration:
     fact: _CatalogActionFact
 
 
-_OWNER_CANDIDATES: dict[int, weakref.ReferenceType[object]] = {}
+_OWNER_CANDIDATES: dict[int, _CatalogActionOwnerCandidateRecord] = {}
+_OWNER_GENERATION_FACTORIES: dict[
+    int,
+    _CatalogActionOwnerGenerationFactoryRecord,
+] = {}
 _OWNER_GENERATIONS: dict[int, _CatalogActionOwnerGenerationRecord] = {}
 _OWNER_GENERATION_IDENTITIES: dict[int, int] = {}
 _OWNER_ATTACHMENTS: dict[int, _CatalogActionOwnerAttachmentRecord] = {}
@@ -154,11 +170,16 @@ def _prepare_catalog_action_owner_attachment(
 ) -> _CatalogActionOwnerAttachmentReceipt:
     """Record one exact candidate-to-generation attachment before handoff."""
 
-    candidate_ref = _OWNER_CANDIDATES.get(id(candidate))
+    identity = getattr(candidate, "_catalog_action_owner_candidate_identity", None)
+    candidate_record = (
+        _OWNER_CANDIDATES.get(id(identity))
+        if type(identity) is _CatalogActionOwnerCandidateIdentity
+        else None
+    )
     if (
-        candidate_ref is None
-        or candidate_ref() is not candidate
-        or not isinstance(candidate, _CatalogActionOwnerCandidate)
+        candidate_record is None
+        or candidate_record.identity is not identity
+        or candidate_record.candidate_ref() is not candidate
     ):
         raise TypeError("Catalog action owner candidate is not authority-recorded")
     if getattr(candidate, "ownership_state", None) != "root_owned":
@@ -170,12 +191,12 @@ def _prepare_catalog_action_owner_attachment(
         or require_owner() is not owner
     ):
         raise TypeError("Catalog action owner attachment fact is invalid")
+    if not _is_catalog_action_owner_generation_factory_recorded(owner):
+        raise TypeError("Catalog action owner generation is not factory-recorded")
     receipt = object.__new__(_CatalogActionOwnerAttachmentReceipt)
     receipt_id = id(receipt)
 
-    def discard_candidate(
-        reference: weakref.ReferenceType[_CatalogActionOwnerCandidate],
-    ) -> None:
+    def discard_candidate(reference: weakref.ReferenceType[object]) -> None:
         current = _OWNER_ATTACHMENTS.get(receipt_id)
         if current is not None and current.candidate_ref is reference:
             _OWNER_ATTACHMENTS.pop(receipt_id, None)
@@ -251,11 +272,62 @@ def _consume_catalog_action_owner_attachment(
     _OWNER_GENERATIONS[lifecycle_id] = _CatalogActionOwnerGenerationRecord(
         owner_ref=owner_ref,
         lifecycle=lifecycle,
-        state="root_owned",
+        state="attachment_pending",
         pending={},
     )
     _OWNER_GENERATION_IDENTITIES[owner_id] = lifecycle_id
     return lifecycle
+
+
+def _commit_catalog_action_owner_attachment(
+    lifecycle: _CatalogActionOwnerGenerationLifecycle,
+    *,
+    owner: object,
+) -> None:
+    """Publish one consumed attachment as the owner's root lifecycle."""
+
+    record = _require_owner_generation_record(lifecycle, owner=owner)
+    if record.state != "attachment_pending":
+        raise RuntimeError("Catalog action owner attachment is not pending")
+    record.state = "root_owned"
+
+
+def _rollback_catalog_action_owner_attachment(
+    *,
+    owner: object,
+) -> bool:
+    """Remove only an unpublished attachment enrollment for one exact owner."""
+
+    owner_id = id(owner)
+    lifecycle_id = _OWNER_GENERATION_IDENTITIES.get(owner_id)
+    if lifecycle_id is None:
+        return False
+    record = _OWNER_GENERATIONS.get(lifecycle_id)
+    if (
+        record is None
+        or record.owner_ref() is not owner
+        or record.state != "attachment_pending"
+    ):
+        return False
+    record.pending.clear()
+    _OWNER_GENERATIONS.pop(lifecycle_id, None)
+    if _OWNER_GENERATION_IDENTITIES.get(owner_id) == lifecycle_id:
+        _OWNER_GENERATION_IDENTITIES.pop(owner_id, None)
+    return True
+
+
+def _is_catalog_action_owner_generation_factory_recorded(owner: object) -> bool:
+    identity = getattr(owner, "_catalog_action_owner_generation_factory_identity", None)
+    record = (
+        _OWNER_GENERATION_FACTORIES.get(id(identity))
+        if type(identity) is _CatalogActionOwnerGenerationFactoryIdentity
+        else None
+    )
+    return bool(
+        record is not None
+        and record.identity is identity
+        and record.owner_ref() is owner
+    )
 
 
 def _begin_catalog_action_owner_generation(
