@@ -30,7 +30,7 @@ def test_contained_capture_is_bounded_and_returns_exact_regular_bytes(
     assert caught.value.code == "contained_file_too_large"
 
 
-def test_portable_capture_compares_stability_within_each_metadata_view(
+def test_portable_capture_binds_distinct_path_and_descriptor_metadata_views(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -44,8 +44,8 @@ def test_portable_capture_compares_stability_within_each_metadata_view(
         metadata = real_path_metadata(*args, **kwargs)
         return SimpleNamespace(
             st_mode=metadata.st_mode,
-            st_dev=metadata.st_dev,
-            st_ino=metadata.st_ino,
+            st_dev=metadata.st_dev + 1,
+            st_ino=metadata.st_ino + 1,
             st_size=metadata.st_size,
             st_mtime_ns=metadata.st_mtime_ns,
             st_ctime_ns=metadata.st_ctime_ns + 1,
@@ -62,6 +62,41 @@ def test_portable_capture_compares_stability_within_each_metadata_view(
     captured = capture_contained_regular_file(root, "small.json", max_bytes=2)
 
     assert captured.body == b"{}"
+
+
+def test_portable_capture_rejects_path_replacement_during_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "package"
+    root.mkdir()
+    target = root / "small.json"
+    replacement = root / "replacement.json"
+    target.write_bytes(b"inside")
+    replacement.write_bytes(b"outside")
+    real_path_metadata = _safe_files._portable_path_metadata
+    inspections = 0
+
+    def replacing_path_metadata(*args, **kwargs):
+        nonlocal inspections
+        metadata = real_path_metadata(*args, **kwargs)
+        inspections += 1
+        if inspections == 1:
+            target.unlink()
+            replacement.rename(target)
+        return metadata
+
+    monkeypatch.setattr(os, "supports_dir_fd", set())
+    monkeypatch.setattr(
+        _safe_files,
+        "_portable_path_metadata",
+        replacing_path_metadata,
+    )
+
+    with pytest.raises(ContainedFileCaptureError) as caught:
+        capture_contained_regular_file(root, "small.json", max_bytes=7)
+
+    assert caught.value.code == "contained_file_identity_changed"
 
 
 def test_contained_capture_rejects_link_traversal(tmp_path: Path) -> None:

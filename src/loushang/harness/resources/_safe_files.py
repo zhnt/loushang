@@ -150,9 +150,15 @@ def _capture_portable(
         )
         if (
             not stat.S_ISREG(metadata.st_mode)
-            or (metadata.st_dev, metadata.st_ino) != (before.st_dev, before.st_ino)
-            or (metadata.st_dev, metadata.st_ino)
-            != (after_open.st_dev, after_open.st_ino)
+            or not _same_file_snapshot(before, after_open)
+            or not _portable_descriptor_matches_path(
+                descriptor,
+                root=root,
+                relative=relative,
+                expected_path_metadata=after_open,
+                display_path=display_path,
+                flags=flags,
+            )
         ):
             raise ContainedFileCaptureError(
                 "Contained file identity changed while opening",
@@ -174,8 +180,14 @@ def _capture_portable(
         if (
             not _same_file_snapshot(metadata, after_read)
             or not _same_file_snapshot(before, after_path)
-            or (metadata.st_dev, metadata.st_ino)
-            != (after_path.st_dev, after_path.st_ino)
+            or not _portable_descriptor_matches_path(
+                descriptor,
+                root=root,
+                relative=relative,
+                expected_path_metadata=after_path,
+                display_path=display_path,
+                flags=flags,
+            )
             or len(body) != metadata.st_size
         ):
             raise ContainedFileCaptureError(
@@ -202,6 +214,34 @@ def _capture_portable(
         device=metadata.st_dev,
         inode=metadata.st_ino,
     )
+
+
+def _portable_descriptor_matches_path(
+    descriptor: int,
+    *,
+    root: Path,
+    relative: PurePosixPath,
+    expected_path_metadata: os.stat_result,
+    display_path: Path,
+    flags: int,
+) -> bool:
+    verification_descriptor: int | None = None
+    try:
+        verification_descriptor = os.open(display_path, flags)
+        matches = os.path.sameopenfile(descriptor, verification_descriptor)
+        final_path_metadata = _portable_path_metadata(
+            root,
+            relative,
+            display_path=display_path,
+        )
+        return matches and _same_file_snapshot(
+            expected_path_metadata,
+            final_path_metadata,
+        )
+    finally:
+        if verification_descriptor is not None:
+            with suppress(OSError):
+                os.close(verification_descriptor)
 
 
 def _portable_path_metadata(
