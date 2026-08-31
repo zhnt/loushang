@@ -1665,7 +1665,30 @@ def test_v4_owner_built_consumer_captures_native_and_package_actions(
 
 def test_managed_action_rejects_fake_launcher_and_weak_containment(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    executable = tmp_path / "bwrap"
+    executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    executable.chmod(0o755)
+    original_init = LinuxBubblewrapBackend.__init__
+
+    def available_init(self, *args, **kwargs):
+        assert not args
+
+        def probe(argv, timeout_seconds):
+            del timeout_seconds
+            stdout = "--ro-bind-data FD DEST --ro-bind-fd FD DEST"
+            return subprocess.CompletedProcess(argv, 0, stdout, "")
+
+        original_init(
+            self,
+            bwrap_path=executable,
+            probe_runner=probe,
+            local_backend=kwargs.get("local_backend"),
+        )
+
+    monkeypatch.setattr(LinuxBubblewrapBackend, "__init__", available_init)
+
     async def weak_scenario() -> None:
         workspace_root = tmp_path / "workspace"
         workspace_root.mkdir()
