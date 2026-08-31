@@ -8789,7 +8789,9 @@ def test_run_cli_lists_plugins_as_tsv(
 
     asyncio.run(scenario())
 
-    assert stdout.getvalue() == f"debug-pack\t1.0.0\t{plugin_root.resolve()}\tFalse\n"
+    assert stdout.getvalue() == (
+        f"debug-pack\t1.0.0\t{plugin_root.resolve()}\tunknown\n"
+    )
     assert stderr.getvalue() == ""
 
 
@@ -8839,7 +8841,7 @@ def test_run_cli_lists_disabled_plugins_as_tsv(
 
     asyncio.run(scenario())
 
-    assert stdout.getvalue() == f"debug-pack\t\t{plugin_root.resolve()}\tFalse\n"
+    assert stdout.getvalue() == f"debug-pack\t\t{plugin_root.resolve()}\tunknown\n"
     assert stderr.getvalue() == ""
 
 
@@ -9107,8 +9109,61 @@ def test_run_cli_remove_missing_plugin_source_returns_stable_error(tmp_path) -> 
     assert stdout.getvalue() == ""
     assert (
         stderr.getvalue()
-        == "Error: no matching plugin source found: plugins/missing-pack\n"
+        == "Error: resource_toggle_failed: no matching plugin source found: "
+        "plugins/missing-pack\n"
     )
+
+
+def test_run_cli_plugin_aliases_only_change_source_configuration(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.coding._plugin_lifecycle import (
+        resolve_coding_plugin_lifecycle_state_layout,
+    )
+    from loushang.coding.bootstrap import create_services
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.coding.control import SettingsManager
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    settings_path = tmp_path / ".loushang" / "settings.json"
+    manager = SettingsManager(project_settings_path=settings_path)
+    services = create_services(settings_manager=manager)
+    stdout = StringIO()
+    stderr = StringIO()
+
+    async def scenario() -> None:
+        added = await run_cli(
+            ["--add-plugin", "plugins/debug-pack"],
+            stdin=StringIO(""),
+            stdout=stdout,
+            stderr=stderr,
+            cwd=tmp_path,
+            services=services,
+            runtime_builder=lambda **kwargs: FakeRuntime(FakeSession("session-1")),
+        )
+        removed = await run_cli(
+            ["--remove-plugin", "plugins/debug-pack"],
+            stdin=StringIO(""),
+            stdout=stdout,
+            stderr=stderr,
+            cwd=tmp_path,
+            services=services,
+            runtime_builder=lambda **kwargs: FakeRuntime(FakeSession("session-1")),
+        )
+        assert (added, removed) == (0, 0)
+
+    asyncio.run(scenario())
+
+    layout = resolve_coding_plugin_lifecycle_state_layout(tmp_path)
+    assert manager.get_settings().plugin_sources == ()
+    assert not layout.desired_state.exists()
+    assert not layout.management_operations.exists()
+    assert stdout.getvalue() == (
+        "added plugin source\tplugins/debug-pack\n"
+        "removed plugin source\tplugins/debug-pack\n"
+    )
+    assert stderr.getvalue() == ""
 
 
 def test_run_cli_add_duplicate_plugin_source_returns_stable_error(tmp_path) -> None:
@@ -9144,7 +9199,9 @@ def test_run_cli_add_duplicate_plugin_source_returns_stable_error(tmp_path) -> N
 
     assert stdout.getvalue() == ""
     assert (
-        stderr.getvalue() == "Error: plugin source already exists: plugins/debug-pack\n"
+        stderr.getvalue()
+        == "Error: resource_toggle_failed: plugin source already exists: "
+        "plugins/debug-pack\n"
     )
 
 
@@ -9819,8 +9876,8 @@ def test_run_cli_persists_skill_and_plugin_toggles(
         "enabled skill\tdebug\n"
         "removed plugin source\tplugins/legacy-pack\n"
         "added plugin source\tplugins/debug-pack\n"
-        "disabled plugin\tlegacy-pack\n"
-        "enabled plugin\tdebug-pack\n"
+        "plugin desired state committed\tdisabled\tlegacy-pack\n"
+        "plugin desired state committed\tenabled\tdebug-pack\n"
     )
     assert stderr.getvalue() == ""
     reloaded = SettingsManager(project_settings_path=project_settings_path)

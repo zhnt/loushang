@@ -45,8 +45,8 @@ application boundary:
   `PluginManagementService`, which remains the sole desired-state command
   authority; and
 - `PluginManagementReadModelProjector` captures desired-state, operation,
-  Source, Instance, Package, and retirement snapshots and joins them without
-  persisting a new clock.
+  enablement-migration, Source, Instance, Package, and retirement snapshots and
+  joins them without persisting a new clock.
 
 The projection keeps command status separate from convergence. It reports the
 selected immutable Package and Instance revisions, operation summaries,
@@ -88,6 +88,12 @@ enablement mutation once a receipt exists. Finalization requires recorded
 minimum-runtime, backup/restore, and roll-forward evidence; deletion of legacy
 fields and mutators remains a later PLC9E change.
 
+The compatibility floor is the minimum fence-aware runtime, not every binary
+that predates PLC9A1. Once a receipt exists, direct downgrade to a pre-fence
+binary is unsupported because that binary can recreate peer state. Recovery
+from such a downgrade requires an offline restore followed by roll-forward;
+the recorded finalization evidence makes that operational boundary explicit.
+
 The generic implementation lives in
 `src/loushang/harness/plugin_management/enablement_migration.py`. Coding binds
 it to `enablement-migration.jsonl` under the existing workspace-private Plugin
@@ -100,6 +106,16 @@ as `already_authoritative` and is never re-enabled by a Product default. A
 never-seen disabled Installation is published to an exact immutable revision,
 seeded disabled, and left unmounted.
 
+`src/loushang/coding/plugin_enablement_compatibility.py::CodingPluginEnablementCompatibilityWriter`
+is the Product-owned compatibility publisher. It serializes projection and
+publication under the workspace coordination lock, preserves only unmigrated
+legacy ids, and binds the settings-owner mutation fence. Coding startup and CLI
+binding always reconcile it, so a crash or write failure after a canonical
+commit is repaired from the durable receipt and desired journal. The command
+still fails visibly with
+`plugin_enablement_compatibility_publish_failed`; it never rolls canonical
+state back or reports runtime convergence.
+
 ## A1-3: Coding CLI adapters
 
 A1-3 routes `--list-plugins`, `--enable-plugin`, and `--disable-plugin` through
@@ -111,22 +127,32 @@ from settings, or mutate source configuration.
 `--add-plugin`/`--remove-plugin` aliases retain Source add/remove semantics.
 Skill settings and Package commands retain their existing owners. A CLI
 desired-state command against an uninstalled or unmigrated Installation fails
-with a stable diagnostic instead of materializing a Package or mutating the
-legacy settings peer.
+with a stable, visible diagnostic code instead of materializing a Package or
+mutating the legacy settings peer. A receipt in `accepted` or
+`desired_committed` is reported as migration-in-progress and is not command
+admission.
 
 Coding's CLI Product binding resolves relative local Sources against the
 workspace, not the launcher process directory. After a canonical enable/disable
 command it publishes the compatibility-window `disabled_plugins` value as a
 derived downgrade view while retaining legacy ids that have not yet received a
 migration receipt. That write is never used to infer command success.
+Source-only rows report unknown enablement rather than disabled. Listing also
+exposes desired state, convergence, and migration phase; command output says
+only that desired state committed and never claims runtime convergence.
 
 ## Failure And Replay Semantics
 
 - Query capture is non-transactional across owners by design. Owner revisions
   and skew make the observation boundary explicit.
+- Desired snapshot/history capture and each complete migration transaction are
+  atomic within their respective owner locks. Concurrent replay therefore
+  records one exact migration outcome.
 - Command retry uses the caller's operation/idempotency identity; correlation
   identity may change when an operator resumes the same operation.
 - A terminal command result does not assert runtime convergence.
+- An `absent` tombstone remains authoritative on restart: a still-configured
+  mutable Source is neither reinspected nor republished.
 - Unsupported backup, private-data, or Worker dimensions remain named as such.
 - Neither migration nor CLI handling may execute Plugin code, acquire a remote
   artifact, delete data, or weaken retirement/cleanup evidence.
@@ -135,7 +161,9 @@ migration receipt. That write is never used to infer command success.
 
 Behavioral tests cover correlated idempotent command/resume, owner-revisioned
 projection, Product/scope filtering, versioned operation shapes, orphan skew,
-migration crash/replay/downgrade behavior, and CLI alias separation.
+migration crash/replay/concurrency/downgrade behavior, compatibility repair and
+mutation fencing, workspace/restart isolation, tombstone replay, and real CLI
+alias separation.
 Architecture tests keep management implementation out of `loushang.plugin`,
 prevent transport imports and projection persistence in the common application
 module, and prevent CLI desired-state paths from reconstructing a ledger or

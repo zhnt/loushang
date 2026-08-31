@@ -116,6 +116,13 @@ def format_cli_error(error: BaseException) -> str:
         strerror = getattr(error, "strerror", None)
         if filename is not None and strerror:
             return f"{strerror}: {filename}"
+    code = getattr(error, "code", None)
+    if (
+        getattr(error, "expose_cli_code", False) is True
+        and isinstance(code, str)
+        and code
+    ):
+        return f"{code}: {error}"
     return str(error)
 
 

@@ -17,6 +17,9 @@ CLI_LISTING = Path("src/loushang/harness/cli/plugin_listing.py")
 CLI_TOGGLES = Path("src/loushang/harness/cli/resource_toggles.py")
 CLI_PROFILE = Path("src/loushang/harness/cli/profile.py")
 CODING_BINDING = Path("src/loushang/coding/plugin_management_cli.py")
+CODING_COMPATIBILITY = Path(
+    "src/loushang/coding/plugin_enablement_compatibility.py"
+)
 CODING_LIFECYCLE = Path("src/loushang/coding/_plugin_lifecycle.py")
 
 
@@ -39,6 +42,11 @@ def test_plc9a1_contract_and_new_owner_sites_are_indexed() -> None:
     assert (
         "enablement_migration.py::PluginEnablementCompatibilityProjector" in inventory
     )
+    assert (
+        "plugin_enablement_compatibility.py::"
+        "CodingPluginEnablementCompatibilityWriter" in inventory
+    )
+    assert "build_coding_plugin_management_cli_binding" in inventory
 
 
 def test_plc9a1_application_is_transport_neutral_and_projection_only() -> None:
@@ -142,6 +150,7 @@ def test_plc9a1_cli_uses_only_the_common_application_binding() -> None:
 
 def test_plc9a1_coding_transport_adapter_does_not_construct_owner_stores() -> None:
     adapter = _source(CODING_BINDING)
+    compatibility = _source(CODING_COMPATIBILITY)
     lifecycle = _source(CODING_LIFECYCLE)
 
     for forbidden in (
@@ -151,9 +160,25 @@ def test_plc9a1_coding_transport_adapter_does_not_construct_owner_stores() -> No
     ):
         assert forbidden not in adapter
     assert "build_coding_plugin_management_application(" in adapter
-    assert "project_coding_plugin_enablement_compatibility(" in adapter
+    assert "bind_coding_plugin_enablement_compatibility(" in adapter
+    assert "class CodingPluginEnablementCompatibilityWriter:" in compatibility
+    assert "with journal_file_lock(self.layout.coordination_lock" in compatibility
+    assert "bind_plugin_enablement_legacy_mutation_guard" in compatibility
     assert "def build_coding_plugin_management_application(" in lifecycle
     assert "def project_coding_plugin_enablement_compatibility(" in lifecycle
+
+
+def test_plc9a1_documents_and_tests_the_compatibility_floor() -> None:
+    contract = _source(CONTRACT)
+
+    for boundary in (
+        "minimum fence-aware runtime",
+        "direct downgrade to a pre-fence\nbinary is unsupported",
+        "plugin_enablement_compatibility_publish_failed",
+        "Source-only rows report unknown enablement",
+        "`absent` tombstone remains authoritative on restart",
+    ):
+        assert boundary in contract
 
 
 def test_plc9a1_preserves_source_aliases_and_package_command_boundary() -> None:

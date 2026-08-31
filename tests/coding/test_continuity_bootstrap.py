@@ -40,8 +40,10 @@ from loushang.harness.plugin_authoring.capability_provider import (
 from loushang.harness.plugin_management import (
     PluginContinuityDeletionJournal,
     PluginDesiredStateLedger,
+    PluginDesiredStateMutationV1,
     PluginEnablementMigrationJournal,
     PluginInstanceRuntimeLedger,
+    PluginManagementCommandV1,
 )
 from loushang.harness.resources.packages.materializer import PackageMaterializer
 from loushang.harness.resources.plugins.continuity_provider import (
@@ -521,6 +523,78 @@ def test_real_configured_continuity_plugin_lifecycle_and_restart(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     asyncio.run(_real_configured_lifecycle(tmp_path, monkeypatch))
+
+
+def test_removed_continuity_tombstone_never_reinspects_configured_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.coding import continuity_bootstrap
+
+    async def scenario() -> None:
+        marker = tmp_path / "removed-plugin.log"
+        monkeypatch.setenv("LOUSHANG_CONTINUITY_PLUGIN_MARKER", str(marker))
+        plugin_root = _write_continuity_plugin(tmp_path / "removed-plugin")
+        workspace = tmp_path / "workspace"
+        layout = _test_layout(tmp_path / "state", workspace)
+        settings = _settings(plugin_root)
+        first_runtime = _Runtime(tmp_path / "sessions")
+        first = await bind_coding_configured_continuity(
+            first_runtime,
+            settings_manager=settings,
+            session_dir=first_runtime.session_dir,
+            cwd=workspace,
+            state_layout=layout,
+            runtime_id="coding-process:tombstone-first",
+        )
+        assert first.plugin_publication is not None
+        await shutdown_coding_continuity(first_runtime)
+
+        lifecycle = continuity_bootstrap._build_lifecycle(layout)
+        snapshot = lifecycle.desired.snapshot()
+        [installed] = snapshot.installations
+        removed = lifecycle.management.submit(
+            PluginManagementCommandV1(
+                action="remove",
+                mutation=PluginDesiredStateMutationV1(
+                    operation_id="remove-continuity-plugin",
+                    idempotency_key="remove-continuity-plugin",
+                    expected_inventory_revision=snapshot.inventory_revision,
+                    installation_key=installed.installation_key,
+                    desired_state="absent",
+                    package_revision=None,
+                    actor_id="test",
+                    policy_revision="test",
+                ),
+            )
+        )
+        lifecycle.common.release_owned_process_startup_lease()
+        assert removed.result is not None
+        assert removed.result.disposition == "succeeded"
+
+        def reject_inspection(*_args, **_kwargs):
+            raise AssertionError("removed source was reinspected")
+
+        monkeypatch.setattr(
+            continuity_bootstrap,
+            "_inspect_continuity_source",
+            reject_inspection,
+        )
+        restarted_runtime = _Runtime(tmp_path / "sessions")
+        restarted = await bind_coding_configured_continuity(
+            restarted_runtime,
+            settings_manager=settings,
+            session_dir=restarted_runtime.session_dir,
+            cwd=workspace,
+            state_layout=layout,
+            runtime_id="coding-process:tombstone-restart",
+        )
+
+        assert restarted.plugin_publication is None
+        assert get_coding_continuity_bootstrap_status(restarted_runtime).plugin_count == 0
+        await shutdown_coding_continuity(restarted_runtime)
+
+    asyncio.run(scenario())
 
 
 def test_continuity_bootstrap_rejects_unsupported_secure_staging_before_import(

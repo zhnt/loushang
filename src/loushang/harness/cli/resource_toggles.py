@@ -21,6 +21,8 @@ from loushang.harness.plugin_management import (
 class ResourceToggleError(RuntimeError):
     """Raised after a resource toggle operation reports an actionable error."""
 
+    expose_cli_code = True
+
     def __init__(
         self,
         message: str,
@@ -197,10 +199,10 @@ def apply_resource_toggles(
             messages.append(f"added {label}\t{source}")
         for name in request.disable_plugins:
             _apply_plugin_toggle(plugin_management, name=name, action="disable")
-            messages.append(f"disabled plugin\t{name}")
+            messages.append(f"plugin desired state committed\tdisabled\t{name}")
         for name in request.enable_plugins:
             _apply_plugin_toggle(plugin_management, name=name, action="enable")
-            messages.append(f"enabled plugin\t{name}")
+            messages.append(f"plugin desired state committed\tenabled\t{name}")
     except ResourceToggleError as error:
         if error.messages or not messages:
             raise
@@ -248,13 +250,28 @@ def _apply_plugin_toggle(
                 code="plugin_enablement_migration_required",
             )
         [view] = projection.installations
+        migration_phase = view.enablement_migration_phase
+        if migration_phase not in {"compatibility_window", "finalized"}:
+            in_progress = migration_phase in {"accepted", "desired_committed"}
+            raise ResourceToggleError(
+                (
+                    f"plugin enablement migration is in progress: {name}"
+                    if in_progress
+                    else f"plugin Installation is not migrated: {name}"
+                ),
+                code=(
+                    "plugin_enablement_migration_in_progress"
+                    if in_progress
+                    else "plugin_enablement_migration_required"
+                ),
+            )
         current = view.desired_state
         target = {
             "disable": "installed_disabled",
             "enable": "installed_enabled",
         }[action]
         if current == target:
-            management.publish_compatibility()
+            _publish_compatibility(management, name=name)
             return
         if current not in {"installed_disabled", "installed_enabled"}:
             raise ResourceToggleError(
@@ -304,7 +321,7 @@ def _apply_plugin_toggle(
             )
         terminal = operation.result
         if terminal is not None and terminal.disposition == "succeeded":
-            management.publish_compatibility()
+            _publish_compatibility(management, name=name)
             return
         error_code = (
             "plugin_management_operation_incomplete"
@@ -321,6 +338,21 @@ def _apply_plugin_toggle(
         f"plugin {action} could not linearize: {name}",
         code="plugin_management_busy",
     )
+
+
+def _publish_compatibility(
+    management: PluginManagementCliBinding,
+    *,
+    name: str,
+) -> None:
+    try:
+        management.publish_compatibility()
+    except Exception as error:
+        raise ResourceToggleError(
+            "plugin desired state committed but compatibility projection failed: "
+            f"{name}",
+            code="plugin_enablement_compatibility_publish_failed",
+        ) from error
 
 
 __all__ = [

@@ -84,6 +84,9 @@ from loushang.coding.lsp.discovery import (
 )
 from loushang.coding.lsp.model import LspServerDefinition
 from loushang.coding.lsp.ports import WorkspaceTextReader
+from loushang.coding.plugin_enablement_compatibility import (
+    bind_coding_plugin_enablement_compatibility,
+)
 from loushang.coding.product_plan import CODING_CAPABILITY_PROFILE, CODING_PRODUCT_ID
 from loushang.coding.prompt.defaults import (
     CODING_KERNEL_SYSTEM_PROMPT,
@@ -1063,6 +1066,14 @@ def _create_agent_session(
                 selection_seed=selection_seed,
             )
             product_composition = base_plugin_session_preparation.product_composition
+
+        if coding_plugin_lifecycle is not None:
+            compatibility = bind_coding_plugin_enablement_compatibility(
+                coding_plugin_lifecycle.layout,
+                services.settings_manager,
+            )
+            if compatibility is not None:
+                compatibility.reconcile()
 
         adapter, projection = _prepare_coding_catalog_projection(
             loader,

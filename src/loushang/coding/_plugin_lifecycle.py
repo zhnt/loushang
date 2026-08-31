@@ -1059,15 +1059,15 @@ def build_coding_plugin_management_application(
         retirement_intents=intents,
         retirement_sets=retirement_sets,
     )
-    PluginEnablementMigrationJournal(
-        layout.enablement_migration
-    ).assert_runtime_compatible(supported_migration_epoch=1)
+    migrations = PluginEnablementMigrationJournal(layout.enablement_migration)
+    migrations.assert_runtime_compatible(supported_migration_epoch=1)
     management.recover()
     return PluginManagementApplicationPorts(
         commands=PluginManagementCommandApplication(management),
         queries=PluginManagementReadModelProjector(
             desired_state=desired,
             operations=management,
+            migrations=migrations,
             source=source,
         ),
     )

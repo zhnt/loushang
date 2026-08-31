@@ -24,6 +24,8 @@ from loushang.harness.journal import (
 from loushang.harness.plugin_management.application import (
     PluginManagementApplicationCommandV1,
     PluginManagementCommandPort,
+    PluginManagementMigrationRecordV1,
+    PluginManagementMigrationSnapshotV1,
 )
 from loushang.harness.plugin_management.journal_codecs import (
     PluginDesiredStateJournalTransition,
@@ -471,6 +473,15 @@ class PluginEnablementMigrationJournal:
     def path(self) -> Path:
         return self._path
 
+    def coordinate(self) -> AbstractContextManager[None]:
+        """Serialize the complete accept/commit/window transaction."""
+
+        return journal_file_lock(
+            self._path,
+            "exclusive",
+            lock_suffix=".migration.lock",
+        )
+
     def accept(
         self,
         request: PluginEnablementMigrationRequestV1,
@@ -619,6 +630,25 @@ class PluginEnablementMigrationJournal:
         with self._exclusive():
             return self._load_unlocked()
 
+    def management_snapshot(self) -> PluginManagementMigrationSnapshotV1:
+        """Project receipt phases for the common read model."""
+
+        snapshots = self.snapshots()
+        return PluginManagementMigrationSnapshotV1(
+            journal_revision=max(
+                (item.journal_revision for item in snapshots),
+                default=0,
+            ),
+            records=tuple(
+                PluginManagementMigrationRecordV1(
+                    installation_key=item.request.installation_key,
+                    phase=item.phase,
+                    journal_revision=item.journal_revision,
+                )
+                for item in snapshots
+            ),
+        )
+
     def assert_runtime_compatible(self, *, supported_migration_epoch: int) -> None:
         _require_positive(supported_migration_epoch, name="supported migration epoch")
         for snapshot in self.snapshots():
@@ -689,6 +719,13 @@ class PluginEnablementMigrationJournal:
 
 
 class PluginDesiredStateMigrationPort(Protocol):
+    def capture(
+        self,
+    ) -> tuple[
+        PluginDesiredStateSnapshotV1,
+        tuple[PluginDesiredStateJournalTransition, ...],
+    ]: ...
+
     def snapshot(self) -> PluginDesiredStateSnapshotV1: ...
 
     def transitions(self) -> tuple[PluginDesiredStateJournalTransition, ...]: ...
@@ -723,6 +760,13 @@ class PluginEnablementMigrationCoordinator:
     ) -> PluginEnablementMigrationSnapshotV1:
         if not isinstance(request, PluginEnablementMigrationRequestV1):
             raise TypeError("Plugin enablement migration request is required")
+        with self._journal.coordinate():
+            return self._migrate_serialized(request)
+
+    def _migrate_serialized(
+        self,
+        request: PluginEnablementMigrationRequestV1,
+    ) -> PluginEnablementMigrationSnapshotV1:
         self._journal.assert_runtime_compatible(
             supported_migration_epoch=PLUGIN_ENABLEMENT_MIGRATION_EPOCH
         )
@@ -734,11 +778,8 @@ class PluginEnablementMigrationCoordinator:
             )
         existing = self._journal.snapshot(request.installation_key)
         if existing is None:
-            snapshot = self._desired_state.snapshot()
-            prior = _history_for(
-                self._desired_state.transitions(),
-                request.installation_key,
-            )
+            snapshot, transitions = self._desired_state.capture()
+            prior = _history_for(transitions, request.installation_key)
             current = self._journal.accept(
                 request,
                 accepted_desired_inventory_revision=snapshot.inventory_revision,
@@ -774,7 +815,8 @@ class PluginEnablementMigrationCoordinator:
         migration_id: str,
         evidence: PluginEnablementFinalizationEvidenceV1,
     ) -> PluginEnablementMigrationSnapshotV1:
-        current = self._journal.finalize(migration_id, evidence)
+        with self._journal.coordinate():
+            current = self._journal.finalize(migration_id, evidence)
         self._observe("finalized")
         return current
 
@@ -783,11 +825,8 @@ class PluginEnablementMigrationCoordinator:
         request: PluginEnablementMigrationRequestV1,
     ) -> tuple[PluginEnablementMigrationDisposition, int | None, tuple[str, ...]]:
         for _attempt in range(64):
-            snapshot = self._desired_state.snapshot()
-            history = _history_for(
-                self._desired_state.transitions(),
-                request.installation_key,
-            )
+            snapshot, transitions = self._desired_state.capture()
+            history = _history_for(transitions, request.installation_key)
             if not history:
                 if request.package_revision is None:
                     raise PluginEnablementMigrationError(
@@ -864,16 +903,11 @@ class PluginEnablementMigrationCoordinator:
         expected_inventory_revision: int,
         package_revision: PluginPackageRevisionRefV1 | None,
     ) -> PluginManagementOperationEventV1:
-        identity = hashlib.sha256(
-            StrictPluginJsonCodec.encode(
-                {
-                    "action": action,
-                    "expectedInventoryRevision": expected_inventory_revision,
-                    "migrationId": request.migration_id,
-                }
-            )
-        ).hexdigest()
-        operation_id = f"plugin-enablement-migration:{identity}"
+        operation_id = _migration_operation_id(
+            request,
+            action=action,
+            expected_inventory_revision=expected_inventory_revision,
+        )
         result = self._commands.submit(
             PluginManagementApplicationCommandV1(
                 correlation_id=f"plugin-enablement-migration:{request.migration_id}",
@@ -1148,18 +1182,55 @@ def _owned_seed_history(
 ) -> tuple[PluginDesiredStateTransitionV1, ...] | None:
     owned: list[PluginDesiredStateTransitionV1] = []
     approval = _approval_reference(request)
-    for transition in history:
+    for index, transition in enumerate(history):
         if not isinstance(transition, PluginDesiredStateTransitionV1):
             return None
         mutation = transition.mutation
+        action: Literal["install", "enable"] = (
+            "install" if index == 0 else "enable"
+        )
+        expected_state = (
+            "installed_disabled" if action == "install" else "installed_enabled"
+        )
+        expected_package = request.package_revision if action == "install" else None
         if (
-            mutation.actor_id != _ACTOR_ID
+            index > 1
+            or (index == 1 and not request.target_enabled)
+            or transition.transition_kind != action
+            or mutation.desired_state != expected_state
+            or mutation.package_revision != expected_package
+            or mutation.actor_id != _ACTOR_ID
             or mutation.policy_revision != _POLICY_REVISION
             or mutation.approval_reference != approval
+            or mutation.operation_id
+            != _migration_operation_id(
+                request,
+                action=action,
+                expected_inventory_revision=mutation.expected_inventory_revision,
+            )
+            or mutation.idempotency_key != mutation.operation_id
         ):
             return None
         owned.append(transition)
     return tuple(owned)
+
+
+def _migration_operation_id(
+    request: PluginEnablementMigrationRequestV1,
+    *,
+    action: Literal["install", "enable"],
+    expected_inventory_revision: int,
+) -> str:
+    identity = hashlib.sha256(
+        StrictPluginJsonCodec.encode(
+            {
+                "action": action,
+                "expectedInventoryRevision": expected_inventory_revision,
+                "migrationId": request.migration_id,
+            }
+        )
+    ).hexdigest()
+    return f"plugin-enablement-migration:{identity}"
 
 
 def _approval_reference(request: PluginEnablementMigrationRequestV1) -> str:

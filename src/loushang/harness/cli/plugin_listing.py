@@ -39,17 +39,29 @@ def _project_cli_record(view: object) -> dict[str, object]:
     plugin_version = (
         package.plugin_version
         if source is None and package is not None
-        else None
-        if source is None
-        else source.plugin_version
+        else (
+            None
+            if source is None
+            else source.plugin_version
+            or (None if package is None else package.plugin_version)
+        )
     )
+    desired_state = getattr(view, "desired_state")
+    enabled = {
+        "installed_enabled": True,
+        "installed_disabled": False,
+        "absent": False,
+    }.get(desired_state)
     return {
         "name": key.plugin_id,
         "version": plugin_version or "",
         "path": source_location if source_kind == "local" else "",
         "source": source_location,
         "kind": source_kind,
-        "enabled": getattr(view, "desired_state") == "installed_enabled",
+        "enabled": enabled,
+        "desiredState": desired_state,
+        "convergence": getattr(view, "convergence"),
+        "migrationStatus": getattr(view, "enablement_migration_phase"),
     }
 
 
@@ -61,7 +73,7 @@ def format_plugin_records(
         return json.dumps(records, ensure_ascii=False) + "\n"
     return "".join(
         f"{plugin['name']}\t{plugin['version']}\t{plugin['path']}\t"
-        f"{plugin['enabled']}\n"
+        f"{'unknown' if plugin['enabled'] is None else plugin['enabled']}\n"
         for plugin in records
     )
 

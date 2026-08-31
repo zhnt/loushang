@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -150,6 +151,38 @@ def test_global_cas_race_retries_without_claiming_peer_installation(
         "installed_disabled"
     )
     assert all("global-race" not in item for item in migrated.operation_ids)
+
+
+def test_concurrent_replay_linearizes_one_exact_migration_outcome(
+    tmp_path: Path,
+) -> None:
+    desired, service, journal, coordinator = _migration(tmp_path)
+    peer = PluginEnablementMigrationCoordinator(
+        journal=PluginEnablementMigrationJournal(journal.path),
+        desired_state=PluginDesiredStateLedger(desired.path),
+        commands=PluginManagementCommandApplication(
+            PluginManagementService(
+                desired_state=PluginDesiredStateLedger(desired.path),
+                operation_journal_path=service.operation_journal_path,
+            )
+        ),
+    )
+    request = _request()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = tuple(pool.map(lambda item: item.migrate(request), (coordinator, peer)))
+
+    assert results[0] == results[1]
+    assert results[0].phase == "compatibility_window"
+    assert results[0].disposition == "seeded"
+    assert len(results[0].operation_ids) == 2
+    assert len(desired.transitions()) == 2
+    assert len(service.operations()) == 2
+    assert tuple(item.phase for item in journal.records()) == (
+        "accepted",
+        "desired_committed",
+        "compatibility_window",
+    )
 
 
 def test_compatibility_projection_is_derived_and_peer_mutation_is_rejected(

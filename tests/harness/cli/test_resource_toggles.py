@@ -16,6 +16,8 @@ from loushang.harness.plugin_management import (
     PluginManagementApplicationPorts,
     PluginManagementCommandApplication,
     PluginManagementCommandV1,
+    PluginManagementMigrationRecordV1,
+    PluginManagementMigrationSnapshotV1,
     PluginManagementReadModelProjector,
     PluginManagementService,
     PluginPackageRevisionRefV1,
@@ -89,7 +91,7 @@ def test_resource_toggles_preserve_messages_before_policy_failure() -> None:
 def test_plugin_toggle_uses_management_command_without_settings_mutator(
     tmp_path,
 ) -> None:
-    desired, service, binding = _management(tmp_path)
+    desired, service, binding = _management(tmp_path, migrated=True)
     _install(service)
     settings = _Settings()
 
@@ -109,9 +111,15 @@ def test_plugin_toggle_uses_management_command_without_settings_mutator(
         plugin_management=binding,
     )
 
-    assert disabled.messages == ("disabled plugin\treview-pack",)
-    assert repeated.messages == ("disabled plugin\treview-pack",)
-    assert enabled.messages == ("enabled plugin\treview-pack",)
+    assert disabled.messages == (
+        "plugin desired state committed\tdisabled\treview-pack",
+    )
+    assert repeated.messages == (
+        "plugin desired state committed\tdisabled\treview-pack",
+    )
+    assert enabled.messages == (
+        "plugin desired state committed\tenabled\treview-pack",
+    )
     assert settings.calls == []
     assert desired.snapshot().installation(_key()).selection.desired_state == (
         "installed_enabled"
@@ -136,7 +144,46 @@ def test_plugin_toggle_refuses_unmigrated_installation_without_legacy_write(
     assert settings.calls == []
 
 
-def _management(tmp_path):
+def test_plugin_toggle_refuses_existing_desired_history_without_receipt(
+    tmp_path,
+) -> None:
+    _desired, service, binding = _management(tmp_path)
+    _install(service)
+
+    with pytest.raises(ResourceToggleError) as raised:
+        apply_resource_toggles(
+            _Settings(),
+            ResourceToggleRequest(disable_plugins=("review-pack",)),
+            plugin_management=binding,
+        )
+
+    assert raised.value.code == "plugin_enablement_migration_required"
+
+
+@pytest.mark.parametrize("phase", ("accepted", "desired_committed"))
+def test_plugin_toggle_refuses_migration_that_has_not_entered_compatibility(
+    tmp_path,
+    phase,
+) -> None:
+    _desired, service, binding = _management(tmp_path, migration_phase=phase)
+    _install(service)
+
+    with pytest.raises(ResourceToggleError) as raised:
+        apply_resource_toggles(
+            _Settings(),
+            ResourceToggleRequest(disable_plugins=("review-pack",)),
+            plugin_management=binding,
+        )
+
+    assert raised.value.code == "plugin_enablement_migration_in_progress"
+
+
+def _management(
+    tmp_path,
+    *,
+    migrated: bool = False,
+    migration_phase: str | None = None,
+):
     desired = PluginDesiredStateLedger(tmp_path / "desired.jsonl")
     service = PluginManagementService(
         desired_state=desired,
@@ -148,6 +195,13 @@ def _management(tmp_path):
             queries=PluginManagementReadModelProjector(
                 desired_state=desired,
                 operations=service,
+                migrations=_MigrationOwner(
+                    phase=(
+                        migration_phase
+                        if migration_phase is not None
+                        else "compatibility_window" if migrated else None
+                    )
+                ),
             ),
         ),
         product_id="coding",
@@ -157,6 +211,27 @@ def _management(tmp_path):
         policy_revision="cli-v1",
     )
     return desired, service, binding
+
+
+class _MigrationOwner:
+    def __init__(self, *, phase: str | None) -> None:
+        self.phase = phase
+
+    def management_snapshot(self) -> PluginManagementMigrationSnapshotV1:
+        return PluginManagementMigrationSnapshotV1(
+            journal_revision=1 if self.phase is not None else 0,
+            records=(
+                (
+                    PluginManagementMigrationRecordV1(
+                        installation_key=_key(),
+                        phase=self.phase,  # type: ignore[arg-type]
+                        journal_revision=1,
+                    ),
+                )
+                if self.phase is not None
+                else ()
+            ),
+        )
 
 
 def _install(service: PluginManagementService) -> None:

@@ -51,7 +51,7 @@ def test_plugin_listing_projects_common_read_model_without_settings_peer(
                     source_kind="local",
                     availability="available",
                     source_location="/plugins/review-pack",
-                    plugin_version="1",
+                    plugin_version=None,
                     manifest_enabled_default=True,
                 ),
             ),
@@ -83,6 +83,9 @@ def test_plugin_listing_projects_common_read_model_without_settings_peer(
             "source": "/plugins/review-pack",
             "kind": "local",
             "enabled": False,
+            "desiredState": "installed_disabled",
+            "convergence": "inactive",
+            "migrationStatus": None,
         }
     ]
 

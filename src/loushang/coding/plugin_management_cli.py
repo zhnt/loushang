@@ -3,16 +3,16 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
 from loushang.coding._plugin_lifecycle import (
-    CodingPluginLifecycleStateLayout,
     build_coding_plugin_management_application,
-    project_coding_plugin_enablement_compatibility,
     resolve_coding_plugin_lifecycle_state_layout,
+)
+from loushang.coding.plugin_enablement_compatibility import (
+    bind_coding_plugin_enablement_compatibility,
 )
 from loushang.coding.product_plan import CODING_PRODUCT_ID
 from loushang.harness.cli.plugin_management import PluginManagementCliBinding
@@ -146,13 +146,20 @@ def build_coding_plugin_management_cli_binding(
     cwd: str | Path,
     settings_manager: object | None,
 ) -> PluginManagementCliBinding:
-    layout = resolve_coding_plugin_lifecycle_state_layout(cwd)
+    workspace_root = Path(cwd).expanduser().resolve(strict=False)
+    layout = resolve_coding_plugin_lifecycle_state_layout(workspace_root)
     source = CodingConfiguredPluginSourceProjection(
         settings_manager=settings_manager,
         scope_id=layout.scope_id,
-        workspace_root=Path(cwd).resolve(),
+        workspace_root=workspace_root,
     )
     ports = build_coding_plugin_management_application(layout, source=source)
+    compatibility = bind_coding_plugin_enablement_compatibility(
+        layout,
+        settings_manager,
+    )
+    if compatibility is not None:
+        compatibility.reconcile()
     return PluginManagementCliBinding(
         ports=ports,
         product_id=CODING_PRODUCT_ID,
@@ -160,36 +167,10 @@ def build_coding_plugin_management_cli_binding(
         scope_id=layout.scope_id,
         actor_id=_CLI_ACTOR_ID,
         policy_revision=_CLI_POLICY_REVISION,
-        publish_compatibility_projection=_compatibility_publisher(
-            layout=layout,
-            settings_manager=settings_manager,
+        publish_compatibility_projection=(
+            None if compatibility is None else compatibility.reconcile
         ),
     )
-
-
-def _compatibility_publisher(
-    *,
-    layout: CodingPluginLifecycleStateLayout,
-    settings_manager: object | None,
-) -> Callable[[], None] | None:
-    get_settings = getattr(settings_manager, "get_settings", None)
-    set_disabled_plugins = getattr(settings_manager, "set_disabled_plugins", None)
-    if not callable(get_settings) or not callable(set_disabled_plugins):
-        return None
-
-    def publish() -> None:
-        projection, migrated = project_coding_plugin_enablement_compatibility(layout)
-        current = getattr(get_settings(), "disabled_plugins", ())
-        retained = {
-            item
-            for item in current
-            if isinstance(item, str) and item and item not in migrated
-        }
-        disabled = tuple(sorted(retained | set(projection.disabled_plugin_ids)))
-        if disabled != tuple(current):
-            set_disabled_plugins(disabled, scope="project")
-
-    return publish
 
 
 __all__ = [

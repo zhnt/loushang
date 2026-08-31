@@ -6,6 +6,7 @@ This package is intentionally absent from the public Plugin authoring surface.
 from loushang.harness.plugin_management.application import (
     PLUGIN_MANAGEMENT_APPLICATION_COMMAND_VERSION,
     PLUGIN_MANAGEMENT_APPLICATION_RESULT_VERSION,
+    PLUGIN_MANAGEMENT_MIGRATION_SNAPSHOT_VERSION,
     PLUGIN_MANAGEMENT_PROJECTION_VERSION,
     PLUGIN_MANAGEMENT_QUERY_VERSION,
     PLUGIN_MANAGEMENT_SOURCE_SNAPSHOT_VERSION,
@@ -16,6 +17,8 @@ from loushang.harness.plugin_management.application import (
     PluginManagementCommandPort,
     PluginManagementInstallationViewV1,
     PluginManagementInstanceSummaryV1,
+    PluginManagementMigrationRecordV1,
+    PluginManagementMigrationSnapshotV1,
     PluginManagementOperationSummaryV1,
     PluginManagementOwnerRevisionsV1,
     PluginManagementProjectionV1,
@@ -25,6 +28,7 @@ from loushang.harness.plugin_management.application import (
     PluginManagementSkewV1,
     PluginManagementSourceRecordV1,
     PluginManagementSourceSnapshotV1,
+    PluginMigrationProjectionSourcePort,
     PluginSourceProjectionSourcePort,
 )
 from loushang.harness.plugin_management.continuity_mutation import (
@@ -189,6 +193,7 @@ from loushang.harness.plugin_management.updates import (
 __all__ = [
     "PLUGIN_MANAGEMENT_APPLICATION_COMMAND_VERSION",
     "PLUGIN_MANAGEMENT_APPLICATION_RESULT_VERSION",
+    "PLUGIN_MANAGEMENT_MIGRATION_SNAPSHOT_VERSION",
     "PLUGIN_CONTINUITY_DELETION_EVENT_CODEC",
     "PLUGIN_ENABLEMENT_COMPATIBILITY_PROJECTION_VERSION",
     "PLUGIN_ENABLEMENT_FINALIZATION_EVIDENCE_VERSION",
@@ -295,6 +300,8 @@ __all__ = [
     "PluginManagementOperationResultV1",
     "PluginManagementService",
     "PluginManagementInstallationViewV1",
+    "PluginManagementMigrationRecordV1",
+    "PluginManagementMigrationSnapshotV1",
     "PluginManagementInstanceSummaryV1",
     "PluginManagementOperationSummaryV1",
     "PluginManagementOwnerRevisionsV1",
@@ -305,6 +312,7 @@ __all__ = [
     "PluginManagementSkewV1",
     "PluginManagementSourceRecordV1",
     "PluginManagementSourceSnapshotV1",
+    "PluginMigrationProjectionSourcePort",
     "PluginSourceProjectionSourcePort",
     "PluginManagementUpdateCommandV2",
     "PluginMigrationFenceV1",

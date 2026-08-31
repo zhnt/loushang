@@ -69,6 +69,11 @@ from loushang.harness.resources.packages.source import (
 SettingsListener = Callable[[ControlConfig], None]
 SettingsScope = Literal["session", "global", "project"]
 ThinkingBudgetKey = Literal["minimal", "low", "medium", "high"]
+LegacyPluginMutationGuard = Callable[[str], None]
+LegacyPluginCompatibilityPublisher = Callable[
+    [Iterable[str], SettingsScope],
+    None,
+]
 
 
 @dataclass(frozen=True)
@@ -99,6 +104,11 @@ class SettingsManager:
         self._permission_profile_ceiling = (
             permission_profile_ceiling or PermissionProfileCeiling()
         )
+        self._legacy_plugin_guard_authority_id: str | None = None
+        self._legacy_plugin_mutation_guard: LegacyPluginMutationGuard | None = None
+        self._legacy_plugin_compatibility_publisher: (
+            LegacyPluginCompatibilityPublisher | None
+        ) = None
         self._config = SettingsRuntime(
             ScopedConfigRuntime(
                 LayeredConfig(
@@ -130,6 +140,11 @@ class SettingsManager:
             else dict(overrides)
         )
         patch, removed_messages = prepare_override_patch(patch)
+        disabled_plugins = patch.get("disabled_plugins")
+        if isinstance(disabled_plugins, (list, tuple)) and all(
+            isinstance(item, str) for item in disabled_plugins
+        ):
+            self._guard_legacy_plugin_changes(tuple(disabled_plugins))
         self._adapter_errors.extend(
             SettingsError(
                 scope="session",
@@ -209,6 +224,9 @@ class SettingsManager:
         disabled_skills: Iterable[str] | Unset = UNSET,
         disabled_plugins: Iterable[str] | Unset = UNSET,
     ) -> None:
+        if not isinstance(disabled_plugins, Unset):
+            disabled_plugins = tuple(disabled_plugins)
+            self._guard_legacy_plugin_changes(disabled_plugins)
         patch = build_settings_patch(
             AgentSettingsUpdate(
                 default_model=default_model,
@@ -796,7 +814,37 @@ class SettingsManager:
     def set_disabled_plugins(
         self, names: Iterable[str], *, scope: SettingsScope = "global"
     ) -> None:
-        self.update_settings(scope=scope, disabled_plugins=names)
+        normalized = tuple(names)
+        self.update_settings(scope=scope, disabled_plugins=normalized)
+
+    def bind_plugin_enablement_legacy_mutation_guard(
+        self,
+        authority_id: str,
+        guard: LegacyPluginMutationGuard,
+    ) -> LegacyPluginCompatibilityPublisher:
+        """Fence peer writes and return the sole derived compatibility writer."""
+
+        if not isinstance(authority_id, str) or not authority_id:
+            raise ValueError("Plugin enablement guard authority id must be non-empty")
+        if not callable(guard):
+            raise TypeError("Plugin enablement legacy mutation guard is required")
+        if self._legacy_plugin_guard_authority_id is not None:
+            if self._legacy_plugin_guard_authority_id != authority_id:
+                raise RuntimeError("Plugin enablement guard authority already bound")
+            assert self._legacy_plugin_compatibility_publisher is not None
+            return self._legacy_plugin_compatibility_publisher
+
+        def publish(names: Iterable[str], scope: SettingsScope) -> None:
+            patch = build_settings_patch(
+                AgentSettingsUpdate(disabled_plugins=tuple(names))
+            )
+            layer = scope if scope in {"global", "project"} else "session"
+            self._config.update(layer, patch)
+
+        self._legacy_plugin_guard_authority_id = authority_id
+        self._legacy_plugin_mutation_guard = guard
+        self._legacy_plugin_compatibility_publisher = publish
+        return publish
 
     def add_plugin_source(
         self, source: str, *, scope: SettingsScope = "project"
@@ -827,16 +875,27 @@ class SettingsManager:
         )
 
     def enable_plugin(self, name: str, *, scope: SettingsScope = "project") -> None:
+        self._guard_legacy_plugin_mutation(name)
         self.update_settings(
             scope=scope,
             disabled_plugins=_without_name(self._settings.disabled_plugins, name),
         )
 
     def disable_plugin(self, name: str, *, scope: SettingsScope = "project") -> None:
+        self._guard_legacy_plugin_mutation(name)
         self.update_settings(
             scope=scope,
             disabled_plugins=_with_name(self._settings.disabled_plugins, name),
         )
+
+    def _guard_legacy_plugin_changes(self, names: tuple[str, ...]) -> None:
+        changed = set(self._settings.disabled_plugins).symmetric_difference(names)
+        for name in sorted(changed):
+            self._guard_legacy_plugin_mutation(name)
+
+    def _guard_legacy_plugin_mutation(self, name: str) -> None:
+        if self._legacy_plugin_mutation_guard is not None:
+            self._legacy_plugin_mutation_guard(name)
 
     def get_settings(self) -> ControlConfig:
         return self._settings

@@ -126,6 +126,22 @@ class PluginDesiredStateLedger:
             replayed = self._load_and_replay_unlocked()
         return _snapshot(replayed)
 
+    def capture(
+        self,
+    ) -> tuple[
+        PluginDesiredStateSnapshotV1,
+        tuple[PluginDesiredStateJournalTransition, ...],
+    ]:
+        """Capture the snapshot and its exact transition history under one lock."""
+
+        with journal_file_lock(
+            self._path,
+            "exclusive",
+            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+        ):
+            replayed = self._load_and_replay_unlocked()
+        return _snapshot(replayed), replayed.transitions
+
     def transitions(self) -> tuple[PluginDesiredStateJournalTransition, ...]:
         with journal_file_lock(
             self._path,

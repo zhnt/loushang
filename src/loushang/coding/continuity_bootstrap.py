@@ -38,6 +38,9 @@ from loushang.coding.continuity import (
 from loushang.coding.plugin_dependency_grants import (
     coding_plugin_distribution_evidence_resolver,
 )
+from loushang.coding.plugin_enablement_compatibility import (
+    bind_coding_plugin_enablement_compatibility,
+)
 from loushang.coding.resource_runtime import CodingPackageMaterializer
 from loushang.foundation.platform_paths import PlatformPaths, resolve_platform_paths
 from loushang.harness.approval.plugin_activation import (
@@ -377,6 +380,12 @@ async def bind_coding_configured_continuity(
             lifecycle=lifecycle,
             layout=layout,
         )
+        compatibility = bind_coding_plugin_enablement_compatibility(
+            lifecycle.common.layout,
+            settings_manager,
+        )
+        if compatibility is not None:
+            compatibility.reconcile()
         if not replayed_runtime.packages and not inspections:
             lifecycle.common.complete_startup_recovery()
             result = bind_coding_continuity(
@@ -415,6 +424,8 @@ async def bind_coding_configured_continuity(
             layout=layout,
             legacy_disabled_plugin_ids=disabled_plugins,
         )
+        if compatibility is not None:
+            compatibility.reconcile()
         runtime_resolution = _retain_enabled_runtime(
             runtime_resolution,
             enabled_plugin_ids=frozenset(item.plugin_id for item in instance_refs),
@@ -658,6 +669,11 @@ def _continuity_runtime_inputs(
                 if current_binding is None
                 else desired_by_source.get(current_binding.source_identity)
             )
+            if desired is not None and desired.selection.desired_state == "absent":
+                # A remove tombstone is authoritative.  Do not inspect or
+                # republish the mutable Source merely because the selected
+                # Package reference was intentionally cleared.
+                continue
             if desired is not None and desired.selection.package_revision is not None:
                 plugin_id = desired.installation_key.plugin_id
                 if plugin_id in plugin_ids:

@@ -14,11 +14,14 @@ from loushang.harness.plugin_management import (
     PluginManagementApplicationPorts,
     PluginManagementCommandApplication,
     PluginManagementCommandV1,
+    PluginManagementMigrationRecordV1,
+    PluginManagementMigrationSnapshotV1,
     PluginManagementQueryV1,
     PluginManagementReadModelProjector,
     PluginManagementService,
     PluginManagementSourceRecordV1,
     PluginManagementSourceSnapshotV1,
+    PluginPackageLifecycleSnapshotV1,
     PluginPackageRevisionRefV1,
 )
 from loushang.harness.resources.plugins.selection import PluginInstanceRevisionRef
@@ -88,6 +91,18 @@ def test_correlated_projection_joins_owner_snapshots_without_new_state_clock(
     queries = PluginManagementReadModelProjector(
         desired_state=desired,
         operations=service,
+        migrations=_MigrationOwner(
+            PluginManagementMigrationSnapshotV1(
+                journal_revision=3,
+                records=(
+                    PluginManagementMigrationRecordV1(
+                        installation_key=_key(),
+                        phase="compatibility_window",
+                        journal_revision=3,
+                    ),
+                ),
+            )
+        ),
         source=source,
     )
     ports = PluginManagementApplicationPorts(commands=commands, queries=queries)
@@ -97,6 +112,7 @@ def test_correlated_projection_joins_owner_snapshots_without_new_state_clock(
     assert projection.correlation_id == "cli:list:1"
     assert projection.owner_revisions.desired_state == 2
     assert projection.owner_revisions.operations == 6
+    assert projection.owner_revisions.enablement_migration == 3
     assert projection.owner_revisions.source == "source-config:7"
     assert projection.owner_revisions.instances is None
     assert projection.owner_revisions.unsupported_dimensions == (
@@ -110,6 +126,7 @@ def test_correlated_projection_joins_owner_snapshots_without_new_state_clock(
     [installed] = projection.installations
     assert installed.installation_key == _key()
     assert installed.desired_state == "installed_enabled"
+    assert installed.enablement_migration_phase == "compatibility_window"
     assert installed.selected_package_revision == _package()
     assert installed.convergence == "inactive"
     assert installed.unknown_dimensions == ("instances", "packages", "retirement")
@@ -173,6 +190,56 @@ def test_projection_reports_orphan_instance_as_invariant_skew(tmp_path: Path) ->
     assert view.convergence == "unknown"
 
 
+def test_projection_reports_selected_facts_missing_from_supported_owners(
+    tmp_path: Path,
+) -> None:
+    desired, service = _management(tmp_path)
+    commands = PluginManagementCommandApplication(service)
+    commands.submit(
+        PluginManagementApplicationCommandV1(
+            correlation_id="install",
+            command=_command(action="install", revision=0, package=_package()),
+        )
+    )
+    commands.submit(
+        PluginManagementApplicationCommandV1(
+            correlation_id="enable",
+            command=_command(action="enable", revision=1, operation=2),
+        )
+    )
+    queries = PluginManagementReadModelProjector(
+        desired_state=desired,
+        operations=service,
+        instances=_InstanceOwner(
+            PluginInstanceRuntimeInventorySnapshotV1(
+                journal_revision=0,
+                instances=(),
+                open_families=(),
+            )
+        ),
+        packages=_PackageOwner(
+            PluginPackageLifecycleSnapshotV1(
+                journal_revision=0,
+                startup_id="test-startup",
+                recovery_barrier=None,
+                open_pins=(),
+                cleanup_tasks=(),
+                packages=(),
+            )
+        ),
+    )
+
+    projection = queries.snapshot(_query(correlation_id="missing-owner-facts"))
+
+    assert tuple(item.code for item in projection.skew) == (
+        "desired_selected_instance_not_observed",
+        "desired_selected_package_not_observed",
+    )
+    [view] = projection.installations
+    assert "instances" in view.unknown_dimensions
+    assert "packages" in view.unknown_dimensions
+
+
 def test_query_filter_does_not_cross_product_or_scope(tmp_path: Path) -> None:
     desired, service = _management(tmp_path)
     source = _SourceOwner(
@@ -231,6 +298,22 @@ class _InstanceOwner:
     value: PluginInstanceRuntimeInventorySnapshotV1
 
     def snapshot(self) -> PluginInstanceRuntimeInventorySnapshotV1:
+        return self.value
+
+
+@dataclass(frozen=True)
+class _MigrationOwner:
+    value: PluginManagementMigrationSnapshotV1
+
+    def management_snapshot(self) -> PluginManagementMigrationSnapshotV1:
+        return self.value
+
+
+@dataclass(frozen=True)
+class _PackageOwner:
+    value: PluginPackageLifecycleSnapshotV1
+
+    def snapshot(self) -> PluginPackageLifecycleSnapshotV1:
         return self.value
 
 
