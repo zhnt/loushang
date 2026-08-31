@@ -49,6 +49,7 @@ from loushang.harness.plugin_authoring.contribution_admission import (
 )
 from loushang.harness.plugin_authoring.host import PluginDeclarationHost
 from loushang.harness.resource_catalog.generation import (
+    PreparedResourceOwnerGeneration,
     prepare_first_party_resource_owner_generation,
 )
 from loushang.harness.resource_catalog.inputs import (
@@ -496,6 +497,14 @@ def test_skill_action_document_is_strict_and_canonical() -> None:
 
 def test_catalog_action_authority_cannot_be_publicly_forged() -> None:
     assert not hasattr(action_authority, "_mint_catalog_action_owner_credential")
+    assert not hasattr(
+        action_authority,
+        "_new_catalog_action_owner_generation_lifecycle",
+    )
+    assert not hasattr(
+        action_authority,
+        "_claim_catalog_action_owner_generation_registrar",
+    )
     with pytest.raises(TypeError, match="Resource-owner-minted"):
         SkillActionCatalogSelection()
     with pytest.raises(TypeError, match="Resource-owner-minted"):
@@ -511,6 +520,10 @@ def test_catalog_action_authority_cannot_be_publicly_forged() -> None:
         action_authority._CatalogActionOwnerSnapshot()
     with pytest.raises(TypeError, match="Resource-owner-minted"):
         action_authority._CatalogActionOwnerGenerationLifecycle()
+    with pytest.raises(TypeError, match="candidate-minted"):
+        action_authority._CatalogActionOwnerAttachmentReceipt()
+    with pytest.raises(TypeError, match="composition-minted"):
+        action_authority._CatalogActionOwnerCandidate()
     with pytest.raises(TypeError, match="Resource-owner-minted"):
         action_authority._CatalogActionOwnerBinding()
     with pytest.raises(TypeError, match="Resource-owner-minted"):
@@ -520,6 +533,46 @@ def test_catalog_action_authority_cannot_be_publicly_forged() -> None:
             forged,
             owner_capability=object(),  # type: ignore[arg-type]
         )
+
+
+def test_fake_owner_cannot_enroll_through_structural_attachment() -> None:
+    fake_owner = object.__new__(PreparedResourceOwnerGeneration)
+
+    class StructuralCandidate:
+        ownership_state = "root_owned"
+
+        def _require_prepared_owner_generation(self):  # type: ignore[no-untyped-def]
+            return fake_owner
+
+    with pytest.raises(TypeError, match="candidate is not authority-recorded"):
+        action_authority._prepare_catalog_action_owner_attachment(
+            candidate=StructuralCandidate(),
+            owner=fake_owner,
+        )
+    forged_lifecycle = object.__new__(
+        action_authority._CatalogActionOwnerGenerationLifecycle
+    )
+    with pytest.raises(TypeError, match="not authority-recorded"):
+        action_authority._begin_catalog_action_owner_generation(
+            forged_lifecycle,
+            owner=fake_owner,
+        )
+    profile = RuntimeProfileResolver().resolve(
+        standard_capability_composition_plan(product_id="coding")
+    )
+    genuine_candidate = stage_resource_composition_candidate(profile)
+    with pytest.raises(TypeError, match="attachment fact is invalid"):
+        action_authority._prepare_catalog_action_owner_attachment(
+            candidate=genuine_candidate,
+            owner=fake_owner,
+        )
+
+    class StructuralGeneration:
+        ownership_state = "root_owned"
+
+    with pytest.raises(TypeError, match="requires a prepared owner generation"):
+        genuine_candidate._attach_prepared_owner_generation(StructuralGeneration())
+    genuine_candidate.dispose()
 
 
 def test_catalog_action_owner_capability_rejects_unregistered_binding() -> None:

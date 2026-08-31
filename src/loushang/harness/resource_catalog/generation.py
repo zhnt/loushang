@@ -9,6 +9,7 @@ from typing import Literal
 
 from loushang.harness.capabilities.composition_runtime import (
     StagedResourceCompositionCandidate,
+    _PreparedResourceOwnerGeneration,
 )
 from loushang.harness.resource_catalog.inputs import AdmittedPackageResource
 from loushang.harness.resource_catalog.shadow import (
@@ -45,9 +46,10 @@ from loushang.harness.resources._discovery_conventions import (
 from loushang.harness.resources._skill_action_authority import (
     _begin_catalog_action_owner_generation,
     _cancel_catalog_action_owner_binding,
+    _CatalogActionOwnerAttachmentReceipt,
     _CatalogActionOwnerGenerationLifecycle,
     _commit_catalog_action_owner_generation,
-    _new_catalog_action_owner_generation_lifecycle,
+    _consume_catalog_action_owner_attachment,
     _prepare_catalog_action_owner_binding,
     _restore_catalog_action_owner_generation,
     _retire_catalog_action_owner_generation,
@@ -101,7 +103,7 @@ class _PreparedSkillCatalogOwnerView:
 
 
 @dataclass(slots=True, weakref_slot=True)
-class PreparedResourceOwnerGeneration:
+class PreparedResourceOwnerGeneration(_PreparedResourceOwnerGeneration):
     """One unpublished Catalog generation with exactly one transfer path.
 
     Instances are created only by the preparation function below and are
@@ -123,7 +125,8 @@ class PreparedResourceOwnerGeneration:
         init=False,
         repr=False,
     )
-    _skill_action_owner_lifecycle: _CatalogActionOwnerGenerationLifecycle = field(
+    _skill_action_owner_lifecycle: _CatalogActionOwnerGenerationLifecycle | None = field(
+        default=None,
         init=False,
         repr=False,
     )
@@ -154,10 +157,18 @@ class PreparedResourceOwnerGeneration:
             catalog_generation=catalog_generation,
             provider_binding_fingerprint=fingerprint,
         )
-        generation._skill_action_owner_lifecycle = (
-            _new_catalog_action_owner_generation_lifecycle(generation)
-        )
         return generation
+
+    def _accept_candidate_attachment(self, receipt: object) -> None:
+        if self._ownership != "root_owned":
+            raise RuntimeError("Resource owner generation is not root-owned")
+        if self._skill_action_owner_lifecycle is not None:
+            raise RuntimeError("Resource owner generation is already attached")
+        if type(receipt) is not _CatalogActionOwnerAttachmentReceipt:
+            raise TypeError("Resource owner attachment receipt is invalid")
+        self._skill_action_owner_lifecycle = (
+            _consume_catalog_action_owner_attachment(receipt, owner=self)
+        )
 
     def retirement_receipt(
         self,
@@ -254,7 +265,7 @@ class PreparedResourceOwnerGeneration:
         if not effective.managed_action_sources:
             return SkillCatalogConsumer._from_resource_owner(view)
         binding = _prepare_catalog_action_owner_binding(
-            self._skill_action_owner_lifecycle,
+            self._require_skill_action_owner_lifecycle(),
             owner=self,
             projection=effective,
         )
@@ -274,7 +285,7 @@ class PreparedResourceOwnerGeneration:
         if self._ownership != "root_owned":
             raise RuntimeError("Resource owner generation is not available for claim")
         _begin_catalog_action_owner_generation(
-            self._skill_action_owner_lifecycle,
+            self._require_skill_action_owner_lifecycle(),
             owner=self,
         )
         self._ownership = "graph_constructing"
@@ -283,7 +294,7 @@ class PreparedResourceOwnerGeneration:
         if self._ownership != "graph_constructing":
             raise RuntimeError("Resource owner generation claim was not started")
         _commit_catalog_action_owner_generation(
-            self._skill_action_owner_lifecycle,
+            self._require_skill_action_owner_lifecycle(),
             owner=self,
         )
         self._ownership = "graph_owned"
@@ -292,7 +303,7 @@ class PreparedResourceOwnerGeneration:
         if self._ownership != "graph_constructing":
             raise RuntimeError("Resource owner generation claim is not in progress")
         _restore_catalog_action_owner_generation(
-            self._skill_action_owner_lifecycle,
+            self._require_skill_action_owner_lifecycle(),
             owner=self,
         )
         self._ownership = "root_owned"
@@ -307,15 +318,25 @@ class PreparedResourceOwnerGeneration:
         if self._ownership != "graph_owned":
             raise RuntimeError("Resource owner generation is not graph-owned")
 
+    def _require_skill_action_owner_lifecycle(
+        self,
+    ) -> _CatalogActionOwnerGenerationLifecycle:
+        lifecycle = self._skill_action_owner_lifecycle
+        if type(lifecycle) is not _CatalogActionOwnerGenerationLifecycle:
+            raise RuntimeError("Resource owner generation is not candidate-attached")
+        return lifecycle
+
     async def _dispose(self, *, owner: Literal["root", "graph"]) -> None:
         if self._ownership == "disposed":
             return
         expected = "root_owned" if owner == "root" else "graph_owned"
         if self._ownership == expected:
-            _retire_catalog_action_owner_generation(
-                self._skill_action_owner_lifecycle,
-                owner=self,
-            )
+            lifecycle = self._skill_action_owner_lifecycle
+            if lifecycle is not None:
+                _retire_catalog_action_owner_generation(
+                    lifecycle,
+                    owner=self,
+                )
             self._ownership = "retiring"
             self._retirement_owner = owner
         elif not (self._ownership == "retiring" and self._retirement_owner == owner):

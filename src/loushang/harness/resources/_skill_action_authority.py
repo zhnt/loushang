@@ -12,6 +12,23 @@ from pathlib import Path
 from typing import Literal
 
 
+class _CatalogActionOwnerCandidate:
+    """Nominal provenance root for one Resource composition candidate."""
+
+    __slots__ = ()
+
+    def __init__(self) -> None:
+        if type(self) is _CatalogActionOwnerCandidate:
+            raise TypeError("Catalog action owner candidates are composition-minted")
+        candidate_id = id(self)
+
+        def discard(reference: weakref.ReferenceType[object]) -> None:
+            if _OWNER_CANDIDATES.get(candidate_id) is reference:
+                _OWNER_CANDIDATES.pop(candidate_id, None)
+
+        _OWNER_CANDIDATES[candidate_id] = weakref.ref(self, discard)
+
+
 @dataclass(frozen=True, slots=True, init=False)
 class _CatalogActionOwnerCapability:
     """Opaque capability held only by one Resource Catalog consumer."""
@@ -57,6 +74,14 @@ class _CatalogActionOwnerGenerationLifecycle:
 
 
 @dataclass(frozen=True, slots=True, init=False)
+class _CatalogActionOwnerAttachmentReceipt:
+    """Single-use proof of one candidate-to-generation attachment."""
+
+    def __init__(self) -> None:
+        raise TypeError("Catalog action owner attachments are candidate-minted")
+
+
+@dataclass(frozen=True, slots=True, init=False)
 class _CatalogActionOwnerBinding:
     """Single-use owner construction binding consumed by one projection."""
 
@@ -91,6 +116,13 @@ class _CatalogActionOwnerGenerationRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class _CatalogActionOwnerAttachmentRecord:
+    candidate_ref: Callable[[], object | None]
+    owner_ref: Callable[[], object | None]
+    receipt: _CatalogActionOwnerAttachmentReceipt
+
+
+@dataclass(frozen=True, slots=True)
 class _CatalogActionOwnerRecord:
     liveness_ref: Callable[[], object | None]
     capability: _CatalogActionOwnerCapability
@@ -107,16 +139,96 @@ class _CatalogActionRegistration:
     fact: _CatalogActionFact
 
 
+_OWNER_CANDIDATES: dict[int, weakref.ReferenceType[object]] = {}
 _OWNER_GENERATIONS: dict[int, _CatalogActionOwnerGenerationRecord] = {}
 _OWNER_GENERATION_IDENTITIES: dict[int, int] = {}
+_OWNER_ATTACHMENTS: dict[int, _CatalogActionOwnerAttachmentRecord] = {}
 _OWNER_CAPABILITIES: dict[int, _CatalogActionOwnerRecord] = {}
 _REGISTRATIONS: dict[int, _CatalogActionRegistration] = {}
 
 
-def _new_catalog_action_owner_generation_lifecycle(
+def _prepare_catalog_action_owner_attachment(
+    *,
+    candidate: object,
+    owner: object,
+) -> _CatalogActionOwnerAttachmentReceipt:
+    """Record one exact candidate-to-generation attachment before handoff."""
+
+    candidate_ref = _OWNER_CANDIDATES.get(id(candidate))
+    if (
+        candidate_ref is None
+        or candidate_ref() is not candidate
+        or not isinstance(candidate, _CatalogActionOwnerCandidate)
+    ):
+        raise TypeError("Catalog action owner candidate is not authority-recorded")
+    if getattr(candidate, "ownership_state", None) != "root_owned":
+        raise TypeError("Catalog action owner attachment is not root-owned")
+    require_owner = getattr(candidate, "_require_prepared_owner_generation", None)
+    if (
+        getattr(candidate, "has_prepared_owner_generation", None) is not True
+        or not callable(require_owner)
+        or require_owner() is not owner
+    ):
+        raise TypeError("Catalog action owner attachment fact is invalid")
+    receipt = object.__new__(_CatalogActionOwnerAttachmentReceipt)
+    receipt_id = id(receipt)
+
+    def discard_candidate(
+        reference: weakref.ReferenceType[_CatalogActionOwnerCandidate],
+    ) -> None:
+        current = _OWNER_ATTACHMENTS.get(receipt_id)
+        if current is not None and current.candidate_ref is reference:
+            _OWNER_ATTACHMENTS.pop(receipt_id, None)
+
+    def discard_owner(reference: weakref.ReferenceType[object]) -> None:
+        current = _OWNER_ATTACHMENTS.get(receipt_id)
+        if current is not None and current.owner_ref is reference:
+            _OWNER_ATTACHMENTS.pop(receipt_id, None)
+
+    _OWNER_ATTACHMENTS[receipt_id] = _CatalogActionOwnerAttachmentRecord(
+        candidate_ref=weakref.ref(candidate, discard_candidate),
+        owner_ref=weakref.ref(owner, discard_owner),
+        receipt=receipt,
+    )
+    return receipt
+
+
+def _cancel_catalog_action_owner_attachment(
+    receipt: _CatalogActionOwnerAttachmentReceipt,
+) -> None:
+    if type(receipt) is not _CatalogActionOwnerAttachmentReceipt:
+        return
+    record = _OWNER_ATTACHMENTS.get(id(receipt))
+    if record is not None and record.receipt is receipt:
+        _OWNER_ATTACHMENTS.pop(id(receipt), None)
+
+
+def _consume_catalog_action_owner_attachment(
+    receipt: _CatalogActionOwnerAttachmentReceipt,
+    *,
     owner: object,
 ) -> _CatalogActionOwnerGenerationLifecycle:
-    """Record provenance for one factory-created Resource owner generation."""
+    """Consume exact attachment evidence and enroll its owner generation."""
+
+    if type(receipt) is not _CatalogActionOwnerAttachmentReceipt:
+        raise TypeError("Catalog action owner attachment receipt is invalid")
+    record = _OWNER_ATTACHMENTS.get(id(receipt))
+    candidate = record.candidate_ref() if record is not None else None
+    require_owner = (
+        getattr(candidate, "_require_prepared_owner_generation", None)
+        if candidate is not None
+        else None
+    )
+    if (
+        record is None
+        or record.receipt is not receipt
+        or record.owner_ref() is not owner
+        or getattr(candidate, "ownership_state", None) != "root_owned"
+        or not callable(require_owner)
+        or require_owner() is not owner
+    ):
+        raise TypeError("Catalog action owner attachment is not live exact evidence")
+    _OWNER_ATTACHMENTS.pop(id(receipt), None)
 
     owner_id = id(owner)
     existing_id = _OWNER_GENERATION_IDENTITIES.get(owner_id)

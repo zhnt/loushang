@@ -28,6 +28,9 @@ ACTION_AUTHORITY = Path(
 RESOURCE_OWNER_GENERATION = Path(
     "src/loushang/harness/resource_catalog/generation.py"
 )
+RESOURCE_COMPOSITION = Path(
+    "src/loushang/harness/capabilities/composition_runtime.py"
+)
 RESOURCE_PROVIDER = Path(
     "src/loushang/harness/capabilities/resources_provider.py"
 )
@@ -105,6 +108,7 @@ def test_managed_action_consumes_catalog_facts_and_existing_host_authorities() -
     consumer_source = SKILL_CONSUMER.read_text(encoding="utf-8")
     authority_source = ACTION_AUTHORITY.read_text(encoding="utf-8")
     owner_source = RESOURCE_OWNER_GENERATION.read_text(encoding="utf-8")
+    composition_source = RESOURCE_COMPOSITION.read_text(encoding="utf-8")
     provider_source = RESOURCE_PROVIDER.read_text(encoding="utf-8")
     product_source = AGENT_PRODUCT.read_text(encoding="utf-8")
 
@@ -141,10 +145,18 @@ def test_managed_action_consumes_catalog_facts_and_existing_host_authorities() -
     assert "_managed_action_owner_identity" not in authority_source
     assert "_managed_action_owner_capability" not in authority_source
     assert "consumer_ref" not in authority_source
+    assert "_CatalogActionOwnerAttachmentReceipt" in authority_source
+    assert "_prepare_catalog_action_owner_attachment" in authority_source
+    assert "_consume_catalog_action_owner_attachment" in authority_source
+    assert "_new_catalog_action_owner_generation_lifecycle" not in authority_source
+    assert "_claim_catalog_action_owner_generation_registrar" not in authority_source
     assert "_construct_skill_catalog_consumer" in owner_source
     assert "_skill_action_owner_registrations" not in owner_source
-    assert "_new_catalog_action_owner_generation_lifecycle" in owner_source
+    assert "_consume_catalog_action_owner_attachment" in owner_source
     assert "_prepare_catalog_action_owner_binding" in owner_source
+    assert "class _PreparedResourceOwnerGeneration:" in composition_source
+    assert "class _PreparedResourceOwnerGeneration(Protocol)" not in composition_source
+    assert "generation._accept_candidate_attachment(attachment)" in composition_source
     assert "skill_consumer=skill_consumer" in provider_source
     assert product_source.count(
         "self._skill_catalog_consumer = skill_catalog.skill_consumer"
