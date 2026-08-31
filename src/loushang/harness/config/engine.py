@@ -122,6 +122,7 @@ class LayeredConfig(Generic[T]):
                 pass
             return
         with self._lock:
+            self._require_mutation_authority(_authority)
             changed = self._reload_unlocked(strict=strict)
             if self._transaction_depth and changed:
                 self._transaction_changed = True
@@ -170,9 +171,16 @@ class LayeredConfig(Generic[T]):
                 notify_on_exit=notify,
                 _authority=_authority,
             ):
-                self.update(layer_name, patch, persist=persist, notify=notify)
+                self.update(
+                    layer_name,
+                    patch,
+                    persist=persist,
+                    notify=notify,
+                    _authority=_authority,
+                )
             return
         with self._lock:
+            self._require_mutation_authority(_authority)
             layer = self._require_layer(layer_name)
             merged = merge_config_patch(self._patches[layer_name], patch)
             patches = self._candidate_patches(layer_name, merged)
@@ -210,9 +218,16 @@ class LayeredConfig(Generic[T]):
                 notify_on_exit=notify,
                 _authority=_authority,
             ):
-                self.replace(layer_name, patch, persist=persist, notify=notify)
+                self.replace(
+                    layer_name,
+                    patch,
+                    persist=persist,
+                    notify=notify,
+                    _authority=_authority,
+                )
             return
         with self._lock:
+            self._require_mutation_authority(_authority)
             layer = self._require_layer(layer_name)
             replacement = deepcopy(dict(patch))
             patches = self._candidate_patches(layer_name, replacement)
@@ -254,10 +269,12 @@ class LayeredConfig(Generic[T]):
             self._issues.clear()
             return issues
 
-    def publish(self) -> None:
+    def publish(self, *, _authority: object | None = None) -> None:
         """Publish the current immutable value snapshot in commit order."""
 
+        self._require_mutation_authority(_authority)
         with self._lock:
+            self._require_mutation_authority(_authority)
             value = self._value
             should_drain = self._enqueue_publication_unlocked(value)
         if should_drain:
@@ -278,8 +295,7 @@ class LayeredConfig(Generic[T]):
     def _require_mutation_authority(self, authority: object | None) -> None:
         with self._lock:
             owner = self._runtime_authority
-            transaction_owner = self._transaction_authority
-            if owner is None or authority is owner or transaction_owner is owner:
+            if owner is None or authority is owner:
                 return
         raise RuntimeError("Layered config mutation is owned by its scoped runtime")
 
@@ -317,6 +333,7 @@ class LayeredConfig(Generic[T]):
             stack.enter_context(self._path_locks())
             self._lock.acquire()
             locked = True
+            self._require_mutation_authority(_authority)
             outermost = self._transaction_depth == 0
             if outermost:
                 self._transaction_authority = _authority

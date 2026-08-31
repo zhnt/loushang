@@ -9,7 +9,7 @@ import secrets
 import stat
 import threading
 from collections.abc import Iterator
-from contextlib import AbstractContextManager, contextmanager
+from contextlib import AbstractContextManager, ExitStack, contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -1554,8 +1554,9 @@ def _prepare_private_state_layout(layout: CodingPluginLifecycleStateLayout) -> N
         private_base=layout.private_data_base,
         label="data",
     )
-    # Compatibility readers use a non-creating lock so a replaced root cannot
-    # make them create files outside the validated private tree.
+    # Compatibility readers open this existing lock before using portable
+    # Windows paths.  The child handle prevents the validated directory from
+    # being renamed while the remaining journal locks and files are opened.
     with journal_file_lock(layout.coordination_lock, "exclusive"):
         pass
 
@@ -1566,13 +1567,34 @@ def _capture_existing_plugin_enablement_state(
 ) -> Iterator[_CodingPluginEnablementStateCapture | None]:
     """Pin one private root and capture compatibility ledgers beneath it."""
 
+    if not _supports_descriptor_relative_private_state_io():
+        if _supports_portable_private_state_io():
+            with _capture_existing_plugin_enablement_state_portable(layout) as capture:
+                yield capture
+            return
+        if not _validate_existing_private_state_layout(layout):
+            yield None
+            return
+        raise CodingPluginLifecycleError(
+            "Secure Coding Plugin state handles are unavailable",
+            code="coding_plugin_state_permissions_failed",
+        )
+
     descriptor = _open_existing_private_state_root(layout)
     if descriptor is None:
         yield None
         return
     try:
-        lock_name = f"{layout.coordination_lock.name}.lock"
-        with journal_file_lock_at(descriptor, lock_name, "exclusive"):
+        with ExitStack() as locks:
+            for name in _plugin_enablement_capture_lock_names(layout):
+                locks.enter_context(
+                    journal_file_lock_at(
+                        descriptor,
+                        name,
+                        "exclusive",
+                        create=True,
+                    )
+                )
             yield _CodingPluginEnablementStateCapture(
                 desired_raw=_read_private_state_file(
                     descriptor,
@@ -1585,6 +1607,35 @@ def _capture_existing_plugin_enablement_state(
             )
     finally:
         os.close(descriptor)
+
+
+def _supports_descriptor_relative_private_state_io() -> bool:
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    return bool(
+        os.name == "posix"
+        and os.open in os.supports_dir_fd
+        and nofollow
+        and getattr(os, "O_DIRECTORY", 0)
+    )
+
+
+def _supports_portable_private_state_io() -> bool:
+    """Return whether open child handles pin parent paths on this host."""
+
+    return os.name == "nt"
+
+
+def _plugin_enablement_capture_lock_names(
+    layout: CodingPluginLifecycleStateLayout,
+) -> tuple[str, ...]:
+    """Return the owner lock order for one cross-journal compatibility read."""
+
+    return (
+        f"{layout.coordination_lock.name}.lock",
+        f"{layout.enablement_migration.name}.migration.lock",
+        f"{layout.desired_state.name}.lock",
+        f"{layout.enablement_migration.name}.lock",
+    )
 
 
 def _open_existing_private_state_root(
@@ -1600,18 +1651,6 @@ def _open_existing_private_state_root(
             code="coding_plugin_state_permissions_failed",
         ) from None
     nofollow = getattr(os, "O_NOFOLLOW", 0)
-    if (
-        os.name != "posix"
-        or os.open not in os.supports_dir_fd
-        or not nofollow
-        or not getattr(os, "O_DIRECTORY", 0)
-    ):
-        if not _validate_existing_private_state_layout(layout):
-            return None
-        raise CodingPluginLifecycleError(
-            "Secure Coding Plugin state handles are unavailable",
-            code="coding_plugin_state_permissions_failed",
-        )
     flags = os.O_RDONLY | os.O_DIRECTORY | nofollow | getattr(os, "O_CLOEXEC", 0)
     descriptor: int | None = None
     try:
@@ -1679,10 +1718,105 @@ def _read_private_state_file(directory_fd: int, name: str) -> str:
         return handle.read()
 
 
+@contextmanager
+def _capture_existing_plugin_enablement_state_portable(
+    layout: CodingPluginLifecycleStateLayout,
+) -> Iterator[_CodingPluginEnablementStateCapture | None]:
+    """Capture through stable Windows paths held by an open child lock handle."""
+
+    directory_chain = _capture_existing_private_directory_chain(layout)
+    if directory_chain is None:
+        yield None
+        return
+    try:
+        with journal_file_lock(
+            layout.coordination_lock,
+            "exclusive",
+            create=False,
+        ):
+            _assert_private_directory_chain_stable(directory_chain)
+            with ExitStack() as locks:
+                locks.enter_context(
+                    journal_file_lock(
+                        layout.enablement_migration,
+                        "exclusive",
+                        lock_suffix=".migration.lock",
+                    )
+                )
+                locks.enter_context(
+                    journal_file_lock(layout.desired_state, "exclusive")
+                )
+                locks.enter_context(
+                    journal_file_lock(layout.enablement_migration, "exclusive")
+                )
+                _assert_private_directory_chain_stable(directory_chain)
+                capture = _CodingPluginEnablementStateCapture(
+                    desired_raw=_read_private_state_file_portable(layout.desired_state),
+                    migration_raw=_read_private_state_file_portable(
+                        layout.enablement_migration
+                    ),
+                )
+                _assert_private_directory_chain_stable(directory_chain)
+                yield capture
+    except OSError:
+        raise CodingPluginLifecycleError(
+            "Coding Plugin state root is not private",
+            code="coding_plugin_state_permissions_failed",
+        ) from None
+
+
+def _read_private_state_file_portable(path: Path) -> str:
+    try:
+        expected = path.lstat()
+    except FileNotFoundError:
+        return ""
+    _validate_private_state_file_metadata(expected)
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_BINARY", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOINHERIT", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+    )
+    descriptor = os.open(path, flags)
+    with os.fdopen(descriptor, "r", encoding="utf-8") as handle:
+        opened = os.fstat(handle.fileno())
+        _validate_private_state_file_metadata(opened)
+        if not os.path.samestat(expected, opened):
+            raise OSError("private state journal identity changed while opening")
+        raw = handle.read()
+        if not os.path.samestat(opened, os.fstat(handle.fileno())):
+            raise OSError("private state journal identity changed while reading")
+    after = path.lstat()
+    _validate_private_state_file_metadata(after)
+    if not os.path.samestat(expected, after):
+        raise OSError("private state journal path identity changed")
+    return raw
+
+
+def _validate_private_state_file_metadata(metadata: os.stat_result) -> None:
+    getuid = getattr(os, "getuid", None)
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or _is_link_or_reparse(metadata)
+        or (os.name == "posix" and metadata.st_mode & 0o077)
+        or (os.name == "posix" and callable(getuid) and metadata.st_uid != getuid())
+    ):
+        raise OSError("private state journal is not a private regular file")
+
+
 def _validate_existing_private_state_layout(
     layout: CodingPluginLifecycleStateLayout,
 ) -> bool:
     """Validate an existing state tree without recreating a disposed root."""
+
+    return _capture_existing_private_directory_chain(layout) is not None
+
+
+def _capture_existing_private_directory_chain(
+    layout: CodingPluginLifecycleStateLayout,
+) -> tuple[tuple[Path, os.stat_result], ...] | None:
+    """Capture the exact private directory identities used by portable I/O."""
 
     base = layout.private_state_base.expanduser().absolute()
     root = layout.root.expanduser().absolute()
@@ -1703,33 +1837,56 @@ def _validate_existing_private_state_layout(
             code="coding_plugin_state_permissions_failed",
         ) from None
 
+    captured: list[tuple[Path, os.stat_result]] = []
     current = base
     for part in (None, *relative.parts):
         if part is not None:
             current /= part
-        _validate_existing_private_directory(current)
-    return True
+        captured.append((current, _validate_existing_private_directory(current)))
+    return tuple(captured)
 
 
-def _validate_existing_private_directory(root: Path) -> None:
+def _assert_private_directory_chain_stable(
+    captured: tuple[tuple[Path, os.stat_result], ...],
+) -> None:
+    for path, expected in captured:
+        current = _validate_existing_private_directory(path)
+        if not os.path.samestat(expected, current):
+            raise OSError("private root identity changed")
+
+
+def _validate_existing_private_directory(root: Path) -> os.stat_result:
     try:
         before = root.lstat()
         getuid = getattr(os, "getuid", None)
         if (
             not stat.S_ISDIR(before.st_mode)
-            or stat.S_ISLNK(before.st_mode)
-            or bool(getattr(before, "st_reparse_tag", 0))
-            or before.st_mode & 0o077
+            or _is_link_or_reparse(before)
+            or (os.name == "posix" and before.st_mode & 0o077)
             or (os.name == "posix" and callable(getuid) and before.st_uid != getuid())
         ):
             raise OSError("private root is not a private direct directory")
-        if not os.path.samestat(before, root.lstat()):
+        after = root.lstat()
+        if not os.path.samestat(before, after):
             raise OSError("private root identity changed")
+        return after
     except OSError:
         raise CodingPluginLifecycleError(
             "Coding Plugin state root is not private",
             code="coding_plugin_state_permissions_failed",
         ) from None
+
+
+def _is_link_or_reparse(metadata: os.stat_result) -> bool:
+    reparse_attribute = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    return bool(
+        stat.S_ISLNK(metadata.st_mode)
+        or getattr(metadata, "st_reparse_tag", 0)
+        or (
+            reparse_attribute
+            and getattr(metadata, "st_file_attributes", 0) & reparse_attribute
+        )
+    )
 
 
 def _prepare_private_tree(

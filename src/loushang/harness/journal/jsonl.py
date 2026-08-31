@@ -103,7 +103,7 @@ def journal_file_lock(
             getuid = getattr(os, "getuid", None)
             if (
                 not stat.S_ISREG(opened.st_mode)
-                or opened.st_mode & 0o077
+                or (os.name == "posix" and opened.st_mode & 0o077)
                 or (
                     os.name == "posix"
                     and callable(getuid)
@@ -151,8 +151,9 @@ def journal_file_lock_at(
     mode: LockMode,
     *,
     blocking: bool = True,
+    create: bool = False,
 ) -> Iterator[None]:
-    """Lock one existing private regular file relative to a pinned directory."""
+    """Lock one private regular file relative to a pinned directory."""
 
     if os.name != "posix" or os.open not in os.supports_dir_fd:
         raise OSError("Descriptor-relative journal locks are unavailable")
@@ -160,14 +161,20 @@ def journal_file_lock_at(
         raise ValueError("Descriptor-relative journal lock name must be one component")
     if type(blocking) is not bool:
         raise TypeError("Journal lock blocking mode must be a built-in bool")
+    if type(create) is not bool:
+        raise TypeError("Journal lock creation mode must be a built-in bool")
     flags = (
         os.O_RDWR
         | getattr(os, "O_CLOEXEC", 0)
         | getattr(os, "O_NOFOLLOW", 0)
         | getattr(os, "O_NONBLOCK", 0)
     )
-    descriptor = os.open(name, flags, dir_fd=directory_fd)
+    if create:
+        flags |= os.O_CREAT
+    descriptor = os.open(name, flags, 0o600, dir_fd=directory_fd)
     with os.fdopen(descriptor, "r+b") as handle:
+        if create:
+            _fchmod_private(handle.fileno())
         opened = os.fstat(handle.fileno())
         getuid = getattr(os, "getuid", None)
         if (
@@ -728,20 +735,108 @@ def _open_lock_file(path: Path, *, create: bool) -> Iterator[Any]:
             yield handle
         return
 
-    metadata = None
-    if not create:
-        metadata = path.lstat()
-        if stat.S_ISLNK(metadata.st_mode) or bool(
-            getattr(metadata, "st_reparse_tag", 0)
-        ):
-            raise OSError("Journal lock cannot be a symlink or reparse point")
+    if os.name == "nt":
+        with _open_windows_lock_file(path, create=create) as handle:
+            yield handle
+        return
+
+    metadata = path.lstat() if not create else None
+    if metadata is not None and _is_link_or_reparse(metadata):
+        raise OSError("Journal lock cannot be a symlink or reparse point")
     with path.open("a+b" if create else "r+b") as handle:
         opened = os.fstat(handle.fileno())
-        if not stat.S_ISREG(opened.st_mode):
+        if not stat.S_ISREG(opened.st_mode) or _is_link_or_reparse(opened):
             raise OSError("Journal lock is not a private regular file")
         if metadata is not None and not os.path.samestat(metadata, opened):
             raise OSError("Journal lock identity changed while opening")
         yield handle
+
+
+@contextmanager
+def _open_windows_lock_file(path: Path, *, create: bool) -> Iterator[Any]:
+    """Open a regular Windows lock without following a reparse point.
+
+    The handle intentionally omits ``FILE_SHARE_DELETE``.  While it is open,
+    Windows cannot replace the lock file or rename its parent directory; this
+    pins the already-validated private root for portable compatibility reads.
+    """
+
+    import ctypes
+    import msvcrt
+    from ctypes import wintypes
+
+    win_dll = getattr(ctypes, "WinDLL")
+    kernel32 = win_dll("kernel32", use_last_error=True)
+    create_file = kernel32.CreateFileW
+    create_file.argtypes = (
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.LPVOID,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.HANDLE,
+    )
+    create_file.restype = wintypes.HANDLE
+    close_handle = kernel32.CloseHandle
+    close_handle.argtypes = (wintypes.HANDLE,)
+    close_handle.restype = wintypes.BOOL
+    generic_read_write = 0x80000000 | 0x40000000
+    share_read_write = 0x00000001 | 0x00000002
+    open_existing = 3
+    open_always = 4
+    file_attribute_normal = 0x00000080
+    file_flag_open_reparse_point = 0x00200000
+    handle = create_file(
+        str(path),
+        generic_read_write,
+        share_read_write,
+        None,
+        open_always if create else open_existing,
+        file_attribute_normal | file_flag_open_reparse_point,
+        None,
+    )
+    if handle == ctypes.c_void_p(-1).value:
+        get_last_error = getattr(ctypes, "get_last_error")
+        win_error = getattr(ctypes, "WinError")
+        raise win_error(get_last_error())
+    try:
+        open_osfhandle = getattr(msvcrt, "open_osfhandle")
+        descriptor = open_osfhandle(
+            handle,
+            os.O_RDWR | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOINHERIT", 0),
+        )
+    except BaseException:
+        close_handle(handle)
+        raise
+    try:
+        opened_file = os.fdopen(descriptor, "r+b")
+    except BaseException:
+        os.close(descriptor)
+        raise
+    with opened_file as opened_handle:
+        path_metadata = path.lstat()
+        opened = os.fstat(opened_handle.fileno())
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or _is_link_or_reparse(path_metadata)
+            or _is_link_or_reparse(opened)
+            or not os.path.samestat(path_metadata, opened)
+        ):
+            raise OSError("Journal lock is not a direct regular file")
+        yield opened_handle
+
+
+def _is_link_or_reparse(metadata: os.stat_result) -> bool:
+    reparse_attribute = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    return bool(
+        stat.S_ISLNK(metadata.st_mode)
+        or getattr(metadata, "st_reparse_tag", 0)
+        or (
+            reparse_attribute
+            and getattr(metadata, "st_file_attributes", 0) & reparse_attribute
+        )
+    )
 
 
 def _sync_parent_directory(

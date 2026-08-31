@@ -24,6 +24,11 @@ SETTINGS_MANAGER = Path("src/loushang/harness/config/agent/manager.py")
 CONFIG_ENGINE = Path("src/loushang/harness/config/engine.py")
 CONFIG_RUNTIME = Path("src/loushang/harness/config/runtime.py")
 CONFIG_FILE_TRANSACTION = Path("src/loushang/harness/config/_file_transaction.py")
+JOURNAL = Path("src/loushang/harness/journal/jsonl.py")
+DESIRED_LEDGER = Path("src/loushang/harness/plugin_management/ledger.py")
+ENABLEMENT_MIGRATION = Path(
+    "src/loushang/harness/plugin_management/enablement_migration.py"
+)
 CODING_LIFECYCLE = Path("src/loushang/coding/_plugin_lifecycle.py")
 
 
@@ -162,6 +167,9 @@ def test_plc9a1_coding_transport_adapter_does_not_construct_owner_stores() -> No
     config_engine = _source(CONFIG_ENGINE)
     config_runtime = _source(CONFIG_RUNTIME)
     config_file_transaction = _source(CONFIG_FILE_TRANSACTION)
+    journal = _source(JOURNAL)
+    desired_ledger = _source(DESIRED_LEDGER)
+    enablement_migration = _source(ENABLEMENT_MIGRATION)
 
     for forbidden in (
         "PluginDesiredStateLedger(",
@@ -173,8 +181,16 @@ def test_plc9a1_coding_transport_adapter_does_not_construct_owner_stores() -> No
     assert "bind_coding_plugin_enablement_compatibility(" in adapter
     assert "class CodingPluginEnablementCompatibilityWriter:" in compatibility
     assert "with _capture_existing_plugin_enablement_state(" in compatibility
-    assert "with journal_file_lock_at(" in lifecycle
+    assert "journal_file_lock_at(" in lifecycle
     assert "_read_private_state_file(" in lifecycle
+    assert "_capture_existing_plugin_enablement_state_portable(" in lifecycle
+    assert 'f"{layout.enablement_migration.name}.migration.lock"' in lifecycle
+    assert 'f"{layout.desired_state.name}.lock"' in lifecycle
+    assert "FILE_FLAG_OPEN_REPARSE_POINT" in _source(CONTRACT)
+    assert "file_flag_open_reparse_point" in journal
+    assert "share_read_write" in journal
+    assert 'JournalLoadPolicy(partial_tail="skip")' in desired_ledger
+    assert 'JournalLoadPolicy(partial_tail="skip")' in enablement_migration
     assert "bind_plugin_enablement_legacy_mutation_guard" in compatibility
     assert "bind(self, self._assert_legacy_mutation_allowed)" in compatibility
     assert "authority_id" not in compatibility
@@ -186,6 +202,8 @@ def test_plc9a1_coding_transport_adapter_does_not_construct_owner_stores() -> No
     assert "with self._config.transaction():" in settings
     assert "config_file_transaction_lock(path)" in config_engine
     assert "self._enqueue_publication_unlocked(" in config_engine
+    assert "def publish(self, *, _authority: object | None = None)" in config_engine
+    assert config_engine.count("self._require_mutation_authority(_authority)") >= 10
     assert "self._config._bind_runtime(self._engine_authority)" in config_runtime
     assert "with self._config.transaction(" in config_runtime
     assert "_authority=self._engine_authority" in config_runtime

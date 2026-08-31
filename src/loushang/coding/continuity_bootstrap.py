@@ -304,34 +304,61 @@ async def bind_coding_configured_continuity(
             raise
         raise CodingContinuityBootstrapError(code=stable_code) from None
 
-    layout = state_layout or resolve_coding_continuity_state_layout(cwd)
-    compatibility = bind_coding_plugin_enablement_compatibility(
-        _common_lifecycle_layout(layout),
-        settings_manager,
-    )
-    if compatibility is not None:
-        compatibility.reconcile()
-        sources, disabled_plugins = _configured_sources(settings_manager, cwd=cwd)
-    request_fingerprint = _bootstrap_request_fingerprint(
-        sources,
-        disabled_plugins=disabled_plugins,
-        cwd=cwd,
-        all_sessions=all_sessions,
-    )
+    configured_count = len(sources)
+    try:
+        layout = state_layout or resolve_coding_continuity_state_layout(cwd)
+        compatibility = bind_coding_plugin_enablement_compatibility(
+            _common_lifecycle_layout(layout),
+            settings_manager,
+        )
+        if compatibility is not None:
+            compatibility.reconcile()
+            sources, disabled_plugins = _configured_sources(
+                settings_manager,
+                cwd=cwd,
+            )
+            configured_count = len(sources)
+        request_fingerprint = _bootstrap_request_fingerprint(
+            sources,
+            disabled_plugins=disabled_plugins,
+            cwd=cwd,
+            all_sessions=all_sessions,
+        )
 
-    existing = getattr(runtime, "_loushang_coding_continuity", None)
-    if isinstance(existing, CodingContinuityComposition):
-        if existing.configured_request_fingerprint == request_fingerprint:
-            return existing
-        if (
-            not sources
-            and existing.plugin_publication is None
-            and existing.configured_request_fingerprint is None
-            and existing.binding_cwd
-            == str(Path(cwd).expanduser().resolve(strict=False))
-            and existing.all_sessions == all_sessions
-        ):
-            existing.configured_request_fingerprint = request_fingerprint
+        existing = getattr(runtime, "_loushang_coding_continuity", None)
+        if isinstance(existing, CodingContinuityComposition):
+            if existing.configured_request_fingerprint == request_fingerprint:
+                return existing
+            if (
+                not sources
+                and existing.plugin_publication is None
+                and existing.configured_request_fingerprint is None
+                and existing.binding_cwd
+                == str(Path(cwd).expanduser().resolve(strict=False))
+                and existing.all_sessions == all_sessions
+            ):
+                existing.configured_request_fingerprint = request_fingerprint
+                _record_ready_status(
+                    runtime,
+                    diagnostics_service,
+                    configured_source_count=0,
+                    plugin_count=0,
+                    provider_count=0,
+                    recovered_deletion_count=0,
+                )
+                return existing
+            raise CodingContinuityBootstrapError(
+                code="coding_continuity_composition_already_bound",
+                retryable=False,
+            )
+
+        if not sources:
+            result = bind_coding_continuity(
+                runtime,
+                cwd=cwd,
+                all_sessions=all_sessions,
+            )
+            result.configured_request_fingerprint = request_fingerprint
             _record_ready_status(
                 runtime,
                 diagnostics_service,
@@ -340,32 +367,35 @@ async def bind_coding_configured_continuity(
                 provider_count=0,
                 recovered_deletion_count=0,
             )
-            return existing
-        composition_error = CodingContinuityBootstrapError(
-            code="coding_continuity_composition_already_bound",
-            retryable=False,
+            return result
+    except BaseException as error:
+        if not isinstance(error, Exception):
+            raise
+        if (
+            isinstance(error, CodingContinuityBootstrapError)
+            and error.code == "coding_continuity_composition_already_bound"
+        ):
+            # The already-published composition remains healthy.  Reject the
+            # conflicting rebind without overwriting its ready status.
+            raise
+        stable_code = _stable_error_code(error)
+        retryable = (
+            error.retryable
+            if isinstance(error, CodingContinuityBootstrapError)
+            else True
         )
-        raise composition_error
-
-    if not sources:
-        result = bind_coding_continuity(
-            runtime,
-            cwd=cwd,
-            all_sessions=all_sessions,
-        )
-        result.configured_request_fingerprint = request_fingerprint
-        _record_ready_status(
+        _record_failed_status(
             runtime,
             diagnostics_service,
-            configured_source_count=0,
-            plugin_count=0,
-            provider_count=0,
-            recovered_deletion_count=0,
+            code=stable_code,
+            configured_source_count=configured_count,
+            retryable=retryable,
         )
-        return result
+        if isinstance(error, CodingContinuityBootstrapError):
+            raise
+        raise CodingContinuityBootstrapError(code=stable_code) from None
 
     runtime_resolution: PluginRuntimeResolution | None = None
-    configured_count = len(sources)
     try:
         resolved_runtime_id = runtime_id or _new_runtime_id()
         if materializer is not None and not materializer.uses_storage_authority(

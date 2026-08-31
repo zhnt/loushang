@@ -32,6 +32,7 @@ from loushang.harness.cli.resource_toggles import (
     apply_resource_toggles,
 )
 from loushang.harness.config.agent.types import ControlConfig
+from loushang.harness.journal import journal_file_lock
 from loushang.harness.plugin_management import (
     PluginEnablementMigrationError,
     PluginPackageRevisionRefV1,
@@ -345,6 +346,205 @@ def test_compatibility_reconcile_never_creates_lock_after_root_replacement(
 
     assert list(external.iterdir()) == [external_lock]
     assert external_lock.read_bytes() == b"sentinel"
+
+
+@pytest.mark.parametrize(
+    ("target_name", "lock_suffix"),
+    (
+        ("desired_state", ".lock"),
+        ("enablement_migration", ".lock"),
+        ("enablement_migration", ".migration.lock"),
+    ),
+)
+def test_compatibility_capture_waits_for_every_owner_journal_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    target_name: str,
+    lock_suffix: str,
+) -> None:
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    layout = resolve_coding_plugin_lifecycle_state_layout(workspace)
+    lifecycle = build_coding_plugin_lifecycle(layout, startup_id="capture-locks")
+    key = lifecycle.installation_key("managed-pack")
+    try:
+        lifecycle.migrate_legacy_enablement(
+            key,
+            _package("managed-pack"),
+            legacy_disabled=True,
+            manifest_enabled_default=True,
+            legacy_input_fingerprint=plugin_enablement_legacy_input_fingerprint(
+                key,
+                legacy_disabled=True,
+                manifest_enabled_default=True,
+            ),
+        )
+    finally:
+        lifecycle.release_owned_process_startup_lease()
+    writer = bind_coding_plugin_enablement_compatibility(
+        layout,
+        _SettingsManager(_Settings()),
+    )
+    assert writer is not None
+    requested = Event()
+    completed = Event()
+    errors: list[BaseException] = []
+    original_lock_at = lifecycle_module.journal_file_lock_at
+    original_path_lock = lifecycle_module.journal_file_lock
+    expected_name = f"{getattr(layout, target_name).name}{lock_suffix}"
+    target = getattr(layout, target_name)
+
+    def observe_lock(directory_fd, name, mode, **kwargs):  # type: ignore[no-untyped-def]
+        if name == expected_name:
+            requested.set()
+        return original_lock_at(directory_fd, name, mode, **kwargs)
+
+    def observe_path_lock(path, mode, **kwargs):  # type: ignore[no-untyped-def]
+        if path == target and kwargs.get("lock_suffix", ".lock") == lock_suffix:
+            requested.set()
+        return original_path_lock(path, mode, **kwargs)
+
+    monkeypatch.setattr(lifecycle_module, "journal_file_lock_at", observe_lock)
+    monkeypatch.setattr(lifecycle_module, "journal_file_lock", observe_path_lock)
+
+    def reconcile() -> None:
+        try:
+            writer.reconcile()
+        except BaseException as exc:
+            errors.append(exc)
+        finally:
+            completed.set()
+
+    with journal_file_lock(target, "exclusive", lock_suffix=lock_suffix):
+        worker = Thread(target=reconcile, daemon=True)
+        worker.start()
+        assert requested.wait(timeout=3)
+        assert completed.wait(timeout=0.1) is False
+    worker.join(timeout=3)
+
+    assert worker.is_alive() is False
+    assert errors == []
+
+
+def test_portable_compatibility_capture_supports_existing_state_tree(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    layout = resolve_coding_plugin_lifecycle_state_layout(workspace)
+    lifecycle = build_coding_plugin_lifecycle(layout, startup_id="portable-capture")
+    key = lifecycle.installation_key("managed-pack")
+    try:
+        lifecycle.migrate_legacy_enablement(
+            key,
+            _package("managed-pack"),
+            legacy_disabled=True,
+            manifest_enabled_default=True,
+            legacy_input_fingerprint=plugin_enablement_legacy_input_fingerprint(
+                key,
+                legacy_disabled=True,
+                manifest_enabled_default=True,
+            ),
+        )
+    finally:
+        lifecycle.release_owned_process_startup_lease()
+    settings = _SettingsManager(_Settings())
+    monkeypatch.setattr(
+        lifecycle_module,
+        "_supports_descriptor_relative_private_state_io",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        lifecycle_module,
+        "_supports_portable_private_state_io",
+        lambda: True,
+    )
+
+    writer = bind_coding_plugin_enablement_compatibility(layout, settings)
+    assert writer is not None
+    writer.reconcile()
+
+    assert settings.settings.disabled_plugins == ("managed-pack",)
+
+
+def test_compatibility_projects_complete_prefix_before_owner_tail_repair(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    layout = resolve_coding_plugin_lifecycle_state_layout(workspace)
+    lifecycle = build_coding_plugin_lifecycle(layout, startup_id="partial-tail")
+    key = lifecycle.installation_key("managed-pack")
+    try:
+        lifecycle.migrate_legacy_enablement(
+            key,
+            _package("managed-pack"),
+            legacy_disabled=True,
+            manifest_enabled_default=True,
+            legacy_input_fingerprint=plugin_enablement_legacy_input_fingerprint(
+                key,
+                legacy_disabled=True,
+                manifest_enabled_default=True,
+            ),
+        )
+    finally:
+        lifecycle.release_owned_process_startup_lease()
+    for path in (layout.desired_state, layout.enablement_migration):
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write('{"incomplete":')
+    settings = _SettingsManager(_Settings())
+    writer = bind_coding_plugin_enablement_compatibility(layout, settings)
+    assert writer is not None
+
+    writer.reconcile()
+
+    assert settings.settings.disabled_plugins == ("managed-pack",)
+    assert layout.desired_state.read_text(encoding="utf-8").endswith('{"incomplete":')
+    assert layout.enablement_migration.read_text(encoding="utf-8").endswith(
+        '{"incomplete":'
+    )
+
+
+@pytest.mark.parametrize(
+    ("target_name", "error_code"),
+    (
+        ("desired_state", "plugin_lifecycle_journal_corrupt"),
+        (
+            "enablement_migration",
+            "plugin_enablement_migration_journal_corrupt",
+        ),
+    ),
+)
+def test_compatibility_rejects_malformed_complete_owner_records(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    target_name: str,
+    error_code: str,
+) -> None:
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    layout = resolve_coding_plugin_lifecycle_state_layout(workspace)
+    lifecycle = build_coding_plugin_lifecycle(layout, startup_id="corrupt-record")
+    lifecycle.release_owned_process_startup_lease()
+    target = getattr(layout, target_name)
+    target.write_text("not-json\n", encoding="utf-8")
+    target.chmod(0o600)
+    writer = bind_coding_plugin_enablement_compatibility(
+        layout,
+        _SettingsManager(_Settings()),
+    )
+    assert writer is not None
+
+    with pytest.raises(Exception) as caught:
+        writer.reconcile()
+
+    assert getattr(caught.value, "code", None) == error_code
 
 
 def test_two_settings_owners_preserve_concurrent_unmigrated_ids(

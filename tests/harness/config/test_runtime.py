@@ -4,7 +4,7 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
-from threading import Thread
+from threading import Event, Thread, current_thread
 
 import pytest
 
@@ -372,6 +372,91 @@ def test_runtime_exclusively_owns_bound_engine_mutations(tmp_path: Path) -> None
     change = runtime.scope("session").update({"name": "owned"})
     assert change.current.name == "owned"
     assert runtime.revision == 1
+
+
+def test_runtime_ownership_cannot_be_bypassed_inside_explicit_transaction(
+    tmp_path: Path,
+) -> None:
+    engine = LayeredConfig(
+        codec=_Codec(),
+        layers=(ConfigLayer("session"),),
+    )
+    runtime = ScopedConfigRuntime(engine)
+
+    with runtime.transaction():
+        with pytest.raises(RuntimeError, match="owned by its scoped runtime"):
+            engine.update("session", {"name": "bypass"})
+        with pytest.raises(RuntimeError, match="owned by its scoped runtime"):
+            engine.publish()
+
+    assert runtime.value == _Config()
+    assert runtime.revision == 0
+
+
+def test_runtime_binding_linearizes_before_an_inflight_direct_update(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = LayeredConfig(
+        codec=_Codec(),
+        layers=(ConfigLayer("session"),),
+    )
+    first_check_complete = Event()
+    resume_update = Event()
+    errors: list[BaseException] = []
+    original_check = engine._require_mutation_authority
+    direct_checks = 0
+
+    def pause_after_first_check(authority: object | None) -> None:
+        nonlocal direct_checks
+        original_check(authority)
+        if current_thread().name != "direct-update":
+            return
+        direct_checks += 1
+        if direct_checks == 1:
+            first_check_complete.set()
+            if not resume_update.wait(timeout=3):
+                raise TimeoutError("runtime binding did not reach the barrier")
+
+    monkeypatch.setattr(engine, "_require_mutation_authority", pause_after_first_check)
+
+    def update_directly() -> None:
+        try:
+            engine.update("session", {"name": "bypass"})
+        except BaseException as exc:
+            errors.append(exc)
+
+    worker = Thread(target=update_directly, name="direct-update", daemon=True)
+    worker.start()
+    assert first_check_complete.wait(timeout=3)
+    runtime = ScopedConfigRuntime(engine)
+    resume_update.set()
+    worker.join(timeout=3)
+
+    assert worker.is_alive() is False
+    assert len(errors) == 1
+    assert isinstance(errors[0], RuntimeError)
+    assert "owned by its scoped runtime" in str(errors[0])
+    assert engine.value == _Config()
+    assert runtime.revision == 0
+
+
+def test_deferred_direct_transaction_rechecks_runtime_ownership(
+    tmp_path: Path,
+) -> None:
+    engine = LayeredConfig(
+        codec=_Codec(),
+        layers=(ConfigLayer("session"),),
+    )
+    deferred = engine.transaction()
+    runtime = ScopedConfigRuntime(engine)
+
+    with pytest.raises(RuntimeError, match="owned by its scoped runtime"):
+        with deferred:
+            pass
+
+    assert engine.value == _Config()
+    assert runtime.revision == 0
 
 
 def test_explicit_transaction_returns_only_final_change_receipt(

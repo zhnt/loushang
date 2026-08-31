@@ -107,17 +107,30 @@ never-seen disabled Installation is published to an exact immutable revision,
 seeded disabled, and left unmounted.
 
 `src/loushang/coding/plugin_enablement_compatibility.py::CodingPluginEnablementCompatibilityWriter`
-is the Product-owned compatibility publisher. It pins the existing private
-workspace root with a no-follow directory handle, captures the coordination
-lock and both journals relative to that handle, then releases the workspace
-lock before sending a typed projection to the settings owner. Stale captures
-cannot replace a newer per-workspace projection. `LayeredConfig.transaction`
+is the Product-owned compatibility publisher. On POSIX it pins the existing
+private workspace root with a no-follow directory handle; on Windows it opens
+the existing direct coordination lock through `CreateFileW` with
+`FILE_FLAG_OPEN_REPARSE_POINT` and without delete sharing, so that child handle
+pins the validated parent tree. Other platforms without either capability fail
+closed before reading state. Under the pinned root the reader takes the common
+coordination lock, migration transaction lock, desired-journal lock, and
+migration-journal lock in that fixed order. It therefore cannot observe a
+writer's partial append or combine desired state from one migration transaction
+with a receipt from another. The raw projection is read-only: an incomplete
+crash tail is not a committed record and is ignored until the canonical owner
+repairs it, while a malformed complete record remains fatal. The writer then
+releases every workspace lock before sending a typed projection to the settings
+owner. Stale captures cannot replace a newer per-workspace projection.
+`LayeredConfig.transaction`
 keys process-reentrant and cross-process locks by every normalized path-backed
 layer, takes them in stable order, and strictly reloads every participating
 layer; construction and tolerant reload take the same read locks. An unbound
 engine may be used directly, but `ScopedConfigRuntime` claims exclusive mutation
-and projection ownership when bound. Every runtime mutation therefore follows
-the single `path -> engine -> runtime` order. Engine commit snapshots are
+and projection ownership when bound. Authority is checked again in the final
+engine-locked mutation/transaction critical section, and direct `publish()` is
+also fenced, so a concurrent bind cannot leave an unprojected commit. Every
+runtime mutation therefore follows the single `path -> engine -> runtime`
+order. Engine commit snapshots are
 captured and queued before unlock, while runtime transactions publish one final
 `ConfigChange`; mutation calls inside an explicit transaction return its result
 handle rather than a provisional receipt. Both listener families run only after
@@ -131,8 +144,10 @@ projection per workspace, serializes aggregate publications without holding its
 lock across config I/O, unions disabled ids conservatively, and calls every
 workspace guard before any peer mutation. Coding startup, every Continuity
 startup path (including empty-source and idempotent early returns), and CLI
-binding reconcile it; an existing receipt with a non-fence settings owner fails
-closed. A crash or
+binding reconcile it; early reconciliation failures use the same stable
+`CodingContinuityBootstrapError`, retryability, and failed-status projection as
+the full bootstrap path. An existing receipt with a non-fence settings owner
+fails closed. A crash or
 write failure after a canonical commit is repaired from the durable receipt and
 desired journal. The command still fails visibly with
 `plugin_enablement_compatibility_publish_failed`; it never rolls canonical

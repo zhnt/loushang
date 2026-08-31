@@ -673,7 +673,10 @@ def decode_plugin_desired_state_snapshot(
                 raw,
                 target=target,
                 record_codec=PLUGIN_DESIRED_STATE_JOURNAL_CODEC,
-                load_policy=JournalLoadPolicy(partial_tail="raise"),
+                # Compatibility projection is read-only.  The owner repairs
+                # an incomplete crash tail on its next load; meanwhile only
+                # newline-terminated committed records are visible here.
+                load_policy=JournalLoadPolicy(partial_tail="skip"),
             )
         )
     except JournalFileError as exc:

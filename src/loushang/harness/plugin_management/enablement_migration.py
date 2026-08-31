@@ -1351,7 +1351,10 @@ def decode_plugin_enablement_migration_snapshots(
             raw,
             target=target,
             record_codec=PLUGIN_ENABLEMENT_MIGRATION_EVENT_CODEC,
-            load_policy=JournalLoadPolicy(partial_tail="raise"),
+            # Ignore only an incomplete crash tail in this read-only view.
+            # Malformed complete records remain fatal and owner recovery keeps
+            # its existing repair-on-load responsibility.
+            load_policy=JournalLoadPolicy(partial_tail="skip"),
         )
         events = decoded.records
         if any(

@@ -12,6 +12,7 @@ from types import SimpleNamespace
 import pytest
 
 import loushang.coding._plugin_lifecycle as plugin_lifecycle_module
+import loushang.coding.continuity_bootstrap as continuity_bootstrap_module
 from loushang.coding._plugin_lifecycle import (
     build_coding_plugin_lifecycle,
     resolve_coding_plugin_lifecycle_state_layout,
@@ -404,6 +405,9 @@ def test_empty_and_reentrant_continuity_bootstrap_reconcile_compatibility(
         )
     finally:
         lifecycle.release_owned_process_startup_lease()
+    for path in (common_layout.desired_state, common_layout.enablement_migration):
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write('{"incomplete":')
 
     settings_path = tmp_path / "settings.json"
     settings = SettingsManager(
@@ -438,9 +442,92 @@ def test_empty_and_reentrant_continuity_bootstrap_reconcile_compatibility(
 
     assert repeated is first
     assert settings.get_settings().disabled_plugins == ()
+    assert common_layout.desired_state.read_text(encoding="utf-8").endswith(
+        '{"incomplete":'
+    )
+    assert common_layout.enablement_migration.read_text(encoding="utf-8").endswith(
+        '{"incomplete":'
+    )
     with pytest.raises(PluginEnablementMigrationError):
         settings.disable_plugin("continuity-example")
     asyncio.run(shutdown_coding_continuity(runtime))
+
+
+def test_empty_and_reentrant_compatibility_failures_use_bootstrap_error_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class CompatibilityFailure(RuntimeError):
+        code = "coding_plugin_compatibility_fixture_failed"
+
+    class CompatibilityWriter:
+        fail = True
+
+        def reconcile(self) -> None:
+            if self.fail:
+                raise CompatibilityFailure("compatibility failed")
+
+    writer = CompatibilityWriter()
+    monkeypatch.setattr(
+        continuity_bootstrap_module,
+        "bind_coding_plugin_enablement_compatibility",
+        lambda *_args, **_kwargs: writer,
+    )
+    settings = SimpleNamespace(
+        get_settings=lambda: SimpleNamespace(
+            plugin_sources=(),
+            disabled_plugins=(),
+        )
+    )
+
+    first_runtime = _Runtime(tmp_path / "first-sessions")
+    with pytest.raises(CodingContinuityBootstrapError) as first_failure:
+        asyncio.run(
+            bind_coding_configured_continuity(
+                first_runtime,
+                settings_manager=settings,
+                session_dir=first_runtime.session_dir,
+                cwd=tmp_path / "workspace",
+            )
+        )
+    assert first_failure.value.code == CompatibilityFailure.code
+    assert first_failure.value.retryable is True
+    assert first_failure.value.__cause__ is None
+    assert get_coding_continuity_bootstrap_status(first_runtime).to_dict() == {
+        "state": "failed",
+        "code": CompatibilityFailure.code,
+        "configuredSourceCount": 0,
+        "pluginCount": 0,
+        "providerCount": 0,
+        "recoveredDeletionCount": 0,
+        "retryable": True,
+    }
+
+    repeated_runtime = _Runtime(tmp_path / "repeated-sessions")
+    writer.fail = False
+    composition = asyncio.run(
+        bind_coding_configured_continuity(
+            repeated_runtime,
+            settings_manager=settings,
+            session_dir=repeated_runtime.session_dir,
+            cwd=tmp_path / "workspace",
+        )
+    )
+    writer.fail = True
+    with pytest.raises(CodingContinuityBootstrapError) as repeated_failure:
+        asyncio.run(
+            bind_coding_configured_continuity(
+                repeated_runtime,
+                settings_manager=settings,
+                session_dir=repeated_runtime.session_dir,
+                cwd=tmp_path / "workspace",
+            )
+        )
+    assert repeated_failure.value.code == CompatibilityFailure.code
+    assert repeated_failure.value.retryable is True
+    assert get_coding_continuity_bootstrap_status(repeated_runtime).state == "failed"
+    assert composition is get_coding_configured_continuity_composition(repeated_runtime)
+    asyncio.run(shutdown_coding_continuity(repeated_runtime))
 
 
 @pytest.mark.parametrize(
