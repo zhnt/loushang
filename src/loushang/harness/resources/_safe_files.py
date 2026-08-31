@@ -148,21 +148,29 @@ def _capture_portable(
             relative,
             display_path=display_path,
         )
-        if (
-            not stat.S_ISREG(metadata.st_mode)
-            or not _same_file_snapshot(before, after_open)
-            or not _portable_descriptor_matches_path(
-                descriptor,
-                root=root,
-                relative=relative,
-                expected_path_metadata=after_open,
-                display_path=display_path,
-                flags=flags,
+        if not stat.S_ISREG(metadata.st_mode):
+            raise ContainedFileCaptureError(
+                "Contained path is not a regular file",
+                code="contained_file_not_regular",
+                path=display_path,
             )
-        ):
+        if not _same_file_snapshot(before, after_open):
             raise ContainedFileCaptureError(
                 "Contained file identity changed while opening",
-                code="contained_file_identity_changed",
+                code="contained_file_path_changed_while_opening",
+                path=display_path,
+            )
+        if not _portable_descriptor_matches_path(
+            descriptor,
+            root=root,
+            relative=relative,
+            expected_path_metadata=after_open,
+            display_path=display_path,
+            flags=flags,
+        ):
+            raise ContainedFileCaptureError(
+                "Contained file path does not bind the opened handle",
+                code="contained_file_binding_changed_while_opening",
                 path=display_path,
             )
         body = _bounded_read(
@@ -177,22 +185,35 @@ def _capture_portable(
             relative,
             display_path=display_path,
         )
-        if (
-            not _same_file_snapshot(metadata, after_read)
-            or not _same_file_snapshot(before, after_path)
-            or not _portable_descriptor_matches_path(
-                descriptor,
-                root=root,
-                relative=relative,
-                expected_path_metadata=after_path,
-                display_path=display_path,
-                flags=flags,
-            )
-            or len(body) != metadata.st_size
-        ):
+        if not _same_file_snapshot(metadata, after_read):
             raise ContainedFileCaptureError(
                 "Contained file changed while being captured",
-                code="contained_file_identity_changed",
+                code="contained_file_handle_changed_while_reading",
+                path=display_path,
+            )
+        if not _same_file_snapshot(before, after_path):
+            raise ContainedFileCaptureError(
+                "Contained file path changed while being captured",
+                code="contained_file_path_changed_while_reading",
+                path=display_path,
+            )
+        if not _portable_descriptor_matches_path(
+            descriptor,
+            root=root,
+            relative=relative,
+            expected_path_metadata=after_path,
+            display_path=display_path,
+            flags=flags,
+        ):
+            raise ContainedFileCaptureError(
+                "Contained file path no longer binds the captured handle",
+                code="contained_file_binding_changed_while_reading",
+                path=display_path,
+            )
+        if len(body) != metadata.st_size:
+            raise ContainedFileCaptureError(
+                "Contained file size changed while being captured",
+                code="contained_file_size_changed_while_reading",
                 path=display_path,
             )
     except ContainedFileCaptureError:

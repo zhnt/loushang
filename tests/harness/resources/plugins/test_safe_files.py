@@ -96,7 +96,7 @@ def test_portable_capture_rejects_path_replacement_during_open(
     with pytest.raises(ContainedFileCaptureError) as caught:
         capture_contained_regular_file(root, "small.json", max_bytes=7)
 
-    assert caught.value.code == "contained_file_identity_changed"
+    assert caught.value.code == "contained_file_path_changed_while_opening"
 
 
 def test_contained_capture_rejects_link_traversal(tmp_path: Path) -> None:
