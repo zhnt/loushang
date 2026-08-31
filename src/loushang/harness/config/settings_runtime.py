@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Generic, TypeVar
 
@@ -43,6 +44,9 @@ class SettingsRuntime(Generic[T]):
 
     def reload(self) -> ConfigChange[T]:
         return self._runtime.reload()
+
+    def transaction(self) -> AbstractContextManager[None]:
+        return self._runtime.transaction()
 
     def update(
         self,

@@ -73,14 +73,18 @@ class LayeredConfig(Generic[T]):
         self._require_layer(layer_name)
         return deepcopy(self._patches[layer_name])
 
-    def reload(self) -> None:
+    def reload(self, *, strict: bool = False, notify: bool = True) -> None:
         patches, load_issues = self._load_persistent_layers(self._patches)
+        if strict and load_issues:
+            self._issues.extend(load_issues)
+            raise load_issues[0].error
         value, compose_issues = self._compose(patches)
         self._patches = patches
         self._value = value
         self._issues.extend(load_issues)
         self._issues.extend(compose_issues)
-        self._notify()
+        if notify:
+            self._notify()
 
     def update(
         self,

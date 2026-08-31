@@ -1164,3 +1164,67 @@ def test_settings_manager_reload_preserves_previous_scope_when_reload_fails(
     errors = manager.drain_errors()
     assert len(errors) == 1
     assert errors[0].scope == "project"
+
+
+def test_persistent_settings_update_refreshes_a_preloaded_peer(tmp_path) -> None:
+    from loushang.harness.config.agent import SettingsManager
+
+    settings_path = tmp_path / "project-settings.json"
+    first = SettingsManager(project_settings_path=settings_path)
+    peer = SettingsManager(project_settings_path=settings_path)
+
+    first.set_disabled_plugins(("managed-pack",), scope="project")
+    peer.set_theme("night", scope="project")
+
+    reloaded = SettingsManager(project_settings_path=settings_path)
+    assert reloaded.get_settings().disabled_plugins == ("managed-pack",)
+    assert reloaded.get_settings().theme == "night"
+
+
+def test_persistent_settings_transaction_publishes_after_unlock(tmp_path) -> None:
+    from loushang.harness.config.agent import SettingsManager
+
+    settings_path = tmp_path / "project-settings.json"
+    manager = SettingsManager(project_settings_path=settings_path)
+    seen: list[tuple[str, ...]] = []
+    errors: list[BaseException] = []
+
+    def mutate_again(settings) -> None:  # type: ignore[no-untyped-def]
+        seen.append(settings.disabled_plugins)
+        if settings.disabled_plugins == ("outer",):
+            manager.disable_plugin("nested", scope="project")
+
+    manager.subscribe(mutate_again)
+
+    def mutate() -> None:
+        try:
+            manager.set_disabled_plugins(("outer",), scope="project")
+        except BaseException as exc:
+            errors.append(exc)
+
+    worker = Thread(target=mutate, daemon=True)
+    worker.start()
+    worker.join(timeout=3)
+
+    assert worker.is_alive() is False
+    assert errors == []
+    assert seen == [("outer",), ("outer", "nested")]
+    assert manager.get_settings().disabled_plugins == ("outer", "nested")
+    assert SettingsManager(
+        project_settings_path=settings_path
+    ).get_settings().disabled_plugins == ("outer", "nested")
+
+
+def test_persistent_settings_update_fails_closed_on_corrupt_peer_state(
+    tmp_path,
+) -> None:
+    from loushang.harness.config.agent import SettingsManager
+
+    settings_path = tmp_path / "project-settings.json"
+    manager = SettingsManager(project_settings_path=settings_path)
+    settings_path.write_text("{not-json", encoding="utf-8")
+
+    with pytest.raises(json.JSONDecodeError):
+        manager.set_theme("night", scope="project")
+
+    assert settings_path.read_text(encoding="utf-8") == "{not-json"

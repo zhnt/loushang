@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from contextlib import AbstractContextManager, nullcontext
+from contextlib import nullcontext
 from copy import deepcopy
 from dataclasses import dataclass, replace
 from pathlib import Path
+from threading import RLock
 from typing import Any, Literal, cast
 
 from loushang.agent import ThinkingLevel
@@ -51,7 +52,6 @@ from loushang.harness.config.agent.types import (
     WarningSettings,
 )
 from loushang.harness.config.engine import merge_config_patch
-from loushang.harness.journal import journal_file_lock
 from loushang.harness.permissions import (
     PermissionProfileCeiling,
     PermissionProfileId,
@@ -140,6 +140,7 @@ class SettingsManager:
         self._legacy_plugin_compatibility_publisher: (
             LegacyPluginCompatibilityPublisher | None
         ) = None
+        self._legacy_plugin_binding_lock = RLock()
         self._config = SettingsRuntime(
             ScopedConfigRuntime(
                 LayeredConfig(
@@ -183,16 +184,16 @@ class SettingsManager:
             )
             for message in removed_messages
         )
-        lock = (
-            self._legacy_plugin_mutation_lock()
-            if changes_legacy_plugins
-            else nullcontext()
+        transaction = (
+            self._config.transaction() if changes_legacy_plugins else nullcontext()
         )
-        with lock:
+        with transaction:
             if changes_legacy_plugins:
-                self._config.reload()
                 assert isinstance(disabled_plugins, (list, tuple))
-                self._guard_legacy_plugin_changes(tuple(disabled_plugins))
+                self._guard_legacy_plugin_changes(
+                    tuple(disabled_plugins),
+                    scope="session",
+                )
             self._config.update("session", patch)
 
     def drain_errors(self) -> list[SettingsError]:
@@ -268,16 +269,16 @@ class SettingsManager:
         if changes_legacy_plugins:
             assert not isinstance(disabled_plugins, Unset)
             disabled_plugins = tuple(disabled_plugins)
-        lock = (
-            self._legacy_plugin_mutation_lock()
-            if changes_legacy_plugins
-            else nullcontext()
+        transaction = (
+            self._config.transaction() if changes_legacy_plugins else nullcontext()
         )
-        with lock:
+        with transaction:
             if changes_legacy_plugins:
-                self._config.reload()
                 assert not isinstance(disabled_plugins, Unset)
-                self._guard_legacy_plugin_changes(tuple(disabled_plugins))
+                self._guard_legacy_plugin_changes(
+                    tuple(disabled_plugins),
+                    scope=scope,
+                )
             patch = build_settings_patch(
                 AgentSettingsUpdate(
                     default_model=default_model,
@@ -783,11 +784,15 @@ class SettingsManager:
         changed_keys = mutation_keys()
 
         def validate() -> None:
-            if not layer.matches(applied_patch, keys=operation_keys):
-                raise RuntimeError(
-                    "Package source settings changed concurrently: "
-                    + ", ".join(sorted(operation_keys))
-                )
+            transaction = (
+                self._config.transaction() if layer.persistent else nullcontext()
+            )
+            with transaction:
+                if not layer.matches(applied_patch, keys=operation_keys):
+                    raise RuntimeError(
+                        "Package source settings changed concurrently: "
+                        + ", ".join(sorted(operation_keys))
+                    )
 
         def restore() -> None:
             self._restore_package_source_patch(
@@ -872,23 +877,26 @@ class SettingsManager:
     ) -> LegacyPluginCompatibilityPublisher:
         """Fence peer writes and return the sole derived compatibility writer."""
 
-        if authority is None:
-            raise ValueError("Plugin enablement guard authority is required")
-        if not callable(guard):
-            raise TypeError("Plugin enablement legacy mutation guard is required")
-        if self._legacy_plugin_guard_authority is not None:
-            if self._legacy_plugin_guard_authority is not authority:
-                raise RuntimeError("Plugin enablement guard authority already bound")
-            assert self._legacy_plugin_compatibility_publisher is not None
-            return self._legacy_plugin_compatibility_publisher
+        with self._legacy_plugin_binding_lock:
+            if authority is None:
+                raise ValueError("Plugin enablement guard authority is required")
+            if not callable(guard):
+                raise TypeError("Plugin enablement legacy mutation guard is required")
+            if self._legacy_plugin_guard_authority is not None:
+                if self._legacy_plugin_guard_authority is not authority:
+                    raise RuntimeError(
+                        "Plugin enablement guard authority already bound"
+                    )
+                assert self._legacy_plugin_compatibility_publisher is not None
+                return self._legacy_plugin_compatibility_publisher
 
-        def publish(projection: LegacyPluginCompatibilityProjectionV1) -> None:
-            self._publish_legacy_plugin_compatibility(projection)
+            def publish(projection: LegacyPluginCompatibilityProjectionV1) -> None:
+                self._publish_legacy_plugin_compatibility(projection)
 
-        self._legacy_plugin_guard_authority = authority
-        self._legacy_plugin_mutation_guard = guard
-        self._legacy_plugin_compatibility_publisher = publish
-        return publish
+            self._legacy_plugin_guard_authority = authority
+            self._legacy_plugin_mutation_guard = guard
+            self._legacy_plugin_compatibility_publisher = publish
+            return publish
 
     def add_plugin_source(
         self, source: str, *, scope: SettingsScope = "project"
@@ -930,9 +938,8 @@ class SettingsManager:
         *,
         scope: SettingsScope,
     ) -> None:
-        with self._legacy_plugin_mutation_lock():
-            self._config.reload()
-            self._guard_legacy_plugin_changes(names)
+        with self._config.transaction():
+            self._guard_legacy_plugin_changes(names, scope=scope)
             self._write_legacy_disabled_plugins(names, scope=scope)
 
     def _mutate_legacy_plugin(
@@ -942,8 +949,7 @@ class SettingsManager:
         disabled: bool,
         scope: SettingsScope,
     ) -> None:
-        with self._legacy_plugin_mutation_lock():
-            self._config.reload()
+        with self._config.transaction():
             self._guard_legacy_plugin_mutation(name)
             current = self._settings.disabled_plugins
             names = (
@@ -969,8 +975,7 @@ class SettingsManager:
             raise TypeError("Legacy Plugin compatibility projection is required")
         migrated = set(projection.migrated_plugin_ids)
         disabled = set(projection.disabled_plugin_ids)
-        with self._legacy_plugin_mutation_lock():
-            self._config.reload()
+        with self._config.transaction():
             retained = {
                 item for item in self._settings.disabled_plugins if item not in migrated
             }
@@ -993,20 +998,19 @@ class SettingsManager:
                     "Legacy Plugin compatibility projection did not become effective"
                 )
 
-    def _legacy_plugin_mutation_lock(self) -> AbstractContextManager[None]:
-        project = self._config.scope("project").path
-        global_path = self._config.scope("global").path
-        path = project if project is not None else global_path
-        if path is None:
-            return nullcontext()
-        return journal_file_lock(
-            path,
-            "exclusive",
-            lock_suffix=".plugin-enablement.lock",
-        )
-
-    def _guard_legacy_plugin_changes(self, names: tuple[str, ...]) -> None:
-        changed = set(self._settings.disabled_plugins).symmetric_difference(names)
+    def _guard_legacy_plugin_changes(
+        self,
+        names: tuple[str, ...],
+        *,
+        scope: SettingsScope,
+    ) -> None:
+        layer = scope if scope in {"global", "project"} else "session"
+        current = self._config.scope(layer).patch.get("disabled_plugins", ())
+        if not isinstance(current, (list, tuple)) or not all(
+            isinstance(item, str) for item in current
+        ):
+            current = ()
+        changed = set(current).symmetric_difference(names)
         for name in sorted(changed):
             self._guard_legacy_plugin_mutation(name)
 

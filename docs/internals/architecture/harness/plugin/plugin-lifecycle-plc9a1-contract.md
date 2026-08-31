@@ -109,14 +109,19 @@ seeded disabled, and left unmounted.
 `src/loushang/coding/plugin_enablement_compatibility.py::CodingPluginEnablementCompatibilityWriter`
 is the Product-owned compatibility publisher. It serializes projection and
 publication under the workspace coordination lock and sends a typed projection
-to the settings owner. The settings owner then takes its cross-process settings
-lock, reloads persistent layers, preserves only unmigrated legacy ids, clears a
-stale session legacy overlay, publishes the project downgrade view, and verifies
-the effective migrated values. Its opaque object capability cannot be reclaimed
-by repeating a caller-chosen string. Coding startup, Continuity startup, and CLI
-binding always reconcile it; an existing receipt with a non-fence settings owner
-fails closed. A crash or write failure after a canonical commit is repaired from
-the durable receipt and desired journal. The command still fails visibly with
+to the settings owner. All persistent config writes share one transaction keyed
+by the normalized global/project settings paths: it takes process-reentrant and
+cross-process locks in stable order, strictly reloads every participating layer,
+and publishes one final notification only after releasing those locks. The
+compatibility transaction preserves only unmigrated legacy ids, clears a stale
+session legacy overlay, publishes the project downgrade view, and verifies the
+effective migrated values. Its opaque object capability cannot be reclaimed by
+repeating a caller-chosen string, and cache publication plus settings-owner bind
+are serialized as one process-local claim. Coding startup, Continuity startup,
+and CLI binding always reconcile it; an existing receipt with a non-fence
+settings owner fails closed. A crash or write failure after a canonical commit
+is repaired from the durable receipt and desired journal. The command still
+fails visibly with
 `plugin_enablement_compatibility_publish_failed`; it never rolls canonical
 state back or reports runtime convergence.
 

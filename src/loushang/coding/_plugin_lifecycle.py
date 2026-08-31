@@ -1080,7 +1080,7 @@ def project_coding_plugin_enablement_compatibility(
 
     if not isinstance(layout, CodingPluginLifecycleStateLayout):
         raise TypeError("Coding Plugin lifecycle layout is required")
-    if not layout.root.exists():
+    if not _validate_existing_private_state_layout(layout):
         return (
             PluginEnablementCompatibilityProjectionV1(
                 desired_inventory_revision=0,
@@ -1512,6 +1512,59 @@ def _prepare_private_state_layout(layout: CodingPluginLifecycleStateLayout) -> N
         private_base=layout.private_data_base,
         label="data",
     )
+
+
+def _validate_existing_private_state_layout(
+    layout: CodingPluginLifecycleStateLayout,
+) -> bool:
+    """Validate an existing state tree without recreating a disposed root."""
+
+    base = layout.private_state_base.expanduser().absolute()
+    root = layout.root.expanduser().absolute()
+    try:
+        relative = root.relative_to(base)
+    except ValueError:
+        raise CodingPluginLifecycleError(
+            "Coding Plugin state root is outside its private base",
+            code="coding_plugin_state_permissions_failed",
+        ) from None
+    try:
+        root.lstat()
+    except FileNotFoundError:
+        return False
+    except OSError:
+        raise CodingPluginLifecycleError(
+            "Coding Plugin state root is not private",
+            code="coding_plugin_state_permissions_failed",
+        ) from None
+
+    current = base
+    for part in (None, *relative.parts):
+        if part is not None:
+            current /= part
+        _validate_existing_private_directory(current)
+    return True
+
+
+def _validate_existing_private_directory(root: Path) -> None:
+    try:
+        before = root.lstat()
+        getuid = getattr(os, "getuid", None)
+        if (
+            not stat.S_ISDIR(before.st_mode)
+            or stat.S_ISLNK(before.st_mode)
+            or bool(getattr(before, "st_reparse_tag", 0))
+            or before.st_mode & 0o077
+            or (os.name == "posix" and callable(getuid) and before.st_uid != getuid())
+        ):
+            raise OSError("private root is not a private direct directory")
+        if not os.path.samestat(before, root.lstat()):
+            raise OSError("private root identity changed")
+    except OSError:
+        raise CodingPluginLifecycleError(
+            "Coding Plugin state root is not private",
+            code="coding_plugin_state_permissions_failed",
+        ) from None
 
 
 def _prepare_private_tree(

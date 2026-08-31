@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import json
+import shutil
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from pathlib import Path
+from threading import Barrier
 from types import SimpleNamespace
 
 import pytest
 
 from loushang.coding._plugin_lifecycle import (
+    CodingPluginLifecycleError,
     build_coding_plugin_lifecycle,
     resolve_coding_plugin_lifecycle_state_layout,
 )
@@ -284,12 +287,21 @@ def test_two_settings_owners_preserve_concurrent_unmigrated_ids(
         scope="project",
     )
     first_writer.reconcile()
+    second.set_theme("night", scope="project")
+
+    with pytest.raises(PluginEnablementMigrationError) as masked:
+        second.update_settings(
+            scope="global",
+            disabled_plugins=("managed-pack",),
+        )
+    assert masked.value.code == "plugin_enablement_legacy_mutation_rejected"
 
     reloaded = SettingsManager(project_settings_path=settings_path)
     assert reloaded.get_settings().disabled_plugins == (
         "managed-pack",
         "unmigrated-peer",
     )
+    assert reloaded.get_settings().theme == "night"
 
 
 def test_compatibility_failure_preserves_canonical_commit_and_restart_repairs(
@@ -378,6 +390,144 @@ def test_existing_receipt_rejects_non_fence_settings_owner(
         build_coding_plugin_management_cli_binding(workspace, settings)
 
     assert rejected.value.code == "coding_plugin_compatibility_fence_unavailable"
+
+
+def test_compatibility_binding_is_atomic_for_one_settings_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    settings = SettingsManager(project_settings_path=tmp_path / "settings.json")
+    first_layout = resolve_coding_plugin_lifecycle_state_layout(tmp_path / "first")
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        writers = tuple(
+            pool.map(
+                lambda _index: bind_coding_plugin_enablement_compatibility(
+                    first_layout,
+                    settings,
+                ),
+                range(24),
+            )
+        )
+
+    assert writers[0] is not None
+    assert all(writer is writers[0] for writer in writers)
+
+    second_layout = resolve_coding_plugin_lifecycle_state_layout(tmp_path / "second")
+    with pytest.raises(CodingPluginEnablementCompatibilityError) as conflict:
+        bind_coding_plugin_enablement_compatibility(second_layout, settings)
+    assert conflict.value.code == "coding_plugin_compatibility_scope_conflict"
+
+
+def test_concurrent_compatibility_bind_selects_one_workspace(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    settings = SettingsManager(project_settings_path=tmp_path / "settings.json")
+    layouts = (
+        resolve_coding_plugin_lifecycle_state_layout(tmp_path / "first"),
+        resolve_coding_plugin_lifecycle_state_layout(tmp_path / "second"),
+    )
+    barrier = Barrier(2)
+
+    def attempt(layout):  # type: ignore[no-untyped-def]
+        barrier.wait()
+        try:
+            return bind_coding_plugin_enablement_compatibility(layout, settings)
+        except CodingPluginEnablementCompatibilityError as exc:
+            return exc.code
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = tuple(pool.map(attempt, layouts))
+
+    assert (
+        sum(
+            result == "coding_plugin_compatibility_scope_conflict" for result in results
+        )
+        == 1
+    )
+    assert sum(not isinstance(result, str) for result in results) == 1
+
+
+def test_compatibility_cache_failure_does_not_claim_the_settings_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    cache_attribute = "_loushang_coding_plugin_enablement_compatibility_writer"
+
+    class CacheRejectingSettingsManager(_SettingsManager):
+        reject_cache = True
+
+        def __setattr__(self, name, value) -> None:  # type: ignore[no-untyped-def]
+            if name == cache_attribute and self.reject_cache:
+                raise AttributeError("cache unavailable")
+            super().__setattr__(name, value)
+
+    settings = CacheRejectingSettingsManager(_Settings())
+    layout = resolve_coding_plugin_lifecycle_state_layout(tmp_path / "workspace")
+
+    with pytest.raises(CodingPluginEnablementCompatibilityError) as unavailable:
+        bind_coding_plugin_enablement_compatibility(layout, settings)
+    assert unavailable.value.code == (
+        "coding_plugin_compatibility_authority_unavailable"
+    )
+    assert hasattr(settings, "guard") is False
+
+    settings.reject_cache = False
+    assert bind_coding_plugin_enablement_compatibility(layout, settings) is not None
+    assert callable(settings.guard)
+
+
+@pytest.mark.parametrize("broken", (False, True))
+def test_compatibility_reconcile_rejects_symlinked_private_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    broken: bool,
+) -> None:
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    layout = resolve_coding_plugin_lifecycle_state_layout(workspace)
+    lifecycle = build_coding_plugin_lifecycle(layout, startup_id="symlink-check")
+    lifecycle.release_owned_process_startup_lease()
+    shutil.rmtree(layout.root)
+    external = tmp_path / "external-state"
+    if not broken:
+        external.mkdir(mode=0o700)
+    layout.root.symlink_to(external, target_is_directory=True)
+    settings = SettingsManager(project_settings_path=tmp_path / "settings.json")
+    writer = bind_coding_plugin_enablement_compatibility(layout, settings)
+    assert writer is not None
+
+    with pytest.raises(CodingPluginLifecycleError) as rejected:
+        writer.reconcile()
+
+    assert rejected.value.code == "coding_plugin_state_permissions_failed"
+    if external.exists():
+        assert tuple(external.iterdir()) == ()
+
+
+def test_compatibility_reconcile_does_not_recreate_an_absent_state_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    layout = resolve_coding_plugin_lifecycle_state_layout(workspace)
+    lifecycle = build_coding_plugin_lifecycle(layout, startup_id="absent-check")
+    lifecycle.release_owned_process_startup_lease()
+    shutil.rmtree(layout.root)
+    settings = SettingsManager(project_settings_path=tmp_path / "settings.json")
+    writer = bind_coding_plugin_enablement_compatibility(layout, settings)
+    assert writer is not None
+
+    writer.reconcile()
+
+    assert layout.root.exists() is False
 
 
 def test_management_binding_is_workspace_scoped_and_restart_stable(

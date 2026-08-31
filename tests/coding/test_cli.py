@@ -9042,7 +9042,7 @@ def test_run_cli_reports_settings_load_warnings_for_package_listing(tmp_path) ->
     assert "Expecting property name" in stderr.getvalue()
 
 
-def test_run_cli_reports_settings_load_warnings_once_for_plugin_toggles(
+def test_run_cli_fails_closed_after_settings_load_warning_for_plugin_toggles(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -9074,10 +9074,12 @@ def test_run_cli_reports_settings_load_warnings_once_for_plugin_toggles(
 
     asyncio.run(scenario())
 
-    assert stdout.getvalue() == "added plugin source\tplugins/debug-pack\n"
+    assert stdout.getvalue() == ""
     assert stderr.getvalue().count("Warning (package command, project settings):") == 1
-    assert "plugin_enablement_migration_required:" in stderr.getvalue()
-    assert "plugin Installation is not migrated: legacy" in stderr.getvalue()
+    assert "resource_toggle_failed:" in stderr.getvalue()
+    assert "Expecting property name" in stderr.getvalue()
+    assert "plugin_enablement_migration_required:" not in stderr.getvalue()
+    assert project_settings_path.read_text(encoding="utf-8") == "{not-json"
 
 
 def test_run_cli_reports_migration_in_progress_code(

@@ -17,12 +17,12 @@ CLI_LISTING = Path("src/loushang/harness/cli/plugin_listing.py")
 CLI_TOGGLES = Path("src/loushang/harness/cli/resource_toggles.py")
 CLI_PROFILE = Path("src/loushang/harness/cli/profile.py")
 CODING_BINDING = Path("src/loushang/coding/plugin_management_cli.py")
-CODING_COMPATIBILITY = Path(
-    "src/loushang/coding/plugin_enablement_compatibility.py"
-)
+CODING_COMPATIBILITY = Path("src/loushang/coding/plugin_enablement_compatibility.py")
 CODING_BOOTSTRAP = Path("src/loushang/coding/bootstrap.py")
 CODING_CONTINUITY = Path("src/loushang/coding/continuity_bootstrap.py")
 SETTINGS_MANAGER = Path("src/loushang/harness/config/agent/manager.py")
+CONFIG_RUNTIME = Path("src/loushang/harness/config/runtime.py")
+CONFIG_FILE_TRANSACTION = Path("src/loushang/harness/config/_file_transaction.py")
 CODING_LIFECYCLE = Path("src/loushang/coding/_plugin_lifecycle.py")
 
 
@@ -158,6 +158,8 @@ def test_plc9a1_coding_transport_adapter_does_not_construct_owner_stores() -> No
     compatibility = _source(CODING_COMPATIBILITY)
     lifecycle = _source(CODING_LIFECYCLE)
     settings = _source(SETTINGS_MANAGER)
+    config_runtime = _source(CONFIG_RUNTIME)
+    config_file_transaction = _source(CONFIG_FILE_TRANSACTION)
 
     for forbidden in (
         "PluginDesiredStateLedger(",
@@ -174,8 +176,10 @@ def test_plc9a1_coding_transport_adapter_does_not_construct_owner_stores() -> No
     assert "authority_id" not in compatibility
     assert "LegacyPluginCompatibilityProjectionV1(" in compatibility
     assert "self._legacy_plugin_guard_authority is not authority" in settings
-    assert 'lock_suffix=".plugin-enablement.lock"' in settings
-    assert "self._config.reload()" in settings
+    assert "with self._config.transaction():" in settings
+    assert "config_file_transaction_lock(path)" in config_runtime
+    assert "self._config.reload(strict=True, notify=False)" in config_runtime
+    assert 'lock_suffix=".config.lock"' in config_file_transaction
     assert "def build_coding_plugin_management_application(" in lifecycle
     assert "def project_coding_plugin_enablement_compatibility(" in lifecycle
 
