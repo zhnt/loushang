@@ -61,6 +61,7 @@ class _ProcessSessionOwnerLeaseState:
     lease: AbstractContextManager[None]
     references: int = 1
     runtime_claim_id: str | None = None
+    runtime_claim_references: int = 0
 
 
 _PROCESS_SESSION_OWNER_LEASES: dict[Path, _ProcessSessionOwnerLeaseState] = {}
@@ -87,6 +88,12 @@ class _ProcessSessionOwnerLease(AbstractContextManager[None]):
                 claim_id,
                 name="Session runtime claim id",
             )
+            if self._runtime_claim_id == normalized_claim_id:
+                return
+            if self._runtime_claim_id is not None:
+                raise RuntimeError(
+                    "Coding Session owner lease already claimed another runtime"
+                )
             _claim_session_owner_runtime(
                 self.path,
                 owner_id=self.owner_id,
@@ -722,13 +729,17 @@ class CodingPluginSessionLease:
     )
     _closed: bool = field(default=False, init=False, repr=False)
 
-    def claim_runtime(self) -> None:
+    def claim_runtime(self, runtime_claim_id: str | None = None) -> None:
         if self._closed:
             raise CodingPluginLifecycleError(
                 "Closed Coding Session cannot claim a runtime",
                 code="coding_plugin_session_lease_closed",
             )
-        self._session_owner_lease.claim_runtime(self.family.family_id)
+        self._session_owner_lease.claim_runtime(
+            self.family.family_id
+            if runtime_claim_id is None
+            else _nonempty(runtime_claim_id, name="Session runtime claim id")
+        )
 
     def evaluate_management_change(self) -> CodingPluginManagementChange:
         snapshot = self.lifecycle.desired.snapshot()
@@ -1249,12 +1260,14 @@ def _claim_session_owner_runtime(
             raise RuntimeError("Coding Session owner lease ownership was lost")
         if existing.runtime_claim_id is None:
             existing.runtime_claim_id = claim_id
+            existing.runtime_claim_references = 1
             return
         if existing.runtime_claim_id != claim_id:
             raise CodingPluginLifecycleError(
                 "Coding Session already has another prepared runtime",
                 code="coding_plugin_session_runtime_already_active",
             )
+        existing.runtime_claim_references += 1
 
 
 def _release_session_owner_lease(
@@ -1275,7 +1288,11 @@ def _release_session_owner_lease(
         if runtime_claim_id is not None:
             if existing.runtime_claim_id != runtime_claim_id:
                 raise RuntimeError("Coding Session runtime claim ownership was lost")
-            existing.runtime_claim_id = None
+            existing.runtime_claim_references -= 1
+            if existing.runtime_claim_references < 0:
+                raise RuntimeError("Coding Session runtime claim count is invalid")
+            if existing.runtime_claim_references == 0:
+                existing.runtime_claim_id = None
         if existing.references > 1:
             existing.references -= 1
             return

@@ -46,8 +46,17 @@
   selected immutable revisions after mutable source removal. PLC6E now removes
   Coding's Resource authority mode, legacy Resource discovery, and peer CLI
   Tool publisher. PLC6 production validation and its terminal three-view review
-  completed on 2026-08-30. PLC7 through PLC9 and the public Plugin SDK remain
-  unimplemented.
+  completed on 2026-08-30. PLC7's second Provider, shared Capability-Plugin
+  composition, Arch Tool owner, source-backed private index and optional LSP
+  edge are implemented, terminally reviewed, and merged. PLC8's public author
+  SDK, exact engine negotiation, inert validation, managed Skill-action
+  declaration/execution path, and Resource-owner Catalog selection binding are
+  implemented through `e62f90aa`, terminally reviewed from architecture,
+  correctness, and Product/test perspectives, and merged into `lane/harness`
+  on 2026-08-31. PLC9 is now the open delivery stage. PLC9.0's documentation,
+  source inventory, and architecture guards were accepted on
+  `harness/plugin-plc9-baseline` after architecture, correctness/security, and
+  Product/test review on 2026-08-31; they grant no runtime authority.
 - Scope: one delivery order for the common Plugin lifecycle, ordinary
   Definition / Provider / Consumer authoring primitives, `coding.lsp`,
   `coding.base`, `coding.arch`, management control, pre-LSP internal Resource/
@@ -1410,8 +1419,10 @@ Scope:
 - compile public builders to the same canonical manifest and declaration IR;
   validation/inspection remain inert and execution conformance is explicit;
   and
-- expose a small Product build facade that distinguishes embedded contributions
-  without Plugin identity from independently selectable built-in Plugins.
+- defer the small Product build facade that distinguishes embedded
+  contributions without Plugin identity from independently selectable built-in
+  Plugins to an explicit PLC9/follow-up delivery; it is not part of issue
+  `#508` and PLC8 must not claim it implicitly.
 
 Exit gate:
 
@@ -1424,7 +1435,26 @@ Exit gate:
 - both native and packaged Skill actions prove no execution during validation,
   exact Approval use, required-containment failure, and revision pinning.
 
+Closure evidence (2026-08-31):
+
+- implementation and blocking-review fixes are complete through `e62f90aa`;
+- architecture, correctness, and Product/test reviewers each returned `PASS`
+  with no remaining P0/P1 finding;
+- the final PLC8 and impacted architecture suite passed 159 tests, the complete
+  Harness suite passed 3211 tests with 7 skips, and Ruff, mypy, and diff checks
+  passed; and
+- the PLC9 entry review gate is satisfied. PLC9 still requires its own scoped
+  contracts and reviews; this closure does not pre-authorize its management,
+  isolation, package-lifecycle, or destructive-cleanup changes.
+
 ### PLC9: Management, Isolation And Cleanup Closure
+
+PLC9 starts with the docs-and-tests-only
+[PLC9.0 Baseline](plugin-lifecycle-plc9-baseline.md) and its
+[Owner And Peer Inventory](plugin-lifecycle-plc9-inventory.md). That baseline
+freezes the current owners, peer enablement paths, materialization gap, absent
+Worker/remote topologies, and operation separation before PLC9A changes runtime
+code. Its acceptance does not pre-authorize later APIs or destructive actions.
 
 Scope:
 

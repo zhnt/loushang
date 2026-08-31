@@ -4,6 +4,9 @@ from loushang.harness.capabilities.composition_runtime import (
     CAPABILITY_COMPOSITION_IMPLEMENTATION_VERSION as CAPABILITY_COMPOSITION_IMPLEMENTATION_VERSION,
 )
 from loushang.harness.capabilities.composition_runtime import (
+    ResourceCandidateSealingCleanupError as ResourceCandidateSealingCleanupError,
+)
+from loushang.harness.capabilities.composition_runtime import (
     StagedResourceCompositionCandidate as StagedResourceCompositionCandidate,
 )
 from loushang.harness.capabilities.composition_runtime import (
@@ -249,6 +252,7 @@ __all__ = [
     "RegistrationInventoryEntry",
     "RegistrationInventorySnapshot",
     "RegistrationExplanation",
+    "ResourceCandidateSealingCleanupError",
     "RESOURCES_ACTIVATION_REQUIREMENT",
     "RESOURCES_CAPABILITY_DEFINITION",
     "RESOURCES_COMMAND_PACK_REQUIREMENT",

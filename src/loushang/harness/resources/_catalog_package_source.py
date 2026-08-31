@@ -6,7 +6,7 @@ import asyncio
 import hashlib
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import PurePosixPath
 
 from loushang.harness.resources._catalog_projection import (
@@ -44,7 +44,19 @@ from loushang.harness.resources.plugins.revisions import (
     PluginRevisionError,
     VerifiedRevisionHandle,
 )
-from loushang.harness.resources.types import ThemeDescriptor
+from loushang.harness.resources.skill_actions import (
+    MAX_SKILL_ACTION_DOCUMENT_BYTES,
+    MAX_SKILL_ACTION_SCRIPT_BYTES,
+    CapturedSkillAction,
+    SkillActionDocumentCodec,
+    SkillActionSourceCapture,
+)
+from loushang.harness.resources.types import (
+    PromptFragmentDescriptor,
+    RevisionResourceRef,
+    SkillDescriptor,
+    ThemeDescriptor,
+)
 
 _RESOURCE_KINDS = frozenset({"asset", "method", "prompt", "skill", "source", "theme"})
 
@@ -73,6 +85,7 @@ class VerifiedPackageResourceInput:
     media_type: str
     schema_id: str
     schema_version: int
+    managed_skill_actions: bool
     revision_handle: VerifiedRevisionHandle = field(repr=False, compare=False)
     source_root_order: int = 0
 
@@ -96,6 +109,10 @@ class VerifiedPackageResourceInput:
                 raise ValueError(f"{name} fingerprint must be SHA-256")
         if self.resource_kind not in _RESOURCE_KINDS:
             raise ValueError("Package Resource kind is unsupported")
+        if type(self.managed_skill_actions) is not bool:
+            raise TypeError("Package Resource action marker must be a bool")
+        if self.managed_skill_actions and self.resource_kind != "skill":
+            raise ValueError("Package managed actions require a Skill Resource")
         if self.locator_kind not in {"directory", "file"}:
             raise ValueError("Package Resource locator kind is unsupported")
         locator = canonical_plugin_relative_path(self.locator)
@@ -126,6 +143,7 @@ class VerifiedPackageResourceInput:
             "instanceRevisionRef": self.plugin_instance_revision_ref,
             "locator": self.locator,
             "locatorKind": self.locator_kind,
+            "managedSkillActions": self.managed_skill_actions,
             "packageContentDigest": self.package_content_digest,
             "sourceRootOrder": self.source_root_order,
         }
@@ -144,6 +162,7 @@ def acquire_verified_package_resource_input(
     media_type: str,
     schema_id: str,
     schema_version: int,
+    managed_skill_actions: bool = False,
     source_root_order: int,
 ) -> VerifiedPackageResourceInput:
     """Acquire the source-owned revision lease without consuming package custody."""
@@ -162,6 +181,7 @@ def acquire_verified_package_resource_input(
             media_type=media_type,
             schema_id=schema_id,
             schema_version=schema_version,
+            managed_skill_actions=managed_skill_actions,
             revision_handle=owned_handle,
             source_root_order=source_root_order,
         )
@@ -624,6 +644,16 @@ def _discover_resource(
         projection.diagnostic_reasons,
         source_generation_ref,
     )
+    managed_action_source = (
+        _capture_package_skill_actions(
+            resource,
+            skill_root=locator,
+            control=control,
+        )
+        if resource.resource_kind == "skill"
+        and resource.locator_kind == "directory"
+        else None
+    )
 
     identity = ResourceIdentity(
         resource_kind=resource.resource_kind,
@@ -640,6 +670,11 @@ def _discover_resource(
             "bodyLength": body_length,
             "discoveryRequestFingerprint": request.request_fingerprint,
             "identity": identity.to_payload(),
+            "managedActionSourceFingerprint": (
+                managed_action_source.capture_fingerprint
+                if managed_action_source is not None
+                else None
+            ),
             "opaqueLocator": opaque_locator,
             "packageContentDigest": resource.revision_handle.content_digest,
         },
@@ -686,6 +721,7 @@ def _discover_resource(
         projection=projection,
         logical_path=body_path or locator,
         body=parsed_body,
+        managed_action_source=managed_action_source,
     )
     projection_binding = (
         build_resource_projection_binding(
@@ -705,9 +741,30 @@ def _package_projection_descriptor(
     projection: CatalogItemProjection,
     logical_path: PurePosixPath,
     body: bytes | None,
+    managed_action_source: SkillActionSourceCapture | None,
 ) -> ResourceProjectionDescriptor | None:
     if projection.descriptor is not None:
-        return projection.descriptor
+        descriptor = projection.descriptor
+        if not isinstance(descriptor, PromptFragmentDescriptor | SkillDescriptor):
+            raise PackageResourceSourceError(
+                code="resource_source_snapshot_invalid",
+                reason="invalid_package_projection_descriptor",
+            )
+        descriptor = replace(
+            descriptor,
+            source_path=resource.revision_handle.root / logical_path,
+            source_root=resource.revision_handle.root,
+            revision_ref=RevisionResourceRef(
+                content_digest=resource.revision_handle.content_digest,
+                relative_path=logical_path.as_posix(),
+            ),
+        )
+        if isinstance(descriptor, SkillDescriptor):
+            descriptor = replace(
+                descriptor,
+                managed_action_source=managed_action_source,
+            )
+        return descriptor
     if resource.resource_kind != "theme":
         return None
     try:
@@ -729,6 +786,71 @@ def _package_projection_descriptor(
         source_root=resource.revision_handle.root,
         source_root_order=resource.source_root_order,
     )
+
+
+def _capture_package_skill_actions(
+    resource: VerifiedPackageResourceInput,
+    *,
+    skill_root: PurePosixPath,
+    control: _DiscoveryControl,
+) -> SkillActionSourceCapture | None:
+    action_path = skill_root / "actions.json"
+    try:
+        _action_digest, action_size = resource.revision_handle.file_identity(
+            action_path
+        )
+    except PluginRevisionError as exc:
+        if exc.code == "invalid_plugin_revision_path":
+            if resource.managed_skill_actions:
+                raise PackageResourceSourceError(
+                    code="resource_source_snapshot_invalid",
+                    reason="declared_skill_action_document_missing",
+                ) from exc
+            return None
+        raise
+    if not resource.managed_skill_actions:
+        raise PackageResourceSourceError(
+            code="resource_source_snapshot_invalid",
+            reason="undeclared_skill_action_document",
+        )
+    if action_size > MAX_SKILL_ACTION_DOCUMENT_BYTES:
+        raise PackageResourceSourceError(
+            code="resource_source_snapshot_invalid",
+            reason="skill_action_document_too_large",
+        )
+    control.reserve_metadata(action_size)
+    with resource.revision_handle.open_file(action_path) as stream:
+        action_document = stream.read()
+    try:
+        document = SkillActionDocumentCodec.decode_bytes(action_document)
+        captured: list[CapturedSkillAction] = []
+        for declaration in document.actions:
+            script_path = skill_root / declaration.relative_script
+            _script_digest, script_size = resource.revision_handle.file_identity(
+                script_path
+            )
+            if script_size > MAX_SKILL_ACTION_SCRIPT_BYTES:
+                raise ValueError("Skill action script is too large")
+            control.reserve_metadata(script_size)
+            with resource.revision_handle.open_file(script_path) as stream:
+                script = stream.read()
+            captured.append(
+                CapturedSkillAction(
+                    declaration=declaration,
+                    script_body=script,
+                )
+            )
+        return SkillActionSourceCapture.capture(
+            source_kind="package",
+            source_revision=resource.revision_handle.content_digest,
+            action_document=action_document,
+            actions=tuple(captured),
+        )
+    except (PluginRevisionError, TypeError, ValueError) as exc:
+        raise PackageResourceSourceError(
+            code="resource_source_snapshot_invalid",
+            reason="invalid_skill_action_document",
+        ) from exc
 
 
 def _parser_diagnostics(

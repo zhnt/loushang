@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
+import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -14,6 +17,7 @@ from loushang.harness.policy import PolicyDecision
 from loushang.harness.tools.process_hosting import (
     ProcessExecutionScope,
     ScopeBoundProcessLauncher,
+    _managed_process_launch_request,
     _process_launch_fingerprint,
 )
 from loushang.harness.tools.workspace.policy import PolicyEnforcementError
@@ -21,6 +25,15 @@ from loushang.harness.workspace.process import (
     ProcessExit,
     ProcessLaunchRequest,
     ProcessStderrTail,
+)
+from loushang.harness.workspace.process._sealed_executable import (
+    SealedProcessExecutableUnavailable,
+    _capture_bound_process_directory,
+    _capture_sealed_process_executable,
+    _contained_process_launch_request,
+    _copy_stable_executable,
+    _process_inherited_file_descriptors,
+    _sealed_process_executable_from_request,
 )
 from loushang.harness.workspace.process.host import ProcessHostClosedError
 from loushang.harness.workspace.process.local import ProcessContainmentPlan
@@ -313,3 +326,178 @@ def test_private_launch_fingerprint_covers_argv_cwd_and_complete_environment(
         )
         == 4
     )
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux memfd seals")
+@pytest.mark.parametrize(
+    ("command_path", "digest", "size"),
+    (
+        ("/wrong/runtime", None, None),
+        (None, "0" * 64, None),
+        (None, None, -1),
+    ),
+)
+def test_managed_request_rejects_executable_authorization_mismatch(
+    tmp_path: Path,
+    command_path: str | None,
+    digest: str | None,
+    size: int | None,
+) -> None:
+    executable = Path(sys.executable).resolve()
+    expected_digest = hashlib.sha256(executable.read_bytes()).hexdigest()
+    artifact = _capture_sealed_process_executable(
+        executable,
+        expected_digest=expected_digest,
+    )
+    try:
+        with pytest.raises(ValueError, match="authorization facts"):
+            _managed_process_launch_request(
+                command=(command_path or str(executable),),
+                cwd=str(tmp_path),
+                effective_environment=(),
+                declared_effects=(),
+                authorization_metadata={
+                    "runtimeDigest": digest or expected_digest,
+                    "runtimeSize": artifact.size if size is None else size,
+                },
+                pre_start_validator=artifact.verify,
+                sealed_executable=artifact,
+            )
+    finally:
+        artifact.close()
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux memfd seals")
+def test_sealed_executable_owner_evidence_rejects_field_tampering() -> None:
+    executable = Path(sys.executable).resolve()
+    artifact = _capture_sealed_process_executable(
+        executable,
+        expected_digest=hashlib.sha256(executable.read_bytes()).hexdigest(),
+    )
+    try:
+        object.__setattr__(artifact, "logical_path", Path("/forged/runtime"))
+        with pytest.raises(
+            SealedProcessExecutableUnavailable,
+            match="identity changed",
+        ):
+            artifact.authorization_payload()
+    finally:
+        artifact.close()
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="POSIX fd copy")
+def test_sealed_executable_capture_streams_in_bounded_chunks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "runtime"
+    body = b"x" * (2 * 1024 * 1024 + 17)
+    source.write_bytes(body)
+    destination = os.open(
+        tmp_path / "sealed-copy",
+        os.O_CREAT | os.O_TRUNC | os.O_WRONLY,
+        0o600,
+    )
+    requested_sizes: list[int] = []
+    original_read = os.read
+
+    def bounded_read(descriptor: int, size: int) -> bytes:
+        requested_sizes.append(size)
+        return original_read(descriptor, size)
+
+    monkeypatch.setattr(os, "read", bounded_read)
+    try:
+        digest, size = _copy_stable_executable(source, destination)
+    finally:
+        os.close(destination)
+
+    assert digest == hashlib.sha256(body).hexdigest()
+    assert size == len(body)
+    assert requested_sizes
+    assert max(requested_sizes) <= 1024 * 1024
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux memfd seals")
+def test_contained_spawn_request_rejects_command_tampering(tmp_path: Path) -> None:
+    executable = Path(sys.executable).resolve()
+    digest = hashlib.sha256(executable.read_bytes()).hexdigest()
+    artifact = _capture_sealed_process_executable(
+        executable,
+        expected_digest=digest,
+    )
+    try:
+        managed = _managed_process_launch_request(
+            command=(str(executable), "-"),
+            cwd=str(tmp_path),
+            effective_environment=(),
+            declared_effects=(),
+            authorization_metadata={
+                "runtimeDigest": digest,
+                "runtimeSize": artifact.size,
+            },
+            pre_start_validator=artifact.verify,
+            sealed_executable=artifact,
+        )
+        contained = _contained_process_launch_request(
+            managed,
+            command=("/usr/bin/bwrap", "--", str(executable), "-"),
+        )
+        assert _sealed_process_executable_from_request(contained) is artifact
+
+        object.__setattr__(contained, "command", ("/forged/launcher",))
+        with pytest.raises(
+            SealedProcessExecutableUnavailable,
+            match="spawn request changed",
+        ):
+            _sealed_process_executable_from_request(contained)
+    finally:
+        artifact.close()
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux directory fd")
+def test_managed_spawn_retains_exact_cwd_directory_descriptor(tmp_path: Path) -> None:
+    executable = Path(sys.executable).resolve()
+    digest = hashlib.sha256(executable.read_bytes()).hexdigest()
+    runtime_artifact = _capture_sealed_process_executable(
+        executable,
+        expected_digest=digest,
+    )
+    identity = tmp_path.stat()
+    cwd_artifact = _capture_bound_process_directory(
+        tmp_path,
+        expected_identity=(identity.st_dev, identity.st_ino),
+    )
+    try:
+        managed = _managed_process_launch_request(
+            command=(str(executable), "-"),
+            cwd=str(tmp_path),
+            effective_environment=(),
+            declared_effects=(),
+            authorization_metadata={
+                "cwdDevice": cwd_artifact.device,
+                "cwdInode": cwd_artifact.inode,
+                "runtimeDigest": digest,
+                "runtimeSize": runtime_artifact.size,
+            },
+            pre_start_validator=runtime_artifact.verify,
+            sealed_executable=runtime_artifact,
+            bound_cwd_directory=cwd_artifact,
+        )
+        contained = _contained_process_launch_request(
+            managed,
+            command=("/usr/bin/bwrap", "--", str(executable), "-"),
+        )
+        assert _process_inherited_file_descriptors(contained) == (
+            runtime_artifact.descriptor,
+            cwd_artifact.descriptor,
+        )
+
+        object.__setattr__(cwd_artifact, "logical_path", Path("/forged/cwd"))
+        with pytest.raises(
+            SealedProcessExecutableUnavailable,
+            match="directory identity changed",
+        ):
+            _process_inherited_file_descriptors(contained)
+    finally:
+        cwd_artifact.close()
+        runtime_artifact.close()

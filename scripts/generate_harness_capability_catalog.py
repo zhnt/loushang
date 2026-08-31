@@ -41,6 +41,37 @@ class CapabilitySeam:
 SOURCE_BACKED_SEAMS = (
     CapabilitySeam(
         definition=(
+            "loushang.coding.arch._provider_api:"
+            "CODING_ARCH_CAPABILITY_DEFINITION"
+        ),
+        providers=(
+            "loushang.coding.arch._provider_api:"
+            "coding_arch_capability_provider",
+        ),
+        consumers=(
+            (
+                "loushang.coding.arch._provider_api:"
+                "CodingArchAnalysisCapabilityConsumer",
+                (
+                    "loushang.coding.arch._provider_api:"
+                    "CODING_ARCH_ANALYSIS_REQUIREMENT",
+                ),
+            ),
+            (
+                "loushang.coding.arch._provider_api:"
+                "CodingArchToolRuntimeCapabilityConsumer",
+                (
+                    "loushang.coding.arch._provider_api:"
+                    "CODING_ARCH_TOOL_RUNTIME_REQUIREMENT",
+                ),
+            ),
+        ),
+        production_mounts=(
+            "loushang.coding.session.agent_session:AgentSession",
+        ),
+    ),
+    CapabilitySeam(
+        definition=(
             "loushang.coding.lsp._provider_api:"
             "CODING_LSP_CAPABILITY_DEFINITION"
         ),
@@ -397,11 +428,10 @@ def render_catalog() -> str:
             "",
             "## Coverage Boundary",
             "",
-            "`coding.lsp` is production-mounted by default whenever its Product mount "
-            "mode is enabled; `disabled` and `no_tools=all` skip Plugin resolution. "
-            "`coding.arch` remains an accepted rollout target and "
-            "is absent from the table until it has a complete source-backed Definition /",
-            "Provider / Consumer seam. Fine-grained Runtime Profile slots and individual Tools,",
+            "`coding.lsp` and `coding.arch` are production-mounted when selected by "
+            "their Coding composition set and enabled Product mount mode; `disabled` "
+            "and `no_tools=all` skip their Plugin resolution. Fine-grained Runtime "
+            "Profile slots and individual Tools,",
             "hooks, resources, and Extension contributions do not become top-level",
             "Capability nodes.",
             "",
@@ -520,6 +550,8 @@ def _discover_definition_refs() -> frozenset[SymbolRef]:
         }
         declared: set[int] = set()
         for node in tree.body:
+            value: ast.expr | None
+            targets: tuple[ast.expr, ...]
             if isinstance(node, ast.Assign):
                 value, targets = node.value, tuple(node.targets)
             elif isinstance(node, ast.AnnAssign):

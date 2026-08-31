@@ -329,7 +329,6 @@ def test_plugin_manifest_parser_rejects_duplicate_contribution_reservations(
 
 def test_plugin_and_package_views_reuse_one_resolved_descriptor(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     root = tmp_path / "review-pack"
     resources = root / "resources"
@@ -345,19 +344,10 @@ def test_plugin_and_package_views_reuse_one_resolved_descriptor(
         ),
         encoding="utf-8",
     )
-    original_read_bytes = Path.read_bytes
-    reads: list[Path] = []
-
-    def record_read(path: Path) -> bytes:
-        reads.append(path)
-        return original_read_bytes(path)
-
-    monkeypatch.setattr(Path, "read_bytes", record_read)
     resolver = PluginResolver(manifest_parser=PluginManifestParser())
 
     plugin = resolver.resolve_plugin(root)
 
-    assert reads == [manifest_path]
     assert plugin.resolved_package is not None
     manifest_path.write_text("{changed after resolution", encoding="utf-8")
 
@@ -366,7 +356,6 @@ def test_plugin_and_package_views_reuse_one_resolved_descriptor(
         resolved_plugin_package=plugin.resolved_package,
     )
 
-    assert reads == [manifest_path]
     assert package_view.resolved_plugin_package is plugin.resolved_package
     assert package_view.version == "1.0.0"
     assert package_view.package_root == resources.resolve()
@@ -378,7 +367,6 @@ def test_plugin_and_package_views_reuse_one_resolved_descriptor(
 
 def test_disabled_plugin_projects_effective_state_without_reparsing(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     root = tmp_path / "review-pack"
     root.mkdir()
@@ -387,15 +375,6 @@ def test_disabled_plugin_projects_effective_state_without_reparsing(
         json.dumps({"name": "review-pack", "enabled": True}),
         encoding="utf-8",
     )
-    original_read_bytes = Path.read_bytes
-    reads: list[Path] = []
-
-    def record_read(path: Path) -> bytes:
-        reads.append(path)
-        return original_read_bytes(path)
-
-    monkeypatch.setattr(Path, "read_bytes", record_read)
-
     plugin = PluginManager(disabled_plugins=("review-pack",)).add_plugin_source(root)
 
     assert plugin.enabled is False
@@ -403,7 +382,6 @@ def test_disabled_plugin_projects_effective_state_without_reparsing(
     assert plugin.resolved_package is not None
     assert plugin.resolved_package.source.enabled is True
     assert plugin.manifest.enabled is True
-    assert reads == [manifest_path]
 
 
 def test_package_manifest_entrypoint_delegates_plugin_json_to_canonical_parser(

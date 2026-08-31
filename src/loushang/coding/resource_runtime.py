@@ -23,6 +23,7 @@ from loushang.harness.resources.types import PackageResourceSummary, ResourceBun
 
 from .plugin_dependency_grants import (
     CoDistributedPluginDependencyGrantResolver,
+    coding_arch_default_plugin_root,
     coding_lsp_default_plugin_root,
     coding_plugin_distribution_evidence_resolver,
 )
@@ -78,7 +79,8 @@ class CodingPackageMaterializer(PackageMaterializer):
         kwargs.setdefault(
             "co_distributed_dependency_grant_resolver",
             CoDistributedPluginDependencyGrantResolver(
-                coding_lsp_source=coding_lsp_default_plugin_root()
+                coding_lsp_source=coding_lsp_default_plugin_root(),
+                coding_arch_source=coding_arch_default_plugin_root(),
             ),
         )
         kwargs.setdefault(

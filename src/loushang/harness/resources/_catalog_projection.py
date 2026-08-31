@@ -485,6 +485,11 @@ def _descriptor_fingerprint(
     elif isinstance(descriptor, SkillDescriptor):
         payload["typeFacts"] = {
             "disableModelInvocation": descriptor.disable_model_invocation,
+            "managedActionSourceFingerprint": (
+                descriptor.managed_action_source.capture_fingerprint
+                if descriptor.managed_action_source is not None
+                else None
+            ),
         }
     elif isinstance(descriptor, ExtensionDescriptor):
         payload["typeFacts"] = {

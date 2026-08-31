@@ -23,6 +23,13 @@ from .authoring import (
 )
 from .core import ToolDefinition, ToolRegistry
 from .execution import ToolExecutionHost
+from .skill_actions import (
+    ManagedSkillActionBinding,
+    ManagedSkillActionError,
+    ManagedSkillActionResult,
+    SkillRuntimeBinding,
+    execute_managed_skill_action,
+)
 
 __all__ = [
     "AGENT_DELEGATE_TOOL_NAME",
@@ -32,6 +39,9 @@ __all__ = [
     "AgentInvocationRequest",
     "AgentInvocationResult",
     "FilesystemActionAdapter",
+    "ManagedSkillActionBinding",
+    "ManagedSkillActionError",
+    "ManagedSkillActionResult",
     "NetworkActionAdapter",
     "ProcessActionAdapter",
     "PublicationActionAdapter",
@@ -42,7 +52,9 @@ __all__ = [
     "ToolEventSink",
     "ToolExecutionHost",
     "ToolRegistry",
+    "SkillRuntimeBinding",
     "authorized_tool",
     "direct_tool",
+    "execute_managed_skill_action",
     "tool",
 ]

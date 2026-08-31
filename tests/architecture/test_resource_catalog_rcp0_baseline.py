@@ -163,7 +163,7 @@ EXPECTED_SKILLS_ATTRIBUTE_LOAD_SITES = {
     ),
     (
         Path("src/loushang/harness/resources/_skill_catalog_consumer.py"),
-        "SkillCatalogConsumer.__init__",
+        "SkillCatalogConsumer._initialize",
     ),
     (
         Path("src/loushang/harness/resources/_skill_catalog_consumer.py"),

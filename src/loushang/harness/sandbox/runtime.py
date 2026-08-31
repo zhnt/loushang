@@ -11,11 +11,13 @@ from loushang.harness.environment import HostEnvironmentProbe
 from loushang.harness.tools.process_hosting import (
     ProcessExecutionScope,
     ScopeBoundProcessLauncher,
+    _bind_process_owner_launcher,
 )
 from loushang.harness.workspace.exec import (
     ExecRequest,
     ExecService,
     ExecUpdateCallback,
+    LocalExecBackend,
 )
 from loushang.harness.workspace.process import AuthorizedProcessLauncher
 from loushang.harness.workspace.process.host import ProcessHost
@@ -54,10 +56,16 @@ class SandboxExecutionRuntime:
             raise RuntimeError("sandbox execution runtime is closing")
         if self._process_launcher is not None:
             raise RuntimeError("process launcher is already bound for this runtime")
-        launcher = ScopeBoundProcessLauncher(
+        launcher = _bind_process_owner_launcher(
             scope=scope,
             host=self._process_host,
             containment=self._process_containment,
+            managed_owner_authority=(
+                self._process_containment._claim_managed_process_owner_authority()
+            ),
+            managed_plan_verifier=(
+                self._process_containment._verify_managed_process_plan
+            ),
         )
         self._process_launcher = launcher
         return launcher
@@ -150,6 +158,12 @@ class _ExecServiceBackend:
 
     def __init__(self, service: ExecService) -> None:
         self._service = service
+
+    def _uses_builtin_local_backend(self) -> bool:
+        return (
+            type(self._service) is ExecService
+            and type(self._service._backend) is LocalExecBackend
+        )
 
     async def __call__(
         self,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import shutil
 import subprocess
@@ -101,10 +102,16 @@ from loushang.harness.resources.plugins.selection import (
     PluginSourceTrustSnapshotV1,
 )
 from loushang.harness.resources.plugins.types import PluginSource
+from loushang.harness.resources.skill_actions import (
+    SkillActionDocument,
+    SkillActionDocumentCodec,
+)
 from loushang.harness.session.product_composition_assembly import (
     ProductCompositionAssemblyRequest,
     ProductContributionOwnerBinding,
 )
+from loushang.harness.tools.skill_actions import ManagedSkillActionBinding
+from loushang.plugin import skill_action
 
 _CODING_BASE_SHADOW_ROOT = (
     Path(__file__).parent.parent
@@ -1215,6 +1222,22 @@ def test_coding_catalog_refresh_publishes_one_exact_next_generation(
             "---\nname: review\ndescription: Review v1\n---\nReview v1 body.\n",
             encoding="utf-8",
         )
+        script_file = skill_file.parent / "scripts" / "review.py"
+        script_file.parent.mkdir()
+        script_v1 = b"print('review-v1')\n"
+        script_file.write_bytes(script_v1)
+        declaration_v1 = skill_action(
+            id="review",
+            script="scripts/review.py",
+            script_digest=hashlib.sha256(script_v1).hexdigest(),
+            runtime="python",
+        )
+        actions_file = skill_file.parent / "actions.json"
+        actions_file.write_bytes(
+            SkillActionDocumentCodec.encode_bytes(
+                SkillActionDocument(actions=(declaration_v1,))
+            )
+        )
         monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "missing-home"))
         services = create_services(
             settings_manager=SettingsManager(
@@ -1239,6 +1262,11 @@ def test_coding_catalog_refresh_publishes_one_exact_next_generation(
             assert old_consumer is not None
             assert mounted is not None
             assert old_consumer.catalog_generation == 1
+            old_summary = old_consumer.get_effective_skill("review")
+            assert old_summary is not None
+            [old_action] = old_consumer.capture_managed_actions(old_summary)
+            old_action_binding = ManagedSkillActionBinding.bind(old_action)
+            assert old_action_binding.read_verified_script() == script_v1
             graph_generation = session._capability_graph_runtime.generation
             owner_generations = session._capability_owner_generations
             owner_generation_values = tuple(
@@ -1263,6 +1291,19 @@ def test_coding_catalog_refresh_publishes_one_exact_next_generation(
                 "---\nname: review\ndescription: Review v2\n---\nReview v2 body.\n",
                 encoding="utf-8",
             )
+            script_v2 = b"print('review-v2')\n"
+            script_file.write_bytes(script_v2)
+            declaration_v2 = skill_action(
+                id="review",
+                script="scripts/review.py",
+                script_digest=hashlib.sha256(script_v2).hexdigest(),
+                runtime="python",
+            )
+            actions_file.write_bytes(
+                SkillActionDocumentCodec.encode_bytes(
+                    SkillActionDocument(actions=(declaration_v2,))
+                )
+            )
             await session._composition.resource_refresh_runtime.refresh_async(
                 reason="test"
             )
@@ -1279,6 +1320,13 @@ def test_coding_catalog_refresh_publishes_one_exact_next_generation(
                 item.name: item.description
                 for item in new_consumer.list_effective_skills()
             }["review"] == "Review v2"
+            new_summary = new_consumer.get_effective_skill("review")
+            assert new_summary is not None
+            [new_action] = new_consumer.capture_managed_actions(new_summary)
+            assert ManagedSkillActionBinding.bind(
+                new_action
+            ).read_verified_script() == script_v2
+            assert old_action_binding.read_verified_script() == script_v1
             assert session._capability_graph_runtime.generation == graph_generation
             assert session._composition.resource_refresh_runtime.resource_revision == 2
             assert session._capability_owner_generations is owner_generations

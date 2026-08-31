@@ -469,15 +469,17 @@ def test_on_demand_lsp_discovers_installed_product_defaults(
     project = tmp_path / "project"
     project.mkdir()
     captured_definitions: list[LspServerDefinition] = []
-    prepare = coding_bootstrap.prepare_coding_lsp_plugin_opt_in
+    prepare = coding_bootstrap.prepare_coding_capability_plugin_composition
 
     def capture_definitions(request, **kwargs):
-        captured_definitions.extend(kwargs["config"].definitions)
+        captured_definitions.extend(
+            kwargs["configurations"]["coding.lsp.default"].definitions
+        )
         return prepare(request, **kwargs)
 
     monkeypatch.setattr(
         coding_bootstrap,
-        "prepare_coding_lsp_plugin_opt_in",
+        "prepare_coding_capability_plugin_composition",
         capture_definitions,
     )
     services = create_services(
@@ -527,7 +529,7 @@ def test_disabled_lsp_session_does_not_resolve_the_default_plugin(
 
     monkeypatch.setattr(
         coding_bootstrap,
-        "prepare_coding_lsp_plugin_opt_in",
+        "prepare_coding_capability_plugin_composition",
         reject_plugin_resolution,
     )
     project = tmp_path / "project"
@@ -585,7 +587,7 @@ def test_lsp_preparation_failure_closes_the_prepared_base_revision(
     )
     monkeypatch.setattr(
         coding_bootstrap,
-        "prepare_coding_lsp_plugin_opt_in",
+        "prepare_coding_capability_plugin_composition",
         reject_lsp,
     )
     manager = asyncio.run(
@@ -2767,7 +2769,10 @@ def test_create_agent_session_marks_disabled_skills(tmp_path) -> None:
     assert statuses["standard"].status == "effective"
 
 
-@pytest.mark.parametrize("tool_name", ("read", "inspect_symbol"))
+@pytest.mark.parametrize(
+    "tool_name",
+    ("read", "inspect_symbol", "inspect_import_graph"),
+)
 @pytest.mark.parametrize("input_kind", ("registry", "tools"))
 def test_create_agent_session_rejects_peer_exact_tool_publishers(
     tmp_path,

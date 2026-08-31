@@ -18,8 +18,13 @@ async def spawn_local_process(
     cwd: str,
     environment: Mapping[str, str],
     pipe_stdin: bool,
+    inherited_file_descriptors: tuple[int, ...] = (),
 ) -> asyncio.subprocess.Process:
     if _is_windows():
+        if inherited_file_descriptors:
+            raise RuntimeError(
+                "inherited file descriptors are not supported on Windows"
+            )
         return await asyncio.create_subprocess_exec(
             *command,
             cwd=cwd,
@@ -37,6 +42,7 @@ async def spawn_local_process(
         stdin=asyncio.subprocess.PIPE if pipe_stdin else None,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        pass_fds=inherited_file_descriptors,
     )
 
 

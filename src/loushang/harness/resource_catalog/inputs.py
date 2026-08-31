@@ -78,6 +78,7 @@ def acquire_admitted_package_resource(
         media_type=contribution.media_type,
         schema_id=contribution.schema_id,
         schema_version=contribution.schema_version,
+        managed_skill_actions=contribution.managed_skill_actions,
         source_root_order=source_root_order,
     )
     value = object.__new__(AdmittedPackageResource)

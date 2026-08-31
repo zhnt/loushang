@@ -7,6 +7,7 @@ from types import MappingProxyType
 from typing import Literal
 
 from loushang.harness.diagnostics.types import DiagnosticDraft
+from loushang.harness.resources.skill_actions import SkillActionSourceCapture
 
 ResourceSourceKind = Literal[
     "built_in", "project_local", "external_package", "user_global", "temporary"
@@ -119,8 +120,17 @@ class SkillDescriptor:
     source_root: Path | None = None
     source_root_order: int = 0
     revision_ref: RevisionResourceRef | None = None
+    managed_action_source: SkillActionSourceCapture | None = field(
+        default=None,
+        repr=False,
+    )
 
     def __post_init__(self) -> None:
+        if self.managed_action_source is not None and not isinstance(
+            self.managed_action_source,
+            SkillActionSourceCapture,
+        ):
+            raise TypeError("Skill managed action source capture is invalid")
         canonical_name = self.canonical_name or self.name
         object.__setattr__(self, "canonical_name", canonical_name)
         object.__setattr__(self, "id", self.id or self.declared_id or canonical_name)

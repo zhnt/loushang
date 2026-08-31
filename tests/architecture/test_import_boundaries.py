@@ -5226,6 +5226,7 @@ def test_product_capability_composition_core_is_documented_and_adopted() -> None
         "RegistrationInventoryEntry",
         "RegistrationInventorySnapshot",
         "RegistrationExplanation",
+        "ResourceCandidateSealingCleanupError",
         "ScopedSourcePublicationReference",
         "RESOURCES_ACTIVATION_REQUIREMENT",
         "RESOURCES_CAPABILITY_DEFINITION",

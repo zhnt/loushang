@@ -12,6 +12,7 @@ from loushang.harness.workspace._local_process import (
     spawn_local_process,
 )
 
+from ._sealed_executable import _process_inherited_file_descriptors
 from .types import ProcessLaunchRequest
 
 
@@ -118,6 +119,7 @@ class LocalProcessSpawner:
         *,
         on_spawn: SpawnAttachment,
     ) -> ProcessTransport:
+        inherited_file_descriptors = _process_inherited_file_descriptors(request)
         spawn_task = cast(
             "asyncio.Task[ProcessTransport]",
             asyncio.create_task(
@@ -126,6 +128,7 @@ class LocalProcessSpawner:
                     cwd=request.cwd,
                     environment=dict(request.effective_environment),
                     pipe_stdin=True,
+                    inherited_file_descriptors=inherited_file_descriptors,
                 ),
                 name="harness-local-process-spawn",
             ),

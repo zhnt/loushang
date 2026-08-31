@@ -42,9 +42,50 @@ class HostedProcessContainmentPlanner:
         self._plans: set[ProcessContainmentPlan] = set()
         self._state = "open"
         self._lock = asyncio.Lock()
+        backend_authority = (
+            resolution._claim_managed_process_backend_authority()
+            if resolution is not None
+            else None
+        )
+        self._managed_process_owner_authority = (
+            object() if backend_authority is not None else None
+        )
+
+    @property
+    def requirement(self) -> str:
+        return self._settings.requirement
 
     def status_override(self) -> SandboxStatus | None:
         return self._status_override
+
+    def _claim_managed_process_owner_authority(self) -> object | None:
+        if (
+            self._state != "open"
+            or not self._settings.enabled
+            or self._settings.requirement != "required"
+            or self._resolution is None
+            or self._resolution.backend is None
+            or self._resolution.selected_status is None
+            or self._scope_request_factory is None
+            or self._managed_process_owner_authority is None
+        ):
+            return None
+        return self._managed_process_owner_authority
+
+    def _verify_managed_process_plan(
+        self,
+        plan: ProcessContainmentPlan,
+        authority: object | None,
+    ) -> None:
+        if (
+            type(plan) is not _SandboxOwnedProcessContainmentPlan
+            or self._managed_process_owner_authority is None
+            or authority is not self._managed_process_owner_authority
+            or plan._managed_process_owner_authority is not authority
+        ):
+            raise SandboxUnavailableError(
+                "managed process containment plan is not Sandbox-owner-bound"
+            )
 
     async def plan(
         self,
@@ -85,7 +126,11 @@ class HostedProcessContainmentPlanner:
                 raise TypeError(
                     "sandbox scope request factory must return SandboxScopeRequest"
                 )
-            provider = getattr(backend, "_plan_hosted_process", None)
+            provider = (
+                self._resolution._plan_managed_process
+                if self._managed_process_owner_authority is not None
+                else getattr(backend, "_plan_hosted_process", None)
+            )
             if not callable(provider):
                 raise SandboxUnavailableError(
                     f"sandbox backend {backend.backend_id!r} cannot host live processes"
@@ -142,7 +187,11 @@ class HostedProcessContainmentPlanner:
                 async with self._lock:
                     self._plans.discard(tracked)
 
-        tracked = ProcessContainmentPlan(plan.request, close=close_tracked)
+        tracked = _SandboxOwnedProcessContainmentPlan(
+            plan.request,
+            managed_process_owner_authority=self._managed_process_owner_authority,
+            close=close_tracked,
+        )
         async with self._lock:
             if self._state == "open":
                 self._plans.add(tracked)
@@ -179,6 +228,18 @@ class HostedProcessContainmentPlanner:
                 )
             )
         return await self._track(ProcessContainmentPlan(request))
+
+
+class _SandboxOwnedProcessContainmentPlan(ProcessContainmentPlan):
+    def __init__(
+        self,
+        request: ProcessLaunchRequest,
+        *,
+        managed_process_owner_authority: object | None,
+        close,
+    ) -> None:
+        super().__init__(request, close=close)
+        self._managed_process_owner_authority = managed_process_owner_authority
 
 
 __all__: list[str] = []

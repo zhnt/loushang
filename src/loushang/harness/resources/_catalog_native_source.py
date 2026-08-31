@@ -52,9 +52,20 @@ from loushang.harness.resources._discovery_conventions import (
     IGNORE_FILE_NAMES,
     SOURCE_LABEL,
 )
+from loushang.harness.resources._safe_files import (
+    ContainedFileCaptureError,
+    capture_contained_regular_file,
+)
 from loushang.harness.resources._skill_ignore import (
     is_skill_path_ignored,
     normalize_skill_ignore_pattern,
+)
+from loushang.harness.resources.skill_actions import (
+    MAX_SKILL_ACTION_DOCUMENT_BYTES,
+    MAX_SKILL_ACTION_SCRIPT_BYTES,
+    CapturedSkillAction,
+    SkillActionDocumentCodec,
+    SkillActionSourceCapture,
 )
 from loushang.harness.resources.types import (
     ExtensionDescriptor,
@@ -802,6 +813,17 @@ def _discover_skill_directory(
             return
         if drafts:
             descriptor = replace(descriptor, diagnostics=tuple(drafts))
+        action_source = _capture_native_skill_actions(
+            current,
+            root=root,
+            control=control,
+            diagnostics=diagnostics,
+        )
+        if action_source is not None:
+            descriptor = replace(
+                descriptor,
+                managed_action_source=action_source,
+            )
         discovered.append(
             (
                 "skill",
@@ -839,6 +861,56 @@ def _discover_skill_directory(
             discovered=discovered,
             diagnostics=diagnostics,
         )
+
+
+def _capture_native_skill_actions(
+    skill_root: Path,
+    *,
+    root: NativeResourceRootHandle,
+    control: _DiscoveryControl,
+    diagnostics: list[ResourceCatalogDiagnostic],
+) -> SkillActionSourceCapture | None:
+    action_path = skill_root / "actions.json"
+    if not action_path.exists():
+        return None
+    if not _is_regular_file(action_path, root=root):
+        diagnostics.append(_source_diagnostic(root, "invalid_skill_action_document"))
+        return None
+    try:
+        if action_path.stat(follow_symlinks=False).st_size > MAX_SKILL_ACTION_DOCUMENT_BYTES:
+            raise ValueError("action document too large")
+        action_document = _stable_read(action_path, root=root, control=control)
+        document = SkillActionDocumentCodec.decode_bytes(action_document)
+        captured: list[CapturedSkillAction] = []
+        revision_hasher = hashlib.sha256()
+        revision_hasher.update(b"loushang.native-skill-actions/v1\0")
+        revision_hasher.update(action_document)
+        for declaration in document.actions:
+            script_path = skill_root / declaration.relative_script
+            if (
+                not _is_regular_file(script_path, root=root)
+                or script_path.stat(follow_symlinks=False).st_size
+                > MAX_SKILL_ACTION_SCRIPT_BYTES
+            ):
+                raise ValueError("action script is unavailable or too large")
+            script = _stable_read(script_path, root=root, control=control)
+            action = CapturedSkillAction(
+                declaration=declaration,
+                script_body=script,
+            )
+            captured.append(action)
+            revision_hasher.update(declaration.action_id.encode("utf-8"))
+            revision_hasher.update(b"\0")
+            revision_hasher.update(script)
+        return SkillActionSourceCapture.capture(
+            source_kind="native",
+            source_revision=revision_hasher.hexdigest(),
+            action_document=action_document,
+            actions=tuple(captured),
+        )
+    except (OSError, TypeError, ValueError):
+        diagnostics.append(_source_diagnostic(root, "invalid_skill_action_document"))
+        return None
 
 
 def _read_native_skill_ignore_patterns(
@@ -1030,65 +1102,47 @@ def _stable_read(
     root: NativeResourceRootHandle,
     control: _DiscoveryControl,
 ) -> bytes:
-    root._verify_live_root()
     try:
-        resolved = path.resolve(strict=True)
-        resolved.relative_to(root._root)
-    except (OSError, ValueError) as exc:
+        relative = path.relative_to(root._root)
+    except ValueError as exc:
         raise NativeResourceSourceError(
             code="resource_source_discovery_failed",
             reason="locator_escape",
         ) from exc
-    if resolved != path:
+    remaining = (
+        control.request.budget.maximum_metadata_bytes - control.metadata_bytes
+    )
+    if remaining < 1:
         raise NativeResourceSourceError(
-            code="resource_source_discovery_failed",
-            reason="symlink_not_allowed",
+            code="resource_source_discovery_budget_exceeded",
+            reason="metadata_bytes_exceeded",
         )
-    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
-    flags |= getattr(os, "O_CLOEXEC", 0)
-    flags |= getattr(os, "O_NOFOLLOW", 0)
+    root._verify_live_root()
     try:
-        descriptor = os.open(path, flags)
-        try:
-            before = os.fstat(descriptor)
-            if not stat.S_ISREG(before.st_mode):
-                raise NativeResourceSourceError(
-                    code="resource_source_discovery_failed",
-                    reason="body_not_regular_file",
-                )
-            control.reserve_bytes(before.st_size)
-            chunks: list[bytes] = []
-            remaining = before.st_size + 1
-            while remaining:
-                control.check()
-                chunk = os.read(descriptor, min(remaining, 64 * 1024))
-                if not chunk:
-                    break
-                chunks.append(chunk)
-                remaining -= len(chunk)
-            body = b"".join(chunks)
-            after = os.fstat(descriptor)
-        finally:
-            os.close(descriptor)
-    except NativeResourceSourceError:
-        raise
-    except OSError as exc:
+        captured = capture_contained_regular_file(
+            root._root,
+            relative.as_posix(),
+            max_bytes=remaining,
+            read_probe=control.check,
+        )
+    except ContainedFileCaptureError as exc:
+        if exc.code == "contained_file_too_large":
+            raise NativeResourceSourceError(
+                code="resource_source_discovery_budget_exceeded",
+                reason="metadata_bytes_exceeded",
+            ) from exc
         raise NativeResourceSourceError(
             code="resource_source_discovery_failed",
             reason="stable_read_failed",
         ) from exc
-    if (
-        len(body) != before.st_size
-        or before.st_dev != after.st_dev
-        or before.st_ino != after.st_ino
-        or before.st_size != after.st_size
-        or before.st_mtime_ns != after.st_mtime_ns
-    ):
+    except (OSError, ValueError) as exc:
         raise NativeResourceSourceError(
             code="resource_source_discovery_failed",
-            reason="body_changed_during_discovery",
-        )
-    return body
+            reason="stable_read_failed",
+        ) from exc
+    control.reserve_bytes(len(captured.body))
+    root._verify_live_root()
+    return captured.body
 
 
 def _is_regular_file(path: Path, *, root: NativeResourceRootHandle) -> bool:
@@ -1154,6 +1208,12 @@ def _build_native_candidate(
     ) and not (
         isinstance(descriptor, SkillDescriptor) and descriptor.disable_model_invocation
     )
+    managed_action_fingerprint = (
+        descriptor.managed_action_source.capture_fingerprint
+        if isinstance(descriptor, SkillDescriptor)
+        and descriptor.managed_action_source is not None
+        else None
+    )
     return build_candidate_summary(
         identity=identity,
         canonical_name=descriptor.canonical_name or descriptor.name,
@@ -1181,6 +1241,7 @@ def _build_native_candidate(
                 "bodyLength": length,
                 "discoveryRequestFingerprint": request.request_fingerprint,
                 "identity": identity.to_payload(),
+                "managedActionSourceFingerprint": managed_action_fingerprint,
                 "opaqueLocator": locator,
                 "rootPolicyFingerprint": root.root_policy_fingerprint,
             },

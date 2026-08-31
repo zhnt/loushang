@@ -36,6 +36,7 @@ from loushang.harness.resources._catalog_records import (
 )
 from loushang.harness.resources._skill_catalog_consumer import (
     EffectiveSkillCatalogProjection,
+    SkillCatalogConsumer,
 )
 from loushang.harness.resources._skill_catalog_status import (
     SkillCatalogStatusProjection,
@@ -76,6 +77,8 @@ class _CapturedResourceCatalog(Protocol):
     def skill_projection(self) -> EffectiveSkillCatalogProjection: ...
     @property
     def skill_status_projection(self) -> SkillCatalogStatusProjection: ...
+    @property
+    def skill_consumer(self) -> SkillCatalogConsumer: ...
     def load_handle(self, identity: ResourceIdentity) -> ResourceLoadHandle: ...
     async def load(self, handle: ResourceLoadHandle) -> LoadedResource: ...
 
@@ -225,6 +228,13 @@ class ResourceSkillCatalogCapabilityConsumer:
             raise RuntimeError("body-free Skill Catalog projection is not available")
         return value
 
+    @property
+    def skill_consumer(self) -> SkillCatalogConsumer:
+        value = self._capture.skill_consumer
+        if not isinstance(value, SkillCatalogConsumer):
+            raise RuntimeError("owner-built Skill consumer is not available")
+        return value
+
     def load_handle(self, identity: ResourceIdentity) -> ResourceLoadHandle:
         self.facets.require(RESOURCE_LOAD_FACET)
         return self._capture.load_handle(identity)
@@ -282,6 +292,13 @@ class ResourceSkillStatusCatalogCapabilityConsumer:
         value = self._capture.skill_status_projection
         if not isinstance(value, SkillCatalogStatusProjection):
             raise RuntimeError("body-free Skill status projection is not available")
+        return value
+
+    @property
+    def skill_consumer(self) -> SkillCatalogConsumer:
+        value = self._capture.skill_consumer
+        if not isinstance(value, SkillCatalogConsumer):
+            raise RuntimeError("owner-built Skill consumer is not available")
         return value
 
     def load_handle(self, identity: ResourceIdentity) -> ResourceLoadHandle:

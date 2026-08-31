@@ -117,6 +117,67 @@ def test_verified_loader_accepts_exact_locked_distribution_file_origin(
     assert module.resolve("VALUE") == "pytest"
 
 
+def test_verified_loader_exact_host_module_does_not_admit_its_package(
+    tmp_path: Path,
+) -> None:
+    exact = _revision(
+        tmp_path,
+        "from loushang.plugin.provider_runtime import CapabilityBundleValue\n"
+        "VALUE = CapabilityBundleValue\n",
+    )
+    exact_lock = lock_plugin_dependency_closure(
+        package_content_digest=exact.content_digest,
+        installed_distributions=(),
+    )
+
+    module = load_verified_plugin_python_module(
+        revision_handle=exact.revision_handle,
+        dependency_lock=exact_lock,
+        relative_path="provider.py",
+        module_name="_exact_host_module_test",
+        host_api_prefixes=(),
+        host_api_exports={
+            "loushang.plugin.provider_runtime": ("CapabilityBundleValue",)
+        },
+    )
+
+    assert module.resolve("VALUE").__name__ == "CapabilityBundleValue"
+
+    denied_sources = (
+        "from loushang.plugin import capability_provider\n",
+        "import loushang.plugin.provider_runtime\n",
+        "from loushang.plugin.provider_runtime import __dict__\n",
+        "from loushang.plugin.provider_runtime import *\n",
+        "abi = __import__(\n"
+        "    'loushang.plugin.provider_runtime',\n"
+        "    fromlist=('CapabilityBundleValue',),\n"
+        ")\n"
+        "abi.__dict__['__builtins__']['__import__'](\n"
+        "    'loushang.harness.capabilities',\n"
+        "    fromlist=('RuntimeCapabilityGraphRuntime',),\n"
+        ")\n",
+    )
+    for source in denied_sources:
+        sibling = _revision(tmp_path, source)
+        sibling_lock = lock_plugin_dependency_closure(
+            package_content_digest=sibling.content_digest,
+            installed_distributions=(),
+        )
+        with pytest.raises(ImportError):
+            load_verified_plugin_python_module(
+                revision_handle=sibling.revision_handle,
+                dependency_lock=sibling_lock,
+                relative_path="provider.py",
+                module_name="_sibling_host_module_test",
+                host_api_prefixes=(),
+                host_api_exports={
+                    "loushang.plugin.provider_runtime": (
+                        "CapabilityBundleValue",
+                    )
+                },
+            )
+
+
 def _revision(tmp_path: Path, source: str):  # type: ignore[no-untyped-def]
     root = tmp_path / ("plugin-" + str(len(tuple(tmp_path.iterdir()))))
     root.mkdir()

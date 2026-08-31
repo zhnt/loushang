@@ -43,10 +43,17 @@ from loushang.harness.resources.plugins.selection import (
 )
 from loushang.harness.resources.plugins.types import PublishedPluginPackage
 
-_PROVIDER_HOST_API_PREFIXES = (
-    "loushang.harness.capabilities",
-    "loushang.harness.runtime",
-)
+_PROVIDER_HOST_API_PREFIXES: tuple[str, ...] = ()
+_PROVIDER_HOST_API_EXPORTS = {
+    "loushang.plugin.provider_runtime": (
+        "CapabilityBundleValue",
+        "CapabilityDependencyBinding",
+        "CapabilityFacetBinding",
+        "CapabilityProviderContext",
+        "CapabilityProviderDisposer",
+        "CapabilityProviderFactory",
+    )
+}
 
 
 class CapabilityComponentHostError(RuntimeError):
@@ -432,6 +439,7 @@ class _PreparedComponentAttempt:
                 + f"_{suffix}"
             ),
             host_api_prefixes=_PROVIDER_HOST_API_PREFIXES,
+            host_api_exports=_PROVIDER_HOST_API_EXPORTS,
             distribution_evidence_resolver=self.distribution_evidence_resolver,
         )
 

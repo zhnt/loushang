@@ -80,6 +80,12 @@ class PluginDeclarationBuilder:
         self._frozen = False
         self._built_declarations: tuple[PluginDeclaration, ...] | None = None
 
+    @property
+    def plugin_id(self) -> str:
+        """Return the inert package identity used by the public SDK compiler."""
+
+        return self._plugin_id
+
     def effective_configuration(
         self,
         *,

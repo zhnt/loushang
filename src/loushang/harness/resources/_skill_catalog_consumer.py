@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
+import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Protocol
 
@@ -17,9 +19,25 @@ from loushang.harness.resources._catalog_records import (
     ResourceLoadHandle,
     ResourceLoadReceipt,
 )
+from loushang.harness.resources._skill_action_authority import (
+    _CatalogActionOwnerBinding,
+    _CatalogActionOwnerCapability,
+    _CatalogActionOwnerLiveness,
+    _consume_catalog_action_owner_binding,
+    _register_catalog_managed_skill_action,
+)
 from loushang.harness.resources._skill_catalog_status import (
     SkillCatalogStatusProjection,
     SkillCatalogStatusSummary,
+)
+from loushang.harness.resources.skill_actions import (
+    MAX_SKILL_ACTION_SCRIPT_BYTES,
+    CatalogManagedSkillAction,
+    ManagedSkillActionDeclaration,
+    SkillActionCatalogSelection,
+    SkillActionSourceCapture,
+    _catalog_action_binding_fingerprint,
+    _CatalogActionOwnerSeal,
 )
 from loushang.harness.resources.types import (
     ResourceSourceKind,
@@ -45,7 +63,6 @@ class _ResourceCatalogLoadConsumer(Protocol):
     def load_handle(self, identity: ResourceIdentity) -> ResourceLoadHandle: ...
 
     async def load(self, handle: ResourceLoadHandle) -> LoadedResource: ...
-
 
 @dataclass(frozen=True, slots=True)
 class SkillCatalogSummary:
@@ -102,6 +119,22 @@ class SkillCatalogSummary:
         return not self.model_invocable
 
 
+@dataclass(frozen=True, slots=True)
+class SkillCatalogActionSource:
+    candidate_fingerprint: str
+    skill_root: Path
+    capture: SkillActionSourceCapture
+
+    def __post_init__(self) -> None:
+        if _SHA256_RE.fullmatch(self.candidate_fingerprint) is None:
+            raise ValueError("Skill action source candidate must be a digest")
+        if not isinstance(self.capture, SkillActionSourceCapture):
+            raise TypeError("Skill action source requires a Resource capture")
+        root = Path(self.skill_root)
+        if not root.is_absolute() or not root.is_dir():
+            raise ValueError("Skill action source root must be an absolute directory")
+        object.__setattr__(self, "skill_root", root.resolve(strict=True))
+
 
 @dataclass(frozen=True, slots=True)
 class EffectiveSkillCatalogProjection:
@@ -110,14 +143,17 @@ class EffectiveSkillCatalogProjection:
     catalog_generation: int
     catalog_snapshot_fingerprint: str
     skills: tuple[SkillCatalogSummary, ...]
+    managed_action_sources: tuple[SkillCatalogActionSource, ...] = field(
+        default=(),
+        repr=False,
+    )
 
     def __post_init__(self) -> None:
         if self.catalog_generation < 1:
             raise ValueError("Skill projection Catalog generation must be positive")
         if any(
             skill.catalog_generation != self.catalog_generation
-            or skill.catalog_snapshot_fingerprint
-            != self.catalog_snapshot_fingerprint
+            or skill.catalog_snapshot_fingerprint != self.catalog_snapshot_fingerprint
             for skill in self.skills
         ):
             raise ValueError("Skill projection summaries must share one Catalog")
@@ -127,6 +163,18 @@ class EffectiveSkillCatalogProjection:
             raise ValueError("Skill projection identities must be unique")
         if len(set(candidates)) != len(candidates):
             raise ValueError("Skill projection candidates must be unique")
+        action_candidates = tuple(
+            item.candidate_fingerprint for item in self.managed_action_sources
+        )
+        if (
+            any(
+                not isinstance(item, SkillCatalogActionSource)
+                for item in self.managed_action_sources
+            )
+            or len(action_candidates) != len(set(action_candidates))
+            or not set(action_candidates).issubset(candidates)
+        ):
+            raise ValueError("Skill action sources must belong to this projection")
 
 
 @dataclass(frozen=True, slots=True)
@@ -191,6 +239,13 @@ class SkillCatalogConsumer:
     """Read-only Skill view derived from one captured Resource generation."""
 
     def __init__(self, catalog: _ResourceCatalogLoadConsumer) -> None:
+        self._initialize(catalog)
+        if self._managed_action_sources:
+            raise TypeError(
+                "Catalog managed actions require owner-constructed Skill consumer"
+            )
+
+    def _initialize(self, catalog: _ResourceCatalogLoadConsumer) -> None:
         snapshot = catalog.snapshot
         projection = catalog.skill_projection
         if not isinstance(snapshot, ResourceCatalogSnapshot):
@@ -201,13 +256,14 @@ class SkillCatalogConsumer:
             raise SkillCatalogConsumerError("Skill Consumer Catalog is incomplete")
         if (
             projection.catalog_generation != snapshot.catalog_generation
-            or projection.catalog_snapshot_fingerprint
-            != snapshot.snapshot_fingerprint
+            or projection.catalog_snapshot_fingerprint != snapshot.snapshot_fingerprint
         ):
             raise SkillCatalogConsumerError(
                 "Skill projection belongs to another Catalog generation"
             )
         self._catalog = catalog
+        self._catalog_snapshot = snapshot
+        self._skill_projection = projection
         self._catalog_generation = snapshot.catalog_generation
         self._snapshot_fingerprint = snapshot.snapshot_fingerprint
         self._skills = projection.skills
@@ -215,6 +271,10 @@ class SkillCatalogConsumer:
             snapshot=snapshot,
             projection=projection,
         )
+        self._managed_action_sources = {
+            item.candidate_fingerprint: item
+            for item in projection.managed_action_sources
+        }
         status_projection = getattr(catalog, "skill_status_projection", None)
         if status_projection is None:
             self._skill_statuses: tuple[SkillCatalogStatusSummary, ...] | None = None
@@ -228,6 +288,38 @@ class SkillCatalogConsumer:
                 effective_projection=projection,
                 status_projection=status_projection,
             )
+        self._managed_action_owner_identity: object | None = None
+        self._managed_action_owner_capability: (
+            _CatalogActionOwnerCapability | None
+        ) = None
+        self._managed_action_owner_liveness: _CatalogActionOwnerLiveness | None = None
+
+    @classmethod
+    def _from_resource_owner(
+        cls,
+        catalog: _ResourceCatalogLoadConsumer,
+        *,
+        _action_owner_binding: _CatalogActionOwnerBinding | None = None,
+    ) -> SkillCatalogConsumer:
+        consumer = cls.__new__(cls)
+        consumer._initialize(catalog)
+        if consumer._managed_action_sources:
+            if type(_action_owner_binding) is not _CatalogActionOwnerBinding:
+                raise TypeError(
+                    "Catalog managed actions require owner construction evidence"
+                )
+            owner_identity, capability, liveness = (
+                _consume_catalog_action_owner_binding(
+                    _action_owner_binding,
+                    projection=consumer._skill_projection,
+                )
+            )
+            consumer._managed_action_owner_identity = owner_identity
+            consumer._managed_action_owner_capability = capability
+            consumer._managed_action_owner_liveness = liveness
+        elif _action_owner_binding is not None:
+            raise TypeError("Read-only Skill consumer received action owner evidence")
+        return consumer
 
     @property
     def catalog_generation(self) -> int:
@@ -298,7 +390,9 @@ class SkillCatalogConsumer:
             )
         summary = self._summary_by_candidate(handle.candidate_fingerprint)
         if summary.identity != handle.identity:
-            raise SkillCatalogConsumerError("Skill load handle identity is inconsistent")
+            raise SkillCatalogConsumerError(
+                "Skill load handle identity is inconsistent"
+            )
         candidate = self._candidate_for_summary(summary)
         _validate_resource_handle(summary, candidate, handle.resource_handle)
         canonical_handle = self._catalog.load_handle(summary.identity)
@@ -319,6 +413,130 @@ class SkillCatalogConsumer:
             body=loaded.body,
             content=content,
         )
+
+    def capture_managed_actions(
+        self,
+        skill: SkillCatalogSummary | str,
+    ) -> tuple[CatalogManagedSkillAction, ...]:
+        """Mint per-action evidence only from this captured Catalog projection."""
+
+        summary = self._resolve_owned_summary(skill)
+        source = self._managed_action_sources.get(summary.candidate_fingerprint)
+        if source is None:
+            return ()
+        owner_capability = self._require_managed_action_owner_capability()
+        owner_identity = self._managed_action_owner_identity
+        assert owner_identity is not None
+        actions: list[CatalogManagedSkillAction] = []
+        for item in source.capture.actions:
+            declaration = item.declaration
+            script_body = item.script_body
+            if not isinstance(declaration, ManagedSkillActionDeclaration):
+                raise SkillCatalogConsumerError(
+                    "Catalog action source contains an invalid declaration"
+                )
+            declaration = replace(declaration)
+            if (
+                not isinstance(script_body, bytes)
+                or len(script_body) > MAX_SKILL_ACTION_SCRIPT_BYTES
+                or hashlib.sha256(script_body).hexdigest() != declaration.script_digest
+            ):
+                raise SkillCatalogConsumerError(
+                    "Catalog action source contains invalid script evidence"
+                )
+            selection = object.__new__(SkillActionCatalogSelection)
+            object.__setattr__(
+                selection,
+                "catalog_generation",
+                summary.catalog_generation,
+            )
+            object.__setattr__(
+                selection,
+                "catalog_snapshot_fingerprint",
+                summary.catalog_snapshot_fingerprint,
+            )
+            object.__setattr__(
+                selection,
+                "candidate_fingerprint",
+                summary.candidate_fingerprint,
+            )
+            object.__setattr__(
+                selection,
+                "skill_content_digest",
+                summary.expected_content_digest,
+            )
+            object.__setattr__(selection, "source_kind", source.capture.source_kind)
+            object.__setattr__(
+                selection,
+                "source_revision",
+                source.capture.source_revision,
+            )
+            object.__setattr__(selection, "_owner_identity", owner_identity)
+            selection._validate()
+            binding_fingerprint = _catalog_action_binding_fingerprint(
+                selection=selection,
+                declaration=declaration,
+                action_document_digest=source.capture.action_document_digest,
+            )
+            resolved_root = source.skill_root.resolve(strict=True)
+            root_metadata = os.stat(resolved_root, follow_symlinks=False)
+            root_identity = (root_metadata.st_dev, root_metadata.st_ino)
+            action = object.__new__(CatalogManagedSkillAction)
+            object.__setattr__(action, "selection", selection)
+            object.__setattr__(action, "declaration", declaration)
+            object.__setattr__(
+                action,
+                "action_document_digest",
+                source.capture.action_document_digest,
+            )
+            object.__setattr__(action, "skill_root", resolved_root)
+            object.__setattr__(
+                action,
+                "binding_source_fingerprint",
+                binding_fingerprint,
+            )
+            object.__setattr__(action, "_script_body", bytes(script_body))
+            object.__setattr__(
+                action,
+                "_source_capture_fingerprint",
+                source.capture.capture_fingerprint,
+            )
+            object.__setattr__(action, "_owner_identity", owner_identity)
+            object.__setattr__(action, "_skill_root_identity", root_identity)
+            seal = object.__new__(_CatalogActionOwnerSeal)
+            object.__setattr__(seal, "_action", action)
+            object.__setattr__(seal, "_owner_identity", owner_identity)
+            object.__setattr__(
+                seal,
+                "_binding_source_fingerprint",
+                binding_fingerprint,
+            )
+            object.__setattr__(seal, "_script_digest", declaration.script_digest)
+            object.__setattr__(
+                seal,
+                "_source_capture_fingerprint",
+                source.capture.capture_fingerprint,
+            )
+            object.__setattr__(seal, "_skill_root", resolved_root)
+            object.__setattr__(seal, "_skill_root_identity", root_identity)
+            object.__setattr__(action, "_owner_seal", seal)
+            _register_catalog_managed_skill_action(
+                action,
+                owner_capability=owner_capability,
+            )
+            action.verify()
+            actions.append(action)
+        return tuple(actions)
+
+    def _require_managed_action_owner_capability(
+        self,
+    ) -> _CatalogActionOwnerCapability:
+        capability = self._managed_action_owner_capability
+        if capability is None:
+            raise SkillCatalogConsumerError(
+                "Catalog managed actions require Resource owner evidence"
+            )
+        return capability
 
     def _resolve_owned_summary(
         self,
@@ -380,22 +598,20 @@ def build_effective_skill_catalog_projection(
         if entry.identity.resource_kind == "skill"
     }
     summaries: list[SkillCatalogSummary] = []
+    managed_action_sources: list[SkillCatalogActionSource] = []
     for binding in projection.selected_bindings:
         if binding.resource_kind != "skill":
             continue
         descriptor = binding.descriptor
         if not isinstance(descriptor, SkillDescriptor):
             raise SkillCatalogConsumerError("Skill projection descriptor is invalid")
-        candidate = snapshot.candidate_by_fingerprint(
-            binding.candidate_fingerprint
-        )
+        candidate = snapshot.candidate_by_fingerprint(binding.candidate_fingerprint)
         effective = effective_by_identity.get(candidate.identity)
         if (
             effective is None
             or candidate.candidate_fingerprint
             != effective.primary_candidate_fingerprint
-            or candidate.candidate_fingerprint
-            not in effective.candidate_fingerprints
+            or candidate.candidate_fingerprint not in effective.candidate_fingerprints
         ):
             raise SkillCatalogConsumerError(
                 "Skill projection is not effective in its Catalog"
@@ -431,6 +647,24 @@ def build_effective_skill_catalog_projection(
                 revision_ref=descriptor.revision_ref,
             )
         )
+        if descriptor.managed_action_source is not None:
+            expected_action_source_kind = (
+                "package" if candidate.source_class == "external_package" else "native"
+            )
+            if (
+                descriptor.managed_action_source.source_kind
+                != expected_action_source_kind
+            ):
+                raise SkillCatalogConsumerError(
+                    "Skill action source class does not match its Catalog candidate"
+                )
+            managed_action_sources.append(
+                SkillCatalogActionSource(
+                    candidate_fingerprint=candidate.candidate_fingerprint,
+                    skill_root=descriptor.source_path.parent,
+                    capture=descriptor.managed_action_source,
+                )
+            )
     if len(summaries) != len(effective_by_identity):
         raise SkillCatalogConsumerError(
             "Catalog Skill selection and projection do not match"
@@ -439,6 +673,7 @@ def build_effective_skill_catalog_projection(
         catalog_generation=snapshot.catalog_generation,
         catalog_snapshot_fingerprint=snapshot.snapshot_fingerprint,
         skills=tuple(summaries),
+        managed_action_sources=tuple(managed_action_sources),
     )
 
 
@@ -478,9 +713,7 @@ def _bind_projection_to_snapshot(
     candidates: dict[str, ResourceCandidateSummary] = {}
     for summary in projection.skills:
         try:
-            candidate = snapshot.candidate_by_fingerprint(
-                summary.candidate_fingerprint
-            )
+            candidate = snapshot.candidate_by_fingerprint(summary.candidate_fingerprint)
         except KeyError as error:
             raise SkillCatalogConsumerError(
                 "Skill projection names a foreign Catalog candidate"
@@ -488,14 +721,12 @@ def _bind_projection_to_snapshot(
         effective = effective_by_identity.get(summary.identity)
         if (
             effective is None
-            or effective.primary_candidate_fingerprint
-            != summary.candidate_fingerprint
+            or effective.primary_candidate_fingerprint != summary.candidate_fingerprint
             or candidate.identity != summary.identity
             or candidate.canonical_name != summary.canonical_name
             or candidate.description != summary.description
             or candidate.media_type != summary.media_type
-            or candidate.expected_content_digest
-            != summary.expected_content_digest
+            or candidate.expected_content_digest != summary.expected_content_digest
             or candidate.expected_content_length != summary.expected_content_length
             or candidate.source_class != summary.source_kind
             or candidate.scope_id != summary.source_scope
@@ -555,16 +786,13 @@ def _bind_status_projection_to_snapshot(
             )
         effective = effective_by_identity.get(candidate.identity)
         expected_effective = (
-            status.candidate_fingerprint
-            in decision.effective_candidate_fingerprints
+            status.candidate_fingerprint in decision.effective_candidate_fingerprints
         )
         expected_primary = (
             status.candidate_fingerprint == decision.winner_candidate_fingerprint
         )
         expected_model_invocable = bool(
-            expected_effective
-            and effective is not None
-            and effective.model_invocable
+            expected_effective and effective is not None and effective.model_invocable
         )
         if (
             status.identity != candidate.identity
@@ -578,10 +806,8 @@ def _bind_status_projection_to_snapshot(
             or status.model_invocable != expected_model_invocable
             or status.status_reason != decision.reason
             or status.media_type != candidate.media_type
-            or status.expected_content_digest
-            != candidate.expected_content_digest
-            or status.expected_content_length
-            != candidate.expected_content_length
+            or status.expected_content_digest != candidate.expected_content_digest
+            or status.expected_content_length != candidate.expected_content_length
             or status.source_kind != candidate.source_class
             or status.source_scope != candidate.scope_id
             or status.source_root_order != candidate.source_root_order

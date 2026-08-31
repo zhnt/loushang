@@ -21,6 +21,9 @@ def build_bubblewrap_command(
     bwrap_path: Path,
     scope: SandboxScopeRequest,
     command: tuple[str, ...],
+    *,
+    sealed_executable: tuple[int, Path] | None = None,
+    bound_cwd_directory: tuple[int, Path] | None = None,
 ) -> tuple[str, ...]:
     readable_roots = _collapse_roots(scope.readable_roots)
     writable_roots = _collapse_roots(scope.writable_roots)
@@ -58,6 +61,26 @@ def build_bubblewrap_command(
         if root == Path("/") and full_write:
             continue
         _append_bind(args, root, writable=True, mounted=mounted, created=created)
+
+    if sealed_executable is not None:
+        descriptor, destination = sealed_executable
+        if descriptor < 0 or not destination.is_absolute():
+            raise SandboxUnavailableError("sealed executable binding is invalid")
+        args.extend(
+            (
+                "--perms",
+                "0555",
+                "--ro-bind-data",
+                str(descriptor),
+                str(destination),
+            )
+        )
+
+    if bound_cwd_directory is not None:
+        descriptor, destination = bound_cwd_directory
+        if descriptor < 0 or destination != scope.cwd:
+            raise SandboxUnavailableError("bound cwd directory is invalid")
+        args.extend(("--ro-bind-fd", str(descriptor), str(destination)))
 
     effective_visible_roots = (
         (Path("/"),)

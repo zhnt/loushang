@@ -44,6 +44,7 @@ from loushang.harness.resources._catalog_projection import ResourceCatalogProjec
 from loushang.harness.resources._catalog_records import ResourceCatalogSnapshot
 from loushang.harness.resources._skill_catalog_consumer import (
     EffectiveSkillCatalogProjection,
+    SkillCatalogConsumer,
     build_effective_skill_catalog_projection,
 )
 from loushang.harness.resources._skill_catalog_status import (
@@ -194,12 +195,17 @@ class _ResourceCatalogFacetV4:
         )
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class _CapturedResourceCatalogView:
     _generation: ResourceCatalogGenerationCapture = field(repr=False, compare=False)
     snapshot: ResourceCatalogSnapshot
     skill_projection: EffectiveSkillCatalogProjection | None = None
     skill_status_projection: SkillCatalogStatusProjection | None = None
+    skill_consumer: SkillCatalogConsumer | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
 
     def load_handle(self, identity: object) -> object:
         return self._generation.load_handle(identity)
@@ -223,12 +229,17 @@ def _capture_resource_catalog(
     if include_skills:
         if not isinstance(projection, ResourceCatalogProjection):
             raise TypeError("Resource Catalog generation projection is invalid")
-        skill_projection = build_effective_skill_catalog_projection(
-            snapshot=snapshot,
-            projection=projection,
+        skill_consumer = generation._construct_skill_catalog_consumer(
+            include_status=include_status,
         )
+        if not isinstance(skill_consumer, SkillCatalogConsumer):
+            raise TypeError("Resource owner returned an invalid Skill consumer")
+        skill_projection = skill_consumer._skill_projection
+        if skill_consumer._catalog_snapshot is not snapshot:
+            raise RuntimeError("Skill consumer belongs to another Resource owner")
     else:
         skill_projection = None
+        skill_consumer = None
     skill_status = None
     if include_status:
         if not isinstance(status, SkillCatalogStatusProjection):
@@ -239,12 +250,14 @@ def _capture_resource_catalog(
         ):
             raise RuntimeError("Skill status projection belongs to another Catalog")
         skill_status = status
-    return _CapturedResourceCatalogView(
+    captured = _CapturedResourceCatalogView(
         _generation=generation,
         snapshot=snapshot,
         skill_projection=skill_projection,
         skill_status_projection=skill_status,
+        skill_consumer=skill_consumer,
     )
+    return captured
 
 
 @dataclass(frozen=True)

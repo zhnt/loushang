@@ -571,6 +571,57 @@ def test_product_opt_in_definition_denial_is_fail_closed(
     assert approval_owner.activation_calls == 0
 
 
+def test_product_opt_in_preserves_unknown_neutral_error_without_self_cause(
+    tmp_path: Path,
+) -> None:
+    failure = CodingLspPluginOptInError(
+        "injected unknown neutral failure",
+        code="coding_capability_injected_unknown",
+    )
+
+    class UnknownFailureApprovalOwner:
+        def approve_definition(
+            self,
+            *,
+            journal: PluginExecutionDecisionJournal,
+            subject: PluginExecutionApprovalSubject,
+        ) -> PluginApprovalDecisionRecordV1:
+            del journal, subject
+            raise failure
+
+        def approve_activation(
+            self,
+            *,
+            journal: PluginActivationDecisionJournal,
+            subject: ContributionActivationApprovalSubject,
+        ) -> PluginActivationDecisionRecordV1:
+            del journal, subject
+            raise AssertionError("definition failure must stop activation")
+
+    with pytest.raises(CodingLspPluginOptInError) as captured:
+        prepare_coding_lsp_plugin_opt_in(
+            CodingLspPluginOptInRequest(
+                approval_owner=UnknownFailureApprovalOwner()
+            ),
+            session_id="session-test",
+            config=CodingLspPluginConfigV1.from_runtime_inputs(
+                workspace_root=tmp_path,
+                definitions=(),
+                baseline_environment={"PATH": "/admitted/bin"},
+            ),
+            package_materializer=CodingPackageMaterializer(
+                install_root=tmp_path / "installed",
+                plugin_revision_root=tmp_path / "revisions",
+            ),
+            state_root=tmp_path / "state",
+            clock=lambda: 2_500,
+        )
+
+    assert captured.value is failure
+    assert captured.value.code == "coding_capability_injected_unknown"
+    assert captured.value.__cause__ is not captured.value
+
+
 def test_product_opt_in_activation_denial_is_fail_closed(
     tmp_path: Path,
 ) -> None:

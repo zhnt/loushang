@@ -23,6 +23,7 @@ dependencies = [
 [project.scripts]
 loushang = "loushang.coding.cli.__main__:main"
 loushang-tui = "loushang.coding.ui.cli:main"
+loushang-plugin = "loushang.plugin.__main__:main"
 
 [project.optional-dependencies]
 dev = [
@@ -89,6 +90,10 @@ where = ["src"]
 "loushang" = ["py.typed"]
 "loushang.ai.model" = ["models.json"]
 "loushang.coding._plugins.coding_lsp_default" = [
+  "plugin.json",
+  "declarations/*.json",
+]
+"loushang.coding._plugins.coding_arch_default" = [
   "plugin.json",
   "declarations/*.json",
 ]
