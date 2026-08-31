@@ -252,6 +252,96 @@ def test_anthropic_provider_complete_mode_maps_non_stream_response(
     assert parts[9] == {"type": "stop_reason", "stop_reason": "error"}
 
 
+def test_anthropic_drains_nested_stream_before_terminal_and_closes_owned_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_anthropic_module(
+        monkeypatch,
+        [
+            SimpleNamespace(type="message_stop"),
+            RuntimeError("trailing transport failure"),
+        ],
+    )
+
+    async def _run() -> None:
+        source = _invoke_raw_parts(
+            AnthropicMessagesAdapter(),
+            _Model(),
+            {
+                "messages": [
+                    UserMessage(role="user", content="hello", timestamp=0.0)
+                ]
+            },
+            CallOptions(auth=ApiKeyAuth("test-key")),
+        )
+
+        assert (await anext(source))["type"] == "response_done"
+        assert _FakeStreamContext.last_instance is not None
+        assert _FakeStreamContext.last_instance.inner_close_calls == 1
+        assert _FakeStreamContext.last_instance.iter_calls == 0
+
+        await source.aclose()
+
+        assert _FakeStreamContext.last_instance.exit_calls == 1
+        assert _FakeAsyncAnthropic.last_instance is not None
+        assert _FakeAsyncAnthropic.last_instance.close_calls == 1
+
+    asyncio.run(_run())
+
+
+def test_anthropic_does_not_close_injected_client_at_terminal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
+    client = _FakeAsyncAnthropic()
+
+    asyncio.run(
+        _collect_parts(
+            _invoke_raw_parts(
+                AnthropicMessagesAdapter(client=client),
+                _Model(),
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
+                CallOptions(auth=ApiKeyAuth("test-key")),
+            )
+        )
+    )
+
+    assert client.close_calls == 0
+
+
+def test_anthropic_closes_owned_client_after_stream_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_anthropic_module(
+        monkeypatch,
+        [],
+        stream_error=RuntimeError("stream failed"),
+    )
+
+    parts = asyncio.run(
+        _collect_parts(
+            _invoke_raw_parts(
+                AnthropicMessagesAdapter(),
+                _Model(),
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
+                CallOptions(auth=ApiKeyAuth("test-key")),
+            )
+        )
+    )
+
+    assert [part["type"] for part in parts] == ["response_error"]
+    assert _FakeAsyncAnthropic.last_instance is not None
+    assert _FakeAsyncAnthropic.last_instance.close_calls == 1
+
+
 def test_fine_grained_tool_beta_uses_adapter_config() -> None:
     from loushang.ai.protocols._anthropic import AnthropicMessagesProtocol
 
@@ -1501,12 +1591,16 @@ def _fake_anthropic_module(
     events: list[object],
     *,
     response: object | None = None,
+    stream_error: Exception | None = None,
 ) -> None:
     _FakeAsyncAnthropic.events = events
     _FakeAsyncAnthropic.response = response
+    _FakeAsyncAnthropic.stream_error = stream_error
+    _FakeAsyncAnthropic.last_instance = None
     _FakeAsyncAnthropic.last_init_kwargs = {}
     _FakeAsyncAnthropic.last_stream_kwargs = {}
     _FakeAsyncAnthropic.last_create_kwargs = {}
+    _FakeStreamContext.last_instance = None
     module = ModuleType("anthropic")
     module.AsyncAnthropic = _FakeAsyncAnthropic
     module.Omit = _FakeOmit
@@ -1520,13 +1614,20 @@ class _FakeOmit:
 class _FakeAsyncAnthropic:
     events: list[object] = []
     response: object | None = None
+    stream_error: Exception | None = None
+    last_instance: _FakeAsyncAnthropic | None = None
     last_init_kwargs: dict[str, object] = {}
     last_stream_kwargs: dict[str, object] = {}
     last_create_kwargs: dict[str, object] = {}
 
     def __init__(self, **kwargs) -> None:
+        type(self).last_instance = self
         type(self).last_init_kwargs = kwargs
+        self.close_calls = 0
         self.messages = _FakeMessages(type(self))
+
+    async def close(self) -> None:
+        self.close_calls += 1
 
 
 class _FakeMessages:
@@ -1535,6 +1636,8 @@ class _FakeMessages:
 
     def stream(self, **kwargs):
         self._owner.last_stream_kwargs = kwargs
+        if self._owner.stream_error is not None:
+            raise self._owner.stream_error
         return _FakeStreamContext(self._owner.events)
 
     async def create(self, **kwargs):
@@ -1543,28 +1646,46 @@ class _FakeMessages:
 
 
 class _FakeStreamContext:
+    last_instance: _FakeStreamContext | None = None
+
     def __init__(self, events: list[object]) -> None:
+        type(self).last_instance = self
         self._events = events
+        self._iterator = self._iterate_events()
+        self.exit_calls = 0
+        self.iter_calls = 0
+        self.iter_close_calls = 0
+        self.inner_close_calls = 0
 
     async def __aenter__(self):
         return self
 
     async def __aexit__(self, exc_type, exc, tb):
+        self.exit_calls += 1
         return False
 
     def __aiter__(self):
-        return _FakeStreamIterator(self._events)
+        return self._iterate()
 
+    async def _iterate(self):
+        self.iter_calls += 1
+        try:
+            while True:
+                yield await self.__anext__()
+        finally:
+            self.iter_close_calls += 1
 
-class _FakeStreamIterator:
-    def __init__(self, events: list[object]) -> None:
-        self._events = iter(events)
+    async def _iterate_events(self):
+        try:
+            for event in self._events:
+                if isinstance(event, BaseException):
+                    raise event
+                yield event
+        finally:
+            self.inner_close_calls += 1
 
     async def __anext__(self):
-        try:
-            return next(self._events)
-        except StopIteration as exc:
-            raise StopAsyncIteration from exc
+        return await self._iterator.__anext__()
 
 
 @dataclass(frozen=True)
