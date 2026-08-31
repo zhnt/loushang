@@ -251,6 +251,41 @@ def test_syntactically_complete_unterminated_record_is_not_committed(
     assert path.read_text(encoding="utf-8") == committed
 
 
+def test_unterminated_whitespace_tail_never_removes_committed_record(
+    tmp_path: Path,
+) -> None:
+    from loushang.harness.journal import (
+        PROCESS_LOCAL_JOURNAL,
+        JournalLoadPolicy,
+        load_jsonl,
+    )
+
+    path = tmp_path / "records.jsonl"
+    committed = '{"recordId":"one","text":"committed"}\n'
+    path.write_text(committed + "   ", encoding="utf-8")
+
+    snapshot = load_jsonl(
+        path,
+        record_codec=_RecordCodec(),
+        durability=PROCESS_LOCAL_JOURNAL,
+        load_policy=JournalLoadPolicy(partial_tail="skip"),
+    )
+
+    assert snapshot.records == (_Record("one", "committed"),)
+    assert [item.line_number for item in snapshot.diagnostics] == [2]
+    assert path.read_text(encoding="utf-8") == committed + "   "
+
+    repaired = load_jsonl(
+        path,
+        record_codec=_RecordCodec(),
+        durability=PROCESS_LOCAL_JOURNAL,
+        load_policy=JournalLoadPolicy(partial_tail="repair"),
+    )
+
+    assert repaired.records == (_Record("one", "committed"),)
+    assert path.read_text(encoding="utf-8") == committed
+
+
 def test_repair_partial_tail_atomically_removes_only_incomplete_line(
     tmp_path: Path,
 ) -> None:

@@ -383,9 +383,10 @@ def _decode_jsonl(
     load_policy: JournalLoadPolicy,
 ) -> JsonlSnapshot[H, R]:
 
+    physical_lines = raw.splitlines()
     numbered_lines = [
         (line_number, line)
-        for line_number, line in enumerate(raw.splitlines(), start=1)
+        for line_number, line in enumerate(physical_lines, start=1)
         if line.strip()
     ]
     if load_policy.header == "required" and not numbered_lines:
@@ -438,11 +439,11 @@ def _decode_jsonl(
         record_lines = numbered_lines[1:]
 
     records: list[R] = []
-    last_nonblank_line = numbered_lines[-1][0] if numbered_lines else None
+    unterminated_tail_line = (
+        len(physical_lines) if raw and not _has_trailing_newline(raw) else None
+    )
     for line_number, line in record_lines:
-        is_partial_tail = (
-            line_number == last_nonblank_line and not _has_trailing_newline(raw)
-        )
+        is_partial_tail = line_number == unterminated_tail_line
         if is_partial_tail and load_policy.partial_tail != "raise":
             diagnostics.append(
                 _diagnostic(
@@ -494,6 +495,20 @@ def _decode_jsonl(
                     line_number,
                 )
             )
+
+    if (
+        unterminated_tail_line is not None
+        and not physical_lines[-1].strip()
+        and load_policy.partial_tail != "raise"
+    ):
+        diagnostics.append(
+            _diagnostic(
+                "partial_journal_tail",
+                "Journal trailing whitespace was skipped because it is incomplete.",
+                target,
+                unterminated_tail_line,
+            )
+        )
 
     return JsonlSnapshot(
         header=header,
