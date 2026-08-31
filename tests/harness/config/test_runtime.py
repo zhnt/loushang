@@ -459,6 +459,37 @@ def test_deferred_direct_transaction_rechecks_runtime_ownership(
     assert runtime.revision == 0
 
 
+def test_rejected_deferred_transaction_preserves_active_runtime_transaction(
+    tmp_path: Path,
+) -> None:
+    engine = LayeredConfig(
+        codec=_Codec(),
+        layers=(ConfigLayer("session"),),
+    )
+    deferred = engine.transaction()
+    runtime = ScopedConfigRuntime(engine)
+    engine_values: list[_Config] = []
+    runtime_changes = []
+    engine.subscribe(engine_values.append)
+    runtime.subscribe_change(runtime_changes.append)
+
+    with runtime.transaction() as transaction:
+        with pytest.raises(RuntimeError, match="owned by its scoped runtime"):
+            with deferred:
+                pass
+        receipt = runtime.scope("session").update({"name": "owned"})
+        assert receipt is transaction
+        assert transaction.change is None
+        assert engine_values == []
+        assert runtime_changes == []
+
+    assert transaction.change is not None
+    assert transaction.change.current == _Config(name="owned")
+    assert engine_values == [_Config(name="owned")]
+    assert runtime_changes == [transaction.change]
+    assert runtime.revision == 1
+
+
 def test_explicit_transaction_returns_only_final_change_receipt(
     tmp_path: Path,
 ) -> None:

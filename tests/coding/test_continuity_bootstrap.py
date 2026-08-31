@@ -405,9 +405,12 @@ def test_empty_and_reentrant_continuity_bootstrap_reconcile_compatibility(
         )
     finally:
         lifecycle.release_owned_process_startup_lease()
+    unterminated: dict[Path, str] = {}
     for path in (common_layout.desired_state, common_layout.enablement_migration):
+        tail = path.read_text(encoding="utf-8").splitlines()[-1]
+        unterminated[path] = tail
         with path.open("a", encoding="utf-8") as handle:
-            handle.write('{"incomplete":')
+            handle.write(tail)
 
     settings_path = tmp_path / "settings.json"
     settings = SettingsManager(
@@ -443,10 +446,10 @@ def test_empty_and_reentrant_continuity_bootstrap_reconcile_compatibility(
     assert repeated is first
     assert settings.get_settings().disabled_plugins == ()
     assert common_layout.desired_state.read_text(encoding="utf-8").endswith(
-        '{"incomplete":'
+        unterminated[common_layout.desired_state]
     )
     assert common_layout.enablement_migration.read_text(encoding="utf-8").endswith(
-        '{"incomplete":'
+        unterminated[common_layout.enablement_migration]
     )
     with pytest.raises(PluginEnablementMigrationError):
         settings.disable_plugin("continuity-example")
@@ -527,6 +530,25 @@ def test_empty_and_reentrant_compatibility_failures_use_bootstrap_error_status(
     assert repeated_failure.value.retryable is True
     assert get_coding_continuity_bootstrap_status(repeated_runtime).state == "failed"
     assert composition is get_coding_configured_continuity_composition(repeated_runtime)
+    writer.fail = False
+    recovered = asyncio.run(
+        retry_coding_continuity_bootstrap(
+            repeated_runtime,
+            settings_manager=settings,
+            session_dir=repeated_runtime.session_dir,
+            cwd=tmp_path / "workspace",
+        )
+    )
+    assert recovered is composition
+    assert get_coding_continuity_bootstrap_status(repeated_runtime).to_dict() == {
+        "state": "ready",
+        "code": "coding_continuity_ready",
+        "configuredSourceCount": 0,
+        "pluginCount": 0,
+        "providerCount": 0,
+        "recoveredDeletionCount": 0,
+        "retryable": False,
+    }
     asyncio.run(shutdown_coding_continuity(repeated_runtime))
 
 

@@ -34,7 +34,9 @@ from loushang.harness.cli.resource_toggles import (
 from loushang.harness.config.agent.types import ControlConfig
 from loushang.harness.journal import journal_file_lock
 from loushang.harness.plugin_management import (
+    PluginDesiredStateLedger,
     PluginEnablementMigrationError,
+    PluginEnablementMigrationJournal,
     PluginPackageRevisionRefV1,
     plugin_enablement_legacy_input_fingerprint,
 )
@@ -452,6 +454,90 @@ def test_portable_compatibility_capture_supports_existing_state_tree(
     finally:
         lifecycle.release_owned_process_startup_lease()
     settings = _SettingsManager(_Settings())
+    captured_chain = lifecycle_module._capture_existing_private_directory_chain(layout)
+    assert captured_chain is not None
+    expected_paths = tuple(path for path, _metadata in captured_chain)
+    active_pins: list[Path] = []
+    original_read = lifecycle_module._read_private_state_file_portable
+
+    @contextmanager
+    def fake_windows_pin(path: Path, _expected):  # type: ignore[no-untyped-def]
+        assert tuple(active_pins) == expected_paths[: len(active_pins)]
+        active_pins.append(path)
+        try:
+            yield
+        finally:
+            assert active_pins.pop() == path
+
+    def assert_all_pins(path: Path) -> str:
+        assert tuple(active_pins) == expected_paths
+        return original_read(path)
+
+    monkeypatch.setattr(
+        lifecycle_module,
+        "_supports_descriptor_relative_private_state_io",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        lifecycle_module,
+        "_supports_portable_private_state_io",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        lifecycle_module,
+        "_uses_windows_directory_pins",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        lifecycle_module,
+        "_open_windows_private_directory",
+        fake_windows_pin,
+    )
+    monkeypatch.setattr(
+        lifecycle_module,
+        "_read_private_state_file_portable",
+        assert_all_pins,
+    )
+
+    writer = bind_coding_plugin_enablement_compatibility(layout, settings)
+    assert writer is not None
+    writer.reconcile()
+
+    assert settings.settings.disabled_plugins == ("managed-pack",)
+    assert active_pins == []
+
+
+@pytest.mark.skipif(
+    lifecycle_module.os.name != "nt",
+    reason="requires native Windows directory sharing semantics",
+)
+def test_windows_private_directory_pin_blocks_path_replacement(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "private-state"
+    root.mkdir()
+    replacement = tmp_path / "replaced-state"
+    expected = lifecycle_module._validate_existing_private_directory(root)
+
+    with lifecycle_module._open_windows_private_directory(root, expected):
+        with pytest.raises(OSError):
+            root.rename(replacement)
+        assert root.is_dir()
+        assert replacement.exists() is False
+
+    root.rename(replacement)
+    assert replacement.is_dir()
+
+
+def test_portable_compatibility_capture_leaves_absent_state_root_absent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    layout = resolve_coding_plugin_lifecycle_state_layout(workspace)
+    settings = _SettingsManager(_Settings())
     monkeypatch.setattr(
         lifecycle_module,
         "_supports_descriptor_relative_private_state_io",
@@ -467,7 +553,13 @@ def test_portable_compatibility_capture_supports_existing_state_tree(
     assert writer is not None
     writer.reconcile()
 
-    assert settings.settings.disabled_plugins == ("managed-pack",)
+    assert layout.root.exists() is False
+    assert (
+        layout.coordination_lock.with_name(
+            f"{layout.coordination_lock.name}.lock"
+        ).exists()
+        is False
+    )
 
 
 def test_compatibility_projects_complete_prefix_before_owner_tail_repair(
@@ -494,9 +586,15 @@ def test_compatibility_projects_complete_prefix_before_owner_tail_repair(
         )
     finally:
         lifecycle.release_owned_process_startup_lease()
+    originals: dict[Path, str] = {}
+    unterminated: dict[Path, str] = {}
     for path in (layout.desired_state, layout.enablement_migration):
+        original = path.read_text(encoding="utf-8")
+        tail = original.splitlines()[-1]
+        originals[path] = original
+        unterminated[path] = tail
         with path.open("a", encoding="utf-8") as handle:
-            handle.write('{"incomplete":')
+            handle.write(tail)
     settings = _SettingsManager(_Settings())
     writer = bind_coding_plugin_enablement_compatibility(layout, settings)
     assert writer is not None
@@ -504,10 +602,14 @@ def test_compatibility_projects_complete_prefix_before_owner_tail_repair(
     writer.reconcile()
 
     assert settings.settings.disabled_plugins == ("managed-pack",)
-    assert layout.desired_state.read_text(encoding="utf-8").endswith('{"incomplete":')
-    assert layout.enablement_migration.read_text(encoding="utf-8").endswith(
-        '{"incomplete":'
-    )
+    for path in (layout.desired_state, layout.enablement_migration):
+        assert path.read_text(encoding="utf-8") == originals[path] + unterminated[path]
+
+    PluginDesiredStateLedger(layout.desired_state).snapshot()
+    PluginEnablementMigrationJournal(layout.enablement_migration).snapshots()
+
+    for path in (layout.desired_state, layout.enablement_migration):
+        assert path.read_text(encoding="utf-8") == originals[path]
 
 
 @pytest.mark.parametrize(

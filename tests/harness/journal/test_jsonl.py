@@ -215,6 +215,42 @@ def test_skip_invalid_records_and_partial_tail_reports_provenance(
     assert all(diagnostic.source_path == path for diagnostic in snapshot.diagnostics)
 
 
+def test_syntactically_complete_unterminated_record_is_not_committed(
+    tmp_path: Path,
+) -> None:
+    from loushang.harness.journal import (
+        PROCESS_LOCAL_JOURNAL,
+        JournalLoadPolicy,
+        load_jsonl,
+    )
+
+    path = tmp_path / "records.jsonl"
+    committed = '{"recordId":"one","text":"committed"}\n'
+    tail = '{"recordId":"two","text":"not committed"}'
+    path.write_text(committed + tail, encoding="utf-8")
+
+    snapshot = load_jsonl(
+        path,
+        record_codec=_RecordCodec(),
+        durability=PROCESS_LOCAL_JOURNAL,
+        load_policy=JournalLoadPolicy(partial_tail="skip"),
+    )
+
+    assert snapshot.records == (_Record("one", "committed"),)
+    assert [item.code for item in snapshot.diagnostics] == ["partial_journal_tail"]
+    assert path.read_text(encoding="utf-8") == committed + tail
+
+    repaired = load_jsonl(
+        path,
+        record_codec=_RecordCodec(),
+        durability=PROCESS_LOCAL_JOURNAL,
+        load_policy=JournalLoadPolicy(partial_tail="repair"),
+    )
+
+    assert repaired.records == (_Record("one", "committed"),)
+    assert path.read_text(encoding="utf-8") == committed
+
+
 def test_repair_partial_tail_atomically_removes_only_incomplete_line(
     tmp_path: Path,
 ) -> None:

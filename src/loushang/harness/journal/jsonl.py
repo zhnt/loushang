@@ -440,15 +440,33 @@ def _decode_jsonl(
     records: list[R] = []
     last_nonblank_line = numbered_lines[-1][0] if numbered_lines else None
     for line_number, line in record_lines:
+        is_partial_tail = (
+            line_number == last_nonblank_line and not _has_trailing_newline(raw)
+        )
+        if is_partial_tail and load_policy.partial_tail != "raise":
+            diagnostics.append(
+                _diagnostic(
+                    "partial_journal_tail",
+                    "Journal record was skipped because it is incomplete or invalid.",
+                    target,
+                    line_number,
+                )
+            )
+            continue
         try:
             value = _load_mapping(
                 line, path=target, line_number=line_number, kind="record"
             )
-            records.append(record_codec.decode_record(value))
+            record = record_codec.decode_record(value)
+            if is_partial_tail:
+                raise JournalFileError(
+                    "Journal record is missing its commit newline",
+                    path=target,
+                    code="partial_journal_tail",
+                    line_number=line_number,
+                )
+            records.append(record)
         except Exception as exc:
-            is_partial_tail = (
-                line_number == last_nonblank_line and not _has_trailing_newline(raw)
-            )
             behavior = (
                 load_policy.partial_tail
                 if is_partial_tail

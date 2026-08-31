@@ -1625,6 +1625,113 @@ def _supports_portable_private_state_io() -> bool:
     return os.name == "nt"
 
 
+def _uses_windows_directory_pins() -> bool:
+    return os.name == "nt"
+
+
+@contextmanager
+def _pin_portable_private_directory_chain(
+    captured: tuple[tuple[Path, os.stat_result], ...],
+) -> Iterator[None]:
+    """Hold every Windows directory component without delete sharing."""
+
+    if not _uses_windows_directory_pins():
+        # Tests force the portable reader on POSIX to exercise its common
+        # sequencing; production reaches this branch only on Windows.
+        yield
+        return
+    with ExitStack() as pins:
+        for path, expected in captured:
+            pins.enter_context(_open_windows_private_directory(path, expected))
+        yield
+
+
+@contextmanager
+def _open_windows_private_directory(
+    path: Path,
+    expected: os.stat_result,
+) -> Iterator[None]:
+    """Pin one direct Windows directory and reject a reparse/identity swap."""
+
+    import ctypes
+    from ctypes import wintypes
+
+    class _FileAttributeTagInfo(ctypes.Structure):
+        _fields_ = (
+            ("file_attributes", wintypes.DWORD),
+            ("reparse_tag", wintypes.DWORD),
+        )
+
+    win_dll = getattr(ctypes, "WinDLL")
+    kernel32 = win_dll("kernel32", use_last_error=True)
+    create_file = kernel32.CreateFileW
+    create_file.argtypes = (
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.LPVOID,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.HANDLE,
+    )
+    create_file.restype = wintypes.HANDLE
+    get_information = kernel32.GetFileInformationByHandleEx
+    get_information.argtypes = (
+        wintypes.HANDLE,
+        ctypes.c_int,
+        wintypes.LPVOID,
+        wintypes.DWORD,
+    )
+    get_information.restype = wintypes.BOOL
+    close_handle = kernel32.CloseHandle
+    close_handle.argtypes = (wintypes.HANDLE,)
+    close_handle.restype = wintypes.BOOL
+    file_read_attributes = 0x00000080
+    share_read_write = 0x00000001 | 0x00000002
+    open_existing = 3
+    file_flag_open_reparse_point = 0x00200000
+    file_flag_backup_semantics = 0x02000000
+    file_attribute_directory = 0x00000010
+    file_attribute_reparse_point = 0x00000400
+    file_attribute_tag_info = 9
+    handle = create_file(
+        str(path),
+        file_read_attributes,
+        share_read_write,
+        None,
+        open_existing,
+        file_flag_open_reparse_point | file_flag_backup_semantics,
+        None,
+    )
+    if handle == ctypes.c_void_p(-1).value:
+        get_last_error = getattr(ctypes, "get_last_error")
+        win_error = getattr(ctypes, "WinError")
+        raise win_error(get_last_error())
+    try:
+        information = _FileAttributeTagInfo()
+        if not get_information(
+            handle,
+            file_attribute_tag_info,
+            ctypes.byref(information),
+            ctypes.sizeof(information),
+        ):
+            get_last_error = getattr(ctypes, "get_last_error")
+            win_error = getattr(ctypes, "WinError")
+            raise win_error(get_last_error())
+        if (
+            not information.file_attributes & file_attribute_directory
+            or information.file_attributes & file_attribute_reparse_point
+            or information.reparse_tag
+        ):
+            raise OSError("private state path is not a direct directory")
+        current = _validate_existing_private_directory(path)
+        if not os.path.samestat(expected, current):
+            raise OSError("private state directory identity changed while pinning")
+        yield
+    finally:
+        close_handle(handle)
+
+
 def _plugin_enablement_capture_lock_names(
     layout: CodingPluginLifecycleStateLayout,
 ) -> tuple[str, ...]:
@@ -1729,35 +1836,38 @@ def _capture_existing_plugin_enablement_state_portable(
         yield None
         return
     try:
-        with journal_file_lock(
-            layout.coordination_lock,
-            "exclusive",
-            create=False,
-        ):
-            _assert_private_directory_chain_stable(directory_chain)
-            with ExitStack() as locks:
-                locks.enter_context(
-                    journal_file_lock(
-                        layout.enablement_migration,
-                        "exclusive",
-                        lock_suffix=".migration.lock",
+        with _pin_portable_private_directory_chain(directory_chain):
+            with journal_file_lock(
+                layout.coordination_lock,
+                "exclusive",
+                create=False,
+            ):
+                _assert_private_directory_chain_stable(directory_chain)
+                with ExitStack() as locks:
+                    locks.enter_context(
+                        journal_file_lock(
+                            layout.enablement_migration,
+                            "exclusive",
+                            lock_suffix=".migration.lock",
+                        )
                     )
-                )
-                locks.enter_context(
-                    journal_file_lock(layout.desired_state, "exclusive")
-                )
-                locks.enter_context(
-                    journal_file_lock(layout.enablement_migration, "exclusive")
-                )
-                _assert_private_directory_chain_stable(directory_chain)
-                capture = _CodingPluginEnablementStateCapture(
-                    desired_raw=_read_private_state_file_portable(layout.desired_state),
-                    migration_raw=_read_private_state_file_portable(
-                        layout.enablement_migration
-                    ),
-                )
-                _assert_private_directory_chain_stable(directory_chain)
-                yield capture
+                    locks.enter_context(
+                        journal_file_lock(layout.desired_state, "exclusive")
+                    )
+                    locks.enter_context(
+                        journal_file_lock(layout.enablement_migration, "exclusive")
+                    )
+                    _assert_private_directory_chain_stable(directory_chain)
+                    capture = _CodingPluginEnablementStateCapture(
+                        desired_raw=_read_private_state_file_portable(
+                            layout.desired_state
+                        ),
+                        migration_raw=_read_private_state_file_portable(
+                            layout.enablement_migration
+                        ),
+                    )
+                    _assert_private_directory_chain_stable(directory_chain)
+                    yield capture
     except OSError:
         raise CodingPluginLifecycleError(
             "Coding Plugin state root is not private",
@@ -1830,7 +1940,7 @@ def _capture_existing_private_directory_chain(
     try:
         root.lstat()
     except FileNotFoundError:
-        return False
+        return None
     except OSError:
         raise CodingPluginLifecycleError(
             "Coding Plugin state root is not private",

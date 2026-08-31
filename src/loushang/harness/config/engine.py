@@ -329,6 +329,7 @@ class LayeredConfig(Generic[T]):
         publication_error: BaseException | None = None
         handle: LayeredConfigTransaction[T] | None = None
         should_drain = False
+        entered_transaction = False
         try:
             stack.enter_context(self._path_locks())
             self._lock.acquire()
@@ -355,13 +356,14 @@ class LayeredConfig(Generic[T]):
                 handle = self._transaction_handle
                 assert handle is not None
             self._transaction_depth += 1
+            entered_transaction = True
             try:
                 yield handle
             except BaseException as exc:
                 body_error = exc
         finally:
             if locked:
-                if self._transaction_depth:
+                if entered_transaction:
                     self._transaction_depth -= 1
                 if outermost:
                     assert handle is not None

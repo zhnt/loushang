@@ -108,17 +108,23 @@ seeded disabled, and left unmounted.
 
 `src/loushang/coding/plugin_enablement_compatibility.py::CodingPluginEnablementCompatibilityWriter`
 is the Product-owned compatibility publisher. On POSIX it pins the existing
-private workspace root with a no-follow directory handle; on Windows it opens
-the existing direct coordination lock through `CreateFileW` with
-`FILE_FLAG_OPEN_REPARSE_POINT` and without delete sharing, so that child handle
-pins the validated parent tree. Other platforms without either capability fail
-closed before reading state. Under the pinned root the reader takes the common
+private workspace root with a no-follow directory handle. On Windows it opens
+every validated directory component from the private state base through the
+workspace root with `CreateFileW`, `FILE_FLAG_OPEN_REPARSE_POINT`,
+`FILE_FLAG_BACKUP_SEMANTICS`, and no delete sharing. It rejects reparse points
+and identity changes before taking the existing direct coordination lock, so
+the complete validated path remains pinned throughout locking and reading.
+An absent workspace root is an empty compatibility source: reconciliation does
+not create the root or a lock file. Other platforms without either capability
+fail closed before reading state. Under the pinned root the reader takes the common
 coordination lock, migration transaction lock, desired-journal lock, and
 migration-journal lock in that fixed order. It therefore cannot observe a
 writer's partial append or combine desired state from one migration transaction
 with a receipt from another. The raw projection is read-only: an incomplete
-crash tail is not a committed record and is ignored until the canonical owner
-repairs it, while a malformed complete record remains fatal. The writer then
+crash tail is not a committed record even when it is syntactically valid JSON;
+the terminating newline is the append commit marker. The tail is ignored until
+the canonical owner repairs it, while a malformed complete record remains
+fatal. The writer then
 releases every workspace lock before sending a typed projection to the settings
 owner. Stale captures cannot replace a newer per-workspace projection.
 `LayeredConfig.transaction`
@@ -134,7 +140,9 @@ order. Engine commit snapshots are
 captured and queued before unlock, while runtime transactions publish one final
 `ConfigChange`; mutation calls inside an explicit transaction return its result
 handle rather than a provisional receipt. Both listener families run only after
-mutation locks are released. The
+mutation locks are released. A nested engine transaction rejected by the final
+runtime-authority check never enters, decrements, or publishes the active outer
+transaction. The
 compatibility transaction preserves only unmigrated legacy ids, clears a stale
 session legacy overlay, publishes the project downgrade view, and verifies the
 effective migrated values. Its opaque object capability cannot be reclaimed by
@@ -146,7 +154,9 @@ workspace guard before any peer mutation. Coding startup, every Continuity
 startup path (including empty-source and idempotent early returns), and CLI
 binding reconcile it; early reconciliation failures use the same stable
 `CodingContinuityBootstrapError`, retryability, and failed-status projection as
-the full bootstrap path. An existing receipt with a non-fence settings owner
+the full bootstrap path. A same-fingerprint retry that reuses an already healthy
+Continuity composition republishes its last ready status after a transient
+compatibility failure. An existing receipt with a non-fence settings owner
 fails closed. A crash or
 write failure after a canonical commit is repaired from the durable receipt and
 desired journal. The command still fails visibly with
@@ -202,7 +212,9 @@ Behavioral tests cover correlated idempotent command/resume, owner-revisioned
 projection, Product/scope filtering, versioned operation shapes, orphan skew,
 migration crash/replay/concurrency/downgrade behavior, compatibility repair and
 mutation fencing, workspace/restart isolation, tombstone replay, and real CLI
-alias separation.
+alias separation. The existing Windows compatibility workflow also proves that
+a pinned private directory cannot be renamed until its native handle is
+released.
 Architecture tests keep management implementation out of `loushang.plugin`,
 prevent transport imports and projection persistence in the common application
 module, and prevent CLI desired-state paths from reconstructing a ledger or

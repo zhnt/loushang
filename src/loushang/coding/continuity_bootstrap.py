@@ -122,6 +122,7 @@ _SOURCE_TRUST_POLICY_REVISION = "coding-continuity-source-trust-1"
 _AUTHORITY_CEILING = ("continuity.delete", "network.read")
 _APPROVAL_TTL_MS = 300_000
 _BOOTSTRAP_STATUS_ATTRIBUTE = "_loushang_coding_continuity_bootstrap_status"
+_LAST_READY_STATUS_ATTRIBUTE = "_loushang_coding_continuity_bootstrap_last_ready_status"
 _STABLE_ERROR_CODE = re.compile(r"^[a-z][a-z0-9_]{0,95}$")
 
 
@@ -328,6 +329,7 @@ async def bind_coding_configured_continuity(
         existing = getattr(runtime, "_loushang_coding_continuity", None)
         if isinstance(existing, CodingContinuityComposition):
             if existing.configured_request_fingerprint == request_fingerprint:
+                _restore_ready_status(runtime, diagnostics_service)
                 return existing
             if (
                 not sources
@@ -1446,6 +1448,7 @@ def _record_ready_status(
     )
     with suppress(AttributeError, TypeError):
         setattr(runtime, _BOOTSTRAP_STATUS_ATTRIBUTE, status)
+        setattr(runtime, _LAST_READY_STATUS_ATTRIBUTE, status)
     capture = getattr(diagnostics, "capture_failure", None)
     if callable(capture):
         with suppress(Exception):
@@ -1457,6 +1460,31 @@ def _record_ready_status(
                 level="info",
                 details=status.to_dict(),
             )
+
+
+def _restore_ready_status(
+    runtime: object,
+    diagnostics: DiagnosticsService | None,
+) -> None:
+    status = getattr(runtime, _LAST_READY_STATUS_ATTRIBUTE, None)
+    if not isinstance(status, CodingContinuityBootstrapStatus):
+        current = getattr(runtime, _BOOTSTRAP_STATUS_ATTRIBUTE, None)
+        status = (
+            current
+            if isinstance(current, CodingContinuityBootstrapStatus)
+            and current.state == "ready"
+            else None
+        )
+    if status is None:
+        return
+    _record_ready_status(
+        runtime,
+        diagnostics,
+        configured_source_count=status.configured_source_count,
+        plugin_count=status.plugin_count,
+        provider_count=status.provider_count,
+        recovered_deletion_count=status.recovered_deletion_count,
+    )
 
 
 def _record_failed_status(

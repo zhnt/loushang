@@ -30,6 +30,7 @@ ENABLEMENT_MIGRATION = Path(
     "src/loushang/harness/plugin_management/enablement_migration.py"
 )
 CODING_LIFECYCLE = Path("src/loushang/coding/_plugin_lifecycle.py")
+WINDOWS_WORKFLOW = Path(".github/workflows/windows-shell-compatibility.yml")
 
 
 def _source(path: Path) -> str:
@@ -163,6 +164,7 @@ def test_plc9a1_coding_transport_adapter_does_not_construct_owner_stores() -> No
     adapter = _source(CODING_BINDING)
     compatibility = _source(CODING_COMPATIBILITY)
     lifecycle = _source(CODING_LIFECYCLE)
+    windows_workflow = _source(WINDOWS_WORKFLOW)
     settings = _source(SETTINGS_MANAGER)
     config_engine = _source(CONFIG_ENGINE)
     config_runtime = _source(CONFIG_RUNTIME)
@@ -184,9 +186,15 @@ def test_plc9a1_coding_transport_adapter_does_not_construct_owner_stores() -> No
     assert "journal_file_lock_at(" in lifecycle
     assert "_read_private_state_file(" in lifecycle
     assert "_capture_existing_plugin_enablement_state_portable(" in lifecycle
+    assert "_pin_portable_private_directory_chain(" in lifecycle
+    assert "_open_windows_private_directory(" in lifecycle
     assert 'f"{layout.enablement_migration.name}.migration.lock"' in lifecycle
     assert 'f"{layout.desired_state.name}.lock"' in lifecycle
     assert "FILE_FLAG_OPEN_REPARSE_POINT" in _source(CONTRACT)
+    assert "FILE_FLAG_BACKUP_SEMANTICS" in _source(CONTRACT)
+    assert "file_flag_backup_semantics" in lifecycle
+    assert "share_read_write" in lifecycle
+    assert "tests/coding/test_plugin_management_cli.py" in windows_workflow
     assert "file_flag_open_reparse_point" in journal
     assert "share_read_write" in journal
     assert 'JournalLoadPolicy(partial_tail="skip")' in desired_ledger
@@ -201,6 +209,7 @@ def test_plc9a1_coding_transport_adapter_does_not_construct_owner_stores() -> No
     assert "self.projections[writer.layout] = projection" in compatibility
     assert "with self._config.transaction():" in settings
     assert "config_file_transaction_lock(path)" in config_engine
+    assert "entered_transaction" in config_engine
     assert "self._enqueue_publication_unlocked(" in config_engine
     assert "def publish(self, *, _authority: object | None = None)" in config_engine
     assert config_engine.count("self._require_mutation_authority(_authority)") >= 10
@@ -210,6 +219,7 @@ def test_plc9a1_coding_transport_adapter_does_not_construct_owner_stores() -> No
     assert 'lock_suffix=".config.lock"' in config_file_transaction
     assert "def build_coding_plugin_management_application(" in lifecycle
     assert "def project_coding_plugin_enablement_compatibility(" in lifecycle
+    assert "not _has_trailing_newline(raw)" in journal
 
 
 def test_plc9a1_documents_and_tests_the_compatibility_floor() -> None:
@@ -241,6 +251,8 @@ def test_plc9a1_all_durable_coding_callers_bind_the_fence() -> None:
     assert "coding_plugin_compatibility_fence_unavailable" in _source(
         CODING_COMPATIBILITY
     )
+    assert "_LAST_READY_STATUS_ATTRIBUTE" in continuity
+    assert "_restore_ready_status(runtime, diagnostics_service)" in continuity
 
 
 def test_plc9a1_preserves_source_aliases_and_package_command_boundary() -> None:
