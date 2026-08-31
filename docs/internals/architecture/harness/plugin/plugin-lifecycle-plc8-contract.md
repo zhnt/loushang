@@ -3,7 +3,8 @@
 ## Status And Scope
 
 - Contract type: implemented incremental contract under Plugin Architecture V2.
-- Implementation status: review candidate on `harness/plugin-plc8`.
+- Implementation status: terminally reviewed and merged into `lane/harness`
+  through `e62f90aa` on 2026-08-31.
 - Sole writers remain unchanged: Plugin package/declaration authorities own
   package facts, the Resource Catalog owns Skill selection and content facts,
   Approval/Policy own authorization, Process Host owns child processes, and
@@ -315,5 +316,9 @@ before and after the read.
   replacement fails before spawn, and real ProcessHost execution drains large
   stdout/stderr while large stdin is still writing, preserves non-zero exit,
   and terminates output overflow.
-- PLC9 cannot start until architecture, correctness/security, and Product/test
-  reviewers pass this slice and re-review every blocking fix.
+- Architecture, correctness, and Product/test reviewers passed the final slice
+  after re-reviewing every blocking fix; no P0/P1 finding remains. Final
+  evidence is 159 PLC8/impacted-architecture tests passed, 3211 complete
+  Harness tests passed with 7 skips, and Ruff, mypy, and diff checks passed.
+  The PLC9 entry review gate is therefore satisfied without granting any PLC9
+  management, isolation, package-lifecycle, or destructive-cleanup authority.

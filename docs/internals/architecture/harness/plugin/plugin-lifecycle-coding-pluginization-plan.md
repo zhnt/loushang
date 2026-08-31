@@ -51,8 +51,9 @@
   edge are implemented, terminally reviewed, and merged. PLC8's public author
   SDK, exact engine negotiation, inert validation, managed Skill-action
   declaration/execution path, and Resource-owner Catalog selection binding are
-  implemented as a review candidate; PLC8's terminal review and PLC9 remain
-  open.
+  implemented through `e62f90aa`, terminally reviewed from architecture,
+  correctness, and Product/test perspectives, and merged into `lane/harness`
+  on 2026-08-31. PLC9 is now the open delivery stage.
 - Scope: one delivery order for the common Plugin lifecycle, ordinary
   Definition / Provider / Consumer authoring primitives, `coding.lsp`,
   `coding.base`, `coding.arch`, management control, pre-LSP internal Resource/
@@ -1430,6 +1431,18 @@ Exit gate:
   and
 - both native and packaged Skill actions prove no execution during validation,
   exact Approval use, required-containment failure, and revision pinning.
+
+Closure evidence (2026-08-31):
+
+- implementation and blocking-review fixes are complete through `e62f90aa`;
+- architecture, correctness, and Product/test reviewers each returned `PASS`
+  with no remaining P0/P1 finding;
+- the final PLC8 and impacted architecture suite passed 159 tests, the complete
+  Harness suite passed 3211 tests with 7 skips, and Ruff, mypy, and diff checks
+  passed; and
+- the PLC9 entry review gate is satisfied. PLC9 still requires its own scoped
+  contracts and reviews; this closure does not pre-authorize its management,
+  isolation, package-lifecycle, or destructive-cleanup changes.
 
 ### PLC9: Management, Isolation And Cleanup Closure
 
