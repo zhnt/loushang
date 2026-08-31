@@ -53,7 +53,10 @@
   declaration/execution path, and Resource-owner Catalog selection binding are
   implemented through `e62f90aa`, terminally reviewed from architecture,
   correctness, and Product/test perspectives, and merged into `lane/harness`
-  on 2026-08-31. PLC9 is now the open delivery stage.
+  on 2026-08-31. PLC9 is now the open delivery stage. PLC9.0's documentation,
+  source inventory, and architecture guards were accepted on
+  `harness/plugin-plc9-baseline` after architecture, correctness/security, and
+  Product/test review on 2026-08-31; they grant no runtime authority.
 - Scope: one delivery order for the common Plugin lifecycle, ordinary
   Definition / Provider / Consumer authoring primitives, `coding.lsp`,
   `coding.base`, `coding.arch`, management control, pre-LSP internal Resource/
@@ -1445,6 +1448,13 @@ Closure evidence (2026-08-31):
   isolation, package-lifecycle, or destructive-cleanup changes.
 
 ### PLC9: Management, Isolation And Cleanup Closure
+
+PLC9 starts with the docs-and-tests-only
+[PLC9.0 Baseline](plugin-lifecycle-plc9-baseline.md) and its
+[Owner And Peer Inventory](plugin-lifecycle-plc9-inventory.md). That baseline
+freezes the current owners, peer enablement paths, materialization gap, absent
+Worker/remote topologies, and operation separation before PLC9A changes runtime
+code. Its acceptance does not pre-authorize later APIs or destructive actions.
 
 Scope:
 

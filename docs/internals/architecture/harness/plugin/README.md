@@ -103,6 +103,8 @@ public SDK shape cannot be inferred from them.
 
 - [PLC0 Baseline](plugin-lifecycle-plc0-baseline.md)
 - [PLC1A Baseline](plugin-lifecycle-plc1a-baseline.md)
+- [PLC9.0 Baseline](plugin-lifecycle-plc9-baseline.md)
+- [PLC9.0 Owner And Peer Inventory](plugin-lifecycle-plc9-inventory.md)
 - [Resource Catalog RCP0 Baseline](resource-catalog-rcp0-baseline.md)
 
 Baselines freeze source and authority facts required by later contracts. Review
