@@ -21,6 +21,7 @@ CODING_COMPATIBILITY = Path("src/loushang/coding/plugin_enablement_compatibility
 CODING_BOOTSTRAP = Path("src/loushang/coding/bootstrap.py")
 CODING_CONTINUITY = Path("src/loushang/coding/continuity_bootstrap.py")
 SETTINGS_MANAGER = Path("src/loushang/harness/config/agent/manager.py")
+CONFIG_ENGINE = Path("src/loushang/harness/config/engine.py")
 CONFIG_RUNTIME = Path("src/loushang/harness/config/runtime.py")
 CONFIG_FILE_TRANSACTION = Path("src/loushang/harness/config/_file_transaction.py")
 CODING_LIFECYCLE = Path("src/loushang/coding/_plugin_lifecycle.py")
@@ -158,6 +159,7 @@ def test_plc9a1_coding_transport_adapter_does_not_construct_owner_stores() -> No
     compatibility = _source(CODING_COMPATIBILITY)
     lifecycle = _source(CODING_LIFECYCLE)
     settings = _source(SETTINGS_MANAGER)
+    config_engine = _source(CONFIG_ENGINE)
     config_runtime = _source(CONFIG_RUNTIME)
     config_file_transaction = _source(CONFIG_FILE_TRANSACTION)
 
@@ -170,15 +172,21 @@ def test_plc9a1_coding_transport_adapter_does_not_construct_owner_stores() -> No
     assert "build_coding_plugin_management_application(" in adapter
     assert "bind_coding_plugin_enablement_compatibility(" in adapter
     assert "class CodingPluginEnablementCompatibilityWriter:" in compatibility
-    assert "with journal_file_lock(self.layout.coordination_lock" in compatibility
+    assert "with journal_file_lock(" in compatibility
+    assert "create=False" in compatibility
+    assert compatibility.count("_validate_existing_private_state_layout(") >= 2
     assert "bind_plugin_enablement_legacy_mutation_guard" in compatibility
     assert "bind(self, self._assert_legacy_mutation_allowed)" in compatibility
     assert "authority_id" not in compatibility
     assert "LegacyPluginCompatibilityProjectionV1(" in compatibility
-    assert "self._legacy_plugin_guard_authority is not authority" in settings
+    assert "self._legacy_plugin_bindings" in settings
+    assert "if binding.authority is authority" in settings
+    assert "_CodingPluginEnablementCompatibilityRegistry" in compatibility
     assert "with self._config.transaction():" in settings
-    assert "config_file_transaction_lock(path)" in config_runtime
-    assert "self._config.reload(strict=True, notify=False)" in config_runtime
+    assert "config_file_transaction_lock(path)" in config_engine
+    assert "self._reload_unlocked(strict=True)" in config_engine
+    assert "with self._config.transaction(" in config_runtime
+    assert "self._config.publish()" in config_runtime
     assert 'lock_suffix=".config.lock"' in config_file_transaction
     assert "def build_coding_plugin_management_application(" in lifecycle
     assert "def project_coding_plugin_enablement_compatibility(" in lifecycle

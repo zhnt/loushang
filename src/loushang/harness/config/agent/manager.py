@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from contextlib import nullcontext
+from contextlib import AbstractContextManager, nullcontext
 from copy import deepcopy
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -107,6 +107,14 @@ class LegacyPluginCompatibilityProjectionV1:
                 raise ValueError(f"Legacy compatibility {name} must be non-negative")
 
 
+@dataclass(slots=True)
+class _LegacyPluginCompatibilityBinding:
+    authority: object
+    guard: LegacyPluginMutationGuard
+    publisher: LegacyPluginCompatibilityPublisher
+    projection: LegacyPluginCompatibilityProjectionV1 | None = None
+
+
 @dataclass(frozen=True)
 class SettingsError:
     scope: SettingsScope
@@ -135,11 +143,7 @@ class SettingsManager:
         self._permission_profile_ceiling = (
             permission_profile_ceiling or PermissionProfileCeiling()
         )
-        self._legacy_plugin_guard_authority: object | None = None
-        self._legacy_plugin_mutation_guard: LegacyPluginMutationGuard | None = None
-        self._legacy_plugin_compatibility_publisher: (
-            LegacyPluginCompatibilityPublisher | None
-        ) = None
+        self._legacy_plugin_bindings: list[_LegacyPluginCompatibilityBinding] = []
         self._legacy_plugin_binding_lock = RLock()
         self._config = SettingsRuntime(
             ScopedConfigRuntime(
@@ -502,9 +506,10 @@ class SettingsManager:
         return self._settings.terminal.show_images
 
     def set_show_images(self, show: bool, *, scope: SettingsScope = "global") -> None:
-        self.update_settings(
-            scope=scope, terminal=replace(self._settings.terminal, show_images=show)
-        )
+        with self._config.transaction():
+            self.update_settings(
+                scope=scope, terminal=replace(self._settings.terminal, show_images=show)
+            )
 
     def get_image_width_cells(self) -> int:
         return max(1, int(self._settings.terminal.image_width_cells))
@@ -512,12 +517,13 @@ class SettingsManager:
     def set_image_width_cells(
         self, width: float | int, *, scope: SettingsScope = "global"
     ) -> None:
-        self.update_settings(
-            scope=scope,
-            terminal=replace(
-                self._settings.terminal, image_width_cells=max(1, int(width))
-            ),
-        )
+        with self._config.transaction():
+            self.update_settings(
+                scope=scope,
+                terminal=replace(
+                    self._settings.terminal, image_width_cells=max(1, int(width))
+                ),
+            )
 
     def get_clear_on_shrink(self) -> bool:
         return self._settings.terminal.clear_on_shrink
@@ -525,10 +531,11 @@ class SettingsManager:
     def set_clear_on_shrink(
         self, enabled: bool, *, scope: SettingsScope = "global"
     ) -> None:
-        self.update_settings(
-            scope=scope,
-            terminal=replace(self._settings.terminal, clear_on_shrink=enabled),
-        )
+        with self._config.transaction():
+            self.update_settings(
+                scope=scope,
+                terminal=replace(self._settings.terminal, clear_on_shrink=enabled),
+            )
 
     def get_show_terminal_progress(self) -> bool:
         return self._settings.terminal.show_terminal_progress
@@ -536,10 +543,13 @@ class SettingsManager:
     def set_show_terminal_progress(
         self, enabled: bool, *, scope: SettingsScope = "global"
     ) -> None:
-        self.update_settings(
-            scope=scope,
-            terminal=replace(self._settings.terminal, show_terminal_progress=enabled),
-        )
+        with self._config.transaction():
+            self.update_settings(
+                scope=scope,
+                terminal=replace(
+                    self._settings.terminal, show_terminal_progress=enabled
+                ),
+            )
 
     def get_image_auto_resize(self) -> bool:
         return self._settings.images.auto_resize
@@ -547,9 +557,10 @@ class SettingsManager:
     def set_image_auto_resize(
         self, enabled: bool, *, scope: SettingsScope = "global"
     ) -> None:
-        self.update_settings(
-            scope=scope, images=replace(self._settings.images, auto_resize=enabled)
-        )
+        with self._config.transaction():
+            self.update_settings(
+                scope=scope, images=replace(self._settings.images, auto_resize=enabled)
+            )
 
     def get_block_images(self) -> bool:
         return self._settings.images.block_images
@@ -557,9 +568,11 @@ class SettingsManager:
     def set_block_images(
         self, enabled: bool, *, scope: SettingsScope = "global"
     ) -> None:
-        self.update_settings(
-            scope=scope, images=replace(self._settings.images, block_images=enabled)
-        )
+        with self._config.transaction():
+            self.update_settings(
+                scope=scope,
+                images=replace(self._settings.images, block_images=enabled),
+            )
 
     def get_image_settings(self) -> ImageSettings:
         return self._settings.images
@@ -654,13 +667,14 @@ class SettingsManager:
         *,
         scope: SettingsScope = "global",
     ) -> None:
-        self.update_settings(
-            scope=scope,
-            tools=replace(
-                self._settings.tools,
-                external_tool_policy=policy,
-            ),
-        )
+        with self._config.transaction():
+            self.update_settings(
+                scope=scope,
+                tools=replace(
+                    self._settings.tools,
+                    external_tool_policy=policy,
+                ),
+            )
 
     def get_retry_settings(self) -> RetrySettings:
         return self._settings.retry
@@ -671,9 +685,10 @@ class SettingsManager:
     def set_retry_enabled(
         self, enabled: bool, *, scope: SettingsScope = "session"
     ) -> None:
-        self.update_settings(
-            scope=scope, retry=replace(self._settings.retry, enabled=enabled)
-        )
+        with self._config.transaction():
+            self.update_settings(
+                scope=scope, retry=replace(self._settings.retry, enabled=enabled)
+            )
 
     def get_resource_roots(self) -> list[str]:
         return list(self._settings.resource_roots)
@@ -709,18 +724,20 @@ class SettingsManager:
         scope: SettingsScope = "project",
     ) -> bool:
         candidate = decode_package_source(source)
-        current_sources = self._settings.package_sources
-        next_sources = _with_package_source(current_sources, candidate)
-        self.update_settings(scope=scope, package_sources=next_sources)
-        return next_sources != current_sources
+        with self._config.transaction():
+            current_sources = self._settings.package_sources
+            next_sources = _with_package_source(current_sources, candidate)
+            self.update_settings(scope=scope, package_sources=next_sources)
+            return next_sources != current_sources
 
     def remove_package_source(
         self, source: str, *, scope: SettingsScope = "project"
     ) -> bool:
-        current_sources = self._settings.package_sources
-        next_sources = _without_package_source(current_sources, source)
-        self.update_settings(scope=scope, package_sources=next_sources)
-        return next_sources != current_sources
+        with self._config.transaction():
+            current_sources = self._settings.package_sources
+            next_sources = _without_package_source(current_sources, source)
+            self.update_settings(scope=scope, package_sources=next_sources)
+            return next_sources != current_sources
 
     def begin_package_source_mutation(
         self,
@@ -882,49 +899,60 @@ class SettingsManager:
                 raise ValueError("Plugin enablement guard authority is required")
             if not callable(guard):
                 raise TypeError("Plugin enablement legacy mutation guard is required")
-            if self._legacy_plugin_guard_authority is not None:
-                if self._legacy_plugin_guard_authority is not authority:
-                    raise RuntimeError(
-                        "Plugin enablement guard authority already bound"
-                    )
-                assert self._legacy_plugin_compatibility_publisher is not None
-                return self._legacy_plugin_compatibility_publisher
+            for binding in self._legacy_plugin_bindings:
+                if binding.authority is authority:
+                    return binding.publisher
 
             def publish(projection: LegacyPluginCompatibilityProjectionV1) -> None:
-                self._publish_legacy_plugin_compatibility(projection)
+                self._publish_legacy_plugin_compatibility(authority, projection)
 
-            self._legacy_plugin_guard_authority = authority
-            self._legacy_plugin_mutation_guard = guard
-            self._legacy_plugin_compatibility_publisher = publish
+            self._legacy_plugin_bindings.append(
+                _LegacyPluginCompatibilityBinding(
+                    authority=authority,
+                    guard=guard,
+                    publisher=publish,
+                )
+            )
             return publish
+
+    def defer_plugin_enablement_compatibility_notifications(
+        self,
+    ) -> AbstractContextManager[None]:
+        """Keep settings callbacks outside the Product lifecycle lock."""
+
+        return self._config.defer_publications()
 
     def add_plugin_source(
         self, source: str, *, scope: SettingsScope = "project"
     ) -> bool:
-        current_sources = self._settings.plugin_sources
-        next_sources = _with_name(current_sources, source)
-        self.update_settings(scope=scope, plugin_sources=next_sources)
-        return next_sources != current_sources
+        with self._config.transaction():
+            current_sources = self._settings.plugin_sources
+            next_sources = _with_name(current_sources, source)
+            self.update_settings(scope=scope, plugin_sources=next_sources)
+            return next_sources != current_sources
 
     def remove_plugin_source(
         self, source: str, *, scope: SettingsScope = "project"
     ) -> bool:
-        current_sources = self._settings.plugin_sources
-        next_sources = _without_name(current_sources, source)
-        self.update_settings(scope=scope, plugin_sources=next_sources)
-        return next_sources != current_sources
+        with self._config.transaction():
+            current_sources = self._settings.plugin_sources
+            next_sources = _without_name(current_sources, source)
+            self.update_settings(scope=scope, plugin_sources=next_sources)
+            return next_sources != current_sources
 
     def enable_skill(self, name: str, *, scope: SettingsScope = "project") -> None:
-        self.update_settings(
-            scope=scope,
-            disabled_skills=_without_name(self._settings.disabled_skills, name),
-        )
+        with self._config.transaction():
+            self.update_settings(
+                scope=scope,
+                disabled_skills=_without_name(self._settings.disabled_skills, name),
+            )
 
     def disable_skill(self, name: str, *, scope: SettingsScope = "project") -> None:
-        self.update_settings(
-            scope=scope,
-            disabled_skills=_with_name(self._settings.disabled_skills, name),
-        )
+        with self._config.transaction():
+            self.update_settings(
+                scope=scope,
+                disabled_skills=_with_name(self._settings.disabled_skills, name),
+            )
 
     def enable_plugin(self, name: str, *, scope: SettingsScope = "project") -> None:
         self._mutate_legacy_plugin(name, disabled=False, scope=scope)
@@ -969,34 +997,69 @@ class SettingsManager:
 
     def _publish_legacy_plugin_compatibility(
         self,
+        authority: object,
         projection: LegacyPluginCompatibilityProjectionV1,
     ) -> None:
         if not isinstance(projection, LegacyPluginCompatibilityProjectionV1):
             raise TypeError("Legacy Plugin compatibility projection is required")
-        migrated = set(projection.migrated_plugin_ids)
-        disabled = set(projection.disabled_plugin_ids)
-        with self._config.transaction():
-            retained = {
-                item for item in self._settings.disabled_plugins if item not in migrated
-            }
-            target = tuple(sorted(retained | disabled))
-            project = self._config.scope("project")
-            if project.path is not None:
-                self._write_legacy_disabled_plugins(target, scope="project")
-                self._config.scope("session").transform(
-                    lambda patch: {
-                        key: value
-                        for key, value in patch.items()
-                        if key != "disabled_plugins"
-                    }
-                )
-            else:
-                self._write_legacy_disabled_plugins(target, scope="session")
-            effective = set(self._settings.disabled_plugins)
-            if effective.intersection(migrated) != disabled:
+        with self._legacy_plugin_binding_lock:
+            current_binding = next(
+                (
+                    binding
+                    for binding in self._legacy_plugin_bindings
+                    if binding.authority is authority
+                ),
+                None,
+            )
+            if current_binding is None:
                 raise RuntimeError(
-                    "Legacy Plugin compatibility projection did not become effective"
+                    "Plugin enablement compatibility authority is unbound"
                 )
+            current_binding.projection = projection
+            projections = tuple(
+                binding.projection
+                for binding in self._legacy_plugin_bindings
+                if binding.projection is not None
+            )
+            migrated = {
+                plugin_id
+                for item in projections
+                for plugin_id in item.migrated_plugin_ids
+            }
+            disabled = {
+                plugin_id
+                for item in projections
+                for plugin_id in item.disabled_plugin_ids
+            }
+            with self._config.transaction():
+                retained = {
+                    item
+                    for item in self._settings.disabled_plugins
+                    if item not in migrated
+                }
+                target = tuple(sorted(retained | disabled))
+                project = self._config.scope("project")
+                if project.path is not None:
+                    if _disabled_plugins_from_patch(project.patch) != target:
+                        self._write_legacy_disabled_plugins(target, scope="project")
+                    session = self._config.scope("session")
+                    if "disabled_plugins" in session.patch:
+                        session.transform(
+                            lambda patch: {
+                                key: value
+                                for key, value in patch.items()
+                                if key != "disabled_plugins"
+                            }
+                        )
+                else:
+                    session = self._config.scope("session")
+                    if _disabled_plugins_from_patch(session.patch) != target:
+                        self._write_legacy_disabled_plugins(target, scope="session")
+                effective = set(self._settings.disabled_plugins)
+                if effective.intersection(migrated) != disabled:
+                    raise RuntimeError(
+                        "Legacy Plugin compatibility projection did not become effective"
+                    )
 
     def _guard_legacy_plugin_changes(
         self,
@@ -1015,8 +1078,10 @@ class SettingsManager:
             self._guard_legacy_plugin_mutation(name)
 
     def _guard_legacy_plugin_mutation(self, name: str) -> None:
-        if self._legacy_plugin_mutation_guard is not None:
-            self._legacy_plugin_mutation_guard(name)
+        with self._legacy_plugin_binding_lock:
+            guards = tuple(binding.guard for binding in self._legacy_plugin_bindings)
+        for guard in guards:
+            guard(name)
 
     def get_settings(self) -> ControlConfig:
         return self._settings
@@ -1047,6 +1112,17 @@ def _with_name(values: tuple[str, ...], name: str) -> tuple[str, ...]:
 def _without_name(values: tuple[str, ...], name: str) -> tuple[str, ...]:
     normalized = name.strip()
     return tuple(value for value in values if value != normalized)
+
+
+def _disabled_plugins_from_patch(
+    patch: Mapping[str, object],
+) -> tuple[str, ...] | None:
+    value = patch.get("disabled_plugins")
+    if not isinstance(value, (list, tuple)) or not all(
+        isinstance(item, str) for item in value
+    ):
+        return None
+    return tuple(value)
 
 
 def _package_identity_key(source: str) -> str:

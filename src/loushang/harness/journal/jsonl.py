@@ -4,6 +4,7 @@ import errno
 import importlib
 import json
 import os
+import stat
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager, contextmanager, nullcontext, suppress
 from dataclasses import dataclass
@@ -81,17 +82,39 @@ def journal_file_lock(
     *,
     lock_suffix: str = ".lock",
     blocking: bool = True,
+    create: bool = True,
     is_windows: Callable[[], bool] | None = None,
     load_fcntl: Callable[[], Any] | None = None,
     load_msvcrt: Callable[[], Any] | None = None,
 ) -> Iterator[None]:
     if type(blocking) is not bool:
         raise TypeError("Journal lock blocking mode must be a built-in bool")
+    if type(create) is not bool:
+        raise TypeError("Journal lock creation mode must be a built-in bool")
     lock_path = path.with_name(f"{path.name}{lock_suffix}")
-    lock_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    with lock_path.open("a+b") as handle:
-        _fchmod_private(handle.fileno())
-        _prepare_lock_byte(handle)
+    if create:
+        lock_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    with lock_path.open("a+b" if create else "r+b") as handle:
+        if create:
+            _fchmod_private(handle.fileno())
+            _prepare_lock_byte(handle)
+        else:
+            metadata = lock_path.lstat()
+            opened = os.fstat(handle.fileno())
+            getuid = getattr(os, "getuid", None)
+            if (
+                not stat.S_ISREG(metadata.st_mode)
+                or stat.S_ISLNK(metadata.st_mode)
+                or bool(getattr(metadata, "st_reparse_tag", 0))
+                or metadata.st_mode & 0o077
+                or (
+                    os.name == "posix"
+                    and callable(getuid)
+                    and metadata.st_uid != getuid()
+                )
+                or not os.path.samestat(metadata, opened)
+            ):
+                raise OSError("Journal lock is not a private regular file")
         windows = (is_windows or _is_windows)()
         if windows:
             msvcrt = (load_msvcrt or _load_msvcrt)()

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from threading import RLock
 
@@ -69,24 +70,49 @@ class CodingPluginEnablementCompatibilityWriter:
     def reconcile(self) -> None:
         """Publish the latest canonical view under the Product coordination lock."""
 
-        if not _validate_existing_private_state_layout(self.layout):
-            return
-        with journal_file_lock(self.layout.coordination_lock, "exclusive"):
-            projection, migrated = project_coding_plugin_enablement_compatibility(
-                self.layout
-            )
-            if not migrated:
+        defer = getattr(
+            self.settings_manager,
+            "defer_plugin_enablement_compatibility_notifications",
+            None,
+        )
+        notifications = defer() if callable(defer) else nullcontext()
+        with notifications:
+            if not _validate_existing_private_state_layout(self.layout):
                 return
-            publish = self._publish
-            assert callable(publish)
-            publish(
-                LegacyPluginCompatibilityProjectionV1(
-                    disabled_plugin_ids=projection.disabled_plugin_ids,
-                    migrated_plugin_ids=tuple(sorted(migrated)),
-                    desired_inventory_revision=projection.desired_inventory_revision,
-                    migration_journal_revision=(projection.migration_journal_revision),
+            try:
+                with journal_file_lock(
+                    self.layout.coordination_lock,
+                    "exclusive",
+                    create=False,
+                ):
+                    if not _validate_existing_private_state_layout(self.layout):
+                        return
+                    projection, migrated = (
+                        project_coding_plugin_enablement_compatibility(self.layout)
+                    )
+                    if not migrated:
+                        return
+                    publish = self._publish
+                    assert callable(publish)
+                    publish(
+                        LegacyPluginCompatibilityProjectionV1(
+                            disabled_plugin_ids=projection.disabled_plugin_ids,
+                            migrated_plugin_ids=tuple(sorted(migrated)),
+                            desired_inventory_revision=(
+                                projection.desired_inventory_revision
+                            ),
+                            migration_journal_revision=(
+                                projection.migration_journal_revision
+                            ),
+                        )
+                    )
+            except FileNotFoundError:
+                if not _validate_existing_private_state_layout(self.layout):
+                    return
+                raise CodingPluginEnablementCompatibilityError(
+                    "Coding Plugin lifecycle coordination evidence disappeared",
+                    code="coding_plugin_compatibility_coordination_missing",
                 )
-            )
 
     def _assert_legacy_mutation_allowed(self, plugin_id: str) -> None:
         journal = PluginEnablementMigrationJournal(self.layout.enablement_migration)
@@ -100,6 +126,14 @@ class CodingPluginEnablementCompatibilityWriter:
         )
 
 
+@dataclass(slots=True)
+class _CodingPluginEnablementCompatibilityRegistry:
+    writers: dict[
+        CodingPluginLifecycleStateLayout,
+        CodingPluginEnablementCompatibilityWriter,
+    ] = field(default_factory=dict)
+
+
 def bind_coding_plugin_enablement_compatibility(
     layout: CodingPluginLifecycleStateLayout,
     settings_manager: object | None,
@@ -110,18 +144,19 @@ def bind_coding_plugin_enablement_compatibility(
         return None
     with _COMPATIBILITY_BIND_LOCK:
         cached = getattr(settings_manager, _COMPATIBILITY_CACHE_ATTRIBUTE, None)
-        if cached is not None:
-            if not isinstance(cached, CodingPluginEnablementCompatibilityWriter):
-                raise CodingPluginEnablementCompatibilityError(
-                    "Coding Plugin compatibility authority cache is invalid",
-                    code="coding_plugin_compatibility_authority_conflict",
-                )
-            if cached.layout != layout:
-                raise CodingPluginEnablementCompatibilityError(
-                    "Settings owner is already bound to another Plugin workspace",
-                    code="coding_plugin_compatibility_scope_conflict",
-                )
-            return cached
+        registry: _CodingPluginEnablementCompatibilityRegistry
+        if cached is None:
+            registry = _CodingPluginEnablementCompatibilityRegistry()
+        elif isinstance(cached, _CodingPluginEnablementCompatibilityRegistry):
+            registry = cached
+            existing = registry.writers.get(layout)
+            if existing is not None:
+                return existing
+        else:
+            raise CodingPluginEnablementCompatibilityError(
+                "Coding Plugin compatibility authority cache is invalid",
+                code="coding_plugin_compatibility_authority_conflict",
+            )
         bind = getattr(
             settings_manager,
             "bind_plugin_enablement_legacy_mutation_guard",
@@ -143,7 +178,9 @@ def bind_coding_plugin_enablement_compatibility(
             _bind_on_init=False,
         )
         try:
-            setattr(settings_manager, _COMPATIBILITY_CACHE_ATTRIBUTE, writer)
+            if cached is None:
+                setattr(settings_manager, _COMPATIBILITY_CACHE_ATTRIBUTE, registry)
+            registry.writers[layout] = writer
         except (AttributeError, TypeError) as exc:
             raise CodingPluginEnablementCompatibilityError(
                 "Fence-aware settings owner cannot retain its compatibility authority",
@@ -153,9 +190,16 @@ def bind_coding_plugin_enablement_compatibility(
             writer.bind()
         except BaseException:
             try:
+                registry.writers.pop(layout, None)
                 if (
-                    getattr(settings_manager, _COMPATIBILITY_CACHE_ATTRIBUTE, None)
-                    is writer
+                    not registry.writers
+                    and cached is None
+                    and getattr(
+                        settings_manager,
+                        _COMPATIBILITY_CACHE_ATTRIBUTE,
+                        None,
+                    )
+                    is registry
                 ):
                     delattr(settings_manager, _COMPATIBILITY_CACHE_ATTRIBUTE)
             except (AttributeError, TypeError):

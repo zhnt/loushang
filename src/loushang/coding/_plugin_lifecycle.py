@@ -1512,6 +1512,10 @@ def _prepare_private_state_layout(layout: CodingPluginLifecycleStateLayout) -> N
         private_base=layout.private_data_base,
         label="data",
     )
+    # Compatibility readers use a non-creating lock so a replaced root cannot
+    # make them create files outside the validated private tree.
+    with journal_file_lock(layout.coordination_lock, "exclusive"):
+        pass
 
 
 def _validate_existing_private_state_layout(

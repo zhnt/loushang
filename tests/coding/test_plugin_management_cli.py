@@ -5,11 +5,12 @@ import shutil
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from pathlib import Path
-from threading import Barrier
+from threading import Barrier, Thread
 from types import SimpleNamespace
 
 import pytest
 
+import loushang.coding.plugin_enablement_compatibility as compatibility_module
 from loushang.coding._plugin_lifecycle import (
     CodingPluginLifecycleError,
     build_coding_plugin_lifecycle,
@@ -229,11 +230,18 @@ def test_binding_repairs_compatibility_and_fences_all_legacy_mutators(
     with ThreadPoolExecutor(max_workers=4) as pool:
         tuple(pool.map(lambda _index: writer.reconcile(), range(16)))
     assert settings.get_settings().disabled_plugins == ()
-    with pytest.raises(RuntimeError, match="authority already bound"):
+    second_authority = object()
+    second_publisher = settings.bind_plugin_enablement_legacy_mutation_guard(
+        second_authority,
+        lambda _plugin_id: None,
+    )
+    assert (
         settings.bind_plugin_enablement_legacy_mutation_guard(
-            object(),
+            second_authority,
             lambda _plugin_id: None,
         )
+        is second_publisher
+    )
     for mutate in (
         lambda: settings.enable_plugin("managed-pack"),
         lambda: settings.disable_plugin("managed-pack"),
@@ -244,6 +252,106 @@ def test_binding_repairs_compatibility_and_fences_all_legacy_mutators(
             mutate()
         assert rejected.value.code == "plugin_enablement_legacy_mutation_rejected"
     assert settings.get_settings().disabled_plugins == ()
+
+
+def test_compatibility_settings_listener_reconcile_is_deferred_and_noop(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    settings = SettingsManager(
+        initial=ControlConfig(disabled_plugins=("managed-pack",)),
+        project_settings_path=workspace / ".loushang" / "settings.json",
+    )
+    layout = resolve_coding_plugin_lifecycle_state_layout(workspace)
+    lifecycle = build_coding_plugin_lifecycle(layout, startup_id="reentrant-listener")
+    key = lifecycle.installation_key("managed-pack")
+    try:
+        lifecycle.migrate_legacy_enablement(
+            key,
+            _package("managed-pack"),
+            legacy_disabled=False,
+            manifest_enabled_default=True,
+            legacy_input_fingerprint=plugin_enablement_legacy_input_fingerprint(
+                key,
+                legacy_disabled=False,
+                manifest_enabled_default=True,
+            ),
+        )
+    finally:
+        lifecycle.release_owned_process_startup_lease()
+    writer = bind_coding_plugin_enablement_compatibility(layout, settings)
+    assert writer is not None
+    notifications: list[tuple[str, ...]] = []
+    errors: list[BaseException] = []
+
+    def reconcile_again(value: ControlConfig) -> None:
+        notifications.append(value.disabled_plugins)
+        writer.reconcile()
+
+    settings.subscribe(reconcile_again)
+
+    def reconcile() -> None:
+        try:
+            writer.reconcile()
+        except BaseException as exc:
+            errors.append(exc)
+
+    worker = Thread(target=reconcile, daemon=True)
+    worker.start()
+    worker.join(timeout=3)
+
+    assert worker.is_alive() is False
+    assert errors == []
+    assert notifications == [()]
+    assert settings.get_settings().disabled_plugins == ()
+
+
+def test_compatibility_reconcile_never_creates_lock_after_root_replacement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    external = tmp_path / "external"
+    external.mkdir()
+    external_lock = external / "lifecycle-coordination.lock"
+    external_lock.write_bytes(b"sentinel")
+    external_lock.chmod(0o600)
+    layout = resolve_coding_plugin_lifecycle_state_layout(workspace)
+    lifecycle = build_coding_plugin_lifecycle(layout, startup_id="replace-root")
+    lifecycle.release_owned_process_startup_lease()
+    writer = bind_coding_plugin_enablement_compatibility(
+        layout,
+        _SettingsManager(_Settings()),
+    )
+    assert writer is not None
+    validate = compatibility_module._validate_existing_private_state_layout
+    calls = 0
+
+    def replace_after_validation(candidate) -> bool:  # type: ignore[no-untyped-def]
+        nonlocal calls
+        calls += 1
+        valid = validate(candidate)
+        if calls == 1 and valid:
+            shutil.rmtree(candidate.root)
+            candidate.root.symlink_to(external, target_is_directory=True)
+        return valid
+
+    monkeypatch.setattr(
+        compatibility_module,
+        "_validate_existing_private_state_layout",
+        replace_after_validation,
+    )
+
+    with pytest.raises(CodingPluginLifecycleError):
+        writer.reconcile()
+
+    assert list(external.iterdir()) == [external_lock]
+    assert external_lock.read_bytes() == b"sentinel"
 
 
 def test_two_settings_owners_preserve_concurrent_unmigrated_ids(
@@ -415,12 +523,19 @@ def test_compatibility_binding_is_atomic_for_one_settings_owner(
     assert all(writer is writers[0] for writer in writers)
 
     second_layout = resolve_coding_plugin_lifecycle_state_layout(tmp_path / "second")
-    with pytest.raises(CodingPluginEnablementCompatibilityError) as conflict:
+    second_writer = bind_coding_plugin_enablement_compatibility(
+        second_layout,
+        settings,
+    )
+    assert second_writer is not None
+    assert second_writer is not writers[0]
+    assert (
         bind_coding_plugin_enablement_compatibility(second_layout, settings)
-    assert conflict.value.code == "coding_plugin_compatibility_scope_conflict"
+        is second_writer
+    )
 
 
-def test_concurrent_compatibility_bind_selects_one_workspace(
+def test_concurrent_compatibility_bind_retains_each_workspace(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -434,21 +549,14 @@ def test_concurrent_compatibility_bind_selects_one_workspace(
 
     def attempt(layout):  # type: ignore[no-untyped-def]
         barrier.wait()
-        try:
-            return bind_coding_plugin_enablement_compatibility(layout, settings)
-        except CodingPluginEnablementCompatibilityError as exc:
-            return exc.code
+        return bind_coding_plugin_enablement_compatibility(layout, settings)
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         results = tuple(pool.map(attempt, layouts))
 
-    assert (
-        sum(
-            result == "coding_plugin_compatibility_scope_conflict" for result in results
-        )
-        == 1
-    )
-    assert sum(not isinstance(result, str) for result in results) == 1
+    assert all(result is not None for result in results)
+    assert results[0] is not results[1]
+    assert tuple(result.layout for result in results if result is not None) == layouts
 
 
 def test_compatibility_cache_failure_does_not_claim_the_settings_owner(

@@ -1181,6 +1181,103 @@ def test_persistent_settings_update_refreshes_a_preloaded_peer(tmp_path) -> None
     assert reloaded.get_settings().theme == "night"
 
 
+def test_preloaded_settings_rmw_helpers_preserve_peer_mutations(tmp_path) -> None:
+    from loushang.harness.config.agent import SettingsManager
+
+    global_path = tmp_path / "global.json"
+    project_path = tmp_path / "project.json"
+    first = SettingsManager(
+        global_settings_path=global_path,
+        project_settings_path=project_path,
+    )
+    peer = SettingsManager(
+        global_settings_path=global_path,
+        project_settings_path=project_path,
+    )
+
+    first.add_plugin_source("plugins/first", scope="project")
+    peer.add_plugin_source("plugins/peer", scope="project")
+    first.add_package_source("pypi:first-pack==1.0.0", scope="project")
+    peer.add_package_source("git:example.com/peer-pack@v1", scope="project")
+    first.disable_skill("first-skill", scope="project")
+    peer.disable_skill("peer-skill", scope="project")
+    first.set_image_width_cells(77, scope="global")
+    peer.set_show_terminal_progress(True, scope="global")
+
+    reloaded = SettingsManager(
+        global_settings_path=global_path,
+        project_settings_path=project_path,
+    )
+    settings = reloaded.get_settings()
+    assert settings.plugin_sources == ("plugins/first", "plugins/peer")
+    assert [source.source for source in settings.package_sources] == [
+        "pypi:first-pack==1.0.0",
+        "git:example.com/peer-pack@v1",
+    ]
+    assert settings.disabled_skills == ("first-skill", "peer-skill")
+    assert settings.terminal.image_width_cells == 77
+    assert settings.terminal.show_terminal_progress is True
+
+
+def test_settings_manager_aggregates_workspace_compatibility_authorities(
+    tmp_path,
+) -> None:
+    from loushang.harness.config.agent import SettingsManager
+    from loushang.harness.config.agent.manager import (
+        LegacyPluginCompatibilityProjectionV1,
+    )
+
+    manager = SettingsManager(project_settings_path=tmp_path / "settings.json")
+    first_authority = object()
+    second_authority = object()
+    guarded: list[tuple[str, str]] = []
+    publish_first = manager.bind_plugin_enablement_legacy_mutation_guard(
+        first_authority,
+        lambda plugin_id: guarded.append(("first", plugin_id)),
+    )
+    publish_second = manager.bind_plugin_enablement_legacy_mutation_guard(
+        second_authority,
+        lambda plugin_id: guarded.append(("second", plugin_id)),
+    )
+
+    publish_first(
+        LegacyPluginCompatibilityProjectionV1(
+            disabled_plugin_ids=("first-pack",),
+            migrated_plugin_ids=("first-pack",),
+            desired_inventory_revision=1,
+            migration_journal_revision=1,
+        )
+    )
+    publish_second(
+        LegacyPluginCompatibilityProjectionV1(
+            disabled_plugin_ids=("second-pack",),
+            migrated_plugin_ids=("second-pack",),
+            desired_inventory_revision=1,
+            migration_journal_revision=1,
+        )
+    )
+    assert manager.get_settings().disabled_plugins == (
+        "first-pack",
+        "second-pack",
+    )
+
+    publish_first(
+        LegacyPluginCompatibilityProjectionV1(
+            disabled_plugin_ids=(),
+            migrated_plugin_ids=("first-pack",),
+            desired_inventory_revision=2,
+            migration_journal_revision=1,
+        )
+    )
+    assert manager.get_settings().disabled_plugins == ("second-pack",)
+
+    manager.disable_plugin("unmigrated-pack", scope="project")
+    assert guarded == [
+        ("first", "unmigrated-pack"),
+        ("second", "unmigrated-pack"),
+    ]
+
+
 def test_persistent_settings_transaction_publishes_after_unlock(tmp_path) -> None:
     from loushang.harness.config.agent import SettingsManager
 
@@ -1228,3 +1325,10 @@ def test_persistent_settings_update_fails_closed_on_corrupt_peer_state(
         manager.set_theme("night", scope="project")
 
     assert settings_path.read_text(encoding="utf-8") == "{not-json"
+
+    seen: list[str] = []
+    manager.subscribe(lambda settings: seen.append(settings.theme))
+    settings_path.write_text("{}", encoding="utf-8")
+    manager.set_theme("recovered", scope="project")
+
+    assert seen == ["recovered"]

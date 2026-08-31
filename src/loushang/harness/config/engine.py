@@ -1,10 +1,17 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import AbstractContextManager, ExitStack, contextmanager
 from copy import deepcopy
+from dataclasses import dataclass
 from pathlib import Path
+from threading import RLock
 from typing import Generic, TypeVar
 
+from loushang.harness.config._file_transaction import (
+    config_file_transaction_lock,
+    normalized_config_path,
+)
 from loushang.harness.config.store import JsonConfigStore
 from loushang.harness.config.types import (
     ConfigCodec,
@@ -16,6 +23,13 @@ from loushang.harness.config.types import (
 
 T = TypeVar("T")
 ConfigListener = Callable[[T], None]
+
+
+@dataclass
+class LayeredConfigTransaction(Generic[T]):
+    previous: T
+    current: T
+    changed: bool = False
 
 
 class LayeredConfig(Generic[T]):
@@ -38,6 +52,10 @@ class LayeredConfig(Generic[T]):
         }
         self._issues: list[ConfigIssue] = []
         self._listeners: list[ConfigListener[T]] = []
+        self._lock = RLock()
+        self._transaction_depth = 0
+        self._transaction_changed = False
+        self._transaction_handle: LayeredConfigTransaction[T] | None = None
         self._patches, load_issues = self._load_persistent_layers(self._patches)
         self._issues.extend(load_issues)
         for layer_name, value in (initial or {}).items():
@@ -51,29 +69,54 @@ class LayeredConfig(Generic[T]):
 
     @property
     def value(self) -> T:
-        return self._value
+        with self._lock:
+            return self._value
 
     @property
     def layers(self) -> tuple[ConfigLayer, ...]:
         return self._layers
 
     def encode(self, value: T) -> dict[str, object]:
-        return deepcopy(dict(self._codec.encode(value)))
+        with self._lock:
+            return deepcopy(dict(self._codec.encode(value)))
 
     def snapshot(self) -> ConfigSnapshot[T]:
-        return ConfigSnapshot(
-            value=self._value,
-            patches={name: deepcopy(patch) for name, patch in self._patches.items()},
-        )
+        with self._lock:
+            return ConfigSnapshot(
+                value=self._value,
+                patches={
+                    name: deepcopy(patch) for name, patch in self._patches.items()
+                },
+            )
 
     def layer_path(self, layer_name: str) -> Path | None:
         return self._require_layer(layer_name).path
 
     def patch(self, layer_name: str) -> dict[str, object]:
-        self._require_layer(layer_name)
-        return deepcopy(self._patches[layer_name])
+        with self._lock:
+            self._require_layer(layer_name)
+            return deepcopy(self._patches[layer_name])
 
     def reload(self, *, strict: bool = False, notify: bool = True) -> None:
+        with self._lock:
+            changed = self._reload_unlocked(strict=strict)
+            if self._transaction_depth and changed:
+                self._transaction_changed = True
+            should_notify = notify and self._transaction_depth == 0 and changed
+        if should_notify:
+            self.publish()
+
+    def transaction(
+        self,
+        *,
+        notify_on_exit: bool = True,
+    ) -> AbstractContextManager[LayeredConfigTransaction[T]]:
+        """Serialize a strict refresh plus one or more config mutations."""
+
+        return self._transaction(notify_on_exit=notify_on_exit)
+
+    def _reload_unlocked(self, *, strict: bool) -> bool:
+        previous = self.snapshot()
         patches, load_issues = self._load_persistent_layers(self._patches)
         if strict and load_issues:
             self._issues.extend(load_issues)
@@ -83,8 +126,7 @@ class LayeredConfig(Generic[T]):
         self._value = value
         self._issues.extend(load_issues)
         self._issues.extend(compose_issues)
-        if notify:
-            self._notify()
+        return previous.value != self._value or previous.patches != self._patches
 
     def update(
         self,
@@ -92,22 +134,33 @@ class LayeredConfig(Generic[T]):
         patch: Mapping[str, object],
         *,
         persist: bool | None = None,
+        notify: bool = True,
     ) -> None:
-        layer = self._require_layer(layer_name)
-        merged = merge_config_patch(self._patches[layer_name], patch)
-        patches = self._candidate_patches(layer_name, merged)
-        value, issues = self._compose(patches)
-        should_persist = layer.persistent if persist is None else persist
-        if should_persist:
-            if layer.path is None:
-                raise ValueError(
-                    f"Config layer {layer_name!r} requires a path for persistence"
-                )
-            self._store.save(layer.path, merged)
-        self._patches = patches
-        self._value = value
-        self._issues.extend(issues)
-        self._notify()
+        if self._requires_transaction(layer_name, persist=persist):
+            with self.transaction(notify_on_exit=notify):
+                self.update(layer_name, patch, persist=persist, notify=notify)
+            return
+        with self._lock:
+            layer = self._require_layer(layer_name)
+            merged = merge_config_patch(self._patches[layer_name], patch)
+            patches = self._candidate_patches(layer_name, merged)
+            value, issues = self._compose(patches)
+            should_persist = layer.persistent if persist is None else persist
+            if should_persist:
+                if layer.path is None:
+                    raise ValueError(
+                        f"Config layer {layer_name!r} requires a path for persistence"
+                    )
+                self._store.save(layer.path, merged)
+            changed = self._patches[layer_name] != merged or self._value != value
+            self._patches = patches
+            self._value = value
+            self._issues.extend(issues)
+            if self._transaction_depth and changed:
+                self._transaction_changed = True
+            should_notify = notify and self._transaction_depth == 0 and changed
+        if should_notify:
+            self.publish()
 
     def replace(
         self,
@@ -115,38 +168,147 @@ class LayeredConfig(Generic[T]):
         patch: Mapping[str, object],
         *,
         persist: bool | None = None,
+        notify: bool = True,
     ) -> None:
-        layer = self._require_layer(layer_name)
-        replacement = deepcopy(dict(patch))
-        patches = self._candidate_patches(layer_name, replacement)
-        value, issues = self._compose(patches)
-        should_persist = layer.persistent if persist is None else persist
-        if should_persist:
-            if layer.path is None:
-                raise ValueError(
-                    f"Config layer {layer_name!r} requires a path for persistence"
-                )
-            self._store.save(layer.path, replacement)
-        self._patches = patches
-        self._value = value
-        self._issues.extend(issues)
-        self._notify()
+        if self._requires_transaction(layer_name, persist=persist):
+            with self.transaction(notify_on_exit=notify):
+                self.replace(layer_name, patch, persist=persist, notify=notify)
+            return
+        with self._lock:
+            layer = self._require_layer(layer_name)
+            replacement = deepcopy(dict(patch))
+            patches = self._candidate_patches(layer_name, replacement)
+            value, issues = self._compose(patches)
+            should_persist = layer.persistent if persist is None else persist
+            if should_persist:
+                if layer.path is None:
+                    raise ValueError(
+                        f"Config layer {layer_name!r} requires a path for persistence"
+                    )
+                self._store.save(layer.path, replacement)
+            changed = self._patches[layer_name] != replacement or self._value != value
+            self._patches = patches
+            self._value = value
+            self._issues.extend(issues)
+            if self._transaction_depth and changed:
+                self._transaction_changed = True
+            should_notify = notify and self._transaction_depth == 0 and changed
+        if should_notify:
+            self.publish()
 
     def subscribe(self, listener: ConfigListener[T]) -> Callable[[], None]:
-        self._listeners.append(listener)
+        with self._lock:
+            self._listeners.append(listener)
 
         def unsubscribe() -> None:
-            try:
-                self._listeners.remove(listener)
-            except ValueError:
-                return
+            with self._lock:
+                try:
+                    self._listeners.remove(listener)
+                except ValueError:
+                    return
 
         return unsubscribe
 
     def drain_issues(self) -> tuple[ConfigIssue, ...]:
-        issues = tuple(self._issues)
-        self._issues.clear()
-        return issues
+        with self._lock:
+            issues = tuple(self._issues)
+            self._issues.clear()
+            return issues
+
+    def publish(self) -> None:
+        """Publish one immutable value snapshot outside mutation locks."""
+
+        with self._lock:
+            value = self._value
+            listeners = tuple(self._listeners)
+        for listener in listeners:
+            listener(value)
+
+    def _requires_transaction(
+        self,
+        layer_name: str,
+        *,
+        persist: bool | None,
+    ) -> bool:
+        with self._lock:
+            layer = self._require_layer(layer_name)
+            should_persist = layer.persistent if persist is None else persist
+            if should_persist and layer.path is None:
+                raise ValueError(
+                    f"Config layer {layer_name!r} requires a path for persistence"
+                )
+            return bool(should_persist and self._transaction_depth == 0)
+
+    @contextmanager
+    def _transaction(
+        self,
+        *,
+        notify_on_exit: bool,
+    ) -> Iterator[LayeredConfigTransaction[T]]:
+        paths = tuple(
+            sorted(
+                {
+                    normalized_config_path(layer.path)
+                    for layer in self._layers
+                    if layer.path is not None
+                },
+                key=str,
+            )
+        )
+        stack = ExitStack()
+        locked = False
+        outermost = False
+        body_error: BaseException | None = None
+        publication_error: BaseException | None = None
+        handle: LayeredConfigTransaction[T] | None = None
+        try:
+            for path in paths:
+                stack.enter_context(config_file_transaction_lock(path))
+            self._lock.acquire()
+            locked = True
+            outermost = self._transaction_depth == 0
+            if outermost:
+                handle = LayeredConfigTransaction(
+                    previous=self._value,
+                    current=self._value,
+                )
+                self._transaction_handle = handle
+                self._transaction_changed = False
+                if self._reload_unlocked(strict=True):
+                    self._transaction_changed = True
+            else:
+                handle = self._transaction_handle
+                assert handle is not None
+            self._transaction_depth += 1
+            try:
+                yield handle
+            except BaseException as exc:
+                body_error = exc
+        finally:
+            if locked:
+                if self._transaction_depth:
+                    self._transaction_depth -= 1
+                if outermost:
+                    assert handle is not None
+                    handle.current = self._value
+                    handle.changed = self._transaction_changed
+                    self._transaction_handle = None
+                    self._transaction_changed = False
+                self._lock.release()
+            stack.close()
+        if outermost and notify_on_exit and handle is not None and handle.changed:
+            try:
+                self.publish()
+            except BaseException as exc:
+                publication_error = exc
+        if body_error is not None:
+            if publication_error is not None:
+                body_error.add_note(
+                    f"Config listener publication also failed: {publication_error!r}"
+                )
+            raise body_error.with_traceback(body_error.__traceback__)
+        if publication_error is not None:
+            raise publication_error
 
     def _load_persistent_layers(
         self,
@@ -202,10 +364,6 @@ class LayeredConfig(Generic[T]):
         patches[layer_name] = deepcopy(dict(patch))
         return patches
 
-    def _notify(self) -> None:
-        for listener in tuple(self._listeners):
-            listener(self._value)
-
     def _require_layer(self, layer_name: str) -> ConfigLayer:
         try:
             return self._layers_by_name[layer_name]
@@ -227,4 +385,4 @@ def merge_config_patch(
     return merged
 
 
-__all__ = ["LayeredConfig", "merge_config_patch"]
+__all__ = ["LayeredConfig", "LayeredConfigTransaction", "merge_config_patch"]

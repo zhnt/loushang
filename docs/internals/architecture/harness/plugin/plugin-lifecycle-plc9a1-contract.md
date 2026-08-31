@@ -109,19 +109,24 @@ seeded disabled, and left unmounted.
 `src/loushang/coding/plugin_enablement_compatibility.py::CodingPluginEnablementCompatibilityWriter`
 is the Product-owned compatibility publisher. It serializes projection and
 publication under the workspace coordination lock and sends a typed projection
-to the settings owner. All persistent config writes share one transaction keyed
-by the normalized global/project settings paths: it takes process-reentrant and
-cross-process locks in stable order, strictly reloads every participating layer,
-and publishes one final notification only after releasing those locks. The
+to the settings owner. `LayeredConfig.transaction` is the sole durable config
+transaction owner for direct engine and runtime callers; it keys process-reentrant
+and cross-process locks by every normalized path-backed layer, takes them in
+stable order, and strictly reloads every participating layer. `ScopedConfigRuntime`
+projects that commit into one exact revisioned change. Engine and runtime listeners
+are both published only after their mutation locks are released. The
 compatibility transaction preserves only unmigrated legacy ids, clears a stale
 session legacy overlay, publishes the project downgrade view, and verifies the
 effective migrated values. Its opaque object capability cannot be reclaimed by
-repeating a caller-chosen string, and cache publication plus settings-owner bind
-are serialized as one process-local claim. Coding startup, Continuity startup,
-and CLI binding always reconcile it; an existing receipt with a non-fence
-settings owner fails closed. A crash or write failure after a canonical commit
-is repaired from the durable receipt and desired journal. The command still
-fails visibly with
+repeating a caller-chosen string. A shared settings owner retains one atomically
+published writer per workspace and one identity-keyed guard per writer; repeated
+binding returns the exact writer while distinct workspaces cannot replace each
+other's authority. The downgrade sink aggregates the latest projections, unions
+disabled ids conservatively, and calls every workspace guard before any peer
+mutation. Coding startup, Continuity startup, and CLI binding always reconcile
+it; an existing receipt with a non-fence settings owner fails closed. A crash or
+write failure after a canonical commit is repaired from the durable receipt and
+desired journal. The command still fails visibly with
 `plugin_enablement_compatibility_publish_failed`; it never rolls canonical
 state back or reports runtime convergence.
 

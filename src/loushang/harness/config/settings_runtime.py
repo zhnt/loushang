@@ -10,6 +10,7 @@ from typing import Generic, TypeVar
 from loushang.harness.config.runtime import (
     ConfigChange,
     ConfigScope,
+    ConfigTransactionResult,
     ScopedConfigRuntime,
 )
 from loushang.harness.config.types import ConfigIssue, ConfigSnapshot
@@ -45,8 +46,11 @@ class SettingsRuntime(Generic[T]):
     def reload(self) -> ConfigChange[T]:
         return self._runtime.reload()
 
-    def transaction(self) -> AbstractContextManager[None]:
+    def transaction(self) -> AbstractContextManager[ConfigTransactionResult[T]]:
         return self._runtime.transaction()
+
+    def defer_publications(self) -> AbstractContextManager[None]:
+        return self._runtime.defer_publications()
 
     def update(
         self,

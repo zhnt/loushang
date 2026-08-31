@@ -4,6 +4,7 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
+from threading import Thread
 
 import pytest
 
@@ -272,3 +273,87 @@ def test_scoped_config_runtime_drains_reentrant_changes_before_listener_error(
 
     assert seen == [(1, "one"), (2, "two"), (3, "three")]
     assert runtime.revision == 3
+
+
+def test_persistent_update_returns_the_exact_coalesced_published_change(
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime(tmp_path)
+    preloaded_peer = _runtime(tmp_path)
+    seen = []
+    runtime.subscribe_change(seen.append)
+
+    preloaded_peer.scope("global").update({"enabled": False})
+    change = runtime.scope("global").update({"name": "local"})
+
+    assert seen == [change]
+    assert change is seen[0]
+    assert change.previous == _Config()
+    assert change.current == _Config(name="local", enabled=False)
+    assert change.revision == 1
+
+
+def test_transform_rejects_persistent_reentrant_write_before_file_lock(
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime(tmp_path)
+    session = runtime.scope("session")
+    errors: list[BaseException] = []
+
+    def reentrant_transform(patch: dict[str, object]) -> dict[str, object]:
+        runtime.scope("global").update({"enabled": False})
+        return {**patch, "name": "outer"}
+
+    def mutate() -> None:
+        try:
+            session.transform(reentrant_transform)
+        except BaseException as exc:
+            errors.append(exc)
+
+    worker = Thread(target=mutate, daemon=True)
+    worker.start()
+    worker.join(timeout=3)
+
+    assert worker.is_alive() is False
+    assert len(errors) == 1
+    assert isinstance(errors[0], RuntimeError)
+    assert "cannot perform re-entrant writes" in str(errors[0])
+    assert runtime.revision == 0
+    assert runtime.value == _Config()
+
+
+def test_runtime_engine_listener_reenters_after_all_transaction_locks(
+    tmp_path: Path,
+) -> None:
+    engine = LayeredConfig(
+        codec=_Codec(),
+        layers=(
+            ConfigLayer("global", tmp_path / "global.json", persistent=True),
+            ConfigLayer("session"),
+        ),
+    )
+    runtime = ScopedConfigRuntime(engine)
+    seen: list[str] = []
+    errors: list[BaseException] = []
+
+    def reenter(value: _Config) -> None:
+        seen.append(value.name)
+        if value.name == "outer":
+            runtime.scope("session").update({"name": "nested"})
+
+    engine.subscribe(reenter)
+
+    def mutate() -> None:
+        try:
+            runtime.scope("global").update({"name": "outer"})
+        except BaseException as exc:
+            errors.append(exc)
+
+    worker = Thread(target=mutate, daemon=True)
+    worker.start()
+    worker.join(timeout=3)
+
+    assert worker.is_alive() is False
+    assert errors == []
+    assert seen == ["outer", "nested"]
+    assert runtime.value.name == "nested"

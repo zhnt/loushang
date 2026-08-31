@@ -4,6 +4,7 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
+from threading import Thread
 
 from loushang.harness.config import ConfigApplyResult, ConfigIssue
 
@@ -271,3 +272,58 @@ def test_layered_config_reload_codec_failure_preserves_previous_layer(
     assert len(issues) == 1
     assert issues[0].layer == "global"
     assert isinstance(issues[0].error, RuntimeError)
+
+
+def test_path_backed_nonpersistent_layer_serializes_explicit_persistence(
+    tmp_path: Path,
+) -> None:
+    from loushang.harness.config import ConfigLayer, LayeredConfig
+
+    path = tmp_path / "explicit.json"
+
+    def build() -> LayeredConfig[_Config]:
+        return LayeredConfig(
+            codec=_Codec(),
+            layers=(ConfigLayer("explicit", path, persistent=False),),
+        )
+
+    first = build()
+    preloaded_peer = build()
+
+    first.update("explicit", {"name": "first"}, persist=True)
+    preloaded_peer.update("explicit", {"limit": 42}, persist=True)
+
+    assert json.loads(path.read_text(encoding="utf-8")) == {
+        "limit": 42,
+        "name": "first",
+    }
+
+
+def test_layered_config_persistent_listener_can_reenter_after_unlock(
+    tmp_path: Path,
+) -> None:
+    engine = _engine(tmp_path)
+    seen: list[str] = []
+    errors: list[BaseException] = []
+
+    def reenter(value: _Config) -> None:
+        seen.append(value.name)
+        if value.name == "outer":
+            engine.update("session", {"name": "nested"})
+
+    engine.subscribe(reenter)
+
+    def mutate() -> None:
+        try:
+            engine.update("global", {"name": "outer"})
+        except BaseException as exc:
+            errors.append(exc)
+
+    worker = Thread(target=mutate, daemon=True)
+    worker.start()
+    worker.join(timeout=3)
+
+    assert worker.is_alive() is False
+    assert errors == []
+    assert seen == ["outer", "nested"]
+    assert engine.value.name == "nested"
