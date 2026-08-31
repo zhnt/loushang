@@ -458,20 +458,29 @@ def test_portable_compatibility_capture_supports_existing_state_tree(
     assert captured_chain is not None
     expected_paths = tuple(path for path, _metadata in captured_chain)
     active_pins: list[Path] = []
-    original_read = lifecycle_module._read_private_state_file_portable
 
     @contextmanager
     def fake_windows_pin(path: Path, _expected):  # type: ignore[no-untyped-def]
         assert tuple(active_pins) == expected_paths[: len(active_pins)]
         active_pins.append(path)
         try:
-            yield
+            yield len(active_pins)
         finally:
             assert active_pins.pop() == path
 
-    def assert_all_pins(path: Path) -> str:
+    def rooted_lock(_descriptor, name, mode, **kwargs):  # type: ignore[no-untyped-def]
         assert tuple(active_pins) == expected_paths
-        return original_read(path)
+        return journal_file_lock(
+            layout.root / name,
+            mode,
+            lock_suffix="",
+            create=kwargs.get("create", False),
+        )
+
+    def rooted_read(_descriptor, name, **_kwargs):  # type: ignore[no-untyped-def]
+        assert tuple(active_pins) == expected_paths
+        path = layout.root / name
+        return path.read_text(encoding="utf-8") if path.exists() else ""
 
     monkeypatch.setattr(
         lifecycle_module,
@@ -495,8 +504,13 @@ def test_portable_compatibility_capture_supports_existing_state_tree(
     )
     monkeypatch.setattr(
         lifecycle_module,
-        "_read_private_state_file_portable",
-        assert_all_pins,
+        "journal_file_lock_at",
+        rooted_lock,
+    )
+    monkeypatch.setattr(
+        lifecycle_module,
+        "read_journal_file_at",
+        rooted_read,
     )
 
     writer = bind_coding_plugin_enablement_compatibility(layout, settings)
@@ -511,22 +525,89 @@ def test_portable_compatibility_capture_supports_existing_state_tree(
     lifecycle_module.os.name != "nt",
     reason="requires native Windows directory sharing semantics",
 )
-def test_windows_private_directory_pin_blocks_path_replacement(
+def test_windows_private_directory_handle_anchors_child_reads(
     tmp_path: Path,
 ) -> None:
     root = tmp_path / "private-state"
     root.mkdir()
+    (root / "state.jsonl").write_text("trusted", encoding="utf-8")
     replacement = tmp_path / "replaced-state"
     expected = lifecycle_module._validate_existing_private_directory(root)
 
-    with lifecycle_module._open_windows_private_directory(root, expected):
-        with pytest.raises(OSError):
+    with lifecycle_module._open_windows_private_directory(root, expected) as descriptor:
+        try:
             root.rename(replacement)
-        assert root.is_dir()
-        assert replacement.exists() is False
+        except OSError:
+            pass
+        else:
+            root.mkdir()
+            (root / "state.jsonl").write_text("attacker", encoding="utf-8")
+        assert (
+            lifecycle_module.read_journal_file_at(descriptor, "state.jsonl")
+            == "trusted"
+        )
 
-    root.rename(replacement)
+    if root.exists() and not replacement.exists():
+        root.rename(replacement)
     assert replacement.is_dir()
+
+
+@pytest.mark.skipif(
+    lifecycle_module.os.name != "nt",
+    reason="requires native Windows rooted-handle I/O",
+)
+def test_windows_portable_compatibility_existing_root_uses_anchored_io(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    layout = resolve_coding_plugin_lifecycle_state_layout(workspace)
+    lifecycle = build_coding_plugin_lifecycle(layout, startup_id="windows-rooted")
+    key = lifecycle.installation_key("managed-pack")
+    try:
+        lifecycle.migrate_legacy_enablement(
+            key,
+            _package("managed-pack"),
+            legacy_disabled=True,
+            manifest_enabled_default=True,
+            legacy_input_fingerprint=plugin_enablement_legacy_input_fingerprint(
+                key,
+                legacy_disabled=True,
+                manifest_enabled_default=True,
+            ),
+        )
+    finally:
+        lifecycle.release_owned_process_startup_lease()
+    settings = _SettingsManager(_Settings())
+
+    writer = bind_coding_plugin_enablement_compatibility(layout, settings)
+    assert writer is not None
+    writer.reconcile()
+
+    assert settings.settings.disabled_plugins == ("managed-pack",)
+
+
+@pytest.mark.skipif(
+    lifecycle_module.os.name != "nt",
+    reason="requires native Windows rooted-handle I/O",
+)
+def test_windows_portable_compatibility_absent_root_is_noop(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    layout = resolve_coding_plugin_lifecycle_state_layout(workspace)
+    settings = _SettingsManager(_Settings())
+
+    writer = bind_coding_plugin_enablement_compatibility(layout, settings)
+    assert writer is not None
+    writer.reconcile()
+
+    assert layout.root.exists() is False
 
 
 def test_portable_compatibility_capture_leaves_absent_state_root_absent(
@@ -560,6 +641,31 @@ def test_portable_compatibility_capture_leaves_absent_state_root_absent(
         ).exists()
         is False
     )
+
+
+@pytest.mark.skipif(
+    lifecycle_module.os.name != "posix",
+    reason="requires POSIX descriptor-relative private-state I/O",
+)
+def test_posix_compatibility_absent_root_does_not_claim_shared_home(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    home.chmod(0o755)
+    monkeypatch.setenv("LOUSHANG_HOME", str(home))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    layout = resolve_coding_plugin_lifecycle_state_layout(workspace)
+    settings = _SettingsManager(_Settings())
+
+    writer = bind_coding_plugin_enablement_compatibility(layout, settings)
+    assert writer is not None
+    writer.reconcile()
+
+    assert layout.root.exists() is False
+    assert home.stat().st_mode & 0o777 == 0o755
 
 
 def test_compatibility_projects_complete_prefix_before_owner_tail_repair(

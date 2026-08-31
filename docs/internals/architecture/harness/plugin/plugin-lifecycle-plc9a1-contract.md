@@ -108,12 +108,16 @@ seeded disabled, and left unmounted.
 
 `src/loushang/coding/plugin_enablement_compatibility.py::CodingPluginEnablementCompatibilityWriter`
 is the Product-owned compatibility publisher. On POSIX it pins the existing
-private workspace root with a no-follow directory handle. On Windows it opens
-every validated directory component from the private state base through the
-workspace root with `CreateFileW`, `FILE_FLAG_OPEN_REPARSE_POINT`,
-`FILE_FLAG_BACKUP_SEMANTICS`, and no delete sharing. It rejects reparse points
-and identity changes before taking the existing direct coordination lock, so
-the complete validated path remains pinned throughout locking and reading.
+private workspace root with a no-follow directory handle. On Windows it
+validates every directory component from the private state base through the
+workspace root, then opens the root with `CreateFileW`,
+`FILE_LIST_DIRECTORY`, `FILE_FLAG_OPEN_REPARSE_POINT`, and
+`FILE_FLAG_BACKUP_SEMANTICS`. The opened descriptor must match the captured
+root identity. Every coordination/owner lock and journal is then opened by its
+single-component name through `NtCreateFile` with that descriptor as
+`OBJECT_ATTRIBUTES.RootDirectory`; locking and reading never re-resolve an
+absolute workspace path. Root or ancestor rename/replace therefore cannot
+redirect one capture to another tree, while reparse children fail closed.
 An absent workspace root is an empty compatibility source: reconciliation does
 not create the root or a lock file. Other platforms without either capability
 fail closed before reading state. Under the pinned root the reader takes the common
@@ -127,6 +131,10 @@ the canonical owner repairs it, while a malformed complete record remains
 fatal. The writer then
 releases every workspace lock before sending a typed projection to the settings
 owner. Stale captures cannot replace a newer per-workspace projection.
+The private-root contract excludes code already running with the same OS
+principal and authority to replace journal entries directly; such code requires
+a separate Process/Sandbox boundary and is never admitted as compatibility
+reader input.
 `LayeredConfig.transaction`
 keys process-reentrant and cross-process locks by every normalized path-backed
 layer, takes them in stable order, and strictly reloads every participating

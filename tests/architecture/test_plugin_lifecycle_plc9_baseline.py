@@ -106,7 +106,7 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS = Counter(
         (
             Path("src/loushang/coding/continuity_bootstrap.py"),
             "bind_coding_configured_continuity",
-        ): 4,
+        ): 5,
         (Path("src/loushang/coding/continuity_bootstrap.py"), "_configured_sources"): 1,
         (
             Path("src/loushang/coding/cli/__main__.py"),
@@ -182,7 +182,11 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS = Counter(
         (
             Path("src/loushang/harness/config/agent/manager.py"),
             "SettingsManager._publish_legacy_plugin_compatibility",
-        ): 3,
+        ): 4,
+        (
+            Path("src/loushang/harness/config/agent/manager.py"),
+            "_disabled_plugins_from_patch",
+        ): 1,
         (
             Path("src/loushang/harness/resources/packages/projection.py"),
             "collect_projected_package_entries",
@@ -836,10 +840,6 @@ def test_plc9_keeps_one_desired_state_writer_and_composition_site() -> None:
         (
             Path("src/loushang/coding/_plugin_lifecycle.py"),
             "build_coding_plugin_management_application",
-        ),
-        (
-            Path("src/loushang/coding/_plugin_lifecycle.py"),
-            "project_coding_plugin_enablement_compatibility",
         ),
     }
 

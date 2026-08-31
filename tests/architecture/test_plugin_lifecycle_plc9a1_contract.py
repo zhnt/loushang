@@ -188,14 +188,18 @@ def test_plc9a1_coding_transport_adapter_does_not_construct_owner_stores() -> No
     assert "_capture_existing_plugin_enablement_state_portable(" in lifecycle
     assert "_pin_portable_private_directory_chain(" in lifecycle
     assert "_open_windows_private_directory(" in lifecycle
+    assert "read_journal_file_at(" in lifecycle
     assert 'f"{layout.enablement_migration.name}.migration.lock"' in lifecycle
     assert 'f"{layout.desired_state.name}.lock"' in lifecycle
     assert "FILE_FLAG_OPEN_REPARSE_POINT" in _source(CONTRACT)
     assert "FILE_FLAG_BACKUP_SEMANTICS" in _source(CONTRACT)
     assert "file_flag_backup_semantics" in lifecycle
+    assert "file_list_directory" in lifecycle
     assert "share_read_write" in lifecycle
     assert "tests/coding/test_plugin_management_cli.py" in windows_workflow
     assert "file_flag_open_reparse_point" in journal
+    assert "NtCreateFile" in journal
+    assert "root_directory" in journal
     assert "share_read_write" in journal
     assert 'JournalLoadPolicy(partial_tail="skip")' in desired_ledger
     assert 'JournalLoadPolicy(partial_tail="skip")' in enablement_migration

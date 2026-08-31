@@ -22,6 +22,7 @@ from loushang.harness.journal.jsonl import (
     journal_file_lock_at,
     load_jsonl,
     parse_legacy_jsonl_line,
+    read_journal_file_at,
     write_jsonl,
 )
 from loushang.harness.journal.types import (
@@ -67,5 +68,6 @@ __all__ = [
     "journal_file_lock_at",
     "load_jsonl",
     "parse_legacy_jsonl_line",
+    "read_journal_file_at",
     "write_jsonl",
 ]

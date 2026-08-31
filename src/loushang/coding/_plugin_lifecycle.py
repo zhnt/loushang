@@ -23,6 +23,7 @@ from loushang.harness.journal import (
     JournalLockUnavailable,
     journal_file_lock,
     journal_file_lock_at,
+    read_journal_file_at,
 )
 from loushang.harness.plugin_management import (
     PluginCleanupAttemptV1,
@@ -1554,9 +1555,8 @@ def _prepare_private_state_layout(layout: CodingPluginLifecycleStateLayout) -> N
         private_base=layout.private_data_base,
         label="data",
     )
-    # Compatibility readers open this existing lock before using portable
-    # Windows paths.  The child handle prevents the validated directory from
-    # being renamed while the remaining journal locks and files are opened.
+    # Compatibility readers require this existing coordination entry before
+    # anchoring all lock and journal opens to the validated Windows root handle.
     with journal_file_lock(layout.coordination_lock, "exclusive"):
         pass
 
@@ -1632,28 +1632,34 @@ def _uses_windows_directory_pins() -> bool:
 @contextmanager
 def _pin_portable_private_directory_chain(
     captured: tuple[tuple[Path, os.stat_result], ...],
-) -> Iterator[None]:
-    """Hold every Windows directory component without delete sharing."""
+) -> Iterator[int | None]:
+    """Anchor Windows child I/O to the validated workspace-root handle."""
 
     if not _uses_windows_directory_pins():
         # Tests force the portable reader on POSIX to exercise its common
         # sequencing; production reaches this branch only on Windows.
-        yield
+        yield None
         return
     with ExitStack() as pins:
+        root_descriptor: int | None = None
         for path, expected in captured:
-            pins.enter_context(_open_windows_private_directory(path, expected))
-        yield
+            root_descriptor = pins.enter_context(
+                _open_windows_private_directory(path, expected)
+            )
+        if root_descriptor is None:
+            raise OSError("private state directory chain is empty")
+        yield root_descriptor
 
 
 @contextmanager
 def _open_windows_private_directory(
     path: Path,
     expected: os.stat_result,
-) -> Iterator[None]:
-    """Pin one direct Windows directory and reject a reparse/identity swap."""
+) -> Iterator[int]:
+    """Open one direct Windows directory and prove the handle identity."""
 
     import ctypes
+    import msvcrt
     from ctypes import wintypes
 
     class _FileAttributeTagInfo(ctypes.Structure):
@@ -1686,6 +1692,7 @@ def _open_windows_private_directory(
     close_handle = kernel32.CloseHandle
     close_handle.argtypes = (wintypes.HANDLE,)
     close_handle.restype = wintypes.BOOL
+    file_list_directory = 0x00000001
     file_read_attributes = 0x00000080
     share_read_write = 0x00000001 | 0x00000002
     open_existing = 3
@@ -1696,7 +1703,7 @@ def _open_windows_private_directory(
     file_attribute_tag_info = 9
     handle = create_file(
         str(path),
-        file_read_attributes,
+        file_list_directory | file_read_attributes,
         share_read_write,
         None,
         open_existing,
@@ -1707,6 +1714,7 @@ def _open_windows_private_directory(
         get_last_error = getattr(ctypes, "get_last_error")
         win_error = getattr(ctypes, "WinError")
         raise win_error(get_last_error())
+    descriptor: int | None = None
     try:
         information = _FileAttributeTagInfo()
         if not get_information(
@@ -1724,12 +1732,27 @@ def _open_windows_private_directory(
             or information.reparse_tag
         ):
             raise OSError("private state path is not a direct directory")
+        open_osfhandle = getattr(msvcrt, "open_osfhandle")
+        descriptor = open_osfhandle(
+            handle,
+            os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOINHERIT", 0),
+        )
+        opened = os.fstat(descriptor)
+        if (
+            not stat.S_ISDIR(opened.st_mode)
+            or _is_link_or_reparse(opened)
+            or not os.path.samestat(expected, opened)
+        ):
+            raise OSError("private state directory handle identity changed")
         current = _validate_existing_private_directory(path)
         if not os.path.samestat(expected, current):
             raise OSError("private state directory identity changed while pinning")
-        yield
+        yield descriptor
     finally:
-        close_handle(handle)
+        if descriptor is None:
+            close_handle(handle)
+        else:
+            os.close(descriptor)
 
 
 def _plugin_enablement_capture_lock_names(
@@ -1755,6 +1778,17 @@ def _open_existing_private_state_root(
     except ValueError:
         raise CodingPluginLifecycleError(
             "Coding Plugin state root is outside its private base",
+            code="coding_plugin_state_permissions_failed",
+        ) from None
+    try:
+        root.lstat()
+    except FileNotFoundError:
+        # An absent compatibility root is not private state yet.  Do not
+        # require or mutate permissions on an unrelated existing home/base.
+        return None
+    except OSError:
+        raise CodingPluginLifecycleError(
+            "Coding Plugin state root is not private",
             code="coding_plugin_state_permissions_failed",
         ) from None
     nofollow = getattr(os, "O_NOFOLLOW", 0)
@@ -1829,90 +1863,47 @@ def _read_private_state_file(directory_fd: int, name: str) -> str:
 def _capture_existing_plugin_enablement_state_portable(
     layout: CodingPluginLifecycleStateLayout,
 ) -> Iterator[_CodingPluginEnablementStateCapture | None]:
-    """Capture through stable Windows paths held by an open child lock handle."""
+    """Capture through lock and journal children rooted at one Windows handle."""
 
     directory_chain = _capture_existing_private_directory_chain(layout)
     if directory_chain is None:
         yield None
         return
     try:
-        with _pin_portable_private_directory_chain(directory_chain):
-            with journal_file_lock(
-                layout.coordination_lock,
-                "exclusive",
-                create=False,
-            ):
-                _assert_private_directory_chain_stable(directory_chain)
-                with ExitStack() as locks:
+        with _pin_portable_private_directory_chain(directory_chain) as descriptor:
+            if descriptor is None:
+                raise OSError("Windows private state root handle is unavailable")
+            _assert_private_directory_chain_stable(directory_chain)
+            with ExitStack() as locks:
+                for index, name in enumerate(
+                    _plugin_enablement_capture_lock_names(layout)
+                ):
                     locks.enter_context(
-                        journal_file_lock(
-                            layout.enablement_migration,
+                        journal_file_lock_at(
+                            descriptor,
+                            name,
                             "exclusive",
-                            lock_suffix=".migration.lock",
+                            create=index > 0,
                         )
                     )
-                    locks.enter_context(
-                        journal_file_lock(layout.desired_state, "exclusive")
-                    )
-                    locks.enter_context(
-                        journal_file_lock(layout.enablement_migration, "exclusive")
-                    )
-                    _assert_private_directory_chain_stable(directory_chain)
-                    capture = _CodingPluginEnablementStateCapture(
-                        desired_raw=_read_private_state_file_portable(
-                            layout.desired_state
-                        ),
-                        migration_raw=_read_private_state_file_portable(
-                            layout.enablement_migration
-                        ),
-                    )
-                    _assert_private_directory_chain_stable(directory_chain)
-                    yield capture
+                _assert_private_directory_chain_stable(directory_chain)
+                capture = _CodingPluginEnablementStateCapture(
+                    desired_raw=read_journal_file_at(
+                        descriptor,
+                        layout.desired_state.name,
+                    ),
+                    migration_raw=read_journal_file_at(
+                        descriptor,
+                        layout.enablement_migration.name,
+                    ),
+                )
+                _assert_private_directory_chain_stable(directory_chain)
+                yield capture
     except OSError:
         raise CodingPluginLifecycleError(
             "Coding Plugin state root is not private",
             code="coding_plugin_state_permissions_failed",
         ) from None
-
-
-def _read_private_state_file_portable(path: Path) -> str:
-    try:
-        expected = path.lstat()
-    except FileNotFoundError:
-        return ""
-    _validate_private_state_file_metadata(expected)
-    flags = (
-        os.O_RDONLY
-        | getattr(os, "O_BINARY", 0)
-        | getattr(os, "O_CLOEXEC", 0)
-        | getattr(os, "O_NOINHERIT", 0)
-        | getattr(os, "O_NONBLOCK", 0)
-    )
-    descriptor = os.open(path, flags)
-    with os.fdopen(descriptor, "r", encoding="utf-8") as handle:
-        opened = os.fstat(handle.fileno())
-        _validate_private_state_file_metadata(opened)
-        if not os.path.samestat(expected, opened):
-            raise OSError("private state journal identity changed while opening")
-        raw = handle.read()
-        if not os.path.samestat(opened, os.fstat(handle.fileno())):
-            raise OSError("private state journal identity changed while reading")
-    after = path.lstat()
-    _validate_private_state_file_metadata(after)
-    if not os.path.samestat(expected, after):
-        raise OSError("private state journal path identity changed")
-    return raw
-
-
-def _validate_private_state_file_metadata(metadata: os.stat_result) -> None:
-    getuid = getattr(os, "getuid", None)
-    if (
-        not stat.S_ISREG(metadata.st_mode)
-        or _is_link_or_reparse(metadata)
-        or (os.name == "posix" and metadata.st_mode & 0o077)
-        or (os.name == "posix" and callable(getuid) and metadata.st_uid != getuid())
-    ):
-        raise OSError("private state journal is not a private regular file")
 
 
 def _validate_existing_private_state_layout(

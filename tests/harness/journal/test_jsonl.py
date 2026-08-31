@@ -35,6 +35,48 @@ class _RecordCodec:
         return _Record(record_id=str(value["recordId"]), text=str(value["text"]))
 
 
+def test_descriptor_relative_journal_read_stays_beneath_open_directory(
+    tmp_path: Path,
+) -> None:
+    import os
+
+    import pytest
+
+    from loushang.harness.journal import read_journal_file_at
+
+    if os.name != "posix" or os.open not in os.supports_dir_fd:
+        pytest.skip("requires POSIX descriptor-relative opens")
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "state.jsonl").write_text("trusted\n", encoding="utf-8")
+    (root / "state.jsonl").chmod(0o600)
+    outside = tmp_path / "outside.jsonl"
+    outside.write_text("attacker\n", encoding="utf-8")
+    outside.chmod(0o600)
+    (root / "linked.jsonl").symlink_to(outside)
+    descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        assert read_journal_file_at(descriptor, "state.jsonl") == "trusted\n"
+        assert read_journal_file_at(descriptor, "missing.jsonl") == ""
+        with pytest.raises(OSError):
+            read_journal_file_at(descriptor, "linked.jsonl")
+    finally:
+        os.close(descriptor)
+
+
+def test_descriptor_relative_journal_apis_reject_non_child_names() -> None:
+    import pytest
+
+    from loushang.harness.journal import journal_file_lock_at, read_journal_file_at
+
+    for name in ("", ".", "..", "parent/child", "parent\\child", "entry:stream"):
+        with pytest.raises(ValueError, match="one direct component"):
+            read_journal_file_at(-1, name)
+        with pytest.raises(ValueError, match="one direct component"):
+            with journal_file_lock_at(-1, name, "exclusive"):
+                pass
+
+
 def test_header_journal_rewrite_append_and_load_round_trip(tmp_path: Path) -> None:
     from loushang.harness.journal import (
         JournalLoadPolicy,

@@ -157,14 +157,35 @@ def journal_file_lock_at(
 ) -> Iterator[None]:
     """Lock one private regular file relative to a pinned directory."""
 
-    if os.name != "posix" or os.open not in os.supports_dir_fd:
-        raise OSError("Descriptor-relative journal locks are unavailable")
-    if not isinstance(name, str) or not name or Path(name).name != name:
-        raise ValueError("Descriptor-relative journal lock name must be one component")
+    _validate_journal_child_name(name, kind="lock")
     if type(blocking) is not bool:
         raise TypeError("Journal lock blocking mode must be a built-in bool")
     if type(create) is not bool:
         raise TypeError("Journal lock creation mode must be a built-in bool")
+    if os.name == "nt":
+        msvcrt = _load_msvcrt()
+        with _open_windows_file_at(
+            directory_fd,
+            name,
+            create=create,
+            write=True,
+        ) as handle:
+            _prepare_lock_byte(handle)
+            operation = msvcrt.LK_LOCK if blocking else msvcrt.LK_NBLCK
+            try:
+                msvcrt.locking(handle.fileno(), operation, 1)
+            except OSError as exc:
+                if not blocking and exc.errno in {errno.EACCES, errno.EAGAIN}:
+                    raise JournalLockUnavailable(path=Path(name)) from exc
+                raise
+            try:
+                yield
+            finally:
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+        return
+    if os.name != "posix" or os.open not in os.supports_dir_fd:
+        raise OSError("Descriptor-relative journal locks are unavailable")
     flags = (
         os.O_RDWR
         | getattr(os, "O_CLOEXEC", 0)
@@ -199,6 +220,50 @@ def journal_file_lock_at(
             yield
         finally:
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def read_journal_file_at(
+    directory_fd: int,
+    name: str,
+    *,
+    encoding: str = "utf-8",
+) -> str:
+    """Read one existing regular file relative to a pinned directory."""
+
+    _validate_journal_child_name(name, kind="filename")
+    if os.name == "nt":
+        try:
+            with _open_windows_file_at(
+                directory_fd,
+                name,
+                create=False,
+                write=False,
+            ) as handle:
+                return handle.read().decode(encoding)
+        except FileNotFoundError:
+            return ""
+    if os.name != "posix" or os.open not in os.supports_dir_fd:
+        raise OSError("Descriptor-relative journal reads are unavailable")
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+    )
+    try:
+        descriptor = os.open(name, flags, dir_fd=directory_fd)
+    except FileNotFoundError:
+        return ""
+    with os.fdopen(descriptor, "r", encoding=encoding) as handle:
+        opened = os.fstat(handle.fileno())
+        getuid = getattr(os, "getuid", None)
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or opened.st_mode & 0o077
+            or (callable(getuid) and opened.st_uid != getuid())
+        ):
+            raise OSError("Journal file is not a private regular file")
+        return handle.read()
 
 
 def append_jsonl_record(
@@ -764,6 +829,21 @@ def _prepare_lock_byte(handle: Any) -> None:
     handle.seek(0)
 
 
+def _validate_journal_child_name(name: str, *, kind: str) -> None:
+    if (
+        not isinstance(name, str)
+        or not name
+        or name in {".", ".."}
+        or "\0" in name
+        or "/" in name
+        or "\\" in name
+        or ":" in name
+    ):
+        raise ValueError(
+            f"Descriptor-relative journal {kind} must be one direct component"
+        )
+
+
 @contextmanager
 def _open_lock_file(path: Path, *, create: bool) -> Iterator[Any]:
     if os.name == "posix":
@@ -800,6 +880,146 @@ def _open_lock_file(path: Path, *, create: bool) -> Iterator[Any]:
             raise OSError("Journal lock is not a private regular file")
         if metadata is not None and not os.path.samestat(metadata, opened):
             raise OSError("Journal lock identity changed while opening")
+        yield handle
+
+
+@contextmanager
+def _open_windows_file_at(
+    directory_fd: int,
+    name: str,
+    *,
+    create: bool,
+    write: bool,
+) -> Iterator[Any]:
+    """Open one direct child through an already validated Windows directory."""
+
+    import ctypes
+    import msvcrt
+    from ctypes import wintypes
+
+    class _UnicodeString(ctypes.Structure):
+        _fields_ = (
+            ("length", wintypes.USHORT),
+            ("maximum_length", wintypes.USHORT),
+            ("buffer", wintypes.LPWSTR),
+        )
+
+    class _IoStatusValue(ctypes.Union):
+        _fields_ = (
+            ("status", wintypes.LONG),
+            ("pointer", wintypes.LPVOID),
+        )
+
+    class _IoStatusBlock(ctypes.Structure):
+        _anonymous_ = ("value",)
+        _fields_ = (
+            ("value", _IoStatusValue),
+            ("information", ctypes.c_size_t),
+        )
+
+    class _ObjectAttributes(ctypes.Structure):
+        _fields_ = (
+            ("length", wintypes.ULONG),
+            ("root_directory", wintypes.HANDLE),
+            ("object_name", ctypes.POINTER(_UnicodeString)),
+            ("attributes", wintypes.ULONG),
+            ("security_descriptor", wintypes.LPVOID),
+            ("security_quality_of_service", wintypes.LPVOID),
+        )
+
+    win_dll = getattr(ctypes, "WinDLL")
+    ntdll = win_dll("ntdll")
+    kernel32 = win_dll("kernel32", use_last_error=True)
+    nt_create_file = ntdll.NtCreateFile
+    nt_create_file.argtypes = (
+        ctypes.POINTER(wintypes.HANDLE),
+        wintypes.DWORD,
+        ctypes.POINTER(_ObjectAttributes),
+        ctypes.POINTER(_IoStatusBlock),
+        wintypes.LPVOID,
+        wintypes.ULONG,
+        wintypes.ULONG,
+        wintypes.ULONG,
+        wintypes.ULONG,
+        wintypes.LPVOID,
+        wintypes.ULONG,
+    )
+    nt_create_file.restype = wintypes.LONG
+    rtl_status_to_dos_error = ntdll.RtlNtStatusToDosError
+    rtl_status_to_dos_error.argtypes = (wintypes.LONG,)
+    rtl_status_to_dos_error.restype = wintypes.ULONG
+    close_handle = kernel32.CloseHandle
+    close_handle.argtypes = (wintypes.HANDLE,)
+    close_handle.restype = wintypes.BOOL
+
+    name_buffer = ctypes.create_unicode_buffer(name)
+    name_length = len(name.encode("utf-16-le"))
+    unicode_name = _UnicodeString(
+        length=name_length,
+        maximum_length=name_length + ctypes.sizeof(ctypes.c_wchar),
+        buffer=ctypes.cast(name_buffer, wintypes.LPWSTR),
+    )
+    get_osfhandle = getattr(msvcrt, "get_osfhandle")
+    root_handle = get_osfhandle(directory_fd)
+    object_attributes = _ObjectAttributes(
+        length=ctypes.sizeof(_ObjectAttributes),
+        root_directory=wintypes.HANDLE(root_handle),
+        object_name=ctypes.pointer(unicode_name),
+        attributes=0x00000040,  # OBJ_CASE_INSENSITIVE
+        security_descriptor=None,
+        security_quality_of_service=None,
+    )
+    io_status = _IoStatusBlock()
+    opened_handle = wintypes.HANDLE()
+    generic_read = 0x80000000
+    generic_write = 0x40000000
+    synchronize = 0x00100000
+    share_read_write = 0x00000001 | 0x00000002
+    file_open = 1
+    file_open_if = 3
+    file_attribute_normal = 0x00000080
+    file_synchronous_io_nonalert = 0x00000020
+    file_non_directory_file = 0x00000040
+    file_open_reparse_point = 0x00200000
+    desired_access = generic_read | synchronize
+    if write:
+        desired_access |= generic_write
+    status = nt_create_file(
+        ctypes.byref(opened_handle),
+        desired_access,
+        ctypes.byref(object_attributes),
+        ctypes.byref(io_status),
+        None,
+        file_attribute_normal,
+        share_read_write,
+        file_open_if if create else file_open,
+        file_synchronous_io_nonalert
+        | file_non_directory_file
+        | file_open_reparse_point,
+        None,
+        0,
+    )
+    if status < 0:
+        error_code = rtl_status_to_dos_error(status)
+        win_error = getattr(ctypes, "WinError")
+        raise win_error(error_code)
+
+    raw_handle = opened_handle.value
+    try:
+        open_osfhandle = getattr(msvcrt, "open_osfhandle")
+        flags = (
+            (os.O_RDWR if write else os.O_RDONLY)
+            | getattr(os, "O_BINARY", 0)
+            | getattr(os, "O_NOINHERIT", 0)
+        )
+        descriptor = open_osfhandle(raw_handle, flags)
+    except BaseException:
+        close_handle(opened_handle)
+        raise
+    with os.fdopen(descriptor, "r+b" if write else "rb") as handle:
+        opened = os.fstat(handle.fileno())
+        if not stat.S_ISREG(opened.st_mode) or _is_link_or_reparse(opened):
+            raise OSError("Journal child is not a direct regular file")
         yield handle
 
 
