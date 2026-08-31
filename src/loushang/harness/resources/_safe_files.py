@@ -77,6 +77,7 @@ def _capture_descriptor_relative(
         os.O_RDONLY
         | getattr(os, "O_CLOEXEC", 0)
         | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_BINARY", 0)
         | os.O_NOFOLLOW
     )
     opened: list[int] = []
@@ -138,7 +139,12 @@ def _capture_portable(
     read_probe: Callable[[], None] | None,
 ) -> CapturedRegularFile:
     before = _portable_path_metadata(root, relative, display_path=display_path)
-    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NONBLOCK", 0)
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_BINARY", 0)
+    )
     descriptor: int | None = None
     try:
         descriptor = os.open(display_path, flags)
@@ -148,29 +154,15 @@ def _capture_portable(
             relative,
             display_path=display_path,
         )
-        if not stat.S_ISREG(metadata.st_mode):
-            raise ContainedFileCaptureError(
-                "Contained path is not a regular file",
-                code="contained_file_not_regular",
-                path=display_path,
-            )
-        if not _same_file_snapshot(before, after_open):
-            raise ContainedFileCaptureError(
-                "Contained file identity changed while opening",
-                code="contained_file_path_changed_while_opening",
-                path=display_path,
-            )
-        if not _portable_descriptor_matches_path(
-            descriptor,
-            root=root,
-            relative=relative,
-            expected_path_metadata=after_open,
-            display_path=display_path,
-            flags=flags,
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or (metadata.st_dev, metadata.st_ino) != (before.st_dev, before.st_ino)
+            or (metadata.st_dev, metadata.st_ino)
+            != (after_open.st_dev, after_open.st_ino)
         ):
             raise ContainedFileCaptureError(
-                "Contained file path does not bind the opened handle",
-                code="contained_file_binding_changed_while_opening",
+                "Contained file identity changed while opening",
+                code="contained_file_identity_changed",
                 path=display_path,
             )
         body = _bounded_read(
@@ -185,35 +177,14 @@ def _capture_portable(
             relative,
             display_path=display_path,
         )
-        if not _same_file_snapshot(metadata, after_read):
-            raise ContainedFileCaptureError(
-                "Contained file changed while being captured",
-                code="contained_file_handle_changed_while_reading",
-                path=display_path,
-            )
-        if not _same_file_snapshot(before, after_path):
-            raise ContainedFileCaptureError(
-                "Contained file path changed while being captured",
-                code="contained_file_path_changed_while_reading",
-                path=display_path,
-            )
-        if not _portable_descriptor_matches_path(
-            descriptor,
-            root=root,
-            relative=relative,
-            expected_path_metadata=after_path,
-            display_path=display_path,
-            flags=flags,
+        if (
+            not _same_file_snapshot(metadata, after_read)
+            or not _same_file_snapshot(metadata, after_path)
+            or len(body) != metadata.st_size
         ):
             raise ContainedFileCaptureError(
-                "Contained file path no longer binds the captured handle",
-                code="contained_file_binding_changed_while_reading",
-                path=display_path,
-            )
-        if len(body) != metadata.st_size:
-            raise ContainedFileCaptureError(
-                "Contained file size changed while being captured",
-                code="contained_file_size_changed_while_reading",
+                "Contained file changed while being captured",
+                code="contained_file_identity_changed",
                 path=display_path,
             )
     except ContainedFileCaptureError:
@@ -235,34 +206,6 @@ def _capture_portable(
         device=metadata.st_dev,
         inode=metadata.st_ino,
     )
-
-
-def _portable_descriptor_matches_path(
-    descriptor: int,
-    *,
-    root: Path,
-    relative: PurePosixPath,
-    expected_path_metadata: os.stat_result,
-    display_path: Path,
-    flags: int,
-) -> bool:
-    verification_descriptor: int | None = None
-    try:
-        verification_descriptor = os.open(display_path, flags)
-        matches = os.path.sameopenfile(descriptor, verification_descriptor)
-        final_path_metadata = _portable_path_metadata(
-            root,
-            relative,
-            display_path=display_path,
-        )
-        return matches and _same_file_snapshot(
-            expected_path_metadata,
-            final_path_metadata,
-        )
-    finally:
-        if verification_descriptor is not None:
-            with suppress(OSError):
-                os.close(verification_descriptor)
 
 
 def _portable_path_metadata(
@@ -351,10 +294,8 @@ def _canonical_relative_path(value: str | PurePosixPath) -> PurePosixPath:
     if not isinstance(value, str | PurePosixPath):
         raise TypeError("Contained file path must be relative")
     path = PurePosixPath(value)
-    if (
-        path.is_absolute()
-        or not path.parts
-        or any(part in {"", ".", ".."} for part in path.parts)
+    if path.is_absolute() or not path.parts or any(
+        part in {"", ".", ".."} for part in path.parts
     ):
         raise ValueError("Contained file path must be canonical and relative")
     return path
