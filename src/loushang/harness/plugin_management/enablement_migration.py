@@ -78,7 +78,7 @@ class PluginEnablementMigrationError(RuntimeError):
 @dataclass(frozen=True, slots=True)
 class PluginEnablementMigrationRequestV1:
     installation_key: PluginInstallationKeyV1
-    package_revision: PluginPackageRevisionRefV1
+    package_revision: PluginPackageRevisionRefV1 | None
     legacy_disabled: bool
     manifest_enabled_default: bool
     legacy_input_fingerprint: str
@@ -86,7 +86,10 @@ class PluginEnablementMigrationRequestV1:
     request_version: int = PLUGIN_ENABLEMENT_MIGRATION_REQUEST_VERSION
 
     def __post_init__(self) -> None:
-        if self.package_revision.plugin_id != self.installation_key.plugin_id:
+        if (
+            self.package_revision is not None
+            and self.package_revision.plugin_id != self.installation_key.plugin_id
+        ):
             raise ValueError("Migration Package Revision must match Installation")
         if type(self.legacy_disabled) is not bool:
             raise TypeError("Legacy disabled input must be boolean")
@@ -115,7 +118,11 @@ class PluginEnablementMigrationRequestV1:
             "legacyInputFingerprint": self.legacy_input_fingerprint,
             "manifestEnabledDefault": self.manifest_enabled_default,
             "migrationEpoch": self.migration_epoch,
-            "packageRevision": self.package_revision.to_dict(),
+            "packageRevision": (
+                None
+                if self.package_revision is None
+                else self.package_revision.to_dict()
+            ),
             "requestVersion": self.request_version,
         }
 
@@ -143,8 +150,12 @@ class PluginEnablementMigrationRequestV1:
                 installation_key=PluginInstallationKeyV1.from_dict(
                     document["installationKey"]
                 ),
-                package_revision=PluginPackageRevisionRefV1.from_dict(
-                    document["packageRevision"]
+                package_revision=(
+                    None
+                    if document["packageRevision"] is None
+                    else PluginPackageRevisionRefV1.from_dict(
+                        document["packageRevision"]
+                    )
                 ),
                 legacy_disabled=_wire_bool(
                     document["legacyDisabled"], name="legacy disabled"
@@ -778,6 +789,12 @@ class PluginEnablementMigrationCoordinator:
                 request.installation_key,
             )
             if not history:
+                if request.package_revision is None:
+                    raise PluginEnablementMigrationError(
+                        "Never-seen Plugin migration requires an exact Package Revision",
+                        code="plugin_enablement_migration_package_required",
+                        path=self._journal.path,
+                    )
                 operation = self._submit(
                     request,
                     action="install",
@@ -968,6 +985,31 @@ class PluginEnablementCompatibilityProjector:
             ),
             disabled_plugin_ids=disabled,
         )
+
+
+def plugin_enablement_legacy_input_fingerprint(
+    installation_key: PluginInstallationKeyV1,
+    *,
+    legacy_disabled: bool,
+    manifest_enabled_default: bool,
+) -> str:
+    """Bind only immutable legacy selection inputs, never source availability."""
+
+    if not isinstance(installation_key, PluginInstallationKeyV1):
+        raise TypeError("Plugin Installation key is required")
+    if type(legacy_disabled) is not bool:
+        raise TypeError("Legacy disabled input must be boolean")
+    if type(manifest_enabled_default) is not bool:
+        raise TypeError("Manifest enabled default must be boolean")
+    return hashlib.sha256(
+        StrictPluginJsonCodec.encode(
+            {
+                "installationKey": installation_key.to_dict(),
+                "legacyDisabled": legacy_disabled,
+                "manifestEnabledDefault": manifest_enabled_default,
+            }
+        )
+    ).hexdigest()
 
 
 def _project_events(
@@ -1244,4 +1286,5 @@ __all__ = [
     "PluginEnablementMigrationPhase",
     "PluginEnablementMigrationRequestV1",
     "PluginEnablementMigrationSnapshotV1",
+    "plugin_enablement_legacy_input_fingerprint",
 ]

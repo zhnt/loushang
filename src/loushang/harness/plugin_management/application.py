@@ -926,4 +926,5 @@ __all__ = [
     "PluginManagementSkewV1",
     "PluginManagementSourceRecordV1",
     "PluginManagementSourceSnapshotV1",
+    "PluginSourceProjectionSourcePort",
 ]

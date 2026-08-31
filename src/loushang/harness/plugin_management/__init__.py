@@ -25,6 +25,7 @@ from loushang.harness.plugin_management.application import (
     PluginManagementSkewV1,
     PluginManagementSourceRecordV1,
     PluginManagementSourceSnapshotV1,
+    PluginSourceProjectionSourcePort,
 )
 from loushang.harness.plugin_management.continuity_mutation import (
     PLUGIN_CONTINUITY_DELETION_EVENT_CODEC,
@@ -53,6 +54,7 @@ from loushang.harness.plugin_management.enablement_migration import (
     PluginEnablementMigrationPhase,
     PluginEnablementMigrationRequestV1,
     PluginEnablementMigrationSnapshotV1,
+    plugin_enablement_legacy_input_fingerprint,
 )
 from loushang.harness.plugin_management.instance_records import (
     PLUGIN_INSTANCE_ACTIVATION_VERSION,
@@ -281,6 +283,7 @@ __all__ = [
     "PluginEnablementMigrationPhase",
     "PluginEnablementMigrationRequestV1",
     "PluginEnablementMigrationSnapshotV1",
+    "plugin_enablement_legacy_input_fingerprint",
     "PluginManagementCommandV1",
     "PluginManagementApplicationCommandV1",
     "PluginManagementApplicationPorts",
@@ -302,6 +305,7 @@ __all__ = [
     "PluginManagementSkewV1",
     "PluginManagementSourceRecordV1",
     "PluginManagementSourceSnapshotV1",
+    "PluginSourceProjectionSourcePort",
     "PluginManagementUpdateCommandV2",
     "PluginMigrationFenceV1",
     "PluginPackageRevisionRefV1",

@@ -206,6 +206,8 @@ def _reject_peer_coding_exact_tools(
     )
     if supplied_names.intersection(_RESERVED_CODING_EXACT_TOOL_NAMES):
         raise CodingResourceCatalogAdmissionError(("peer_exact_tool_publisher",))
+
+
 ExtensionFlagValues = Mapping[str, bool | str]
 CwdBoundServicesAuditIssue = _CwdBoundServicesAuditIssue
 _CODING_PLUGIN_HOST_BOOT_ID = secrets.token_hex(16)
@@ -429,9 +431,7 @@ def create_agent_session_services(
         project_settings_path=project_settings_path,
         resource_loader_options=resource_loader_options,
         extension_flag_values=extension_flag_values,
-        resource_catalog_source_policy=(
-            CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY
-        ),
+        resource_catalog_source_policy=(CODING_STANDARD_RESOURCE_CATALOG_SOURCE_POLICY),
     )
 
 
@@ -573,6 +573,9 @@ def _create_agent_session(
                 "child approval actor must match its delegated execution profile"
             )
     services = services or create_services()
+    legacy_disabled_plugin_ids = frozenset(
+        getattr(services.settings_manager.get_settings(), "disabled_plugins", ())
+    )
     lsp_mode = coding_capability_mount_mode(
         services.settings_manager,
         CODING_LSP_CAPABILITY,
@@ -691,12 +694,8 @@ def _create_agent_session(
     capability_management_state_cleanup: Callable[[], None] | None = None
     coding_plugin_lifecycle: CodingPluginLifecycle | None = None
     coding_plugin_package_materializer: PackageMaterializer | None = None
-    if (
-        initial_resource_catalog_product_composition_assembly is None
-        and (
-            "coding.base" in requested_plugin_ids
-            or capability_plugins_enabled_for_session
-        )
+    if initial_resource_catalog_product_composition_assembly is None and (
+        "coding.base" in requested_plugin_ids or capability_plugins_enabled_for_session
     ):
         # Transcript persistence is independent from Product desired state.
         # A configured settings runtime is the production persistence seam;
@@ -713,9 +712,7 @@ def _create_agent_session(
         recorded_base_lockfile_diagnostics: list[dict[str, object]] = []
         try:
             lifecycle_layout = (
-                resolve_coding_plugin_lifecycle_state_layout(
-                    session_manager.get_cwd()
-                )
+                resolve_coding_plugin_lifecycle_state_layout(session_manager.get_cwd())
                 if base_ephemeral_state is None
                 else resolve_ephemeral_coding_plugin_lifecycle_state_layout(
                     base_ephemeral_state.name,
@@ -788,40 +785,39 @@ def _create_agent_session(
             lifecycle.reconcile_retirements()
             lifecycle.complete_startup_recovery()
             if "coding.base" in requested_plugin_ids:
-                coding_base_plugin_assembly = (
-                    prepare_managed_coding_base_plugin_assembly(
-                        resolved_composition_set,
-                        session_id=session_id,
-                        package_materializer=base_package_materializer,
-                        lifecycle=lifecycle,
-                        host_environment=session_host_environment,
-                        include_tool_contribution=(
-                            session_no_tools_mode is None
-                            and (
-                                resolved_invocation_profile is None
-                                or resolved_invocation_profile.include_base_tool_contribution
-                            )
-                        ),
-                        include_tool_claim_prompt=(
-                            session_no_tools_mode is None
-                            and (
-                                resolved_invocation_profile is None
-                                or resolved_invocation_profile.include_base_tool_claim_prompt
-                            )
-                        ),
-                        include_skill_contribution=(
+                coding_base_plugin_assembly = prepare_managed_coding_base_plugin_assembly(
+                    resolved_composition_set,
+                    session_id=session_id,
+                    package_materializer=base_package_materializer,
+                    lifecycle=lifecycle,
+                    legacy_disabled=("coding.base" in legacy_disabled_plugin_ids),
+                    host_environment=session_host_environment,
+                    include_tool_contribution=(
+                        session_no_tools_mode is None
+                        and (
                             resolved_invocation_profile is None
-                            or resolved_invocation_profile.include_base_skill_contribution
-                        ),
-                        include_command_contribution=(
+                            or resolved_invocation_profile.include_base_tool_contribution
+                        )
+                    ),
+                    include_tool_claim_prompt=(
+                        session_no_tools_mode is None
+                        and (
                             resolved_invocation_profile is None
-                            or resolved_invocation_profile.include_base_command_contribution
-                        ),
-                        state_cleanup=base_state_cleanup,
-                        session_owner_id=(
-                            _session_manager_plugin_owner_id(session_manager)
-                        ),
-                    )
+                            or resolved_invocation_profile.include_base_tool_claim_prompt
+                        )
+                    ),
+                    include_skill_contribution=(
+                        resolved_invocation_profile is None
+                        or resolved_invocation_profile.include_base_skill_contribution
+                    ),
+                    include_command_contribution=(
+                        resolved_invocation_profile is None
+                        or resolved_invocation_profile.include_base_command_contribution
+                    ),
+                    state_cleanup=base_state_cleanup,
+                    session_owner_id=(
+                        _session_manager_plugin_owner_id(session_manager)
+                    ),
                 )
         except BaseException as error:
             if isinstance(error, CodingBasePluginAssemblyError):
@@ -879,9 +875,7 @@ def _create_agent_session(
             raise RuntimeError("Coding Capability Plugins were already prepared")
         capability_plugin_preparation_started = True
         capability_plugin_ephemeral_state = (
-            _ExplicitTemporaryDirectory(
-                prefix="loushang-coding-capability-plugins-"
-            )
+            _ExplicitTemporaryDirectory(prefix="loushang-coding-capability-plugins-")
             if not session_manager.persist
             else None
         )
@@ -899,22 +893,12 @@ def _create_agent_session(
             )
         )
         policy_revision = (
-            plan_seed.plan.context.policy_revision
-            if plan_seed is not None
-            else None
+            plan_seed.plan.context.policy_revision if plan_seed is not None else None
         )
         plugin_ids = frozenset(
             {
-                *(
-                    ("coding.lsp.default",)
-                    if lsp_enabled_for_session
-                    else ()
-                ),
-                *(
-                    ("coding.arch.default",)
-                    if arch_enabled_for_session
-                    else ()
-                ),
+                *(("coding.lsp.default",) if lsp_enabled_for_session else ()),
+                *(("coding.arch.default",) if arch_enabled_for_session else ()),
             }
         )
         request = (
@@ -961,6 +945,7 @@ def _create_agent_session(
                 configurations=configurations,
                 package_materializer=coding_plugin_package_materializer,
                 lifecycle=coding_plugin_lifecycle,
+                legacy_disabled_plugin_ids=legacy_disabled_plugin_ids,
                 session_owner_id=_session_manager_plugin_owner_id(session_manager),
                 management_state_cleanup=capability_management_state_cleanup,
                 state_root=state_root,
@@ -1049,9 +1034,7 @@ def _create_agent_session(
             )
         if catalog_product_composition_assembly is not None:
             if capability_plugins_enabled_for_session:
-                raise CodingResourceCatalogAdmissionError(
-                    ("peer_product_compilation",)
-                )
+                raise CodingResourceCatalogAdmissionError(("peer_product_compilation",))
             product_composition = assemble_product_composition(
                 catalog_product_composition_assembly,
                 evaluated_at=evaluated_at,
@@ -1059,9 +1042,7 @@ def _create_agent_session(
         elif capability_plugins_enabled_for_session:
             capability_plugin_preparation = prepare_capability_plugins(plan_seed)
             if capability_plugin_preparation is not None:
-                product_composition = (
-                    capability_plugin_preparation.product_composition
-                )
+                product_composition = capability_plugin_preparation.product_composition
             elif coding_base_plugin_assembly is not None:
                 assert plan_seed is not None
                 selection_seed = finalize_coding_package_plugin_plan_seed(plan_seed)
@@ -1542,9 +1523,7 @@ def _create_agent_session(
 
         assert multiagent_types is not None
         selected_capability_plugin_ids = (
-            frozenset(
-                result.session._coding_capability_plugin_assembly.tool_owners
-            )
+            frozenset(result.session._coding_capability_plugin_assembly.tool_owners)
             if result.session._coding_capability_plugin_assembly is not None
             else frozenset()
         )
@@ -1804,8 +1783,7 @@ def _coding_capability_plugin_state_root(
     session_id: str,
 ) -> Path:
     state_id = hashlib.sha256(
-        b"loushang.coding-capability-plugin-state/v1\0"
-        + session_id.encode("utf-8")
+        b"loushang.coding-capability-plugin-state/v1\0" + session_id.encode("utf-8")
     ).hexdigest()
     return (
         session_manager.get_session_dir()

@@ -39,6 +39,8 @@ from loushang.harness.plugin_authoring.capability_provider import (
 )
 from loushang.harness.plugin_management import (
     PluginContinuityDeletionJournal,
+    PluginDesiredStateLedger,
+    PluginEnablementMigrationJournal,
     PluginInstanceRuntimeLedger,
 )
 from loushang.harness.resources.packages.materializer import PackageMaterializer
@@ -599,6 +601,26 @@ def test_empty_selected_continuity_still_completes_common_startup_recovery(
 
     assert result.plugin_publication is None
     assert calls == [layout.root]
+    key = next(
+        item.installation_key
+        for item in PluginDesiredStateLedger(layout.desired_state)
+        .snapshot()
+        .installations
+        if item.installation_key.plugin_id == "continuity-example"
+    )
+    migration = PluginEnablementMigrationJournal(
+        layout.root / "enablement-migration.jsonl"
+    ).snapshot(key)
+    assert migration is not None
+    assert migration.phase == "compatibility_window"
+    assert migration.disposition == "seeded"
+    assert (
+        PluginDesiredStateLedger(layout.desired_state)
+        .snapshot()
+        .installation(key)
+        .selection.desired_state
+        == "installed_disabled"
+    )
     asyncio.run(shutdown_coding_continuity(runtime))
 
 
@@ -1008,9 +1030,7 @@ def _write_continuity_plugin(
                 "declarationSource": {
                     "kind": "document",
                     "locator": "declarations/unselected-invalid.json",
-                    "mediaType": (
-                        "application/vnd.loushang.plugin-declarations+json"
-                    ),
+                    "mediaType": ("application/vnd.loushang.plugin-declarations+json"),
                     "schemaId": "loushang.plugin-declaration-document",
                     "schemaVersion": 1,
                     "sourceVersion": 1,

@@ -3,9 +3,8 @@
 ## Status
 
 - Contract version: PLC9A1.
-- Delivery status: incremental. A1-1 and A1-2 are implemented; A1-3 is the
-  remaining accepted delivery slice of the same task branch and is identified
-  below without claiming implementation ahead of its commit.
+- Delivery status: implemented. A1-1, A1-2, and A1-3 are delivered as one
+  reviewed management-projection slice.
 - Scope: internal Harness management application ports, legacy enablement
   migration, and Coding CLI list/enable/disable adaptation.
 - Public author SDK effect: none. The `loushang.plugin` namespace remains an
@@ -95,6 +94,12 @@ it to `enablement-migration.jsonl` under the existing workspace-private Plugin
 state root and checks the supported epoch before recovering a management
 operation. No migration journal is stored under Package data or a Session log.
 
+Coding base, Capability, and Continuity composition import their exact legacy
+selection inputs before mounting. An already-seen desired history is receipted
+as `already_authoritative` and is never re-enabled by a Product default. A
+never-seen disabled Installation is published to an exact immutable revision,
+seeded disabled, and left unmounted.
+
 ## A1-3: Coding CLI adapters
 
 A1-3 routes `--list-plugins`, `--enable-plugin`, and `--disable-plugin` through
@@ -108,6 +113,12 @@ Skill settings and Package commands retain their existing owners. A CLI
 desired-state command against an uninstalled or unmigrated Installation fails
 with a stable diagnostic instead of materializing a Package or mutating the
 legacy settings peer.
+
+Coding's CLI Product binding resolves relative local Sources against the
+workspace, not the launcher process directory. After a canonical enable/disable
+command it publishes the compatibility-window `disabled_plugins` value as a
+derived downgrade view while retaining legacy ids that have not yet received a
+migration receipt. That write is never used to infer command success.
 
 ## Failure And Replay Semantics
 

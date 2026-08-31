@@ -12,6 +12,12 @@ INVENTORY = Path(
 INDEX = Path("docs/internals/architecture/harness/plugin/README.md")
 APPLICATION = Path("src/loushang/harness/plugin_management/application.py")
 AUTHOR_SDK = Path("src/loushang/plugin/__init__.py")
+CLI_BINDING = Path("src/loushang/harness/cli/plugin_management.py")
+CLI_LISTING = Path("src/loushang/harness/cli/plugin_listing.py")
+CLI_TOGGLES = Path("src/loushang/harness/cli/resource_toggles.py")
+CLI_PROFILE = Path("src/loushang/harness/cli/profile.py")
+CODING_BINDING = Path("src/loushang/coding/plugin_management_cli.py")
+CODING_LIFECYCLE = Path("src/loushang/coding/_plugin_lifecycle.py")
 
 
 def _source(path: Path) -> str:
@@ -24,9 +30,7 @@ def test_plc9a1_contract_and_new_owner_sites_are_indexed() -> None:
     index = _source(INDEX)
 
     assert index.count("(plugin-lifecycle-plc9a1-contract.md)") == 1
-    assert "A1-1 and A1-2 are implemented" in contract
-    assert "A1-3 is the" in contract
-    assert "remaining accepted delivery slice" in contract
+    assert "A1-1, A1-2, and A1-3 are delivered" in contract
     assert "application.py::PluginManagementCommandApplication" in inventory
     assert "application.py::PluginManagementReadModelProjector" in inventory
     assert "application.py::PluginManagementSourceSnapshotV1" in inventory
@@ -114,3 +118,57 @@ def test_plc9a1_contract_keeps_later_authority_out_of_scope() -> None:
         "(PLC9E)",
     ):
         assert boundary in contract
+
+
+def test_plc9a1_cli_uses_only_the_common_application_binding() -> None:
+    binding = _source(CLI_BINDING)
+    listing = _source(CLI_LISTING)
+    toggles = _source(CLI_TOGGLES)
+
+    assert "PluginManagementApplicationPorts" in binding
+    assert "management.query(" in listing
+    assert "PluginManagementApplicationCommandV1(" in toggles
+    for source in (binding, listing, toggles):
+        for forbidden in (
+            "PluginDesiredStateLedger(",
+            "PluginManagementService(",
+            "PluginResolutionAuthority(",
+            "PluginManager(",
+        ):
+            assert forbidden not in source
+    assert '_call(settings_manager, "enable_plugin"' not in toggles
+    assert '_call(settings_manager, "disable_plugin"' not in toggles
+
+
+def test_plc9a1_coding_transport_adapter_does_not_construct_owner_stores() -> None:
+    adapter = _source(CODING_BINDING)
+    lifecycle = _source(CODING_LIFECYCLE)
+
+    for forbidden in (
+        "PluginDesiredStateLedger(",
+        "PluginEnablementMigrationJournal(",
+        "PluginManagementService(",
+    ):
+        assert forbidden not in adapter
+    assert "build_coding_plugin_management_application(" in adapter
+    assert "project_coding_plugin_enablement_compatibility(" in adapter
+    assert "def build_coding_plugin_management_application(" in lifecycle
+    assert "def project_coding_plugin_enablement_compatibility(" in lifecycle
+
+
+def test_plc9a1_preserves_source_aliases_and_package_command_boundary() -> None:
+    profile = _source(CLI_PROFILE)
+    toggles = _source(CLI_TOGGLES)
+
+    assert '"--add-plugin-source", "--add-plugin"' in profile
+    assert '"--remove-plugin-source", "--remove-plugin"' in profile
+    assert "add_plugin_sources" in toggles
+    assert "remove_plugin_sources" in toggles
+    for artifact_action in (
+        "materialize_package",
+        "install_package",
+        "update_package",
+        "remove_package",
+        "uninstall_package",
+    ):
+        assert artifact_action not in toggles

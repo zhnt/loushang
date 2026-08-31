@@ -60,6 +60,7 @@ from loushang.harness.cli.plugin_listing import (
     format_plugin_records,
     list_plugin_records,
 )
+from loushang.harness.cli.plugin_management import PluginManagementCliBinding
 from loushang.harness.cli.resource_toggles import (
     ResourceToggleError,
     ResourceToggleRequest,
@@ -333,9 +334,7 @@ def agent_standard_cli_operation_request(
         else None,
         diagnostics_output_format=args.list_diagnostics_format,
         skill_listing_format=args.list_skills_format if args.list_skills else None,
-        plugin_listing_format=args.list_plugins_format
-        if args.list_plugins
-        else None,
+        plugin_listing_format=args.list_plugins_format if args.list_plugins else None,
         package_lifecycle=package_request if package_request.has_operations else None,
         command=CommandExecutionRequest(
             command=args.command,
@@ -357,6 +356,7 @@ async def run_standard_cli_operations(
     stdout: TextIO,
     stderr: TextIO,
     insertions: Sequence[CliOperationInsertion] = (),
+    plugin_management: PluginManagementCliBinding | None = None,
     evaluate_install_source: PolicyEvaluator | None = None,
     on_policy_denied: PolicyDeniedHandler | None = None,
     format_error: CliErrorFormatter = str,
@@ -409,7 +409,7 @@ async def run_standard_cli_operations(
         CliOperationStage(
             "list_plugins",
             lambda: run_plugin_listing_operation(
-                settings_manager,
+                plugin_management,
                 request.plugin_listing_format,
                 stdout=stdout,
                 stderr=stderr,
@@ -591,7 +591,7 @@ def run_skill_listing_operation(
 
 
 def run_plugin_listing_operation(
-    settings_manager: object | None,
+    plugin_management: PluginManagementCliBinding | None,
     output_format: str | None,
     *,
     stdout: TextIO,
@@ -601,7 +601,7 @@ def run_plugin_listing_operation(
     if output_format is None:
         return None
     try:
-        records = list_plugin_records(settings_manager)
+        records = list_plugin_records(plugin_management)
     except PluginListingError as error:
         return _write_error(stderr, error, format_error=format_error)
     stdout.write(format_plugin_records(records, output_format))
@@ -614,6 +614,7 @@ def run_resource_toggle_operation(
     *,
     stdout: TextIO,
     stderr: TextIO,
+    plugin_management: PluginManagementCliBinding | None = None,
     evaluate_plugin_source: PolicyEvaluator | None = None,
     is_remote_plugin_source: RemoteSourcePredicate | None = None,
     on_policy_denied: PolicyDeniedHandler | None = None,
@@ -621,13 +622,14 @@ def run_resource_toggle_operation(
 ) -> int | None:
     if request is None or not request.has_operations:
         return None
-    if settings_manager is None:
+    if settings_manager is None and request.requires_settings:
         stderr.write("Error: settings manager is not available.\n")
         return 1
     try:
         result = apply_resource_toggles(
             settings_manager,
             request,
+            plugin_management=plugin_management,
             evaluate_plugin_source=evaluate_plugin_source,
             is_remote_plugin_source=is_remote_plugin_source,
             on_policy_denied=on_policy_denied,

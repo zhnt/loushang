@@ -66,6 +66,9 @@ from loushang.harness.capabilities.provider_selection import (
 from loushang.harness.config.agent import CapabilityMountMode
 from loushang.harness.plugin_authoring.evaluator import PluginDefinitionEvaluator
 from loushang.harness.plugin_authoring.host import PluginDeclarationHost
+from loushang.harness.plugin_management import (
+    plugin_enablement_legacy_input_fingerprint,
+)
 from loushang.harness.resources.plugins.authority import (
     PluginResolutionAuthority,
     PluginRuntimeResolution,
@@ -457,10 +460,11 @@ def _bind_default_approval_request_to_plan(
     if not callable(binder):
         return request
     instance_revision_refs = {
-        item.plugin_id: item
-        for item in seed.plan.context.instance_revision_refs
+        item.plugin_id: item for item in seed.plan.context.instance_revision_refs
     }
-    instance_binder = cast(_CodingCapabilityApprovalInstanceBinder, request.approval_owner)
+    instance_binder = cast(
+        _CodingCapabilityApprovalInstanceBinder, request.approval_owner
+    )
     return CodingCapabilityPluginCompositionRequest(
         approval_owner=instance_binder.bind_selected_instances(
             selected_plugin_ids=frozenset(seed.plan.selected_plugin_ids),
@@ -710,9 +714,7 @@ class CodingCapabilityPluginCompositionPreparation:
             workspace_binding,
             host_boot_id=host_boot_id,
             tool_modes=tool_modes,
-            selected_capability_ids=frozenset(
-                self.provider_owner_authorities.keys()
-            ),
+            selected_capability_ids=frozenset(self.provider_owner_authorities.keys()),
             clock=clock,
         )
         try:
@@ -808,6 +810,7 @@ def _resolve_managed_capability_plugins(
     package_materializer: CodingPackageMaterializer,
     lifecycle: CodingPluginLifecycle | None,
     session_owner_id: str | None,
+    legacy_disabled_plugin_ids: frozenset[str],
 ) -> tuple[
     PluginRuntimeResolution,
     Mapping[str, CodingCapabilityPluginConfig],
@@ -842,9 +845,23 @@ def _resolve_managed_capability_plugins(
             key = lifecycle.installation_key(spec.plugin_id)
             snapshot = lifecycle.desired.snapshot()
             state = snapshot.installation(key)
-            seen = any(
-                item.installation_key == key for item in snapshot.installations
-            )
+            seen = any(item.installation_key == key for item in snapshot.installations)
+            legacy_disabled = spec.plugin_id in legacy_disabled_plugin_ids
+            if seen and lifecycle.enablement_migrations.journal.snapshot(key) is None:
+                lifecycle.migrate_legacy_enablement(
+                    key,
+                    state.selection.package_revision,
+                    legacy_disabled=legacy_disabled,
+                    manifest_enabled_default=True,
+                    legacy_input_fingerprint=(
+                        plugin_enablement_legacy_input_fingerprint(
+                            key,
+                            legacy_disabled=legacy_disabled,
+                            manifest_enabled_default=True,
+                        )
+                    ),
+                )
+                state = lifecycle.desired.snapshot().installation(key)
             package = None
             binding = None
             if not seen:
@@ -862,17 +879,22 @@ def _resolve_managed_capability_plugins(
                     dependency_lock_digest=package.dependency_lock.digest,
                     package_source_identity=binding.source_identity,
                 )
-                lifecycle.bootstrap_first_party_default(key, revision)
+                manifest_default = package.manifest.enabled
+                lifecycle.migrate_legacy_enablement(
+                    key,
+                    revision,
+                    legacy_disabled=legacy_disabled,
+                    manifest_enabled_default=manifest_default,
+                    legacy_input_fingerprint=(
+                        plugin_enablement_legacy_input_fingerprint(
+                            key,
+                            legacy_disabled=legacy_disabled,
+                            manifest_enabled_default=manifest_default,
+                        )
+                    ),
+                )
                 state = lifecycle.desired.snapshot().installation(key)
-            else:
-                retained_package = state.selection.package_revision
-                if (
-                    state.selection.desired_state == "installed_disabled"
-                    and retained_package is not None
-                ):
-                    lifecycle.bootstrap_first_party_default(key, retained_package)
-                    state = lifecycle.desired.snapshot().installation(key)
-                lifecycle.reconcile_retirements()
+            lifecycle.reconcile_retirements()
             if state.selection.desired_state != "installed_enabled":
                 if package is not None:
                     package.revision_handle.close()
@@ -996,6 +1018,7 @@ def prepare_coding_capability_plugin_composition(
     coding_product_plan_seed: ProductPluginPlanSeed | None = None,
     state_cleanup: Callable[[], None] | None = None,
     private_state_cleanup: Callable[[], None] | None = None,
+    legacy_disabled_plugin_ids: frozenset[str] = frozenset(),
 ) -> CodingCapabilityPluginCompositionPreparation:
     """Resolve, approve and compile once without constructing host Providers."""
 
@@ -1013,10 +1036,12 @@ def prepare_coding_capability_plugin_composition(
         raise TypeError("Coding Capability Plugin state cleanup is invalid")
     if private_state_cleanup is not None and not callable(private_state_cleanup):
         raise TypeError("Coding Capability Plugin private-state cleanup is invalid")
-    if management_state_cleanup is not None and not callable(
-        management_state_cleanup
-    ):
+    if management_state_cleanup is not None and not callable(management_state_cleanup):
         raise TypeError("Coding Capability Plugin management cleanup is invalid")
+    if not isinstance(legacy_disabled_plugin_ids, frozenset) or any(
+        not isinstance(item, str) or not item for item in legacy_disabled_plugin_ids
+    ):
+        raise TypeError("Coding Capability Plugin legacy selection is invalid")
     if lifecycle is not None and not isinstance(lifecycle, CodingPluginLifecycle):
         raise TypeError("Coding Capability Plugins require a common lifecycle")
     resolved_state_root = Path(state_root).expanduser().resolve()
@@ -1031,6 +1056,7 @@ def prepare_coding_capability_plugin_composition(
                 package_materializer=package_materializer,
                 lifecycle=lifecycle,
                 session_owner_id=session_owner_id,
+                legacy_disabled_plugin_ids=legacy_disabled_plugin_ids,
             )
         )
         if not selected_configurations:
@@ -1236,9 +1262,7 @@ def _approve_activation_and_bind_inputs(
         try:
             return provider_authorities[capability_id].snapshot()
         except KeyError as exc:
-            raise ValueError(
-                "Coding owner reader received another Capability"
-            ) from exc
+            raise ValueError("Coding owner reader received another Capability") from exc
 
     def read_trust(
         plugin_id: str,
@@ -1387,9 +1411,7 @@ def _prepare_selection_plan_seed(
     coding_product_plan_seed: ProductPluginPlanSeed | None,
     tool_authority: OwnerContributionAuthority,
 ) -> ProductPluginPlanSeed:
-    package_bindings = tuple(
-        zip(runtime.packages, runtime.bindings, strict=True)
-    )
+    package_bindings = tuple(zip(runtime.packages, runtime.bindings, strict=True))
     base_plan = coding_product_plan_seed.plan if coding_product_plan_seed else None
     policy_revision = (
         base_plan.context.policy_revision
@@ -1437,9 +1459,7 @@ def _prepare_selection_plan_seed(
                 )
             ),
         ),
-        selected_plugin_ids=tuple(
-            sorted((*base_plugin_ids, *configurations.keys()))
-        ),
+        selected_plugin_ids=tuple(sorted((*base_plugin_ids, *configurations.keys()))),
         selected_contributions=tuple(
             sorted(
                 (
@@ -1451,7 +1471,7 @@ def _prepare_selection_plan_seed(
                         )
                         for package, _binding in package_bindings
                         for item in package.contribution_index.items
-                    )
+                    ),
                 )
             )
         ),
@@ -1644,8 +1664,7 @@ def _validate_default_definition_subject(
         or subject.entrypoint != _DEFAULT_DEFINITION_ENTRYPOINT
         or subject.source_trust_class != _SOURCE_TRUST_CLASS
         or subject.source_trust_policy_revision != _SOURCE_TRUST_POLICY_REVISION
-        or subject.requested_authorities
-        != spec.requested_authorities
+        or subject.requested_authorities != spec.requested_authorities
         or subject.allowed_authority_ceiling != ("filesystem", "process")
         or subject.instance_revision_ref.plugin_id != subject.plugin_id
         or subject.instance_revision_ref.revision < 1
@@ -1687,8 +1706,7 @@ def _validate_default_activation_subject(
         or subject.product_policy_revision != product_policy_revision
         or subject.owner_policy_revision != spec.provider_owner_policy_revision
         or subject.revocation_epoch != 0
-        or subject.effective_facets
-        != tuple(sorted(spec.capability.facets))
+        or subject.effective_facets != tuple(sorted(spec.capability.facets))
         or subject.effective_authorities
         != tuple(sorted(spec.capability.authority_ceiling))
         or subject.execution_model != "in_process"
@@ -1752,8 +1770,7 @@ def _validate_preparation_inputs(
             raise TypeError("Coding Capability Product plan seed is invalid")
         if (
             coding_base_plugin_assembly is not None
-            and _BASE_PLUGIN_ID
-            not in coding_product_plan_seed.plan.selected_plugin_ids
+            and _BASE_PLUGIN_ID not in coding_product_plan_seed.plan.selected_plugin_ids
         ):
             raise ValueError("Coding Capability Product seed omits coding.base")
     if not callable(clock):

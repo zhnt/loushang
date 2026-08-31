@@ -59,9 +59,10 @@ PLUGIN_CONTINUITY_MUTATION = Path(
 SOURCE_ROOTS = (Path("src/loushang"),)
 
 LEGACY_DISABLED_PLUGIN_FILES = {
+    Path("src/loushang/coding/bootstrap.py"),
     Path("src/loushang/coding/cli/__main__.py"),
     Path("src/loushang/coding/continuity_bootstrap.py"),
-    Path("src/loushang/harness/cli/plugin_listing.py"),
+    Path("src/loushang/coding/plugin_management_cli.py"),
     Path("src/loushang/harness/config/agent/_settings_codec.py"),
     Path("src/loushang/harness/config/agent/_settings_patch.py"),
     Path("src/loushang/harness/config/agent/manager.py"),
@@ -75,11 +76,18 @@ LEGACY_DISABLED_PLUGIN_FILES = {
     Path("src/loushang/harness/session/bootstrap_activation.py"),
 }
 MANIFEST_ENABLED_FILES = {
+    Path("src/loushang/coding/_base_plugin.py"),
+    Path("src/loushang/coding/_capability_plugin_composition.py"),
+    Path("src/loushang/coding/continuity_bootstrap.py"),
+    Path("src/loushang/coding/plugin_management_cli.py"),
     Path("src/loushang/harness/resources/plugins/authority.py"),
     Path("src/loushang/harness/resources/plugins/resolver.py"),
     Path("src/loushang/harness/resources/plugins/selection.py"),
 }
-SOURCE_ENABLED_FILES = MANIFEST_ENABLED_FILES | {
+SOURCE_ENABLED_FILES = {
+    Path("src/loushang/harness/resources/plugins/authority.py"),
+    Path("src/loushang/harness/resources/plugins/resolver.py"),
+    Path("src/loushang/harness/resources/plugins/selection.py"),
     Path("src/loushang/harness/resources/plugins/manifest.py"),
 }
 LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS = Counter(
@@ -98,12 +106,8 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS = Counter(
         ): 2,
         (
             Path("src/loushang/coding/continuity_bootstrap.py"),
-            "_continuity_runtime_inputs",
-        ): 4,
-        (
-            Path("src/loushang/coding/continuity_bootstrap.py"),
             "bind_coding_configured_continuity",
-        ): 7,
+        ): 4,
         (Path("src/loushang/coding/continuity_bootstrap.py"), "_configured_sources"): 1,
         (
             Path("src/loushang/coding/cli/__main__.py"),
@@ -118,7 +122,11 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS = Counter(
             Path("src/loushang/harness/session/bootstrap_activation.py"),
             "standard_agent_session_activation_plan",
         ): 2,
-        (Path("src/loushang/harness/cli/plugin_listing.py"), "list_plugin_records"): 4,
+        (Path("src/loushang/coding/bootstrap.py"), "_create_agent_session"): 1,
+        (
+            Path("src/loushang/coding/plugin_management_cli.py"),
+            "_compatibility_publisher.publish",
+        ): 1,
         (
             Path("src/loushang/harness/resources/packages/roots.py"),
             "resolve_package_resource_roots",
@@ -180,6 +188,22 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS = Counter(
 )
 MANIFEST_ENABLED_SCOPE_COUNTS = Counter(
     {
+        (
+            Path("src/loushang/coding/_base_plugin.py"),
+            "prepare_managed_coding_base_plugin_assembly",
+        ): 1,
+        (
+            Path("src/loushang/coding/_capability_plugin_composition.py"),
+            "_resolve_managed_capability_plugins",
+        ): 1,
+        (
+            Path("src/loushang/coding/continuity_bootstrap.py"),
+            "_reconcile_enabled_instances",
+        ): 1,
+        (
+            Path("src/loushang/coding/plugin_management_cli.py"),
+            "CodingConfiguredPluginSourceProjection.snapshot",
+        ): 1,
         (PLUGIN_RESOLVER, "PluginResolver.project_package"): 1,
         (PLUGIN_SELECTION, "PluginSelectionResolver._resolve_preflight"): 1,
         (PLUGIN_AUTHORITY, "_assert_published_lineage"): 2,
@@ -757,9 +781,11 @@ def test_plc9_freezes_the_current_management_and_enablement_split() -> None:
         "remove",
     )
     assert "class PluginManagementUpdateCommandV2" in updates
-    assert '_call(settings_manager, "disable_plugin"' in toggles
-    assert '_call(settings_manager, "enable_plugin"' in toggles
-    assert "PluginResolutionAuthority(disabled_plugins=" in listing
+    assert "PluginManagementApplicationCommandV1(" in toggles
+    assert '_call(settings_manager, "disable_plugin"' not in toggles
+    assert '_call(settings_manager, "enable_plugin"' not in toggles
+    assert "management.query(" in listing
+    assert "PluginResolutionAuthority" not in listing
     assert "class PluginManager:" in manager
     assert "def enable_plugin(" in manager
     assert "def disable_plugin(" in manager
@@ -803,7 +829,15 @@ def test_plc9_keeps_one_desired_state_writer_and_composition_site() -> None:
         (
             Path("src/loushang/coding/_plugin_lifecycle.py"),
             "build_coding_plugin_lifecycle",
-        )
+        ),
+        (
+            Path("src/loushang/coding/_plugin_lifecycle.py"),
+            "build_coding_plugin_management_application",
+        ),
+        (
+            Path("src/loushang/coding/_plugin_lifecycle.py"),
+            "project_coding_plugin_enablement_compatibility",
+        ),
     }
 
     synthetic_path = Path("src/loushang/example/rogue_writer.py")

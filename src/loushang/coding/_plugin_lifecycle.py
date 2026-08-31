@@ -23,6 +23,8 @@ from loushang.harness.plugin_management import (
     PluginCleanupAttemptV1,
     PluginDesiredStateLedger,
     PluginDesiredStateMutationV1,
+    PluginEnablementCompatibilityProjectionV1,
+    PluginEnablementCompatibilityProjector,
     PluginEnablementMigrationCoordinator,
     PluginEnablementMigrationJournal,
     PluginEnablementMigrationRequestV1,
@@ -32,8 +34,10 @@ from loushang.harness.plugin_management import (
     PluginInstanceLeaseFamilyV1,
     PluginInstanceRetirementCompletionV1,
     PluginInstanceRuntimeLedger,
+    PluginManagementApplicationPorts,
     PluginManagementCommandApplication,
     PluginManagementCommandV1,
+    PluginManagementReadModelProjector,
     PluginManagementService,
     PluginOwnerRetirementOutcomeV1,
     PluginOwnerRetirementPlanV1,
@@ -42,6 +46,7 @@ from loushang.harness.plugin_management import (
     PluginPackageRevisionRefV1,
     PluginRetirementIntentLedger,
     PluginRetirementSetLedger,
+    PluginSourceProjectionSourcePort,
 )
 from loushang.harness.plugin_management.security_acceptance import (
     PluginInstanceSecurityRetirementJournal,
@@ -122,8 +127,7 @@ class _ProcessSessionOwnerLease(AbstractContextManager[None]):
                 with _PROCESS_SESSION_OWNER_LEASES_LOCK:
                     current = _PROCESS_SESSION_OWNER_LEASES.get(self.path)
                     authority_was_removed = (
-                        current is None
-                        or current.authority_id != self.authority_id
+                        current is None or current.authority_id != self.authority_id
                     )
                 # journal_file_lock closes its handle even when platform
                 # unlock reports an error. In that case the exact authority
@@ -238,7 +242,7 @@ class CodingPluginLifecycle:
     def migrate_legacy_enablement(
         self,
         key: PluginInstallationKeyV1,
-        package_revision: PluginPackageRevisionRefV1,
+        package_revision: PluginPackageRevisionRefV1 | None,
         *,
         legacy_disabled: bool,
         manifest_enabled_default: bool,
@@ -279,9 +283,7 @@ class CodingPluginLifecycle:
         for _attempt in range(32):
             snapshot = self.desired.snapshot()
             state = snapshot.installation(key)
-            seen = any(
-                item.installation_key == key for item in snapshot.installations
-            )
+            seen = any(item.installation_key == key for item in snapshot.installations)
             if not seen:
                 error = self._submit_default(
                     key,
@@ -503,9 +505,7 @@ class CodingPluginLifecycle:
         families = self.owner_evidence.retired_families_for_instance(
             intent.instance_revision_ref
         )
-        receipts = tuple(
-            receipt for family in families for receipt in family.receipts
-        )
+        receipts = tuple(receipt for family in families for receipt in family.receipts)
         targets = tuple(
             PluginOwnerRetirementTargetV1.create(
                 owner_reference=receipt.owner_reference,
@@ -626,9 +626,11 @@ class CodingPluginLifecycle:
         )
 
     def management_retirement_intents(self):
-        return PluginRetirementIntentLedger(
-            self.layout.retirement_intents
-        ).snapshot().intents
+        return (
+            PluginRetirementIntentLedger(self.layout.retirement_intents)
+            .snapshot()
+            .intents
+        )
 
     def acquire_session(
         self,
@@ -722,9 +724,9 @@ class CodingPluginLifecycle:
         expected_inventory_revision: int,
     ) -> str | None:
         identity = hashlib.sha256(
-            repr(
-                (key, action, package_revision, expected_inventory_revision)
-            ).encode("utf-8")
+            repr((key, action, package_revision, expected_inventory_revision)).encode(
+                "utf-8"
+            )
         ).hexdigest()
         event = self.management.submit(
             PluginManagementCommandV1(
@@ -1035,6 +1037,71 @@ def build_coding_plugin_lifecycle(
         raise
 
 
+def build_coding_plugin_management_application(
+    layout: CodingPluginLifecycleStateLayout,
+    *,
+    source: PluginSourceProjectionSourcePort | None = None,
+) -> PluginManagementApplicationPorts:
+    """Compose command/query ports without acquiring a Product runtime lease."""
+
+    if not isinstance(layout, CodingPluginLifecycleStateLayout):
+        raise TypeError("Coding Plugin lifecycle layout is required")
+    _prepare_private_state_layout(layout)
+    desired = PluginDesiredStateLedger(layout.desired_state)
+    intents = PluginRetirementIntentLedger(layout.retirement_intents)
+    retirement_sets = PluginRetirementSetLedger(
+        layout.retirement_sets,
+        retirement_intents=intents,
+    )
+    management = PluginManagementService(
+        desired_state=desired,
+        operation_journal_path=layout.management_operations,
+        retirement_intents=intents,
+        retirement_sets=retirement_sets,
+    )
+    PluginEnablementMigrationJournal(
+        layout.enablement_migration
+    ).assert_runtime_compatible(supported_migration_epoch=1)
+    management.recover()
+    return PluginManagementApplicationPorts(
+        commands=PluginManagementCommandApplication(management),
+        queries=PluginManagementReadModelProjector(
+            desired_state=desired,
+            operations=management,
+            source=source,
+        ),
+    )
+
+
+def project_coding_plugin_enablement_compatibility(
+    layout: CodingPluginLifecycleStateLayout,
+) -> tuple[PluginEnablementCompatibilityProjectionV1, frozenset[str]]:
+    """Read Coding's derived downgrade view without exposing owner stores."""
+
+    if not isinstance(layout, CodingPluginLifecycleStateLayout):
+        raise TypeError("Coding Plugin lifecycle layout is required")
+    _prepare_private_state_layout(layout)
+    desired = PluginDesiredStateLedger(layout.desired_state)
+    journal = PluginEnablementMigrationJournal(layout.enablement_migration)
+    projection = PluginEnablementCompatibilityProjector(
+        journal=journal,
+        desired_state=desired,
+    ).snapshot(
+        product_id=CODING_PRODUCT_ID,
+        installation_scope="workspace",
+        scope_id=layout.scope_id,
+    )
+    migrated = frozenset(
+        item.request.installation_key.plugin_id
+        for item in journal.snapshots()
+        if item.request.installation_key.product_id == CODING_PRODUCT_ID
+        and item.request.installation_key.installation_scope == "workspace"
+        and item.request.installation_key.scope_id == layout.scope_id
+        and item.phase in {"compatibility_window", "finalized"}
+    )
+    return projection, migrated
+
+
 def package_revision_ref(
     *,
     plugin_id: str,
@@ -1275,12 +1342,10 @@ def _acquire_session_owner_lease(
                 code="coding_plugin_session_already_active",
             ) from exc
         authority_id = secrets.token_hex(16)
-        _PROCESS_SESSION_OWNER_LEASES[lease_path] = (
-            _ProcessSessionOwnerLeaseState(
-                owner_id=normalized_owner_id,
-                authority_id=authority_id,
-                lease=lease,
-            )
+        _PROCESS_SESSION_OWNER_LEASES[lease_path] = _ProcessSessionOwnerLeaseState(
+            owner_id=normalized_owner_id,
+            authority_id=authority_id,
+            lease=lease,
         )
         return _ProcessSessionOwnerLease(
             path=lease_path,
@@ -1409,11 +1474,7 @@ def _startup_lease_is_inactive(
             not stat.S_ISREG(metadata.st_mode)
             or stat.S_ISLNK(metadata.st_mode)
             or bool(getattr(metadata, "st_reparse_tag", 0))
-            or (
-                os.name == "posix"
-                and callable(getuid)
-                and metadata.st_uid != getuid()
-            )
+            or (os.name == "posix" and callable(getuid) and metadata.st_uid != getuid())
         ):
             raise OSError("startup lease is not a private regular file")
         with journal_file_lock(
@@ -1498,6 +1559,7 @@ def _nonempty(value: str, *, name: str) -> str:
 
 
 __all__ = [
+    "build_coding_plugin_management_application",
     "CodingPluginLifecycle",
     "CodingPluginLifecycleError",
     "CodingPluginLifecycleStateLayout",
@@ -1505,6 +1567,7 @@ __all__ = [
     "CodingPluginSessionLease",
     "build_coding_plugin_lifecycle",
     "package_revision_ref",
+    "project_coding_plugin_enablement_compatibility",
     "resolve_coding_plugin_lifecycle_state_layout",
     "resolve_ephemeral_coding_plugin_lifecycle_state_layout",
 ]

@@ -1,0 +1,127 @@
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass, replace
+from pathlib import Path
+
+import pytest
+
+from loushang.coding._plugin_lifecycle import (
+    build_coding_plugin_lifecycle,
+    resolve_coding_plugin_lifecycle_state_layout,
+)
+from loushang.coding.plugin_management_cli import (
+    build_coding_plugin_management_cli_binding,
+)
+from loushang.harness.cli.plugin_listing import list_plugin_records
+from loushang.harness.cli.resource_toggles import (
+    ResourceToggleRequest,
+    apply_resource_toggles,
+)
+from loushang.harness.plugin_management import (
+    PluginPackageRevisionRefV1,
+    plugin_enablement_legacy_input_fingerprint,
+)
+
+
+@dataclass(frozen=True)
+class _Settings:
+    plugin_sources: tuple[str, ...] = ()
+    disabled_plugins: tuple[str, ...] = ()
+
+
+class _SettingsManager:
+    def __init__(self, settings: _Settings) -> None:
+        self.settings = settings
+
+    def get_settings(self) -> _Settings:
+        return self.settings
+
+    def set_disabled_plugins(
+        self,
+        names: tuple[str, ...],
+        *,
+        scope: str,
+    ) -> None:
+        assert scope == "project"
+        self.settings = replace(self.settings, disabled_plugins=tuple(names))
+
+
+def test_coding_management_cli_projects_relative_sources_from_workspace(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    workspace = tmp_path / "workspace"
+    plugin_root = workspace / "plugins" / "debug-pack"
+    plugin_root.mkdir(parents=True)
+    (plugin_root / "plugin.json").write_text(
+        json.dumps({"name": "debug-pack", "version": "1.2.3"}),
+        encoding="utf-8",
+    )
+    binding = build_coding_plugin_management_cli_binding(
+        workspace,
+        _SettingsManager(_Settings(plugin_sources=("plugins/debug-pack",))),
+    )
+
+    assert list_plugin_records(binding) == [
+        {
+            "name": "debug-pack",
+            "version": "1.2.3",
+            "path": str(plugin_root.resolve()),
+            "source": str(plugin_root.resolve()),
+            "kind": "local",
+            "enabled": False,
+        }
+    ]
+
+
+def test_coding_management_cli_writes_only_derived_legacy_compatibility(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    settings = _SettingsManager(
+        _Settings(disabled_plugins=("managed-pack", "unmigrated-pack"))
+    )
+    layout = resolve_coding_plugin_lifecycle_state_layout(workspace)
+    lifecycle = build_coding_plugin_lifecycle(layout, startup_id="cli-migration")
+    key = lifecycle.installation_key("managed-pack")
+    try:
+        lifecycle.migrate_legacy_enablement(
+            key,
+            _package("managed-pack"),
+            legacy_disabled=True,
+            manifest_enabled_default=True,
+            legacy_input_fingerprint=plugin_enablement_legacy_input_fingerprint(
+                key,
+                legacy_disabled=True,
+                manifest_enabled_default=True,
+            ),
+        )
+    finally:
+        lifecycle.release_owned_process_startup_lease()
+
+    result = apply_resource_toggles(
+        settings,
+        ResourceToggleRequest(enable_plugins=("managed-pack",)),
+        plugin_management=build_coding_plugin_management_cli_binding(
+            workspace,
+            settings,
+        ),
+    )
+
+    assert result.messages == ("enabled plugin\tmanaged-pack",)
+    assert settings.get_settings().disabled_plugins == ("unmigrated-pack",)
+
+
+def _package(plugin_id: str) -> PluginPackageRevisionRefV1:
+    return PluginPackageRevisionRefV1(
+        plugin_id=plugin_id,
+        plugin_version="1.0.0",
+        package_content_digest="1" * 64,
+        dependency_lock_digest="2" * 64,
+        package_source_identity=f"test:{plugin_id}",
+    )

@@ -65,6 +65,9 @@ from loushang.coding.model_selection import (
     apply_model_selection,
     persistence_warning_message,
 )
+from loushang.coding.plugin_management_cli import (
+    build_coding_plugin_management_cli_binding,
+)
 from loushang.coding.prompt_command import (
     run_prompt_command,
     run_prompt_plan_command,
@@ -670,6 +673,7 @@ def _coding_state_preparation_ports(
             )
         ),
         run_resource_toggle=run_resource_toggle_operation,
+        build_plugin_management=build_coding_plugin_management_cli_binding,
         evaluate_plugin_source=_package_source_policy_reason,
         is_remote_plugin_source=is_remote_plugin_source,
         on_policy_denied=lambda services, package_source, reason: (
@@ -776,6 +780,7 @@ async def _run_coding_cli_operations(
         agent_standard_cli_operation_request(args),
         stdout=bootstrap.stdout,
         stderr=bootstrap.stderr,
+        plugin_management=context.state.plugin_management,
         insertions=(
             CliOperationInsertion(
                 CliOperationStage(

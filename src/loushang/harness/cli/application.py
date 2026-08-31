@@ -27,6 +27,7 @@ from loushang.harness.cli.launch import (
     cli_output_guard_enabled,
     cli_static_error,
 )
+from loushang.harness.cli.plugin_management import PluginManagementCliBinding
 from loushang.harness.cli.resource_toggles import (
     agent_resource_toggle_request,
     report_agent_resource_settings_errors,
@@ -129,6 +130,7 @@ class AgentCliApplicationState(Generic[AgentArgsT]):
     tool_registry: object
     approval_resolver: object | None
     tool_policy_evaluator: object | None = None
+    plugin_management: PluginManagementCliBinding | None = None
 
 
 @dataclass(frozen=True)
@@ -159,6 +161,9 @@ class AgentCliStatePreparationPorts(Generic[AgentArgsT]):
     policy_factory: Callable[..., ToolPolicyEvaluator]
     build_interactive_approval_resolver: Callable[..., object]
     run_resource_toggle: Callable[..., int | None]
+    build_plugin_management: (
+        Callable[[Path, object | None], PluginManagementCliBinding | None] | None
+    ) = None
     evaluate_plugin_source: Callable[[str], str | None] | None = None
     is_remote_plugin_source: Callable[[str], bool] | None = None
     on_policy_denied: Callable[[object, str, str | None], None] | None = None
@@ -176,6 +181,12 @@ async def prepare_agent_cli_application_state(
     args = context.args
     resolved_services = services or ports.build_services(context.project_root)
     settings_manager = getattr(resolved_services, "settings_manager", None)
+    plugin_management = (
+        ports.build_plugin_management(context.project_root, settings_manager)
+        if ports.build_plugin_management is not None
+        and (args.list_plugins or args.enable_plugins or args.disable_plugins)
+        else None
+    )
     report_agent_resource_settings_errors(
         args,
         settings_manager,
@@ -186,6 +197,7 @@ async def prepare_agent_cli_application_state(
         agent_resource_toggle_request(args),
         stdout=context.stdout,
         stderr=context.stderr,
+        plugin_management=plugin_management,
         evaluate_plugin_source=ports.evaluate_plugin_source,
         is_remote_plugin_source=ports.is_remote_plugin_source,
         on_policy_denied=(
@@ -256,6 +268,7 @@ async def prepare_agent_cli_application_state(
             tool_registry=tool_registry,
             approval_resolver=interactive_resolver,
             tool_policy_evaluator=tool_settings.policy_engine,
+            plugin_management=plugin_management,
         )
     )
 
