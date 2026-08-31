@@ -114,16 +114,19 @@ authority-owned primitive snapshot of the exact Catalog generation, snapshot,
 candidate, source capture fingerprint, declaration, script bytes, and
 Skill-root identity. The graph-owned `PreparedResourceOwnerGeneration`
 atomically derives those facts, constructs the canonical consumer itself,
-registers that exact consumer and primitive snapshot in its instance-local
-construction registry, and consumes the registration while installing the
-private owner capability. No token, grant, capture, or caller-provided
-consumer crosses that construction boundary. A structural lookalike therefore
+prepares a single-use binding in the action authority's external owner registry,
+and consumes it for that exact projection before returning the consumer. The
+registry records owner provenance and graph-owned/retired lifecycle state; no
+mutable registration dictionary lives on the owner instance. No transferable
+grant, caller-provided snapshot, or caller-provided consumer crosses that
+construction boundary. A structural lookalike therefore
 cannot ask the authority to bootstrap a new owner registration, even if it
 copies every projection/source field from a genuine consumer. Direct consumer
 construction remains available only for read-only projections with no managed
 actions. The action authority does not import or callback the concrete Catalog
-consumer, and its primitive snapshot is not a shallow reference into mutable
-consumer state. Copying fields, recomputing fingerprints, using
+consumer. It retains only the primitive snapshot, opaque identity/capability,
+and a semantically neutral liveness anchor; its snapshot is not a shallow
+reference into mutable consumer state. Copying fields, recomputing fingerprints, using
 `object.__new__`, self-signing a fresh seal, or copying another action's seal
 cannot create acceptable evidence, and there is no module-level action mint
 helper callable by an ordinary consumer. The unpublished shadow runner is

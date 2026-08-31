@@ -20,7 +20,10 @@ from loushang.harness.resources._catalog_records import (
     ResourceLoadReceipt,
 )
 from loushang.harness.resources._skill_action_authority import (
+    _CatalogActionOwnerBinding,
     _CatalogActionOwnerCapability,
+    _CatalogActionOwnerLiveness,
+    _consume_catalog_action_owner_binding,
     _register_catalog_managed_skill_action,
 )
 from loushang.harness.resources._skill_catalog_status import (
@@ -235,12 +238,14 @@ class LoadedSkillBody:
 class SkillCatalogConsumer:
     """Read-only Skill view derived from one captured Resource generation."""
 
-    def __init__(
-        self,
-        catalog: _ResourceCatalogLoadConsumer,
-        *,
-        _owner_constructing: bool = False,
-    ) -> None:
+    def __init__(self, catalog: _ResourceCatalogLoadConsumer) -> None:
+        self._initialize(catalog)
+        if self._managed_action_sources:
+            raise TypeError(
+                "Catalog managed actions require owner-constructed Skill consumer"
+            )
+
+    def _initialize(self, catalog: _ResourceCatalogLoadConsumer) -> None:
         snapshot = catalog.snapshot
         projection = catalog.skill_projection
         if not isinstance(snapshot, ResourceCatalogSnapshot):
@@ -287,39 +292,34 @@ class SkillCatalogConsumer:
         self._managed_action_owner_capability: (
             _CatalogActionOwnerCapability | None
         ) = None
-        if self._managed_action_sources and not _owner_constructing:
-            raise TypeError(
-                "Catalog managed actions require owner-constructed Skill consumer"
-            )
+        self._managed_action_owner_liveness: _CatalogActionOwnerLiveness | None = None
 
     @classmethod
     def _from_resource_owner(
         cls,
         catalog: _ResourceCatalogLoadConsumer,
+        *,
+        _action_owner_binding: _CatalogActionOwnerBinding | None = None,
     ) -> SkillCatalogConsumer:
-        return cls(catalog, _owner_constructing=True)
-
-    def _prepare_managed_action_owner(self, owner_identity: object) -> None:
-        if (
-            type(owner_identity) is not object
-            or self._managed_action_owner_identity is not None
-            or self._managed_action_owner_capability is not None
-        ):
-            raise RuntimeError("Skill action owner preparation is already resolved")
-        self._managed_action_owner_identity = owner_identity
-
-    def _install_managed_action_owner(
-        self,
-        capability: _CatalogActionOwnerCapability,
-    ) -> None:
-        if (
-            type(capability) is not _CatalogActionOwnerCapability
-            or self._managed_action_owner_identity is None
-            or capability.owner_identity is not self._managed_action_owner_identity
-            or self._managed_action_owner_capability is not None
-        ):
-            raise TypeError("Skill action owner capability is invalid")
-        self._managed_action_owner_capability = capability
+        consumer = cls.__new__(cls)
+        consumer._initialize(catalog)
+        if consumer._managed_action_sources:
+            if type(_action_owner_binding) is not _CatalogActionOwnerBinding:
+                raise TypeError(
+                    "Catalog managed actions require owner construction evidence"
+                )
+            owner_identity, capability, liveness = (
+                _consume_catalog_action_owner_binding(
+                    _action_owner_binding,
+                    projection=consumer._skill_projection,
+                )
+            )
+            consumer._managed_action_owner_identity = owner_identity
+            consumer._managed_action_owner_capability = capability
+            consumer._managed_action_owner_liveness = liveness
+        elif _action_owner_binding is not None:
+            raise TypeError("Read-only Skill consumer received action owner evidence")
+        return consumer
 
     @property
     def catalog_generation(self) -> int:

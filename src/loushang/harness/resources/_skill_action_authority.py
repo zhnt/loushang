@@ -5,14 +5,11 @@ from __future__ import annotations
 import hashlib
 import os
 import stat
-import sys
 import weakref
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-
-_OWNER_GENERATION_MODULE = "loushang.harness.resource_catalog.generation"
-_OWNER_GENERATION_TYPE = "PreparedResourceOwnerGeneration"
+from typing import Literal
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -51,9 +48,51 @@ class _CatalogActionOwnerSnapshot:
         raise TypeError("Catalog action owner snapshots are Resource-owner-built")
 
 
+@dataclass(frozen=True, slots=True, init=False)
+class _CatalogActionOwnerGenerationLifecycle:
+    """Opaque provenance for one authority-recorded Resource owner generation."""
+
+    def __init__(self) -> None:
+        raise TypeError("Catalog action owner lifecycle is Resource-owner-minted")
+
+
+@dataclass(frozen=True, slots=True, init=False)
+class _CatalogActionOwnerBinding:
+    """Single-use owner construction binding consumed by one projection."""
+
+    lifecycle: _CatalogActionOwnerGenerationLifecycle
+    projection: object
+    snapshot: _CatalogActionOwnerSnapshot
+    owner_identity: object
+
+    def __init__(self) -> None:
+        raise TypeError("Catalog action owner bindings are Resource-owner-minted")
+
+
+@dataclass(frozen=True, slots=True, init=False, weakref_slot=True)
+class _CatalogActionOwnerLiveness:
+    """Semantically neutral anchor retained by consumers and live actions."""
+
+    def __init__(self) -> None:
+        raise TypeError("Catalog action owner liveness is Resource-owner-minted")
+
+
+@dataclass(slots=True)
+class _CatalogActionOwnerGenerationRecord:
+    owner_ref: Callable[[], object | None]
+    lifecycle: _CatalogActionOwnerGenerationLifecycle
+    state: Literal[
+        "root_owned",
+        "graph_constructing",
+        "graph_owned",
+        "retired",
+    ]
+    pending: dict[int, _CatalogActionOwnerBinding]
+
+
 @dataclass(frozen=True, slots=True)
 class _CatalogActionOwnerRecord:
-    consumer_ref: Callable[[], object | None]
+    liveness_ref: Callable[[], object | None]
     capability: _CatalogActionOwnerCapability
     owner_identity: object
     snapshot: _CatalogActionOwnerSnapshot
@@ -62,14 +101,200 @@ class _CatalogActionOwnerRecord:
 @dataclass(frozen=True, slots=True)
 class _CatalogActionRegistration:
     action_ref: weakref.ReferenceType[object]
-    consumer: object
+    liveness: _CatalogActionOwnerLiveness
     capability: _CatalogActionOwnerCapability
     owner_identity: object
     fact: _CatalogActionFact
 
 
+_OWNER_GENERATIONS: dict[int, _CatalogActionOwnerGenerationRecord] = {}
+_OWNER_GENERATION_IDENTITIES: dict[int, int] = {}
 _OWNER_CAPABILITIES: dict[int, _CatalogActionOwnerRecord] = {}
 _REGISTRATIONS: dict[int, _CatalogActionRegistration] = {}
+
+
+def _new_catalog_action_owner_generation_lifecycle(
+    owner: object,
+) -> _CatalogActionOwnerGenerationLifecycle:
+    """Record provenance for one factory-created Resource owner generation."""
+
+    owner_id = id(owner)
+    existing_id = _OWNER_GENERATION_IDENTITIES.get(owner_id)
+    if existing_id is not None:
+        existing = _OWNER_GENERATIONS.get(existing_id)
+        if existing is not None and existing.owner_ref() is owner:
+            raise RuntimeError("Catalog action owner generation is already recorded")
+        _OWNER_GENERATION_IDENTITIES.pop(owner_id, None)
+    lifecycle = object.__new__(_CatalogActionOwnerGenerationLifecycle)
+    lifecycle_id = id(lifecycle)
+
+    def discard(reference: weakref.ReferenceType[object]) -> None:
+        current = _OWNER_GENERATIONS.get(lifecycle_id)
+        if current is not None and current.owner_ref is reference:
+            _OWNER_GENERATIONS.pop(lifecycle_id, None)
+            if _OWNER_GENERATION_IDENTITIES.get(owner_id) == lifecycle_id:
+                _OWNER_GENERATION_IDENTITIES.pop(owner_id, None)
+
+    owner_ref = weakref.ref(owner, discard)
+    _OWNER_GENERATIONS[lifecycle_id] = _CatalogActionOwnerGenerationRecord(
+        owner_ref=owner_ref,
+        lifecycle=lifecycle,
+        state="root_owned",
+        pending={},
+    )
+    _OWNER_GENERATION_IDENTITIES[owner_id] = lifecycle_id
+    return lifecycle
+
+
+def _begin_catalog_action_owner_generation(
+    lifecycle: _CatalogActionOwnerGenerationLifecycle,
+    *,
+    owner: object,
+) -> None:
+    record = _require_owner_generation_record(lifecycle, owner=owner)
+    if record.state != "root_owned":
+        raise RuntimeError("Catalog action owner generation cannot begin graph claim")
+    record.state = "graph_constructing"
+
+
+def _commit_catalog_action_owner_generation(
+    lifecycle: _CatalogActionOwnerGenerationLifecycle,
+    *,
+    owner: object,
+) -> None:
+    record = _require_owner_generation_record(lifecycle, owner=owner)
+    if record.state != "graph_constructing":
+        raise RuntimeError("Catalog action owner graph claim was not started")
+    record.state = "graph_owned"
+
+
+def _restore_catalog_action_owner_generation(
+    lifecycle: _CatalogActionOwnerGenerationLifecycle,
+    *,
+    owner: object,
+) -> None:
+    record = _require_owner_generation_record(lifecycle, owner=owner)
+    if record.state != "graph_constructing":
+        raise RuntimeError("Catalog action owner graph claim is not in progress")
+    record.pending.clear()
+    record.state = "root_owned"
+
+
+def _retire_catalog_action_owner_generation(
+    lifecycle: _CatalogActionOwnerGenerationLifecycle,
+    *,
+    owner: object,
+) -> None:
+    record = _require_owner_generation_record(lifecycle, owner=owner)
+    if record.state == "retired":
+        return
+    if record.state not in {"root_owned", "graph_owned"}:
+        raise RuntimeError("Catalog action owner generation cannot retire now")
+    record.pending.clear()
+    record.state = "retired"
+
+
+def _prepare_catalog_action_owner_binding(
+    lifecycle: _CatalogActionOwnerGenerationLifecycle,
+    *,
+    owner: object,
+    projection: object,
+) -> _CatalogActionOwnerBinding:
+    """Prepare one external, authority-owned construction registration."""
+
+    record = _require_owner_generation_record(lifecycle, owner=owner)
+    if record.state != "graph_owned":
+        raise RuntimeError("Catalog action owner generation is not graph-owned")
+    snapshot = _freeze_catalog_action_owner_snapshot(projection)
+    binding = object.__new__(_CatalogActionOwnerBinding)
+    object.__setattr__(binding, "lifecycle", lifecycle)
+    object.__setattr__(binding, "projection", projection)
+    object.__setattr__(binding, "snapshot", snapshot)
+    object.__setattr__(binding, "owner_identity", object())
+    if id(binding) in record.pending:
+        raise RuntimeError("Catalog action owner construction is already pending")
+    record.pending[id(binding)] = binding
+    return binding
+
+
+def _cancel_catalog_action_owner_binding(
+    binding: _CatalogActionOwnerBinding,
+) -> None:
+    if type(binding) is not _CatalogActionOwnerBinding:
+        return
+    record = _OWNER_GENERATIONS.get(id(binding.lifecycle))
+    if record is not None and record.pending.get(id(binding)) is binding:
+        record.pending.pop(id(binding), None)
+
+
+def _consume_catalog_action_owner_binding(
+    binding: _CatalogActionOwnerBinding,
+    *,
+    projection: object,
+) -> tuple[
+    object,
+    _CatalogActionOwnerCapability,
+    _CatalogActionOwnerLiveness,
+]:
+    """Atomically consume one owner-prepared binding for its exact projection."""
+
+    if type(binding) is not _CatalogActionOwnerBinding:
+        raise TypeError("Catalog action owner binding is invalid")
+    lifecycle = getattr(binding, "lifecycle", None)
+    record = (
+        _OWNER_GENERATIONS.get(id(lifecycle))
+        if type(lifecycle) is _CatalogActionOwnerGenerationLifecycle
+        else None
+    )
+    if (
+        record is None
+        or record.lifecycle is not lifecycle
+        or record.owner_ref() is None
+        or record.state != "graph_owned"
+        or record.pending.get(id(binding)) is not binding
+        or getattr(binding, "projection", None) is not projection
+        or type(getattr(binding, "snapshot", None)) is not _CatalogActionOwnerSnapshot
+        or type(getattr(binding, "owner_identity", None)) is not object
+    ):
+        raise TypeError("Catalog action owner binding is not live owner evidence")
+    record.pending.pop(id(binding), None)
+    capability = object.__new__(_CatalogActionOwnerCapability)
+    object.__setattr__(capability, "owner_identity", binding.owner_identity)
+    liveness = object.__new__(_CatalogActionOwnerLiveness)
+    capability_id = id(capability)
+
+    def discard(
+        reference: weakref.ReferenceType[_CatalogActionOwnerLiveness],
+    ) -> None:
+        current = _OWNER_CAPABILITIES.get(capability_id)
+        if current is not None and current.liveness_ref is reference:
+            _OWNER_CAPABILITIES.pop(capability_id, None)
+
+    liveness_ref = weakref.ref(liveness, discard)
+    _OWNER_CAPABILITIES[capability_id] = _CatalogActionOwnerRecord(
+        liveness_ref=liveness_ref,
+        capability=capability,
+        owner_identity=binding.owner_identity,
+        snapshot=binding.snapshot,
+    )
+    return binding.owner_identity, capability, liveness
+
+
+def _require_owner_generation_record(
+    lifecycle: _CatalogActionOwnerGenerationLifecycle,
+    *,
+    owner: object,
+) -> _CatalogActionOwnerGenerationRecord:
+    if type(lifecycle) is not _CatalogActionOwnerGenerationLifecycle:
+        raise TypeError("Catalog action owner lifecycle is invalid")
+    record = _OWNER_GENERATIONS.get(id(lifecycle))
+    if (
+        record is None
+        or record.lifecycle is not lifecycle
+        or record.owner_ref() is not owner
+    ):
+        raise TypeError("Catalog action owner generation is not authority-recorded")
+    return record
 
 
 def _freeze_catalog_action_owner_snapshot(
@@ -153,63 +378,6 @@ def _freeze_catalog_action_owner_snapshot(
     return snapshot
 
 
-def _bind_catalog_action_owner(
-    consumer: object,
-    *,
-    owner_identity: object,
-    owner_snapshot: _CatalogActionOwnerSnapshot,
-    owner_generation: object,
-) -> _CatalogActionOwnerCapability:
-    """Consume one exact Resource-owner construction registration."""
-
-    owner_type = type(owner_generation)
-    owner_module = sys.modules.get(_OWNER_GENERATION_MODULE)
-    registrations = getattr(
-        owner_generation,
-        "_skill_action_owner_registrations",
-        None,
-    )
-    if (
-        owner_type.__module__ != _OWNER_GENERATION_MODULE
-        or owner_type.__name__ != _OWNER_GENERATION_TYPE
-        or owner_module is None
-        or getattr(owner_module, _OWNER_GENERATION_TYPE, None) is not owner_type
-        or type(registrations) is not dict
-        or type(owner_snapshot) is not _CatalogActionOwnerSnapshot
-        or type(owner_identity) is not object
-        or getattr(consumer, "_managed_action_owner_identity", None)
-        is not owner_identity
-        or getattr(consumer, "_managed_action_owner_capability", None) is not None
-    ):
-        raise TypeError("Catalog action owner requires an exact Resource owner")
-    expected = registrations.pop(id(owner_snapshot), None)
-    if (
-        type(expected) is not tuple
-        or len(expected) != 3
-        or expected[0] is not owner_snapshot
-        or expected[1] is not consumer
-        or expected[2] is not owner_identity
-    ):
-        raise TypeError("Catalog action owner snapshot is not owner-registered")
-    capability = object.__new__(_CatalogActionOwnerCapability)
-    object.__setattr__(capability, "owner_identity", owner_identity)
-    capability_id = id(capability)
-
-    def discard(reference: weakref.ReferenceType[object]) -> None:
-        current = _OWNER_CAPABILITIES.get(capability_id)
-        if current is not None and current.consumer_ref is reference:
-            _OWNER_CAPABILITIES.pop(capability_id, None)
-
-    consumer_ref = weakref.ref(consumer, discard)
-    _OWNER_CAPABILITIES[capability_id] = _CatalogActionOwnerRecord(
-        consumer_ref=consumer_ref,
-        capability=capability,
-        owner_identity=owner_identity,
-        snapshot=owner_snapshot,
-    )
-    return capability
-
-
 def _register_catalog_managed_skill_action(
     action: object,
     *,
@@ -231,8 +399,8 @@ def _register_catalog_managed_skill_action(
     action_id = id(action)
     if action_id in _REGISTRATIONS:
         raise RuntimeError("Catalog action identity is already registered")
-    consumer = owner.consumer_ref()
-    assert consumer is not None
+    liveness = owner.liveness_ref()
+    assert type(liveness) is _CatalogActionOwnerLiveness
 
     def discard(reference: weakref.ReferenceType[object]) -> None:
         current = _REGISTRATIONS.get(action_id)
@@ -242,7 +410,7 @@ def _register_catalog_managed_skill_action(
     reference = weakref.ref(action, discard)
     _REGISTRATIONS[action_id] = _CatalogActionRegistration(
         action_ref=reference,
-        consumer=consumer,
+        liveness=liveness,
         capability=owner_capability,
         owner_identity=owner.owner_identity,
         fact=fact,
@@ -274,15 +442,12 @@ def _verified_owner_record(
     if type(capability) is not _CatalogActionOwnerCapability:
         return None
     record = _OWNER_CAPABILITIES.get(id(capability))
-    consumer = record.consumer_ref() if record is not None else None
+    liveness = record.liveness_ref() if record is not None else None
     if (
         record is None
         or record.capability is not capability
-        or consumer is None
+        or type(liveness) is not _CatalogActionOwnerLiveness
         or capability.owner_identity is not record.owner_identity
-        or getattr(consumer, "_managed_action_owner_identity", None)
-        is not record.owner_identity
-        or getattr(consumer, "_managed_action_owner_capability", None) is not capability
     ):
         return None
     return record

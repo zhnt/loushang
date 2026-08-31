@@ -32,10 +32,13 @@ from loushang.harness.capabilities.contribution_admission import (
 )
 from loushang.harness.capabilities.resources_consumers import (
     ResourceSkillCatalogCapabilityConsumer,
+    ResourceSkillStatusCatalogCapabilityConsumer,
 )
 from loushang.harness.capabilities.resources_contracts import (
     RESOURCES_CAPABILITY_DEFINITION_V3,
+    RESOURCES_CAPABILITY_DEFINITION_V4,
     RESOURCES_SKILL_CATALOG_LOAD_REQUIREMENT,
+    RESOURCES_SKILL_STATUS_CATALOG_LOAD_REQUIREMENT,
 )
 from loushang.harness.capabilities.resources_provider import (
     resources_capability_provider_binding,
@@ -183,6 +186,7 @@ async def _owner_built_skill_consumer(
     root_handles=(),
     package_resources=(),
     projection_cwd: Path,
+    skill_catalog_version: int = 3,
 ) -> tuple[
     SkillCatalogConsumer,
     RuntimeCapabilityGraphBinder,
@@ -207,17 +211,25 @@ async def _owner_built_skill_consumer(
         now=20,
         projection_cwd=projection_cwd,
     )
+    if skill_catalog_version not in {3, 4}:
+        raise ValueError("test Skill Catalog version must be 3 or 4")
     binding = resources_capability_provider_binding(
         profile=profile,
         scope_instance_id=f"session:{uuid4().hex}",
         staged_candidate=candidate,
-        enable_skill_catalog_v3=True,
+        enable_skill_catalog_v3=skill_catalog_version == 3,
+        enable_skill_catalog_v4=skill_catalog_version == 4,
+    )
+    definition = (
+        RESOURCES_CAPABILITY_DEFINITION_V3
+        if skill_catalog_version == 3
+        else RESOURCES_CAPABILITY_DEFINITION_V4
     )
     plan = RuntimeCapabilityGraphPlanner().plan(
         CapabilityGraphPlanRequest(
             product_id="coding",
-            roots=(RESOURCES_CAPABILITY_DEFINITION_V3.capability_id,),
-            definitions=(RESOURCES_CAPABILITY_DEFINITION_V3,),
+            roots=(definition.capability_id,),
+            definitions=(definition,),
             providers=(binding.provider,),
         )
     )
@@ -228,18 +240,30 @@ async def _owner_built_skill_consumer(
     )
     binder = RuntimeCapabilityGraphBinder()
     await binder.bind(runtime, plan, (binding,))
-    catalog = ResourceSkillCatalogCapabilityConsumer(
-        runtime.capture(RESOURCES_SKILL_CATALOG_LOAD_REQUIREMENT)
+    catalog = (
+        ResourceSkillCatalogCapabilityConsumer(
+            runtime.capture(RESOURCES_SKILL_CATALOG_LOAD_REQUIREMENT)
+        )
+        if skill_catalog_version == 3
+        else ResourceSkillStatusCatalogCapabilityConsumer(
+            runtime.capture(RESOURCES_SKILL_STATUS_CATALOG_LOAD_REQUIREMENT)
+        )
     )
     return catalog.skill_consumer, binder, runtime
 
 
-async def _catalog_action(
+async def _mounted_catalog_action(
     script: bytes,
     *,
     root: Path,
     declaration=None,
-) -> CatalogManagedSkillAction:
+    skill_catalog_version: int = 3,
+) -> tuple[
+    CatalogManagedSkillAction,
+    SkillCatalogConsumer,
+    RuntimeCapabilityGraphBinder,
+    RuntimeCapabilityGraphRuntime,
+]:
     resource_root = root / f"catalog-{uuid4().hex}"
     skill_root = resource_root / "skills" / "review"
     declaration = declaration or _declaration(script)
@@ -263,10 +287,27 @@ async def _catalog_action(
     consumer, binder, runtime = await _owner_built_skill_consumer(
         root_handles=(root_handle,),
         projection_cwd=root,
+        skill_catalog_version=skill_catalog_version,
+    )
+    [summary] = consumer.list_effective_skills()
+    [action] = consumer.capture_managed_actions(summary)
+    return action, consumer, binder, runtime
+
+
+async def _catalog_action(
+    script: bytes,
+    *,
+    root: Path,
+    declaration=None,
+    skill_catalog_version: int = 3,
+) -> CatalogManagedSkillAction:
+    action, _consumer, binder, runtime = await _mounted_catalog_action(
+        script,
+        root=root,
+        declaration=declaration,
+        skill_catalog_version=skill_catalog_version,
     )
     try:
-        [summary] = consumer.list_effective_skills()
-        [action] = consumer.capture_managed_actions(summary)
         return action
     finally:
         assert await binder.dispose(runtime) == ()
@@ -276,6 +317,7 @@ async def _catalog_package_action(
     script: bytes,
     *,
     root: Path,
+    skill_catalog_version: int = 3,
 ) -> CatalogManagedSkillAction:
     plugin_id = f"managed-action-package-{uuid4().hex}"
     contribution_id = f"{plugin_id}.skill"
@@ -388,6 +430,7 @@ async def _catalog_package_action(
         consumer, binder, runtime = await _owner_built_skill_consumer(
             package_resources=(resource_input,),
             projection_cwd=root,
+            skill_catalog_version=skill_catalog_version,
         )
         try:
             [summary] = consumer.list_effective_skills()
@@ -466,6 +509,12 @@ def test_catalog_action_authority_cannot_be_publicly_forged() -> None:
         _CatalogActionOwnerCapability()
     with pytest.raises(TypeError, match="Resource-owner-built"):
         action_authority._CatalogActionOwnerSnapshot()
+    with pytest.raises(TypeError, match="Resource-owner-minted"):
+        action_authority._CatalogActionOwnerGenerationLifecycle()
+    with pytest.raises(TypeError, match="Resource-owner-minted"):
+        action_authority._CatalogActionOwnerBinding()
+    with pytest.raises(TypeError, match="Resource-owner-minted"):
+        action_authority._CatalogActionOwnerLiveness()
     with pytest.raises(ValueError, match="owner capability"):
         _register_catalog_managed_skill_action(
             forged,
@@ -473,15 +522,12 @@ def test_catalog_action_authority_cannot_be_publicly_forged() -> None:
         )
 
 
-def test_catalog_action_owner_capability_rejects_non_consumer_binding() -> None:
-    owner_snapshot = object.__new__(action_authority._CatalogActionOwnerSnapshot)
-    object.__setattr__(owner_snapshot, "action_facts", ())
-    with pytest.raises(TypeError, match="exact Resource owner"):
-        action_authority._bind_catalog_action_owner(
-            object(),
-            owner_identity=object(),
-            owner_snapshot=owner_snapshot,
-            owner_generation=object(),
+def test_catalog_action_owner_capability_rejects_unregistered_binding() -> None:
+    forged = object.__new__(action_authority._CatalogActionOwnerBinding)
+    with pytest.raises(TypeError, match="not live owner evidence"):
+        action_authority._consume_catalog_action_owner_binding(
+            forged,
+            projection=object(),
         )
 
 
@@ -489,9 +535,11 @@ def test_catalog_action_owner_capability_rejects_complete_lookalike(
     tmp_path: Path,
 ) -> None:
     async def scenario() -> None:
-        action = await _catalog_action(b"print('owner')\n", root=tmp_path)
-        registration = action_authority._REGISTRATIONS[id(action)]
-        genuine = registration.consumer
+        action, genuine, binder, runtime = await _mounted_catalog_action(
+            b"print('owner')\n",
+            root=tmp_path,
+        )
+        owner_generation = genuine._catalog._generation
 
         class CallerCapture:
             snapshot = genuine._catalog_snapshot
@@ -506,13 +554,75 @@ def test_catalog_action_owner_capability_rejects_complete_lookalike(
         with pytest.raises(TypeError, match="owner-constructed Skill consumer"):
             SkillCatalogConsumer(CallerCapture())
 
-        # There is no API accepting the caller capture or a caller-provided
-        # consumer, and a retired owner cannot mint another one.
-        owner_generation = genuine._catalog._generation
+        fake_owner = object.__new__(type(owner_generation))
+        object.__setattr__(
+            fake_owner,
+            "_skill_action_owner_lifecycle",
+            owner_generation._skill_action_owner_lifecycle,
+        )
+        with pytest.raises(TypeError, match="not authority-recorded"):
+            action_authority._prepare_catalog_action_owner_binding(
+                fake_owner._skill_action_owner_lifecycle,
+                owner=fake_owner,
+                projection=genuine._skill_projection,
+            )
+        with pytest.raises(AttributeError):
+            object.__setattr__(fake_owner, "_skill_action_owner_registrations", {})
+
+        assert ManagedSkillActionBinding.bind(action).read_verified_script() == (
+            b"print('owner')\n"
+        )
+        assert await binder.dispose(runtime) == ()
         with pytest.raises(RuntimeError, match="not graph-owned"):
             owner_generation._construct_skill_catalog_consumer(
                 include_status=False
             )
+        with pytest.raises(RuntimeError, match="not graph-owned"):
+            action_authority._prepare_catalog_action_owner_binding(
+                owner_generation._skill_action_owner_lifecycle,
+                owner=owner_generation,
+                projection=genuine._skill_projection,
+            )
+
+    asyncio.run(scenario())
+
+
+def test_catalog_action_owner_rejects_construction_while_retiring(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        _action, consumer, binder, runtime = await _mounted_catalog_action(
+            b"print('retiring')\n",
+            root=tmp_path,
+        )
+        owner = consumer._catalog._generation
+        shadow_type = type(owner._shadow)
+        original_dispose = shadow_type.dispose
+        entered = asyncio.Event()
+        release = asyncio.Event()
+
+        async def blocking_dispose(shadow):  # type: ignore[no-untyped-def]
+            entered.set()
+            await release.wait()
+            return await original_dispose(shadow)
+
+        monkeypatch.setattr(shadow_type, "dispose", blocking_dispose)
+        disposal = asyncio.create_task(binder.dispose(runtime))
+        await entered.wait()
+        try:
+            assert owner.ownership_state == "retiring"
+            with pytest.raises(RuntimeError, match="not graph-owned"):
+                owner._construct_skill_catalog_consumer(include_status=False)
+            with pytest.raises(RuntimeError, match="not graph-owned"):
+                action_authority._prepare_catalog_action_owner_binding(
+                    owner._skill_action_owner_lifecycle,
+                    owner=owner,
+                    projection=consumer._skill_projection,
+                )
+        finally:
+            release.set()
+        assert await disposal == ()
 
     asyncio.run(scenario())
 
@@ -545,37 +655,45 @@ def test_catalog_action_uses_frozen_owner_snapshot_after_projection_mutation(
     tmp_path: Path,
 ) -> None:
     async def scenario() -> None:
-        action = await _catalog_action(b"print('owner')\n", root=tmp_path)
-        registration = action_authority._REGISTRATIONS[id(action)]
-        consumer = registration.consumer
-        consumer._managed_action_sources.clear()
+        action, consumer, binder, runtime = await _mounted_catalog_action(
+            b"print('owner')\n",
+            root=tmp_path,
+        )
+        try:
+            consumer._managed_action_sources.clear()
 
-        binding = ManagedSkillActionBinding.bind(action)
-        assert binding.read_verified_script() == b"print('owner')\n"
+            binding = ManagedSkillActionBinding.bind(action)
+            assert binding.read_verified_script() == b"print('owner')\n"
+        finally:
+            assert await binder.dispose(runtime) == ()
 
     asyncio.run(scenario())
 
 
 def test_catalog_action_rejects_nested_owner_fact_drift(tmp_path: Path) -> None:
     async def scenario() -> None:
-        action = await _catalog_action(b"print('owner')\n", root=tmp_path)
-        registration = action_authority._REGISTRATIONS[id(action)]
-        consumer = registration.consumer
-        [summary] = consumer.list_effective_skills()
-        source = consumer._managed_action_sources[summary.candidate_fingerprint]
-        [captured] = source.capture.actions
-        changed_body = b"print('changed')\n"
-        object.__setattr__(captured, "script_body", changed_body)
-        object.__setattr__(
-            captured.declaration,
-            "script_digest",
-            sha256(changed_body).hexdigest(),
+        action, consumer, binder, runtime = await _mounted_catalog_action(
+            b"print('owner')\n",
+            root=tmp_path,
         )
+        try:
+            [summary] = consumer.list_effective_skills()
+            source = consumer._managed_action_sources[summary.candidate_fingerprint]
+            [captured] = source.capture.actions
+            changed_body = b"print('changed')\n"
+            object.__setattr__(captured, "script_body", changed_body)
+            object.__setattr__(
+                captured.declaration,
+                "script_digest",
+                sha256(changed_body).hexdigest(),
+            )
 
-        with pytest.raises(ValueError, match="does not match its Resource owner"):
-            consumer.capture_managed_actions(summary)
-        binding = ManagedSkillActionBinding.bind(action)
-        assert binding.read_verified_script() == b"print('owner')\n"
+            with pytest.raises(ValueError, match="does not match its Resource owner"):
+                consumer.capture_managed_actions(summary)
+            binding = ManagedSkillActionBinding.bind(action)
+            assert binding.read_verified_script() == b"print('owner')\n"
+        finally:
+            assert await binder.dispose(runtime) == ()
 
     asyncio.run(scenario())
 
@@ -718,6 +836,31 @@ def test_package_catalog_action_executes_through_same_sandbox_process_path(
             assert binding.source_kind == "package"
         finally:
             await sandbox_runtime.close()
+
+    asyncio.run(scenario())
+
+
+def test_v4_owner_built_consumer_captures_native_and_package_actions(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        native = await _catalog_action(
+            b"print('native-v4')\n",
+            root=tmp_path,
+            skill_catalog_version=4,
+        )
+        package_action = await _catalog_package_action(
+            b"print('package-v4')\n",
+            root=tmp_path,
+            skill_catalog_version=4,
+        )
+
+        native_binding = ManagedSkillActionBinding.bind(native)
+        package_binding = ManagedSkillActionBinding.bind(package_action)
+        assert native_binding.read_verified_script() == b"print('native-v4')\n"
+        assert native_binding.source_kind == "native"
+        assert package_binding.read_verified_script() == b"print('package-v4')\n"
+        assert package_binding.source_kind == "package"
 
     asyncio.run(scenario())
 

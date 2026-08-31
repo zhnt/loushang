@@ -43,8 +43,14 @@ from loushang.harness.resources._discovery_conventions import (
     DEFAULT_CONTEXT_FILE_NAMES,
 )
 from loushang.harness.resources._skill_action_authority import (
-    _bind_catalog_action_owner,
-    _freeze_catalog_action_owner_snapshot,
+    _begin_catalog_action_owner_generation,
+    _cancel_catalog_action_owner_binding,
+    _CatalogActionOwnerGenerationLifecycle,
+    _commit_catalog_action_owner_generation,
+    _new_catalog_action_owner_generation_lifecycle,
+    _prepare_catalog_action_owner_binding,
+    _restore_catalog_action_owner_generation,
+    _retire_catalog_action_owner_generation,
 )
 from loushang.harness.resources._skill_catalog_consumer import (
     EffectiveSkillCatalogProjection,
@@ -94,7 +100,7 @@ class _PreparedSkillCatalogOwnerView:
         return await self._generation.load(handle)
 
 
-@dataclass(slots=True)
+@dataclass(slots=True, weakref_slot=True)
 class PreparedResourceOwnerGeneration:
     """One unpublished Catalog generation with exactly one transfer path.
 
@@ -117,10 +123,10 @@ class PreparedResourceOwnerGeneration:
         init=False,
         repr=False,
     )
-    _skill_action_owner_registrations: dict[
-        int,
-        tuple[object, object, object],
-    ] = field(default_factory=dict, init=False, repr=False)
+    _skill_action_owner_lifecycle: _CatalogActionOwnerGenerationLifecycle = field(
+        init=False,
+        repr=False,
+    )
 
     @classmethod
     def _from_shadow(
@@ -142,12 +148,16 @@ class PreparedResourceOwnerGeneration:
                 ),
             },
         )
-        return cls(
+        generation = cls(
             _shadow=shadow,
             runtime_id=runtime_id,
             catalog_generation=catalog_generation,
             provider_binding_fingerprint=fingerprint,
         )
+        generation._skill_action_owner_lifecycle = (
+            _new_catalog_action_owner_generation_lifecycle(generation)
+        )
+        return generation
 
     def retirement_receipt(
         self,
@@ -241,34 +251,21 @@ class PreparedResourceOwnerGeneration:
             skill_projection=effective,
             skill_status_projection=status,
         )
-        consumer = SkillCatalogConsumer._from_resource_owner(view)
         if not effective.managed_action_sources:
-            return consumer
-        owner_snapshot = _freeze_catalog_action_owner_snapshot(effective)
-        owner_identity = object()
-        consumer._prepare_managed_action_owner(owner_identity)
-        registration_id = id(owner_snapshot)
-        if registration_id in self._skill_action_owner_registrations:
-            raise RuntimeError("Resource owner action construction is already active")
-        self._skill_action_owner_registrations[registration_id] = (
-            owner_snapshot,
-            consumer,
-            owner_identity,
+            return SkillCatalogConsumer._from_resource_owner(view)
+        binding = _prepare_catalog_action_owner_binding(
+            self._skill_action_owner_lifecycle,
+            owner=self,
+            projection=effective,
         )
         try:
-            capability = _bind_catalog_action_owner(
-                consumer,
-                owner_identity=owner_identity,
-                owner_snapshot=owner_snapshot,
-                owner_generation=self,
+            return SkillCatalogConsumer._from_resource_owner(
+                view,
+                _action_owner_binding=binding,
             )
-            consumer._install_managed_action_owner(capability)
         except BaseException:
-            self._skill_action_owner_registrations.pop(registration_id, None)
+            _cancel_catalog_action_owner_binding(binding)
             raise
-        if registration_id in self._skill_action_owner_registrations:
-            raise RuntimeError("Resource owner action registration was not consumed")
-        return consumer
 
     def _borrows_extension_source_lease(self, source: object) -> bool:
         return self._shadow._borrows_extension_source_lease(source)
@@ -276,16 +273,28 @@ class PreparedResourceOwnerGeneration:
     def _begin_graph_construction(self) -> None:
         if self._ownership != "root_owned":
             raise RuntimeError("Resource owner generation is not available for claim")
+        _begin_catalog_action_owner_generation(
+            self._skill_action_owner_lifecycle,
+            owner=self,
+        )
         self._ownership = "graph_constructing"
 
     def _commit_graph_ownership(self) -> None:
         if self._ownership != "graph_constructing":
             raise RuntimeError("Resource owner generation claim was not started")
+        _commit_catalog_action_owner_generation(
+            self._skill_action_owner_lifecycle,
+            owner=self,
+        )
         self._ownership = "graph_owned"
 
     def _restore_root_ownership(self) -> None:
         if self._ownership != "graph_constructing":
             raise RuntimeError("Resource owner generation claim is not in progress")
+        _restore_catalog_action_owner_generation(
+            self._skill_action_owner_lifecycle,
+            owner=self,
+        )
         self._ownership = "root_owned"
 
     async def dispose_root_owned(self) -> None:
@@ -303,6 +312,10 @@ class PreparedResourceOwnerGeneration:
             return
         expected = "root_owned" if owner == "root" else "graph_owned"
         if self._ownership == expected:
+            _retire_catalog_action_owner_generation(
+                self._skill_action_owner_lifecycle,
+                owner=self,
+            )
             self._ownership = "retiring"
             self._retirement_owner = owner
         elif not (self._ownership == "retiring" and self._retirement_owner == owner):

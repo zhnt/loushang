@@ -31,6 +31,7 @@ RESOURCE_OWNER_GENERATION = Path(
 RESOURCE_PROVIDER = Path(
     "src/loushang/harness/capabilities/resources_provider.py"
 )
+AGENT_PRODUCT = Path("src/loushang/harness/session/agent_product.py")
 
 
 def _imports(path: Path) -> set[str]:
@@ -105,6 +106,7 @@ def test_managed_action_consumes_catalog_facts_and_existing_host_authorities() -
     authority_source = ACTION_AUTHORITY.read_text(encoding="utf-8")
     owner_source = RESOURCE_OWNER_GENERATION.read_text(encoding="utf-8")
     provider_source = RESOURCE_PROVIDER.read_text(encoding="utf-8")
+    product_source = AGENT_PRODUCT.read_text(encoding="utf-8")
 
     assert "CatalogManagedSkillAction" in action_source
     assert "SkillCatalogConsumer" not in action_source
@@ -126,12 +128,28 @@ def test_managed_action_consumes_catalog_facts_and_existing_host_authorities() -
     assert "_register_catalog_managed_skill_action" in consumer_source
     assert "_from_resource_owner" in consumer_source
     assert "owner-constructed Skill consumer" in consumer_source
+    assert "_owner_constructing" not in consumer_source
+    assert "_prepare_managed_action_owner" not in consumer_source
+    assert "_install_managed_action_owner" not in consumer_source
     assert "_REGISTRATIONS" in authority_source
     assert "_CatalogActionOwnerSnapshot" in authority_source
+    assert "_CatalogActionOwnerLiveness" in authority_source
     assert "SkillCatalogConsumer" not in authority_source
+    assert "resource_catalog.generation" not in authority_source
+    assert "sys.modules" not in authority_source
+    assert "_skill_action_owner_registrations" not in authority_source
+    assert "_managed_action_owner_identity" not in authority_source
+    assert "_managed_action_owner_capability" not in authority_source
+    assert "consumer_ref" not in authority_source
     assert "_construct_skill_catalog_consumer" in owner_source
-    assert "_skill_action_owner_registrations" in owner_source
+    assert "_skill_action_owner_registrations" not in owner_source
+    assert "_new_catalog_action_owner_generation_lifecycle" in owner_source
+    assert "_prepare_catalog_action_owner_binding" in owner_source
     assert "skill_consumer=skill_consumer" in provider_source
+    assert product_source.count(
+        "self._skill_catalog_consumer = skill_catalog.skill_consumer"
+    ) == 2
+    assert "SkillCatalogConsumer(skill_catalog)" not in product_source
 
 
 def test_public_process_request_contract_is_not_widened_for_skill_actions() -> None:
