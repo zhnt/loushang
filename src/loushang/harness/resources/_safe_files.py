@@ -173,7 +173,9 @@ def _capture_portable(
         )
         if (
             not _same_file_snapshot(metadata, after_read)
-            or not _same_file_snapshot(metadata, after_path)
+            or not _same_file_snapshot(before, after_path)
+            or (metadata.st_dev, metadata.st_ino)
+            != (after_path.st_dev, after_path.st_ino)
             or len(body) != metadata.st_size
         ):
             raise ContainedFileCaptureError(
@@ -288,8 +290,10 @@ def _canonical_relative_path(value: str | PurePosixPath) -> PurePosixPath:
     if not isinstance(value, str | PurePosixPath):
         raise TypeError("Contained file path must be relative")
     path = PurePosixPath(value)
-    if path.is_absolute() or not path.parts or any(
-        part in {"", ".", ".."} for part in path.parts
+    if (
+        path.is_absolute()
+        or not path.parts
+        or any(part in {"", ".", ".."} for part in path.parts)
     ):
         raise ValueError("Contained file path must be canonical and relative")
     return path
