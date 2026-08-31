@@ -1,0 +1,129 @@
+# Plugin Lifecycle PLC9A1 Management Application Contract
+
+## Status
+
+- Contract version: PLC9A1.
+- Delivery status: incremental. A1-1 is implemented by this change; A1-2 and
+  A1-3 are accepted delivery slices of the same task branch and are identified
+  below without claiming implementation ahead of their commits.
+- Scope: internal Harness management application ports, legacy enablement
+  migration, and Coding CLI list/enable/disable adaptation.
+- Public author SDK effect: none. The `loushang.plugin` namespace remains an
+  inert authoring and validation surface.
+- Out of scope: RPC/UI/management SDK transport bindings (PLC9A2), Plugin-bound
+  Package acquisition (PLC9B), Worker/remote topologies, artifact GC, private
+  data deletion, and removal of downgrade compatibility fields (PLC9E).
+
+PLC9A1 applies the ownership decisions frozen by the PLC9.0 baseline. It does
+not create a second desired-state writer or a persisted projection clock.
+
+## First Principles
+
+1. A command expresses intent; a projection reports observed owner facts.
+2. Desired state, source availability, runtime convergence, cleanup, and backup
+   retention are independent dimensions and remain independently revisioned.
+3. A projection is a read-only join. It records every captured owner revision,
+   reports unsupported or unknown dimensions, and may expose skew; it never
+   writes a synthesized truth back to an owner.
+4. Correlation identity belongs to the application request/result. Durable
+   operation and idempotency identities continue to belong to the management
+   command journal.
+5. Legacy enablement is imported once. Any desired-state history, including an
+   `absent` tombstone, is authoritative forever and must not be reseeded.
+6. Source add/remove changes availability. Plugin install/enable/disable/remove
+   changes desired state. Compatibility aliases never cross that boundary.
+
+## A1-1: Transport-neutral application ports
+
+`src/loushang/harness/plugin_management/application.py` owns the common
+application boundary:
+
+- `PluginManagementCommandPort` accepts a versioned correlated request and
+  returns the durable operation record without interpreting transport state;
+- `PluginManagementQueryPort` accepts a Product/scope query and returns a
+  versioned correlated projection;
+- `PluginManagementCommandApplication` is a narrow adapter over
+  `PluginManagementService`, which remains the sole desired-state command
+  authority; and
+- `PluginManagementReadModelProjector` captures desired-state, operation,
+  Source, Instance, Package, and retirement snapshots and joins them without
+  persisting a new clock.
+
+The projection keeps command status separate from convergence. It reports the
+selected immutable Package and Instance revisions, operation summaries,
+Instance state, retirement/cleanup evidence, owner revisions, unsupported or
+unknown dimensions, and explicit skew classifications. Missing optional owner
+ports remain visible as unsupported; missing facts from a supported owner are
+unknown or skew and are never invented.
+
+The source projection is intentionally inert. `manifest_enabled_default` is
+input to the one-time A1-2 migration only. `availability` reports Source
+Authority reachability and cannot enable or disable an Installation.
+
+## A1-2: One-way legacy enablement migration
+
+A1-2 adds one durable Product/scope/Installation migration journal with the
+ordered states:
+
+```text
+accepted -> desired_committed -> compatibility_window -> finalized
+```
+
+The receipt binds the migration schema/epoch, Installation key, exact Package
+revision, legacy input fingerprint, prior desired-state inventory revision,
+the committed transition or `already_authoritative` disposition, and journal
+revision. Under one migration lock:
+
+- a never-seen Installation may be seeded once from explicit legacy disabled
+  state and otherwise from the manifest install default;
+- any pre-existing desired history wins without mutation;
+- a crash before `desired_committed` replays the same deterministic operation;
+- a crash after it observes the exact committed transition and advances the
+  receipt instead of issuing a new intent; and
+- a runtime that does not support an observed newer migration epoch fails
+  closed before selection or mutation.
+
+During `compatibility_window`, legacy fields are a derived downgrade projection
+of canonical desired state. Current writers reject independent legacy Plugin
+enablement mutation once a receipt exists. Finalization requires recorded
+minimum-runtime, backup/restore, and roll-forward evidence; deletion of legacy
+fields and mutators remains a later PLC9E change.
+
+## A1-3: Coding CLI adapters
+
+A1-3 routes `--list-plugins`, `--enable-plugin`, and `--disable-plugin` through
+the common query/command ports. Formatting and exit-code mapping remain pure
+CLI adapters. They cannot import or construct durable ledgers, infer success
+from settings, or mutate source configuration.
+
+`--add-plugin-source`/`--remove-plugin-source` and their existing
+`--add-plugin`/`--remove-plugin` aliases retain Source add/remove semantics.
+Skill settings and Package commands retain their existing owners. A CLI
+desired-state command against an uninstalled or unmigrated Installation fails
+with a stable diagnostic instead of materializing a Package or mutating the
+legacy settings peer.
+
+## Failure And Replay Semantics
+
+- Query capture is non-transactional across owners by design. Owner revisions
+  and skew make the observation boundary explicit.
+- Command retry uses the caller's operation/idempotency identity; correlation
+  identity may change when an operator resumes the same operation.
+- A terminal command result does not assert runtime convergence.
+- Unsupported backup, private-data, or Worker dimensions remain named as such.
+- Neither migration nor CLI handling may execute Plugin code, acquire a remote
+  artifact, delete data, or weaken retirement/cleanup evidence.
+
+## Evidence And Deletion Gates
+
+Behavioral tests cover correlated idempotent command/resume, owner-revisioned
+projection, Product/scope filtering, versioned operation shapes, orphan skew,
+migration crash/replay/downgrade behavior, and CLI alias separation.
+Architecture tests keep management implementation out of `loushang.plugin`,
+prevent transport imports and projection persistence in the common application
+module, and prevent CLI desired-state paths from reconstructing a ledger or
+calling Plugin settings mutators.
+
+The legacy `disabled_plugins` field, `PluginManager`, manifest/source selection
+vetoes, Package/Resource projection inputs, and compatibility aliases are not
+deleted by PLC9A1. Each remains subject to the explicit PLC9 inventory gate.

@@ -25,6 +25,9 @@ implemented.
 | Security retirement acceptance | `src/loushang/harness/plugin_management/security_acceptance.py::PluginInstanceSecurityRetirementJournal` | Durable acceptance evidence for security retirement | Retain; keep distinct from graceful retirement and generic management auth |
 | Package retention and cleanup | `src/loushang/harness/plugin_management/package_lifecycle.py::PluginPackageLifecycleLedger` | Durable pins, cleanup leases/attempts/repair decisions, recovery barrier, retention snapshots, and GC candidates | Retain as lifecycle evidence; PLC9D must add deletion execution/result without weakening candidate recheck |
 | Coding Product composition | `src/loushang/coding/_plugin_lifecycle.py::CodingPluginLifecycle` | Product adapter composes the generic ledgers under one workspace identity and coordination lock | Retain as an outer Product adapter until common application ports replace Product-specific call sites; it must not become a second generic owner |
+| Management application command adapter | `src/loushang/harness/plugin_management/application.py::PluginManagementCommandApplication` | A1-1 preserves correlation around the durable operation identity and delegates every mutation to `PluginManagementService` | Retain as the transport-neutral command boundary; transports cannot import the service or desired-state ledger directly |
+| Management query projector | `src/loushang/harness/plugin_management/application.py::PluginManagementReadModelProjector` | A1-1 joins independently revisioned desired, operation, Source, Instance, Package, and retirement snapshots without persisting another clock | Retain as the common read boundary; optional owners remain explicitly unsupported/unknown and skew remains observable |
+| Source projection snapshot | `src/loushang/harness/plugin_management/application.py::PluginManagementSourceSnapshotV1` | A1-1 describes source identity, availability, version, and manifest install default as inert input facts | Retain behind a Product Source adapter; availability and install default never become live desired-selection writers |
 
 The `PluginManagementAction` v1 union in
 `src/loushang/harness/plugin_management/operations.py` is exactly `install`,
@@ -162,10 +165,12 @@ requires a decision. A filename or “legacy” comment is never deletion eviden
 
 ## Missing Target Boundaries
 
-These are deliberately absent and therefore cannot be imported or exercised by
-PLC9.0 tests:
+These remain deliberately absent and therefore cannot be imported or exercised
+by PLC9A1 tests. The former missing common management query snapshot/projector
+and transport-neutral query port is now implemented by
+`src/loushang/harness/plugin_management/application.py` and frozen by the
+PLC9A1 contract:
 
-- common management query snapshot/projector and transport-neutral query port;
 - CLI/RPC/UI/management-SDK conformance fixture;
 - durable enablement-migration journal/receipt and runtime-version fence;
 - complete bounded byte/archive/wheel materialization transaction;
