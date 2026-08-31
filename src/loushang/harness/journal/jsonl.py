@@ -4,6 +4,7 @@ import errno
 import importlib
 import json
 import os
+import re
 import stat
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager, contextmanager, nullcontext, suppress
@@ -35,6 +36,7 @@ H = TypeVar("H")
 R = TypeVar("R")
 LockMode = Literal["exclusive", "shared"]
 LockFactory = Callable[[Path, LockMode], AbstractContextManager[None]]
+_JSONL_LINE_ENDING = re.compile(r"\r\n|\r|\n")
 
 
 @dataclass(frozen=True)
@@ -383,7 +385,7 @@ def _decode_jsonl(
     load_policy: JournalLoadPolicy,
 ) -> JsonlSnapshot[H, R]:
 
-    physical_lines = [line for _offset, line in _scan_jsonl_physical_lines(raw)]
+    physical_lines = _split_jsonl_physical_lines(raw)
     numbered_lines = [
         (line_number, line)
         for line_number, line in enumerate(physical_lines, start=1)
@@ -692,34 +694,29 @@ def _has_trailing_newline(raw: str) -> bool:
     return raw.endswith(("\n", "\r"))
 
 
-def _scan_jsonl_physical_lines(raw: str) -> list[tuple[int, str]]:
+def _split_jsonl_physical_lines(raw: str) -> list[str]:
     """Split only on JSONL CR/LF framing, never Unicode string content."""
 
-    lines: list[tuple[int, str]] = []
-    start = 0
-    cursor = 0
-    while cursor < len(raw):
-        character = raw[cursor]
-        if character not in "\r\n":
-            cursor += 1
-            continue
-        lines.append((start, raw[start:cursor]))
-        cursor += 1
-        if character == "\r" and cursor < len(raw) and raw[cursor] == "\n":
-            cursor += 1
-        start = cursor
-    if start < len(raw):
-        lines.append((start, raw[start:]))
+    if not raw:
+        return []
+    lines = _JSONL_LINE_ENDING.split(raw) if "\r" in raw else raw.split("\n")
+    if _has_trailing_newline(raw):
+        lines.pop()
     return lines
 
 
 def _line_start_offset(raw: str, line_number: int) -> int:
     if line_number < 1:
         raise ValueError("line number must be positive")
-    lines = _scan_jsonl_physical_lines(raw)
-    if line_number > len(lines):
-        raise ValueError(f"line {line_number} does not exist in journal")
-    return lines[line_number - 1][0]
+    if line_number == 1 and raw:
+        return 0
+    for ending_number, match in enumerate(
+        _JSONL_LINE_ENDING.finditer(raw),
+        start=1,
+    ):
+        if ending_number == line_number - 1 and match.end() < len(raw):
+            return match.end()
+    raise ValueError(f"line {line_number} does not exist in journal")
 
 
 def _replace_text_unlocked(
