@@ -1133,7 +1133,7 @@ def _stable_read(
             ) from exc
         raise NativeResourceSourceError(
             code="resource_source_discovery_failed",
-            reason="stable_read_failed",
+            reason=f"stable_read_failed:{exc.code}",
         ) from exc
     except (OSError, ValueError) as exc:
         raise NativeResourceSourceError(
