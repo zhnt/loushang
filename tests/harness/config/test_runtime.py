@@ -4,6 +4,7 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
+from threading import Event, Thread, current_thread
 
 import pytest
 
@@ -272,3 +273,240 @@ def test_scoped_config_runtime_drains_reentrant_changes_before_listener_error(
 
     assert seen == [(1, "one"), (2, "two"), (3, "three")]
     assert runtime.revision == 3
+
+
+def test_persistent_update_returns_the_exact_coalesced_published_change(
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime(tmp_path)
+    preloaded_peer = _runtime(tmp_path)
+    seen = []
+    runtime.subscribe_change(seen.append)
+
+    preloaded_peer.scope("global").update({"enabled": False})
+    change = runtime.scope("global").update({"name": "local"})
+
+    assert seen == [change]
+    assert change is seen[0]
+    assert change.previous == _Config()
+    assert change.current == _Config(name="local", enabled=False)
+    assert change.revision == 1
+
+
+def test_transform_rejects_persistent_reentrant_write_before_file_lock(
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime(tmp_path)
+    session = runtime.scope("session")
+    errors: list[BaseException] = []
+
+    def reentrant_transform(patch: dict[str, object]) -> dict[str, object]:
+        runtime.scope("global").update({"enabled": False})
+        return {**patch, "name": "outer"}
+
+    def mutate() -> None:
+        try:
+            session.transform(reentrant_transform)
+        except BaseException as exc:
+            errors.append(exc)
+
+    worker = Thread(target=mutate, daemon=True)
+    worker.start()
+    worker.join(timeout=3)
+
+    assert worker.is_alive() is False
+    assert len(errors) == 1
+    assert isinstance(errors[0], RuntimeError)
+    assert "cannot perform re-entrant writes" in str(errors[0])
+    assert runtime.revision == 0
+    assert runtime.value == _Config()
+
+
+def test_runtime_engine_listener_reenters_after_all_transaction_locks(
+    tmp_path: Path,
+) -> None:
+    engine = LayeredConfig(
+        codec=_Codec(),
+        layers=(
+            ConfigLayer("global", tmp_path / "global.json", persistent=True),
+            ConfigLayer("session"),
+        ),
+    )
+    runtime = ScopedConfigRuntime(engine)
+    seen: list[str] = []
+    errors: list[BaseException] = []
+
+    def reenter(value: _Config) -> None:
+        seen.append(value.name)
+        if value.name == "outer":
+            runtime.scope("session").update({"name": "nested"})
+
+    engine.subscribe(reenter)
+
+    def mutate() -> None:
+        try:
+            runtime.scope("global").update({"name": "outer"})
+        except BaseException as exc:
+            errors.append(exc)
+
+    worker = Thread(target=mutate, daemon=True)
+    worker.start()
+    worker.join(timeout=3)
+
+    assert worker.is_alive() is False
+    assert errors == []
+    assert seen == ["outer", "nested"]
+    assert runtime.value.name == "nested"
+
+
+def test_runtime_exclusively_owns_bound_engine_mutations(tmp_path: Path) -> None:
+    engine = LayeredConfig(
+        codec=_Codec(),
+        layers=(ConfigLayer("session"),),
+    )
+    runtime = ScopedConfigRuntime(engine)
+
+    with pytest.raises(RuntimeError, match="owned by its scoped runtime"):
+        engine.update("session", {"name": "bypass"})
+
+    change = runtime.scope("session").update({"name": "owned"})
+    assert change.current.name == "owned"
+    assert runtime.revision == 1
+
+
+def test_runtime_ownership_cannot_be_bypassed_inside_explicit_transaction(
+    tmp_path: Path,
+) -> None:
+    engine = LayeredConfig(
+        codec=_Codec(),
+        layers=(ConfigLayer("session"),),
+    )
+    runtime = ScopedConfigRuntime(engine)
+
+    with runtime.transaction():
+        with pytest.raises(RuntimeError, match="owned by its scoped runtime"):
+            engine.update("session", {"name": "bypass"})
+        with pytest.raises(RuntimeError, match="owned by its scoped runtime"):
+            engine.publish()
+
+    assert runtime.value == _Config()
+    assert runtime.revision == 0
+
+
+def test_runtime_binding_linearizes_before_an_inflight_direct_update(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = LayeredConfig(
+        codec=_Codec(),
+        layers=(ConfigLayer("session"),),
+    )
+    first_check_complete = Event()
+    resume_update = Event()
+    errors: list[BaseException] = []
+    original_check = engine._require_mutation_authority
+    direct_checks = 0
+
+    def pause_after_first_check(authority: object | None) -> None:
+        nonlocal direct_checks
+        original_check(authority)
+        if current_thread().name != "direct-update":
+            return
+        direct_checks += 1
+        if direct_checks == 1:
+            first_check_complete.set()
+            if not resume_update.wait(timeout=3):
+                raise TimeoutError("runtime binding did not reach the barrier")
+
+    monkeypatch.setattr(engine, "_require_mutation_authority", pause_after_first_check)
+
+    def update_directly() -> None:
+        try:
+            engine.update("session", {"name": "bypass"})
+        except BaseException as exc:
+            errors.append(exc)
+
+    worker = Thread(target=update_directly, name="direct-update", daemon=True)
+    worker.start()
+    assert first_check_complete.wait(timeout=3)
+    runtime = ScopedConfigRuntime(engine)
+    resume_update.set()
+    worker.join(timeout=3)
+
+    assert worker.is_alive() is False
+    assert len(errors) == 1
+    assert isinstance(errors[0], RuntimeError)
+    assert "owned by its scoped runtime" in str(errors[0])
+    assert engine.value == _Config()
+    assert runtime.revision == 0
+
+
+def test_deferred_direct_transaction_rechecks_runtime_ownership(
+    tmp_path: Path,
+) -> None:
+    engine = LayeredConfig(
+        codec=_Codec(),
+        layers=(ConfigLayer("session"),),
+    )
+    deferred = engine.transaction()
+    runtime = ScopedConfigRuntime(engine)
+
+    with pytest.raises(RuntimeError, match="owned by its scoped runtime"):
+        with deferred:
+            pass
+
+    assert engine.value == _Config()
+    assert runtime.revision == 0
+
+
+def test_rejected_deferred_transaction_preserves_active_runtime_transaction(
+    tmp_path: Path,
+) -> None:
+    engine = LayeredConfig(
+        codec=_Codec(),
+        layers=(ConfigLayer("session"),),
+    )
+    deferred = engine.transaction()
+    runtime = ScopedConfigRuntime(engine)
+    engine_values: list[_Config] = []
+    runtime_changes = []
+    engine.subscribe(engine_values.append)
+    runtime.subscribe_change(runtime_changes.append)
+
+    with runtime.transaction() as transaction:
+        with pytest.raises(RuntimeError, match="owned by its scoped runtime"):
+            with deferred:
+                pass
+        receipt = runtime.scope("session").update({"name": "owned"})
+        assert receipt is transaction
+        assert transaction.change is None
+        assert engine_values == []
+        assert runtime_changes == []
+
+    assert transaction.change is not None
+    assert transaction.change.current == _Config(name="owned")
+    assert engine_values == [_Config(name="owned")]
+    assert runtime_changes == [transaction.change]
+    assert runtime.revision == 1
+
+
+def test_explicit_transaction_returns_only_final_change_receipt(
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime(tmp_path)
+    published = []
+    runtime.subscribe_change(published.append)
+
+    with runtime.transaction() as transaction:
+        first = runtime.scope("global").update({"name": "first"})
+        second = runtime.scope("project").update({"limit": 42})
+        assert first is transaction
+        assert second is transaction
+        assert transaction.change is None
+
+    assert transaction.change is not None
+    assert transaction.change.operation == "transaction"
+    assert transaction.change.layer is None
+    assert transaction.change.current == _Config(name="first", limit=42)
+    assert published == [transaction.change]
+    assert published[0] is transaction.change

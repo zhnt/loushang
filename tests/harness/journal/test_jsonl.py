@@ -35,6 +35,48 @@ class _RecordCodec:
         return _Record(record_id=str(value["recordId"]), text=str(value["text"]))
 
 
+def test_descriptor_relative_journal_read_stays_beneath_open_directory(
+    tmp_path: Path,
+) -> None:
+    import os
+
+    import pytest
+
+    from loushang.harness.journal import read_journal_file_at
+
+    if os.name != "posix" or os.open not in os.supports_dir_fd:
+        pytest.skip("requires POSIX descriptor-relative opens")
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "state.jsonl").write_text("trusted\n", encoding="utf-8")
+    (root / "state.jsonl").chmod(0o600)
+    outside = tmp_path / "outside.jsonl"
+    outside.write_text("attacker\n", encoding="utf-8")
+    outside.chmod(0o600)
+    (root / "linked.jsonl").symlink_to(outside)
+    descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        assert read_journal_file_at(descriptor, "state.jsonl") == "trusted\n"
+        assert read_journal_file_at(descriptor, "missing.jsonl") == ""
+        with pytest.raises(OSError):
+            read_journal_file_at(descriptor, "linked.jsonl")
+    finally:
+        os.close(descriptor)
+
+
+def test_descriptor_relative_journal_apis_reject_non_child_names() -> None:
+    import pytest
+
+    from loushang.harness.journal import journal_file_lock_at, read_journal_file_at
+
+    for name in ("", ".", "..", "parent/child", "parent\\child", "entry:stream"):
+        with pytest.raises(ValueError, match="one direct component"):
+            read_journal_file_at(-1, name)
+        with pytest.raises(ValueError, match="one direct component"):
+            with journal_file_lock_at(-1, name, "exclusive"):
+                pass
+
+
 def test_header_journal_rewrite_append_and_load_round_trip(tmp_path: Path) -> None:
     from loushang.harness.journal import (
         JournalLoadPolicy,
@@ -140,19 +182,51 @@ def test_format_profile_preserves_unicode_and_key_order(tmp_path: Path) -> None:
         PROCESS_LOCAL_JOURNAL,
         SORTED_UNICODE_JSONL_FORMAT,
         append_jsonl_record,
+        load_jsonl,
     )
 
     path = tmp_path / "events.jsonl"
+    record = _Record("记录", "你\u0085好\u2028世\u2029界")
     append_jsonl_record(
         path,
-        _Record("记录", "你好"),
+        record,
         record_codec=_RecordCodec(),
         format_profile=SORTED_UNICODE_JSONL_FORMAT,
         durability=PROCESS_LOCAL_JOURNAL,
     )
 
-    assert path.read_bytes() == ('{"recordId": "记录", "text": "你好"}\n'.encode())
+    assert path.read_bytes() == (
+        '{"recordId": "记录", "text": "你\u0085好\u2028世\u2029界"}\n'.encode()
+    )
+    assert load_jsonl(
+        path,
+        record_codec=_RecordCodec(),
+        format_profile=SORTED_UNICODE_JSONL_FORMAT,
+        durability=PROCESS_LOCAL_JOURNAL,
+    ).records == (record,)
     assert not path.with_name("events.jsonl.lock").exists()
+
+
+def test_decoder_accepts_jsonl_cr_lf_framing() -> None:
+    from loushang.harness.journal import decode_jsonl
+
+    for newline in ("\n", "\r\n", "\r"):
+        snapshot = decode_jsonl(
+            newline.join(
+                (
+                    '{"recordId":"one","text":"alpha"}',
+                    '{"recordId":"two","text":"beta"}',
+                    "",
+                )
+            ),
+            target="records.jsonl",
+            record_codec=_RecordCodec(),
+        )
+
+        assert snapshot.records == (
+            _Record("one", "alpha"),
+            _Record("two", "beta"),
+        )
 
 
 def test_journal_rejects_values_outside_strict_json_algebra(tmp_path: Path) -> None:
@@ -213,6 +287,77 @@ def test_skip_invalid_records_and_partial_tail_reports_provenance(
     ]
     assert [diagnostic.line_number for diagnostic in snapshot.diagnostics] == [2, 3]
     assert all(diagnostic.source_path == path for diagnostic in snapshot.diagnostics)
+
+
+def test_syntactically_complete_unterminated_record_is_not_committed(
+    tmp_path: Path,
+) -> None:
+    from loushang.harness.journal import (
+        PROCESS_LOCAL_JOURNAL,
+        JournalLoadPolicy,
+        load_jsonl,
+    )
+
+    path = tmp_path / "records.jsonl"
+    committed = '{"recordId":"one","text":"committed\u2028still"}\n'
+    tail = '{"recordId":"two","text":"not committed"}'
+    path.write_text(committed + tail, encoding="utf-8")
+
+    snapshot = load_jsonl(
+        path,
+        record_codec=_RecordCodec(),
+        durability=PROCESS_LOCAL_JOURNAL,
+        load_policy=JournalLoadPolicy(partial_tail="skip"),
+    )
+
+    assert snapshot.records == (_Record("one", "committed\u2028still"),)
+    assert [item.code for item in snapshot.diagnostics] == ["partial_journal_tail"]
+    assert path.read_text(encoding="utf-8") == committed + tail
+
+    repaired = load_jsonl(
+        path,
+        record_codec=_RecordCodec(),
+        durability=PROCESS_LOCAL_JOURNAL,
+        load_policy=JournalLoadPolicy(partial_tail="repair"),
+    )
+
+    assert repaired.records == (_Record("one", "committed\u2028still"),)
+    assert path.read_text(encoding="utf-8") == committed
+
+
+def test_unterminated_whitespace_tail_never_removes_committed_record(
+    tmp_path: Path,
+) -> None:
+    from loushang.harness.journal import (
+        PROCESS_LOCAL_JOURNAL,
+        JournalLoadPolicy,
+        load_jsonl,
+    )
+
+    path = tmp_path / "records.jsonl"
+    committed = '{"recordId":"one","text":"committed"}\n'
+    path.write_text(committed + "   ", encoding="utf-8")
+
+    snapshot = load_jsonl(
+        path,
+        record_codec=_RecordCodec(),
+        durability=PROCESS_LOCAL_JOURNAL,
+        load_policy=JournalLoadPolicy(partial_tail="skip"),
+    )
+
+    assert snapshot.records == (_Record("one", "committed"),)
+    assert [item.line_number for item in snapshot.diagnostics] == [2]
+    assert path.read_text(encoding="utf-8") == committed + "   "
+
+    repaired = load_jsonl(
+        path,
+        record_codec=_RecordCodec(),
+        durability=PROCESS_LOCAL_JOURNAL,
+        load_policy=JournalLoadPolicy(partial_tail="repair"),
+    )
+
+    assert repaired.records == (_Record("one", "committed"),)
+    assert path.read_text(encoding="utf-8") == committed
 
 
 def test_repair_partial_tail_atomically_removes_only_incomplete_line(
@@ -363,3 +508,38 @@ def test_nonblocking_file_lock_reports_contention_without_waiting(tmp_path) -> N
         with pytest.raises(JournalLockUnavailable):
             with journal_file_lock(path, "exclusive", blocking=False):
                 pytest.fail("contended non-blocking lock must not be acquired")
+
+
+def test_existing_journal_lock_rejects_final_symlink(tmp_path: Path) -> None:
+    import pytest
+
+    from loushang.harness.journal import journal_file_lock
+
+    path = tmp_path / "state.jsonl"
+    external = tmp_path / "external.lock"
+    external.write_bytes(b"sentinel")
+    external.chmod(0o600)
+    path.with_name("state.jsonl.lock").symlink_to(external)
+
+    with pytest.raises(OSError):
+        with journal_file_lock(path, "exclusive", create=False):
+            pytest.fail("a symlinked lock must never be acquired")
+
+    assert external.read_bytes() == b"sentinel"
+
+
+def test_existing_journal_lock_rejects_fifo_without_blocking(tmp_path: Path) -> None:
+    import os
+
+    import pytest
+
+    from loushang.harness.journal import journal_file_lock
+
+    if os.name != "posix" or not hasattr(os, "mkfifo"):
+        pytest.skip("FIFO lock regression is POSIX-specific")
+    path = tmp_path / "state.jsonl"
+    os.mkfifo(path.with_name("state.jsonl.lock"), mode=0o600)
+
+    with pytest.raises(OSError):
+        with journal_file_lock(path, "exclusive", create=False):
+            pytest.fail("a FIFO lock must never be acquired")

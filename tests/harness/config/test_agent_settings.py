@@ -1164,3 +1164,154 @@ def test_settings_manager_reload_preserves_previous_scope_when_reload_fails(
     errors = manager.drain_errors()
     assert len(errors) == 1
     assert errors[0].scope == "project"
+
+
+def test_persistent_settings_update_refreshes_a_preloaded_peer(tmp_path) -> None:
+    from loushang.harness.config.agent import SettingsManager
+
+    settings_path = tmp_path / "project-settings.json"
+    first = SettingsManager(project_settings_path=settings_path)
+    peer = SettingsManager(project_settings_path=settings_path)
+
+    first.set_disabled_plugins(("managed-pack",), scope="project")
+    peer.set_theme("night", scope="project")
+
+    reloaded = SettingsManager(project_settings_path=settings_path)
+    assert reloaded.get_settings().disabled_plugins == ("managed-pack",)
+    assert reloaded.get_settings().theme == "night"
+
+
+def test_preloaded_settings_rmw_helpers_preserve_peer_mutations(tmp_path) -> None:
+    from loushang.harness.config.agent import SettingsManager
+
+    global_path = tmp_path / "global.json"
+    project_path = tmp_path / "project.json"
+    first = SettingsManager(
+        global_settings_path=global_path,
+        project_settings_path=project_path,
+    )
+    peer = SettingsManager(
+        global_settings_path=global_path,
+        project_settings_path=project_path,
+    )
+
+    first.add_plugin_source("plugins/first", scope="project")
+    peer.add_plugin_source("plugins/peer", scope="project")
+    first.add_package_source("pypi:first-pack==1.0.0", scope="project")
+    peer.add_package_source("git:example.com/peer-pack@v1", scope="project")
+    first.disable_skill("first-skill", scope="project")
+    peer.disable_skill("peer-skill", scope="project")
+    first.set_image_width_cells(77, scope="global")
+    peer.set_show_terminal_progress(True, scope="global")
+
+    reloaded = SettingsManager(
+        global_settings_path=global_path,
+        project_settings_path=project_path,
+    )
+    settings = reloaded.get_settings()
+    assert settings.plugin_sources == ("plugins/first", "plugins/peer")
+    assert [source.source for source in settings.package_sources] == [
+        "pypi:first-pack==1.0.0",
+        "git:example.com/peer-pack@v1",
+    ]
+    assert settings.disabled_skills == ("first-skill", "peer-skill")
+    assert settings.terminal.image_width_cells == 77
+    assert settings.terminal.show_terminal_progress is True
+
+
+def test_settings_manager_accepts_one_plugin_compatibility_authority(
+    tmp_path,
+) -> None:
+    from loushang.harness.config.agent import SettingsManager
+    from loushang.harness.config.agent.manager import (
+        LegacyPluginCompatibilityProjectionV1,
+    )
+
+    manager = SettingsManager(project_settings_path=tmp_path / "settings.json")
+    authority = object()
+    guarded: list[str] = []
+    publish = manager.bind_plugin_enablement_legacy_mutation_guard(
+        authority,
+        guarded.append,
+    )
+    assert (
+        manager.bind_plugin_enablement_legacy_mutation_guard(
+            authority,
+            lambda _plugin_id: None,
+        )
+        is publish
+    )
+    with pytest.raises(RuntimeError, match="authority already bound"):
+        manager.bind_plugin_enablement_legacy_mutation_guard(
+            object(),
+            lambda _plugin_id: None,
+        )
+
+    publish(
+        LegacyPluginCompatibilityProjectionV1(
+            disabled_plugin_ids=("managed-pack",),
+            migrated_plugin_ids=("managed-pack",),
+            desired_inventory_revision=1,
+            migration_journal_revision=1,
+        )
+    )
+    assert manager.get_settings().disabled_plugins == ("managed-pack",)
+
+    manager.disable_plugin("unmigrated-pack", scope="project")
+    assert guarded == ["unmigrated-pack"]
+
+
+def test_persistent_settings_transaction_publishes_after_unlock(tmp_path) -> None:
+    from loushang.harness.config.agent import SettingsManager
+
+    settings_path = tmp_path / "project-settings.json"
+    manager = SettingsManager(project_settings_path=settings_path)
+    seen: list[tuple[str, ...]] = []
+    errors: list[BaseException] = []
+
+    def mutate_again(settings) -> None:  # type: ignore[no-untyped-def]
+        seen.append(settings.disabled_plugins)
+        if settings.disabled_plugins == ("outer",):
+            manager.disable_plugin("nested", scope="project")
+
+    manager.subscribe(mutate_again)
+
+    def mutate() -> None:
+        try:
+            manager.set_disabled_plugins(("outer",), scope="project")
+        except BaseException as exc:
+            errors.append(exc)
+
+    worker = Thread(target=mutate, daemon=True)
+    worker.start()
+    worker.join(timeout=3)
+
+    assert worker.is_alive() is False
+    assert errors == []
+    assert seen == [("outer",), ("outer", "nested")]
+    assert manager.get_settings().disabled_plugins == ("outer", "nested")
+    assert SettingsManager(
+        project_settings_path=settings_path
+    ).get_settings().disabled_plugins == ("outer", "nested")
+
+
+def test_persistent_settings_update_fails_closed_on_corrupt_peer_state(
+    tmp_path,
+) -> None:
+    from loushang.harness.config.agent import SettingsManager
+
+    settings_path = tmp_path / "project-settings.json"
+    manager = SettingsManager(project_settings_path=settings_path)
+    settings_path.write_text("{not-json", encoding="utf-8")
+
+    with pytest.raises(json.JSONDecodeError):
+        manager.set_theme("night", scope="project")
+
+    assert settings_path.read_text(encoding="utf-8") == "{not-json"
+
+    seen: list[str] = []
+    manager.subscribe(lambda settings: seen.append(settings.theme))
+    settings_path.write_text("{}", encoding="utf-8")
+    manager.set_theme("recovered", scope="project")
+
+    assert seen == ["recovered"]

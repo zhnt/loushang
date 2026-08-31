@@ -43,6 +43,7 @@ jobs:
           tests/harness/session/test_bash.py
           tests/coding/test_tool_registry.py
           tests/coding/test_agent_session_tools.py
+          tests/coding/test_plugin_management_cli.py
           -k "windows or stdio"
           -q
 

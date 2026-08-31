@@ -144,6 +144,58 @@ def _disable_or_remove(
     return event
 
 
+def test_capability_plugin_migrates_legacy_disable_without_mounting(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.session_manager import SessionManager
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "loushang-home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    async def scenario() -> None:
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(workspace),
+            persist=True,
+        )
+        active = create_agent_session(
+            session_manager=manager,
+            model=_model(),
+            services=create_services(
+                settings_manager=SettingsManager(
+                    ControlConfig(
+                        capabilities={
+                            "coding.arch": "always",
+                            "coding.lsp": "disabled",
+                        },
+                        disabled_plugins=("coding.arch.default",),
+                    )
+                )
+            ),
+            composition_set="coding-architecture",
+        )
+        assert active._coding_capability_plugin_assembly is None
+        lifecycle = build_coding_plugin_lifecycle(
+            resolve_coding_plugin_lifecycle_state_layout(workspace)
+        )
+        key = lifecycle.installation_key("coding.arch.default")
+        migration = lifecycle.enablement_migrations.journal.snapshot(key)
+        assert migration is not None
+        assert migration.phase == "compatibility_window"
+        assert migration.disposition == "seeded"
+        assert (
+            lifecycle.desired.snapshot().installation(key).selection.desired_state
+            == "installed_disabled"
+        )
+        await active.dispose()
+
+    asyncio.run(scenario())
+
+
 @pytest.mark.parametrize(
     ("action", "reason"),
     (("disable", "plugin_disabled"), ("remove", "plugin_removed")),
@@ -253,9 +305,7 @@ def test_arch_management_disable_keeps_selected_lsp_sibling_mountable(
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     settings = SettingsManager(
-        ControlConfig(
-            capabilities={"coding.arch": "always", "coding.lsp": "always"}
-        )
+        ControlConfig(capabilities={"coding.arch": "always", "coding.lsp": "always"})
     )
 
     async def scenario() -> None:
@@ -292,9 +342,7 @@ def test_arch_management_disable_keeps_selected_lsp_sibling_mountable(
         )
         assembly = replacement._coding_capability_plugin_assembly
         assert assembly is not None
-        assert frozenset(assembly.management_leases) == {
-            "coding.lsp.default"
-        }
+        assert frozenset(assembly.management_leases) == {"coding.lsp.default"}
         assert tuple(
             item.capability_id
             for item in assembly.plugin_assembly.resolved_providers.entries
@@ -359,12 +407,13 @@ def test_base_lsp_and_arch_share_one_session_runtime_claim(
             assert claim.references == 3
             assert claim.runtime_claim_references == 3
             assert claim.runtime_claim_id == (
-                "coding-session-runtime:"
-                f"{manager.get_header().conversation_id}"
+                f"coding-session-runtime:{manager.get_header().conversation_id}"
             )
         await session.dispose()
         with plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES_LOCK:
-            assert lease_path not in plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES
+            assert (
+                lease_path not in plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES
+            )
 
     asyncio.run(scenario())
 
@@ -398,9 +447,7 @@ def test_arch_update_selects_a_new_instance_while_active_session_stays_pinned(
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     settings = SettingsManager(
-        ControlConfig(
-            capabilities={"coding.arch": "always", "coding.lsp": "disabled"}
-        )
+        ControlConfig(capabilities={"coding.arch": "always", "coding.lsp": "disabled"})
     )
 
     async def scenario() -> None:
@@ -424,16 +471,14 @@ def test_arch_update_selects_a_new_instance_while_active_session_stays_pinned(
             resolve_coding_plugin_lifecycle_state_layout(workspace)
         )
         key = lifecycle.installation_key("coding.arch.default")
-        expected = lifecycle.desired.snapshot().installation(
-            key
-        ).selection.package_revision
+        expected = (
+            lifecycle.desired.snapshot().installation(key).selection.package_revision
+        )
         assert expected is not None
 
         updated_source = tmp_path / "coding-arch-v2"
         shutil.copytree(
-            CODING_CAPABILITY_PLUGIN_SPEC_BY_ID[
-                "coding.arch.default"
-            ].source_root(),
+            CODING_CAPABILITY_PLUGIN_SPEC_BY_ID["coding.arch.default"].source_root(),
             updated_source,
         )
         manifest_path = updated_source / "plugin.json"
@@ -476,9 +521,7 @@ def test_arch_update_selects_a_new_instance_while_active_session_stays_pinned(
                     coding_arch_source=updated_source,
                 )
             ),
-            installed_distribution_evidence_resolver=(
-                UpdatedSourceEvidenceResolver()
-            ),
+            installed_distribution_evidence_resolver=(UpdatedSourceEvidenceResolver()),
         )
         authority = PluginResolutionAuthority()
         updated_runtime = authority.publish_runtime(
@@ -517,9 +560,10 @@ def test_arch_update_selects_a_new_instance_while_active_session_stays_pinned(
             match="requires restart",
         ):
             await active.refresh_resources()
-        assert assembly.management_leases[
-            "coding.arch.default"
-        ].instance_revision_ref == old_ref
+        assert (
+            assembly.management_leases["coding.arch.default"].instance_revision_ref
+            == old_ref
+        )
 
         second_manager = await SessionManager.new(
             session_dir=tmp_path / "sessions-b",
@@ -801,6 +845,56 @@ def _managed_base(
     )
 
 
+def test_managed_base_migrates_legacy_disable_without_mounting(
+    tmp_path: Path,
+) -> None:
+    lifecycle = _lifecycle(tmp_path)
+    key = lifecycle.installation_key("coding.base")
+
+    assembly = prepare_managed_coding_base_plugin_assembly(
+        resolve_coding_composition_set("coding-standard"),
+        session_id="legacy-disabled-base",
+        package_materializer=_materializer(tmp_path),
+        lifecycle=lifecycle,
+        legacy_disabled=True,
+    )
+
+    assert assembly is None
+    migration = lifecycle.enablement_migrations.journal.snapshot(key)
+    assert migration is not None
+    assert migration.phase == "compatibility_window"
+    assert migration.disposition == "seeded"
+    assert (
+        lifecycle.desired.snapshot().installation(key).selection.desired_state
+        == "installed_disabled"
+    )
+
+
+def test_managed_base_receipts_existing_disabled_history_without_resurrection(
+    tmp_path: Path,
+) -> None:
+    lifecycle = _lifecycle(tmp_path)
+    key = lifecycle.installation_key("coding.base")
+    lifecycle.bootstrap_first_party_default(key, _package_ref())
+    _disable_or_remove(lifecycle, action="disable")
+
+    assembly = prepare_managed_coding_base_plugin_assembly(
+        resolve_coding_composition_set("coding-standard"),
+        session_id="authoritative-disabled-base",
+        package_materializer=_materializer(tmp_path),
+        lifecycle=lifecycle,
+    )
+
+    assert assembly is None
+    migration = lifecycle.enablement_migrations.journal.snapshot(key)
+    assert migration is not None
+    assert migration.disposition == "already_authoritative"
+    assert (
+        lifecycle.desired.snapshot().installation(key).selection.desired_state
+        == "installed_disabled"
+    )
+
+
 def test_first_party_default_uses_management_once_and_replays_without_source(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -960,9 +1054,10 @@ def test_first_party_default_retries_unrelated_inventory_race(
     monkeypatch.setattr(type(lifecycle), "_submit_default", race)
     lifecycle.bootstrap_first_party_default(key, package)
 
-    assert lifecycle.desired.snapshot().installation(
-        key
-    ).selection.desired_state == "installed_enabled"
+    assert (
+        lifecycle.desired.snapshot().installation(key).selection.desired_state
+        == "installed_enabled"
+    )
     assert len(lifecycle.desired.transitions()) == 3
 
 
@@ -1064,9 +1159,7 @@ def test_same_session_owner_reenters_until_its_last_process_lease_closes(
     first.close()
     with plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES_LOCK:
         assert (
-            plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES[
-                lease_path
-            ].references
+            plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES[lease_path].references
             == 1
         )
     with pytest.raises(CodingPluginLifecycleError) as caught:
@@ -1109,9 +1202,7 @@ def test_same_session_owner_reenters_until_its_last_process_lease_closes(
     monkeypatch.setattr(
         plugin_lifecycle_module,
         "_PROCESS_SESSION_OWNER_LEASES_LOCK",
-        ObservableLock(
-            plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES_LOCK
-        ),
+        ObservableLock(plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES_LOCK),
     )
 
     with plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES_LOCK:
@@ -1286,8 +1377,7 @@ def test_session_owner_unlock_failure_drops_invalid_process_authority(
         assert failed_release_completed.wait(timeout=20)
         with plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES_LOCK:
             assert (
-                lease_path
-                not in plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES
+                lease_path not in plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES
             )
 
         replacement = _lifecycle(tmp_path).acquire_session(
@@ -1386,11 +1476,14 @@ def test_public_lease_publish_writes_prepared_evidence_first(tmp_path: Path) -> 
     evidence = lifecycle.owner_evidence.family(lease.family.family_id)
     assert evidence is not None
     assert evidence.publication_state == "published"
-    assert len(
-        lifecycle.layout.owner_generation_evidence.read_text(
-            encoding="utf-8"
-        ).splitlines()
-    ) == 2
+    assert (
+        len(
+            lifecycle.layout.owner_generation_evidence.read_text(
+                encoding="utf-8"
+            ).splitlines()
+        )
+        == 2
+    )
     lease.retire_owner_generations((receipt,))
     lease.close()
 
@@ -1508,9 +1601,7 @@ def _start_plugin_lifecycle_child(
         assert process.stderr is not None
         stderr = process.stderr.read()
         process.wait(timeout=20)
-        pytest.fail(
-            f"Plugin lifecycle child exited before publishing state: {stderr}"
-        )
+        pytest.fail(f"Plugin lifecycle child exited before publishing state: {stderr}")
     return process, json.loads(line), marker
 
 
@@ -1851,9 +1942,7 @@ def test_public_base_replay_fails_closed_without_leaking_a_session_family(
                         plugin_version="invalid-selected-version",
                         package_content_digest=selected.package_content_digest,
                         dependency_lock_digest=selected.dependency_lock_digest,
-                        package_source_identity=(
-                            selected.package_source_identity
-                        ),
+                        package_source_identity=(selected.package_source_identity),
                     ),
                     actor_id="test:operator",
                     policy_revision="test-policy-v1",
@@ -1879,9 +1968,7 @@ def test_public_base_replay_fails_closed_without_leaking_a_session_family(
             )
         else:
             revision_root = (
-                layout.plugin_revision_root
-                / "sha256"
-                / selected.package_content_digest
+                layout.plugin_revision_root / "sha256" / selected.package_content_digest
             )
             if corruption == "missing_revision":
                 revision_root.rename(revision_root.with_suffix(".missing"))
@@ -1926,8 +2013,7 @@ def test_public_base_replay_fails_closed_without_leaking_a_session_family(
         assert caught.value.code == expected_code
         family_ids_before = {family.family_id for family in families_before}
         family_ids_after = {
-            family.family_id
-            for family in lifecycle.instances.snapshot().open_families
+            family.family_id for family in lifecycle.instances.snapshot().open_families
         }
         assert family_ids_after <= family_ids_before
         if corruption == "selected_revision_mismatch":
@@ -2262,9 +2348,9 @@ def test_public_update_replays_deleted_source_into_model_input_and_provenance(
         layout = resolve_coding_plugin_lifecycle_state_layout(workspace)
         lifecycle = build_coding_plugin_lifecycle(layout)
         key = lifecycle.installation_key("coding.base")
-        expected = lifecycle.desired.snapshot().installation(
-            key
-        ).selection.package_revision
+        expected = (
+            lifecycle.desired.snapshot().installation(key).selection.package_revision
+        )
         assert expected is not None
 
         # Advance the exact same configured checkout.  The lock must retain v1
@@ -2422,9 +2508,7 @@ def test_public_update_replays_deleted_source_into_model_input_and_provenance(
             == staged.dependency_lock_digest
             and admission.candidate.package_source_identity
             == staged.package_source_identity
-            for admission in (
-                replacement_inputs.product_composition.catalog_admissions
-            )
+            for admission in (replacement_inputs.product_composition.catalog_admissions)
         )
         owner_registrations = {
             (item.surface, item.public_key, item.owner_id)
@@ -2718,7 +2802,9 @@ def test_production_bootstrap_change_keeps_active_generation_and_omits_new_base(
         assert records[0].source == "session"
         assert records[0].details["reason"] == reason
         assert tuple(active.get_active_tool_names()) == before_tools
-        assert active._coding_base_plugin_assembly.package.revision_handle.closed is False
+        assert (
+            active._coding_base_plugin_assembly.package.revision_handle.closed is False
+        )
 
         second_manager = await SessionManager.new(
             session_dir=session_dir,
@@ -2738,9 +2824,7 @@ def test_production_bootstrap_change_keeps_active_generation_and_omits_new_base(
         assert replacement._capability_composition_inputs is None
         assert "Use tools as needed" not in replacement.agent.system_prompt
         await replacement.prepare_model_call_runtime()
-        assert {"bash", "read", "write"}.isdisjoint(
-            replacement.get_active_tool_names()
-        )
+        assert {"bash", "read", "write"}.isdisjoint(replacement.get_active_tool_names())
         await replacement.dispose()
         await active.dispose()
         retired = lifecycle.instances.snapshot().instance(active_ref)
@@ -2754,9 +2838,7 @@ def test_production_bootstrap_change_keeps_active_generation_and_omits_new_base(
         assert retirement_set.state == "succeeded"
         assert retirement_set.plan is not None
         assert len(retirement_set.plan.targets) == 3
-        assert {
-            target.contribution_ids for target in retirement_set.plan.targets
-        } == {
+        assert {target.contribution_ids for target in retirement_set.plan.targets} == {
             ("coding.builtin",),
             ("coding.standard",),
             ("prompt-standard", "skill-standard"),
@@ -2856,19 +2938,21 @@ def test_retirement_preserves_distinct_exact_generations_for_two_live_sessions(
                 ("prompt-standard", "skill-standard"): 2,
             }
         )
-        assert len(
-            {
-                (
-                    target.owner_reference,
-                    target.owner_generation_reference,
-                    target.retirement_handle,
-                )
-                for target in completed.plan.targets
-            }
-        ) == 6
+        assert (
+            len(
+                {
+                    (
+                        target.owner_reference,
+                        target.owner_generation_reference,
+                        target.retirement_handle,
+                    )
+                    for target in completed.plan.targets
+                }
+            )
+            == 6
+        )
         assert {
-            outcome.owner_outcome_reference
-            for outcome in completed.latest_outcomes
+            outcome.owner_outcome_reference for outcome in completed.latest_outcomes
         } == {
             f"coding-session-disposed:{first_lease.family.family_id}",
             f"coding-session-disposed:{second_lease.family.family_id}",
@@ -3186,9 +3270,7 @@ def test_ephemeral_public_session_releases_family_before_removing_state_root(
 
     async def scenario() -> None:
         with plugin_lifecycle_module._PROCESS_STARTUP_LEASES_LOCK:
-            original_lease_count = len(
-                plugin_lifecycle_module._PROCESS_STARTUP_LEASES
-            )
+            original_lease_count = len(plugin_lifecycle_module._PROCESS_STARTUP_LEASES)
 
         for sequence in range(3):
             manager = await SessionManager.new(
@@ -3385,7 +3467,9 @@ def test_failed_second_provider_retains_one_retryable_cleanup_custodian(
         fail_lsp_release_twice,
     )
 
-    with pytest.raises(RuntimeError, match="injected Arch acquisition failure") as caught:
+    with pytest.raises(
+        RuntimeError, match="injected Arch acquisition failure"
+    ) as caught:
         create_agent_session(
             session_manager=manager,
             model=_model(),
@@ -3763,9 +3847,7 @@ def test_production_bootstrap_preserves_lsp_only_when_base_is_unselected(
         encoding="utf-8",
     )
     method_log = workspace / "lsp-methods.log"
-    fake_lsp_server = (
-        Path(__file__).parent / "lsp" / "fixtures" / "fake_lsp_server.py"
-    )
+    fake_lsp_server = Path(__file__).parent / "lsp" / "fixtures" / "fake_lsp_server.py"
     session_dir = tmp_path / "sessions"
 
     async def scenario() -> None:

@@ -8758,9 +8758,13 @@ def test_run_cli_show_method_reports_missing_method(tmp_path) -> None:
     assert "Error: method not found: missing" in stderr.getvalue()
 
 
-def test_run_cli_lists_plugins_as_tsv(tmp_path) -> None:
+def test_run_cli_lists_plugins_as_tsv(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from loushang.coding.cli.__main__ import run_cli
 
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
     plugin_root = tmp_path / "plugins" / "debug-pack"
     plugin_root.mkdir(parents=True)
     (plugin_root / "plugin.json").write_text(
@@ -8785,15 +8789,21 @@ def test_run_cli_lists_plugins_as_tsv(tmp_path) -> None:
 
     asyncio.run(scenario())
 
-    assert stdout.getvalue() == f"debug-pack\t1.0.0\t{plugin_root.resolve()}\tTrue\n"
+    assert stdout.getvalue() == (
+        f"debug-pack\t1.0.0\t{plugin_root.resolve()}\tunknown\n"
+    )
     assert stderr.getvalue() == ""
 
 
-def test_run_cli_lists_disabled_plugins_as_tsv(tmp_path) -> None:
+def test_run_cli_lists_disabled_plugins_as_tsv(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import run_cli
     from loushang.coding.control import SettingsManager
 
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
     plugin_root = tmp_path / "plugins" / "debug-pack"
     plugin_root.mkdir(parents=True)
     (plugin_root / "plugin.json").write_text(
@@ -8831,7 +8841,7 @@ def test_run_cli_lists_disabled_plugins_as_tsv(tmp_path) -> None:
 
     asyncio.run(scenario())
 
-    assert stdout.getvalue() == f"debug-pack\t\t{plugin_root.resolve()}\tFalse\n"
+    assert stdout.getvalue() == f"debug-pack\t\t{plugin_root.resolve()}\tunknown\n"
     assert stderr.getvalue() == ""
 
 
@@ -9032,13 +9042,15 @@ def test_run_cli_reports_settings_load_warnings_for_package_listing(tmp_path) ->
     assert "Expecting property name" in stderr.getvalue()
 
 
-def test_run_cli_reports_settings_load_warnings_once_for_plugin_toggles(
+def test_run_cli_fails_closed_after_settings_load_warning_for_plugin_toggles(
     tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import run_cli
     from loushang.coding.control import SettingsManager
 
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
     project_settings_path = tmp_path / ".loushang" / "settings.json"
     project_settings_path.parent.mkdir()
     project_settings_path.write_text("{not-json", encoding="utf-8")
@@ -9058,15 +9070,197 @@ def test_run_cli_reports_settings_load_warnings_once_for_plugin_toggles(
             services=services,
             runtime_builder=lambda **kwargs: FakeRuntime(FakeSession("session-1")),
         )
-        assert exit_code == 0
+        assert exit_code == 1
 
     asyncio.run(scenario())
 
-    assert (
-        stdout.getvalue()
-        == "added plugin source\tplugins/debug-pack\ndisabled plugin\tlegacy\n"
-    )
+    assert stdout.getvalue() == ""
     assert stderr.getvalue().count("Warning (package command, project settings):") == 1
+    assert "resource_toggle_failed:" in stderr.getvalue()
+    assert "Expecting property name" in stderr.getvalue()
+    assert "plugin_enablement_migration_required:" not in stderr.getvalue()
+    assert project_settings_path.read_text(encoding="utf-8") == "{not-json"
+
+
+def test_run_cli_reports_migration_in_progress_code(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.coding._plugin_lifecycle import (
+        build_coding_plugin_lifecycle,
+        resolve_coding_plugin_lifecycle_state_layout,
+    )
+    from loushang.coding.bootstrap import create_services
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.coding.control import SettingsManager
+    from loushang.harness.plugin_management import (
+        PluginDesiredStateMutationV1,
+        PluginEnablementMigrationRequestV1,
+        PluginManagementCommandV1,
+        PluginPackageRevisionRefV1,
+        plugin_enablement_legacy_input_fingerprint,
+    )
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    settings = SettingsManager(
+        project_settings_path=tmp_path / ".loushang" / "settings.json"
+    )
+    services = create_services(settings_manager=settings)
+    layout = resolve_coding_plugin_lifecycle_state_layout(tmp_path)
+    lifecycle = build_coding_plugin_lifecycle(layout, startup_id="cli-in-progress")
+    key = lifecycle.installation_key("managed-pack")
+    package = PluginPackageRevisionRefV1(
+        plugin_id="managed-pack",
+        plugin_version="1.0.0",
+        package_content_digest="1" * 64,
+        dependency_lock_digest="2" * 64,
+        package_source_identity="test:managed-pack",
+    )
+    installed = lifecycle.management.submit(
+        PluginManagementCommandV1(
+            action="install",
+            mutation=PluginDesiredStateMutationV1(
+                operation_id="install-managed-pack",
+                idempotency_key="install-managed-pack",
+                expected_inventory_revision=0,
+                installation_key=key,
+                desired_state="installed_disabled",
+                package_revision=package,
+                actor_id="test",
+                policy_revision="test",
+            ),
+        )
+    )
+    assert installed.result is not None
+    fingerprint = plugin_enablement_legacy_input_fingerprint(
+        key,
+        legacy_disabled=True,
+        manifest_enabled_default=True,
+    )
+    lifecycle.enablement_migrations.journal.accept(
+        PluginEnablementMigrationRequestV1(
+            installation_key=key,
+            package_revision=package,
+            legacy_disabled=True,
+            manifest_enabled_default=True,
+            legacy_input_fingerprint=fingerprint,
+        ),
+        accepted_desired_inventory_revision=1,
+        prior_desired_history_revision=1,
+    )
+    lifecycle.release_owned_process_startup_lease()
+    stderr = StringIO()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--disable-plugin", "managed-pack"],
+            stdin=StringIO(""),
+            stdout=StringIO(),
+            stderr=stderr,
+            cwd=tmp_path,
+            services=services,
+            runtime_builder=lambda **kwargs: FakeRuntime(FakeSession("session-1")),
+        )
+        assert exit_code == 1
+
+    asyncio.run(scenario())
+
+    assert stderr.getvalue() == (
+        "Error: plugin_enablement_migration_in_progress: "
+        "plugin enablement migration is in progress: managed-pack\n"
+    )
+
+
+def test_run_cli_reports_compatibility_publish_failure_after_commit(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.coding._plugin_lifecycle import (
+        build_coding_plugin_lifecycle,
+        resolve_coding_plugin_lifecycle_state_layout,
+    )
+    from loushang.coding.bootstrap import create_services
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.coding.control import SettingsManager
+    from loushang.harness.plugin_management import (
+        PluginPackageRevisionRefV1,
+        plugin_enablement_legacy_input_fingerprint,
+    )
+
+    class FailingCompatibilitySettingsManager(SettingsManager):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self.publication_count = 0
+
+        def bind_plugin_enablement_legacy_mutation_guard(self, authority, guard):
+            publish = super().bind_plugin_enablement_legacy_mutation_guard(
+                authority,
+                guard,
+            )
+
+            def fail_after_initial_repair(projection):
+                self.publication_count += 1
+                if self.publication_count > 1:
+                    raise OSError("compatibility sink unavailable")
+                publish(projection)
+
+            return fail_after_initial_repair
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    settings_path = tmp_path / ".loushang" / "settings.json"
+    settings = FailingCompatibilitySettingsManager(
+        project_settings_path=settings_path
+    )
+    settings.set_disabled_plugins(("managed-pack",), scope="project")
+    services = create_services(settings_manager=settings)
+    layout = resolve_coding_plugin_lifecycle_state_layout(tmp_path)
+    lifecycle = build_coding_plugin_lifecycle(layout, startup_id="cli-publish-failure")
+    key = lifecycle.installation_key("managed-pack")
+    package = PluginPackageRevisionRefV1(
+        plugin_id="managed-pack",
+        plugin_version="1.0.0",
+        package_content_digest="1" * 64,
+        dependency_lock_digest="2" * 64,
+        package_source_identity="test:managed-pack",
+    )
+    try:
+        lifecycle.migrate_legacy_enablement(
+            key,
+            package,
+            legacy_disabled=True,
+            manifest_enabled_default=True,
+            legacy_input_fingerprint=plugin_enablement_legacy_input_fingerprint(
+                key,
+                legacy_disabled=True,
+                manifest_enabled_default=True,
+            ),
+        )
+    finally:
+        lifecycle.release_owned_process_startup_lease()
+    stderr = StringIO()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--enable-plugin", "managed-pack"],
+            stdin=StringIO(""),
+            stdout=StringIO(),
+            stderr=stderr,
+            cwd=tmp_path,
+            services=services,
+            runtime_builder=lambda **kwargs: FakeRuntime(FakeSession("session-1")),
+        )
+        assert exit_code == 1
+
+    asyncio.run(scenario())
+
+    assert stderr.getvalue() == (
+        "Error: plugin_enablement_compatibility_publish_failed: "
+        "plugin desired state committed but compatibility projection failed: "
+        "managed-pack\n"
+    )
+    assert lifecycle.desired.snapshot().installation(key).selection.desired_state == (
+        "installed_enabled"
+    )
 
 
 def test_run_cli_remove_missing_plugin_source_returns_stable_error(tmp_path) -> None:
@@ -9099,8 +9293,61 @@ def test_run_cli_remove_missing_plugin_source_returns_stable_error(tmp_path) -> 
     assert stdout.getvalue() == ""
     assert (
         stderr.getvalue()
-        == "Error: no matching plugin source found: plugins/missing-pack\n"
+        == "Error: resource_toggle_failed: no matching plugin source found: "
+        "plugins/missing-pack\n"
     )
+
+
+def test_run_cli_plugin_aliases_only_change_source_configuration(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.coding._plugin_lifecycle import (
+        resolve_coding_plugin_lifecycle_state_layout,
+    )
+    from loushang.coding.bootstrap import create_services
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.coding.control import SettingsManager
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    settings_path = tmp_path / ".loushang" / "settings.json"
+    manager = SettingsManager(project_settings_path=settings_path)
+    services = create_services(settings_manager=manager)
+    stdout = StringIO()
+    stderr = StringIO()
+
+    async def scenario() -> None:
+        added = await run_cli(
+            ["--add-plugin", "plugins/debug-pack"],
+            stdin=StringIO(""),
+            stdout=stdout,
+            stderr=stderr,
+            cwd=tmp_path,
+            services=services,
+            runtime_builder=lambda **kwargs: FakeRuntime(FakeSession("session-1")),
+        )
+        removed = await run_cli(
+            ["--remove-plugin", "plugins/debug-pack"],
+            stdin=StringIO(""),
+            stdout=stdout,
+            stderr=stderr,
+            cwd=tmp_path,
+            services=services,
+            runtime_builder=lambda **kwargs: FakeRuntime(FakeSession("session-1")),
+        )
+        assert (added, removed) == (0, 0)
+
+    asyncio.run(scenario())
+
+    layout = resolve_coding_plugin_lifecycle_state_layout(tmp_path)
+    assert manager.get_settings().plugin_sources == ()
+    assert not layout.desired_state.exists()
+    assert not layout.management_operations.exists()
+    assert stdout.getvalue() == (
+        "added plugin source\tplugins/debug-pack\n"
+        "removed plugin source\tplugins/debug-pack\n"
+    )
+    assert stderr.getvalue() == ""
 
 
 def test_run_cli_add_duplicate_plugin_source_returns_stable_error(tmp_path) -> None:
@@ -9136,7 +9383,9 @@ def test_run_cli_add_duplicate_plugin_source_returns_stable_error(tmp_path) -> N
 
     assert stdout.getvalue() == ""
     assert (
-        stderr.getvalue() == "Error: plugin source already exists: plugins/debug-pack\n"
+        stderr.getvalue()
+        == "Error: resource_toggle_failed: plugin source already exists: "
+        "plugins/debug-pack\n"
     )
 
 
@@ -9716,20 +9965,66 @@ def test_run_cli_lists_remote_plugin_source_lifecycle_state(tmp_path) -> None:
     assert stderr.getvalue() == ""
 
 
-def test_run_cli_persists_skill_and_plugin_toggles(tmp_path) -> None:
+def test_run_cli_persists_skill_and_plugin_toggles(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.coding._plugin_lifecycle import (
+        build_coding_plugin_lifecycle,
+        resolve_coding_plugin_lifecycle_state_layout,
+    )
     from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import run_cli
     from loushang.coding.control import SettingsManager
+    from loushang.harness.plugin_management import (
+        PluginPackageRevisionRefV1,
+        plugin_enablement_legacy_input_fingerprint,
+    )
 
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
     project_settings_path = tmp_path / ".loushang" / "settings.json"
     project_settings_path.parent.mkdir()
     project_settings_path.write_text(
-        json.dumps({"plugin_sources": ["plugins/legacy-pack"]}),
+        json.dumps(
+            {
+                "plugin_sources": ["plugins/legacy-pack"],
+                "disabled_plugins": ["debug-pack"],
+            }
+        ),
         encoding="utf-8",
     )
     services = create_services(
         settings_manager=SettingsManager(project_settings_path=project_settings_path),
     )
+    layout = resolve_coding_plugin_lifecycle_state_layout(tmp_path)
+    lifecycle = build_coding_plugin_lifecycle(layout, startup_id="cli-toggle-test")
+    try:
+        for plugin_id, legacy_disabled in (
+            ("legacy-pack", False),
+            ("debug-pack", True),
+        ):
+            key = lifecycle.installation_key(plugin_id)
+            lifecycle.migrate_legacy_enablement(
+                key,
+                PluginPackageRevisionRefV1(
+                    plugin_id=plugin_id,
+                    plugin_version="1.0.0",
+                    package_content_digest=("1" if plugin_id == "legacy-pack" else "3")
+                    * 64,
+                    dependency_lock_digest=("2" if plugin_id == "legacy-pack" else "4")
+                    * 64,
+                    package_source_identity=f"test:{plugin_id}",
+                ),
+                legacy_disabled=legacy_disabled,
+                manifest_enabled_default=True,
+                legacy_input_fingerprint=plugin_enablement_legacy_input_fingerprint(
+                    key,
+                    legacy_disabled=legacy_disabled,
+                    manifest_enabled_default=True,
+                ),
+            )
+    finally:
+        lifecycle.release_owned_process_startup_lease()
     stdout = StringIO()
     stderr = StringIO()
 
@@ -9765,8 +10060,8 @@ def test_run_cli_persists_skill_and_plugin_toggles(tmp_path) -> None:
         "enabled skill\tdebug\n"
         "removed plugin source\tplugins/legacy-pack\n"
         "added plugin source\tplugins/debug-pack\n"
-        "disabled plugin\tlegacy-pack\n"
-        "enabled plugin\tdebug-pack\n"
+        "plugin desired state committed\tdisabled\tlegacy-pack\n"
+        "plugin desired state committed\tenabled\tdebug-pack\n"
     )
     assert stderr.getvalue() == ""
     reloaded = SettingsManager(project_settings_path=project_settings_path)

@@ -1,50 +1,65 @@
-"""Shared CLI plugin catalog discovery and projection."""
+"""Pure CLI formatting over the common Plugin management query port."""
 
 from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
-from pathlib import Path
 
-from loushang.harness.resources.plugins import (
-    PluginResolutionAuthority,
-    PluginSource,
-    is_remote_plugin_source,
-    project_installed_plugin,
-)
+from loushang.harness.cli.plugin_management import PluginManagementCliBinding
 
 
 class PluginListingError(RuntimeError):
-    """Raised when plugin settings cannot be resolved."""
+    """Raised when the management projection cannot be queried."""
 
 
-def list_plugin_records(settings_manager: object | None) -> list[dict[str, object]]:
-    get_settings = getattr(settings_manager, "get_settings", None)
-    if not callable(get_settings):
-        raise PluginListingError("plugin settings are not available.")
+def list_plugin_records(
+    management: PluginManagementCliBinding | None,
+) -> list[dict[str, object]]:
+    if management is None:
+        raise PluginListingError("plugin management query is not available.")
     try:
-        settings = get_settings()
-        plugin_sources = getattr(settings, "plugin_sources", ())
-        disabled_plugins = getattr(settings, "disabled_plugins", ())
-        authority = PluginResolutionAuthority(disabled_plugins=tuple(disabled_plugins))
-        plugins_by_name = {}
-        for source in plugin_sources:
-            plugin_source = (
-                PluginSource(url=source, kind="remote")
-                if is_remote_plugin_source(source)
-                else PluginSource(path=Path(source).expanduser())
-            )
-            inspection = authority.inspect(plugin_source)
-            inspection.raise_for_error()
-            if inspection.plugin is None:
-                raise ValueError(f"Plugin source could not be inspected: {source}")
-            plugins_by_name[inspection.plugin.manifest.name] = inspection.plugin
-        return [
-            project_installed_plugin(plugins_by_name[name])
-            for name in sorted(plugins_by_name)
-        ]
+        projection = management.query(correlation_id="cli:list-plugins")
+        return [_project_cli_record(item) for item in projection.installations]
     except Exception as error:
         raise PluginListingError(str(error)) from error
+
+
+def _project_cli_record(view: object) -> dict[str, object]:
+    key = getattr(view, "installation_key")
+    source = getattr(view, "source")
+    package = getattr(view, "selected_package_revision")
+    source_kind = "unknown" if source is None else source.source_kind
+    source_location = (
+        package.package_source_identity
+        if source is None and package is not None
+        else ""
+        if source is None or source.source_location is None
+        else source.source_location
+    )
+    plugin_version = (
+        package.plugin_version
+        if package is not None
+        else None
+        if source is None
+        else source.plugin_version
+    )
+    desired_state = getattr(view, "desired_state")
+    enabled = {
+        "installed_enabled": True,
+        "installed_disabled": False,
+        "absent": False,
+    }.get(desired_state)
+    return {
+        "name": key.plugin_id,
+        "version": plugin_version or "",
+        "path": source_location if source_kind == "local" else "",
+        "source": source_location,
+        "kind": source_kind,
+        "enabled": enabled,
+        "desiredState": desired_state,
+        "convergence": getattr(view, "convergence"),
+        "migrationStatus": getattr(view, "enablement_migration_phase"),
+    }
 
 
 def format_plugin_records(
@@ -55,7 +70,7 @@ def format_plugin_records(
         return json.dumps(records, ensure_ascii=False) + "\n"
     return "".join(
         f"{plugin['name']}\t{plugin['version']}\t{plugin['path']}\t"
-        f"{plugin['enabled']}\n"
+        f"{'unknown' if plugin['enabled'] is None else plugin['enabled']}\n"
         for plugin in records
     )
 

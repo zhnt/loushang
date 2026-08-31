@@ -8,7 +8,8 @@ import os
 import secrets
 import stat
 import threading
-from contextlib import AbstractContextManager
+from collections.abc import Iterator
+from contextlib import AbstractContextManager, ExitStack, contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -18,17 +19,30 @@ from loushang.coding._plugin_owner_generations import (
 )
 from loushang.coding.product_plan import CODING_PRODUCT_ID
 from loushang.foundation.platform_paths import PlatformPaths, resolve_platform_paths
-from loushang.harness.journal import JournalLockUnavailable, journal_file_lock
+from loushang.harness.journal import (
+    JournalLockUnavailable,
+    journal_file_lock,
+    journal_file_lock_at,
+    read_journal_file_at,
+)
 from loushang.harness.plugin_management import (
     PluginCleanupAttemptV1,
     PluginDesiredStateLedger,
     PluginDesiredStateMutationV1,
+    PluginEnablementCompatibilityProjectionV1,
+    PluginEnablementMigrationCoordinator,
+    PluginEnablementMigrationJournal,
+    PluginEnablementMigrationRequestV1,
+    PluginEnablementMigrationSnapshotV1,
     PluginInstallationKeyV1,
     PluginInstanceLeaseFamilyReleaseV1,
     PluginInstanceLeaseFamilyV1,
     PluginInstanceRetirementCompletionV1,
     PluginInstanceRuntimeLedger,
+    PluginManagementApplicationPorts,
+    PluginManagementCommandApplication,
     PluginManagementCommandV1,
+    PluginManagementReadModelProjector,
     PluginManagementService,
     PluginOwnerRetirementOutcomeV1,
     PluginOwnerRetirementPlanV1,
@@ -37,6 +51,9 @@ from loushang.harness.plugin_management import (
     PluginPackageRevisionRefV1,
     PluginRetirementIntentLedger,
     PluginRetirementSetLedger,
+    PluginSourceProjectionSourcePort,
+    decode_plugin_desired_state_snapshot,
+    decode_plugin_enablement_migration_snapshots,
 )
 from loushang.harness.plugin_management.security_acceptance import (
     PluginInstanceSecurityRetirementJournal,
@@ -117,8 +134,7 @@ class _ProcessSessionOwnerLease(AbstractContextManager[None]):
                 with _PROCESS_SESSION_OWNER_LEASES_LOCK:
                     current = _PROCESS_SESSION_OWNER_LEASES.get(self.path)
                     authority_was_removed = (
-                        current is None
-                        or current.authority_id != self.authority_id
+                        current is None or current.authority_id != self.authority_id
                     )
                 # journal_file_lock closes its handle even when platform
                 # unlock reports an error. In that case the exact authority
@@ -171,8 +187,18 @@ class CodingPluginLifecycleStateLayout:
         return self.root / "owner-generation-evidence.jsonl"
 
     @property
+    def enablement_migration(self) -> Path:
+        return self.root / "enablement-migration.jsonl"
+
+    @property
     def coordination_lock(self) -> Path:
         return self.root / "lifecycle-coordination"
+
+
+@dataclass(frozen=True, slots=True)
+class _CodingPluginEnablementStateCapture:
+    desired_raw: str
+    migration_raw: str
 
 
 @dataclass(slots=True)
@@ -183,6 +209,7 @@ class CodingPluginLifecycle:
     startup_id: str
     desired: PluginDesiredStateLedger = field(repr=False)
     management: PluginManagementService = field(repr=False)
+    enablement_migrations: PluginEnablementMigrationCoordinator = field(repr=False)
     instances: PluginInstanceRuntimeLedger = field(repr=False)
     retirement_sets: PluginRetirementSetLedger = field(repr=False)
     packages: PluginPackageLifecycleLedger = field(repr=False)
@@ -225,6 +252,32 @@ class CodingPluginLifecycle:
             plugin_id=_nonempty(plugin_id, name="Plugin id"),
         )
 
+    def migrate_legacy_enablement(
+        self,
+        key: PluginInstallationKeyV1,
+        package_revision: PluginPackageRevisionRefV1 | None,
+        *,
+        legacy_disabled: bool,
+        manifest_enabled_default: bool,
+        legacy_input_fingerprint: str,
+    ) -> PluginEnablementMigrationSnapshotV1:
+        """Import an immutable legacy snapshot once through canonical commands."""
+
+        if key.product_id != CODING_PRODUCT_ID or key.scope_id != self.layout.scope_id:
+            raise CodingPluginLifecycleError(
+                "Enablement migration Installation is outside this Coding scope",
+                code="coding_plugin_enablement_migration_scope_mismatch",
+            )
+        return self.enablement_migrations.migrate(
+            PluginEnablementMigrationRequestV1(
+                installation_key=key,
+                package_revision=package_revision,
+                legacy_disabled=legacy_disabled,
+                manifest_enabled_default=manifest_enabled_default,
+                legacy_input_fingerprint=legacy_input_fingerprint,
+            )
+        )
+
     def bootstrap_first_party_default(
         self,
         key: PluginInstallationKeyV1,
@@ -243,9 +296,7 @@ class CodingPluginLifecycle:
         for _attempt in range(32):
             snapshot = self.desired.snapshot()
             state = snapshot.installation(key)
-            seen = any(
-                item.installation_key == key for item in snapshot.installations
-            )
+            seen = any(item.installation_key == key for item in snapshot.installations)
             if not seen:
                 error = self._submit_default(
                     key,
@@ -467,9 +518,7 @@ class CodingPluginLifecycle:
         families = self.owner_evidence.retired_families_for_instance(
             intent.instance_revision_ref
         )
-        receipts = tuple(
-            receipt for family in families for receipt in family.receipts
-        )
+        receipts = tuple(receipt for family in families for receipt in family.receipts)
         targets = tuple(
             PluginOwnerRetirementTargetV1.create(
                 owner_reference=receipt.owner_reference,
@@ -590,9 +639,11 @@ class CodingPluginLifecycle:
         )
 
     def management_retirement_intents(self):
-        return PluginRetirementIntentLedger(
-            self.layout.retirement_intents
-        ).snapshot().intents
+        return (
+            PluginRetirementIntentLedger(self.layout.retirement_intents)
+            .snapshot()
+            .intents
+        )
 
     def acquire_session(
         self,
@@ -686,9 +737,9 @@ class CodingPluginLifecycle:
         expected_inventory_revision: int,
     ) -> str | None:
         identity = hashlib.sha256(
-            repr(
-                (key, action, package_revision, expected_inventory_revision)
-            ).encode("utf-8")
+            repr((key, action, package_revision, expected_inventory_revision)).encode(
+                "utf-8"
+            )
         ).hexdigest()
         event = self.management.submit(
             PluginManagementCommandV1(
@@ -938,7 +989,16 @@ def build_coding_plugin_lifecycle(
         retirement_intents=intents,
         retirement_sets=retirement_sets,
     )
+    enablement_journal = PluginEnablementMigrationJournal(layout.enablement_migration)
+    enablement_journal.assert_runtime_compatible(
+        supported_migration_epoch=1,
+    )
     management.recover()
+    enablement_migrations = PluginEnablementMigrationCoordinator(
+        journal=enablement_journal,
+        desired_state=desired,
+        commands=PluginManagementCommandApplication(management),
+    )
     security = security_acceptances or (
         PluginInstanceSecurityRetirementJournal.for_instance_runtime(
             layout.instance_runtime
@@ -973,6 +1033,7 @@ def build_coding_plugin_lifecycle(
             startup_id=resolved_startup_id,
             desired=desired,
             management=management,
+            enablement_migrations=enablement_migrations,
             instances=instances,
             retirement_sets=retirement_sets,
             packages=packages,
@@ -987,6 +1048,109 @@ def build_coding_plugin_lifecycle(
                 startup_id=resolved_startup_id,
             )
         raise
+
+
+def build_coding_plugin_management_application(
+    layout: CodingPluginLifecycleStateLayout,
+    *,
+    source: PluginSourceProjectionSourcePort | None = None,
+) -> PluginManagementApplicationPorts:
+    """Compose command/query ports without acquiring a Product runtime lease."""
+
+    if not isinstance(layout, CodingPluginLifecycleStateLayout):
+        raise TypeError("Coding Plugin lifecycle layout is required")
+    _prepare_private_state_layout(layout)
+    desired = PluginDesiredStateLedger(layout.desired_state)
+    intents = PluginRetirementIntentLedger(layout.retirement_intents)
+    retirement_sets = PluginRetirementSetLedger(
+        layout.retirement_sets,
+        retirement_intents=intents,
+    )
+    management = PluginManagementService(
+        desired_state=desired,
+        operation_journal_path=layout.management_operations,
+        retirement_intents=intents,
+        retirement_sets=retirement_sets,
+    )
+    migrations = PluginEnablementMigrationJournal(layout.enablement_migration)
+    migrations.assert_runtime_compatible(supported_migration_epoch=1)
+    management.recover()
+    return PluginManagementApplicationPorts(
+        commands=PluginManagementCommandApplication(management),
+        queries=PluginManagementReadModelProjector(
+            desired_state=desired,
+            operations=management,
+            migrations=migrations,
+            source=source,
+        ),
+    )
+
+
+def project_coding_plugin_enablement_compatibility(
+    layout: CodingPluginLifecycleStateLayout,
+    *,
+    _capture: _CodingPluginEnablementStateCapture | None = None,
+) -> tuple[PluginEnablementCompatibilityProjectionV1, frozenset[str]]:
+    """Read Coding's derived downgrade view without exposing owner stores."""
+
+    if not isinstance(layout, CodingPluginLifecycleStateLayout):
+        raise TypeError("Coding Plugin lifecycle layout is required")
+    if _capture is None:
+        with _capture_existing_plugin_enablement_state(layout) as captured:
+            if captured is None:
+                return _empty_plugin_enablement_compatibility_projection()
+            return project_coding_plugin_enablement_compatibility(
+                layout,
+                _capture=captured,
+            )
+    desired = decode_plugin_desired_state_snapshot(
+        _capture.desired_raw,
+        path=layout.desired_state,
+    )
+    migrations = tuple(
+        item
+        for item in decode_plugin_enablement_migration_snapshots(
+            _capture.migration_raw,
+            path=layout.enablement_migration,
+        )
+        if item.request.installation_key.product_id == CODING_PRODUCT_ID
+        and item.request.installation_key.installation_scope == "workspace"
+        and item.request.installation_key.scope_id == layout.scope_id
+        and item.phase in {"compatibility_window", "finalized"}
+    )
+    migrated = frozenset(item.request.installation_key.plugin_id for item in migrations)
+    disabled = tuple(
+        sorted(
+            item.request.installation_key.plugin_id
+            for item in migrations
+            if desired.installation(
+                item.request.installation_key
+            ).selection.desired_state
+            != "installed_enabled"
+        )
+    )
+    projection = PluginEnablementCompatibilityProjectionV1(
+        desired_inventory_revision=desired.inventory_revision,
+        migration_journal_revision=max(
+            (item.journal_revision for item in migrations),
+            default=0,
+        ),
+        disabled_plugin_ids=disabled,
+    )
+    return projection, migrated
+
+
+def _empty_plugin_enablement_compatibility_projection() -> tuple[
+    PluginEnablementCompatibilityProjectionV1, frozenset[str]
+]:
+    return (
+        PluginEnablementCompatibilityProjectionV1(
+            desired_inventory_revision=0,
+            migration_journal_revision=0,
+            disabled_plugin_ids=(),
+        ),
+        frozenset(),
+    )
 
 
 def package_revision_ref(
@@ -1229,12 +1393,10 @@ def _acquire_session_owner_lease(
                 code="coding_plugin_session_already_active",
             ) from exc
         authority_id = secrets.token_hex(16)
-        _PROCESS_SESSION_OWNER_LEASES[lease_path] = (
-            _ProcessSessionOwnerLeaseState(
-                owner_id=normalized_owner_id,
-                authority_id=authority_id,
-                lease=lease,
-            )
+        _PROCESS_SESSION_OWNER_LEASES[lease_path] = _ProcessSessionOwnerLeaseState(
+            owner_id=normalized_owner_id,
+            authority_id=authority_id,
+            lease=lease,
         )
         return _ProcessSessionOwnerLease(
             path=lease_path,
@@ -1363,11 +1525,7 @@ def _startup_lease_is_inactive(
             not stat.S_ISREG(metadata.st_mode)
             or stat.S_ISLNK(metadata.st_mode)
             or bool(getattr(metadata, "st_reparse_tag", 0))
-            or (
-                os.name == "posix"
-                and callable(getuid)
-                and metadata.st_uid != getuid()
-            )
+            or (os.name == "posix" and callable(getuid) and metadata.st_uid != getuid())
         ):
             raise OSError("startup lease is not a private regular file")
         with journal_file_lock(
@@ -1396,6 +1554,439 @@ def _prepare_private_state_layout(layout: CodingPluginLifecycleStateLayout) -> N
         layout.package_root,
         private_base=layout.private_data_base,
         label="data",
+    )
+    # Compatibility readers require this existing coordination entry before
+    # anchoring all lock and journal opens to the validated Windows root handle.
+    with journal_file_lock(layout.coordination_lock, "exclusive"):
+        pass
+
+
+@contextmanager
+def _capture_existing_plugin_enablement_state(
+    layout: CodingPluginLifecycleStateLayout,
+) -> Iterator[_CodingPluginEnablementStateCapture | None]:
+    """Pin one private root and capture compatibility ledgers beneath it."""
+
+    if not _supports_descriptor_relative_private_state_io():
+        if _supports_portable_private_state_io():
+            with _capture_existing_plugin_enablement_state_portable(layout) as capture:
+                yield capture
+            return
+        if not _validate_existing_private_state_layout(layout):
+            yield None
+            return
+        raise CodingPluginLifecycleError(
+            "Secure Coding Plugin state handles are unavailable",
+            code="coding_plugin_state_permissions_failed",
+        )
+
+    descriptor = _open_existing_private_state_root(layout)
+    if descriptor is None:
+        yield None
+        return
+    try:
+        with ExitStack() as locks:
+            for name in _plugin_enablement_capture_lock_names(layout):
+                locks.enter_context(
+                    journal_file_lock_at(
+                        descriptor,
+                        name,
+                        "exclusive",
+                        create=True,
+                    )
+                )
+            yield _CodingPluginEnablementStateCapture(
+                desired_raw=_read_private_state_file(
+                    descriptor,
+                    layout.desired_state.name,
+                ),
+                migration_raw=_read_private_state_file(
+                    descriptor,
+                    layout.enablement_migration.name,
+                ),
+            )
+    finally:
+        os.close(descriptor)
+
+
+def _supports_descriptor_relative_private_state_io() -> bool:
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    return bool(
+        os.name == "posix"
+        and os.open in os.supports_dir_fd
+        and nofollow
+        and getattr(os, "O_DIRECTORY", 0)
+    )
+
+
+def _supports_portable_private_state_io() -> bool:
+    """Return whether open child handles pin parent paths on this host."""
+
+    return os.name == "nt"
+
+
+def _uses_windows_directory_pins() -> bool:
+    return os.name == "nt"
+
+
+@contextmanager
+def _pin_portable_private_directory_chain(
+    captured: tuple[tuple[Path, os.stat_result], ...],
+) -> Iterator[int | None]:
+    """Anchor Windows child I/O to the validated workspace-root handle."""
+
+    if not _uses_windows_directory_pins():
+        # Tests force the portable reader on POSIX to exercise its common
+        # sequencing; production reaches this branch only on Windows.
+        yield None
+        return
+    with ExitStack() as pins:
+        root_descriptor: int | None = None
+        for path, expected in captured:
+            root_descriptor = pins.enter_context(
+                _open_windows_private_directory(path, expected)
+            )
+        if root_descriptor is None:
+            raise OSError("private state directory chain is empty")
+        yield root_descriptor
+
+
+@contextmanager
+def _open_windows_private_directory(
+    path: Path,
+    expected: os.stat_result,
+) -> Iterator[int]:
+    """Open one direct Windows directory and prove the handle identity."""
+
+    import ctypes
+    import msvcrt
+    from ctypes import wintypes
+
+    class _FileAttributeTagInfo(ctypes.Structure):
+        _fields_ = (
+            ("file_attributes", wintypes.DWORD),
+            ("reparse_tag", wintypes.DWORD),
+        )
+
+    win_dll = getattr(ctypes, "WinDLL")
+    kernel32 = win_dll("kernel32", use_last_error=True)
+    create_file = kernel32.CreateFileW
+    create_file.argtypes = (
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.LPVOID,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.HANDLE,
+    )
+    create_file.restype = wintypes.HANDLE
+    get_information = kernel32.GetFileInformationByHandleEx
+    get_information.argtypes = (
+        wintypes.HANDLE,
+        ctypes.c_int,
+        wintypes.LPVOID,
+        wintypes.DWORD,
+    )
+    get_information.restype = wintypes.BOOL
+    close_handle = kernel32.CloseHandle
+    close_handle.argtypes = (wintypes.HANDLE,)
+    close_handle.restype = wintypes.BOOL
+    file_list_directory = 0x00000001
+    file_read_attributes = 0x00000080
+    share_read_write = 0x00000001 | 0x00000002
+    open_existing = 3
+    file_flag_open_reparse_point = 0x00200000
+    file_flag_backup_semantics = 0x02000000
+    file_attribute_directory = 0x00000010
+    file_attribute_reparse_point = 0x00000400
+    file_attribute_tag_info = 9
+    handle = create_file(
+        str(path),
+        file_list_directory | file_read_attributes,
+        share_read_write,
+        None,
+        open_existing,
+        file_flag_open_reparse_point | file_flag_backup_semantics,
+        None,
+    )
+    if handle == ctypes.c_void_p(-1).value:
+        get_last_error = getattr(ctypes, "get_last_error")
+        win_error = getattr(ctypes, "WinError")
+        raise win_error(get_last_error())
+    descriptor: int | None = None
+    try:
+        information = _FileAttributeTagInfo()
+        if not get_information(
+            handle,
+            file_attribute_tag_info,
+            ctypes.byref(information),
+            ctypes.sizeof(information),
+        ):
+            get_last_error = getattr(ctypes, "get_last_error")
+            win_error = getattr(ctypes, "WinError")
+            raise win_error(get_last_error())
+        if (
+            not information.file_attributes & file_attribute_directory
+            or information.file_attributes & file_attribute_reparse_point
+            or information.reparse_tag
+        ):
+            raise OSError("private state path is not a direct directory")
+        open_osfhandle = getattr(msvcrt, "open_osfhandle")
+        descriptor = open_osfhandle(
+            handle,
+            os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOINHERIT", 0),
+        )
+        opened = os.fstat(descriptor)
+        if (
+            not stat.S_ISDIR(opened.st_mode)
+            or _is_link_or_reparse(opened)
+            or not os.path.samestat(expected, opened)
+        ):
+            raise OSError("private state directory handle identity changed")
+        current = _validate_existing_private_directory(path)
+        if not os.path.samestat(expected, current):
+            raise OSError("private state directory identity changed while pinning")
+        yield descriptor
+    finally:
+        if descriptor is None:
+            close_handle(handle)
+        else:
+            os.close(descriptor)
+
+
+def _plugin_enablement_capture_lock_names(
+    layout: CodingPluginLifecycleStateLayout,
+) -> tuple[str, ...]:
+    """Return the owner lock order for one cross-journal compatibility read."""
+
+    return (
+        f"{layout.coordination_lock.name}.lock",
+        f"{layout.enablement_migration.name}.migration.lock",
+        f"{layout.desired_state.name}.lock",
+        f"{layout.enablement_migration.name}.lock",
+    )
+
+
+def _open_existing_private_state_root(
+    layout: CodingPluginLifecycleStateLayout,
+) -> int | None:
+    base = layout.private_state_base.expanduser().absolute()
+    root = layout.root.expanduser().absolute()
+    try:
+        relative = root.relative_to(base)
+    except ValueError:
+        raise CodingPluginLifecycleError(
+            "Coding Plugin state root is outside its private base",
+            code="coding_plugin_state_permissions_failed",
+        ) from None
+    try:
+        root.lstat()
+    except FileNotFoundError:
+        # An absent compatibility root is not private state yet.  Do not
+        # require or mutate permissions on an unrelated existing home/base.
+        return None
+    except OSError:
+        raise CodingPluginLifecycleError(
+            "Coding Plugin state root is not private",
+            code="coding_plugin_state_permissions_failed",
+        ) from None
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    flags = os.O_RDONLY | os.O_DIRECTORY | nofollow | getattr(os, "O_CLOEXEC", 0)
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(base, flags)
+        _validate_private_directory_descriptor(descriptor)
+        for part in relative.parts:
+            child = os.open(part, flags, dir_fd=descriptor)
+            try:
+                _validate_private_directory_descriptor(child)
+            except BaseException:
+                os.close(child)
+                raise
+            os.close(descriptor)
+            descriptor = child
+        return descriptor
+    except FileNotFoundError:
+        if descriptor is not None:
+            os.close(descriptor)
+        return None
+    except OSError:
+        if descriptor is not None:
+            os.close(descriptor)
+        raise CodingPluginLifecycleError(
+            "Coding Plugin state root is not private",
+            code="coding_plugin_state_permissions_failed",
+        ) from None
+
+
+def _validate_private_directory_descriptor(descriptor: int) -> None:
+    metadata = os.fstat(descriptor)
+    getuid = getattr(os, "getuid", None)
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or metadata.st_mode & 0o077
+        or (callable(getuid) and metadata.st_uid != getuid())
+    ):
+        raise OSError("private root is not a private directory")
+
+
+def _read_private_state_file(directory_fd: int, name: str) -> str:
+    if Path(name).name != name:
+        raise ValueError("Private state filename must be one component")
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+    )
+    try:
+        descriptor = os.open(name, flags, dir_fd=directory_fd)
+    except FileNotFoundError:
+        return ""
+    with os.fdopen(descriptor, "r", encoding="utf-8") as handle:
+        metadata = os.fstat(handle.fileno())
+        getuid = getattr(os, "getuid", None)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_mode & 0o077
+            or (callable(getuid) and metadata.st_uid != getuid())
+        ):
+            raise CodingPluginLifecycleError(
+                "Coding Plugin state journal is not private",
+                code="coding_plugin_state_permissions_failed",
+            )
+        return handle.read()
+
+
+@contextmanager
+def _capture_existing_plugin_enablement_state_portable(
+    layout: CodingPluginLifecycleStateLayout,
+) -> Iterator[_CodingPluginEnablementStateCapture | None]:
+    """Capture through lock and journal children rooted at one Windows handle."""
+
+    directory_chain = _capture_existing_private_directory_chain(layout)
+    if directory_chain is None:
+        yield None
+        return
+    try:
+        with _pin_portable_private_directory_chain(directory_chain) as descriptor:
+            if descriptor is None:
+                raise OSError("Windows private state root handle is unavailable")
+            _assert_private_directory_chain_stable(directory_chain)
+            with ExitStack() as locks:
+                for index, name in enumerate(
+                    _plugin_enablement_capture_lock_names(layout)
+                ):
+                    locks.enter_context(
+                        journal_file_lock_at(
+                            descriptor,
+                            name,
+                            "exclusive",
+                            create=index > 0,
+                        )
+                    )
+                _assert_private_directory_chain_stable(directory_chain)
+                capture = _CodingPluginEnablementStateCapture(
+                    desired_raw=read_journal_file_at(
+                        descriptor,
+                        layout.desired_state.name,
+                    ),
+                    migration_raw=read_journal_file_at(
+                        descriptor,
+                        layout.enablement_migration.name,
+                    ),
+                )
+                _assert_private_directory_chain_stable(directory_chain)
+                yield capture
+    except OSError:
+        raise CodingPluginLifecycleError(
+            "Coding Plugin state root is not private",
+            code="coding_plugin_state_permissions_failed",
+        ) from None
+
+
+def _validate_existing_private_state_layout(
+    layout: CodingPluginLifecycleStateLayout,
+) -> bool:
+    """Validate an existing state tree without recreating a disposed root."""
+
+    return _capture_existing_private_directory_chain(layout) is not None
+
+
+def _capture_existing_private_directory_chain(
+    layout: CodingPluginLifecycleStateLayout,
+) -> tuple[tuple[Path, os.stat_result], ...] | None:
+    """Capture the exact private directory identities used by portable I/O."""
+
+    base = layout.private_state_base.expanduser().absolute()
+    root = layout.root.expanduser().absolute()
+    try:
+        relative = root.relative_to(base)
+    except ValueError:
+        raise CodingPluginLifecycleError(
+            "Coding Plugin state root is outside its private base",
+            code="coding_plugin_state_permissions_failed",
+        ) from None
+    try:
+        root.lstat()
+    except FileNotFoundError:
+        return None
+    except OSError:
+        raise CodingPluginLifecycleError(
+            "Coding Plugin state root is not private",
+            code="coding_plugin_state_permissions_failed",
+        ) from None
+
+    captured: list[tuple[Path, os.stat_result]] = []
+    current = base
+    for part in (None, *relative.parts):
+        if part is not None:
+            current /= part
+        captured.append((current, _validate_existing_private_directory(current)))
+    return tuple(captured)
+
+
+def _assert_private_directory_chain_stable(
+    captured: tuple[tuple[Path, os.stat_result], ...],
+) -> None:
+    for path, expected in captured:
+        current = _validate_existing_private_directory(path)
+        if not os.path.samestat(expected, current):
+            raise OSError("private root identity changed")
+
+
+def _validate_existing_private_directory(root: Path) -> os.stat_result:
+    try:
+        before = root.lstat()
+        getuid = getattr(os, "getuid", None)
+        if (
+            not stat.S_ISDIR(before.st_mode)
+            or _is_link_or_reparse(before)
+            or (os.name == "posix" and before.st_mode & 0o077)
+            or (os.name == "posix" and callable(getuid) and before.st_uid != getuid())
+        ):
+            raise OSError("private root is not a private direct directory")
+        after = root.lstat()
+        if not os.path.samestat(before, after):
+            raise OSError("private root identity changed")
+        return after
+    except OSError:
+        raise CodingPluginLifecycleError(
+            "Coding Plugin state root is not private",
+            code="coding_plugin_state_permissions_failed",
+        ) from None
+
+
+def _is_link_or_reparse(metadata: os.stat_result) -> bool:
+    reparse_attribute = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    return bool(
+        stat.S_ISLNK(metadata.st_mode)
+        or getattr(metadata, "st_reparse_tag", 0)
+        or (
+            reparse_attribute
+            and getattr(metadata, "st_file_attributes", 0) & reparse_attribute
+        )
     )
 
 
@@ -1452,6 +2043,7 @@ def _nonempty(value: str, *, name: str) -> str:
 
 
 __all__ = [
+    "build_coding_plugin_management_application",
     "CodingPluginLifecycle",
     "CodingPluginLifecycleError",
     "CodingPluginLifecycleStateLayout",
@@ -1459,6 +2051,7 @@ __all__ = [
     "CodingPluginSessionLease",
     "build_coding_plugin_lifecycle",
     "package_revision_ref",
+    "project_coding_plugin_enablement_compatibility",
     "resolve_coding_plugin_lifecycle_state_layout",
     "resolve_ephemeral_coding_plugin_lifecycle_state_layout",
 ]

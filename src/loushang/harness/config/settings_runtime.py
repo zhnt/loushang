@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Generic, TypeVar
 
 from loushang.harness.config.runtime import (
     ConfigChange,
+    ConfigMutationReceipt,
     ConfigScope,
+    ConfigTransactionResult,
     ScopedConfigRuntime,
 )
 from loushang.harness.config.types import ConfigIssue, ConfigSnapshot
@@ -44,13 +47,19 @@ class SettingsRuntime(Generic[T]):
     def reload(self) -> ConfigChange[T]:
         return self._runtime.reload()
 
+    def transaction(self) -> AbstractContextManager[ConfigTransactionResult[T]]:
+        return self._runtime.transaction()
+
+    def defer_publications(self) -> AbstractContextManager[None]:
+        return self._runtime.defer_publications()
+
     def update(
         self,
         layer: str,
         patch: Mapping[str, object],
         *,
         persist: bool | None = None,
-    ) -> ConfigChange[T]:
+    ) -> ConfigMutationReceipt[T]:
         return self._runtime.update(layer, patch, persist=persist)
 
     def replace(
@@ -59,14 +68,14 @@ class SettingsRuntime(Generic[T]):
         patch: Mapping[str, object],
         *,
         persist: bool | None = None,
-    ) -> ConfigChange[T]:
+    ) -> ConfigMutationReceipt[T]:
         return self._runtime.replace(layer, patch, persist=persist)
 
     def apply_overrides(
         self,
         layer: str,
         overrides: Mapping[str, object] | T,
-    ) -> ConfigChange[T]:
+    ) -> ConfigMutationReceipt[T]:
         return self._runtime.apply_overrides(layer, overrides)
 
     def subscribe_change(

@@ -17,6 +17,7 @@ from loushang.harness.cli import (
     CliLaunchPlan,
     CliParseResult,
     CliPhaseResult,
+    ResourceToggleError,
     capture_cli_parse,
     collect_agent_cli_help_extension_flags,
     format_cli_error,
@@ -305,6 +306,14 @@ def test_application_helpers_preserve_parser_and_builder_boundaries() -> None:
     assert (
         format_cli_error(FileNotFoundError(2, "missing", "/tmp/example"))
         == "missing: /tmp/example"
+    )
+    coded = ResourceToggleError(
+        "plugin Installation is not migrated",
+        code="plugin_enablement_migration_required",
+    )
+    assert format_cli_error(coded) == (
+        "plugin_enablement_migration_required: "
+        "plugin Installation is not migrated"
     )
 
 

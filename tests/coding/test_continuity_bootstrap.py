@@ -12,7 +12,9 @@ from types import SimpleNamespace
 import pytest
 
 import loushang.coding._plugin_lifecycle as plugin_lifecycle_module
+import loushang.coding.continuity_bootstrap as continuity_bootstrap_module
 from loushang.coding._plugin_lifecycle import (
+    build_coding_plugin_lifecycle,
     resolve_coding_plugin_lifecycle_state_layout,
 )
 from loushang.coding.continuity import (
@@ -28,7 +30,9 @@ from loushang.coding.continuity_bootstrap import (
     resolve_coding_continuity_state_layout,
     retry_coding_continuity_bootstrap,
 )
+from loushang.coding.control import SettingsManager
 from loushang.foundation.platform_paths import PlatformPaths
+from loushang.harness.config.agent.types import ControlConfig
 from loushang.harness.continuity import (
     ContinuityDeletionPlanV1,
     ContinuityQuery,
@@ -39,7 +43,14 @@ from loushang.harness.plugin_authoring.capability_provider import (
 )
 from loushang.harness.plugin_management import (
     PluginContinuityDeletionJournal,
+    PluginDesiredStateLedger,
+    PluginDesiredStateMutationV1,
+    PluginEnablementMigrationError,
+    PluginEnablementMigrationJournal,
     PluginInstanceRuntimeLedger,
+    PluginManagementCommandV1,
+    PluginPackageRevisionRefV1,
+    plugin_enablement_legacy_input_fingerprint,
 )
 from loushang.harness.resources.packages.materializer import PackageMaterializer
 from loushang.harness.resources.plugins.continuity_provider import (
@@ -348,6 +359,199 @@ def test_configured_continuity_base_only_preserves_legacy_binding(
     asyncio.run(shutdown_coding_continuity(runtime))
 
 
+def test_empty_and_reentrant_continuity_bootstrap_reconcile_compatibility(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    paths = PlatformPaths(
+        home=tmp_path / "home",
+        data=tmp_path / "data",
+        state=tmp_path / "state",
+        cache=tmp_path / "cache",
+        runtime=tmp_path / "runtime",
+        temporary=tmp_path / "tmp",
+    )
+    common_layout = resolve_coding_plugin_lifecycle_state_layout(
+        workspace,
+        platform_paths=paths,
+    )
+    continuity_layout = resolve_coding_continuity_state_layout(
+        workspace,
+        platform_paths=paths,
+    )
+    lifecycle = build_coding_plugin_lifecycle(
+        common_layout,
+        startup_id="continuity-early-reconcile",
+    )
+    key = lifecycle.installation_key("continuity-example")
+    package = PluginPackageRevisionRefV1(
+        plugin_id="continuity-example",
+        plugin_version="1.0.0",
+        package_content_digest="a" * 64,
+        dependency_lock_digest="b" * 64,
+        package_source_identity="local:continuity-example",
+    )
+    try:
+        lifecycle.migrate_legacy_enablement(
+            key,
+            package,
+            legacy_disabled=False,
+            manifest_enabled_default=True,
+            legacy_input_fingerprint=plugin_enablement_legacy_input_fingerprint(
+                key,
+                legacy_disabled=False,
+                manifest_enabled_default=True,
+            ),
+        )
+    finally:
+        lifecycle.release_owned_process_startup_lease()
+    unterminated: dict[Path, str] = {}
+    for path in (common_layout.desired_state, common_layout.enablement_migration):
+        tail = path.read_text(encoding="utf-8").splitlines()[-1]
+        unterminated[path] = tail
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(tail)
+
+    settings_path = tmp_path / "settings.json"
+    settings = SettingsManager(
+        initial=ControlConfig(disabled_plugins=("continuity-example",)),
+        project_settings_path=settings_path,
+    )
+    runtime = _Runtime(tmp_path / "sessions")
+    first = asyncio.run(
+        bind_coding_configured_continuity(
+            runtime,
+            settings_manager=settings,
+            session_dir=runtime.session_dir,
+            cwd=workspace,
+            state_layout=continuity_layout,
+        )
+    )
+
+    assert settings.get_settings().disabled_plugins == ()
+    settings_path.write_text(
+        json.dumps({"disabled_plugins": ["continuity-example"]}),
+        encoding="utf-8",
+    )
+    repeated = asyncio.run(
+        bind_coding_configured_continuity(
+            runtime,
+            settings_manager=settings,
+            session_dir=runtime.session_dir,
+            cwd=workspace,
+            state_layout=continuity_layout,
+        )
+    )
+
+    assert repeated is first
+    assert settings.get_settings().disabled_plugins == ()
+    assert common_layout.desired_state.read_text(encoding="utf-8").endswith(
+        unterminated[common_layout.desired_state]
+    )
+    assert common_layout.enablement_migration.read_text(encoding="utf-8").endswith(
+        unterminated[common_layout.enablement_migration]
+    )
+    with pytest.raises(PluginEnablementMigrationError):
+        settings.disable_plugin("continuity-example")
+    asyncio.run(shutdown_coding_continuity(runtime))
+
+
+def test_empty_and_reentrant_compatibility_failures_use_bootstrap_error_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class CompatibilityFailure(RuntimeError):
+        code = "coding_plugin_compatibility_fixture_failed"
+
+    class CompatibilityWriter:
+        fail = True
+
+        def reconcile(self) -> None:
+            if self.fail:
+                raise CompatibilityFailure("compatibility failed")
+
+    writer = CompatibilityWriter()
+    monkeypatch.setattr(
+        continuity_bootstrap_module,
+        "bind_coding_plugin_enablement_compatibility",
+        lambda *_args, **_kwargs: writer,
+    )
+    settings = SimpleNamespace(
+        get_settings=lambda: SimpleNamespace(
+            plugin_sources=(),
+            disabled_plugins=(),
+        )
+    )
+
+    first_runtime = _Runtime(tmp_path / "first-sessions")
+    with pytest.raises(CodingContinuityBootstrapError) as first_failure:
+        asyncio.run(
+            bind_coding_configured_continuity(
+                first_runtime,
+                settings_manager=settings,
+                session_dir=first_runtime.session_dir,
+                cwd=tmp_path / "workspace",
+            )
+        )
+    assert first_failure.value.code == CompatibilityFailure.code
+    assert first_failure.value.retryable is True
+    assert first_failure.value.__cause__ is None
+    assert get_coding_continuity_bootstrap_status(first_runtime).to_dict() == {
+        "state": "failed",
+        "code": CompatibilityFailure.code,
+        "configuredSourceCount": 0,
+        "pluginCount": 0,
+        "providerCount": 0,
+        "recoveredDeletionCount": 0,
+        "retryable": True,
+    }
+
+    repeated_runtime = _Runtime(tmp_path / "repeated-sessions")
+    writer.fail = False
+    composition = asyncio.run(
+        bind_coding_configured_continuity(
+            repeated_runtime,
+            settings_manager=settings,
+            session_dir=repeated_runtime.session_dir,
+            cwd=tmp_path / "workspace",
+        )
+    )
+    writer.fail = True
+    with pytest.raises(CodingContinuityBootstrapError) as repeated_failure:
+        asyncio.run(
+            bind_coding_configured_continuity(
+                repeated_runtime,
+                settings_manager=settings,
+                session_dir=repeated_runtime.session_dir,
+                cwd=tmp_path / "workspace",
+            )
+        )
+    assert repeated_failure.value.code == CompatibilityFailure.code
+    assert repeated_failure.value.retryable is True
+    assert get_coding_continuity_bootstrap_status(repeated_runtime).state == "failed"
+    assert composition is get_coding_configured_continuity_composition(repeated_runtime)
+    writer.fail = False
+    recovered = asyncio.run(
+        retry_coding_continuity_bootstrap(
+            repeated_runtime,
+            settings_manager=settings,
+            session_dir=repeated_runtime.session_dir,
+            cwd=tmp_path / "workspace",
+        )
+    )
+    assert recovered is composition
+    assert get_coding_continuity_bootstrap_status(repeated_runtime).to_dict() == {
+        "state": "ready",
+        "code": "coding_continuity_ready",
+        "configuredSourceCount": 0,
+        "pluginCount": 0,
+        "providerCount": 0,
+        "recoveredDeletionCount": 0,
+        "retryable": False,
+    }
+    asyncio.run(shutdown_coding_continuity(repeated_runtime))
+
+
 @pytest.mark.parametrize(
     ("configured_cwd", "configured_all_sessions"),
     (("other", False), ("original", True)),
@@ -521,6 +725,83 @@ def test_real_configured_continuity_plugin_lifecycle_and_restart(
     asyncio.run(_real_configured_lifecycle(tmp_path, monkeypatch))
 
 
+def test_removed_continuity_tombstone_never_reinspects_configured_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.coding import continuity_bootstrap
+
+    async def scenario() -> None:
+        marker = tmp_path / "removed-plugin.log"
+        monkeypatch.setenv("LOUSHANG_CONTINUITY_PLUGIN_MARKER", str(marker))
+        plugin_root = _write_continuity_plugin(tmp_path / "removed-plugin")
+        workspace = tmp_path / "workspace"
+        layout = _test_layout(tmp_path / "state", workspace)
+        settings = _settings(plugin_root)
+        first_runtime = _Runtime(tmp_path / "sessions")
+        first = await bind_coding_configured_continuity(
+            first_runtime,
+            settings_manager=settings,
+            session_dir=first_runtime.session_dir,
+            cwd=workspace,
+            state_layout=layout,
+            runtime_id="coding-process:tombstone-first",
+        )
+        assert first.plugin_publication is not None
+        await shutdown_coding_continuity(first_runtime)
+
+        lifecycle = continuity_bootstrap._build_lifecycle(layout)
+        snapshot = lifecycle.desired.snapshot()
+        [installed] = snapshot.installations
+        removed = lifecycle.management.submit(
+            PluginManagementCommandV1(
+                action="remove",
+                mutation=PluginDesiredStateMutationV1(
+                    operation_id="remove-continuity-plugin",
+                    idempotency_key="remove-continuity-plugin",
+                    expected_inventory_revision=snapshot.inventory_revision,
+                    installation_key=installed.installation_key,
+                    desired_state="absent",
+                    package_revision=None,
+                    actor_id="test",
+                    policy_revision="test",
+                ),
+            )
+        )
+        lifecycle.common.release_owned_process_startup_lease()
+        assert removed.result is not None
+        assert removed.result.disposition == "succeeded"
+        forgotten = _materializer_for_layout(layout)
+        forgotten.forget_plugin_binding(plugin_root)
+        assert forgotten.get_plugin_binding(plugin_root) is None
+
+        def reject_inspection(*_args, **_kwargs):
+            raise AssertionError("removed source was reinspected")
+
+        monkeypatch.setattr(
+            continuity_bootstrap,
+            "_inspect_continuity_source",
+            reject_inspection,
+        )
+        restarted_runtime = _Runtime(tmp_path / "sessions")
+        restarted = await bind_coding_configured_continuity(
+            restarted_runtime,
+            settings_manager=settings,
+            session_dir=restarted_runtime.session_dir,
+            cwd=workspace,
+            state_layout=layout,
+            runtime_id="coding-process:tombstone-restart",
+        )
+
+        assert restarted.plugin_publication is None
+        assert (
+            get_coding_continuity_bootstrap_status(restarted_runtime).plugin_count == 0
+        )
+        await shutdown_coding_continuity(restarted_runtime)
+
+    asyncio.run(scenario())
+
+
 def test_continuity_bootstrap_rejects_unsupported_secure_staging_before_import(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -599,6 +880,26 @@ def test_empty_selected_continuity_still_completes_common_startup_recovery(
 
     assert result.plugin_publication is None
     assert calls == [layout.root]
+    key = next(
+        item.installation_key
+        for item in PluginDesiredStateLedger(layout.desired_state)
+        .snapshot()
+        .installations
+        if item.installation_key.plugin_id == "continuity-example"
+    )
+    migration = PluginEnablementMigrationJournal(
+        layout.root / "enablement-migration.jsonl"
+    ).snapshot(key)
+    assert migration is not None
+    assert migration.phase == "compatibility_window"
+    assert migration.disposition == "seeded"
+    assert (
+        PluginDesiredStateLedger(layout.desired_state)
+        .snapshot()
+        .installation(key)
+        .selection.desired_state
+        == "installed_disabled"
+    )
     asyncio.run(shutdown_coding_continuity(runtime))
 
 
@@ -917,13 +1218,37 @@ def test_changed_source_replays_selected_revision_until_management_update(
     asyncio.run(scenario())
 
 
-def _settings(plugin_root: Path) -> object:
-    return SimpleNamespace(
-        get_settings=lambda: SimpleNamespace(
+class _ContinuitySettings:
+    def __init__(self, plugin_root: Path) -> None:
+        self.value = SimpleNamespace(
             plugin_sources=(str(plugin_root),),
             disabled_plugins=(),
         )
-    )
+
+    def get_settings(self):
+        return self.value
+
+    def bind_plugin_enablement_legacy_mutation_guard(self, authority, guard):
+        assert authority is not None
+        self.guard = guard
+
+        def publish(projection):
+            migrated = set(projection.migrated_plugin_ids)
+            retained = {
+                item for item in self.value.disabled_plugins if item not in migrated
+            }
+            self.value = SimpleNamespace(
+                plugin_sources=self.value.plugin_sources,
+                disabled_plugins=tuple(
+                    sorted(retained | set(projection.disabled_plugin_ids))
+                ),
+            )
+
+        return publish
+
+
+def _settings(plugin_root: Path) -> object:
+    return _ContinuitySettings(plugin_root)
 
 
 def _test_layout(state_root: Path, workspace: Path):
@@ -1008,9 +1333,7 @@ def _write_continuity_plugin(
                 "declarationSource": {
                     "kind": "document",
                     "locator": "declarations/unselected-invalid.json",
-                    "mediaType": (
-                        "application/vnd.loushang.plugin-declarations+json"
-                    ),
+                    "mediaType": ("application/vnd.loushang.plugin-declarations+json"),
                     "schemaId": "loushang.plugin-declaration-document",
                     "schemaVersion": 1,
                     "sourceVersion": 1,

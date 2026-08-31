@@ -12,6 +12,7 @@ from loushang.harness.journal import (
     JournalLoadPolicy,
     JsonlSnapshot,
     append_jsonl_record,
+    decode_jsonl,
     journal_file_lock,
     load_jsonl,
 )
@@ -125,6 +126,22 @@ class PluginDesiredStateLedger:
         ):
             replayed = self._load_and_replay_unlocked()
         return _snapshot(replayed)
+
+    def capture(
+        self,
+    ) -> tuple[
+        PluginDesiredStateSnapshotV1,
+        tuple[PluginDesiredStateJournalTransition, ...],
+    ]:
+        """Capture the snapshot and its exact transition history under one lock."""
+
+        with journal_file_lock(
+            self._path,
+            "exclusive",
+            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+        ):
+            replayed = self._load_and_replay_unlocked()
+        return _snapshot(replayed), replayed.transitions
 
     def transitions(self) -> tuple[PluginDesiredStateJournalTransition, ...]:
         with journal_file_lock(
@@ -604,7 +621,9 @@ def _apply_update_mutation(
     current_instance = current.instance_revision_ref
     latest = previous.latest_instance_revision_ref
     if current_instance is None or latest is None or current_instance != latest:
-        raise ValueError("Enabled Plugin update predecessor has invalid Instance lineage")
+        raise ValueError(
+            "Enabled Plugin update predecessor has invalid Instance lineage"
+        )
     next_instance = PluginInstanceRevisionRef(
         instance_id=latest.instance_id,
         plugin_id=latest.plugin_id,
@@ -640,6 +659,44 @@ def _snapshot(replayed: _ReplayedLedger) -> PluginDesiredStateSnapshotV1:
     )
 
 
+def decode_plugin_desired_state_snapshot(
+    raw: str,
+    *,
+    path: str | Path,
+) -> PluginDesiredStateSnapshotV1:
+    """Project an already-authorized desired-state journal snapshot."""
+
+    target = Path(path)
+    try:
+        decoded: JsonlSnapshot[None, PluginDesiredStateJournalTransition] = (
+            decode_jsonl(
+                raw,
+                target=target,
+                record_codec=PLUGIN_DESIRED_STATE_JOURNAL_CODEC,
+                # Compatibility projection is read-only.  The owner repairs
+                # an incomplete crash tail on its next load; meanwhile only
+                # newline-terminated committed records are visible here.
+                load_policy=JournalLoadPolicy(partial_tail="skip"),
+            )
+        )
+    except JournalFileError as exc:
+        code = (
+            exc.code
+            if exc.code
+            in {
+                "invalid_plugin_lifecycle_record",
+                "unsupported_plugin_lifecycle_record_version",
+            }
+            else "plugin_lifecycle_journal_corrupt"
+        )
+        raise PluginLifecycleError(
+            "Plugin lifecycle journal cannot be decoded",
+            code=code,
+            path=target,
+        ) from exc
+    return _snapshot(_replay(decoded.records, path=target))
+
+
 def _new_instance_id() -> str:
     return f"plugin-instance-{secrets.token_hex(16)}"
 
@@ -657,4 +714,5 @@ __all__ = [
     "PluginDesiredStateSnapshotV1",
     "PluginInstanceIdFactory",
     "PluginLifecycleError",
+    "decode_plugin_desired_state_snapshot",
 ]

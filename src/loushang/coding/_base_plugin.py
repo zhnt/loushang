@@ -35,6 +35,9 @@ from loushang.harness.capabilities.provider_binding import (
     CapabilityBundleProviderBinding,
 )
 from loushang.harness.environment import HostEnvironment, LocalHostEnvironmentProbe
+from loushang.harness.plugin_management import (
+    plugin_enablement_legacy_input_fingerprint,
+)
 from loushang.harness.resources.plugins.authority import (
     PluginResolutionAuthority,
     PluginRuntimeResolution,
@@ -262,6 +265,7 @@ def prepare_managed_coding_base_plugin_assembly(
     include_command_contribution: bool = True,
     state_cleanup: Callable[[], None] | None = None,
     session_owner_id: str | None = None,
+    legacy_disabled: bool = False,
 ) -> CodingBasePluginAssembly | None:
     """Intersect the Product request with one durable management snapshot."""
 
@@ -273,6 +277,8 @@ def prepare_managed_coding_base_plugin_assembly(
         raise TypeError("Managed Coding base assembly requires a lifecycle")
     if state_cleanup is not None and not callable(state_cleanup):
         raise TypeError("Managed Coding base state cleanup must be callable")
+    if not isinstance(legacy_disabled, bool):
+        raise TypeError("Managed Coding base legacy selection must be boolean")
     for name, value in (
         ("Skill", include_skill_contribution),
         ("Command", include_command_contribution),
@@ -286,6 +292,19 @@ def prepare_managed_coding_base_plugin_assembly(
     snapshot = lifecycle.desired.snapshot()
     state = snapshot.installation(key)
     seen = any(item.installation_key == key for item in snapshot.installations)
+    if seen and lifecycle.enablement_migrations.journal.snapshot(key) is None:
+        lifecycle.migrate_legacy_enablement(
+            key,
+            state.selection.package_revision,
+            legacy_disabled=legacy_disabled,
+            manifest_enabled_default=True,
+            legacy_input_fingerprint=plugin_enablement_legacy_input_fingerprint(
+                key,
+                legacy_disabled=legacy_disabled,
+                manifest_enabled_default=True,
+            ),
+        )
+        state = lifecycle.desired.snapshot().installation(key)
     runtime: PluginRuntimeResolution | None = None
     lease: CodingPluginSessionLease | None = None
     try:
@@ -305,18 +324,22 @@ def prepare_managed_coding_base_plugin_assembly(
                 dependency_lock_digest=package.dependency_lock.digest,
                 package_source_identity=binding.source_identity,
             )
-            lifecycle.bootstrap_first_party_default(key, revision)
+            manifest_default = package.manifest.enabled
+            lifecycle.migrate_legacy_enablement(
+                key,
+                revision,
+                legacy_disabled=legacy_disabled,
+                manifest_enabled_default=manifest_default,
+                legacy_input_fingerprint=(
+                    plugin_enablement_legacy_input_fingerprint(
+                        key,
+                        legacy_disabled=legacy_disabled,
+                        manifest_enabled_default=manifest_default,
+                    )
+                ),
+            )
             state = lifecycle.desired.snapshot().installation(key)
         else:
-            retained_package = state.selection.package_revision
-            if (
-                state.selection.desired_state == "installed_disabled"
-                and retained_package is not None
-            ):
-                # Recover a crash between the Product's own default install
-                # and enable without consulting the mutable package source.
-                lifecycle.bootstrap_first_party_default(key, retained_package)
-                state = lifecycle.desired.snapshot().installation(key)
             lifecycle.reconcile_retirements()
         if state.selection.desired_state != "installed_enabled":
             if runtime is not None:
@@ -423,7 +446,9 @@ def prepare_managed_coding_base_plugin_assembly(
             try:
                 lease.close()
             except BaseException as cleanup_error:
-                error.add_note(f"Coding base Session lease cleanup failed: {cleanup_error}")
+                error.add_note(
+                    f"Coding base Session lease cleanup failed: {cleanup_error}"
+                )
         if runtime is not None:
             try:
                 runtime.close()
@@ -508,9 +533,7 @@ def prepare_coding_base_resource_plan_seed(
         packages=seed.packages,
         bindings=seed.bindings,
         owner_bindings=tuple(
-            item
-            for item in seed.owner_bindings
-            if item.owner_key[1] == "resource_item"
+            item for item in seed.owner_bindings if item.owner_key[1] == "resource_item"
         ),
     )
 
@@ -538,9 +561,7 @@ def build_coding_base_plugin_owners(
         if item.plugin_id == _PLUGIN_ID
     }
     tool_admission = (
-        admissions.get(
-            ("tools.workspace", "tool_pack", assembly.tool_contribution_id)
-        )
+        admissions.get(("tools.workspace", "tool_pack", assembly.tool_contribution_id))
         if assembly.tool_contribution_id is not None
         else None
     )
@@ -560,10 +581,7 @@ def build_coding_base_plugin_owners(
         len(admissions) != expected_admissions
         or (command_selected and command_admission is None)
         or (not command_selected and command_admission is not None)
-        or (
-            assembly.tool_contribution_id is not None
-            and tool_admission is None
-        )
+        or (assembly.tool_contribution_id is not None and tool_admission is None)
     ):
         raise ValueError("Coding base requires exact Tool and Command admissions")
     authorities = {
@@ -666,9 +684,7 @@ def _build_selection_plan(
     )
     selected_tool_names = (
         tuple(
-            sorted(
-                coding_workspace_tool_profile(host_environment).builtin_tool_names
-            )
+            sorted(coding_workspace_tool_profile(host_environment).builtin_tool_names)
         )
         if include_tool_contribution
         else ()

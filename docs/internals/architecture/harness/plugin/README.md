@@ -68,6 +68,10 @@ Neither may silently override a narrower implemented owner contract.
 - [PLC8 Public SDK And Managed Skill Action Contract](plugin-lifecycle-plc8-contract.md)
   freezes the public author namespace, engine negotiation, inert validation,
   single-Catalog action selection, and Approval/containment execution boundary.
+- [PLC9A1 Management Application Contract](plugin-lifecycle-plc9a1-contract.md)
+  freezes the internal transport-neutral command/query boundary, read-only
+  owner-revisioned projection, one-way enablement migration, and Coding CLI
+  adaptation without widening the public author SDK.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)

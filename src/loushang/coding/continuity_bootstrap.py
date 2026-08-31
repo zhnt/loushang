@@ -38,6 +38,9 @@ from loushang.coding.continuity import (
 from loushang.coding.plugin_dependency_grants import (
     coding_plugin_distribution_evidence_resolver,
 )
+from loushang.coding.plugin_enablement_compatibility import (
+    bind_coding_plugin_enablement_compatibility,
+)
 from loushang.coding.resource_runtime import CodingPackageMaterializer
 from loushang.foundation.platform_paths import PlatformPaths, resolve_platform_paths
 from loushang.harness.approval.plugin_activation import (
@@ -72,14 +75,13 @@ from loushang.harness.plugin_management import (
     PluginContinuityDeletionAuthority,
     PluginContinuityDeletionJournal,
     PluginDesiredStateLedger,
-    PluginDesiredStateMutationV1,
     PluginInstallationKeyV1,
     PluginInstallationStateV1,
     PluginInstanceRuntimeLedger,
-    PluginManagementCommandV1,
     PluginManagementService,
     PluginPackageLifecycleLedger,
     PluginPackageRevisionRefV1,
+    plugin_enablement_legacy_input_fingerprint,
 )
 from loushang.harness.plugin_management.continuity_adapter import (
     PluginContinuitySecurityRetirementJournal,
@@ -88,6 +90,7 @@ from loushang.harness.plugin_management.continuity_adapter import (
 from loushang.harness.resources.packages.materializer import (
     GitPackageMaterializerBackend,
     PackageMaterializer,
+    plugin_source_identity,
 )
 from loushang.harness.resources.plugins import (
     InstalledPlugin,
@@ -119,6 +122,7 @@ _SOURCE_TRUST_POLICY_REVISION = "coding-continuity-source-trust-1"
 _AUTHORITY_CEILING = ("continuity.delete", "network.read")
 _APPROVAL_TTL_MS = 300_000
 _BOOTSTRAP_STATUS_ATTRIBUTE = "_loushang_coding_continuity_bootstrap_status"
+_LAST_READY_STATUS_ATTRIBUTE = "_loushang_coding_continuity_bootstrap_last_ready_status"
 _STABLE_ERROR_CODE = re.compile(r"^[a-z][a-z0-9_]{0,95}$")
 
 
@@ -252,10 +256,7 @@ def get_coding_configured_continuity_composition(
     """Return only a composition sealed by the configured Product bootstrap."""
 
     composition = get_coding_continuity_composition(runtime)
-    if (
-        composition is None
-        or composition.configured_request_fingerprint is None
-    ):
+    if composition is None or composition.configured_request_fingerprint is None:
         return None
     return composition
 
@@ -304,26 +305,62 @@ async def bind_coding_configured_continuity(
             raise
         raise CodingContinuityBootstrapError(code=stable_code) from None
 
-    request_fingerprint = _bootstrap_request_fingerprint(
-        sources,
-        disabled_plugins=disabled_plugins,
-        cwd=cwd,
-        all_sessions=all_sessions,
-    )
+    configured_count = len(sources)
+    try:
+        layout = state_layout or resolve_coding_continuity_state_layout(cwd)
+        compatibility = bind_coding_plugin_enablement_compatibility(
+            _common_lifecycle_layout(layout),
+            settings_manager,
+        )
+        if compatibility is not None:
+            compatibility.reconcile()
+            sources, disabled_plugins = _configured_sources(
+                settings_manager,
+                cwd=cwd,
+            )
+            configured_count = len(sources)
+        request_fingerprint = _bootstrap_request_fingerprint(
+            sources,
+            disabled_plugins=disabled_plugins,
+            cwd=cwd,
+            all_sessions=all_sessions,
+        )
 
-    existing = getattr(runtime, "_loushang_coding_continuity", None)
-    if isinstance(existing, CodingContinuityComposition):
-        if existing.configured_request_fingerprint == request_fingerprint:
-            return existing
-        if (
-            not sources
-            and existing.plugin_publication is None
-            and existing.configured_request_fingerprint is None
-            and existing.binding_cwd
-            == str(Path(cwd).expanduser().resolve(strict=False))
-            and existing.all_sessions == all_sessions
-        ):
-            existing.configured_request_fingerprint = request_fingerprint
+        existing = getattr(runtime, "_loushang_coding_continuity", None)
+        if isinstance(existing, CodingContinuityComposition):
+            if existing.configured_request_fingerprint == request_fingerprint:
+                _restore_ready_status(runtime, diagnostics_service)
+                return existing
+            if (
+                not sources
+                and existing.plugin_publication is None
+                and existing.configured_request_fingerprint is None
+                and existing.binding_cwd
+                == str(Path(cwd).expanduser().resolve(strict=False))
+                and existing.all_sessions == all_sessions
+            ):
+                existing.configured_request_fingerprint = request_fingerprint
+                _record_ready_status(
+                    runtime,
+                    diagnostics_service,
+                    configured_source_count=0,
+                    plugin_count=0,
+                    provider_count=0,
+                    recovered_deletion_count=0,
+                )
+                return existing
+            raise CodingContinuityBootstrapError(
+                code="coding_continuity_composition_already_bound",
+                retryable=False,
+            )
+
+        if not sources:
+            result = bind_coding_continuity(
+                runtime,
+                cwd=cwd,
+                all_sessions=all_sessions,
+            )
+            result.configured_request_fingerprint = request_fingerprint
             _record_ready_status(
                 runtime,
                 diagnostics_service,
@@ -332,34 +369,36 @@ async def bind_coding_configured_continuity(
                 provider_count=0,
                 recovered_deletion_count=0,
             )
-            return existing
-        composition_error = CodingContinuityBootstrapError(
-            code="coding_continuity_composition_already_bound",
-            retryable=False,
+            return result
+    except BaseException as error:
+        if not isinstance(error, Exception):
+            raise
+        if (
+            isinstance(error, CodingContinuityBootstrapError)
+            and error.code == "coding_continuity_composition_already_bound"
+        ):
+            # The already-published composition remains healthy.  Reject the
+            # conflicting rebind without overwriting its ready status.
+            raise
+        stable_code = _stable_error_code(error)
+        retryable = (
+            error.retryable
+            if isinstance(error, CodingContinuityBootstrapError)
+            else True
         )
-        raise composition_error
-
-    if not sources:
-        result = bind_coding_continuity(
-            runtime,
-            cwd=cwd,
-            all_sessions=all_sessions,
-        )
-        result.configured_request_fingerprint = request_fingerprint
-        _record_ready_status(
+        _record_failed_status(
             runtime,
             diagnostics_service,
-            configured_source_count=0,
-            plugin_count=0,
-            provider_count=0,
-            recovered_deletion_count=0,
+            code=stable_code,
+            configured_source_count=configured_count,
+            retryable=retryable,
         )
-        return result
+        if isinstance(error, CodingContinuityBootstrapError):
+            raise
+        raise CodingContinuityBootstrapError(code=stable_code) from None
 
     runtime_resolution: PluginRuntimeResolution | None = None
-    configured_count = len(sources)
     try:
-        layout = state_layout or resolve_coding_continuity_state_layout(cwd)
         resolved_runtime_id = runtime_id or _new_runtime_id()
         if materializer is not None and not materializer.uses_storage_authority(
             install_root=layout.package_root / "installed",
@@ -370,20 +409,19 @@ async def bind_coding_configured_continuity(
                 code="coding_continuity_package_authority_mismatch",
                 retryable=False,
             )
-        resolved_materializer = materializer or _coding_continuity_materializer(
-            layout
-        )
+        resolved_materializer = materializer or _coding_continuity_materializer(layout)
         _prepare_private_state_layout(layout)
         _prepare_private_runtime_roots(layout)
         lifecycle = _build_lifecycle(layout)
         lifecycle.common.reconcile_retirements()
         replayed_runtime, inspections = _continuity_runtime_inputs(
             sources,
-            disabled_plugins=disabled_plugins,
             materializer=resolved_materializer,
             lifecycle=lifecycle,
             layout=layout,
         )
+        if compatibility is not None:
+            compatibility.reconcile()
         if not replayed_runtime.packages and not inspections:
             lifecycle.common.complete_startup_recovery()
             result = bind_coding_continuity(
@@ -409,9 +447,7 @@ async def bind_coding_configured_continuity(
                 retryable=False,
             )
 
-        resolution_authority = PluginResolutionAuthority(
-            disabled_plugins=tuple(disabled_plugins)
-        )
+        resolution_authority = PluginResolutionAuthority()
         runtime_resolution = _publish_continuity_runtime(
             replayed_runtime,
             inspections=inspections,
@@ -422,8 +458,31 @@ async def bind_coding_configured_continuity(
             runtime_resolution,
             lifecycle,
             layout=layout,
+            legacy_disabled_plugin_ids=disabled_plugins,
+        )
+        if compatibility is not None:
+            compatibility.reconcile()
+        runtime_resolution = _retain_enabled_runtime(
+            runtime_resolution,
+            enabled_plugin_ids=frozenset(item.plugin_id for item in instance_refs),
         )
         lifecycle.common.complete_startup_recovery()
+        if not runtime_resolution.packages:
+            result = bind_coding_continuity(
+                runtime,
+                cwd=cwd,
+                all_sessions=all_sessions,
+            )
+            result.configured_request_fingerprint = request_fingerprint
+            _record_ready_status(
+                runtime,
+                diagnostics_service,
+                configured_source_count=configured_count,
+                plugin_count=0,
+                provider_count=0,
+                recovered_deletion_count=0,
+            )
+            return result
         selection = _finalize_selection(
             runtime_resolution,
             instance_refs=instance_refs,
@@ -625,14 +684,13 @@ def _configured_source_base(
 def _continuity_runtime_inputs(
     sources: tuple[str, ...],
     *,
-    disabled_plugins: frozenset[str],
     materializer: PackageMaterializer,
     lifecycle: _InstalledLifecycle,
     layout: CodingContinuityStateLayout,
 ) -> tuple[PluginRuntimeResolution, tuple[PluginInspection, ...]]:
     """Resolve seen sources from desired exact revisions; inspect only unseen ones."""
 
-    authority = PluginResolutionAuthority(disabled_plugins=tuple(disabled_plugins))
+    authority = PluginResolutionAuthority()
     desired_by_source = _desired_installations_by_source(lifecycle, layout=layout)
     replayed_packages: list[PublishedPluginPackage] = []
     replayed_bindings: list[PluginSourceBinding] = []
@@ -641,13 +699,13 @@ def _continuity_runtime_inputs(
     plugin_ids: set[str] = set()
     try:
         for source in sources:
-            current_binding = materializer.get_plugin_binding(source)
-            desired = (
-                None
-                if current_binding is None
-                else desired_by_source.get(current_binding.source_identity)
-            )
-            if desired is not None:
+            desired = desired_by_source.get(plugin_source_identity(source))
+            if desired is not None and desired.selection.desired_state == "absent":
+                # A remove tombstone is authoritative.  Do not inspect or
+                # republish the mutable Source merely because the selected
+                # Package reference was intentionally cleared.
+                continue
+            if desired is not None and desired.selection.package_revision is not None:
                 plugin_id = desired.installation_key.plugin_id
                 if plugin_id in plugin_ids:
                     raise CodingContinuityBootstrapError(
@@ -655,23 +713,12 @@ def _continuity_runtime_inputs(
                         retryable=False,
                     )
                 plugin_ids.add(plugin_id)
-                if (
-                    plugin_id in disabled_plugins
-                    or desired.selection.desired_state != "installed_enabled"
-                ):
-                    continue
                 selected_revision = desired.selection.package_revision
-                if selected_revision is None:
-                    raise CodingContinuityBootstrapError(
-                        code="coding_continuity_management_selection_incomplete",
-                        retryable=False,
-                    )
+                assert selected_revision is not None
                 replay_binding = materializer.get_plugin_binding_by_revision(
                     selected_revision.package_source_identity,
                     content_digest=selected_revision.package_content_digest,
-                    dependency_lock_digest=(
-                        selected_revision.dependency_lock_digest
-                    ),
+                    dependency_lock_digest=(selected_revision.dependency_lock_digest),
                 )
                 if replay_binding is None:
                     raise CodingContinuityBootstrapError(
@@ -755,7 +802,6 @@ def _inspect_continuity_source(
     if (
         package is None
         or inspection.plugin is None
-        or not inspection.plugin.enabled
         or not _has_continuity_contribution(package)
     ):
         return None
@@ -831,12 +877,10 @@ def _publish_continuity_runtime(
             )
         packages = (*replayed.packages, *published.packages)
         bindings = {
-            item.plugin_id: item
-            for item in (*replayed.bindings, *published.bindings)
+            item.plugin_id: item for item in (*replayed.bindings, *published.bindings)
         }
         plugins = {
-            item.manifest.name: item
-            for item in (*replayed.plugins, *published.plugins)
+            item.manifest.name: item for item in (*replayed.plugins, *published.plugins)
         }
         if len(packages) != len(bindings) or len(packages) != len(plugins):
             raise CodingContinuityBootstrapError(
@@ -873,19 +917,7 @@ def _build_lifecycle(
         layout.instance_runtime
     )
     common = build_coding_plugin_lifecycle(
-        CodingPluginLifecycleStateLayout(
-            root=layout.root,
-            private_state_base=layout.private_state_base,
-            package_root=layout.package_root,
-            private_data_base=layout.private_data_base,
-            scope_id=layout.scope_id,
-            desired_state=layout.desired_state,
-            management_operations=layout.management_operations,
-            retirement_intents=layout.retirement_intents,
-            retirement_sets=layout.retirement_sets,
-            instance_runtime=layout.instance_runtime,
-            package_lifecycle=layout.package_lifecycle,
-        ),
+        _common_lifecycle_layout(layout),
         security_acceptances=security,
     )
     desired = common.desired
@@ -911,11 +943,30 @@ def _build_lifecycle(
     )
 
 
+def _common_lifecycle_layout(
+    layout: CodingContinuityStateLayout,
+) -> CodingPluginLifecycleStateLayout:
+    return CodingPluginLifecycleStateLayout(
+        root=layout.root,
+        private_state_base=layout.private_state_base,
+        package_root=layout.package_root,
+        private_data_base=layout.private_data_base,
+        scope_id=layout.scope_id,
+        desired_state=layout.desired_state,
+        management_operations=layout.management_operations,
+        retirement_intents=layout.retirement_intents,
+        retirement_sets=layout.retirement_sets,
+        instance_runtime=layout.instance_runtime,
+        package_lifecycle=layout.package_lifecycle,
+    )
+
+
 def _reconcile_enabled_instances(
     runtime: PluginRuntimeResolution,
     lifecycle: _InstalledLifecycle,
     *,
     layout: CodingContinuityStateLayout,
+    legacy_disabled_plugin_ids: frozenset[str],
 ) -> tuple[PluginInstanceRevisionRef, ...]:
     refs: list[PluginInstanceRevisionRef] = []
     bindings = {item.plugin_id: item for item in runtime.bindings}
@@ -940,31 +991,50 @@ def _reconcile_enabled_instances(
         unseen = not any(
             item.installation_key == key for item in snapshot.installations
         )
+        legacy_disabled = plugin_id in legacy_disabled_plugin_ids
+        manifest_default = package.manifest.enabled
         if unseen:
-            _submit_management(
-                lifecycle.management,
-                lifecycle.desired,
+            lifecycle.common.migrate_legacy_enablement(
                 key,
-                action="install",
-                package_revision=package_revision,
+                package_revision,
+                legacy_disabled=legacy_disabled,
+                manifest_enabled_default=manifest_default,
+                legacy_input_fingerprint=(
+                    plugin_enablement_legacy_input_fingerprint(
+                        key,
+                        legacy_disabled=legacy_disabled,
+                        manifest_enabled_default=manifest_default,
+                    )
+                ),
             )
             state = lifecycle.desired.snapshot().installation(key)
-            _submit_management(
-                lifecycle.management,
-                lifecycle.desired,
+        elif lifecycle.common.enablement_migrations.journal.snapshot(key) is None:
+            lifecycle.common.migrate_legacy_enablement(
                 key,
-                action="enable",
-                package_revision=None,
+                package_revision,
+                legacy_disabled=legacy_disabled,
+                manifest_enabled_default=manifest_default,
+                legacy_input_fingerprint=(
+                    plugin_enablement_legacy_input_fingerprint(
+                        key,
+                        legacy_disabled=legacy_disabled,
+                        manifest_enabled_default=manifest_default,
+                    )
+                ),
             )
             state = lifecycle.desired.snapshot().installation(key)
+        if state.selection.desired_state == "absent":
+            continue
         current_package = state.selection.package_revision
         if current_package != package_revision:
             raise CodingContinuityBootstrapError(
                 code="coding_continuity_plugin_revision_not_selected",
                 retryable=False,
             )
+        if state.selection.desired_state != "installed_enabled":
+            continue
         ref = state.selection.instance_revision_ref
-        if state.selection.desired_state != "installed_enabled" or ref is None:
+        if ref is None:
             raise CodingContinuityBootstrapError(
                 code="coding_continuity_plugin_not_enabled"
             )
@@ -986,41 +1056,27 @@ def _reconcile_enabled_instances(
     return tuple(sorted(refs, key=lambda item: (item.plugin_id, item.instance_id)))
 
 
-def _submit_management(
-    service: PluginManagementService,
-    desired: PluginDesiredStateLedger,
-    key: PluginInstallationKeyV1,
+def _retain_enabled_runtime(
+    runtime: PluginRuntimeResolution,
     *,
-    action: Literal["install", "enable"],
-    package_revision: PluginPackageRevisionRefV1 | None,
-) -> None:
-    revision = desired.snapshot().inventory_revision
-    identity = hashlib.sha256(
-        repr((key, action, package_revision)).encode("utf-8")
-    ).hexdigest()
-    event = service.submit(
-        PluginManagementCommandV1(
-            action=action,
-            mutation=PluginDesiredStateMutationV1(
-                operation_id=f"coding-continuity:{identity}",
-                idempotency_key=f"coding-continuity:{identity}",
-                expected_inventory_revision=revision,
-                installation_key=key,
-                desired_state=(
-                    "installed_disabled" if action == "install" else "installed_enabled"
-                ),
-                package_revision=package_revision,
-                actor_id="product:coding",
-                policy_revision=_PRODUCT_POLICY_REVISION,
-                approval_reference="coding-configured-plugin-source",
-            ),
-        )
+    enabled_plugin_ids: frozenset[str],
+) -> PluginRuntimeResolution:
+    for package in runtime.packages:
+        if package.manifest.name not in enabled_plugin_ids:
+            package.revision_handle.close()
+    return PluginRuntimeResolution(
+        packages=tuple(
+            item
+            for item in runtime.packages
+            if item.manifest.name in enabled_plugin_ids
+        ),
+        plugins=tuple(
+            item for item in runtime.plugins if item.manifest.name in enabled_plugin_ids
+        ),
+        bindings=tuple(
+            item for item in runtime.bindings if item.plugin_id in enabled_plugin_ids
+        ),
     )
-    result = getattr(event, "result", None)
-    if result is None or result.disposition != "succeeded":
-        raise CodingContinuityBootstrapError(
-            code=getattr(result, "error_code", "coding_continuity_management_failed")
-        )
 
 
 def _finalize_selection(
@@ -1392,6 +1448,7 @@ def _record_ready_status(
     )
     with suppress(AttributeError, TypeError):
         setattr(runtime, _BOOTSTRAP_STATUS_ATTRIBUTE, status)
+        setattr(runtime, _LAST_READY_STATUS_ATTRIBUTE, status)
     capture = getattr(diagnostics, "capture_failure", None)
     if callable(capture):
         with suppress(Exception):
@@ -1403,6 +1460,31 @@ def _record_ready_status(
                 level="info",
                 details=status.to_dict(),
             )
+
+
+def _restore_ready_status(
+    runtime: object,
+    diagnostics: DiagnosticsService | None,
+) -> None:
+    status = getattr(runtime, _LAST_READY_STATUS_ATTRIBUTE, None)
+    if not isinstance(status, CodingContinuityBootstrapStatus):
+        current = getattr(runtime, _BOOTSTRAP_STATUS_ATTRIBUTE, None)
+        status = (
+            current
+            if isinstance(current, CodingContinuityBootstrapStatus)
+            and current.state == "ready"
+            else None
+        )
+    if status is None:
+        return
+    _record_ready_status(
+        runtime,
+        diagnostics,
+        configured_source_count=status.configured_source_count,
+        plugin_count=status.plugin_count,
+        provider_count=status.provider_count,
+        recovered_deletion_count=status.recovered_deletion_count,
+    )
 
 
 def _record_failed_status(
