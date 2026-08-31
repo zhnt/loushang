@@ -94,25 +94,21 @@ def journal_file_lock(
     lock_path = path.with_name(f"{path.name}{lock_suffix}")
     if create:
         lock_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    with lock_path.open("a+b" if create else "r+b") as handle:
+    with _open_lock_file(lock_path, create=create) as handle:
         if create:
             _fchmod_private(handle.fileno())
             _prepare_lock_byte(handle)
         else:
-            metadata = lock_path.lstat()
             opened = os.fstat(handle.fileno())
             getuid = getattr(os, "getuid", None)
             if (
-                not stat.S_ISREG(metadata.st_mode)
-                or stat.S_ISLNK(metadata.st_mode)
-                or bool(getattr(metadata, "st_reparse_tag", 0))
-                or metadata.st_mode & 0o077
+                not stat.S_ISREG(opened.st_mode)
+                or opened.st_mode & 0o077
                 or (
                     os.name == "posix"
                     and callable(getuid)
-                    and metadata.st_uid != getuid()
+                    and opened.st_uid != getuid()
                 )
-                or not os.path.samestat(metadata, opened)
             ):
                 raise OSError("Journal lock is not a private regular file")
         windows = (is_windows or _is_windows)()
@@ -141,6 +137,54 @@ def journal_file_lock(
         except OSError as exc:
             if not blocking and exc.errno in {errno.EACCES, errno.EAGAIN}:
                 raise JournalLockUnavailable(path=lock_path) from exc
+            raise
+        try:
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+@contextmanager
+def journal_file_lock_at(
+    directory_fd: int,
+    name: str,
+    mode: LockMode,
+    *,
+    blocking: bool = True,
+) -> Iterator[None]:
+    """Lock one existing private regular file relative to a pinned directory."""
+
+    if os.name != "posix" or os.open not in os.supports_dir_fd:
+        raise OSError("Descriptor-relative journal locks are unavailable")
+    if not isinstance(name, str) or not name or Path(name).name != name:
+        raise ValueError("Descriptor-relative journal lock name must be one component")
+    if type(blocking) is not bool:
+        raise TypeError("Journal lock blocking mode must be a built-in bool")
+    flags = (
+        os.O_RDWR
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+    )
+    descriptor = os.open(name, flags, dir_fd=directory_fd)
+    with os.fdopen(descriptor, "r+b") as handle:
+        opened = os.fstat(handle.fileno())
+        getuid = getattr(os, "getuid", None)
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or opened.st_mode & 0o077
+            or (callable(getuid) and opened.st_uid != getuid())
+        ):
+            raise OSError("Journal lock is not a private regular file")
+        fcntl = _load_fcntl()
+        operation = fcntl.LOCK_EX if mode == "exclusive" else fcntl.LOCK_SH
+        if not blocking:
+            operation |= fcntl.LOCK_NB
+        try:
+            fcntl.flock(handle.fileno(), operation)
+        except OSError as exc:
+            if not blocking and exc.errno in {errno.EACCES, errno.EAGAIN}:
+                raise JournalLockUnavailable(path=Path(name)) from exc
             raise
         try:
             yield
@@ -662,6 +706,44 @@ def _prepare_lock_byte(handle: Any) -> None:
     handle.seek(0)
 
 
+@contextmanager
+def _open_lock_file(path: Path, *, create: bool) -> Iterator[Any]:
+    if os.name == "posix":
+        nofollow = getattr(os, "O_NOFOLLOW", 0)
+        if not nofollow:
+            raise OSError("No-follow journal lock opens are unavailable")
+        flags = os.O_RDWR | getattr(os, "O_CLOEXEC", 0) | nofollow
+        if create:
+            flags |= os.O_CREAT
+        else:
+            flags |= getattr(os, "O_NONBLOCK", 0)
+        descriptor = os.open(path, flags, 0o600)
+        with os.fdopen(descriptor, "r+b") as handle:
+            opened = os.fstat(handle.fileno())
+            getuid = getattr(os, "getuid", None)
+            if not stat.S_ISREG(opened.st_mode) or (
+                callable(getuid) and opened.st_uid != getuid()
+            ):
+                raise OSError("Journal lock is not a private regular file")
+            yield handle
+        return
+
+    metadata = None
+    if not create:
+        metadata = path.lstat()
+        if stat.S_ISLNK(metadata.st_mode) or bool(
+            getattr(metadata, "st_reparse_tag", 0)
+        ):
+            raise OSError("Journal lock cannot be a symlink or reparse point")
+    with path.open("a+b" if create else "r+b") as handle:
+        opened = os.fstat(handle.fileno())
+        if not stat.S_ISREG(opened.st_mode):
+            raise OSError("Journal lock is not a private regular file")
+        if metadata is not None and not os.path.samestat(metadata, opened):
+            raise OSError("Journal lock identity changed while opening")
+        yield handle
+
+
 def _sync_parent_directory(
     target: Path,
     durability: JournalDurabilityProfile,
@@ -701,6 +783,7 @@ __all__ = [
     "append_jsonl_records",
     "decode_jsonl",
     "journal_file_lock",
+    "journal_file_lock_at",
     "load_jsonl",
     "parse_legacy_jsonl_line",
     "write_jsonl",

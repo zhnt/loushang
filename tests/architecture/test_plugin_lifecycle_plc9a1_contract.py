@@ -172,21 +172,23 @@ def test_plc9a1_coding_transport_adapter_does_not_construct_owner_stores() -> No
     assert "build_coding_plugin_management_application(" in adapter
     assert "bind_coding_plugin_enablement_compatibility(" in adapter
     assert "class CodingPluginEnablementCompatibilityWriter:" in compatibility
-    assert "with journal_file_lock(" in compatibility
-    assert "create=False" in compatibility
-    assert compatibility.count("_validate_existing_private_state_layout(") >= 2
+    assert "with _capture_existing_plugin_enablement_state(" in compatibility
+    assert "with journal_file_lock_at(" in lifecycle
+    assert "_read_private_state_file(" in lifecycle
     assert "bind_plugin_enablement_legacy_mutation_guard" in compatibility
     assert "bind(self, self._assert_legacy_mutation_allowed)" in compatibility
     assert "authority_id" not in compatibility
     assert "LegacyPluginCompatibilityProjectionV1(" in compatibility
-    assert "self._legacy_plugin_bindings" in settings
-    assert "if binding.authority is authority" in settings
+    assert "self._legacy_plugin_guard_authority" in settings
+    assert "if self._legacy_plugin_guard_authority is not authority" in settings
     assert "_CodingPluginEnablementCompatibilityRegistry" in compatibility
+    assert "self.projections[writer.layout] = projection" in compatibility
     assert "with self._config.transaction():" in settings
     assert "config_file_transaction_lock(path)" in config_engine
-    assert "self._reload_unlocked(strict=True)" in config_engine
+    assert "self._enqueue_publication_unlocked(" in config_engine
+    assert "self._config._bind_runtime(self._engine_authority)" in config_runtime
     assert "with self._config.transaction(" in config_runtime
-    assert "self._config.publish()" in config_runtime
+    assert "_authority=self._engine_authority" in config_runtime
     assert 'lock_suffix=".config.lock"' in config_file_transaction
     assert "def build_coding_plugin_management_application(" in lifecycle
     assert "def project_coding_plugin_enablement_compatibility(" in lifecycle
@@ -214,7 +216,10 @@ def test_plc9a1_all_durable_coding_callers_bind_the_fence() -> None:
     assert "resolve_coding_plugin_lifecycle_state_layout(" in bootstrap
     assert "bind_coding_plugin_enablement_compatibility(" in bootstrap
     assert continuity.count("bind_coding_plugin_enablement_compatibility(") == 1
-    assert continuity.count("compatibility.reconcile()") == 2
+    assert continuity.count("compatibility.reconcile()") == 3
+    assert continuity.index("compatibility.reconcile()") < continuity.index(
+        'existing = getattr(runtime, "_loushang_coding_continuity", None)'
+    )
     assert "coding_plugin_compatibility_fence_unavailable" in _source(
         CODING_COMPATIBILITY
     )

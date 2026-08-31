@@ -107,14 +107,6 @@ class LegacyPluginCompatibilityProjectionV1:
                 raise ValueError(f"Legacy compatibility {name} must be non-negative")
 
 
-@dataclass(slots=True)
-class _LegacyPluginCompatibilityBinding:
-    authority: object
-    guard: LegacyPluginMutationGuard
-    publisher: LegacyPluginCompatibilityPublisher
-    projection: LegacyPluginCompatibilityProjectionV1 | None = None
-
-
 @dataclass(frozen=True)
 class SettingsError:
     scope: SettingsScope
@@ -143,7 +135,11 @@ class SettingsManager:
         self._permission_profile_ceiling = (
             permission_profile_ceiling or PermissionProfileCeiling()
         )
-        self._legacy_plugin_bindings: list[_LegacyPluginCompatibilityBinding] = []
+        self._legacy_plugin_guard_authority: object | None = None
+        self._legacy_plugin_mutation_guard: LegacyPluginMutationGuard | None = None
+        self._legacy_plugin_compatibility_publisher: (
+            LegacyPluginCompatibilityPublisher | None
+        ) = None
         self._legacy_plugin_binding_lock = RLock()
         self._config = SettingsRuntime(
             ScopedConfigRuntime(
@@ -892,27 +888,27 @@ class SettingsManager:
         authority: object,
         guard: LegacyPluginMutationGuard,
     ) -> LegacyPluginCompatibilityPublisher:
-        """Fence peer writes and return the sole derived compatibility writer."""
+        """Fence peer writes for one Product-owned compatibility authority."""
 
         with self._legacy_plugin_binding_lock:
             if authority is None:
                 raise ValueError("Plugin enablement guard authority is required")
             if not callable(guard):
                 raise TypeError("Plugin enablement legacy mutation guard is required")
-            for binding in self._legacy_plugin_bindings:
-                if binding.authority is authority:
-                    return binding.publisher
+            if self._legacy_plugin_guard_authority is not None:
+                if self._legacy_plugin_guard_authority is not authority:
+                    raise RuntimeError(
+                        "Plugin enablement guard authority already bound"
+                    )
+                assert self._legacy_plugin_compatibility_publisher is not None
+                return self._legacy_plugin_compatibility_publisher
 
             def publish(projection: LegacyPluginCompatibilityProjectionV1) -> None:
-                self._publish_legacy_plugin_compatibility(authority, projection)
+                self._publish_legacy_plugin_compatibility(projection)
 
-            self._legacy_plugin_bindings.append(
-                _LegacyPluginCompatibilityBinding(
-                    authority=authority,
-                    guard=guard,
-                    publisher=publish,
-                )
-            )
+            self._legacy_plugin_guard_authority = authority
+            self._legacy_plugin_mutation_guard = guard
+            self._legacy_plugin_compatibility_publisher = publish
             return publish
 
     def defer_plugin_enablement_compatibility_notifications(
@@ -997,69 +993,39 @@ class SettingsManager:
 
     def _publish_legacy_plugin_compatibility(
         self,
-        authority: object,
         projection: LegacyPluginCompatibilityProjectionV1,
     ) -> None:
         if not isinstance(projection, LegacyPluginCompatibilityProjectionV1):
             raise TypeError("Legacy Plugin compatibility projection is required")
-        with self._legacy_plugin_binding_lock:
-            current_binding = next(
-                (
-                    binding
-                    for binding in self._legacy_plugin_bindings
-                    if binding.authority is authority
-                ),
-                None,
-            )
-            if current_binding is None:
-                raise RuntimeError(
-                    "Plugin enablement compatibility authority is unbound"
-                )
-            current_binding.projection = projection
-            projections = tuple(
-                binding.projection
-                for binding in self._legacy_plugin_bindings
-                if binding.projection is not None
-            )
-            migrated = {
-                plugin_id
-                for item in projections
-                for plugin_id in item.migrated_plugin_ids
+        migrated = set(projection.migrated_plugin_ids)
+        disabled = set(projection.disabled_plugin_ids)
+        with self._config.transaction():
+            retained = {
+                item for item in self._settings.disabled_plugins if item not in migrated
             }
-            disabled = {
-                plugin_id
-                for item in projections
-                for plugin_id in item.disabled_plugin_ids
-            }
-            with self._config.transaction():
-                retained = {
-                    item
-                    for item in self._settings.disabled_plugins
-                    if item not in migrated
-                }
-                target = tuple(sorted(retained | disabled))
-                project = self._config.scope("project")
-                if project.path is not None:
-                    if _disabled_plugins_from_patch(project.patch) != target:
-                        self._write_legacy_disabled_plugins(target, scope="project")
-                    session = self._config.scope("session")
-                    if "disabled_plugins" in session.patch:
-                        session.transform(
-                            lambda patch: {
-                                key: value
-                                for key, value in patch.items()
-                                if key != "disabled_plugins"
-                            }
-                        )
-                else:
-                    session = self._config.scope("session")
-                    if _disabled_plugins_from_patch(session.patch) != target:
-                        self._write_legacy_disabled_plugins(target, scope="session")
-                effective = set(self._settings.disabled_plugins)
-                if effective.intersection(migrated) != disabled:
-                    raise RuntimeError(
-                        "Legacy Plugin compatibility projection did not become effective"
+            target = tuple(sorted(retained | disabled))
+            project = self._config.scope("project")
+            if project.path is not None:
+                if _disabled_plugins_from_patch(project.patch) != target:
+                    self._write_legacy_disabled_plugins(target, scope="project")
+                session = self._config.scope("session")
+                if "disabled_plugins" in session.patch:
+                    session.transform(
+                        lambda patch: {
+                            key: value
+                            for key, value in patch.items()
+                            if key != "disabled_plugins"
+                        }
                     )
+            else:
+                session = self._config.scope("session")
+                if _disabled_plugins_from_patch(session.patch) != target:
+                    self._write_legacy_disabled_plugins(target, scope="session")
+            effective = set(self._settings.disabled_plugins)
+            if effective.intersection(migrated) != disabled:
+                raise RuntimeError(
+                    "Legacy Plugin compatibility projection did not become effective"
+                )
 
     def _guard_legacy_plugin_changes(
         self,
@@ -1079,8 +1045,8 @@ class SettingsManager:
 
     def _guard_legacy_plugin_mutation(self, name: str) -> None:
         with self._legacy_plugin_binding_lock:
-            guards = tuple(binding.guard for binding in self._legacy_plugin_bindings)
-        for guard in guards:
+            guard = self._legacy_plugin_mutation_guard
+        if guard is not None:
             guard(name)
 
     def get_settings(self) -> ControlConfig:

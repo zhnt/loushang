@@ -18,6 +18,7 @@ from loushang.harness.journal import (
     JournalLoadPolicy,
     JsonlSnapshot,
     append_jsonl_record,
+    decode_jsonl,
     journal_file_lock,
     load_jsonl,
 )
@@ -1186,9 +1187,7 @@ def _owned_seed_history(
         if not isinstance(transition, PluginDesiredStateTransitionV1):
             return None
         mutation = transition.mutation
-        action: Literal["install", "enable"] = (
-            "install" if index == 0 else "enable"
-        )
+        action: Literal["install", "enable"] = "install" if index == 0 else "enable"
         expected_state = (
             "installed_disabled" if action == "install" else "installed_enabled"
         )
@@ -1339,6 +1338,39 @@ def _invalid_record(message: str) -> JournalCodecError:
     )
 
 
+def decode_plugin_enablement_migration_snapshots(
+    raw: str,
+    *,
+    path: str | Path,
+) -> tuple[PluginEnablementMigrationSnapshotV1, ...]:
+    """Project an already-authorized migration journal snapshot."""
+
+    target = Path(path)
+    try:
+        decoded: JsonlSnapshot[None, PluginEnablementMigrationEventV1] = decode_jsonl(
+            raw,
+            target=target,
+            record_codec=PLUGIN_ENABLEMENT_MIGRATION_EVENT_CODEC,
+            load_policy=JournalLoadPolicy(partial_tail="raise"),
+        )
+        events = decoded.records
+        if any(
+            event.journal_revision != index
+            for index, event in enumerate(events, start=1)
+        ):
+            raise ValueError("Migration journal revisions are not contiguous")
+        snapshots = _project_events(events)
+        return tuple(
+            sorted(snapshots.values(), key=lambda item: item.request.installation_key)
+        )
+    except (JournalCodecError, JournalFileError, TypeError, ValueError) as exc:
+        raise PluginEnablementMigrationError(
+            "Plugin enablement migration journal is corrupt",
+            code="plugin_enablement_migration_journal_corrupt",
+            path=target,
+        ) from exc
+
+
 __all__ = [
     "PLUGIN_ENABLEMENT_COMPATIBILITY_PROJECTION_VERSION",
     "PLUGIN_ENABLEMENT_FINALIZATION_EVIDENCE_VERSION",
@@ -1357,5 +1389,6 @@ __all__ = [
     "PluginEnablementMigrationPhase",
     "PluginEnablementMigrationRequestV1",
     "PluginEnablementMigrationSnapshotV1",
+    "decode_plugin_enablement_migration_snapshots",
     "plugin_enablement_legacy_input_fingerprint",
 ]

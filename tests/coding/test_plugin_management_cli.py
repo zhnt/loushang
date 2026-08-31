@@ -3,14 +3,15 @@ from __future__ import annotations
 import json
 import shutil
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, replace
 from pathlib import Path
-from threading import Barrier, Thread
+from threading import Barrier, Event, Thread, current_thread
 from types import SimpleNamespace
 
 import pytest
 
-import loushang.coding.plugin_enablement_compatibility as compatibility_module
+import loushang.coding._plugin_lifecycle as lifecycle_module
 from loushang.coding._plugin_lifecycle import (
     CodingPluginLifecycleError,
     build_coding_plugin_lifecycle,
@@ -230,18 +231,11 @@ def test_binding_repairs_compatibility_and_fences_all_legacy_mutators(
     with ThreadPoolExecutor(max_workers=4) as pool:
         tuple(pool.map(lambda _index: writer.reconcile(), range(16)))
     assert settings.get_settings().disabled_plugins == ()
-    second_authority = object()
-    second_publisher = settings.bind_plugin_enablement_legacy_mutation_guard(
-        second_authority,
-        lambda _plugin_id: None,
-    )
-    assert (
+    with pytest.raises(RuntimeError, match="authority already bound"):
         settings.bind_plugin_enablement_legacy_mutation_guard(
-            second_authority,
+            object(),
             lambda _plugin_id: None,
         )
-        is second_publisher
-    )
     for mutate in (
         lambda: settings.enable_plugin("managed-pack"),
         lambda: settings.disable_plugin("managed-pack"),
@@ -329,26 +323,25 @@ def test_compatibility_reconcile_never_creates_lock_after_root_replacement(
         _SettingsManager(_Settings()),
     )
     assert writer is not None
-    validate = compatibility_module._validate_existing_private_state_layout
+    read_private_state = lifecycle_module._read_private_state_file
     calls = 0
 
-    def replace_after_validation(candidate) -> bool:  # type: ignore[no-untyped-def]
+    def replace_after_handle(directory_fd, name):  # type: ignore[no-untyped-def]
         nonlocal calls
         calls += 1
-        valid = validate(candidate)
-        if calls == 1 and valid:
-            shutil.rmtree(candidate.root)
-            candidate.root.symlink_to(external, target_is_directory=True)
-        return valid
+        if calls == 1:
+            detached = tmp_path / "detached-state"
+            layout.root.rename(detached)
+            layout.root.symlink_to(external, target_is_directory=True)
+        return read_private_state(directory_fd, name)
 
     monkeypatch.setattr(
-        compatibility_module,
-        "_validate_existing_private_state_layout",
-        replace_after_validation,
+        lifecycle_module,
+        "_read_private_state_file",
+        replace_after_handle,
     )
 
-    with pytest.raises(CodingPluginLifecycleError):
-        writer.reconcile()
+    writer.reconcile()
 
     assert list(external.iterdir()) == [external_lock]
     assert external_lock.read_bytes() == b"sentinel"
@@ -557,6 +550,146 @@ def test_concurrent_compatibility_bind_retains_each_workspace(
     assert all(result is not None for result in results)
     assert results[0] is not results[1]
     assert tuple(result.layout for result in results if result is not None) == layouts
+
+
+def test_product_registry_aggregates_workspace_projections(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    settings = SettingsManager(
+        initial=ControlConfig(disabled_plugins=("first-pack", "second-pack")),
+        project_settings_path=tmp_path / "settings.json",
+    )
+    layouts = (
+        resolve_coding_plugin_lifecycle_state_layout(tmp_path / "first"),
+        resolve_coding_plugin_lifecycle_state_layout(tmp_path / "second"),
+    )
+    plugin_ids = ("first-pack", "second-pack")
+    writers = []
+
+    for index, (layout, plugin_id) in enumerate(zip(layouts, plugin_ids, strict=True)):
+        lifecycle = build_coding_plugin_lifecycle(
+            layout,
+            startup_id=f"aggregate-{index}",
+        )
+        key = lifecycle.installation_key(plugin_id)
+        try:
+            lifecycle.migrate_legacy_enablement(
+                key,
+                _package(plugin_id),
+                legacy_disabled=True,
+                manifest_enabled_default=True,
+                legacy_input_fingerprint=plugin_enablement_legacy_input_fingerprint(
+                    key,
+                    legacy_disabled=True,
+                    manifest_enabled_default=True,
+                ),
+            )
+        finally:
+            lifecycle.release_owned_process_startup_lease()
+        writer = bind_coding_plugin_enablement_compatibility(layout, settings)
+        assert writer is not None
+        writers.append(writer)
+
+    for writer in writers:
+        writer.reconcile()
+
+    assert settings.get_settings().disabled_plugins == plugin_ids
+    with pytest.raises(PluginEnablementMigrationError) as rejected:
+        settings.enable_plugin("second-pack")
+    assert rejected.value.code == "plugin_enablement_legacy_mutation_rejected"
+
+
+def test_compatibility_publish_and_legacy_mutation_have_no_lock_inversion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    workspace = tmp_path / "workspace"
+    layout = resolve_coding_plugin_lifecycle_state_layout(workspace)
+    lifecycle = build_coding_plugin_lifecycle(layout, startup_id="lock-order")
+    key = lifecycle.installation_key("managed-pack")
+    try:
+        lifecycle.migrate_legacy_enablement(
+            key,
+            _package("managed-pack"),
+            legacy_disabled=True,
+            manifest_enabled_default=True,
+            legacy_input_fingerprint=plugin_enablement_legacy_input_fingerprint(
+                key,
+                legacy_disabled=True,
+                manifest_enabled_default=True,
+            ),
+        )
+    finally:
+        lifecycle.release_owned_process_startup_lease()
+
+    settings = SettingsManager(project_settings_path=tmp_path / "settings.json")
+    writer = bind_coding_plugin_enablement_compatibility(layout, settings)
+    assert writer is not None
+    mutation_has_config = Event()
+    publisher_requested_config = Event()
+    original_transaction = settings._config.transaction
+    errors: list[BaseException] = []
+    monkeypatch.setattr(
+        settings,
+        "defer_plugin_enablement_compatibility_notifications",
+        nullcontext,
+    )
+
+    def coordinated_transaction():  # type: ignore[no-untyped-def]
+        thread_name = current_thread().name
+        if thread_name == "compatibility-publisher":
+            publisher_requested_config.set()
+            if not mutation_has_config.wait(timeout=3):
+                raise TimeoutError("legacy mutation did not acquire config")
+        transaction = original_transaction()
+
+        @contextmanager
+        def coordinate():  # type: ignore[no-untyped-def]
+            with transaction as result:
+                if thread_name == "legacy-mutation":
+                    mutation_has_config.set()
+                    if not publisher_requested_config.wait(timeout=3):
+                        raise TimeoutError("publisher did not request config")
+                yield result
+
+        return coordinate()
+
+    monkeypatch.setattr(settings._config, "transaction", coordinated_transaction)
+
+    def reconcile() -> None:
+        try:
+            writer.reconcile()
+        except BaseException as exc:
+            errors.append(exc)
+
+    def mutate() -> None:
+        try:
+            settings.disable_plugin("unmigrated-pack", scope="project")
+        except BaseException as exc:
+            errors.append(exc)
+
+    mutation = Thread(target=mutate, name="legacy-mutation", daemon=True)
+    publisher = Thread(
+        target=reconcile,
+        name="compatibility-publisher",
+        daemon=True,
+    )
+    mutation.start()
+    assert mutation_has_config.wait(timeout=3)
+    publisher.start()
+    mutation.join(timeout=3)
+    publisher.join(timeout=3)
+
+    assert mutation.is_alive() is False
+    assert publisher.is_alive() is False
+    assert errors == []
+    assert settings.get_settings().disabled_plugins == (
+        "managed-pack",
+        "unmigrated-pack",
+    )
 
 
 def test_compatibility_cache_failure_does_not_claim_the_settings_owner(

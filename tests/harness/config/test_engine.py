@@ -4,7 +4,9 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
-from threading import Thread
+from threading import Event, Thread, current_thread
+
+import pytest
 
 from loushang.harness.config import ConfigApplyResult, ConfigIssue
 
@@ -327,3 +329,100 @@ def test_layered_config_persistent_listener_can_reenter_after_unlock(
     assert errors == []
     assert seen == ["outer", "nested"]
     assert engine.value.name == "nested"
+
+
+@pytest.mark.parametrize("reader_kind", ["reload", "construct"])
+def test_layered_config_readers_wait_for_cross_file_transaction(
+    tmp_path: Path,
+    reader_kind: str,
+) -> None:
+    writer = _engine(tmp_path)
+    peer = _engine(tmp_path) if reader_kind == "reload" else None
+    first_file_written = Event()
+    release_writer = Event()
+    reader_done = Event()
+    observed: list[_Config] = []
+    errors: list[BaseException] = []
+
+    def write() -> None:
+        try:
+            with writer.transaction():
+                writer.replace("global", {"name": "committed"})
+                first_file_written.set()
+                if not release_writer.wait(timeout=3):
+                    raise TimeoutError("reader did not reach the transaction barrier")
+                writer.replace("project", {"limit": 42})
+        except BaseException as exc:
+            errors.append(exc)
+
+    def read() -> None:
+        try:
+            if not first_file_written.wait(timeout=3):
+                raise TimeoutError("writer did not reach the transaction barrier")
+            if peer is None:
+                current = _engine(tmp_path)
+            else:
+                peer.reload()
+                current = peer
+            observed.append(current.value)
+        except BaseException as exc:
+            errors.append(exc)
+        finally:
+            reader_done.set()
+
+    writer_thread = Thread(target=write, daemon=True)
+    reader_thread = Thread(target=read, daemon=True)
+    writer_thread.start()
+    reader_thread.start()
+    assert first_file_written.wait(timeout=3)
+    assert reader_done.wait(timeout=0.1) is False
+    release_writer.set()
+    writer_thread.join(timeout=3)
+    reader_thread.join(timeout=3)
+
+    assert writer_thread.is_alive() is False
+    assert reader_thread.is_alive() is False
+    assert errors == []
+    assert observed == [_Config(name="committed", limit=42)]
+
+
+def test_layered_config_publications_keep_captured_commit_order(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = _engine(tmp_path)
+    first_drain_entered = Event()
+    release_first_drain = Event()
+    seen: list[str] = []
+    errors: list[BaseException] = []
+    original_drain = engine._drain_publications
+
+    def delayed_drain() -> None:
+        if current_thread().name == "first-commit":
+            first_drain_entered.set()
+            if not release_first_drain.wait(timeout=3):
+                raise TimeoutError("second commit did not reach the publication queue")
+        original_drain()
+
+    monkeypatch.setattr(engine, "_drain_publications", delayed_drain)
+    engine.subscribe(lambda value: seen.append(value.name))
+
+    def mutate(name: str) -> None:
+        try:
+            engine.update("session", {"name": name})
+        except BaseException as exc:
+            errors.append(exc)
+
+    first = Thread(target=mutate, args=("first",), name="first-commit", daemon=True)
+    second = Thread(target=mutate, args=("second",), name="second-commit", daemon=True)
+    first.start()
+    assert first_drain_entered.wait(timeout=3)
+    second.start()
+    second.join(timeout=3)
+    release_first_drain.set()
+    first.join(timeout=3)
+
+    assert first.is_alive() is False
+    assert second.is_alive() is False
+    assert errors == []
+    assert seen == ["first", "second"]

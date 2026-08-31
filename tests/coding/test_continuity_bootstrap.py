@@ -13,6 +13,7 @@ import pytest
 
 import loushang.coding._plugin_lifecycle as plugin_lifecycle_module
 from loushang.coding._plugin_lifecycle import (
+    build_coding_plugin_lifecycle,
     resolve_coding_plugin_lifecycle_state_layout,
 )
 from loushang.coding.continuity import (
@@ -28,7 +29,9 @@ from loushang.coding.continuity_bootstrap import (
     resolve_coding_continuity_state_layout,
     retry_coding_continuity_bootstrap,
 )
+from loushang.coding.control import SettingsManager
 from loushang.foundation.platform_paths import PlatformPaths
+from loushang.harness.config.agent.types import ControlConfig
 from loushang.harness.continuity import (
     ContinuityDeletionPlanV1,
     ContinuityQuery,
@@ -41,9 +44,12 @@ from loushang.harness.plugin_management import (
     PluginContinuityDeletionJournal,
     PluginDesiredStateLedger,
     PluginDesiredStateMutationV1,
+    PluginEnablementMigrationError,
     PluginEnablementMigrationJournal,
     PluginInstanceRuntimeLedger,
     PluginManagementCommandV1,
+    PluginPackageRevisionRefV1,
+    plugin_enablement_legacy_input_fingerprint,
 )
 from loushang.harness.resources.packages.materializer import PackageMaterializer
 from loushang.harness.resources.plugins.continuity_provider import (
@@ -349,6 +355,91 @@ def test_configured_continuity_base_only_preserves_legacy_binding(
         "recoveredDeletionCount": 0,
         "retryable": False,
     }
+    asyncio.run(shutdown_coding_continuity(runtime))
+
+
+def test_empty_and_reentrant_continuity_bootstrap_reconcile_compatibility(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    paths = PlatformPaths(
+        home=tmp_path / "home",
+        data=tmp_path / "data",
+        state=tmp_path / "state",
+        cache=tmp_path / "cache",
+        runtime=tmp_path / "runtime",
+        temporary=tmp_path / "tmp",
+    )
+    common_layout = resolve_coding_plugin_lifecycle_state_layout(
+        workspace,
+        platform_paths=paths,
+    )
+    continuity_layout = resolve_coding_continuity_state_layout(
+        workspace,
+        platform_paths=paths,
+    )
+    lifecycle = build_coding_plugin_lifecycle(
+        common_layout,
+        startup_id="continuity-early-reconcile",
+    )
+    key = lifecycle.installation_key("continuity-example")
+    package = PluginPackageRevisionRefV1(
+        plugin_id="continuity-example",
+        plugin_version="1.0.0",
+        package_content_digest="a" * 64,
+        dependency_lock_digest="b" * 64,
+        package_source_identity="local:continuity-example",
+    )
+    try:
+        lifecycle.migrate_legacy_enablement(
+            key,
+            package,
+            legacy_disabled=False,
+            manifest_enabled_default=True,
+            legacy_input_fingerprint=plugin_enablement_legacy_input_fingerprint(
+                key,
+                legacy_disabled=False,
+                manifest_enabled_default=True,
+            ),
+        )
+    finally:
+        lifecycle.release_owned_process_startup_lease()
+
+    settings_path = tmp_path / "settings.json"
+    settings = SettingsManager(
+        initial=ControlConfig(disabled_plugins=("continuity-example",)),
+        project_settings_path=settings_path,
+    )
+    runtime = _Runtime(tmp_path / "sessions")
+    first = asyncio.run(
+        bind_coding_configured_continuity(
+            runtime,
+            settings_manager=settings,
+            session_dir=runtime.session_dir,
+            cwd=workspace,
+            state_layout=continuity_layout,
+        )
+    )
+
+    assert settings.get_settings().disabled_plugins == ()
+    settings_path.write_text(
+        json.dumps({"disabled_plugins": ["continuity-example"]}),
+        encoding="utf-8",
+    )
+    repeated = asyncio.run(
+        bind_coding_configured_continuity(
+            runtime,
+            settings_manager=settings,
+            session_dir=runtime.session_dir,
+            cwd=workspace,
+            state_layout=continuity_layout,
+        )
+    )
+
+    assert repeated is first
+    assert settings.get_settings().disabled_plugins == ()
+    with pytest.raises(PluginEnablementMigrationError):
+        settings.disable_plugin("continuity-example")
     asyncio.run(shutdown_coding_continuity(runtime))
 
 

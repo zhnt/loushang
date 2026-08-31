@@ -107,24 +107,32 @@ never-seen disabled Installation is published to an exact immutable revision,
 seeded disabled, and left unmounted.
 
 `src/loushang/coding/plugin_enablement_compatibility.py::CodingPluginEnablementCompatibilityWriter`
-is the Product-owned compatibility publisher. It serializes projection and
-publication under the workspace coordination lock and sends a typed projection
-to the settings owner. `LayeredConfig.transaction` is the sole durable config
-transaction owner for direct engine and runtime callers; it keys process-reentrant
-and cross-process locks by every normalized path-backed layer, takes them in
-stable order, and strictly reloads every participating layer. `ScopedConfigRuntime`
-projects that commit into one exact revisioned change. Engine and runtime listeners
-are both published only after their mutation locks are released. The
+is the Product-owned compatibility publisher. It pins the existing private
+workspace root with a no-follow directory handle, captures the coordination
+lock and both journals relative to that handle, then releases the workspace
+lock before sending a typed projection to the settings owner. Stale captures
+cannot replace a newer per-workspace projection. `LayeredConfig.transaction`
+keys process-reentrant and cross-process locks by every normalized path-backed
+layer, takes them in stable order, and strictly reloads every participating
+layer; construction and tolerant reload take the same read locks. An unbound
+engine may be used directly, but `ScopedConfigRuntime` claims exclusive mutation
+and projection ownership when bound. Every runtime mutation therefore follows
+the single `path -> engine -> runtime` order. Engine commit snapshots are
+captured and queued before unlock, while runtime transactions publish one final
+`ConfigChange`; mutation calls inside an explicit transaction return its result
+handle rather than a provisional receipt. Both listener families run only after
+mutation locks are released. The
 compatibility transaction preserves only unmigrated legacy ids, clears a stale
 session legacy overlay, publishes the project downgrade view, and verifies the
 effective migrated values. Its opaque object capability cannot be reclaimed by
-repeating a caller-chosen string. A shared settings owner retains one atomically
-published writer per workspace and one identity-keyed guard per writer; repeated
-binding returns the exact writer while distinct workspaces cannot replace each
-other's authority. The downgrade sink aggregates the latest projections, unions
-disabled ids conservatively, and calls every workspace guard before any peer
-mutation. Coding startup, Continuity startup, and CLI binding always reconcile
-it; an existing receipt with a non-fence settings owner fails closed. A crash or
+repeating a caller-chosen string. A shared settings owner accepts exactly one
+Coding Product registry authority. That registry retains one writer and latest
+projection per workspace, serializes aggregate publications without holding its
+lock across config I/O, unions disabled ids conservatively, and calls every
+workspace guard before any peer mutation. Coding startup, every Continuity
+startup path (including empty-source and idempotent early returns), and CLI
+binding reconcile it; an existing receipt with a non-fence settings owner fails
+closed. A crash or
 write failure after a canonical commit is repaired from the durable receipt and
 desired journal. The command still fails visibly with
 `plugin_enablement_compatibility_publish_failed`; it never rolls canonical

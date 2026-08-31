@@ -58,6 +58,7 @@ from loushang.harness.plugin_management.enablement_migration import (
     PluginEnablementMigrationPhase,
     PluginEnablementMigrationRequestV1,
     PluginEnablementMigrationSnapshotV1,
+    decode_plugin_enablement_migration_snapshots,
     plugin_enablement_legacy_input_fingerprint,
 )
 from loushang.harness.plugin_management.instance_records import (
@@ -87,6 +88,7 @@ from loushang.harness.plugin_management.ledger import (
     PluginDesiredStateLedger,
     PluginDesiredStateSnapshotV1,
     PluginLifecycleError,
+    decode_plugin_desired_state_snapshot,
 )
 from loushang.harness.plugin_management.operations import (
     PLUGIN_MANAGEMENT_COMMAND_VERSION,
@@ -245,6 +247,7 @@ __all__ = [
     "PluginDesiredStateLedger",
     "PluginDesiredSelectionV1",
     "PluginDesiredStateSnapshotV1",
+    "decode_plugin_desired_state_snapshot",
     "PluginDesiredStateMutationV1",
     "PluginDesiredStateTransitionV1",
     "PluginDesiredStateUpdateMutationV1",
@@ -288,6 +291,7 @@ __all__ = [
     "PluginEnablementMigrationPhase",
     "PluginEnablementMigrationRequestV1",
     "PluginEnablementMigrationSnapshotV1",
+    "decode_plugin_enablement_migration_snapshots",
     "plugin_enablement_legacy_input_fingerprint",
     "PluginManagementCommandV1",
     "PluginManagementApplicationCommandV1",

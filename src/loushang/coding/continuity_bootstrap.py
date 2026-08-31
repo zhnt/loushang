@@ -304,6 +304,14 @@ async def bind_coding_configured_continuity(
             raise
         raise CodingContinuityBootstrapError(code=stable_code) from None
 
+    layout = state_layout or resolve_coding_continuity_state_layout(cwd)
+    compatibility = bind_coding_plugin_enablement_compatibility(
+        _common_lifecycle_layout(layout),
+        settings_manager,
+    )
+    if compatibility is not None:
+        compatibility.reconcile()
+        sources, disabled_plugins = _configured_sources(settings_manager, cwd=cwd)
     request_fingerprint = _bootstrap_request_fingerprint(
         sources,
         disabled_plugins=disabled_plugins,
@@ -359,7 +367,6 @@ async def bind_coding_configured_continuity(
     runtime_resolution: PluginRuntimeResolution | None = None
     configured_count = len(sources)
     try:
-        layout = state_layout or resolve_coding_continuity_state_layout(cwd)
         resolved_runtime_id = runtime_id or _new_runtime_id()
         if materializer is not None and not materializer.uses_storage_authority(
             install_root=layout.package_root / "installed",
@@ -380,10 +387,6 @@ async def bind_coding_configured_continuity(
             materializer=resolved_materializer,
             lifecycle=lifecycle,
             layout=layout,
-        )
-        compatibility = bind_coding_plugin_enablement_compatibility(
-            lifecycle.common.layout,
-            settings_manager,
         )
         if compatibility is not None:
             compatibility.reconcile()
@@ -882,19 +885,7 @@ def _build_lifecycle(
         layout.instance_runtime
     )
     common = build_coding_plugin_lifecycle(
-        CodingPluginLifecycleStateLayout(
-            root=layout.root,
-            private_state_base=layout.private_state_base,
-            package_root=layout.package_root,
-            private_data_base=layout.private_data_base,
-            scope_id=layout.scope_id,
-            desired_state=layout.desired_state,
-            management_operations=layout.management_operations,
-            retirement_intents=layout.retirement_intents,
-            retirement_sets=layout.retirement_sets,
-            instance_runtime=layout.instance_runtime,
-            package_lifecycle=layout.package_lifecycle,
-        ),
+        _common_lifecycle_layout(layout),
         security_acceptances=security,
     )
     desired = common.desired
@@ -917,6 +908,24 @@ def _build_lifecycle(
         packages=packages,
         family_authority=family_authority,
         deletion_authority=PluginContinuityDeletionAuthority(deletion_journal),
+    )
+
+
+def _common_lifecycle_layout(
+    layout: CodingContinuityStateLayout,
+) -> CodingPluginLifecycleStateLayout:
+    return CodingPluginLifecycleStateLayout(
+        root=layout.root,
+        private_state_base=layout.private_state_base,
+        package_root=layout.package_root,
+        private_data_base=layout.private_data_base,
+        scope_id=layout.scope_id,
+        desired_state=layout.desired_state,
+        management_operations=layout.management_operations,
+        retirement_intents=layout.retirement_intents,
+        retirement_sets=layout.retirement_sets,
+        instance_runtime=layout.instance_runtime,
+        package_lifecycle=layout.package_lifecycle,
     )
 
 

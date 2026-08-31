@@ -357,3 +357,40 @@ def test_runtime_engine_listener_reenters_after_all_transaction_locks(
     assert errors == []
     assert seen == ["outer", "nested"]
     assert runtime.value.name == "nested"
+
+
+def test_runtime_exclusively_owns_bound_engine_mutations(tmp_path: Path) -> None:
+    engine = LayeredConfig(
+        codec=_Codec(),
+        layers=(ConfigLayer("session"),),
+    )
+    runtime = ScopedConfigRuntime(engine)
+
+    with pytest.raises(RuntimeError, match="owned by its scoped runtime"):
+        engine.update("session", {"name": "bypass"})
+
+    change = runtime.scope("session").update({"name": "owned"})
+    assert change.current.name == "owned"
+    assert runtime.revision == 1
+
+
+def test_explicit_transaction_returns_only_final_change_receipt(
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime(tmp_path)
+    published = []
+    runtime.subscribe_change(published.append)
+
+    with runtime.transaction() as transaction:
+        first = runtime.scope("global").update({"name": "first"})
+        second = runtime.scope("project").update({"limit": 42})
+        assert first is transaction
+        assert second is transaction
+        assert transaction.change is None
+
+    assert transaction.change is not None
+    assert transaction.change.operation == "transaction"
+    assert transaction.change.layer is None
+    assert transaction.change.current == _Config(name="first", limit=42)
+    assert published == [transaction.change]
+    assert published[0] is transaction.change

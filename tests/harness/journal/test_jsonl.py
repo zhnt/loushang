@@ -363,3 +363,38 @@ def test_nonblocking_file_lock_reports_contention_without_waiting(tmp_path) -> N
         with pytest.raises(JournalLockUnavailable):
             with journal_file_lock(path, "exclusive", blocking=False):
                 pytest.fail("contended non-blocking lock must not be acquired")
+
+
+def test_existing_journal_lock_rejects_final_symlink(tmp_path: Path) -> None:
+    import pytest
+
+    from loushang.harness.journal import journal_file_lock
+
+    path = tmp_path / "state.jsonl"
+    external = tmp_path / "external.lock"
+    external.write_bytes(b"sentinel")
+    external.chmod(0o600)
+    path.with_name("state.jsonl.lock").symlink_to(external)
+
+    with pytest.raises(OSError):
+        with journal_file_lock(path, "exclusive", create=False):
+            pytest.fail("a symlinked lock must never be acquired")
+
+    assert external.read_bytes() == b"sentinel"
+
+
+def test_existing_journal_lock_rejects_fifo_without_blocking(tmp_path: Path) -> None:
+    import os
+
+    import pytest
+
+    from loushang.harness.journal import journal_file_lock
+
+    if os.name != "posix" or not hasattr(os, "mkfifo"):
+        pytest.skip("FIFO lock regression is POSIX-specific")
+    path = tmp_path / "state.jsonl"
+    os.mkfifo(path.with_name("state.jsonl.lock"), mode=0o600)
+
+    with pytest.raises(OSError):
+        with journal_file_lock(path, "exclusive", create=False):
+            pytest.fail("a FIFO lock must never be acquired")

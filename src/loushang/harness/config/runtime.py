@@ -6,9 +6,9 @@ from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from threading import RLock
-from typing import Generic, Literal, TypeVar, cast
+from typing import Generic, Literal, TypeAlias, TypeVar, cast
 
-from loushang.harness.config.engine import LayeredConfig, LayeredConfigTransaction
+from loushang.harness.config.engine import LayeredConfig
 from loushang.harness.config.types import (
     ConfigIssue,
     ConfigLayer,
@@ -35,6 +35,9 @@ class ConfigChange(Generic[T]):
 @dataclass
 class ConfigTransactionResult(Generic[T]):
     change: ConfigChange[T] | None = None
+
+
+ConfigMutationReceipt: TypeAlias = ConfigChange[T] | ConfigTransactionResult[T]
 
 
 class ConfigScope(Generic[T]):
@@ -67,7 +70,7 @@ class ConfigScope(Generic[T]):
         patch: Mapping[str, object],
         *,
         persist: bool | None = None,
-    ) -> ConfigChange[T]:
+    ) -> ConfigMutationReceipt[T]:
         return self._runtime.update(self.name, patch, persist=persist)
 
     def replace(
@@ -75,7 +78,7 @@ class ConfigScope(Generic[T]):
         patch: Mapping[str, object],
         *,
         persist: bool | None = None,
-    ) -> ConfigChange[T]:
+    ) -> ConfigMutationReceipt[T]:
         return self._runtime.replace(self.name, patch, persist=persist)
 
     def transform(
@@ -83,7 +86,7 @@ class ConfigScope(Generic[T]):
         transform: ConfigPatchTransform,
         *,
         persist: bool | None = None,
-    ) -> ConfigChange[T]:
+    ) -> ConfigMutationReceipt[T]:
         """Atomically transform this layer's current patch under one lock."""
 
         return self._runtime.transform(self.name, transform, persist=persist)
@@ -104,6 +107,8 @@ class ScopedConfigRuntime(Generic[T]):
 
     def __init__(self, config: LayeredConfig[T]) -> None:
         self._config = config
+        self._engine_authority = object()
+        self._config._bind_runtime(self._engine_authority)
         self._layers = {layer.name: layer for layer in config.layers}
         self._revision = 0
         self._change_listeners: list[ConfigChangeListener[T]] = []
@@ -123,8 +128,7 @@ class ScopedConfigRuntime(Generic[T]):
 
     @property
     def value(self) -> T:
-        with self._lock:
-            return self._config.value
+        return self._config.value
 
     @property
     def revision(self) -> int:
@@ -132,8 +136,7 @@ class ScopedConfigRuntime(Generic[T]):
             return self._revision
 
     def snapshot(self) -> ConfigSnapshot[T]:
-        with self._lock:
-            return self._config.snapshot()
+        return self._config.snapshot()
 
     def scope(self, layer: str) -> ConfigScope[T]:
         try:
@@ -143,26 +146,14 @@ class ScopedConfigRuntime(Generic[T]):
         return ConfigScope(self, resolved)
 
     def scope_patch(self, layer: str) -> dict[str, object]:
-        with self._lock:
-            self.scope(layer)
-            return self._config.patch(layer)
+        self.scope(layer)
+        return self._config.patch(layer)
 
     def reload(self) -> ConfigChange[T]:
-        with self._lock:
-            self._require_non_reentrant_write()
-            previous = self._config.value
-            self._config.reload(notify=False)
-            change, should_publish = self._enqueue_change(
-                operation="reload",
-                layer=None,
-                previous=previous,
-            )
-            publish_config = self._transaction_depth == 0
-        self._publish_after_mutation(
-            should_publish=should_publish,
-            publish_config=publish_config,
-        )
-        return change
+        with self._transaction(strict_reload=False) as transaction:
+            self._record_transaction_operation(operation="reload", layer=None)
+        assert transaction.change is not None
+        return transaction.change
 
     def transaction(self) -> AbstractContextManager[ConfigTransactionResult[T]]:
         """Refresh and mutate persistent layers as one externally visible change.
@@ -171,7 +162,7 @@ class ScopedConfigRuntime(Generic[T]):
         notification is emitted only after the runtime and file locks are gone.
         """
 
-        return self._transaction()
+        return self._transaction(strict_reload=True)
 
     def defer_publications(self) -> AbstractContextManager[None]:
         """Defer runtime listeners while an outer authority lock is held."""
@@ -184,8 +175,8 @@ class ScopedConfigRuntime(Generic[T]):
         patch: Mapping[str, object],
         *,
         persist: bool | None = None,
-    ) -> ConfigChange[T]:
-        if self._requires_persistent_transaction(layer, persist=persist):
+    ) -> ConfigMutationReceipt[T]:
+        if not self._in_transaction():
             with self.transaction() as transaction:
                 self.update(layer, patch, persist=persist)
             assert transaction.change is not None
@@ -193,19 +184,17 @@ class ScopedConfigRuntime(Generic[T]):
         with self._lock:
             self._require_non_reentrant_write()
             self.scope(layer)
-            previous = self._config.value
-            self._config.update(layer, patch, persist=persist, notify=False)
-            change, should_publish = self._enqueue_change(
+            self._config.update(
+                layer,
+                patch,
+                persist=persist,
+                notify=True,
+                _authority=self._engine_authority,
+            )
+            return self._record_transaction_operation(
                 operation="update",
                 layer=layer,
-                previous=previous,
             )
-            publish_config = self._transaction_depth == 0
-        self._publish_after_mutation(
-            should_publish=should_publish,
-            publish_config=publish_config,
-        )
-        return change
 
     def replace(
         self,
@@ -213,8 +202,8 @@ class ScopedConfigRuntime(Generic[T]):
         patch: Mapping[str, object],
         *,
         persist: bool | None = None,
-    ) -> ConfigChange[T]:
-        if self._requires_persistent_transaction(layer, persist=persist):
+    ) -> ConfigMutationReceipt[T]:
+        if not self._in_transaction():
             with self.transaction() as transaction:
                 self.replace(layer, patch, persist=persist)
             assert transaction.change is not None
@@ -222,19 +211,17 @@ class ScopedConfigRuntime(Generic[T]):
         with self._lock:
             self._require_non_reentrant_write()
             self.scope(layer)
-            previous = self._config.value
-            self._config.replace(layer, patch, persist=persist, notify=False)
-            change, should_publish = self._enqueue_change(
+            self._config.replace(
+                layer,
+                patch,
+                persist=persist,
+                notify=True,
+                _authority=self._engine_authority,
+            )
+            return self._record_transaction_operation(
                 operation="replace",
                 layer=layer,
-                previous=previous,
             )
-            publish_config = self._transaction_depth == 0
-        self._publish_after_mutation(
-            should_publish=should_publish,
-            publish_config=publish_config,
-        )
-        return change
 
     def transform(
         self,
@@ -242,12 +229,12 @@ class ScopedConfigRuntime(Generic[T]):
         transform: ConfigPatchTransform,
         *,
         persist: bool | None = None,
-    ) -> ConfigChange[T]:
+    ) -> ConfigMutationReceipt[T]:
         """Read, transform, replace, and enqueue one layer atomically."""
 
         if not callable(transform):
             raise TypeError("Config patch transform must be callable")
-        if self._requires_persistent_transaction(layer, persist=persist):
+        if not self._in_transaction():
             with self.transaction() as transaction:
                 self.transform(layer, transform, persist=persist)
             assert transaction.change is not None
@@ -255,7 +242,6 @@ class ScopedConfigRuntime(Generic[T]):
         with self._lock:
             self._require_non_reentrant_write()
             self.scope(layer)
-            previous = self._config.value
             self._patch_transforming = True
             try:
                 replacement = transform(self._config.patch(layer))
@@ -263,18 +249,17 @@ class ScopedConfigRuntime(Generic[T]):
                 self._patch_transforming = False
             if not isinstance(replacement, Mapping):
                 raise TypeError("Config patch transform must return a mapping")
-            self._config.replace(layer, replacement, persist=persist, notify=False)
-            change, should_publish = self._enqueue_change(
+            self._config.replace(
+                layer,
+                replacement,
+                persist=persist,
+                notify=True,
+                _authority=self._engine_authority,
+            )
+            return self._record_transaction_operation(
                 operation="replace",
                 layer=layer,
-                previous=previous,
             )
-            publish_config = self._transaction_depth == 0
-        self._publish_after_mutation(
-            should_publish=should_publish,
-            publish_config=publish_config,
-        )
-        return change
 
     def scope_matches(
         self,
@@ -283,25 +268,24 @@ class ScopedConfigRuntime(Generic[T]):
         *,
         keys: Iterable[str],
     ) -> bool:
-        """Compare selected layer keys under the config runtime lock."""
+        """Compare selected layer keys against one engine-locked patch."""
 
         selected_keys = tuple(keys)
         if any(not isinstance(key, str) for key in selected_keys):
             raise TypeError("Config patch comparison keys must be strings")
-        with self._lock:
-            self.scope(layer)
-            current = self._config.patch(layer)
-            return all(
-                (key in current) == (key in expected)
-                and (key not in current or current[key] == expected[key])
-                for key in selected_keys
-            )
+        self.scope(layer)
+        current = self._config.patch(layer)
+        return all(
+            (key in current) == (key in expected)
+            and (key not in current or current[key] == expected[key])
+            for key in selected_keys
+        )
 
     def apply_overrides(
         self,
         layer: str,
         overrides: Mapping[str, object] | T,
-    ) -> ConfigChange[T]:
+    ) -> ConfigMutationReceipt[T]:
         patch = (
             dict(overrides)
             if isinstance(overrides, Mapping)
@@ -339,46 +323,29 @@ class ScopedConfigRuntime(Generic[T]):
         return unsubscribe
 
     def drain_issues(self) -> tuple[ConfigIssue, ...]:
-        with self._lock:
-            return self._config.drain_issues()
+        return self._config.drain_issues()
 
-    def _enqueue_change(
+    def _in_transaction(self) -> bool:
+        with self._lock:
+            self._require_non_reentrant_write()
+            return self._transaction_depth > 0
+
+    def _record_transaction_operation(
         self,
         *,
         operation: ConfigOperation,
         layer: str | None,
-        previous: T,
-    ) -> tuple[ConfigChange[T], bool]:
-        if self._transaction_depth:
+    ) -> ConfigTransactionResult[T]:
+        with self._lock:
+            if not self._transaction_depth:
+                raise RuntimeError("Config mutation requires a runtime transaction")
             self._transaction_changed = True
             self._transaction_operation = operation
             self._transaction_operation_count += 1
             self._transaction_layers.add(layer)
-            previous_value = self._transaction_previous
-            assert previous_value is not _NO_TRANSACTION
-            return (
-                ConfigChange(
-                    revision=self._revision + 1,
-                    operation=operation,
-                    layer=layer,
-                    previous=cast(T, previous_value),
-                    current=self._config.value,
-                ),
-                False,
-            )
-        self._revision += 1
-        change = ConfigChange(
-            revision=self._revision,
-            operation=operation,
-            layer=layer,
-            previous=previous,
-            current=self._config.value,
-        )
-        self._pending_changes.append(change)
-        if self._publishing:
-            return change, False
-        self._publishing = True
-        return change, True
+            result = self._transaction_result
+            assert result is not None
+            return result
 
     def _require_non_reentrant_write(self) -> None:
         if self._patch_transforming:
@@ -386,40 +353,37 @@ class ScopedConfigRuntime(Generic[T]):
                 "Config patch transforms cannot perform re-entrant writes"
             )
 
-    def _requires_persistent_transaction(
+    @contextmanager
+    def _transaction(
         self,
-        layer: str,
         *,
-        persist: bool | None,
-    ) -> bool:
+        strict_reload: bool,
+    ) -> Iterator[ConfigTransactionResult[T]]:
         with self._lock:
             self._require_non_reentrant_write()
-            try:
-                resolved = self._layers[layer]
-            except KeyError as exc:
-                raise KeyError(f"Unknown config layer: {layer}") from exc
-            should_persist = resolved.persistent if persist is None else persist
-            return bool(should_persist and self._transaction_depth == 0)
+            if self._transaction_depth:
+                nested_result = self._transaction_result
+                assert nested_result is not None
+                self._transaction_depth += 1
+                try:
+                    yield nested_result
+                finally:
+                    self._transaction_depth -= 1
+                return
 
-    @contextmanager
-    def _transaction(self) -> Iterator[ConfigTransactionResult[T]]:
-        engine_transaction: LayeredConfigTransaction[T] | None = None
-        runtime_locked = False
-        outermost = False
         publication_held = False
         should_publish = False
-        body_error: BaseException | None = None
+        transaction_error: BaseException | None = None
         publication_error: BaseException | None = None
         result: ConfigTransactionResult[T] | None = None
         try:
-            self._lock.acquire()
-            runtime_locked = True
-            outermost = self._transaction_depth == 0
             with self._config.transaction(
-                notify_on_exit=False
-            ) as current_engine_transaction:
-                engine_transaction = current_engine_transaction
-                if outermost:
+                notify_on_exit=True,
+                strict_reload=strict_reload,
+                _authority=self._engine_authority,
+            ) as engine_transaction:
+                self._lock.acquire()
+                try:
                     self._publication_holds += 1
                     publication_held = True
                     self._transaction_previous = engine_transaction.previous
@@ -429,18 +393,12 @@ class ScopedConfigRuntime(Generic[T]):
                     self._transaction_layers.clear()
                     result = ConfigTransactionResult()
                     self._transaction_result = result
-                else:
-                    result = self._transaction_result
-                    assert result is not None
-                self._transaction_depth += 1
-                try:
-                    yield result
-                finally:
-                    self._transaction_depth -= 1
-                    if outermost:
-                        previous = self._transaction_previous
-                        assert previous is not _NO_TRANSACTION
-                        typed_previous = cast(T, previous)
+                    self._transaction_depth = 1
+                    try:
+                        yield result
+                    finally:
+                        self._transaction_depth = 0
+                        previous = cast(T, self._transaction_previous)
                         changed_layer = (
                             next(iter(self._transaction_layers))
                             if len(self._transaction_layers) == 1
@@ -451,16 +409,13 @@ class ScopedConfigRuntime(Generic[T]):
                             if self._transaction_operation_count <= 1
                             else "transaction"
                         )
-                        if (
-                            self._transaction_changed
-                            or self._config.value != typed_previous
-                        ):
+                        if self._transaction_changed or self._config.value != previous:
                             self._revision += 1
                             change = ConfigChange(
                                 revision=self._revision,
                                 operation=operation,
                                 layer=changed_layer,
-                                previous=typed_previous,
+                                previous=previous,
                                 current=self._config.value,
                             )
                             self._pending_changes.append(change)
@@ -472,20 +427,11 @@ class ScopedConfigRuntime(Generic[T]):
                         self._transaction_operation_count = 0
                         self._transaction_layers.clear()
                         self._transaction_result = None
+                finally:
+                    self._lock.release()
         except BaseException as exc:
-            body_error = exc
-        finally:
-            if runtime_locked:
-                self._lock.release()
-        if outermost and publication_held:
-            if engine_transaction is not None and (
-                engine_transaction.changed
-                or (result is not None and result.change is not None)
-            ):
-                try:
-                    self._config.publish()
-                except BaseException as exc:
-                    publication_error = exc
+            transaction_error = exc
+        if publication_held:
             with self._lock:
                 self._publication_holds -= 1
                 if (
@@ -505,12 +451,12 @@ class ScopedConfigRuntime(Generic[T]):
                     publication_error.add_note(
                         f"Runtime listener publication also failed: {exc!r}"
                     )
-        if body_error is not None:
+        if transaction_error is not None:
             if publication_error is not None:
-                body_error.add_note(
-                    f"Config listener publication also failed: {publication_error!r}"
+                transaction_error.add_note(
+                    f"Runtime listener publication also failed: {publication_error!r}"
                 )
-            raise body_error.with_traceback(body_error.__traceback__)
+            raise transaction_error.with_traceback(transaction_error.__traceback__)
         if publication_error is not None:
             raise publication_error
 
@@ -550,33 +496,6 @@ class ScopedConfigRuntime(Generic[T]):
         if publication_error is not None:
             raise publication_error
 
-    def _publish_after_mutation(
-        self,
-        *,
-        should_publish: bool,
-        publish_config: bool,
-    ) -> None:
-        config_error: BaseException | None = None
-        runtime_error: BaseException | None = None
-        if publish_config:
-            try:
-                self._config.publish()
-            except BaseException as exc:
-                config_error = exc
-        if should_publish:
-            try:
-                self._drain_publications()
-            except BaseException as exc:
-                runtime_error = exc
-        if config_error is not None:
-            if runtime_error is not None:
-                config_error.add_note(
-                    f"Runtime listener publication also failed: {runtime_error!r}"
-                )
-            raise config_error
-        if runtime_error is not None:
-            raise runtime_error
-
     def _drain_publications(self) -> None:
         first_error: Exception | None = None
         try:
@@ -614,6 +533,7 @@ class ScopedConfigRuntime(Generic[T]):
 
 __all__ = [
     "ConfigChange",
+    "ConfigMutationReceipt",
     "ConfigOperation",
     "ConfigPatchTransform",
     "ConfigScope",

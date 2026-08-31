@@ -1219,7 +1219,7 @@ def test_preloaded_settings_rmw_helpers_preserve_peer_mutations(tmp_path) -> Non
     assert settings.terminal.show_terminal_progress is True
 
 
-def test_settings_manager_aggregates_workspace_compatibility_authorities(
+def test_settings_manager_accepts_one_plugin_compatibility_authority(
     tmp_path,
 ) -> None:
     from loushang.harness.config.agent import SettingsManager
@@ -1228,54 +1228,37 @@ def test_settings_manager_aggregates_workspace_compatibility_authorities(
     )
 
     manager = SettingsManager(project_settings_path=tmp_path / "settings.json")
-    first_authority = object()
-    second_authority = object()
-    guarded: list[tuple[str, str]] = []
-    publish_first = manager.bind_plugin_enablement_legacy_mutation_guard(
-        first_authority,
-        lambda plugin_id: guarded.append(("first", plugin_id)),
+    authority = object()
+    guarded: list[str] = []
+    publish = manager.bind_plugin_enablement_legacy_mutation_guard(
+        authority,
+        guarded.append,
     )
-    publish_second = manager.bind_plugin_enablement_legacy_mutation_guard(
-        second_authority,
-        lambda plugin_id: guarded.append(("second", plugin_id)),
+    assert (
+        manager.bind_plugin_enablement_legacy_mutation_guard(
+            authority,
+            lambda _plugin_id: None,
+        )
+        is publish
     )
+    with pytest.raises(RuntimeError, match="authority already bound"):
+        manager.bind_plugin_enablement_legacy_mutation_guard(
+            object(),
+            lambda _plugin_id: None,
+        )
 
-    publish_first(
+    publish(
         LegacyPluginCompatibilityProjectionV1(
-            disabled_plugin_ids=("first-pack",),
-            migrated_plugin_ids=("first-pack",),
+            disabled_plugin_ids=("managed-pack",),
+            migrated_plugin_ids=("managed-pack",),
             desired_inventory_revision=1,
             migration_journal_revision=1,
         )
     )
-    publish_second(
-        LegacyPluginCompatibilityProjectionV1(
-            disabled_plugin_ids=("second-pack",),
-            migrated_plugin_ids=("second-pack",),
-            desired_inventory_revision=1,
-            migration_journal_revision=1,
-        )
-    )
-    assert manager.get_settings().disabled_plugins == (
-        "first-pack",
-        "second-pack",
-    )
-
-    publish_first(
-        LegacyPluginCompatibilityProjectionV1(
-            disabled_plugin_ids=(),
-            migrated_plugin_ids=("first-pack",),
-            desired_inventory_revision=2,
-            migration_journal_revision=1,
-        )
-    )
-    assert manager.get_settings().disabled_plugins == ("second-pack",)
+    assert manager.get_settings().disabled_plugins == ("managed-pack",)
 
     manager.disable_plugin("unmigrated-pack", scope="project")
-    assert guarded == [
-        ("first", "unmigrated-pack"),
-        ("second", "unmigrated-pack"),
-    ]
+    assert guarded == ["unmigrated-pack"]
 
 
 def test_persistent_settings_transaction_publishes_after_unlock(tmp_path) -> None:

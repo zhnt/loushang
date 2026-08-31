@@ -9,6 +9,7 @@ from typing import Generic, TypeVar
 
 from loushang.harness.config.runtime import (
     ConfigChange,
+    ConfigMutationReceipt,
     ConfigScope,
     ConfigTransactionResult,
     ScopedConfigRuntime,
@@ -58,7 +59,7 @@ class SettingsRuntime(Generic[T]):
         patch: Mapping[str, object],
         *,
         persist: bool | None = None,
-    ) -> ConfigChange[T]:
+    ) -> ConfigMutationReceipt[T]:
         return self._runtime.update(layer, patch, persist=persist)
 
     def replace(
@@ -67,14 +68,14 @@ class SettingsRuntime(Generic[T]):
         patch: Mapping[str, object],
         *,
         persist: bool | None = None,
-    ) -> ConfigChange[T]:
+    ) -> ConfigMutationReceipt[T]:
         return self._runtime.replace(layer, patch, persist=persist)
 
     def apply_overrides(
         self,
         layer: str,
         overrides: Mapping[str, object] | T,
-    ) -> ConfigChange[T]:
+    ) -> ConfigMutationReceipt[T]:
         return self._runtime.apply_overrides(layer, overrides)
 
     def subscribe_change(

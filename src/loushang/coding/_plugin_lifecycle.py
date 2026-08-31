@@ -8,7 +8,8 @@ import os
 import secrets
 import stat
 import threading
-from contextlib import AbstractContextManager
+from collections.abc import Iterator
+from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -18,13 +19,16 @@ from loushang.coding._plugin_owner_generations import (
 )
 from loushang.coding.product_plan import CODING_PRODUCT_ID
 from loushang.foundation.platform_paths import PlatformPaths, resolve_platform_paths
-from loushang.harness.journal import JournalLockUnavailable, journal_file_lock
+from loushang.harness.journal import (
+    JournalLockUnavailable,
+    journal_file_lock,
+    journal_file_lock_at,
+)
 from loushang.harness.plugin_management import (
     PluginCleanupAttemptV1,
     PluginDesiredStateLedger,
     PluginDesiredStateMutationV1,
     PluginEnablementCompatibilityProjectionV1,
-    PluginEnablementCompatibilityProjector,
     PluginEnablementMigrationCoordinator,
     PluginEnablementMigrationJournal,
     PluginEnablementMigrationRequestV1,
@@ -47,6 +51,8 @@ from loushang.harness.plugin_management import (
     PluginRetirementIntentLedger,
     PluginRetirementSetLedger,
     PluginSourceProjectionSourcePort,
+    decode_plugin_desired_state_snapshot,
+    decode_plugin_enablement_migration_snapshots,
 )
 from loushang.harness.plugin_management.security_acceptance import (
     PluginInstanceSecurityRetirementJournal,
@@ -186,6 +192,12 @@ class CodingPluginLifecycleStateLayout:
     @property
     def coordination_lock(self) -> Path:
         return self.root / "lifecycle-coordination"
+
+
+@dataclass(frozen=True, slots=True)
+class _CodingPluginEnablementStateCapture:
+    desired_raw: str
+    migration_raw: str
 
 
 @dataclass(slots=True)
@@ -1075,39 +1087,69 @@ def build_coding_plugin_management_application(
 
 def project_coding_plugin_enablement_compatibility(
     layout: CodingPluginLifecycleStateLayout,
+    *,
+    _capture: _CodingPluginEnablementStateCapture | None = None,
 ) -> tuple[PluginEnablementCompatibilityProjectionV1, frozenset[str]]:
     """Read Coding's derived downgrade view without exposing owner stores."""
 
     if not isinstance(layout, CodingPluginLifecycleStateLayout):
         raise TypeError("Coding Plugin lifecycle layout is required")
-    if not _validate_existing_private_state_layout(layout):
-        return (
-            PluginEnablementCompatibilityProjectionV1(
-                desired_inventory_revision=0,
-                migration_journal_revision=0,
-                disabled_plugin_ids=(),
-            ),
-            frozenset(),
-        )
-    desired = PluginDesiredStateLedger(layout.desired_state)
-    journal = PluginEnablementMigrationJournal(layout.enablement_migration)
-    projection = PluginEnablementCompatibilityProjector(
-        journal=journal,
-        desired_state=desired,
-    ).snapshot(
-        product_id=CODING_PRODUCT_ID,
-        installation_scope="workspace",
-        scope_id=layout.scope_id,
+    if _capture is None:
+        with _capture_existing_plugin_enablement_state(layout) as captured:
+            if captured is None:
+                return _empty_plugin_enablement_compatibility_projection()
+            return project_coding_plugin_enablement_compatibility(
+                layout,
+                _capture=captured,
+            )
+    desired = decode_plugin_desired_state_snapshot(
+        _capture.desired_raw,
+        path=layout.desired_state,
     )
-    migrated = frozenset(
-        item.request.installation_key.plugin_id
-        for item in journal.snapshots()
+    migrations = tuple(
+        item
+        for item in decode_plugin_enablement_migration_snapshots(
+            _capture.migration_raw,
+            path=layout.enablement_migration,
+        )
         if item.request.installation_key.product_id == CODING_PRODUCT_ID
         and item.request.installation_key.installation_scope == "workspace"
         and item.request.installation_key.scope_id == layout.scope_id
         and item.phase in {"compatibility_window", "finalized"}
     )
+    migrated = frozenset(item.request.installation_key.plugin_id for item in migrations)
+    disabled = tuple(
+        sorted(
+            item.request.installation_key.plugin_id
+            for item in migrations
+            if desired.installation(
+                item.request.installation_key
+            ).selection.desired_state
+            != "installed_enabled"
+        )
+    )
+    projection = PluginEnablementCompatibilityProjectionV1(
+        desired_inventory_revision=desired.inventory_revision,
+        migration_journal_revision=max(
+            (item.journal_revision for item in migrations),
+            default=0,
+        ),
+        disabled_plugin_ids=disabled,
+    )
     return projection, migrated
+
+
+def _empty_plugin_enablement_compatibility_projection() -> tuple[
+    PluginEnablementCompatibilityProjectionV1, frozenset[str]
+]:
+    return (
+        PluginEnablementCompatibilityProjectionV1(
+            desired_inventory_revision=0,
+            migration_journal_revision=0,
+            disabled_plugin_ids=(),
+        ),
+        frozenset(),
+    )
 
 
 def package_revision_ref(
@@ -1516,6 +1558,125 @@ def _prepare_private_state_layout(layout: CodingPluginLifecycleStateLayout) -> N
     # make them create files outside the validated private tree.
     with journal_file_lock(layout.coordination_lock, "exclusive"):
         pass
+
+
+@contextmanager
+def _capture_existing_plugin_enablement_state(
+    layout: CodingPluginLifecycleStateLayout,
+) -> Iterator[_CodingPluginEnablementStateCapture | None]:
+    """Pin one private root and capture compatibility ledgers beneath it."""
+
+    descriptor = _open_existing_private_state_root(layout)
+    if descriptor is None:
+        yield None
+        return
+    try:
+        lock_name = f"{layout.coordination_lock.name}.lock"
+        with journal_file_lock_at(descriptor, lock_name, "exclusive"):
+            yield _CodingPluginEnablementStateCapture(
+                desired_raw=_read_private_state_file(
+                    descriptor,
+                    layout.desired_state.name,
+                ),
+                migration_raw=_read_private_state_file(
+                    descriptor,
+                    layout.enablement_migration.name,
+                ),
+            )
+    finally:
+        os.close(descriptor)
+
+
+def _open_existing_private_state_root(
+    layout: CodingPluginLifecycleStateLayout,
+) -> int | None:
+    base = layout.private_state_base.expanduser().absolute()
+    root = layout.root.expanduser().absolute()
+    try:
+        relative = root.relative_to(base)
+    except ValueError:
+        raise CodingPluginLifecycleError(
+            "Coding Plugin state root is outside its private base",
+            code="coding_plugin_state_permissions_failed",
+        ) from None
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    if (
+        os.name != "posix"
+        or os.open not in os.supports_dir_fd
+        or not nofollow
+        or not getattr(os, "O_DIRECTORY", 0)
+    ):
+        if not _validate_existing_private_state_layout(layout):
+            return None
+        raise CodingPluginLifecycleError(
+            "Secure Coding Plugin state handles are unavailable",
+            code="coding_plugin_state_permissions_failed",
+        )
+    flags = os.O_RDONLY | os.O_DIRECTORY | nofollow | getattr(os, "O_CLOEXEC", 0)
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(base, flags)
+        _validate_private_directory_descriptor(descriptor)
+        for part in relative.parts:
+            child = os.open(part, flags, dir_fd=descriptor)
+            try:
+                _validate_private_directory_descriptor(child)
+            except BaseException:
+                os.close(child)
+                raise
+            os.close(descriptor)
+            descriptor = child
+        return descriptor
+    except FileNotFoundError:
+        if descriptor is not None:
+            os.close(descriptor)
+        return None
+    except OSError:
+        if descriptor is not None:
+            os.close(descriptor)
+        raise CodingPluginLifecycleError(
+            "Coding Plugin state root is not private",
+            code="coding_plugin_state_permissions_failed",
+        ) from None
+
+
+def _validate_private_directory_descriptor(descriptor: int) -> None:
+    metadata = os.fstat(descriptor)
+    getuid = getattr(os, "getuid", None)
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or metadata.st_mode & 0o077
+        or (callable(getuid) and metadata.st_uid != getuid())
+    ):
+        raise OSError("private root is not a private directory")
+
+
+def _read_private_state_file(directory_fd: int, name: str) -> str:
+    if Path(name).name != name:
+        raise ValueError("Private state filename must be one component")
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+    )
+    try:
+        descriptor = os.open(name, flags, dir_fd=directory_fd)
+    except FileNotFoundError:
+        return ""
+    with os.fdopen(descriptor, "r", encoding="utf-8") as handle:
+        metadata = os.fstat(handle.fileno())
+        getuid = getattr(os, "getuid", None)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_mode & 0o077
+            or (callable(getuid) and metadata.st_uid != getuid())
+        ):
+            raise CodingPluginLifecycleError(
+                "Coding Plugin state journal is not private",
+                code="coding_plugin_state_permissions_failed",
+            )
+        return handle.read()
 
 
 def _validate_existing_private_state_layout(

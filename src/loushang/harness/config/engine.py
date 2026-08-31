@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import deque
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager, ExitStack, contextmanager
 from copy import deepcopy
@@ -53,10 +54,15 @@ class LayeredConfig(Generic[T]):
         self._issues: list[ConfigIssue] = []
         self._listeners: list[ConfigListener[T]] = []
         self._lock = RLock()
+        self._pending_publications: deque[T] = deque()
+        self._publishing = False
+        self._runtime_authority: object | None = None
         self._transaction_depth = 0
         self._transaction_changed = False
         self._transaction_handle: LayeredConfigTransaction[T] | None = None
-        self._patches, load_issues = self._load_persistent_layers(self._patches)
+        self._transaction_authority: object | None = None
+        with self._path_locks():
+            self._patches, load_issues = self._load_persistent_layers(self._patches)
         self._issues.extend(load_issues)
         for layer_name, value in (initial or {}).items():
             self._require_layer(layer_name)
@@ -97,23 +103,44 @@ class LayeredConfig(Generic[T]):
             self._require_layer(layer_name)
             return deepcopy(self._patches[layer_name])
 
-    def reload(self, *, strict: bool = False, notify: bool = True) -> None:
+    def reload(
+        self,
+        *,
+        strict: bool = False,
+        notify: bool = True,
+        _authority: object | None = None,
+    ) -> None:
+        self._require_mutation_authority(_authority)
+        with self._lock:
+            nested = self._transaction_depth > 0
+        if not nested:
+            with self._transaction(
+                notify_on_exit=notify,
+                reload_strict=strict,
+                _authority=_authority,
+            ):
+                pass
+            return
         with self._lock:
             changed = self._reload_unlocked(strict=strict)
             if self._transaction_depth and changed:
                 self._transaction_changed = True
-            should_notify = notify and self._transaction_depth == 0 and changed
-        if should_notify:
-            self.publish()
 
     def transaction(
         self,
         *,
         notify_on_exit: bool = True,
+        strict_reload: bool = True,
+        _authority: object | None = None,
     ) -> AbstractContextManager[LayeredConfigTransaction[T]]:
         """Serialize a strict refresh plus one or more config mutations."""
 
-        return self._transaction(notify_on_exit=notify_on_exit)
+        self._require_mutation_authority(_authority)
+        return self._transaction(
+            notify_on_exit=notify_on_exit,
+            reload_strict=strict_reload,
+            _authority=_authority,
+        )
 
     def _reload_unlocked(self, *, strict: bool) -> bool:
         previous = self.snapshot()
@@ -135,9 +162,14 @@ class LayeredConfig(Generic[T]):
         *,
         persist: bool | None = None,
         notify: bool = True,
+        _authority: object | None = None,
     ) -> None:
+        self._require_mutation_authority(_authority)
         if self._requires_transaction(layer_name, persist=persist):
-            with self.transaction(notify_on_exit=notify):
+            with self.transaction(
+                notify_on_exit=notify,
+                _authority=_authority,
+            ):
                 self.update(layer_name, patch, persist=persist, notify=notify)
             return
         with self._lock:
@@ -159,8 +191,9 @@ class LayeredConfig(Generic[T]):
             if self._transaction_depth and changed:
                 self._transaction_changed = True
             should_notify = notify and self._transaction_depth == 0 and changed
-        if should_notify:
-            self.publish()
+            should_drain = should_notify and self._enqueue_publication_unlocked(value)
+        if should_drain:
+            self._drain_publications()
 
     def replace(
         self,
@@ -169,9 +202,14 @@ class LayeredConfig(Generic[T]):
         *,
         persist: bool | None = None,
         notify: bool = True,
+        _authority: object | None = None,
     ) -> None:
+        self._require_mutation_authority(_authority)
         if self._requires_transaction(layer_name, persist=persist):
-            with self.transaction(notify_on_exit=notify):
+            with self.transaction(
+                notify_on_exit=notify,
+                _authority=_authority,
+            ):
                 self.replace(layer_name, patch, persist=persist, notify=notify)
             return
         with self._lock:
@@ -193,8 +231,9 @@ class LayeredConfig(Generic[T]):
             if self._transaction_depth and changed:
                 self._transaction_changed = True
             should_notify = notify and self._transaction_depth == 0 and changed
-        if should_notify:
-            self.publish()
+            should_drain = should_notify and self._enqueue_publication_unlocked(value)
+        if should_drain:
+            self._drain_publications()
 
     def subscribe(self, listener: ConfigListener[T]) -> Callable[[], None]:
         with self._lock:
@@ -216,13 +255,33 @@ class LayeredConfig(Generic[T]):
             return issues
 
     def publish(self) -> None:
-        """Publish one immutable value snapshot outside mutation locks."""
+        """Publish the current immutable value snapshot in commit order."""
 
         with self._lock:
             value = self._value
-            listeners = tuple(self._listeners)
-        for listener in listeners:
-            listener(value)
+            should_drain = self._enqueue_publication_unlocked(value)
+        if should_drain:
+            self._drain_publications()
+
+    def _bind_runtime(self, authority: object) -> None:
+        """Give one runtime exclusive mutation/projection ownership."""
+
+        if authority is None:
+            raise ValueError("Config runtime authority is required")
+        with self._lock:
+            if self._runtime_authority is None:
+                self._runtime_authority = authority
+                return
+            if self._runtime_authority is not authority:
+                raise RuntimeError("Layered config already has a runtime owner")
+
+    def _require_mutation_authority(self, authority: object | None) -> None:
+        with self._lock:
+            owner = self._runtime_authority
+            transaction_owner = self._transaction_authority
+            if owner is None or authority is owner or transaction_owner is owner:
+                return
+        raise RuntimeError("Layered config mutation is owned by its scoped runtime")
 
     def _requires_transaction(
         self,
@@ -244,39 +303,38 @@ class LayeredConfig(Generic[T]):
         self,
         *,
         notify_on_exit: bool,
+        reload_strict: bool,
+        _authority: object | None,
     ) -> Iterator[LayeredConfigTransaction[T]]:
-        paths = tuple(
-            sorted(
-                {
-                    normalized_config_path(layer.path)
-                    for layer in self._layers
-                    if layer.path is not None
-                },
-                key=str,
-            )
-        )
         stack = ExitStack()
         locked = False
         outermost = False
         body_error: BaseException | None = None
         publication_error: BaseException | None = None
         handle: LayeredConfigTransaction[T] | None = None
+        should_drain = False
         try:
-            for path in paths:
-                stack.enter_context(config_file_transaction_lock(path))
+            stack.enter_context(self._path_locks())
             self._lock.acquire()
             locked = True
             outermost = self._transaction_depth == 0
             if outermost:
+                self._transaction_authority = _authority
                 handle = LayeredConfigTransaction(
                     previous=self._value,
                     current=self._value,
                 )
                 self._transaction_handle = handle
                 self._transaction_changed = False
-                if self._reload_unlocked(strict=True):
+                if self._reload_unlocked(strict=reload_strict):
                     self._transaction_changed = True
             else:
+                if (
+                    self._transaction_authority is not None
+                    and _authority is not None
+                    and self._transaction_authority is not _authority
+                ):
+                    raise RuntimeError("Config transaction authority changed")
                 handle = self._transaction_handle
                 assert handle is not None
             self._transaction_depth += 1
@@ -292,13 +350,18 @@ class LayeredConfig(Generic[T]):
                     assert handle is not None
                     handle.current = self._value
                     handle.changed = self._transaction_changed
+                    if notify_on_exit and handle.changed:
+                        should_drain = self._enqueue_publication_unlocked(
+                            handle.current
+                        )
                     self._transaction_handle = None
                     self._transaction_changed = False
+                    self._transaction_authority = None
                 self._lock.release()
             stack.close()
-        if outermost and notify_on_exit and handle is not None and handle.changed:
+        if should_drain:
             try:
-                self.publish()
+                self._drain_publications()
             except BaseException as exc:
                 publication_error = exc
         if body_error is not None:
@@ -309,6 +372,54 @@ class LayeredConfig(Generic[T]):
             raise body_error.with_traceback(body_error.__traceback__)
         if publication_error is not None:
             raise publication_error
+
+    @contextmanager
+    def _path_locks(self) -> Iterator[None]:
+        paths = tuple(
+            sorted(
+                {
+                    normalized_config_path(layer.path)
+                    for layer in self._layers
+                    if layer.path is not None
+                },
+                key=str,
+            )
+        )
+        with ExitStack() as stack:
+            for path in paths:
+                stack.enter_context(config_file_transaction_lock(path))
+            yield
+
+    def _enqueue_publication_unlocked(self, value: T) -> bool:
+        self._pending_publications.append(value)
+        if self._publishing:
+            return False
+        self._publishing = True
+        return True
+
+    def _drain_publications(self) -> None:
+        first_error: Exception | None = None
+        try:
+            while True:
+                with self._lock:
+                    if not self._pending_publications:
+                        self._publishing = False
+                        break
+                    value = self._pending_publications.popleft()
+                    listeners = tuple(self._listeners)
+                for listener in listeners:
+                    try:
+                        listener(value)
+                    except Exception as exc:
+                        if first_error is None:
+                            first_error = exc
+        except BaseException:
+            with self._lock:
+                self._pending_publications.clear()
+                self._publishing = False
+            raise
+        if first_error is not None:
+            raise first_error
 
     def _load_persistent_layers(
         self,
