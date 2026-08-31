@@ -140,19 +140,51 @@ def test_format_profile_preserves_unicode_and_key_order(tmp_path: Path) -> None:
         PROCESS_LOCAL_JOURNAL,
         SORTED_UNICODE_JSONL_FORMAT,
         append_jsonl_record,
+        load_jsonl,
     )
 
     path = tmp_path / "events.jsonl"
+    record = _Record("记录", "你\u0085好\u2028世\u2029界")
     append_jsonl_record(
         path,
-        _Record("记录", "你好"),
+        record,
         record_codec=_RecordCodec(),
         format_profile=SORTED_UNICODE_JSONL_FORMAT,
         durability=PROCESS_LOCAL_JOURNAL,
     )
 
-    assert path.read_bytes() == ('{"recordId": "记录", "text": "你好"}\n'.encode())
+    assert path.read_bytes() == (
+        '{"recordId": "记录", "text": "你\u0085好\u2028世\u2029界"}\n'.encode()
+    )
+    assert load_jsonl(
+        path,
+        record_codec=_RecordCodec(),
+        format_profile=SORTED_UNICODE_JSONL_FORMAT,
+        durability=PROCESS_LOCAL_JOURNAL,
+    ).records == (record,)
     assert not path.with_name("events.jsonl.lock").exists()
+
+
+def test_decoder_accepts_jsonl_cr_lf_framing() -> None:
+    from loushang.harness.journal import decode_jsonl
+
+    for newline in ("\n", "\r\n", "\r"):
+        snapshot = decode_jsonl(
+            newline.join(
+                (
+                    '{"recordId":"one","text":"alpha"}',
+                    '{"recordId":"two","text":"beta"}',
+                    "",
+                )
+            ),
+            target="records.jsonl",
+            record_codec=_RecordCodec(),
+        )
+
+        assert snapshot.records == (
+            _Record("one", "alpha"),
+            _Record("two", "beta"),
+        )
 
 
 def test_journal_rejects_values_outside_strict_json_algebra(tmp_path: Path) -> None:
@@ -225,7 +257,7 @@ def test_syntactically_complete_unterminated_record_is_not_committed(
     )
 
     path = tmp_path / "records.jsonl"
-    committed = '{"recordId":"one","text":"committed"}\n'
+    committed = '{"recordId":"one","text":"committed\u2028still"}\n'
     tail = '{"recordId":"two","text":"not committed"}'
     path.write_text(committed + tail, encoding="utf-8")
 
@@ -236,7 +268,7 @@ def test_syntactically_complete_unterminated_record_is_not_committed(
         load_policy=JournalLoadPolicy(partial_tail="skip"),
     )
 
-    assert snapshot.records == (_Record("one", "committed"),)
+    assert snapshot.records == (_Record("one", "committed\u2028still"),)
     assert [item.code for item in snapshot.diagnostics] == ["partial_journal_tail"]
     assert path.read_text(encoding="utf-8") == committed + tail
 
@@ -247,7 +279,7 @@ def test_syntactically_complete_unterminated_record_is_not_committed(
         load_policy=JournalLoadPolicy(partial_tail="repair"),
     )
 
-    assert repaired.records == (_Record("one", "committed"),)
+    assert repaired.records == (_Record("one", "committed\u2028still"),)
     assert path.read_text(encoding="utf-8") == committed
 
 
