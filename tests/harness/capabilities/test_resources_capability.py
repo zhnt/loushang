@@ -10,13 +10,14 @@ from loushang.harness.capabilities import (
     CapabilityGraphBindingError,
     CapabilityGraphPlanRequest,
     CapabilityPack,
+    ResourceCandidateSealingCleanupError,
     RuntimeCapabilityGraphBinder,
     RuntimeCapabilityGraphPlanner,
     RuntimeCapabilityGraphRuntime,
     stage_resource_composition_candidate,
     standard_capability_composition_plan,
 )
-from loushang.harness.capabilities.prompt import PromptSection
+from loushang.harness.capabilities.prompt import PromptSection, PromptSectionComposer
 from loushang.harness.capabilities.resources_consumers import (
     ResourceActivationCapabilityConsumer,
     ResourceCommandPackCapabilityConsumer,
@@ -380,22 +381,38 @@ def test_graph_retries_only_failed_staged_resource_disposal() -> None:
             RESOURCE_RUNTIME_SLOT.key,
             implementation="research.retryable-resource",
         )
+        profile = _replace_selection(
+            profile,
+            PROMPT_SECTIONS_SLOT.key,
+            implementation="research.disposable-prompt",
+        )
 
-        def dispose(_value, _context):  # type: ignore[no-untyped-def]
+        def dispose_resource(_value, _context):  # type: ignore[no-untyped-def]
             attempts.append("resource")
-            if len(attempts) == 1:
+            if attempts.count("resource") == 1:
                 raise RuntimeError("transient resource disposal failure")
 
-        implementation = RuntimeCapabilityImplementation(
-            slot=RESOURCE_RUNTIME_SLOT.key,
-            implementation="research.retryable-resource",
-            implementation_version=1,
-            create=lambda _selection, _context: ResourceActivationRuntime(),
-            dispose=dispose,
-        )
+        def dispose_prompt(_value, _context):  # type: ignore[no-untyped-def]
+            attempts.append("prompt")
+
         candidate = stage_resource_composition_candidate(
             profile,
-            additional_implementations=(implementation,),
+            additional_implementations=(
+                RuntimeCapabilityImplementation(
+                    slot=RESOURCE_RUNTIME_SLOT.key,
+                    implementation="research.retryable-resource",
+                    implementation_version=1,
+                    create=lambda _selection, _context: ResourceActivationRuntime(),
+                    dispose=dispose_resource,
+                ),
+                RuntimeCapabilityImplementation(
+                    slot=PROMPT_SECTIONS_SLOT.key,
+                    implementation="research.disposable-prompt",
+                    implementation_version=1,
+                    create=lambda _selection, _context: PromptSectionComposer(),
+                    dispose=dispose_prompt,
+                ),
+            ),
         )
         binding = resources_capability_provider_binding(
             profile=profile,
@@ -414,7 +431,136 @@ def test_graph_retries_only_failed_staged_resource_disposal() -> None:
         assert candidate.ownership_state == "graph_owned"
         assert await binder.dispose(runtime) == ()
         assert candidate.ownership_state == "disposed"
-        assert attempts == ["resource", "resource"]
+        assert attempts.count("prompt") == 1
+        assert attempts.count("resource") == 2
+
+    asyncio.run(scenario())
+
+
+def test_candidate_sealing_failure_disposes_the_unpublished_binding() -> None:
+    disposed: list[str] = []
+    context: dict[str, object] = {}
+    profile = _replace_selection(
+        _profile(),
+        RESOURCE_RUNTIME_SLOT.key,
+        implementation="research.mutating-resource",
+    )
+
+    def create(_selection, _context):  # type: ignore[no-untyped-def]
+        context["cycle"] = context
+        return ResourceActivationRuntime()
+
+    implementation = RuntimeCapabilityImplementation(
+        slot=RESOURCE_RUNTIME_SLOT.key,
+        implementation="research.mutating-resource",
+        implementation_version=1,
+        create=create,
+        dispose=lambda _value, _context: disposed.append("resource"),
+    )
+
+    with pytest.raises(ValueError, match="facts contain a cycle"):
+        stage_resource_composition_candidate(
+            profile,
+            context=context,
+            additional_implementations=(implementation,),
+        )
+
+    assert disposed == ["resource"]
+
+
+def test_candidate_sealing_cleanup_failure_retains_a_retry_handle() -> None:
+    attempts: list[str] = []
+    context: dict[str, object] = {}
+    profile = _replace_selection(
+        _profile(),
+        RESOURCE_RUNTIME_SLOT.key,
+        implementation="research.retryable-sealing-resource",
+    )
+
+    def create(_selection, _context):  # type: ignore[no-untyped-def]
+        context["cycle"] = context
+        return ResourceActivationRuntime()
+
+    def dispose(_value, _context):  # type: ignore[no-untyped-def]
+        attempts.append("resource")
+        if len(attempts) == 1:
+            raise RuntimeError("transient unpublished binding cleanup failure")
+
+    implementation = RuntimeCapabilityImplementation(
+        slot=RESOURCE_RUNTIME_SLOT.key,
+        implementation="research.retryable-sealing-resource",
+        implementation_version=1,
+        create=create,
+        dispose=dispose,
+    )
+
+    with pytest.raises(ResourceCandidateSealingCleanupError) as captured:
+        stage_resource_composition_candidate(
+            profile,
+            context=context,
+            additional_implementations=(implementation,),
+        )
+
+    error = captured.value
+    assert isinstance(error.primary_error, ValueError)
+    assert error.cleanup_pending
+    assert attempts == ["resource"]
+    error.retry_cleanup()
+    assert not error.cleanup_pending
+    assert attempts == ["resource", "resource"]
+    error.retry_cleanup()
+    assert attempts == ["resource", "resource"]
+
+
+def test_refresh_sealing_failure_disposes_only_the_unpublished_successor() -> None:
+    async def scenario() -> None:
+        disposed: list[str] = []
+        context: dict[str, object] = {"mode": "clean"}
+        mutate = False
+        profile = _replace_selection(
+            _profile(),
+            RESOURCE_RUNTIME_SLOT.key,
+            implementation="research.refresh-mutating-resource",
+        )
+
+        def create(_selection, _context):  # type: ignore[no-untyped-def]
+            if mutate:
+                context["cycle"] = context
+            return ResourceActivationRuntime()
+
+        implementation = RuntimeCapabilityImplementation(
+            slot=RESOURCE_RUNTIME_SLOT.key,
+            implementation="research.refresh-mutating-resource",
+            implementation_version=1,
+            create=create,
+            dispose=lambda _value, _context: disposed.append("resource"),
+        )
+        candidate = stage_resource_composition_candidate(
+            profile,
+            context=context,
+            additional_implementations=(implementation,),
+        )
+        binding = resources_capability_provider_binding(
+            profile=profile,
+            scope_instance_id="session:refresh-sealing",
+            staged_candidate=candidate,
+        )
+        runtime = RuntimeCapabilityGraphRuntime(
+            product_id="research",
+            runtime_id="research-session:refresh-sealing",
+            profile_fingerprint=_sha("profile-refresh-sealing"),
+        )
+        binder = RuntimeCapabilityGraphBinder()
+        await binder.bind(runtime, _plan(binding), (binding,))
+
+        mutate = True
+        with pytest.raises(ValueError, match="facts contain a cycle"):
+            candidate.stage_refresh_successor()
+
+        assert disposed == ["resource"]
+        context.pop("cycle")
+        assert await binder.dispose(runtime) == ()
+        assert disposed == ["resource", "resource"]
 
     asyncio.run(scenario())
 

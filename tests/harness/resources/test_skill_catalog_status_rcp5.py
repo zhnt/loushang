@@ -58,9 +58,6 @@ from loushang.harness.resources._catalog_records import (
     build_source_snapshot,
     fingerprint_catalog_value,
 )
-from loushang.harness.resources._skill_catalog_consumer import (
-    SkillCatalogConsumer,
-)
 from loushang.harness.resources._skill_catalog_status import (
     SkillCatalogStatusProjection,
     SkillCatalogStatusProjectionError,
@@ -277,13 +274,13 @@ def test_status_projection_reports_every_same_precedence_conflict_candidate() ->
     projection = _project(first, second)
 
     assert len(projection.skills) == 2
-    assert {summary.status for summary in projection.skills} == {
-        "rejected_conflict"
-    }
+    assert {summary.status for summary in projection.skills} == {"rejected_conflict"}
     assert {summary.status_reason for summary in projection.skills} == {
         "same_precedence_conflict"
     }
-    assert not any(summary.effective or summary.primary for summary in projection.skills)
+    assert not any(
+        summary.effective or summary.primary for summary in projection.skills
+    )
 
 
 def test_declaration_inactive_candidate_is_not_relabelled_by_peer_conflict() -> None:
@@ -316,7 +313,9 @@ def test_declaration_inactive_candidate_is_not_relabelled_by_peer_conflict() -> 
     assert disabled_status.status == "inactive_declaration"
 
 
-def test_status_projection_is_body_free_and_requires_complete_candidate_coverage() -> None:
+def test_status_projection_is_body_free_and_requires_complete_candidate_coverage() -> (
+    None
+):
     item = _candidate_and_binding(
         source_id="project",
         source_kind="project_local",
@@ -565,16 +564,6 @@ def test_prepared_owner_generation_retains_status_until_disposal(
             catalog_generation=1,
         )
 
-        class RogueGeneration(PreparedResourceOwnerGeneration):
-            pass
-
-        with pytest.raises(TypeError, match="cannot be subclassed"):
-            RogueGeneration._from_shadow(
-                shadow,
-                runtime_id="resource-owner:rogue-skill-status",
-                catalog_generation=1,
-            )
-
         assert generation.catalog_projection is None
         projection = generation._skill_status_projection
         assert isinstance(projection, SkillCatalogStatusProjection)
@@ -586,7 +575,9 @@ def test_prepared_owner_generation_retains_status_until_disposal(
                 standard_capability_composition_plan(product_id="coding")
             )
             candidate = stage_resource_composition_candidate(profile)
-            candidate._attach_prepared_owner_generation(generation)
+            attachment = candidate._attach_prepared_owner_generation(generation)
+            generation._accept_candidate_attachment(attachment)
+            generation._commit_candidate_attachment(attachment)
             generation._begin_graph_construction()
             generation._commit_graph_ownership()
             await generation._dispose_graph_owned()
@@ -659,7 +650,7 @@ def test_exact_v4_captures_effective_and_status_from_one_owner_generation(
         catalog = ResourceSkillStatusCatalogCapabilityConsumer(
             runtime.capture(RESOURCES_SKILL_STATUS_CATALOG_LOAD_REQUIREMENT)
         )
-        consumer = SkillCatalogConsumer(catalog)
+        consumer = catalog.skill_consumer
         statuses = consumer.list_skill_statuses()
         effective = consumer.list_effective_skills()
         assert [status.status for status in statuses] == ["effective"]

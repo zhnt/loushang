@@ -12,6 +12,7 @@ from loushang.harness.approval.plugin_activation import (
 )
 from loushang.harness.approval.plugin_execution import (
     PluginApprovalAuthorizationV1,
+    PluginExecutionDecisionJournal,
 )
 from loushang.harness.capabilities.component_host import (
     CapabilityComponentHost,
@@ -48,6 +49,21 @@ from loushang.harness.capabilities.provider_selection import (
     ResolvedCapabilityProvider,
 )
 from loushang.harness.capabilities.providers import CapabilityBundleProvider
+from loushang.harness.plugin_authoring.coordinator import (
+    PluginDeclarationCoordinator,
+)
+from loushang.harness.plugin_authoring.evaluator import PluginDefinitionEvaluator
+from loushang.harness.plugin_authoring.import_realm import (
+    PluginImportRealm as PluginDefinitionImportRealm,
+)
+from loushang.harness.plugin_authoring.provider_admission import (
+    prepare_capability_provider_candidate,
+)
+from loushang.harness.resources.packages.materializer import PackageMaterializer
+from loushang.harness.resources.plugins.authority import (
+    PluginResolutionAuthority,
+    PluginRuntimeResolution,
+)
 from loushang.harness.resources.plugins.dependencies import (
     lock_plugin_dependency_closure,
 )
@@ -55,10 +71,130 @@ from loushang.harness.resources.plugins.import_realm import PluginImportRealm
 from loushang.harness.resources.plugins.manifest import PluginManifestParser
 from loushang.harness.resources.plugins.revisions import PluginRevisionStore
 from loushang.harness.resources.plugins.selection import (
+    PluginContributionRef,
+    PluginEffectiveConfigurationEntry,
+    PluginEffectiveConfigurationSetV1,
     PluginInstanceRevisionRef,
+    PluginPreflightAcceptedOutcome,
+    PluginPreflightContextV1,
+    PluginPreflightPendingApprovalOutcome,
+    PluginSelectionPlanV2,
+    PluginSelectionResolver,
     PluginSourceTrustSnapshotV1,
 )
-from loushang.harness.resources.plugins.types import PublishedPluginPackage
+from loushang.harness.resources.plugins.types import (
+    PluginSource,
+    PublishedPluginPackage,
+)
+
+_AUTHOR_GUIDE = Path(
+    "docs/internals/architecture/harness/plugin/plugin-authoring-guide.md"
+)
+
+
+def test_author_guide_provider_runs_through_component_host(tmp_path: Path) -> None:
+    asyncio.run(_author_guide_provider_runs_through_component_host(tmp_path))
+
+
+@pytest.mark.parametrize(
+    "provider_source",
+    (
+        "import loushang.plugin.provider_runtime\n",
+        "from loushang.harness import capabilities\n",
+    ),
+)
+def test_component_host_rejects_parent_and_broad_runtime_imports(
+    tmp_path: Path,
+    provider_source: str,
+) -> None:
+    async def scenario() -> None:
+        fixture = _fixture(
+            tmp_path,
+            returned_facet="query",
+            provider_source=provider_source,
+        )
+        journal = _journal(tmp_path)
+        host = _host(journal, fixture)
+        subject = host.activation_subject(
+            fixture.resolved,
+            owner_snapshot=fixture.owner_snapshot,
+            trust_snapshot=fixture.trust_snapshot,
+        )
+        decision = _approve(journal, subject)
+        prepared = host.prepare_component(
+            fixture.resolved,
+            package=fixture.package,
+            owner_snapshot=fixture.owner_snapshot,
+            trust_snapshot=fixture.trust_snapshot,
+            decision_id=decision.decision_id,
+        )
+        runtime = RuntimeCapabilityGraphRuntime(
+            product_id="coding",
+            runtime_id="session:denied-import",
+            profile_fingerprint="f" * 64,
+        )
+
+        with pytest.raises(CapabilityGraphBindingError):
+            await RuntimeCapabilityGraphBinder().bind(
+                runtime,
+                fixture.plan,
+                (prepared.binding,),
+            )
+        assert await prepared.abort_uncommitted() is False
+
+    asyncio.run(scenario())
+
+
+async def _author_guide_provider_runs_through_component_host(tmp_path: Path) -> None:
+    guide = _AUTHOR_GUIDE.read_text(encoding="utf-8")
+    definition_source = guide.split("```python\n", 1)[1].split("\n```", 1)[0]
+    provider_source = guide.split("```python\n", 2)[2].split("\n```", 1)[0]
+    fixture, plugin_runtime = _author_guide_fixture(
+        tmp_path,
+        definition_source=definition_source,
+        provider_source=provider_source,
+    )
+    try:
+        journal = _journal(tmp_path)
+        host = _host(journal, fixture)
+        subject = host.activation_subject(
+            fixture.resolved,
+            owner_snapshot=fixture.owner_snapshot,
+            trust_snapshot=fixture.trust_snapshot,
+        )
+        decision = _approve(journal, subject)
+        prepared = host.prepare_component(
+            fixture.resolved,
+            package=fixture.package,
+            owner_snapshot=fixture.owner_snapshot,
+            trust_snapshot=fixture.trust_snapshot,
+            decision_id=decision.decision_id,
+        )
+        runtime = RuntimeCapabilityGraphRuntime(
+            product_id="example",
+            runtime_id="session:author-guide",
+            profile_fingerprint="f" * 64,
+        )
+        binder = RuntimeCapabilityGraphBinder()
+        await binder.bind(runtime, fixture.plan, (prepared.binding,))
+        prepared.commit_after_graph_publication()
+        consumer = runtime.capture(
+            CapabilityRequirement(
+                capability="example.echo",
+                facets=("echo",),
+                compatible_contract=CapabilityContractRange.exact(1),
+            )
+        )
+        provider = consumer.require("echo")
+
+        assert provider.echo("hello") == "hello"  # type: ignore[attr-defined]
+        assert provider.closed is False  # type: ignore[attr-defined]
+
+        await binder.dispose(runtime)
+
+        assert provider.closed is True  # type: ignore[attr-defined]
+    finally:
+        plugin_runtime.close()
 
 
 def test_component_host_defers_import_until_the_existing_binder_constructs(
@@ -549,11 +685,224 @@ class _Fixture:
     plan: RuntimeCapabilityGraphPlan
 
 
+def _author_guide_fixture(
+    tmp_path: Path,
+    *,
+    definition_source: str,
+    provider_source: str,
+) -> tuple[_Fixture, PluginRuntimeResolution]:
+    plugin_id = "author-guide"
+    contribution_id = "echo-provider"
+    root = tmp_path / "author-guide-plugin"
+    root.mkdir()
+    (root / "definition.py").write_text(definition_source, encoding="utf-8")
+    (root / "provider.py").write_text(provider_source, encoding="utf-8")
+    (root / "plugin.json").write_text(
+        json.dumps(
+            {
+                "name": plugin_id,
+                "version": "1",
+                "contributionIndex": {
+                    "version": 2,
+                    "items": [
+                        {
+                            "id": contribution_id,
+                            "kind": "capability_provider",
+                            "owner": "example.echo",
+                            "contributionExecutionModel": "in_process",
+                            "declarationSource": {
+                                "entrypoint": "definition.py:declare",
+                                "kind": "in_process",
+                                "sourceVersion": 1,
+                            },
+                            "requestedAuthorities": [],
+                            "configuration": {},
+                            "required": True,
+                        }
+                    ],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    resolution_authority = PluginResolutionAuthority()
+    inspection = resolution_authority.inspect(PluginSource(path=root))
+    plugin_runtime = resolution_authority.publish_runtime(
+        (inspection,),
+        binding_store=PackageMaterializer(
+            install_root=tmp_path / "author-guide-installed",
+            plugin_revision_root=tmp_path / "author-guide-revisions",
+        ),
+    )
+    [package] = plugin_runtime.packages
+    [source_binding] = plugin_runtime.bindings
+    [contribution] = package.contribution_index.items
+    trust_snapshot = PluginSourceTrustSnapshotV1(
+        plugin_id=plugin_id,
+        package_source_identity=source_binding.source_identity,
+        source_trust_class="host-equivalent-local",
+        source_trust_policy_revision="trust-1",
+        trusted=True,
+    )
+    selection_plan = PluginSelectionPlanV2(
+        context=PluginPreflightContextV1(
+            product_id="example",
+            scope_id="workspace:test",
+            policy_revision="coding-plugin-policy-1",
+            instance_revision_refs=(
+                PluginInstanceRevisionRef(
+                    instance_id=f"{plugin_id}@workspace:test",
+                    plugin_id=plugin_id,
+                    revision=1,
+                ),
+            ),
+        ),
+        selected_plugin_ids=(plugin_id,),
+        selected_contributions=(
+            PluginContributionRef(plugin_id, contribution_id),
+        ),
+        source_trust_snapshots=(trust_snapshot,),
+        effective_configuration_set=PluginEffectiveConfigurationSetV1(
+            entries=(
+                PluginEffectiveConfigurationEntry(
+                    plugin_id=plugin_id,
+                    contribution_id=contribution_id,
+                    configuration={},
+                ),
+            )
+        ),
+        allowed_authority_ceiling=(),
+    )
+    selection_resolver = PluginSelectionResolver()
+    execution_journal = PluginExecutionDecisionJournal(
+        tmp_path / "author-guide-execution.jsonl",
+        scope_kind="workspace",
+        scope_id="workspace:test",
+        decision_id_factory=lambda: "a" * 48,
+        execution_use_id_factory=lambda: "b" * 48,
+        clock=lambda: 2_500,
+    )
+    pending = selection_resolver.preflight(
+        (package,),
+        bindings=(source_binding,),
+        plan=selection_plan,
+        decision_lookup=execution_journal,
+    )
+    assert isinstance(pending, PluginPreflightPendingApprovalOutcome)
+    [execution_subject] = pending.subjects
+    execution_journal.issue_execution_decision(
+        execution_subject,
+        disposition="approved",
+        authorization=PluginApprovalAuthorizationV1.direct(
+            actor_id="operator:author-guide",
+            source="component-host-test",
+        ),
+        revocation_epoch=0,
+        issued_at_unix_ms=1_000,
+        expires_at_unix_ms=5_000,
+        expected_journal_revision=0,
+    )
+    accepted = selection_resolver.preflight(
+        (package,),
+        bindings=(source_binding,),
+        plan=selection_plan,
+        decision_lookup=execution_journal,
+    )
+    assert isinstance(accepted, PluginPreflightAcceptedOutcome)
+    selection = PluginDeclarationCoordinator(
+        selection_resolver,
+        execution_evaluator=PluginDefinitionEvaluator(
+            decision_journal=execution_journal,
+            import_realm=PluginDefinitionImportRealm(
+                import_realm_id_factory=lambda: "c" * 32
+            ),
+            clock=lambda: 2_500,
+        ),
+    ).finalize(accepted.accepted)
+    [selected] = selection.candidates
+    definition = CapabilityDefinition(
+        capability_id="example.echo",
+        owner_id="example",
+        contract_version=1,
+        facets=("echo",),
+        scope="session",
+        refresh_boundary="sealed",
+        phase="final",
+    )
+    candidate = prepare_capability_provider_candidate(
+        selection,
+        selected,
+        definition=definition,
+    )
+    owner_authority = CapabilityProviderOwnerAuthority(
+        CapabilityProviderOwnerPolicy(
+            capability_id=definition.capability_id,
+            owner_id=definition.owner_id,
+            policy_revision="coding-owner-1",
+            revocation_epoch=3,
+            allowed_provider_ids=("org.example.echo/default",),
+            allowed_source_trust_classes=("host-equivalent-local",),
+            authority_ceiling=(),
+        )
+    )
+    eligibility = owner_authority.grant_eligibility(
+        candidate,
+        issued_at=100,
+        expires_at=400,
+    )
+    admission = owner_authority.admit(
+        candidate,
+        eligibility=eligibility,
+        issued_at=120,
+        expires_at=350,
+    )
+    owner_snapshot = owner_authority.snapshot()
+    resolved_set = ProductCapabilityProviderResolver().resolve(
+        ProductCapabilityProviderSelectionPlanV1(
+            product_id="example",
+            roots=(definition.capability_id,),
+            choices=(
+                ProductCapabilityProviderChoice(
+                    capability_id=definition.capability_id,
+                    provider_id=candidate.provider.provider_id,
+                    candidate_fingerprint=admission.candidate_fingerprint,
+                ),
+            ),
+            policy_revision="coding-plugin-policy-1",
+        ),
+        definitions=(definition,),
+        admissions=(admission,),
+        owner_snapshots=(owner_snapshot,),
+        evaluated_at=150,
+    )
+    plan = RuntimeCapabilityGraphPlanner().plan(
+        CapabilityGraphPlanRequest(
+            product_id="example",
+            roots=resolved_set.roots,
+            definitions=(definition,),
+            providers=resolved_set.providers,
+        )
+    )
+    assert contribution.contribution_id == contribution_id
+    return (
+        _Fixture(
+            package=package,
+            resolved=resolved_set.entries[0],
+            owner_snapshot=owner_snapshot,
+            trust_snapshot=trust_snapshot,
+            plan=plan,
+        ),
+        plugin_runtime,
+    )
+
+
 def _fixture(
     tmp_path: Path,
     *,
     returned_facet: str,
     disposer_fails_once: bool = False,
+    declared_facet: str = "query",
+    provider_source: str | None = None,
 ) -> _Fixture:
     root = tmp_path / "plugin"
     root.mkdir()
@@ -562,7 +911,9 @@ def _fixture(
         encoding="utf-8",
     )
     (root / "provider.py").write_text(
-        _provider_source(
+        provider_source
+        if provider_source is not None
+        else _provider_source(
             returned_facet,
             disposer_fails_once=disposer_fails_once,
         ),
@@ -582,7 +933,7 @@ def _fixture(
         capability_id="coding.semantic",
         owner_id="coding",
         contract_version=1,
-        facets=("query",),
+        facets=(declared_facet,),
         scope="session",
         refresh_boundary="sealed",
         phase="final",
@@ -592,7 +943,7 @@ def _fixture(
         provider_id="org.loushang.synthetic/default",
         implementation_version=1,
         compatible_contract=CapabilityContractRange.exact(1),
-        facets=("query",),
+        facets=(declared_facet,),
         source_id="plugin:foundation-sample",
         selection_rule="Product exact Plugin choice",
     )
@@ -695,7 +1046,7 @@ def _authority(
         CapabilityProviderOwnerPolicy(
             capability_id=definition.capability_id,
             owner_id=definition.owner_id,
-        policy_revision="coding-owner-1",
+            policy_revision="coding-owner-1",
             revocation_epoch=revocation_epoch,
             allowed_provider_ids=("org.loushang.synthetic/default",),
             allowed_source_trust_classes=("host-equivalent-local",),
@@ -766,7 +1117,7 @@ import os
 import json
 from pathlib import Path
 
-from loushang.harness.capabilities.provider_binding import (
+from loushang.plugin.provider_runtime import (
     CapabilityBundleValue,
     CapabilityFacetBinding,
 )
@@ -793,7 +1144,7 @@ def create_provider(context):
         }},
     ),))
 
-def dispose_provider(_value):
+async def dispose_provider(_value):
     with MARKER.open("a", encoding="utf-8") as stream:
         stream.write("dispose\\n")
     if (

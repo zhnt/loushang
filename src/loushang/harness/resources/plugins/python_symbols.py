@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import builtins
+import dis
 import importlib.util
+import inspect
 import sys
 import sysconfig
 from collections.abc import Mapping
@@ -46,6 +48,7 @@ def load_verified_plugin_python_module(
     relative_path: str,
     module_name: str,
     host_api_prefixes: tuple[str, ...],
+    host_api_exports: Mapping[str, tuple[str, ...]] | None = None,
     distribution_evidence_resolver: InstalledPythonDistributionEvidenceResolver
     | None = None,
 ) -> VerifiedPluginPythonModule:
@@ -63,6 +66,17 @@ def load_verified_plugin_python_module(
     )
     if len(prefixes) != len(set(prefixes)):
         raise ValueError("Host API prefixes must be unique")
+    exports: dict[str, frozenset[str]] = {}
+    for raw_module, raw_names in (host_api_exports or {}).items():
+        host_module = _require_nonempty(raw_module, name="Host API module")
+        names = tuple(
+            _require_nonempty(item, name="Host API export") for item in raw_names
+        )
+        if not names or len(names) != len(set(names)):
+            raise ValueError("Host API exports must be nonempty and unique")
+        if "*" in names:
+            raise ValueError("Host API wildcard exports are unavailable")
+        exports[host_module] = frozenset(names)
 
     path = canonical_plugin_python_path(relative_path)
     revision_handle.verify()
@@ -71,6 +85,7 @@ def load_verified_plugin_python_module(
     import_policy = _DirectImportPolicy(
         dependency_lock,
         host_api_prefixes=prefixes,
+        host_api_exports=exports,
         distribution_evidence_resolver=(
             distribution_evidence_resolver
             or InstalledPythonDistributionEvidenceResolver()
@@ -99,6 +114,7 @@ class _DirectImportPolicy:
         dependency_lock: PluginDependencyClosureLock,
         *,
         host_api_prefixes: tuple[str, ...],
+        host_api_exports: Mapping[str, frozenset[str]],
         distribution_evidence_resolver: InstalledPythonDistributionEvidenceResolver,
     ) -> None:
         evidence_by_package: dict[
@@ -113,6 +129,7 @@ class _DirectImportPolicy:
             package: tuple(items) for package, items in evidence_by_package.items()
         }
         self._host_api_prefixes = host_api_prefixes
+        self._host_api_exports = dict(host_api_exports)
         self._stdlib_roots = tuple(
             {
                 Path(value).resolve()
@@ -139,6 +156,15 @@ class _DirectImportPolicy:
         fromlist: tuple[str, ...] = (),
         level: int = 0,
     ) -> object:
+        caller = inspect.currentframe()
+        caller = caller.f_back if caller is not None else None
+        opcode = (
+            dis.opname[caller.f_code.co_code[caller.f_lasti]]
+            if caller is not None and caller.f_lasti >= 0
+            else None
+        )
+        if opcode != "IMPORT_NAME":
+            raise ImportError("Direct calls to Plugin import authority are unavailable")
         if level:
             raise ImportError("Relative imports are not available to Plugin modules")
         root = name.partition(".")[0]
@@ -146,7 +172,14 @@ class _DirectImportPolicy:
             raise ImportError(
                 "Dynamic import facilities are unavailable to Plugin modules"
             )
-        is_host_api = any(
+        exact_exports = self._host_api_exports.get(name)
+        if exact_exports is not None and (
+            not fromlist or any(item not in exact_exports for item in fromlist)
+        ):
+            raise ImportError(
+                "Exact Plugin Host API imports require explicit allowed exports"
+            )
+        is_host_api = exact_exports is not None or any(
             name == prefix or name.startswith(prefix + ".")
             for prefix in self._host_api_prefixes
         )

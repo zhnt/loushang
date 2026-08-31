@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import copy
+import gc
 import hashlib
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
+from threading import Barrier, Event
 
 import pytest
 
@@ -15,6 +19,9 @@ from loushang.harness.capabilities import (
     RuntimeCapabilityGraphRuntime,
     stage_resource_composition_candidate,
     standard_capability_composition_plan,
+)
+from loushang.harness.capabilities import (
+    composition_runtime as composition_runtime_module,
 )
 from loushang.harness.capabilities.resources_consumers import (
     ResourceCatalogCapabilityConsumer,
@@ -43,6 +50,7 @@ from loushang.harness.resources.activation import ResourceActivationRuntime
 from loushang.harness.runtime import (
     RESOURCE_RUNTIME_SLOT,
     RuntimeCapabilityImplementation,
+    RuntimeProfileBindings,
     RuntimeProfileResolver,
 )
 
@@ -247,6 +255,19 @@ def test_mounted_catalog_generation_replacement_is_exact_and_rollback_capable(
         generation_two_rolled_back = ResourceCatalogCapabilityConsumer(facets)
         assert generation_one.snapshot.catalog_generation == 1
         assert generation_two_rolled_back.snapshot.catalog_generation == 2
+
+        overlapping, overlapping_handles = successor("resource-owner:g3:blocked")
+        await _prepare(
+            overlapping,
+            overlapping_handles,
+            runtime_id="resource-owner:g3:blocked",
+            catalog_generation=3,
+        )
+        overlapping._claim_refresh_successor()
+        with pytest.raises(RuntimeError, match="replacement is already open"):
+            candidate.begin_owner_generation_replacement(overlapping)
+        assert await overlapping.dispose_refresh_successor() == ()
+
         replacement.rollback()
         assert ResourceCatalogCapabilityConsumer(facets).snapshot.catalog_generation == 1
         assert await candidate.retire_replaced_owner_generations() == ()
@@ -262,11 +283,37 @@ def test_mounted_catalog_generation_replacement_is_exact_and_rollback_capable(
             runtime_id="resource-owner:g2:commit",
             catalog_generation=2,
         )
+        copied_successor = copy.copy(committed)
+        with pytest.raises(TypeError, match="exact staged successor"):
+            copied_successor._claim_refresh_successor()
         committed._claim_refresh_successor()
+        with pytest.raises(TypeError, match="requires exact candidates"):
+            candidate.begin_owner_generation_replacement(copied_successor)
         replacement = candidate.begin_owner_generation_replacement(committed)
+        copied_replacement = copy.copy(replacement)
         generation_two = ResourceCatalogCapabilityConsumer(facets)
-        replacement.commit()
+        barrier = Barrier(2)
+
+        def concurrent_commit(replacement_copy):  # type: ignore[no-untyped-def]
+            barrier.wait()
+            replacement_copy.commit()
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            outcomes = tuple(
+                future.exception()
+                for future in (
+                    executor.submit(concurrent_commit, replacement),
+                    executor.submit(concurrent_commit, copied_replacement),
+                )
+            )
+        assert sum(outcome is None for outcome in outcomes) == 1
+        assert sum(
+            isinstance(outcome, RuntimeError) for outcome in outcomes
+        ) == 1
+        with pytest.raises(RuntimeError, match="already resolved"):
+            copied_replacement.rollback()
         assert generation_two.snapshot.catalog_generation == 2
+        assert ResourceCatalogCapabilityConsumer(facets).snapshot.catalog_generation == 2
         assert generation_one.snapshot.catalog_generation == 1
         assert await candidate.retire_replaced_owner_generations() == ()
         with pytest.raises(RuntimeError, match="not graph-owned"):
@@ -275,6 +322,336 @@ def test_mounted_catalog_generation_replacement_is_exact_and_rollback_capable(
             )
 
         assert await binder.dispose(runtime) == ()
+
+    asyncio.run(scenario())
+
+
+def test_concurrent_replacement_begin_rejects_a_stale_owner_generation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        workspace, handles, _skill_body = _fixture(tmp_path)
+        profile = _profile()
+        candidate = stage_resource_composition_candidate(profile)
+        await _prepare(candidate, handles, runtime_id="resource-owner:begin-race:g1")
+        binding = resources_capability_provider_binding(
+            profile=profile,
+            scope_instance_id="session:begin-race",
+            staged_candidate=candidate,
+        )
+        runtime = RuntimeCapabilityGraphRuntime(
+            product_id="coding",
+            runtime_id="coding-session:begin-race",
+            profile_fingerprint=_sha("profile-begin-race"),
+        )
+        binder = RuntimeCapabilityGraphBinder()
+        await binder.bind(runtime, _plan(binding), (binding,))
+
+        async def successor(label: str):  # type: ignore[no-untyped-def]
+            staged = candidate.stage_refresh_successor()
+            handle = mint_native_resource_root_handle(
+                handle_id=f"resource-owner:begin-race:{label}",
+                root=workspace / ".loushang",
+                source_class="project_local",
+                root_kind="standard",
+                source_root_order=0,
+            )
+            await _prepare(
+                staged,
+                (handle,),
+                runtime_id=f"resource-owner:begin-race:{label}",
+                catalog_generation=2,
+            )
+            staged._claim_refresh_successor()
+            return staged
+
+        winning = await successor("winning-g2")
+        stale = await successor("stale-g2")
+        winning_generation = winning._require_prepared_owner_generation()
+        original_reserve = (
+            composition_runtime_module._reserve_resource_owner_generation_replacement
+        )
+        both_captured_previous = Barrier(2)
+        winning_committed = Event()
+
+        def coordinated_reserve(*, owner, previous, current):  # type: ignore[no-untyped-def]
+            both_captured_previous.wait(timeout=5)
+            if current is winning_generation:
+                return original_reserve(
+                    owner=owner,
+                    previous=previous,
+                    current=current,
+                )
+            assert winning_committed.wait(timeout=5)
+            return original_reserve(
+                owner=owner,
+                previous=previous,
+                current=current,
+            )
+
+        monkeypatch.setattr(
+            composition_runtime_module,
+            "_reserve_resource_owner_generation_replacement",
+            coordinated_reserve,
+        )
+
+        def install_winner() -> None:
+            try:
+                replacement = candidate.begin_owner_generation_replacement(winning)
+                replacement.commit()
+            finally:
+                winning_committed.set()
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            winner_future = executor.submit(install_winner)
+            stale_future = executor.submit(
+                candidate.begin_owner_generation_replacement,
+                stale,
+            )
+            winner_error = winner_future.exception()
+            stale_error = stale_future.exception()
+
+        assert winner_error is None
+        assert isinstance(stale_error, RuntimeError)
+        assert "changed before replacement reservation" in str(stale_error)
+        assert candidate._require_prepared_owner_generation() is winning_generation
+        assert await stale.dispose_refresh_successor() == ()
+        assert await candidate.retire_replaced_owner_generations() == ()
+        assert await binder.dispose(runtime) == ()
+
+    asyncio.run(scenario())
+
+
+def test_candidate_factory_facts_block_refresh_laundering(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        _workspace, handles, _skill_body = _fixture(tmp_path)
+        profile = _profile()
+        context = {"mode": "original"}
+        candidate = stage_resource_composition_candidate(profile, context=context)
+        await _prepare(candidate, handles, runtime_id="resource-owner:authority")
+        binding = resources_capability_provider_binding(
+            profile=profile,
+            scope_instance_id="session:authority",
+            staged_candidate=candidate,
+        )
+        runtime = RuntimeCapabilityGraphRuntime(
+            product_id="coding",
+            runtime_id="coding-session:authority",
+            profile_fingerprint=_sha("profile-authority"),
+        )
+        binder = RuntimeCapabilityGraphBinder()
+        await binder.bind(runtime, _plan(binding), (binding,))
+        state = candidate._StagedResourceCompositionCandidate__candidate
+        other = stage_resource_composition_candidate(profile, context=object())
+        other_state = other._StagedResourceCompositionCandidate__candidate
+        original_state = state
+        original_profile = state.profile
+        original_binding = state.binding
+        original_binder = state.binder
+        original_registry = state.binder._registry
+        original_implementations = original_registry._implementations
+        original_context = state.binding._context
+        original_binding_profile = state.binding.profile
+        original_runtime_bindings = state.binding._state.require()
+        implementation = next(iter(original_implementations.values()))
+        original_create = implementation.create
+        try:
+            state.profile = replace(profile, product_id="changed")
+            with pytest.raises(TypeError, match="staging-factory candidate"):
+                candidate.stage_refresh_successor()
+            state.profile = original_profile
+
+            state.binding = other_state.binding
+            with pytest.raises(TypeError, match="staging-factory candidate"):
+                candidate.stage_refresh_successor()
+            state.binding = original_binding
+
+            state.binder = other_state.binder
+            with pytest.raises(TypeError, match="staging-factory candidate"):
+                candidate.stage_refresh_successor()
+            state.binder = original_binder
+
+            original_binder._registry = other_state.binder._registry
+            with pytest.raises(TypeError, match="staging-factory candidate"):
+                candidate.stage_refresh_successor()
+            original_binder._registry = original_registry
+
+            original_registry._implementations = dict(original_implementations)
+            with pytest.raises(TypeError, match="staging-factory candidate"):
+                candidate.stage_refresh_successor()
+            original_registry._implementations = original_implementations
+
+            original_binder.bind_sync = lambda *_args, **_kwargs: other_state.binding  # type: ignore[method-assign]
+            with pytest.raises(TypeError, match="staging-factory candidate"):
+                candidate.stage_refresh_successor()
+            del original_binder.bind_sync
+
+            object.__setattr__(implementation, "create", lambda *_args: object())
+            with pytest.raises(TypeError, match="staging-factory candidate"):
+                candidate.stage_refresh_successor()
+            object.__setattr__(implementation, "create", original_create)
+
+            context["mode"] = "changed"
+            with pytest.raises(TypeError, match="staging-factory candidate"):
+                candidate.stage_refresh_successor()
+            context["mode"] = "original"
+
+            state.binding._closed = True
+            with pytest.raises(TypeError, match="staging-factory candidate"):
+                candidate.stage_refresh_successor()
+            state.binding._closed = False
+
+            replacement_values = other_state.binding._state.require().values
+            state.binding._state.refresh(
+                RuntimeProfileBindings(
+                    profile=state.binding.profile,
+                    values=replacement_values,
+                )
+            )
+            with pytest.raises(TypeError, match="staging-factory candidate"):
+                candidate.stage_refresh_successor()
+            state.binding._state.refresh(
+                original_runtime_bindings
+            )
+
+            object.__setattr__(state.binding, "_context", object())
+            with pytest.raises(TypeError, match="staging-factory candidate"):
+                candidate.stage_refresh_successor()
+            object.__setattr__(state.binding, "_context", original_context)
+
+            object.__setattr__(
+                state.binding,
+                "_profile",
+                replace(original_binding_profile, product_id="changed"),
+            )
+            with pytest.raises(TypeError, match="staging-factory candidate"):
+                candidate.stage_refresh_successor()
+            object.__setattr__(state.binding, "_profile", original_binding_profile)
+
+            candidate._StagedResourceCompositionCandidate__candidate = other_state
+            with pytest.raises(TypeError, match="staging-factory candidate"):
+                candidate.stage_refresh_successor()
+            candidate._StagedResourceCompositionCandidate__candidate = original_state
+        finally:
+            candidate._StagedResourceCompositionCandidate__candidate = original_state
+            original_state.profile = original_profile
+            original_state.binding = original_binding
+            original_state.binder = original_binder
+            original_binder._registry = original_registry
+            original_registry._implementations = original_implementations
+            if "bind_sync" in vars(original_binder):
+                del original_binder.bind_sync
+            object.__setattr__(implementation, "create", original_create)
+            context["mode"] = "original"
+            original_binding._closed = False
+            original_binding._state.refresh(original_runtime_bindings)
+            object.__setattr__(original_binding, "_context", original_context)
+            object.__setattr__(original_binding, "_profile", original_binding_profile)
+            other.dispose()
+            assert await binder.dispose(runtime) == ()
+
+    asyncio.run(scenario())
+
+
+def test_candidate_cleanup_uses_factory_recorded_state() -> None:
+    profile = _profile()
+    original = stage_resource_composition_candidate(profile)
+    replacement = stage_resource_composition_candidate(profile)
+    original_state = original._StagedResourceCompositionCandidate__candidate
+    replacement_state = replacement._StagedResourceCompositionCandidate__candidate
+    original._StagedResourceCompositionCandidate__candidate = replacement_state
+    original_state.ownership = "disposed"
+    original_state.binding._closed = True
+
+    original.dispose()
+
+    assert original_state.ownership == "disposed"
+    assert original_state.binding.is_closed
+    assert replacement_state.ownership == "root_owned"
+    assert not replacement_state.binding.is_closed
+    original.dispose()
+    assert original_state.binding.is_closed
+    with pytest.raises(RuntimeError, match="closed"):
+        original_state.binding.value(RESOURCE_RUNTIME_SLOT.key)
+    replacement.dispose()
+
+
+def test_candidate_cleanup_uses_factory_recorded_owner_custody(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        _workspace, handles, _skill_body = _fixture(tmp_path)
+        profile = _profile()
+        original = stage_resource_composition_candidate(profile)
+        replacement = stage_resource_composition_candidate(profile)
+        await _prepare(original, handles, runtime_id="resource-owner:cleanup-a")
+        await _prepare(replacement, handles, runtime_id="resource-owner:cleanup-b")
+        original_owner = original._require_prepared_owner_generation()
+        replacement_owner = replacement._require_prepared_owner_generation()
+        original_state = original._StagedResourceCompositionCandidate__candidate
+
+        original_state.owner_generation = replacement_owner
+        original_state.ownership = "disposed"
+        original_state.binding._closed = True
+
+        await original.dispose_root_owned()
+
+        assert original_owner.ownership_state == "disposed"
+        assert original_owner._shadow.is_disposed
+        assert replacement_owner.ownership_state == "root_owned"
+        assert not replacement_owner._shadow.is_disposed
+        assert replacement.prepared_owner_generation_state == "root_owned"
+        await replacement.dispose_root_owned()
+
+    asyncio.run(scenario())
+
+
+def test_abandoned_replacement_retains_both_generations_for_cleanup(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        workspace, handles, _skill_body = _fixture(tmp_path)
+        profile = _profile()
+        candidate = stage_resource_composition_candidate(profile)
+        await _prepare(candidate, handles, runtime_id="resource-owner:abandoned-g1")
+        binding = resources_capability_provider_binding(
+            profile=profile,
+            scope_instance_id="session:abandoned-replacement",
+            staged_candidate=candidate,
+        )
+        runtime = RuntimeCapabilityGraphRuntime(
+            product_id="coding",
+            runtime_id="coding-session:abandoned-replacement",
+            profile_fingerprint=_sha("profile-abandoned-replacement"),
+        )
+        binder = RuntimeCapabilityGraphBinder()
+        await binder.bind(runtime, _plan(binding), (binding,))
+        previous = candidate._require_prepared_owner_generation()
+        successor = candidate.stage_refresh_successor()
+        successor_handle = mint_native_resource_root_handle(
+            handle_id="resource-owner:abandoned-g2",
+            root=workspace / ".loushang",
+            source_class="project_local",
+            root_kind="standard",
+            source_root_order=0,
+        )
+        await _prepare(
+            successor,
+            (successor_handle,),
+            runtime_id="resource-owner:abandoned-g2",
+            catalog_generation=2,
+        )
+        current = successor._require_prepared_owner_generation()
+        successor._claim_refresh_successor()
+        replacement = candidate.begin_owner_generation_replacement(successor)
+
+        del replacement
+        gc.collect()
+
+        assert await binder.dispose(runtime) == ()
+        assert previous.ownership_state == "disposed"
+        assert current.ownership_state == "disposed"
 
     asyncio.run(scenario())
 

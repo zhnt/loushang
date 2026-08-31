@@ -33,6 +33,22 @@ service bag, or owner authority object. Provider requirements use the existing
 canonical immutable `CapabilityRequirement`; public specs compile through the
 existing private builder and declaration owners.
 
+Executable provider symbols use a separate least-authority direct-import ABI,
+`loushang.plugin.provider_runtime`. The Component Host admits that exact module,
+not the `loushang.plugin` package prefix or a broad Harness Capability prefix.
+It exposes only provider context, bundle/facet/dependency values, and factory /
+disposer typing aliases. Definition authoring and provider execution therefore
+remain distinct import surfaces. Exact-ABI imports must use an explicit,
+non-wildcard `from loushang.plugin.provider_runtime import ...` list whose names
+are all in the Host-owned export allowlist. A dotted plain import is rejected
+because Python would otherwise bind the broad parent package into provider
+globals and make sibling runtime modules reachable by attribute traversal.
+This is a direct-import and API-compatibility boundary for trusted,
+host-equivalent in-process code, not a Python object-capability sandbox.
+Reflection through admitted Python class objects, their function globals, or
+other language introspection remains ambient same-process authority; Plugins
+that require isolation belong in a future contained execution model.
+
 The supported stable package matrix is exact:
 
 | Contract | Stable value |
@@ -118,14 +134,39 @@ prepares a single-use binding in the action authority's external owner registry,
 and consumes it for that exact projection before returning the consumer. Owner
 provenance begins only when an exact factory-recorded Resource generation is
 attached to an exact staging-factory `StagedResourceCompositionCandidate`.
-Neither type is subclassable for this authority path; the structural owner
-Protocol remains a typing seam only and is never an admission check. That exact
-attachment prepares an opaque, single-use receipt. Receipt consumption first
-creates an unpublished `attachment_pending` enrollment; only a successful
-return to the candidate commits it as the root-owned lifecycle, while an
-exception cancels both the receipt and any pending enrollment. There is no
-owner registrar to claim during module import and no function that accepts an
-arbitrary owner as a new provenance root. The registry records owner provenance and
+Construction and subclassing remain ordinary Python compatibility surfaces,
+but they do not mint authority: only the canonical staging functions record an
+exact candidate, and only the exact prepared-generation factory records an
+owner after deriving its binding fingerprint. The record also pins runtime id,
+Catalog generation, binding fingerprint, the exact unpublished shadow, and its
+snapshot, projection, source, runtime, binder, and lease facts. Sensitive owner
+operations revalidate those facts, so field copying, later scalar mutation,
+in-place action/capture mutation, or shadow replacement cannot turn a directly
+constructed or retargeted object into owner evidence. The original frozen
+action facts are carried into attachment enrollment and every later consumer
+construction must match them exactly. The structural owner Protocol remains a
+typing seam only and is never an admission check.
+
+The exact attachment is recorded by a product-neutral Harness authority ledger
+and produces an opaque, single-use receipt. This root ledger records only exact
+candidate / generation object identity and receipt custody; it knows no Resource
+Catalog snapshot, projection, status, action, or shadow field. Resource Catalog's
+private authority separately pins its owner scalars, original cleanup shadow,
+logical snapshot/projection/status copies, and immutable action facts. The
+Capability composition core does not import or mutate Skill-action authority.
+Resource Catalog generation, as the downstream owner of both concerns, consumes
+the neutral receipt and its private frozen action facts into an unpublished
+Skill-action `attachment_pending` enrollment; only successful
+completion commits it as the root-owned lifecycle, while an exception cancels
+the pending enrollment. The attachment transaction retains its separate,
+single-use rollback receipt until enrollment commits; only the controlled
+failure path may consume it to detach after cleanup succeeds. Cleanup remains cancellation
+atomic and retains the exact candidate-to-owner custody until disposal succeeds;
+retryable retirement debt therefore keeps a reachable cleanup handle instead
+of detaching it. Cleanup uses the factory-recorded original shadow even if a
+caller has attempted to retarget the owner. There is no owner registrar to
+claim during module import and no function that accepts an arbitrary owner as
+a new provenance root. The registries record owner provenance and
 graph-owned/retired lifecycle state; no mutable registration dictionary lives
 on the owner instance. No transferable grant, caller-provided snapshot, or
 caller-provided consumer crosses that construction boundary. A structural
@@ -144,6 +185,34 @@ discovery/validation substrate only and exposes no parallel action authority.
 The historical explicit eager-body compatibility path is not an action source
 and is not a peer path for package/native managed actions; its final unrelated
 adapter cleanup remains PLC9 work.
+
+The Capability layer applies the same split to staged Resource candidates. The
+neutral ledger records opaque exact identity, while a Capability-private ledger
+pins the exact candidate state, binding, binder, selected profile, binding
+context facts, implementation callbacks, binding lifecycle inputs, and
+canonical Resource profiles. Attachment, graph claim, refresh, and
+replacement revalidate those facts. A controlled final-profile selection updates
+the private record only after proving identical Resource mechanisms. Copies and
+mutated candidates therefore cannot launder a fresh authorized successor.
+Cleanup repairs and uses the original externally recorded state, binder, binding,
+registry, callbacks, and Resource shadow dependencies instead of trusting a
+caller-reachable facade after provenance has failed. The private custody also
+records whether binding cleanup has started, so a partial synchronous disposal
+keeps its failed-entry retry queue and never re-disposes entries that already
+succeeded. Candidate authority identities are minted and published only inline
+in the two canonical staging paths; their shared record builder freezes facts
+but cannot register an arbitrary caller-provided candidate. If post-bind sealing
+fails, the unpublished binding is disposed and all partial ledger entries are
+removed. If that disposal itself leaves retryable debt,
+`ResourceCandidateSealingCleanupError` retains the exact binder/binding pair and
+an idempotent `retry_cleanup()` handle until cleanup succeeds.
+Replacement is an external-ledger, single-use transaction keyed by an opaque
+token; copying its facade cannot replay commit or rollback after the original
+facade resolves it. Token claim is lock-serialized before state mutation, so
+copied facades cannot resolve the same transaction concurrently. Reservation
+rechecks the exact current owner generation under that same lock; a concurrent
+begin that captured a stale generation therefore cannot skip the generation
+installed by the winning transaction.
 
 ## Managed Action Declaration And Execution
 

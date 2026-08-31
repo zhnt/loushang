@@ -2794,7 +2794,7 @@ def _foundation_provider_source(events: Path) -> str:
     return f"""\
 from pathlib import Path
 
-from loushang.harness.capabilities.provider_binding import (
+from loushang.plugin.provider_runtime import (
     CapabilityBundleValue,
     CapabilityFacetBinding,
 )

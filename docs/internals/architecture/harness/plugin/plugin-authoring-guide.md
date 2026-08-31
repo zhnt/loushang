@@ -14,14 +14,6 @@ from loushang.plugin import (
 )
 
 
-class EchoProvider:
-    def echo(self, value: str) -> str:
-        return value
-
-    async def close(self) -> None:
-        return None
-
-
 @plugin_definition
 def declare(plugin: PluginDefinitionBuilder) -> None:
     plugin.add(
@@ -32,22 +24,56 @@ def declare(plugin: PluginDefinitionBuilder) -> None:
             implementation_version=1,
             contract=1,
             facets=("echo",),
-            factory="definition.py:create_provider",
-            disposer="definition.py:dispose_provider",
+            factory="provider.py:create_provider",
+            disposer="provider.py:dispose_provider",
         )
+    )
+```
+
+The referenced `provider.py` uses only the exact public provider-runtime ABI:
+
+```python
+from loushang.plugin.provider_runtime import (
+    CapabilityBundleValue,
+    CapabilityFacetBinding,
+    CapabilityProviderContext,
+)
+
+
+class EchoProvider:
+    def __init__(self) -> None:
+        self.closed = False
+
+    def echo(self, value: str) -> str:
+        return value
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+def create_provider(_context: CapabilityProviderContext) -> CapabilityBundleValue:
+    return CapabilityBundleValue(
+        facets=(CapabilityFacetBinding("echo", EchoProvider()),)
     )
 
 
-def create_provider():
-    return EchoProvider()
-
-
-async def dispose_provider(provider) -> None:
+async def dispose_provider(value: CapabilityBundleValue) -> None:
+    provider = value.require("echo")
+    if not isinstance(provider, EchoProvider):
+        raise TypeError("echo facet has an unexpected value")
     await provider.close()
 ```
 
-The Definition receives only the narrow builder. It does not receive a Graph,
-registry, Product context, Approval store, Sandbox, secrets, or live owner.
+The Definition receives only the narrow builder. Provider source may directly
+import Host API names only from the exact
+`loushang.plugin.provider_runtime` module; broad author-SDK and Harness
+Capability imports are rejected. This is a supported import/API boundary for
+trusted host-equivalent Python, not an isolation boundary against reflection or
+same-process introspection. The factory receives a
+narrow `CapabilityProviderContext` and returns the exact declared facets in a
+`CapabilityBundleValue`; the disposer receives that same bundle. Neither path
+receives a Graph, Product registry, Approval store, Sandbox, secrets, or a
+live owner/service locator.
 
 ## Skill Resource And Managed Action
 

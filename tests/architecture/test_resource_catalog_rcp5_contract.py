@@ -50,6 +50,9 @@ METHOD_LOADER_PATH = Path("src/loushang/method/loader.py")
 CODING_CLI_PATH = Path("src/loushang/coding/cli/__main__.py")
 CODING_BOOTSTRAP_PATH = Path("src/loushang/coding/bootstrap.py")
 RESOURCE_REFRESH_PATH = Path("src/loushang/harness/session/resource_refresh.py")
+RESOURCE_OWNER_AUTHORITY_PATH = Path(
+    "src/loushang/harness/resource_catalog/_owner_authority.py"
+)
 AGENT_ADAPTER_PATH = Path("src/loushang/harness/session/agent_adapter.py")
 RESOURCE_LOADER_PATH = Path("src/loushang/harness/resources/loader.py")
 RESOURCE_SKILL_PROJECTION_PATH = Path("src/loushang/harness/resources/skills.py")
@@ -173,6 +176,7 @@ def test_rcp5_consumer_stays_private_and_product_uses_only_exact_v4() -> None:
         CAPABILITY_CONSUMER_PATH,
         AGENT_PRODUCT_PATH,
         REQUEST_EVIDENCE_PATH,
+        RESOURCE_OWNER_AUTHORITY_PATH,
         Path("src/loushang/harness/resource_catalog/generation.py"),
     }
     for path in PUBLIC_SURFACES:

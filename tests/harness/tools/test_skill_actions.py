@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import subprocess
 import sys
 from hashlib import sha256
@@ -9,6 +10,9 @@ from uuid import uuid4
 
 import pytest
 
+import loushang.harness._owner_generation_authority as owner_authority
+import loushang.harness.resource_catalog._owner_authority as resource_owner_authority
+import loushang.harness.resource_catalog.generation as generation_runtime
 import loushang.harness.resources._skill_action_authority as action_authority
 import loushang.harness.tools.skill_actions as skill_action_runtime
 import loushang.harness.workspace.process._sealed_executable as sealed_executable_runtime
@@ -22,6 +26,7 @@ from loushang.harness.capabilities import (
     RuntimeCapabilityGraphBinder,
     RuntimeCapabilityGraphPlanner,
     RuntimeCapabilityGraphRuntime,
+    StagedResourceCompositionCandidate,
     stage_resource_composition_candidate,
     standard_capability_composition_plan,
 )
@@ -50,10 +55,14 @@ from loushang.harness.plugin_authoring.contribution_admission import (
 from loushang.harness.plugin_authoring.host import PluginDeclarationHost
 from loushang.harness.resource_catalog.generation import (
     PreparedResourceOwnerGeneration,
+    ResourceOwnerGenerationDisposalError,
     prepare_first_party_resource_owner_generation,
 )
 from loushang.harness.resource_catalog.inputs import (
     acquire_admitted_package_resource,
+)
+from loushang.harness.resource_catalog.shadow import (
+    run_first_party_resource_catalog_shadow,
 )
 from loushang.harness.resources._catalog_native_source import (
     mint_native_resource_root_handle,
@@ -521,12 +530,17 @@ def test_catalog_action_authority_cannot_be_publicly_forged() -> None:
     with pytest.raises(TypeError, match="Resource-owner-minted"):
         action_authority._CatalogActionOwnerGenerationLifecycle()
     with pytest.raises(TypeError, match="candidate-minted"):
-        action_authority._CatalogActionOwnerAttachmentReceipt()
-    with pytest.raises(TypeError, match="composition-minted"):
-        action_authority._CatalogActionOwnerCandidateIdentity()
+        owner_authority._OwnerGenerationAttachmentReceipt()
     with pytest.raises(TypeError, match="factory-minted"):
-        action_authority._CatalogActionOwnerGenerationFactoryIdentity()
-    assert not hasattr(action_authority, "_CatalogActionOwnerCandidate")
+        owner_authority._OwnerCandidateFactoryIdentity()
+    with pytest.raises(TypeError, match="factory-minted"):
+        owner_authority._OwnerGenerationFactoryIdentity()
+    assert not hasattr(action_authority, "_CatalogActionOwnerCandidateIdentity")
+    assert not hasattr(
+        action_authority,
+        "_CatalogActionOwnerGenerationFactoryIdentity",
+    )
+    assert not hasattr(action_authority, "_prepare_catalog_action_owner_attachment")
     with pytest.raises(TypeError, match="Resource-owner-minted"):
         action_authority._CatalogActionOwnerBinding()
     with pytest.raises(TypeError, match="Resource-owner-minted"):
@@ -547,11 +561,10 @@ def test_fake_owner_cannot_enroll_through_structural_attachment() -> None:
         def _require_prepared_owner_generation(self):  # type: ignore[no-untyped-def]
             return fake_owner
 
-    with pytest.raises(TypeError, match="candidate is not authority-recorded"):
-        action_authority._prepare_catalog_action_owner_attachment(
-            candidate=StructuralCandidate(),
-            owner=fake_owner,
-        )
+    assert not owner_authority._is_owner_candidate_factory_recorded(
+        StructuralCandidate()
+    )
+    assert not owner_authority._is_owner_generation_factory_recorded(fake_owner)
     forged_lifecycle = object.__new__(
         action_authority._CatalogActionOwnerGenerationLifecycle
     )
@@ -564,11 +577,8 @@ def test_fake_owner_cannot_enroll_through_structural_attachment() -> None:
         standard_capability_composition_plan(product_id="coding")
     )
     genuine_candidate = stage_resource_composition_candidate(profile)
-    with pytest.raises(TypeError, match="attachment fact is invalid"):
-        action_authority._prepare_catalog_action_owner_attachment(
-            candidate=genuine_candidate,
-            owner=fake_owner,
-        )
+    with pytest.raises(TypeError, match="requires a prepared owner generation"):
+        genuine_candidate._attach_prepared_owner_generation(fake_owner)
 
     class StructuralGeneration:
         ownership_state = "root_owned"
@@ -576,16 +586,276 @@ def test_fake_owner_cannot_enroll_through_structural_attachment() -> None:
     with pytest.raises(TypeError, match="requires a prepared owner generation"):
         genuine_candidate._attach_prepared_owner_generation(StructuralGeneration())
 
-    class RogueCandidate(type(genuine_candidate)):
+    class CompatibleCandidate(type(genuine_candidate)):
         pass
 
-    with pytest.raises(TypeError, match="cannot be subclassed"):
-        RogueCandidate(
-            binding=genuine_candidate.binding,
-            _binder=genuine_candidate._binder,
+    compatible = CompatibleCandidate(
+        binding=genuine_candidate.binding,
+        _binder=genuine_candidate._binder,
+        _profile=profile,
+    )
+    assert not owner_authority._is_owner_candidate_factory_recorded(compatible)
+    with pytest.raises(TypeError, match="exact staged candidate"):
+        compatible._begin_graph_construction()
+    with pytest.raises(TypeError, match="staging-factory candidate"):
+        compatible.stage_refresh_successor()
+    compatible.dispose()
+    genuine_candidate.dispose()
+
+
+def test_direct_constructors_do_not_receive_factory_authority(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        profile = RuntimeProfileResolver().resolve(
+            standard_capability_composition_plan(product_id="coding")
+        )
+        staged = stage_resource_composition_candidate(profile)
+        direct_candidate = StagedResourceCompositionCandidate(
+            binding=staged.binding,
+            _binder=staged._binder,
             _profile=profile,
         )
-    genuine_candidate.dispose()
+        factory_shadow = await run_first_party_resource_catalog_shadow(
+            product_id="coding",
+            scope_id="workspace:factory-owner",
+            runtime_id="resource-owner:factory-owner",
+            product_policy_revision="managed-action-test-v1",
+            root_handles=(),
+            issued_at=10,
+            expires_at=100,
+            now=20,
+            projection_cwd=tmp_path,
+        )
+        direct_shadow = await run_first_party_resource_catalog_shadow(
+            product_id="coding",
+            scope_id="workspace:direct-owner",
+            runtime_id="resource-owner:direct-owner",
+            product_policy_revision="managed-action-test-v1",
+            root_handles=(),
+            issued_at=10,
+            expires_at=100,
+            now=20,
+            projection_cwd=tmp_path,
+        )
+        factory_owner = PreparedResourceOwnerGeneration._from_shadow(
+            factory_shadow,
+            runtime_id="resource-owner:factory-owner",
+            catalog_generation=1,
+        )
+        direct_owner = PreparedResourceOwnerGeneration(
+            _shadow=direct_shadow,
+            runtime_id="resource-owner:direct-owner",
+            catalog_generation=1,
+            provider_binding_fingerprint="0" * 64,
+        )
+        assert owner_authority._is_owner_candidate_factory_recorded(staged)
+        assert not owner_authority._is_owner_candidate_factory_recorded(
+            direct_candidate
+        )
+        direct_candidate._owner_candidate_factory_identity = (
+            staged._owner_candidate_factory_identity
+        )
+        assert not owner_authority._is_owner_candidate_factory_recorded(
+            direct_candidate
+        )
+        assert owner_authority._is_owner_generation_factory_recorded(factory_owner)
+        assert resource_owner_authority._is_resource_owner_factory_recorded(
+            factory_owner
+        )
+        assert not owner_authority._is_owner_generation_factory_recorded(direct_owner)
+        copied_owner = copy.copy(factory_owner)
+        assert not owner_authority._is_owner_generation_factory_recorded(copied_owner)
+        with pytest.raises(TypeError, match="factory-recorded generation"):
+            copied_owner.retirement_receipt(contribution_ids=("copied",))
+
+        class CompatibleGeneration(PreparedResourceOwnerGeneration):
+            pass
+
+        compatible_owner = CompatibleGeneration._from_shadow(
+            direct_shadow,
+            runtime_id="resource-owner:compatible-owner",
+            catalog_generation=1,
+        )
+        assert not owner_authority._is_owner_generation_factory_recorded(
+            compatible_owner
+        )
+        with pytest.raises(TypeError, match="factory-recorded generation"):
+            compatible_owner.retirement_receipt(contribution_ids=("subclass",))
+        with pytest.raises(TypeError, match="factory-recorded generation"):
+            direct_owner.retirement_receipt(contribution_ids=("forged",))
+        with pytest.raises(TypeError, match="not staging-factory-recorded"):
+            direct_candidate._attach_prepared_owner_generation(factory_owner)
+        with pytest.raises(TypeError, match="exact staged candidate"):
+            direct_candidate._begin_graph_construction()
+        with pytest.raises(TypeError, match="staging-factory candidate"):
+            direct_candidate.stage_refresh_successor()
+        with pytest.raises(TypeError, match="requires a prepared owner generation"):
+            staged._attach_prepared_owner_generation(direct_owner)
+        original_runtime_id = factory_owner.runtime_id
+        factory_owner.runtime_id = "resource-owner:mutated"
+        assert owner_authority._is_owner_generation_factory_recorded(factory_owner)
+        assert not resource_owner_authority._is_resource_owner_factory_recorded(
+            factory_owner
+        )
+        factory_owner.runtime_id = original_runtime_id
+        original_catalog_generation = factory_owner.catalog_generation
+        factory_owner.catalog_generation = 2
+        assert owner_authority._is_owner_generation_factory_recorded(factory_owner)
+        assert not resource_owner_authority._is_resource_owner_factory_recorded(
+            factory_owner
+        )
+        factory_owner.catalog_generation = original_catalog_generation
+        factory_owner.provider_binding_fingerprint = "1" * 64
+        assert owner_authority._is_owner_generation_factory_recorded(factory_owner)
+        assert not resource_owner_authority._is_resource_owner_factory_recorded(
+            factory_owner
+        )
+        with pytest.raises(TypeError, match="unchanged factory-recorded generation"):
+            factory_owner.retirement_receipt(contribution_ids=("mutated",))
+        await factory_owner.dispose_root_owned()
+        await direct_owner.dispose_root_owned()
+        direct_candidate.dispose()
+        staged.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_consumed_attachment_receipt_cannot_be_replayed(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        profile = RuntimeProfileResolver().resolve(
+            standard_capability_composition_plan(product_id="coding")
+        )
+        candidate = stage_resource_composition_candidate(profile)
+        shadow = await run_first_party_resource_catalog_shadow(
+            product_id="coding",
+            scope_id="workspace:receipt-replay",
+            runtime_id="resource-owner:receipt-replay",
+            product_policy_revision="managed-action-test-v1",
+            root_handles=(),
+            issued_at=10,
+            expires_at=100,
+            now=20,
+            projection_cwd=tmp_path,
+        )
+        owner = PreparedResourceOwnerGeneration._from_shadow(
+            shadow,
+            runtime_id="resource-owner:receipt-replay",
+            catalog_generation=1,
+        )
+        receipt = candidate._attach_prepared_owner_generation(owner)
+        owner._accept_candidate_attachment(receipt)
+        owner._commit_candidate_attachment(receipt)
+
+        with pytest.raises(TypeError, match="not live exact evidence"):
+            candidate._detach_failed_prepared_owner_generation(owner, receipt)
+
+        with pytest.raises(TypeError, match="not live exact evidence"):
+            action_authority._consume_catalog_action_owner_attachment(
+                receipt,
+                owner=owner,
+                snapshot=None,
+            )
+
+        await candidate.dispose_root_owned()
+
+    asyncio.run(scenario())
+
+
+def test_repeated_preparation_preserves_the_existing_owner(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        profile = RuntimeProfileResolver().resolve(
+            standard_capability_composition_plan(product_id="coding")
+        )
+        candidate = stage_resource_composition_candidate(profile)
+        await prepare_first_party_resource_owner_generation(
+            staged_candidate=candidate,
+            product_id="coding",
+            scope_id="workspace:first-owner",
+            runtime_id="resource-owner:first-owner",
+            product_policy_revision="managed-action-test-v1",
+            root_handles=(),
+            issued_at=10,
+            expires_at=100,
+            now=20,
+            projection_cwd=tmp_path,
+        )
+        first_owner = candidate._require_prepared_owner_generation()
+
+        with pytest.raises(
+            RuntimeError,
+            match="already has a prepared owner generation",
+        ):
+            await prepare_first_party_resource_owner_generation(
+                staged_candidate=candidate,
+                product_id="coding",
+                scope_id="workspace:second-owner",
+                runtime_id="resource-owner:second-owner",
+                product_policy_revision="managed-action-test-v1",
+                root_handles=(),
+                issued_at=10,
+                expires_at=100,
+                now=20,
+                projection_cwd=tmp_path,
+            )
+
+        assert candidate._require_prepared_owner_generation() is first_owner
+        await candidate.dispose_root_owned()
+
+    asyncio.run(scenario())
+
+
+def test_owner_factory_seal_failure_cleans_unpublished_shadow(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        profile = RuntimeProfileResolver().resolve(
+            standard_capability_composition_plan(product_id="coding")
+        )
+        candidate = stage_resource_composition_candidate(profile)
+        shadows = []
+        original_run = generation_runtime.run_first_party_resource_catalog_shadow
+
+        async def capture_shadow(**kwargs):  # type: ignore[no-untyped-def]
+            shadow = await original_run(**kwargs)
+            shadows.append(shadow)
+            return shadow
+
+        def fail_seal(cls, shadow, **kwargs):  # type: ignore[no-untyped-def]
+            raise FileNotFoundError("action root disappeared before owner sealing")
+
+        monkeypatch.setattr(
+            generation_runtime,
+            "run_first_party_resource_catalog_shadow",
+            capture_shadow,
+        )
+        monkeypatch.setattr(
+            PreparedResourceOwnerGeneration,
+            "_from_shadow",
+            classmethod(fail_seal),
+        )
+
+        with pytest.raises(FileNotFoundError, match="disappeared"):
+            await prepare_first_party_resource_owner_generation(
+                staged_candidate=candidate,
+                product_id="coding",
+                scope_id="workspace:seal-failure",
+                runtime_id="resource-owner:seal-failure",
+                product_policy_revision="managed-action-test-v1",
+                root_handles=(),
+                issued_at=10,
+                expires_at=100,
+                now=20,
+                projection_cwd=tmp_path,
+            )
+
+        assert len(shadows) == 1
+        assert shadows[0].is_disposed
+        assert candidate.prepared_owner_generation_state is None
+        candidate.dispose()
+
+    asyncio.run(scenario())
 
 
 def test_attachment_enrollment_rolls_back_after_receipt_consumption(
@@ -633,6 +903,7 @@ def test_attachment_enrollment_rolls_back_after_receipt_consumption(
             action_authority._consume_catalog_action_owner_attachment(
                 receipt,
                 owner=owner,
+                snapshot=None,
             )
         forged_lifecycle = object.__new__(
             action_authority._CatalogActionOwnerGenerationLifecycle
@@ -642,6 +913,135 @@ def test_attachment_enrollment_rolls_back_after_receipt_consumption(
                 forged_lifecycle,
                 owner=owner,
             )
+        candidate.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_attachment_failure_retains_cleanup_custody_until_retry_succeeds(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        profile = RuntimeProfileResolver().resolve(
+            standard_capability_composition_plan(product_id="coding")
+        )
+        candidate = stage_resource_composition_candidate(profile)
+        captured_owners = []
+        disposal_attempts = 0
+        original_dispose = PreparedResourceOwnerGeneration.dispose_root_owned
+
+        def reject_attachment(self, receipt):  # type: ignore[no-untyped-def]
+            del receipt
+            captured_owners.append(self)
+            raise RuntimeError("injected attachment rejection")
+
+        async def fail_disposal_once(self):  # type: ignore[no-untyped-def]
+            nonlocal disposal_attempts
+            disposal_attempts += 1
+            if disposal_attempts == 1:
+                raise ResourceOwnerGenerationDisposalError(
+                    ("synthetic_resource_retirement_pending",)
+                )
+            await original_dispose(self)
+
+        monkeypatch.setattr(
+            PreparedResourceOwnerGeneration,
+            "_accept_candidate_attachment",
+            reject_attachment,
+        )
+        monkeypatch.setattr(
+            PreparedResourceOwnerGeneration,
+            "dispose_root_owned",
+            fail_disposal_once,
+        )
+
+        with pytest.raises(RuntimeError, match="injected attachment rejection"):
+            await prepare_first_party_resource_owner_generation(
+                staged_candidate=candidate,
+                product_id="coding",
+                scope_id="workspace:cleanup-retry",
+                runtime_id="resource-owner:cleanup-retry",
+                product_policy_revision="managed-action-test-v1",
+                root_handles=(),
+                issued_at=10,
+                expires_at=100,
+                now=20,
+                projection_cwd=tmp_path,
+            )
+
+        [owner] = captured_owners
+        assert candidate.has_prepared_owner_generation
+        assert candidate._require_prepared_owner_generation() is owner
+        assert candidate.ownership_state == "root_owned"
+        owner._shadow._disposed = True
+        owner._ownership = "disposed"
+        candidate._StagedResourceCompositionCandidate__candidate.ownership = (
+            "disposed"
+        )
+        await candidate.dispose_root_owned()
+        assert disposal_attempts == 2
+        assert candidate.ownership_state == "disposed"
+
+    asyncio.run(scenario())
+
+
+def test_attachment_cleanup_survives_repeated_cancellation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        profile = RuntimeProfileResolver().resolve(
+            standard_capability_composition_plan(product_id="coding")
+        )
+        candidate = stage_resource_composition_candidate(profile)
+        cleanup_started = asyncio.Event()
+        allow_cleanup = asyncio.Event()
+        original_dispose = PreparedResourceOwnerGeneration.dispose_root_owned
+
+        def reject_attachment(self, receipt):  # type: ignore[no-untyped-def]
+            del self, receipt
+            raise RuntimeError("injected attachment rejection")
+
+        async def delayed_disposal(self):  # type: ignore[no-untyped-def]
+            cleanup_started.set()
+            await allow_cleanup.wait()
+            await original_dispose(self)
+
+        monkeypatch.setattr(
+            PreparedResourceOwnerGeneration,
+            "_accept_candidate_attachment",
+            reject_attachment,
+        )
+        monkeypatch.setattr(
+            PreparedResourceOwnerGeneration,
+            "dispose_root_owned",
+            delayed_disposal,
+        )
+        task = asyncio.create_task(
+            prepare_first_party_resource_owner_generation(
+                staged_candidate=candidate,
+                product_id="coding",
+                scope_id="workspace:cleanup-cancellation",
+                runtime_id="resource-owner:cleanup-cancellation",
+                product_policy_revision="managed-action-test-v1",
+                root_handles=(),
+                issued_at=10,
+                expires_at=100,
+                now=20,
+                projection_cwd=tmp_path,
+            )
+        )
+        await cleanup_started.wait()
+        task.cancel("first cleanup cancellation")
+        await asyncio.sleep(0)
+        task.cancel("second cleanup cancellation")
+        allow_cleanup.set()
+
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert not candidate.has_prepared_owner_generation
+        assert candidate.ownership_state == "root_owned"
         candidate.dispose()
 
     asyncio.run(scenario())
@@ -772,12 +1172,10 @@ def test_catalog_action_owner_capability_rejects_complete_lookalike(
         )
         object.__setattr__(
             fake_owner,
-            "_skill_action_owner_factory_identity",
-            owner_generation._skill_action_owner_factory_identity,
+            "_owner_generation_factory_identity",
+            owner_generation._owner_generation_factory_identity,
         )
-        assert not action_authority._is_catalog_action_owner_generation_factory_recorded(
-            fake_owner
-        )
+        assert not owner_authority._is_owner_generation_factory_recorded(fake_owner)
         with pytest.raises(TypeError, match="not authority-recorded"):
             action_authority._prepare_catalog_action_owner_binding(
                 fake_owner._skill_action_owner_lifecycle,
@@ -792,15 +1190,194 @@ def test_catalog_action_owner_capability_rejects_complete_lookalike(
         )
         assert await binder.dispose(runtime) == ()
         with pytest.raises(RuntimeError, match="not graph-owned"):
-            owner_generation._construct_skill_catalog_consumer(
-                include_status=False
-            )
+            owner_generation._construct_skill_catalog_consumer(include_status=False)
         with pytest.raises(RuntimeError, match="not graph-owned"):
             action_authority._prepare_catalog_action_owner_binding(
                 owner_generation._skill_action_owner_lifecycle,
                 owner=owner_generation,
                 projection=genuine._skill_projection,
             )
+
+    asyncio.run(scenario())
+
+
+def test_graph_owner_rejects_shadow_retarget_and_retires_original_shadow(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        action, genuine, binder, runtime = await _mounted_catalog_action(
+            b"print('owner')\n",
+            root=tmp_path,
+        )
+        owner = genuine._catalog._generation
+        original_shadow = owner._shadow
+        replacement_shadow = await run_first_party_resource_catalog_shadow(
+            product_id="coding",
+            scope_id="workspace:replacement-shadow",
+            runtime_id="resource-owner:replacement-shadow",
+            product_policy_revision="managed-action-test-v1",
+            catalog_generation=2,
+            root_handles=(),
+            issued_at=10,
+            expires_at=100,
+            now=20,
+            projection_cwd=tmp_path,
+        )
+        owner._shadow = replacement_shadow
+
+        assert owner_authority._is_owner_generation_factory_recorded(owner)
+        assert not resource_owner_authority._is_resource_owner_factory_recorded(owner)
+        with pytest.raises(TypeError, match="unchanged factory-recorded generation"):
+            owner._construct_skill_catalog_consumer(include_status=False)
+        assert ManagedSkillActionBinding.bind(action).read_verified_script() == (
+            b"print('owner')\n"
+        )
+        assert await binder.dispose(runtime) == ()
+        assert original_shadow.is_disposed
+        assert not replacement_shadow.is_disposed
+        assert await replacement_shadow.dispose() == ()
+
+    asyncio.run(scenario())
+
+
+def test_shadow_drift_blocks_graph_commit_but_not_ownership_rollback(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        profile = RuntimeProfileResolver().resolve(
+            standard_capability_composition_plan(product_id="coding")
+        )
+        candidate = stage_resource_composition_candidate(profile)
+        await prepare_first_party_resource_owner_generation(
+            staged_candidate=candidate,
+            product_id="coding",
+            scope_id="workspace:graph-drift",
+            runtime_id="resource-owner:graph-drift",
+            product_policy_revision="managed-action-test-v1",
+            root_handles=(),
+            issued_at=10,
+            expires_at=100,
+            now=20,
+            projection_cwd=tmp_path,
+        )
+        owner = candidate._require_prepared_owner_generation()
+        original_shadow = owner._shadow
+        replacement_shadow = await run_first_party_resource_catalog_shadow(
+            product_id="coding",
+            scope_id="workspace:graph-drift-replacement",
+            runtime_id="resource-owner:graph-drift-replacement",
+            product_policy_revision="managed-action-test-v1",
+            catalog_generation=2,
+            root_handles=(),
+            issued_at=10,
+            expires_at=100,
+            now=20,
+            projection_cwd=tmp_path,
+        )
+        candidate._begin_graph_construction()
+        owner._shadow = replacement_shadow
+
+        with pytest.raises(TypeError, match="unchanged factory-recorded generation"):
+            candidate._commit_graph_ownership()
+        candidate._restore_root_ownership()
+
+        assert candidate.ownership_state == "root_owned"
+        assert owner.ownership_state == "root_owned"
+        await candidate.dispose_root_owned()
+        assert original_shadow.is_disposed
+        assert await replacement_shadow.dispose() == ()
+
+    asyncio.run(scenario())
+
+
+def test_shadow_internal_drift_blocks_authority_but_cleanup_uses_originals(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        profile = RuntimeProfileResolver().resolve(
+            standard_capability_composition_plan(product_id="coding")
+        )
+        candidate = stage_resource_composition_candidate(profile)
+        await prepare_first_party_resource_owner_generation(
+            staged_candidate=candidate,
+            product_id="coding",
+            scope_id="workspace:shadow-internal-drift",
+            runtime_id="resource-owner:shadow-internal-drift",
+            product_policy_revision="managed-action-test-v1",
+            root_handles=(),
+            issued_at=10,
+            expires_at=100,
+            now=20,
+            projection_cwd=tmp_path,
+        )
+        owner = candidate._require_prepared_owner_generation()
+        original_shadow = owner._shadow
+        original_runtime = original_shadow._runtime
+        original_binder = original_shadow._binder
+        replacement_shadow = await run_first_party_resource_catalog_shadow(
+            product_id="coding",
+            scope_id="workspace:shadow-internal-drift-replacement",
+            runtime_id="resource-owner:shadow-internal-drift-replacement",
+            product_policy_revision="managed-action-test-v1",
+            catalog_generation=2,
+            root_handles=(),
+            issued_at=10,
+            expires_at=100,
+            now=20,
+            projection_cwd=tmp_path,
+        )
+
+        original_shadow.resolution = replacement_shadow.resolution
+        original_shadow.source_snapshots = replacement_shadow.source_snapshots
+        original_shadow._runtime = replacement_shadow._runtime
+        original_shadow._binder = replacement_shadow._binder
+        original_shadow._extension_source_lease = object()  # type: ignore[assignment]
+        original_shadow._disposed = True
+        original_shadow._retiring = True
+        original_shadow._active_loads = 99
+        original_shadow._loads_drained.set()
+        owner._ownership = "disposed"
+        owner._retirement_owner = "graph"
+        candidate_state = candidate._StagedResourceCompositionCandidate__candidate
+        candidate_state.ownership = "disposed"
+
+        assert not resource_owner_authority._is_resource_owner_factory_recorded(owner)
+        with pytest.raises(
+            (TypeError, RuntimeError),
+            match="factory-recorded generation|requires a live generation",
+        ):
+            owner.retirement_receipt(contribution_ids=("drift",))
+
+        await candidate.dispose_root_owned()
+
+        assert original_shadow._runtime is original_runtime
+        assert original_shadow._binder is original_binder
+        assert original_shadow.is_disposed
+        assert original_runtime.is_closed
+        assert not replacement_shadow.is_disposed
+        assert await replacement_shadow.dispose() == ()
+
+    asyncio.run(scenario())
+
+
+def test_owner_cleanup_retires_recorded_action_lifecycle_after_facade_drift(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        _action, consumer, binder, runtime = await _mounted_catalog_action(
+            b"print('cleanup authority')\n",
+            root=tmp_path,
+        )
+        owner = consumer._catalog._generation
+        lifecycle = owner._skill_action_owner_lifecycle
+        assert lifecycle is not None
+        owner._skill_action_owner_lifecycle = None
+
+        assert await binder.dispose(runtime) == ()
+
+        record = action_authority._OWNER_GENERATIONS[id(lifecycle)]
+        assert record.owner_ref() is owner
+        assert record.state == "retired"
 
     asyncio.run(scenario())
 
@@ -906,6 +1483,9 @@ def test_catalog_action_rejects_nested_owner_fact_drift(tmp_path: Path) -> None:
                 sha256(changed_body).hexdigest(),
             )
 
+            owner = consumer._catalog._generation
+            with pytest.raises(TypeError, match="unchanged factory-recorded"):
+                owner._construct_skill_catalog_consumer(include_status=False)
             with pytest.raises(ValueError, match="does not match its Resource owner"):
                 consumer.capture_managed_actions(summary)
             binding = ManagedSkillActionBinding.bind(action)

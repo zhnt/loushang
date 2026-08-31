@@ -31,6 +31,9 @@ from loushang.plugin import (
 from loushang.plugin.__main__ import main as plugin_cli_main
 
 _FIXTURES = Path(__file__).parent / "fixtures"
+_AUTHOR_GUIDE = Path(
+    "docs/internals/architecture/harness/plugin/plugin-authoring-guide.md"
+)
 
 
 def test_public_sdk_exports_only_data_authoring_and_inert_validation() -> None:
@@ -76,6 +79,19 @@ def test_public_capability_helpers_are_frozen_and_use_canonical_requirement() ->
     assert provider.compatible_contract.maximum == 2
     with pytest.raises(FrozenInstanceError):
         provider.provider_id = "changed"  # type: ignore[misc]
+
+
+def test_author_guide_separates_author_sdk_from_exact_provider_runtime_abi() -> None:
+    guide = _AUTHOR_GUIDE.read_text(encoding="utf-8")
+    definition_source = guide.split("```python\n", 1)[1].split("\n```", 1)[0]
+    provider_source = guide.split("```python\n", 2)[2].split("\n```", 1)[0]
+
+    assert "from loushang.plugin import" in definition_source
+    assert 'factory="provider.py:create_provider"' in definition_source
+    assert "loushang.plugin.provider_runtime" not in definition_source
+    assert "from loushang.plugin.provider_runtime import" in provider_source
+    assert "loushang.harness" not in provider_source
+    assert "from loushang.plugin import" not in provider_source
 
 
 def test_package_compiler_emits_runtime_ir_and_one_skill_resource_document(
@@ -200,10 +216,7 @@ def test_runtime_and_public_validator_share_fail_closed_engine_negotiation(
     assert {item.code for item in missing_result.diagnostics} == {
         "plugin_engine_feature_declaration_incomplete"
     }
-    assert (
-        missing_caught.value.code
-        == "plugin_engine_feature_declaration_incomplete"
-    )
+    assert missing_caught.value.code == "plugin_engine_feature_declaration_incomplete"
 
 
 def test_validation_rejects_known_but_unused_engine_features(tmp_path: Path) -> None:
@@ -352,9 +365,7 @@ def test_validation_rejects_oversized_manifest_before_json_decode(
     with pytest.raises(PluginManifestError) as caught:
         PluginManifestParser().parse(tmp_path)
 
-    assert {item.code for item in result.diagnostics} == {
-        "plugin_manifest_too_large"
-    }
+    assert {item.code for item in result.diagnostics} == {"plugin_manifest_too_large"}
     assert caught.value.code == "contained_file_too_large"
 
 
