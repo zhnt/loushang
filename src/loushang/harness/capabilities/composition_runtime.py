@@ -93,6 +93,12 @@ class _PreparedResourceOwnerGeneration(Protocol):
 
     async def load(self, handle: Any) -> Any: ...
 
+    def _construct_skill_catalog_consumer(
+        self,
+        *,
+        include_status: bool,
+    ) -> object: ...
+
     def _borrows_extension_source_lease(self, source: object) -> bool: ...
 
     def _begin_graph_construction(self) -> None: ...
@@ -135,6 +141,13 @@ class ResourceCatalogGenerationCapture:
 
     async def load(self, handle: object) -> object:
         return await self._generation.load(handle)
+
+    def _construct_skill_catalog_consumer(self, *, include_status: bool) -> object:
+        """Delegate atomic consumer construction to the exact Resource owner."""
+
+        return self._generation._construct_skill_catalog_consumer(
+            include_status=include_status,
+        )
 
 
 class ResourceOwnerGenerationRetirementError(RuntimeError):

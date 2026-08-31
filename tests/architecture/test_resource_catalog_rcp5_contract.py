@@ -173,6 +173,7 @@ def test_rcp5_consumer_stays_private_and_product_uses_only_exact_v4() -> None:
         CAPABILITY_CONSUMER_PATH,
         AGENT_PRODUCT_PATH,
         REQUEST_EVIDENCE_PATH,
+        Path("src/loushang/harness/resource_catalog/generation.py"),
     }
     for path in PUBLIC_SURFACES:
         source = path.read_text(encoding="utf-8")

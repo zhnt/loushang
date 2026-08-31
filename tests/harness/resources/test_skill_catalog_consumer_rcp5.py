@@ -201,7 +201,7 @@ async def _mounted_skill_consumer(
         runtime.capture(RESOURCES_SKILL_CATALOG_LOAD_REQUIREMENT)
     )
     return (
-        SkillCatalogConsumer(resource_catalog),
+        resource_catalog.skill_consumer,
         resource_catalog,
         binder,
         runtime,
@@ -244,7 +244,7 @@ def test_typed_skill_consumer_lists_metadata_and_loads_exact_body_lazily(
         )
 
         assert await binder.dispose(runtime) == ()
-        with pytest.raises(RuntimeError, match="Capability Mount graph is disposed"):
+        with pytest.raises(RuntimeError, match="not graph-owned"):
             await consumer.load(handle)
 
     asyncio.run(scenario())
@@ -256,6 +256,8 @@ def test_native_catalog_captures_actions_before_tool_binding(tmp_path: Path) -> 
         consumer, _catalog, binder, runtime, _skill_body = (
             await _mounted_skill_consumer(tmp_path, action_script=script)
         )
+        with pytest.raises(TypeError, match="owner-constructed Skill consumer"):
+            SkillCatalogConsumer(_catalog)
         [summary] = consumer.list_effective_skills()
 
         [catalog_action] = consumer.capture_managed_actions(summary)

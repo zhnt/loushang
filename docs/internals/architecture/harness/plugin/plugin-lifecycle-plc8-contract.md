@@ -112,19 +112,22 @@ identity-bound seal over that exact evidence object. Every verification checks
 the seal and a separate live Resource-owner registration against an
 authority-owned primitive snapshot of the exact Catalog generation, snapshot,
 candidate, source capture fingerprint, declaration, script bytes, and
-Skill-root identity. Before that registration can be created, the exact
-Resource-owner Catalog capture must contribute its opaque single-use grant.
-The grant is identity-bound to that owner-created snapshot and Skill
-projection, is removed atomically when claimed, and is never retained by the
-downstream consumer. A structural lookalike therefore cannot bootstrap a new
-owner registration, even if it copies every projection/source field from a
-genuine consumer. The action authority does not import or callback the
-concrete Catalog consumer, and its primitive snapshot is not a shallow
-reference into mutable consumer state. The registration is not part of the
-caller-constructible evidence graph. Copying fields, recomputing fingerprints, using
+Skill-root identity. The graph-owned `PreparedResourceOwnerGeneration`
+atomically derives those facts, constructs the canonical consumer itself,
+registers that exact consumer and primitive snapshot in its instance-local
+construction registry, and consumes the registration while installing the
+private owner capability. No token, grant, capture, or caller-provided
+consumer crosses that construction boundary. A structural lookalike therefore
+cannot ask the authority to bootstrap a new owner registration, even if it
+copies every projection/source field from a genuine consumer. Direct consumer
+construction remains available only for read-only projections with no managed
+actions. The action authority does not import or callback the concrete Catalog
+consumer, and its primitive snapshot is not a shallow reference into mutable
+consumer state. Copying fields, recomputing fingerprints, using
 `object.__new__`, self-signing a fresh seal, or copying another action's seal
 cannot create acceptable evidence, and there is no module-level action mint
-helper callable by an ordinary consumer.
+helper callable by an ordinary consumer. The unpublished shadow runner is
+discovery/validation substrate only and exposes no parallel action authority.
 The historical explicit eager-body compatibility path is not an action source
 and is not a peer path for package/native managed actions; its final unrelated
 adapter cleanup remains PLC9 work.
@@ -220,9 +223,10 @@ before and after the read.
 - Production Base, LSP, and Arch manifests validate against the stable engine
   contract; LSP and Arch Definitions use only `loushang.plugin` author helpers.
 - Resource tests prove native and package sources capture action bytes before
-  the consumer mints opaque action evidence, the Resource-owner grant is
-  single-use and rejects a complete structural lookalike, while lazy body
-  receipts retain generation/revision/digest identity.
+  the owner-built consumer mints opaque action evidence, caller-built captures
+  and consumers cannot acquire action authority, and retiring/disposed owners
+  cannot construct a replacement, while lazy body receipts retain
+  generation/revision/digest identity.
 - Action tests prove caller-forged evidence and launchers are rejected, exact
   Approval metadata and required containment are enforced, runtime replacement
   during Approval still executes the approved sealed image, Skill-root

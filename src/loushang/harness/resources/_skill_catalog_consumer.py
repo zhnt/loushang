@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import os
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Protocol
 
@@ -20,7 +20,7 @@ from loushang.harness.resources._catalog_records import (
     ResourceLoadReceipt,
 )
 from loushang.harness.resources._skill_action_authority import (
-    _bind_catalog_action_owner,
+    _CatalogActionOwnerCapability,
     _register_catalog_managed_skill_action,
 )
 from loushang.harness.resources._skill_catalog_status import (
@@ -60,13 +60,6 @@ class _ResourceCatalogLoadConsumer(Protocol):
     def load_handle(self, identity: ResourceIdentity) -> ResourceLoadHandle: ...
 
     async def load(self, handle: ResourceLoadHandle) -> LoadedResource: ...
-
-    @property
-    def _skill_action_owner_catalog(self) -> object: ...
-
-    @property
-    def _skill_action_owner_grant(self) -> object: ...
-
 
 @dataclass(frozen=True, slots=True)
 class SkillCatalogSummary:
@@ -242,7 +235,12 @@ class LoadedSkillBody:
 class SkillCatalogConsumer:
     """Read-only Skill view derived from one captured Resource generation."""
 
-    def __init__(self, catalog: _ResourceCatalogLoadConsumer) -> None:
+    def __init__(
+        self,
+        catalog: _ResourceCatalogLoadConsumer,
+        *,
+        _owner_constructing: bool = False,
+    ) -> None:
         snapshot = catalog.snapshot
         projection = catalog.skill_projection
         if not isinstance(snapshot, ResourceCatalogSnapshot):
@@ -285,15 +283,43 @@ class SkillCatalogConsumer:
                 effective_projection=projection,
                 status_projection=status_projection,
             )
-        self._managed_action_owner_identity = object()
-        self._managed_action_owner_capability = None
-        if self._managed_action_sources:
-            self._managed_action_owner_capability = _bind_catalog_action_owner(
-                self,
-                owner_identity=self._managed_action_owner_identity,
-                catalog_owner=getattr(catalog, "_skill_action_owner_catalog", None),
-                owner_grant=getattr(catalog, "_skill_action_owner_grant", None),
+        self._managed_action_owner_identity: object | None = None
+        self._managed_action_owner_capability: (
+            _CatalogActionOwnerCapability | None
+        ) = None
+        if self._managed_action_sources and not _owner_constructing:
+            raise TypeError(
+                "Catalog managed actions require owner-constructed Skill consumer"
             )
+
+    @classmethod
+    def _from_resource_owner(
+        cls,
+        catalog: _ResourceCatalogLoadConsumer,
+    ) -> SkillCatalogConsumer:
+        return cls(catalog, _owner_constructing=True)
+
+    def _prepare_managed_action_owner(self, owner_identity: object) -> None:
+        if (
+            type(owner_identity) is not object
+            or self._managed_action_owner_identity is not None
+            or self._managed_action_owner_capability is not None
+        ):
+            raise RuntimeError("Skill action owner preparation is already resolved")
+        self._managed_action_owner_identity = owner_identity
+
+    def _install_managed_action_owner(
+        self,
+        capability: _CatalogActionOwnerCapability,
+    ) -> None:
+        if (
+            type(capability) is not _CatalogActionOwnerCapability
+            or self._managed_action_owner_identity is None
+            or capability.owner_identity is not self._managed_action_owner_identity
+            or self._managed_action_owner_capability is not None
+        ):
+            raise TypeError("Skill action owner capability is invalid")
+        self._managed_action_owner_capability = capability
 
     @property
     def catalog_generation(self) -> int:
@@ -398,6 +424,9 @@ class SkillCatalogConsumer:
         source = self._managed_action_sources.get(summary.candidate_fingerprint)
         if source is None:
             return ()
+        owner_capability = self._require_managed_action_owner_capability()
+        owner_identity = self._managed_action_owner_identity
+        assert owner_identity is not None
         actions: list[CatalogManagedSkillAction] = []
         for item in source.capture.actions:
             declaration = item.declaration
@@ -406,6 +435,7 @@ class SkillCatalogConsumer:
                 raise SkillCatalogConsumerError(
                     "Catalog action source contains an invalid declaration"
                 )
+            declaration = replace(declaration)
             if (
                 not isinstance(script_body, bytes)
                 or len(script_body) > MAX_SKILL_ACTION_SCRIPT_BYTES
@@ -414,7 +444,6 @@ class SkillCatalogConsumer:
                 raise SkillCatalogConsumerError(
                     "Catalog action source contains invalid script evidence"
                 )
-            owner_identity = self._managed_action_owner_identity
             selection = object.__new__(SkillActionCatalogSelection)
             object.__setattr__(
                 selection,
@@ -493,13 +522,15 @@ class SkillCatalogConsumer:
             object.__setattr__(action, "_owner_seal", seal)
             _register_catalog_managed_skill_action(
                 action,
-                owner_capability=self._require_managed_action_owner_capability(),
+                owner_capability=owner_capability,
             )
             action.verify()
             actions.append(action)
         return tuple(actions)
 
-    def _require_managed_action_owner_capability(self):  # type: ignore[no-untyped-def]
+    def _require_managed_action_owner_capability(
+        self,
+    ) -> _CatalogActionOwnerCapability:
         capability = self._managed_action_owner_capability
         if capability is None:
             raise SkillCatalogConsumerError(

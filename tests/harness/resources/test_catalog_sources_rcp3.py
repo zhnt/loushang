@@ -46,7 +46,6 @@ from loushang.harness.resources._catalog_records import (
     VerifiedPluginResourceOrigin,
 )
 from loushang.harness.resources._skill_catalog_consumer import (
-    SkillCatalogConsumer,
     build_effective_skill_catalog_projection,
 )
 from loushang.harness.resources.plugins.manifest import PluginManifestParser
@@ -59,7 +58,6 @@ from loushang.harness.resources.skill_actions import (
     SkillActionDocument,
     SkillActionDocumentCodec,
 )
-from loushang.harness.tools.skill_actions import ManagedSkillActionBinding
 from loushang.plugin import package, resource, skill_action
 
 
@@ -494,10 +492,9 @@ async def _package_skill_actions_are_catalog_captured(tmp_path: Path) -> None:
         projection=shadow.catalog_projection,
     )
 
-    consumer = SkillCatalogConsumer(shadow.capture_skill_catalog(skill_projection))
-    [summary] = consumer.list_effective_skills()
-    [catalog_action] = consumer.capture_managed_actions(summary)
-    binding = ManagedSkillActionBinding.bind(catalog_action)
+    [summary] = skill_projection.skills
+    [action_source] = skill_projection.managed_action_sources
+    [captured_action] = action_source.capture.actions
 
     mutable_script = (
         tmp_path
@@ -509,11 +506,10 @@ async def _package_skill_actions_are_catalog_captured(tmp_path: Path) -> None:
     )
     mutable_script.write_bytes(b"print('mutable source changed')\n")
 
-    assert binding.read_verified_script() == script
-    assert binding.source_kind == "package"
-    assert binding.source_revision == revision.content_digest
-    assert binding.catalog_source_revision == revision.content_digest
-    assert binding.candidate_fingerprint == summary.candidate_fingerprint
+    assert captured_action.script_body == script
+    assert action_source.capture.source_kind == "package"
+    assert action_source.capture.source_revision == revision.content_digest
+    assert action_source.candidate_fingerprint == summary.candidate_fingerprint
 
     assert await shadow.dispose() == ()
     assert resource_input.revision_handle.closed is True

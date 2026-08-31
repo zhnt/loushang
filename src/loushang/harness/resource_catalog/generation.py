@@ -42,6 +42,15 @@ from loushang.harness.resources._catalog_source_contracts import (
 from loushang.harness.resources._discovery_conventions import (
     DEFAULT_CONTEXT_FILE_NAMES,
 )
+from loushang.harness.resources._skill_action_authority import (
+    _bind_catalog_action_owner,
+    _freeze_catalog_action_owner_snapshot,
+)
+from loushang.harness.resources._skill_catalog_consumer import (
+    EffectiveSkillCatalogProjection,
+    SkillCatalogConsumer,
+    build_effective_skill_catalog_projection,
+)
 from loushang.harness.resources._skill_catalog_status import (
     SkillCatalogStatusProjection,
 )
@@ -69,6 +78,22 @@ class ResourceOwnerGenerationDisposalError(RuntimeError):
         )
 
 
+@dataclass(frozen=True, slots=True)
+class _PreparedSkillCatalogOwnerView:
+    """Exact owner-derived inputs used while constructing one Skill consumer."""
+
+    _generation: PreparedResourceOwnerGeneration = field(repr=False, compare=False)
+    snapshot: ResourceCatalogSnapshot
+    skill_projection: EffectiveSkillCatalogProjection
+    skill_status_projection: SkillCatalogStatusProjection | None = None
+
+    def load_handle(self, identity: ResourceIdentity) -> ResourceLoadHandle:
+        return self._generation.load_handle(identity)
+
+    async def load(self, handle: ResourceLoadHandle) -> LoadedResource:
+        return await self._generation.load(handle)
+
+
 @dataclass(slots=True)
 class PreparedResourceOwnerGeneration:
     """One unpublished Catalog generation with exactly one transfer path.
@@ -92,6 +117,10 @@ class PreparedResourceOwnerGeneration:
         init=False,
         repr=False,
     )
+    _skill_action_owner_registrations: dict[
+        int,
+        tuple[object, object, object],
+    ] = field(default_factory=dict, init=False, repr=False)
 
     @classmethod
     def _from_shadow(
@@ -188,6 +217,58 @@ class PreparedResourceOwnerGeneration:
     async def load(self, handle: ResourceLoadHandle) -> LoadedResource:
         self._require_graph_owned()
         return await self._shadow.load(handle)
+
+    def _construct_skill_catalog_consumer(
+        self,
+        *,
+        include_status: bool,
+    ) -> SkillCatalogConsumer:
+        """Atomically construct and owner-bind one exact Skill consumer."""
+
+        self._require_graph_owned()
+        snapshot = self.catalog_snapshot
+        projection = self.catalog_projection
+        if not isinstance(projection, ResourceCatalogProjection):
+            raise TypeError("Resource owner has no Skill Catalog projection")
+        effective = build_effective_skill_catalog_projection(
+            snapshot=snapshot,
+            projection=projection,
+        )
+        status = self._skill_status_projection if include_status else None
+        view = _PreparedSkillCatalogOwnerView(
+            _generation=self,
+            snapshot=snapshot,
+            skill_projection=effective,
+            skill_status_projection=status,
+        )
+        consumer = SkillCatalogConsumer._from_resource_owner(view)
+        if not effective.managed_action_sources:
+            return consumer
+        owner_snapshot = _freeze_catalog_action_owner_snapshot(effective)
+        owner_identity = object()
+        consumer._prepare_managed_action_owner(owner_identity)
+        registration_id = id(owner_snapshot)
+        if registration_id in self._skill_action_owner_registrations:
+            raise RuntimeError("Resource owner action construction is already active")
+        self._skill_action_owner_registrations[registration_id] = (
+            owner_snapshot,
+            consumer,
+            owner_identity,
+        )
+        try:
+            capability = _bind_catalog_action_owner(
+                consumer,
+                owner_identity=owner_identity,
+                owner_snapshot=owner_snapshot,
+                owner_generation=self,
+            )
+            consumer._install_managed_action_owner(capability)
+        except BaseException:
+            self._skill_action_owner_registrations.pop(registration_id, None)
+            raise
+        if registration_id in self._skill_action_owner_registrations:
+            raise RuntimeError("Resource owner action registration was not consumed")
+        return consumer
 
     def _borrows_extension_source_lease(self, source: object) -> bool:
         return self._shadow._borrows_extension_source_lease(source)

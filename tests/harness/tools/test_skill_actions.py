@@ -17,21 +17,39 @@ from loushang.harness.authorization import (
     EffectiveExecutionProfile,
     ExecutionAuthorizationError,
 )
+from loushang.harness.capabilities import (
+    CapabilityGraphPlanRequest,
+    RuntimeCapabilityGraphBinder,
+    RuntimeCapabilityGraphPlanner,
+    RuntimeCapabilityGraphRuntime,
+    stage_resource_composition_candidate,
+    standard_capability_composition_plan,
+)
 from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAuthority,
     OwnerContributionPolicy,
     ResourceContributionSpec,
+)
+from loushang.harness.capabilities.resources_consumers import (
+    ResourceSkillCatalogCapabilityConsumer,
+)
+from loushang.harness.capabilities.resources_contracts import (
+    RESOURCES_CAPABILITY_DEFINITION_V3,
+    RESOURCES_SKILL_CATALOG_LOAD_REQUIREMENT,
+)
+from loushang.harness.capabilities.resources_provider import (
+    resources_capability_provider_binding,
 )
 from loushang.harness.environment import HostEnvironment, LocalHostEnvironmentProbe
 from loushang.harness.plugin_authoring.contribution_admission import (
     prepare_owner_contribution_candidate,
 )
 from loushang.harness.plugin_authoring.host import PluginDeclarationHost
+from loushang.harness.resource_catalog.generation import (
+    prepare_first_party_resource_owner_generation,
+)
 from loushang.harness.resource_catalog.inputs import (
     acquire_admitted_package_resource,
-)
-from loushang.harness.resource_catalog.shadow import (
-    run_first_party_resource_catalog_shadow,
 )
 from loushang.harness.resources._catalog_native_source import (
     mint_native_resource_root_handle,
@@ -42,7 +60,6 @@ from loushang.harness.resources._skill_action_authority import (
 )
 from loushang.harness.resources._skill_catalog_consumer import (
     SkillCatalogConsumer,
-    build_effective_skill_catalog_projection,
 )
 from loushang.harness.resources.packages.materializer import PackageMaterializer
 from loushang.harness.resources.plugins.authority import PluginResolutionAuthority
@@ -66,6 +83,7 @@ from loushang.harness.resources.skill_actions import (
     _catalog_action_binding_fingerprint,
     _CatalogActionOwnerSeal,
 )
+from loushang.harness.runtime import RuntimeProfileResolver
 from loushang.harness.sandbox import (
     LinuxBubblewrapBackend,
     SandboxBackendRegistration,
@@ -160,6 +178,62 @@ def _declaration(script: bytes, *, argv: tuple[str, ...] = ("--check",)):
     )
 
 
+async def _owner_built_skill_consumer(
+    *,
+    root_handles=(),
+    package_resources=(),
+    projection_cwd: Path,
+) -> tuple[
+    SkillCatalogConsumer,
+    RuntimeCapabilityGraphBinder,
+    RuntimeCapabilityGraphRuntime,
+]:
+    """Mount one production graph and return its owner-built Skill consumer."""
+
+    profile = RuntimeProfileResolver().resolve(
+        standard_capability_composition_plan(product_id="coding")
+    )
+    candidate = stage_resource_composition_candidate(profile)
+    await prepare_first_party_resource_owner_generation(
+        staged_candidate=candidate,
+        product_id="coding",
+        scope_id="workspace:test",
+        runtime_id=f"managed-action:{uuid4().hex}",
+        product_policy_revision="managed-action-test-v1",
+        root_handles=tuple(root_handles),
+        package_resources=tuple(package_resources),
+        issued_at=10,
+        expires_at=100,
+        now=20,
+        projection_cwd=projection_cwd,
+    )
+    binding = resources_capability_provider_binding(
+        profile=profile,
+        scope_instance_id=f"session:{uuid4().hex}",
+        staged_candidate=candidate,
+        enable_skill_catalog_v3=True,
+    )
+    plan = RuntimeCapabilityGraphPlanner().plan(
+        CapabilityGraphPlanRequest(
+            product_id="coding",
+            roots=(RESOURCES_CAPABILITY_DEFINITION_V3.capability_id,),
+            definitions=(RESOURCES_CAPABILITY_DEFINITION_V3,),
+            providers=(binding.provider,),
+        )
+    )
+    runtime = RuntimeCapabilityGraphRuntime(
+        product_id="coding",
+        runtime_id=f"managed-action-runtime:{uuid4().hex}",
+        profile_fingerprint=sha256(b"managed-action-profile").hexdigest(),
+    )
+    binder = RuntimeCapabilityGraphBinder()
+    await binder.bind(runtime, plan, (binding,))
+    catalog = ResourceSkillCatalogCapabilityConsumer(
+        runtime.capture(RESOURCES_SKILL_CATALOG_LOAD_REQUIREMENT)
+    )
+    return catalog.skill_consumer, binder, runtime
+
+
 async def _catalog_action(
     script: bytes,
     *,
@@ -186,28 +260,16 @@ async def _catalog_action(
         source_class="project_local",
         root_kind="standard",
     )
-    shadow = await run_first_party_resource_catalog_shadow(
-        product_id="coding",
-        scope_id="workspace:test",
-        runtime_id=f"managed-action:{uuid4().hex}",
-        product_policy_revision="managed-action-test-v1",
+    consumer, binder, runtime = await _owner_built_skill_consumer(
         root_handles=(root_handle,),
-        issued_at=10,
-        expires_at=100,
-        now=20,
         projection_cwd=root,
     )
-    assert shadow.catalog_projection is not None
-    projection = build_effective_skill_catalog_projection(
-        snapshot=shadow.catalog_snapshot,
-        projection=shadow.catalog_projection,
-    )
-
-    consumer = SkillCatalogConsumer(shadow.capture_skill_catalog(projection))
-    [summary] = consumer.list_effective_skills()
-    [action] = consumer.capture_managed_actions(summary)
-    assert await shadow.dispose() == ()
-    return action
+    try:
+        [summary] = consumer.list_effective_skills()
+        [action] = consumer.capture_managed_actions(summary)
+        return action
+    finally:
+        assert await binder.dispose(runtime) == ()
 
 
 async def _catalog_package_action(
@@ -323,29 +385,16 @@ async def _catalog_package_action(
         revision_handle=revision,
     )
     try:
-        shadow = await run_first_party_resource_catalog_shadow(
-            product_id="coding",
-            scope_id="workspace:test",
-            runtime_id=f"managed-package-action:{uuid4().hex}",
-            product_policy_revision="managed-action-test-v1",
-            root_handles=(),
+        consumer, binder, runtime = await _owner_built_skill_consumer(
             package_resources=(resource_input,),
-            issued_at=10,
-            expires_at=100,
-            now=20,
             projection_cwd=root,
         )
-        assert shadow.catalog_projection is not None
-        projection = build_effective_skill_catalog_projection(
-            snapshot=shadow.catalog_snapshot,
-            projection=shadow.catalog_projection,
-        )
-
-        consumer = SkillCatalogConsumer(shadow.capture_skill_catalog(projection))
-        [summary] = consumer.list_effective_skills()
-        [action] = consumer.capture_managed_actions(summary)
-        assert await shadow.dispose() == ()
-        return action
+        try:
+            [summary] = consumer.list_effective_skills()
+            [action] = consumer.capture_managed_actions(summary)
+            return action
+        finally:
+            assert await binder.dispose(runtime) == ()
     finally:
         resource_input.close()
         plugin_runtime.close()
@@ -415,6 +464,8 @@ def test_catalog_action_authority_cannot_be_publicly_forged() -> None:
         forged.verify()
     with pytest.raises(TypeError, match="Resource-owner-minted"):
         _CatalogActionOwnerCapability()
+    with pytest.raises(TypeError, match="Resource-owner-built"):
+        action_authority._CatalogActionOwnerSnapshot()
     with pytest.raises(ValueError, match="owner capability"):
         _register_catalog_managed_skill_action(
             forged,
@@ -423,10 +474,14 @@ def test_catalog_action_authority_cannot_be_publicly_forged() -> None:
 
 
 def test_catalog_action_owner_capability_rejects_non_consumer_binding() -> None:
-    with pytest.raises(TypeError, match="bound Resource consumer"):
+    owner_snapshot = object.__new__(action_authority._CatalogActionOwnerSnapshot)
+    object.__setattr__(owner_snapshot, "action_facts", ())
+    with pytest.raises(TypeError, match="exact Resource owner"):
         action_authority._bind_catalog_action_owner(
             object(),
             owner_identity=object(),
+            owner_snapshot=owner_snapshot,
+            owner_generation=object(),
         )
 
 
@@ -438,28 +493,25 @@ def test_catalog_action_owner_capability_rejects_complete_lookalike(
         registration = action_authority._REGISTRATIONS[id(action)]
         genuine = registration.consumer
 
-        class Lookalike:
-            pass
+        class CallerCapture:
+            snapshot = genuine._catalog_snapshot
+            skill_projection = genuine._skill_projection
 
-        fake = Lookalike()
-        fake._catalog = genuine._catalog
-        fake._catalog_snapshot = genuine._catalog_snapshot
-        fake._skill_projection = genuine._skill_projection
-        fake._catalog_generation = genuine._catalog_generation
-        fake._snapshot_fingerprint = genuine._snapshot_fingerprint
-        fake._skills = genuine._skills
-        fake._managed_action_sources = dict(genuine._managed_action_sources)
-        fake._managed_action_owner_identity = object()
-        fake._managed_action_owner_capability = None
-        owner_catalog = genuine._catalog._skill_action_owner_catalog
-        consumed_grant = genuine._catalog._skill_action_owner_grant
+            def load_handle(self, identity):  # type: ignore[no-untyped-def]
+                return genuine._catalog.load_handle(identity)
 
-        with pytest.raises(TypeError, match="live Resource owner grant"):
-            action_authority._bind_catalog_action_owner(
-                fake,
-                owner_identity=fake._managed_action_owner_identity,
-                catalog_owner=owner_catalog,
-                owner_grant=consumed_grant,
+            async def load(self, handle):  # type: ignore[no-untyped-def]
+                return await genuine._catalog.load(handle)
+
+        with pytest.raises(TypeError, match="owner-constructed Skill consumer"):
+            SkillCatalogConsumer(CallerCapture())
+
+        # There is no API accepting the caller capture or a caller-provided
+        # consumer, and a retired owner cannot mint another one.
+        owner_generation = genuine._catalog._generation
+        with pytest.raises(RuntimeError, match="not graph-owned"):
+            owner_generation._construct_skill_catalog_consumer(
+                include_status=False
             )
 
     asyncio.run(scenario())
@@ -489,15 +541,17 @@ def test_catalog_action_owner_seal_rejects_object_new_clone(tmp_path: Path) -> N
     asyncio.run(scenario())
 
 
-def test_catalog_action_rejects_mutated_owner_projection(tmp_path: Path) -> None:
+def test_catalog_action_uses_frozen_owner_snapshot_after_projection_mutation(
+    tmp_path: Path,
+) -> None:
     async def scenario() -> None:
         action = await _catalog_action(b"print('owner')\n", root=tmp_path)
         registration = action_authority._REGISTRATIONS[id(action)]
         consumer = registration.consumer
         consumer._managed_action_sources.clear()
 
-        with pytest.raises(ValueError, match="live Resource-owner evidence"):
-            ManagedSkillActionBinding.bind(action)
+        binding = ManagedSkillActionBinding.bind(action)
+        assert binding.read_verified_script() == b"print('owner')\n"
 
     asyncio.run(scenario())
 
@@ -518,10 +572,10 @@ def test_catalog_action_rejects_nested_owner_fact_drift(tmp_path: Path) -> None:
             sha256(changed_body).hexdigest(),
         )
 
-        with pytest.raises(ValueError, match="owner capability is not live"):
+        with pytest.raises(ValueError, match="does not match its Resource owner"):
             consumer.capture_managed_actions(summary)
-        with pytest.raises(ValueError, match="script evidence changed"):
-            ManagedSkillActionBinding.bind(action)
+        binding = ManagedSkillActionBinding.bind(action)
+        assert binding.read_verified_script() == b"print('owner')\n"
 
     asyncio.run(scenario())
 

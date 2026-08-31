@@ -1447,7 +1447,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                         skill_facets
                     )
                     self._resource_skill_catalog_facets = skill_facets
-                    self._skill_catalog_consumer = SkillCatalogConsumer(skill_catalog)
+                    self._skill_catalog_consumer = skill_catalog.skill_consumer
                     skill_catalog_consumer_installed = True
                 side_question = SessionSideQuestionCapabilityConsumer(
                     self._capability_graph_runtime.capture(
@@ -1868,7 +1868,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 skill_catalog = ResourceSkillStatusCatalogCapabilityConsumer(facets)
                 self._resource_catalog_snapshot = catalog
                 self._resource_catalog_projection = projection
-                self._skill_catalog_consumer = SkillCatalogConsumer(skill_catalog)
+                self._skill_catalog_consumer = skill_catalog.skill_consumer
                 self._adopt_resource_loader_catalog_projection(projection)
                 self._set_resource_bundle(bundle)
                 self._rebuild_prompt_and_tools_view()

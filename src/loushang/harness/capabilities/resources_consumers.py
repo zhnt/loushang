@@ -36,6 +36,7 @@ from loushang.harness.resources._catalog_records import (
 )
 from loushang.harness.resources._skill_catalog_consumer import (
     EffectiveSkillCatalogProjection,
+    SkillCatalogConsumer,
 )
 from loushang.harness.resources._skill_catalog_status import (
     SkillCatalogStatusProjection,
@@ -76,6 +77,8 @@ class _CapturedResourceCatalog(Protocol):
     def skill_projection(self) -> EffectiveSkillCatalogProjection: ...
     @property
     def skill_status_projection(self) -> SkillCatalogStatusProjection: ...
+    @property
+    def skill_consumer(self) -> SkillCatalogConsumer: ...
     def load_handle(self, identity: ResourceIdentity) -> ResourceLoadHandle: ...
     async def load(self, handle: ResourceLoadHandle) -> LoadedResource: ...
 
@@ -226,12 +229,11 @@ class ResourceSkillCatalogCapabilityConsumer:
         return value
 
     @property
-    def _skill_action_owner_catalog(self) -> object:
-        return self._capture
-
-    @property
-    def _skill_action_owner_grant(self) -> object:
-        return getattr(self._capture, "_skill_action_owner_grant", None)
+    def skill_consumer(self) -> SkillCatalogConsumer:
+        value = self._capture.skill_consumer
+        if not isinstance(value, SkillCatalogConsumer):
+            raise RuntimeError("owner-built Skill consumer is not available")
+        return value
 
     def load_handle(self, identity: ResourceIdentity) -> ResourceLoadHandle:
         self.facets.require(RESOURCE_LOAD_FACET)
@@ -293,12 +295,11 @@ class ResourceSkillStatusCatalogCapabilityConsumer:
         return value
 
     @property
-    def _skill_action_owner_catalog(self) -> object:
-        return self._capture
-
-    @property
-    def _skill_action_owner_grant(self) -> object:
-        return getattr(self._capture, "_skill_action_owner_grant", None)
+    def skill_consumer(self) -> SkillCatalogConsumer:
+        value = self._capture.skill_consumer
+        if not isinstance(value, SkillCatalogConsumer):
+            raise RuntimeError("owner-built Skill consumer is not available")
+        return value
 
     def load_handle(self, identity: ResourceIdentity) -> ResourceLoadHandle:
         self.facets.require(RESOURCE_LOAD_FACET)

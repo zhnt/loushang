@@ -25,8 +25,11 @@ SKILL_CONSUMER = Path(
 ACTION_AUTHORITY = Path(
     "src/loushang/harness/resources/_skill_action_authority.py"
 )
-CATALOG_OWNER_AUTHORITY = Path(
-    "src/loushang/harness/resources/_resource_owner_grants.py"
+RESOURCE_OWNER_GENERATION = Path(
+    "src/loushang/harness/resource_catalog/generation.py"
+)
+RESOURCE_PROVIDER = Path(
+    "src/loushang/harness/capabilities/resources_provider.py"
 )
 
 
@@ -100,9 +103,8 @@ def test_managed_action_consumes_catalog_facts_and_existing_host_authorities() -
     process_source = PROCESS_RUNTIME.read_text(encoding="utf-8")
     consumer_source = SKILL_CONSUMER.read_text(encoding="utf-8")
     authority_source = ACTION_AUTHORITY.read_text(encoding="utf-8")
-    catalog_owner_authority_source = CATALOG_OWNER_AUTHORITY.read_text(
-        encoding="utf-8"
-    )
+    owner_source = RESOURCE_OWNER_GENERATION.read_text(encoding="utf-8")
+    provider_source = RESOURCE_PROVIDER.read_text(encoding="utf-8")
 
     assert "CatalogManagedSkillAction" in action_source
     assert "SkillCatalogConsumer" not in action_source
@@ -122,11 +124,14 @@ def test_managed_action_consumes_catalog_facts_and_existing_host_authorities() -
     assert "_mint_catalog_managed_skill_action" not in consumer_source
     assert "_CatalogActionOwnerSeal" in consumer_source
     assert "_register_catalog_managed_skill_action" in consumer_source
+    assert "_from_resource_owner" in consumer_source
+    assert "owner-constructed Skill consumer" in consumer_source
     assert "_REGISTRATIONS" in authority_source
-    assert "_consume_resource_catalog_owner_grant" in authority_source
-    assert "_mint_resource_catalog_owner_grant" not in authority_source
-    assert "SkillCatalogConsumer" not in catalog_owner_authority_source
-    assert "_OWNER_GRANTS" in catalog_owner_authority_source
+    assert "_CatalogActionOwnerSnapshot" in authority_source
+    assert "SkillCatalogConsumer" not in authority_source
+    assert "_construct_skill_catalog_consumer" in owner_source
+    assert "_skill_action_owner_registrations" in owner_source
+    assert "skill_consumer=skill_consumer" in provider_source
 
 
 def test_public_process_request_contract_is_not_widened_for_skill_actions() -> None:

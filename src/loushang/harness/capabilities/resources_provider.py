@@ -42,11 +42,9 @@ from loushang.harness.capabilities.resources_contracts import (
 )
 from loushang.harness.resources._catalog_projection import ResourceCatalogProjection
 from loushang.harness.resources._catalog_records import ResourceCatalogSnapshot
-from loushang.harness.resources._resource_owner_grants import (
-    _mint_resource_catalog_owner_grant,
-)
 from loushang.harness.resources._skill_catalog_consumer import (
     EffectiveSkillCatalogProjection,
+    SkillCatalogConsumer,
     build_effective_skill_catalog_projection,
 )
 from loushang.harness.resources._skill_catalog_status import (
@@ -203,16 +201,11 @@ class _CapturedResourceCatalogView:
     snapshot: ResourceCatalogSnapshot
     skill_projection: EffectiveSkillCatalogProjection | None = None
     skill_status_projection: SkillCatalogStatusProjection | None = None
-    _skill_action_owner_grant: object | None = field(
+    skill_consumer: SkillCatalogConsumer | None = field(
         default=None,
-        init=False,
         repr=False,
         compare=False,
     )
-
-    @property
-    def _skill_action_owner_catalog(self) -> object:
-        return self
 
     def load_handle(self, identity: object) -> object:
         return self._generation.load_handle(identity)
@@ -236,12 +229,17 @@ def _capture_resource_catalog(
     if include_skills:
         if not isinstance(projection, ResourceCatalogProjection):
             raise TypeError("Resource Catalog generation projection is invalid")
-        skill_projection = build_effective_skill_catalog_projection(
-            snapshot=snapshot,
-            projection=projection,
+        skill_consumer = generation._construct_skill_catalog_consumer(
+            include_status=include_status,
         )
+        if not isinstance(skill_consumer, SkillCatalogConsumer):
+            raise TypeError("Resource owner returned an invalid Skill consumer")
+        skill_projection = skill_consumer._skill_projection
+        if skill_consumer._catalog_snapshot is not snapshot:
+            raise RuntimeError("Skill consumer belongs to another Resource owner")
     else:
         skill_projection = None
+        skill_consumer = None
     skill_status = None
     if include_status:
         if not isinstance(status, SkillCatalogStatusProjection):
@@ -257,17 +255,8 @@ def _capture_resource_catalog(
         snapshot=snapshot,
         skill_projection=skill_projection,
         skill_status_projection=skill_status,
+        skill_consumer=skill_consumer,
     )
-    if skill_projection is not None and skill_projection.managed_action_sources:
-        object.__setattr__(
-            captured,
-            "_skill_action_owner_grant",
-            _mint_resource_catalog_owner_grant(
-                captured,
-                snapshot=snapshot,
-                skill_projection=skill_projection,
-            ),
-        )
     return captured
 
 
