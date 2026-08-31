@@ -3,9 +3,9 @@
 ## Status
 
 - Contract version: PLC9A1.
-- Delivery status: incremental. A1-1 is implemented by this change; A1-2 and
-  A1-3 are accepted delivery slices of the same task branch and are identified
-  below without claiming implementation ahead of their commits.
+- Delivery status: incremental. A1-1 and A1-2 are implemented; A1-3 is the
+  remaining accepted delivery slice of the same task branch and is identified
+  below without claiming implementation ahead of its commit.
 - Scope: internal Harness management application ports, legacy enablement
   migration, and Coding CLI list/enable/disable adaptation.
 - Public author SDK effect: none. The `loushang.plugin` namespace remains an
@@ -62,7 +62,7 @@ Authority reachability and cannot enable or disable an Installation.
 
 ## A1-2: One-way legacy enablement migration
 
-A1-2 adds one durable Product/scope/Installation migration journal with the
+A1-2 implements one durable Product/scope/Installation migration journal with the
 ordered states:
 
 ```text
@@ -88,6 +88,12 @@ of canonical desired state. Current writers reject independent legacy Plugin
 enablement mutation once a receipt exists. Finalization requires recorded
 minimum-runtime, backup/restore, and roll-forward evidence; deletion of legacy
 fields and mutators remains a later PLC9E change.
+
+The generic implementation lives in
+`src/loushang/harness/plugin_management/enablement_migration.py`. Coding binds
+it to `enablement-migration.jsonl` under the existing workspace-private Plugin
+state root and checks the supported epoch before recovering a management
+operation. No migration journal is stored under Package data or a Session log.
 
 ## A1-3: Coding CLI adapters
 

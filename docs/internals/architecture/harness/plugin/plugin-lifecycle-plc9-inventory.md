@@ -28,6 +28,10 @@ implemented.
 | Management application command adapter | `src/loushang/harness/plugin_management/application.py::PluginManagementCommandApplication` | A1-1 preserves correlation around the durable operation identity and delegates every mutation to `PluginManagementService` | Retain as the transport-neutral command boundary; transports cannot import the service or desired-state ledger directly |
 | Management query projector | `src/loushang/harness/plugin_management/application.py::PluginManagementReadModelProjector` | A1-1 joins independently revisioned desired, operation, Source, Instance, Package, and retirement snapshots without persisting another clock | Retain as the common read boundary; optional owners remain explicitly unsupported/unknown and skew remains observable |
 | Source projection snapshot | `src/loushang/harness/plugin_management/application.py::PluginManagementSourceSnapshotV1` | A1-1 describes source identity, availability, version, and manifest install default as inert input facts | Retain behind a Product Source adapter; availability and install default never become live desired-selection writers |
+| Enablement migration receipt | `src/loushang/harness/plugin_management/enablement_migration.py::PluginEnablementMigrationJournal` | A1-2 owns strict append-only `accepted -> desired_committed -> compatibility_window -> finalized` evidence per Installation and rejects changed accepted input | Retain through the downgrade window; finalization evidence is a later deletion gate, not automatic permission to remove compatibility fields |
+| Enablement migration coordinator | `src/loushang/harness/plugin_management/enablement_migration.py::PluginEnablementMigrationCoordinator` | A1-2 seeds only never-seen desired state through the common command port with deterministic retry identities; any desired history wins | Retain until all legacy inputs are receipted; it cannot acquire Packages, infer Source availability as selection, or call a desired ledger commit |
+| Legacy compatibility projection | `src/loushang/harness/plugin_management/enablement_migration.py::PluginEnablementCompatibilityProjector` | A1-2 derives legacy disabled ids from canonical desired snapshots plus migration receipts | Temporary retain; callers may consume it for downgrade compatibility but cannot mutate it as peer state |
+| Coding migration composition | `src/loushang/coding/_plugin_lifecycle.py::build_coding_plugin_lifecycle` | A1-2 binds the generic journal under the private workspace lifecycle root and checks the epoch fence before management recovery | Retain as Product composition; A1-3 supplies exact legacy inputs and CLI adapters without moving generic policy into Coding |
 
 The `PluginManagementAction` v1 union in
 `src/loushang/harness/plugin_management/operations.py` is exactly `install`,
@@ -172,7 +176,6 @@ and transport-neutral query port is now implemented by
 PLC9A1 contract:
 
 - CLI/RPC/UI/management-SDK conformance fixture;
-- durable enablement-migration journal/receipt and runtime-version fence;
 - complete bounded byte/archive/wheel materialization transaction;
 - versioned `local_worker` execution-topology IR, handshake, semantic protocol, and
   supervised domain-host envelope;

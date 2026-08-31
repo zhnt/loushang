@@ -24,12 +24,17 @@ def test_plc9a1_contract_and_new_owner_sites_are_indexed() -> None:
     index = _source(INDEX)
 
     assert index.count("(plugin-lifecycle-plc9a1-contract.md)") == 1
-    assert "A1-1 is implemented" in contract
-    assert "A1-2 and" in contract
-    assert "A1-3 are accepted delivery slices" in contract
+    assert "A1-1 and A1-2 are implemented" in contract
+    assert "A1-3 is the" in contract
+    assert "remaining accepted delivery slice" in contract
     assert "application.py::PluginManagementCommandApplication" in inventory
     assert "application.py::PluginManagementReadModelProjector" in inventory
     assert "application.py::PluginManagementSourceSnapshotV1" in inventory
+    assert "enablement_migration.py::PluginEnablementMigrationJournal" in inventory
+    assert "enablement_migration.py::PluginEnablementMigrationCoordinator" in inventory
+    assert (
+        "enablement_migration.py::PluginEnablementCompatibilityProjector" in inventory
+    )
 
 
 def test_plc9a1_application_is_transport_neutral_and_projection_only() -> None:
@@ -75,6 +80,26 @@ def test_plc9a1_does_not_widen_the_public_author_sdk() -> None:
         "PluginDesiredStateLedger",
     ):
         assert symbol not in author_sdk
+
+
+def test_plc9a1_migration_uses_the_common_command_port_and_no_peer_settings() -> None:
+    source = _source(
+        Path("src/loushang/harness/plugin_management/enablement_migration.py")
+    )
+
+    assert "PluginManagementCommandPort" in source
+    assert "PluginManagementApplicationCommandV1(" in source
+    for forbidden in (
+        "PluginDesiredStateLedger(",
+        ".commit(",
+        "PluginManager(",
+        "SettingsManager(",
+        "disabled_plugins =",
+        "source.enabled",
+    ):
+        assert forbidden not in source
+    assert "plugin_enablement_migration_epoch_unsupported" in source
+    assert "plugin_enablement_legacy_mutation_rejected" in source
 
 
 def test_plc9a1_contract_keeps_later_authority_out_of_scope() -> None:

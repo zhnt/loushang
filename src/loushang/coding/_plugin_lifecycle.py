@@ -23,11 +23,16 @@ from loushang.harness.plugin_management import (
     PluginCleanupAttemptV1,
     PluginDesiredStateLedger,
     PluginDesiredStateMutationV1,
+    PluginEnablementMigrationCoordinator,
+    PluginEnablementMigrationJournal,
+    PluginEnablementMigrationRequestV1,
+    PluginEnablementMigrationSnapshotV1,
     PluginInstallationKeyV1,
     PluginInstanceLeaseFamilyReleaseV1,
     PluginInstanceLeaseFamilyV1,
     PluginInstanceRetirementCompletionV1,
     PluginInstanceRuntimeLedger,
+    PluginManagementCommandApplication,
     PluginManagementCommandV1,
     PluginManagementService,
     PluginOwnerRetirementOutcomeV1,
@@ -171,6 +176,10 @@ class CodingPluginLifecycleStateLayout:
         return self.root / "owner-generation-evidence.jsonl"
 
     @property
+    def enablement_migration(self) -> Path:
+        return self.root / "enablement-migration.jsonl"
+
+    @property
     def coordination_lock(self) -> Path:
         return self.root / "lifecycle-coordination"
 
@@ -183,6 +192,7 @@ class CodingPluginLifecycle:
     startup_id: str
     desired: PluginDesiredStateLedger = field(repr=False)
     management: PluginManagementService = field(repr=False)
+    enablement_migrations: PluginEnablementMigrationCoordinator = field(repr=False)
     instances: PluginInstanceRuntimeLedger = field(repr=False)
     retirement_sets: PluginRetirementSetLedger = field(repr=False)
     packages: PluginPackageLifecycleLedger = field(repr=False)
@@ -223,6 +233,32 @@ class CodingPluginLifecycle:
             installation_scope="workspace",
             scope_id=self.layout.scope_id,
             plugin_id=_nonempty(plugin_id, name="Plugin id"),
+        )
+
+    def migrate_legacy_enablement(
+        self,
+        key: PluginInstallationKeyV1,
+        package_revision: PluginPackageRevisionRefV1,
+        *,
+        legacy_disabled: bool,
+        manifest_enabled_default: bool,
+        legacy_input_fingerprint: str,
+    ) -> PluginEnablementMigrationSnapshotV1:
+        """Import an immutable legacy snapshot once through canonical commands."""
+
+        if key.product_id != CODING_PRODUCT_ID or key.scope_id != self.layout.scope_id:
+            raise CodingPluginLifecycleError(
+                "Enablement migration Installation is outside this Coding scope",
+                code="coding_plugin_enablement_migration_scope_mismatch",
+            )
+        return self.enablement_migrations.migrate(
+            PluginEnablementMigrationRequestV1(
+                installation_key=key,
+                package_revision=package_revision,
+                legacy_disabled=legacy_disabled,
+                manifest_enabled_default=manifest_enabled_default,
+                legacy_input_fingerprint=legacy_input_fingerprint,
+            )
         )
 
     def bootstrap_first_party_default(
@@ -938,7 +974,16 @@ def build_coding_plugin_lifecycle(
         retirement_intents=intents,
         retirement_sets=retirement_sets,
     )
+    enablement_journal = PluginEnablementMigrationJournal(layout.enablement_migration)
+    enablement_journal.assert_runtime_compatible(
+        supported_migration_epoch=1,
+    )
     management.recover()
+    enablement_migrations = PluginEnablementMigrationCoordinator(
+        journal=enablement_journal,
+        desired_state=desired,
+        commands=PluginManagementCommandApplication(management),
+    )
     security = security_acceptances or (
         PluginInstanceSecurityRetirementJournal.for_instance_runtime(
             layout.instance_runtime
@@ -973,6 +1018,7 @@ def build_coding_plugin_lifecycle(
             startup_id=resolved_startup_id,
             desired=desired,
             management=management,
+            enablement_migrations=enablement_migrations,
             instances=instances,
             retirement_sets=retirement_sets,
             packages=packages,
