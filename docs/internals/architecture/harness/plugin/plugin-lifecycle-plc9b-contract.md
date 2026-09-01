@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.3e3c3-candidate.
+- Contract version: PLC9B.3e3c3.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -82,7 +82,7 @@
   revalidates the complete visible ancestor chain, flushes every file before a
   handle-relative atomic rename, and promotes the five Windows publication/
   ABA/handle rows after their mandatory non-skippable native report passed.
-  B3e-3c3 candidate code replaces process-local settlement memory with a
+  B3e-3c3 accepted code replaces process-local settlement memory with a
   Store-private durable settlement authority. It authorizes the exact root,
   tree, member identities, manifest, and receipt before namespace rename,
   recovers the rename-to-receipt crash window, and implements collision/reuse
@@ -1163,7 +1163,7 @@ executed exactly 12 nodes, including all five implemented Windows
 publication/ABA/handle nodes; both reports recorded zero skips, failures, and
 errors.
 
-## PLC9B3e-3c3 Durable Settlement Candidate
+## PLC9B3e-3c3 Accepted Durable Settlement
 
 B3e-3c3 adds a Store-private durable settlement authority shared by the
 role-separated POSIX and Windows Store adapters. The journal is internal to
@@ -1202,10 +1202,20 @@ barrier and `B-PUB-REUSE` through `committed`; all twelve physical publication
 rows are then implemented. `B-PUB-UNCOMMITTED` remains the sole planned
 `B-PUB-*` row and the PLC9B4 commit-admission gate. No binding, desired-state
 mutation, runtime handle, peer fallback, transport activation, or production
-route is added. Before acceptance, the Linux-native report must execute 74
-manifest nodes with zero skips, failures, or errors, and the Windows
-native-component report must execute 19 tests with zero skips, failures, or
-errors. The existing Windows manifest report remains 12 native-specific nodes.
+route is added.
+
+B3e-3c3 was accepted on 2026-09-01 against candidate head `94390869` after all
+23 PR checks passed. Harness Quality run `33562831782`, Linux harness job
+`100039113895`, retained `plc9b-linux-native-pytest-report` artifact ID
+`9821924161` with upload digest
+`1a5b51eeef36ebac93c29ff98898d00cdcc6816a270628c80cfcd4f9b2b53647`.
+Its XML executed exactly 74 manifest nodes, including `B-PUB-COLLISION` and
+`B-PUB-REUSE`, with zero skips, failures, or errors. Windows Shell
+Compatibility run `33562831700`, native job `100039113787`, retained
+`windows-shell-pytest-reports` artifact ID `9821946893` with upload digest
+`d69e337d062601c55641166cca1d0a193017b12ca49dcf1ef2b5f2ca0fab2ac4`.
+Its native-component XML executed exactly 19 tests and its manifest XML
+executed exactly 12 nodes; both recorded zero skips, failures, and errors.
 
 ## First Principles
 

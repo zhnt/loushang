@@ -583,7 +583,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.3e3c3-candidate." in contract
+    assert "Contract version: PLC9B.3e3c3." in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
@@ -3117,14 +3117,31 @@ def test_plc9b3e3c3_settlement_authority_is_durable_exact_and_store_private() ->
     } == {"B-PUB-UNCOMMITTED"}
 
     normalized = " ".join(contract.split())
-    assert "PLC9B3e-3c3 Durable Settlement Candidate" in normalized
+    assert "PLC9B3e-3c3 Accepted Durable Settlement" in normalized
     assert "Store-private durable settlement authority" in normalized
     assert "authorization is durable before namespace rename" in normalized
     assert "candidate-free receipt validation" in normalized.lower()
-    assert "Linux-native report must execute 74 manifest nodes" in normalized
-    assert "Windows native-component report must execute 19 tests" in normalized
-    assert "PLC9B3e-3c3 candidate code adds Store-private" in _source(INVENTORY)
-    assert "PLC9B3e-3c3 candidate code adds a durable" in _source(INDEX)
+    assert "Its XML executed exactly 74 manifest nodes" in normalized
+    assert "native-component XML executed exactly 19 tests" in normalized
+    assert "B3e-3c3 was accepted on 2026-09-01 against candidate head `94390869`" in (
+        normalized
+    )
+    assert "Harness Quality run `33562831782`" in normalized
+    assert "Linux harness job `100039113895`" in normalized
+    assert "artifact ID `9821924161`" in normalized
+    assert "Windows Shell Compatibility run `33562831700`" in normalized
+    assert "native job `100039113787`" in normalized
+    assert "artifact ID `9821946893`" in normalized
+    assert (
+        "1a5b51eeef36ebac93c29ff98898d00cdcc6816a270628c80cfcd4f9b2b53647"
+        in contract
+    )
+    assert (
+        "d69e337d062601c55641166cca1d0a193017b12ca49dcf1ef2b5f2ca0fab2ac4"
+        in contract
+    )
+    assert "PLC9B3e-3c3 accepted code adds Store-private" in _source(INVENTORY)
+    assert "PLC9B3e-3c3 accepted code adds a durable" in _source(INDEX)
 
 
 def test_plc9b2f_windows_backend_is_rooted_and_has_a_nonskippable_native_gate() -> None:

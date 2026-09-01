@@ -160,18 +160,20 @@
   manifest nodes with zero skips, failures, or errors, including all five
   Windows publication/ABA/handle rows. Collision/reuse, commit admission, and
   production routing remain later gates.
-  PLC9B3e-3c3 candidate code adds Store-private durable settlement evidence to
+  PLC9B3e-3c3 accepted code adds Store-private durable settlement evidence to
   both native Store adapters. A pre-rename record binds the complete Store-root
   chain, final tree and member identities, exact manifest, and exact receipt;
   a cross-instance owner lock serializes namespace settlement. Restart can
   recover a renamed tree or validate an exact receipt without a live candidate
   and without another journal append, while same bytes under a different
-  native identity fail as `package_publication_collision`. The candidate makes
+  native identity fail as `package_publication_collision`. The accepted slice makes
   `B-PUB-COLLISION` and `B-PUB-REUSE` executable; only
   `B-PUB-UNCOMMITTED` remains planned among publication rows. It adds no public
   facade, commit-admission route, binding, desired-state mutation, or Product
-  runtime composition pending the mandatory 74-node Linux and 19-test Windows
-  native reports.
+  runtime composition. All 23 PR checks passed; retained Linux artifact
+  `9821924161` executed 74 manifest nodes and retained Windows artifact
+  `9821946893` executed 19 native component tests plus 12 manifest nodes, all
+  with zero skips, failures, or errors.
 
 This inventory distinguishes accepted reusable owners, Product adapters,
 parallel compatibility paths, and missing target boundaries. “Migrate” or
