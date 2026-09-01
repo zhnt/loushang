@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.3e3c2-candidate.
+- Contract version: PLC9B.3e3c2.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -77,11 +77,11 @@
   Store adapters. The Store pins the complete visible ancestor chain, writes
   through descriptor-relative no-follow handles, settles one exact immutable
   tree, and fully revalidates exact retry. Five POSIX publication/root/handle
-  rows are executable. B3e-3c2 candidate code adds role-separated Windows
+  rows are executable. B3e-3c2 accepted code adds role-separated Windows
   Store adapters over the accepted rooted `NtCreateFile` primitives, pins and
   revalidates the complete visible ancestor chain, flushes every file before a
   handle-relative atomic rename, and promotes the five Windows publication/
-  ABA/handle rows pending their mandatory non-skippable native report.
+  ABA/handle rows after their mandatory non-skippable native report passed.
   Collision/reuse rows remain planned.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
@@ -1100,7 +1100,7 @@ The XML executed exactly 72 manifest nodes with zero skips, failures, or
 errors; it included all five implemented POSIX `B-PUB-*` nodes and no Windows,
 collision/reuse, or uncommitted-admission publication node.
 
-## PLC9B3e-3c2 Windows Verified-Tree Materialization Candidate
+## PLC9B3e-3c2 Accepted Windows Verified-Tree Materialization
 
 B3e-3c2 adds Windows-native consumers of the same accepted transfer and
 role-separated staging Ports without widening their authority. The dependency
@@ -1142,11 +1142,21 @@ added here.
 The composed manifest now marks `B-PUB-SWAP-WINDOWS`,
 `B-PUB-WIN-ROOT-ABA`, `B-PUB-WIN-ANCESTOR-ABA`,
 `B-PUB-WIN-HANDLE-SUCCESS`, and `B-PUB-WIN-HANDLE-REJECT` implemented. The
-Windows-native report must execute all five through real authenticated
+Windows-native report executes all five through real authenticated
 acquisition, safe Wheel verification, closure verification, transaction
 pinning, native Store materialization, staging evidence, and atomic set
-publication with zero skips, failures, or errors. Candidate status remains
-provisional until that retained native XML and all PR checks pass.
+publication. Collision/reuse remain B3e-3c3 and `B-PUB-UNCOMMITTED` remains
+PLC9B4 commit admission.
+
+B3e-3c2 was accepted on 2026-09-01 against candidate head `d2beba3e` after all
+23 PR checks passed. Windows Shell Compatibility run `33554991102`, native job
+`100013505482`, retained `windows-shell-pytest-reports` artifact ID
+`9818964189` with upload digest
+`a21ad27b18a117350817b5640566b04d66cb599b026b67d30657a20433cc5adb`.
+Its native-component XML executed exactly 15 tests and its manifest XML
+executed exactly 12 nodes, including all five implemented Windows
+publication/ABA/handle nodes; both reports recorded zero skips, failures, and
+errors.
 
 ## First Principles
 

@@ -139,12 +139,12 @@ Neither may silently override a narrower implemented owner contract.
   routing remain closed. Its retained 72-row Linux-native report passed with
   zero skips, failures, or errors and included exactly those five publication
   nodes.
-  PLC9B3e-3c2 candidate code adds corresponding role-separated Windows-native
+  PLC9B3e-3c2 accepted code adds corresponding role-separated Windows-native
   Store adapters using the accepted rooted-handle backend plus handle-relative
-  atomic rename. Five Windows publication/ABA/handle nodes are wired into the
-  non-skippable Windows workflow; native retained evidence is still required
-  before acceptance. Collision/reuse, commit admission, and production
-  routing remain closed.
+  atomic rename. Its retained native report passed 15 component tests and 12
+  manifest nodes with zero skips, failures, or errors, including all five
+  Windows publication/ABA/handle nodes. Collision/reuse, commit admission, and
+  production routing remain closed.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)

@@ -569,7 +569,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.3e3c2-candidate" in contract
+    assert "Contract version: PLC9B.3e3c2." in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
@@ -2965,10 +2965,24 @@ def test_plc9b3e3c2_windows_materialization_is_rooted_role_safe_and_native() -> 
     assert manifest["B-PUB-UNCOMMITTED"]["status"] == "planned"
 
     normalized = " ".join(contract.split())
-    assert "PLC9B3e-3c2 Windows Verified-Tree Materialization Candidate" in normalized
+    assert "PLC9B3e-3c2 Accepted Windows Verified-Tree Materialization" in normalized
     assert "pins the complete visible Windows ancestor chain" in normalized
-    assert "Windows-native report must execute all five" in normalized
+    assert "Windows-native report executes all five" in normalized
     assert "collision/reuse remain B3e-3c3" in normalized
+    assert "B3e-3c2 was accepted on 2026-09-01 against candidate head `d2beba3e`" in (
+        normalized
+    )
+    assert "Windows Shell Compatibility run `33554991102`" in normalized
+    assert "native job `100013505482`" in normalized
+    assert "artifact ID `9818964189`" in normalized
+    assert (
+        "a21ad27b18a117350817b5640566b04d66cb599b026b67d30657a20433cc5adb"
+        in contract
+    )
+    assert "native-component XML executed exactly 15 tests" in normalized
+    assert "manifest XML executed exactly 12 nodes" in normalized
+    assert "PLC9B3e-3c2 accepted code adds the two role-separated" in _source(INVENTORY)
+    assert "PLC9B3e-3c2 accepted code adds corresponding" in _source(INDEX)
 
 
 def test_plc9b2f_windows_backend_is_rooted_and_has_a_nonskippable_native_gate() -> None:

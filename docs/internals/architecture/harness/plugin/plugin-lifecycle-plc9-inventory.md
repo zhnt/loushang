@@ -152,13 +152,13 @@
   routes remain later gates. All PR checks passed and retained artifact
   `9817127845` executed exactly 72 manifest nodes with zero skips, failures, or
   errors and included exactly the five implemented POSIX publication rows.
-  PLC9B3e-3c2 candidate code adds the two role-separated Windows-native Store
+  PLC9B3e-3c2 accepted code adds the two role-separated Windows-native Store
   adapters. They pin and revalidate the full visible ancestor chain, reject
   reparse/root/ancestor/staging ABA, flush each verified file, and settle by a
   non-replacing handle-relative rename before fully rehashing the final tree.
-  The five Windows publication/ABA/handle rows are implemented in code but
-  remain candidate evidence until the dedicated Windows report executes them
-  without skips, failures, or errors. Collision/reuse, commit admission, and
+  The retained native artifact `9818964189` executed 15 component tests and 12
+  manifest nodes with zero skips, failures, or errors, including all five
+  Windows publication/ABA/handle rows. Collision/reuse, commit admission, and
   production routing remain later gates.
 
 This inventory distinguishes accepted reusable owners, Product adapters,
