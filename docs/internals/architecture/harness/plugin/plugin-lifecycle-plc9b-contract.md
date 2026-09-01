@@ -72,7 +72,7 @@
   dependency-store materialization roots, and designated Plugin-root
   materialization roots. It performs no store write and promotes no manifest
   row.
-  B3e-3c1 candidate code adds the quarantine-owned verified-file reader, a
+  B3e-3c1 accepted code adds the quarantine-owned verified-file reader, a
   bounded transfer owner, and separate POSIX-native dependency/Plugin-root
   Store adapters. The Store pins the complete visible ancestor chain, writes
   through descriptor-relative no-follow handles, settles one exact immutable
@@ -1030,7 +1030,7 @@ The XML executed the unchanged 67 manifest nodes with zero skips, failures, or
 errors, included `B-CRASH-PINNED`, `B-CRASH-STAGING`, and `B-CRASH-SET`, and
 contained no `B-PUB-*` node.
 
-## PLC9B3e-3c1 Candidate POSIX Verified-Tree Materialization
+## PLC9B3e-3c1 Accepted POSIX Verified-Tree Materialization
 
 B3e-3c1 implements the first native consumer of the accepted transfer
 contracts without widening their authority. The quarantine attempt records the
@@ -1086,6 +1086,15 @@ remains the PLC9B4 commit-admission gate. The POSIX handle-success fixture uses
 the existing lifecycle phase CAS after the physical tree and atomic set are
 durable to reach the manifest's `committed@committed` outcome; it does not open
 a ref, issue a runtime handle, bind a Plugin, or substitute for B4 admission.
+
+B3e-3c1 was accepted on 2026-09-01 against candidate head `43441992` after all
+PR checks passed. Harness Quality run `33550211162`, Linux harness job
+`99997508982`, retained `plc9b-linux-native-pytest-report` artifact ID
+`9817127845` with upload digest
+`a0def54b47500bd2aad59669ece3057df7179ab427cf8edd46f0491b1310db3b`.
+The XML executed exactly 72 manifest nodes with zero skips, failures, or
+errors; it included all five implemented POSIX `B-PUB-*` nodes and no Windows,
+collision/reuse, or uncommitted-admission publication node.
 
 ## First Principles
 

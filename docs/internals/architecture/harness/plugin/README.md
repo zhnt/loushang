@@ -131,12 +131,14 @@ Neither may silently override a narrower implemented owner contract.
   row planned pending native backends and later commit admission. Its retained
   67-row Linux-native report passed without skips, failures, errors, or a
   publication node.
-  PLC9B3e-3c1 candidate code adds the first concrete POSIX-native consumers of
+  PLC9B3e-3c1 accepted code adds the first concrete POSIX-native consumers of
   those contracts: an identity-checked quarantine reader, bounded transfer
   owner, and role-separated immutable Store adapters. Five publication/root/
   handle manifest rows now traverse real acquisition-to-set composition;
   Windows native backends, collision/reuse, commit admission, and production
-  routing remain closed.
+  routing remain closed. Its retained 72-row Linux-native report passed with
+  zero skips, failures, or errors and included exactly those five publication
+  nodes.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)

@@ -571,7 +571,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
     assert "PLC9B3e-3a Accepted Staging And Atomic Set Contracts" in contract
     assert "PLC9B3e-3b Accepted Staging And Set Runtime" in contract
     assert "PLC9B3e-3c0 Accepted Verified-Tree Transfer Contracts" in contract
-    assert "PLC9B3e-3c1 Candidate POSIX Verified-Tree Materialization" in contract
+    assert "PLC9B3e-3c1 Accepted POSIX Verified-Tree Materialization" in contract
     assert "PLC9B3e-2a Accepted Transaction-Pin Contract" in contract
     assert "Harness Quality run `33505702666`" in contract
     assert "Linux\nharness job `99849101216`" in contract
@@ -2837,8 +2837,19 @@ def test_plc9b3e3c1_posix_materialization_is_rooted_role_safe_and_executable() -
     assert "replacement Store instance cannot infer ownership" in normalized
     assert "Linux-native report must execute 72 manifest nodes" in normalized
     assert "Windows root/ABA/handle rows remain planned" in normalized
-    assert "PLC9B3e-3c1 candidate code implements" in inventory
-    assert "PLC9B3e-3c1 candidate code adds" in index
+    assert "PLC9B3e-3c1 accepted code implements" in inventory
+    assert "PLC9B3e-3c1 accepted code adds" in index
+    assert "B3e-3c1 was accepted on 2026-09-01 against candidate head `43441992`" in (
+        normalized
+    )
+    assert "Harness Quality run `33550211162`" in normalized
+    assert "Linux harness job `99997508982`" in normalized
+    assert "artifact ID `9817127845`" in normalized
+    assert (
+        "a0def54b47500bd2aad59669ece3057df7179ab427cf8edd46f0491b1310db3b"
+        in contract
+    )
+    assert "executed exactly 72 manifest nodes" in normalized
 
 
 def test_plc9b2f_windows_backend_is_rooted_and_has_a_nonskippable_native_gate() -> None:
