@@ -13,10 +13,12 @@
   inert records, classification, journal CAS, retry/cancel/status, and disabled
   refusal. It has no production composition or artifact capability; all
   acquisition/publication target rows below remain migration obligations.
-- PLC9B2a refinement: an unbound Source Authority/bounded-sink/quarantine
-  component exists inside the same Package owner boundary. Archive/wheel
-  verification, operation-journal integration, native Windows containment,
-  publication, and every production route remain migration obligations.
+- PLC9B2a/B2b refinement: unbound Source Authority/bounded-sink/quarantine and
+  safe wheel-inspection components exist inside the same Package owner
+  boundary. Raw ZIP-layout, path/type/budget, WHEEL/METADATA/RECORD, and rooted
+  POSIX extraction proofs now precede materialization. Operation-journal
+  integration, native Windows containment, publication, and every production
+  route remain migration obligations; no global adversarial row is promoted.
 
 This inventory distinguishes accepted reusable owners, Product adapters,
 parallel compatibility paths, and missing target boundaries. “Migrate” or

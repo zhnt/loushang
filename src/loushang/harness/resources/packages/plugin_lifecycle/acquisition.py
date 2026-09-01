@@ -314,18 +314,14 @@ class PackageAcquisitionBudgetV1:
             max_transport_bytes=_wire_positive(
                 document["maxTransportBytes"], name="transport byte budget"
             ),
-            max_requests=_wire_positive(
-                document["maxRequests"], name="request budget"
-            ),
+            max_requests=_wire_positive(document["maxRequests"], name="request budget"),
             max_redirects=_wire_nonnegative(
                 document["maxRedirects"], name="redirect budget"
             ),
             max_wall_time_ms=_wire_positive(
                 document["maxWallTimeMs"], name="wall-clock budget"
             ),
-            budget_version=_wire_int(
-                document["budgetVersion"], name="budget version"
-            ),
+            budget_version=_wire_int(document["budgetVersion"], name="budget version"),
         )
 
 
@@ -433,12 +429,8 @@ class BoundedAcquisitionReceiptV1:
                 document["redirectCount"], name="redirect count"
             ),
             budgets=PackageAcquisitionBudgetV1.from_dict(document["budgets"]),
-            sink_identity=_wire_string(
-                document["sinkIdentity"], name="sink identity"
-            ),
-            adapter_result=SourceAdapterResultV1.from_dict(
-                document["adapterResult"]
-            ),
+            sink_identity=_wire_string(document["sinkIdentity"], name="sink identity"),
+            adapter_result=SourceAdapterResultV1.from_dict(document["adapterResult"]),
             disposition=cast(
                 Literal["complete"],
                 _wire_string(document["disposition"], name="disposition"),
@@ -460,7 +452,9 @@ class BoundedAcquisitionSinkPort(Protocol):
 class AuthenticatedSourceStreamPort(Protocol):
     envelope: AuthenticatedSourceEnvelopeV1
 
-    def transfer_to(self, sink: BoundedAcquisitionSinkPort) -> SourceAdapterResultV1: ...
+    def transfer_to(
+        self, sink: BoundedAcquisitionSinkPort
+    ) -> SourceAdapterResultV1: ...
 
 
 class PackageSourceAuthorityPort(Protocol):
@@ -496,9 +490,7 @@ class PackageQuarantineStore:
         total = 0
         for directory, names, files in os.walk(self.root, followlinks=False):
             names[:] = [
-                name
-                for name in names
-                if not (Path(directory) / name).is_symlink()
+                name for name in names if not (Path(directory) / name).is_symlink()
             ]
             for name in files:
                 path = Path(directory) / name
@@ -533,6 +525,8 @@ class _QuarantineAttempt:
         self._root_identity = root_identity
         self._attempt_identity = attempt_identity
         self._artifact_name = artifact_name
+        self._tree_identity: tuple[int, int] | None = None
+        self._tree_entries: dict[tuple[str, ...], tuple[int, int]] = {}
         self._closed = False
 
     @classmethod
@@ -618,9 +612,7 @@ class _QuarantineAttempt:
         self._verify()
         if self._attempt_fd is not None:
             flags = (
-                os.O_RDONLY
-                | getattr(os, "O_CLOEXEC", 0)
-                | getattr(os, "O_NOFOLLOW", 0)
+                os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
             )
             descriptor = os.open(
                 self._artifact_name,
@@ -638,6 +630,22 @@ class _QuarantineAttempt:
         if not stat.S_ISREG(metadata.st_mode) or _is_reparse(metadata):
             raise OSError("Quarantine artifact is not a regular file")
         return path.open("rb")
+
+    def _begin_extraction(self) -> _QuarantineTreeWriter:
+        self._verify()
+        if self._tree_identity is not None:
+            raise OSError("Quarantine extraction tree already exists")
+        tree_name = "tree"
+        if self._attempt_fd is not None:
+            os.mkdir(tree_name, mode=0o700, dir_fd=self._attempt_fd)
+            tree_fd = _open_directory(tree_name, dir_fd=self._attempt_fd)
+            self._tree_identity = _identity(os.fstat(tree_fd))
+            return _QuarantineTreeWriter(attempt=self, tree_fd=tree_fd)
+        tree_path = self._attempt_path / tree_name
+        tree_path.mkdir(mode=0o700)
+        _require_private_directory(tree_path)
+        self._tree_identity = _identity(tree_path.lstat())
+        return _QuarantineTreeWriter(attempt=self, tree_fd=None)
 
     def _verify(self) -> None:
         if self._closed:
@@ -679,6 +687,7 @@ class _QuarantineAttempt:
         root_fd = self._root_fd
         if root_fd is not None:
             if attempt_fd is not None:
+                self._cleanup_tree()
                 with suppress(FileNotFoundError):
                     os.unlink(self._artifact_name, dir_fd=attempt_fd)
                 os.close(attempt_fd)
@@ -693,11 +702,166 @@ class _QuarantineAttempt:
                 self._closed = True
                 return
         else:
+            self._cleanup_tree()
             path = self._attempt_path / self._artifact_name
             with suppress(FileNotFoundError):
                 path.unlink()
             self._attempt_path.rmdir()
             self._closed = True
+
+    def _cleanup_tree(self) -> None:
+        if self._tree_identity is None:
+            return
+        for parts in sorted(
+            self._tree_entries,
+            key=lambda value: (len(value), value),
+            reverse=True,
+        ):
+            expected = self._tree_entries[parts]
+            if self._attempt_fd is not None:
+                tree_fd = _open_directory("tree", dir_fd=self._attempt_fd)
+                try:
+                    if _identity(os.fstat(tree_fd)) != self._tree_identity:
+                        raise OSError("Quarantine extraction tree identity changed")
+                    parent_fd = _open_relative_directory(tree_fd, parts[:-1])
+                    try:
+                        metadata = os.stat(
+                            parts[-1],
+                            dir_fd=parent_fd,
+                            follow_symlinks=False,
+                        )
+                        if _identity(metadata) != expected or _is_reparse(metadata):
+                            raise OSError(
+                                "Quarantine extraction entry identity changed"
+                            )
+                        if stat.S_ISDIR(metadata.st_mode):
+                            os.rmdir(parts[-1], dir_fd=parent_fd)
+                        elif stat.S_ISREG(metadata.st_mode):
+                            os.unlink(parts[-1], dir_fd=parent_fd)
+                        else:
+                            raise OSError("Quarantine extraction entry type changed")
+                    finally:
+                        os.close(parent_fd)
+                finally:
+                    os.close(tree_fd)
+            else:
+                path = self._attempt_path / "tree" / Path(*parts)
+                metadata = path.lstat()
+                if _identity(metadata) != expected or _is_reparse(metadata):
+                    raise OSError("Quarantine extraction entry identity changed")
+                if stat.S_ISDIR(metadata.st_mode):
+                    path.rmdir()
+                elif stat.S_ISREG(metadata.st_mode):
+                    path.unlink()
+                else:
+                    raise OSError("Quarantine extraction entry type changed")
+            del self._tree_entries[parts]
+        if self._attempt_fd is not None:
+            metadata = os.stat("tree", dir_fd=self._attempt_fd, follow_symlinks=False)
+            if _identity(metadata) != self._tree_identity or _is_reparse(metadata):
+                raise OSError("Quarantine extraction tree identity changed")
+            os.rmdir("tree", dir_fd=self._attempt_fd)
+        else:
+            tree_path = self._attempt_path / "tree"
+            metadata = tree_path.lstat()
+            if _identity(metadata) != self._tree_identity or _is_reparse(metadata):
+                raise OSError("Quarantine extraction tree identity changed")
+            tree_path.rmdir()
+        self._tree_identity = None
+
+
+class _QuarantineTreeWriter:
+    """Rooted writer available only to the inert wheel verifier."""
+
+    def __init__(
+        self,
+        *,
+        attempt: _QuarantineAttempt,
+        tree_fd: int | None,
+    ) -> None:
+        self._attempt = attempt
+        self._tree_fd = tree_fd
+        self._closed = False
+
+    def _ensure_directory(self, parts: tuple[str, ...]) -> None:
+        self._require_open()
+        for depth in range(1, len(parts) + 1):
+            current = parts[:depth]
+            if current in self._attempt._tree_entries:
+                continue
+            if self._tree_fd is not None:
+                parent_fd = _open_relative_directory(self._tree_fd, current[:-1])
+                try:
+                    os.mkdir(current[-1], mode=0o700, dir_fd=parent_fd)
+                    child_fd = _open_directory(current[-1], dir_fd=parent_fd)
+                    try:
+                        identity = _identity(os.fstat(child_fd))
+                    finally:
+                        os.close(child_fd)
+                finally:
+                    os.close(parent_fd)
+            else:
+                path = self._attempt._attempt_path / "tree" / Path(*current)
+                path.mkdir(mode=0o700)
+                _require_private_directory(path)
+                identity = _identity(path.lstat())
+            self._attempt._tree_entries[current] = identity
+
+    def _open_file(self, parts: tuple[str, ...]) -> BinaryIO:
+        self._require_open()
+        if not parts:
+            raise ValueError("Extracted file path is required")
+        self._ensure_directory(parts[:-1])
+        if parts in self._attempt._tree_entries:
+            raise FileExistsError("Extracted entry already exists")
+        if self._tree_fd is not None:
+            parent_fd = _open_relative_directory(self._tree_fd, parts[:-1])
+            try:
+                descriptor = os.open(
+                    parts[-1],
+                    os.O_WRONLY
+                    | os.O_CREAT
+                    | os.O_EXCL
+                    | getattr(os, "O_CLOEXEC", 0)
+                    | getattr(os, "O_NOFOLLOW", 0),
+                    0o600,
+                    dir_fd=parent_fd,
+                )
+            finally:
+                os.close(parent_fd)
+            handle = os.fdopen(descriptor, "wb", buffering=0)
+            self._attempt._tree_entries[parts] = _identity(os.fstat(descriptor))
+            return handle
+        path = self._attempt._attempt_path / "tree" / Path(*parts)
+        handle = path.open("xb", buffering=0)
+        metadata = os.fstat(handle.fileno())
+        if not stat.S_ISREG(metadata.st_mode) or _is_reparse(metadata):
+            handle.close()
+            raise OSError("Extracted entry is not a regular file")
+        self._attempt._tree_entries[parts] = _identity(metadata)
+        return handle
+
+    def _finish(self) -> None:
+        self._require_open()
+        if self._tree_fd is not None:
+            os.fsync(self._tree_fd)
+            os.close(self._tree_fd)
+            self._tree_fd = None
+        self._closed = True
+        self._attempt._verify()
+
+    def _abort(self) -> None:
+        if self._closed:
+            return
+        if self._tree_fd is not None:
+            os.close(self._tree_fd)
+            self._tree_fd = None
+        self._closed = True
+
+    def _require_open(self) -> None:
+        if self._closed:
+            raise RuntimeError("Quarantine extraction writer is closed")
+        self._attempt._verify()
 
 
 class _BoundedAcquisitionSink:
@@ -1007,8 +1171,7 @@ def _verify_envelope(
     if (
         envelope.operation_id != request.operation_id
         or envelope.node_id != request.node_id
-        or envelope.canonical_source_identity
-        != request.canonical_source_identity
+        or envelope.canonical_source_identity != request.canonical_source_identity
         or envelope.requested_locator_digest != request.requested_locator_digest
         or envelope.policy_revision != request.policy_revision
     ):
@@ -1038,6 +1201,19 @@ def _open_directory(path: str | Path, *, dir_fd: int | None = None) -> int:
     return os.open(path, flags, dir_fd=dir_fd)
 
 
+def _open_relative_directory(root_fd: int, parts: tuple[str, ...]) -> int:
+    current_fd = os.dup(root_fd)
+    try:
+        for part in parts:
+            child_fd = _open_directory(part, dir_fd=current_fd)
+            os.close(current_fd)
+            current_fd = child_fd
+        return current_fd
+    except Exception:
+        os.close(current_fd)
+        raise
+
+
 def _require_private_directory(path: Path) -> None:
     metadata = path.lstat()
     if (
@@ -1064,8 +1240,7 @@ def _is_reparse(metadata: os.stat_result) -> bool:
         getattr(metadata, "st_reparse_tag", 0)
         or (
             _WINDOWS_REPARSE_ATTRIBUTE
-            and getattr(metadata, "st_file_attributes", 0)
-            & _WINDOWS_REPARSE_ATTRIBUTE
+            and getattr(metadata, "st_file_attributes", 0) & _WINDOWS_REPARSE_ATTRIBUTE
         )
     )
 

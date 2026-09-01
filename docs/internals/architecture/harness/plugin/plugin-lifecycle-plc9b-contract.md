@@ -2,17 +2,19 @@
 
 ## Status
 
-- Contract version: PLC9B.2a.
-- Delivery status: PLC9B1 dark Owner Kernel and the unbound PLC9B2a bounded
-  acquisition component are implemented. Versioned inert
+- Contract version: PLC9B.2b.
+- Delivery status: PLC9B1 dark Owner Kernel and the unbound PLC9B2a/B2b safe
+  acquisition and wheel-inspection components are implemented. Versioned inert
   request/classification/status/failure evidence, the owner-revisioned
   three-way classifier, operation/attempt phase-CAS journal, and typed
   retry/cancel/status behavior exist without a production binding. B2a adds
   authenticated Source envelopes, an owner-created bounded byte sink, and a
-  private identity-checked quarantine capability, but it is not yet bound to
-  the operation phase journal. No archive extraction, wheel verification,
-  dependency resolution, publication, or production acquisition route is
-  implemented by this slice.
+  private identity-checked quarantine capability. B2b adds raw ZIP-layout
+  preflight, portable path/type rejection, bounded inert wheel/RECORD
+  verification, and extraction through a rooted owner-only writer after all
+  claims pass. B2 is not yet bound to the operation phase journal. Native
+  Windows root-relative extraction, dependency resolution, publication, and
+  every production acquisition route remain absent.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -84,12 +86,47 @@ the first independently testable B2 component without activating it:
 
 The portable fallback rejects link/reparse roots and every currently visible
 link/reparse ancestor, but it is not accepted as native Windows containment.
-The Windows root-relative handle implementation, archive/wheel verifier,
-operation-phase integration, cleanup tombstone, and native swap fixtures remain
-open B2 work. Consequently B2a promotes no global adversarial manifest row:
+The Windows root-relative handle implementation, operation-phase integration,
+cleanup tombstone, and native swap fixtures remain open B2 work. Consequently
+these B2 components promote no global adversarial manifest row:
 the `B-ACQ-*`, `B-LIMIT-*`, `B-STATE-*`, and later-phase crash rows retain
 `planned` until the complete caller response, journal effect, and native oracle
 specified by each row are executable.
+
+## PLC9B2b Safe Wheel Inspection Component
+
+`loushang.harness.resources.packages.plugin_lifecycle.wheel` consumes only the
+opaque acquired-candidate capability from B2a. It remains dark and provides no
+Product or transport composition. Before materializing any archive entry it:
+
+- parses the EOCD, central directory, and every local header directly; rejects
+  comments, Zip64/multi-disk/data-descriptor/encrypted or unsupported forms,
+  prefixes, gaps, overlap, truncation, trailing payload, and inconsistent raw
+  metadata;
+- applies entry, aggregate expansion, per-entry expansion, metadata,
+  component/depth, component/total path, and wall-clock limits at declaration
+  and byte-consumption edges;
+- rejects absolute/root-relative/traversal/drive/UNC/ADS/reserved-device,
+  trailing-dot/space and separator-ambiguous names, then detects global
+  Unicode-NFC and case-fold collisions plus file/ancestor conflicts;
+- accepts only regular files/directories and ignores no link, device, reparse,
+  socket, FIFO, encryption, or executable archive semantics;
+- accepts only a compatible `.whl`, binds its filename to the sole matching
+  `.dist-info`, verifies `WHEEL` tags and `METADATA` Name/Version, streams all
+  file hashes, and proves the exact `RECORD` set with only SHA-256/384/512;
+- revalidates the acquired artifact digest immediately before extraction, then
+  creates directories/files exclusively beneath the pinned attempt using
+  descriptor-relative no-follow operations on supported POSIX hosts; and
+- returns versioned `VerifiedWheelArtifactV1` evidence plus an opaque candidate
+  whose only current operation is exact cleanup. It exposes no pathname or
+  file handle to B3, transports, Products, or Source adapters.
+
+The verifier deliberately rejects source distributions, arbitrary ZIP files,
+editable/build inputs, archive extras, and weak/unknown RECORD algorithms. Its
+portable fallback is defense-in-depth only and is not native Windows
+acceptance. B2b therefore promotes no global manifest row: those rows require
+the journaled failure/status response and both Linux and Windows native
+oracles, not merely a passing component test.
 
 ## First Principles
 
