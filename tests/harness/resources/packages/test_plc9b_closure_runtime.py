@@ -10,6 +10,8 @@ from hashlib import sha256
 from pathlib import Path
 from typing import cast
 
+import pytest
+
 from loushang.harness.resources.packages.plugin_lifecycle import (
     PackageClassificationBasisFactV1,
     PackageClassificationFactsV1,
@@ -44,6 +46,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.closure import (
 from loushang.harness.resources.packages.plugin_lifecycle.closure_journal import (
     PackageClosureResolutionBasisV1,
     PackageClosureResolutionJournal,
+    PackageClosureResolutionJournalError,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.closure_owner import (
     PackageDependencyCleanupDebtError,
@@ -252,7 +255,7 @@ class _ClosureBuilder:
                 environment_fingerprint=(request.resolution_environment.fingerprint),
                 version="1.1" if self.changed else "1.0",
             ),
-            candidates=(),
+            candidates=(_root,),
         )
 
 
@@ -282,6 +285,25 @@ class _CancellingClosureBuilder(_ClosureBuilder):
             plan=closure.plan,
             candidates=(root,),
         )
+
+
+@dataclass
+class _CorruptingClosureBuilder(_ClosureBuilder):
+    resolution: PackageClosureResolutionJournal | None = None
+
+    def build(
+        self,
+        root: VerifiedWheelCandidate,
+        request: PackageRecursiveClosureRequestV2,
+    ) -> VerifiedPackageClosureCandidate:
+        closure = super().build(root, request)
+        assert self.resolution is not None
+        content = self.resolution.path.read_text(encoding="utf-8")
+        self.resolution.path.write_text(
+            content.replace("{", '{"recordVersion":1,', 1),
+            encoding="utf-8",
+        )
+        return closure
 
 
 def _environment() -> PackageResolutionEnvironmentV1:
@@ -532,7 +554,7 @@ def test_closure_runtime_rejects_changed_durable_plan_without_phase_advance(
     tmp_path: Path,
 ) -> None:
     builder = _ClosureBuilder(changed=True)
-    kernel, owner, _artifact, _builder, resolution, execution, _root = _setup(
+    kernel, owner, _artifact, _builder, resolution, execution, root = _setup(
         tmp_path,
         phase="resolving_closure",
         builder=builder,
@@ -552,8 +574,39 @@ def test_closure_runtime_rejects_changed_durable_plan_without_phase_advance(
     assert result.status.disposition == "rejected"
     assert result.status.failure is not None
     assert result.status.failure.code == "package_operation_identity_conflict"
-    assert kernel.status(OPERATION_ID) == result.status
+    current = kernel.status(OPERATION_ID)
+    assert current is not None
+    assert current.phase == "resolving_closure"
+    assert current.disposition == "active"
+    assert current.journal_revision == result.status.journal_revision
+    assert root.suspended is True
     assert len(resolution.records()) == 2
+
+
+def test_closure_runtime_suspends_candidate_on_resolution_journal_corruption(
+    tmp_path: Path,
+) -> None:
+    builder = _CorruptingClosureBuilder()
+    kernel, owner, artifact, _builder, resolution, execution, root = _setup(
+        tmp_path,
+        phase="resolving_closure",
+        builder=builder,
+    )
+    builder.resolution = resolution
+
+    result = owner.execute(execution)
+
+    assert result.status.disposition == "rejected"
+    assert result.status.failure is not None
+    assert result.status.failure.code == "package_operation_identity_conflict"
+    current = kernel.status(OPERATION_ID)
+    assert current is not None
+    assert current.disposition == "active"
+    assert current.phase == "resolving_closure"
+    assert artifact.calls == 1
+    assert root.suspended is True
+    with pytest.raises(PackageClosureResolutionJournalError):
+        resolution.records()
 
 
 def test_closure_runtime_records_typed_closure_failure_without_secret_echo(

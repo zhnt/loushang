@@ -260,6 +260,7 @@ class PackageClosureLifecycleOwner:
         if status.phase not in {"resolving_closure", "closure_verified"}:
             root.suspend_for_recovery()
             return PackageClosureExecutionResult(status=status)
+        closure: VerifiedPackageClosureCandidate | None = None
         try:
             closure = self._closure_builder.build(
                 root,
@@ -279,9 +280,9 @@ class PackageClosureLifecycleOwner:
                 attempt_epoch=status.attempt_epoch,
             )
             if durable is not None and durable != closure.plan:
-                closure.cleanup()
+                closure.suspend_for_recovery()
                 return PackageClosureExecutionResult(
-                    status=self._record_failure(
+                    status=_local_refusal(
                         status,
                         code="package_operation_identity_conflict",
                     )
@@ -289,6 +290,15 @@ class PackageClosureLifecycleOwner:
             self._resolution_journal.append_plan(
                 request_fingerprint=status.request_fingerprint,
                 plan=closure.plan,
+            )
+        except PackageClosureResolutionJournalError:
+            if closure is not None:
+                closure.suspend_for_recovery()
+            return PackageClosureExecutionResult(
+                status=_local_refusal(
+                    status,
+                    code="package_operation_identity_conflict",
+                )
             )
         except _CLOSURE_REJECTIONS as error:
             return PackageClosureExecutionResult(
@@ -375,7 +385,6 @@ class PackageClosureLifecycleOwner:
 _CLOSURE_REJECTIONS = (
     PackageAcquisitionError,
     PackageArtifactEvidenceJournalError,
-    PackageClosureResolutionJournalError,
     PackageClosureVerificationError,
     PackageDependencyCleanupDebtError,
     PackageDependencyResolutionError,

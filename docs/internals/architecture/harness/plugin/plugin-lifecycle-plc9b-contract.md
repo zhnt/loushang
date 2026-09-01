@@ -613,6 +613,9 @@ or Source call; a Source-only crash edge requires exact reauthorization before
 transfer. Changed durable plans and lifecycle/attempt/environment/budget/extra
 identity fail before phase advancement. A cancel or competing terminal phase
 CAS releases process-local candidates and returns the winning durable status.
+Resolution-journal identity/corruption refusal likewise suspends the verified
+candidate and leaves the durable operation active; it never creates a terminal
+operation whose quarantine evidence has no recovery owner.
 
 Dependency rejection cleanup is not a second mutable state machine. Acquisition
 or Wheel cleanup debt is transferred to the existing Package quarantine cleanup
