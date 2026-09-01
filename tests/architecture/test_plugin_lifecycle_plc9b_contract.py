@@ -603,7 +603,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.4a-candidate." in contract
+    assert "Contract version: PLC9B.4a." in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
@@ -3291,14 +3291,26 @@ def test_plc9b4a_commit_admission_is_dark_read_only_and_exact() -> None:
     _assert_current_publication_statuses(manifest)
 
     normalized = " ".join(contract.split())
-    assert "PLC9B.4a-candidate" in contract
+    assert "PLC9B.4a." in contract
+    assert "PLC9B4a Accepted Commit Admission" in normalized
     assert "sole `set_published -> committed` CAS owner" in normalized
     assert "candidate-free read-only commit-admission owner" in normalized
     assert "never a path, store capability, reopened object, or live handle" in (
         normalized
     )
-    assert "PLC9B4a candidate code closes the logical commit-admission" in inventory
-    assert "PLC9B4a candidate code adds the dark terminal commit owner" in index
+    assert "B4a was accepted on 2026-09-01 against candidate head `4aa314db`" in (
+        normalized
+    )
+    assert "Harness Quality run `33566570578`" in normalized
+    assert "Linux harness job `100051011649`" in normalized
+    assert "artifact ID `9823339334`" in normalized
+    assert (
+        "1635536cd35bb7dcb2138ab723bade9cd807d5379de7db3a31b798b3fff289bd"
+        in contract
+    )
+    assert "XML executed exactly 82 manifest nodes" in normalized
+    assert "PLC9B4a accepted code closes the logical commit-admission" in inventory
+    assert "PLC9B4a accepted code adds the dark terminal commit owner" in index
 
 
 def test_plc9b2f_windows_backend_is_rooted_and_has_a_nonskippable_native_gate() -> None:

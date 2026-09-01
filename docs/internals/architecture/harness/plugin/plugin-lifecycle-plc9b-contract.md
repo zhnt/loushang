@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.4a-candidate.
+- Contract version: PLC9B.4a.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -86,7 +86,7 @@
   Store-private durable settlement authority. It authorizes the exact root,
   tree, member identities, manifest, and receipt before namespace rename,
   recovers the rename-to-receipt crash window, and implements collision/reuse
-  without adding a public route. B4a candidate code adds a deterministic
+  without adding a public route. B4a accepted code adds a deterministic
   immutable Package publication receipt, the sole `set_published -> committed`
   CAS owner, and a candidate-free read-only commit-admission owner. Admission
   reprojects the receipt from the terminal lifecycle, exact committed-set, and
@@ -1223,6 +1223,54 @@ Compatibility run `33562831700`, native job `100039113787`, retained
 `d69e337d062601c55641166cca1d0a193017b12ca49dcf1ef2b5f2ca0fab2ac4`.
 Its native-component XML executed exactly 19 tests and its manifest XML
 executed exactly 12 nodes; both recorded zero skips, failures, and errors.
+
+## PLC9B4a Accepted Commit Admission
+
+B4a closes the logical publication-to-selection boundary without opening a
+Product route. `PackageCommitLifecycleOwner` is the sole writer of the adjacent
+`set_published -> committed` operation CAS. Before that edge it revalidates the
+terminal committed-set record, designated root, complete closure/set digests,
+request/classification context, and exact still-live transaction-pin receipt.
+Concurrent exact callers converge on the winning terminal status and rebuild
+the same immutable receipt; conflicting or terminal pin evidence leaves the
+operation unchanged at `set_published`.
+
+`PackagePublicationReceiptV1` is a deterministic durable projection rather
+than a fourth journal. Its fingerprint binds the operation fingerprint
+`SHA-256(operation_id, request_fingerprint)`, attempt, Product/scope,
+Installation/Plugin, classification, complete typed committed-set ref,
+transaction-pin receipt, and terminal operation revision. Restart reprojects
+the same receipt from the three accepted owner journals. It contains no path,
+credential, candidate, store capability, reopened object, or live handle.
+
+The separate `PackageCommitAdmissionOwner` is strictly read-only. It reprojects
+the expected publication receipt from current durable evidence and compares the
+caller claim across operation/request, Product/scope, Installation/Plugin,
+designated-root type and identity, committed-set identity, closure digest, and
+live transaction pin. It returns only a versioned stable admission receipt for
+later B4b composition. A missing publication receipt, a dependency presented
+as root, another set/operation/request/scope/Plugin, or digest tampering returns
+`package_commit_admission_denied` without appending any journal or reopening a
+Store. No symbol is exported through the internal Package facade, public
+Package facade, or author SDK.
+
+The composed adversarial manifest makes `B-PUB-UNCOMMITTED` and all seven
+`B-ADMISSION-*` rows executable. All thirteen publication rows are now
+implemented, but this does not activate selection: B4b retention handoff, B4c
+recovery/epoch fencing, B5 Product routing, desired-state mutation, and runtime
+handle issuance remain closed.
+
+B4a was accepted on 2026-09-01 against candidate head `4aa314db` after all 23
+PR checks passed. Harness Quality run `33566570578`, Linux harness job
+`100051011649`, retained `plc9b-linux-native-pytest-report` artifact ID
+`9823339334` with upload digest
+`1635536cd35bb7dcb2138ab723bade9cd807d5379de7db3a31b798b3fff289bd`.
+Its XML executed exactly 82 manifest nodes, including the eight B4a rows, with
+zero skips, failures, or errors. The same candidate passed the Windows Shell,
+architecture, AI/host/Harness TUI, cross-platform terminal, and aggregate
+Harness checks. Local `make check-harness` passed Ruff, mypy over 640 source
+files, and 3,805 tests with 23 expected skips; the 14 focused B4a component
+tests and 36 PLC9B architecture contracts also passed.
 
 ## First Principles
 

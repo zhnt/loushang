@@ -155,13 +155,15 @@ Neither may silently override a narrower implemented owner contract.
   checks passed; retained reports executed 74 Linux-native manifest nodes, 19
   Windows native-component tests, and 12 Windows manifest nodes without skips,
   failures, or errors.
-  PLC9B4a candidate code adds the dark terminal commit owner, deterministic
+  PLC9B4a accepted code adds the dark terminal commit owner, deterministic
   publication receipt, and candidate-free read-only admission owner. The
   admission boundary proves exact operation/request, Product/scope,
   Installation/Plugin, root/set/closure, and live transaction-pin evidence but
   cannot reopen a revision or mutate binding/desired state. The missing-receipt
   publication row and seven cross-context admission rows are executable; the
-  later retention-handoff, epoch, and Product-routing gates remain closed.
+  later retention-handoff, epoch, and Product-routing gates remain closed. All
+  23 candidate checks passed, and retained Linux artifact `9823339334`
+  executed exactly 82 manifest nodes with no skips, failures, or errors.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)
