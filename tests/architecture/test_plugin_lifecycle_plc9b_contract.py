@@ -399,6 +399,10 @@ def _implemented_b3d_recovery_manifest_cases() -> set[str]:
     return _literal_manifest_cases("IMPLEMENTED_B3D_RECOVERY_MANIFEST_CASES")
 
 
+def _implemented_b3d_limit_manifest_cases() -> set[str]:
+    return _literal_manifest_cases("IMPLEMENTED_B3D_LIMIT_MANIFEST_CASES")
+
+
 def _journal_effect_policy() -> list[tuple[str, str, str]]:
     contract = _source(CONTRACT)
     block = contract.split("<!-- plc9b-journal-effect-policy:start -->", 1)[1]
@@ -482,7 +486,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.3d1" in contract
+    assert "Contract version: PLC9B.3d2a-candidate" in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
@@ -495,6 +499,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
     assert "PLC9B3b Accepted Durable Closure Inputs" in contract
     assert "PLC9B3c Accepted Recursive Closure Builder" in contract
     assert "PLC9B3d-1 Accepted Durable Closure Recovery" in contract
+    assert "PLC9B3d-2a Candidate Composed Closure Limits" in contract
     assert "Harness Quality run `33505702666`" in contract
     assert "Linux\nharness job `99849101216`" in contract
     assert "(ID\n`9799493328`)" in contract
@@ -738,6 +743,7 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
     implemented_b2j = _implemented_b2j_recovery_manifest_cases()
     implemented_b2k = _implemented_b2k_hardlink_manifest_cases()
     implemented_b3d = _implemented_b3d_recovery_manifest_cases()
+    implemented_b3d_limits = _implemented_b3d_limit_manifest_cases()
     implemented = (
         implemented_b1
         | implemented_b2
@@ -746,6 +752,7 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
         | implemented_b2j
         | implemented_b2k
         | implemented_b3d
+        | implemented_b3d_limits
     )
 
     assert len(manifest) == 127
@@ -862,6 +869,20 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
         | implemented_b2j
         | implemented_b2k
     ).isdisjoint(implemented_b3d)
+    assert implemented_b3d_limits == {
+        "B-LIMIT-GRAPH",
+        "B-LIMIT-SOLVER",
+        "B-LIMIT-REQUESTS",
+    }
+    assert (
+        implemented_b1
+        | implemented_b2
+        | implemented_b2h
+        | implemented_b2i
+        | implemented_b2j
+        | implemented_b2k
+        | implemented_b3d
+    ).isdisjoint(implemented_b3d_limits)
     separator = manifest["B-PATH-COLLISION-SEP"]
     assert separator["fixture"] == "separator_ambiguous_path"
     assert separator["code"] == "package_archive_path_rejected"
@@ -875,7 +896,7 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
     assert hardlink["code"] == "ok"
     assert hardlink["disposition"] == "extracted@independent_regular_files"
     assert hardlink["status"] == "implemented"
-    assert len(manifest) - len(implemented) == 73
+    assert len(manifest) - len(implemented) == 70
     workflow = _source(HARNESS_WORKFLOW)
     assert "PLC9B Linux native adversarial gate (plc9b-linux-native)" in workflow
     assert "tests/harness/resources/packages/test_plc9b_adversarial.py" in workflow
@@ -1739,9 +1760,6 @@ def test_plc9b3a_closure_verifier_is_dark_pure_and_does_not_promote_rows() -> No
         assert internal_symbol not in author_sdk
 
     component_case_ids = {
-        "B-LIMIT-GRAPH",
-        "B-LIMIT-SOLVER",
-        "B-LIMIT-REQUESTS",
         "B-CLOSURE-MISSING",
         "B-CLOSURE-DIGEST",
         "B-CLOSURE-ORIGIN",
@@ -1789,9 +1807,6 @@ def test_plc9b3b_durable_closure_inputs_are_ordered_dark_and_unpromoted() -> Non
         assert forbidden_export not in package_facade
         assert forbidden_export not in author_sdk
     component_case_ids = {
-        "B-LIMIT-GRAPH",
-        "B-LIMIT-SOLVER",
-        "B-LIMIT-REQUESTS",
         "B-CLOSURE-MISSING",
         "B-CLOSURE-DIGEST",
         "B-CLOSURE-ORIGIN",
@@ -1866,9 +1881,6 @@ def test_plc9b3c_recursive_builder_is_selection_only_dark_and_unpromoted() -> No
         assert internal_symbol not in package_facade
         assert internal_symbol not in author_sdk
     component_case_ids = {
-        "B-LIMIT-GRAPH",
-        "B-LIMIT-SOLVER",
-        "B-LIMIT-REQUESTS",
         "B-CLOSURE-MISSING",
         "B-CLOSURE-DIGEST",
         "B-CLOSURE-ORIGIN",
@@ -1945,9 +1957,6 @@ def test_plc9b3d_candidate_binds_recovery_before_io_and_remains_dark() -> None:
         assert forbidden not in journal
         assert forbidden not in runtime
     pending_cases = {
-        "B-LIMIT-GRAPH",
-        "B-LIMIT-SOLVER",
-        "B-LIMIT-REQUESTS",
         "B-CLOSURE-MISSING",
         "B-CLOSURE-DIGEST",
         "B-CLOSURE-ORIGIN",
@@ -1959,8 +1968,19 @@ def test_plc9b3d_candidate_binds_recovery_before_io_and_remains_dark() -> None:
     assert all(manifest[case_id]["status"] == "planned" for case_id in pending_cases)
     assert {
         manifest[case_id]["status"]
-        for case_id in {"B-CRASH-RESOLVING", "B-CRASH-CLOSURE"}
+        for case_id in {
+            "B-CRASH-RESOLVING",
+            "B-CRASH-CLOSURE",
+            "B-LIMIT-GRAPH",
+            "B-LIMIT-SOLVER",
+            "B-LIMIT-REQUESTS",
+        }
     } == {"implemented"}
+    assert manifest["B-LIMIT-REQUESTS"]["barrier"] == "resolving_closure"
+    assert (
+        manifest["B-LIMIT-REQUESTS"]["disposition"]
+        == "rejected@resolving_closure"
+    )
     for evidence in (
         "changed_inputs_fail_closed",
         "without_resolver_or_source_io",
@@ -1978,6 +1998,8 @@ def test_plc9b3d_candidate_binds_recovery_before_io_and_remains_dark() -> None:
     assert "Linux harness job\n`99872863556`" in contract
     assert "artifact ID\n`9802403797`" in contract
     assert "executed exactly 54 manifest nodes" in contract
+    assert "This is candidate evidence only" in contract
+    assert "executes exactly 57 manifest nodes" in contract
 
 
 def test_plc9b2f_windows_backend_is_rooted_and_has_a_nonskippable_native_gate(

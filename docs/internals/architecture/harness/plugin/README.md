@@ -94,8 +94,9 @@ Neither may silently override a narrower implemented owner contract.
   before the pure closure proof. PLC9B3d-1 accepted dark code adds durable
   basis/selection/plan evidence, local dependency replay, cleanup-debt handoff,
   and dark closure phase-CAS. B3d-1 accepts its two crash rows after the retained
-  54-row Linux-native report passed; closure/limit rows remain planned. Typed
-  refs, publication, and production routing remain unimplemented.
+  54-row Linux-native report passed. B3d-2a candidate code makes the three
+  composed closure-limit rows executable; closure-integrity rows remain planned.
+  Typed refs, publication, and production routing remain unimplemented.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)

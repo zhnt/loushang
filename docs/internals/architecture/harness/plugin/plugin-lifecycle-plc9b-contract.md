@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.3d1.
+- Contract version: PLC9B.3d2a-candidate.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -44,7 +44,8 @@
   cleanup-debt handoff, and the dark `resolving_closure -> closure_verified`
   lifecycle owner. B3d-1 accepts the two closure crash rows after their
   retained Linux-native report passed; the remaining closure/limit rows stay
-  planned.
+  planned. B3d-2a candidate code makes the three composed closure-limit rows
+  executable without changing the accepted crash evidence.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -649,6 +650,32 @@ Every PR check passed; Harness Quality run `33512955335`, Linux harness job
 Its XML executed exactly 54 manifest nodes, including `B-CRASH-RESOLVING` and
 `B-CRASH-CLOSURE`, with zero skips, failures, or errors.
 
+## PLC9B3d-2a Candidate Composed Closure Limits
+
+B3d-2a composes the accepted lifecycle, Source, acquisition, Wheel, selection
+journal, recursive builder, and closure runtime for `B-LIMIT-GRAPH`,
+`B-LIMIT-SOLVER`, and `B-LIMIT-REQUESTS`. Each fixture first verifies one real
+root Wheel whose digest-bound metadata requires a dependency. The graph budget
+rejects after durable selection but before dependency Source authority; the
+solver budget rejects before resolver selection; and the aggregate request
+budget counts the root receipt, durably records the dependency selection, then
+rejects before a second Source request. All three retain exactly the root's
+three artifact-evidence records, make one Source call, publish/bind nothing,
+clean bounded quarantine residue, and replay without another resolver or Source
+call.
+
+The global lifecycle remains in `resolving_closure` while a dependency's
+private acquisition is considered. Therefore B3d-2a refines
+`B-LIMIT-REQUESTS` from the earlier aspirational `acquiring` barrier to
+`rejected@resolving_closure`; it does not invent a non-adjacent global phase
+loop for each graph node. The original no-extra-network and bounded-residue
+oracles are unchanged.
+
+This is candidate evidence only. `B-LIMIT-GRAPH/SOLVER/REQUESTS` are executable
+but not accepted until all PR checks pass and the retained Linux-native XML
+executes exactly 57 manifest nodes without skips, failures, or errors. All
+seven `B-CLOSURE-*` rows remain `planned`; B3e remains out of scope.
+
 ## First Principles
 
 1. Untrusted bytes are data, never a pathname, command, module, or build plan.
@@ -1127,9 +1154,9 @@ B-TYPE-JUNCTION | windows-native | inspecting | junction_entry | package_archive
 B-LIMIT-ENTRY | any | inspecting | entry_or_expansion_budget | package_resource_limit_exceeded | rejected@inspecting | bounded_residue;no_publication;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-LIMIT-ENTRY] | harness-quality.yml#plc9b-linux-native | implemented
 B-LIMIT-MEMORY | any | inspecting | parser_or_metadata_memory | package_resource_limit_exceeded | rejected@inspecting | bounded_residue;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-LIMIT-MEMORY] | harness-quality.yml#plc9b-linux-native | implemented
 B-LIMIT-CPU | any | inspecting | cpu_or_wall_budget | package_resource_limit_exceeded | rejected@inspecting | bounded_residue;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-LIMIT-CPU] | harness-quality.yml#plc9b-linux-native | implemented
-B-LIMIT-GRAPH | any | resolving_closure | closure_node_edge_depth | package_resource_limit_exceeded | rejected@resolving_closure | no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-LIMIT-GRAPH] | harness-quality.yml#plc9b-linux-native | planned
-B-LIMIT-SOLVER | any | resolving_closure | solver_or_marker_steps | package_resource_limit_exceeded | rejected@resolving_closure | no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-LIMIT-SOLVER] | harness-quality.yml#plc9b-linux-native | planned
-B-LIMIT-REQUESTS | any | acquiring | request_redirect_artifact_count | package_resource_limit_exceeded | rejected@acquiring | no_extra_network;no_publication;bounded_residue | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-LIMIT-REQUESTS] | harness-quality.yml#plc9b-linux-native | planned
+B-LIMIT-GRAPH | any | resolving_closure | closure_node_edge_depth | package_resource_limit_exceeded | rejected@resolving_closure | no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-LIMIT-GRAPH] | harness-quality.yml#plc9b-linux-native | implemented
+B-LIMIT-SOLVER | any | resolving_closure | solver_or_marker_steps | package_resource_limit_exceeded | rejected@resolving_closure | no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-LIMIT-SOLVER] | harness-quality.yml#plc9b-linux-native | implemented
+B-LIMIT-REQUESTS | any | resolving_closure | request_redirect_artifact_count | package_resource_limit_exceeded | rejected@resolving_closure | no_extra_network;no_publication;bounded_residue | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-LIMIT-REQUESTS] | harness-quality.yml#plc9b-linux-native | implemented
 B-WHEEL-SDIST | any | inspecting | source_distribution | package_artifact_type_rejected | rejected@inspecting | no_process;no_import;no_publication;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-WHEEL-SDIST] | harness-quality.yml#plc9b-linux-native | implemented
 B-WHEEL-ZIP | any | inspecting | arbitrary_zip_or_editable | package_artifact_type_rejected | rejected@inspecting | no_process;no_import;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-WHEEL-ZIP] | harness-quality.yml#plc9b-linux-native | implemented
 B-WHEEL-TAGS | any | inspecting | unsupported_wheel_tags | package_artifact_type_rejected | rejected@inspecting | no_publication;no_binding | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-WHEEL-TAGS] | harness-quality.yml#plc9b-linux-native | implemented

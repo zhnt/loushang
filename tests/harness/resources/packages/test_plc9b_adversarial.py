@@ -10,7 +10,7 @@ import struct
 import sys
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path
 
@@ -146,6 +146,11 @@ IMPLEMENTED_B3D_RECOVERY_MANIFEST_CASES = (
     "B-CRASH-RESOLVING",
     "B-CRASH-CLOSURE",
 )
+IMPLEMENTED_B3D_LIMIT_MANIFEST_CASES = (
+    "B-LIMIT-GRAPH",
+    "B-LIMIT-SOLVER",
+    "B-LIMIT-REQUESTS",
+)
 
 EXECUTABLE_MANIFEST_CASES = (
     IMPLEMENTED_B1_MANIFEST_CASES
@@ -155,6 +160,7 @@ EXECUTABLE_MANIFEST_CASES = (
     + IMPLEMENTED_B2J_RECOVERY_MANIFEST_CASES
     + IMPLEMENTED_B2K_HARDLINK_MANIFEST_CASES
     + IMPLEMENTED_B3D_RECOVERY_MANIFEST_CASES
+    + IMPLEMENTED_B3D_LIMIT_MANIFEST_CASES
 )
 
 WHEEL_FILENAME = "acme_plugin-1.0-py3-none-any.whl"
@@ -208,6 +214,54 @@ def _wheel_bytes(
                 info.external_attr = (
                     (entry_modes or {}).get(name, stat.S_IFREG | 0o644) << 16
                 )
+            info.compress_type = zipfile.ZIP_DEFLATED
+            archive.writestr(info, payload)
+    return output.getvalue()
+
+
+def _package_wheel_bytes(
+    project: str,
+    version: str,
+    *,
+    requires_dist: tuple[str, ...] = (),
+    requires_python: str | None = None,
+) -> bytes:
+    normalized = project.replace("-", "_")
+    dist_info = f"{normalized}-{version}.dist-info"
+    metadata = (
+        f"Metadata-Version: 2.1\nName: {project}\nVersion: {version}\n"
+        + (
+            ""
+            if requires_python is None
+            else f"Requires-Python: {requires_python}\n"
+        )
+        + "".join(f"Requires-Dist: {item}\n" for item in requires_dist)
+        + "\n"
+    ).encode()
+    files = {
+        f"{normalized}/__init__.py": b"VALUE = 1\n",
+        f"{dist_info}/WHEEL": (
+            b"Wheel-Version: 1.0\n"
+            b"Generator: plc9b-manifest\n"
+            b"Root-Is-Purelib: true\n"
+            b"Tag: py3-none-any\n\n"
+        ),
+        f"{dist_info}/METADATA": metadata,
+    }
+    rows = [
+        (name, _record_digest(payload), str(len(payload)))
+        for name, payload in files.items()
+    ]
+    rows.append((f"{dist_info}/RECORD", "", ""))
+    record = io.StringIO(newline="")
+    csv.writer(record, lineterminator="\n").writerows(rows)
+    files[f"{dist_info}/RECORD"] = record.getvalue().encode()
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name, payload in files.items():
+            info = zipfile.ZipInfo(name)
+            info.create_system = 3
+            info.external_attr = (stat.S_IFREG | 0o644) << 16
             info.compress_type = zipfile.ZIP_DEFLATED
             archive.writestr(info, payload)
     return output.getvalue()
@@ -541,6 +595,7 @@ class _SourceAuthority:
     case_id: str
     secret: str
     payload: bytes | None = None
+    payloads: dict[str, bytes] | None = None
     clock: _Clock | None = None
     authorize_calls: int = 0
     stream: _SourceStream | None = None
@@ -556,7 +611,12 @@ class _SourceAuthority:
                 consumed_bytes=0,
             )
 
-        chunks = (self.payload if self.payload is not None else b"wheel",)
+        payload = (
+            (self.payloads or {}).get(request.canonical_source_identity)
+            if self.payloads is not None
+            else self.payload
+        )
+        chunks = (payload if payload is not None else b"wheel",)
         request_count = 1
         redirects: tuple[str, ...] = ()
         advance_seconds = 0.0
@@ -638,6 +698,44 @@ class _NoDependencyResolver:
     ) -> PackageDependencySelectionV1:
         self.calls += 1
         raise AssertionError("root-only closure must not consult the resolver")
+
+
+@dataclass(frozen=True)
+class _ManifestSelection:
+    version: str
+    source: str
+    filename: str
+    digest: str
+
+
+@dataclass
+class _ManifestResolver:
+    selections: dict[str, _ManifestSelection]
+    calls: list[str] = field(default_factory=list)
+
+    def resolve(
+        self,
+        request: PackageDependencySelectionRequestV1,
+    ) -> PackageDependencySelectionV1:
+        self.calls.append(request.requirement.project_name)
+        selected = self.selections[request.requirement.project_name]
+        return PackageDependencySelectionV1(
+            operation_id=request.operation_id,
+            attempt_epoch=request.attempt_epoch,
+            parent_node_id=request.parent_node_id,
+            request_fingerprint=request.request_fingerprint,
+            resolution_environment_fingerprint=(
+                request.resolution_environment_fingerprint
+            ),
+            requirement_fingerprint=request.requirement_fingerprint,
+            project_name=request.requirement.project_name,
+            version=selected.version,
+            canonical_source_identity=selected.source,
+            wheel_filename=selected.filename,
+            expected_artifact_digest=selected.digest,
+            resolver_id="resolver:manifest",
+            resolver_revision="resolver-revision:1",
+        )
 
 
 def _facts(*present: str) -> PackageClassificationFactsV1:
@@ -724,6 +822,7 @@ def _b2_owner(
     case_id: str,
     secret: str,
     payload: bytes | None = None,
+    payloads: dict[str, bytes] | None = None,
     inspection_budgets: PackageInspectionBudgetV1 | None = None,
     wheel_verifier: PackageWheelVerifier | None = None,
     supported_tags: frozenset[str] | None = None,
@@ -753,6 +852,7 @@ def _b2_owner(
         case_id=case_id,
         secret=secret,
         payload=payload,
+        payloads=payloads,
         clock=clock,
     )
     artifact_owner = PackageArtifactLifecycleOwner(
@@ -795,12 +895,21 @@ def _b2_owner(
     )
 
 
-def _b3d_owner(tmp_path: Path, *, case_id: str, secret: str):
+def _b3d_owner(
+    tmp_path: Path,
+    *,
+    case_id: str,
+    secret: str,
+    root_payload: bytes | None = None,
+    payloads: dict[str, bytes] | None = None,
+    resolver: _NoDependencyResolver | _ManifestResolver | None = None,
+):
     components = _b2_owner(
         tmp_path,
         case_id=case_id,
         secret=secret,
-        payload=_wheel_bytes(),
+        payload=root_payload or _wheel_bytes(),
+        payloads=payloads,
     )
     (
         kernel,
@@ -814,7 +923,7 @@ def _b3d_owner(tmp_path: Path, *, case_id: str, secret: str):
     resolution_journal = PackageClosureResolutionJournal(
         tmp_path / "package-closure-resolution.jsonl"
     )
-    resolver = _NoDependencyResolver()
+    resolver = resolver or _NoDependencyResolver()
     recursive_owner = PackageRecursiveClosureOwner(
         resolver=resolver,
         acquisition_owner=artifact_owner._acquisition_owner,
@@ -1201,6 +1310,115 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
         assert journal.records() == records
         assert source_authority.authorize_calls == 1
         assert secret not in repr(result)
+    elif case_id in IMPLEMENTED_B3D_LIMIT_MANIFEST_CASES:
+        secret = f"manifest-secret-{case_id.lower()}"
+        environment = _closure_environment()
+        root_source = f"https://packages.example.test/{WHEEL_FILENAME}"
+        dependency_source = (
+            "https://packages.example.test/dependency-2.0-py3-none-any.whl"
+        )
+        root_payload = _package_wheel_bytes(
+            "acme-plugin",
+            "1.0",
+            requires_dist=("dependency==2",),
+        )
+        dependency_payload = _package_wheel_bytes("dependency", "2.0")
+        resolver = _ManifestResolver(
+            {
+                "dependency": _ManifestSelection(
+                    version="2.0",
+                    source=dependency_source,
+                    filename="dependency-2.0-py3-none-any.whl",
+                    digest=sha256(dependency_payload).hexdigest(),
+                )
+            }
+        )
+        (
+            kernel,
+            _artifact_owner,
+            journal,
+            evidence_journal,
+            cleanup_journal,
+            store,
+            source_authority,
+            closure_owner,
+            resolution_journal,
+            _resolver,
+        ) = _b3d_owner(
+            tmp_path,
+            case_id=case_id,
+            secret=secret,
+            root_payload=root_payload,
+            payloads={
+                root_source: root_payload,
+                dependency_source: dependency_payload,
+            },
+            resolver=resolver,
+        )
+        classified = kernel.submit(
+            _request(
+                source=(
+                    f"https://user:{secret}@packages.example.test/{WHEEL_FILENAME}"
+                    f"?token={secret}#{secret}"
+                ),
+                environment_fingerprint=environment.fingerprint,
+            )
+        )
+        budgets = {
+            "B-LIMIT-GRAPH": PackageClosureBudgetV1(max_nodes=1),
+            "B-LIMIT-SOLVER": PackageClosureBudgetV1(max_solver_steps=0),
+            "B-LIMIT-REQUESTS": PackageClosureBudgetV1(max_total_requests=1),
+        }[case_id]
+        execution = PackageClosureExecutionRequestV2(
+            artifact=_artifact_execution(classified, secret=secret),
+            resolution_environment=environment,
+            budgets=budgets,
+        )
+        outside = tmp_path / "outside-sentinel"
+        outside.write_bytes(b"preserve")
+
+        result = closure_owner.execute(execution)
+
+        assert result.status.phase == "resolving_closure"
+        assert result.status.disposition == "rejected"
+        assert result.status.failure is not None
+        assert result.status.failure.code == "package_resource_limit_exceeded"
+        assert result.candidate is None
+        assert result.cleanup_status is None
+        assert source_authority.authorize_calls == 1
+        assert resolver.calls == (
+            [] if case_id == "B-LIMIT-SOLVER" else ["dependency"]
+        )
+        assert tuple(
+            record.evidence_kind for record in resolution_journal.records()
+        ) == (
+            ("resolution_basis",)
+            if case_id == "B-LIMIT-SOLVER"
+            else ("resolution_basis", "selection")
+        )
+        assert tuple(
+            record.evidence_kind for record in evidence_journal.records()
+        ) == (
+            "authenticated_source",
+            "bounded_acquisition",
+            "verified_wheel",
+        )
+        assert cleanup_journal.records() == ()
+        assert store.attempt_names() == ()
+        assert outside.read_bytes() == b"preserve"
+        lifecycle_records = journal.records()
+        resolution_records = resolution_journal.records()
+        evidence_records = evidence_journal.records()
+        replay = closure_owner.execute(execution)
+        assert replay.status == result.status
+        assert journal.records() == lifecycle_records
+        assert resolution_journal.records() == resolution_records
+        assert evidence_journal.records() == evidence_records
+        assert source_authority.authorize_calls == 1
+        assert secret not in repr(result)
+        for path in tmp_path.rglob("*"):
+            if path.is_file():
+                assert secret.encode() not in path.read_bytes()
     elif case_id in IMPLEMENTED_B3D_RECOVERY_MANIFEST_CASES:
         secret = f"manifest-secret-{case_id.lower()}"
         environment = _closure_environment()
