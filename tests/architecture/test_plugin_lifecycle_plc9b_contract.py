@@ -1503,6 +1503,7 @@ def test_plc9b2f_windows_backend_is_rooted_and_has_a_nonskippable_native_gate(
     assert native_tests.count("def test_windows_native_") == 5
     assert "test_plc9b_windows_native.py" in workflow
     assert "windows-shell-plc9b-native.xml" in workflow
+    assert "include-hidden-files: true" in workflow
     assert (
         "verify_pytest_xml.py\n          .artifacts/windows-shell-plc9b-native.xml"
         in workflow

@@ -107,4 +107,5 @@ jobs:
         with:
           name: windows-shell-pytest-reports
           path: .artifacts/windows-shell-*.xml
+          include-hidden-files: true
           if-no-files-found: warn
