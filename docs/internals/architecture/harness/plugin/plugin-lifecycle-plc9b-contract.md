@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.2j.
+- Contract version: PLC9B.2k-candidate.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -30,6 +30,8 @@
   their dedicated non-skippable Windows report passed and retained its XML.
   B2j implements artifact-identity replacement, four early crash edges, and
   rejected quarantine cleanup debt after their Linux-native report passed.
+  B2k corrects the hardlink threat model and adds one POSIX-native source
+  normalization candidate that proves independent regular output files.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -318,10 +320,9 @@ before materialization, so `B-WHEEL-METADATA` is rejected at `inspecting`, not
 at `extracted`. RECORD relation failures remain at the adjacent `extracted`
 proof barrier and still occur before a tree becomes selectable.
 
-`B-TYPE-HARDLINK` is deliberately not included. Wheel's ZIP format carries no
-portable hardlink inode/relation field, and substituting symlink or duplicate
-bytes would be false evidence. That row remains `planned` pending an explicit
-not-applicable contract disposition or a real encodable fixture.
+`B-TYPE-HARDLINK` was deliberately not included in B2h. Wheel 1.x carries no
+portable hardlink inode/relation field, and substituting a symlink or merely
+labelling duplicate bytes as a hardlink would be false rejection evidence.
 
 B2h was accepted on 2026-09-01 by
 [Harness Quality run `33489524268`](https://github.com/zhnt/loushang/actions/runs/33489524268),
@@ -331,7 +332,8 @@ all 38 then-implemented manifest nodes with `0 skipped`, `0 failures`, and
 persisted the XML with upload digest
 `a858b55a60665b69b1a83dbfe29ef00d3b0ef48107b1d7c112a297f0a125e50f`.
 The 24 rows named above are therefore `implemented`; this does not promote the
-hardlink, Windows-native, cleanup/recovery, closure, publication, or route rows.
+hardlink-source normalization, Windows-native, cleanup/recovery, closure,
+publication, or route rows.
 
 ## PLC9B2i Accepted Windows Archive Manifest Slice
 
@@ -391,6 +393,31 @@ retained the XML with upload digest
 `64b7f93eb4e42555e33fcd67892d18daa28bdd8464b570a74924bab50d8891c6`.
 The six rows are therefore `implemented`. Closure, pins, publication, commit
 admission, desired state, binding, and production routes remain absent.
+
+## PLC9B2k POSIX Hardlink Normalization Candidate
+
+The current
+[Wheel binary distribution specification](https://packaging.python.org/en/latest/specifications/binary-distribution-format/)
+defines Wheel 1.x as a ZIP archive whose installed files are authenticated by
+`RECORD`; it defines no inode or hardlink relation. The deferred
+[PEP 778](https://peps.python.org/pep-0778/) likewise requires a future Wheel
+major version even for symlinks and explicitly leaves hardlinks to a future
+PEP. PLC9B therefore must not invent a hardlink entry type or reject two regular
+members merely because their bytes match.
+
+B2k changes `B-TYPE-HARDLINK` from the unrealizable `hardlink_entry` rejection
+to `hardlinked_source_normalized`. The native fixture creates two POSIX names
+for one source inode, archives both through Wheel 1.x, and proves the central
+directory exposes only independent regular-file members with no link-bearing
+extra field. The rooted verifier then creates each destination independently,
+and the test proves distinct extracted inode identities with link count one.
+No archive-controlled link operation exists anywhere in the verifier port.
+
+The row remains `planned` until the complete `plc9b-linux-native` report passes
+without skips, failures, or errors on Linux and retains its XML. A future Wheel
+version that standardizes link semantics is unsupported input until a separate
+reviewed contract and verifier are implemented; it cannot inherit B2k's
+normalization proof.
 
 ## First Principles
 
@@ -722,9 +749,10 @@ following on every supported platform:
   names are rejected before filesystem creation;
 - duplicate names and names colliding after separator, Unicode, case, or
   platform normalization are rejected globally;
-- only regular files and directories are accepted; symlinks, hard links,
-  junctions/reparse points, devices, sockets, and FIFOs are rejected in both
-  archive metadata and the materialized tree;
+- only regular files and directories are accepted; recognized symlinks,
+  junctions/reparse points, devices, sockets, and FIFOs are rejected. No ZIP
+  extra field has link-creation authority, so Wheel 1.x source hardlinks that
+  arrive as regular byte members remain unrelated in the materialized tree;
 - every create/open is root-relative, no-follow, exclusive where required, and
   checked against the pinned owner root; ancestor or entry replacement fails
   closed;
@@ -800,8 +828,11 @@ backend, store, classifier, ledger, and quarantine owner remain forbidden.
 The machine-readable manifest below is the mandatory runtime evidence plan.
 PLC9B.0 deliberately leaves every row `planned`: no fixture or artifact is
 created or executed in this design slice. Runtime activation must change each
-row to `required`, provide the exact collected pytest node and workflow job, and
-make either a missing node or a skip fail that job.
+row to `implemented`, provide the exact collected pytest node and workflow job,
+and make either a missing node or a skip fail that job.
+
+An `ok` code can describe an explicitly named nonterminal proved phase such as
+`extracted`; it never implies `committed`, selection, publication, or binding.
 
 `platform` is `any`, `posix-native`, or `windows-native`. `disposition` is the
 caller-visible response outcome, not permission to append a terminal journal
@@ -857,7 +888,7 @@ B-PATH-COLLISION-SEP | any | inspecting | separator_ambiguous_path | package_arc
 B-PATH-COLLISION-UNICODE | any | inspecting | unicode_collision | package_archive_name_collision | rejected@inspecting | no_outside_write;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-COLLISION-UNICODE] | harness-quality.yml#plc9b-linux-native | implemented
 B-PATH-COLLISION-CASE | windows-native | inspecting | casefold_collision | package_archive_name_collision | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-COLLISION-CASE] | windows-shell-compatibility.yml#plc9b-windows-native | implemented
 B-TYPE-SYMLINK | posix-native | inspecting | symlink_entry | package_archive_entry_type_rejected | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-TYPE-SYMLINK] | harness-quality.yml#plc9b-linux-native | implemented
-B-TYPE-HARDLINK | posix-native | inspecting | hardlink_entry | package_archive_entry_type_rejected | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-TYPE-HARDLINK] | harness-quality.yml#plc9b-linux-native | planned
+B-TYPE-HARDLINK | posix-native | extracted | hardlinked_source_normalized | ok | extracted@independent_regular_files | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-TYPE-HARDLINK] | harness-quality.yml#plc9b-linux-native | planned
 B-TYPE-DEVICE | posix-native | inspecting | device_entry | package_archive_entry_type_rejected | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-TYPE-DEVICE] | harness-quality.yml#plc9b-linux-native | implemented
 B-TYPE-SOCKET | posix-native | inspecting | socket_entry | package_archive_entry_type_rejected | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-TYPE-SOCKET] | harness-quality.yml#plc9b-linux-native | implemented
 B-TYPE-FIFO | posix-native | inspecting | fifo_entry | package_archive_entry_type_rejected | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-TYPE-FIFO] | harness-quality.yml#plc9b-linux-native | implemented

@@ -4,6 +4,7 @@ import base64
 import csv
 import inspect
 import io
+import os
 import stat
 import struct
 import sys
@@ -121,12 +122,15 @@ IMPLEMENTED_B2J_RECOVERY_MANIFEST_CASES = (
     "B-STATE-REJECT-CLEANUP",
 )
 
+PLC9B2K_HARDLINK_CANDIDATE_MANIFEST_CASES = ("B-TYPE-HARDLINK",)
+
 EXECUTABLE_MANIFEST_CASES = (
     IMPLEMENTED_B1_MANIFEST_CASES
     + IMPLEMENTED_B2_MANIFEST_CASES
     + IMPLEMENTED_B2H_MANIFEST_CASES
     + IMPLEMENTED_B2I_WINDOWS_MANIFEST_CASES
     + IMPLEMENTED_B2J_RECOVERY_MANIFEST_CASES
+    + PLC9B2K_HARDLINK_CANDIDATE_MANIFEST_CASES
 )
 
 WHEEL_FILENAME = "acme_plugin-1.0-py3-none-any.whl"
@@ -204,6 +208,57 @@ def _record_rows() -> list[tuple[str, str, str]]:
     ]
     rows.append((f"{DIST_INFO}/RECORD", "", ""))
     return rows
+
+
+def _hardlinked_source_wheel(
+    tmp_path: Path,
+) -> tuple[bytes, Path, Path, tuple[str, str]]:
+    source = tmp_path / "hardlinked-source"
+    source.mkdir()
+    first = source / "first.bin"
+    second = source / "second.bin"
+    payload = b"one-source-inode"
+    first.write_bytes(payload)
+    os.link(first, second)
+    archive_names = (
+        "acme_plugin/hardlink-first.bin",
+        "acme_plugin/hardlink-second.bin",
+    )
+    files = {
+        f"{DIST_INFO}/WHEEL": (
+            b"Wheel-Version: 1.0\n"
+            b"Generator: plc9b-hardlink-manifest\n"
+            b"Root-Is-Purelib: true\n"
+            b"Tag: py3-none-any\n\n"
+        ),
+        f"{DIST_INFO}/METADATA": (
+            b"Metadata-Version: 2.1\nName: acme-plugin\nVersion: 1.0\n\n"
+        ),
+        archive_names[0]: payload,
+        archive_names[1]: payload,
+    }
+    rows = [
+        (name, _record_digest(content), str(len(content)))
+        for name, content in files.items()
+    ]
+    rows.append((f"{DIST_INFO}/RECORD", "", ""))
+    record = io.StringIO(newline="")
+    csv.writer(record, lineterminator="\n").writerows(rows)
+    files[f"{DIST_INFO}/RECORD"] = record.getvalue().encode()
+
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for name, content in files.items():
+            if name in archive_names:
+                continue
+            info = zipfile.ZipInfo(name)
+            info.create_system = 3
+            info.external_attr = (stat.S_IFREG | 0o644) << 16
+            info.compress_type = zipfile.ZIP_DEFLATED
+            archive.writestr(info, content)
+        archive.write(first, archive_names[0])
+        archive.write(second, archive_names[1])
+    return output.getvalue(), first, second, archive_names
 
 
 def _corrupt_local_header(payload: bytes) -> bytes:
@@ -1181,6 +1236,79 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
         assert store.attempt_names() == ()
         assert source_authority.authorize_calls == 1
         assert secret not in repr(result)
+    elif case_id == "B-TYPE-HARDLINK":
+        if os.name != "posix":
+            pytest.skip("hardlink normalization requires a native POSIX filesystem")
+        secret = f"manifest-secret-{case_id.lower()}"
+        payload, source_first, source_second, archive_names = (
+            _hardlinked_source_wheel(tmp_path)
+        )
+        first_source_stat = source_first.stat()
+        second_source_stat = source_second.stat()
+        assert (first_source_stat.st_dev, first_source_stat.st_ino) == (
+            second_source_stat.st_dev,
+            second_source_stat.st_ino,
+        )
+        assert first_source_stat.st_nlink >= 2
+        with zipfile.ZipFile(io.BytesIO(payload), "r") as archive:
+            infos = tuple(archive.getinfo(name) for name in archive_names)
+            assert all(info.create_system == 3 for info in infos)
+            assert all(
+                stat.S_IFMT(info.external_attr >> 16) == stat.S_IFREG
+                for info in infos
+            )
+            assert all(info.extra == b"" for info in infos)
+            assert archive.read(archive_names[0]) == archive.read(archive_names[1])
+
+        (
+            kernel,
+            artifact_owner,
+            journal,
+            evidence_journal,
+            cleanup_journal,
+            store,
+            source_authority,
+        ) = _b2_owner(
+            tmp_path / "runtime",
+            case_id=case_id,
+            secret=secret,
+            payload=payload,
+        )
+        classified = kernel.submit(
+            _request(
+                source=(
+                    f"https://user:{secret}@packages.example.test/{WHEEL_FILENAME}"
+                    f"?token={secret}#{secret}"
+                )
+            )
+        )
+        outside = tmp_path / "outside-sentinel"
+        outside.write_bytes(b"preserve")
+
+        result = artifact_owner.execute(
+            _artifact_execution(classified, secret=secret)
+        )
+
+        assert result.status.phase == "extracted"
+        assert result.status.disposition == "active"
+        assert result.status.failure is None
+        assert result.candidate is not None
+        tree = result.candidate._acquired._attempt._attempt_path / "tree"
+        extracted = tuple(
+            tree.joinpath(*name.split("/")).stat() for name in archive_names
+        )
+        assert all(stat.S_ISREG(metadata.st_mode) for metadata in extracted)
+        assert extracted[0].st_ino != extracted[1].st_ino
+        assert all(metadata.st_nlink == 1 for metadata in extracted)
+        assert len(evidence_journal.records()) == 2
+        assert cleanup_journal.records() == ()
+        assert source_authority.authorize_calls == 1
+        assert outside.read_bytes() == b"preserve"
+        assert secret not in repr(result)
+        operation_records = journal.records()
+        result.candidate.cleanup()
+        assert store.attempt_names() == ()
+        assert journal.records() == operation_records
     elif case_id in (
         IMPLEMENTED_B2H_MANIFEST_CASES
         + IMPLEMENTED_B2I_WINDOWS_MANIFEST_CASES

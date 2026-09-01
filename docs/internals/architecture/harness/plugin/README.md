@@ -83,8 +83,10 @@ Neither may silently override a narrower implemented owner contract.
   PLC9B2g is the accepted acquisition-level manifest slice; PLC9B2h is the
   accepted Linux archive/path/type/limit/wheel matrix; PLC9B2i is the accepted
   Windows archive path/type matrix. PLC9B2j is the accepted Linux-native slice
-  for artifact identity, early crash, and cleanup-debt recovery. Closure,
-  publication, and production routing remain unimplemented.
+  for artifact identity, early crash, and cleanup-debt recovery. PLC9B2k is the
+  POSIX-native candidate proving Wheel 1.x hardlinked sources are normalized to
+  independent regular files. Closure, publication, and production routing
+  remain unimplemented.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)

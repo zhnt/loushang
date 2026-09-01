@@ -34,8 +34,10 @@
   PLC9B2h implements 24 composed archive/path/type/limit/wheel manifest rows,
   accepted by Linux Harness Quality run `33489524268`: 38 total nodes ran with
   zero skips, failures, or errors and artifact `9793161479` retained the XML.
-  The hardlink row remains planned because Wheel ZIP has no portable hardlink
-  relation encoding; no surrogate fixture is claimed.
+  Wheel ZIP has no portable hardlink relation encoding; PLC9B2k therefore uses
+  a real POSIX hardlinked source and proves the Wheel 1.x boundary normalizes it
+  to independent regular archive and extracted entries rather than claiming a
+  surrogate hardlink encoding. That native row is a candidate pending CI.
   PLC9B2i accepts seven exact Windows archive path/type fixtures after their
   dedicated non-skippable Windows 2022 report passed and its XML was retained;
   no simulated platform evidence promotes a native row.
