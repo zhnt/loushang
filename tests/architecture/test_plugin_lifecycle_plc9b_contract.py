@@ -369,8 +369,8 @@ def _implemented_b2i_windows_manifest_cases() -> set[str]:
     return _literal_manifest_cases("IMPLEMENTED_B2I_WINDOWS_MANIFEST_CASES")
 
 
-def _plc9b2j_recovery_candidate_manifest_cases() -> set[str]:
-    return _literal_manifest_cases("PLC9B2J_RECOVERY_CANDIDATE_MANIFEST_CASES")
+def _implemented_b2j_recovery_manifest_cases() -> set[str]:
+    return _literal_manifest_cases("IMPLEMENTED_B2J_RECOVERY_MANIFEST_CASES")
 
 
 def _journal_effect_policy() -> list[tuple[str, str, str]]:
@@ -456,14 +456,18 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.2j-candidate" in contract
+    assert "Contract version: PLC9B.2j" in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
     assert "PLC9B2g Accepted Acquisition Manifest Slice" in contract
     assert "PLC9B2h Accepted Archive And Wheel Manifest Slice" in contract
     assert "PLC9B2i Accepted Windows Archive Manifest Slice" in contract
-    assert "PLC9B2j Recovery And Cleanup Manifest Candidate" in contract
+    assert "PLC9B2j Accepted Recovery And Cleanup Manifest Slice" in contract
+    assert "Harness Quality run `33492402119`" in contract
+    assert "Artifact `plc9b-linux-native-pytest-report` (ID `9794291799`)" in (
+        contract
+    )
     assert "Windows Shell Compatibility run `33490630717`" in contract
     assert "Artifact `windows-shell-pytest-reports` (ID `9793609340`)" in contract
     assert "Harness Quality run `33489524268`" in contract
@@ -680,8 +684,14 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
     implemented_b2 = _implemented_b2_manifest_cases()
     implemented_b2h = _implemented_b2h_manifest_cases()
     implemented_b2i = _implemented_b2i_windows_manifest_cases()
-    implemented = implemented_b1 | implemented_b2 | implemented_b2h | implemented_b2i
-    b2j_candidate = _plc9b2j_recovery_candidate_manifest_cases()
+    implemented_b2j = _implemented_b2j_recovery_manifest_cases()
+    implemented = (
+        implemented_b1
+        | implemented_b2
+        | implemented_b2h
+        | implemented_b2i
+        | implemented_b2j
+    )
 
     assert len(manifest) == 127
     assert categories == EXPECTED_MANIFEST_CATEGORY_COUNTS
@@ -766,7 +776,7 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
     assert (implemented_b1 | implemented_b2 | implemented_b2h).isdisjoint(
         implemented_b2i
     )
-    assert b2j_candidate == {
+    assert implemented_b2j == {
         "B-ACQ-IDENTITY",
         "B-CRASH-ACQUIRING",
         "B-CRASH-ACQUIRED",
@@ -774,8 +784,9 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
         "B-CRASH-EXTRACTED",
         "B-STATE-REJECT-CLEANUP",
     }
-    assert implemented.isdisjoint(b2j_candidate)
-    assert all(manifest[case_id]["status"] == "planned" for case_id in b2j_candidate)
+    assert (implemented_b1 | implemented_b2 | implemented_b2h | implemented_b2i).isdisjoint(
+        implemented_b2j
+    )
     separator = manifest["B-PATH-COLLISION-SEP"]
     assert separator["fixture"] == "separator_ambiguous_path"
     assert separator["code"] == "package_archive_path_rejected"
@@ -783,7 +794,7 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
     assert metadata["barrier"] == "inspecting"
     assert metadata["disposition"] == "rejected@inspecting"
     assert manifest["B-TYPE-HARDLINK"]["status"] == "planned"
-    assert len(manifest) - len(implemented) == 82
+    assert len(manifest) - len(implemented) == 76
     workflow = _source(HARNESS_WORKFLOW)
     assert "PLC9B Linux native adversarial gate (plc9b-linux-native)" in workflow
     assert "tests/harness/resources/packages/test_plc9b_adversarial.py" in workflow

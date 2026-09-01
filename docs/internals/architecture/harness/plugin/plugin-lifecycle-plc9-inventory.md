@@ -39,9 +39,9 @@
   PLC9B2i accepts seven exact Windows archive path/type fixtures after their
   dedicated non-skippable Windows 2022 report passed and its XML was retained;
   no simulated platform evidence promotes a native row.
-  PLC9B2j adds six exact Linux-native artifact-identity, early-crash, and
-  cleanup-debt fixtures as a candidate; the rows remain planned until the
-  persisted non-skippable Linux report passes.
+  PLC9B2j accepts six exact Linux-native artifact-identity, early-crash, and
+  cleanup-debt fixtures after the persisted non-skippable Linux report passed
+  all 51 manifest nodes without skips, failures, or errors.
   Publication, later transaction phases, and every production route remain
   migration obligations; no global adversarial row is promoted.
 
