@@ -69,7 +69,15 @@ def test_descriptor_relative_journal_apis_reject_non_child_names() -> None:
 
     from loushang.harness.journal import journal_file_lock_at, read_journal_file_at
 
-    for name in ("", ".", "..", "parent/child", "parent\\child", "entry:stream"):
+    for name in (
+        "",
+        ".",
+        "..",
+        "parent/child",
+        "parent\\child",
+        "entry:stream",
+        "entry\0tail",
+    ):
         with pytest.raises(ValueError, match="one direct component"):
             read_journal_file_at(-1, name)
         with pytest.raises(ValueError, match="one direct component"):
