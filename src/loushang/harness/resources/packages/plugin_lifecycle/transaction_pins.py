@@ -749,6 +749,19 @@ class PackageTransactionPinJournal:
             )
             return matching[-1] if matching else None
 
+    def current_for_operation(
+        self,
+        operation_id: str,
+    ) -> PackageTransactionPinReceiptV1 | None:
+        _require_safe_id(operation_id, name="transaction pin operation identity")
+        with self._exclusive():
+            matching = tuple(
+                record.receipt
+                for record in self._load_unlocked()
+                if record.operation_id == operation_id
+            )
+            return matching[-1] if matching else None
+
     def records(self) -> tuple[PackageTransactionPinRecordV1, ...]:
         with self._exclusive():
             return self._load_unlocked()

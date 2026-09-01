@@ -28,6 +28,7 @@ CLOSURE_JOURNAL = OWNER_KERNEL_ROOT / "closure_journal.py"
 CLOSURE_RUNTIME = OWNER_KERNEL_ROOT / "closure_runtime.py"
 COMMIT_RECORDS = OWNER_KERNEL_ROOT / "commit_records.py"
 TRANSACTION_PINS = OWNER_KERNEL_ROOT / "transaction_pins.py"
+TRANSACTION_PIN_RUNTIME = OWNER_KERNEL_ROOT / "transaction_pin_runtime.py"
 CLOSURE_TEST = Path("tests/harness/resources/packages/test_plc9b_closure.py")
 CLOSURE_OWNER_TEST = Path(
     "tests/harness/resources/packages/test_plc9b_closure_owner.py"
@@ -43,6 +44,9 @@ COMMIT_RECORDS_TEST = Path(
 )
 TRANSACTION_PINS_TEST = Path(
     "tests/harness/resources/packages/test_plc9b_transaction_pins.py"
+)
+TRANSACTION_PIN_RUNTIME_TEST = Path(
+    "tests/harness/resources/packages/test_plc9b_transaction_pin_runtime.py"
 )
 PYPROJECT = Path("pyproject.toml")
 WINDOWS_NATIVE_TEST = Path(
@@ -412,6 +416,10 @@ def _implemented_b3d_integrity_manifest_cases() -> set[str]:
     return _literal_manifest_cases("IMPLEMENTED_B3D_INTEGRITY_MANIFEST_CASES")
 
 
+def _implemented_b3e_pin_manifest_cases() -> set[str]:
+    return _literal_manifest_cases("IMPLEMENTED_B3E_PIN_MANIFEST_CASES")
+
+
 def _journal_effect_policy() -> list[tuple[str, str, str]]:
     contract = _source(CONTRACT)
     block = contract.split("<!-- plc9b-journal-effect-policy:start -->", 1)[1]
@@ -493,7 +501,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.3e2a" in contract
+    assert "Contract version: PLC9B.3e2b-candidate" in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
@@ -751,6 +759,7 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
     implemented_b3d = _implemented_b3d_recovery_manifest_cases()
     implemented_b3d_limits = _implemented_b3d_limit_manifest_cases()
     implemented_b3d_integrity = _implemented_b3d_integrity_manifest_cases()
+    implemented_b3e_pins = _implemented_b3e_pin_manifest_cases()
     implemented = (
         implemented_b1
         | implemented_b2
@@ -761,6 +770,7 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
         | implemented_b3d
         | implemented_b3d_limits
         | implemented_b3d_integrity
+        | implemented_b3e_pins
     )
 
     assert len(manifest) == 127
@@ -910,6 +920,18 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
         | implemented_b3d
         | implemented_b3d_limits
     ).isdisjoint(implemented_b3d_integrity)
+    assert implemented_b3e_pins == {"B-CRASH-PINNED"}
+    assert (
+        implemented_b1
+        | implemented_b2
+        | implemented_b2h
+        | implemented_b2i
+        | implemented_b2j
+        | implemented_b2k
+        | implemented_b3d
+        | implemented_b3d_limits
+        | implemented_b3d_integrity
+    ).isdisjoint(implemented_b3e_pins)
     separator = manifest["B-PATH-COLLISION-SEP"]
     assert separator["fixture"] == "separator_ambiguous_path"
     assert separator["code"] == "package_archive_path_rejected"
@@ -923,7 +945,7 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
     assert hardlink["code"] == "ok"
     assert hardlink["disposition"] == "extracted@independent_regular_files"
     assert hardlink["status"] == "implemented"
-    assert len(manifest) - len(implemented) == 63
+    assert len(manifest) - len(implemented) == 62
     workflow = _source(HARNESS_WORKFLOW)
     assert "PLC9B Linux native adversarial gate (plc9b-linux-native)" in workflow
     assert "tests/harness/resources/packages/test_plc9b_adversarial.py" in workflow
@@ -2186,7 +2208,95 @@ def test_plc9b3e2a_transaction_pin_contract_is_narrow_dark_and_unpromoted() -> N
     assert (
         "a00c4a93f714c662534e7ffac9c9cb619ae18689aafe727b0259e7a462c99e42" in contract
     )
-    assert manifest["B-CRASH-PINNED"]["status"] == "planned"
+    assert "transaction_pin_runtime" not in source
+    assert all(
+        manifest[case_id]["status"] == "planned"
+        for case_id in manifest
+        if case_id.startswith("B-PUB-")
+    )
+
+
+def test_plc9b3e2b_transaction_pin_runtime_orders_effects_and_recovers_dark() -> None:
+    contract = _source(CONTRACT)
+    inventory = _source(INVENTORY)
+    source = _source(TRANSACTION_PIN_RUNTIME)
+    component_tests = _source(TRANSACTION_PIN_RUNTIME_TEST)
+    adversarial_tests = _source(ADVERSARIAL_TEST)
+    package_facade = _source(PACKAGE_ROOT / "__init__.py")
+    internal_facade = _source(OWNER_KERNEL_ROOT / "__init__.py")
+    author_sdk = _source(AUTHOR_SDK)
+    manifest = _adversarial_manifest()
+
+    assert TRANSACTION_PIN_RUNTIME.is_file()
+    for symbol in (
+        "class PackageVerifiedClosurePlanEvidencePort(Protocol):",
+        "class PackageTransactionPinExecutionResult:",
+        "class PackageTransactionPinLifecycleOwner:",
+    ):
+        assert symbol in source
+        public_name = symbol.removeprefix("class ").split("(", 1)[0].removesuffix(":")
+        assert public_name not in package_facade
+        assert public_name not in internal_facade
+        assert public_name not in author_sdk
+    tree = ast.parse(source, filename=str(TRANSACTION_PIN_RUNTIME))
+    imported = {
+        node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
+    }
+    forbidden_modules = (
+        "loushang.harness.plugin_management",
+        "loushang.harness.resources.plugins.revisions",
+        "loushang.coding",
+        "loushang.foundation",
+        "subprocess",
+    )
+    assert not any(
+        module == forbidden or module.startswith(f"{forbidden}.")
+        for module in imported
+        for forbidden in forbidden_modules
+    )
+    owner = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef)
+        and node.name == "PackageTransactionPinLifecycleOwner"
+    )
+    assert {
+        node.name
+        for node in owner.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and not node.name.startswith("_")
+    } == {"pin", "recover"}
+    pin_source = ast.get_source_segment(
+        source,
+        next(
+            node
+            for node in owner.body
+            if isinstance(node, ast.FunctionDef) and node.name == "pin"
+        ),
+    )
+    assert pin_source is not None
+    assert (
+        pin_source.index("self._retention.acquire")
+        < pin_source.index("self._pin_journal.append")
+        < pin_source.index("self._kernel.advance")
+    )
+    for evidence in (
+        "acquires_journals_advances_and_exactly_replays",
+        "recovers_external_acquire_before_local_receipt",
+        "recovers_local_receipt_before_phase_cas",
+        "recovers_pinned_operation_without_live_candidate",
+        "recovers_interrupted_pinned_operation_and_visible_pin",
+        "recovery_rejects_changed_identity_before_retention",
+        "recovery_rejects_missing_local_receipt_before_retention",
+        "cancel_wins_phase_cas_without_releasing_visible_pin",
+        "adopts_prior_attempt_pin_without_double_acquire",
+    ):
+        assert evidence in component_tests
+    assert "IMPLEMENTED_B3E_PIN_MANIFEST_CASES" in adversarial_tests
+    assert "physical_acquisitions == 1" in adversarial_tests
+    assert "B3e-2b composes the accepted typed pin contract" in contract
+    assert "PLC9B3e-2b candidate code composes" in inventory
+    assert manifest["B-CRASH-PINNED"]["status"] == "implemented"
     assert all(
         manifest[case_id]["status"] == "planned"
         for case_id in manifest

@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.3e2a.
+- Contract version: PLC9B.3e2b-candidate.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -53,7 +53,10 @@
   no namespace, and promotes no global manifest row. B3e-2a accepted code
   adds exact transaction-pin targets/requests/receipts, a narrow retention
   Port, and an owner-side durable pin-evidence journal without phase
-  integration or a concrete retention-ledger import.
+  integration or a concrete retention-ledger import. B3e-2b candidate code
+  composes that Port with the accepted closure-plan evidence and lifecycle
+  phase CAS, supports restart recovery without a live closure candidate, and
+  implements `B-CRASH-PINNED`; native CI acceptance is still pending.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -801,6 +804,38 @@ PR check passed. Harness Quality run `33526455182`, Linux harness job
 The XML executed the unchanged 64 manifest nodes with zero skips, failures, or
 errors and contained neither `B-CRASH-PINNED` nor a `B-PUB-*` node.
 
+## PLC9B3e-2b Candidate Transaction-Pin Runtime
+
+B3e-2b composes the accepted typed pin contract without importing a concrete
+retention ledger. `PackageTransactionPinLifecycleOwner.pin` first requires the
+live opaque closure capability to carry the exact current durable
+`VerifiedClosurePlanV2`. It derives one credential-free request, adopts only an
+exact compatible prior-attempt acquisition, calls the injected retention owner,
+persists the returned acquired receipt, and only then performs the adjacent
+`closure_verified -> transaction_pinned` phase CAS. It never holds the local
+pin-journal lock while calling the external owner. A cancellation or competing
+phase update therefore leaves the already acquired receipt visible for later
+recovery rather than guessing that no pin exists.
+
+`recover(operation_id, recovery_identity)` is the process-restart seam. It
+requires a durable `transaction_pinned` lifecycle state, the exact closure plan,
+and one acquired local receipt; it replays the receipt's original request to the
+retention owner and accepts only the identical acquired receipt. Recovery does
+not require or reconstruct an in-memory closure candidate, mutate the phase,
+release retention, reopen Source, stage a store object, publish a namespace, or
+change desired state. Retry-attempt adoption is allowed only when the request,
+classification, recovery identity, full canonical target set, root, verified
+plan reconstruction, and prepublication graph digest remain identical.
+
+The composed `B-CRASH-PINNED` fixture traverses real acquisition, Wheel proof,
+closure proof, pin acquisition, interruption at `transaction_pinned`, and a new
+owner instance over the durable journals. It requires the same receipt, exactly
+one physical retention acquisition, a still-visible pin, no second Source call,
+and no publication, binding, desired-state, or credential residue. The row is
+implemented in the candidate but is not accepted until its non-skippable
+Linux-native XML is retained and verified. Every `B-PUB-*` row remains
+`planned`; B3e-3 still owns staging and atomic committed-set publication.
+
 ## First Principles
 
 1. Untrusted bytes are data, never a pathname, command, module, or build plan.
@@ -1324,7 +1359,7 @@ B-CRASH-INSPECTING | any | inspecting | crash_edge | package_operation_interrupt
 B-CRASH-EXTRACTED | any | extracted | crash_edge | package_operation_interrupted | retryable_failure@extracted | same_receipt;bounded_residue;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CRASH-EXTRACTED] | harness-quality.yml#plc9b-linux-native | implemented
 B-CRASH-RESOLVING | any | resolving_closure | crash_edge | package_operation_interrupted | retryable_failure@resolving_closure | same_receipt;bounded_residue;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CRASH-RESOLVING] | harness-quality.yml#plc9b-linux-native | implemented
 B-CRASH-CLOSURE | any | closure_verified | crash_edge | package_operation_interrupted | retryable_failure@closure_verified | same_receipt;no_publication;no_binding | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CRASH-CLOSURE] | harness-quality.yml#plc9b-linux-native | implemented
-B-CRASH-PINNED | any | transaction_pinned | crash_edge | package_operation_interrupted | retryable_failure@transaction_pinned | same_receipt;pin_visible;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CRASH-PINNED] | harness-quality.yml#plc9b-linux-native | planned
+B-CRASH-PINNED | any | transaction_pinned | crash_edge | package_operation_interrupted | retryable_failure@transaction_pinned | same_receipt;pin_visible;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CRASH-PINNED] | harness-quality.yml#plc9b-linux-native | implemented
 B-CRASH-STAGING | any | staging | crash_edge | package_operation_interrupted | retryable_failure@staging | same_receipt;pin_visible;no_binding | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CRASH-STAGING] | harness-quality.yml#plc9b-linux-native | planned
 B-CRASH-SET | any | set_published | crash_edge | package_operation_interrupted | retryable_failure@set_published | same_receipt;pin_visible;no_binding;no_desired | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CRASH-SET] | harness-quality.yml#plc9b-linux-native | planned
 B-CRASH-COMMITTED | any | committed | crash_after_edge | ok | committed@committed | same_receipt;pin_visible;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CRASH-COMMITTED] | harness-quality.yml#plc9b-linux-native | planned

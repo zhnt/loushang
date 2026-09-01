@@ -71,6 +71,14 @@ from loushang.harness.resources.packages.plugin_lifecycle.runtime import (
     PackageArtifactExecutionRequestV1,
     PackageArtifactLifecycleOwner,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.transaction_pin_runtime import (
+    PackageTransactionPinLifecycleOwner,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.transaction_pins import (
+    PackageTransactionPinJournal,
+    PackageTransactionPinReceiptV1,
+    PackageTransactionPinRequestV1,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.wheel import (
     PackageInspectionBudgetV1,
     PackageWheelVerifier,
@@ -165,6 +173,7 @@ IMPLEMENTED_B3D_INTEGRITY_MANIFEST_CASES = (
     "B-CLOSURE-CYCLE",
     "B-CLOSURE-V1",
 )
+IMPLEMENTED_B3E_PIN_MANIFEST_CASES = ("B-CRASH-PINNED",)
 
 EXECUTABLE_MANIFEST_CASES = (
     IMPLEMENTED_B1_MANIFEST_CASES
@@ -176,6 +185,7 @@ EXECUTABLE_MANIFEST_CASES = (
     + IMPLEMENTED_B3D_RECOVERY_MANIFEST_CASES
     + IMPLEMENTED_B3D_LIMIT_MANIFEST_CASES
     + IMPLEMENTED_B3D_INTEGRITY_MANIFEST_CASES
+    + IMPLEMENTED_B3E_PIN_MANIFEST_CASES
 )
 
 WHEEL_FILENAME = "acme_plugin-1.0-py3-none-any.whl"
@@ -570,6 +580,49 @@ class _StableClassificationRecheck:
         prior: PluginBoundPackageClassificationV1,
     ) -> PluginBoundPackageClassificationV1:
         return prior
+
+
+@dataclass
+class _TransactionPinRetentionOwner:
+    receipts: dict[str, PackageTransactionPinReceiptV1] = field(default_factory=dict)
+    calls: list[PackageTransactionPinRequestV1] = field(default_factory=list)
+    physical_acquisitions: int = 0
+
+    def acquire(
+        self,
+        request: PackageTransactionPinRequestV1,
+    ) -> PackageTransactionPinReceiptV1:
+        self.calls.append(request)
+        existing = self.receipts.get(request.operation_id)
+        if existing is not None:
+            if existing.pin_request != request:
+                raise RuntimeError("transaction pin request changed")
+            return existing
+        receipt = PackageTransactionPinReceiptV1.acquire(
+            request,
+            pin_id="f" * 64,
+            owner_identity="manifest-retention-owner",
+            owner_revision=1,
+            lease_id="manifest-transaction-pin",
+            lease_revision=1,
+        )
+        self.receipts[request.operation_id] = receipt
+        self.physical_acquisitions += 1
+        return receipt
+
+    def release(
+        self,
+        receipt: PackageTransactionPinReceiptV1,
+        *,
+        transition_evidence_ref: str,
+    ) -> PackageTransactionPinReceiptV1:
+        return PackageTransactionPinReceiptV1.transition(
+            receipt,
+            state="released",
+            owner_revision=receipt.owner_revision + 1,
+            lease_revision=receipt.lease_revision + 1,
+            transition_evidence_ref=transition_evidence_ref,
+        )
 
 
 @dataclass
@@ -1665,6 +1718,111 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
         if legacy_builder is not None:
             assert legacy_builder.calls == 1
         assert secret not in repr(result)
+        for path in tmp_path.rglob("*"):
+            if path.is_file():
+                assert secret.encode() not in path.read_bytes()
+    elif case_id in IMPLEMENTED_B3E_PIN_MANIFEST_CASES:
+        secret = f"manifest-secret-{case_id.lower()}"
+        environment = _closure_environment()
+        (
+            kernel,
+            _artifact_owner,
+            journal,
+            evidence_journal,
+            cleanup_journal,
+            store,
+            source_authority,
+            closure_owner,
+            resolution_journal,
+            resolver,
+        ) = _b3d_owner(tmp_path, case_id=case_id, secret=secret)
+        classified = kernel.submit(
+            _request(
+                source=(
+                    f"https://user:{secret}@packages.example.test/{WHEEL_FILENAME}"
+                    f"?token={secret}#{secret}"
+                ),
+                environment_fingerprint=environment.fingerprint,
+            )
+        )
+        closure_execution = PackageClosureExecutionRequestV2(
+            artifact=_artifact_execution(classified, secret=secret),
+            resolution_environment=environment,
+            budgets=PackageClosureBudgetV1(),
+        )
+        closure_result = closure_owner.execute(closure_execution)
+        assert closure_result.candidate is not None
+        assert closure_result.status.phase == "closure_verified"
+        retention = _TransactionPinRetentionOwner()
+        pin_journal = PackageTransactionPinJournal(
+            tmp_path / "package-transaction-pins.jsonl"
+        )
+        pin_owner = PackageTransactionPinLifecycleOwner(
+            kernel=kernel,
+            closure_plans=resolution_journal,
+            retention=retention,
+            pin_journal=pin_journal,
+        )
+        recovery_identity = "manifest-recovery-transaction-pinned"
+
+        pinned = pin_owner.pin(
+            closure_result.candidate,
+            recovery_identity=recovery_identity,
+        )
+
+        assert pinned.status.phase == "transaction_pinned"
+        assert pinned.status.disposition == "active"
+        assert pinned.receipt is not None
+        closure_result.candidate.suspend_for_recovery()
+        evidence_before = evidence_journal.records()
+        resolution_before = resolution_journal.records()
+        lifecycle_before = journal.records()
+        source_calls = source_authority.authorize_calls
+        interrupted = kernel.interrupt(
+            pinned.status.operation_id,
+            expected_phase="transaction_pinned",
+            expected_journal_revision=pinned.status.journal_revision,
+            expected_attempt_epoch=pinned.status.attempt_epoch,
+        )
+        restarted_kernel = PackageLifecycleOwner(
+            journal=PackageLifecycleJournal(journal.path),
+            classification_authority=_Authority(_facts("explicit_plugin_intent")),
+            enabled=True,
+        )
+        restarted_owner = PackageTransactionPinLifecycleOwner(
+            kernel=restarted_kernel,
+            closure_plans=PackageClosureResolutionJournal(resolution_journal.path),
+            retention=retention,
+            pin_journal=PackageTransactionPinJournal(pin_journal.path),
+        )
+
+        recovered = restarted_owner.recover(
+            pinned.status.operation_id,
+            recovery_identity=recovery_identity,
+        )
+
+        assert interrupted.phase == "transaction_pinned"
+        assert interrupted.disposition == "retryable_failure"
+        assert interrupted.failure is not None
+        assert interrupted.failure.code == "package_operation_interrupted"
+        assert recovered.status == interrupted
+        assert recovered.receipt == pinned.receipt
+        assert recovered.candidate is None
+        assert retention.receipts[pinned.status.operation_id] == pinned.receipt
+        assert retention.physical_acquisitions == 1
+        assert len(retention.calls) == 2
+        assert len(pin_journal.records()) == 1
+        assert len(journal.records()) == len(lifecycle_before) + 1
+        assert evidence_journal.records() == evidence_before
+        assert resolution_journal.records() == resolution_before
+        assert source_authority.authorize_calls == source_calls == 1
+        assert resolver.calls == 0
+        assert cleanup_journal.records() == ()
+        assert len(store.attempt_names()) == 1
+        assert not (tmp_path / "published").exists()
+        assert not (tmp_path / "binding.json").exists()
+        assert not (tmp_path / "desired.json").exists()
+        assert secret not in repr(recovered)
         for path in tmp_path.rglob("*"):
             if path.is_file():
                 assert secret.encode() not in path.read_bytes()

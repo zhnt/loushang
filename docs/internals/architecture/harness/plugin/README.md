@@ -106,8 +106,10 @@ Neither may silently override a narrower implemented owner contract.
   and a durable adjacent-evidence journal without phase composition or a
   concrete retention-ledger import; its retained report remained exactly 64
   rows and contained neither `B-CRASH-PINNED` nor a `B-PUB-*` node.
-  Transaction-pin runtime composition, publication, and production routing
-  remain unimplemented.
+  PLC9B3e-2b candidate code now composes exact pin acquisition, durable receipt
+  ordering, phase CAS, retry adoption, and candidate-free restart recovery. Its
+  composed `B-CRASH-PINNED` row is implemented pending native CI acceptance;
+  publication and production routing remain unimplemented.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)
