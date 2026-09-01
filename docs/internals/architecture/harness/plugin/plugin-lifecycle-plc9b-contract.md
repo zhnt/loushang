@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.3d2a.
+- Contract version: PLC9B.3d2b-candidate.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -45,7 +45,8 @@
   lifecycle owner. B3d-1 accepts the two closure crash rows after their
   retained Linux-native report passed. B3d-2a accepts the three composed
   closure-limit rows after their separate retained report passed, without
-  changing the accepted crash evidence. Closure-integrity rows stay planned.
+  changing the accepted crash evidence. B3d-2b candidate code makes all seven
+  composed closure-integrity rows executable while retaining dark operation.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -683,6 +684,31 @@ Quality run `33515285825`, Linux harness job `99880656864`, retained
 The XML executed exactly 57 manifest nodes, including all three `B-LIMIT-*`
 closure fixtures, with zero skips, failures, or errors.
 
+## PLC9B3d-2b Candidate Composed Closure Integrity
+
+B3d-2b composes the same accepted lifecycle, Source Authority, bounded
+acquisition, Wheel verification, selection journal, recursive owner, cleanup
+domain, and closure runtime for all seven `B-CLOSURE-*` rows. Missing
+dependencies fail at the resolver boundary; digest mismatch fails after real
+dependency verification; unauthorized origin fails at dependency Source
+authorization; environment mismatch fails root `Requires-Python` preflight;
+duplicate name/version selection and a root-reaching cycle fail before another
+Source call. The v1 row passes a real legacy `PluginDependencyClosureLock`
+through the actual pure v2 verifier behind the composed lifecycle seam.
+
+The recursive owner now registers a newly verified child under cleanup custody
+before comparing selected evidence. A closure rejection attempts every
+candidate cleanup even when an earlier cleanup fails, durably records every
+bounded cleanup target, releases process-local handles, preserves the original
+stable rejection code, and exposes no quarantine path. Same-distribution
+selection drift is a closure conflict; first-acquisition evidence mismatch
+remains artifact invalid.
+
+This is candidate evidence only. The seven rows are executable and the local
+64-row manifest passes, but B3d-2b is not accepted until all PR checks pass and
+the retained Linux-native XML executes exactly 64 manifest nodes without skips,
+failures, or errors. B3e remains out of scope.
+
 ## First Principles
 
 1. Untrusted bytes are data, never a pathname, command, module, or build plan.
@@ -1171,13 +1197,13 @@ B-WHEEL-METADATA | any | inspecting | wheel_metadata_mismatch | package_wheel_me
 B-WHEEL-RECORD-HASH | any | extracted | record_hash_or_size | package_wheel_record_invalid | rejected@extracted | no_publication;no_binding;no_desired | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-WHEEL-RECORD-HASH] | harness-quality.yml#plc9b-linux-native | implemented
 B-WHEEL-RECORD-SET | any | extracted | record_missing_or_unlisted | package_wheel_record_invalid | rejected@extracted | no_publication;no_binding;no_desired | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-WHEEL-RECORD-SET] | harness-quality.yml#plc9b-linux-native | implemented
 B-WHEEL-RECORD-ALGO | any | extracted | weak_or_unknown_record_hash | package_wheel_record_invalid | rejected@extracted | no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-WHEEL-RECORD-ALGO] | harness-quality.yml#plc9b-linux-native | implemented
-B-CLOSURE-MISSING | any | resolving_closure | missing_dependency | package_closure_artifact_invalid | rejected@resolving_closure | no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CLOSURE-MISSING] | harness-quality.yml#plc9b-linux-native | planned
-B-CLOSURE-DIGEST | any | resolving_closure | dependency_digest_mismatch | package_closure_artifact_invalid | rejected@resolving_closure | no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CLOSURE-DIGEST] | harness-quality.yml#plc9b-linux-native | planned
-B-CLOSURE-ORIGIN | any | resolving_closure | dependency_unauthorized_origin | package_closure_artifact_invalid | rejected@resolving_closure | no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CLOSURE-ORIGIN] | harness-quality.yml#plc9b-linux-native | planned
-B-CLOSURE-MARKER | any | resolving_closure | marker_or_environment_mismatch | package_closure_conflict | rejected@resolving_closure | no_publication;no_binding;no_desired | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CLOSURE-MARKER] | harness-quality.yml#plc9b-linux-native | planned
-B-CLOSURE-NAME | any | resolving_closure | duplicate_name_or_version | package_closure_conflict | rejected@resolving_closure | no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CLOSURE-NAME] | harness-quality.yml#plc9b-linux-native | planned
-B-CLOSURE-CYCLE | any | resolving_closure | dependency_cycle | package_closure_conflict | rejected@resolving_closure | no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CLOSURE-CYCLE] | harness-quality.yml#plc9b-linux-native | planned
-B-CLOSURE-V1 | any | resolving_closure | v1_or_future_evidence | package_closure_evidence_unsupported | rejected@resolving_closure | no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CLOSURE-V1] | harness-quality.yml#plc9b-linux-native | planned
+B-CLOSURE-MISSING | any | resolving_closure | missing_dependency | package_closure_artifact_invalid | rejected@resolving_closure | no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CLOSURE-MISSING] | harness-quality.yml#plc9b-linux-native | implemented
+B-CLOSURE-DIGEST | any | resolving_closure | dependency_digest_mismatch | package_closure_artifact_invalid | rejected@resolving_closure | no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CLOSURE-DIGEST] | harness-quality.yml#plc9b-linux-native | implemented
+B-CLOSURE-ORIGIN | any | resolving_closure | dependency_unauthorized_origin | package_closure_artifact_invalid | rejected@resolving_closure | no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CLOSURE-ORIGIN] | harness-quality.yml#plc9b-linux-native | implemented
+B-CLOSURE-MARKER | any | resolving_closure | marker_or_environment_mismatch | package_closure_conflict | rejected@resolving_closure | no_publication;no_binding;no_desired | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CLOSURE-MARKER] | harness-quality.yml#plc9b-linux-native | implemented
+B-CLOSURE-NAME | any | resolving_closure | duplicate_name_or_version | package_closure_conflict | rejected@resolving_closure | no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CLOSURE-NAME] | harness-quality.yml#plc9b-linux-native | implemented
+B-CLOSURE-CYCLE | any | resolving_closure | dependency_cycle | package_closure_conflict | rejected@resolving_closure | no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CLOSURE-CYCLE] | harness-quality.yml#plc9b-linux-native | implemented
+B-CLOSURE-V1 | any | resolving_closure | v1_or_future_evidence | package_closure_evidence_unsupported | rejected@resolving_closure | no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CLOSURE-V1] | harness-quality.yml#plc9b-linux-native | implemented
 B-PUB-PRECREATE | any | staging | precreated_quarantine | package_publication_root_untrusted | rejected@staging | no_outside_write;no_publication;pin_visible | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-PRECREATE] | harness-quality.yml#plc9b-linux-native | planned
 B-PUB-POSIX-ROOT-SWAP | posix-native | staging | root_rename_replace_swap | package_publication_root_untrusted | rejected@staging | no_outside_write;no_publication;pin_visible;handle_released;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-POSIX-ROOT-SWAP] | harness-quality.yml#plc9b-linux-native | planned
 B-PUB-POSIX-ANCESTOR-SWAP | posix-native | staging | ancestor_rename_replace_swap | package_publication_root_untrusted | rejected@staging | no_outside_write;no_publication;pin_visible;handle_released;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-POSIX-ANCESTOR-SWAP] | harness-quality.yml#plc9b-linux-native | planned

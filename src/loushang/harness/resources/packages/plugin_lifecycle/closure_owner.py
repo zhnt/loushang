@@ -82,7 +82,9 @@ class PackageClosureCleanupDebtError(RuntimeError):
         super().__init__("Rejected Package closure requires owner cleanup")
         if cleanup_status is not None:
             if cleanup_statuses:
-                raise ValueError("Package cleanup status cannot be both singular and plural")
+                raise ValueError(
+                    "Package cleanup status cannot be both singular and plural"
+                )
             cleanup_statuses = (cleanup_status,)
         if not cleanup_statuses or any(
             not isinstance(status, PackageQuarantineCleanupStatusV1)
@@ -622,23 +624,20 @@ class PackageRecursiveClosureOwner:
                             acquisition_budgets=acquisition_budgets,
                         )
                         child_id = child.evidence.node_id
-                        try:
-                            self._require_selected_candidate(selection, child)
-                        except Exception:
-                            child.cleanup()
-                            raise
-                        total_requests += child.acquisition_receipt.request_count
-                        total_redirects += child.acquisition_receipt.redirect_count
                         states[child_id] = _NodeState(
                             candidate=child,
                             selected_extras=set(),
                         )
+                        self._require_selected_candidate(selection, child)
+                        total_requests += child.acquisition_receipt.request_count
+                        total_redirects += child.acquisition_receipt.redirect_count
                         by_distribution[selection.project_name] = child_id
                         queue.append(child_id)
                     else:
                         self._require_selected_candidate(
                             selection,
                             states[child_id].candidate,
+                            mismatch_code="package_closure_conflict",
                         )
                     child_state = states[child_id]
                     before = len(child_state.selected_extras)
@@ -750,10 +749,7 @@ class PackageRecursiveClosureOwner:
                     statuses.append(status)
         if cleanup_error is not None:
             raise cleanup_error
-        unique = {
-            status.target.cleanup_id: status
-            for status in statuses
-        }
+        unique = {status.target.cleanup_id: status for status in statuses}
         return tuple(unique[key] for key in sorted(unique))
 
     @staticmethod
@@ -1103,6 +1099,8 @@ class PackageRecursiveClosureOwner:
     def _require_selected_candidate(
         selection: PackageDependencySelectionV1,
         candidate: VerifiedWheelCandidate,
+        *,
+        mismatch_code: str = "package_closure_artifact_invalid",
     ) -> None:
         envelope = candidate.authenticated_envelope
         wheel = candidate.evidence
@@ -1117,7 +1115,7 @@ class PackageRecursiveClosureOwner:
         ):
             raise PackageClosureVerificationError(
                 "Selected Package dependency evidence does not match",
-                code="package_closure_artifact_invalid",
+                code=mismatch_code,
             )
 
 

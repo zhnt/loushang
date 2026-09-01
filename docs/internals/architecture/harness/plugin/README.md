@@ -96,7 +96,8 @@ Neither may silently override a narrower implemented owner contract.
   and dark closure phase-CAS. B3d-1 accepts its two crash rows after the retained
   54-row Linux-native report passed. B3d-2a accepts the three composed
   closure-limit rows after the retained 57-row Linux-native report passed;
-  closure-integrity rows remain planned.
+  B3d-2b candidate code makes all seven closure-integrity rows executable with
+  bounded cleanup-debt custody pending their separate native acceptance.
   Typed refs, publication, and production routing remain unimplemented.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.

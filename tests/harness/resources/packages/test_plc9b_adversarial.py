@@ -52,6 +52,8 @@ from loushang.harness.resources.packages.plugin_lifecycle.closure_owner import (
     PackageDependencySelectionRequestV1,
     PackageDependencySelectionV1,
     PackageRecursiveClosureOwner,
+    PackageRecursiveClosureRequestV2,
+    VerifiedPackageClosureCandidate,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.closure_runtime import (
     PackageClosureExecutionRequestV2,
@@ -73,6 +75,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.wheel import (
     PackageInspectionBudgetV1,
     PackageWheelVerifier,
     VerifiedWheelCandidate,
+)
+from loushang.harness.resources.plugins.dependencies import (
+    PluginDependencyClosureLock,
 )
 
 IMPLEMENTED_B1_MANIFEST_CASES = (
@@ -151,6 +156,15 @@ IMPLEMENTED_B3D_LIMIT_MANIFEST_CASES = (
     "B-LIMIT-SOLVER",
     "B-LIMIT-REQUESTS",
 )
+IMPLEMENTED_B3D_INTEGRITY_MANIFEST_CASES = (
+    "B-CLOSURE-MISSING",
+    "B-CLOSURE-DIGEST",
+    "B-CLOSURE-ORIGIN",
+    "B-CLOSURE-MARKER",
+    "B-CLOSURE-NAME",
+    "B-CLOSURE-CYCLE",
+    "B-CLOSURE-V1",
+)
 
 EXECUTABLE_MANIFEST_CASES = (
     IMPLEMENTED_B1_MANIFEST_CASES
@@ -161,6 +175,7 @@ EXECUTABLE_MANIFEST_CASES = (
     + IMPLEMENTED_B2K_HARDLINK_MANIFEST_CASES
     + IMPLEMENTED_B3D_RECOVERY_MANIFEST_CASES
     + IMPLEMENTED_B3D_LIMIT_MANIFEST_CASES
+    + IMPLEMENTED_B3D_INTEGRITY_MANIFEST_CASES
 )
 
 WHEEL_FILENAME = "acme_plugin-1.0-py3-none-any.whl"
@@ -211,9 +226,9 @@ def _wheel_bytes(
                 info.external_attr = (windows_attributes or {})[name]
             else:
                 info.create_system = 3
-                info.external_attr = (
-                    (entry_modes or {}).get(name, stat.S_IFREG | 0o644) << 16
-                )
+                info.external_attr = (entry_modes or {}).get(
+                    name, stat.S_IFREG | 0o644
+                ) << 16
             info.compress_type = zipfile.ZIP_DEFLATED
             archive.writestr(info, payload)
     return output.getvalue()
@@ -230,11 +245,7 @@ def _package_wheel_bytes(
     dist_info = f"{normalized}-{version}.dist-info"
     metadata = (
         f"Metadata-Version: 2.1\nName: {project}\nVersion: {version}\n"
-        + (
-            ""
-            if requires_python is None
-            else f"Requires-Python: {requires_python}\n"
-        )
+        + ("" if requires_python is None else f"Requires-Python: {requires_python}\n")
         + "".join(f"Requires-Dist: {item}\n" for item in requires_dist)
         + "\n"
     ).encode()
@@ -426,9 +437,7 @@ def _inspection_fixture(case_id: str) -> _InspectionFixture:
     }
     if case_id in windows_paths:
         return _InspectionFixture(
-            payload=_wheel_bytes(
-                extra_files={windows_paths[case_id]: b"hostile"}
-            )
+            payload=_wheel_bytes(extra_files={windows_paths[case_id]: b"hostile"})
         )
     if case_id == "B-PATH-COLLISION-CASE":
         return _InspectionFixture(
@@ -610,6 +619,14 @@ class _SourceAuthority:
                 retryable=False,
                 consumed_bytes=0,
             )
+        if self.case_id == "B-CLOSURE-ORIGIN" and request.node_id != "root":
+            raise PackageAcquisitionError(
+                "Package dependency Source origin is unauthorized",
+                code="package_source_unauthorized",
+                stage="acquiring",
+                retryable=False,
+                consumed_bytes=0,
+            )
 
         payload = (
             (self.payloads or {}).get(request.canonical_source_identity)
@@ -710,7 +727,7 @@ class _ManifestSelection:
 
 @dataclass
 class _ManifestResolver:
-    selections: dict[str, _ManifestSelection]
+    selections: dict[str | tuple[str, str], _ManifestSelection]
     calls: list[str] = field(default_factory=list)
 
     def resolve(
@@ -718,7 +735,15 @@ class _ManifestResolver:
         request: PackageDependencySelectionRequestV1,
     ) -> PackageDependencySelectionV1:
         self.calls.append(request.requirement.project_name)
-        selected = self.selections[request.requirement.project_name]
+        selected = (
+            self.selections.get(
+                (
+                    request.requirement.project_name,
+                    request.requirement.specifier_text,
+                )
+            )
+            or self.selections[request.requirement.project_name]
+        )
         return PackageDependencySelectionV1(
             operation_id=request.operation_id,
             attempt_epoch=request.attempt_epoch,
@@ -736,6 +761,29 @@ class _ManifestResolver:
             resolver_id="resolver:manifest",
             resolver_revision="resolver-revision:1",
         )
+
+
+@dataclass
+class _LegacyClosureBuilder:
+    verifier: PackageClosureVerifier = field(default_factory=PackageClosureVerifier)
+    calls: int = 0
+
+    def build(
+        self,
+        root: VerifiedWheelCandidate,
+        _request: PackageRecursiveClosureRequestV2,
+    ) -> VerifiedPackageClosureCandidate:
+        self.calls += 1
+        try:
+            self.verifier.verify(
+                PluginDependencyClosureLock(
+                    package_content_digest="a" * 64,
+                    python_distributions=(),
+                )
+            )
+        finally:
+            root.cleanup()
+        raise AssertionError("Legacy closure evidence unexpectedly satisfied v2")
 
 
 def _facts(*present: str) -> PackageClassificationFactsV1:
@@ -828,9 +876,7 @@ def _b2_owner(
     supported_tags: frozenset[str] | None = None,
     cleanup_debt: bool = False,
 ):
-    lifecycle_journal = PackageLifecycleJournal(
-        tmp_path / "package-lifecycle.jsonl"
-    )
+    lifecycle_journal = PackageLifecycleJournal(tmp_path / "package-lifecycle.jsonl")
     kernel = PackageLifecycleOwner(
         journal=lifecycle_journal,
         classification_authority=_Authority(_facts("explicit_plugin_intent")),
@@ -874,9 +920,7 @@ def _b2_owner(
             )
         ),
         acquisition_budgets=PackageAcquisitionBudgetV1(
-            max_transport_bytes=(
-                8 if case_id == "B-ACQ-BYTES" else 256 * 1024
-            ),
+            max_transport_bytes=(8 if case_id == "B-ACQ-BYTES" else 256 * 1024),
             max_requests=1,
             max_redirects=1,
             max_wall_time_ms=5 if case_id == "B-ACQ-TIMEOUT" else 1000,
@@ -903,6 +947,7 @@ def _b3d_owner(
     root_payload: bytes | None = None,
     payloads: dict[str, bytes] | None = None,
     resolver: _NoDependencyResolver | _ManifestResolver | None = None,
+    closure_builder: _LegacyClosureBuilder | None = None,
 ):
     components = _b2_owner(
         tmp_path,
@@ -924,7 +969,7 @@ def _b3d_owner(
         tmp_path / "package-closure-resolution.jsonl"
     )
     resolver = resolver or _NoDependencyResolver()
-    recursive_owner = PackageRecursiveClosureOwner(
+    recursive_owner = closure_builder or PackageRecursiveClosureOwner(
         resolver=resolver,
         acquisition_owner=artifact_owner._acquisition_owner,
         evidence_journal=evidence_journal,
@@ -1006,9 +1051,7 @@ def _land_artifact_phase(
         policy_revision=request.policy_revision,
         credential_reference=f"opaque:{secret}",
     )
-    authorized = artifact_owner._acquisition_owner.authorize_source(
-        acquisition_request
-    )
+    authorized = artifact_owner._acquisition_owner.authorize_source(acquisition_request)
     evidence_journal.append(
         request_fingerprint=request.request_fingerprint,
         evidence=PackageAuthenticatedSourceEvidenceV1(
@@ -1074,9 +1117,10 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
         )
         _assert_replay_is_single_owner(owner, journal)
     elif case_id == "B-CLASS-SPOOF":
-        assert "plugin_bound" not in inspect.signature(
-            PackageLifecycleIngressRequestV1
-        ).parameters
+        assert (
+            "plugin_bound"
+            not in inspect.signature(PackageLifecycleIngressRequestV1).parameters
+        )
         owner, journal = _owner(tmp_path, facts=_facts())
         status = owner.submit(_request())
         _assert_classification(
@@ -1386,9 +1430,7 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
         assert result.candidate is None
         assert result.cleanup_status is None
         assert source_authority.authorize_calls == 1
-        assert resolver.calls == (
-            [] if case_id == "B-LIMIT-SOLVER" else ["dependency"]
-        )
+        assert resolver.calls == ([] if case_id == "B-LIMIT-SOLVER" else ["dependency"])
         assert tuple(
             record.evidence_kind for record in resolution_journal.records()
         ) == (
@@ -1396,9 +1438,7 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
             if case_id == "B-LIMIT-SOLVER"
             else ("resolution_basis", "selection")
         )
-        assert tuple(
-            record.evidence_kind for record in evidence_journal.records()
-        ) == (
+        assert tuple(record.evidence_kind for record in evidence_journal.records()) == (
             "authenticated_source",
             "bounded_acquisition",
             "verified_wheel",
@@ -1415,6 +1455,215 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
         assert resolution_journal.records() == resolution_records
         assert evidence_journal.records() == evidence_records
         assert source_authority.authorize_calls == 1
+        assert secret not in repr(result)
+        for path in tmp_path.rglob("*"):
+            if path.is_file():
+                assert secret.encode() not in path.read_bytes()
+    elif case_id in IMPLEMENTED_B3D_INTEGRITY_MANIFEST_CASES:
+        secret = f"manifest-secret-{case_id.lower()}"
+        environment = _closure_environment()
+        root_source = f"https://packages.example.test/{WHEEL_FILENAME}"
+        dependency_source_1 = (
+            "https://packages.example.test/dependency-1.0-py3-none-any.whl"
+        )
+        dependency_source_2 = (
+            "https://packages.example.test/dependency-2.0-py3-none-any.whl"
+        )
+        root_requirements: tuple[str, ...] = ()
+        root_requires_python: str | None = None
+        dependency_requirements: tuple[str, ...] = ()
+        selections: dict[str | tuple[str, str], _ManifestSelection] = {}
+        payloads: dict[str, bytes] = {}
+        legacy_builder: _LegacyClosureBuilder | None = None
+
+        if case_id == "B-CLOSURE-MISSING":
+            root_requirements = ("missing==1",)
+        elif case_id in {"B-CLOSURE-DIGEST", "B-CLOSURE-ORIGIN"}:
+            root_requirements = ("dependency==2",)
+        elif case_id == "B-CLOSURE-MARKER":
+            root_requires_python = ">=4"
+        elif case_id == "B-CLOSURE-NAME":
+            root_requirements = ("dependency==1", "dependency==2")
+        elif case_id == "B-CLOSURE-CYCLE":
+            root_requirements = ("dependency==2",)
+            dependency_requirements = ("acme-plugin==1",)
+        elif case_id == "B-CLOSURE-V1":
+            legacy_builder = _LegacyClosureBuilder()
+
+        root_payload = _package_wheel_bytes(
+            "acme-plugin",
+            "1.0",
+            requires_dist=root_requirements,
+            requires_python=root_requires_python,
+        )
+        dependency_payload_1 = _package_wheel_bytes("dependency", "1.0")
+        dependency_payload_2 = _package_wheel_bytes(
+            "dependency",
+            "2.0",
+            requires_dist=dependency_requirements,
+        )
+        payloads[root_source] = root_payload
+        payloads[dependency_source_1] = dependency_payload_1
+        payloads[dependency_source_2] = dependency_payload_2
+
+        if case_id in {"B-CLOSURE-DIGEST", "B-CLOSURE-ORIGIN"}:
+            selections["dependency"] = _ManifestSelection(
+                version="2.0",
+                source=dependency_source_2,
+                filename="dependency-2.0-py3-none-any.whl",
+                digest=(
+                    "f" * 64
+                    if case_id == "B-CLOSURE-DIGEST"
+                    else sha256(dependency_payload_2).hexdigest()
+                ),
+            )
+        elif case_id == "B-CLOSURE-NAME":
+            selections[("dependency", "==1")] = _ManifestSelection(
+                version="1.0",
+                source=dependency_source_1,
+                filename="dependency-1.0-py3-none-any.whl",
+                digest=sha256(dependency_payload_1).hexdigest(),
+            )
+            selections[("dependency", "==2")] = _ManifestSelection(
+                version="2.0",
+                source=dependency_source_2,
+                filename="dependency-2.0-py3-none-any.whl",
+                digest=sha256(dependency_payload_2).hexdigest(),
+            )
+        elif case_id == "B-CLOSURE-CYCLE":
+            selections["dependency"] = _ManifestSelection(
+                version="2.0",
+                source=dependency_source_2,
+                filename="dependency-2.0-py3-none-any.whl",
+                digest=sha256(dependency_payload_2).hexdigest(),
+            )
+            selections["acme-plugin"] = _ManifestSelection(
+                version="1.0",
+                source=root_source,
+                filename=WHEEL_FILENAME,
+                digest=sha256(root_payload).hexdigest(),
+            )
+
+        resolver = _ManifestResolver(selections)
+        (
+            kernel,
+            _artifact_owner,
+            journal,
+            evidence_journal,
+            cleanup_journal,
+            store,
+            source_authority,
+            closure_owner,
+            resolution_journal,
+            _resolver,
+        ) = _b3d_owner(
+            tmp_path,
+            case_id=case_id,
+            secret=secret,
+            root_payload=root_payload,
+            payloads=payloads,
+            resolver=resolver,
+            closure_builder=legacy_builder,
+        )
+        classified = kernel.submit(
+            _request(
+                source=(
+                    f"https://user:{secret}@packages.example.test/{WHEEL_FILENAME}"
+                    f"?token={secret}#{secret}"
+                ),
+                environment_fingerprint=environment.fingerprint,
+            )
+        )
+        execution = PackageClosureExecutionRequestV2(
+            artifact=_artifact_execution(classified, secret=secret),
+            resolution_environment=environment,
+            budgets=PackageClosureBudgetV1(),
+        )
+        outside = tmp_path / "outside-sentinel"
+        outside.write_bytes(b"preserve")
+
+        result = closure_owner.execute(execution)
+
+        expected_code = {
+            "B-CLOSURE-MISSING": "package_closure_artifact_invalid",
+            "B-CLOSURE-DIGEST": "package_closure_artifact_invalid",
+            "B-CLOSURE-ORIGIN": "package_closure_artifact_invalid",
+            "B-CLOSURE-MARKER": "package_closure_conflict",
+            "B-CLOSURE-NAME": "package_closure_conflict",
+            "B-CLOSURE-CYCLE": "package_closure_conflict",
+            "B-CLOSURE-V1": "package_closure_evidence_unsupported",
+        }[case_id]
+        expected_resolver_calls = {
+            "B-CLOSURE-MISSING": ["missing"],
+            "B-CLOSURE-DIGEST": ["dependency"],
+            "B-CLOSURE-ORIGIN": ["dependency"],
+            "B-CLOSURE-MARKER": [],
+            "B-CLOSURE-NAME": ["dependency", "dependency"],
+            "B-CLOSURE-CYCLE": ["dependency", "acme-plugin"],
+            "B-CLOSURE-V1": [],
+        }[case_id]
+        expected_source_calls = {
+            "B-CLOSURE-MISSING": 1,
+            "B-CLOSURE-DIGEST": 2,
+            "B-CLOSURE-ORIGIN": 2,
+            "B-CLOSURE-MARKER": 1,
+            "B-CLOSURE-NAME": 2,
+            "B-CLOSURE-CYCLE": 2,
+            "B-CLOSURE-V1": 1,
+        }[case_id]
+        expected_selection_count = {
+            "B-CLOSURE-MISSING": 0,
+            "B-CLOSURE-DIGEST": 1,
+            "B-CLOSURE-ORIGIN": 1,
+            "B-CLOSURE-MARKER": 0,
+            "B-CLOSURE-NAME": 2,
+            "B-CLOSURE-CYCLE": 2,
+            "B-CLOSURE-V1": 0,
+        }[case_id]
+        expected_dependency_evidence = case_id in {
+            "B-CLOSURE-DIGEST",
+            "B-CLOSURE-NAME",
+            "B-CLOSURE-CYCLE",
+        }
+        assert result.status.phase == "resolving_closure"
+        assert result.status.disposition == "rejected"
+        assert result.status.failure is not None
+        assert result.status.failure.code == expected_code
+        assert result.candidate is None
+        assert result.cleanup_status is None
+        assert resolver.calls == expected_resolver_calls
+        assert source_authority.authorize_calls == expected_source_calls
+        assert (
+            tuple(record.evidence_kind for record in resolution_journal.records())
+            == ("resolution_basis",) + ("selection",) * expected_selection_count
+        )
+        expected_evidence_kinds = (
+            "authenticated_source",
+            "bounded_acquisition",
+            "verified_wheel",
+        )
+        assert tuple(
+            record.evidence_kind for record in evidence_journal.records()
+        ) == expected_evidence_kinds * (2 if expected_dependency_evidence else 1)
+        assert cleanup_journal.records() == ()
+        assert store.attempt_names() == ()
+        assert store.total_residue_bytes() == 0
+        assert outside.read_bytes() == b"preserve"
+        assert not (tmp_path / "published").exists()
+        assert not (tmp_path / "binding.json").exists()
+        assert not (tmp_path / "desired.json").exists()
+        lifecycle_records = journal.records()
+        resolution_records = resolution_journal.records()
+        evidence_records = evidence_journal.records()
+        replay = closure_owner.execute(execution)
+        assert replay.status == result.status
+        assert journal.records() == lifecycle_records
+        assert resolution_journal.records() == resolution_records
+        assert evidence_journal.records() == evidence_records
+        assert resolver.calls == expected_resolver_calls
+        assert source_authority.authorize_calls == expected_source_calls
+        if legacy_builder is not None:
+            assert legacy_builder.calls == 1
         assert secret not in repr(result)
         for path in tmp_path.rglob("*"):
             if path.is_file():
@@ -1504,9 +1753,10 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
         assert interrupted.failure is not None
         assert interrupted.failure.code == "package_operation_interrupted"
         assert interrupted.failure.retry_domain == "operation"
-        assert tuple(
-            record.evidence_kind for record in resolution_before
-        ) == expected_resolution_kinds
+        assert (
+            tuple(record.evidence_kind for record in resolution_before)
+            == expected_resolution_kinds
+        )
         assert len(journal.records()) == len(lifecycle_before) + 1
         replay = closure_owner.execute(execution)
         assert replay.status == interrupted
@@ -1648,8 +1898,7 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
         assert result.cleanup_status.disposition == "cleanup_retryable"
         assert result.cleanup_status.failure is not None
         assert (
-            result.cleanup_status.failure.code
-            == "package_quarantine_cleanup_retryable"
+            result.cleanup_status.failure.code == "package_quarantine_cleanup_retryable"
         )
         assert result.cleanup_status.failure.retry_domain == "cleanup"
         assert result.cleanup_status.failure.operator_action == "repair"
@@ -1680,8 +1929,8 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
         if os.name != "posix":
             pytest.skip("hardlink normalization requires a native POSIX filesystem")
         secret = f"manifest-secret-{case_id.lower()}"
-        payload, source_first, source_second, archive_names = (
-            _hardlinked_source_wheel(tmp_path)
+        payload, source_first, source_second, archive_names = _hardlinked_source_wheel(
+            tmp_path
         )
         first_source_stat = source_first.stat()
         second_source_stat = source_second.stat()
@@ -1694,8 +1943,7 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
             infos = tuple(archive.getinfo(name) for name in archive_names)
             assert all(info.create_system == 3 for info in infos)
             assert all(
-                stat.S_IFMT(info.external_attr >> 16) == stat.S_IFREG
-                for info in infos
+                stat.S_IFMT(info.external_attr >> 16) == stat.S_IFREG for info in infos
             )
             assert all(info.extra == b"" for info in infos)
             assert archive.read(archive_names[0]) == archive.read(archive_names[1])
@@ -1725,9 +1973,7 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
         outside = tmp_path / "outside-sentinel"
         outside.write_bytes(b"preserve")
 
-        result = artifact_owner.execute(
-            _artifact_execution(classified, secret=secret)
-        )
+        result = artifact_owner.execute(_artifact_execution(classified, secret=secret))
 
         assert result.status.phase == "extracted"
         assert result.status.disposition == "active"
@@ -1750,8 +1996,7 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
         assert store.attempt_names() == ()
         assert journal.records() == operation_records
     elif case_id in (
-        IMPLEMENTED_B2H_MANIFEST_CASES
-        + IMPLEMENTED_B2I_WINDOWS_MANIFEST_CASES
+        IMPLEMENTED_B2H_MANIFEST_CASES + IMPLEMENTED_B2I_WINDOWS_MANIFEST_CASES
     ):
         fixture = _inspection_fixture(case_id)
         secret = f"manifest-secret-{case_id.lower()}"

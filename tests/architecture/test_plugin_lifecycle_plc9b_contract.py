@@ -41,9 +41,7 @@ WINDOWS_NATIVE_TEST = Path(
     "tests/harness/resources/packages/test_plc9b_windows_native.py"
 )
 WINDOWS_WORKFLOW = Path(".github/workflows/windows-shell-compatibility.yml")
-ADVERSARIAL_TEST = Path(
-    "tests/harness/resources/packages/test_plc9b_adversarial.py"
-)
+ADVERSARIAL_TEST = Path("tests/harness/resources/packages/test_plc9b_adversarial.py")
 HARNESS_WORKFLOW = Path(".github/workflows/harness-quality.yml")
 PLUGIN_REVISIONS = Path("src/loushang/harness/resources/plugins/revisions.py")
 PLUGIN_DEPENDENCIES = Path("src/loushang/harness/resources/plugins/dependencies.py")
@@ -359,8 +357,7 @@ def _literal_manifest_cases(name: str) -> set[str]:
         if not isinstance(node, ast.Assign):
             continue
         if not any(
-            isinstance(target, ast.Name)
-            and target.id == name
+            isinstance(target, ast.Name) and target.id == name
             for target in node.targets
         ):
             continue
@@ -403,6 +400,10 @@ def _implemented_b3d_limit_manifest_cases() -> set[str]:
     return _literal_manifest_cases("IMPLEMENTED_B3D_LIMIT_MANIFEST_CASES")
 
 
+def _implemented_b3d_integrity_manifest_cases() -> set[str]:
+    return _literal_manifest_cases("IMPLEMENTED_B3D_INTEGRITY_MANIFEST_CASES")
+
+
 def _journal_effect_policy() -> list[tuple[str, str, str]]:
     contract = _source(CONTRACT)
     block = contract.split("<!-- plc9b-journal-effect-policy:start -->", 1)[1]
@@ -416,9 +417,7 @@ def _journal_effect_policy() -> list[tuple[str, str, str]]:
             "selector | journal_domain | journal_transition",
         }:
             continue
-        selector, domain, transition = (
-            cell.strip() for cell in line.split("|", 2)
-        )
+        selector, domain, transition = (cell.strip() for cell in line.split("|", 2))
         policy.append((selector, domain, transition))
     return policy
 
@@ -486,7 +485,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.3d2a" in contract
+    assert "Contract version: PLC9B.3d2b-candidate" in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
@@ -500,19 +499,18 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
     assert "PLC9B3c Accepted Recursive Closure Builder" in contract
     assert "PLC9B3d-1 Accepted Durable Closure Recovery" in contract
     assert "PLC9B3d-2a Accepted Composed Closure Limits" in contract
+    assert "PLC9B3d-2b Candidate Composed Closure Integrity" in contract
     assert "Harness Quality run `33505702666`" in contract
     assert "Linux\nharness job `99849101216`" in contract
     assert "(ID\n`9799493328`)" in contract
     assert (
-        "1022791049963c23171204823fdae22d4d70f1f6a06d505a8d837f2aef426b8d"
-        in contract
+        "1022791049963c23171204823fdae22d4d70f1f6a06d505a8d837f2aef426b8d" in contract
     )
     assert "Harness Quality run `33501681463`" in contract
     assert "Linux\nharness job `99836237482`" in contract
     assert "(ID\n`9797945496`)" in contract
     assert (
-        "66e889f7c79ad5eaf576cc0107c6438bc4e3d8aa71e8a89c009fd1e1fe2b65ee"
-        in contract
+        "66e889f7c79ad5eaf576cc0107c6438bc4e3d8aa71e8a89c009fd1e1fe2b65ee" in contract
     )
     assert "Harness Quality run `33497159996`" in contract
     assert "Linux harness job `99821888267`" in contract
@@ -521,9 +519,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
         " ".join(contract.split())
     )
     assert "Harness Quality run `33492402119`" in contract
-    assert "Artifact `plc9b-linux-native-pytest-report` (ID `9794291799`)" in (
-        contract
-    )
+    assert "Artifact `plc9b-linux-native-pytest-report` (ID `9794291799`)" in (contract)
     assert "Windows Shell Compatibility run `33490630717`" in contract
     assert "Artifact `windows-shell-pytest-reports` (ID `9793609340`)" in contract
     assert "Harness Quality run `33489524268`" in contract
@@ -744,6 +740,7 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
     implemented_b2k = _implemented_b2k_hardlink_manifest_cases()
     implemented_b3d = _implemented_b3d_recovery_manifest_cases()
     implemented_b3d_limits = _implemented_b3d_limit_manifest_cases()
+    implemented_b3d_integrity = _implemented_b3d_integrity_manifest_cases()
     implemented = (
         implemented_b1
         | implemented_b2
@@ -753,6 +750,7 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
         | implemented_b2k
         | implemented_b3d
         | implemented_b3d_limits
+        | implemented_b3d_integrity
     )
 
     assert len(manifest) == 127
@@ -883,6 +881,25 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
         | implemented_b2k
         | implemented_b3d
     ).isdisjoint(implemented_b3d_limits)
+    assert implemented_b3d_integrity == {
+        "B-CLOSURE-MISSING",
+        "B-CLOSURE-DIGEST",
+        "B-CLOSURE-ORIGIN",
+        "B-CLOSURE-MARKER",
+        "B-CLOSURE-NAME",
+        "B-CLOSURE-CYCLE",
+        "B-CLOSURE-V1",
+    }
+    assert (
+        implemented_b1
+        | implemented_b2
+        | implemented_b2h
+        | implemented_b2i
+        | implemented_b2j
+        | implemented_b2k
+        | implemented_b3d
+        | implemented_b3d_limits
+    ).isdisjoint(implemented_b3d_integrity)
     separator = manifest["B-PATH-COLLISION-SEP"]
     assert separator["fixture"] == "separator_ambiguous_path"
     assert separator["code"] == "package_archive_path_rejected"
@@ -896,7 +913,7 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
     assert hardlink["code"] == "ok"
     assert hardlink["disposition"] == "extracted@independent_regular_files"
     assert hardlink["status"] == "implemented"
-    assert len(manifest) - len(implemented) == 70
+    assert len(manifest) - len(implemented) == 63
     workflow = _source(HARNESS_WORKFLOW)
     assert "PLC9B Linux native adversarial gate (plc9b-linux-native)" in workflow
     assert "tests/harness/resources/packages/test_plc9b_adversarial.py" in workflow
@@ -1336,9 +1353,7 @@ def test_plc9b_manifest_covers_every_route_and_native_platform_evidence() -> Non
         "B-ADMISSION-DIGEST-TAMPER",
     ):
         assert admission_case in manifest
-        assert manifest[admission_case]["code"] == (
-            "package_commit_admission_denied"
-        )
+        assert manifest[admission_case]["code"] == ("package_commit_admission_denied")
         assert {"no_reopen", "no_handle_issued"} <= set(
             manifest[admission_case]["oracles"].split(";")
         )
@@ -1360,12 +1375,12 @@ def test_plc9b_manifest_covers_every_route_and_native_platform_evidence() -> Non
         "B-HANDOFF-AFTER-SETTLEMENT",
         "B-HANDOFF-CONCURRENT-REPLAY",
     ):
-        assert "transaction_pin_released" in manifest[settled_case][
-            "oracles"
-        ].split(";")
-    assert "dependency_pins_released" in manifest[
-        "B-HANDOFF-DESIRED-REJECT"
-    ]["oracles"].split(";")
+        assert "transaction_pin_released" in manifest[settled_case]["oracles"].split(
+            ";"
+        )
+    assert "dependency_pins_released" in manifest["B-HANDOFF-DESIRED-REJECT"][
+        "oracles"
+    ].split(";")
     unchanged = {
         "legacy_snapshot_exact",
         "desired_unchanged",
@@ -1380,7 +1395,13 @@ def test_plc9b_manifest_covers_every_route_and_native_platform_evidence() -> Non
             "complete_pre_b_restore_exclusive_old_runtime",
             "ok",
             "accepted@offline_restore",
-            {"single_owner", "legacy_snapshot_exact", "b_namespace_unreachable", "no_peer_fallback", "no_skip"},
+            {
+                "single_owner",
+                "legacy_snapshot_exact",
+                "b_namespace_unreachable",
+                "no_peer_fallback",
+                "no_skip",
+            },
             "harness-quality.yml#plc9b-linux-native",
         ),
         "B-COMPAT-OFFLINE-RESTORE-WINDOWS": (
@@ -1389,7 +1410,13 @@ def test_plc9b_manifest_covers_every_route_and_native_platform_evidence() -> Non
             "complete_pre_b_restore_exclusive_old_runtime",
             "ok",
             "accepted@offline_restore",
-            {"single_owner", "legacy_snapshot_exact", "b_namespace_unreachable", "no_peer_fallback", "no_skip"},
+            {
+                "single_owner",
+                "legacy_snapshot_exact",
+                "b_namespace_unreachable",
+                "no_peer_fallback",
+                "no_skip",
+            },
             "windows-shell-compatibility.yml#plc9b-windows-native",
         ),
         "B-COMPAT-ADOPT": (
@@ -1606,9 +1633,7 @@ def test_plc9b1_dark_kernel_preserves_visible_unsafe_debt() -> None:
 
 def test_plc9b1_owner_kernel_stays_internal_dark_and_capability_free() -> None:
     package_facade = _source(PACKAGE_ROOT / "__init__.py")
-    kernel_sources = {
-        path: _source(path) for path in OWNER_KERNEL_ROOT.glob("*.py")
-    }
+    kernel_sources = {path: _source(path) for path in OWNER_KERNEL_ROOT.glob("*.py")}
     owner = kernel_sources[OWNER_KERNEL_ROOT / "owner.py"]
 
     assert "enabled: bool = False" in owner
@@ -1649,9 +1674,9 @@ def test_plc9b1_owner_kernel_stays_internal_dark_and_capability_free() -> None:
             continue
         tree = ast.parse(_source(path), filename=str(path))
         for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom) and (
-                node.module or ""
-            ).startswith("loushang.harness.resources.packages.plugin_lifecycle"):
+            if isinstance(node, ast.ImportFrom) and (node.module or "").startswith(
+                "loushang.harness.resources.packages.plugin_lifecycle"
+            ):
                 production_importers.append(path)
             elif isinstance(node, ast.Import) and any(
                 alias.name.startswith(
@@ -1673,15 +1698,12 @@ def test_plc9b2a_acquisition_is_unbound_bounded_and_pathless() -> None:
     assert "class PackageQuarantineStore:" in source
     assert "class PackageAcquisitionOwner:" in source
     assert "opaque acquired-candidate capability" in contract
-    assert "promote no global adversarial manifest row" in " ".join(
-        contract.split()
-    )
+    assert "promote no global adversarial manifest row" in " ".join(contract.split())
 
     sink = next(
         node
         for node in tree.body
-        if isinstance(node, ast.ClassDef)
-        and node.name == "BoundedAcquisitionSinkPort"
+        if isinstance(node, ast.ClassDef) and node.name == "BoundedAcquisitionSinkPort"
     )
     assert {
         node.name
@@ -1712,7 +1734,6 @@ def test_plc9b3a_closure_verifier_is_dark_pure_and_does_not_promote_rows() -> No
     package_facade = _source(OWNER_KERNEL_ROOT / "__init__.py")
     author_sdk = _source(AUTHOR_SDK)
     project = _source(PYPROJECT)
-    manifest = _adversarial_manifest()
 
     assert CLOSURE_VERIFIER.is_file()
     assert "class PackageClosureVerifier:" in source
@@ -1769,9 +1790,6 @@ def test_plc9b3a_closure_verifier_is_dark_pure_and_does_not_promote_rows() -> No
         "B-CLOSURE-V1",
     }
     assert all(case_id in component_tests for case_id in component_case_ids)
-    assert all(
-        manifest[case_id]["status"] == "planned" for case_id in component_case_ids
-    )
     assert "component evidence only" in contract
     assert "creates no\ntyped stable ref" in contract
 
@@ -1784,7 +1802,6 @@ def test_plc9b3b_durable_closure_inputs_are_ordered_dark_and_unpromoted() -> Non
     wheel = _source(WHEEL_VERIFIER)
     package_facade = _source(OWNER_KERNEL_ROOT / "__init__.py")
     author_sdk = _source(AUTHOR_SDK)
-    manifest = _adversarial_manifest()
 
     assert "class PackageAuthenticatedSourceEvidenceV1:" in acquisition
     assert "class _AuthorizedPackageSource:" in acquisition
@@ -1806,18 +1823,6 @@ def test_plc9b3b_durable_closure_inputs_are_ordered_dark_and_unpromoted() -> Non
     ):
         assert forbidden_export not in package_facade
         assert forbidden_export not in author_sdk
-    component_case_ids = {
-        "B-CLOSURE-MISSING",
-        "B-CLOSURE-DIGEST",
-        "B-CLOSURE-ORIGIN",
-        "B-CLOSURE-MARKER",
-        "B-CLOSURE-NAME",
-        "B-CLOSURE-CYCLE",
-        "B-CLOSURE-V1",
-    }
-    assert all(
-        manifest[case_id]["status"] == "planned" for case_id in component_case_ids
-    )
     assert "Existing\nreceipt-first B2 journals remain replayable" in contract
     assert "creates no typed stable ref" in contract
 
@@ -1828,7 +1833,6 @@ def test_plc9b3c_recursive_builder_is_selection_only_dark_and_unpromoted() -> No
     component_tests = _source(CLOSURE_OWNER_TEST)
     package_facade = _source(OWNER_KERNEL_ROOT / "__init__.py")
     author_sdk = _source(AUTHOR_SDK)
-    manifest = _adversarial_manifest()
 
     assert CLOSURE_OWNER.is_file()
     for symbol in (
@@ -1880,18 +1884,6 @@ def test_plc9b3c_recursive_builder_is_selection_only_dark_and_unpromoted() -> No
     ):
         assert internal_symbol not in package_facade
         assert internal_symbol not in author_sdk
-    component_case_ids = {
-        "B-CLOSURE-MISSING",
-        "B-CLOSURE-DIGEST",
-        "B-CLOSURE-ORIGIN",
-        "B-CLOSURE-MARKER",
-        "B-CLOSURE-NAME",
-        "B-CLOSURE-CYCLE",
-        "B-CLOSURE-V1",
-    }
-    assert all(
-        manifest[case_id]["status"] == "planned" for case_id in component_case_ids
-    )
     for evidence in (
         "reaches_fixpoint_when_incoming_extras_expand_late",
         "rejects_resolver_identity_change_before_dependency_io",
@@ -1934,9 +1926,7 @@ def test_plc9b3d_candidate_binds_recovery_before_io_and_remains_dark() -> None:
     ):
         assert symbol in runtime
         assert symbol.removeprefix("class ").removesuffix(":") not in package_facade
-    assert runtime.index("bind_basis(") < runtime.index(
-        "self._artifact_owner.execute("
-    )
+    assert runtime.index("bind_basis(") < runtime.index("self._artifact_owner.execute(")
     assert runtime.index("append_plan(") < runtime.index(
         'next_phase="closure_verified"'
     )
@@ -1956,7 +1946,7 @@ def test_plc9b3d_candidate_binds_recovery_before_io_and_remains_dark() -> None:
     ):
         assert forbidden not in journal
         assert forbidden not in runtime
-    pending_cases = {
+    integrity_cases = {
         "B-CLOSURE-MISSING",
         "B-CLOSURE-DIGEST",
         "B-CLOSURE-ORIGIN",
@@ -1965,7 +1955,9 @@ def test_plc9b3d_candidate_binds_recovery_before_io_and_remains_dark() -> None:
         "B-CLOSURE-CYCLE",
         "B-CLOSURE-V1",
     }
-    assert all(manifest[case_id]["status"] == "planned" for case_id in pending_cases)
+    assert all(
+        manifest[case_id]["status"] == "implemented" for case_id in integrity_cases
+    )
     assert {
         manifest[case_id]["status"]
         for case_id in {
@@ -1977,10 +1969,7 @@ def test_plc9b3d_candidate_binds_recovery_before_io_and_remains_dark() -> None:
         }
     } == {"implemented"}
     assert manifest["B-LIMIT-REQUESTS"]["barrier"] == "resolving_closure"
-    assert (
-        manifest["B-LIMIT-REQUESTS"]["disposition"]
-        == "rejected@resolving_closure"
-    )
+    assert manifest["B-LIMIT-REQUESTS"]["disposition"] == "rejected@resolving_closure"
     for evidence in (
         "changed_inputs_fail_closed",
         "without_resolver_or_source_io",
@@ -2005,17 +1994,18 @@ def test_plc9b3d_candidate_binds_recovery_before_io_and_remains_dark() -> None:
     assert "Linux harness job `99880656864`" in normalized
     assert "artifact ID `9803312387`" in normalized
     assert (
-        "58e17cd15e241b62f6d7382b08adcdee0a349ec849ed94a6fd0975d329c2520e"
-        in contract
+        "58e17cd15e241b62f6d7382b08adcdee0a349ec849ed94a6fd0975d329c2520e" in contract
     )
     assert "executed exactly 57 manifest nodes" in contract
     assert "retained artifact `9803312387` executed exactly 57 native" in (
         " ".join(inventory.split())
     )
+    assert "This is candidate evidence only" in contract
+    assert "local\n64-row manifest passes" in contract
+    assert "cleanup-debt custody for every rejected candidate" in inventory
 
 
-def test_plc9b2f_windows_backend_is_rooted_and_has_a_nonskippable_native_gate(
-) -> None:
+def test_plc9b2f_windows_backend_is_rooted_and_has_a_nonskippable_native_gate() -> None:
     contract = _source(CONTRACT)
     acquisition = _source(BOUNDED_ACQUISITION)
     windows = _source(WINDOWS_QUARANTINE)
@@ -2026,8 +2016,7 @@ def test_plc9b2f_windows_backend_is_rooted_and_has_a_nonskippable_native_gate(
     assert "PLC9B2f Accepted Native Windows Quarantine" in normalized_contract
     assert "Windows Shell Compatibility run `33486925218`" in normalized_contract
     assert (
-        "`5 passed`, `0 skipped`, `0 failures`, and `0 errors`"
-        in normalized_contract
+        "`5 passed`, `0 skipped`, `0 failures`, and `0 errors`" in normalized_contract
     )
     assert (
         "artifact `windows-shell-pytest-reports` (ID `9792151355`)"
@@ -2046,9 +2035,7 @@ def test_plc9b2f_windows_backend_is_rooted_and_has_a_nonskippable_native_gate(
     assert "test_plc9b_windows_native.py" in workflow
     assert "windows-shell-plc9b-native.xml" in workflow
     assert "include-hidden-files: true" in workflow
-    assert workflow.count(
-        "test_plc9b_adversarial.py::test_manifest_case[B-"
-    ) == 7
+    assert workflow.count("test_plc9b_adversarial.py::test_manifest_case[B-") == 7
     for case_id in _implemented_b2i_windows_manifest_cases():
         assert f"test_manifest_case[{case_id}]" in workflow
     assert "windows-shell-plc9b-manifest.xml" in workflow
