@@ -14,6 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path
+from threading import Lock
 
 import pytest
 
@@ -90,6 +91,16 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
     PackageLifecycleRequestV1,
     PackageLifecycleStatusV1,
     PluginBoundPackageClassificationV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.retention_handoff import (
+    PackageDependencyPinReceiptV1,
+    PackageDesiredStateCommitRequestV1,
+    PackageDesiredStateCommitResultV1,
+    PackageRetentionHandoffJournal,
+    PackageRetentionHandoffOwner,
+    PackageRetentionHandoffReceiptV1,
+    PackageRetentionHandoffRequestV1,
+    PackageRetentionHandoffResultV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.runtime import (
     PackageArtifactExecutionRequestV1,
@@ -246,6 +257,14 @@ IMPLEMENTED_B4A_COMMIT_ADMISSION_MANIFEST_CASES = (
     "B-ADMISSION-WRONG-PLUGIN",
     "B-ADMISSION-DIGEST-TAMPER",
 )
+IMPLEMENTED_B4B_RETENTION_HANDOFF_MANIFEST_CASES = (
+    "B-HANDOFF-BEFORE-DESIRED",
+    "B-HANDOFF-AFTER-DESIRED",
+    "B-HANDOFF-AFTER-SETTLEMENT",
+    "B-HANDOFF-DESIRED-REJECT",
+    "B-HANDOFF-STALE-RECEIPT",
+    "B-HANDOFF-CONCURRENT-REPLAY",
+)
 PLANNED_B3E3C_MATERIALIZATION_MANIFEST_CASES: tuple[str, ...] = ()
 PLANNED_B4_COMMIT_ADMISSION_MANIFEST_CASES: tuple[str, ...] = ()
 
@@ -264,6 +283,7 @@ EXECUTABLE_MANIFEST_CASES = (
     + IMPLEMENTED_B3E3C1_POSIX_MANIFEST_CASES
     + IMPLEMENTED_B3E3C3_SETTLEMENT_MANIFEST_CASES
     + IMPLEMENTED_B4A_COMMIT_ADMISSION_MANIFEST_CASES
+    + IMPLEMENTED_B4B_RETENTION_HANDOFF_MANIFEST_CASES
     + (IMPLEMENTED_B3E3C2_WINDOWS_MANIFEST_CASES if os.name == "nt" else ())
 )
 
@@ -1566,6 +1586,230 @@ def _manifest_admission_request(
     return PackageCommitAdmissionRequestV1.create(**values)  # type: ignore[arg-type]
 
 
+class _ManifestDesiredStateCommitOwner:
+    def __init__(self, *, inventory_revision: int = 0) -> None:
+        self.inventory_revision = inventory_revision
+        self.interruptions = 0
+        self.calls = 0
+        self.physical_commits = 0
+        self._results: dict[str, PackageDesiredStateCommitResultV1] = {}
+        self._lock = Lock()
+
+    def commit(
+        self,
+        request: PackageDesiredStateCommitRequestV1,
+    ) -> PackageDesiredStateCommitResultV1:
+        with self._lock:
+            self.calls += 1
+            repeated = self._results.get(request.desired_request_id)
+            if repeated is not None:
+                return repeated
+            if self.interruptions:
+                self.interruptions -= 1
+                raise RuntimeError("desired owner interrupted")
+            if request.expected_inventory_revision != self.inventory_revision:
+                result = PackageDesiredStateCommitResultV1.rejected(
+                    request,
+                    observed_inventory_revision=self.inventory_revision,
+                    owner_identity="manifest-desired-owner",
+                    owner_revision=max(self.inventory_revision, 1),
+                )
+            else:
+                self.inventory_revision += 1
+                self.physical_commits += 1
+                result = PackageDesiredStateCommitResultV1.committed(
+                    request,
+                    owner_identity="manifest-desired-owner",
+                    owner_revision=self.inventory_revision,
+                )
+            self._results[request.desired_request_id] = result
+            return result
+
+
+class _ManifestProcessCrash(BaseException):
+    pass
+
+
+class _ManifestRetentionSettlementOwner:
+    def __init__(self, pin_journal: PackageTransactionPinJournal) -> None:
+        self.pin_journal = pin_journal
+        self.settle_interruptions = 0
+        self.settle_postcommit_crashes = 0
+        self.acquire_calls = 0
+        self.abort_calls = 0
+        self.settle_calls = 0
+        self.physical_acquisitions = 0
+        self.physical_aborts = 0
+        self.physical_settlements = 0
+        self.zero_pin_observed = False
+        self._receipts: dict[str, PackageDependencyPinReceiptV1] = {}
+        self._lock = Lock()
+
+    def acquire(
+        self,
+        request: object,
+        *,
+        transaction_pin_receipt: PackageTransactionPinReceiptV1,
+    ) -> PackageDependencyPinReceiptV1:
+        from loushang.harness.resources.packages.plugin_lifecycle.retention_handoff import (
+            PackageDependencyPinRequestV1,
+        )
+
+        assert isinstance(request, PackageDependencyPinRequestV1)
+        with self._lock:
+            self.acquire_calls += 1
+            repeated = self._receipts.get(request.pin_request_id)
+            if repeated is not None:
+                return repeated
+            assert transaction_pin_receipt.state == "acquired"
+            pin_ids = tuple(
+                sha256(f"{request.pin_request_id}:{ref_id}".encode()).hexdigest()
+                for ref_id in request.target_ref_ids
+            )
+            receipt = PackageDependencyPinReceiptV1.acquire(
+                request,
+                pin_ids=pin_ids,
+                owner_identity="manifest-handoff-retention-owner",
+                owner_revision=1,
+                lease_revision=1,
+                transaction_pin_receipt=transaction_pin_receipt,
+            )
+            self._receipts[request.pin_request_id] = receipt
+            self.physical_acquisitions += 1
+            return receipt
+
+    def abort(
+        self,
+        receipt: PackageDependencyPinReceiptV1,
+        *,
+        failure: object,
+    ) -> PackageDependencyPinReceiptV1:
+        from loushang.harness.resources.packages.plugin_lifecycle.retention_handoff import (
+            PackageDesiredStateCommitFailureV1,
+        )
+
+        assert isinstance(failure, PackageDesiredStateCommitFailureV1)
+        with self._lock:
+            self.abort_calls += 1
+            current = self._receipts[receipt.request.pin_request_id]
+            if current.state == "aborted":
+                return current
+            assert current == receipt and current.state == "acquired"
+            aborted = PackageDependencyPinReceiptV1.abort(
+                current,
+                failure,
+                owner_revision=current.owner_revision + 1,
+                lease_revision=current.lease_revision + 1,
+            )
+            self._receipts[receipt.request.pin_request_id] = aborted
+            self.physical_aborts += 1
+            assert aborted.transaction_pin_receipt.state == "acquired"
+            return aborted
+
+    def settle(
+        self,
+        receipt: PackageDependencyPinReceiptV1,
+        *,
+        desired_receipt: object,
+    ) -> PackageDependencyPinReceiptV1:
+        from loushang.harness.resources.packages.plugin_lifecycle.retention_handoff import (
+            PackageDesiredStateCommitReceiptV1,
+        )
+
+        assert isinstance(desired_receipt, PackageDesiredStateCommitReceiptV1)
+        with self._lock:
+            self.settle_calls += 1
+            current = self._receipts[receipt.request.pin_request_id]
+            if current.state == "settled":
+                return current
+            assert current == receipt and current.state == "acquired"
+            if self.settle_interruptions:
+                self.settle_interruptions -= 1
+                raise RuntimeError("retention settlement interrupted")
+            if not current.dependency_pins_live:
+                self.zero_pin_observed = True
+            released = PackageTransactionPinReceiptV1.transition(
+                current.transaction_pin_receipt,
+                state="released",
+                owner_revision=current.transaction_pin_receipt.owner_revision + 1,
+                lease_revision=current.transaction_pin_receipt.lease_revision + 1,
+                transition_evidence_ref=desired_receipt.receipt_id,
+            )
+            self.pin_journal.append(released)
+            settled = PackageDependencyPinReceiptV1.settle(
+                current,
+                desired_receipt,
+                released,
+                owner_revision=current.owner_revision + 1,
+                lease_revision=current.lease_revision + 1,
+            )
+            self._receipts[receipt.request.pin_request_id] = settled
+            self.physical_settlements += 1
+            if self.settle_postcommit_crashes:
+                self.settle_postcommit_crashes -= 1
+                raise _ManifestProcessCrash
+            return settled
+
+    def current(
+        self,
+        request: PackageRetentionHandoffRequestV1,
+    ) -> PackageDependencyPinReceiptV1 | None:
+        with self._lock:
+            return self._receipts.get(request.dependency_pin_request.pin_request_id)
+
+
+@dataclass(frozen=True)
+class _ManifestRetentionHandoffFixture:
+    request: PackageRetentionHandoffRequestV1
+    journal: PackageRetentionHandoffJournal
+    owner: PackageRetentionHandoffOwner
+    retention: _ManifestRetentionSettlementOwner
+    desired: _ManifestDesiredStateCommitOwner
+    pin_journal: PackageTransactionPinJournal
+
+
+def _manifest_retention_handoff_fixture(
+    tmp_path: Path,
+    *,
+    desired_inventory_revision: int = 0,
+) -> _ManifestRetentionHandoffFixture:
+    admission = _manifest_commit_admission_fixture(tmp_path)
+    publication = admission.commit_owner.commit("manifest-operation")
+    admission_request = _manifest_admission_request(publication)
+    admission_result = admission.admission_owner.admit(admission_request)
+    assert admission_result.receipt is not None
+    desired_request = PackageDesiredStateCommitRequestV1.create(
+        admission_request,
+        command_id="manifest-desired-command",
+        command_fingerprint=sha256(b"manifest-desired-command").hexdigest(),
+        expected_inventory_revision=0,
+    )
+    request = PackageRetentionHandoffRequestV1.create(
+        admission_request=admission_request,
+        admission_receipt=admission_result.receipt,
+        transaction_pin_receipt=admission.pin_receipt,
+        desired_request=desired_request,
+    )
+    journal = PackageRetentionHandoffJournal(tmp_path / "retention-handoff.jsonl")
+    retention = _ManifestRetentionSettlementOwner(admission.pin_journal)
+    desired = _ManifestDesiredStateCommitOwner(
+        inventory_revision=desired_inventory_revision
+    )
+    return _ManifestRetentionHandoffFixture(
+        request=request,
+        journal=journal,
+        owner=PackageRetentionHandoffOwner(
+            journal=journal,
+            admission=admission.admission_owner,
+            retention=retention,
+            desired_state=desired,
+        ),
+        retention=retention,
+        desired=desired,
+        pin_journal=admission.pin_journal,
+    )
+
+
 @pytest.mark.parametrize("case_id", EXECUTABLE_MANIFEST_CASES)
 def test_manifest_case(case_id: str, tmp_path: Path) -> None:
     if case_id == "B-CLASS-PLUGIN":
@@ -1744,9 +1988,170 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
         assert fixture.kernel.journal.records() == lifecycle_before
         assert fixture.committed_sets.records() == committed_before
         assert fixture.pin_journal.records() == pins_before
-        assert fixture.pin_journal.current_for_operation(
-            "manifest-operation"
-        ) == (fixture.pin_receipt)
+        assert fixture.pin_journal.current_for_operation("manifest-operation") == (
+            fixture.pin_receipt
+        )
+        assert not (tmp_path / "binding.json").exists()
+        assert not (tmp_path / "desired.json").exists()
+    elif case_id in IMPLEMENTED_B4B_RETENTION_HANDOFF_MANIFEST_CASES:
+        fixture = _manifest_retention_handoff_fixture(
+            tmp_path,
+            desired_inventory_revision=(
+                1 if case_id == "B-HANDOFF-DESIRED-REJECT" else 0
+            ),
+        )
+        request = fixture.request
+        if case_id == "B-HANDOFF-BEFORE-DESIRED":
+            fixture.desired.interruptions = 1
+            result = fixture.owner.execute(request)
+            assert result.disposition == "retryable_failure"
+            assert result.code == "package_retention_handoff_interrupted"
+            assert result.receipt is not None
+            assert result.receipt.state == "dependency_pinned"
+            assert result.failure is not None and result.failure.retryable
+            assert fixture.desired.physical_commits == 0
+            assert (
+                fixture.pin_journal.current_for_operation(request.operation_id)
+                == request.transaction_pin_receipt
+            )
+            result = fixture.owner.execute(request)
+            assert result.disposition == "settled"
+        elif case_id == "B-HANDOFF-AFTER-DESIRED":
+            fixture.retention.settle_interruptions = 1
+            result = fixture.owner.execute(request)
+            assert result.disposition == "retryable_failure"
+            assert result.code == "package_retention_handoff_interrupted"
+            assert result.receipt is not None
+            assert result.receipt.state == "desired_committed"
+            assert fixture.desired.physical_commits == 1
+            dependency = fixture.retention.current(request)
+            assert dependency is not None and dependency.dependency_pins_live
+            assert (
+                fixture.pin_journal.current_for_operation(request.operation_id)
+                == request.transaction_pin_receipt
+            )
+            result = fixture.owner.execute(request)
+            assert result.disposition == "settled"
+        elif case_id == "B-HANDOFF-AFTER-SETTLEMENT":
+            fixture.retention.settle_postcommit_crashes = 1
+            with pytest.raises(_ManifestProcessCrash):
+                fixture.owner.execute(request)
+            interrupted_head = fixture.journal.current(request.handoff_id)
+            assert interrupted_head is not None
+            assert interrupted_head.state == "desired_committed"
+            dependency = fixture.retention.current(request)
+            assert dependency is not None and dependency.state == "settled"
+            assert (
+                fixture.pin_journal.current_for_operation(request.operation_id).state
+                == "released"
+            )  # type: ignore[union-attr]
+            records_before = fixture.journal.records()
+            result = fixture.owner.execute(request)
+            assert result.disposition == "settled"
+            assert len(fixture.journal.records()) == len(records_before) + 1
+            settled_records = fixture.journal.records()
+            calls_before = (
+                fixture.retention.acquire_calls,
+                fixture.retention.abort_calls,
+                fixture.retention.settle_calls,
+                fixture.desired.calls,
+            )
+            replay = fixture.owner.execute(request)
+            assert replay == result
+            assert fixture.journal.records() == settled_records
+            assert (
+                fixture.retention.acquire_calls,
+                fixture.retention.abort_calls,
+                fixture.retention.settle_calls,
+                fixture.desired.calls,
+            ) == calls_before
+        elif case_id == "B-HANDOFF-DESIRED-REJECT":
+            result = fixture.owner.execute(request)
+            assert result.disposition == "rejected"
+            assert result.code == "package_desired_revision_conflict"
+            assert result.receipt is not None and result.receipt.state == "aborted"
+            dependency = fixture.retention.current(request)
+            assert dependency is not None
+            assert dependency.state == "aborted"
+            assert not dependency.dependency_pins_live
+            assert dependency.transaction_pin_receipt == (
+                request.transaction_pin_receipt
+            )
+            assert fixture.desired.physical_commits == 0
+            assert fixture.retention.physical_aborts == 1
+            records_before = fixture.journal.records()
+            assert fixture.owner.execute(request) == result
+            assert fixture.journal.records() == records_before
+        elif case_id == "B-HANDOFF-STALE-RECEIPT":
+            fixture.desired.interruptions = 1
+            interrupted = fixture.owner.execute(request)
+            assert interrupted.receipt is not None
+            assert interrupted.receipt.state == "dependency_pinned"
+            opened = next(
+                record.receipt
+                for record in fixture.journal.records()
+                if record.receipt is not None and record.receipt.state == "opened"
+            )
+            assert isinstance(opened, PackageRetentionHandoffReceiptV1)
+            records_before = fixture.journal.records()
+            calls_before = (
+                fixture.retention.acquire_calls,
+                fixture.retention.abort_calls,
+                fixture.retention.settle_calls,
+                fixture.desired.calls,
+            )
+            result = fixture.owner.execute(request, expected_receipt=opened)
+            assert result.disposition == "rejected"
+            assert result.code == "package_retention_handoff_stale"
+            assert result.receipt == interrupted.receipt
+            assert fixture.journal.records() == records_before
+            assert (
+                fixture.retention.acquire_calls,
+                fixture.retention.abort_calls,
+                fixture.retention.settle_calls,
+                fixture.desired.calls,
+            ) == calls_before
+        else:
+            assert case_id == "B-HANDOFF-CONCURRENT-REPLAY"
+            with ThreadPoolExecutor(max_workers=8) as executor:
+                results = tuple(
+                    executor.map(
+                        lambda _index: fixture.owner.execute(request), range(16)
+                    )
+                )
+            assert len(set(results)) == 1
+            result = results[0]
+            assert result.disposition == "settled"
+            assert fixture.retention.physical_acquisitions == 1
+            assert fixture.retention.physical_settlements == 1
+            assert fixture.desired.physical_commits == 1
+
+        dependency = fixture.retention.current(request)
+        assert dependency is not None
+        assert dependency.request.target_ref_ids == (
+            request.dependency_pin_request.target_ref_ids
+        )
+        assert len(dependency.pin_ids) == len(
+            request.dependency_pin_request.target_ref_ids
+        )
+        assert not fixture.retention.zero_pin_observed
+        assert PackageRetentionHandoffRequestV1.from_dict(request.to_dict()) == request
+        assert PackageRetentionHandoffResultV1.from_dict(result.to_dict()) == result
+        extended = request.to_dict()
+        extended["reopenPath"] = "/tmp/forged"
+        with pytest.raises(ValueError, match="versioned schema"):
+            PackageRetentionHandoffRequestV1.from_dict(extended)
+        forged = request.to_dict()
+        forged["handoffId"] = "0" * 64
+        with pytest.raises(ValueError, match="does not match"):
+            PackageRetentionHandoffRequestV1.from_dict(forged)
+        assert (
+            PackageRetentionHandoffJournal(fixture.journal.path).records()
+            == fixture.journal.records()
+        )
+        serialized = repr((result, fixture.journal.records())).lower()
+        for forbidden in ("password", "credential", "token", "reopen", "handle"):
+            assert forbidden not in serialized
         assert not (tmp_path / "binding.json").exists()
         assert not (tmp_path / "desired.json").exists()
     elif case_id in IMPLEMENTED_B2_MANIFEST_CASES:

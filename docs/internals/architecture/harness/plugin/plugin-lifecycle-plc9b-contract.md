@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.4a.
+- Contract version: PLC9B.4b-candidate.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -92,9 +92,15 @@
   reprojects the receipt from the terminal lifecycle, exact committed-set, and
   still-live transaction-pin journals; it returns only a stable admission
   receipt, never a path, store capability, reopened object, or live handle.
-  The missing-receipt and seven cross-context admission threats are executable;
-  retention handoff, recovery/epoch fencing, public routing, and desired-state
-  mutation remain closed.
+  The missing-receipt and seven cross-context admission threats are executable.
+  B4b candidate code adds strict admitted-set/desired-CAS/dependency-pin/handoff
+  records, a durable handoff CAS journal, and a lock-free coordinator over
+  read-only admission plus narrow Desired and Retention Ports. Its exact
+  `opened -> dependency_pinned -> desired_committed -> settled` recovery path
+  (or pre-commit `aborted`) makes all six retention-handoff threats executable
+  without importing a concrete management ledger or exposing a production
+  route. Recovery/epoch fencing, public routing, and concrete desired-state
+  composition remain closed.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -1272,6 +1278,42 @@ Harness checks. Local `make check-harness` passed Ruff, mypy over 640 source
 files, and 3,805 tests with 23 expected skips; the 14 focused B4a component
 tests and 36 PLC9B architecture contracts also passed.
 
+## PLC9B4b Candidate Retention Handoff
+
+B4b composes only immutable evidence. `PackageRetentionHandoffRequestV1` binds
+the exact read-only B4a admission request/receipt, committed publication,
+still-acquired transaction-pin receipt, complete root/dependency stable-ref
+set, and one opaque Desired command identity with its expected inventory
+revision. `PackageDesiredStateCommitPort` owns that expected-revision CAS;
+`PackageRetentionSettlementPort` alone acquires/releases dependency pins and
+returns the atomic settlement proof. Neither Port receives a path, Store,
+candidate, live handle, or the other owner's mutation capability.
+
+`PackageRetentionHandoffJournal` is a strict versioned CAS projection over
+`opened -> dependency_pinned -> desired_committed -> settled`, with `aborted`
+allowed only from `dependency_pinned`. Retryable interruptions are separate
+`handoff_attempt` records and never rewrite the last proved handoff receipt.
+Exact retries and concurrent callers converge on the same receipt chain; a
+stale caller cannot append or invoke either mutation Port. No journal lock is
+held while admission, retention, or Desired owners execute.
+
+The no-zero-pin invariant is evidence-backed. Exact root/dependency pins exist
+before the Desired CAS. A rejected Desired revision releases only those new
+dependency pins and leaves the transaction pin acquired. Successful settlement
+keeps every dependency pin live while the Retention receipt proves the exact
+transaction pin moved to `released`. If the Retention owner settles and the
+process stops before the local settled projection, replay consumes the same
+durable owner receipt and appends only the missing exact successor. It never
+reopens admission or creates another physical pin set.
+
+All six `B-HANDOFF-*` rows are executable, including both interruption windows,
+post-settlement replay, Desired CAS rejection, stale-receipt refusal, and
+concurrent exact replay. The implementation remains dark inside
+`harness.resources.packages.plugin_lifecycle`: it imports no concrete
+`plugin_management` ledger, performs no legacy-ref cast, exports no facade or
+author-SDK symbol, and activates no CLI/RPC/Session/startup route. B4c epoch
+fencing and the later explicit adapters remain required before Product routing.
+
 ## First Principles
 
 1. Untrusted bytes are data, never a pathname, command, module, or build plan.
@@ -1802,12 +1844,12 @@ B-CRASH-COMMITTED | any | committed | crash_after_edge | ok | committed@committe
 B-CONCUR-SAME | any | each_phase | concurrent_same_fingerprint | ok | committed@committed | same_receipt;single_owner;pin_visible | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CONCUR-SAME] | harness-quality.yml#plc9b-linux-native | planned
 B-CONCUR-CONFLICT | any | classified | concurrent_different_fingerprint | package_operation_identity_conflict | rejected@classified | single_owner;no_publication;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CONCUR-CONFLICT] | harness-quality.yml#plc9b-linux-native | implemented
 B-CONCUR-STALE | any | each_phase | stale_attempt_epoch | package_attempt_stale | rejected@prior_phase | single_owner;no_publication;no_binding;pin_visible | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CONCUR-STALE] | harness-quality.yml#plc9b-linux-native | planned
-B-HANDOFF-BEFORE-DESIRED | any | dependency_pinned | crash_after_dependency_pins | package_retention_handoff_interrupted | retryable_failure@dependency_pinned | exact_pin_set;no_zero_pin;desired_unchanged;pin_visible | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-HANDOFF-BEFORE-DESIRED] | harness-quality.yml#plc9b-linux-native | planned
-B-HANDOFF-AFTER-DESIRED | any | desired_committed | crash_before_handoff_settlement | package_retention_handoff_interrupted | retryable_failure@desired_committed | exact_pin_set;no_zero_pin;pin_visible;same_receipt | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-HANDOFF-AFTER-DESIRED] | harness-quality.yml#plc9b-linux-native | planned
-B-HANDOFF-AFTER-SETTLEMENT | any | settled | replay_after_transaction_pin_release | ok | settled@settled | exact_pin_set;no_zero_pin;transaction_pin_released;same_receipt | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-HANDOFF-AFTER-SETTLEMENT] | harness-quality.yml#plc9b-linux-native | planned
-B-HANDOFF-DESIRED-REJECT | any | dependency_pinned | desired_expected_revision_rejected | package_desired_revision_conflict | rejected@dependency_pinned | exact_pin_set;no_zero_pin;dependency_pins_released;desired_unchanged;pin_visible | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-HANDOFF-DESIRED-REJECT] | harness-quality.yml#plc9b-linux-native | planned
-B-HANDOFF-STALE-RECEIPT | any | each_handoff_phase | stale_handoff_receipt | package_retention_handoff_stale | rejected@prior_handoff | exact_pin_set;no_zero_pin;desired_unchanged;same_receipt | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-HANDOFF-STALE-RECEIPT] | harness-quality.yml#plc9b-linux-native | planned
-B-HANDOFF-CONCURRENT-REPLAY | any | each_handoff_phase | concurrent_exact_handoff_replay | ok | settled@settled | exact_pin_set;no_zero_pin;transaction_pin_released;same_receipt;single_owner | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-HANDOFF-CONCURRENT-REPLAY] | harness-quality.yml#plc9b-linux-native | planned
+B-HANDOFF-BEFORE-DESIRED | any | dependency_pinned | crash_after_dependency_pins | package_retention_handoff_interrupted | retryable_failure@dependency_pinned | exact_pin_set;no_zero_pin;desired_unchanged;pin_visible | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-HANDOFF-BEFORE-DESIRED] | harness-quality.yml#plc9b-linux-native | implemented
+B-HANDOFF-AFTER-DESIRED | any | desired_committed | crash_before_handoff_settlement | package_retention_handoff_interrupted | retryable_failure@desired_committed | exact_pin_set;no_zero_pin;pin_visible;same_receipt | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-HANDOFF-AFTER-DESIRED] | harness-quality.yml#plc9b-linux-native | implemented
+B-HANDOFF-AFTER-SETTLEMENT | any | settled | replay_after_transaction_pin_release | ok | settled@settled | exact_pin_set;no_zero_pin;transaction_pin_released;same_receipt | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-HANDOFF-AFTER-SETTLEMENT] | harness-quality.yml#plc9b-linux-native | implemented
+B-HANDOFF-DESIRED-REJECT | any | dependency_pinned | desired_expected_revision_rejected | package_desired_revision_conflict | rejected@dependency_pinned | exact_pin_set;no_zero_pin;dependency_pins_released;desired_unchanged;pin_visible | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-HANDOFF-DESIRED-REJECT] | harness-quality.yml#plc9b-linux-native | implemented
+B-HANDOFF-STALE-RECEIPT | any | each_handoff_phase | stale_handoff_receipt | package_retention_handoff_stale | rejected@prior_handoff | exact_pin_set;no_zero_pin;desired_unchanged;same_receipt | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-HANDOFF-STALE-RECEIPT] | harness-quality.yml#plc9b-linux-native | implemented
+B-HANDOFF-CONCURRENT-REPLAY | any | each_handoff_phase | concurrent_exact_handoff_replay | ok | settled@settled | exact_pin_set;no_zero_pin;transaction_pin_released;same_receipt;single_owner | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-HANDOFF-CONCURRENT-REPLAY] | harness-quality.yml#plc9b-linux-native | implemented
 B-ENTRY-CLI | any | classified | cli_plugin_bound | ok | committed@committed | single_owner;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ENTRY-CLI] | harness-quality.yml#plc9b-linux-native | planned
 B-ENTRY-RPC | any | classified | rpc_plugin_bound | ok | committed@committed | single_owner;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ENTRY-RPC] | harness-quality.yml#plc9b-linux-native | planned
 B-ENTRY-SESSION | any | classified | session_plugin_bound | ok | committed@committed | single_owner;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ENTRY-SESSION] | harness-quality.yml#plc9b-linux-native | planned

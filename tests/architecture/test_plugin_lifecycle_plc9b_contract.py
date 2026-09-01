@@ -37,6 +37,7 @@ POSIX_MATERIALIZATION = OWNER_KERNEL_ROOT / "posix_materialization.py"
 WINDOWS_MATERIALIZATION = OWNER_KERNEL_ROOT / "windows_materialization.py"
 STORE_SETTLEMENTS = OWNER_KERNEL_ROOT / "store_settlements.py"
 COMMIT_ADMISSION = OWNER_KERNEL_ROOT / "commit_admission.py"
+RETENTION_HANDOFF = OWNER_KERNEL_ROOT / "retention_handoff.py"
 CLOSURE_TEST = Path("tests/harness/resources/packages/test_plc9b_closure.py")
 CLOSURE_OWNER_TEST = Path(
     "tests/harness/resources/packages/test_plc9b_closure_owner.py"
@@ -74,6 +75,9 @@ WINDOWS_MATERIALIZATION_TEST = Path(
 )
 COMMIT_ADMISSION_TEST = Path(
     "tests/harness/resources/packages/test_plc9b_commit_admission.py"
+)
+RETENTION_HANDOFF_TEST = Path(
+    "tests/harness/resources/packages/test_plc9b_retention_handoff.py"
 )
 PYPROJECT = Path("pyproject.toml")
 WINDOWS_NATIVE_TEST = Path(
@@ -187,6 +191,14 @@ PLC9B4A_COMMIT_ADMISSION_CASES = {
     "B-ADMISSION-WRONG-SCOPE",
     "B-ADMISSION-WRONG-PLUGIN",
     "B-ADMISSION-DIGEST-TAMPER",
+}
+PLC9B4B_RETENTION_HANDOFF_CASES = {
+    "B-HANDOFF-BEFORE-DESIRED",
+    "B-HANDOFF-AFTER-DESIRED",
+    "B-HANDOFF-AFTER-SETTLEMENT",
+    "B-HANDOFF-DESIRED-REJECT",
+    "B-HANDOFF-STALE-RECEIPT",
+    "B-HANDOFF-CONCURRENT-REPLAY",
 }
 ALLOWED_PLATFORMS = {"any", "posix-native", "windows-native"}
 ALLOWED_ORACLES = {
@@ -522,6 +534,10 @@ def _implemented_b4a_commit_admission_manifest_cases() -> set[str]:
     return _literal_manifest_cases("IMPLEMENTED_B4A_COMMIT_ADMISSION_MANIFEST_CASES")
 
 
+def _implemented_b4b_retention_handoff_manifest_cases() -> set[str]:
+    return _literal_manifest_cases("IMPLEMENTED_B4B_RETENTION_HANDOFF_MANIFEST_CASES")
+
+
 def _journal_effect_policy() -> list[tuple[str, str, str]]:
     contract = _source(CONTRACT)
     block = contract.split("<!-- plc9b-journal-effect-policy:start -->", 1)[1]
@@ -603,7 +619,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.4a." in contract
+    assert "Contract version: PLC9B.4b-candidate." in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
@@ -871,6 +887,7 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
     implemented_b3e3c2_windows = _implemented_b3e3c2_windows_manifest_cases()
     implemented_b3e3c3_settlement = _implemented_b3e3c3_settlement_manifest_cases()
     implemented_b4a_admission = _implemented_b4a_commit_admission_manifest_cases()
+    implemented_b4b_handoff = _implemented_b4b_retention_handoff_manifest_cases()
     implemented = (
         implemented_b1
         | implemented_b2
@@ -887,6 +904,7 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
         | implemented_b3e3c2_windows
         | implemented_b3e3c3_settlement
         | implemented_b4a_admission
+        | implemented_b4b_handoff
     )
 
     assert len(manifest) == 127
@@ -1126,6 +1144,24 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
         | implemented_b3e3c2_windows
         | implemented_b3e3c3_settlement
     ).isdisjoint(implemented_b4a_admission)
+    assert implemented_b4b_handoff == PLC9B4B_RETENTION_HANDOFF_CASES
+    assert (
+        implemented_b1
+        | implemented_b2
+        | implemented_b2h
+        | implemented_b2i
+        | implemented_b2j
+        | implemented_b2k
+        | implemented_b3d
+        | implemented_b3d_limits
+        | implemented_b3d_integrity
+        | implemented_b3e_pins
+        | implemented_b3e_staging_sets
+        | implemented_b3e3c1_posix
+        | implemented_b3e3c2_windows
+        | implemented_b3e3c3_settlement
+        | implemented_b4a_admission
+    ).isdisjoint(implemented_b4b_handoff)
     separator = manifest["B-PATH-COLLISION-SEP"]
     assert separator["fixture"] == "separator_ambiguous_path"
     assert separator["code"] == "package_archive_path_rejected"
@@ -1139,7 +1175,7 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
     assert hardlink["code"] == "ok"
     assert hardlink["disposition"] == "extracted@independent_regular_files"
     assert hardlink["status"] == "implemented"
-    assert len(manifest) - len(implemented) == 40
+    assert len(manifest) - len(implemented) == 34
     workflow = _source(HARNESS_WORKFLOW)
     assert "PLC9B Linux native adversarial gate (plc9b-linux-native)" in workflow
     assert "tests/harness/resources/packages/test_plc9b_adversarial.py" in workflow
@@ -3291,7 +3327,6 @@ def test_plc9b4a_commit_admission_is_dark_read_only_and_exact() -> None:
     _assert_current_publication_statuses(manifest)
 
     normalized = " ".join(contract.split())
-    assert "PLC9B.4a." in contract
     assert "PLC9B4a Accepted Commit Admission" in normalized
     assert "sole `set_published -> committed` CAS owner" in normalized
     assert "candidate-free read-only commit-admission owner" in normalized
@@ -3311,6 +3346,148 @@ def test_plc9b4a_commit_admission_is_dark_read_only_and_exact() -> None:
     assert "XML executed exactly 82 manifest nodes" in normalized
     assert "PLC9B4a accepted code closes the logical commit-admission" in inventory
     assert "PLC9B4a accepted code adds the dark terminal commit owner" in index
+
+
+def test_plc9b4b_retention_handoff_is_dark_exact_and_no_zero_pin() -> None:
+    contract = _source(CONTRACT)
+    inventory = _source(INVENTORY)
+    index = _source(INDEX)
+    source = _source(RETENTION_HANDOFF)
+    component_tests = _source(RETENTION_HANDOFF_TEST)
+    adversarial_tests = _source(ADVERSARIAL_TEST)
+    manifest = _adversarial_manifest()
+
+    assert RETENTION_HANDOFF.is_file()
+    assert RETENTION_HANDOFF_TEST.is_file()
+    for symbol in (
+        "PackageDesiredStateCommitRequestV1",
+        "PackageDesiredStateCommitReceiptV1",
+        "PackageDesiredStateCommitFailureV1",
+        "PackageDesiredStateCommitResultV1",
+        "PackageDesiredStateCommitPort",
+        "PackageDependencyPinRequestV1",
+        "PackageDependencyPinReceiptV1",
+        "PackageRetentionSettlementPort",
+        "PackageRetentionHandoffRequestV1",
+        "PackageRetentionHandoffReceiptV1",
+        "PackageRetentionHandoffFailureV1",
+        "PackageRetentionHandoffResultV1",
+        "PackageRetentionHandoffRecordV1",
+        "PackageRetentionHandoffJournal",
+        "PackageRetentionHandoffOwner",
+    ):
+        assert symbol in source
+
+    tree = ast.parse(source, filename=str(RETENTION_HANDOFF))
+    imported = {
+        node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
+    }
+    forbidden_modules = (
+        "loushang.harness.plugin_management",
+        "loushang.harness.resources.plugins.revisions",
+        "loushang.coding",
+        "loushang.foundation",
+        "os",
+        "subprocess",
+    )
+    assert not any(
+        module == forbidden or module.startswith(f"{forbidden}.")
+        for module in imported
+        for forbidden in forbidden_modules
+    )
+    for forbidden_symbol in (
+        "PluginPackageLifecycleLedger",
+        "PluginDesiredStateLedger",
+        "PluginPackageRevisionRefV1",
+        "VerifiedRevisionHandle",
+    ):
+        assert forbidden_symbol not in source
+
+    visitor = _QualifiedFunctionVisitor()
+    visitor.visit(tree)
+    execute = dict(visitor.functions)["PackageRetentionHandoffOwner.execute"]
+    called = {
+        call.func.attr
+        if isinstance(call.func, ast.Attribute)
+        else call.func.id
+        if isinstance(call.func, ast.Name)
+        else ""
+        for call in ast.walk(execute)
+        if isinstance(call, ast.Call)
+    }
+    assert {"admit", "acquire", "commit", "abort", "settle"} <= called
+    assert "journal_file_lock" not in called
+    assert "dependency_pins_live" in source
+    assert 'transaction.state != "released"' in source
+    assert 'transaction.state != "acquired"' in source
+
+    internal_facade = _source(OWNER_KERNEL_ROOT / "__init__.py")
+    package_facade = _source(PACKAGE_ROOT / "__init__.py")
+    author_sdk = _source(AUTHOR_SDK)
+    for symbol in (
+        "PackageRetentionHandoffOwner",
+        "PackageRetentionHandoffJournal",
+        "PackageRetentionSettlementPort",
+        "PackageDesiredStateCommitPort",
+        "PackageRetentionHandoffRequestV1",
+    ):
+        assert symbol not in internal_facade
+        assert symbol not in package_facade
+        assert symbol not in author_sdk
+
+    for evidence in (
+        "test_b4b_retention_handoff_contract_is_dark_and_versioned",
+        "test_handoff_journal_rejects_duplicate_json_keys_with_stable_error",
+    ):
+        assert evidence in component_tests
+    for evidence in (
+        "settle_postcommit_crashes",
+        "zero_pin_observed",
+        "expected_receipt=opened",
+        "physical_acquisitions == 1",
+        "physical_settlements == 1",
+        "physical_commits == 1",
+    ):
+        assert evidence in adversarial_tests
+    assert "IMPLEMENTED_B4B_RETENTION_HANDOFF_MANIFEST_CASES" in adversarial_tests
+    assert (
+        _implemented_b4b_retention_handoff_manifest_cases()
+        == PLC9B4B_RETENTION_HANDOFF_CASES
+    )
+    policies = {
+        "B-HANDOFF-BEFORE-DESIRED": (
+            "handoff_attempt",
+            "append_once:retryable_failure_then_no_append",
+        ),
+        "B-HANDOFF-AFTER-DESIRED": (
+            "handoff_attempt",
+            "append_once:retryable_failure_then_no_append",
+        ),
+        "B-HANDOFF-AFTER-SETTLEMENT": ("none", "no_append:unchanged"),
+        "B-HANDOFF-DESIRED-REJECT": (
+            "handoff",
+            "append_once:aborted_then_no_append",
+        ),
+        "B-HANDOFF-STALE-RECEIPT": ("none", "no_append:unchanged"),
+        "B-HANDOFF-CONCURRENT-REPLAY": (
+            "handoff",
+            "append_once:settled_then_no_append",
+        ),
+    }
+    for case_id in PLC9B4B_RETENTION_HANDOFF_CASES:
+        row = manifest[case_id]
+        assert row["status"] == "implemented"
+        assert _journal_policy_for(case_id) == policies[case_id]
+        assert {"exact_pin_set", "no_zero_pin"} <= set(row["oracles"].split(";"))
+
+    normalized = " ".join(contract.split())
+    assert "PLC9B.4b-candidate." in contract
+    assert "PLC9B4b Candidate Retention Handoff" in normalized
+    assert "opened -> dependency_pinned -> desired_committed -> settled" in normalized
+    assert "No journal lock is held" in normalized
+    assert "process stops before the local settled projection" in normalized
+    assert "PLC9B4b candidate code adds the dark retention-handoff" in inventory
+    assert "PLC9B4b candidate code adds strict Desired-CAS" in index
 
 
 def test_plc9b2f_windows_backend_is_rooted_and_has_a_nonskippable_native_gate() -> None:
