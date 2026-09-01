@@ -362,6 +362,16 @@ class VerifiedWheelCandidate:
 
         return self._transfer_manifest
 
+    def _open_verified_tree_file(
+        self,
+        entry: PackageVerifiedTreeEntryV1,
+    ) -> BinaryIO:
+        if self._closed:
+            raise RuntimeError("Verified Wheel candidate is closed")
+        if entry not in self._transfer_manifest.entries:
+            raise ValueError("Verified-tree entry is outside the candidate manifest")
+        return self._acquired._open_verified_tree_file(entry.logical_path)
+
     def cleanup(self) -> None:
         if self._closed:
             return

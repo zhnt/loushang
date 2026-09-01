@@ -141,6 +141,15 @@
   PLC9B4 commit admission rather than physical materialization. All PR checks
   passed and retained artifact `9815136763` executed the unchanged 67 native
   manifest nodes without skips, failures, errors, or any `B-PUB-*` node.
+  PLC9B3e-3c1 candidate code implements the quarantine-owned identity-checked
+  verified-file reader, bounded transfer owner, and separate POSIX-native
+  dependency/Plugin-root Store adapters. Store operations pin and revalidate
+  the complete visible ancestor chain, use descriptor-relative no-follow
+  creates, sync and settle one immutable tree, fully hash exact reuse, and
+  close every native handle on success or refusal. Five POSIX
+  publication/root/handle rows are executable through the full dark lifecycle;
+  Windows native publication, collision/reuse, commit admission, and production
+  routes remain later gates.
 
 This inventory distinguishes accepted reusable owners, Product adapters,
 parallel compatibility paths, and missing target boundaries. “Migrate” or

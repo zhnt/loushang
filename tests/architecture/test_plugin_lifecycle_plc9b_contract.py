@@ -33,6 +33,7 @@ STAGING = OWNER_KERNEL_ROOT / "staging.py"
 COMMITTED_SETS = OWNER_KERNEL_ROOT / "committed_sets.py"
 STAGING_SET_RUNTIME = OWNER_KERNEL_ROOT / "staging_set_runtime.py"
 TREE_TRANSFER = OWNER_KERNEL_ROOT / "tree_transfer.py"
+POSIX_MATERIALIZATION = OWNER_KERNEL_ROOT / "posix_materialization.py"
 CLOSURE_TEST = Path("tests/harness/resources/packages/test_plc9b_closure.py")
 CLOSURE_OWNER_TEST = Path(
     "tests/harness/resources/packages/test_plc9b_closure_owner.py"
@@ -61,6 +62,9 @@ STAGING_SET_RUNTIME_TEST = Path(
 )
 TREE_TRANSFER_TEST = Path(
     "tests/harness/resources/packages/test_plc9b_verified_tree_transfer.py"
+)
+POSIX_MATERIALIZATION_TEST = Path(
+    "tests/harness/resources/packages/test_plc9b_posix_materialization.py"
 )
 PYPROJECT = Path("pyproject.toml")
 WINDOWS_NATIVE_TEST = Path(
@@ -147,6 +151,13 @@ MANIFEST_FIELDS = (
     "workflow",
     "status",
 )
+PLC9B3E3C1_POSIX_CASES = {
+    "B-PUB-PRECREATE",
+    "B-PUB-POSIX-ROOT-SWAP",
+    "B-PUB-POSIX-ANCESTOR-SWAP",
+    "B-PUB-POSIX-HANDLE-SUCCESS",
+    "B-PUB-POSIX-HANDLE-REJECT",
+}
 ALLOWED_PLATFORMS = {"any", "posix-native", "windows-native"}
 ALLOWED_ORACLES = {
     "b_namespace_unreachable",
@@ -377,6 +388,24 @@ def _adversarial_manifest() -> dict[str, dict[str, str]]:
     return rows
 
 
+def _assert_current_publication_statuses(
+    manifest: dict[str, dict[str, str]],
+) -> None:
+    publication_cases = {
+        case_id for case_id in manifest if case_id.startswith("B-PUB-")
+    }
+    assert len(publication_cases) == 13
+    assert {
+        case_id
+        for case_id in publication_cases
+        if manifest[case_id]["status"] == "implemented"
+    } == PLC9B3E3C1_POSIX_CASES
+    assert all(
+        manifest[case_id]["status"] == "planned"
+        for case_id in publication_cases - PLC9B3E3C1_POSIX_CASES
+    )
+
+
 def _literal_manifest_cases(name: str) -> set[str]:
     tree = ast.parse(_source(ADVERSARIAL_TEST), filename=str(ADVERSARIAL_TEST))
     for node in tree.body:
@@ -436,6 +465,10 @@ def _implemented_b3e_pin_manifest_cases() -> set[str]:
 
 def _implemented_b3e_staging_set_manifest_cases() -> set[str]:
     return _literal_manifest_cases("IMPLEMENTED_B3E_STAGING_SET_MANIFEST_CASES")
+
+
+def _implemented_b3e3c1_posix_manifest_cases() -> set[str]:
+    return _literal_manifest_cases("IMPLEMENTED_B3E3C1_POSIX_MANIFEST_CASES")
 
 
 def _journal_effect_policy() -> list[tuple[str, str, str]]:
@@ -519,7 +552,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.3e3c0" in contract
+    assert "Contract version: PLC9B.3e3c1" in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
@@ -538,6 +571,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
     assert "PLC9B3e-3a Accepted Staging And Atomic Set Contracts" in contract
     assert "PLC9B3e-3b Accepted Staging And Set Runtime" in contract
     assert "PLC9B3e-3c0 Accepted Verified-Tree Transfer Contracts" in contract
+    assert "PLC9B3e-3c1 Candidate POSIX Verified-Tree Materialization" in contract
     assert "PLC9B3e-2a Accepted Transaction-Pin Contract" in contract
     assert "Harness Quality run `33505702666`" in contract
     assert "Linux\nharness job `99849101216`" in contract
@@ -782,6 +816,7 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
     implemented_b3d_integrity = _implemented_b3d_integrity_manifest_cases()
     implemented_b3e_pins = _implemented_b3e_pin_manifest_cases()
     implemented_b3e_staging_sets = _implemented_b3e_staging_set_manifest_cases()
+    implemented_b3e3c1_posix = _implemented_b3e3c1_posix_manifest_cases()
     implemented = (
         implemented_b1
         | implemented_b2
@@ -794,6 +829,7 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
         | implemented_b3d_integrity
         | implemented_b3e_pins
         | implemented_b3e_staging_sets
+        | implemented_b3e3c1_posix
     )
 
     assert len(manifest) == 127
@@ -971,6 +1007,20 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
         | implemented_b3d_integrity
         | implemented_b3e_pins
     ).isdisjoint(implemented_b3e_staging_sets)
+    assert implemented_b3e3c1_posix == PLC9B3E3C1_POSIX_CASES
+    assert (
+        implemented_b1
+        | implemented_b2
+        | implemented_b2h
+        | implemented_b2i
+        | implemented_b2j
+        | implemented_b2k
+        | implemented_b3d
+        | implemented_b3d_limits
+        | implemented_b3d_integrity
+        | implemented_b3e_pins
+        | implemented_b3e_staging_sets
+    ).isdisjoint(implemented_b3e3c1_posix)
     separator = manifest["B-PATH-COLLISION-SEP"]
     assert separator["fixture"] == "separator_ambiguous_path"
     assert separator["code"] == "package_archive_path_rejected"
@@ -984,7 +1034,7 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
     assert hardlink["code"] == "ok"
     assert hardlink["disposition"] == "extracted@independent_regular_files"
     assert hardlink["status"] == "implemented"
-    assert len(manifest) - len(implemented) == 60
+    assert len(manifest) - len(implemented) == 55
     workflow = _source(HARNESS_WORKFLOW)
     assert "PLC9B Linux native adversarial gate (plc9b-linux-native)" in workflow
     assert "tests/harness/resources/packages/test_plc9b_adversarial.py" in workflow
@@ -2154,11 +2204,7 @@ def test_plc9b3e1_typed_commit_records_are_strict_dark_and_unpromoted() -> None:
     assert (
         "0796849b296edb53f9f2a804e7db35b8467dad375a11695870e86e221bf124bd" in contract
     )
-    assert all(
-        manifest[case_id]["status"] == "planned"
-        for case_id in manifest
-        if case_id.startswith("B-PUB-")
-    )
+    _assert_current_publication_statuses(manifest)
 
 
 def test_plc9b3e2a_transaction_pin_contract_is_narrow_dark_and_unpromoted() -> None:
@@ -2248,11 +2294,7 @@ def test_plc9b3e2a_transaction_pin_contract_is_narrow_dark_and_unpromoted() -> N
         "a00c4a93f714c662534e7ffac9c9cb619ae18689aafe727b0259e7a462c99e42" in contract
     )
     assert "transaction_pin_runtime" not in source
-    assert all(
-        manifest[case_id]["status"] == "planned"
-        for case_id in manifest
-        if case_id.startswith("B-PUB-")
-    )
+    _assert_current_publication_statuses(manifest)
 
 
 def test_plc9b3e2b_transaction_pin_runtime_orders_effects_and_recovers_dark() -> None:
@@ -2347,11 +2389,7 @@ def test_plc9b3e2b_transaction_pin_runtime_orders_effects_and_recovers_dark() ->
     )
     assert "executed exactly 65 manifest nodes" in normalized
     assert manifest["B-CRASH-PINNED"]["status"] == "implemented"
-    assert all(
-        manifest[case_id]["status"] == "planned"
-        for case_id in manifest
-        if case_id.startswith("B-PUB-")
-    )
+    _assert_current_publication_statuses(manifest)
 
 
 def test_plc9b3e3a_staging_and_atomic_set_contracts_are_dark_and_role_safe() -> None:
@@ -2479,11 +2517,7 @@ def test_plc9b3e3a_staging_and_atomic_set_contracts_are_dark_and_role_safe() -> 
     assert (
         "d8fbdd16b4a84de341ad7244ffa1af5d4dafd79a9c4b097fc612258a0ebf4450" in contract
     )
-    assert all(
-        manifest[case_id]["status"] == "planned"
-        for case_id in manifest
-        if case_id.startswith("B-PUB-")
-    )
+    _assert_current_publication_statuses(manifest)
 
 
 def test_plc9b3e3b_runtime_orders_staging_set_effects_and_recovers_dark() -> None:
@@ -2607,11 +2641,7 @@ def test_plc9b3e3b_runtime_orders_staging_set_effects_and_recovers_dark() -> Non
     assert "executed exactly 67 manifest nodes" in normalized
     assert manifest["B-CRASH-STAGING"]["status"] == "implemented"
     assert manifest["B-CRASH-SET"]["status"] == "implemented"
-    assert all(
-        manifest[case_id]["status"] == "planned"
-        for case_id in manifest
-        if case_id.startswith("B-PUB-")
-    )
+    _assert_current_publication_statuses(manifest)
 
 
 def test_plc9b3e3c0_freezes_pathless_role_separated_transfer_contracts() -> None:
@@ -2687,9 +2717,7 @@ def test_plc9b3e3c0_freezes_pathless_role_separated_transfer_contracts() -> None
         case_id for case_id in manifest if case_id.startswith("B-PUB-")
     }
     assert len(publication_cases) == 13
-    assert all(
-        manifest[case_id]["status"] == "planned" for case_id in publication_cases
-    )
+    _assert_current_publication_statuses(manifest)
     assert manifest["B-PUB-UNCOMMITTED"]["status"] == "planned"
 
     normalized = " ".join(contract.split())
@@ -2709,6 +2737,108 @@ def test_plc9b3e3c0_freezes_pathless_role_separated_transfer_contracts() -> None
         "16f5c3d4ab46c10b42ef32e88024299c295ca51406f99f71348c571251d1c5f1" in contract
     )
     assert "executed the unchanged 67 manifest nodes" in normalized
+
+
+def test_plc9b3e3c1_posix_materialization_is_rooted_role_safe_and_executable() -> None:
+    contract = _source(CONTRACT)
+    inventory = _source(INVENTORY)
+    index = _source(INDEX)
+    acquisition = _source(BOUNDED_ACQUISITION)
+    transfer = _source(TREE_TRANSFER)
+    posix_store = _source(POSIX_MATERIALIZATION)
+    runtime = _source(STAGING_SET_RUNTIME)
+    component_tests = _source(POSIX_MATERIALIZATION_TEST)
+    wheel_tests = _source(Path("tests/harness/resources/packages/test_plc9b_wheel.py"))
+    adversarial_tests = _source(ADVERSARIAL_TEST)
+    package_facade = _source(PACKAGE_ROOT / "__init__.py")
+    internal_facade = _source(OWNER_KERNEL_ROOT / "__init__.py")
+    author_sdk = _source(AUTHOR_SDK)
+    manifest = _adversarial_manifest()
+
+    assert POSIX_MATERIALIZATION.is_file()
+    assert POSIX_MATERIALIZATION_TEST.is_file()
+    for symbol, source in (
+        ("PackagePhysicalStagingError", transfer),
+        ("PackageVerifiedTreeTransferOwner", transfer),
+        ("PosixPackageDependencyMaterializationStore", posix_store),
+        ("PosixPackagePluginRootMaterializationStore", posix_store),
+    ):
+        assert f"class {symbol}" in source
+        assert symbol not in package_facade
+        assert symbol not in internal_facade
+        assert symbol not in author_sdk
+
+    assert "def _open_verified_tree_file" in acquisition
+    assert "candidate._open_verified_tree_file(entry)" in transfer
+    assert "destination.finish()" in transfer
+    assert "sink.abort()" in transfer
+    for rooted_primitive in (
+        "os.open(",
+        "os.O_NOFOLLOW",
+        "dir_fd=",
+        "os.fsync(",
+        "os.rename(",
+        "follow_symlinks=False",
+        "threading.RLock()",
+        "st_nlink",
+        "is_absolute()",
+    ):
+        assert rooted_primitive in posix_store
+    assert "Path.rename" not in posix_store
+    assert ".resolve(" not in posix_store
+    assert "PackagePhysicalStagingError as error" in runtime
+    assert 'stage="staging"' in runtime
+
+    tree = ast.parse(posix_store, filename=str(POSIX_MATERIALIZATION))
+    imported = {
+        node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
+    }
+    forbidden_modules = (
+        "loushang.harness.plugin_management",
+        "loushang.harness.resources.plugins.revisions",
+        "loushang.coding",
+        "loushang.foundation",
+        "subprocess",
+    )
+    assert not any(
+        module == forbidden or module.startswith(f"{forbidden}.")
+        for module in imported
+        for forbidden in forbidden_modules
+    )
+    for forbidden_capability in (
+        "PluginRevisionStore",
+        "PluginPackageLifecycleLedger",
+        "PackageOperationsRuntime",
+        "PythonPackageInstallerBackend",
+    ):
+        assert forbidden_capability not in posix_store
+
+    for evidence in (
+        "publish_exact_trees_and_reuse_same_receipts",
+        "rejects_precreated_staging_namespace_without_writing",
+        "rejects_root_swap_and_releases_every_handle",
+        "rejects_ancestor_swap_and_releases_every_handle",
+        "aborts_partial_tree_and_closes_source_and_store_handles",
+        "does_not_adopt_exact_tree_without_live_owner_evidence",
+        "exact_reuse_rejects_unexpected_sparse_member_without_scanning_it",
+        "exact_reuse_rejects_new_hardlink_alias",
+        "rejects_relative_root_without_using_ambient_cwd",
+    ):
+        assert evidence in component_tests
+    assert "opens_only_recorded_rooted_file_identities" in wheel_tests
+    assert "IMPLEMENTED_B3E3C1_POSIX_MANIFEST_CASES" in adversarial_tests
+    assert _implemented_b3e3c1_posix_manifest_cases() == PLC9B3E3C1_POSIX_CASES
+    _assert_current_publication_statuses(manifest)
+    assert manifest["B-PUB-UNCOMMITTED"]["status"] == "planned"
+
+    normalized = " ".join(contract.split())
+    assert "B3e-3c1 implements the first native consumer" in normalized
+    assert "pins the complete absolute ancestor chain" in normalized
+    assert "replacement Store instance cannot infer ownership" in normalized
+    assert "Linux-native report must execute 72 manifest nodes" in normalized
+    assert "Windows root/ABA/handle rows remain planned" in normalized
+    assert "PLC9B3e-3c1 candidate code implements" in inventory
+    assert "PLC9B3e-3c1 candidate code adds" in index
 
 
 def test_plc9b2f_windows_backend_is_rooted_and_has_a_nonskippable_native_gate() -> None:

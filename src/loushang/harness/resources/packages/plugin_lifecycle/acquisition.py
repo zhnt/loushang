@@ -760,7 +760,9 @@ class PackageQuarantineStore:
                         root_fd,
                         target.attempt_identity,
                     ):
-                        raise OSError("Package cleanup attempt identity moved") from None
+                        raise OSError(
+                            "Package cleanup attempt identity moved"
+                        ) from None
                     return
                 try:
                     if _identity(os.fstat(attempt_fd)) != target.attempt_identity:
@@ -1012,6 +1014,91 @@ class _QuarantineAttempt:
         _require_private_directory(tree_path)
         self._tree_identity = _identity(tree_path.lstat())
         return _QuarantineTreeWriter(attempt=self, tree_fd=None)
+
+    def _open_verified_tree_file(self, logical_path: str) -> BinaryIO:
+        """Open one recorded extraction file without exposing its pathname."""
+
+        self._verify()
+        parts = tuple(logical_path.split("/"))
+        if not parts or any(not part or part in {".", ".."} for part in parts):
+            raise OSError("Verified extraction entry identity changed")
+        expected_file = self._tree_entries.get(parts)
+        if self._tree_identity is None or expected_file is None:
+            raise OSError("Verified extraction entry identity changed")
+        if self._attempt_fd is not None:
+            current_fd = _open_directory("tree", dir_fd=self._attempt_fd)
+            try:
+                if _identity(os.fstat(current_fd)) != self._tree_identity:
+                    raise OSError("Quarantine extraction tree identity changed")
+                for depth, part in enumerate(parts[:-1], start=1):
+                    expected_directory = self._tree_entries.get(parts[:depth])
+                    if expected_directory is None:
+                        raise OSError("Verified extraction ancestor identity changed")
+                    child_fd = _open_directory(part, dir_fd=current_fd)
+                    metadata = os.fstat(child_fd)
+                    if (
+                        _identity(metadata) != expected_directory
+                        or not stat.S_ISDIR(metadata.st_mode)
+                        or _is_reparse(metadata)
+                    ):
+                        os.close(child_fd)
+                        raise OSError("Verified extraction ancestor identity changed")
+                    os.close(current_fd)
+                    current_fd = child_fd
+                descriptor = _open_regular_file_at(
+                    current_fd,
+                    parts[-1],
+                    create_new=False,
+                    write=False,
+                )
+                metadata = os.fstat(descriptor)
+                if (
+                    _identity(metadata) != expected_file
+                    or not stat.S_ISREG(metadata.st_mode)
+                    or _is_reparse(metadata)
+                    or metadata.st_nlink != 1
+                ):
+                    os.close(descriptor)
+                    raise OSError("Verified extraction file identity changed")
+                return os.fdopen(descriptor, "rb")
+            finally:
+                os.close(current_fd)
+        tree_path = self._attempt_path / "tree"
+        tree_metadata = tree_path.lstat()
+        if (
+            _identity(tree_metadata) != self._tree_identity
+            or not stat.S_ISDIR(tree_metadata.st_mode)
+            or _is_reparse(tree_metadata)
+        ):
+            raise OSError("Quarantine extraction tree identity changed")
+        for depth in range(1, len(parts)):
+            ancestor = tree_path / Path(*parts[:depth])
+            metadata = ancestor.lstat()
+            if (
+                _identity(metadata) != self._tree_entries.get(parts[:depth])
+                or not stat.S_ISDIR(metadata.st_mode)
+                or _is_reparse(metadata)
+            ):
+                raise OSError("Verified extraction ancestor identity changed")
+        path = tree_path / Path(*parts)
+        metadata = path.lstat()
+        if (
+            _identity(metadata) != expected_file
+            or not stat.S_ISREG(metadata.st_mode)
+            or _is_reparse(metadata)
+            or metadata.st_nlink != 1
+        ):
+            raise OSError("Verified extraction file identity changed")
+        handle = path.open("rb")
+        opened = os.fstat(handle.fileno())
+        if (
+            _identity(opened) != expected_file
+            or not stat.S_ISREG(opened.st_mode)
+            or opened.st_nlink != 1
+        ):
+            handle.close()
+            raise OSError("Verified extraction file identity changed")
+        return handle
 
     def _tree_exists(self) -> bool:
         self._verify()
@@ -1463,6 +1550,11 @@ class AcquiredPackageCandidate:
             )
         handle.seek(0)
         return handle
+
+    def _open_verified_tree_file(self, logical_path: str) -> BinaryIO:
+        if self._closed:
+            raise RuntimeError("Acquired Package candidate is closed")
+        return self._attempt._open_verified_tree_file(logical_path)
 
     def cleanup(self) -> None:
         if self._closed:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import csv
 import io
+import os
 import stat
 import struct
 import zipfile
@@ -275,6 +276,42 @@ def test_verified_tree_cleanup_rechecks_exact_owner_identity(tmp_path: Path) -> 
 
     tree.rmdir()
     displaced.rename(tree)
+    verified.cleanup()
+    assert store.attempt_names() == ()
+
+
+def test_verified_tree_reader_opens_only_recorded_rooted_file_identities(
+    tmp_path: Path,
+) -> None:
+    payload = _wheel_bytes()
+    verified, store = _verify(tmp_path, payload)
+    expected: dict[str, bytes]
+    with zipfile.ZipFile(io.BytesIO(payload), "r") as archive:
+        expected = {
+            entry.logical_path: archive.read(entry.logical_path)
+            for entry in verified.transfer_manifest.entries
+        }
+
+    for entry in verified.transfer_manifest.entries:
+        with verified._open_verified_tree_file(entry) as source:
+            assert source.read() == expected[entry.logical_path]
+
+    first = verified.transfer_manifest.entries[0]
+    tree = store.root / store.attempt_names()[0] / "tree"
+    original = tree / first.logical_path
+    if os.name == "posix":
+        outside_alias = tmp_path / "source-hardlink-alias"
+        os.link(original, outside_alias)
+        with pytest.raises(OSError, match="identity changed"):
+            verified._open_verified_tree_file(first)
+        outside_alias.unlink()
+    displaced = original.with_name(original.name + "-displaced")
+    original.rename(displaced)
+    original.write_bytes(expected[first.logical_path])
+    with pytest.raises(OSError, match="identity changed"):
+        verified._open_verified_tree_file(first)
+    original.unlink()
+    displaced.rename(original)
     verified.cleanup()
     assert store.attempt_names() == ()
 

@@ -69,6 +69,10 @@ from loushang.harness.resources.packages.plugin_lifecycle.committed_sets import 
 from loushang.harness.resources.packages.plugin_lifecycle.phase_evidence import (
     PackageArtifactEvidenceJournal,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.posix_materialization import (
+    PosixPackageDependencyMaterializationStore,
+    PosixPackagePluginRootMaterializationStore,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     PackageLifecyclePhase,
     PackageLifecycleRequestV1,
@@ -195,12 +199,14 @@ IMPLEMENTED_B3E_STAGING_SET_MANIFEST_CASES = (
     "B-CRASH-STAGING",
     "B-CRASH-SET",
 )
-PLANNED_B3E3C_MATERIALIZATION_MANIFEST_CASES = (
+IMPLEMENTED_B3E3C1_POSIX_MANIFEST_CASES = (
     "B-PUB-PRECREATE",
     "B-PUB-POSIX-ROOT-SWAP",
     "B-PUB-POSIX-ANCESTOR-SWAP",
     "B-PUB-POSIX-HANDLE-SUCCESS",
     "B-PUB-POSIX-HANDLE-REJECT",
+)
+PLANNED_B3E3C_MATERIALIZATION_MANIFEST_CASES = (
     "B-PUB-SWAP-WINDOWS",
     "B-PUB-WIN-ROOT-ABA",
     "B-PUB-WIN-ANCESTOR-ABA",
@@ -223,6 +229,7 @@ EXECUTABLE_MANIFEST_CASES = (
     + IMPLEMENTED_B3D_INTEGRITY_MANIFEST_CASES
     + IMPLEMENTED_B3E_PIN_MANIFEST_CASES
     + IMPLEMENTED_B3E_STAGING_SET_MANIFEST_CASES
+    + IMPLEMENTED_B3E3C1_POSIX_MANIFEST_CASES
 )
 
 WHEEL_FILENAME = "acme_plugin-1.0-py3-none-any.whl"
@@ -786,6 +793,27 @@ class _ManifestRootStagingOwner:
         )
         self.receipts[request.staging_request_id] = receipt
         self.physical_stages += 1
+        return receipt
+
+
+@dataclass
+class _ManifestNativeRootStagingOwner:
+    store: PosixPackagePluginRootMaterializationStore
+    verify_reuse: bool = False
+    same_receipt: bool = False
+    calls: int = 0
+
+    def stage_root(
+        self,
+        request: PackageArtifactStagingRequestV1,
+        candidate: VerifiedWheelCandidate,
+    ) -> PackageArtifactStagingReceiptV1:
+        self.calls += 1
+        receipt = self.store.stage_root(request, candidate)
+        if self.verify_reuse:
+            replay = self.store.stage_root(request, candidate)
+            assert replay == receipt
+            self.same_receipt = True
         return receipt
 
 
@@ -2135,6 +2163,214 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
         assert not (tmp_path / "binding.json").exists()
         assert not (tmp_path / "desired.json").exists()
         assert secret not in repr(recovered)
+        for path in tmp_path.rglob("*"):
+            if path.is_file():
+                assert secret.encode() not in path.read_bytes()
+    elif case_id in IMPLEMENTED_B3E3C1_POSIX_MANIFEST_CASES:
+        assert os.name == "posix"
+        secret = f"manifest-secret-{case_id.lower()}"
+        environment = _closure_environment()
+        (
+            kernel,
+            _artifact_owner,
+            journal,
+            evidence_journal,
+            cleanup_journal,
+            quarantine,
+            source_authority,
+            closure_owner,
+            resolution_journal,
+            resolver,
+        ) = _b3d_owner(tmp_path, case_id=case_id, secret=secret)
+        classified = kernel.submit(
+            _request(
+                source=(
+                    f"https://user:{secret}@packages.example.test/{WHEEL_FILENAME}"
+                    f"?token={secret}#{secret}"
+                ),
+                environment_fingerprint=environment.fingerprint,
+            )
+        )
+        closure_result = closure_owner.execute(
+            PackageClosureExecutionRequestV2(
+                artifact=_artifact_execution(classified, secret=secret),
+                resolution_environment=environment,
+                budgets=PackageClosureBudgetV1(),
+            )
+        )
+        assert closure_result.candidate is not None
+        retention = _TransactionPinRetentionOwner()
+        pin_journal = PackageTransactionPinJournal(
+            tmp_path / "package-transaction-pins.jsonl"
+        )
+        pin_owner = PackageTransactionPinLifecycleOwner(
+            kernel=kernel,
+            closure_plans=resolution_journal,
+            retention=retention,
+            pin_journal=pin_journal,
+        )
+        pinned = pin_owner.pin(
+            closure_result.candidate,
+            recovery_identity="manifest-recovery-posix-materialization",
+        )
+        assert pinned.receipt is not None
+        assert pinned.status.classification is not None
+
+        dependency_root = tmp_path / "dependency-publication-store"
+        plugin_authority = tmp_path / "plugin-publication-authority"
+        plugin_root = plugin_authority / "plugin-revision-store"
+        dependency_root.mkdir(mode=0o700)
+        plugin_root.mkdir(parents=True, mode=0o700)
+        outside = tmp_path / "outside-publication-sentinel"
+        outside.write_bytes(b"preserve")
+        root_targets = _ManifestRootTargetAuthority()
+        request = kernel.journal.request(classified.operation_id)
+        assert request is not None
+        target = root_targets.issue_target(request, pinned.status.classification)
+        root_staging_request = PackageArtifactStagingRequestV1.create(
+            closure_result.candidate.plan,
+            node_id=closure_result.candidate.plan.root_node_id,
+            request_fingerprint=pinned.status.request_fingerprint,
+            classification_fingerprint=pinned.status.classification.evidence_ref,
+            pin_receipt=pinned.receipt,
+            root_target=target,
+        )
+        precreated: Path | None = None
+        detached_root = plugin_authority / "plugin-revision-store-detached"
+        detached_authority = tmp_path / "plugin-publication-authority-detached"
+        root_swapped = False
+        ancestor_swapped = False
+
+        if case_id == "B-PUB-PRECREATE":
+            precreated = plugin_root / (
+                f"staging-{root_staging_request.staging_request_id}"
+            )
+            precreated.mkdir(mode=0o700)
+            (precreated / "attacker-link").symlink_to(outside)
+
+        def commit_probe() -> None:
+            nonlocal root_swapped, ancestor_swapped
+            if case_id == "B-PUB-POSIX-ROOT-SWAP":
+                plugin_root.rename(detached_root)
+                plugin_root.mkdir(mode=0o700)
+                root_swapped = True
+            elif case_id == "B-PUB-POSIX-ANCESTOR-SWAP":
+                plugin_authority.rename(detached_authority)
+                plugin_root.mkdir(parents=True, mode=0o700)
+                ancestor_swapped = True
+            elif case_id == "B-PUB-POSIX-HANDLE-REJECT":
+                plugin_root.chmod(0o755)
+
+        dependency_staging = PosixPackageDependencyMaterializationStore(
+            dependency_root,
+            store_identity="manifest-dependency-store",
+        )
+        native_root_store = PosixPackagePluginRootMaterializationStore(
+            plugin_root,
+            store_identity="manifest-plugin-revision-store",
+            commit_probe=(
+                None
+                if case_id in {"B-PUB-PRECREATE", "B-PUB-POSIX-HANDLE-SUCCESS"}
+                else commit_probe
+            ),
+        )
+        root_staging = _ManifestNativeRootStagingOwner(
+            native_root_store,
+            verify_reuse=case_id == "B-PUB-POSIX-HANDLE-SUCCESS",
+        )
+        staging_journal = PackageArtifactStagingJournal(
+            tmp_path / "package-artifact-staging.jsonl"
+        )
+        committed_sets = PackageCommittedSetJournal(
+            tmp_path / "package-committed-sets.jsonl"
+        )
+        staging_owner = PackageStagingSetLifecycleOwner(
+            kernel=kernel,
+            classification_recheck=_StableClassificationRecheck(),
+            closure_plans=resolution_journal,
+            pin_journal=pin_journal,
+            root_targets=root_targets,
+            dependency_staging=dependency_staging,
+            root_staging=root_staging,
+            staging_journal=staging_journal,
+            committed_sets=committed_sets,
+        )
+
+        result = staging_owner.stage_and_publish(closure_result.candidate)
+
+        if root_swapped:
+            replacement = plugin_authority / "plugin-revision-store-replacement"
+            plugin_root.rename(replacement)
+            detached_root.rename(plugin_root)
+            replacement.rmdir()
+        if ancestor_swapped:
+            replacement_authority = (
+                tmp_path / "plugin-publication-authority-replacement"
+            )
+            plugin_authority.rename(replacement_authority)
+            detached_authority.rename(plugin_authority)
+            (replacement_authority / "plugin-revision-store").rmdir()
+            replacement_authority.rmdir()
+        if case_id == "B-PUB-POSIX-HANDLE-REJECT":
+            plugin_root.chmod(0o700)
+
+        if case_id == "B-PUB-POSIX-HANDLE-SUCCESS":
+            assert result.status.phase == "set_published"
+            assert result.status.disposition == "active"
+            assert result.committed_set is not None
+            assert len(result.staging_receipts) == 1
+            assert root_staging.same_receipt is True
+            committed = kernel.advance(
+                result.status.operation_id,
+                next_phase="committed",
+                expected_phase="set_published",
+                expected_journal_revision=result.status.journal_revision,
+                expected_attempt_epoch=result.status.attempt_epoch,
+            )
+            assert committed.phase == "committed"
+            assert committed.disposition == "committed"
+            assert len(committed_sets.records()) == 1
+            assert len(staging_journal.records()) == 1
+            assert (
+                len(
+                    tuple(
+                        entry
+                        for entry in plugin_root.iterdir()
+                        if entry.name.startswith("revision-")
+                    )
+                )
+                == 1
+            )
+        else:
+            assert result.status.phase == "staging"
+            assert result.status.disposition == "rejected"
+            assert result.status.failure is not None
+            assert result.status.failure.code == "package_publication_root_untrusted"
+            assert result.staging_receipts == ()
+            assert staging_journal.records() == ()
+            assert committed_sets.records() == ()
+            assert not any(
+                entry.name.startswith("revision-") for entry in plugin_root.iterdir()
+            )
+
+        assert (
+            pin_journal.current_for_operation(classified.operation_id) == pinned.receipt
+        )
+        assert retention.receipts[classified.operation_id] == pinned.receipt
+        assert source_authority.authorize_calls == 1
+        assert resolver.calls == 0
+        assert cleanup_journal.records() == ()
+        assert len(quarantine.attempt_names()) == 1
+        assert outside.read_bytes() == b"preserve"
+        assert not (tmp_path / "binding.json").exists()
+        assert not (tmp_path / "desired.json").exists()
+        moved_root = plugin_authority / "plugin-revision-store-moved"
+        plugin_root.rename(moved_root)
+        moved_root.rename(plugin_root)
+        if precreated is not None:
+            (precreated / "attacker-link").unlink()
+            precreated.rmdir()
+        assert secret not in repr(result)
         for path in tmp_path.rglob("*"):
             if path.is_file():
                 assert secret.encode() not in path.read_bytes()

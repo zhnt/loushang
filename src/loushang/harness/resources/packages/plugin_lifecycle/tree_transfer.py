@@ -341,6 +341,139 @@ class PackagePluginRootMaterializationRootPort(Protocol):
     ) -> AbstractContextManager[PackageVerifiedTreeSinkPort]: ...
 
 
+class PackagePhysicalStagingError(RuntimeError):
+    """Secret-free physical transfer or Store-root rejection."""
+
+    def __init__(self, message: str, *, code: str) -> None:
+        if code not in {
+            "package_artifact_identity_changed",
+            "package_publication_collision",
+            "package_publication_root_untrusted",
+        }:
+            raise ValueError("Unsupported Package physical staging error code")
+        super().__init__(message)
+        self.code = code
+        self.stage = "staging"
+        self.retryable = False
+
+
+class PackageVerifiedTreeTransferOwner:
+    """Stream an exact live verified tree into one already-authorized Store sink."""
+
+    def __init__(self, *, chunk_size: int = 64 * 1024) -> None:
+        if not isinstance(chunk_size, int) or isinstance(chunk_size, bool):
+            raise TypeError("Verified-tree transfer chunk size must be an integer")
+        if chunk_size < 1 or chunk_size > 1024 * 1024:
+            raise ValueError("Verified-tree transfer chunk size is out of bounds")
+        self._chunk_size = chunk_size
+
+    def transfer(
+        self,
+        request: PackageArtifactStagingRequestV1,
+        candidate: VerifiedWheelCandidate,
+        sink: PackageVerifiedTreeSinkPort,
+    ) -> PackageArtifactStagingReceiptV1:
+        from loushang.harness.resources.packages.plugin_lifecycle.staging import (
+            PackageArtifactStagingReceiptV1,
+            PackageArtifactStagingRequestV1,
+        )
+        from loushang.harness.resources.packages.plugin_lifecycle.wheel import (
+            VerifiedWheelCandidate,
+        )
+
+        if not isinstance(request, PackageArtifactStagingRequestV1):
+            raise TypeError("Package artifact staging request is required")
+        if not isinstance(candidate, VerifiedWheelCandidate):
+            raise TypeError("Verified Wheel candidate is required")
+        _validate_staging_identity(request, candidate)
+        manifest = candidate.transfer_manifest
+        try:
+            for entry in manifest.entries:
+                digest = sha256()
+                byte_count = 0
+                with candidate._open_verified_tree_file(entry) as source:
+                    with sink.open_file(entry) as destination:
+                        while chunk := source.read(self._chunk_size):
+                            if not isinstance(chunk, bytes):
+                                destination.abort()
+                                raise OSError("Verified source returned non-byte data")
+                            byte_count += len(chunk)
+                            if byte_count > entry.byte_count:
+                                destination.abort()
+                                raise OSError("Verified source file size changed")
+                            digest.update(chunk)
+                            destination.write(chunk)
+                        if (
+                            byte_count != entry.byte_count
+                            or digest.hexdigest() != entry.content_digest
+                        ):
+                            destination.abort()
+                            raise OSError("Verified source file identity changed")
+                        destination.finish()
+            receipt = sink.finish()
+        except Exception as error:
+            sink.abort()
+            if getattr(error, "code", None) in {
+                "package_publication_root_untrusted",
+                "package_publication_collision",
+                "package_artifact_identity_changed",
+            }:
+                raise
+            raise PackagePhysicalStagingError(
+                "Verified Package tree changed during materialization",
+                code="package_artifact_identity_changed",
+            ) from None
+        if (
+            not isinstance(receipt, PackageArtifactStagingReceiptV1)
+            or receipt.staging_request != request
+        ):
+            sink.abort()
+            raise TypeError("Store returned an invalid Package staging receipt")
+        _validate_receipt_identity(receipt, manifest)
+        return receipt
+
+
+def _validate_staging_identity(
+    request: PackageArtifactStagingRequestV1,
+    candidate: VerifiedWheelCandidate,
+) -> None:
+    evidence = candidate.evidence
+    manifest = candidate.transfer_manifest
+    manifest.validate_evidence(evidence)
+    node = request.plan_node
+    if (
+        request.operation_id != evidence.operation_id
+        or request.attempt_epoch != evidence.attempt_epoch
+        or request.node_id != evidence.node_id
+        or node.distribution != evidence.distribution
+        or node.version != evidence.version
+        or node.wheel_evidence_fingerprint != evidence.fingerprint
+        or node.artifact_digest != evidence.artifact_digest
+        or node.extraction_tree_digest != evidence.extraction_tree_digest
+    ):
+        raise PackagePhysicalStagingError(
+            "Package staging request changed verified artifact identity",
+            code="package_artifact_identity_changed",
+        )
+
+
+def _validate_receipt_identity(
+    receipt: PackageArtifactStagingReceiptV1,
+    manifest: PackageVerifiedTreeManifestV1,
+) -> None:
+    stable_ref = receipt.stable_ref
+    if (
+        stable_ref.distribution != manifest.distribution
+        or stable_ref.version != manifest.version
+        or stable_ref.artifact_digest != manifest.artifact_digest
+        or stable_ref.extraction_tree_digest != manifest.extraction_tree_digest
+    ):
+        raise PackagePhysicalStagingError(
+            "Store receipt changed verified artifact identity",
+            code="package_publication_collision",
+        )
+
+
 def verified_tree_digest(
     entries: tuple[PackageVerifiedTreeEntryV1, ...],
 ) -> str:

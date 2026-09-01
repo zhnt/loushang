@@ -57,6 +57,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.transaction_pins impor
     PackageTransactionPinReceiptV1,
     PackageTransactionPinRequestV1,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.tree_transfer import (
+    PackagePhysicalStagingError,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.wheel import (
     VerifiedWheelArtifactV1,
     VerifiedWheelCandidate,
@@ -277,6 +280,37 @@ class PackageStagingSetLifecycleOwner:
                     status,
                     code="package_operation_identity_conflict",
                 )
+            )
+        except PackagePhysicalStagingError as error:
+            candidate.suspend_for_recovery()
+            evidence_ref = sha256(
+                canonical_json_bytes(
+                    {
+                        "attemptEpoch": status.attempt_epoch,
+                        "code": error.code,
+                        "operationId": status.operation_id,
+                        "planFingerprint": plan.fingerprint,
+                        "stage": "staging",
+                    }
+                )
+            ).hexdigest()
+            failure = PackageLifecycleFailureV1.for_operation(
+                error.code,
+                stage="staging",
+                operation_id=status.operation_id,
+                evidence_ref=evidence_ref,
+            )
+            rejected = self._kernel.record_failure(
+                failure,
+                expected_phase=status.phase,
+                expected_journal_revision=status.journal_revision,
+                expected_attempt_epoch=status.attempt_epoch,
+            )
+            return PackageStagingSetExecutionResult(
+                status=rejected,
+                staging_receipts=tuple(
+                    sorted(receipts, key=lambda receipt: receipt.node_id)
+                ),
             )
         except Exception:
             candidate.suspend_for_recovery()
