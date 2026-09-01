@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.3e3c1.
+- Contract version: PLC9B.3e3c2-candidate.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -77,8 +77,12 @@
   Store adapters. The Store pins the complete visible ancestor chain, writes
   through descriptor-relative no-follow handles, settles one exact immutable
   tree, and fully revalidates exact retry. Five POSIX publication/root/handle
-  rows are executable; Windows publication and collision/reuse rows remain
-  planned.
+  rows are executable. B3e-3c2 candidate code adds role-separated Windows
+  Store adapters over the accepted rooted `NtCreateFile` primitives, pins and
+  revalidates the complete visible ancestor chain, flushes every file before a
+  handle-relative atomic rename, and promotes the five Windows publication/
+  ABA/handle rows pending their mandatory non-skippable native report.
+  Collision/reuse rows remain planned.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -1096,6 +1100,54 @@ The XML executed exactly 72 manifest nodes with zero skips, failures, or
 errors; it included all five implemented POSIX `B-PUB-*` nodes and no Windows,
 collision/reuse, or uncommitted-admission publication node.
 
+## PLC9B3e-3c2 Windows Verified-Tree Materialization Candidate
+
+B3e-3c2 adds Windows-native consumers of the same accepted transfer and
+role-separated staging Ports without widening their authority. The dependency
+adapter issues only `VerifiedArtifactRefV1`; the designated Plugin-root adapter
+requires the authority-issued target and issues only `PluginRevisionRefV1`.
+Neither adapter is exported through the Package facade, internal facade, or
+author SDK, and neither imports Product management, Coding, Foundation, a
+legacy revision Store, or a package manager.
+
+Each operation pins the complete visible Windows ancestor chain from the
+volume root to the configured Store root. Read-only ancestors and the writable
+root are opened with `CreateFileW`/`NtCreateFile`, no-follow reparse semantics,
+delete sharing for adversarial rename visibility, and stable device/file IDs.
+Every later validation reopens the visible chain from the volume root and
+requires the same identities. All staging directories, nested directories,
+files, cleanup operations, enumeration, and final-tree reads remain relative
+to pinned handles. A reparse point, root replacement, ancestor replacement,
+staging-handle replacement, or nested-entry replacement is rejected before
+the staging namespace can be renamed into the immutable final namespace.
+
+Files are created exclusively, bounded by the verified manifest, checked for
+digest, byte count, stable identity, reparse state, and single-link ownership,
+then flushed with `FlushFileBuffers`. Settlement rewalks and hashes the exact
+owned staging tree, executes one optional adversarial barrier, revalidates the
+root and complete owned tree, and finally uses
+`SetFileInformationByHandle(FileRenameInfo)` with the pinned root handle for a
+same-root non-replacing atomic rename. The final tree is reopened, identity
+checked, and fully hashed before a receipt is returned. Abort deletes only
+entries whose recorded native identities still match and releases the source,
+file, staging, root, ancestor, and owner-lock handles on every path.
+
+As in B3e-3c1, exact retry is accepted only while the same live Store authority
+remembers the settlement. A replacement Store owner cannot infer authority
+from matching bytes or a predictable name. Durable collision/reuse remain
+B3e-3c3; `B-PUB-UNCOMMITTED` remains PLC9B4 commit admission, and no runtime
+handle, binding, desired-state mutation, peer fallback, or production route is
+added here.
+
+The composed manifest now marks `B-PUB-SWAP-WINDOWS`,
+`B-PUB-WIN-ROOT-ABA`, `B-PUB-WIN-ANCESTOR-ABA`,
+`B-PUB-WIN-HANDLE-SUCCESS`, and `B-PUB-WIN-HANDLE-REJECT` implemented. The
+Windows-native report must execute all five through real authenticated
+acquisition, safe Wheel verification, closure verification, transaction
+pinning, native Store materialization, staging evidence, and atomic set
+publication with zero skips, failures, or errors. Candidate status remains
+provisional until that retained native XML and all PR checks pass.
+
 ## First Principles
 
 1. Untrusted bytes are data, never a pathname, command, module, or build plan.
@@ -1596,11 +1648,11 @@ B-PUB-POSIX-ROOT-SWAP | posix-native | staging | root_rename_replace_swap | pack
 B-PUB-POSIX-ANCESTOR-SWAP | posix-native | staging | ancestor_rename_replace_swap | package_publication_root_untrusted | rejected@staging | no_outside_write;no_publication;pin_visible;handle_released;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-POSIX-ANCESTOR-SWAP] | harness-quality.yml#plc9b-linux-native | implemented
 B-PUB-POSIX-HANDLE-SUCCESS | posix-native | committed | successful_native_handle_lifecycle | ok | committed@committed | same_receipt;pin_visible;handle_released;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-POSIX-HANDLE-SUCCESS] | harness-quality.yml#plc9b-linux-native | implemented
 B-PUB-POSIX-HANDLE-REJECT | posix-native | rejected | rejected_native_handle_lifecycle | package_publication_root_untrusted | rejected@staging | no_outside_write;no_publication;pin_visible;handle_released;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-POSIX-HANDLE-REJECT] | harness-quality.yml#plc9b-linux-native | implemented
-B-PUB-SWAP-WINDOWS | windows-native | staging | ancestor_or_entry_reparse_swap | package_publication_root_untrusted | rejected@staging | no_outside_write;no_publication;pin_visible;handle_released;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-SWAP-WINDOWS] | windows-shell-compatibility.yml#plc9b-windows-native | planned
-B-PUB-WIN-ROOT-ABA | windows-native | staging | root_rename_replace_aba | package_publication_root_untrusted | rejected@staging | no_outside_write;no_publication;pin_visible;handle_released;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-WIN-ROOT-ABA] | windows-shell-compatibility.yml#plc9b-windows-native | planned
-B-PUB-WIN-ANCESTOR-ABA | windows-native | staging | ancestor_junction_reparse_aba | package_publication_root_untrusted | rejected@staging | no_outside_write;no_publication;pin_visible;handle_released;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-WIN-ANCESTOR-ABA] | windows-shell-compatibility.yml#plc9b-windows-native | planned
-B-PUB-WIN-HANDLE-SUCCESS | windows-native | committed | successful_native_handle_lifecycle | ok | committed@committed | same_receipt;pin_visible;handle_released;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-WIN-HANDLE-SUCCESS] | windows-shell-compatibility.yml#plc9b-windows-native | planned
-B-PUB-WIN-HANDLE-REJECT | windows-native | rejected | rejected_native_handle_lifecycle | package_publication_root_untrusted | rejected@staging | no_outside_write;no_publication;pin_visible;handle_released;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-WIN-HANDLE-REJECT] | windows-shell-compatibility.yml#plc9b-windows-native | planned
+B-PUB-SWAP-WINDOWS | windows-native | staging | ancestor_or_entry_reparse_swap | package_publication_root_untrusted | rejected@staging | no_outside_write;no_publication;pin_visible;handle_released;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-SWAP-WINDOWS] | windows-shell-compatibility.yml#plc9b-windows-native | implemented
+B-PUB-WIN-ROOT-ABA | windows-native | staging | root_rename_replace_aba | package_publication_root_untrusted | rejected@staging | no_outside_write;no_publication;pin_visible;handle_released;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-WIN-ROOT-ABA] | windows-shell-compatibility.yml#plc9b-windows-native | implemented
+B-PUB-WIN-ANCESTOR-ABA | windows-native | staging | ancestor_junction_reparse_aba | package_publication_root_untrusted | rejected@staging | no_outside_write;no_publication;pin_visible;handle_released;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-WIN-ANCESTOR-ABA] | windows-shell-compatibility.yml#plc9b-windows-native | implemented
+B-PUB-WIN-HANDLE-SUCCESS | windows-native | committed | successful_native_handle_lifecycle | ok | committed@committed | same_receipt;pin_visible;handle_released;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-WIN-HANDLE-SUCCESS] | windows-shell-compatibility.yml#plc9b-windows-native | implemented
+B-PUB-WIN-HANDLE-REJECT | windows-native | rejected | rejected_native_handle_lifecycle | package_publication_root_untrusted | rejected@staging | no_outside_write;no_publication;pin_visible;handle_released;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-WIN-HANDLE-REJECT] | windows-shell-compatibility.yml#plc9b-windows-native | implemented
 B-PUB-COLLISION | any | set_published | same_digest_different_identity | package_publication_collision | rejected@staging | no_publication;no_binding;pin_visible | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-COLLISION] | harness-quality.yml#plc9b-linux-native | planned
 B-PUB-REUSE | any | set_published | exact_committed_set_exists | ok | committed@committed | same_receipt;pin_visible;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-REUSE] | harness-quality.yml#plc9b-linux-native | planned
 B-PUB-UNCOMMITTED | any | set_published | stable_ref_without_commit_receipt | package_commit_admission_denied | rejected@staging | no_binding;no_desired;pin_visible;no_reopen;no_handle_issued;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-UNCOMMITTED] | harness-quality.yml#plc9b-linux-native | planned

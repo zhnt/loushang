@@ -34,6 +34,7 @@ COMMITTED_SETS = OWNER_KERNEL_ROOT / "committed_sets.py"
 STAGING_SET_RUNTIME = OWNER_KERNEL_ROOT / "staging_set_runtime.py"
 TREE_TRANSFER = OWNER_KERNEL_ROOT / "tree_transfer.py"
 POSIX_MATERIALIZATION = OWNER_KERNEL_ROOT / "posix_materialization.py"
+WINDOWS_MATERIALIZATION = OWNER_KERNEL_ROOT / "windows_materialization.py"
 CLOSURE_TEST = Path("tests/harness/resources/packages/test_plc9b_closure.py")
 CLOSURE_OWNER_TEST = Path(
     "tests/harness/resources/packages/test_plc9b_closure_owner.py"
@@ -65,6 +66,9 @@ TREE_TRANSFER_TEST = Path(
 )
 POSIX_MATERIALIZATION_TEST = Path(
     "tests/harness/resources/packages/test_plc9b_posix_materialization.py"
+)
+WINDOWS_MATERIALIZATION_TEST = Path(
+    "tests/harness/resources/packages/test_plc9b_windows_materialization.py"
 )
 PYPROJECT = Path("pyproject.toml")
 WINDOWS_NATIVE_TEST = Path(
@@ -157,6 +161,13 @@ PLC9B3E3C1_POSIX_CASES = {
     "B-PUB-POSIX-ANCESTOR-SWAP",
     "B-PUB-POSIX-HANDLE-SUCCESS",
     "B-PUB-POSIX-HANDLE-REJECT",
+}
+PLC9B3E3C2_WINDOWS_CASES = {
+    "B-PUB-SWAP-WINDOWS",
+    "B-PUB-WIN-ROOT-ABA",
+    "B-PUB-WIN-ANCESTOR-ABA",
+    "B-PUB-WIN-HANDLE-SUCCESS",
+    "B-PUB-WIN-HANDLE-REJECT",
 }
 ALLOWED_PLATFORMS = {"any", "posix-native", "windows-native"}
 ALLOWED_ORACLES = {
@@ -399,10 +410,12 @@ def _assert_current_publication_statuses(
         case_id
         for case_id in publication_cases
         if manifest[case_id]["status"] == "implemented"
-    } == PLC9B3E3C1_POSIX_CASES
+    } == PLC9B3E3C1_POSIX_CASES | PLC9B3E3C2_WINDOWS_CASES
     assert all(
         manifest[case_id]["status"] == "planned"
-        for case_id in publication_cases - PLC9B3E3C1_POSIX_CASES
+        for case_id in publication_cases
+        - PLC9B3E3C1_POSIX_CASES
+        - PLC9B3E3C2_WINDOWS_CASES
     )
 
 
@@ -469,6 +482,10 @@ def _implemented_b3e_staging_set_manifest_cases() -> set[str]:
 
 def _implemented_b3e3c1_posix_manifest_cases() -> set[str]:
     return _literal_manifest_cases("IMPLEMENTED_B3E3C1_POSIX_MANIFEST_CASES")
+
+
+def _implemented_b3e3c2_windows_manifest_cases() -> set[str]:
+    return _literal_manifest_cases("IMPLEMENTED_B3E3C2_WINDOWS_MANIFEST_CASES")
 
 
 def _journal_effect_policy() -> list[tuple[str, str, str]]:
@@ -552,7 +569,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.3e3c1" in contract
+    assert "Contract version: PLC9B.3e3c2-candidate" in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
@@ -817,6 +834,7 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
     implemented_b3e_pins = _implemented_b3e_pin_manifest_cases()
     implemented_b3e_staging_sets = _implemented_b3e_staging_set_manifest_cases()
     implemented_b3e3c1_posix = _implemented_b3e3c1_posix_manifest_cases()
+    implemented_b3e3c2_windows = _implemented_b3e3c2_windows_manifest_cases()
     implemented = (
         implemented_b1
         | implemented_b2
@@ -830,6 +848,7 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
         | implemented_b3e_pins
         | implemented_b3e_staging_sets
         | implemented_b3e3c1_posix
+        | implemented_b3e3c2_windows
     )
 
     assert len(manifest) == 127
@@ -1021,6 +1040,21 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
         | implemented_b3e_pins
         | implemented_b3e_staging_sets
     ).isdisjoint(implemented_b3e3c1_posix)
+    assert implemented_b3e3c2_windows == PLC9B3E3C2_WINDOWS_CASES
+    assert (
+        implemented_b1
+        | implemented_b2
+        | implemented_b2h
+        | implemented_b2i
+        | implemented_b2j
+        | implemented_b2k
+        | implemented_b3d
+        | implemented_b3d_limits
+        | implemented_b3d_integrity
+        | implemented_b3e_pins
+        | implemented_b3e_staging_sets
+        | implemented_b3e3c1_posix
+    ).isdisjoint(implemented_b3e3c2_windows)
     separator = manifest["B-PATH-COLLISION-SEP"]
     assert separator["fixture"] == "separator_ambiguous_path"
     assert separator["code"] == "package_archive_path_rejected"
@@ -1034,7 +1068,7 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
     assert hardlink["code"] == "ok"
     assert hardlink["disposition"] == "extracted@independent_regular_files"
     assert hardlink["status"] == "implemented"
-    assert len(manifest) - len(implemented) == 55
+    assert len(manifest) - len(implemented) == 50
     workflow = _source(HARNESS_WORKFLOW)
     assert "PLC9B Linux native adversarial gate (plc9b-linux-native)" in workflow
     assert "tests/harness/resources/packages/test_plc9b_adversarial.py" in workflow
@@ -2846,10 +2880,93 @@ def test_plc9b3e3c1_posix_materialization_is_rooted_role_safe_and_executable() -
     assert "Linux harness job `99997508982`" in normalized
     assert "artifact ID `9817127845`" in normalized
     assert (
-        "a0def54b47500bd2aad59669ece3057df7179ab427cf8edd46f0491b1310db3b"
-        in contract
+        "a0def54b47500bd2aad59669ece3057df7179ab427cf8edd46f0491b1310db3b" in contract
     )
     assert "executed exactly 72 manifest nodes" in normalized
+
+
+def test_plc9b3e3c2_windows_materialization_is_rooted_role_safe_and_native() -> None:
+    contract = _source(CONTRACT)
+    windows_primitives = _source(WINDOWS_QUARANTINE)
+    windows_store = _source(WINDOWS_MATERIALIZATION)
+    component_tests = _source(WINDOWS_MATERIALIZATION_TEST)
+    adversarial_tests = _source(ADVERSARIAL_TEST)
+    workflow = _source(WINDOWS_WORKFLOW)
+    package_facade = _source(PACKAGE_ROOT / "__init__.py")
+    internal_facade = _source(OWNER_KERNEL_ROOT / "__init__.py")
+    author_sdk = _source(AUTHOR_SDK)
+    manifest = _adversarial_manifest()
+
+    assert WINDOWS_MATERIALIZATION.is_file()
+    assert WINDOWS_MATERIALIZATION_TEST.is_file()
+    for symbol in (
+        "WindowsPackageDependencyMaterializationStore",
+        "WindowsPackagePluginRootMaterializationStore",
+    ):
+        assert f"class {symbol}" in windows_store
+        assert symbol not in package_facade
+        assert symbol not in internal_facade
+        assert symbol not in author_sdk
+
+    for rooted_primitive in (
+        "_PinnedWindowsRoot",
+        "open_windows_directory",
+        "share_delete=True",
+        "windows_rename_at",
+        "windows_flush_file",
+        "windows_listdir_at",
+        "windows_stat_at",
+        "threading.RLock()",
+        "st_nlink",
+        "is_absolute()",
+    ):
+        assert rooted_primitive in windows_store
+    assert "SetFileInformationByHandle" in windows_primitives
+    assert "Path.rename" not in windows_store
+    assert ".resolve(" not in windows_store
+
+    tree = ast.parse(windows_store, filename=str(WINDOWS_MATERIALIZATION))
+    imported = {
+        node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
+    }
+    forbidden_modules = (
+        "loushang.harness.plugin_management",
+        "loushang.harness.resources.plugins.revisions",
+        "loushang.coding",
+        "loushang.foundation",
+        "subprocess",
+    )
+    assert not any(
+        module == forbidden or module.startswith(f"{forbidden}.")
+        for module in imported
+        for forbidden in forbidden_modules
+    )
+    for evidence in (
+        "publish_exact_trees_and_reuse_same_receipts",
+        "rejects_configured_root_replacement_before_sink",
+        "rejects_root_replacement_aba_and_releases_handles",
+        "rejects_ancestor_reparse_without_outside_write",
+        "rejects_nested_reparse_before_namespace_rename",
+        "rejects_staging_handle_swap_and_closes_every_handle",
+        "aborts_partial_tree_and_releases_handles",
+        "does_not_adopt_tree_without_live_owner_evidence",
+        "rejects_relative_root_without_ambient_cwd",
+    ):
+        assert evidence in component_tests
+    assert "IMPLEMENTED_B3E3C2_WINDOWS_MANIFEST_CASES" in adversarial_tests
+    assert _implemented_b3e3c2_windows_manifest_cases() == PLC9B3E3C2_WINDOWS_CASES
+    for case_id in PLC9B3E3C2_WINDOWS_CASES:
+        assert f"test_manifest_case[{case_id}]" in workflow
+    assert "test_plc9b_windows_materialization.py" in workflow
+    assert workflow.count("test_plc9b_adversarial.py::test_manifest_case[B-") == 12
+    _assert_current_publication_statuses(manifest)
+    assert manifest["B-PUB-UNCOMMITTED"]["status"] == "planned"
+
+    normalized = " ".join(contract.split())
+    assert "PLC9B3e-3c2 Windows Verified-Tree Materialization Candidate" in normalized
+    assert "pins the complete visible Windows ancestor chain" in normalized
+    assert "Windows-native report must execute all five" in normalized
+    assert "collision/reuse remain B3e-3c3" in normalized
 
 
 def test_plc9b2f_windows_backend_is_rooted_and_has_a_nonskippable_native_gate() -> None:
@@ -2882,7 +2999,7 @@ def test_plc9b2f_windows_backend_is_rooted_and_has_a_nonskippable_native_gate() 
     assert "test_plc9b_windows_native.py" in workflow
     assert "windows-shell-plc9b-native.xml" in workflow
     assert "include-hidden-files: true" in workflow
-    assert workflow.count("test_plc9b_adversarial.py::test_manifest_case[B-") == 7
+    assert workflow.count("test_plc9b_adversarial.py::test_manifest_case[B-") == 12
     for case_id in _implemented_b2i_windows_manifest_cases():
         assert f"test_manifest_case[{case_id}]" in workflow
     assert "windows-shell-plc9b-manifest.xml" in workflow

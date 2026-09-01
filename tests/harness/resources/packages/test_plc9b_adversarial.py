@@ -5,6 +5,7 @@ import csv
 import inspect
 import io
 import os
+import shutil
 import stat
 import struct
 import sys
@@ -104,6 +105,10 @@ from loushang.harness.resources.packages.plugin_lifecycle.wheel import (
     PackageInspectionBudgetV1,
     PackageWheelVerifier,
     VerifiedWheelCandidate,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.windows_materialization import (
+    WindowsPackageDependencyMaterializationStore,
+    WindowsPackagePluginRootMaterializationStore,
 )
 from loushang.harness.resources.plugins.dependencies import (
     PluginDependencyClosureLock,
@@ -206,12 +211,14 @@ IMPLEMENTED_B3E3C1_POSIX_MANIFEST_CASES = (
     "B-PUB-POSIX-HANDLE-SUCCESS",
     "B-PUB-POSIX-HANDLE-REJECT",
 )
-PLANNED_B3E3C_MATERIALIZATION_MANIFEST_CASES = (
+IMPLEMENTED_B3E3C2_WINDOWS_MANIFEST_CASES = (
     "B-PUB-SWAP-WINDOWS",
     "B-PUB-WIN-ROOT-ABA",
     "B-PUB-WIN-ANCESTOR-ABA",
     "B-PUB-WIN-HANDLE-SUCCESS",
     "B-PUB-WIN-HANDLE-REJECT",
+)
+PLANNED_B3E3C_MATERIALIZATION_MANIFEST_CASES = (
     "B-PUB-COLLISION",
     "B-PUB-REUSE",
 )
@@ -230,6 +237,7 @@ EXECUTABLE_MANIFEST_CASES = (
     + IMPLEMENTED_B3E_PIN_MANIFEST_CASES
     + IMPLEMENTED_B3E_STAGING_SET_MANIFEST_CASES
     + IMPLEMENTED_B3E3C1_POSIX_MANIFEST_CASES
+    + (IMPLEMENTED_B3E3C2_WINDOWS_MANIFEST_CASES if os.name == "nt" else ())
 )
 
 WHEEL_FILENAME = "acme_plugin-1.0-py3-none-any.whl"
@@ -798,7 +806,10 @@ class _ManifestRootStagingOwner:
 
 @dataclass
 class _ManifestNativeRootStagingOwner:
-    store: PosixPackagePluginRootMaterializationStore
+    store: (
+        PosixPackagePluginRootMaterializationStore
+        | WindowsPackagePluginRootMaterializationStore
+    )
     verify_reuse: bool = False
     same_receipt: bool = False
     calls: int = 0
@@ -2166,8 +2177,12 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
         for path in tmp_path.rglob("*"):
             if path.is_file():
                 assert secret.encode() not in path.read_bytes()
-    elif case_id in IMPLEMENTED_B3E3C1_POSIX_MANIFEST_CASES:
-        assert os.name == "posix"
+    elif case_id in (
+        IMPLEMENTED_B3E3C1_POSIX_MANIFEST_CASES
+        + IMPLEMENTED_B3E3C2_WINDOWS_MANIFEST_CASES
+    ):
+        windows_case = case_id in IMPLEMENTED_B3E3C2_WINDOWS_MANIFEST_CASES
+        assert os.name == ("nt" if windows_case else "posix")
         secret = f"manifest-secret-{case_id.lower()}"
         environment = _closure_environment()
         (
@@ -2211,7 +2226,7 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
         )
         pinned = pin_owner.pin(
             closure_result.candidate,
-            recovery_identity="manifest-recovery-posix-materialization",
+            recovery_identity="manifest-recovery-native-materialization",
         )
         assert pinned.receipt is not None
         assert pinned.status.classification is not None
@@ -2223,6 +2238,10 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
         plugin_root.mkdir(parents=True, mode=0o700)
         outside = tmp_path / "outside-publication-sentinel"
         outside.write_bytes(b"preserve")
+        outside_target = tmp_path / "outside-publication-target"
+        outside_target.mkdir()
+        outside_target_sentinel = outside_target / "sentinel"
+        outside_target_sentinel.write_bytes(b"preserve")
         root_targets = _ManifestRootTargetAuthority()
         request = kernel.journal.request(classified.operation_id)
         assert request is not None
@@ -2236,10 +2255,17 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
             root_target=target,
         )
         precreated: Path | None = None
+        staging_path = plugin_root / (
+            f"staging-{root_staging_request.staging_request_id}"
+        )
         detached_root = plugin_authority / "plugin-revision-store-detached"
         detached_authority = tmp_path / "plugin-publication-authority-detached"
+        detached_entry = staging_path / "root_plugin-detached"
+        detached_staging = plugin_root / "staging-detached"
         root_swapped = False
         ancestor_swapped = False
+        entry_swapped = False
+        staging_swapped = False
 
         if case_id == "B-PUB-PRECREATE":
             precreated = plugin_root / (
@@ -2249,7 +2275,7 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
             (precreated / "attacker-link").symlink_to(outside)
 
         def commit_probe() -> None:
-            nonlocal root_swapped, ancestor_swapped
+            nonlocal root_swapped, ancestor_swapped, entry_swapped, staging_swapped
             if case_id == "B-PUB-POSIX-ROOT-SWAP":
                 plugin_root.rename(detached_root)
                 plugin_root.mkdir(mode=0o700)
@@ -2260,23 +2286,59 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
                 ancestor_swapped = True
             elif case_id == "B-PUB-POSIX-HANDLE-REJECT":
                 plugin_root.chmod(0o755)
+            elif case_id == "B-PUB-SWAP-WINDOWS":
+                (staging_path / "root_plugin").rename(detached_entry)
+                (staging_path / "root_plugin").symlink_to(
+                    outside_target,
+                    target_is_directory=True,
+                )
+                entry_swapped = True
+            elif case_id == "B-PUB-WIN-ROOT-ABA":
+                plugin_root.rename(detached_root)
+                shutil.copytree(detached_root, plugin_root)
+                root_swapped = True
+            elif case_id == "B-PUB-WIN-ANCESTOR-ABA":
+                plugin_authority.rename(detached_authority)
+                plugin_authority.symlink_to(
+                    outside_target,
+                    target_is_directory=True,
+                )
+                ancestor_swapped = True
+            elif case_id == "B-PUB-WIN-HANDLE-REJECT":
+                staging_path.rename(detached_staging)
+                staging_path.symlink_to(outside_target, target_is_directory=True)
+                staging_swapped = True
 
-        dependency_staging = PosixPackageDependencyMaterializationStore(
-            dependency_root,
-            store_identity="manifest-dependency-store",
+        handle_success = case_id in {
+            "B-PUB-POSIX-HANDLE-SUCCESS",
+            "B-PUB-WIN-HANDLE-SUCCESS",
+        }
+        active_probe = (
+            None if case_id == "B-PUB-PRECREATE" or handle_success else commit_probe
         )
-        native_root_store = PosixPackagePluginRootMaterializationStore(
-            plugin_root,
-            store_identity="manifest-plugin-revision-store",
-            commit_probe=(
-                None
-                if case_id in {"B-PUB-PRECREATE", "B-PUB-POSIX-HANDLE-SUCCESS"}
-                else commit_probe
-            ),
-        )
+        if windows_case:
+            dependency_staging = WindowsPackageDependencyMaterializationStore(
+                dependency_root,
+                store_identity="manifest-dependency-store",
+            )
+            native_root_store = WindowsPackagePluginRootMaterializationStore(
+                plugin_root,
+                store_identity="manifest-plugin-revision-store",
+                commit_probe=active_probe,
+            )
+        else:
+            dependency_staging = PosixPackageDependencyMaterializationStore(
+                dependency_root,
+                store_identity="manifest-dependency-store",
+            )
+            native_root_store = PosixPackagePluginRootMaterializationStore(
+                plugin_root,
+                store_identity="manifest-plugin-revision-store",
+                commit_probe=active_probe,
+            )
         root_staging = _ManifestNativeRootStagingOwner(
             native_root_store,
-            verify_reuse=case_id == "B-PUB-POSIX-HANDLE-SUCCESS",
+            verify_reuse=handle_success,
         )
         staging_journal = PackageArtifactStagingJournal(
             tmp_path / "package-artifact-staging.jsonl"
@@ -2299,22 +2361,36 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
         result = staging_owner.stage_and_publish(closure_result.candidate)
 
         if root_swapped:
-            replacement = plugin_authority / "plugin-revision-store-replacement"
-            plugin_root.rename(replacement)
-            detached_root.rename(plugin_root)
-            replacement.rmdir()
+            if windows_case:
+                shutil.rmtree(plugin_root)
+                detached_root.rename(plugin_root)
+            else:
+                replacement = plugin_authority / "plugin-revision-store-replacement"
+                plugin_root.rename(replacement)
+                detached_root.rename(plugin_root)
+                replacement.rmdir()
         if ancestor_swapped:
-            replacement_authority = (
-                tmp_path / "plugin-publication-authority-replacement"
-            )
-            plugin_authority.rename(replacement_authority)
-            detached_authority.rename(plugin_authority)
-            (replacement_authority / "plugin-revision-store").rmdir()
-            replacement_authority.rmdir()
+            if windows_case:
+                plugin_authority.unlink()
+                detached_authority.rename(plugin_authority)
+            else:
+                replacement_authority = (
+                    tmp_path / "plugin-publication-authority-replacement"
+                )
+                plugin_authority.rename(replacement_authority)
+                detached_authority.rename(plugin_authority)
+                (replacement_authority / "plugin-revision-store").rmdir()
+                replacement_authority.rmdir()
+        if entry_swapped:
+            (staging_path / "root_plugin").unlink()
+            shutil.rmtree(staging_path)
+        if staging_swapped:
+            staging_path.unlink()
+            shutil.rmtree(detached_staging)
         if case_id == "B-PUB-POSIX-HANDLE-REJECT":
             plugin_root.chmod(0o700)
 
-        if case_id == "B-PUB-POSIX-HANDLE-SUCCESS":
+        if handle_success:
             assert result.status.phase == "set_published"
             assert result.status.disposition == "active"
             assert result.committed_set is not None
@@ -2362,6 +2438,7 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
         assert cleanup_journal.records() == ()
         assert len(quarantine.attempt_names()) == 1
         assert outside.read_bytes() == b"preserve"
+        assert outside_target_sentinel.read_bytes() == b"preserve"
         assert not (tmp_path / "binding.json").exists()
         assert not (tmp_path / "desired.json").exists()
         moved_root = plugin_authority / "plugin-revision-store-moved"

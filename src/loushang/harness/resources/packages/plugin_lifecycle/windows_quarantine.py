@@ -19,6 +19,8 @@ def open_windows_directory(
     *,
     dir_fd: int | None = None,
     create_new: bool = False,
+    share_delete: bool = False,
+    writable: bool = True,
 ) -> int:
     """Open or create one direct directory, anchored to ``dir_fd`` when set."""
 
@@ -26,21 +28,29 @@ def open_windows_directory(
     if dir_fd is None:
         if create_new:
             raise ValueError("A rooted parent handle is required to create a directory")
-        return _open_directory_path(Path(path))
+        return _open_directory_path(
+            Path(path),
+            share_delete=share_delete,
+            writable=writable,
+        )
+    if create_new and not writable:
+        raise ValueError("A newly created Windows directory must be writable")
     name = _component(path)
     raw_handle = _nt_open_at(
         dir_fd,
         name,
-        desired_access=_DIRECTORY_OWNER_ACCESS,
-        share_access=_FILE_SHARE_READ | _FILE_SHARE_WRITE,
+        desired_access=(
+            _DIRECTORY_OWNER_ACCESS if writable else _DIRECTORY_READ_ACCESS
+        ),
+        share_access=(
+            _FILE_SHARE_READ
+            | _FILE_SHARE_WRITE
+            | (_FILE_SHARE_DELETE if share_delete else 0)
+        ),
         create_disposition=_FILE_CREATE if create_new else _FILE_OPEN,
         create_options=(
             _FILE_SYNCHRONOUS_IO_NONALERT
-            | (
-                _FILE_DIRECTORY_FILE
-                if create_new
-                else _FILE_OPEN_REPARSE_POINT
-            )
+            | (_FILE_DIRECTORY_FILE if create_new else _FILE_OPEN_REPARSE_POINT)
         ),
     )
     descriptor = _descriptor_from_handle(raw_handle, write=False)
@@ -141,7 +151,83 @@ def windows_rmdir_at(directory_fd: int, name: str) -> None:
         _close_handle(raw_handle)
 
 
-def _open_directory_path(path: Path) -> int:
+def windows_rename_at(
+    directory_fd: int,
+    old_name: str,
+    new_name: str,
+) -> None:
+    """Atomically rename one direct child beneath the same pinned directory."""
+
+    import ctypes
+    import msvcrt
+    from ctypes import wintypes
+
+    old_component = _component(old_name)
+    new_component = _component(new_name)
+    raw_handle = _open_for_delete(directory_fd, old_component)
+    try:
+        encoded_name = new_component.encode("utf-16-le")
+
+        class _FileRenameInfo(ctypes.Structure):
+            _fields_ = (
+                ("replace_if_exists", wintypes.BOOL),
+                ("root_directory", wintypes.HANDLE),
+                ("file_name_length", wintypes.DWORD),
+                ("file_name", ctypes.c_byte * len(encoded_name)),
+            )
+
+        information = _FileRenameInfo(
+            replace_if_exists=False,
+            root_directory=wintypes.HANDLE(
+                getattr(msvcrt, "get_osfhandle")(directory_fd)
+            ),
+            file_name_length=len(encoded_name),
+            file_name=(ctypes.c_byte * len(encoded_name)).from_buffer_copy(
+                encoded_name
+            ),
+        )
+        kernel32 = getattr(ctypes, "WinDLL")("kernel32", use_last_error=True)
+        set_information = kernel32.SetFileInformationByHandle
+        set_information.argtypes = (
+            wintypes.HANDLE,
+            ctypes.c_int,
+            wintypes.LPVOID,
+            wintypes.DWORD,
+        )
+        set_information.restype = wintypes.BOOL
+        if not set_information(
+            wintypes.HANDLE(raw_handle),
+            _FILE_RENAME_INFO,
+            ctypes.byref(information),
+            ctypes.sizeof(information),
+        ):
+            _raise_last_windows_error()
+    finally:
+        _close_handle(raw_handle)
+
+
+def windows_flush_file(descriptor: int) -> None:
+    """Flush one writable native file handle to its backing device."""
+
+    import ctypes
+    import msvcrt
+    from ctypes import wintypes
+
+    kernel32 = getattr(ctypes, "WinDLL")("kernel32", use_last_error=True)
+    flush = kernel32.FlushFileBuffers
+    flush.argtypes = (wintypes.HANDLE,)
+    flush.restype = wintypes.BOOL
+    handle = wintypes.HANDLE(getattr(msvcrt, "get_osfhandle")(descriptor))
+    if not flush(handle):
+        _raise_last_windows_error()
+
+
+def _open_directory_path(
+    path: Path,
+    *,
+    share_delete: bool,
+    writable: bool,
+) -> int:
     import ctypes
     import msvcrt
     from ctypes import wintypes
@@ -160,8 +246,12 @@ def _open_directory_path(path: Path) -> int:
     create_file.restype = wintypes.HANDLE
     handle = create_file(
         str(path),
-        _DIRECTORY_OWNER_ACCESS,
-        _FILE_SHARE_READ | _FILE_SHARE_WRITE,
+        _DIRECTORY_OWNER_ACCESS if writable else _DIRECTORY_READ_ACCESS,
+        (
+            _FILE_SHARE_READ
+            | _FILE_SHARE_WRITE
+            | (_FILE_SHARE_DELETE if share_delete else 0)
+        ),
         None,
         _OPEN_EXISTING,
         _FILE_FLAG_OPEN_REPARSE_POINT | _FILE_FLAG_BACKUP_SEMANTICS,
@@ -175,9 +265,7 @@ def _open_directory_path(path: Path) -> int:
     try:
         descriptor = getattr(msvcrt, "open_osfhandle")(
             raw_handle,
-            os.O_RDONLY
-            | getattr(os, "O_BINARY", 0)
-            | getattr(os, "O_NOINHERIT", 0),
+            os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOINHERIT", 0),
         )
         opened = os.fstat(descriptor)
         _require_direct_directory(opened)
@@ -259,9 +347,7 @@ def _nt_open_at(
     )
     object_attributes = _ObjectAttributes(
         length=ctypes.sizeof(_ObjectAttributes),
-        root_directory=wintypes.HANDLE(
-            getattr(msvcrt, "get_osfhandle")(directory_fd)
-        ),
+        root_directory=wintypes.HANDLE(getattr(msvcrt, "get_osfhandle")(directory_fd)),
         object_name=ctypes.pointer(unicode_name),
         attributes=_OBJ_CASE_INSENSITIVE,
         security_descriptor=None,
@@ -492,8 +578,12 @@ _FILE_OPEN = 1
 _FILE_CREATE = 2
 _OPEN_EXISTING = 3
 _OBJ_CASE_INSENSITIVE = 0x00000040
+_FILE_RENAME_INFO = 3
 _FILE_DISPOSITION_INFO = 4
 _FILE_ATTRIBUTE_TAG_INFO = 9
+_DIRECTORY_READ_ACCESS = (
+    _FILE_LIST_DIRECTORY | _FILE_TRAVERSE | _FILE_READ_ATTRIBUTES | _SYNCHRONIZE
+)
 _DIRECTORY_OWNER_ACCESS = (
     _FILE_LIST_DIRECTORY
     | _FILE_ADD_FILE
@@ -509,7 +599,9 @@ __all__ = [
     "open_windows_directory",
     "open_windows_regular_file_at",
     "supports_windows_rooted_io",
+    "windows_flush_file",
     "windows_listdir_at",
+    "windows_rename_at",
     "windows_rmdir_at",
     "windows_stat_at",
     "windows_unlink_at",
