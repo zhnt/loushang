@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.3b-candidate.
+- Contract version: PLC9B.3b.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -33,8 +33,8 @@
   B2k corrects the hardlink threat model and implements one POSIX-native source
   normalization row after its Linux-native report passed.
   B3a adds an accepted dark, pure closure-v2 verifier; it promotes no global
-  manifest row before recursive owner composition is executable. B3b is a
-  candidate adjacent-evidence slice that durably binds authenticated Source
+  manifest row before recursive owner composition is executable. B3b is the
+  accepted adjacent-evidence slice that durably binds authenticated Source
   facts and reconstructs dependency headers without changing accepted v1
   receipt or wheel-evidence schemas.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
@@ -477,7 +477,7 @@ passed, 20 skipped`; all PR checks passed. The separately retained manifest
 report still executed exactly the 52 previously implemented rows, confirming
 that this component acceptance did not promote any global adversarial row.
 
-## PLC9B3b Candidate Durable Closure Inputs
+## PLC9B3b Accepted Durable Closure Inputs
 
 B3b supplies the missing recovery-safe inputs for the later recursive closure
 owner while keeping all new capabilities dark. A versioned
@@ -502,7 +502,7 @@ still receive only the bounded sink and never a path or journal authority.
 An abrupt process loss after quarantine transfer begins but before its receipt
 is durable may leave unreceipted residue; B3b fails closed on that state. Exact
 residue adoption or cleanup is a B4 recovery obligation and is not claimed by
-this candidate.
+this slice.
 
 Wheel verification now returns a process-local, canonically ordered tuple of
 raw `Requires-Dist` headers parsed from the same bounded `METADATA` bytes whose
@@ -517,6 +517,15 @@ not compose the recursive owner, and creates no typed stable ref, transaction
 pin, committed set, publication, desired-state mutation, or production route.
 All `B-LIMIT-GRAPH/SOLVER/REQUESTS`, `B-CLOSURE-*`, and later-phase manifest
 rows remain `planned` pending composed owner acceptance and native CI evidence.
+
+B3b was accepted on 2026-09-01 by Harness Quality run `33501681463`, Linux
+harness job `99836237482`, against candidate head `13c057be`; all PR checks
+passed. The retained `plc9b-linux-native-pytest-report` artifact (ID
+`9797945496`) has upload digest
+`66e889f7c79ad5eaf576cc0107c6438bc4e3d8aa71e8a89c009fd1e1fe2b65ee`.
+Its XML executed exactly 52 tests with zero skips, failures, or errors,
+confirming that durable closure inputs changed the evidence sequence without
+promoting any additional global manifest row.
 
 ## First Principles
 

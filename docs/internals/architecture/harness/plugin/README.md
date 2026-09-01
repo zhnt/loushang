@@ -86,8 +86,8 @@ Neither may silently override a narrower implemented owner contract.
   for artifact identity, early crash, and cleanup-debt recovery. PLC9B2k is the
   accepted POSIX-native slice proving Wheel 1.x hardlinked sources are
   normalized to independent regular files. PLC9B3a is the accepted dark pure
-  closure-v2 verifier with component-level adversarial fixtures. PLC9B3b is a
-  dark candidate for durable authenticated-Source inputs and deterministic
+  closure-v2 verifier with component-level adversarial fixtures. PLC9B3b is the
+  accepted dark slice for durable authenticated-Source inputs and deterministic
   recovery of Wheel dependency headers. Recursive owner composition, typed
   refs, publication, and production routing remain unimplemented.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum

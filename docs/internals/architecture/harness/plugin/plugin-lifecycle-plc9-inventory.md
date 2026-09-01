@@ -54,13 +54,15 @@
   promote global manifest rows. Harness Quality run `33497159996` accepted the
   component after Ruff and mypy passed and the full gate reported 3624 passed,
   20 skipped.
-  PLC9B3b is a dark candidate that records attempt-scoped authenticated Source
-  evidence before quarantine transfer, requires exact Source reauthorization
-  when only that evidence survived, and reconstructs canonical raw
+  PLC9B3b is an accepted dark slice that records attempt-scoped authenticated
+  Source evidence before quarantine transfer, requires exact Source
+  reauthorization when only that evidence survived, and reconstructs canonical raw
   `Requires-Dist` inputs by re-verifying the digest-bound Wheel `METADATA`.
   Accepted receipt and wheel-evidence v1 schemas remain unchanged; legacy
   receipt-first evidence can replay B2 behavior but is insufficient for
-  closure-v2. No global manifest row is promoted by this candidate.
+  closure-v2. Harness Quality run `33501681463` accepted the slice after all
+  PR checks passed; its retained Linux manifest XML executed the same 52 tests
+  with zero skips, failures, or errors. No global manifest row is promoted.
   Publication, later transaction phases, and every production route remain
   migration obligations; no global adversarial row is promoted.
 
