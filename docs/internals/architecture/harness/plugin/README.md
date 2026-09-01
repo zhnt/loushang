@@ -91,8 +91,11 @@ Neither may silently override a narrower implemented owner contract.
   recovery of Wheel dependency headers. PLC9B3c is the accepted dark recursive
   builder that gives a selection-only resolver no acquisition authority and
   routes every dependency through accepted Source/acquisition/Wheel evidence
-  before the pure closure proof. Durable closure phases/recovery, typed refs,
-  publication, and production routing remain unimplemented.
+  before the pure closure proof. PLC9B3d candidate code adds durable
+  basis/selection/plan evidence, local dependency replay, cleanup-debt handoff,
+  and dark closure phase-CAS; its global rows remain planned pending composed
+  native acceptance. Typed refs, publication, and production routing remain
+  unimplemented.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)

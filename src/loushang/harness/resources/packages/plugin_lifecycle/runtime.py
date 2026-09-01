@@ -95,11 +95,21 @@ class PackageArtifactExecutionResult:
     cleanup_status: PackageQuarantineCleanupStatusV1 | None = None
 
     def __post_init__(self) -> None:
-        if self.status.phase == "extracted" and self.status.disposition == "active":
+        if (
+            self.status.phase
+            in {
+                "extracted",
+                "resolving_closure",
+                "closure_verified",
+            }
+            and self.status.disposition == "active"
+        ):
             if self.candidate is None:
-                raise ValueError("Extracted Package status requires a candidate")
+                raise ValueError("Verified Package artifact phase requires a candidate")
         elif self.candidate is not None:
-            raise ValueError("Only an extracted Package status carries a candidate")
+            raise ValueError(
+                "Only a verified Package artifact phase carries a candidate"
+            )
         if self.cleanup_status is not None and (
             self.status.disposition not in {"rejected", "retryable_failure"}
             or self.cleanup_status.target.operation_id != self.status.operation_id
@@ -183,6 +193,8 @@ class PackageArtifactLifecycleOwner:
             "acquired",
             "inspecting",
             "extracted",
+            "resolving_closure",
+            "closure_verified",
         }:
             return PackageArtifactExecutionResult(status=status)
         classification = status.classification
@@ -224,28 +236,32 @@ class PackageArtifactLifecycleOwner:
         except PackageArtifactEvidenceJournalError:
             return self._record_identity_failure(status, stage=status.phase)
         if (
-            source_record is not None
-            and (
-                source_record.request_fingerprint != request.request_fingerprint
-                or not isinstance(
-                    source_record.evidence,
-                    PackageAuthenticatedSourceEvidenceV1,
+            (
+                source_record is not None
+                and (
+                    source_record.request_fingerprint != request.request_fingerprint
+                    or not isinstance(
+                        source_record.evidence,
+                        PackageAuthenticatedSourceEvidenceV1,
+                    )
                 )
             )
-        ) or (
-            acquired_record is not None
-            and (
-                acquired_record.request_fingerprint != request.request_fingerprint
-                or not isinstance(
-                    acquired_record.evidence,
-                    BoundedAcquisitionReceiptV1,
+            or (
+                acquired_record is not None
+                and (
+                    acquired_record.request_fingerprint != request.request_fingerprint
+                    or not isinstance(
+                        acquired_record.evidence,
+                        BoundedAcquisitionReceiptV1,
+                    )
                 )
             )
-        ) or (
-            verified_record is not None
-            and (
-                verified_record.request_fingerprint != request.request_fingerprint
-                or not isinstance(verified_record.evidence, VerifiedWheelArtifactV1)
+            or (
+                verified_record is not None
+                and (
+                    verified_record.request_fingerprint != request.request_fingerprint
+                    or not isinstance(verified_record.evidence, VerifiedWheelArtifactV1)
+                )
             )
         ):
             return self._record_identity_failure(status, stage=status.phase)
@@ -446,7 +462,7 @@ class PackageArtifactLifecycleOwner:
                 return PackageArtifactExecutionResult(status=extracted)
             return PackageArtifactExecutionResult(status=extracted, candidate=verified)
 
-        if status.phase == "extracted":
+        if status.phase in {"extracted", "resolving_closure", "closure_verified"}:
             if receipt is None or durable_verified is None:
                 return self._record_identity_failure(status, stage="extracted")
             reopened = self._reopen_candidate(
@@ -517,9 +533,13 @@ class PackageArtifactLifecycleOwner:
     ) -> PackageArtifactExecutionResult:
         if (error is None) == (debt is None):
             raise ValueError("Exactly one acquisition rejection is required")
-        rejection = debt.rejection if debt is not None else cast(
-            PackageAcquisitionError,
-            error,
+        rejection = (
+            debt.rejection
+            if debt is not None
+            else cast(
+                PackageAcquisitionError,
+                error,
+            )
         )
         cleanup_status = None
         if debt is not None:
@@ -605,8 +625,8 @@ class PackageArtifactLifecycleOwner:
                     stage=error.rejection_stage,
                 )
             rejection_stage = cast(PackageLifecyclePhase, rejection.stage)
-            if status.phase == "extracted":
-                rejection_stage = "extracted"
+            if status.phase in {"extracted", "resolving_closure", "closure_verified"}:
+                rejection_stage = status.phase
             failure = _wheel_failure(
                 status,
                 rejection,

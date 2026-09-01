@@ -74,6 +74,13 @@
   passed; retained artifact `9799493328` executed the unchanged 52-row Linux
   manifest with zero skips, failures, or errors. Its component fixtures do not
   promote global manifest rows.
+  PLC9B3d candidate code binds a complete credential-free resolution basis
+  before artifact I/O, journals every resolver selection before dependency
+  Source access, journals the exact verified plan before the closure phase CAS,
+  reopens durable dependency evidence without resolver or Source calls, and
+  transfers dependency cleanup debt to the existing cleanup-domain owner. It
+  remains dark and promotes no global row until its composed adversarial nodes
+  and retained Linux-native report pass.
   Publication, later transaction phases, and every production route remain
   migration obligations; no global adversarial row is promoted.
 

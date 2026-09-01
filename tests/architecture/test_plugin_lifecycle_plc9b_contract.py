@@ -24,9 +24,17 @@ WHEEL_VERIFIER = OWNER_KERNEL_ROOT / "wheel.py"
 WINDOWS_QUARANTINE = OWNER_KERNEL_ROOT / "windows_quarantine.py"
 CLOSURE_VERIFIER = OWNER_KERNEL_ROOT / "closure.py"
 CLOSURE_OWNER = OWNER_KERNEL_ROOT / "closure_owner.py"
+CLOSURE_JOURNAL = OWNER_KERNEL_ROOT / "closure_journal.py"
+CLOSURE_RUNTIME = OWNER_KERNEL_ROOT / "closure_runtime.py"
 CLOSURE_TEST = Path("tests/harness/resources/packages/test_plc9b_closure.py")
 CLOSURE_OWNER_TEST = Path(
     "tests/harness/resources/packages/test_plc9b_closure_owner.py"
+)
+CLOSURE_JOURNAL_TEST = Path(
+    "tests/harness/resources/packages/test_plc9b_closure_journal.py"
+)
+CLOSURE_RUNTIME_TEST = Path(
+    "tests/harness/resources/packages/test_plc9b_closure_runtime.py"
 )
 PYPROJECT = Path("pyproject.toml")
 WINDOWS_NATIVE_TEST = Path(
@@ -470,7 +478,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.3c" in contract
+    assert "Contract version: PLC9B.3d-candidate" in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
@@ -482,6 +490,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
     assert "PLC9B3a Accepted Dark Closure-v2 Verifier Slice" in contract
     assert "PLC9B3b Accepted Durable Closure Inputs" in contract
     assert "PLC9B3c Accepted Recursive Closure Builder" in contract
+    assert "PLC9B3d Candidate Durable Closure Recovery" in contract
     assert "Harness Quality run `33505702666`" in contract
     assert "Linux\nharness job `99849101216`" in contract
     assert "(ID\n`9799493328`)" in contract
@@ -1868,6 +1877,84 @@ def test_plc9b3c_recursive_builder_is_selection_only_dark_and_unpromoted() -> No
         assert evidence in component_tests
     assert "B3c is accepted only as a dark component" in contract
     assert "does not journal\n`resolving_closure -> closure_verified`" in contract
+
+
+def test_plc9b3d_candidate_binds_recovery_before_io_and_remains_dark() -> None:
+    contract = _source(CONTRACT)
+    inventory = _source(INVENTORY)
+    package_facade = _source(PACKAGE_ROOT / "__init__.py")
+    journal = _source(CLOSURE_JOURNAL)
+    owner = _source(CLOSURE_OWNER)
+    runtime = _source(CLOSURE_RUNTIME)
+    journal_tests = _source(CLOSURE_JOURNAL_TEST)
+    owner_tests = _source(CLOSURE_OWNER_TEST)
+    runtime_tests = _source(CLOSURE_RUNTIME_TEST)
+    manifest = _adversarial_manifest()
+
+    assert CLOSURE_JOURNAL.is_file()
+    assert CLOSURE_RUNTIME.is_file()
+    for symbol in (
+        "class PackageClosureResolutionBasisV1:",
+        "class PackageClosureResolutionRecordV1:",
+        "class PackageClosureResolutionJournal:",
+    ):
+        assert symbol in journal
+    for symbol in (
+        "class PackageClosureExecutionRequestV2:",
+        "class PackageClosureExecutionResult:",
+        "class PackageClosureLifecycleOwner:",
+    ):
+        assert symbol in runtime
+        assert symbol.removeprefix("class ").removesuffix(":") not in package_facade
+    assert runtime.index("bind_basis(") < runtime.index(
+        "self._artifact_owner.execute("
+    )
+    assert runtime.index("append_plan(") < runtime.index(
+        'next_phase="closure_verified"'
+    )
+    assert owner.index("append_selection(") < owner.index("authorize_source(")
+    assert "PackageClosureCleanupOwnerPort" in owner
+    assert "PackageDependencyCleanupDebtError" in owner
+    assert "credential_reference" not in journal
+    for forbidden in (
+        "PluginRevisionStore",
+        "PluginPackageLifecycleLedger",
+        "CommittedPackageSet",
+        "TransactionPin",
+        "loushang.coding",
+        "loushang.foundation",
+        "subprocess",
+        "urllib.request",
+    ):
+        assert forbidden not in journal
+        assert forbidden not in runtime
+    pending_cases = {
+        "B-LIMIT-GRAPH",
+        "B-LIMIT-SOLVER",
+        "B-LIMIT-REQUESTS",
+        "B-CLOSURE-MISSING",
+        "B-CLOSURE-DIGEST",
+        "B-CLOSURE-ORIGIN",
+        "B-CLOSURE-MARKER",
+        "B-CLOSURE-NAME",
+        "B-CLOSURE-CYCLE",
+        "B-CLOSURE-V1",
+        "B-CRASH-RESOLVING",
+        "B-CRASH-CLOSURE",
+    }
+    assert all(manifest[case_id]["status"] == "planned" for case_id in pending_cases)
+    for evidence in (
+        "changed_inputs_fail_closed",
+        "without_resolver_or_source_io",
+        "durably_records_dependency_cleanup_debt",
+        "changed_budget_before_root_or_dependency_io",
+        "cancel_wins_final_phase_cas",
+    ):
+        assert evidence in journal_tests + owner_tests + runtime_tests
+    normalized = " ".join(contract.split())
+    assert "basis -> selection* -> verified_plan" in normalized
+    assert "This remains candidate code" in contract
+    assert "PLC9B3d candidate code binds a complete credential-free" in inventory
 
 
 def test_plc9b2f_windows_backend_is_rooted_and_has_a_nonskippable_native_gate(

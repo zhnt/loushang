@@ -13,6 +13,7 @@ import pytest
 
 from loushang.harness.resources.packages.plugin_lifecycle.acquisition import (
     AuthenticatedSourceEnvelopeV1,
+    BoundedAcquisitionReceiptV1,
     BoundedAcquisitionSinkPort,
     PackageAcquisitionBudgetV1,
     PackageAcquisitionOwner,
@@ -21,6 +22,10 @@ from loushang.harness.resources.packages.plugin_lifecycle.acquisition import (
     PackageQuarantineStore,
     SourceAdapterResultV1,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.cleanup import (
+    PackageQuarantineCleanupJournal,
+    PackageQuarantineCleanupOwner,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.closure import (
     NormalizedPackageRequirementV1,
     PackageClosureBudgetV1,
@@ -28,7 +33,12 @@ from loushang.harness.resources.packages.plugin_lifecycle.closure import (
     PackageClosureVerifier,
     PackageResolutionEnvironmentV1,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.closure_journal import (
+    PackageClosureResolutionBasisV1,
+    PackageClosureResolutionJournal,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.closure_owner import (
+    PackageDependencyCleanupDebtError,
     PackageDependencyResolutionError,
     PackageDependencySelectionRequestV1,
     PackageDependencySelectionV1,
@@ -40,6 +50,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.phase_evidence import 
 )
 from loushang.harness.resources.packages.plugin_lifecycle.wheel import (
     PackageInspectionBudgetV1,
+    PackageWheelVerificationError,
     PackageWheelVerifier,
     VerifiedWheelCandidate,
 )
@@ -198,6 +209,19 @@ class _Resolver:
         )
 
 
+class _DependencyCleanupDebtWheelVerifier(PackageWheelVerifier):
+    def verify(self, candidate, **kwargs):  # type: ignore[no-untyped-def]
+        if candidate.receipt.node_id != "root":
+            raise PackageWheelVerificationError(
+                "private cleanup failure",
+                code="package_quarantine_cleanup_retryable",
+                stage="inspecting",
+                rejection_code="package_wheel_metadata_invalid",
+                rejection_stage="inspecting",
+            )
+        return super().verify(candidate, **kwargs)
+
+
 @dataclass
 class _Fixture:
     owner: PackageRecursiveClosureOwner
@@ -207,6 +231,10 @@ class _Fixture:
     authority: _Authority
     evidence: PackageArtifactEvidenceJournal
     store: PackageQuarantineStore
+    acquisition_owner: PackageAcquisitionOwner
+    wheel_verifier: PackageWheelVerifier
+    resolution: PackageClosureResolutionJournal
+    cleanup: PackageQuarantineCleanupOwner
 
 
 def _fixture(
@@ -216,6 +244,7 @@ def _fixture(
     budgets: PackageClosureBudgetV1 | None = None,
     root_requires_python: str | None = None,
     root_provides_extra: tuple[str, ...] | None = None,
+    wheel_verifier: PackageWheelVerifier | None = None,
 ) -> _Fixture:
     payloads: dict[str, bytes] = {}
     selections: dict[str, _SelectedArtifact] = {}
@@ -244,12 +273,30 @@ def _fixture(
     authority = _Authority(payloads)
     resolver = _Resolver(selections)
     store = PackageQuarantineStore(tmp_path / "quarantine")
+    cleanup = PackageQuarantineCleanupOwner(
+        journal=PackageQuarantineCleanupJournal(tmp_path / "cleanup.jsonl"),
+        store=store,
+    )
     acquisition = PackageAcquisitionOwner(
         source_authority=authority,
         quarantine_store=store,
     )
     evidence = PackageArtifactEvidenceJournal(tmp_path / "evidence.jsonl")
-    wheel_verifier = PackageWheelVerifier()
+    wheel_verifier = wheel_verifier or PackageWheelVerifier()
+    resolution = PackageClosureResolutionJournal(tmp_path / "closure.jsonl")
+    resolution_environment = _environment()
+    closure_budgets = budgets or PackageClosureBudgetV1()
+    resolution.bind_basis(
+        PackageClosureResolutionBasisV1(
+            operation_id=OPERATION_ID,
+            attempt_epoch=1,
+            request_fingerprint=REQUEST_FINGERPRINT,
+            policy_revision=POLICY_REVISION,
+            quota_profile_revision="quota:1",
+            resolution_environment=resolution_environment,
+            budgets=closure_budgets,
+        )
+    )
     acquisition_budgets = PackageAcquisitionBudgetV1(
         max_transport_bytes=128 * 1024,
         max_requests=1,
@@ -303,6 +350,8 @@ def _fixture(
             closure_verifier=PackageClosureVerifier(),
             acquisition_budgets=acquisition_budgets,
             inspection_budgets=inspection_budgets,
+            cleanup_owner=cleanup,
+            selection_journal=resolution,
         ),
         root=root,
         request=PackageRecursiveClosureRequestV2(
@@ -310,14 +359,68 @@ def _fixture(
             attempt_epoch=1,
             request_fingerprint=REQUEST_FINGERPRINT,
             policy_revision=POLICY_REVISION,
-            resolution_environment=_environment(),
-            budgets=budgets or PackageClosureBudgetV1(),
+            resolution_environment=resolution_environment,
+            budgets=closure_budgets,
         ),
         resolver=resolver,
         authority=authority,
         evidence=evidence,
         store=store,
+        acquisition_owner=acquisition,
+        wheel_verifier=wheel_verifier,
+        resolution=resolution,
+        cleanup=cleanup,
     )
+
+
+def _reopen_root(fixture: _Fixture) -> VerifiedWheelCandidate:
+    source_record = fixture.evidence.find(
+        operation_id=OPERATION_ID,
+        attempt_epoch=1,
+        node_id="root",
+        kind="authenticated_source",
+    )
+    receipt_record = fixture.evidence.find(
+        operation_id=OPERATION_ID,
+        attempt_epoch=1,
+        node_id="root",
+        kind="bounded_acquisition",
+    )
+    verified_record = fixture.evidence.find(
+        operation_id=OPERATION_ID,
+        attempt_epoch=1,
+        node_id="root",
+        kind="verified_wheel",
+    )
+    assert source_record is not None
+    assert receipt_record is not None
+    assert verified_record is not None
+    assert isinstance(source_record.evidence, PackageAuthenticatedSourceEvidenceV1)
+    assert isinstance(receipt_record.evidence, BoundedAcquisitionReceiptV1)
+    root_selection = fixture.resolver.selections["root-plugin"]
+    request = PackageAcquisitionRequestV1(
+        operation_id=OPERATION_ID,
+        attempt_epoch=1,
+        node_id="root",
+        canonical_source_identity=root_selection.source,
+        request_fingerprint=REQUEST_FINGERPRINT,
+        requested_locator_digest=sha256(root_selection.source.encode()).hexdigest(),
+        policy_revision=POLICY_REVISION,
+    )
+    acquired = fixture.acquisition_owner.reopen_acquired(
+        request,
+        receipt_record.evidence,
+        reset_extraction=True,
+        authenticated_envelope=source_record.evidence.envelope,
+    )
+    reopened = fixture.wheel_verifier.verify(
+        acquired,
+        wheel_filename=root_selection.filename,
+        supported_tags=frozenset({"py3-none-any"}),
+        budgets=PackageInspectionBudgetV1(),
+    )
+    assert reopened.evidence == verified_record.evidence
+    return reopened
 
 
 def test_recursive_owner_acquires_marker_selected_dependency_graph(
@@ -381,6 +484,36 @@ def test_recursive_owner_reaches_fixpoint_when_incoming_extras_expand_late(
     assert nodes["shared"].selected_edges == (nodes["leaf"].node_id,)
     assert len(fixture.authority.calls) == 6
     closure.cleanup()
+    assert fixture.store.attempt_names() == ()
+
+
+def test_recursive_owner_replays_durable_selections_and_artifacts_without_io(
+    tmp_path: Path,
+) -> None:
+    fixture = _fixture(
+        tmp_path,
+        {
+            "root-plugin": ("1.0", ("dep==2",)),
+            "dep": ("2.0", ("leaf==1",)),
+            "leaf": ("1.0", ()),
+        },
+    )
+    first = fixture.owner.build(fixture.root, fixture.request)
+    first_plan = first.plan
+    assert len(fixture.resolution.records()) == 3
+    first.suspend_for_recovery()
+    source_calls = len(fixture.authority.calls)
+    fixture.resolver.calls.clear()
+
+    reopened_root = _reopen_root(fixture)
+    replayed = fixture.owner.build(reopened_root, fixture.request)
+
+    assert replayed.plan == first_plan
+    assert fixture.resolver.calls == []
+    assert len(fixture.authority.calls) == source_calls
+    assert len(fixture.resolution.records()) == 3
+    assert len(fixture.evidence.records()) == 9
+    replayed.cleanup()
     assert fixture.store.attempt_names() == ()
 
 
@@ -551,6 +684,36 @@ def test_recursive_owner_rejects_direct_url_requirement_without_resolver_call(
 
     assert rejected.value.code == "package_closure_artifact_invalid"
     assert fixture.resolver.calls == []
+    assert fixture.store.attempt_names() == ()
+
+
+def test_recursive_owner_durably_records_dependency_cleanup_debt(
+    tmp_path: Path,
+) -> None:
+    fixture = _fixture(
+        tmp_path,
+        {
+            "root-plugin": ("1.0", ("dep==2",)),
+            "dep": ("2.0", ()),
+        },
+        wheel_verifier=_DependencyCleanupDebtWheelVerifier(),
+    )
+
+    with pytest.raises(PackageDependencyCleanupDebtError) as rejected:
+        fixture.owner.build(fixture.root, fixture.request)
+
+    assert rejected.value.code == "package_wheel_metadata_invalid"
+    assert "private cleanup failure" not in str(rejected.value)
+    cleanup_status = rejected.value.cleanup_status
+    assert cleanup_status.disposition == "cleanup_retryable"
+    assert cleanup_status.target.node_id != "root"
+    assert fixture.cleanup.status(cleanup_status.target.cleanup_id) == cleanup_status
+    assert len(fixture.store.attempt_names()) == 1
+    repaired = fixture.cleanup.repair(
+        cleanup_status.target.cleanup_id,
+        expected_cleanup_revision=cleanup_status.cleanup_revision,
+    )
+    assert repaired.disposition == "cleanup_complete"
     assert fixture.store.attempt_names() == ()
 
 

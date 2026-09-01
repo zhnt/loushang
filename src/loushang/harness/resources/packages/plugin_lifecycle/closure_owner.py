@@ -6,14 +6,20 @@ import os
 import re
 from dataclasses import dataclass, field
 from hashlib import sha256
-from typing import NoReturn, Protocol
+from typing import NoReturn, Protocol, cast
 
 from loushang.harness.resources.packages.plugin_lifecycle.acquisition import (
     AuthenticatedSourceEnvelopeV1,
+    BoundedAcquisitionReceiptV1,
     PackageAcquisitionBudgetV1,
+    PackageAcquisitionCleanupDebtError,
     PackageAcquisitionOwner,
     PackageAcquisitionRequestV1,
     PackageAuthenticatedSourceEvidenceV1,
+    PackageQuarantineCleanupTargetV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.cleanup import (
+    PackageQuarantineCleanupStatusV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.closure import (
     NormalizedPackageRequirementV1,
@@ -31,14 +37,18 @@ from loushang.harness.resources.packages.plugin_lifecycle.closure import (
 from loushang.harness.resources.packages.plugin_lifecycle.phase_evidence import (
     PackageArtifactEvidenceJournal,
     PackageArtifactEvidenceJournalError,
+    PackageArtifactEvidenceKind,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    PackageLifecyclePhase,
     canonical_json_bytes,
     canonicalize_source_identity,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.wheel import (
     PackageInspectionBudgetV1,
+    PackageWheelVerificationError,
     PackageWheelVerifier,
+    VerifiedWheelArtifactV1,
     VerifiedWheelCandidate,
 )
 
@@ -56,6 +66,25 @@ class PackageDependencyResolutionError(RuntimeError):
     def __init__(self, message: str, *, code: str) -> None:
         super().__init__(message)
         self.code = code
+        self.stage = "resolving_closure"
+
+
+class PackageDependencyCleanupDebtError(RuntimeError):
+    """Sanitized dependency rejection whose cleanup target is durably owned."""
+
+    def __init__(
+        self,
+        *,
+        rejection_code: str,
+        cleanup_status: PackageQuarantineCleanupStatusV1,
+    ) -> None:
+        super().__init__("Rejected Package dependency requires owner cleanup")
+        if not isinstance(cleanup_status, PackageQuarantineCleanupStatusV1):
+            raise TypeError("Package dependency cleanup status is required")
+        if cleanup_status.rejection_code != rejection_code:
+            raise ValueError("Package dependency cleanup rejection changed")
+        self.code = rejection_code
+        self.cleanup_status = cleanup_status
         self.stage = "resolving_closure"
 
 
@@ -304,6 +333,33 @@ class PackageDependencyResolverPort(Protocol):
     ) -> PackageDependencySelectionV1: ...
 
 
+class PackageClosureSelectionJournalPort(Protocol):
+    """Durable replay seam that gives no journal authority to the resolver."""
+
+    def selection(
+        self,
+        request: PackageDependencySelectionRequestV1,
+    ) -> PackageDependencySelectionV1 | None: ...
+
+    def append_selection(
+        self,
+        request: PackageDependencySelectionRequestV1,
+        selection: PackageDependencySelectionV1,
+    ) -> PackageDependencySelectionV1: ...
+
+
+class PackageClosureCleanupOwnerPort(Protocol):
+    """Narrow durable cleanup capability used only for dependency residue."""
+
+    def record_pending(
+        self,
+        target: PackageQuarantineCleanupTargetV1,
+        *,
+        rejection_code: str,
+        rejection_stage: PackageLifecyclePhase,
+    ) -> PackageQuarantineCleanupStatusV1: ...
+
+
 @dataclass(frozen=True, slots=True)
 class PackageRecursiveClosureRequestV2:
     operation_id: str
@@ -396,6 +452,8 @@ class PackageRecursiveClosureOwner:
         closure_verifier: PackageClosureVerifier,
         acquisition_budgets: PackageAcquisitionBudgetV1,
         inspection_budgets: PackageInspectionBudgetV1,
+        cleanup_owner: PackageClosureCleanupOwnerPort,
+        selection_journal: PackageClosureSelectionJournalPort | None = None,
     ) -> None:
         if not callable(getattr(resolver, "resolve", None)):
             raise TypeError("Package dependency resolver is required")
@@ -411,6 +469,13 @@ class PackageRecursiveClosureOwner:
             raise TypeError("Package acquisition budgets are required")
         if not isinstance(inspection_budgets, PackageInspectionBudgetV1):
             raise TypeError("Package inspection budgets are required")
+        if not callable(getattr(cleanup_owner, "record_pending", None)):
+            raise TypeError("Package closure cleanup owner is required")
+        if selection_journal is not None and (
+            not callable(getattr(selection_journal, "selection", None))
+            or not callable(getattr(selection_journal, "append_selection", None))
+        ):
+            raise TypeError("Package closure selection journal is invalid")
         self._resolver = resolver
         self._acquisition_owner = acquisition_owner
         self._evidence_journal = evidence_journal
@@ -418,6 +483,8 @@ class PackageRecursiveClosureOwner:
         self._closure_verifier = closure_verifier
         self._acquisition_budgets = acquisition_budgets
         self._inspection_budgets = inspection_budgets
+        self._cleanup_owner = cleanup_owner
+        self._selection_journal = selection_journal
 
     def build(
         self,
@@ -660,6 +727,10 @@ class PackageRecursiveClosureOwner:
         self,
         request: PackageDependencySelectionRequestV1,
     ) -> PackageDependencySelectionV1:
+        if self._selection_journal is not None:
+            durable = self._selection_journal.selection(request)
+            if durable is not None:
+                return self._require_resolver_selection(request, durable)
         try:
             selection = self._resolver.resolve(request)
         except PackageDependencyResolutionError:
@@ -669,6 +740,16 @@ class PackageRecursiveClosureOwner:
                 "Package dependency resolver refused selection",
                 code="package_closure_artifact_invalid",
             ) from None
+        selection = self._require_resolver_selection(request, selection)
+        if self._selection_journal is not None:
+            selection = self._selection_journal.append_selection(request, selection)
+        return selection
+
+    @staticmethod
+    def _require_resolver_selection(
+        request: PackageDependencySelectionRequestV1,
+        selection: object,
+    ) -> PackageDependencySelectionV1:
         if not isinstance(selection, PackageDependencySelectionV1):
             raise PackageDependencyResolutionError(
                 "Package dependency resolver returned invalid evidence",
@@ -734,36 +815,125 @@ class PackageRecursiveClosureOwner:
             policy_revision=request.policy_revision,
             credential_reference=request.credential_reference,
         )
-        authorized = self._acquisition_owner.authorize_source(acquisition_request)
-        source_evidence = PackageAuthenticatedSourceEvidenceV1(
-            attempt_epoch=request.attempt_epoch,
-            envelope=authorized.envelope,
+        source_evidence = cast(
+            PackageAuthenticatedSourceEvidenceV1 | None,
+            self._artifact_evidence(
+                acquisition_request,
+                kind="authenticated_source",
+                expected_type=PackageAuthenticatedSourceEvidenceV1,
+            ),
         )
-        self._evidence_journal.append(
-            request_fingerprint=request.request_fingerprint,
-            evidence=source_evidence,
+        receipt = cast(
+            BoundedAcquisitionReceiptV1 | None,
+            self._artifact_evidence(
+                acquisition_request,
+                kind="bounded_acquisition",
+                expected_type=BoundedAcquisitionReceiptV1,
+            ),
         )
-        acquired = self._acquisition_owner.acquire_authorized(
-            acquisition_request,
-            authorized,
-            budgets=acquisition_budgets,
+        durable_verified = cast(
+            VerifiedWheelArtifactV1 | None,
+            self._artifact_evidence(
+                acquisition_request,
+                kind="verified_wheel",
+                expected_type=VerifiedWheelArtifactV1,
+            ),
         )
-        try:
-            self._evidence_journal.append(
-                request_fingerprint=request.request_fingerprint,
-                evidence=acquired.receipt,
+        if (receipt is not None and source_evidence is None) or (
+            durable_verified is not None and receipt is None
+        ):
+            raise PackageClosureVerificationError(
+                "Package dependency evidence chain is incomplete",
+                code="package_closure_artifact_invalid",
             )
+        try:
+            if receipt is None:
+                authorized = self._acquisition_owner.authorize_source(
+                    acquisition_request,
+                    expected_envelope=(
+                        source_evidence.envelope
+                        if source_evidence is not None
+                        else None
+                    ),
+                )
+                if source_evidence is None:
+                    source_evidence = PackageAuthenticatedSourceEvidenceV1(
+                        attempt_epoch=request.attempt_epoch,
+                        envelope=authorized.envelope,
+                    )
+                    self._evidence_journal.append(
+                        request_fingerprint=request.request_fingerprint,
+                        evidence=source_evidence,
+                    )
+                acquired = self._acquisition_owner.acquire_authorized(
+                    acquisition_request,
+                    authorized,
+                    budgets=acquisition_budgets,
+                )
+            else:
+                if not isinstance(
+                    source_evidence, PackageAuthenticatedSourceEvidenceV1
+                ):
+                    raise PackageClosureVerificationError(
+                        "Package dependency Source evidence is missing",
+                        code="package_closure_artifact_invalid",
+                    )
+                acquired = self._acquisition_owner.reopen_acquired(
+                    acquisition_request,
+                    receipt,
+                    reset_extraction=True,
+                    authenticated_envelope=source_evidence.envelope,
+                )
+        except PackageAcquisitionCleanupDebtError as debt:
+            raise self._record_cleanup_debt(
+                debt.target,
+                rejection_code=debt.rejection.code,
+                rejection_stage=cast(PackageLifecyclePhase, debt.rejection.stage),
+            )
+        try:
+            if receipt is None:
+                self._evidence_journal.append(
+                    request_fingerprint=request.request_fingerprint,
+                    evidence=acquired.receipt,
+                )
             verified = self._wheel_verifier.verify(
                 acquired,
                 wheel_filename=selection.wheel_filename,
                 supported_tags=frozenset(request.resolution_environment.supported_tags),
                 budgets=self._inspection_budgets,
             )
-            self._evidence_journal.append(
-                request_fingerprint=request.request_fingerprint,
-                evidence=verified.evidence,
-            )
+            if durable_verified is not None:
+                if verified.evidence != durable_verified:
+                    verified.cleanup()
+                    raise PackageClosureVerificationError(
+                        "Package dependency verified evidence changed",
+                        code="package_closure_artifact_invalid",
+                    )
+            else:
+                self._evidence_journal.append(
+                    request_fingerprint=request.request_fingerprint,
+                    evidence=verified.evidence,
+                )
             return verified
+        except PackageWheelVerificationError as error:
+            if error.code == "package_quarantine_cleanup_retryable":
+                if error.rejection_code is None or error.rejection_stage is None:
+                    raise RuntimeError("Dependency cleanup debt lost its rejection")
+                target = acquired.cleanup_target()
+                try:
+                    cleanup_error = self._record_cleanup_debt(
+                        target,
+                        rejection_code=error.rejection_code,
+                        rejection_stage=cast(
+                            PackageLifecyclePhase,
+                            error.rejection_stage,
+                        ),
+                    )
+                finally:
+                    acquired.defer_cleanup()
+                raise cleanup_error
+            acquired.cleanup()
+            raise
         except PackageArtifactEvidenceJournalError:
             acquired.cleanup()
             raise PackageClosureVerificationError(
@@ -773,6 +943,67 @@ class PackageRecursiveClosureOwner:
         except Exception:
             acquired.cleanup()
             raise
+
+    def _record_cleanup_debt(
+        self,
+        target: PackageQuarantineCleanupTargetV1,
+        *,
+        rejection_code: str,
+        rejection_stage: PackageLifecyclePhase,
+    ) -> PackageDependencyCleanupDebtError:
+        status = self._cleanup_owner.record_pending(
+            target,
+            rejection_code=rejection_code,
+            rejection_stage=rejection_stage,
+        )
+        return PackageDependencyCleanupDebtError(
+            rejection_code=rejection_code,
+            cleanup_status=status,
+        )
+
+    def _artifact_evidence(
+        self,
+        request: PackageAcquisitionRequestV1,
+        *,
+        kind: PackageArtifactEvidenceKind,
+        expected_type: type[
+            PackageAuthenticatedSourceEvidenceV1
+            | BoundedAcquisitionReceiptV1
+            | VerifiedWheelArtifactV1
+        ],
+    ) -> (
+        PackageAuthenticatedSourceEvidenceV1
+        | BoundedAcquisitionReceiptV1
+        | VerifiedWheelArtifactV1
+        | None
+    ):
+        try:
+            record = self._evidence_journal.find(
+                operation_id=request.operation_id,
+                attempt_epoch=request.attempt_epoch,
+                node_id=request.node_id,
+                kind=kind,
+            )
+        except PackageArtifactEvidenceJournalError as exc:
+            raise PackageClosureVerificationError(
+                "Package dependency evidence journal is corrupt",
+                code="package_closure_artifact_invalid",
+            ) from exc
+        if record is None:
+            return None
+        if record.request_fingerprint != request.request_fingerprint or not isinstance(
+            record.evidence, expected_type
+        ):
+            raise PackageClosureVerificationError(
+                "Package dependency evidence identity changed",
+                code="package_closure_artifact_invalid",
+            )
+        return cast(
+            PackageAuthenticatedSourceEvidenceV1
+            | BoundedAcquisitionReceiptV1
+            | VerifiedWheelArtifactV1,
+            record.evidence,
+        )
 
     def _remaining_acquisition_budgets(
         self,
@@ -929,6 +1160,9 @@ def _wire_int(value: object, *, name: str) -> int:
 
 
 __all__ = [
+    "PackageClosureCleanupOwnerPort",
+    "PackageClosureSelectionJournalPort",
+    "PackageDependencyCleanupDebtError",
     "PackageDependencyResolutionError",
     "PackageDependencyResolverPort",
     "PackageDependencySelectionRequestV1",

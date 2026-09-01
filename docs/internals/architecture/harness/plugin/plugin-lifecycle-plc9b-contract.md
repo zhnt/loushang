@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.3c.
+- Contract version: PLC9B.3d-candidate.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -39,7 +39,11 @@
   receipt or wheel-evidence schemas. B3c is an accepted dark recursive closure
   builder over those accepted components. It has no lifecycle-phase journal,
   recovery, stable-ref, publication, or production binding, so it still
-  promotes no global manifest row.
+  promotes no global manifest row. B3d candidate code adds a credential-free
+  resolution-basis/selection/plan journal, local artifact replay, dependency
+  cleanup-debt handoff, and the dark `resolving_closure -> closure_verified`
+  lifecycle owner. Its global rows remain planned until the composed
+  adversarial fixtures and retained native CI evidence pass.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -579,6 +583,49 @@ passed. The retained `plc9b-linux-native-pytest-report` artifact (ID
 Its XML executed exactly 52 tests with zero skips, failures, or errors,
 confirming that recursive closure composition remained dark and promoted no
 global manifest row.
+
+## PLC9B3d Candidate Durable Closure Recovery
+
+B3d introduces one append-only closure-resolution journal per owner state
+layout. The first record for an operation attempt is a credential-free
+`PackageClosureResolutionBasisV1` that binds the lifecycle request fingerprint,
+attempt epoch, policy and quota-profile revisions, the complete normalized
+resolution environment, closure budgets, and exact root extras. The basis is
+written before root artifact acquisition or dependency I/O. Exact replay is
+idempotent; any changed basis fails locally without consulting Source
+Authority, a resolver, or a quarantine writer.
+
+Resolver selections are then appended before their selected Source may be
+opened. A final `VerifiedClosurePlanV2` is accepted only when it has the same
+request/environment basis and its complete active edge set equals the durable
+selection set. The journal order is therefore strictly `basis -> selection* ->
+verified_plan`; missing, duplicate, late, changed, future-version, or corrupt
+records fail closed. No credential reference, path, live handle, byte stream,
+or publication capability is serializable through this journal.
+
+The dark closure lifecycle owner composes root artifact replay with the
+recursive builder. It advances `extracted -> resolving_closure`, persists the
+verified plan, and only then advances `resolving_closure -> closure_verified`.
+Recovery re-verifies root and dependency Wheels from exact local Source,
+receipt, and Wheel evidence. Once a receipt is durable it performs no resolver
+or Source call; a Source-only crash edge requires exact reauthorization before
+transfer. Changed durable plans and lifecycle/attempt/environment/budget/extra
+identity fail before phase advancement. A cancel or competing terminal phase
+CAS releases process-local candidates and returns the winning durable status.
+
+Dependency rejection cleanup is not a second mutable state machine. Acquisition
+or Wheel cleanup debt is transferred to the existing Package quarantine cleanup
+owner as an exact durable tombstone, while the operation journal records the
+sanitized closure failure independently. Cleanup status is projected separately
+from operation status and can be repaired under its own cleanup CAS domain.
+
+This remains candidate code. It creates no stable artifact ref, transaction
+pin, immutable artifact-store write, committed set, desired-state mutation, or
+CLI/RPC/Session/startup route. `B-LIMIT-GRAPH/SOLVER/REQUESTS`, all
+`B-CLOSURE-*`, `B-CRASH-RESOLVING`, and `B-CRASH-CLOSURE` remain `planned`
+until their composed manifest nodes pass the mandatory Linux-native workflow
+and its non-skippable XML is retained. B3e still owns typed refs, pins, and
+atomic committed-set publication.
 
 ## First Principles
 
