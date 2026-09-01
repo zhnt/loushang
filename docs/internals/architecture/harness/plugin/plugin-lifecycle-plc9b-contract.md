@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.4b-candidate.
+- Contract version: PLC9B.4b.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -93,7 +93,7 @@
   still-live transaction-pin journals; it returns only a stable admission
   receipt, never a path, store capability, reopened object, or live handle.
   The missing-receipt and seven cross-context admission threats are executable.
-  B4b candidate code adds strict admitted-set/desired-CAS/dependency-pin/handoff
+  B4b accepted code adds strict admitted-set/desired-CAS/dependency-pin/handoff
   records, a durable handoff CAS journal, and a lock-free coordinator over
   read-only admission plus narrow Desired and Retention Ports. Its exact
   `opened -> dependency_pinned -> desired_committed -> settled` recovery path
@@ -1278,7 +1278,7 @@ Harness checks. Local `make check-harness` passed Ruff, mypy over 640 source
 files, and 3,805 tests with 23 expected skips; the 14 focused B4a component
 tests and 36 PLC9B architecture contracts also passed.
 
-## PLC9B4b Candidate Retention Handoff
+## PLC9B4b Accepted Retention Handoff
 
 B4b composes only immutable evidence. `PackageRetentionHandoffRequestV1` binds
 the exact read-only B4a admission request/receipt, committed publication,
@@ -1313,6 +1313,18 @@ concurrent exact replay. The implementation remains dark inside
 `plugin_management` ledger, performs no legacy-ref cast, exports no facade or
 author-SDK symbol, and activates no CLI/RPC/Session/startup route. B4c epoch
 fencing and the later explicit adapters remain required before Product routing.
+
+B4b was accepted on 2026-09-01 against candidate head `282b4af7` after all 23
+PR checks passed. Harness Quality run `33571393925`, Linux harness job
+`100065909160`, retained `plc9b-linux-native-pytest-report` artifact ID
+`9825049355` with upload digest
+`311c66abff263261b430955ea1aef27bef58db3a0a74079593e40d9909846974`.
+Its XML executed exactly 88 manifest nodes, including all six
+`B-HANDOFF-*` rows, with zero skips, failures, or errors. Local
+`make check-harness` passed Ruff, mypy over 641 source files, and 3,813 tests
+with 23 expected skips; the 127 focused B4b component, manifest, and PLC9B
+architecture tests also passed. B4c recovery/epoch fencing remains the next
+closed gate.
 
 ## First Principles
 

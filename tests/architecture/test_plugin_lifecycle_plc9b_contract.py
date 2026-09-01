@@ -619,7 +619,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.4b-candidate." in contract
+    assert "Contract version: PLC9B.4b." in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
@@ -3481,13 +3481,25 @@ def test_plc9b4b_retention_handoff_is_dark_exact_and_no_zero_pin() -> None:
         assert {"exact_pin_set", "no_zero_pin"} <= set(row["oracles"].split(";"))
 
     normalized = " ".join(contract.split())
-    assert "PLC9B.4b-candidate." in contract
-    assert "PLC9B4b Candidate Retention Handoff" in normalized
+    assert "PLC9B.4b." in contract
+    assert "PLC9B4b Accepted Retention Handoff" in normalized
     assert "opened -> dependency_pinned -> desired_committed -> settled" in normalized
     assert "No journal lock is held" in normalized
     assert "process stops before the local settled projection" in normalized
-    assert "PLC9B4b candidate code adds the dark retention-handoff" in inventory
-    assert "PLC9B4b candidate code adds strict Desired-CAS" in index
+    assert "PLC9B4b accepted code adds the dark retention-handoff" in inventory
+    assert "PLC9B4b accepted code adds strict Desired-CAS" in index
+    assert "B4b was accepted on 2026-09-01 against candidate head `282b4af7`" in (
+        normalized
+    )
+    assert "Harness Quality run `33571393925`" in normalized
+    assert "Linux harness job `100065909160`" in normalized
+    assert "artifact ID `9825049355`" in normalized
+    assert (
+        "311c66abff263261b430955ea1aef27bef58db3a0a74079593e40d9909846974"
+        in normalized
+    )
+    assert "executed exactly 88 manifest nodes" in normalized
+    assert "B4c recovery/epoch fencing remains the next closed gate" in normalized
 
 
 def test_plc9b2f_windows_backend_is_rooted_and_has_a_nonskippable_native_gate() -> None:

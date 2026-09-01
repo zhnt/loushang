@@ -186,7 +186,7 @@
   later gates. All 23 candidate checks passed; retained Linux artifact
   `9823339334` executed exactly 82 manifest nodes with zero skips, failures, or
   errors and contained all eight B4a rows.
-  PLC9B4b candidate code adds the dark retention-handoff record family,
+  PLC9B4b accepted code adds the dark retention-handoff record family,
   strict handoff CAS journal, and coordinator over read-only admission plus
   narrow Desired-CAS and Retention-settlement Ports. It proves dependency pins
   exist before Desired commit, preserves the transaction pin on rejection,
@@ -194,7 +194,10 @@
   live. All six `B-HANDOFF-*` threats are executable, including settlement-to-
   projection crash recovery and concurrent replay. It imports no concrete
   management ledger, exports no public symbol, and leaves B4c epoch fencing,
-  Product routing, and explicit legacy adapters as later gates.
+  Product routing, and explicit legacy adapters as later gates. All 23 PR
+  checks passed; retained Linux artifact `9825049355` executed exactly 88
+  manifest nodes with zero skips, failures, or errors and contained all six
+  B4b rows.
 
 This inventory distinguishes accepted reusable owners, Product adapters,
 parallel compatibility paths, and missing target boundaries. “Migrate” or

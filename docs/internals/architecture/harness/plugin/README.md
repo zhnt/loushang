@@ -164,14 +164,15 @@ Neither may silently override a narrower implemented owner contract.
   later retention-handoff, epoch, and Product-routing gates remain closed. All
   23 candidate checks passed, and retained Linux artifact `9823339334`
   executed exactly 82 manifest nodes with no skips, failures, or errors.
-  PLC9B4b candidate code adds strict Desired-CAS, dependency-pin, handoff, and
+  PLC9B4b accepted code adds strict Desired-CAS, dependency-pin, handoff, and
   settlement receipts plus a durable handoff CAS coordinator. Dependency pins
   precede Desired commit; rejection preserves the transaction pin; successful
   settlement proves exact dependency retention before transaction-pin release.
   All six handoff rows are executable, including post-settlement recovery and
   concurrent replay. The code remains dark and independent of concrete
   `plugin_management` ledgers; B4c epoch fencing and Product adapters remain
-  closed.
+  closed. All 23 PR checks passed, and retained Linux artifact `9825049355`
+  executed exactly 88 manifest nodes with no skips, failures, or errors.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)
