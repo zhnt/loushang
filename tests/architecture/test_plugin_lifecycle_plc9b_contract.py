@@ -395,6 +395,10 @@ def _implemented_b2k_hardlink_manifest_cases() -> set[str]:
     return _literal_manifest_cases("IMPLEMENTED_B2K_HARDLINK_MANIFEST_CASES")
 
 
+def _implemented_b3d_recovery_manifest_cases() -> set[str]:
+    return _literal_manifest_cases("IMPLEMENTED_B3D_RECOVERY_MANIFEST_CASES")
+
+
 def _journal_effect_policy() -> list[tuple[str, str, str]]:
     contract = _source(CONTRACT)
     block = contract.split("<!-- plc9b-journal-effect-policy:start -->", 1)[1]
@@ -478,7 +482,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.3d-candidate" in contract
+    assert "Contract version: PLC9B.3d1-candidate" in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
@@ -733,6 +737,7 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
     implemented_b2i = _implemented_b2i_windows_manifest_cases()
     implemented_b2j = _implemented_b2j_recovery_manifest_cases()
     implemented_b2k = _implemented_b2k_hardlink_manifest_cases()
+    implemented_b3d = _implemented_b3d_recovery_manifest_cases()
     implemented = (
         implemented_b1
         | implemented_b2
@@ -740,6 +745,7 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
         | implemented_b2i
         | implemented_b2j
         | implemented_b2k
+        | implemented_b3d
     )
 
     assert len(manifest) == 127
@@ -844,6 +850,18 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
         | implemented_b2i
         | implemented_b2j
     ).isdisjoint(implemented_b2k)
+    assert implemented_b3d == {
+        "B-CRASH-RESOLVING",
+        "B-CRASH-CLOSURE",
+    }
+    assert (
+        implemented_b1
+        | implemented_b2
+        | implemented_b2h
+        | implemented_b2i
+        | implemented_b2j
+        | implemented_b2k
+    ).isdisjoint(implemented_b3d)
     separator = manifest["B-PATH-COLLISION-SEP"]
     assert separator["fixture"] == "separator_ambiguous_path"
     assert separator["code"] == "package_archive_path_rejected"
@@ -857,7 +875,7 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
     assert hardlink["code"] == "ok"
     assert hardlink["disposition"] == "extracted@independent_regular_files"
     assert hardlink["status"] == "implemented"
-    assert len(manifest) - len(implemented) == 75
+    assert len(manifest) - len(implemented) == 73
     workflow = _source(HARNESS_WORKFLOW)
     assert "PLC9B Linux native adversarial gate (plc9b-linux-native)" in workflow
     assert "tests/harness/resources/packages/test_plc9b_adversarial.py" in workflow
@@ -1858,8 +1876,6 @@ def test_plc9b3c_recursive_builder_is_selection_only_dark_and_unpromoted() -> No
         "B-CLOSURE-NAME",
         "B-CLOSURE-CYCLE",
         "B-CLOSURE-V1",
-        "B-CRASH-RESOLVING",
-        "B-CRASH-CLOSURE",
     }
     assert all(
         manifest[case_id]["status"] == "planned" for case_id in component_case_ids
@@ -1939,10 +1955,12 @@ def test_plc9b3d_candidate_binds_recovery_before_io_and_remains_dark() -> None:
         "B-CLOSURE-NAME",
         "B-CLOSURE-CYCLE",
         "B-CLOSURE-V1",
-        "B-CRASH-RESOLVING",
-        "B-CRASH-CLOSURE",
     }
     assert all(manifest[case_id]["status"] == "planned" for case_id in pending_cases)
+    assert {
+        manifest[case_id]["status"]
+        for case_id in {"B-CRASH-RESOLVING", "B-CRASH-CLOSURE"}
+    } == {"implemented"}
     for evidence in (
         "changed_inputs_fail_closed",
         "without_resolver_or_source_io",

@@ -79,8 +79,9 @@
   Source access, journals the exact verified plan before the closure phase CAS,
   reopens durable dependency evidence without resolver or Source calls, and
   transfers dependency cleanup debt to the existing cleanup-domain owner. It
-  remains dark and promotes no global row until its composed adversarial nodes
-  and retained Linux-native report pass.
+  remains dark. B3d-1 makes the two resolving/closure crash rows executable;
+  they remain candidate evidence until the retained Linux-native report passes,
+  while the closure/limit rows remain planned.
   Publication, later transaction phases, and every production route remain
   migration obligations; no global adversarial row is promoted.
 

@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.3d-candidate.
+- Contract version: PLC9B.3d1-candidate.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -42,8 +42,9 @@
   promotes no global manifest row. B3d candidate code adds a credential-free
   resolution-basis/selection/plan journal, local artifact replay, dependency
   cleanup-debt handoff, and the dark `resolving_closure -> closure_verified`
-  lifecycle owner. Its global rows remain planned until the composed
-  adversarial fixtures and retained native CI evidence pass.
+  lifecycle owner. B3d-1 candidate code makes the two closure crash rows
+  executable; the remaining closure/limit rows stay planned, and no B3d row is
+  accepted until retained native CI evidence passes.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -621,11 +622,20 @@ from operation status and can be repaired under its own cleanup CAS domain.
 
 This remains candidate code. It creates no stable artifact ref, transaction
 pin, immutable artifact-store write, committed set, desired-state mutation, or
-CLI/RPC/Session/startup route. `B-LIMIT-GRAPH/SOLVER/REQUESTS`, all
-`B-CLOSURE-*`, `B-CRASH-RESOLVING`, and `B-CRASH-CLOSURE` remain `planned`
-until their composed manifest nodes pass the mandatory Linux-native workflow
-and its non-skippable XML is retained. B3e still owns typed refs, pins, and
-atomic committed-set publication.
+CLI/RPC/Session/startup route. B3d-1 makes `B-CRASH-RESOLVING` and
+`B-CRASH-CLOSURE` executable with complete root evidence, resolution-journal,
+bounded-residue, zero-reentry, and secret-redaction oracles. Their acceptance
+still requires the mandatory Linux-native workflow and retained non-skippable
+XML. `B-LIMIT-GRAPH/SOLVER/REQUESTS` and all `B-CLOSURE-*` remain `planned`.
+B3e still owns typed refs, pins, and atomic committed-set publication.
+
+The underlying B3d mechanism candidate `fd569816` passed every PR check in
+Harness Quality run `33510638346`, Linux harness job `99865166671`. Its retained
+`plc9b-linux-native-pytest-report` artifact (ID `9801468115`) has upload digest
+`288f5975cd12912aa84a298ce74a2fac4ab76e3b8e83aaa8b5fac969f19597c3`;
+the XML executed the unchanged 52 accepted manifest nodes with zero skips,
+failures, or errors. This proves the dark mechanism did not silently promote a
+row. B3d-1's two new executable crash rows require their own later native run.
 
 ## First Principles
 
@@ -1148,8 +1158,8 @@ B-CRASH-ACQUIRING | any | acquiring | crash_edge | package_operation_interrupted
 B-CRASH-ACQUIRED | any | acquired | crash_edge | package_operation_interrupted | retryable_failure@acquired | same_receipt;bounded_residue;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CRASH-ACQUIRED] | harness-quality.yml#plc9b-linux-native | implemented
 B-CRASH-INSPECTING | any | inspecting | crash_edge | package_operation_interrupted | retryable_failure@inspecting | same_receipt;bounded_residue;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CRASH-INSPECTING] | harness-quality.yml#plc9b-linux-native | implemented
 B-CRASH-EXTRACTED | any | extracted | crash_edge | package_operation_interrupted | retryable_failure@extracted | same_receipt;bounded_residue;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CRASH-EXTRACTED] | harness-quality.yml#plc9b-linux-native | implemented
-B-CRASH-RESOLVING | any | resolving_closure | crash_edge | package_operation_interrupted | retryable_failure@resolving_closure | same_receipt;bounded_residue;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CRASH-RESOLVING] | harness-quality.yml#plc9b-linux-native | planned
-B-CRASH-CLOSURE | any | closure_verified | crash_edge | package_operation_interrupted | retryable_failure@closure_verified | same_receipt;no_publication;no_binding | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CRASH-CLOSURE] | harness-quality.yml#plc9b-linux-native | planned
+B-CRASH-RESOLVING | any | resolving_closure | crash_edge | package_operation_interrupted | retryable_failure@resolving_closure | same_receipt;bounded_residue;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CRASH-RESOLVING] | harness-quality.yml#plc9b-linux-native | implemented
+B-CRASH-CLOSURE | any | closure_verified | crash_edge | package_operation_interrupted | retryable_failure@closure_verified | same_receipt;no_publication;no_binding | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CRASH-CLOSURE] | harness-quality.yml#plc9b-linux-native | implemented
 B-CRASH-PINNED | any | transaction_pinned | crash_edge | package_operation_interrupted | retryable_failure@transaction_pinned | same_receipt;pin_visible;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CRASH-PINNED] | harness-quality.yml#plc9b-linux-native | planned
 B-CRASH-STAGING | any | staging | crash_edge | package_operation_interrupted | retryable_failure@staging | same_receipt;pin_visible;no_binding | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CRASH-STAGING] | harness-quality.yml#plc9b-linux-native | planned
 B-CRASH-SET | any | set_published | crash_edge | package_operation_interrupted | retryable_failure@set_published | same_receipt;pin_visible;no_binding;no_desired | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CRASH-SET] | harness-quality.yml#plc9b-linux-native | planned

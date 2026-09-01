@@ -93,9 +93,9 @@ Neither may silently override a narrower implemented owner contract.
   routes every dependency through accepted Source/acquisition/Wheel evidence
   before the pure closure proof. PLC9B3d candidate code adds durable
   basis/selection/plan evidence, local dependency replay, cleanup-debt handoff,
-  and dark closure phase-CAS; its global rows remain planned pending composed
-  native acceptance. Typed refs, publication, and production routing remain
-  unimplemented.
+  and dark closure phase-CAS. B3d-1 makes its two crash rows executable pending
+  native acceptance; closure/limit rows remain planned. Typed refs, publication,
+  and production routing remain unimplemented.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)

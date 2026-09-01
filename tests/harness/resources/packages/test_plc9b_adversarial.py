@@ -39,6 +39,24 @@ from loushang.harness.resources.packages.plugin_lifecycle.cleanup import (
     PackageQuarantineCleanupJournal,
     PackageQuarantineCleanupOwner,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.closure import (
+    PackageClosureBudgetV1,
+    PackageClosureVerifier,
+    PackageResolutionEnvironmentV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.closure_journal import (
+    PackageClosureResolutionBasisV1,
+    PackageClosureResolutionJournal,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.closure_owner import (
+    PackageDependencySelectionRequestV1,
+    PackageDependencySelectionV1,
+    PackageRecursiveClosureOwner,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.closure_runtime import (
+    PackageClosureExecutionRequestV2,
+    PackageClosureLifecycleOwner,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.phase_evidence import (
     PackageArtifactEvidenceJournal,
 )
@@ -124,6 +142,10 @@ IMPLEMENTED_B2J_RECOVERY_MANIFEST_CASES = (
 )
 
 IMPLEMENTED_B2K_HARDLINK_MANIFEST_CASES = ("B-TYPE-HARDLINK",)
+IMPLEMENTED_B3D_RECOVERY_MANIFEST_CASES = (
+    "B-CRASH-RESOLVING",
+    "B-CRASH-CLOSURE",
+)
 
 EXECUTABLE_MANIFEST_CASES = (
     IMPLEMENTED_B1_MANIFEST_CASES
@@ -132,6 +154,7 @@ EXECUTABLE_MANIFEST_CASES = (
     + IMPLEMENTED_B2I_WINDOWS_MANIFEST_CASES
     + IMPLEMENTED_B2J_RECOVERY_MANIFEST_CASES
     + IMPLEMENTED_B2K_HARDLINK_MANIFEST_CASES
+    + IMPLEMENTED_B3D_RECOVERY_MANIFEST_CASES
 )
 
 WHEEL_FILENAME = "acme_plugin-1.0-py3-none-any.whl"
@@ -605,6 +628,18 @@ class _CleanupDebtWheelVerifier(PackageWheelVerifier):
         )
 
 
+@dataclass
+class _NoDependencyResolver:
+    calls: int = 0
+
+    def resolve(
+        self,
+        _request: PackageDependencySelectionRequestV1,
+    ) -> PackageDependencySelectionV1:
+        self.calls += 1
+        raise AssertionError("root-only closure must not consult the resolver")
+
+
 def _facts(*present: str) -> PackageClassificationFactsV1:
     present_set = set(present)
     kinds = (
@@ -631,6 +666,7 @@ def _facts(*present: str) -> PackageClassificationFactsV1:
 def _request(
     *,
     source: str = "https://packages.example.test/acme.whl",
+    environment_fingerprint: str = "e" * 64,
 ) -> PackageLifecycleIngressRequestV1:
     return PackageLifecycleIngressRequestV1(
         operation_id="manifest-operation",
@@ -642,7 +678,26 @@ def _request(
         source_locator=source,
         policy_revision="package-policy:1",
         quota_profile_revision="quota:1",
-        resolution_environment_fingerprint="e" * 64,
+        resolution_environment_fingerprint=environment_fingerprint,
+    )
+
+
+def _closure_environment() -> PackageResolutionEnvironmentV1:
+    return PackageResolutionEnvironmentV1.from_mapping(
+        {
+            "implementation_name": "cpython",
+            "implementation_version": "3.11.10",
+            "os_name": "posix",
+            "platform_machine": "x86_64",
+            "platform_python_implementation": "CPython",
+            "platform_release": "manifest",
+            "platform_system": "Linux",
+            "platform_version": "manifest",
+            "python_full_version": "3.11.10",
+            "python_version": "3.11",
+            "sys_platform": "linux",
+        },
+        supported_tags=("py3-none-any",),
     )
 
 
@@ -737,6 +792,50 @@ def _b2_owner(
         cleanup_journal,
         store,
         source_authority,
+    )
+
+
+def _b3d_owner(tmp_path: Path, *, case_id: str, secret: str):
+    components = _b2_owner(
+        tmp_path,
+        case_id=case_id,
+        secret=secret,
+        payload=_wheel_bytes(),
+    )
+    (
+        kernel,
+        artifact_owner,
+        _lifecycle_journal,
+        evidence_journal,
+        _cleanup_journal,
+        _store,
+        _source_authority,
+    ) = components
+    resolution_journal = PackageClosureResolutionJournal(
+        tmp_path / "package-closure-resolution.jsonl"
+    )
+    resolver = _NoDependencyResolver()
+    recursive_owner = PackageRecursiveClosureOwner(
+        resolver=resolver,
+        acquisition_owner=artifact_owner._acquisition_owner,
+        evidence_journal=evidence_journal,
+        wheel_verifier=artifact_owner._wheel_verifier,
+        closure_verifier=PackageClosureVerifier(),
+        acquisition_budgets=artifact_owner._acquisition_budgets,
+        inspection_budgets=artifact_owner._inspection_budgets,
+        cleanup_owner=artifact_owner._cleanup_owner,
+        selection_journal=resolution_journal,
+    )
+    return (
+        *components,
+        PackageClosureLifecycleOwner(
+            kernel=kernel,
+            artifact_owner=artifact_owner,
+            closure_builder=recursive_owner,
+            resolution_journal=resolution_journal,
+        ),
+        resolution_journal,
+        resolver,
     )
 
 
@@ -1102,6 +1201,109 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
         assert journal.records() == records
         assert source_authority.authorize_calls == 1
         assert secret not in repr(result)
+    elif case_id in IMPLEMENTED_B3D_RECOVERY_MANIFEST_CASES:
+        secret = f"manifest-secret-{case_id.lower()}"
+        environment = _closure_environment()
+        (
+            kernel,
+            artifact_owner,
+            journal,
+            evidence_journal,
+            cleanup_journal,
+            store,
+            source_authority,
+            closure_owner,
+            resolution_journal,
+            resolver,
+        ) = _b3d_owner(tmp_path, case_id=case_id, secret=secret)
+        classified = kernel.submit(
+            _request(
+                source=(
+                    f"https://user:{secret}@packages.example.test/{WHEEL_FILENAME}"
+                    f"?token={secret}#{secret}"
+                ),
+                environment_fingerprint=environment.fingerprint,
+            )
+        )
+        artifact_execution = _artifact_execution(classified, secret=secret)
+        execution = PackageClosureExecutionRequestV2(
+            artifact=artifact_execution,
+            resolution_environment=environment,
+            budgets=PackageClosureBudgetV1(),
+        )
+        if case_id == "B-CRASH-RESOLVING":
+            request = kernel.journal.request(classified.operation_id)
+            assert request is not None
+            resolution_journal.bind_basis(
+                PackageClosureResolutionBasisV1(
+                    operation_id=classified.operation_id,
+                    attempt_epoch=classified.attempt_epoch,
+                    request_fingerprint=classified.request_fingerprint,
+                    policy_revision=request.policy_revision,
+                    quota_profile_revision=request.quota_profile_revision,
+                    resolution_environment=environment,
+                    budgets=execution.budgets,
+                )
+            )
+            artifact_result = artifact_owner.execute(artifact_execution)
+            assert artifact_result.candidate is not None
+            current = kernel.advance(
+                classified.operation_id,
+                next_phase="resolving_closure",
+                expected_phase="extracted",
+                expected_journal_revision=artifact_result.status.journal_revision,
+                expected_attempt_epoch=artifact_result.status.attempt_epoch,
+            )
+            artifact_result.candidate.suspend_for_recovery()
+            expected_resolution_kinds = ("resolution_basis",)
+        else:
+            closure_result = closure_owner.execute(execution)
+            assert closure_result.candidate is not None
+            current = closure_result.status
+            closure_result.candidate.suspend_for_recovery()
+            expected_resolution_kinds = (
+                "resolution_basis",
+                "verified_plan",
+            )
+        assert current.phase == (
+            "resolving_closure"
+            if case_id == "B-CRASH-RESOLVING"
+            else "closure_verified"
+        )
+        evidence_before = evidence_journal.records()
+        resolution_before = resolution_journal.records()
+        lifecycle_before = journal.records()
+        source_calls = source_authority.authorize_calls
+
+        interrupted = kernel.interrupt(
+            current.operation_id,
+            expected_phase=current.phase,
+            expected_journal_revision=current.journal_revision,
+            expected_attempt_epoch=current.attempt_epoch,
+        )
+
+        assert interrupted.disposition == "retryable_failure"
+        assert interrupted.failure is not None
+        assert interrupted.failure.code == "package_operation_interrupted"
+        assert interrupted.failure.retry_domain == "operation"
+        assert tuple(
+            record.evidence_kind for record in resolution_before
+        ) == expected_resolution_kinds
+        assert len(journal.records()) == len(lifecycle_before) + 1
+        replay = closure_owner.execute(execution)
+        assert replay.status == interrupted
+        assert replay.candidate is None
+        assert evidence_journal.records() == evidence_before
+        assert resolution_journal.records() == resolution_before
+        assert source_authority.authorize_calls == source_calls == 1
+        assert resolver.calls == 0
+        assert cleanup_journal.records() == ()
+        assert len(store.attempt_names()) == 1
+        assert store.total_residue_bytes() <= 512 * 1024
+        assert secret not in repr(interrupted)
+        for path in tmp_path.rglob("*"):
+            if path.is_file():
+                assert secret.encode() not in path.read_bytes()
     elif case_id.startswith("B-CRASH-") and case_id not in {
         "B-CRASH-ACCEPTED",
         "B-CRASH-CLASSIFIED",
