@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager, nullcontext
@@ -554,6 +555,108 @@ def test_windows_private_directory_handle_anchors_child_reads(
 
 @pytest.mark.skipif(
     lifecycle_module.os.name != "nt",
+    reason="requires native Windows reparse-point semantics",
+)
+def test_windows_descriptor_relative_read_rejects_reparse_child(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "private-state"
+    root.mkdir()
+    outside = tmp_path / "outside.jsonl"
+    outside.write_text("attacker", encoding="utf-8")
+    (root / "linked.jsonl").symlink_to(outside)
+    expected = lifecycle_module._validate_existing_private_directory(root)
+
+    with lifecycle_module._open_windows_private_directory(root, expected) as descriptor:
+        with pytest.raises(OSError, match="direct regular file"):
+            lifecycle_module.read_journal_file_at(descriptor, "linked.jsonl")
+
+
+@pytest.mark.skipif(
+    lifecycle_module.os.name != "nt",
+    reason="requires native Windows rooted-handle ABA semantics",
+)
+def test_windows_compatibility_reconcile_survives_full_root_aba(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    layout = resolve_coding_plugin_lifecycle_state_layout(workspace)
+    trusted = build_coding_plugin_lifecycle(layout, startup_id="trusted-root")
+    key = trusted.installation_key("managed-pack")
+    try:
+        trusted.migrate_legacy_enablement(
+            key,
+            _package("managed-pack"),
+            legacy_disabled=True,
+            manifest_enabled_default=True,
+            legacy_input_fingerprint=plugin_enablement_legacy_input_fingerprint(
+                key,
+                legacy_disabled=True,
+                manifest_enabled_default=True,
+            ),
+        )
+    finally:
+        trusted.release_owned_process_startup_lease()
+
+    trusted_detached = tmp_path / "trusted-detached"
+    attacker_detached = tmp_path / "attacker-detached"
+
+    @contextmanager
+    def replace_root_for_capture(_captured):  # type: ignore[no-untyped-def]
+        with _open_windows_delete_shared_directory(layout.root) as descriptor:
+            layout.root.rename(trusted_detached)
+            attacker = build_coding_plugin_lifecycle(
+                layout,
+                startup_id="attacker-root",
+            )
+            try:
+                attacker.migrate_legacy_enablement(
+                    key,
+                    _package("managed-pack"),
+                    legacy_disabled=False,
+                    manifest_enabled_default=True,
+                    legacy_input_fingerprint=(
+                        plugin_enablement_legacy_input_fingerprint(
+                            key,
+                            legacy_disabled=False,
+                            manifest_enabled_default=True,
+                        )
+                    ),
+                )
+            finally:
+                attacker.release_owned_process_startup_lease()
+            try:
+                yield descriptor
+            finally:
+                layout.root.rename(attacker_detached)
+                trusted_detached.rename(layout.root)
+
+    monkeypatch.setattr(
+        lifecycle_module,
+        "_pin_portable_private_directory_chain",
+        replace_root_for_capture,
+    )
+    monkeypatch.setattr(
+        lifecycle_module,
+        "_assert_private_directory_chain_stable",
+        lambda _captured: None,
+    )
+    settings = _SettingsManager(_Settings())
+    writer = bind_coding_plugin_enablement_compatibility(layout, settings)
+    assert writer is not None
+
+    writer.reconcile()
+
+    assert settings.settings.disabled_plugins == ("managed-pack",)
+    assert layout.root.is_dir()
+    assert attacker_detached.is_dir()
+
+
+@pytest.mark.skipif(
+    lifecycle_module.os.name != "nt",
     reason="requires native Windows rooted-handle I/O",
 )
 def test_windows_portable_compatibility_existing_root_uses_anchored_io(
@@ -608,6 +711,59 @@ def test_windows_portable_compatibility_absent_root_is_noop(
     writer.reconcile()
 
     assert layout.root.exists() is False
+
+
+@contextmanager
+def _open_windows_delete_shared_directory(path: Path):  # type: ignore[no-untyped-def]
+    import ctypes
+    import msvcrt
+    from ctypes import wintypes
+
+    win_dll = getattr(ctypes, "WinDLL")
+    kernel32 = win_dll("kernel32", use_last_error=True)
+    create_file = kernel32.CreateFileW
+    create_file.argtypes = (
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.LPVOID,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.HANDLE,
+    )
+    create_file.restype = wintypes.HANDLE
+    close_handle = kernel32.CloseHandle
+    close_handle.argtypes = (wintypes.HANDLE,)
+    close_handle.restype = wintypes.BOOL
+    file_list_directory = 0x00000001
+    file_read_attributes = 0x00000080
+    share_read_write_delete = 0x00000001 | 0x00000002 | 0x00000004
+    open_existing = 3
+    file_flag_open_reparse_point = 0x00200000
+    file_flag_backup_semantics = 0x02000000
+    handle = create_file(
+        str(path),
+        file_list_directory | file_read_attributes,
+        share_read_write_delete,
+        None,
+        open_existing,
+        file_flag_open_reparse_point | file_flag_backup_semantics,
+        None,
+    )
+    if handle == ctypes.c_void_p(-1).value:
+        raise ctypes.WinError(ctypes.get_last_error())
+    descriptor: int | None = None
+    try:
+        descriptor = msvcrt.open_osfhandle(
+            handle,
+            os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOINHERIT", 0),
+        )
+        yield descriptor
+    finally:
+        if descriptor is None:
+            close_handle(handle)
+        else:
+            os.close(descriptor)
 
 
 def test_portable_compatibility_capture_leaves_absent_state_root_absent(

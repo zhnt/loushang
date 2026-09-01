@@ -1027,9 +1027,9 @@ def _open_windows_file_at(
 def _open_windows_lock_file(path: Path, *, create: bool) -> Iterator[Any]:
     """Open a regular Windows lock without following a reparse point.
 
-    The handle intentionally omits ``FILE_SHARE_DELETE``.  While it is open,
-    Windows cannot replace the lock file or rename its parent directory; this
-    pins the already-validated private root for portable compatibility reads.
+    The handle intentionally omits ``FILE_SHARE_DELETE`` so the opened lock
+    entry cannot be replaced while held.  Parent/root anchoring requires the
+    descriptor-relative APIs above; this path-based helper does not provide it.
     """
 
     import ctypes
