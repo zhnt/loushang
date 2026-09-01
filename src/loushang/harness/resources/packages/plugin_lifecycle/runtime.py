@@ -9,12 +9,14 @@ from typing import Protocol, cast
 
 from loushang.harness.resources.packages.plugin_lifecycle.acquisition import (
     AcquiredPackageCandidate,
+    AuthenticatedSourceEnvelopeV1,
     BoundedAcquisitionReceiptV1,
     PackageAcquisitionBudgetV1,
     PackageAcquisitionCleanupDebtError,
     PackageAcquisitionError,
     PackageAcquisitionOwner,
     PackageAcquisitionRequestV1,
+    PackageAuthenticatedSourceEvidenceV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.cleanup import (
     PackageQuarantineCleanupOwner,
@@ -201,6 +203,12 @@ class PackageArtifactLifecycleOwner:
             credential_reference=execution.credential_reference,
         )
         try:
+            source_record = self._evidence_journal.find(
+                operation_id=status.operation_id,
+                attempt_epoch=status.attempt_epoch,
+                node_id="root",
+                kind="authenticated_source",
+            )
             acquired_record = self._evidence_journal.find(
                 operation_id=status.operation_id,
                 attempt_epoch=status.attempt_epoch,
@@ -216,6 +224,15 @@ class PackageArtifactLifecycleOwner:
         except PackageArtifactEvidenceJournalError:
             return self._record_identity_failure(status, stage=status.phase)
         if (
+            source_record is not None
+            and (
+                source_record.request_fingerprint != request.request_fingerprint
+                or not isinstance(
+                    source_record.evidence,
+                    PackageAuthenticatedSourceEvidenceV1,
+                )
+            )
+        ) or (
             acquired_record is not None
             and (
                 acquired_record.request_fingerprint != request.request_fingerprint
@@ -232,6 +249,11 @@ class PackageArtifactLifecycleOwner:
             )
         ):
             return self._record_identity_failure(status, stage=status.phase)
+        source_evidence = (
+            cast(PackageAuthenticatedSourceEvidenceV1, source_record.evidence)
+            if source_record is not None
+            else None
+        )
         receipt = (
             cast(BoundedAcquisitionReceiptV1, acquired_record.evidence)
             if acquired_record is not None
@@ -248,7 +270,11 @@ class PackageArtifactLifecycleOwner:
         acquired_candidate: AcquiredPackageCandidate | None = None
         classification_rechecked = False
         if status.phase == "classified":
-            if receipt is not None or durable_verified is not None:
+            if (
+                source_evidence is not None
+                or receipt is not None
+                or durable_verified is not None
+            ):
                 return self._record_identity_failure(status, stage="classified")
             changed = self._recheck_classification(status, request, classification)
             if changed is not None:
@@ -277,10 +303,30 @@ class PackageArtifactLifecycleOwner:
                     if changed is not None:
                         return PackageArtifactExecutionResult(status=changed)
                 try:
-                    acquired_candidate = self._acquisition_owner.acquire(
+                    authorized = self._acquisition_owner.authorize_source(
                         acquisition_request,
+                        expected_envelope=(
+                            source_evidence.envelope
+                            if source_evidence is not None
+                            else None
+                        ),
+                    )
+                    if source_evidence is None:
+                        source_evidence = PackageAuthenticatedSourceEvidenceV1(
+                            attempt_epoch=status.attempt_epoch,
+                            envelope=authorized.envelope,
+                        )
+                        self._evidence_journal.append(
+                            request_fingerprint=request.request_fingerprint,
+                            evidence=source_evidence,
+                        )
+                    acquired_candidate = self._acquisition_owner.acquire_authorized(
+                        acquisition_request,
+                        authorized,
                         budgets=self._acquisition_budgets,
                     )
+                except PackageArtifactEvidenceJournalError:
+                    return self._record_identity_failure(status, stage="acquiring")
                 except PackageAcquisitionCleanupDebtError as debt:
                     return self._record_acquisition_failure(status, debt=debt)
                 except PackageAcquisitionError as error:
@@ -300,6 +346,11 @@ class PackageArtifactLifecycleOwner:
                     acquisition_request,
                     receipt,
                     reset_extraction=False,
+                    authenticated_envelope=(
+                        source_evidence.envelope
+                        if source_evidence is not None
+                        else None
+                    ),
                 )
                 if isinstance(reopened, PackageArtifactExecutionResult):
                     return reopened
@@ -327,6 +378,11 @@ class PackageArtifactLifecycleOwner:
                     acquisition_request,
                     receipt,
                     reset_extraction=False,
+                    authenticated_envelope=(
+                        source_evidence.envelope
+                        if source_evidence is not None
+                        else None
+                    ),
                 )
                 if isinstance(reopened, PackageArtifactExecutionResult):
                     return reopened
@@ -351,6 +407,11 @@ class PackageArtifactLifecycleOwner:
                     acquisition_request,
                     receipt,
                     reset_extraction=True,
+                    authenticated_envelope=(
+                        source_evidence.envelope
+                        if source_evidence is not None
+                        else None
+                    ),
                 )
                 if isinstance(reopened, PackageArtifactExecutionResult):
                     return reopened
@@ -393,6 +454,9 @@ class PackageArtifactLifecycleOwner:
                 acquisition_request,
                 receipt,
                 reset_extraction=True,
+                authenticated_envelope=(
+                    source_evidence.envelope if source_evidence is not None else None
+                ),
             )
             if isinstance(reopened, PackageArtifactExecutionResult):
                 return reopened
@@ -490,12 +554,14 @@ class PackageArtifactLifecycleOwner:
         receipt: BoundedAcquisitionReceiptV1,
         *,
         reset_extraction: bool,
+        authenticated_envelope: AuthenticatedSourceEnvelopeV1 | None,
     ) -> AcquiredPackageCandidate | PackageArtifactExecutionResult:
         try:
             return self._acquisition_owner.reopen_acquired(
                 request,
                 receipt,
                 reset_extraction=reset_extraction,
+                authenticated_envelope=authenticated_envelope,
             )
         except PackageAcquisitionCleanupDebtError as debt:
             return self._record_acquisition_failure(status, debt=debt)

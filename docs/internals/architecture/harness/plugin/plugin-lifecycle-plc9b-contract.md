@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.3a.
+- Contract version: PLC9B.3b-candidate.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -33,7 +33,10 @@
   B2k corrects the hardlink threat model and implements one POSIX-native source
   normalization row after its Linux-native report passed.
   B3a adds an accepted dark, pure closure-v2 verifier; it promotes no global
-  manifest row before recursive owner composition is executable.
+  manifest row before recursive owner composition is executable. B3b is a
+  candidate adjacent-evidence slice that durably binds authenticated Source
+  facts and reconstructs dependency headers without changing accepted v1
+  receipt or wheel-evidence schemas.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -473,6 +476,47 @@ gate reported Ruff success, mypy success across 626 source files, and `3624
 passed, 20 skipped`; all PR checks passed. The separately retained manifest
 report still executed exactly the 52 previously implemented rows, confirming
 that this component acceptance did not promote any global adversarial row.
+
+## PLC9B3b Candidate Durable Closure Inputs
+
+B3b supplies the missing recovery-safe inputs for the later recursive closure
+owner while keeping all new capabilities dark. A versioned
+`PackageAuthenticatedSourceEvidenceV1` binds one authenticated Source envelope
+to the exact operation, attempt epoch, node, and request fingerprint. The
+artifact journal accepts the canonical new order `authenticated_source ->
+bounded_acquisition -> verified_wheel`, verifies each adjacent fingerprint and
+content relation, and rejects late or changed Source evidence. Existing
+receipt-first B2 journals remain replayable for their already-accepted local
+artifact behavior, but absence of authenticated Source evidence is not a
+closure-v2 proof and cannot be upgraded by appending it after acquisition.
+
+Acquisition is split into two process-local capability edges. The owner first
+authorizes and validates a one-shot Source capability; the runtime durably
+appends its typed evidence before the owner is allowed to create quarantine or
+transfer a byte. If recovery finds Source evidence without acquisition
+evidence, Source Authority is consulted again and the complete envelope must
+equal the durable envelope before transfer. Once a bounded receipt exists,
+recovery remains local and does not consult Source Authority; reopening binds
+the optional durable envelope to the receipt fingerprint exactly. Adapters
+still receive only the bounded sink and never a path or journal authority.
+An abrupt process loss after quarantine transfer begins but before its receipt
+is durable may leave unreceipted residue; B3b fails closed on that state. Exact
+residue adoption or cleanup is a B4 recovery obligation and is not claimed by
+this candidate.
+
+Wheel verification now returns a process-local, canonically ordered tuple of
+raw `Requires-Dist` headers parsed from the same bounded `METADATA` bytes whose
+digest is already committed by `VerifiedWheelArtifactV1`. Recovery re-runs the
+inert verifier and reconstructs those headers. Requirements are deliberately
+not added to the accepted v1 wheel wire schema; B3's requirement normalizer is
+the sole parser that may turn them into closure decisions, and malformed or
+unsupported dependency syntax therefore fails at the closure boundary.
+
+B3b does not export these values from the Package facade or author SDK, does
+not compose the recursive owner, and creates no typed stable ref, transaction
+pin, committed set, publication, desired-state mutation, or production route.
+All `B-LIMIT-GRAPH/SOLVER/REQUESTS`, `B-CLOSURE-*`, and later-phase manifest
+rows remain `planned` pending composed owner acceptance and native CI evidence.
 
 ## First Principles
 

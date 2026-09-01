@@ -18,6 +18,9 @@ PACKAGE_OPERATIONS = PACKAGE_ROOT / "operations.py"
 PACKAGE_SOURCE_RESOLVER = PACKAGE_ROOT / "source_resolver.py"
 OWNER_KERNEL_ROOT = PACKAGE_ROOT / "plugin_lifecycle"
 BOUNDED_ACQUISITION = OWNER_KERNEL_ROOT / "acquisition.py"
+PHASE_EVIDENCE = OWNER_KERNEL_ROOT / "phase_evidence.py"
+ARTIFACT_RUNTIME = OWNER_KERNEL_ROOT / "runtime.py"
+WHEEL_VERIFIER = OWNER_KERNEL_ROOT / "wheel.py"
 WINDOWS_QUARANTINE = OWNER_KERNEL_ROOT / "windows_quarantine.py"
 CLOSURE_VERIFIER = OWNER_KERNEL_ROOT / "closure.py"
 CLOSURE_TEST = Path("tests/harness/resources/packages/test_plc9b_closure.py")
@@ -463,7 +466,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.3a" in contract
+    assert "Contract version: PLC9B.3b-candidate" in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
@@ -473,6 +476,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
     assert "PLC9B2j Accepted Recovery And Cleanup Manifest Slice" in contract
     assert "PLC9B2k Accepted POSIX Hardlink Normalization Slice" in contract
     assert "PLC9B3a Accepted Dark Closure-v2 Verifier Slice" in contract
+    assert "PLC9B3b Candidate Durable Closure Inputs" in contract
     assert "Harness Quality run `33497159996`" in contract
     assert "Linux harness job `99821888267`" in contract
     assert "Harness Quality run `33493714647`" in contract
@@ -1706,6 +1710,53 @@ def test_plc9b3a_closure_verifier_is_dark_pure_and_does_not_promote_rows() -> No
     )
     assert "component evidence only" in contract
     assert "creates no\ntyped stable ref" in contract
+
+
+def test_plc9b3b_durable_closure_inputs_are_ordered_dark_and_unpromoted() -> None:
+    contract = _source(CONTRACT)
+    acquisition = _source(BOUNDED_ACQUISITION)
+    evidence = _source(PHASE_EVIDENCE)
+    runtime = _source(ARTIFACT_RUNTIME)
+    wheel = _source(WHEEL_VERIFIER)
+    package_facade = _source(OWNER_KERNEL_ROOT / "__init__.py")
+    author_sdk = _source(AUTHOR_SDK)
+    manifest = _adversarial_manifest()
+
+    assert "class PackageAuthenticatedSourceEvidenceV1:" in acquisition
+    assert "class _AuthorizedPackageSource:" in acquisition
+    assert "def authorize_source(" in acquisition
+    assert "def acquire_authorized(" in acquisition
+    assert "authenticated_source" in evidence
+    assert runtime.index("authorize_source(") < runtime.index("acquire_authorized(")
+    assert runtime.index("evidence=source_evidence") < runtime.index(
+        "acquire_authorized("
+    )
+    assert "requires_dist = _verify_wheel_metadata(" in wheel
+    assert "self.requires_dist = requires_dist" in wheel
+    assert 'package.get_all("Requires-Dist", [])' in wheel
+    for forbidden_export in (
+        "PackageAuthenticatedSourceEvidenceV1",
+        "_AuthorizedPackageSource",
+    ):
+        assert forbidden_export not in package_facade
+        assert forbidden_export not in author_sdk
+    component_case_ids = {
+        "B-LIMIT-GRAPH",
+        "B-LIMIT-SOLVER",
+        "B-LIMIT-REQUESTS",
+        "B-CLOSURE-MISSING",
+        "B-CLOSURE-DIGEST",
+        "B-CLOSURE-ORIGIN",
+        "B-CLOSURE-MARKER",
+        "B-CLOSURE-NAME",
+        "B-CLOSURE-CYCLE",
+        "B-CLOSURE-V1",
+    }
+    assert all(
+        manifest[case_id]["status"] == "planned" for case_id in component_case_ids
+    )
+    assert "Existing\nreceipt-first B2 journals remain replayable" in contract
+    assert "creates no typed stable ref" in contract
 
 
 def test_plc9b2f_windows_backend_is_rooted_and_has_a_nonskippable_native_gate(

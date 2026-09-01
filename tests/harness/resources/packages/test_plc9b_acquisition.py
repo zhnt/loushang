@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from hashlib import sha256
 from pathlib import Path
 
@@ -151,12 +151,94 @@ def test_source_adapter_receives_bounded_sink_without_path_authority(
     assert candidate.receipt.actual_byte_count == len(payload)
     assert candidate.receipt.request_count == 1
     assert candidate.receipt.redirect_count == 0
+    assert candidate.authenticated_envelope == stream.envelope
     with candidate.open_for_verifier() as verifier_input:
         assert verifier_input.read() == payload
     assert "path" not in str(candidate.receipt.to_dict()).lower()
     assert str(store.root) not in repr(candidate)
     candidate.cleanup()
     assert store.attempt_names() == ()
+
+
+def test_reopen_binds_optional_durable_source_envelope_exactly(
+    tmp_path: Path,
+) -> None:
+    payload = b"verified-wheel-bytes"
+    stream = _Stream(
+        envelope=_envelope(expected_digest=sha256(payload).hexdigest()),
+        chunks=(payload,),
+    )
+    owner, store = _owner(tmp_path, stream)
+    candidate = owner.acquire(_request(), budgets=_budgets())
+    receipt = candidate.receipt
+    candidate.suspend_for_recovery()
+
+    with pytest.raises(PackageAcquisitionError) as changed:
+        owner.reopen_acquired(
+            _request(),
+            receipt,
+            reset_extraction=False,
+            authenticated_envelope=replace(stream.envelope, capture_epoch=2),
+        )
+    assert changed.value.code == "package_source_provenance_changed"
+
+    reopened = owner.reopen_acquired(
+        _request(),
+        receipt,
+        reset_extraction=False,
+        authenticated_envelope=stream.envelope,
+    )
+    assert reopened.authenticated_envelope == stream.envelope
+    reopened.cleanup()
+    assert store.attempt_names() == ()
+
+
+def test_authorized_source_capability_is_one_shot_and_owner_bound(
+    tmp_path: Path,
+) -> None:
+    payload = b"verified-wheel-bytes"
+    first_stream = _Stream(
+        envelope=_envelope(expected_digest=sha256(payload).hexdigest()),
+        chunks=(payload,),
+    )
+    first, first_store = _owner(tmp_path / "first", first_stream)
+    second, second_store = _owner(
+        tmp_path / "second",
+        _Stream(envelope=first_stream.envelope, chunks=(payload,)),
+    )
+    source = first.authorize_source(_request())
+
+    with pytest.raises(TypeError, match="owner changed"):
+        second.acquire_authorized(_request(), source, budgets=_budgets())
+    assert first_store.attempt_names() == ()
+    assert second_store.attempt_names() == ()
+
+    candidate = first.acquire_authorized(_request(), source, budgets=_budgets())
+    with pytest.raises(RuntimeError, match="already consumed"):
+        first.acquire_authorized(_request(), source, budgets=_budgets())
+    candidate.cleanup()
+
+
+def test_invalid_budget_is_rejected_before_source_authority_side_effect(
+    tmp_path: Path,
+) -> None:
+    calls = 0
+
+    @dataclass
+    class _ObservedAuthority:
+        def authorize(self, _request: PackageAcquisitionRequestV1) -> _Stream:
+            nonlocal calls
+            calls += 1
+            raise AssertionError("Source Authority must not be called")
+
+    owner = PackageAcquisitionOwner(
+        source_authority=_ObservedAuthority(),
+        quarantine_store=PackageQuarantineStore(tmp_path / "quarantine"),
+    )
+
+    with pytest.raises(TypeError, match="budgets"):
+        owner.acquire(_request(), budgets=object())  # type: ignore[arg-type]
+    assert calls == 0
 
 
 def test_unauthorized_source_creates_no_quarantine(tmp_path: Path) -> None:

@@ -29,6 +29,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine imp
 
 PACKAGE_ACQUISITION_REQUEST_VERSION = 1
 AUTHENTICATED_SOURCE_ENVELOPE_VERSION = 1
+PACKAGE_AUTHENTICATED_SOURCE_EVIDENCE_VERSION = 1
 SOURCE_ADAPTER_RESULT_VERSION = 1
 PACKAGE_ACQUISITION_BUDGET_VERSION = 1
 BOUNDED_ACQUISITION_RECEIPT_VERSION = 1
@@ -249,6 +250,60 @@ class AuthenticatedSourceEnvelopeV1:
             ),
             envelope_version=_wire_int(
                 document["envelopeVersion"], name="Source envelope version"
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class PackageAuthenticatedSourceEvidenceV1:
+    """Attempt-scoped durable projection of an authenticated Source envelope."""
+
+    attempt_epoch: int
+    envelope: AuthenticatedSourceEnvelopeV1
+    evidence_version: int = PACKAGE_AUTHENTICATED_SOURCE_EVIDENCE_VERSION
+
+    def __post_init__(self) -> None:
+        _require_positive(self.attempt_epoch, name="attempt epoch")
+        if not isinstance(self.envelope, AuthenticatedSourceEnvelopeV1):
+            raise TypeError("Authenticated Source envelope is required")
+        if self.envelope.authentication_decision != "authorized":
+            raise ValueError("Durable Source evidence must be authorized")
+        if self.evidence_version != PACKAGE_AUTHENTICATED_SOURCE_EVIDENCE_VERSION:
+            raise ValueError("Unsupported authenticated Source evidence")
+
+    @property
+    def operation_id(self) -> str:
+        return self.envelope.operation_id
+
+    @property
+    def node_id(self) -> str:
+        return self.envelope.node_id
+
+    @property
+    def fingerprint(self) -> str:
+        return sha256(canonical_json_bytes(self.to_dict())).hexdigest()
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "attemptEpoch": self.attempt_epoch,
+            "envelope": self.envelope.to_dict(),
+            "evidenceVersion": self.evidence_version,
+        }
+
+    @classmethod
+    def from_dict(cls, value: object) -> PackageAuthenticatedSourceEvidenceV1:
+        document = _exact_dict(
+            value,
+            fields={"attemptEpoch", "envelope", "evidenceVersion"},
+            name="authenticated Source evidence",
+        )
+        return cls(
+            attempt_epoch=_wire_positive(
+                document["attemptEpoch"], name="attempt epoch"
+            ),
+            envelope=AuthenticatedSourceEnvelopeV1.from_dict(document["envelope"]),
+            evidence_version=_wire_int(
+                document["evidenceVersion"], name="Source evidence version"
             ),
         )
 
@@ -582,6 +637,38 @@ class PackageSourceAuthorityPort(Protocol):
         self,
         request: PackageAcquisitionRequestV1,
     ) -> AuthenticatedSourceStreamPort: ...
+
+
+class _AuthorizedPackageSource:
+    """One-shot process-local Source capability with no pathname authority."""
+
+    def __init__(
+        self,
+        *,
+        stream: AuthenticatedSourceStreamPort,
+        envelope: AuthenticatedSourceEnvelopeV1,
+        owner_token: object,
+    ) -> None:
+        self._stream = stream
+        self.envelope = envelope
+        self._owner_token = owner_token
+        self._claimed = False
+
+    def __repr__(self) -> str:
+        return (
+            "_AuthorizedPackageSource("
+            f"operation_id={self.envelope.operation_id!r}, "
+            f"node_id={self.envelope.node_id!r}, "
+            f"fingerprint={self.envelope.fingerprint!r})"
+        )
+
+    def _claim(self, owner_token: object) -> AuthenticatedSourceStreamPort:
+        if owner_token is not self._owner_token:
+            raise TypeError("Authenticated Package Source owner changed")
+        if self._claimed:
+            raise RuntimeError("Authenticated Package Source was already consumed")
+        self._claimed = True
+        return self._stream
 
 
 class PackageQuarantineStore:
@@ -1334,9 +1421,11 @@ class AcquiredPackageCandidate:
         *,
         attempt: _QuarantineAttempt,
         receipt: BoundedAcquisitionReceiptV1,
+        authenticated_envelope: AuthenticatedSourceEnvelopeV1 | None = None,
     ) -> None:
         self._attempt = attempt
         self.receipt = receipt
+        self.authenticated_envelope = authenticated_envelope
         self._closed = False
 
     def __repr__(self) -> str:
@@ -1422,6 +1511,7 @@ class PackageAcquisitionOwner:
         self._source_authority = source_authority
         self._quarantine_store = quarantine_store
         self._clock = clock or time.monotonic
+        self._authorization_token = object()
 
     def acquire(
         self,
@@ -1433,6 +1523,23 @@ class PackageAcquisitionOwner:
             raise TypeError("Package acquisition request is required")
         if not isinstance(budgets, PackageAcquisitionBudgetV1):
             raise TypeError("Package acquisition budgets are required")
+        source = self.authorize_source(request)
+        return self.acquire_authorized(request, source, budgets=budgets)
+
+    def authorize_source(
+        self,
+        request: PackageAcquisitionRequestV1,
+        *,
+        expected_envelope: AuthenticatedSourceEnvelopeV1 | None = None,
+    ) -> _AuthorizedPackageSource:
+        """Return a one-shot Source capability after exact authority validation."""
+
+        if not isinstance(request, PackageAcquisitionRequestV1):
+            raise TypeError("Package acquisition request is required")
+        if expected_envelope is not None and not isinstance(
+            expected_envelope, AuthenticatedSourceEnvelopeV1
+        ):
+            raise TypeError("Expected authenticated Source envelope is invalid")
         try:
             stream = self._source_authority.authorize(request)
         except PackageAcquisitionError as exc:
@@ -1470,6 +1577,38 @@ class PackageAcquisitionOwner:
                 consumed_bytes=0,
             )
         _verify_envelope(request, envelope)
+        if expected_envelope is not None and envelope != expected_envelope:
+            raise PackageAcquisitionError(
+                "Authenticated Source evidence changed on replay",
+                code="package_source_provenance_changed",
+                stage="acquiring",
+                retryable=False,
+                consumed_bytes=0,
+            )
+        return _AuthorizedPackageSource(
+            stream=stream,
+            envelope=envelope,
+            owner_token=self._authorization_token,
+        )
+
+    def acquire_authorized(
+        self,
+        request: PackageAcquisitionRequestV1,
+        source: _AuthorizedPackageSource,
+        *,
+        budgets: PackageAcquisitionBudgetV1,
+    ) -> AcquiredPackageCandidate:
+        """Stream one already-authenticated Source into owner-created quarantine."""
+
+        if not isinstance(request, PackageAcquisitionRequestV1):
+            raise TypeError("Package acquisition request is required")
+        if not isinstance(source, _AuthorizedPackageSource):
+            raise TypeError("Authorized Package Source is required")
+        if not isinstance(budgets, PackageAcquisitionBudgetV1):
+            raise TypeError("Package acquisition budgets are required")
+        envelope = source.envelope
+        _verify_envelope(request, envelope)
+        stream = source._claim(self._authorization_token)
         try:
             attempt = self._quarantine_store._begin(request)
         except FileExistsError:
@@ -1512,7 +1651,11 @@ class PackageAcquisitionOwner:
                 sink_identity=attempt._sink_identity,
                 adapter_result=result,
             )
-            return AcquiredPackageCandidate(attempt=attempt, receipt=receipt)
+            return AcquiredPackageCandidate(
+                attempt=attempt,
+                receipt=receipt,
+                authenticated_envelope=envelope,
+            )
         except PackageAcquisitionError as error:
             sink._abort()
             rejection = _sanitize_transfer_error(error, consumed_bytes=sink._byte_count)
@@ -1560,6 +1703,7 @@ class PackageAcquisitionOwner:
         receipt: BoundedAcquisitionReceiptV1,
         *,
         reset_extraction: bool,
+        authenticated_envelope: AuthenticatedSourceEnvelopeV1 | None = None,
     ) -> AcquiredPackageCandidate:
         """Adopt durable local evidence without consulting Source Authority."""
 
@@ -1567,6 +1711,18 @@ class PackageAcquisitionOwner:
             raise TypeError("Package acquisition request is required")
         if not isinstance(receipt, BoundedAcquisitionReceiptV1):
             raise TypeError("Bounded acquisition receipt is required")
+        if authenticated_envelope is not None:
+            if not isinstance(authenticated_envelope, AuthenticatedSourceEnvelopeV1):
+                raise TypeError("Authenticated Source envelope is invalid")
+            _verify_envelope(request, authenticated_envelope)
+            if authenticated_envelope.fingerprint != receipt.envelope_fingerprint:
+                raise PackageAcquisitionError(
+                    "Durable Source evidence changed before recovery",
+                    code="package_source_provenance_changed",
+                    stage="acquiring",
+                    retryable=False,
+                    consumed_bytes=0,
+                )
         try:
             attempt = self._quarantine_store._reopen(
                 request,
@@ -1584,6 +1740,7 @@ class PackageAcquisitionOwner:
             candidate = AcquiredPackageCandidate(
                 attempt=error.attempt,
                 receipt=receipt,
+                authenticated_envelope=authenticated_envelope,
             )
             try:
                 candidate.cleanup()
@@ -1603,7 +1760,11 @@ class PackageAcquisitionOwner:
                 retryable=False,
                 consumed_bytes=0,
             ) from None
-        candidate = AcquiredPackageCandidate(attempt=attempt, receipt=receipt)
+        candidate = AcquiredPackageCandidate(
+            attempt=attempt,
+            receipt=receipt,
+            authenticated_envelope=authenticated_envelope,
+        )
         try:
             with candidate.open_for_verifier():
                 pass
@@ -1987,6 +2148,7 @@ __all__ = [
     "PackageAcquisitionError",
     "PackageAcquisitionOwner",
     "PackageAcquisitionRequestV1",
+    "PackageAuthenticatedSourceEvidenceV1",
     "PackageQuarantineCleanupTargetV1",
     "PackageQuarantineStore",
     "PackageSourceAuthorityPort",

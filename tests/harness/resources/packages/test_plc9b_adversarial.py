@@ -31,6 +31,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.acquisition import (
     PackageAcquisitionError,
     PackageAcquisitionOwner,
     PackageAcquisitionRequestV1,
+    PackageAuthenticatedSourceEvidenceV1,
     PackageQuarantineStore,
     SourceAdapterResultV1,
 )
@@ -797,8 +798,19 @@ def _land_artifact_phase(
         policy_revision=request.policy_revision,
         credential_reference=f"opaque:{secret}",
     )
-    candidate = artifact_owner._acquisition_owner.acquire(
+    authorized = artifact_owner._acquisition_owner.authorize_source(
+        acquisition_request
+    )
+    evidence_journal.append(
+        request_fingerprint=request.request_fingerprint,
+        evidence=PackageAuthenticatedSourceEvidenceV1(
+            attempt_epoch=acquiring.attempt_epoch,
+            envelope=authorized.envelope,
+        ),
+    )
+    candidate = artifact_owner._acquisition_owner.acquire_authorized(
         acquisition_request,
+        authorized,
         budgets=artifact_owner._acquisition_budgets,
     )
     evidence_journal.append(
@@ -1004,7 +1016,15 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
         assert result.candidate is None
         assert result.cleanup_status is None
         assert source_authority.authorize_calls == 1
-        assert evidence_journal.records() == ()
+        evidence = evidence_journal.records()
+        expected_evidence_kinds = (
+            ()
+            if case_id in {"B-ACQ-AUTH", "B-ACQ-PROVENANCE"}
+            else ("authenticated_source",)
+        )
+        assert tuple(record.evidence_kind for record in evidence) == (
+            expected_evidence_kinds
+        )
         assert cleanup_journal.records() == ()
         assert store.attempt_names() == ()
         assert store.total_residue_bytes() == 0
@@ -1072,7 +1092,7 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
         assert result.candidate is None
         assert result.cleanup_status is None
         assert evidence_journal.records() == evidence_before
-        assert len(evidence_before) == 1
+        assert len(evidence_before) == 2
         assert source_authority.authorize_calls == 1
         assert cleanup_journal.records() == ()
         assert store.attempt_names() == ()
@@ -1213,7 +1233,7 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
         )
         assert result.cleanup_status.failure.retry_domain == "cleanup"
         assert result.cleanup_status.failure.operator_action == "repair"
-        assert len(evidence_journal.records()) == 1
+        assert len(evidence_journal.records()) == 2
         assert len(cleanup_journal.records()) == 1
         assert len(store.attempt_names()) == 1
         assert store.total_residue_bytes() <= 512 * 1024
@@ -1300,7 +1320,7 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
         assert all(stat.S_ISREG(metadata.st_mode) for metadata in extracted)
         assert extracted[0].st_ino != extracted[1].st_ino
         assert all(metadata.st_nlink == 1 for metadata in extracted)
-        assert len(evidence_journal.records()) == 2
+        assert len(evidence_journal.records()) == 3
         assert cleanup_journal.records() == ()
         assert source_authority.authorize_calls == 1
         assert outside.read_bytes() == b"preserve"
@@ -1395,8 +1415,10 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
         assert source_authority.stream.requests_started == 1
         assert source_authority.stream.writes_started == 1
         evidence = evidence_journal.records()
-        assert len(evidence) == 1
-        assert evidence[0].evidence_kind == "bounded_acquisition"
+        assert tuple(record.evidence_kind for record in evidence) == (
+            "authenticated_source",
+            "bounded_acquisition",
+        )
         assert cleanup_journal.records() == ()
         assert store.attempt_names() == ()
         assert store.total_residue_bytes() == 0

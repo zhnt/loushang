@@ -27,6 +27,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.acquisition import (
     PackageAcquisitionError,
     PackageAcquisitionOwner,
     PackageAcquisitionRequestV1,
+    PackageAuthenticatedSourceEvidenceV1,
     PackageQuarantineStore,
     SourceAdapterResultV1,
 )
@@ -285,7 +286,7 @@ def _execute_request(status, secret: str = "credential-ref-secret"):
     )
 
 
-def _land_acquired_evidence_without_phase_advance(
+def _land_source_evidence_without_acquisition(
     kernel: PackageLifecycleOwner,
     owner: PackageArtifactLifecycleOwner,
     evidence: PackageArtifactEvidenceJournal,
@@ -311,8 +312,30 @@ def _land_acquired_evidence_without_phase_advance(
         ).hexdigest(),
         policy_revision=request.policy_revision,
     )
-    candidate = owner._acquisition_owner.acquire(
+    authorized = owner._acquisition_owner.authorize_source(acquisition_request)
+    evidence.append(
+        request_fingerprint=request.request_fingerprint,
+        evidence=PackageAuthenticatedSourceEvidenceV1(
+            attempt_epoch=acquiring.attempt_epoch,
+            envelope=authorized.envelope,
+        ),
+    )
+    return acquiring, acquisition_request, authorized
+
+
+def _land_acquired_evidence_without_phase_advance(
+    kernel: PackageLifecycleOwner,
+    owner: PackageArtifactLifecycleOwner,
+    evidence: PackageArtifactEvidenceJournal,
+):
+    acquiring, acquisition_request, authorized = (
+        _land_source_evidence_without_acquisition(kernel, owner, evidence)
+    )
+    request = kernel.journal.request(acquiring.operation_id)
+    assert request is not None
+    candidate = owner._acquisition_owner.acquire_authorized(
         acquisition_request,
+        authorized,
         budgets=owner._acquisition_budgets,
     )
     evidence.append(
@@ -345,6 +368,7 @@ def test_dark_artifact_owner_journals_exact_phases_and_typed_evidence(
         "extracted",
     ]
     assert [record.evidence_kind for record in evidence.records()] == [
+        "authenticated_source",
         "bounded_acquisition",
         "verified_wheel",
     ]
@@ -380,8 +404,60 @@ def test_acquired_evidence_is_adopted_without_reauthorizing_source(
         "inspecting",
         "extracted",
     ]
-    assert len(evidence.records()) == 2
+    assert len(evidence.records()) == 3
     recovered.candidate.cleanup()
+    assert store.attempt_names() == ()
+
+
+def test_source_evidence_reauthorizes_exactly_before_first_byte_transfer(
+    tmp_path: Path,
+) -> None:
+    kernel, owner, _journal, evidence, _cleanup, store = _owners(
+        tmp_path,
+        payload=_wheel_bytes(),
+    )
+    acquiring, _request, _authorized = _land_source_evidence_without_acquisition(
+        kernel,
+        owner,
+        evidence,
+    )
+
+    recovered = owner.execute(_execute_request(acquiring))
+
+    assert recovered.status.phase == "extracted"
+    assert recovered.candidate is not None
+    assert [record.evidence_kind for record in evidence.records()] == [
+        "authenticated_source",
+        "bounded_acquisition",
+        "verified_wheel",
+    ]
+    recovered.candidate.cleanup()
+    assert store.attempt_names() == ()
+
+
+def test_source_evidence_replay_rejects_changed_authority_before_quarantine(
+    tmp_path: Path,
+) -> None:
+    kernel, owner, _journal, evidence, _cleanup, store = _owners(
+        tmp_path,
+        payload=_wheel_bytes(),
+    )
+    acquiring, _request, _authorized = _land_source_evidence_without_acquisition(
+        kernel,
+        owner,
+        evidence,
+    )
+    owner._acquisition_owner._source_authority.payload = b"changed-after-capture"
+
+    rejected = owner.execute(_execute_request(acquiring))
+
+    assert rejected.status.phase == "acquiring"
+    assert rejected.status.disposition == "rejected"
+    assert rejected.status.failure is not None
+    assert rejected.status.failure.code == "package_source_provenance_changed"
+    assert [record.evidence_kind for record in evidence.records()] == [
+        "authenticated_source"
+    ]
     assert store.attempt_names() == ()
 
 
@@ -430,7 +506,7 @@ def test_verified_evidence_is_reverified_and_adopted_without_source_access(
     assert recovered.status.phase == "extracted"
     assert recovered.candidate is not None
     assert recovered.candidate.evidence == durable_evidence
-    assert len(evidence.records()) == 2
+    assert len(evidence.records()) == 3
     recovered.candidate.cleanup()
     assert store.attempt_names() == ()
 
@@ -473,7 +549,7 @@ def test_partial_extraction_is_removed_root_relatively_before_local_reverify(
 
     assert recovered.status.phase == "extracted"
     assert recovered.candidate is not None
-    assert len(evidence.records()) == 2
+    assert len(evidence.records()) == 3
     recovered.candidate.cleanup()
     assert store.attempt_names() == ()
 
@@ -550,7 +626,7 @@ def test_extracted_phase_reconstructs_process_local_candidate_idempotently(
 
     assert recovered.status == initial.status
     assert recovered.candidate is not None
-    assert len(evidence.records()) == 2
+    assert len(evidence.records()) == 3
     recovered.candidate.cleanup()
     assert store.attempt_names() == ()
 
@@ -583,7 +659,7 @@ def test_recovery_rejects_artifact_replacement_without_source_or_outside_delete(
     assert rejected.status.disposition == "rejected"
     assert rejected.status.failure is not None
     assert rejected.status.failure.code == "package_artifact_identity_changed"
-    assert len(evidence.records()) == 1
+    assert len(evidence.records()) == 2
     assert outside.read_text(encoding="utf-8") == "preserve"
     assert store.attempt_names() == ()
 
@@ -613,7 +689,7 @@ def test_source_and_archive_failures_have_one_typed_response_and_no_residue(
     assert malformed.status.disposition == "rejected"
     assert malformed.status.failure is not None
     assert malformed.status.failure.code == "package_archive_malformed"
-    assert len(evidence.records()) == 1
+    assert len(evidence.records()) == 2
     assert store.attempt_names() == ()
     assert journal.records()[-1].status == malformed.status
 
@@ -639,9 +715,12 @@ def test_acquisition_limit_is_attempt_retryable_and_secrets_never_persist(
     assert (
         limited.status.journal_revision == journal.records()[-2].status.journal_revision
     )
-    assert evidence.records() == ()
+    assert [record.evidence_kind for record in evidence.records()] == [
+        "authenticated_source"
+    ]
     assert store.attempt_names() == ()
     assert secret not in journal.path.read_text(encoding="utf-8")
+    assert secret not in evidence.path.read_text(encoding="utf-8")
     assert secret not in repr(_execute_request(classified, secret))
 
 
@@ -685,7 +764,7 @@ def test_cleanup_debt_preserves_original_rejection_and_repairs_separately(
     assert result.cleanup_status.disposition == "cleanup_retryable"
     assert result.cleanup_status.failure is not None
     assert result.cleanup_status.failure.retry_domain == "cleanup"
-    assert len(evidence.records()) == 1
+    assert len(evidence.records()) == 2
     assert len(cleanup.journal.records()) == 1
     assert len(store.attempt_names()) == 1
     assert journal.records()[-1].status.failure == result.status.failure
@@ -720,7 +799,9 @@ def test_acquisition_cleanup_debt_keeps_retry_in_attempt_domain(
     assert result.cleanup_status is not None
     assert result.cleanup_status.failure is not None
     assert result.cleanup_status.failure.retry_domain == "cleanup"
-    assert evidence.records() == ()
+    assert [record.evidence_kind for record in evidence.records()] == [
+        "authenticated_source"
+    ]
     assert len(cleanup.journal.records()) == 1
     assert len(store.attempt_names()) == 1
     assert journal.records()[-1].record_kind == "attempt"

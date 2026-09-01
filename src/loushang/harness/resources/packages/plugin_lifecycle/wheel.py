@@ -316,9 +316,11 @@ class VerifiedWheelCandidate:
         *,
         acquired: AcquiredPackageCandidate,
         evidence: VerifiedWheelArtifactV1,
+        requires_dist: tuple[str, ...],
     ) -> None:
         self._acquired = acquired
         self.evidence = evidence
+        self.requires_dist = requires_dist
         self._closed = False
 
     def __repr__(self) -> str:
@@ -418,7 +420,7 @@ class PackageWheelVerifier:
                     started_at=started_at,
                     clock=self._clock,
                 )
-                _verify_wheel_metadata(
+                requires_dist = _verify_wheel_metadata(
                     identity,
                     wheel_bytes=content.metadata[required[0]],
                     package_bytes=content.metadata[required[1]],
@@ -466,7 +468,11 @@ class PackageWheelVerifier:
                 expanded_byte_count=content.expanded_bytes,
                 extraction_tree_digest=tree_digest,
             )
-            return VerifiedWheelCandidate(acquired=candidate, evidence=evidence)
+            return VerifiedWheelCandidate(
+                acquired=candidate,
+                evidence=evidence,
+                requires_dist=requires_dist,
+            )
         except PackageWheelVerificationError as rejection:
             _cleanup_rejected(candidate, rejection=rejection)
             raise
@@ -808,7 +814,7 @@ def _verify_wheel_metadata(
     *,
     wheel_bytes: bytes,
     package_bytes: bytes,
-) -> None:
+) -> tuple[str, ...]:
     try:
         wheel = BytesParser(policy=compat32).parsebytes(wheel_bytes, headersonly=True)
         package = BytesParser(policy=compat32).parsebytes(
@@ -834,6 +840,19 @@ def _verify_wheel_metadata(
         or version.replace("_", "-") != identity.version
     ):
         _reject_wheel_metadata()
+    return _normalized_metadata_headers(package.get_all("Requires-Dist", []))
+
+
+def _normalized_metadata_headers(values: list[str]) -> tuple[str, ...]:
+    normalized: list[str] = []
+    for value in values:
+        if not isinstance(value, str) or "\x00" in value:
+            _reject_wheel_metadata()
+        item = re.sub(r"\r?\n[ \t]+", " ", value).strip()
+        if not item or "\r" in item or "\n" in item:
+            _reject_wheel_metadata()
+        normalized.append(item)
+    return tuple(sorted(normalized))
 
 
 def _verify_record(

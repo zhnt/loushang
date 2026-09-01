@@ -24,6 +24,7 @@ from loushang.harness.journal import (
 )
 from loushang.harness.resources.packages.plugin_lifecycle.acquisition import (
     BoundedAcquisitionReceiptV1,
+    PackageAuthenticatedSourceEvidenceV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.wheel import (
     VerifiedWheelArtifactV1,
@@ -31,8 +32,14 @@ from loushang.harness.resources.packages.plugin_lifecycle.wheel import (
 
 PACKAGE_ARTIFACT_EVIDENCE_RECORD_VERSION = 1
 
-PackageArtifactEvidenceKind = Literal["bounded_acquisition", "verified_wheel"]
-PackageArtifactEvidence = BoundedAcquisitionReceiptV1 | VerifiedWheelArtifactV1
+PackageArtifactEvidenceKind = Literal[
+    "authenticated_source", "bounded_acquisition", "verified_wheel"
+]
+PackageArtifactEvidence = (
+    PackageAuthenticatedSourceEvidenceV1
+    | BoundedAcquisitionReceiptV1
+    | VerifiedWheelArtifactV1
+)
 
 
 class PackageArtifactEvidenceJournalError(RuntimeError):
@@ -65,7 +72,9 @@ class PackageArtifactEvidenceRecordV1:
             raise ValueError("Evidence request fingerprint must be SHA-256")
         if not isinstance(
             self.evidence,
-            BoundedAcquisitionReceiptV1 | VerifiedWheelArtifactV1,
+            PackageAuthenticatedSourceEvidenceV1
+            | BoundedAcquisitionReceiptV1
+            | VerifiedWheelArtifactV1,
         ):
             raise TypeError("Typed Package artifact evidence is required")
         if self.record_version != PACKAGE_ARTIFACT_EVIDENCE_RECORD_VERSION:
@@ -85,12 +94,16 @@ class PackageArtifactEvidenceRecordV1:
 
     @property
     def evidence_kind(self) -> PackageArtifactEvidenceKind:
+        if isinstance(self.evidence, PackageAuthenticatedSourceEvidenceV1):
+            return "authenticated_source"
         if isinstance(self.evidence, BoundedAcquisitionReceiptV1):
             return "bounded_acquisition"
         return "verified_wheel"
 
     @property
-    def phase(self) -> Literal["acquired", "extracted"]:
+    def phase(self) -> Literal["acquiring", "acquired", "extracted"]:
+        if self.evidence_kind == "authenticated_source":
+            return "acquiring"
         if self.evidence_kind == "bounded_acquisition":
             return "acquired"
         return "extracted"
@@ -134,8 +147,13 @@ class PackageArtifactEvidenceRecordV1:
         if set(value) != fields:
             raise ValueError("Package artifact evidence record schema changed")
         kind = value["evidenceKind"]
-        if kind == "bounded_acquisition":
-            evidence: PackageArtifactEvidence = BoundedAcquisitionReceiptV1.from_dict(
+        if kind == "authenticated_source":
+            evidence: PackageArtifactEvidence = (
+                PackageAuthenticatedSourceEvidenceV1.from_dict(value["evidence"])
+            )
+            expected_phase = "acquiring"
+        elif kind == "bounded_acquisition":
+            evidence = BoundedAcquisitionReceiptV1.from_dict(
                 value["evidence"]
             )
             expected_phase = "acquired"
@@ -212,7 +230,9 @@ class PackageArtifactEvidenceJournal:
     ) -> PackageArtifactEvidenceRecordV1:
         if not isinstance(
             evidence,
-            BoundedAcquisitionReceiptV1 | VerifiedWheelArtifactV1,
+            PackageAuthenticatedSourceEvidenceV1
+            | BoundedAcquisitionReceiptV1
+            | VerifiedWheelArtifactV1,
         ):
             raise TypeError("Typed Package artifact evidence is required")
         with self._exclusive():
@@ -230,11 +250,7 @@ class PackageArtifactEvidenceJournal:
                     evidence.operation_id,
                     evidence.attempt_epoch,
                     evidence.node_id,
-                    (
-                        "bounded_acquisition"
-                        if isinstance(evidence, BoundedAcquisitionReceiptV1)
-                        else "verified_wheel"
-                    ),
+                    _evidence_kind(evidence),
                 )
             )
             if matching:
@@ -254,7 +270,38 @@ class PackageArtifactEvidenceJournal:
                 attempt_epoch=evidence.attempt_epoch,
                 node_id=evidence.node_id,
             )
-            if isinstance(evidence, VerifiedWheelArtifactV1):
+            if isinstance(evidence, PackageAuthenticatedSourceEvidenceV1):
+                acquired = self._find_in(
+                    records,
+                    operation_id=evidence.operation_id,
+                    attempt_epoch=evidence.attempt_epoch,
+                    node_id=evidence.node_id,
+                    kind="bounded_acquisition",
+                )
+                if acquired is not None:
+                    raise self._error(
+                        "Authenticated Source evidence follows acquisition evidence",
+                        code="package_operation_phase_conflict",
+                    )
+            elif isinstance(evidence, BoundedAcquisitionReceiptV1):
+                source = self._find_in(
+                    records,
+                    operation_id=evidence.operation_id,
+                    attempt_epoch=evidence.attempt_epoch,
+                    node_id=evidence.node_id,
+                    kind="authenticated_source",
+                )
+                if source is not None:
+                    _require_acquired_source_parent(
+                        source,
+                        request_fingerprint=request_fingerprint,
+                        evidence=evidence,
+                        error=lambda: self._error(
+                            "Acquisition evidence changed its Source parent",
+                            code="package_operation_identity_conflict",
+                        ),
+                    )
+            else:
                 acquired = self._find_in(
                     records,
                     operation_id=evidence.operation_id,
@@ -370,6 +417,7 @@ class PackageArtifactEvidenceJournal:
 def _validate_records(records: tuple[PackageArtifactEvidenceRecordV1, ...]) -> None:
     latest: dict[tuple[str, int, str], int] = {}
     seen: set[tuple[str, int, str, str]] = set()
+    source_by_key: dict[tuple[str, int, str], PackageArtifactEvidenceRecordV1] = {}
     acquired_by_key: dict[tuple[str, int, str], PackageArtifactEvidenceRecordV1] = {}
     for revision, record in enumerate(records, start=1):
         if record.record_revision != revision:
@@ -381,6 +429,11 @@ def _validate_records(records: tuple[PackageArtifactEvidenceRecordV1, ...]) -> N
         if unique in seen:
             raise ValueError("Package artifact phase evidence was appended twice")
         if (
+            record.evidence_kind == "authenticated_source"
+            and (*key, "bounded_acquisition") in seen
+        ):
+            raise ValueError("Authenticated Source evidence follows acquisition")
+        if (
             record.evidence_kind == "verified_wheel"
             and (
                 *key,
@@ -389,7 +442,22 @@ def _validate_records(records: tuple[PackageArtifactEvidenceRecordV1, ...]) -> N
             not in seen
         ):
             raise ValueError("Verified wheel evidence precedes acquisition evidence")
-        if record.evidence_kind == "bounded_acquisition":
+        if record.evidence_kind == "authenticated_source":
+            source_by_key[key] = record
+        elif record.evidence_kind == "bounded_acquisition":
+            evidence = record.evidence
+            if not isinstance(evidence, BoundedAcquisitionReceiptV1):
+                raise ValueError("Bounded acquisition evidence kind changed")
+            source = source_by_key.get(key)
+            if source is not None:
+                _require_acquired_source_parent(
+                    source,
+                    request_fingerprint=record.request_fingerprint,
+                    evidence=evidence,
+                    error=lambda: ValueError(
+                        "Acquisition evidence changed its Source parent"
+                    ),
+                )
             acquired_by_key[key] = record
         else:
             evidence = record.evidence
@@ -405,6 +473,14 @@ def _validate_records(records: tuple[PackageArtifactEvidenceRecordV1, ...]) -> N
             )
         latest[key] = record.record_revision
         seen.add(unique)
+
+
+def _evidence_kind(evidence: PackageArtifactEvidence) -> PackageArtifactEvidenceKind:
+    if isinstance(evidence, PackageAuthenticatedSourceEvidenceV1):
+        return "authenticated_source"
+    if isinstance(evidence, BoundedAcquisitionReceiptV1):
+        return "bounded_acquisition"
+    return "verified_wheel"
 
 
 def _last_attempt_evidence_revision(
@@ -438,6 +514,23 @@ def _require_verified_parent(
         acquired_record.request_fingerprint != request_fingerprint
         or evidence.artifact_digest != acquired.actual_byte_digest
         or evidence.artifact_size != acquired.actual_byte_count
+    ):
+        raise error()
+
+
+def _require_acquired_source_parent(
+    source_record: PackageArtifactEvidenceRecordV1,
+    *,
+    request_fingerprint: str,
+    evidence: BoundedAcquisitionReceiptV1,
+    error: Callable[[], Exception],
+) -> None:
+    source = source_record.evidence
+    if not isinstance(source, PackageAuthenticatedSourceEvidenceV1):
+        raise error()
+    if (
+        source_record.request_fingerprint != request_fingerprint
+        or evidence.envelope_fingerprint != source.envelope.fingerprint
     ):
         raise error()
 

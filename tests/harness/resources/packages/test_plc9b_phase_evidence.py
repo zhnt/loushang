@@ -5,8 +5,10 @@ from pathlib import Path
 import pytest
 
 from loushang.harness.resources.packages.plugin_lifecycle.acquisition import (
+    AuthenticatedSourceEnvelopeV1,
     BoundedAcquisitionReceiptV1,
     PackageAcquisitionBudgetV1,
+    PackageAuthenticatedSourceEvidenceV1,
     SourceAdapterResultV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.phase_evidence import (
@@ -19,12 +21,35 @@ from loushang.harness.resources.packages.plugin_lifecycle.wheel import (
 )
 
 
-def _acquired(*, digest: str = "b" * 64) -> BoundedAcquisitionReceiptV1:
+def _source() -> PackageAuthenticatedSourceEvidenceV1:
+    return PackageAuthenticatedSourceEvidenceV1(
+        attempt_epoch=1,
+        envelope=AuthenticatedSourceEnvelopeV1(
+            operation_id="operation-evidence",
+            node_id="root",
+            canonical_source_identity="https://packages.example.test/acme.whl",
+            origin_kind="https",
+            authentication_decision="authorized",
+            authority_id="source-authority:test",
+            requested_locator_digest="7" * 64,
+            expected_artifact_digest="b" * 64,
+            redirect_policy_revision="redirect-policy:1",
+            policy_revision="source-policy:1",
+            capture_epoch=1,
+        ),
+    )
+
+
+def _acquired(
+    *,
+    digest: str = "b" * 64,
+    envelope_fingerprint: str | None = None,
+) -> BoundedAcquisitionReceiptV1:
     return BoundedAcquisitionReceiptV1(
         operation_id="operation-evidence",
         attempt_epoch=1,
         node_id="root",
-        envelope_fingerprint="a" * 64,
+        envelope_fingerprint=envelope_fingerprint or _source().envelope.fingerprint,
         actual_byte_digest=digest,
         actual_byte_count=100,
         request_count=1,
@@ -64,19 +89,23 @@ def _verified(*, digest: str = "b" * 64) -> VerifiedWheelArtifactV1:
 def test_phase_evidence_is_append_once_typed_and_replayable(tmp_path: Path) -> None:
     journal = PackageArtifactEvidenceJournal(tmp_path / "artifact-evidence.jsonl")
 
+    source = journal.append(request_fingerprint="9" * 64, evidence=_source())
+    assert journal.append(request_fingerprint="9" * 64, evidence=_source()) == source
     acquired = journal.append(request_fingerprint="9" * 64, evidence=_acquired())
     assert (
         journal.append(request_fingerprint="9" * 64, evidence=_acquired()) == acquired
     )
     verified = journal.append(request_fingerprint="9" * 64, evidence=_verified())
 
+    assert source.phase == "acquiring"
+    assert source.prior_evidence_revision == 0
     assert acquired.phase == "acquired"
-    assert acquired.prior_evidence_revision == 0
+    assert acquired.prior_evidence_revision == source.record_revision
     assert verified.phase == "extracted"
     assert verified.prior_evidence_revision == acquired.record_revision
     assert PackageArtifactEvidenceRecordV1.from_dict(verified.to_dict()) == verified
     reopened = PackageArtifactEvidenceJournal(journal.path)
-    assert reopened.records() == (acquired, verified)
+    assert reopened.records() == (source, acquired, verified)
     assert (
         reopened.find(
             operation_id="operation-evidence",
@@ -115,6 +144,28 @@ def test_changed_evidence_and_orphan_verified_wheel_fail_closed(
         orphan.append(request_fingerprint="9" * 64, evidence=_verified())
     assert missing.value.code == "package_operation_phase_conflict"
     assert orphan.records() == ()
+
+
+def test_source_parent_is_ordered_exact_and_legacy_receipt_remains_replayable(
+    tmp_path: Path,
+) -> None:
+    journal = PackageArtifactEvidenceJournal(tmp_path / "source-parent.jsonl")
+    source = journal.append(request_fingerprint="9" * 64, evidence=_source())
+
+    with pytest.raises(PackageArtifactEvidenceJournalError) as changed:
+        journal.append(
+            request_fingerprint="9" * 64,
+            evidence=_acquired(envelope_fingerprint="8" * 64),
+        )
+    assert changed.value.code == "package_operation_identity_conflict"
+    assert journal.records() == (source,)
+
+    legacy = PackageArtifactEvidenceJournal(tmp_path / "legacy.jsonl")
+    acquired = legacy.append(request_fingerprint="9" * 64, evidence=_acquired())
+    assert PackageArtifactEvidenceJournal(legacy.path).records() == (acquired,)
+    with pytest.raises(PackageArtifactEvidenceJournalError) as late:
+        legacy.append(request_fingerprint="9" * 64, evidence=_source())
+    assert late.value.code == "package_operation_phase_conflict"
 
 
 def test_evidence_journal_rejects_duplicate_keys_without_secret_echo(
