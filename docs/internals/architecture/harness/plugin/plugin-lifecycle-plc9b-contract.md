@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.2i-candidate.
+- Contract version: PLC9B.2i.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -26,8 +26,8 @@
   their non-skippable Linux CI gate and persisted XML evidence passed. B2h adds
   24 implemented archive/path/type/limit/wheel manifest fixtures; their
   Linux-native CI report executed without skips and persisted its XML evidence.
-  B2i adds seven Windows path, collision, reparse, and junction rows as a
-  candidate with a dedicated non-skippable Windows report.
+  B2i implements seven Windows path, collision, reparse, and junction rows;
+  their dedicated non-skippable Windows report passed and retained its XML.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -331,7 +331,7 @@ persisted the XML with upload digest
 The 24 rows named above are therefore `implemented`; this does not promote the
 hardlink, Windows-native, cleanup/recovery, closure, publication, or route rows.
 
-## PLC9B2i Windows Archive Manifest Candidate
+## PLC9B2i Accepted Windows Archive Manifest Slice
 
 B2i adds exact fixtures for `B-PATH-WIN-ROOT`, `B-PATH-WIN-ADS`,
 `B-PATH-WIN-RESERVED`, `B-PATH-WIN-TRAILING`, `B-PATH-COLLISION-CASE`,
@@ -345,10 +345,18 @@ is simulated with a POSIX symlink.
 The Windows workflow names all seven pytest nodes explicitly, writes a separate
 `windows-shell-plc9b-manifest.xml`, rejects an empty, skipped, failing, or
 errored report, and includes it in the persisted shell artifact. Portable local
-execution is defense-in-depth only and cannot accept a Windows-native row. The
-seven rows remain `planned` until that exact report passes on Windows 2022.
-This slice remains dark and performs no publication, binding, desired-state
-mutation, process execution, import, or peer fallback.
+execution remains defense-in-depth only and cannot accept a Windows-native row.
+
+B2i was accepted on 2026-09-01 by
+[Windows Shell Compatibility run `33490630717`](https://github.com/zhnt/loushang/actions/runs/33490630717),
+Windows shell job `99801011799`, against head `84722fa7`. The dedicated report
+executed all seven named nodes with `0 skipped`, `0 failures`, and `0 errors`.
+Artifact `windows-shell-pytest-reports` (ID `9793609340`) retained that XML with
+upload digest
+`dc2ecd99cb325da76a7c3fcb341f25c7c60da2b872544e0dbbfce8aa87ac9f6c`.
+The seven rows are therefore `implemented`. This slice remains dark and
+performs no publication, binding, desired-state mutation, process execution,
+import, or peer fallback.
 
 ## First Principles
 
@@ -807,20 +815,20 @@ B-ARCH-TRAILING | any | inspecting | trailing_payload | package_archive_malforme
 B-PATH-ABSOLUTE | any | inspecting | absolute_path | package_archive_path_rejected | rejected@inspecting | no_outside_write;no_publication;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-ABSOLUTE] | harness-quality.yml#plc9b-linux-native | implemented
 B-PATH-TRAVERSAL | any | inspecting | parent_traversal | package_archive_path_rejected | rejected@inspecting | no_outside_write;no_publication;no_binding | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-TRAVERSAL] | harness-quality.yml#plc9b-linux-native | implemented
 B-PATH-EMPTY | any | inspecting | empty_or_dot_component | package_archive_path_rejected | rejected@inspecting | no_outside_write;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-EMPTY] | harness-quality.yml#plc9b-linux-native | implemented
-B-PATH-WIN-ROOT | windows-native | inspecting | drive_or_unc_path | package_archive_path_rejected | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-WIN-ROOT] | windows-shell-compatibility.yml#plc9b-windows-native | planned
-B-PATH-WIN-ADS | windows-native | inspecting | alternate_data_stream | package_archive_path_rejected | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-WIN-ADS] | windows-shell-compatibility.yml#plc9b-windows-native | planned
-B-PATH-WIN-RESERVED | windows-native | inspecting | reserved_device_name | package_archive_path_rejected | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-WIN-RESERVED] | windows-shell-compatibility.yml#plc9b-windows-native | planned
-B-PATH-WIN-TRAILING | windows-native | inspecting | trailing_dot_or_space | package_archive_path_rejected | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-WIN-TRAILING] | windows-shell-compatibility.yml#plc9b-windows-native | planned
+B-PATH-WIN-ROOT | windows-native | inspecting | drive_or_unc_path | package_archive_path_rejected | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-WIN-ROOT] | windows-shell-compatibility.yml#plc9b-windows-native | implemented
+B-PATH-WIN-ADS | windows-native | inspecting | alternate_data_stream | package_archive_path_rejected | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-WIN-ADS] | windows-shell-compatibility.yml#plc9b-windows-native | implemented
+B-PATH-WIN-RESERVED | windows-native | inspecting | reserved_device_name | package_archive_path_rejected | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-WIN-RESERVED] | windows-shell-compatibility.yml#plc9b-windows-native | implemented
+B-PATH-WIN-TRAILING | windows-native | inspecting | trailing_dot_or_space | package_archive_path_rejected | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-WIN-TRAILING] | windows-shell-compatibility.yml#plc9b-windows-native | implemented
 B-PATH-COLLISION-SEP | any | inspecting | separator_ambiguous_path | package_archive_path_rejected | rejected@inspecting | no_outside_write;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-COLLISION-SEP] | harness-quality.yml#plc9b-linux-native | implemented
 B-PATH-COLLISION-UNICODE | any | inspecting | unicode_collision | package_archive_name_collision | rejected@inspecting | no_outside_write;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-COLLISION-UNICODE] | harness-quality.yml#plc9b-linux-native | implemented
-B-PATH-COLLISION-CASE | windows-native | inspecting | casefold_collision | package_archive_name_collision | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-COLLISION-CASE] | windows-shell-compatibility.yml#plc9b-windows-native | planned
+B-PATH-COLLISION-CASE | windows-native | inspecting | casefold_collision | package_archive_name_collision | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-COLLISION-CASE] | windows-shell-compatibility.yml#plc9b-windows-native | implemented
 B-TYPE-SYMLINK | posix-native | inspecting | symlink_entry | package_archive_entry_type_rejected | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-TYPE-SYMLINK] | harness-quality.yml#plc9b-linux-native | implemented
 B-TYPE-HARDLINK | posix-native | inspecting | hardlink_entry | package_archive_entry_type_rejected | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-TYPE-HARDLINK] | harness-quality.yml#plc9b-linux-native | planned
 B-TYPE-DEVICE | posix-native | inspecting | device_entry | package_archive_entry_type_rejected | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-TYPE-DEVICE] | harness-quality.yml#plc9b-linux-native | implemented
 B-TYPE-SOCKET | posix-native | inspecting | socket_entry | package_archive_entry_type_rejected | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-TYPE-SOCKET] | harness-quality.yml#plc9b-linux-native | implemented
 B-TYPE-FIFO | posix-native | inspecting | fifo_entry | package_archive_entry_type_rejected | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-TYPE-FIFO] | harness-quality.yml#plc9b-linux-native | implemented
-B-TYPE-REPARSE | windows-native | inspecting | reparse_entry | package_archive_entry_type_rejected | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-TYPE-REPARSE] | windows-shell-compatibility.yml#plc9b-windows-native | planned
-B-TYPE-JUNCTION | windows-native | inspecting | junction_entry | package_archive_entry_type_rejected | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-TYPE-JUNCTION] | windows-shell-compatibility.yml#plc9b-windows-native | planned
+B-TYPE-REPARSE | windows-native | inspecting | reparse_entry | package_archive_entry_type_rejected | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-TYPE-REPARSE] | windows-shell-compatibility.yml#plc9b-windows-native | implemented
+B-TYPE-JUNCTION | windows-native | inspecting | junction_entry | package_archive_entry_type_rejected | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-TYPE-JUNCTION] | windows-shell-compatibility.yml#plc9b-windows-native | implemented
 B-LIMIT-ENTRY | any | inspecting | entry_or_expansion_budget | package_resource_limit_exceeded | rejected@inspecting | bounded_residue;no_publication;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-LIMIT-ENTRY] | harness-quality.yml#plc9b-linux-native | implemented
 B-LIMIT-MEMORY | any | inspecting | parser_or_metadata_memory | package_resource_limit_exceeded | rejected@inspecting | bounded_residue;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-LIMIT-MEMORY] | harness-quality.yml#plc9b-linux-native | implemented
 B-LIMIT-CPU | any | inspecting | cpu_or_wall_budget | package_resource_limit_exceeded | rejected@inspecting | bounded_residue;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-LIMIT-CPU] | harness-quality.yml#plc9b-linux-native | implemented

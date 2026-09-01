@@ -99,7 +99,7 @@ IMPLEMENTED_B2H_MANIFEST_CASES = (
     "B-WHEEL-RECORD-ALGO",
 )
 
-PLC9B2I_WINDOWS_CANDIDATE_MANIFEST_CASES = (
+IMPLEMENTED_B2I_WINDOWS_MANIFEST_CASES = (
     "B-PATH-WIN-ROOT",
     "B-PATH-WIN-ADS",
     "B-PATH-WIN-RESERVED",
@@ -113,7 +113,7 @@ EXECUTABLE_MANIFEST_CASES = (
     IMPLEMENTED_B1_MANIFEST_CASES
     + IMPLEMENTED_B2_MANIFEST_CASES
     + IMPLEMENTED_B2H_MANIFEST_CASES
-    + PLC9B2I_WINDOWS_CANDIDATE_MANIFEST_CASES
+    + IMPLEMENTED_B2I_WINDOWS_MANIFEST_CASES
 )
 
 WHEEL_FILENAME = "acme_plugin-1.0-py3-none-any.whl"
@@ -835,7 +835,7 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
                 assert secret.encode() not in path.read_bytes()
     elif case_id in (
         IMPLEMENTED_B2H_MANIFEST_CASES
-        + PLC9B2I_WINDOWS_CANDIDATE_MANIFEST_CASES
+        + IMPLEMENTED_B2I_WINDOWS_MANIFEST_CASES
     ):
         fixture = _inspection_fixture(case_id)
         secret = f"manifest-secret-{case_id.lower()}"

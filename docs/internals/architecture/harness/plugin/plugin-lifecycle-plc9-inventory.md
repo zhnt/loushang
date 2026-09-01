@@ -36,9 +36,9 @@
   zero skips, failures, or errors and artifact `9793161479` retained the XML.
   The hardlink row remains planned because Wheel ZIP has no portable hardlink
   relation encoding; no surrogate fixture is claimed.
-  PLC9B2i adds seven exact Windows archive path/type fixtures and a dedicated
-  non-skippable native report as a candidate; no simulated platform evidence
-  promotes those rows.
+  PLC9B2i accepts seven exact Windows archive path/type fixtures after their
+  dedicated non-skippable Windows 2022 report passed and its XML was retained;
+  no simulated platform evidence promotes a native row.
   Publication, later transaction phases, and every production route remain
   migration obligations; no global adversarial row is promoted.
 

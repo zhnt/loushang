@@ -365,8 +365,8 @@ def _implemented_b2h_manifest_cases() -> set[str]:
     return _literal_manifest_cases("IMPLEMENTED_B2H_MANIFEST_CASES")
 
 
-def _plc9b2i_windows_candidate_manifest_cases() -> set[str]:
-    return _literal_manifest_cases("PLC9B2I_WINDOWS_CANDIDATE_MANIFEST_CASES")
+def _implemented_b2i_windows_manifest_cases() -> set[str]:
+    return _literal_manifest_cases("IMPLEMENTED_B2I_WINDOWS_MANIFEST_CASES")
 
 
 def _journal_effect_policy() -> list[tuple[str, str, str]]:
@@ -452,13 +452,15 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.2i-candidate" in contract
+    assert "Contract version: PLC9B.2i" in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
     assert "PLC9B2g Accepted Acquisition Manifest Slice" in contract
     assert "PLC9B2h Accepted Archive And Wheel Manifest Slice" in contract
-    assert "PLC9B2i Windows Archive Manifest Candidate" in contract
+    assert "PLC9B2i Accepted Windows Archive Manifest Slice" in contract
+    assert "Windows Shell Compatibility run `33490630717`" in contract
+    assert "Artifact `windows-shell-pytest-reports` (ID `9793609340`)" in contract
     assert "Harness Quality run `33489524268`" in contract
     assert "Harness Quality run `33487861156`" in contract
     assert "Artifact `plc9b-linux-native-pytest-report` (ID `9792500305`)" in (
@@ -672,8 +674,8 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
     implemented_b1 = _implemented_b1_manifest_cases()
     implemented_b2 = _implemented_b2_manifest_cases()
     implemented_b2h = _implemented_b2h_manifest_cases()
-    implemented = implemented_b1 | implemented_b2 | implemented_b2h
-    b2i_candidate = _plc9b2i_windows_candidate_manifest_cases()
+    implemented_b2i = _implemented_b2i_windows_manifest_cases()
+    implemented = implemented_b1 | implemented_b2 | implemented_b2h | implemented_b2i
 
     assert len(manifest) == 127
     assert categories == EXPECTED_MANIFEST_CATEGORY_COUNTS
@@ -746,7 +748,7 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
         "B-WHEEL-RECORD-ALGO",
     }
     assert (implemented_b1 | implemented_b2).isdisjoint(implemented_b2h)
-    assert b2i_candidate == {
+    assert implemented_b2i == {
         "B-PATH-WIN-ROOT",
         "B-PATH-WIN-ADS",
         "B-PATH-WIN-RESERVED",
@@ -755,8 +757,9 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
         "B-TYPE-REPARSE",
         "B-TYPE-JUNCTION",
     }
-    assert implemented.isdisjoint(b2i_candidate)
-    assert all(manifest[case_id]["status"] == "planned" for case_id in b2i_candidate)
+    assert (implemented_b1 | implemented_b2 | implemented_b2h).isdisjoint(
+        implemented_b2i
+    )
     separator = manifest["B-PATH-COLLISION-SEP"]
     assert separator["fixture"] == "separator_ambiguous_path"
     assert separator["code"] == "package_archive_path_rejected"
@@ -764,7 +767,7 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
     assert metadata["barrier"] == "inspecting"
     assert metadata["disposition"] == "rejected@inspecting"
     assert manifest["B-TYPE-HARDLINK"]["status"] == "planned"
-    assert len(manifest) - len(implemented) == 89
+    assert len(manifest) - len(implemented) == 82
     workflow = _source(HARNESS_WORKFLOW)
     assert "PLC9B Linux native adversarial gate (plc9b-linux-native)" in workflow
     assert "tests/harness/resources/packages/test_plc9b_adversarial.py" in workflow
@@ -1602,7 +1605,7 @@ def test_plc9b2f_windows_backend_is_rooted_and_has_a_nonskippable_native_gate(
     assert workflow.count(
         "test_plc9b_adversarial.py::test_manifest_case[B-"
     ) == 7
-    for case_id in _plc9b2i_windows_candidate_manifest_cases():
+    for case_id in _implemented_b2i_windows_manifest_cases():
         assert f"test_manifest_case[{case_id}]" in workflow
     assert "windows-shell-plc9b-manifest.xml" in workflow
     assert (
