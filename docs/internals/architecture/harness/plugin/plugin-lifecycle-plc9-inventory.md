@@ -27,8 +27,10 @@
   Windows Shell Compatibility run `33486925218` at head `fb263301`: five tests
   ran with zero skips, failures, or errors, and their XML was retained in
   artifact `windows-shell-pytest-reports` (ID `9792151355`).
-  PLC9B2g adds six composed acquisition manifest fixtures as a Linux-native
-  candidate; their rows remain planned until the non-skippable CI report passes.
+  PLC9B2g implements six composed acquisition manifest fixtures, accepted by
+  Linux Harness Quality run `33487861156`: its report executed 14 total nodes
+  with zero skips, failures, or errors and was retained as artifact
+  `plc9b-linux-native-pytest-report` (ID `9792500305`).
   Publication, later transaction phases, and every production route remain
   migration obligations; no global adversarial row is promoted.
 

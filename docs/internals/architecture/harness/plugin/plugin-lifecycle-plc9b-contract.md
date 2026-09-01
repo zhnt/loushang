@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.2g-candidate.
+- Contract version: PLC9B.2g.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -22,8 +22,8 @@
   native gate passed against commit `fb263301` in Windows Shell Compatibility
   run `33486925218`: all five fixtures executed with zero skips, failures, or
   errors, and the XML reports were persisted as an Actions artifact. B2g adds
-  the first six acquisition-level end-to-end manifest fixtures as a candidate;
-  their rows remain `planned` until the non-skippable Linux CI gate passes.
+  the first six implemented acquisition-level end-to-end manifest fixtures;
+  their non-skippable Linux CI gate and persisted XML evidence passed.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -262,7 +262,7 @@ named fixtures. It does not promote broader manifest rows whose complete
 caller response, phase journal, cleanup repair, closure, or publication oracle
 is still absent.
 
-## PLC9B2g Acquisition Manifest Candidate
+## PLC9B2g Accepted Acquisition Manifest Slice
 
 The first B2 manifest acceptance slice executes `B-ACQ-AUTH`,
 `B-ACQ-PROVENANCE`, `B-ACQ-BYTES`, `B-ACQ-REDIRECT`, `B-ACQ-TIMEOUT`, and
@@ -278,11 +278,18 @@ every persisted file. Byte and time consumption are checked before the failing
 edge; authorization and provenance refusal occur before a quarantine attempt;
 declared digest mismatch terminates at the adjacent `acquired` stage.
 
-This is a candidate until the exact parameterized nodes run in the
-`plc9b-linux-native` job and its XML verifier rejects empty, skipped, failing,
-or errored output. Until then the six manifest rows remain `planned`. The slice
-does not activate a production route, inspect an archive, publish an artifact,
-or alter desired state.
+The slice was accepted on 2026-09-01 by
+[Harness Quality run `33487861156`](https://github.com/zhnt/loushang/actions/runs/33487861156),
+Linux harness job `99792062800`, against head `12c7f844`. The report executed
+all 14 then-implemented manifest nodes (the eight B1 nodes plus these six B2
+nodes) with `0 skipped`, `0 failures`, and `0 errors`. Artifact
+`plc9b-linux-native-pytest-report` (ID `9792500305`) persisted the XML with
+upload digest
+`4cd7756396e0ee2ce19143c35c5dd5020e21b27c663ce6716a0f49e28d121fed`.
+The six `B-ACQ-*` rows named above are therefore `implemented`. The slice does
+not activate a production route, inspect an archive, publish an artifact, or
+alter desired state; every broader row remains `planned` until its own complete
+oracle executes.
 
 ## First Principles
 
@@ -726,12 +733,12 @@ B-CLASS-NONPLUGIN | any | classified | independent_non_plugin_evidence | ok | cl
 B-CLASS-INDETERMINATE | any | classified | unknown_source | package_target_classification_indeterminate | rejected@classified | no_publication;no_binding;no_desired;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CLASS-INDETERMINATE] | harness-quality.yml#plc9b-linux-native | implemented
 B-CLASS-CHANGED | any | staging | classification_revision_race | package_target_classification_changed | rejected@staging | no_publication;no_binding;no_desired;no_peer_fallback;pin_visible | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CLASS-CHANGED] | harness-quality.yml#plc9b-linux-native | planned
 B-CLASS-SPOOF | any | classified | caller_non_plugin_boolean | package_target_classification_indeterminate | rejected@classified | single_owner;no_publication;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CLASS-SPOOF] | harness-quality.yml#plc9b-linux-native | implemented
-B-ACQ-AUTH | any | acquiring | unauthenticated_origin | package_source_unauthorized | rejected@acquiring | no_extra_network;no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ACQ-AUTH] | harness-quality.yml#plc9b-linux-native | planned
-B-ACQ-PROVENANCE | any | acquiring | changed_authority | package_source_provenance_changed | rejected@acquiring | no_publication;no_binding;no_peer_fallback;no_secret | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ACQ-PROVENANCE] | harness-quality.yml#plc9b-linux-native | planned
-B-ACQ-BYTES | any | acquiring | byte_limit | package_acquisition_limit_exceeded | retryable_failure@acquiring | bounded_residue;no_publication;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ACQ-BYTES] | harness-quality.yml#plc9b-linux-native | planned
-B-ACQ-REDIRECT | any | acquiring | redirect_limit | package_acquisition_limit_exceeded | retryable_failure@acquiring | bounded_residue;no_extra_network;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ACQ-REDIRECT] | harness-quality.yml#plc9b-linux-native | planned
-B-ACQ-TIMEOUT | any | acquiring | wall_clock_limit | package_operation_timed_out | retryable_failure@acquiring | bounded_residue;no_publication;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ACQ-TIMEOUT] | harness-quality.yml#plc9b-linux-native | planned
-B-ACQ-DIGEST | any | acquired | declared_digest_mismatch | package_acquisition_digest_mismatch | rejected@acquired | no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ACQ-DIGEST] | harness-quality.yml#plc9b-linux-native | planned
+B-ACQ-AUTH | any | acquiring | unauthenticated_origin | package_source_unauthorized | rejected@acquiring | no_extra_network;no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ACQ-AUTH] | harness-quality.yml#plc9b-linux-native | implemented
+B-ACQ-PROVENANCE | any | acquiring | changed_authority | package_source_provenance_changed | rejected@acquiring | no_publication;no_binding;no_peer_fallback;no_secret | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ACQ-PROVENANCE] | harness-quality.yml#plc9b-linux-native | implemented
+B-ACQ-BYTES | any | acquiring | byte_limit | package_acquisition_limit_exceeded | retryable_failure@acquiring | bounded_residue;no_publication;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ACQ-BYTES] | harness-quality.yml#plc9b-linux-native | implemented
+B-ACQ-REDIRECT | any | acquiring | redirect_limit | package_acquisition_limit_exceeded | retryable_failure@acquiring | bounded_residue;no_extra_network;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ACQ-REDIRECT] | harness-quality.yml#plc9b-linux-native | implemented
+B-ACQ-TIMEOUT | any | acquiring | wall_clock_limit | package_operation_timed_out | retryable_failure@acquiring | bounded_residue;no_publication;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ACQ-TIMEOUT] | harness-quality.yml#plc9b-linux-native | implemented
+B-ACQ-DIGEST | any | acquired | declared_digest_mismatch | package_acquisition_digest_mismatch | rejected@acquired | no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ACQ-DIGEST] | harness-quality.yml#plc9b-linux-native | implemented
 B-ACQ-IDENTITY | any | inspecting | archive_replacement | package_artifact_identity_changed | rejected@inspecting | no_outside_write;no_publication;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ACQ-IDENTITY] | harness-quality.yml#plc9b-linux-native | planned
 B-ARCH-TRUNCATED | any | inspecting | truncated_archive | package_archive_malformed | rejected@inspecting | bounded_residue;no_outside_write;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ARCH-TRUNCATED] | harness-quality.yml#plc9b-linux-native | planned
 B-ARCH-HEADERS | any | inspecting | inconsistent_headers | package_archive_malformed | rejected@inspecting | no_outside_write;no_publication;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ARCH-HEADERS] | harness-quality.yml#plc9b-linux-native | planned

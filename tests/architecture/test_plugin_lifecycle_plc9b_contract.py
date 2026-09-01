@@ -357,8 +357,8 @@ def _implemented_b1_manifest_cases() -> set[str]:
     return _literal_manifest_cases("IMPLEMENTED_B1_MANIFEST_CASES")
 
 
-def _plc9b2g_candidate_manifest_cases() -> set[str]:
-    return _literal_manifest_cases("PLC9B2G_CANDIDATE_MANIFEST_CASES")
+def _implemented_b2_manifest_cases() -> set[str]:
+    return _literal_manifest_cases("IMPLEMENTED_B2_MANIFEST_CASES")
 
 
 def _journal_effect_policy() -> list[tuple[str, str, str]]:
@@ -444,11 +444,15 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.2g-candidate" in contract
+    assert "Contract version: PLC9B.2g" in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
-    assert "PLC9B2g Acquisition Manifest Candidate" in contract
+    assert "PLC9B2g Accepted Acquisition Manifest Slice" in contract
+    assert "Harness Quality run `33487861156`" in contract
+    assert "Artifact `plc9b-linux-native-pytest-report` (ID `9792500305`)" in (
+        " ".join(contract.split())
+    )
     assert "without calling Source Authority again" in contract
     assert "Public author SDK effect: none" in contract
     for deferred in (
@@ -648,11 +652,12 @@ def test_plc9b_transaction_never_confuses_publication_with_selection() -> None:
         assert boundary in contract
 
 
-def test_plc9b_adversarial_manifest_tracks_b1_and_b2g_candidate_progress() -> None:
+def test_plc9b_adversarial_manifest_tracks_exact_b1_and_b2_progress() -> None:
     manifest = _adversarial_manifest()
     categories = Counter(case_id.split("-", 2)[1] for case_id in manifest)
-    implemented = _implemented_b1_manifest_cases()
-    b2g_candidate = _plc9b2g_candidate_manifest_cases()
+    implemented_b1 = _implemented_b1_manifest_cases()
+    implemented_b2 = _implemented_b2_manifest_cases()
+    implemented = implemented_b1 | implemented_b2
 
     assert len(manifest) == 127
     assert categories == EXPECTED_MANIFEST_CATEGORY_COUNTS
@@ -679,7 +684,7 @@ def test_plc9b_adversarial_manifest_tracks_b1_and_b2g_candidate_progress() -> No
     assert {
         case_id for case_id, row in manifest.items() if row["status"] == "implemented"
     } == implemented
-    assert implemented == {
+    assert implemented_b1 == {
         "B-CLASS-PLUGIN",
         "B-CLASS-NONPLUGIN",
         "B-CLASS-INDETERMINATE",
@@ -689,7 +694,7 @@ def test_plc9b_adversarial_manifest_tracks_b1_and_b2g_candidate_progress() -> No
         "B-CONCUR-CONFLICT",
         "B-ENTRY-DISABLED",
     }
-    assert b2g_candidate == {
+    assert implemented_b2 == {
         "B-ACQ-AUTH",
         "B-ACQ-PROVENANCE",
         "B-ACQ-BYTES",
@@ -697,9 +702,8 @@ def test_plc9b_adversarial_manifest_tracks_b1_and_b2g_candidate_progress() -> No
         "B-ACQ-TIMEOUT",
         "B-ACQ-DIGEST",
     }
-    assert implemented.isdisjoint(b2g_candidate)
-    assert all(manifest[case_id]["status"] == "planned" for case_id in b2g_candidate)
-    assert len(manifest) - len(implemented) == 119
+    assert implemented_b1.isdisjoint(implemented_b2)
+    assert len(manifest) - len(implemented) == 113
     workflow = _source(HARNESS_WORKFLOW)
     assert "PLC9B Linux native adversarial gate (plc9b-linux-native)" in workflow
     assert "tests/harness/resources/packages/test_plc9b_adversarial.py" in workflow
