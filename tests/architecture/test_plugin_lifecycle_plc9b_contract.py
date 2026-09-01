@@ -18,6 +18,11 @@ PACKAGE_OPERATIONS = PACKAGE_ROOT / "operations.py"
 PACKAGE_SOURCE_RESOLVER = PACKAGE_ROOT / "source_resolver.py"
 OWNER_KERNEL_ROOT = PACKAGE_ROOT / "plugin_lifecycle"
 BOUNDED_ACQUISITION = OWNER_KERNEL_ROOT / "acquisition.py"
+WINDOWS_QUARANTINE = OWNER_KERNEL_ROOT / "windows_quarantine.py"
+WINDOWS_NATIVE_TEST = Path(
+    "tests/harness/resources/packages/test_plc9b_windows_native.py"
+)
+WINDOWS_WORKFLOW = Path(".github/workflows/windows-shell-compatibility.yml")
 ADVERSARIAL_TEST = Path(
     "tests/harness/resources/packages/test_plc9b_adversarial.py"
 )
@@ -431,7 +436,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.2e" in contract
+    assert "Contract version: PLC9B.2f-candidate" in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
@@ -1445,7 +1450,9 @@ def test_plc9b2a_acquisition_is_unbound_bounded_and_pathless() -> None:
     assert "class PackageQuarantineStore:" in source
     assert "class PackageAcquisitionOwner:" in source
     assert "opaque acquired-candidate capability" in contract
-    assert "promote no global adversarial manifest row" in contract
+    assert "promote no global adversarial manifest row" in " ".join(
+        contract.split()
+    )
 
     sink = next(
         node
@@ -1472,6 +1479,33 @@ def test_plc9b2a_acquisition_is_unbound_bounded_and_pathless() -> None:
             "zipfile",
             "tarfile",
         )
+    )
+
+
+def test_plc9b2f_windows_backend_is_rooted_and_has_a_nonskippable_native_gate(
+) -> None:
+    contract = _source(CONTRACT)
+    acquisition = _source(BOUNDED_ACQUISITION)
+    windows = _source(WINDOWS_QUARANTINE)
+    native_tests = _source(WINDOWS_NATIVE_TEST)
+    workflow = _source(WINDOWS_WORKFLOW)
+
+    assert "PLC9B2f Native Windows Quarantine Candidate" in contract
+    assert "NtCreateFile" in windows
+    assert "root_directory" in windows
+    assert "_FILE_OPEN_REPARSE_POINT" in windows
+    assert "_FILE_FLAG_OPEN_REPARSE_POINT" in windows
+    assert "SetFileInformationByHandle" in windows
+    assert "GetFinalPathNameByHandleW" in windows
+    assert "open_windows_regular_file_at" in acquisition
+    assert "loushang.coding" not in windows
+    assert "loushang.foundation" not in windows
+    assert native_tests.count("def test_windows_native_") == 5
+    assert "test_plc9b_windows_native.py" in workflow
+    assert "windows-shell-plc9b-native.xml" in workflow
+    assert (
+        "verify_pytest_xml.py\n          .artifacts/windows-shell-plc9b-native.xml"
+        in workflow
     )
 
 

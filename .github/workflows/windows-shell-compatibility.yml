@@ -29,6 +29,21 @@ jobs:
       - name: Create report directory
         run: uv run python -c "from pathlib import Path; Path('.artifacts').mkdir(exist_ok=True)"
 
+      - name: Run PLC9B native Windows quarantine tests
+        env:
+          PYTEST_ADDOPTS: >-
+            -o faulthandler_timeout=60
+            --junitxml=.artifacts/windows-shell-plc9b-native.xml
+        run: >-
+          uv run pytest
+          tests/harness/resources/packages/test_plc9b_windows_native.py
+          -q
+
+      - name: Reject empty, skipped, or failing PLC9B native report
+        run: >-
+          uv run python scripts/dev/verify_pytest_xml.py
+          .artifacts/windows-shell-plc9b-native.xml
+
       - name: Run native Windows shell compatibility tests
         env:
           PYTEST_ADDOPTS: >-

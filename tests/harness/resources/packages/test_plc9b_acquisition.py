@@ -249,6 +249,24 @@ def test_candidate_cleanup_can_retry_exact_attempt_after_failure(
     assert store.attempt_names() == ()
 
 
+def test_store_rejects_root_replacement_before_new_attempt(tmp_path: Path) -> None:
+    payload = b"wheel"
+    stream = _Stream(
+        envelope=_envelope(expected_digest=sha256(payload).hexdigest()),
+        chunks=(payload,),
+    )
+    owner, store = _owner(tmp_path, stream)
+    trusted = tmp_path / "trusted-quarantine"
+    store.root.rename(trusted)
+    store.root.mkdir(mode=0o700)
+
+    with pytest.raises(PackageAcquisitionError) as rejected:
+        owner.acquire(_request(), budgets=_budgets())
+
+    assert rejected.value.code == "package_artifact_identity_changed"
+    assert tuple(store.root.iterdir()) == ()
+
+
 @pytest.mark.parametrize(
     ("changed", "code"),
     [

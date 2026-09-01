@@ -17,6 +17,15 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
     canonicalize_source_identity,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
+    open_windows_directory,
+    open_windows_regular_file_at,
+    supports_windows_rooted_io,
+    windows_listdir_at,
+    windows_rmdir_at,
+    windows_stat_at,
+    windows_unlink_at,
+)
 
 PACKAGE_ACQUISITION_REQUEST_VERSION = 1
 AUTHENTICATED_SOURCE_ENVELOPE_VERSION = 1
@@ -586,9 +595,20 @@ class PackageQuarantineStore:
         self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
         _require_no_link_ancestors(self.root)
         _require_private_directory(self.root)
+        if _supports_descriptor_relative_io():
+            root_fd = _open_directory(self.root)
+            try:
+                _require_no_link_ancestors(self.root)
+                self._root_identity = _identity(os.fstat(root_fd))
+                if _identity(self.root.lstat()) != self._root_identity:
+                    raise OSError("Package quarantine root identity changed")
+            finally:
+                os.close(root_fd)
+        else:
+            self._root_identity = _identity(self.root.lstat())
 
     def attempt_names(self) -> tuple[str, ...]:
-        _require_private_directory(self.root)
+        self._require_root_identity()
         return tuple(
             sorted(
                 entry.name
@@ -598,6 +618,7 @@ class PackageQuarantineStore:
         )
 
     def total_residue_bytes(self) -> int:
+        self._require_root_identity()
         total = 0
         for directory, names, files in os.walk(self.root, followlinks=False):
             names[:] = [
@@ -614,7 +635,11 @@ class PackageQuarantineStore:
         self,
         request: PackageAcquisitionRequestV1,
     ) -> _QuarantineAttempt:
-        return _QuarantineAttempt.create(self.root, request)
+        return _QuarantineAttempt.create(
+            self.root,
+            request,
+            expected_root_identity=self._root_identity,
+        )
 
     def _reopen(
         self,
@@ -628,6 +653,7 @@ class PackageQuarantineStore:
             request,
             receipt,
             reset_extraction=reset_extraction,
+            expected_root_identity=self._root_identity,
         )
 
     def _repair(self, target: PackageQuarantineCleanupTargetV1) -> None:
@@ -636,6 +662,8 @@ class PackageQuarantineStore:
         if _supports_descriptor_relative_io():
             root_fd = _open_directory(self.root)
             try:
+                if _identity(os.fstat(root_fd)) != self._root_identity:
+                    raise OSError("Package cleanup store identity changed")
                 if _identity(os.fstat(root_fd)) != target.store_identity:
                     raise OSError("Package cleanup store identity changed")
                 try:
@@ -659,11 +687,13 @@ class PackageQuarantineStore:
                         os.close(visible)
                 finally:
                     os.close(attempt_fd)
-                os.rmdir(target.attempt_name, dir_fd=root_fd)
+                _rmdir_at(root_fd, target.attempt_name)
             finally:
                 os.close(root_fd)
             return
         _require_private_directory(self.root)
+        if _identity(self.root.lstat()) != self._root_identity:
+            raise OSError("Package cleanup store identity changed")
         if _identity(self.root.lstat()) != target.store_identity:
             raise OSError("Package cleanup store identity changed")
         attempt_path = self.root / target.attempt_name
@@ -681,6 +711,12 @@ class PackageQuarantineStore:
         if _identity(attempt_path.lstat()) != target.attempt_identity:
             raise OSError("Package cleanup attempt identity changed")
         attempt_path.rmdir()
+
+    def _require_root_identity(self) -> None:
+        _require_no_link_ancestors(self.root)
+        _require_private_directory(self.root)
+        if _identity(self.root.lstat()) != self._root_identity:
+            raise OSError("Package quarantine root identity changed")
 
 
 class _QuarantineAdoptionError(OSError):
@@ -719,14 +755,17 @@ class _QuarantineAttempt:
         cls,
         store_root: Path,
         request: PackageAcquisitionRequestV1,
+        *,
+        expected_root_identity: tuple[int, int],
     ) -> _QuarantineAttempt:
         attempt_name, artifact_name = _attempt_entry_names(request)
         if _supports_descriptor_relative_io():
             root_fd = _open_directory(store_root)
             try:
                 root_identity = _identity(os.fstat(root_fd))
-                os.mkdir(attempt_name, mode=0o700, dir_fd=root_fd)
-                attempt_fd = _open_directory(attempt_name, dir_fd=root_fd)
+                if root_identity != expected_root_identity:
+                    raise OSError("Package quarantine root identity changed")
+                attempt_fd = _create_directory_at(root_fd, attempt_name)
             except Exception:
                 os.close(root_fd)
                 raise
@@ -741,6 +780,8 @@ class _QuarantineAttempt:
                 artifact_name=artifact_name,
             )
         attempt_path = store_root / attempt_name
+        if _identity(store_root.lstat()) != expected_root_identity:
+            raise OSError("Package quarantine root identity changed")
         attempt_path.mkdir(mode=0o700, exist_ok=False)
         _require_private_directory(attempt_path)
         return cls(
@@ -761,6 +802,7 @@ class _QuarantineAttempt:
         receipt: BoundedAcquisitionReceiptV1,
         *,
         reset_extraction: bool,
+        expected_root_identity: tuple[int, int],
     ) -> _QuarantineAttempt:
         if (
             receipt.operation_id != request.operation_id
@@ -773,6 +815,8 @@ class _QuarantineAttempt:
             root_fd = _open_directory(store_root)
             try:
                 root_identity = _identity(os.fstat(root_fd))
+                if root_identity != expected_root_identity:
+                    raise OSError("Package quarantine root identity changed")
                 attempt_fd = _open_directory(attempt_name, dir_fd=root_fd)
             except Exception:
                 os.close(root_fd)
@@ -789,6 +833,8 @@ class _QuarantineAttempt:
             )
         else:
             _require_private_directory(store_root)
+            if _identity(store_root.lstat()) != expected_root_identity:
+                raise OSError("Package quarantine root identity changed")
             attempt_path = store_root / attempt_name
             _require_private_directory(attempt_path)
             attempt = cls(
@@ -834,18 +880,11 @@ class _QuarantineAttempt:
     def _open_artifact_for_write(self) -> BinaryIO:
         self._verify()
         if self._attempt_fd is not None:
-            flags = (
-                os.O_WRONLY
-                | os.O_CREAT
-                | os.O_EXCL
-                | getattr(os, "O_CLOEXEC", 0)
-                | getattr(os, "O_NOFOLLOW", 0)
-            )
-            descriptor = os.open(
+            descriptor = _open_regular_file_at(
+                self._attempt_fd,
                 self._artifact_name,
-                flags,
-                0o600,
-                dir_fd=self._attempt_fd,
+                create_new=True,
+                write=True,
             )
             return os.fdopen(descriptor, "wb", buffering=0)
         path = self._attempt_path / self._artifact_name
@@ -854,13 +893,11 @@ class _QuarantineAttempt:
     def _open_artifact_for_read(self) -> BinaryIO:
         self._verify()
         if self._attempt_fd is not None:
-            flags = (
-                os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
-            )
-            descriptor = os.open(
+            descriptor = _open_regular_file_at(
+                self._attempt_fd,
                 self._artifact_name,
-                flags,
-                dir_fd=self._attempt_fd,
+                create_new=False,
+                write=False,
             )
             handle = os.fdopen(descriptor, "rb")
             metadata = os.fstat(handle.fileno())
@@ -880,8 +917,7 @@ class _QuarantineAttempt:
             raise OSError("Quarantine extraction tree already exists")
         tree_name = "tree"
         if self._attempt_fd is not None:
-            os.mkdir(tree_name, mode=0o700, dir_fd=self._attempt_fd)
-            tree_fd = _open_directory(tree_name, dir_fd=self._attempt_fd)
+            tree_fd = _create_directory_at(self._attempt_fd, tree_name)
             self._tree_identity = _identity(os.fstat(tree_fd))
             return _QuarantineTreeWriter(attempt=self, tree_fd=tree_fd)
         tree_path = self._attempt_path / tree_name
@@ -894,7 +930,7 @@ class _QuarantineAttempt:
         self._verify()
         if self._attempt_fd is not None:
             try:
-                os.stat("tree", dir_fd=self._attempt_fd, follow_symlinks=False)
+                _stat_at(self._attempt_fd, "tree")
             except FileNotFoundError:
                 return False
             return True
@@ -918,7 +954,7 @@ class _QuarantineAttempt:
                     os.close(visible)
             finally:
                 os.close(tree_fd)
-            os.rmdir("tree", dir_fd=self._attempt_fd)
+            _rmdir_at(self._attempt_fd, "tree")
         else:
             tree_path = self._attempt_path / "tree"
             _require_private_directory(tree_path)
@@ -972,11 +1008,11 @@ class _QuarantineAttempt:
             if attempt_fd is not None:
                 self._cleanup_tree()
                 with suppress(FileNotFoundError):
-                    os.unlink(self._artifact_name, dir_fd=attempt_fd)
+                    _unlink_at(attempt_fd, self._artifact_name)
                 os.close(attempt_fd)
                 self._attempt_fd = None
             try:
-                os.rmdir(self._attempt_name, dir_fd=root_fd)
+                _rmdir_at(root_fd, self._attempt_name)
             except OSError:
                 raise
             else:
@@ -1044,19 +1080,15 @@ class _QuarantineAttempt:
                         raise OSError("Quarantine extraction tree identity changed")
                     parent_fd = _open_relative_directory(tree_fd, parts[:-1])
                     try:
-                        metadata = os.stat(
-                            parts[-1],
-                            dir_fd=parent_fd,
-                            follow_symlinks=False,
-                        )
+                        metadata = _stat_at(parent_fd, parts[-1])
                         if _identity(metadata) != expected or _is_reparse(metadata):
                             raise OSError(
                                 "Quarantine extraction entry identity changed"
                             )
                         if stat.S_ISDIR(metadata.st_mode):
-                            os.rmdir(parts[-1], dir_fd=parent_fd)
+                            _rmdir_at(parent_fd, parts[-1])
                         elif stat.S_ISREG(metadata.st_mode):
-                            os.unlink(parts[-1], dir_fd=parent_fd)
+                            _unlink_at(parent_fd, parts[-1])
                         else:
                             raise OSError("Quarantine extraction entry type changed")
                     finally:
@@ -1076,10 +1108,10 @@ class _QuarantineAttempt:
                     raise OSError("Quarantine extraction entry type changed")
             del self._tree_entries[parts]
         if self._attempt_fd is not None:
-            metadata = os.stat("tree", dir_fd=self._attempt_fd, follow_symlinks=False)
+            metadata = _stat_at(self._attempt_fd, "tree")
             if _identity(metadata) != self._tree_identity or _is_reparse(metadata):
                 raise OSError("Quarantine extraction tree identity changed")
-            os.rmdir("tree", dir_fd=self._attempt_fd)
+            _rmdir_at(self._attempt_fd, "tree")
         else:
             tree_path = self._attempt_path / "tree"
             metadata = tree_path.lstat()
@@ -1111,8 +1143,7 @@ class _QuarantineTreeWriter:
             if self._tree_fd is not None:
                 parent_fd = _open_relative_directory(self._tree_fd, current[:-1])
                 try:
-                    os.mkdir(current[-1], mode=0o700, dir_fd=parent_fd)
-                    child_fd = _open_directory(current[-1], dir_fd=parent_fd)
+                    child_fd = _create_directory_at(parent_fd, current[-1])
                     try:
                         identity = _identity(os.fstat(child_fd))
                     finally:
@@ -1136,15 +1167,11 @@ class _QuarantineTreeWriter:
         if self._tree_fd is not None:
             parent_fd = _open_relative_directory(self._tree_fd, parts[:-1])
             try:
-                descriptor = os.open(
+                descriptor = _open_regular_file_at(
+                    parent_fd,
                     parts[-1],
-                    os.O_WRONLY
-                    | os.O_CREAT
-                    | os.O_EXCL
-                    | getattr(os, "O_CLOEXEC", 0)
-                    | getattr(os, "O_NOFOLLOW", 0),
-                    0o600,
-                    dir_fd=parent_fd,
+                    create_new=True,
+                    write=True,
                 )
             finally:
                 os.close(parent_fd)
@@ -1163,7 +1190,7 @@ class _QuarantineTreeWriter:
     def _finish(self) -> None:
         self._require_open()
         if self._tree_fd is not None:
-            os.fsync(self._tree_fd)
+            _sync_directory(self._tree_fd)
             os.close(self._tree_fd)
             self._tree_fd = None
         self._closed = True
@@ -1675,6 +1702,8 @@ def _attempt_entry_names(
 
 
 def _supports_descriptor_relative_io() -> bool:
+    if supports_windows_rooted_io():
+        return True
     return (
         os.name == "posix"
         and os.open in os.supports_dir_fd
@@ -1686,9 +1715,73 @@ def _supports_descriptor_relative_io() -> bool:
 
 
 def _open_directory(path: str | Path, *, dir_fd: int | None = None) -> int:
+    if os.name == "nt":
+        return open_windows_directory(path, dir_fd=dir_fd)
     flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
     flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
     return os.open(path, flags, dir_fd=dir_fd)
+
+
+def _create_directory_at(directory_fd: int, name: str) -> int:
+    if os.name == "nt":
+        return open_windows_directory(name, dir_fd=directory_fd, create_new=True)
+    os.mkdir(name, mode=0o700, dir_fd=directory_fd)
+    return _open_directory(name, dir_fd=directory_fd)
+
+
+def _open_regular_file_at(
+    directory_fd: int,
+    name: str,
+    *,
+    create_new: bool,
+    write: bool,
+) -> int:
+    if os.name == "nt":
+        return open_windows_regular_file_at(
+            directory_fd,
+            name,
+            create_new=create_new,
+            write=write,
+        )
+    flags = (
+        (os.O_WRONLY if write else os.O_RDONLY)
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    if create_new:
+        flags |= os.O_CREAT | os.O_EXCL
+    return os.open(name, flags, 0o600, dir_fd=directory_fd)
+
+
+def _stat_at(directory_fd: int, name: str) -> os.stat_result:
+    if os.name == "nt":
+        return windows_stat_at(directory_fd, name)
+    return os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+
+
+def _listdir_at(directory_fd: int) -> tuple[str, ...]:
+    if os.name == "nt":
+        return windows_listdir_at(directory_fd)
+    return tuple(os.listdir(directory_fd))
+
+
+def _unlink_at(directory_fd: int, name: str) -> None:
+    if os.name == "nt":
+        windows_unlink_at(directory_fd, name)
+        return
+    os.unlink(name, dir_fd=directory_fd)
+
+
+def _rmdir_at(directory_fd: int, name: str) -> None:
+    if os.name == "nt":
+        windows_rmdir_at(directory_fd, name)
+        return
+    os.rmdir(name, dir_fd=directory_fd)
+
+
+def _sync_directory(directory_fd: int) -> None:
+    if os.name != "nt":
+        os.fsync(directory_fd)
 
 
 def _open_relative_directory(root_fd: int, parts: tuple[str, ...]) -> int:
@@ -1705,8 +1798,8 @@ def _open_relative_directory(root_fd: int, parts: tuple[str, ...]) -> int:
 
 
 def _remove_directory_contents_at(directory_fd: int) -> None:
-    for name in os.listdir(directory_fd):
-        metadata = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+    for name in _listdir_at(directory_fd):
+        metadata = _stat_at(directory_fd, name)
         if stat.S_ISDIR(metadata.st_mode) and not _is_reparse(metadata):
             child_fd = _open_directory(name, dir_fd=directory_fd)
             child_identity = _identity(os.fstat(child_fd))
@@ -1720,17 +1813,17 @@ def _remove_directory_contents_at(directory_fd: int) -> None:
                     os.close(visible)
             finally:
                 os.close(child_fd)
-            os.rmdir(name, dir_fd=directory_fd)
+            _rmdir_at(directory_fd, name)
         else:
-            os.unlink(name, dir_fd=directory_fd)
+            _unlink_at(directory_fd, name)
 
 
 def _directory_identity_exists_at(
     directory_fd: int,
     expected: tuple[int, int],
 ) -> bool:
-    for name in os.listdir(directory_fd):
-        metadata = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+    for name in _listdir_at(directory_fd):
+        metadata = _stat_at(directory_fd, name)
         if (
             stat.S_ISDIR(metadata.st_mode)
             and not _is_reparse(metadata)

@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.2e.
+- Contract version: PLC9B.2f-candidate.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -14,12 +14,12 @@
   preflight, portable path/type rejection, bounded inert wheel/RECORD
   verification, and extraction through a rooted owner-only writer after all
   claims pass. B2c binds those dark components to operation phase-CAS plus a
-  typed evidence journal, but no production route. Native Windows
-  root-relative extraction, dependency resolution, publication, and every
-  production acquisition route remain absent. B2d adds durable cleanup-domain
-  tombstones and exact repair. B2e adds evidence-driven acquired/verified
-  crash adoption without Source reauthorization; native Windows containment
-  remains open.
+  typed evidence journal, but no production route. Dependency resolution,
+  publication, and every production acquisition route remain absent. B2d adds
+  durable cleanup-domain tombstones and exact repair. B2e adds evidence-driven acquired/verified
+  crash adoption without Source reauthorization. B2f adds a native Windows
+  rooted-handle backend and mandatory CI fixture candidate; it is not accepted
+  until that non-skippable Windows job passes.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -79,7 +79,7 @@ the first independently testable B2 component without activating it:
   identity, locator digest, and policy revision before creating quarantine;
 - the owner alone creates a private attempt directory and an exclusive regular
   artifact file relative to an identity-pinned root on descriptor-capable
-  POSIX hosts;
+  POSIX hosts and the B2f Windows candidate;
 - the Source adapter receives only `begin_request`, `record_redirect`, and
   `write`; it receives no pathname, file handle, root, store, publication, or
   desired-state authority;
@@ -90,10 +90,10 @@ the first independently testable B2 component without activating it:
 - rejection closes the sink and removes only the exact owner-created attempt.
 
 The portable fallback rejects link/reparse roots and every currently visible
-link/reparse ancestor, but it is not accepted as native Windows containment.
-The Windows root-relative handle implementation, acquired/verified crash
-adoption, and native swap fixtures remain open B2 work. Consequently these B2
-components promote no global adversarial manifest row:
+link/reparse ancestor. B2f replaces that fallback on Windows with a native
+rooted-handle candidate; it remains unaccepted until the native swap/ABA job
+passes. Consequently these B2 components promote no global adversarial
+manifest row:
 the `B-ACQ-*`, `B-LIMIT-*`, `B-STATE-*`, and later-phase crash rows retain
 `planned` until the complete caller response, journal effect, and native oracle
 specified by each row are executable.
@@ -121,17 +121,18 @@ Product or transport composition. Before materializing any archive entry it:
   file hashes, and proves the exact `RECORD` set with only SHA-256/384/512;
 - revalidates the acquired artifact digest immediately before extraction, then
   creates directories/files exclusively beneath the pinned attempt using
-  descriptor-relative no-follow operations on supported POSIX hosts; and
+  descriptor-relative no-follow operations on supported POSIX hosts and the
+  B2f Windows candidate; and
 - returns versioned `VerifiedWheelArtifactV1` evidence plus an opaque candidate
   whose only current operation is exact cleanup. It exposes no pathname or
   file handle to B3, transports, Products, or Source adapters.
 
 The verifier deliberately rejects source distributions, arbitrary ZIP files,
 editable/build inputs, archive extras, and weak/unknown RECORD algorithms. Its
-portable fallback is defense-in-depth only and is not native Windows
-acceptance. B2b therefore promotes no global manifest row: those rows require
-the journaled failure/status response and both Linux and Windows native
-oracles, not merely a passing component test.
+portable fallback is defense-in-depth only. B2f supplies the native Windows
+rooted-writer candidate, but B2b promotes no global manifest row: those rows
+require the journaled failure/status response and accepted Linux and Windows
+native oracles, not merely a passing component test.
 
 ## PLC9B2c Dark Artifact Phase Composition
 
@@ -215,10 +216,35 @@ Source reauthorization as a fallback. Missing, mismatched, replaced, or
 malformed durable evidence fails closed; exact identity-pinned cleanup remains
 separate from operation rejection through the B2d cleanup domain.
 
-B2e is still an unbound POSIX-proved component slice. The global `B-CRASH-*`
+B2e is still an unbound component slice. The global `B-CRASH-*`
 rows cover every phase, the complete committed-set transaction, and native
 platform oracles, so they remain `planned` until those obligations are
 executable on Linux and Windows CI.
+
+## PLC9B2f Native Windows Quarantine Candidate
+
+`plugin_lifecycle.windows_quarantine` is a Package-owner-local backend; it does
+not import Coding, Foundation, a Product adapter, or a public author SDK. On
+Windows it pins the configured quarantine root with `CreateFileW`,
+`FILE_FLAG_OPEN_REPARSE_POINT`, and `FILE_FLAG_BACKUP_SEMANTICS`, then performs
+every attempt, artifact, extraction-tree, and nested-entry create/open through
+`NtCreateFile` with the pinned parent in `OBJECT_ATTRIBUTES.RootDirectory`.
+Direct directories and regular files are reparse-checked after handle open.
+
+Cleanup enumerates only through the final path of an already pinned directory;
+each discovered child is independently reopened relative to that handle, and
+mutation uses `SetFileInformationByHandle`. A reparse child is deleted as an
+entry and never traversed. Root/attempt handles omit delete sharing while live,
+so rename/replace cannot race a successful operation; recovery after handles
+close still requires the durable B2e sink identity and full artifact digest.
+
+The Windows workflow contains a dedicated report that exercises successful
+acquire/read/cleanup, live root pinning, pre-attempt root replacement,
+partial-tree recovery without a second Source call, attempt reparse rejection,
+and full-root ABA rejection. The report is rejected if empty, skipped, or
+failing. This contract deliberately calls
+B2f a candidate until that job runs on native Windows. Local POSIX tests and
+source inspection cannot promote any Windows-native manifest row.
 
 ## First Principles
 
