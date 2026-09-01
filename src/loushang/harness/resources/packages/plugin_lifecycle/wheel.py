@@ -335,6 +335,14 @@ class VerifiedWheelCandidate:
         self._acquired.cleanup()
         self._closed = True
 
+    def suspend_for_recovery(self) -> None:
+        """Release process-local handles while preserving verified local state."""
+
+        if self._closed:
+            return
+        self._acquired.suspend_for_recovery()
+        self._closed = True
+
 
 @dataclass(frozen=True, slots=True)
 class _WheelIdentity:

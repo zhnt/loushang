@@ -3,11 +3,14 @@ from __future__ import annotations
 import base64
 import csv
 import io
+import os
 import stat
 import zipfile
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
+
+import pytest
 
 from loushang.harness.resources.packages.plugin_lifecycle import (
     PackageClassificationBasisFactV1,
@@ -282,6 +285,43 @@ def _execute_request(status, secret: str = "credential-ref-secret"):
     )
 
 
+def _land_acquired_evidence_without_phase_advance(
+    kernel: PackageLifecycleOwner,
+    owner: PackageArtifactLifecycleOwner,
+    evidence: PackageArtifactEvidenceJournal,
+):
+    classified = kernel.submit(_ingress())
+    acquiring = kernel.advance(
+        classified.operation_id,
+        next_phase="acquiring",
+        expected_phase="classified",
+        expected_journal_revision=classified.journal_revision,
+        expected_attempt_epoch=classified.attempt_epoch,
+    )
+    request = kernel.journal.request(acquiring.operation_id)
+    assert request is not None
+    acquisition_request = PackageAcquisitionRequestV1(
+        operation_id=request.operation_id,
+        attempt_epoch=acquiring.attempt_epoch,
+        node_id="root",
+        canonical_source_identity=request.canonical_source_identity,
+        request_fingerprint=request.request_fingerprint,
+        requested_locator_digest=sha256(
+            request.canonical_source_identity.encode("utf-8")
+        ).hexdigest(),
+        policy_revision=request.policy_revision,
+    )
+    candidate = owner._acquisition_owner.acquire(
+        acquisition_request,
+        budgets=owner._acquisition_budgets,
+    )
+    evidence.append(
+        request_fingerprint=request.request_fingerprint,
+        evidence=candidate.receipt,
+    )
+    return acquiring, candidate
+
+
 def test_dark_artifact_owner_journals_exact_phases_and_typed_evidence(
     tmp_path: Path,
 ) -> None:
@@ -310,6 +350,241 @@ def test_dark_artifact_owner_journals_exact_phases_and_typed_evidence(
     ]
     assert result.candidate.evidence.artifact_digest == sha256(payload).hexdigest()
     result.candidate.cleanup()
+    assert store.attempt_names() == ()
+
+
+def test_acquired_evidence_is_adopted_without_reauthorizing_source(
+    tmp_path: Path,
+) -> None:
+    kernel, owner, journal, evidence, _cleanup, store = _owners(
+        tmp_path,
+        payload=_wheel_bytes(),
+    )
+    acquiring, candidate = _land_acquired_evidence_without_phase_advance(
+        kernel,
+        owner,
+        evidence,
+    )
+    candidate.suspend_for_recovery()
+    owner._acquisition_owner._source_authority.denied = True
+
+    recovered = owner.execute(_execute_request(acquiring))
+
+    assert recovered.status.phase == "extracted"
+    assert recovered.candidate is not None
+    assert [record.status.phase for record in journal.records()] == [
+        "accepted",
+        "classified",
+        "acquiring",
+        "acquired",
+        "inspecting",
+        "extracted",
+    ]
+    assert len(evidence.records()) == 2
+    recovered.candidate.cleanup()
+    assert store.attempt_names() == ()
+
+
+def test_verified_evidence_is_reverified_and_adopted_without_source_access(
+    tmp_path: Path,
+) -> None:
+    kernel, owner, _journal, evidence, _cleanup, store = _owners(
+        tmp_path,
+        payload=_wheel_bytes(),
+    )
+    acquiring, candidate = _land_acquired_evidence_without_phase_advance(
+        kernel,
+        owner,
+        evidence,
+    )
+    acquired = kernel.advance(
+        acquiring.operation_id,
+        next_phase="acquired",
+        expected_phase="acquiring",
+        expected_journal_revision=acquiring.journal_revision,
+        expected_attempt_epoch=acquiring.attempt_epoch,
+    )
+    inspecting = kernel.advance(
+        acquired.operation_id,
+        next_phase="inspecting",
+        expected_phase="acquired",
+        expected_journal_revision=acquired.journal_revision,
+        expected_attempt_epoch=acquired.attempt_epoch,
+    )
+    verified = owner._wheel_verifier.verify(
+        candidate,
+        wheel_filename=WHEEL_FILENAME,
+        supported_tags=owner._supported_tags,
+        budgets=owner._inspection_budgets,
+    )
+    evidence.append(
+        request_fingerprint=inspecting.request_fingerprint,
+        evidence=verified.evidence,
+    )
+    durable_evidence = verified.evidence
+    verified.suspend_for_recovery()
+    owner._acquisition_owner._source_authority.denied = True
+
+    recovered = owner.execute(_execute_request(inspecting))
+
+    assert recovered.status.phase == "extracted"
+    assert recovered.candidate is not None
+    assert recovered.candidate.evidence == durable_evidence
+    assert len(evidence.records()) == 2
+    recovered.candidate.cleanup()
+    assert store.attempt_names() == ()
+
+
+def test_partial_extraction_is_removed_root_relatively_before_local_reverify(
+    tmp_path: Path,
+) -> None:
+    kernel, owner, _journal, evidence, _cleanup, store = _owners(
+        tmp_path,
+        payload=_wheel_bytes(),
+    )
+    acquiring, candidate = _land_acquired_evidence_without_phase_advance(
+        kernel,
+        owner,
+        evidence,
+    )
+    acquired = kernel.advance(
+        acquiring.operation_id,
+        next_phase="acquired",
+        expected_phase="acquiring",
+        expected_journal_revision=acquiring.journal_revision,
+        expected_attempt_epoch=acquiring.attempt_epoch,
+    )
+    inspecting = kernel.advance(
+        acquired.operation_id,
+        next_phase="inspecting",
+        expected_phase="acquired",
+        expected_journal_revision=acquired.journal_revision,
+        expected_attempt_epoch=acquired.attempt_epoch,
+    )
+    writer = candidate._attempt._begin_extraction()
+    partial = writer._open_file(("partial", "entry"))
+    partial.write(b"interrupted")
+    partial.close()
+    writer._abort()
+    candidate.suspend_for_recovery()
+    owner._acquisition_owner._source_authority.denied = True
+
+    recovered = owner.execute(_execute_request(inspecting))
+
+    assert recovered.status.phase == "extracted"
+    assert recovered.candidate is not None
+    assert len(evidence.records()) == 2
+    recovered.candidate.cleanup()
+    assert store.attempt_names() == ()
+
+
+def test_recovery_tree_swap_records_cleanup_debt_without_traversing_outside(
+    tmp_path: Path,
+) -> None:
+    if os.name != "posix":
+        pytest.skip("native Windows reparse recovery is a later PLC9B2 gate")
+    kernel, owner, _journal, evidence, cleanup, store = _owners(
+        tmp_path,
+        payload=_wheel_bytes(),
+    )
+    acquiring, candidate = _land_acquired_evidence_without_phase_advance(
+        kernel,
+        owner,
+        evidence,
+    )
+    acquired = kernel.advance(
+        acquiring.operation_id,
+        next_phase="acquired",
+        expected_phase="acquiring",
+        expected_journal_revision=acquiring.journal_revision,
+        expected_attempt_epoch=acquiring.attempt_epoch,
+    )
+    inspecting = kernel.advance(
+        acquired.operation_id,
+        next_phase="inspecting",
+        expected_phase="acquired",
+        expected_journal_revision=acquired.journal_revision,
+        expected_attempt_epoch=acquired.attempt_epoch,
+    )
+    candidate.suspend_for_recovery()
+    outside = tmp_path / "outside-tree"
+    outside.mkdir()
+    sentinel = outside / "sentinel"
+    sentinel.write_text("preserve", encoding="utf-8")
+    attempt = store.root / store.attempt_names()[0]
+    (attempt / "tree").symlink_to(outside, target_is_directory=True)
+    owner._acquisition_owner._source_authority.denied = True
+
+    rejected = owner.execute(_execute_request(inspecting))
+
+    assert rejected.status.phase == "inspecting"
+    assert rejected.status.disposition == "rejected"
+    assert rejected.status.failure is not None
+    assert rejected.status.failure.code == "package_artifact_identity_changed"
+    assert rejected.cleanup_status is not None
+    assert rejected.cleanup_status.disposition == "cleanup_retryable"
+    assert sentinel.read_text(encoding="utf-8") == "preserve"
+    repaired = cleanup.repair(
+        rejected.cleanup_status.target.cleanup_id,
+        expected_cleanup_revision=rejected.cleanup_status.cleanup_revision,
+    )
+    assert repaired.disposition == "cleanup_complete"
+    assert sentinel.read_text(encoding="utf-8") == "preserve"
+    assert store.attempt_names() == ()
+
+
+def test_extracted_phase_reconstructs_process_local_candidate_idempotently(
+    tmp_path: Path,
+) -> None:
+    kernel, owner, _journal, evidence, _cleanup, store = _owners(
+        tmp_path,
+        payload=_wheel_bytes(),
+    )
+    classified = kernel.submit(_ingress())
+    initial = owner.execute(_execute_request(classified))
+    assert initial.candidate is not None
+    initial.candidate.suspend_for_recovery()
+    owner._acquisition_owner._source_authority.denied = True
+
+    recovered = owner.execute(_execute_request(initial.status))
+
+    assert recovered.status == initial.status
+    assert recovered.candidate is not None
+    assert len(evidence.records()) == 2
+    recovered.candidate.cleanup()
+    assert store.attempt_names() == ()
+
+
+def test_recovery_rejects_artifact_replacement_without_source_or_outside_delete(
+    tmp_path: Path,
+) -> None:
+    kernel, owner, _journal, evidence, _cleanup, store = _owners(
+        tmp_path,
+        payload=_wheel_bytes(),
+    )
+    acquiring, candidate = _land_acquired_evidence_without_phase_advance(
+        kernel,
+        owner,
+        evidence,
+    )
+    candidate.suspend_for_recovery()
+    attempt = store.root / store.attempt_names()[0]
+    artifact = next(path for path in attempt.iterdir() if path.is_file())
+    original = artifact.read_bytes()
+    artifact.unlink()
+    artifact.write_bytes(bytes([original[0] ^ 1]) + original[1:])
+    outside = tmp_path / "outside-sentinel"
+    outside.write_text("preserve", encoding="utf-8")
+    owner._acquisition_owner._source_authority.denied = True
+
+    rejected = owner.execute(_execute_request(acquiring))
+
+    assert rejected.status.phase == "acquired"
+    assert rejected.status.disposition == "rejected"
+    assert rejected.status.failure is not None
+    assert rejected.status.failure.code == "package_artifact_identity_changed"
+    assert len(evidence.records()) == 1
+    assert outside.read_text(encoding="utf-8") == "preserve"
     assert store.attempt_names() == ()
 
 

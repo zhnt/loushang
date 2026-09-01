@@ -8,6 +8,8 @@ from hashlib import sha256
 from typing import Protocol, cast
 
 from loushang.harness.resources.packages.plugin_lifecycle.acquisition import (
+    AcquiredPackageCandidate,
+    BoundedAcquisitionReceiptV1,
     PackageAcquisitionBudgetV1,
     PackageAcquisitionCleanupDebtError,
     PackageAcquisitionError,
@@ -37,6 +39,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.wheel import (
     PackageInspectionBudgetV1,
     PackageWheelVerificationError,
     PackageWheelVerifier,
+    VerifiedWheelArtifactV1,
     VerifiedWheelCandidate,
 )
 
@@ -175,6 +178,9 @@ class PackageArtifactLifecycleOwner:
         if status.disposition != "active" or status.phase not in {
             "classified",
             "acquiring",
+            "acquired",
+            "inspecting",
+            "extracted",
         }:
             return PackageArtifactExecutionResult(status=status)
         classification = status.classification
@@ -182,40 +188,9 @@ class PackageArtifactLifecycleOwner:
             raise RuntimeError("Classified Package status has no evidence")
         if classification.decision != "plugin_bound":
             return PackageArtifactExecutionResult(status=status)
-        fresh = self._classification_recheck.recheck(request, classification)
-        if not isinstance(fresh, PluginBoundPackageClassificationV1):
-            raise TypeError("Classification recheck returned invalid evidence")
-        if fresh != classification:
-            failure = PackageLifecycleFailureV1.for_operation(
-                "package_target_classification_changed",
-                stage=status.phase,
-                operation_id=status.operation_id,
-                evidence_ref=fresh.evidence_ref,
-            )
-            return PackageArtifactExecutionResult(
-                status=self._kernel.record_failure(
-                    failure,
-                    expected_phase=status.phase,
-                    expected_journal_revision=status.journal_revision,
-                    expected_attempt_epoch=status.attempt_epoch,
-                )
-            )
-        acquiring = (
-            self._kernel.advance(
-                status.operation_id,
-                next_phase="acquiring",
-                expected_phase="classified",
-                expected_journal_revision=status.journal_revision,
-                expected_attempt_epoch=status.attempt_epoch,
-            )
-            if status.phase == "classified"
-            else status
-        )
-        if acquiring.disposition != "active":
-            return PackageArtifactExecutionResult(status=acquiring)
         acquisition_request = PackageAcquisitionRequestV1(
             operation_id=request.operation_id,
-            attempt_epoch=acquiring.attempt_epoch,
+            attempt_epoch=status.attempt_epoch,
             node_id="root",
             canonical_source_identity=request.canonical_source_identity,
             request_fingerprint=request.request_fingerprint,
@@ -226,79 +201,327 @@ class PackageArtifactLifecycleOwner:
             credential_reference=execution.credential_reference,
         )
         try:
-            acquired_candidate = self._acquisition_owner.acquire(
-                acquisition_request,
-                budgets=self._acquisition_budgets,
+            acquired_record = self._evidence_journal.find(
+                operation_id=status.operation_id,
+                attempt_epoch=status.attempt_epoch,
+                node_id="root",
+                kind="bounded_acquisition",
             )
-        except PackageAcquisitionCleanupDebtError as debt:
-            cleanup_status = self._cleanup_owner.record_pending(
-                debt.target,
-                rejection_code=debt.rejection.code,
-                rejection_stage=cast(PackageLifecyclePhase, debt.rejection.stage),
-            )
-            failure = _acquisition_failure(acquiring, debt.rejection)
-            rejected = self._kernel.record_failure(
-                failure,
-                expected_phase="acquiring",
-                expected_journal_revision=acquiring.journal_revision,
-                expected_attempt_epoch=acquiring.attempt_epoch,
-            )
-            return PackageArtifactExecutionResult(
-                status=rejected,
-                cleanup_status=cleanup_status,
-            )
-        except PackageAcquisitionError as error:
-            failure = _acquisition_failure(acquiring, error)
-            return PackageArtifactExecutionResult(
-                status=self._kernel.record_failure(
-                    failure,
-                    expected_phase="acquiring",
-                    expected_journal_revision=acquiring.journal_revision,
-                    expected_attempt_epoch=acquiring.attempt_epoch,
-                )
-            )
-        try:
-            self._evidence_journal.append(
-                request_fingerprint=request.request_fingerprint,
-                evidence=acquired_candidate.receipt,
+            verified_record = self._evidence_journal.find(
+                operation_id=status.operation_id,
+                attempt_epoch=status.attempt_epoch,
+                node_id="root",
+                kind="verified_wheel",
             )
         except PackageArtifactEvidenceJournalError:
-            acquired_candidate.cleanup()
-            failure = _identity_conflict(acquiring, stage="acquired")
-            return PackageArtifactExecutionResult(
-                status=self._kernel.record_failure(
-                    failure,
-                    expected_phase="acquiring",
-                    expected_journal_revision=acquiring.journal_revision,
-                    expected_attempt_epoch=acquiring.attempt_epoch,
+            return self._record_identity_failure(status, stage=status.phase)
+        if (
+            acquired_record is not None
+            and (
+                acquired_record.request_fingerprint != request.request_fingerprint
+                or not isinstance(
+                    acquired_record.evidence,
+                    BoundedAcquisitionReceiptV1,
                 )
             )
-        acquired = self._kernel.advance(
-            acquiring.operation_id,
-            next_phase="acquired",
-            expected_phase="acquiring",
-            expected_journal_revision=acquiring.journal_revision,
-            expected_attempt_epoch=acquiring.attempt_epoch,
+        ) or (
+            verified_record is not None
+            and (
+                verified_record.request_fingerprint != request.request_fingerprint
+                or not isinstance(verified_record.evidence, VerifiedWheelArtifactV1)
+            )
+        ):
+            return self._record_identity_failure(status, stage=status.phase)
+        receipt = (
+            cast(BoundedAcquisitionReceiptV1, acquired_record.evidence)
+            if acquired_record is not None
+            else None
         )
-        inspecting = self._kernel.advance(
-            acquired.operation_id,
-            next_phase="inspecting",
-            expected_phase="acquired",
-            expected_journal_revision=acquired.journal_revision,
-            expected_attempt_epoch=acquired.attempt_epoch,
+        durable_verified = (
+            cast(VerifiedWheelArtifactV1, verified_record.evidence)
+            if verified_record is not None
+            else None
         )
-        try:
-            verified = self._wheel_verifier.verify(
+        if durable_verified is not None and receipt is None:
+            return self._record_identity_failure(status, stage=status.phase)
+
+        acquired_candidate: AcquiredPackageCandidate | None = None
+        classification_rechecked = False
+        if status.phase == "classified":
+            if receipt is not None or durable_verified is not None:
+                return self._record_identity_failure(status, stage="classified")
+            changed = self._recheck_classification(status, request, classification)
+            if changed is not None:
+                return PackageArtifactExecutionResult(status=changed)
+            classification_rechecked = True
+            status = self._kernel.advance(
+                status.operation_id,
+                next_phase="acquiring",
+                expected_phase="classified",
+                expected_journal_revision=status.journal_revision,
+                expected_attempt_epoch=status.attempt_epoch,
+            )
+            if status.disposition != "active":
+                return PackageArtifactExecutionResult(status=status)
+
+        if status.phase == "acquiring":
+            if durable_verified is not None:
+                return self._record_identity_failure(status, stage="acquired")
+            if receipt is None:
+                if not classification_rechecked:
+                    changed = self._recheck_classification(
+                        status,
+                        request,
+                        classification,
+                    )
+                    if changed is not None:
+                        return PackageArtifactExecutionResult(status=changed)
+                try:
+                    acquired_candidate = self._acquisition_owner.acquire(
+                        acquisition_request,
+                        budgets=self._acquisition_budgets,
+                    )
+                except PackageAcquisitionCleanupDebtError as debt:
+                    return self._record_acquisition_failure(status, debt=debt)
+                except PackageAcquisitionError as error:
+                    return self._record_acquisition_failure(status, error=error)
+                receipt = acquired_candidate.receipt
+                try:
+                    self._evidence_journal.append(
+                        request_fingerprint=request.request_fingerprint,
+                        evidence=receipt,
+                    )
+                except PackageArtifactEvidenceJournalError:
+                    acquired_candidate.cleanup()
+                    return self._record_identity_failure(status, stage="acquired")
+            else:
+                reopened = self._reopen_candidate(
+                    status,
+                    acquisition_request,
+                    receipt,
+                    reset_extraction=False,
+                )
+                if isinstance(reopened, PackageArtifactExecutionResult):
+                    return reopened
+                acquired_candidate = reopened
+            status = self._kernel.advance(
+                status.operation_id,
+                next_phase="acquired",
+                expected_phase="acquiring",
+                expected_journal_revision=status.journal_revision,
+                expected_attempt_epoch=status.attempt_epoch,
+            )
+            if status.disposition != "active":
+                if acquired_candidate is not None:
+                    acquired_candidate.suspend_for_recovery()
+                return PackageArtifactExecutionResult(status=status)
+
+        if status.phase == "acquired":
+            if receipt is None or durable_verified is not None:
+                if acquired_candidate is not None:
+                    acquired_candidate.suspend_for_recovery()
+                return self._record_identity_failure(status, stage="acquired")
+            if acquired_candidate is None:
+                reopened = self._reopen_candidate(
+                    status,
+                    acquisition_request,
+                    receipt,
+                    reset_extraction=False,
+                )
+                if isinstance(reopened, PackageArtifactExecutionResult):
+                    return reopened
+                acquired_candidate = reopened
+            status = self._kernel.advance(
+                status.operation_id,
+                next_phase="inspecting",
+                expected_phase="acquired",
+                expected_journal_revision=status.journal_revision,
+                expected_attempt_epoch=status.attempt_epoch,
+            )
+            if status.disposition != "active":
+                acquired_candidate.suspend_for_recovery()
+                return PackageArtifactExecutionResult(status=status)
+
+        if status.phase == "inspecting":
+            if receipt is None:
+                return self._record_identity_failure(status, stage="inspecting")
+            if acquired_candidate is None:
+                reopened = self._reopen_candidate(
+                    status,
+                    acquisition_request,
+                    receipt,
+                    reset_extraction=True,
+                )
+                if isinstance(reopened, PackageArtifactExecutionResult):
+                    return reopened
+                acquired_candidate = reopened
+            verified = self._verify_candidate(
+                status,
                 acquired_candidate,
+                execution,
+            )
+            if isinstance(verified, PackageArtifactExecutionResult):
+                return verified
+            if durable_verified is not None and verified.evidence != durable_verified:
+                verified.cleanup()
+                return self._record_identity_failure(status, stage="extracted")
+            try:
+                self._evidence_journal.append(
+                    request_fingerprint=request.request_fingerprint,
+                    evidence=verified.evidence,
+                )
+            except PackageArtifactEvidenceJournalError:
+                verified.cleanup()
+                return self._record_identity_failure(status, stage="extracted")
+            extracted = self._kernel.advance(
+                status.operation_id,
+                next_phase="extracted",
+                expected_phase="inspecting",
+                expected_journal_revision=status.journal_revision,
+                expected_attempt_epoch=status.attempt_epoch,
+            )
+            if extracted.disposition != "active":
+                verified.suspend_for_recovery()
+                return PackageArtifactExecutionResult(status=extracted)
+            return PackageArtifactExecutionResult(status=extracted, candidate=verified)
+
+        if status.phase == "extracted":
+            if receipt is None or durable_verified is None:
+                return self._record_identity_failure(status, stage="extracted")
+            reopened = self._reopen_candidate(
+                status,
+                acquisition_request,
+                receipt,
+                reset_extraction=True,
+            )
+            if isinstance(reopened, PackageArtifactExecutionResult):
+                return reopened
+            verified = self._verify_candidate(status, reopened, execution)
+            if isinstance(verified, PackageArtifactExecutionResult):
+                return verified
+            if verified.evidence != durable_verified:
+                verified.cleanup()
+                return self._record_identity_failure(status, stage="extracted")
+            return PackageArtifactExecutionResult(status=status, candidate=verified)
+        raise RuntimeError("Unsupported active Package artifact phase")
+
+    def _recheck_classification(
+        self,
+        status: PackageLifecycleStatusV1,
+        request: PackageLifecycleRequestV1,
+        classification: PluginBoundPackageClassificationV1,
+    ) -> PackageLifecycleStatusV1 | None:
+        fresh = self._classification_recheck.recheck(request, classification)
+        if not isinstance(fresh, PluginBoundPackageClassificationV1):
+            raise TypeError("Classification recheck returned invalid evidence")
+        if fresh == classification:
+            return None
+        failure = PackageLifecycleFailureV1.for_operation(
+            "package_target_classification_changed",
+            stage=status.phase,
+            operation_id=status.operation_id,
+            evidence_ref=fresh.evidence_ref,
+        )
+        return self._kernel.record_failure(
+            failure,
+            expected_phase=status.phase,
+            expected_journal_revision=status.journal_revision,
+            expected_attempt_epoch=status.attempt_epoch,
+        )
+
+    def _record_identity_failure(
+        self,
+        status: PackageLifecycleStatusV1,
+        *,
+        stage: PackageLifecyclePhase,
+    ) -> PackageArtifactExecutionResult:
+        return PackageArtifactExecutionResult(
+            status=self._kernel.record_failure(
+                _identity_conflict(status, stage=stage),
+                expected_phase=status.phase,
+                expected_journal_revision=status.journal_revision,
+                expected_attempt_epoch=status.attempt_epoch,
+            )
+        )
+
+    def _record_acquisition_failure(
+        self,
+        status: PackageLifecycleStatusV1,
+        *,
+        error: PackageAcquisitionError | None = None,
+        debt: PackageAcquisitionCleanupDebtError | None = None,
+    ) -> PackageArtifactExecutionResult:
+        if (error is None) == (debt is None):
+            raise ValueError("Exactly one acquisition rejection is required")
+        rejection = debt.rejection if debt is not None else cast(
+            PackageAcquisitionError,
+            error,
+        )
+        cleanup_status = None
+        if debt is not None:
+            cleanup_status = self._cleanup_owner.record_pending(
+                debt.target,
+                rejection_code=rejection.code,
+                rejection_stage=cast(PackageLifecyclePhase, rejection.stage),
+            )
+        rejection_stage = cast(PackageLifecyclePhase, rejection.stage)
+        if status.phase not in {"acquiring", rejection_stage}:
+            rejection_stage = status.phase
+        failure = _acquisition_failure(
+            status,
+            rejection,
+            stage=rejection_stage,
+        )
+        rejected = self._kernel.record_failure(
+            failure,
+            expected_phase=status.phase,
+            expected_journal_revision=status.journal_revision,
+            expected_attempt_epoch=status.attempt_epoch,
+        )
+        return PackageArtifactExecutionResult(
+            status=rejected,
+            cleanup_status=cleanup_status,
+        )
+
+    def _reopen_candidate(
+        self,
+        status: PackageLifecycleStatusV1,
+        request: PackageAcquisitionRequestV1,
+        receipt: BoundedAcquisitionReceiptV1,
+        *,
+        reset_extraction: bool,
+    ) -> AcquiredPackageCandidate | PackageArtifactExecutionResult:
+        try:
+            return self._acquisition_owner.reopen_acquired(
+                request,
+                receipt,
+                reset_extraction=reset_extraction,
+            )
+        except PackageAcquisitionCleanupDebtError as debt:
+            return self._record_acquisition_failure(status, debt=debt)
+        except PackageAcquisitionError as error:
+            return self._record_acquisition_failure(status, error=error)
+
+    def _verify_candidate(
+        self,
+        status: PackageLifecycleStatusV1,
+        candidate: AcquiredPackageCandidate,
+        execution: PackageArtifactExecutionRequestV1,
+    ) -> VerifiedWheelCandidate | PackageArtifactExecutionResult:
+        try:
+            return self._wheel_verifier.verify(
+                candidate,
                 wheel_filename=execution.wheel_filename,
                 supported_tags=self._supported_tags,
                 budgets=self._inspection_budgets,
             )
         except PackageWheelVerificationError as error:
+            cleanup_status = None
+            rejection = error
             if error.code == "package_quarantine_cleanup_retryable":
                 if error.rejection_code is None or error.rejection_stage is None:
                     raise RuntimeError("Cleanup debt lost its original rejection")
-                target = acquired_candidate.cleanup_target()
+                target = candidate.cleanup_target()
                 try:
                     cleanup_status = self._cleanup_owner.record_pending(
                         target,
@@ -309,63 +532,39 @@ class PackageArtifactLifecycleOwner:
                         ),
                     )
                 finally:
-                    acquired_candidate.defer_cleanup()
+                    candidate.defer_cleanup()
                 rejection = PackageWheelVerificationError(
                     "Package artifact was rejected",
                     code=error.rejection_code,
                     stage=error.rejection_stage,
                 )
-                failure = _wheel_failure(inspecting, rejection)
-                rejected = self._kernel.record_failure(
-                    failure,
-                    expected_phase="inspecting",
-                    expected_journal_revision=inspecting.journal_revision,
-                    expected_attempt_epoch=inspecting.attempt_epoch,
-                )
-                return PackageArtifactExecutionResult(
-                    status=rejected,
-                    cleanup_status=cleanup_status,
-                )
-            failure = _wheel_failure(inspecting, error)
+            rejection_stage = cast(PackageLifecyclePhase, rejection.stage)
+            if status.phase == "extracted":
+                rejection_stage = "extracted"
+            failure = _wheel_failure(
+                status,
+                rejection,
+                stage=rejection_stage,
+            )
+            rejected = self._kernel.record_failure(
+                failure,
+                expected_phase=status.phase,
+                expected_journal_revision=status.journal_revision,
+                expected_attempt_epoch=status.attempt_epoch,
+            )
             return PackageArtifactExecutionResult(
-                status=self._kernel.record_failure(
-                    failure,
-                    expected_phase="inspecting",
-                    expected_journal_revision=inspecting.journal_revision,
-                    expected_attempt_epoch=inspecting.attempt_epoch,
-                )
+                status=rejected,
+                cleanup_status=cleanup_status,
             )
-        try:
-            self._evidence_journal.append(
-                request_fingerprint=request.request_fingerprint,
-                evidence=verified.evidence,
-            )
-        except PackageArtifactEvidenceJournalError:
-            verified.cleanup()
-            failure = _identity_conflict(inspecting, stage="extracted")
-            return PackageArtifactExecutionResult(
-                status=self._kernel.record_failure(
-                    failure,
-                    expected_phase="inspecting",
-                    expected_journal_revision=inspecting.journal_revision,
-                    expected_attempt_epoch=inspecting.attempt_epoch,
-                )
-            )
-        extracted = self._kernel.advance(
-            inspecting.operation_id,
-            next_phase="extracted",
-            expected_phase="inspecting",
-            expected_journal_revision=inspecting.journal_revision,
-            expected_attempt_epoch=inspecting.attempt_epoch,
-        )
-        return PackageArtifactExecutionResult(status=extracted, candidate=verified)
 
 
 def _acquisition_failure(
     status: PackageLifecycleStatusV1,
     error: PackageAcquisitionError,
+    *,
+    stage: PackageLifecyclePhase | None = None,
 ) -> PackageLifecycleFailureV1:
-    stage = cast(PackageLifecyclePhase, error.stage)
+    stage = stage or cast(PackageLifecyclePhase, error.stage)
     details = (
         ("condition:no_acquired_digest",)
         if error.code
@@ -385,8 +584,10 @@ def _acquisition_failure(
 def _wheel_failure(
     status: PackageLifecycleStatusV1,
     error: PackageWheelVerificationError,
+    *,
+    stage: PackageLifecyclePhase | None = None,
 ) -> PackageLifecycleFailureV1:
-    stage = cast(PackageLifecyclePhase, error.stage)
+    stage = stage or cast(PackageLifecyclePhase, error.stage)
     return PackageLifecycleFailureV1.for_operation(
         error.code,
         stage=stage,

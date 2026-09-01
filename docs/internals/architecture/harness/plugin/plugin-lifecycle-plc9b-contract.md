@@ -2,9 +2,9 @@
 
 ## Status
 
-- Contract version: PLC9B.2d.
+- Contract version: PLC9B.2e.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
-  PLC9B2a/B2b/B2c/B2d safe
+  PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
   request/classification/status/failure evidence, the owner-revisioned
   three-way classifier, operation/attempt phase-CAS journal, and typed
@@ -17,7 +17,9 @@
   typed evidence journal, but no production route. Native Windows
   root-relative extraction, dependency resolution, publication, and every
   production acquisition route remain absent. B2d adds durable cleanup-domain
-  tombstones and exact repair; acquired/verified crash adoption remains open.
+  tombstones and exact repair. B2e adds evidence-driven acquired/verified
+  crash adoption without Source reauthorization; native Windows containment
+  remains open.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -150,10 +152,9 @@ same request fingerprint, and requires the wheel digest/size to match its exact
 acquisition parent. The evidence journal is strict JSONL with duplicate-key,
 schema, ordering, contiguous revision, and CAS-predecessor validation.
 
-This sub-slice intentionally does not claim complete B2 recovery. An evidence
-append followed by a crash before its operation-phase append still needs a
-rooted acquired/verified candidate reopen/adoption path. B2d below closes the
-durable cleanup-domain tombstone/repair obligation; Windows still needs native
+This sub-slice alone does not claim complete B2 recovery. B2d closes the
+durable cleanup-domain tombstone/repair obligation and B2e closes the local
+acquired/verified evidence adoption window. Windows still needs native
 root-relative create/open/swap fixtures. Accordingly no additional global
 adversarial manifest row changes from `planned` in B2c.
 
@@ -189,6 +190,35 @@ The portable path implementation remains defense-in-depth and does not satisfy
 the Windows native gate. Therefore `B-STATE-REJECT-CLEANUP` remains `planned`
 until the same tombstone/repair/swap oracle runs on native Windows CI; B2d's
 component and Linux tests alone do not promote the global row.
+
+## PLC9B2e Evidence-Driven Crash Adoption
+
+The artifact owner can now resume the two write-ahead windows where durable
+evidence exists but the adjacent operation phase was not appended:
+
+- `acquiring` plus an exact `BoundedAcquisitionReceiptV1` reopens the
+  deterministic owner attempt, proves the configured store identity, attempt
+  identity, sink identity, regular artifact size, and full byte digest, then
+  advances through `acquired` without calling Source Authority again;
+- `inspecting` plus exact `VerifiedWheelArtifactV1` evidence reopens the same
+  acquired artifact, removes only the rooted owner-created extraction tree,
+  reruns inert wheel verification locally, and requires byte-for-byte equal
+  verified evidence before advancing to `extracted`; and
+- an already active `extracted` operation uses the same local reopen/reverify
+  path to reconstruct its opaque process-local candidate. It does not append a
+  second evidence record or acquire bytes again.
+
+Process-local candidates expose an explicit suspension edge that closes their
+descriptors without deleting durable quarantine state. Recovery never accepts
+phase alone as proof, never reconstructs a caller pathname, and never uses
+Source reauthorization as a fallback. Missing, mismatched, replaced, or
+malformed durable evidence fails closed; exact identity-pinned cleanup remains
+separate from operation rejection through the B2d cleanup domain.
+
+B2e is still an unbound POSIX-proved component slice. The global `B-CRASH-*`
+rows cover every phase, the complete committed-set transaction, and native
+platform oracles, so they remain `planned` until those obligations are
+executable on Linux and Windows CI.
 
 ## First Principles
 

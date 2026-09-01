@@ -77,8 +77,9 @@ Neither may silently override a narrower implemented owner contract.
   wheel/closure/publication evidence, fail-closed recovery, and mandatory
   adversarial acceptance matrix. PLC9B1 implements the dark inert Owner Kernel;
   PLC9B2a adds an unbound bounded Source/quarantine component. Archive/wheel
-  verification, phase integration, publication, and production routing remain
-  unimplemented.
+  verification, phase integration, cleanup repair, and evidence-driven crash
+  adoption are implemented by PLC9B2b/B2c/B2d/B2e. Native Windows containment,
+  closure, publication, and production routing remain unimplemented.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)

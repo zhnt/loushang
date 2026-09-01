@@ -616,6 +616,20 @@ class PackageQuarantineStore:
     ) -> _QuarantineAttempt:
         return _QuarantineAttempt.create(self.root, request)
 
+    def _reopen(
+        self,
+        request: PackageAcquisitionRequestV1,
+        receipt: BoundedAcquisitionReceiptV1,
+        *,
+        reset_extraction: bool,
+    ) -> _QuarantineAttempt:
+        return _QuarantineAttempt.reopen(
+            self.root,
+            request,
+            receipt,
+            reset_extraction=reset_extraction,
+        )
+
     def _repair(self, target: PackageQuarantineCleanupTargetV1) -> None:
         if not isinstance(target, PackageQuarantineCleanupTargetV1):
             raise TypeError("Package quarantine cleanup target is required")
@@ -669,6 +683,14 @@ class PackageQuarantineStore:
         attempt_path.rmdir()
 
 
+class _QuarantineAdoptionError(OSError):
+    """Recovery failed after the exact durable owner attempt was proved."""
+
+    def __init__(self, attempt: _QuarantineAttempt) -> None:
+        super().__init__("Durable Package quarantine state cannot be adopted")
+        self.attempt = attempt
+
+
 class _QuarantineAttempt:
     def __init__(
         self,
@@ -698,15 +720,7 @@ class _QuarantineAttempt:
         store_root: Path,
         request: PackageAcquisitionRequestV1,
     ) -> _QuarantineAttempt:
-        seed = canonical_json_bytes(
-            {
-                "attemptEpoch": request.attempt_epoch,
-                "nodeId": request.node_id,
-                "operationId": request.operation_id,
-            }
-        )
-        attempt_name = f"attempt-{sha256(seed).hexdigest()}"
-        artifact_name = f"artifact-{sha256(request.node_id.encode()).hexdigest()}"
+        attempt_name, artifact_name = _attempt_entry_names(request)
         if _supports_descriptor_relative_io():
             root_fd = _open_directory(store_root)
             try:
@@ -738,6 +752,72 @@ class _QuarantineAttempt:
             attempt_identity=_identity(attempt_path.lstat()),
             artifact_name=artifact_name,
         )
+
+    @classmethod
+    def reopen(
+        cls,
+        store_root: Path,
+        request: PackageAcquisitionRequestV1,
+        receipt: BoundedAcquisitionReceiptV1,
+        *,
+        reset_extraction: bool,
+    ) -> _QuarantineAttempt:
+        if (
+            receipt.operation_id != request.operation_id
+            or receipt.attempt_epoch != request.attempt_epoch
+            or receipt.node_id != request.node_id
+        ):
+            raise OSError("Durable acquisition receipt does not identify this attempt")
+        attempt_name, artifact_name = _attempt_entry_names(request)
+        if _supports_descriptor_relative_io():
+            root_fd = _open_directory(store_root)
+            try:
+                root_identity = _identity(os.fstat(root_fd))
+                attempt_fd = _open_directory(attempt_name, dir_fd=root_fd)
+            except Exception:
+                os.close(root_fd)
+                raise
+            attempt_identity = _identity(os.fstat(attempt_fd))
+            attempt = cls(
+                store_root=store_root,
+                attempt_name=attempt_name,
+                root_fd=root_fd,
+                attempt_fd=attempt_fd,
+                root_identity=root_identity,
+                attempt_identity=attempt_identity,
+                artifact_name=artifact_name,
+            )
+        else:
+            _require_private_directory(store_root)
+            attempt_path = store_root / attempt_name
+            _require_private_directory(attempt_path)
+            attempt = cls(
+                store_root=store_root,
+                attempt_name=attempt_name,
+                root_fd=None,
+                attempt_fd=None,
+                root_identity=_identity(store_root.lstat()),
+                attempt_identity=_identity(attempt_path.lstat()),
+                artifact_name=artifact_name,
+            )
+        sink_identity_proved = False
+        try:
+            if attempt._sink_identity != receipt.sink_identity:
+                raise OSError("Quarantine attempt identity changed")
+            sink_identity_proved = True
+            with attempt._open_artifact_for_read() as artifact:
+                if os.fstat(artifact.fileno()).st_size != receipt.actual_byte_count:
+                    raise OSError("Quarantine artifact size changed")
+            if reset_extraction:
+                attempt._reset_extraction_for_reverification()
+            elif attempt._tree_exists():
+                raise OSError("Unexpected extraction tree precedes inspection")
+            return attempt
+        except Exception as error:
+            if sink_identity_proved:
+                raise _QuarantineAdoptionError(attempt) from error
+            attempt._abandon_for_repair()
+            raise
 
     @property
     def _sink_identity(self) -> str:
@@ -809,6 +889,46 @@ class _QuarantineAttempt:
         _require_private_directory(tree_path)
         self._tree_identity = _identity(tree_path.lstat())
         return _QuarantineTreeWriter(attempt=self, tree_fd=None)
+
+    def _tree_exists(self) -> bool:
+        self._verify()
+        if self._attempt_fd is not None:
+            try:
+                os.stat("tree", dir_fd=self._attempt_fd, follow_symlinks=False)
+            except FileNotFoundError:
+                return False
+            return True
+        tree_path = self._attempt_path / "tree"
+        return tree_path.exists() or tree_path.is_symlink()
+
+    def _reset_extraction_for_reverification(self) -> None:
+        self._verify()
+        if not self._tree_exists():
+            return
+        if self._attempt_fd is not None:
+            tree_fd = _open_directory("tree", dir_fd=self._attempt_fd)
+            tree_identity = _identity(os.fstat(tree_fd))
+            try:
+                _remove_directory_contents_at(tree_fd)
+                visible = _open_directory("tree", dir_fd=self._attempt_fd)
+                try:
+                    if _identity(os.fstat(visible)) != tree_identity:
+                        raise OSError("Quarantine extraction tree identity changed")
+                finally:
+                    os.close(visible)
+            finally:
+                os.close(tree_fd)
+            os.rmdir("tree", dir_fd=self._attempt_fd)
+        else:
+            tree_path = self._attempt_path / "tree"
+            _require_private_directory(tree_path)
+            tree_identity = _identity(tree_path.lstat())
+            _remove_directory_contents_portable(tree_path)
+            if _identity(tree_path.lstat()) != tree_identity:
+                raise OSError("Quarantine extraction tree identity changed")
+            tree_path.rmdir()
+        self._tree_identity = None
+        self._tree_entries.clear()
 
     def _verify(self) -> None:
         if self._closed:
@@ -1206,9 +1326,13 @@ class AcquiredPackageCandidate:
         handle = self._attempt._open_artifact_for_read()
         digest = sha256()
         byte_count = 0
-        while chunk := handle.read(64 * 1024):
-            digest.update(chunk)
-            byte_count += len(chunk)
+        try:
+            while chunk := handle.read(64 * 1024):
+                digest.update(chunk)
+                byte_count += len(chunk)
+        except Exception:
+            handle.close()
+            raise
         if (
             byte_count != self.receipt.actual_byte_count
             or digest.hexdigest() != self.receipt.actual_byte_digest
@@ -1244,6 +1368,14 @@ class AcquiredPackageCandidate:
         self._attempt._abandon_for_repair()
         self._closed = True
         return target
+
+    def suspend_for_recovery(self) -> None:
+        """Release process-local handles while preserving durable quarantine state."""
+
+        if self._closed:
+            return
+        self._attempt._abandon_for_repair()
+        self._closed = True
 
 
 class PackageAcquisitionOwner:
@@ -1395,6 +1527,84 @@ class PackageAcquisitionOwner:
                 ) from None
             raise rejection from None
 
+    def reopen_acquired(
+        self,
+        request: PackageAcquisitionRequestV1,
+        receipt: BoundedAcquisitionReceiptV1,
+        *,
+        reset_extraction: bool,
+    ) -> AcquiredPackageCandidate:
+        """Adopt durable local evidence without consulting Source Authority."""
+
+        if not isinstance(request, PackageAcquisitionRequestV1):
+            raise TypeError("Package acquisition request is required")
+        if not isinstance(receipt, BoundedAcquisitionReceiptV1):
+            raise TypeError("Bounded acquisition receipt is required")
+        try:
+            attempt = self._quarantine_store._reopen(
+                request,
+                receipt,
+                reset_extraction=reset_extraction,
+            )
+        except _QuarantineAdoptionError as error:
+            rejection = PackageAcquisitionError(
+                "Durable Package quarantine state could not be adopted",
+                code="package_artifact_identity_changed",
+                stage="acquired",
+                retryable=False,
+                consumed_bytes=0,
+            )
+            candidate = AcquiredPackageCandidate(
+                attempt=error.attempt,
+                receipt=receipt,
+            )
+            try:
+                candidate.cleanup()
+            except OSError:
+                target = candidate.cleanup_target()
+                candidate.defer_cleanup()
+                raise PackageAcquisitionCleanupDebtError(
+                    rejection=rejection,
+                    target=target,
+                ) from None
+            raise rejection from None
+        except OSError:
+            raise PackageAcquisitionError(
+                "Durable Package artifact identity could not be recovered",
+                code="package_artifact_identity_changed",
+                stage="acquired",
+                retryable=False,
+                consumed_bytes=0,
+            ) from None
+        candidate = AcquiredPackageCandidate(attempt=attempt, receipt=receipt)
+        try:
+            with candidate.open_for_verifier():
+                pass
+        except (OSError, PackageAcquisitionError) as error:
+            consumed_bytes = (
+                error.consumed_bytes
+                if isinstance(error, PackageAcquisitionError)
+                else 0
+            )
+            rejection = PackageAcquisitionError(
+                "Durable Package artifact identity changed",
+                code="package_artifact_identity_changed",
+                stage="acquired",
+                retryable=False,
+                consumed_bytes=consumed_bytes,
+            )
+            try:
+                candidate.cleanup()
+            except OSError:
+                target = candidate.cleanup_target()
+                candidate.defer_cleanup()
+                raise PackageAcquisitionCleanupDebtError(
+                    rejection=rejection,
+                    target=target,
+                ) from None
+            raise rejection from None
+        return candidate
+
 
 def _sanitize_transfer_error(
     error: PackageAcquisitionError,
@@ -1446,6 +1656,22 @@ def _verify_envelope(
             retryable=False,
             consumed_bytes=0,
         )
+
+
+def _attempt_entry_names(
+    request: PackageAcquisitionRequestV1,
+) -> tuple[str, str]:
+    seed = canonical_json_bytes(
+        {
+            "attemptEpoch": request.attempt_epoch,
+            "nodeId": request.node_id,
+            "operationId": request.operation_id,
+        }
+    )
+    return (
+        f"attempt-{sha256(seed).hexdigest()}",
+        f"artifact-{sha256(request.node_id.encode()).hexdigest()}",
+    )
 
 
 def _supports_descriptor_relative_io() -> bool:

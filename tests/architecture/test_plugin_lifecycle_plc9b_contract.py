@@ -431,10 +431,11 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.2a" in contract
-    assert "PLC9B1 dark Owner Kernel and the unbound PLC9B2a" in contract
-    assert "unbound PLC9B2a bounded\n  acquisition component" in contract
-    assert "No archive extraction, wheel verification" in contract
+    assert "Contract version: PLC9B.2e" in contract
+    assert "PLC9B1 dark Owner Kernel and the unbound" in contract
+    assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
+    assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
+    assert "without calling Source Authority again" in contract
     assert "Public author SDK effect: none" in contract
     for deferred in (
         "PLC9A2 transport activation",
@@ -1443,8 +1444,8 @@ def test_plc9b2a_acquisition_is_unbound_bounded_and_pathless() -> None:
     assert "class BoundedAcquisitionSinkPort(Protocol)" in source
     assert "class PackageQuarantineStore:" in source
     assert "class PackageAcquisitionOwner:" in source
-    assert "archive/wheel verifier" in contract
-    assert "promotes no global adversarial manifest row" in contract
+    assert "opaque acquired-candidate capability" in contract
+    assert "promote no global adversarial manifest row" in contract
 
     sink = next(
         node
