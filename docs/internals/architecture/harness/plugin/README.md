@@ -88,8 +88,11 @@ Neither may silently override a narrower implemented owner contract.
   normalized to independent regular files. PLC9B3a is the accepted dark pure
   closure-v2 verifier with component-level adversarial fixtures. PLC9B3b is the
   accepted dark slice for durable authenticated-Source inputs and deterministic
-  recovery of Wheel dependency headers. Recursive owner composition, typed
-  refs, publication, and production routing remain unimplemented.
+  recovery of Wheel dependency headers. PLC9B3c is the dark candidate recursive
+  builder that gives a selection-only resolver no acquisition authority and
+  routes every dependency through accepted Source/acquisition/Wheel evidence
+  before the pure closure proof. Durable closure phases/recovery, typed refs,
+  publication, and production routing remain unimplemented.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)

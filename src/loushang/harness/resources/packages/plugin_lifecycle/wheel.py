@@ -22,6 +22,8 @@ from typing import BinaryIO, Literal, NoReturn, cast
 
 from loushang.harness.resources.packages.plugin_lifecycle.acquisition import (
     AcquiredPackageCandidate,
+    AuthenticatedSourceEnvelopeV1,
+    BoundedAcquisitionReceiptV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
@@ -317,10 +319,14 @@ class VerifiedWheelCandidate:
         acquired: AcquiredPackageCandidate,
         evidence: VerifiedWheelArtifactV1,
         requires_dist: tuple[str, ...],
+        requires_python: str | None,
+        provides_extra: tuple[str, ...],
     ) -> None:
         self._acquired = acquired
         self.evidence = evidence
         self.requires_dist = requires_dist
+        self.requires_python = requires_python
+        self.provides_extra = provides_extra
         self._closed = False
 
     def __repr__(self) -> str:
@@ -330,6 +336,14 @@ class VerifiedWheelCandidate:
             f"node_id={self.evidence.node_id!r}, "
             f"fingerprint={self.evidence.fingerprint!r})"
         )
+
+    @property
+    def authenticated_envelope(self) -> AuthenticatedSourceEnvelopeV1 | None:
+        return self._acquired.authenticated_envelope
+
+    @property
+    def acquisition_receipt(self) -> BoundedAcquisitionReceiptV1:
+        return self._acquired.receipt
 
     def cleanup(self) -> None:
         if self._closed:
@@ -376,6 +390,13 @@ class _ContentEvidence:
     expanded_bytes: int
 
 
+@dataclass(frozen=True, slots=True)
+class _PackageMetadataClaims:
+    requires_dist: tuple[str, ...]
+    requires_python: str | None
+    provides_extra: tuple[str, ...]
+
+
 class PackageWheelVerifier:
     """Verify inert wheel bytes completely, then extract through a rooted writer."""
 
@@ -420,7 +441,7 @@ class PackageWheelVerifier:
                     started_at=started_at,
                     clock=self._clock,
                 )
-                requires_dist = _verify_wheel_metadata(
+                metadata_claims = _verify_wheel_metadata(
                     identity,
                     wheel_bytes=content.metadata[required[0]],
                     package_bytes=content.metadata[required[1]],
@@ -471,7 +492,9 @@ class PackageWheelVerifier:
             return VerifiedWheelCandidate(
                 acquired=candidate,
                 evidence=evidence,
-                requires_dist=requires_dist,
+                requires_dist=metadata_claims.requires_dist,
+                requires_python=metadata_claims.requires_python,
+                provides_extra=metadata_claims.provides_extra,
             )
         except PackageWheelVerificationError as rejection:
             _cleanup_rejected(candidate, rejection=rejection)
@@ -814,7 +837,7 @@ def _verify_wheel_metadata(
     *,
     wheel_bytes: bytes,
     package_bytes: bytes,
-) -> tuple[str, ...]:
+) -> _PackageMetadataClaims:
     try:
         wheel = BytesParser(policy=compat32).parsebytes(wheel_bytes, headersonly=True)
         package = BytesParser(policy=compat32).parsebytes(
@@ -840,7 +863,26 @@ def _verify_wheel_metadata(
         or version.replace("_", "-") != identity.version
     ):
         _reject_wheel_metadata()
-    return _normalized_metadata_headers(package.get_all("Requires-Dist", []))
+    requires_dist = _normalized_metadata_headers(package.get_all("Requires-Dist", []))
+    requires_python_values = package.get_all("Requires-Python")
+    requires_python = (
+        None if requires_python_values is None else _one_header(requires_python_values)
+    )
+    provides_extra = tuple(
+        sorted(
+            _canonical_distribution(value)
+            for value in _normalized_metadata_headers(
+                package.get_all("Provides-Extra", [])
+            )
+        )
+    )
+    if len(provides_extra) != len(set(provides_extra)):
+        _reject_wheel_metadata()
+    return _PackageMetadataClaims(
+        requires_dist=requires_dist,
+        requires_python=requires_python,
+        provides_extra=provides_extra,
+    )
 
 
 def _normalized_metadata_headers(values: list[str]) -> tuple[str, ...]:

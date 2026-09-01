@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.3b.
+- Contract version: PLC9B.3c-candidate.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -36,7 +36,10 @@
   manifest row before recursive owner composition is executable. B3b is the
   accepted adjacent-evidence slice that durably binds authenticated Source
   facts and reconstructs dependency headers without changing accepted v1
-  receipt or wheel-evidence schemas.
+  receipt or wheel-evidence schemas. B3c is a dark candidate recursive closure
+  builder over those accepted components. It has no lifecycle-phase journal,
+  recovery, stable-ref, publication, or production binding, so it still
+  promotes no global manifest row.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -526,6 +529,48 @@ passed. The retained `plc9b-linux-native-pytest-report` artifact (ID
 Its XML executed exactly 52 tests with zero skips, failures, or errors,
 confirming that durable closure inputs changed the evidence sequence without
 promoting any additional global manifest row.
+
+## PLC9B3c Candidate Recursive Closure Builder
+
+`loushang.harness.resources.packages.plugin_lifecycle.closure_owner` composes
+the accepted B2/B3 components into a process-local recursive builder. It starts
+from one verified root candidate, parses only the digest-bound metadata claims,
+and asks an injected resolver port for a version, canonical Source identity,
+wheel filename, and expected digest. The resolver receives exact request,
+parent, environment, and requirement fingerprints; it receives no credential,
+pathname, byte stream, quarantine handle, store, journal writer, publication
+capability, or desired-state authority. Resolver output is selection evidence,
+not permission to fetch or publish.
+
+Every selected dependency independently traverses authenticated Source
+authorization, bounded acquisition, inert Wheel verification, and the ordered
+artifact-evidence journal before it can enter the graph. Changed parent or
+request identity, Source, digest, distribution, version, filename, and repeated
+selection conflicts fail closed. Direct-URL requirements are unsupported and
+are rejected before calling the resolver or dependency Source Authority.
+
+The builder reaches a deterministic fixpoint when later incoming edges expand
+a node's selected extras. Markers are re-evaluated against the closure-v2
+environment and the complete selected-extra set. `Requires-Python` and
+canonical `Provides-Extra` claims are reconstructed process-locally from the
+same `METADATA` bytes already bound by accepted wheel evidence v1; incompatible
+Python requirements and undeclared selected extras fail closed without changing
+that wire schema. Node, edge, solver, marker, artifact, aggregate request, and
+aggregate redirect limits are enforced before consuming the next available
+authority. The resulting complete candidate set is delegated to the accepted
+pure `PackageClosureVerifier`; the recursive builder does not duplicate or
+weaken its graph proof.
+
+B3c remains a component candidate. It does not journal
+`resolving_closure -> closure_verified`, durably record resolver selections or
+the closure plan, recover a partial graph, integrate cleanup debt after process
+loss, create transaction pins or typed stable refs, publish a committed set,
+mutate desired state, or bind a CLI/RPC/Session/startup route. Therefore all
+`B-LIMIT-GRAPH/SOLVER/REQUESTS`, `B-CLOSURE-*`, `B-CRASH-RESOLVING`, and
+`B-CRASH-CLOSURE` rows remain `planned`. Candidate acceptance requires the
+complete Harness gate and retained non-skippable Linux manifest report; B3d
+owns lifecycle-phase and recovery integration, while B3e owns stable refs,
+pins, and atomic committed-set publication.
 
 ## First Principles
 

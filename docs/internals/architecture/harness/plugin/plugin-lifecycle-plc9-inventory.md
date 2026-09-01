@@ -63,6 +63,14 @@
   closure-v2. Harness Quality run `33501681463` accepted the slice after all
   PR checks passed; its retained Linux manifest XML executed the same 52 tests
   with zero skips, failures, or errors. No global manifest row is promoted.
+  PLC9B3c is a dark candidate recursive builder. Its resolver is selection-only;
+  every selected node still traverses Source Authority, bounded acquisition,
+  Wheel verification, and ordered artifact evidence before the accepted pure
+  closure verifier decides the complete graph. It handles late extra expansion,
+  digest-bound `Requires-Python`/`Provides-Extra`, and aggregate budgets, but
+  has no phase/selection/plan journal, recovery, cleanup-debt integration,
+  stable refs, pins, publication, desired-state mutation, or production route.
+  Its component fixtures do not promote global manifest rows.
   Publication, later transaction phases, and every production route remain
   migration obligations; no global adversarial row is promoted.
 

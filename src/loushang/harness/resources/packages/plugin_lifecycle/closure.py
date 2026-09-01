@@ -235,6 +235,39 @@ class NormalizedPackageRequirementV1:
         marker = f"; {self.marker}" if self.marker is not None else ""
         return f"{self.project_name}{extras}{self.specifier_text}{marker}"
 
+    def marker_applies(
+        self,
+        environment: PackageResolutionEnvironmentV1,
+        *,
+        selected_extras: tuple[str, ...],
+    ) -> bool:
+        """Evaluate this canonical marker with the closure-v2 metadata context."""
+
+        if not isinstance(environment, PackageResolutionEnvironmentV1):
+            raise TypeError("Package resolution environment is required")
+        if selected_extras != tuple(sorted(set(selected_extras))):
+            raise ValueError("Selected Package extras must be canonical and unique")
+        if self.marker is None:
+            return True
+        extras = selected_extras or ("",)
+        return any(
+            Marker(self.marker).evaluate(
+                environment.as_marker_mapping() | {"extra": extra},
+                context="metadata",
+            )
+            for extra in extras
+        )
+
+    def matches_version(self, version: str) -> bool:
+        """Return whether one resolver-selected version satisfies this requirement."""
+
+        try:
+            selected = Version(version)
+            specifier = SpecifierSet(self.specifier_text)
+        except (InvalidSpecifier, InvalidVersion, TypeError) as exc:
+            raise ValueError("Selected Package version is invalid") from exc
+        return not specifier or specifier.contains(selected, prereleases=True)
+
     def to_dict(self) -> dict[str, object]:
         return {
             "extras": list(self.extras),
@@ -384,6 +417,8 @@ class PackageClosureArtifactCandidateV2:
     acquisition: BoundedAcquisitionReceiptV1
     wheel: VerifiedWheelArtifactV1
     requirements: tuple[ResolvedPackageRequirementV1, ...]
+    requires_python: str | None = None
+    declared_extras: tuple[str, ...] = ()
     selected_extras: tuple[str, ...] = ()
     candidate_version: int = PACKAGE_CLOSURE_CANDIDATE_VERSION
 
@@ -405,6 +440,12 @@ class PackageClosureArtifactCandidateV2:
             sorted(self.requirements, key=lambda requirement: requirement.sort_key)
         )
         object.__setattr__(self, "requirements", canonical_requirements)
+        if self.requires_python is not None and not self.requires_python:
+            raise ValueError("Requires-Python cannot be empty")
+        if self.declared_extras != tuple(sorted(set(self.declared_extras))) or any(
+            extra != _canonical_distribution(extra) for extra in self.declared_extras
+        ):
+            raise ValueError("Declared Package extras must be canonical and unique")
         if self.selected_extras != tuple(sorted(set(self.selected_extras))) or any(
             extra != _canonical_distribution(extra) for extra in self.selected_extras
         ):
@@ -892,6 +933,19 @@ class VerifiedClosurePlanV2:
 class PackageClosureVerifier:
     """Validate a complete artifact graph without I/O or publication authority."""
 
+    def verify_artifact_evidence(
+        self,
+        candidate: PackageClosureArtifactCandidateV2,
+        environment: PackageResolutionEnvironmentV1,
+    ) -> None:
+        """Preflight one artifact with the same proof used by complete closure."""
+
+        if not isinstance(candidate, PackageClosureArtifactCandidateV2):
+            raise TypeError("Package closure artifact candidate is required")
+        if not isinstance(environment, PackageResolutionEnvironmentV1):
+            raise TypeError("Package resolution environment is required")
+        self._verify_evidence_chain(candidate, environment)
+
     def verify(self, value: object) -> VerifiedClosurePlanV2:
         if not isinstance(value, PackageClosureVerificationRequestV2):
             raise PackageClosureVerificationError(
@@ -923,7 +977,7 @@ class PackageClosureVerifier:
         for candidate in candidates:
             if _SAFE_NODE_ID.fullmatch(candidate.node_id) is None:
                 _reject_invalid("Package closure node identity is invalid")
-            self._verify_evidence_chain(candidate, value.resolution_environment)
+            self.verify_artifact_evidence(candidate, value.resolution_environment)
 
         distributions = [candidate.wheel.distribution for candidate in candidates]
         if len(distributions) != len(set(distributions)):
@@ -949,7 +1003,6 @@ class PackageClosureVerifier:
         }
         solver_steps = 0
         marker_steps = 0
-        marker_environment = value.resolution_environment.as_marker_mapping()
         for candidate in candidates:
             for resolution in candidate.requirements:
                 solver_steps += 1
@@ -962,13 +1015,9 @@ class PackageClosureVerifier:
                     if marker_steps > budgets.max_marker_steps:
                         _reject_limit("solver")
                     try:
-                        extras = candidate.selected_extras or ("",)
-                        applies = any(
-                            Marker(marker).evaluate(
-                                marker_environment | {"extra": extra},
-                                context="metadata",
-                            )
-                            for extra in extras
+                        applies = resolution.requirement.marker_applies(
+                            value.resolution_environment,
+                            selected_extras=candidate.selected_extras,
                         )
                     except (InvalidMarker, KeyError, TypeError, ValueError):
                         _reject_conflict(
@@ -1000,11 +1049,12 @@ class PackageClosureVerifier:
                 if target.wheel.distribution != resolution.requirement.project_name:
                     _reject_conflict("Package dependency name does not match selection")
                 try:
-                    version = Version(target.wheel.version)
-                    specifier = SpecifierSet(resolution.requirement.specifier_text)
-                except (InvalidVersion, InvalidSpecifier):
+                    version_matches = resolution.requirement.matches_version(
+                        target.wheel.version
+                    )
+                except ValueError:
                     _reject_invalid("Package dependency version is invalid")
-                if specifier and not specifier.contains(version, prereleases=True):
+                if not version_matches:
                     _reject_conflict("Package dependency version does not satisfy")
                 if (
                     resolution.expected_source_identity is None
@@ -1076,6 +1126,27 @@ class PackageClosureVerifier:
         envelope = candidate.envelope
         receipt = candidate.acquisition
         wheel = candidate.wheel
+        try:
+            Version(wheel.version)
+        except InvalidVersion:
+            _reject_invalid("Package closure artifact version is invalid")
+        if candidate.requires_python is not None:
+            try:
+                python_specifier = SpecifierSet(candidate.requires_python)
+                python_version = Version(
+                    environment.as_marker_mapping()["python_full_version"]
+                )
+            except (InvalidSpecifier, InvalidVersion, KeyError):
+                _reject_invalid("Package Requires-Python evidence is invalid")
+            if not python_specifier.contains(
+                python_version,
+                prereleases=True,
+            ):
+                _reject_conflict(
+                    "Package Requires-Python does not match the environment"
+                )
+        if not set(candidate.selected_extras).issubset(candidate.declared_extras):
+            _reject_conflict("Selected Package extra was not declared by metadata")
         if envelope.authentication_decision != "authorized":
             _reject_invalid("Package closure Source was not authorized")
         identity = (wheel.operation_id, wheel.attempt_epoch, wheel.node_id)

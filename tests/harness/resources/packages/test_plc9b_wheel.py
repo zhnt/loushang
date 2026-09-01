@@ -198,9 +198,10 @@ def test_valid_wheel_is_fully_verified_before_controlled_extraction(
     assert verified.requires_dist == ()
     assert len(verified.evidence.extraction_tree_digest) == 64
     assert "path" not in str(verified.evidence.to_dict()).lower()
-    assert VerifiedWheelArtifactV1.from_dict(
-        verified.evidence.to_dict()
-    ) == verified.evidence
+    assert (
+        VerifiedWheelArtifactV1.from_dict(verified.evidence.to_dict())
+        == verified.evidence
+    )
     assert len(store.attempt_names()) == 1
     verified.cleanup()
     assert store.attempt_names() == ()
@@ -214,6 +215,8 @@ def test_verified_candidate_captures_requires_dist_without_changing_v1_evidence(
             b"Metadata-Version: 2.1\n"
             b"Name: acme-plugin\n"
             b"Version: 1.0\n"
+            b"Requires-Python: >=3.11\n"
+            b"Provides-Extra: Fast\n"
             b"Requires-Dist: zeta>=2; python_version >= '3.11'\n"
             b"Requires-Dist: beta>=1;\n python_version < '4'\n"
             b"Requires-Dist: alpha[fast]==1\n\n"
@@ -227,7 +230,11 @@ def test_verified_candidate_captures_requires_dist_without_changing_v1_evidence(
         "beta>=1; python_version < '4'",
         "zeta>=2; python_version >= '3.11'",
     )
+    assert verified.requires_python == ">=3.11"
+    assert verified.provides_extra == ("fast",)
     assert "requiresDist" not in verified.evidence.to_dict()
+    assert "requiresPython" not in verified.evidence.to_dict()
+    assert "providesExtra" not in verified.evidence.to_dict()
     verified.cleanup()
 
 

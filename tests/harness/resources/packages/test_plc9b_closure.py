@@ -64,6 +64,8 @@ def _candidate(
     role: str = "dependency",
     requirements: tuple[ResolvedPackageRequirementV1, ...] = (),
     request_count: int = 1,
+    requires_python: str | None = None,
+    declared_extras: tuple[str, ...] | None = None,
     selected_extras: tuple[str, ...] = (),
 ) -> PackageClosureArtifactCandidateV2:
     name = distribution or node_id
@@ -124,6 +126,10 @@ def _candidate(
         acquisition=acquisition,
         wheel=wheel,
         requirements=requirements,
+        requires_python=requires_python,
+        declared_extras=(
+            selected_extras if declared_extras is None else declared_extras
+        ),
         selected_extras=selected_extras,
     )
 
@@ -426,6 +432,76 @@ def test_closure_v2_rejects_adversarial_graphs(
     assert rejected.value.code == expected_code, case_id
     assert rejected.value.stage == "resolving_closure"
     assert case_id not in str(rejected.value)
+
+
+def test_closure_v2_rejects_invalid_root_version_even_without_edges() -> None:
+    request = _request(
+        _candidate(
+            "root",
+            distribution="root-project",
+            version="not a version",
+            role="root",
+        )
+    )
+
+    with pytest.raises(PackageClosureVerificationError) as rejected:
+        PackageClosureVerifier().verify(request)
+
+    assert rejected.value.code == "package_closure_artifact_invalid"
+    assert rejected.value.stage == "resolving_closure"
+
+
+def test_closure_v2_rejects_requires_python_environment_conflict() -> None:
+    request = _request(
+        _candidate(
+            "root",
+            distribution="root-project",
+            role="root",
+            requires_python=">=4",
+        )
+    )
+
+    with pytest.raises(PackageClosureVerificationError) as rejected:
+        PackageClosureVerifier().verify(request)
+
+    assert rejected.value.code == "package_closure_conflict"
+    assert rejected.value.stage == "resolving_closure"
+
+
+def test_closure_v2_rejects_invalid_requires_python_evidence() -> None:
+    request = _request(
+        _candidate(
+            "root",
+            distribution="root-project",
+            role="root",
+            requires_python="not a specifier",
+        )
+    )
+
+    with pytest.raises(PackageClosureVerificationError) as rejected:
+        PackageClosureVerifier().verify(request)
+
+    assert rejected.value.code == "package_closure_artifact_invalid"
+    assert rejected.value.stage == "resolving_closure"
+
+
+def test_closure_v2_rejects_selected_extra_not_declared_by_metadata() -> None:
+    request = _request(
+        _candidate(
+            "root",
+            distribution="root-project",
+            role="root",
+            declared_extras=(),
+            selected_extras=("feature",),
+        ),
+        root_extras=("feature",),
+    )
+
+    with pytest.raises(PackageClosureVerificationError) as rejected:
+        PackageClosureVerifier().verify(request)
+
+    assert rejected.value.code == "package_closure_conflict"
+    assert rejected.value.stage == "resolving_closure"
 
 
 def _cycle_request() -> PackageClosureVerificationRequestV2:

@@ -23,7 +23,11 @@ ARTIFACT_RUNTIME = OWNER_KERNEL_ROOT / "runtime.py"
 WHEEL_VERIFIER = OWNER_KERNEL_ROOT / "wheel.py"
 WINDOWS_QUARANTINE = OWNER_KERNEL_ROOT / "windows_quarantine.py"
 CLOSURE_VERIFIER = OWNER_KERNEL_ROOT / "closure.py"
+CLOSURE_OWNER = OWNER_KERNEL_ROOT / "closure_owner.py"
 CLOSURE_TEST = Path("tests/harness/resources/packages/test_plc9b_closure.py")
+CLOSURE_OWNER_TEST = Path(
+    "tests/harness/resources/packages/test_plc9b_closure_owner.py"
+)
 PYPROJECT = Path("pyproject.toml")
 WINDOWS_NATIVE_TEST = Path(
     "tests/harness/resources/packages/test_plc9b_windows_native.py"
@@ -466,7 +470,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.3b" in contract
+    assert "Contract version: PLC9B.3c-candidate" in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
@@ -477,6 +481,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
     assert "PLC9B2k Accepted POSIX Hardlink Normalization Slice" in contract
     assert "PLC9B3a Accepted Dark Closure-v2 Verifier Slice" in contract
     assert "PLC9B3b Accepted Durable Closure Inputs" in contract
+    assert "PLC9B3c Candidate Recursive Closure Builder" in contract
     assert "Harness Quality run `33501681463`" in contract
     assert "Linux\nharness job `99836237482`" in contract
     assert "(ID\n`9797945496`)" in contract
@@ -1738,8 +1743,10 @@ def test_plc9b3b_durable_closure_inputs_are_ordered_dark_and_unpromoted() -> Non
     assert runtime.index("evidence=source_evidence") < runtime.index(
         "acquire_authorized("
     )
-    assert "requires_dist = _verify_wheel_metadata(" in wheel
+    assert "metadata_claims = _verify_wheel_metadata(" in wheel
     assert "self.requires_dist = requires_dist" in wheel
+    assert "self.requires_python = requires_python" in wheel
+    assert "self.provides_extra = provides_extra" in wheel
     assert 'package.get_all("Requires-Dist", [])' in wheel
     for forbidden_export in (
         "PackageAuthenticatedSourceEvidenceV1",
@@ -1764,6 +1771,96 @@ def test_plc9b3b_durable_closure_inputs_are_ordered_dark_and_unpromoted() -> Non
     )
     assert "Existing\nreceipt-first B2 journals remain replayable" in contract
     assert "creates no typed stable ref" in contract
+
+
+def test_plc9b3c_recursive_builder_is_selection_only_dark_and_unpromoted() -> None:
+    contract = _source(CONTRACT)
+    source = _source(CLOSURE_OWNER)
+    component_tests = _source(CLOSURE_OWNER_TEST)
+    package_facade = _source(OWNER_KERNEL_ROOT / "__init__.py")
+    author_sdk = _source(AUTHOR_SDK)
+    manifest = _adversarial_manifest()
+
+    assert CLOSURE_OWNER.is_file()
+    for symbol in (
+        "class PackageDependencyResolverPort(Protocol):",
+        "class PackageDependencySelectionRequestV1:",
+        "class PackageDependencySelectionV1:",
+        "class PackageRecursiveClosureOwner:",
+        "class VerifiedPackageClosureCandidate:",
+    ):
+        assert symbol in source
+    for required_flow in (
+        "authorize_source(",
+        "acquire_authorized(",
+        "self._wheel_verifier.verify(",
+        "self._closure_verifier.verify(",
+        "requirement.marker_applies(",
+    ):
+        assert required_flow in source
+    for forbidden_symbol in (
+        "PackageLifecycleJournal",
+        "PackageAttemptJournal",
+        "PluginRevisionStore",
+        "PluginPackageLifecycleLedger",
+        "PluginManagementService",
+        "subprocess",
+        "urllib.request",
+        "httpx",
+        "requests.get",
+        "socket.socket",
+    ):
+        assert forbidden_symbol not in source
+    tree = ast.parse(source, filename=str(CLOSURE_OWNER))
+    resolver = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef)
+        and node.name == "PackageDependencyResolverPort"
+    )
+    assert {
+        node.name
+        for node in resolver.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    } == {"resolve"}
+    for internal_symbol in (
+        "PackageDependencyResolverPort",
+        "PackageDependencySelectionV1",
+        "PackageRecursiveClosureOwner",
+        "VerifiedPackageClosureCandidate",
+    ):
+        assert internal_symbol not in package_facade
+        assert internal_symbol not in author_sdk
+    component_case_ids = {
+        "B-LIMIT-GRAPH",
+        "B-LIMIT-SOLVER",
+        "B-LIMIT-REQUESTS",
+        "B-CLOSURE-MISSING",
+        "B-CLOSURE-DIGEST",
+        "B-CLOSURE-ORIGIN",
+        "B-CLOSURE-MARKER",
+        "B-CLOSURE-NAME",
+        "B-CLOSURE-CYCLE",
+        "B-CLOSURE-V1",
+        "B-CRASH-RESOLVING",
+        "B-CRASH-CLOSURE",
+    }
+    assert all(
+        manifest[case_id]["status"] == "planned" for case_id in component_case_ids
+    )
+    for evidence in (
+        "reaches_fixpoint_when_incoming_extras_expand_late",
+        "rejects_resolver_identity_change_before_dependency_io",
+        "enforces_total_request_budget_before_source_call",
+        "enforces_depth_budget_before_dependency_source_call",
+        "rejects_incompatible_resolver_version_before_source_call",
+        "preflights_root_python_before_resolver_or_source_call",
+        "preflights_root_extras_before_resolver_or_source_call",
+        "rejects_direct_url_requirement_without_resolver_call",
+    ):
+        assert evidence in component_tests
+    assert "B3c remains a component candidate" in contract
+    assert "does not journal\n`resolving_closure -> closure_verified`" in contract
 
 
 def test_plc9b2f_windows_backend_is_rooted_and_has_a_nonskippable_native_gate(
