@@ -2,8 +2,8 @@
 
 ## Status
 
-- Contract version: PLC9B.2b.
-- Delivery status: PLC9B1 dark Owner Kernel and the unbound PLC9B2a/B2b safe
+- Contract version: PLC9B.2c.
+- Delivery status: PLC9B1 dark Owner Kernel and the unbound PLC9B2a/B2b/B2c safe
   acquisition and wheel-inspection components are implemented. Versioned inert
   request/classification/status/failure evidence, the owner-revisioned
   three-way classifier, operation/attempt phase-CAS journal, and typed
@@ -12,9 +12,11 @@
   private identity-checked quarantine capability. B2b adds raw ZIP-layout
   preflight, portable path/type rejection, bounded inert wheel/RECORD
   verification, and extraction through a rooted owner-only writer after all
-  claims pass. B2 is not yet bound to the operation phase journal. Native
-  Windows root-relative extraction, dependency resolution, publication, and
-  every production acquisition route remain absent.
+  claims pass. B2c binds those dark components to operation phase-CAS plus a
+  typed evidence journal, but no production route. Native Windows
+  root-relative extraction, dependency resolution, publication, and every
+  production acquisition route remain absent; cleanup tombstones and crash
+  adoption are not yet complete.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -127,6 +129,32 @@ portable fallback is defense-in-depth only and is not native Windows
 acceptance. B2b therefore promotes no global manifest row: those rows require
 the journaled failure/status response and both Linux and Windows native
 oracles, not merely a passing component test.
+
+## PLC9B2c Dark Artifact Phase Composition
+
+`loushang.harness.resources.packages.plugin_lifecycle.runtime` composes the B1
+kernel, B2a acquisition owner, B2b verifier, and a separate typed phase-evidence
+journal without activating a Product route. The operation journal now permits
+only adjacent success transitions and current-or-adjacent terminal failure
+stages. A retryable operation failure preserves the proved operation revision
+and appends once in the attempt domain; a terminal artifact rejection appends
+once in the operation domain. Stale attempts return a local refusal and append
+nothing.
+
+Before Source authority is called, the dark artifact owner rechecks the full
+classification evidence. It journals `BoundedAcquisitionReceiptV1` before the
+`acquired` transition and `VerifiedWheelArtifactV1` before the `extracted`
+transition. Evidence is append-once per operation/attempt/node/kind, binds the
+same request fingerprint, and requires the wheel digest/size to match its exact
+acquisition parent. The evidence journal is strict JSONL with duplicate-key,
+schema, ordering, contiguous revision, and CAS-predecessor validation.
+
+This sub-slice intentionally does not claim complete B2 recovery. An evidence
+append followed by a crash before its operation-phase append still needs a
+rooted acquired/verified candidate reopen/adoption path. Cleanup failure still
+needs a durable cleanup-domain tombstone and repair operation, and Windows
+still needs native root-relative create/open/swap fixtures. Accordingly no
+additional global adversarial manifest row changes from `planned` in B2c.
 
 ## First Principles
 

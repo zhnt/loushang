@@ -137,6 +137,50 @@ class PackageLifecycleOwner:
     def status(self, operation_id: str) -> PackageLifecycleStatusV1 | None:
         return self._journal.status(operation_id)
 
+    def advance(
+        self,
+        operation_id: str,
+        *,
+        next_phase: PackageLifecyclePhase,
+        expected_phase: PackageLifecyclePhase,
+        expected_journal_revision: int,
+        expected_attempt_epoch: int,
+    ) -> PackageLifecycleStatusV1:
+        try:
+            return self._journal.advance(
+                operation_id,
+                next_phase=next_phase,
+                expected_phase=expected_phase,
+                expected_journal_revision=expected_journal_revision,
+                expected_attempt_epoch=expected_attempt_epoch,
+            )
+        except PackageLifecycleJournalError as exc:
+            if exc.code != "package_attempt_stale":
+                raise
+            return self._stale_attempt_status(operation_id)
+
+    def record_failure(
+        self,
+        failure: PackageLifecycleFailureV1,
+        *,
+        expected_phase: PackageLifecyclePhase,
+        expected_journal_revision: int,
+        expected_attempt_epoch: int,
+    ) -> PackageLifecycleStatusV1:
+        if not isinstance(failure, PackageLifecycleFailureV1):
+            raise TypeError("Package lifecycle failure is required")
+        try:
+            return self._journal.record_failure(
+                failure,
+                expected_phase=expected_phase,
+                expected_journal_revision=expected_journal_revision,
+                expected_attempt_epoch=expected_attempt_epoch,
+            )
+        except PackageLifecycleJournalError as exc:
+            if exc.code != "package_attempt_stale":
+                raise
+            return self._stale_attempt_status(failure.operation_id)
+
     def interrupt(
         self,
         operation_id: str,

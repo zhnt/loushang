@@ -59,6 +59,21 @@ PACKAGE_LIFECYCLE_JOURNAL_CODEC = FunctionalJournalRecordCodec(
     decoder=_decode_record,
 )
 
+_PHASE_SEQUENCE: tuple[PackageLifecyclePhase, ...] = (
+    "accepted",
+    "classified",
+    "acquiring",
+    "acquired",
+    "inspecting",
+    "extracted",
+    "resolving_closure",
+    "closure_verified",
+    "transaction_pinned",
+    "staging",
+    "set_published",
+    "committed",
+)
+
 
 class PackageLifecycleJournal:
     """Single-owner durable operation and attempt CAS domains."""
@@ -169,6 +184,157 @@ class PackageLifecycleJournal:
                     prior_operation_revision=current.journal_revision,
                     prior_attempt_revision=current.attempt_revision,
                     request=requests[operation_id],
+                    status=status,
+                )
+            )
+            return status
+
+    def advance(
+        self,
+        operation_id: str,
+        *,
+        next_phase: PackageLifecyclePhase,
+        expected_phase: PackageLifecyclePhase,
+        expected_journal_revision: int,
+        expected_attempt_epoch: int,
+    ) -> PackageLifecycleStatusV1:
+        """Commit one adjacent proved phase under operation CAS."""
+
+        if _next_phase(expected_phase) != next_phase:
+            raise self._error(
+                "Package operation phase transition is not adjacent",
+                code="package_operation_phase_transition_invalid",
+            )
+        with self._exclusive():
+            records = self._load_unlocked()
+            requests, statuses = _project_state(records)
+            current = self._current(statuses, operation_id)
+            if current.phase == next_phase and current.disposition == "active":
+                if current.attempt_epoch != expected_attempt_epoch:
+                    raise self._stale_attempt()
+                last = _last_operation_record(records, operation_id)
+                if (
+                    last.prior_operation_revision == expected_journal_revision
+                    and last.status == current
+                ):
+                    return current
+                raise self._error(
+                    "Package operation phase compare-and-swap failed",
+                    code="package_operation_phase_conflict",
+                )
+            self._require_active_cas(
+                current,
+                expected_phase=expected_phase,
+                expected_journal_revision=expected_journal_revision,
+                expected_attempt_epoch=expected_attempt_epoch,
+            )
+            revision = len(records) + 1
+            status = replace(
+                current,
+                phase=next_phase,
+                disposition=(
+                    "committed" if next_phase == "committed" else "active"
+                ),
+                journal_revision=revision,
+            )
+            self._append_unlocked(
+                PackageLifecycleJournalRecordV1(
+                    record_kind="operation",
+                    record_revision=revision,
+                    prior_operation_revision=current.journal_revision,
+                    prior_attempt_revision=current.attempt_revision,
+                    request=requests[operation_id],
+                    status=status,
+                )
+            )
+            return status
+
+    def record_failure(
+        self,
+        failure: PackageLifecycleFailureV1,
+        *,
+        expected_phase: PackageLifecyclePhase,
+        expected_journal_revision: int,
+        expected_attempt_epoch: int,
+    ) -> PackageLifecycleStatusV1:
+        """Record one typed failure in its policy-owned CAS domain."""
+
+        if not isinstance(failure, PackageLifecycleFailureV1):
+            raise TypeError("Package lifecycle failure is required")
+        if failure.subject_kind != "operation":
+            raise TypeError("Operation journal accepts only operation failures")
+        with self._exclusive():
+            records = self._load_unlocked()
+            requests, statuses = _project_state(records)
+            current = self._current(statuses, failure.operation_id)
+            if current.failure == failure:
+                if current.attempt_epoch != expected_attempt_epoch:
+                    raise self._stale_attempt()
+                if current.request_fingerprint != requests[
+                    failure.operation_id
+                ].request_fingerprint:
+                    raise self._error(
+                        "Package operation request fingerprint changed",
+                        code="package_operation_identity_conflict",
+                    )
+                return current
+            self._require_active_cas(
+                current,
+                expected_phase=expected_phase,
+                expected_journal_revision=expected_journal_revision,
+                expected_attempt_epoch=expected_attempt_epoch,
+            )
+            if failure.operation_id != current.operation_id:
+                raise self._error(
+                    "Package failure operation identity changed",
+                    code="package_operation_identity_conflict",
+                )
+            if failure.retryable:
+                if (
+                    failure.retry_domain != "operation"
+                    or failure.stage != current.phase
+                ):
+                    raise self._error(
+                        "Package retryable failure selected the wrong CAS domain",
+                        code="package_operation_failure_domain_invalid",
+                    )
+                record_kind = "attempt"
+                phase = current.phase
+            else:
+                if failure.stage not in {
+                    current.phase,
+                    _next_phase(current.phase),
+                }:
+                    raise self._error(
+                        "Package failure stage is not current or adjacent",
+                        code="package_operation_phase_transition_invalid",
+                    )
+                record_kind = "operation"
+                phase = failure.stage
+            revision = len(records) + 1
+            if record_kind == "attempt":
+                status = replace(
+                    current,
+                    phase=phase,
+                    disposition="retryable_failure",
+                    attempt_revision=revision,
+                    failure=failure,
+                )
+            else:
+                status = replace(
+                    current,
+                    phase=phase,
+                    disposition="rejected",
+                    journal_revision=revision,
+                    failure=failure,
+                )
+            self._append_unlocked(
+                PackageLifecycleJournalRecordV1(
+                    record_kind=record_kind,  # type: ignore[arg-type]
+                    record_revision=revision,
+                    prior_operation_revision=current.journal_revision,
+                    prior_attempt_revision=current.attempt_revision,
+                    request=requests[failure.operation_id],
                     status=status,
                 )
             )
@@ -537,13 +703,23 @@ def _validate_operation_record(
         if following.phase != current.phase:
             raise ValueError("Cancellation must preserve the last proved phase")
         return
-    if (
-        current.phase != "accepted"
-        or current.disposition != "active"
-        or following.phase != "classified"
-        or following.disposition not in {"active", "rejected"}
-    ):
+    if current.disposition != "active":
         raise ValueError("Unsupported PLC9B1 operation phase transition")
+    next_phase = _next_phase(current.phase)
+    if following.disposition == "active" and following.phase == next_phase:
+        return
+    if (
+        following.disposition == "committed"
+        and following.phase == "committed"
+        and next_phase == "committed"
+    ):
+        return
+    if following.disposition == "rejected" and following.phase in {
+        current.phase,
+        next_phase,
+    }:
+        return
+    raise ValueError("Unsupported Package operation phase transition")
 
 
 def _validate_attempt_record(
@@ -569,6 +745,29 @@ def _validate_attempt_record(
             raise ValueError("Retry must claim the next contiguous attempt epoch")
         return
     raise ValueError("Unsupported PLC9B1 attempt transition")
+
+
+def _next_phase(phase: PackageLifecyclePhase) -> PackageLifecyclePhase | None:
+    try:
+        index = _PHASE_SEQUENCE.index(phase)
+    except ValueError:
+        return None
+    if index + 1 == len(_PHASE_SEQUENCE):
+        return None
+    return _PHASE_SEQUENCE[index + 1]
+
+
+def _last_operation_record(
+    records: tuple[PackageLifecycleJournalRecordV1, ...],
+    operation_id: str,
+) -> PackageLifecycleJournalRecordV1:
+    for record in reversed(records):
+        if (
+            record.status.operation_id == operation_id
+            and record.record_kind == "operation"
+        ):
+            return record
+    raise ValueError("Package operation has no operation record")
 
 
 __all__ = [
