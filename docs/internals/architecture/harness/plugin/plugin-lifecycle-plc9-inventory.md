@@ -37,7 +37,9 @@
   Wheel ZIP has no portable hardlink relation encoding; PLC9B2k therefore uses
   a real POSIX hardlinked source and proves the Wheel 1.x boundary normalizes it
   to independent regular archive and extracted entries rather than claiming a
-  surrogate hardlink encoding. That native row is a candidate pending CI.
+  surrogate hardlink encoding. Linux Harness Quality run `33493714647`
+  accepted that native row after all 52 manifest nodes passed without skips,
+  failures, or errors; artifact `9794816942` retained the XML.
   PLC9B2i accepts seven exact Windows archive path/type fixtures after their
   dedicated non-skippable Windows 2022 report passed and its XML was retained;
   no simulated platform evidence promotes a native row.

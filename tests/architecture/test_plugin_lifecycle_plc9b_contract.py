@@ -373,8 +373,8 @@ def _implemented_b2j_recovery_manifest_cases() -> set[str]:
     return _literal_manifest_cases("IMPLEMENTED_B2J_RECOVERY_MANIFEST_CASES")
 
 
-def _plc9b2k_hardlink_candidate_manifest_cases() -> set[str]:
-    return _literal_manifest_cases("PLC9B2K_HARDLINK_CANDIDATE_MANIFEST_CASES")
+def _implemented_b2k_hardlink_manifest_cases() -> set[str]:
+    return _literal_manifest_cases("IMPLEMENTED_B2K_HARDLINK_MANIFEST_CASES")
 
 
 def _journal_effect_policy() -> list[tuple[str, str, str]]:
@@ -460,7 +460,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.2k-candidate" in contract
+    assert "Contract version: PLC9B.2k" in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
@@ -468,7 +468,11 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
     assert "PLC9B2h Accepted Archive And Wheel Manifest Slice" in contract
     assert "PLC9B2i Accepted Windows Archive Manifest Slice" in contract
     assert "PLC9B2j Accepted Recovery And Cleanup Manifest Slice" in contract
-    assert "PLC9B2k POSIX Hardlink Normalization Candidate" in contract
+    assert "PLC9B2k Accepted POSIX Hardlink Normalization Slice" in contract
+    assert "Harness Quality run `33493714647`" in contract
+    assert "Artifact `plc9b-linux-native-pytest-report` (ID `9794816942`)" in (
+        " ".join(contract.split())
+    )
     assert "Harness Quality run `33492402119`" in contract
     assert "Artifact `plc9b-linux-native-pytest-report` (ID `9794291799`)" in (
         contract
@@ -690,14 +694,15 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
     implemented_b2h = _implemented_b2h_manifest_cases()
     implemented_b2i = _implemented_b2i_windows_manifest_cases()
     implemented_b2j = _implemented_b2j_recovery_manifest_cases()
+    implemented_b2k = _implemented_b2k_hardlink_manifest_cases()
     implemented = (
         implemented_b1
         | implemented_b2
         | implemented_b2h
         | implemented_b2i
         | implemented_b2j
+        | implemented_b2k
     )
-    b2k_candidate = _plc9b2k_hardlink_candidate_manifest_cases()
 
     assert len(manifest) == 127
     assert categories == EXPECTED_MANIFEST_CATEGORY_COUNTS
@@ -793,9 +798,14 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
     assert (
         implemented_b1 | implemented_b2 | implemented_b2h | implemented_b2i
     ).isdisjoint(implemented_b2j)
-    assert b2k_candidate == {"B-TYPE-HARDLINK"}
-    assert implemented.isdisjoint(b2k_candidate)
-    assert all(manifest[case_id]["status"] == "planned" for case_id in b2k_candidate)
+    assert implemented_b2k == {"B-TYPE-HARDLINK"}
+    assert (
+        implemented_b1
+        | implemented_b2
+        | implemented_b2h
+        | implemented_b2i
+        | implemented_b2j
+    ).isdisjoint(implemented_b2k)
     separator = manifest["B-PATH-COLLISION-SEP"]
     assert separator["fixture"] == "separator_ambiguous_path"
     assert separator["code"] == "package_archive_path_rejected"
@@ -808,7 +818,8 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
     assert hardlink["fixture"] == "hardlinked_source_normalized"
     assert hardlink["code"] == "ok"
     assert hardlink["disposition"] == "extracted@independent_regular_files"
-    assert len(manifest) - len(implemented) == 76
+    assert hardlink["status"] == "implemented"
+    assert len(manifest) - len(implemented) == 75
     workflow = _source(HARNESS_WORKFLOW)
     assert "PLC9B Linux native adversarial gate (plc9b-linux-native)" in workflow
     assert "tests/harness/resources/packages/test_plc9b_adversarial.py" in workflow
