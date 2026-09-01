@@ -73,9 +73,11 @@ Neither may silently override a narrower implemented owner contract.
   owner-revisioned projection, one-way enablement migration, and Coding CLI
   adaptation without widening the public author SDK.
 - [PLC9B Safe Package Boundary Contract](plugin-lifecycle-plc9b-contract.md)
-  freezes the design-only Package acquisition owner, exact entrypoint
-  inventory, versioned wheel/closure/publication evidence, fail-closed recovery,
-  and mandatory adversarial acceptance matrix without implementing extraction.
+  freezes the Package acquisition owner, exact entrypoint inventory, versioned
+  wheel/closure/publication evidence, fail-closed recovery, and mandatory
+  adversarial acceptance matrix. PLC9B1 implements only the dark inert Owner
+  Kernel; extraction, acquisition, publication, and production routing remain
+  unimplemented.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)

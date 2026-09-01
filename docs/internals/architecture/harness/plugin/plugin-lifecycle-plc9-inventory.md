@@ -9,6 +9,10 @@
   [Plugin Lifecycle PLC9.0 Baseline](plugin-lifecycle-plc9-baseline.md).
 - PLC9B.0 refinement:
   [Safe Package Boundary Contract](plugin-lifecycle-plc9b-contract.md).
+- PLC9B1 refinement: the dark internal Owner Kernel now supplies versioned
+  inert records, classification, journal CAS, retry/cancel/status, and disabled
+  refusal. It has no production composition or artifact capability; all
+  acquisition/publication target rows below remain migration obligations.
 
 This inventory distinguishes accepted reusable owners, Product adapters,
 parallel compatibility paths, and missing target boundaries. “Migrate” or

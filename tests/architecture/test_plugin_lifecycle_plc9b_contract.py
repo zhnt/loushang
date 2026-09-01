@@ -16,6 +16,11 @@ PACKAGE_ROOT = Path("src/loushang/harness/resources/packages")
 PACKAGE_MATERIALIZER = PACKAGE_ROOT / "materializer.py"
 PACKAGE_OPERATIONS = PACKAGE_ROOT / "operations.py"
 PACKAGE_SOURCE_RESOLVER = PACKAGE_ROOT / "source_resolver.py"
+OWNER_KERNEL_ROOT = PACKAGE_ROOT / "plugin_lifecycle"
+ADVERSARIAL_TEST = Path(
+    "tests/harness/resources/packages/test_plc9b_adversarial.py"
+)
+HARNESS_WORKFLOW = Path(".github/workflows/harness-quality.yml")
 PLUGIN_REVISIONS = Path("src/loushang/harness/resources/plugins/revisions.py")
 PLUGIN_DEPENDENCIES = Path("src/loushang/harness/resources/plugins/dependencies.py")
 PACKAGE_LIFECYCLE = Path("src/loushang/harness/plugin_management/package_lifecycle.py")
@@ -324,6 +329,24 @@ def _adversarial_manifest() -> dict[str, dict[str, str]]:
     return rows
 
 
+def _implemented_b1_manifest_cases() -> set[str]:
+    tree = ast.parse(_source(ADVERSARIAL_TEST), filename=str(ADVERSARIAL_TEST))
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(
+            isinstance(target, ast.Name)
+            and target.id == "IMPLEMENTED_B1_MANIFEST_CASES"
+            for target in node.targets
+        ):
+            continue
+        value = ast.literal_eval(node.value)
+        assert isinstance(value, tuple)
+        assert all(isinstance(case_id, str) for case_id in value)
+        return set(value)
+    raise AssertionError("PLC9B1 executable manifest set is missing")
+
+
 def _journal_effect_policy() -> list[tuple[str, str, str]]:
     contract = _source(CONTRACT)
     block = contract.split("<!-- plc9b-journal-effect-policy:start -->", 1)[1]
@@ -400,16 +423,16 @@ def _retry_policy_for(code: str) -> tuple[str, str, str]:
     raise AssertionError(f"no retry policy for {code}")
 
 
-def test_plc9b_contract_is_indexed_and_explicitly_design_only() -> None:
+def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
     contract = _source(CONTRACT)
     index = _source(INDEX)
     inventory = _source(INVENTORY)
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.0" in contract
-    assert "Delivery status: design-only" in contract
-    assert "No runtime acquisition, archive extraction" in contract
+    assert "Contract version: PLC9B.1" in contract
+    assert "PLC9B1 dark Owner Kernel implemented" in contract
+    assert "No runtime\n  acquisition, archive extraction" in contract
     assert "Public author SDK effect: none" in contract
     for deferred in (
         "PLC9A2 transport activation",
@@ -608,9 +631,10 @@ def test_plc9b_transaction_never_confuses_publication_with_selection() -> None:
         assert boundary in contract
 
 
-def test_plc9b_adversarial_manifest_is_structured_countable_and_planned() -> None:
+def test_plc9b_adversarial_manifest_is_structured_and_tracks_exact_b1_progress() -> None:
     manifest = _adversarial_manifest()
     categories = Counter(case_id.split("-", 2)[1] for case_id in manifest)
+    implemented = _implemented_b1_manifest_cases()
 
     assert len(manifest) == 127
     assert categories == EXPECTED_MANIFEST_CATEGORY_COUNTS
@@ -624,7 +648,7 @@ def test_plc9b_adversarial_manifest_is_structured_countable_and_planned() -> Non
         assert oracles <= ALLOWED_ORACLES, case_id
         assert oracles, case_id
         assert row["test_node"].endswith(f"[{case_id}]"), case_id
-        assert row["status"] == "planned", case_id
+        assert row["status"] in {"planned", "implemented"}, case_id
         assert "#plc9b-" in row["workflow"], case_id
         if row["platform"] == "windows-native":
             assert row["workflow"].startswith("windows-shell-compatibility.yml"), (
@@ -634,6 +658,24 @@ def test_plc9b_adversarial_manifest_is_structured_countable_and_planned() -> Non
         elif row["platform"] == "posix-native":
             assert row["workflow"].startswith("harness-quality.yml"), case_id
             assert "no_skip" in oracles, case_id
+    assert {
+        case_id for case_id, row in manifest.items() if row["status"] == "implemented"
+    } == implemented
+    assert implemented == {
+        "B-CLASS-PLUGIN",
+        "B-CLASS-NONPLUGIN",
+        "B-CLASS-INDETERMINATE",
+        "B-CLASS-SPOOF",
+        "B-CRASH-ACCEPTED",
+        "B-CRASH-CLASSIFIED",
+        "B-CONCUR-CONFLICT",
+        "B-ENTRY-DISABLED",
+    }
+    assert len(manifest) - len(implemented) == 119
+    workflow = _source(HARNESS_WORKFLOW)
+    assert "PLC9B Linux native adversarial gate (plc9b-linux-native)" in workflow
+    assert "tests/harness/resources/packages/test_plc9b_adversarial.py" in workflow
+    assert "verify_pytest_xml.py" in workflow
 
 
 def test_plc9b_manifest_separates_caller_response_from_journal_effect() -> None:
@@ -1292,7 +1334,7 @@ def test_plc9b_transport_surfaces_do_not_import_concrete_effect_owners() -> None
         assert not any(module in source for module in forbidden_modules), path
 
 
-def test_plc9b_zero_runtime_claim_preserves_visible_unsafe_debt() -> None:
+def test_plc9b1_dark_kernel_preserves_visible_unsafe_debt() -> None:
     contract = _source(CONTRACT)
     materializer = _source(PACKAGE_MATERIALIZER)
     operations = _source(PACKAGE_OPERATIONS)
@@ -1318,6 +1360,9 @@ def test_plc9b_zero_runtime_claim_preserves_visible_unsafe_debt() -> None:
     assert "current `PythonPackageInstallerBackend`" in contract
     assert "must remain unavailable or fail closed without mutation" in contract
     assert not (PACKAGE_ROOT / "lifecycle.py").exists()
+    assert (OWNER_KERNEL_ROOT / "records.py").is_file()
+    assert (OWNER_KERNEL_ROOT / "journal.py").is_file()
+    assert (OWNER_KERNEL_ROOT / "owner.py").is_file()
     for forbidden in (
         "PackageLifecycleOwner",
         "BoundedAcquisitionReceipt",
@@ -1325,6 +1370,65 @@ def test_plc9b_zero_runtime_claim_preserves_visible_unsafe_debt() -> None:
         "DependencyClosureLockV2",
     ):
         assert forbidden not in author_sdk
+
+
+def test_plc9b1_owner_kernel_stays_internal_dark_and_capability_free() -> None:
+    package_facade = _source(PACKAGE_ROOT / "__init__.py")
+    kernel_sources = {
+        path: _source(path) for path in OWNER_KERNEL_ROOT.glob("*.py")
+    }
+    owner = kernel_sources[OWNER_KERNEL_ROOT / "owner.py"]
+
+    assert "enabled: bool = False" in owner
+    assert "PackageLifecycleOwner" not in package_facade
+    assert "plugin_lifecycle" not in package_facade
+    forbidden_modules = (
+        "loushang.harness.resources.packages.materializer",
+        "loushang.harness.resources.plugins.revisions",
+        "loushang.harness.plugin_management",
+        "subprocess",
+        "urllib.request",
+        "httpx",
+        "requests",
+        "socket",
+    )
+    for path, source in kernel_sources.items():
+        tree = ast.parse(source, filename=str(path))
+        imported = {
+            node.module or ""
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom)
+        }
+        imported.update(
+            alias.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Import)
+            for alias in node.names
+        )
+        assert not any(
+            module == forbidden or module.startswith(f"{forbidden}.")
+            for module in imported
+            for forbidden in forbidden_modules
+        ), path
+
+    production_importers: list[Path] = []
+    for path in SOURCE_ROOT.rglob("*.py"):
+        if path.is_relative_to(OWNER_KERNEL_ROOT):
+            continue
+        tree = ast.parse(_source(path), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and (
+                node.module or ""
+            ).startswith("loushang.harness.resources.packages.plugin_lifecycle"):
+                production_importers.append(path)
+            elif isinstance(node, ast.Import) and any(
+                alias.name.startswith(
+                    "loushang.harness.resources.packages.plugin_lifecycle"
+                )
+                for alias in node.names
+            ):
+                production_importers.append(path)
+    assert production_importers == []
 
 
 def test_plc9b_rollback_never_restores_the_unsafe_installer() -> None:
