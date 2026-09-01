@@ -24,7 +24,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.closure_journal import
     PackageClosureResolutionJournalError,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.closure_owner import (
-    PackageDependencyCleanupDebtError,
+    PackageClosureCleanupDebtError,
     PackageDependencyResolutionError,
     PackageRecursiveClosureRequestV2,
     VerifiedPackageClosureCandidate,
@@ -311,7 +311,7 @@ class PackageClosureLifecycleOwner:
                 ),
                 cleanup_status=(
                     error.cleanup_status
-                    if isinstance(error, PackageDependencyCleanupDebtError)
+                    if isinstance(error, PackageClosureCleanupDebtError)
                     else None
                 ),
             )
@@ -389,7 +389,7 @@ _CLOSURE_REJECTIONS = (
     PackageAcquisitionError,
     PackageArtifactEvidenceJournalError,
     PackageClosureVerificationError,
-    PackageDependencyCleanupDebtError,
+    PackageClosureCleanupDebtError,
     PackageDependencyResolutionError,
     PackageWheelVerificationError,
 )

@@ -24,6 +24,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.acquisition import (
     AcquiredPackageCandidate,
     AuthenticatedSourceEnvelopeV1,
     BoundedAcquisitionReceiptV1,
+    PackageQuarantineCleanupTargetV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
@@ -350,6 +351,22 @@ class VerifiedWheelCandidate:
             return
         self._acquired.cleanup()
         self._closed = True
+
+    def cleanup_target(self) -> PackageQuarantineCleanupTargetV1:
+        """Return only the durable cleanup identity, never a quarantine path."""
+
+        if self._closed:
+            raise RuntimeError("Verified Wheel candidate is closed")
+        return self._acquired.cleanup_target()
+
+    def defer_cleanup(self) -> PackageQuarantineCleanupTargetV1:
+        """Release process handles after cleanup ownership is durable."""
+
+        if self._closed:
+            raise RuntimeError("Verified Wheel candidate is closed")
+        target = self._acquired.defer_cleanup()
+        self._closed = True
+        return target
 
     def suspend_for_recovery(self) -> None:
         """Release process-local handles while preserving verified local state."""

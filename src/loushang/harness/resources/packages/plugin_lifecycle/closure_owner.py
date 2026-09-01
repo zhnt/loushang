@@ -69,23 +69,36 @@ class PackageDependencyResolutionError(RuntimeError):
         self.stage = "resolving_closure"
 
 
-class PackageDependencyCleanupDebtError(RuntimeError):
-    """Sanitized dependency rejection whose cleanup target is durably owned."""
+class PackageClosureCleanupDebtError(RuntimeError):
+    """Sanitized closure rejection whose cleanup targets are durably owned."""
 
     def __init__(
         self,
         *,
         rejection_code: str,
-        cleanup_status: PackageQuarantineCleanupStatusV1,
+        cleanup_status: PackageQuarantineCleanupStatusV1 | None = None,
+        cleanup_statuses: tuple[PackageQuarantineCleanupStatusV1, ...] = (),
     ) -> None:
-        super().__init__("Rejected Package dependency requires owner cleanup")
-        if not isinstance(cleanup_status, PackageQuarantineCleanupStatusV1):
-            raise TypeError("Package dependency cleanup status is required")
-        if cleanup_status.rejection_code != rejection_code:
-            raise ValueError("Package dependency cleanup rejection changed")
+        super().__init__("Rejected Package closure requires owner cleanup")
+        if cleanup_status is not None:
+            if cleanup_statuses:
+                raise ValueError("Package cleanup status cannot be both singular and plural")
+            cleanup_statuses = (cleanup_status,)
+        if not cleanup_statuses or any(
+            not isinstance(status, PackageQuarantineCleanupStatusV1)
+            for status in cleanup_statuses
+        ):
+            raise TypeError("Package closure cleanup status is required")
+        if any(status.rejection_code != rejection_code for status in cleanup_statuses):
+            raise ValueError("Package closure cleanup rejection changed")
         self.code = rejection_code
-        self.cleanup_status = cleanup_status
+        self.cleanup_statuses = cleanup_statuses
+        self.cleanup_status = cleanup_statuses[0]
         self.stage = "resolving_closure"
+
+
+class PackageDependencyCleanupDebtError(PackageClosureCleanupDebtError):
+    """Compatibility specialization for one rejected dependency candidate."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -349,7 +362,7 @@ class PackageClosureSelectionJournalPort(Protocol):
 
 
 class PackageClosureCleanupOwnerPort(Protocol):
-    """Narrow durable cleanup capability used only for dependency residue."""
+    """Narrow durable cleanup capability for rejected closure residue."""
 
     def record_pending(
         self,
@@ -681,10 +694,67 @@ class PackageRecursiveClosureOwner:
                 plan=plan,
                 candidates=candidates,
             )
-        except Exception:
-            for state in reversed(tuple(states.values())):
-                state.candidate.cleanup()
+        except Exception as rejection:
+            cleanup_statuses = self._cleanup_rejected_candidates(
+                states,
+                rejection=rejection,
+            )
+            if cleanup_statuses:
+                if (
+                    isinstance(rejection, PackageClosureCleanupDebtError)
+                    and rejection.cleanup_statuses == cleanup_statuses
+                ):
+                    raise
+                raise PackageClosureCleanupDebtError(
+                    rejection_code=_rejection_code(rejection),
+                    cleanup_statuses=cleanup_statuses,
+                ) from rejection
             raise
+
+    def _cleanup_rejected_candidates(
+        self,
+        states: dict[str, _NodeState],
+        *,
+        rejection: Exception,
+    ) -> tuple[PackageQuarantineCleanupStatusV1, ...]:
+        statuses = list(
+            rejection.cleanup_statuses
+            if isinstance(rejection, PackageClosureCleanupDebtError)
+            else ()
+        )
+        cleanup_error: Exception | None = None
+        rejection_code = _rejection_code(rejection)
+        for state in reversed(tuple(states.values())):
+            candidate = state.candidate
+            try:
+                candidate.cleanup()
+            except OSError:
+                try:
+                    target = candidate.cleanup_target()
+                    status = self._cleanup_owner.record_pending(
+                        target,
+                        rejection_code=rejection_code,
+                        rejection_stage="resolving_closure",
+                    )
+                except Exception as error:
+                    candidate.suspend_for_recovery()
+                    if cleanup_error is None:
+                        cleanup_error = error
+                else:
+                    try:
+                        candidate.defer_cleanup()
+                    except Exception as error:
+                        candidate.suspend_for_recovery()
+                        if cleanup_error is None:
+                            cleanup_error = error
+                    statuses.append(status)
+        if cleanup_error is not None:
+            raise cleanup_error
+        unique = {
+            status.target.cleanup_id: status
+            for status in statuses
+        }
+        return tuple(unique[key] for key in sorted(unique))
 
     @staticmethod
     def _require_root_identity(
@@ -1078,6 +1148,13 @@ def _reject_conflict(message: str) -> NoReturn:
     )
 
 
+def _rejection_code(error: Exception) -> str:
+    code = getattr(error, "code", "package_closure_artifact_invalid")
+    if not isinstance(code, str) or not code:
+        return "package_closure_artifact_invalid"
+    return code
+
+
 def _require_incremental_graph(
     *,
     root_node_id: str,
@@ -1160,6 +1237,7 @@ def _wire_int(value: object, *, name: str) -> int:
 
 
 __all__ = [
+    "PackageClosureCleanupDebtError",
     "PackageClosureCleanupOwnerPort",
     "PackageClosureSelectionJournalPort",
     "PackageDependencyCleanupDebtError",

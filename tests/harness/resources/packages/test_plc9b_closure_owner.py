@@ -38,6 +38,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.closure_journal import
     PackageClosureResolutionJournal,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.closure_owner import (
+    PackageClosureCleanupDebtError,
     PackageDependencyCleanupDebtError,
     PackageDependencyResolutionError,
     PackageDependencySelectionRequestV1,
@@ -714,6 +715,48 @@ def test_recursive_owner_durably_records_dependency_cleanup_debt(
         expected_cleanup_revision=cleanup_status.cleanup_revision,
     )
     assert repaired.disposition == "cleanup_complete"
+    assert fixture.store.attempt_names() == ()
+
+
+def test_recursive_owner_records_every_cleanup_debt_after_graph_rejection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _fixture(
+        tmp_path,
+        {
+            "root-plugin": ("1.0", ("dep==2",)),
+            "dep": ("2.0", ("missing==1",)),
+        },
+    )
+
+    def refuse_cleanup(_candidate: VerifiedWheelCandidate) -> None:
+        raise OSError("private cleanup failure")
+
+    monkeypatch.setattr(VerifiedWheelCandidate, "cleanup", refuse_cleanup)
+
+    with pytest.raises(PackageClosureCleanupDebtError) as rejected:
+        fixture.owner.build(fixture.root, fixture.request)
+
+    assert rejected.value.code == "package_closure_artifact_invalid"
+    assert "private cleanup failure" not in str(rejected.value)
+    statuses = rejected.value.cleanup_statuses
+    assert len(statuses) == 2
+    node_ids = {status.target.node_id for status in statuses}
+    assert len(node_ids) == 2
+    assert "root" in node_ids
+    assert all(status.disposition == "cleanup_retryable" for status in statuses)
+    assert all(
+        fixture.cleanup.status(status.target.cleanup_id) == status
+        for status in statuses
+    )
+    assert len(fixture.store.attempt_names()) == 2
+    for status in statuses:
+        repaired = fixture.cleanup.repair(
+            status.target.cleanup_id,
+            expected_cleanup_revision=status.cleanup_revision,
+        )
+        assert repaired.disposition == "cleanup_complete"
     assert fixture.store.attempt_names() == ()
 
 
