@@ -27,6 +27,7 @@ CLOSURE_OWNER = OWNER_KERNEL_ROOT / "closure_owner.py"
 CLOSURE_JOURNAL = OWNER_KERNEL_ROOT / "closure_journal.py"
 CLOSURE_RUNTIME = OWNER_KERNEL_ROOT / "closure_runtime.py"
 COMMIT_RECORDS = OWNER_KERNEL_ROOT / "commit_records.py"
+TRANSACTION_PINS = OWNER_KERNEL_ROOT / "transaction_pins.py"
 CLOSURE_TEST = Path("tests/harness/resources/packages/test_plc9b_closure.py")
 CLOSURE_OWNER_TEST = Path(
     "tests/harness/resources/packages/test_plc9b_closure_owner.py"
@@ -39,6 +40,9 @@ CLOSURE_RUNTIME_TEST = Path(
 )
 COMMIT_RECORDS_TEST = Path(
     "tests/harness/resources/packages/test_plc9b_commit_records.py"
+)
+TRANSACTION_PINS_TEST = Path(
+    "tests/harness/resources/packages/test_plc9b_transaction_pins.py"
 )
 PYPROJECT = Path("pyproject.toml")
 WINDOWS_NATIVE_TEST = Path(
@@ -489,7 +493,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.3e1" in contract
+    assert "Contract version: PLC9B.3e2a-candidate" in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
@@ -505,6 +509,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
     assert "PLC9B3d-2a Accepted Composed Closure Limits" in contract
     assert "PLC9B3d-2b Accepted Composed Closure Integrity" in contract
     assert "PLC9B3e-1 Accepted Typed Commit Records" in contract
+    assert "PLC9B3e-2a Candidate Transaction-Pin Contract" in contract
     assert "Harness Quality run `33505702666`" in contract
     assert "Linux\nharness job `99849101216`" in contract
     assert "(ID\n`9799493328`)" in contract
@@ -2088,6 +2093,90 @@ def test_plc9b3e1_typed_commit_records_are_strict_dark_and_unpromoted() -> None:
     assert (
         "0796849b296edb53f9f2a804e7db35b8467dad375a11695870e86e221bf124bd" in contract
     )
+    assert all(
+        manifest[case_id]["status"] == "planned"
+        for case_id in manifest
+        if case_id.startswith("B-PUB-")
+    )
+
+
+def test_plc9b3e2a_transaction_pin_contract_is_narrow_dark_and_unpromoted() -> None:
+    contract = _source(CONTRACT)
+    inventory = _source(INVENTORY)
+    source = _source(TRANSACTION_PINS)
+    component_tests = _source(TRANSACTION_PINS_TEST)
+    package_facade = _source(PACKAGE_ROOT / "__init__.py")
+    internal_facade = _source(OWNER_KERNEL_ROOT / "__init__.py")
+    author_sdk = _source(AUTHOR_SDK)
+    manifest = _adversarial_manifest()
+
+    assert TRANSACTION_PINS.is_file()
+    for symbol in (
+        "class PackageTransactionPinTargetV1:",
+        "class PackageTransactionPinRequestV1:",
+        "class PackageTransactionPinReceiptV1:",
+        "class PackageTransactionPinPort(Protocol):",
+        "class PackageTransactionPinRecordV1:",
+        "class PackageTransactionPinJournal:",
+    ):
+        assert symbol in source
+        public_name = symbol.removeprefix("class ").split("(", 1)[0].removesuffix(":")
+        assert public_name not in package_facade
+        assert public_name not in internal_facade
+        assert public_name not in author_sdk
+    tree = ast.parse(source, filename=str(TRANSACTION_PINS))
+    pin_port = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "PackageTransactionPinPort"
+    )
+    assert {
+        node.name
+        for node in pin_port.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    } == {"acquire", "release"}
+    imported = {
+        node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
+    }
+    imported.update(
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    )
+    forbidden_modules = (
+        "loushang.harness.plugin_management",
+        "loushang.harness.resources.plugins.revisions",
+        "loushang.coding",
+        "loushang.foundation",
+        "subprocess",
+    )
+    assert not any(
+        module == forbidden or module.startswith(f"{forbidden}.")
+        for module in imported
+        for forbidden in forbidden_modules
+    )
+    for forbidden_capability in (
+        "VerifiedPackageClosureCandidate",
+        "PluginRevisionStore",
+        "PluginPackageLifecycleLedger",
+        "PluginManagementService",
+    ):
+        assert forbidden_capability not in source
+    for evidence in (
+        "derives_exact_canonical_targets_from_verified_plan",
+        "carry_no_path_credential_or_live_handle",
+        "acquire_release_and_transfer_are_strict_round_trips",
+        "rejects_stale_or_chained_terminal_transition",
+        "appends_acquire_then_release_and_replays_after_restart",
+        "rejects_changed_acquisition_without_mutation",
+        "rejects_release_without_acquire_or_wrong_predecessor",
+        "repairs_partial_tail_but_rejects_duplicate_json_keys",
+    ):
+        assert evidence in component_tests
+    assert "B3e-2a freezes the transaction-retention boundary" in contract
+    assert "PLC9B3e-2a candidate code adds exact credential-free" in inventory
+    assert manifest["B-CRASH-PINNED"]["status"] == "planned"
     assert all(
         manifest[case_id]["status"] == "planned"
         for case_id in manifest

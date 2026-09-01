@@ -101,8 +101,12 @@ Neither may silently override a narrower implemented owner contract.
   accepted code adds dark credential-free typed stable refs, an immutable
   closure lock, and the exact committed-set record without pinning, staging,
   publishing, admission, or production binding; its retained native report
-  remained exactly 64 rows and contained no `B-PUB-*` node.
-  Transaction pins, publication, and production routing remain unimplemented.
+  remained exactly 64 rows and contained no `B-PUB-*` node. PLC9B3e-2a
+  candidate code adds credential-free transaction-pin records, a narrow Port,
+  and a durable adjacent-evidence journal without phase composition or a
+  concrete retention-ledger import.
+  Transaction-pin runtime composition, publication, and production routing
+  remain unimplemented.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)

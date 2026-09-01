@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.3e1.
+- Contract version: PLC9B.3e2a-candidate.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -50,7 +50,10 @@
   retaining dark operation. B3e-1 accepted code adds strict credential-free
   typed stable refs, immutable closure-node/lock records, and an exact
   committed-set ref. It constructs no pin, stages no store object, publishes
-  no namespace, and promotes no global manifest row.
+  no namespace, and promotes no global manifest row. B3e-2a candidate code
+  adds exact transaction-pin targets/requests/receipts, a narrow retention
+  Port, and an owner-side durable pin-evidence journal without phase
+  integration or a concrete retention-ledger import.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -756,6 +759,39 @@ PR check passed. Harness Quality run `33521945259`, Linux harness job
 `0796849b296edb53f9f2a804e7db35b8467dad375a11695870e86e221bf124bd`.
 The XML executed the unchanged 64 manifest nodes with zero skips, failures, or
 errors and contained no `B-PUB-*` node.
+
+## PLC9B3e-2a Candidate Transaction-Pin Contract
+
+B3e-2a freezes the transaction-retention boundary before runtime composition.
+`PackageTransactionPinRequestV1` is constructed from one complete
+`VerifiedClosurePlanV2`; it binds operation/attempt, request and classification
+fingerprints, verified-plan and prepublication graph digests, one recovery
+identity, one designated root, and the canonical exact target set. Each
+`PackageTransactionPinTargetV1` contains only node role/name/version and
+artifact/tree/Wheel-evidence digests. It carries no Source credential,
+pathname, live candidate, file handle, store capability, or desired-state
+authority.
+
+The narrow `PackageTransactionPinPort` accepts that request and returns a
+versioned `PackageTransactionPinReceiptV1`. The receipt binds the exact request,
+pin/lease and retention-owner identities, owner/lease revisions, and one of
+`acquired`, `released`, or `transferred`. An acquired receipt has no fabricated
+predecessor; a release or transfer must advance both revisions, name the exact
+acquired receipt, and bind separate transition evidence. Replaying `acquire`
+with the same request is the future external owner's idempotency contract; the
+Package owner never receives its journal, lock, path, or concrete ledger.
+
+`PackageTransactionPinJournal` is the Package owner's adjacent evidence log.
+It admits one exact acquisition per operation, exact replay without append,
+and at most one terminal transition with a contiguous predecessor revision.
+Changed request/recovery/attempt facts, a terminal receipt without acquisition,
+a second terminal state, duplicate JSON keys, or modified content identifiers
+fail closed without mutation; a partial crash tail is repaired using the common
+durable journal policy. B3e-2b still owns `closure_verified ->
+transaction_pinned` orchestration and crash replay. No concrete
+`PluginPackageLifecycleLedger`, store, publication, admission, desired-state,
+or production module imports this component, so `B-CRASH-PINNED`, every
+`B-PUB-*` row, and all later rows remain `planned`.
 
 ## First Principles
 

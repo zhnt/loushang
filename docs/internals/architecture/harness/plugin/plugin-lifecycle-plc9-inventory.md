@@ -98,6 +98,10 @@
   All PR checks passed and retained artifact `9806065559` executed the
   unchanged 64 native manifest nodes without skips, failures, errors, or any
   `B-PUB-*` node.
+  PLC9B3e-2a candidate code adds exact credential-free transaction-pin
+  targets/requests/receipts, a narrow retention Port, and a durable owner-side
+  evidence journal. It has no concrete retention-ledger import or runtime phase
+  composition and promotes no manifest row.
   Pins, publication, later transaction phases, and every production route
   remain migration obligations.
 
