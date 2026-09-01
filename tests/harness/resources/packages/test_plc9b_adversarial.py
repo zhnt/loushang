@@ -93,6 +93,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.staging import (
 from loushang.harness.resources.packages.plugin_lifecycle.staging_set_runtime import (
     PackageStagingSetLifecycleOwner,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.store_settlements import (
+    PackageStoreSettlementJournal,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.transaction_pin_runtime import (
     PackageTransactionPinLifecycleOwner,
 )
@@ -218,10 +221,11 @@ IMPLEMENTED_B3E3C2_WINDOWS_MANIFEST_CASES = (
     "B-PUB-WIN-HANDLE-SUCCESS",
     "B-PUB-WIN-HANDLE-REJECT",
 )
-PLANNED_B3E3C_MATERIALIZATION_MANIFEST_CASES = (
+IMPLEMENTED_B3E3C3_SETTLEMENT_MANIFEST_CASES = (
     "B-PUB-COLLISION",
     "B-PUB-REUSE",
 )
+PLANNED_B3E3C_MATERIALIZATION_MANIFEST_CASES: tuple[str, ...] = ()
 PLANNED_B4_COMMIT_ADMISSION_MANIFEST_CASES = ("B-PUB-UNCOMMITTED",)
 
 EXECUTABLE_MANIFEST_CASES = (
@@ -237,6 +241,7 @@ EXECUTABLE_MANIFEST_CASES = (
     + IMPLEMENTED_B3E_PIN_MANIFEST_CASES
     + IMPLEMENTED_B3E_STAGING_SET_MANIFEST_CASES
     + IMPLEMENTED_B3E3C1_POSIX_MANIFEST_CASES
+    + IMPLEMENTED_B3E3C3_SETTLEMENT_MANIFEST_CASES
     + (IMPLEMENTED_B3E3C2_WINDOWS_MANIFEST_CASES if os.name == "nt" else ())
 )
 
@@ -2180,6 +2185,7 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
     elif case_id in (
         IMPLEMENTED_B3E3C1_POSIX_MANIFEST_CASES
         + IMPLEMENTED_B3E3C2_WINDOWS_MANIFEST_CASES
+        + IMPLEMENTED_B3E3C3_SETTLEMENT_MANIFEST_CASES
     ):
         windows_case = case_id in IMPLEMENTED_B3E3C2_WINDOWS_MANIFEST_CASES
         assert os.name == ("nt" if windows_case else "posix")
@@ -2312,29 +2318,67 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
         handle_success = case_id in {
             "B-PUB-POSIX-HANDLE-SUCCESS",
             "B-PUB-WIN-HANDLE-SUCCESS",
+            "B-PUB-REUSE",
         }
         active_probe = (
             None if case_id == "B-PUB-PRECREATE" or handle_success else commit_probe
+        )
+        dependency_settlements = PackageStoreSettlementJournal(
+            tmp_path / "dependency-store-settlements.jsonl"
+        )
+        plugin_settlements = PackageStoreSettlementJournal(
+            tmp_path / "plugin-store-settlements.jsonl"
         )
         if windows_case:
             dependency_staging = WindowsPackageDependencyMaterializationStore(
                 dependency_root,
                 store_identity="manifest-dependency-store",
+                settlement_journal=dependency_settlements,
             )
             native_root_store = WindowsPackagePluginRootMaterializationStore(
                 plugin_root,
                 store_identity="manifest-plugin-revision-store",
+                settlement_journal=plugin_settlements,
                 commit_probe=active_probe,
             )
         else:
             dependency_staging = PosixPackageDependencyMaterializationStore(
                 dependency_root,
                 store_identity="manifest-dependency-store",
+                settlement_journal=dependency_settlements,
             )
             native_root_store = PosixPackagePluginRootMaterializationStore(
                 plugin_root,
                 store_identity="manifest-plugin-revision-store",
+                settlement_journal=plugin_settlements,
                 commit_probe=active_probe,
+            )
+        preexisting_receipt: PackageArtifactStagingReceiptV1 | None = None
+        if case_id in IMPLEMENTED_B3E3C3_SETTLEMENT_MANIFEST_CASES:
+            assert not windows_case
+            root_candidate = next(
+                candidate
+                for candidate in closure_result.candidate.candidates
+                if candidate.evidence.node_id
+                == closure_result.candidate.plan.root_node_id
+            )
+            preexisting_receipt = native_root_store.stage_root(
+                root_staging_request,
+                root_candidate,
+            )
+            if case_id == "B-PUB-COLLISION":
+                published = plugin_root / (
+                    f"revision-{preexisting_receipt.stable_ref.ref_id}"
+                )
+                detached = tmp_path / "detached-published-revision"
+                published.rename(detached)
+                shutil.copytree(detached, published)
+            native_root_store = PosixPackagePluginRootMaterializationStore(
+                plugin_root,
+                store_identity="manifest-plugin-revision-store",
+                settlement_journal=PackageStoreSettlementJournal(
+                    plugin_settlements.path
+                ),
             )
         root_staging = _ManifestNativeRootStagingOwner(
             native_root_store,
@@ -2400,6 +2444,9 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
             assert result.committed_set is not None
             assert len(result.staging_receipts) == 1
             assert root_staging.same_receipt is True
+            if preexisting_receipt is not None:
+                assert result.staging_receipts == (preexisting_receipt,)
+                assert len(plugin_settlements.records()) == 1
             committed = kernel.advance(
                 result.status.operation_id,
                 next_phase="committed",
@@ -2411,6 +2458,21 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
             assert committed.disposition == "committed"
             assert len(committed_sets.records()) == 1
             assert len(staging_journal.records()) == 1
+            if case_id == "B-PUB-REUSE":
+                assert preexisting_receipt is not None
+                restarted_store = PosixPackagePluginRootMaterializationStore(
+                    plugin_root,
+                    store_identity="manifest-plugin-revision-store",
+                    settlement_journal=PackageStoreSettlementJournal(
+                        plugin_settlements.path
+                    ),
+                )
+                settlement_count = len(plugin_settlements.records())
+                assert (
+                    restarted_store.validate_root_receipt(preexisting_receipt)
+                    == preexisting_receipt
+                )
+                assert len(plugin_settlements.records()) == settlement_count == 1
             assert (
                 len(
                     tuple(
@@ -2425,13 +2487,23 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
             assert result.status.phase == "staging"
             assert result.status.disposition == "rejected"
             assert result.status.failure is not None
-            assert result.status.failure.code == "package_publication_root_untrusted"
+            expected_failure = (
+                "package_publication_collision"
+                if case_id == "B-PUB-COLLISION"
+                else "package_publication_root_untrusted"
+            )
+            assert result.status.failure.code == expected_failure
             assert result.staging_receipts == ()
             assert staging_journal.records() == ()
             assert committed_sets.records() == ()
-            assert not any(
-                entry.name.startswith("revision-") for entry in plugin_root.iterdir()
-            )
+            if case_id == "B-PUB-COLLISION":
+                assert preexisting_receipt is not None
+                assert len(plugin_settlements.records()) == 1
+            else:
+                assert not any(
+                    entry.name.startswith("revision-")
+                    for entry in plugin_root.iterdir()
+                )
 
         assert (
             pin_journal.current_for_operation(classified.operation_id) == pinned.receipt

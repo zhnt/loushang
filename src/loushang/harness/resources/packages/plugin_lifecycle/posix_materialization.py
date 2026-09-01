@@ -7,14 +7,17 @@ descriptor-relative no-follow calls, and returns only an existing typed ref.
 
 from __future__ import annotations
 
+import ctypes
+import errno
 import os
 import stat
+import sys
 import threading
 from collections.abc import Callable
 from contextlib import AbstractContextManager, suppress
 from hashlib import sha256
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 from loushang.harness.resources.packages.plugin_lifecycle.commit_records import (
     PluginRevisionRefV1,
@@ -23,6 +26,10 @@ from loushang.harness.resources.packages.plugin_lifecycle.commit_records import 
 from loushang.harness.resources.packages.plugin_lifecycle.staging import (
     PackageArtifactStagingReceiptV1,
     PackageArtifactStagingRequestV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.store_settlements import (
+    PackageStoreSettlementJournal,
+    PackageStoreSettlementJournalError,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.tree_transfer import (
     PackagePhysicalStagingError,
@@ -47,15 +54,19 @@ class PosixPackageDependencyMaterializationStore:
         root: str | Path,
         *,
         store_identity: str,
+        settlement_journal: PackageStoreSettlementJournal,
         transfer: PackageVerifiedTreeTransferOwner | None = None,
         commit_probe: Callable[[], None] | None = None,
+        receipt_probe: Callable[[], None] | None = None,
     ) -> None:
         self._store = _PosixRoleStore(
             root,
             role="dependency",
             store_identity=store_identity,
+            settlement_journal=settlement_journal,
             transfer=transfer,
             commit_probe=commit_probe,
+            receipt_probe=receipt_probe,
         )
 
     def open_dependency_sink(
@@ -72,6 +83,12 @@ class PosixPackageDependencyMaterializationStore:
     ) -> PackageArtifactStagingReceiptV1:
         return self._store.stage(request, candidate)
 
+    def validate_dependency_receipt(
+        self,
+        receipt: PackageArtifactStagingReceiptV1,
+    ) -> PackageArtifactStagingReceiptV1:
+        return self._store.validate_receipt(receipt)
+
 
 class PosixPackagePluginRootMaterializationStore:
     """Designated-Plugin-root adapter over one configured revision Store root."""
@@ -81,15 +98,19 @@ class PosixPackagePluginRootMaterializationStore:
         root: str | Path,
         *,
         store_identity: str,
+        settlement_journal: PackageStoreSettlementJournal,
         transfer: PackageVerifiedTreeTransferOwner | None = None,
         commit_probe: Callable[[], None] | None = None,
+        receipt_probe: Callable[[], None] | None = None,
     ) -> None:
         self._store = _PosixRoleStore(
             root,
             role="root",
             store_identity=store_identity,
+            settlement_journal=settlement_journal,
             transfer=transfer,
             commit_probe=commit_probe,
+            receipt_probe=receipt_probe,
         )
 
     def open_root_sink(
@@ -106,6 +127,12 @@ class PosixPackagePluginRootMaterializationStore:
     ) -> PackageArtifactStagingReceiptV1:
         return self._store.stage(request, candidate)
 
+    def validate_root_receipt(
+        self,
+        receipt: PackageArtifactStagingReceiptV1,
+    ) -> PackageArtifactStagingReceiptV1:
+        return self._store.validate_receipt(receipt)
+
 
 class _PosixRoleStore:
     def __init__(
@@ -114,8 +141,10 @@ class _PosixRoleStore:
         *,
         role: _Role,
         store_identity: str,
+        settlement_journal: PackageStoreSettlementJournal,
         transfer: PackageVerifiedTreeTransferOwner | None,
         commit_probe: Callable[[], None] | None,
+        receipt_probe: Callable[[], None] | None,
     ) -> None:
         if os.name != "posix" or not _supports_posix_rooted_io():
             raise PackagePhysicalStagingError(
@@ -126,12 +155,16 @@ class _PosixRoleStore:
             raise TypeError("Package Store root must be a filesystem path")
         if not isinstance(store_identity, str) or not store_identity:
             raise TypeError("Package Store identity is required")
+        if not isinstance(settlement_journal, PackageStoreSettlementJournal):
+            raise TypeError("Package Store settlement journal is required")
         if transfer is not None and not isinstance(
             transfer, PackageVerifiedTreeTransferOwner
         ):
             raise TypeError("Verified-tree transfer owner is required")
         if commit_probe is not None and not callable(commit_probe):
             raise TypeError("Package Store commit probe must be callable")
+        if receipt_probe is not None and not callable(receipt_probe):
+            raise TypeError("Package Store receipt probe must be callable")
         raw_root = Path(root)
         if not raw_root.is_absolute() or ".." in raw_root.parts:
             raise PackagePhysicalStagingError(
@@ -146,15 +179,24 @@ class _PosixRoleStore:
             )
         self._role = role
         self._store_identity = store_identity
+        self._settlement_journal = settlement_journal
         self._transfer = transfer or PackageVerifiedTreeTransferOwner()
         self._commit_probe = commit_probe
+        self._receipt_probe = receipt_probe
         self._lock = threading.RLock()
-        self._settled: set[str] = set()
         provisioned = _PinnedPosixRoot.open(self._root)
         try:
             self._root_identities = provisioned.identities
         finally:
             provisioned.close()
+        try:
+            self._settlement_journal.validate_store_root(
+                store_role=self._role,
+                store_identity=self._store_identity,
+                root_identities=self._root_identities,
+            )
+        except PackageStoreSettlementJournalError:
+            raise _root_untrusted() from None
 
     def stage(
         self,
@@ -166,6 +208,81 @@ class _PosixRoleStore:
         with self.open_sink(request, candidate.transfer_manifest) as sink:
             return self._transfer.transfer(request, candidate, sink)
 
+    def validate_receipt(
+        self,
+        receipt: PackageArtifactStagingReceiptV1,
+    ) -> PackageArtifactStagingReceiptV1:
+        if not isinstance(receipt, PackageArtifactStagingReceiptV1):
+            raise TypeError("Package artifact staging receipt is required")
+        self._lock.acquire()
+        durable_owner_lock = self._settlement_journal.owner_lock()
+        try:
+            durable_owner_lock.__enter__()
+        except Exception:
+            self._lock.release()
+            raise _root_untrusted() from None
+        try:
+            root = _PinnedPosixRoot.open(
+                self._root,
+                expected_identities=self._root_identities,
+            )
+            try:
+                return self._validate_receipt_at_root(root, receipt)
+            finally:
+                root.close()
+        except PackagePhysicalStagingError:
+            raise
+        except PackageStoreSettlementJournalError:
+            raise _root_untrusted() from None
+        except Exception:
+            raise _root_untrusted() from None
+        finally:
+            try:
+                durable_owner_lock.__exit__(None, None, None)
+            finally:
+                self._lock.release()
+
+    def _validate_receipt_at_root(
+        self,
+        root: _PinnedPosixRoot,
+        receipt: PackageArtifactStagingReceiptV1,
+    ) -> PackageArtifactStagingReceiptV1:
+        stable_ref = receipt.stable_ref
+        if (
+            stable_ref.store_identity != self._store_identity
+            or (self._role == "dependency" and not isinstance(stable_ref, VerifiedArtifactRefV1))
+            or (self._role == "root" and not isinstance(stable_ref, PluginRevisionRefV1))
+        ):
+            raise _collision()
+        settlements = self._settlement_journal.settlements_for_receipt(
+            store_role=self._role,
+            store_identity=self._store_identity,
+            root_identities=root.identities,
+            receipt=receipt,
+        )
+        if not settlements:
+            raise _collision()
+        authority = settlements[0]
+        tree_identity, directory_identities, file_identities = _validate_existing_tree(
+            root,
+            authority.final_name,
+            authority.manifest,
+        )
+        if not self._settlement_journal.authorizes(
+            store_role=self._role,
+            store_identity=self._store_identity,
+            root_identities=root.identities,
+            tree_identity=tree_identity,
+            directory_identities=directory_identities,
+            file_identities=file_identities,
+            final_name=authority.final_name,
+            staging_name=authority.staging_name,
+            manifest=authority.manifest,
+            receipt=receipt,
+        ):
+            raise _collision()
+        return receipt
+
     def open_sink(
         self,
         request: PackageArtifactStagingRequestV1,
@@ -173,6 +290,19 @@ class _PosixRoleStore:
     ) -> _PosixVerifiedTreeSink:
         _validate_role_request(self._role, request, manifest)
         self._lock.acquire()
+        durable_owner_lock = self._settlement_journal.owner_lock()
+        try:
+            durable_owner_lock.__enter__()
+        except Exception:
+            self._lock.release()
+            raise _root_untrusted() from None
+
+        def release_owner_lock() -> None:
+            try:
+                durable_owner_lock.__exit__(None, None, None)
+            finally:
+                self._lock.release()
+
         try:
             root = _PinnedPosixRoot.open(
                 self._root,
@@ -186,14 +316,15 @@ class _PosixRoleStore:
                     request=request,
                     manifest=manifest,
                     commit_probe=self._commit_probe,
-                    trusted_final_names=self._settled,
-                    release_owner_lock=self._lock.release,
+                    receipt_probe=self._receipt_probe,
+                    settlement_journal=self._settlement_journal,
+                    release_owner_lock=release_owner_lock,
                 )
             except Exception:
                 root.close()
                 raise
         except Exception:
-            self._lock.release()
+            release_owner_lock()
             raise
 
 
@@ -309,7 +440,8 @@ class _PosixVerifiedTreeSink:
         request: PackageArtifactStagingRequestV1,
         manifest: PackageVerifiedTreeManifestV1,
         commit_probe: Callable[[], None] | None,
-        trusted_final_names: set[str],
+        receipt_probe: Callable[[], None] | None,
+        settlement_journal: PackageStoreSettlementJournal,
         release_owner_lock: Callable[[], None],
     ) -> None:
         self._root = root
@@ -317,8 +449,10 @@ class _PosixVerifiedTreeSink:
         self._request = request
         self._manifest = manifest
         self._commit_probe = commit_probe
-        self._trusted_final_names = trusted_final_names
+        self._receipt_probe = receipt_probe
+        self._settlement_journal = settlement_journal
         self._release_owner_lock = release_owner_lock
+        self._store_identity = store_identity
         self._stable_ref = _stable_ref(
             role,
             store_identity=store_identity,
@@ -328,6 +462,10 @@ class _PosixVerifiedTreeSink:
         prefix = "artifact" if role == "dependency" else "revision"
         self._final_name = f"{prefix}-{self._stable_ref.ref_id}"
         self._staging_name = f"staging-{request.staging_request_id}"
+        self._receipt = PackageArtifactStagingReceiptV1.create(
+            self._request,
+            stable_ref=self._stable_ref,
+        )
         self._staging_fd: int | None = None
         self._staging_identity: _Identity | None = None
         self._directory_identities: dict[tuple[str, ...], _Identity] = {}
@@ -335,6 +473,7 @@ class _PosixVerifiedTreeSink:
         self._next_entry = 0
         self._active_file: _PosixFileSink | _ReuseFileSink | None = None
         self._reuse = False
+        self._authorized = False
         self._renamed = False
         self._finished = False
         self._closed = False
@@ -355,16 +494,29 @@ class _PosixVerifiedTreeSink:
             if _entry_exists(self._root.descriptor, self._staging_name):
                 raise _root_untrusted()
             if _entry_exists(self._root.descriptor, self._final_name):
-                if self._final_name not in self._trusted_final_names:
+                tree_identity, directory_identities, file_identities = (
+                    _validate_existing_tree(
+                        self._root,
+                        self._final_name,
+                        self._manifest,
+                    )
+                )
+                if not self._settlement_journal.authorizes(
+                    store_role=self._role,
+                    store_identity=self._store_identity,
+                    root_identities=self._root.identities,
+                    tree_identity=tree_identity,
+                    directory_identities=directory_identities,
+                    file_identities=file_identities,
+                    final_name=self._final_name,
+                    staging_name=self._staging_name,
+                    manifest=self._manifest,
+                    receipt=self._receipt,
+                ):
                     raise PackagePhysicalStagingError(
-                        "Package Store final identity lacks live owner evidence",
+                        "Package Store final identity lacks durable owner evidence",
                         code="package_publication_collision",
                     )
-                _validate_existing_tree(
-                    self._root,
-                    self._final_name,
-                    self._manifest,
-                )
                 self._reuse = True
                 return
             os.mkdir(
@@ -379,6 +531,8 @@ class _PosixVerifiedTreeSink:
             self._staging_identity = _identity(os.fstat(self._staging_fd))
         except PackagePhysicalStagingError:
             raise
+        except PackageStoreSettlementJournalError:
+            raise _root_untrusted() from None
         except Exception:
             raise _root_untrusted() from None
 
@@ -492,25 +646,40 @@ class _PosixVerifiedTreeSink:
         try:
             if self._reuse:
                 self._root.validate_visible()
-                _validate_existing_tree(
-                    self._root,
-                    self._final_name,
-                    self._manifest,
+                tree_identity, directory_identities, file_identities = (
+                    _validate_existing_tree(
+                        self._root,
+                        self._final_name,
+                        self._manifest,
+                    )
                 )
+                if not self._settlement_journal.authorizes(
+                    store_role=self._role,
+                    store_identity=self._store_identity,
+                    root_identities=self._root.identities,
+                    tree_identity=tree_identity,
+                    directory_identities=directory_identities,
+                    file_identities=file_identities,
+                    final_name=self._final_name,
+                    staging_name=self._staging_name,
+                    manifest=self._manifest,
+                    receipt=self._receipt,
+                ):
+                    raise PackagePhysicalStagingError(
+                        "Package Store final identity lacks durable owner evidence",
+                        code="package_publication_collision",
+                    )
             else:
                 self._settle_new_tree()
-                self._trusted_final_names.add(self._final_name)
-            receipt = PackageArtifactStagingReceiptV1.create(
-                self._request,
-                stable_ref=self._stable_ref,
-            )
         except PackagePhysicalStagingError:
             raise
+        except PackageStoreSettlementJournalError:
+            raise _root_untrusted() from None
         except Exception:
             raise _root_untrusted() from None
         self._finished = True
         self._close_handles()
-        return receipt
+        return self._receipt
 
     def _settle_new_tree(self) -> None:
         if self._staging_fd is None or self._staging_identity is None:
@@ -538,6 +707,20 @@ class _PosixVerifiedTreeSink:
             self._commit_probe()
         try:
             self._root.validate_visible()
+            visible = _open_directory(
+                self._staging_name,
+                dir_fd=self._root.descriptor,
+            )
+            try:
+                _validate_owned_tree(
+                    visible,
+                    self._staging_identity,
+                    self._manifest,
+                    directory_identities=self._directory_identities,
+                    file_identities=self._file_identities,
+                )
+            finally:
+                os.close(visible)
         except Exception:
             raise _root_untrusted() from None
         if _entry_exists(self._root.descriptor, self._final_name):
@@ -545,12 +728,25 @@ class _PosixVerifiedTreeSink:
                 "Package Store final identity already exists",
                 code="package_publication_collision",
             )
+        self._settlement_journal.authorize(
+            store_role=self._role,
+            store_identity=self._store_identity,
+            root_identities=self._root.identities,
+            tree_identity=self._staging_identity,
+            directory_identities=self._directory_identities,
+            file_identities=self._file_identities,
+            final_name=self._final_name,
+            staging_name=self._staging_name,
+            manifest=self._manifest,
+            receipt=self._receipt,
+        )
+        self._authorized = True
         try:
-            os.rename(
+            _rename_directory_noreplace(
+                self._root.descriptor,
                 self._staging_name,
+                self._root.descriptor,
                 self._final_name,
-                src_dir_fd=self._root.descriptor,
-                dst_dir_fd=self._root.descriptor,
             )
             self._renamed = True
             os.fsync(self._root.descriptor)
@@ -559,7 +755,14 @@ class _PosixVerifiedTreeSink:
                 self._root,
                 self._final_name,
                 self._manifest,
+                expected_tree_identity=self._staging_identity,
+                directory_identities=self._directory_identities,
+                file_identities=self._file_identities,
             )
+            if self._receipt_probe is not None:
+                self._receipt_probe()
+        except FileExistsError:
+            raise _collision() from None
         except PackagePhysicalStagingError:
             raise
         except Exception:
@@ -572,7 +775,7 @@ class _PosixVerifiedTreeSink:
             self._active_file.abort()
             self._active_file = None
         with suppress(Exception):
-            if not self._reuse:
+            if not self._reuse and not (self._renamed and self._authorized):
                 name = self._final_name if self._renamed else self._staging_name
                 expected = self._staging_identity
                 if expected is not None:
@@ -830,7 +1033,15 @@ def _validate_existing_tree(
     root: _PinnedPosixRoot,
     final_name: str,
     manifest: PackageVerifiedTreeManifestV1,
-) -> None:
+    *,
+    expected_tree_identity: _Identity | None = None,
+    directory_identities: dict[tuple[str, ...], _Identity] | None = None,
+    file_identities: dict[tuple[str, ...], _Identity] | None = None,
+) -> tuple[
+    _Identity,
+    dict[tuple[str, ...], _Identity],
+    dict[tuple[str, ...], _Identity],
+]:
     try:
         root.validate_visible()
     except Exception:
@@ -838,14 +1049,18 @@ def _validate_existing_tree(
     try:
         tree_fd = _open_directory(final_name, dir_fd=root.descriptor)
         try:
-            expected = {entry.logical_path: entry for entry in manifest.entries}
-            observed = _collect_tree(tree_fd, expected)
-            if set(observed) != set(expected):
-                raise OSError("Published Package tree members changed")
-            for logical_path, entry in expected.items():
-                byte_count, digest = observed[logical_path]
-                if byte_count != entry.byte_count or digest != entry.content_digest:
-                    raise OSError("Published Package tree content changed")
+            tree_identity = _identity(os.fstat(tree_fd))
+            if (
+                expected_tree_identity is not None
+                and tree_identity != expected_tree_identity
+            ):
+                raise OSError("Published Package tree identity changed")
+            observed_directories, observed_files = _validate_tree_contents(
+                tree_fd,
+                manifest,
+                directory_identities=directory_identities,
+                file_identities=file_identities,
+            )
         finally:
             os.close(tree_fd)
     except Exception:
@@ -857,13 +1072,72 @@ def _validate_existing_tree(
         root.validate_visible()
     except Exception:
         raise _root_untrusted() from None
+    return tree_identity, observed_directories, observed_files
+
+
+def _validate_owned_tree(
+    tree_fd: int,
+    expected_tree_identity: _Identity,
+    manifest: PackageVerifiedTreeManifestV1,
+    *,
+    directory_identities: dict[tuple[str, ...], _Identity],
+    file_identities: dict[tuple[str, ...], _Identity],
+) -> None:
+    if _identity(os.fstat(tree_fd)) != expected_tree_identity:
+        raise _root_untrusted()
+    try:
+        _validate_tree_contents(
+            tree_fd,
+            manifest,
+            directory_identities=directory_identities,
+            file_identities=file_identities,
+        )
+    except PackagePhysicalStagingError:
+        raise
+    except Exception:
+        raise _root_untrusted() from None
+
+
+def _validate_tree_contents(
+    root_fd: int,
+    manifest: PackageVerifiedTreeManifestV1,
+    *,
+    directory_identities: dict[tuple[str, ...], _Identity] | None,
+    file_identities: dict[tuple[str, ...], _Identity] | None,
+) -> tuple[
+    dict[tuple[str, ...], _Identity],
+    dict[tuple[str, ...], _Identity],
+]:
+    expected = {entry.logical_path: entry for entry in manifest.entries}
+    observed, observed_directories, observed_files = _collect_tree(
+        root_fd,
+        expected,
+        directory_identities=directory_identities,
+        file_identities=file_identities,
+    )
+    if set(observed) != set(expected):
+        raise OSError("Published Package tree members changed")
+    for logical_path, entry in expected.items():
+        byte_count, digest = observed[logical_path]
+        if byte_count != entry.byte_count or digest != entry.content_digest:
+            raise OSError("Published Package tree content changed")
+    return observed_directories, observed_files
 
 
 def _collect_tree(
     root_fd: int,
     expected: dict[str, PackageVerifiedTreeEntryV1],
-) -> dict[str, tuple[int, str]]:
+    *,
+    directory_identities: dict[tuple[str, ...], _Identity] | None,
+    file_identities: dict[tuple[str, ...], _Identity] | None,
+) -> tuple[
+    dict[str, tuple[int, str]],
+    dict[tuple[str, ...], _Identity],
+    dict[tuple[str, ...], _Identity],
+]:
     observed: dict[str, tuple[int, str]] = {}
+    observed_directories: dict[tuple[str, ...], _Identity] = {}
+    observed_files: dict[tuple[str, ...], _Identity] = {}
     expected_directories = {
         "/".join(parts[:depth])
         for logical_path in expected
@@ -891,8 +1165,19 @@ def _collect_tree(
                         raise OSError(
                             "Published Package tree has an unexpected directory"
                         )
+                    identity = _identity(metadata)
+                    if (
+                        directory_identities is not None
+                        and identity != directory_identities.get(parts)
+                    ):
+                        raise OSError("Published Package directory identity changed")
                     child_fd = _open_directory(name, dir_fd=directory_fd)
                     try:
+                        if _identity(os.fstat(child_fd)) != identity:
+                            raise OSError(
+                                "Published Package directory identity changed"
+                            )
+                        observed_directories[parts] = identity
                         visit(child_fd, parts)
                     finally:
                         os.close(child_fd)
@@ -900,6 +1185,12 @@ def _collect_tree(
                     entry = expected.get(logical_path)
                     if entry is None or metadata.st_nlink != 1:
                         raise OSError("Published Package tree has an unexpected file")
+                    identity = _identity(metadata)
+                    if (
+                        file_identities is not None
+                        and identity != file_identities.get(parts)
+                    ):
+                        raise OSError("Published Package file identity changed")
                     descriptor = _open_regular_file(
                         directory_fd,
                         name,
@@ -925,13 +1216,20 @@ def _collect_tree(
                     finally:
                         os.close(descriptor)
                     observed[logical_path] = (byte_count, digest.hexdigest())
+                    observed_files[parts] = identity
                 else:
                     raise OSError("Published Package tree entry type changed")
         if not saw_entry and prefix:
             raise OSError("Published Package tree contains an empty directory")
 
     visit(root_fd, ())
-    return observed
+    if directory_identities is not None and set(observed_directories) != set(
+        directory_identities
+    ):
+        raise OSError("Published Package directory set changed")
+    if file_identities is not None and set(observed_files) != set(file_identities):
+        raise OSError("Published Package file set changed")
+    return observed, observed_directories, observed_files
 
 
 def _supports_posix_rooted_io() -> bool:
@@ -940,10 +1238,54 @@ def _supports_posix_rooted_io() -> bool:
         and hasattr(os, "O_NOFOLLOW")
         and os.open in os.supports_dir_fd
         and os.mkdir in os.supports_dir_fd
-        and os.rename in os.supports_dir_fd
+        and _noreplace_rename_function() is not None
         and os.rmdir in os.supports_dir_fd
         and os.unlink in os.supports_dir_fd
     )
+
+
+_RenameAt = Callable[[int, bytes, int, bytes, int], int]
+
+
+def _noreplace_rename_function() -> tuple[_RenameAt, int] | None:
+    try:
+        libc = ctypes.CDLL(None, use_errno=True)
+    except OSError:
+        return None
+    if sys.platform.startswith("linux"):
+        function = getattr(libc, "renameat2", None)
+        flag = 1  # RENAME_NOREPLACE
+    elif sys.platform == "darwin":
+        function = getattr(libc, "renameatx_np", None)
+        flag = 0x00000004  # RENAME_EXCL
+    else:
+        return None
+    if function is None:
+        return None
+    return cast(_RenameAt, function), flag
+
+
+def _rename_directory_noreplace(
+    source_directory_fd: int,
+    source_name: str,
+    target_directory_fd: int,
+    target_name: str,
+) -> None:
+    resolved = _noreplace_rename_function()
+    if resolved is None:
+        raise OSError(errno.ENOTSUP, "Atomic no-replace rename is unavailable")
+    function, flag = resolved
+    ctypes.set_errno(0)
+    result = function(
+        source_directory_fd,
+        os.fsencode(source_name),
+        target_directory_fd,
+        os.fsencode(target_name),
+        flag,
+    )
+    if result != 0:
+        error_number = ctypes.get_errno() or errno.EIO
+        raise OSError(error_number, os.strerror(error_number), target_name)
 
 
 def _open_directory(path: str | Path, *, dir_fd: int | None = None) -> int:
@@ -995,6 +1337,13 @@ def _root_untrusted() -> PackagePhysicalStagingError:
     return PackagePhysicalStagingError(
         "Package Store root or owned staging identity changed",
         code="package_publication_root_untrusted",
+    )
+
+
+def _collision() -> PackagePhysicalStagingError:
+    return PackagePhysicalStagingError(
+        "Package Store settlement evidence does not authorize this tree",
+        code="package_publication_collision",
     )
 
 

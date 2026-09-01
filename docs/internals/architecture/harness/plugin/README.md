@@ -145,6 +145,15 @@ Neither may silently override a narrower implemented owner contract.
   manifest nodes with zero skips, failures, or errors, including all five
   Windows publication/ABA/handle nodes. Collision/reuse, commit admission, and
   production routing remain closed.
+  PLC9B3e-3c3 candidate code adds a durable Store-private settlement authority
+  to both native adapters. It records the complete rooted physical identity,
+  exact verified manifest, and receipt before rename, serializes Store
+  instances with a durable owner lock, recovers the rename-to-receipt crash
+  window, and distinguishes exact restart reuse from same-byte identity
+  collision. Collision and reuse become executable without exposing a public
+  route; `B-PUB-UNCOMMITTED` remains the PLC9B4 admission gate. Acceptance
+  requires the 74-node Linux-native and 19-test Windows native-component
+  reports to pass without skips, failures, or errors.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)

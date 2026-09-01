@@ -24,6 +24,10 @@ from loushang.harness.resources.packages.plugin_lifecycle.staging import (
     PackageArtifactStagingReceiptV1,
     PackageArtifactStagingRequestV1,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.store_settlements import (
+    PackageStoreSettlementJournal,
+    PackageStoreSettlementJournalError,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.tree_transfer import (
     PackagePhysicalStagingError,
     PackageVerifiedTreeEntryV1,
@@ -58,15 +62,19 @@ class WindowsPackageDependencyMaterializationStore:
         root: str | Path,
         *,
         store_identity: str,
+        settlement_journal: PackageStoreSettlementJournal,
         transfer: PackageVerifiedTreeTransferOwner | None = None,
         commit_probe: Callable[[], None] | None = None,
+        receipt_probe: Callable[[], None] | None = None,
     ) -> None:
         self._store = _WindowsRoleStore(
             root,
             role="dependency",
             store_identity=store_identity,
+            settlement_journal=settlement_journal,
             transfer=transfer,
             commit_probe=commit_probe,
+            receipt_probe=receipt_probe,
         )
 
     def open_dependency_sink(
@@ -83,6 +91,12 @@ class WindowsPackageDependencyMaterializationStore:
     ) -> PackageArtifactStagingReceiptV1:
         return self._store.stage(request, candidate)
 
+    def validate_dependency_receipt(
+        self,
+        receipt: PackageArtifactStagingReceiptV1,
+    ) -> PackageArtifactStagingReceiptV1:
+        return self._store.validate_receipt(receipt)
+
 
 class WindowsPackagePluginRootMaterializationStore:
     """Designated-Plugin-root adapter over one configured Windows Store."""
@@ -92,15 +106,19 @@ class WindowsPackagePluginRootMaterializationStore:
         root: str | Path,
         *,
         store_identity: str,
+        settlement_journal: PackageStoreSettlementJournal,
         transfer: PackageVerifiedTreeTransferOwner | None = None,
         commit_probe: Callable[[], None] | None = None,
+        receipt_probe: Callable[[], None] | None = None,
     ) -> None:
         self._store = _WindowsRoleStore(
             root,
             role="root",
             store_identity=store_identity,
+            settlement_journal=settlement_journal,
             transfer=transfer,
             commit_probe=commit_probe,
+            receipt_probe=receipt_probe,
         )
 
     def open_root_sink(
@@ -117,6 +135,12 @@ class WindowsPackagePluginRootMaterializationStore:
     ) -> PackageArtifactStagingReceiptV1:
         return self._store.stage(request, candidate)
 
+    def validate_root_receipt(
+        self,
+        receipt: PackageArtifactStagingReceiptV1,
+    ) -> PackageArtifactStagingReceiptV1:
+        return self._store.validate_receipt(receipt)
+
 
 class _WindowsRoleStore:
     def __init__(
@@ -125,8 +149,10 @@ class _WindowsRoleStore:
         *,
         role: _Role,
         store_identity: str,
+        settlement_journal: PackageStoreSettlementJournal,
         transfer: PackageVerifiedTreeTransferOwner | None,
         commit_probe: Callable[[], None] | None,
+        receipt_probe: Callable[[], None] | None,
     ) -> None:
         if os.name != "nt" or not supports_windows_rooted_io():
             raise PackagePhysicalStagingError(
@@ -137,12 +163,16 @@ class _WindowsRoleStore:
             raise TypeError("Package Store root must be a filesystem path")
         if not isinstance(store_identity, str) or not store_identity:
             raise TypeError("Package Store identity is required")
+        if not isinstance(settlement_journal, PackageStoreSettlementJournal):
+            raise TypeError("Package Store settlement journal is required")
         if transfer is not None and not isinstance(
             transfer, PackageVerifiedTreeTransferOwner
         ):
             raise TypeError("Verified-tree transfer owner is required")
         if commit_probe is not None and not callable(commit_probe):
             raise TypeError("Package Store commit probe must be callable")
+        if receipt_probe is not None and not callable(receipt_probe):
+            raise TypeError("Package Store receipt probe must be callable")
         raw_root = Path(root)
         if not raw_root.is_absolute() or ".." in raw_root.parts:
             raise PackagePhysicalStagingError(
@@ -157,15 +187,24 @@ class _WindowsRoleStore:
         self._root = raw_root
         self._role = role
         self._store_identity = store_identity
+        self._settlement_journal = settlement_journal
         self._transfer = transfer or PackageVerifiedTreeTransferOwner()
         self._commit_probe = commit_probe
+        self._receipt_probe = receipt_probe
         self._lock = threading.RLock()
-        self._settled: set[str] = set()
         provisioned = _PinnedWindowsRoot.open(self._root)
         try:
             self._root_identities = provisioned.identities
         finally:
             provisioned.close()
+        try:
+            self._settlement_journal.validate_store_root(
+                store_role=self._role,
+                store_identity=self._store_identity,
+                root_identities=self._root_identities,
+            )
+        except PackageStoreSettlementJournalError:
+            raise _root_untrusted() from None
 
     def stage(
         self,
@@ -177,6 +216,81 @@ class _WindowsRoleStore:
         with self.open_sink(request, candidate.transfer_manifest) as sink:
             return self._transfer.transfer(request, candidate, sink)
 
+    def validate_receipt(
+        self,
+        receipt: PackageArtifactStagingReceiptV1,
+    ) -> PackageArtifactStagingReceiptV1:
+        if not isinstance(receipt, PackageArtifactStagingReceiptV1):
+            raise TypeError("Package artifact staging receipt is required")
+        self._lock.acquire()
+        durable_owner_lock = self._settlement_journal.owner_lock()
+        try:
+            durable_owner_lock.__enter__()
+        except Exception:
+            self._lock.release()
+            raise _root_untrusted() from None
+        try:
+            root = _PinnedWindowsRoot.open(
+                self._root,
+                expected_identities=self._root_identities,
+            )
+            try:
+                return self._validate_receipt_at_root(root, receipt)
+            finally:
+                root.close()
+        except PackagePhysicalStagingError:
+            raise
+        except PackageStoreSettlementJournalError:
+            raise _root_untrusted() from None
+        except Exception:
+            raise _root_untrusted() from None
+        finally:
+            try:
+                durable_owner_lock.__exit__(None, None, None)
+            finally:
+                self._lock.release()
+
+    def _validate_receipt_at_root(
+        self,
+        root: _PinnedWindowsRoot,
+        receipt: PackageArtifactStagingReceiptV1,
+    ) -> PackageArtifactStagingReceiptV1:
+        stable_ref = receipt.stable_ref
+        if (
+            stable_ref.store_identity != self._store_identity
+            or (self._role == "dependency" and not isinstance(stable_ref, VerifiedArtifactRefV1))
+            or (self._role == "root" and not isinstance(stable_ref, PluginRevisionRefV1))
+        ):
+            raise _collision()
+        settlements = self._settlement_journal.settlements_for_receipt(
+            store_role=self._role,
+            store_identity=self._store_identity,
+            root_identities=root.identities,
+            receipt=receipt,
+        )
+        if not settlements:
+            raise _collision()
+        authority = settlements[0]
+        tree_identity, directory_identities, file_identities = _validate_existing_tree(
+            root,
+            authority.final_name,
+            authority.manifest,
+        )
+        if not self._settlement_journal.authorizes(
+            store_role=self._role,
+            store_identity=self._store_identity,
+            root_identities=root.identities,
+            tree_identity=tree_identity,
+            directory_identities=directory_identities,
+            file_identities=file_identities,
+            final_name=authority.final_name,
+            staging_name=authority.staging_name,
+            manifest=authority.manifest,
+            receipt=receipt,
+        ):
+            raise _collision()
+        return receipt
+
     def open_sink(
         self,
         request: PackageArtifactStagingRequestV1,
@@ -184,6 +298,19 @@ class _WindowsRoleStore:
     ) -> _WindowsVerifiedTreeSink:
         _validate_role_request(self._role, request, manifest)
         self._lock.acquire()
+        durable_owner_lock = self._settlement_journal.owner_lock()
+        try:
+            durable_owner_lock.__enter__()
+        except Exception:
+            self._lock.release()
+            raise _root_untrusted() from None
+
+        def release_owner_lock() -> None:
+            try:
+                durable_owner_lock.__exit__(None, None, None)
+            finally:
+                self._lock.release()
+
         try:
             root = _PinnedWindowsRoot.open(
                 self._root,
@@ -197,14 +324,15 @@ class _WindowsRoleStore:
                     request=request,
                     manifest=manifest,
                     commit_probe=self._commit_probe,
-                    trusted_final_names=self._settled,
-                    release_owner_lock=self._lock.release,
+                    receipt_probe=self._receipt_probe,
+                    settlement_journal=self._settlement_journal,
+                    release_owner_lock=release_owner_lock,
                 )
             except Exception:
                 root.close()
                 raise
         except Exception:
-            self._lock.release()
+            release_owner_lock()
             raise
 
 
@@ -319,7 +447,8 @@ class _WindowsVerifiedTreeSink:
         request: PackageArtifactStagingRequestV1,
         manifest: PackageVerifiedTreeManifestV1,
         commit_probe: Callable[[], None] | None,
-        trusted_final_names: set[str],
+        receipt_probe: Callable[[], None] | None,
+        settlement_journal: PackageStoreSettlementJournal,
         release_owner_lock: Callable[[], None],
     ) -> None:
         self._root = root
@@ -327,8 +456,10 @@ class _WindowsVerifiedTreeSink:
         self._request = request
         self._manifest = manifest
         self._commit_probe = commit_probe
-        self._trusted_final_names = trusted_final_names
+        self._receipt_probe = receipt_probe
+        self._settlement_journal = settlement_journal
         self._release_owner_lock = release_owner_lock
+        self._store_identity = store_identity
         self._stable_ref = _stable_ref(
             role,
             store_identity=store_identity,
@@ -338,6 +469,10 @@ class _WindowsVerifiedTreeSink:
         prefix = "artifact" if role == "dependency" else "revision"
         self._final_name = f"{prefix}-{self._stable_ref.ref_id}"
         self._staging_name = f"staging-{request.staging_request_id}"
+        self._receipt = PackageArtifactStagingReceiptV1.create(
+            self._request,
+            stable_ref=self._stable_ref,
+        )
         self._staging_fd: int | None = None
         self._staging_identity: _Identity | None = None
         self._directory_identities: dict[tuple[str, ...], _Identity] = {}
@@ -345,6 +480,7 @@ class _WindowsVerifiedTreeSink:
         self._next_entry = 0
         self._active_file: _WindowsFileSink | _ReuseFileSink | None = None
         self._reuse = False
+        self._authorized = False
         self._renamed = False
         self._finished = False
         self._closed = False
@@ -365,16 +501,29 @@ class _WindowsVerifiedTreeSink:
             if _entry_exists(self._root.descriptor, self._staging_name):
                 raise _root_untrusted()
             if _entry_exists(self._root.descriptor, self._final_name):
-                if self._final_name not in self._trusted_final_names:
+                tree_identity, directory_identities, file_identities = (
+                    _validate_existing_tree(
+                        self._root,
+                        self._final_name,
+                        self._manifest,
+                    )
+                )
+                if not self._settlement_journal.authorizes(
+                    store_role=self._role,
+                    store_identity=self._store_identity,
+                    root_identities=self._root.identities,
+                    tree_identity=tree_identity,
+                    directory_identities=directory_identities,
+                    file_identities=file_identities,
+                    final_name=self._final_name,
+                    staging_name=self._staging_name,
+                    manifest=self._manifest,
+                    receipt=self._receipt,
+                ):
                     raise PackagePhysicalStagingError(
-                        "Package Store final identity lacks live owner evidence",
+                        "Package Store final identity lacks durable owner evidence",
                         code="package_publication_collision",
                     )
-                _validate_existing_tree(
-                    self._root,
-                    self._final_name,
-                    self._manifest,
-                )
                 self._reuse = True
                 return
             self._staging_fd = _open_directory(
@@ -386,6 +535,8 @@ class _WindowsVerifiedTreeSink:
             self._staging_identity = _identity(os.fstat(self._staging_fd))
         except PackagePhysicalStagingError:
             raise
+        except PackageStoreSettlementJournalError:
+            raise _root_untrusted() from None
         except Exception:
             raise _root_untrusted() from None
 
@@ -507,25 +658,40 @@ class _WindowsVerifiedTreeSink:
         try:
             if self._reuse:
                 self._root.validate_visible()
-                _validate_existing_tree(
-                    self._root,
-                    self._final_name,
-                    self._manifest,
+                tree_identity, directory_identities, file_identities = (
+                    _validate_existing_tree(
+                        self._root,
+                        self._final_name,
+                        self._manifest,
+                    )
                 )
+                if not self._settlement_journal.authorizes(
+                    store_role=self._role,
+                    store_identity=self._store_identity,
+                    root_identities=self._root.identities,
+                    tree_identity=tree_identity,
+                    directory_identities=directory_identities,
+                    file_identities=file_identities,
+                    final_name=self._final_name,
+                    staging_name=self._staging_name,
+                    manifest=self._manifest,
+                    receipt=self._receipt,
+                ):
+                    raise PackagePhysicalStagingError(
+                        "Package Store final identity lacks durable owner evidence",
+                        code="package_publication_collision",
+                    )
             else:
                 self._settle_new_tree()
-                self._trusted_final_names.add(self._final_name)
-            receipt = PackageArtifactStagingReceiptV1.create(
-                self._request,
-                stable_ref=self._stable_ref,
-            )
         except PackagePhysicalStagingError:
             raise
+        except PackageStoreSettlementJournalError:
+            raise _root_untrusted() from None
         except Exception:
             raise _root_untrusted() from None
         self._finished = True
         self._close_handles()
-        return receipt
+        return self._receipt
 
     def _settle_new_tree(self) -> None:
         if self._staging_fd is None or self._staging_identity is None:
@@ -577,6 +743,19 @@ class _WindowsVerifiedTreeSink:
                 "Package Store final identity already exists",
                 code="package_publication_collision",
             )
+        self._settlement_journal.authorize(
+            store_role=self._role,
+            store_identity=self._store_identity,
+            root_identities=self._root.identities,
+            tree_identity=self._staging_identity,
+            directory_identities=self._directory_identities,
+            file_identities=self._file_identities,
+            final_name=self._final_name,
+            staging_name=self._staging_name,
+            manifest=self._manifest,
+            receipt=self._receipt,
+        )
+        self._authorized = True
         try:
             windows_rename_at(
                 self._root.descriptor,
@@ -593,6 +772,8 @@ class _WindowsVerifiedTreeSink:
                 directory_identities=self._directory_identities,
                 file_identities=self._file_identities,
             )
+            if self._receipt_probe is not None:
+                self._receipt_probe()
         except PackagePhysicalStagingError:
             raise
         except Exception:
@@ -605,7 +786,7 @@ class _WindowsVerifiedTreeSink:
             self._active_file.abort()
             self._active_file = None
         with suppress(Exception):
-            if not self._reuse:
+            if not self._reuse and not (self._renamed and self._authorized):
                 name = self._final_name if self._renamed else self._staging_name
                 expected = self._staging_identity
                 if expected is not None:
@@ -868,7 +1049,11 @@ def _validate_existing_tree(
     expected_tree_identity: _Identity | None = None,
     directory_identities: dict[tuple[str, ...], _Identity] | None = None,
     file_identities: dict[tuple[str, ...], _Identity] | None = None,
-) -> None:
+) -> tuple[
+    _Identity,
+    dict[tuple[str, ...], _Identity],
+    dict[tuple[str, ...], _Identity],
+]:
     try:
         root.validate_visible()
     except Exception:
@@ -880,12 +1065,13 @@ def _validate_existing_tree(
             writable=False,
         )
         try:
+            tree_identity = _identity(os.fstat(tree_fd))
             if (
                 expected_tree_identity is not None
-                and _identity(os.fstat(tree_fd)) != expected_tree_identity
+                and tree_identity != expected_tree_identity
             ):
                 raise OSError("Published Package tree identity changed")
-            _validate_tree_contents(
+            observed_directories, observed_files = _validate_tree_contents(
                 tree_fd,
                 manifest,
                 directory_identities=directory_identities,
@@ -902,6 +1088,7 @@ def _validate_existing_tree(
         root.validate_visible()
     except Exception:
         raise _root_untrusted() from None
+    return tree_identity, observed_directories, observed_files
 
 
 def _validate_owned_tree(
@@ -933,9 +1120,12 @@ def _validate_tree_contents(
     *,
     directory_identities: dict[tuple[str, ...], _Identity] | None,
     file_identities: dict[tuple[str, ...], _Identity] | None,
-) -> None:
+) -> tuple[
+    dict[tuple[str, ...], _Identity],
+    dict[tuple[str, ...], _Identity],
+]:
     expected = {entry.logical_path: entry for entry in manifest.entries}
-    observed = _collect_tree(
+    observed, observed_directories, observed_files = _collect_tree(
         root_fd,
         expected,
         directory_identities=directory_identities,
@@ -947,6 +1137,7 @@ def _validate_tree_contents(
         byte_count, digest = observed[logical_path]
         if byte_count != entry.byte_count or digest != entry.content_digest:
             raise OSError("Published Package tree content changed")
+    return observed_directories, observed_files
 
 
 def _collect_tree(
@@ -955,8 +1146,14 @@ def _collect_tree(
     *,
     directory_identities: dict[tuple[str, ...], _Identity] | None,
     file_identities: dict[tuple[str, ...], _Identity] | None,
-) -> dict[str, tuple[int, str]]:
+) -> tuple[
+    dict[str, tuple[int, str]],
+    dict[tuple[str, ...], _Identity],
+    dict[tuple[str, ...], _Identity],
+]:
     observed: dict[str, tuple[int, str]] = {}
+    observed_directories: dict[tuple[str, ...], _Identity] = {}
+    observed_files: dict[tuple[str, ...], _Identity] = {}
     expected_directories = {
         "/".join(parts[:depth])
         for logical_path in expected
@@ -989,6 +1186,7 @@ def _collect_tree(
                 try:
                     if _identity(os.fstat(child_fd)) != _identity(metadata):
                         raise OSError("Published Package directory identity changed")
+                    observed_directories[parts] = _identity(metadata)
                     visit(child_fd, parts)
                 finally:
                     os.close(child_fd)
@@ -1026,11 +1224,18 @@ def _collect_tree(
                 finally:
                     os.close(descriptor)
                 observed[logical_path] = (byte_count, digest.hexdigest())
+                observed_files[parts] = _identity(metadata)
             else:
                 raise OSError("Published Package tree entry type changed")
 
     visit(root_fd, ())
-    return observed
+    if directory_identities is not None and set(observed_directories) != set(
+        directory_identities
+    ):
+        raise OSError("Published Package directory set changed")
+    if file_identities is not None and set(observed_files) != set(file_identities):
+        raise OSError("Published Package file set changed")
+    return observed, observed_directories, observed_files
 
 
 def _open_directory(
@@ -1096,6 +1301,13 @@ def _root_untrusted() -> PackagePhysicalStagingError:
     return PackagePhysicalStagingError(
         "Package Store root or owned staging identity changed",
         code="package_publication_root_untrusted",
+    )
+
+
+def _collision() -> PackagePhysicalStagingError:
+    return PackagePhysicalStagingError(
+        "Package Store settlement evidence does not authorize this tree",
+        code="package_publication_collision",
     )
 
 

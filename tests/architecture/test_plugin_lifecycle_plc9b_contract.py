@@ -35,6 +35,7 @@ STAGING_SET_RUNTIME = OWNER_KERNEL_ROOT / "staging_set_runtime.py"
 TREE_TRANSFER = OWNER_KERNEL_ROOT / "tree_transfer.py"
 POSIX_MATERIALIZATION = OWNER_KERNEL_ROOT / "posix_materialization.py"
 WINDOWS_MATERIALIZATION = OWNER_KERNEL_ROOT / "windows_materialization.py"
+STORE_SETTLEMENTS = OWNER_KERNEL_ROOT / "store_settlements.py"
 CLOSURE_TEST = Path("tests/harness/resources/packages/test_plc9b_closure.py")
 CLOSURE_OWNER_TEST = Path(
     "tests/harness/resources/packages/test_plc9b_closure_owner.py"
@@ -168,6 +169,10 @@ PLC9B3E3C2_WINDOWS_CASES = {
     "B-PUB-WIN-ANCESTOR-ABA",
     "B-PUB-WIN-HANDLE-SUCCESS",
     "B-PUB-WIN-HANDLE-REJECT",
+}
+PLC9B3E3C3_SETTLEMENT_CASES = {
+    "B-PUB-COLLISION",
+    "B-PUB-REUSE",
 }
 ALLOWED_PLATFORMS = {"any", "posix-native", "windows-native"}
 ALLOWED_ORACLES = {
@@ -410,12 +415,17 @@ def _assert_current_publication_statuses(
         case_id
         for case_id in publication_cases
         if manifest[case_id]["status"] == "implemented"
-    } == PLC9B3E3C1_POSIX_CASES | PLC9B3E3C2_WINDOWS_CASES
+    } == (
+        PLC9B3E3C1_POSIX_CASES
+        | PLC9B3E3C2_WINDOWS_CASES
+        | PLC9B3E3C3_SETTLEMENT_CASES
+    )
     assert all(
         manifest[case_id]["status"] == "planned"
         for case_id in publication_cases
         - PLC9B3E3C1_POSIX_CASES
         - PLC9B3E3C2_WINDOWS_CASES
+        - PLC9B3E3C3_SETTLEMENT_CASES
     )
 
 
@@ -486,6 +496,10 @@ def _implemented_b3e3c1_posix_manifest_cases() -> set[str]:
 
 def _implemented_b3e3c2_windows_manifest_cases() -> set[str]:
     return _literal_manifest_cases("IMPLEMENTED_B3E3C2_WINDOWS_MANIFEST_CASES")
+
+
+def _implemented_b3e3c3_settlement_manifest_cases() -> set[str]:
+    return _literal_manifest_cases("IMPLEMENTED_B3E3C3_SETTLEMENT_MANIFEST_CASES")
 
 
 def _journal_effect_policy() -> list[tuple[str, str, str]]:
@@ -569,7 +583,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.3e3c2." in contract
+    assert "Contract version: PLC9B.3e3c3-candidate." in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
@@ -835,6 +849,7 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
     implemented_b3e_staging_sets = _implemented_b3e_staging_set_manifest_cases()
     implemented_b3e3c1_posix = _implemented_b3e3c1_posix_manifest_cases()
     implemented_b3e3c2_windows = _implemented_b3e3c2_windows_manifest_cases()
+    implemented_b3e3c3_settlement = _implemented_b3e3c3_settlement_manifest_cases()
     implemented = (
         implemented_b1
         | implemented_b2
@@ -849,6 +864,7 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
         | implemented_b3e_staging_sets
         | implemented_b3e3c1_posix
         | implemented_b3e3c2_windows
+        | implemented_b3e3c3_settlement
     )
 
     assert len(manifest) == 127
@@ -1055,6 +1071,22 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
         | implemented_b3e_staging_sets
         | implemented_b3e3c1_posix
     ).isdisjoint(implemented_b3e3c2_windows)
+    assert implemented_b3e3c3_settlement == PLC9B3E3C3_SETTLEMENT_CASES
+    assert (
+        implemented_b1
+        | implemented_b2
+        | implemented_b2h
+        | implemented_b2i
+        | implemented_b2j
+        | implemented_b2k
+        | implemented_b3d
+        | implemented_b3d_limits
+        | implemented_b3d_integrity
+        | implemented_b3e_pins
+        | implemented_b3e_staging_sets
+        | implemented_b3e3c1_posix
+        | implemented_b3e3c2_windows
+    ).isdisjoint(implemented_b3e3c3_settlement)
     separator = manifest["B-PATH-COLLISION-SEP"]
     assert separator["fixture"] == "separator_ambiguous_path"
     assert separator["code"] == "package_archive_path_rejected"
@@ -1068,7 +1100,7 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
     assert hardlink["code"] == "ok"
     assert hardlink["disposition"] == "extracted@independent_regular_files"
     assert hardlink["status"] == "implemented"
-    assert len(manifest) - len(implemented) == 50
+    assert len(manifest) - len(implemented) == 48
     workflow = _source(HARNESS_WORKFLOW)
     assert "PLC9B Linux native adversarial gate (plc9b-linux-native)" in workflow
     assert "tests/harness/resources/packages/test_plc9b_adversarial.py" in workflow
@@ -2811,7 +2843,7 @@ def test_plc9b3e3c1_posix_materialization_is_rooted_role_safe_and_executable() -
         "os.O_NOFOLLOW",
         "dir_fd=",
         "os.fsync(",
-        "os.rename(",
+        "_rename_directory_noreplace(",
         "follow_symlinks=False",
         "threading.RLock()",
         "st_nlink",
@@ -2853,7 +2885,7 @@ def test_plc9b3e3c1_posix_materialization_is_rooted_role_safe_and_executable() -
         "rejects_root_swap_and_releases_every_handle",
         "rejects_ancestor_swap_and_releases_every_handle",
         "aborts_partial_tree_and_closes_source_and_store_handles",
-        "does_not_adopt_exact_tree_without_live_owner_evidence",
+        "does_not_adopt_exact_tree_without_settlement_authority",
         "exact_reuse_rejects_unexpected_sparse_member_without_scanning_it",
         "exact_reuse_rejects_new_hardlink_alias",
         "rejects_relative_root_without_using_ambient_cwd",
@@ -2951,7 +2983,7 @@ def test_plc9b3e3c2_windows_materialization_is_rooted_role_safe_and_native() -> 
         "rejects_nested_reparse_before_namespace_rename",
         "rejects_staging_handle_swap_and_closes_every_handle",
         "aborts_partial_tree_and_releases_handles",
-        "does_not_adopt_tree_without_live_owner_evidence",
+        "does_not_adopt_tree_without_settlement_authority",
         "rejects_relative_root_without_ambient_cwd",
     ):
         assert evidence in component_tests
@@ -2983,6 +3015,116 @@ def test_plc9b3e3c2_windows_materialization_is_rooted_role_safe_and_native() -> 
     assert "manifest XML executed exactly 12 nodes" in normalized
     assert "PLC9B3e-3c2 accepted code adds the two role-separated" in _source(INVENTORY)
     assert "PLC9B3e-3c2 accepted code adds corresponding" in _source(INDEX)
+
+
+def test_plc9b3e3c3_settlement_authority_is_durable_exact_and_store_private() -> None:
+    contract = _source(CONTRACT)
+    settlement = _source(STORE_SETTLEMENTS)
+    posix_store = _source(POSIX_MATERIALIZATION)
+    windows_store = _source(WINDOWS_MATERIALIZATION)
+    posix_tests = _source(POSIX_MATERIALIZATION_TEST)
+    windows_tests = _source(WINDOWS_MATERIALIZATION_TEST)
+    adversarial_tests = _source(ADVERSARIAL_TEST)
+    package_facade = _source(PACKAGE_ROOT / "__init__.py")
+    internal_facade = _source(OWNER_KERNEL_ROOT / "__init__.py")
+    author_sdk = _source(AUTHOR_SDK)
+    manifest = _adversarial_manifest()
+
+    assert STORE_SETTLEMENTS.is_file()
+    for symbol in (
+        "PackageStoreNativeIdentityV1",
+        "PackageStoreEntryIdentityV1",
+        "PackageStoreSettlementRecordV1",
+        "PackageStoreSettlementJournal",
+    ):
+        assert f"class {symbol}" in settlement
+        assert symbol not in package_facade
+        assert symbol not in internal_facade
+        assert symbol not in author_sdk
+    for evidence in (
+        "PACKAGE_STORE_NATIVE_IDENTITY_VERSION = 1",
+        "PACKAGE_STORE_ENTRY_IDENTITY_VERSION = 1",
+        "PACKAGE_STORE_SETTLEMENT_RECORD_VERSION = 1",
+        "root_identities",
+        "tree_identity",
+        "directory_identities",
+        "file_identities",
+        "manifest",
+        "receipt",
+        "append_jsonl_record",
+        "journal_file_lock",
+        'lock_suffix=".owner.lock"',
+        "settlements_for_receipt",
+        "validate_store_root",
+    ):
+        assert evidence in settlement
+
+    tree = ast.parse(settlement, filename=str(STORE_SETTLEMENTS))
+    imported = {
+        node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
+    }
+    forbidden_modules = (
+        "loushang.harness.plugin_management",
+        "loushang.harness.resources.plugins.revisions",
+        "loushang.coding",
+        "loushang.foundation",
+        "subprocess",
+    )
+    assert not any(
+        module == forbidden or module.startswith(f"{forbidden}.")
+        for module in imported
+        for forbidden in forbidden_modules
+    )
+    for store in (posix_store, windows_store):
+        assert "settlement_journal: PackageStoreSettlementJournal" in store
+        assert "self._settlement_journal.owner_lock()" in store
+        assert "self._settlement_journal.authorize(" in store
+        assert "self._settlement_journal.authorizes(" in store
+        assert "settlements_for_receipt(" in store
+        assert "validate_dependency_receipt" in store
+        assert "validate_root_receipt" in store
+        assert "receipt_probe" in store
+        assert "_settled" not in store
+    assert "renameat2" in posix_store
+    assert "RENAME_NOREPLACE" in posix_store
+
+    for tests in (posix_tests, windows_tests):
+        for evidence in (
+            "reuses_exact_tree_after_owner_restart_without_journal_append",
+            "recovers_renamed_tree_when_receipt_delivery_is_lost",
+            "durable_reuse_rejects_same_bytes_with_different_tree_identity",
+            "settlement_journal_rejects_store_root_rebinding",
+        ):
+            assert evidence in tests
+    assert "IMPLEMENTED_B3E3C3_SETTLEMENT_MANIFEST_CASES" in adversarial_tests
+    assert (
+        _implemented_b3e3c3_settlement_manifest_cases()
+        == PLC9B3E3C3_SETTLEMENT_CASES
+    )
+    collision = manifest["B-PUB-COLLISION"]
+    assert collision["barrier"] == "staging"
+    assert collision["code"] == "package_publication_collision"
+    assert collision["status"] == "implemented"
+    reuse = manifest["B-PUB-REUSE"]
+    assert reuse["barrier"] == "set_published"
+    assert reuse["code"] == "ok"
+    assert reuse["status"] == "implemented"
+    _assert_current_publication_statuses(manifest)
+    assert {
+        case_id
+        for case_id in manifest
+        if case_id.startswith("B-PUB-") and manifest[case_id]["status"] == "planned"
+    } == {"B-PUB-UNCOMMITTED"}
+
+    normalized = " ".join(contract.split())
+    assert "PLC9B3e-3c3 Durable Settlement Candidate" in normalized
+    assert "Store-private durable settlement authority" in normalized
+    assert "authorization is durable before namespace rename" in normalized
+    assert "candidate-free receipt validation" in normalized.lower()
+    assert "Linux-native report must execute 74 manifest nodes" in normalized
+    assert "Windows native-component report must execute 19 tests" in normalized
+    assert "PLC9B3e-3c3 candidate code adds Store-private" in _source(INVENTORY)
+    assert "PLC9B3e-3c3 candidate code adds a durable" in _source(INDEX)
 
 
 def test_plc9b2f_windows_backend_is_rooted_and_has_a_nonskippable_native_gate() -> None:

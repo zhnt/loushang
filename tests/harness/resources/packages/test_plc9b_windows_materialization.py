@@ -23,6 +23,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.staging import (
     PackageArtifactStagingRequestV1,
     PackagePluginRootTargetV1,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.store_settlements import (
+    PackageStoreSettlementJournal,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.transaction_pins import (
     PackageTransactionPinReceiptV1,
     PackageTransactionPinRequestV1,
@@ -306,11 +309,17 @@ def test_windows_role_stores_publish_exact_trees_and_reuse_same_receipts(
     dependencies = WindowsPackageDependencyMaterializationStore(
         dependency_root,
         store_identity="dependency-store",
+        settlement_journal=PackageStoreSettlementJournal(
+            tmp_path / "dependency-settlements.jsonl"
+        ),
         transfer=transfer,
     )
     plugins = WindowsPackagePluginRootMaterializationStore(
         plugin_root,
         store_identity="plugin-revision-store",
+        settlement_journal=PackageStoreSettlementJournal(
+            tmp_path / "plugin-settlements.jsonl"
+        ),
         transfer=transfer,
     )
 
@@ -356,6 +365,9 @@ def test_windows_store_rejects_configured_root_replacement_before_sink(
     store = WindowsPackageDependencyMaterializationStore(
         root,
         store_identity="dependency-store",
+        settlement_journal=PackageStoreSettlementJournal(
+            tmp_path / "settlements.jsonl"
+        ),
     )
     displaced = tmp_path / "store-displaced"
     root.rename(displaced)
@@ -385,6 +397,9 @@ def test_windows_store_rejects_root_replacement_aba_and_releases_handles(
     store = WindowsPackageDependencyMaterializationStore(
         root,
         store_identity="dependency-store",
+        settlement_journal=PackageStoreSettlementJournal(
+            tmp_path / "settlements.jsonl"
+        ),
         commit_probe=replace_root,
     )
 
@@ -424,6 +439,9 @@ def test_windows_store_rejects_ancestor_reparse_without_outside_write(
     store = WindowsPackageDependencyMaterializationStore(
         root,
         store_identity="dependency-store",
+        settlement_journal=PackageStoreSettlementJournal(
+            tmp_path / "settlements.jsonl"
+        ),
         commit_probe=replace_ancestor,
     )
 
@@ -461,6 +479,9 @@ def test_windows_store_rejects_nested_reparse_before_namespace_rename(
     store = WindowsPackageDependencyMaterializationStore(
         root,
         store_identity="dependency-store",
+        settlement_journal=PackageStoreSettlementJournal(
+            tmp_path / "settlements.jsonl"
+        ),
         commit_probe=replace_entry,
     )
 
@@ -497,6 +518,9 @@ def test_windows_store_rejects_staging_handle_swap_and_closes_every_handle(
     store = WindowsPackageDependencyMaterializationStore(
         root,
         store_identity="dependency-store",
+        settlement_journal=PackageStoreSettlementJournal(
+            tmp_path / "settlements.jsonl"
+        ),
         commit_probe=replace_staging,
     )
 
@@ -526,6 +550,9 @@ def test_windows_rejection_aborts_partial_tree_and_releases_handles(
     store = WindowsPackageDependencyMaterializationStore(
         root,
         store_identity="dependency-store",
+        settlement_journal=PackageStoreSettlementJournal(
+            tmp_path / "settlements.jsonl"
+        ),
     )
 
     with pytest.raises(PackagePhysicalStagingError) as raised:
@@ -538,7 +565,7 @@ def test_windows_rejection_aborts_partial_tree_and_releases_handles(
     moved.rename(root)
 
 
-def test_windows_store_does_not_adopt_tree_without_live_owner_evidence(
+def test_windows_store_does_not_adopt_tree_without_settlement_authority(
     tmp_path: Path,
 ) -> None:
     request, candidate, *_ = _requests_and_candidates()
@@ -547,11 +574,17 @@ def test_windows_store_does_not_adopt_tree_without_live_owner_evidence(
     first_owner = WindowsPackageDependencyMaterializationStore(
         root,
         store_identity="dependency-store",
+        settlement_journal=PackageStoreSettlementJournal(
+            tmp_path / "first-owner-settlements.jsonl"
+        ),
     )
     first_owner.stage_dependency(request, candidate)
     restarted_without_durable_proof = WindowsPackageDependencyMaterializationStore(
         root,
         store_identity="dependency-store",
+        settlement_journal=PackageStoreSettlementJournal(
+            tmp_path / "different-owner-settlements.jsonl"
+        ),
     )
 
     with pytest.raises(PackagePhysicalStagingError) as raised:
@@ -563,11 +596,130 @@ def test_windows_store_does_not_adopt_tree_without_live_owner_evidence(
     assert raised.value.code == "package_publication_collision"
 
 
-def test_windows_store_rejects_relative_root_without_ambient_cwd() -> None:
+def test_windows_store_reuses_exact_tree_after_owner_restart_without_journal_append(
+    tmp_path: Path,
+) -> None:
+    request, candidate, *_ = _requests_and_candidates()
+    root = tmp_path / "store"
+    root.mkdir()
+    journal = PackageStoreSettlementJournal(tmp_path / "settlements.jsonl")
+    first_owner = WindowsPackageDependencyMaterializationStore(
+        root,
+        store_identity="dependency-store",
+        settlement_journal=journal,
+    )
+    receipt = first_owner.stage_dependency(request, candidate)
+
+    restarted = WindowsPackageDependencyMaterializationStore(
+        root,
+        store_identity="dependency-store",
+        settlement_journal=PackageStoreSettlementJournal(journal.path),
+    )
+    assert restarted.validate_dependency_receipt(receipt) == receipt
+    reused = restarted.stage_dependency(request, _requests_and_candidates()[1])
+
+    assert reused == receipt
+    assert len(journal.records()) == 1
+
+
+def test_windows_store_recovers_renamed_tree_when_receipt_delivery_is_lost(
+    tmp_path: Path,
+) -> None:
+    request, candidate, *_ = _requests_and_candidates()
+    root = tmp_path / "store"
+    root.mkdir()
+    journal = PackageStoreSettlementJournal(tmp_path / "settlements.jsonl")
+
+    def lose_receipt() -> None:
+        raise RuntimeError("simulated crash after durable namespace settlement")
+
+    interrupted = WindowsPackageDependencyMaterializationStore(
+        root,
+        store_identity="dependency-store",
+        settlement_journal=journal,
+        receipt_probe=lose_receipt,
+    )
+    with pytest.raises(PackagePhysicalStagingError) as raised:
+        interrupted.stage_dependency(request, candidate)
+
+    assert raised.value.code == "package_publication_root_untrusted"
+    (record,) = journal.records()
+    assert (root / record.final_name).is_dir()
+    recovered = WindowsPackageDependencyMaterializationStore(
+        root,
+        store_identity="dependency-store",
+        settlement_journal=PackageStoreSettlementJournal(journal.path),
+    ).stage_dependency(request, _requests_and_candidates()[1])
+    assert recovered == record.receipt
+    assert len(journal.records()) == 1
+
+
+def test_windows_durable_reuse_rejects_same_bytes_with_different_tree_identity(
+    tmp_path: Path,
+) -> None:
+    request, candidate, *_ = _requests_and_candidates()
+    root = tmp_path / "store"
+    root.mkdir()
+    journal = PackageStoreSettlementJournal(tmp_path / "settlements.jsonl")
+    first_owner = WindowsPackageDependencyMaterializationStore(
+        root,
+        store_identity="dependency-store",
+        settlement_journal=journal,
+    )
+    receipt = first_owner.stage_dependency(request, candidate)
+    published = root / f"artifact-{receipt.stable_ref.ref_id}"
+    detached = tmp_path / "detached-published-tree"
+    published.rename(detached)
+    shutil.copytree(detached, published)
+
+    restarted = WindowsPackageDependencyMaterializationStore(
+        root,
+        store_identity="dependency-store",
+        settlement_journal=PackageStoreSettlementJournal(journal.path),
+    )
+    with pytest.raises(PackagePhysicalStagingError) as raised:
+        restarted.validate_dependency_receipt(receipt)
+
+    assert raised.value.code == "package_publication_collision"
+    assert len(journal.records()) == 1
+
+
+def test_windows_settlement_journal_rejects_store_root_rebinding(
+    tmp_path: Path,
+) -> None:
+    request, candidate, *_ = _requests_and_candidates()
+    root = tmp_path / "store"
+    root.mkdir()
+    journal = PackageStoreSettlementJournal(tmp_path / "settlements.jsonl")
+    WindowsPackageDependencyMaterializationStore(
+        root,
+        store_identity="dependency-store",
+        settlement_journal=journal,
+    ).stage_dependency(request, candidate)
+    displaced = tmp_path / "displaced-store"
+    root.rename(displaced)
+    root.mkdir()
+
+    with pytest.raises(PackagePhysicalStagingError) as raised:
+        WindowsPackageDependencyMaterializationStore(
+            root,
+            store_identity="dependency-store",
+            settlement_journal=PackageStoreSettlementJournal(journal.path),
+        )
+
+    assert raised.value.code == "package_publication_root_untrusted"
+
+
+def test_windows_store_rejects_relative_root_without_ambient_cwd(
+    tmp_path: Path,
+) -> None:
     with pytest.raises(PackagePhysicalStagingError) as raised:
         WindowsPackageDependencyMaterializationStore(
             Path("relative-store"),
             store_identity="dependency-store",
+            settlement_journal=PackageStoreSettlementJournal(
+                tmp_path / "settlements.jsonl"
+            ),
         )
 
     assert raised.value.code == "package_publication_root_untrusted"

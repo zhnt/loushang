@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import io
 import os
+import shutil
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 
 import pytest
 
+import loushang.harness.resources.packages.plugin_lifecycle.posix_materialization as posix_materialization
 from loushang.harness.resources.packages.plugin_lifecycle.closure import (
     NormalizedPackageRequirementV1,
     ResolvedPackageRequirementV1,
@@ -26,6 +28,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.posix_materialization 
 from loushang.harness.resources.packages.plugin_lifecycle.staging import (
     PackageArtifactStagingRequestV1,
     PackagePluginRootTargetV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.store_settlements import (
+    PackageStoreSettlementJournal,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.transaction_pins import (
     PackageTransactionPinReceiptV1,
@@ -279,11 +284,17 @@ def test_posix_role_stores_publish_exact_trees_and_reuse_same_receipts(
     dependencies = PosixPackageDependencyMaterializationStore(
         dependency_root,
         store_identity="dependency-store",
+        settlement_journal=PackageStoreSettlementJournal(
+            tmp_path / "dependency-settlements.jsonl"
+        ),
         transfer=transfer,
     )
     plugins = PosixPackagePluginRootMaterializationStore(
         plugin_root,
         store_identity="plugin-revision-store",
+        settlement_journal=PackageStoreSettlementJournal(
+            tmp_path / "plugin-settlements.jsonl"
+        ),
         transfer=transfer,
     )
 
@@ -334,6 +345,9 @@ def test_posix_store_rejects_precreated_staging_namespace_without_writing(
     store = PosixPackageDependencyMaterializationStore(
         root,
         store_identity="dependency-store",
+        settlement_journal=PackageStoreSettlementJournal(
+            tmp_path / "settlements.jsonl"
+        ),
     )
 
     with pytest.raises(PackagePhysicalStagingError) as raised:
@@ -356,6 +370,9 @@ def test_posix_store_rejects_configured_root_replacement_before_opening_sink(
     store = PosixPackageDependencyMaterializationStore(
         root,
         store_identity="dependency-store",
+        settlement_journal=PackageStoreSettlementJournal(
+            tmp_path / "settlements.jsonl"
+        ),
     )
     displaced = tmp_path / "store-displaced"
     root.rename(displaced)
@@ -380,6 +397,9 @@ def test_posix_exact_reuse_rejects_unexpected_sparse_member_without_scanning_it(
     store = PosixPackageDependencyMaterializationStore(
         root,
         store_identity="dependency-store",
+        settlement_journal=PackageStoreSettlementJournal(
+            tmp_path / "settlements.jsonl"
+        ),
     )
     receipt = store.stage_dependency(request, candidate)
     published = root / f"artifact-{receipt.stable_ref.ref_id}"
@@ -397,7 +417,7 @@ def test_posix_exact_reuse_rejects_unexpected_sparse_member_without_scanning_it(
     assert unexpected.stat().st_size == 1024 * 1024 * 1024
 
 
-def test_posix_store_does_not_adopt_exact_tree_without_live_owner_evidence(
+def test_posix_store_does_not_adopt_exact_tree_without_settlement_authority(
     tmp_path: Path,
 ) -> None:
     request, candidate, *_ = _requests_and_candidates()
@@ -406,11 +426,17 @@ def test_posix_store_does_not_adopt_exact_tree_without_live_owner_evidence(
     first_owner = PosixPackageDependencyMaterializationStore(
         root,
         store_identity="dependency-store",
+        settlement_journal=PackageStoreSettlementJournal(
+            tmp_path / "first-owner-settlements.jsonl"
+        ),
     )
     first_owner.stage_dependency(request, candidate)
     restarted_without_durable_reuse_proof = PosixPackageDependencyMaterializationStore(
         root,
         store_identity="dependency-store",
+        settlement_journal=PackageStoreSettlementJournal(
+            tmp_path / "different-owner-settlements.jsonl"
+        ),
     )
 
     with pytest.raises(PackagePhysicalStagingError) as raised:
@@ -422,6 +448,173 @@ def test_posix_store_does_not_adopt_exact_tree_without_live_owner_evidence(
     assert raised.value.code == "package_publication_collision"
 
 
+def test_posix_store_reuses_exact_tree_after_owner_restart_without_journal_append(
+    tmp_path: Path,
+) -> None:
+    request, candidate, *_ = _requests_and_candidates()
+    root = tmp_path / "store"
+    root.mkdir(mode=0o700)
+    journal = PackageStoreSettlementJournal(tmp_path / "settlements.jsonl")
+    first_owner = PosixPackageDependencyMaterializationStore(
+        root,
+        store_identity="dependency-store",
+        settlement_journal=journal,
+    )
+    receipt = first_owner.stage_dependency(request, candidate)
+
+    restarted = PosixPackageDependencyMaterializationStore(
+        root,
+        store_identity="dependency-store",
+        settlement_journal=PackageStoreSettlementJournal(journal.path),
+    )
+    assert restarted.validate_dependency_receipt(receipt) == receipt
+    reused = restarted.stage_dependency(request, _requests_and_candidates()[1])
+
+    assert reused == receipt
+    assert len(journal.records()) == 1
+
+
+def test_posix_store_recovers_renamed_tree_when_receipt_delivery_is_lost(
+    tmp_path: Path,
+) -> None:
+    request, candidate, *_ = _requests_and_candidates()
+    root = tmp_path / "store"
+    root.mkdir(mode=0o700)
+    journal = PackageStoreSettlementJournal(tmp_path / "settlements.jsonl")
+
+    def lose_receipt() -> None:
+        raise RuntimeError("simulated crash after durable namespace settlement")
+
+    interrupted = PosixPackageDependencyMaterializationStore(
+        root,
+        store_identity="dependency-store",
+        settlement_journal=journal,
+        receipt_probe=lose_receipt,
+    )
+    with pytest.raises(PackagePhysicalStagingError) as raised:
+        interrupted.stage_dependency(request, candidate)
+
+    assert raised.value.code == "package_publication_root_untrusted"
+    (record,) = journal.records()
+    assert (root / record.final_name).is_dir()
+    recovered = PosixPackageDependencyMaterializationStore(
+        root,
+        store_identity="dependency-store",
+        settlement_journal=PackageStoreSettlementJournal(journal.path),
+    ).stage_dependency(request, _requests_and_candidates()[1])
+    assert recovered == record.receipt
+    assert len(journal.records()) == 1
+
+
+def test_posix_atomic_rename_rejects_foreign_final_created_after_precheck(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, _, request, candidate, _, _ = _requests_and_candidates()
+    root = tmp_path / "plugin-store"
+    root.mkdir(mode=0o700)
+    settlements = PackageStoreSettlementJournal(tmp_path / "settlements.jsonl")
+    original = posix_materialization._rename_directory_noreplace
+
+    def race(
+        source_directory_fd: int,
+        source_name: str,
+        target_directory_fd: int,
+        target_name: str,
+    ) -> None:
+        os.mkdir(target_name, mode=0o700, dir_fd=target_directory_fd)
+        original(
+            source_directory_fd,
+            source_name,
+            target_directory_fd,
+            target_name,
+        )
+
+    monkeypatch.setattr(posix_materialization, "_rename_directory_noreplace", race)
+    store = PosixPackagePluginRootMaterializationStore(
+        root,
+        store_identity="plugin-revision-store",
+        settlement_journal=settlements,
+    )
+
+    with pytest.raises(PackagePhysicalStagingError) as raised:
+        store.stage_root(request, candidate)
+
+    assert raised.value.code == "package_publication_collision"
+    (record,) = settlements.records()
+    assert {entry.name for entry in root.iterdir()} == {record.final_name}
+    assert list((root / record.final_name).iterdir()) == []
+    (root / record.final_name).rmdir()
+    monkeypatch.undo()
+
+    restarted = PosixPackagePluginRootMaterializationStore(
+        root,
+        store_identity="plugin-revision-store",
+        settlement_journal=PackageStoreSettlementJournal(settlements.path),
+    )
+    receipt = restarted.stage_root(request, _requests_and_candidates()[3])
+    assert restarted.validate_root_receipt(receipt) == receipt
+    first, second = settlements.records()
+    assert first.receipt == second.receipt == receipt
+    assert first.tree_identity != second.tree_identity
+
+
+def test_posix_durable_reuse_rejects_same_bytes_with_different_tree_identity(
+    tmp_path: Path,
+) -> None:
+    request, candidate, *_ = _requests_and_candidates()
+    root = tmp_path / "store"
+    root.mkdir(mode=0o700)
+    journal = PackageStoreSettlementJournal(tmp_path / "settlements.jsonl")
+    first_owner = PosixPackageDependencyMaterializationStore(
+        root,
+        store_identity="dependency-store",
+        settlement_journal=journal,
+    )
+    receipt = first_owner.stage_dependency(request, candidate)
+    published = root / f"artifact-{receipt.stable_ref.ref_id}"
+    detached = tmp_path / "detached-published-tree"
+    published.rename(detached)
+    shutil.copytree(detached, published)
+
+    restarted = PosixPackageDependencyMaterializationStore(
+        root,
+        store_identity="dependency-store",
+        settlement_journal=PackageStoreSettlementJournal(journal.path),
+    )
+    with pytest.raises(PackagePhysicalStagingError) as raised:
+        restarted.validate_dependency_receipt(receipt)
+
+    assert raised.value.code == "package_publication_collision"
+    assert len(journal.records()) == 1
+
+
+def test_posix_settlement_journal_rejects_store_root_rebinding(
+    tmp_path: Path,
+) -> None:
+    request, candidate, *_ = _requests_and_candidates()
+    root = tmp_path / "store"
+    root.mkdir(mode=0o700)
+    journal = PackageStoreSettlementJournal(tmp_path / "settlements.jsonl")
+    PosixPackageDependencyMaterializationStore(
+        root,
+        store_identity="dependency-store",
+        settlement_journal=journal,
+    ).stage_dependency(request, candidate)
+    displaced = tmp_path / "displaced-store"
+    root.rename(displaced)
+    root.mkdir(mode=0o700)
+
+    with pytest.raises(PackagePhysicalStagingError) as raised:
+        PosixPackageDependencyMaterializationStore(
+            root,
+            store_identity="dependency-store",
+            settlement_journal=PackageStoreSettlementJournal(journal.path),
+        )
+
+    assert raised.value.code == "package_publication_root_untrusted"
+
+
 def test_posix_exact_reuse_rejects_new_hardlink_alias(tmp_path: Path) -> None:
     request, candidate, *_ = _requests_and_candidates()
     root = tmp_path / "store"
@@ -429,6 +622,9 @@ def test_posix_exact_reuse_rejects_new_hardlink_alias(tmp_path: Path) -> None:
     store = PosixPackageDependencyMaterializationStore(
         root,
         store_identity="dependency-store",
+        settlement_journal=PackageStoreSettlementJournal(
+            tmp_path / "settlements.jsonl"
+        ),
     )
     receipt = store.stage_dependency(request, candidate)
     published = root / f"artifact-{receipt.stable_ref.ref_id}"
@@ -443,11 +639,16 @@ def test_posix_exact_reuse_rejects_new_hardlink_alias(tmp_path: Path) -> None:
     outside_alias.unlink()
 
 
-def test_posix_store_rejects_relative_root_without_using_ambient_cwd() -> None:
+def test_posix_store_rejects_relative_root_without_using_ambient_cwd(
+    tmp_path: Path,
+) -> None:
     with pytest.raises(PackagePhysicalStagingError) as raised:
         PosixPackageDependencyMaterializationStore(
             Path("relative-store"),
             store_identity="dependency-store",
+            settlement_journal=PackageStoreSettlementJournal(
+                tmp_path / "settlements.jsonl"
+            ),
         )
 
     assert raised.value.code == "package_publication_root_untrusted"
@@ -468,6 +669,9 @@ def test_posix_store_rejects_root_swap_and_releases_every_handle(
     store = PosixPackageDependencyMaterializationStore(
         root,
         store_identity="dependency-store",
+        settlement_journal=PackageStoreSettlementJournal(
+            tmp_path / "settlements.jsonl"
+        ),
         commit_probe=swap_root,
     )
 
@@ -499,6 +703,9 @@ def test_posix_store_rejects_ancestor_swap_and_releases_every_handle(
     store = PosixPackageDependencyMaterializationStore(
         root,
         store_identity="dependency-store",
+        settlement_journal=PackageStoreSettlementJournal(
+            tmp_path / "settlements.jsonl"
+        ),
         commit_probe=swap_ancestor,
     )
 
@@ -528,6 +735,9 @@ def test_posix_rejection_aborts_partial_tree_and_closes_source_and_store_handles
     store = PosixPackageDependencyMaterializationStore(
         root,
         store_identity="dependency-store",
+        settlement_journal=PackageStoreSettlementJournal(
+            tmp_path / "settlements.jsonl"
+        ),
     )
 
     with pytest.raises(PackagePhysicalStagingError) as raised:

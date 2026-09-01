@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.3e3c2.
+- Contract version: PLC9B.3e3c3-candidate.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -82,7 +82,12 @@
   revalidates the complete visible ancestor chain, flushes every file before a
   handle-relative atomic rename, and promotes the five Windows publication/
   ABA/handle rows after their mandatory non-skippable native report passed.
-  Collision/reuse rows remain planned.
+  B3e-3c3 candidate code replaces process-local settlement memory with a
+  Store-private durable settlement authority. It authorizes the exact root,
+  tree, member identities, manifest, and receipt before namespace rename,
+  recovers the rename-to-receipt crash window, and implements collision/reuse
+  without adding a public route. `B-PUB-UNCOMMITTED` remains planned for
+  PLC9B4 commit admission.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -1158,6 +1163,49 @@ executed exactly 12 nodes, including all five implemented Windows
 publication/ABA/handle nodes; both reports recorded zero skips, failures, and
 errors.
 
+## PLC9B3e-3c3 Durable Settlement Candidate
+
+B3e-3c3 adds a Store-private durable settlement authority shared by the
+role-separated POSIX and Windows Store adapters. The journal is internal to
+`loushang.harness.resources.packages.plugin_lifecycle`: it is not exported by
+the Package facade, internal facade, or author SDK, and it does not import a
+Product lifecycle, Coding, Foundation, a legacy revision Store, or a package
+manager. The physical Store identity, configured root, and journal form one
+authority; rebinding the journal to a different native root fails closed.
+
+One versioned append-only settlement record binds the Store role and identity,
+the complete native identity chain from the filesystem root to the Store root,
+the staging and final names, final tree identity, every directory and file
+identity, the exact verified-tree manifest, and the exact staging receipt. A
+Store-wide durable owner lock serializes the physical namespace across Store
+instances. After the owned staging tree is flushed and fully revalidated, the
+authorization is durable before namespace rename. The Store then performs an
+atomic non-replacing rooted rename (`RENAME_NOREPLACE` on Linux,
+`RENAME_EXCL` on Darwin, and the accepted handle-relative primitive on
+Windows), reopens and fully revalidates the final tree, and only then delivers
+the receipt.
+
+This ordering closes both ambiguity windows. If rename succeeds but receipt
+delivery is lost, restart proves the final tree against the pre-rename record
+and returns the identical receipt without appending a second settlement. If a
+final name contains matching bytes but its tree or any member has a different
+native identity, it is a collision and fails with
+`package_publication_collision`; bytes and a predictable digest name confer no
+authority. Candidate-free receipt validation reopens the configured root,
+selects the exact durable settlement, revalidates the complete physical tree,
+and returns only that same credential-free receipt. Abandoned pre-rename
+records authorize no substituted tree and remain auditable.
+
+The composed adversarial manifest promotes `B-PUB-COLLISION` at the `staging`
+barrier and `B-PUB-REUSE` through `committed`; all twelve physical publication
+rows are then implemented. `B-PUB-UNCOMMITTED` remains the sole planned
+`B-PUB-*` row and the PLC9B4 commit-admission gate. No binding, desired-state
+mutation, runtime handle, peer fallback, transport activation, or production
+route is added. Before acceptance, the Linux-native report must execute 74
+manifest nodes with zero skips, failures, or errors, and the Windows
+native-component report must execute 19 tests with zero skips, failures, or
+errors. The existing Windows manifest report remains 12 native-specific nodes.
+
 ## First Principles
 
 1. Untrusted bytes are data, never a pathname, command, module, or build plan.
@@ -1663,8 +1711,8 @@ B-PUB-WIN-ROOT-ABA | windows-native | staging | root_rename_replace_aba | packag
 B-PUB-WIN-ANCESTOR-ABA | windows-native | staging | ancestor_junction_reparse_aba | package_publication_root_untrusted | rejected@staging | no_outside_write;no_publication;pin_visible;handle_released;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-WIN-ANCESTOR-ABA] | windows-shell-compatibility.yml#plc9b-windows-native | implemented
 B-PUB-WIN-HANDLE-SUCCESS | windows-native | committed | successful_native_handle_lifecycle | ok | committed@committed | same_receipt;pin_visible;handle_released;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-WIN-HANDLE-SUCCESS] | windows-shell-compatibility.yml#plc9b-windows-native | implemented
 B-PUB-WIN-HANDLE-REJECT | windows-native | rejected | rejected_native_handle_lifecycle | package_publication_root_untrusted | rejected@staging | no_outside_write;no_publication;pin_visible;handle_released;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-WIN-HANDLE-REJECT] | windows-shell-compatibility.yml#plc9b-windows-native | implemented
-B-PUB-COLLISION | any | set_published | same_digest_different_identity | package_publication_collision | rejected@staging | no_publication;no_binding;pin_visible | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-COLLISION] | harness-quality.yml#plc9b-linux-native | planned
-B-PUB-REUSE | any | set_published | exact_committed_set_exists | ok | committed@committed | same_receipt;pin_visible;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-REUSE] | harness-quality.yml#plc9b-linux-native | planned
+B-PUB-COLLISION | any | staging | same_digest_different_identity | package_publication_collision | rejected@staging | no_publication;no_binding;pin_visible | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-COLLISION] | harness-quality.yml#plc9b-linux-native | implemented
+B-PUB-REUSE | any | set_published | exact_committed_set_exists | ok | committed@committed | same_receipt;pin_visible;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-REUSE] | harness-quality.yml#plc9b-linux-native | implemented
 B-PUB-UNCOMMITTED | any | set_published | stable_ref_without_commit_receipt | package_commit_admission_denied | rejected@staging | no_binding;no_desired;pin_visible;no_reopen;no_handle_issued;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-UNCOMMITTED] | harness-quality.yml#plc9b-linux-native | planned
 B-ADMISSION-DEPENDENCY | any | committed | dependency_ref_claimed_as_root | package_commit_admission_denied | rejected@committed | no_binding;no_desired;pin_visible;no_reopen;no_handle_issued;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ADMISSION-DEPENDENCY] | harness-quality.yml#plc9b-linux-native | planned
 B-ADMISSION-WRONG-SET | any | committed | ref_from_other_committed_set | package_commit_admission_denied | rejected@committed | no_binding;no_desired;pin_visible;no_reopen;no_handle_issued;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ADMISSION-WRONG-SET] | harness-quality.yml#plc9b-linux-native | planned
