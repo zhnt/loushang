@@ -75,8 +75,9 @@ Neither may silently override a narrower implemented owner contract.
 - [PLC9B Safe Package Boundary Contract](plugin-lifecycle-plc9b-contract.md)
   freezes the Package acquisition owner, exact entrypoint inventory, versioned
   wheel/closure/publication evidence, fail-closed recovery, and mandatory
-  adversarial acceptance matrix. PLC9B1 implements only the dark inert Owner
-  Kernel; extraction, acquisition, publication, and production routing remain
+  adversarial acceptance matrix. PLC9B1 implements the dark inert Owner Kernel;
+  PLC9B2a adds an unbound bounded Source/quarantine component. Archive/wheel
+  verification, phase integration, publication, and production routing remain
   unimplemented.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.

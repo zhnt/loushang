@@ -17,6 +17,7 @@ PACKAGE_MATERIALIZER = PACKAGE_ROOT / "materializer.py"
 PACKAGE_OPERATIONS = PACKAGE_ROOT / "operations.py"
 PACKAGE_SOURCE_RESOLVER = PACKAGE_ROOT / "source_resolver.py"
 OWNER_KERNEL_ROOT = PACKAGE_ROOT / "plugin_lifecycle"
+BOUNDED_ACQUISITION = OWNER_KERNEL_ROOT / "acquisition.py"
 ADVERSARIAL_TEST = Path(
     "tests/harness/resources/packages/test_plc9b_adversarial.py"
 )
@@ -430,9 +431,10 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.1" in contract
-    assert "PLC9B1 dark Owner Kernel implemented" in contract
-    assert "No runtime\n  acquisition, archive extraction" in contract
+    assert "Contract version: PLC9B.2a" in contract
+    assert "PLC9B1 dark Owner Kernel and the unbound PLC9B2a" in contract
+    assert "unbound PLC9B2a bounded\n  acquisition component" in contract
+    assert "No archive extraction, wheel verification" in contract
     assert "Public author SDK effect: none" in contract
     for deferred in (
         "PLC9A2 transport activation",
@@ -1363,6 +1365,7 @@ def test_plc9b1_dark_kernel_preserves_visible_unsafe_debt() -> None:
     assert (OWNER_KERNEL_ROOT / "records.py").is_file()
     assert (OWNER_KERNEL_ROOT / "journal.py").is_file()
     assert (OWNER_KERNEL_ROOT / "owner.py").is_file()
+    assert BOUNDED_ACQUISITION.is_file()
     for forbidden in (
         "PackageLifecycleOwner",
         "BoundedAcquisitionReceipt",
@@ -1429,6 +1432,46 @@ def test_plc9b1_owner_kernel_stays_internal_dark_and_capability_free() -> None:
             ):
                 production_importers.append(path)
     assert production_importers == []
+
+
+def test_plc9b2a_acquisition_is_unbound_bounded_and_pathless() -> None:
+    contract = _source(CONTRACT)
+    source = _source(BOUNDED_ACQUISITION)
+    tree = ast.parse(source, filename=str(BOUNDED_ACQUISITION))
+
+    assert "class PackageSourceAuthorityPort(Protocol)" in source
+    assert "class BoundedAcquisitionSinkPort(Protocol)" in source
+    assert "class PackageQuarantineStore:" in source
+    assert "class PackageAcquisitionOwner:" in source
+    assert "archive/wheel verifier" in contract
+    assert "promotes no global adversarial manifest row" in contract
+
+    sink = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef)
+        and node.name == "BoundedAcquisitionSinkPort"
+    )
+    assert {
+        node.name
+        for node in sink.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    } == {"begin_request", "record_redirect", "write"}
+    assert not any(
+        token in source
+        for token in (
+            "PythonPackageInstallerBackend",
+            "PluginRevisionStore",
+            "PluginManagementService",
+            "subprocess",
+            "urllib.request",
+            "httpx",
+            "requests.get",
+            "socket.socket",
+            "zipfile",
+            "tarfile",
+        )
+    )
 
 
 def test_plc9b_rollback_never_restores_the_unsafe_installer() -> None:

@@ -2,13 +2,17 @@
 
 ## Status
 
-- Contract version: PLC9B.1.
-- Delivery status: PLC9B1 dark Owner Kernel implemented. Versioned inert
+- Contract version: PLC9B.2a.
+- Delivery status: PLC9B1 dark Owner Kernel and the unbound PLC9B2a bounded
+  acquisition component are implemented. Versioned inert
   request/classification/status/failure evidence, the owner-revisioned
   three-way classifier, operation/attempt phase-CAS journal, and typed
-  retry/cancel/status behavior exist without a production binding. No runtime
-  acquisition, archive extraction, dependency resolution, or publication
-  route is implemented by this slice.
+  retry/cancel/status behavior exist without a production binding. B2a adds
+  authenticated Source envelopes, an owner-created bounded byte sink, and a
+  private identity-checked quarantine capability, but it is not yet bound to
+  the operation phase journal. No archive extraction, wheel verification,
+  dependency resolution, publication, or production acquisition route is
+  implemented by this slice.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -56,6 +60,36 @@ The executable B1 manifest subset is exactly
 acquisition, extraction, closure, publication, handoff, epoch, or every-phase
 behavior remain `planned`; partial record-level coverage does not promote
 their status.
+
+## PLC9B2a Bounded Acquisition Component
+
+`loushang.harness.resources.packages.plugin_lifecycle.acquisition` introduces
+the first independently testable B2 component without activating it:
+
+- a Source Authority returns one versioned authenticated envelope plus a
+  transfer capability; raw credentials stay behind that authority;
+- the Package owner validates operation/node, credential-free canonical Source
+  identity, locator digest, and policy revision before creating quarantine;
+- the owner alone creates a private attempt directory and an exclusive regular
+  artifact file relative to an identity-pinned root on descriptor-capable
+  POSIX hosts;
+- the Source adapter receives only `begin_request`, `record_redirect`, and
+  `write`; it receives no pathname, file handle, root, store, publication, or
+  desired-state authority;
+- byte, request, redirect, and wall-clock budgets are checked before each
+  corresponding consumption edge; declared digest mismatch is terminal;
+- the acquired candidate revalidates root/attempt/file identity and hashes the
+  artifact by bounded streaming before yielding a verifier handle; and
+- rejection closes the sink and removes only the exact owner-created attempt.
+
+The portable fallback rejects link/reparse roots and every currently visible
+link/reparse ancestor, but it is not accepted as native Windows containment.
+The Windows root-relative handle implementation, archive/wheel verifier,
+operation-phase integration, cleanup tombstone, and native swap fixtures remain
+open B2 work. Consequently B2a promotes no global adversarial manifest row:
+the `B-ACQ-*`, `B-LIMIT-*`, `B-STATE-*`, and later-phase crash rows retain
+`planned` until the complete caller response, journal effect, and native oracle
+specified by each row are executable.
 
 ## First Principles
 
