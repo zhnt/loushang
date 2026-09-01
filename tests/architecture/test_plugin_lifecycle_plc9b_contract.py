@@ -493,7 +493,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.3e2a-candidate" in contract
+    assert "Contract version: PLC9B.3e2a" in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
@@ -509,7 +509,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
     assert "PLC9B3d-2a Accepted Composed Closure Limits" in contract
     assert "PLC9B3d-2b Accepted Composed Closure Integrity" in contract
     assert "PLC9B3e-1 Accepted Typed Commit Records" in contract
-    assert "PLC9B3e-2a Candidate Transaction-Pin Contract" in contract
+    assert "PLC9B3e-2a Accepted Transaction-Pin Contract" in contract
     assert "Harness Quality run `33505702666`" in contract
     assert "Linux\nharness job `99849101216`" in contract
     assert "(ID\n`9799493328`)" in contract
@@ -2175,7 +2175,17 @@ def test_plc9b3e2a_transaction_pin_contract_is_narrow_dark_and_unpromoted() -> N
     ):
         assert evidence in component_tests
     assert "B3e-2a freezes the transaction-retention boundary" in contract
-    assert "PLC9B3e-2a candidate code adds exact credential-free" in inventory
+    assert "PLC9B3e-2a accepted code adds exact credential-free" in inventory
+    normalized = " ".join(contract.split())
+    assert "B3e-2a was accepted on 2026-09-01 against candidate head `712adde3`" in (
+        normalized
+    )
+    assert "Harness Quality run `33526455182`" in normalized
+    assert "Linux harness job `99918424525`" in normalized
+    assert "artifact ID `9807880155`" in normalized
+    assert (
+        "a00c4a93f714c662534e7ffac9c9cb619ae18689aafe727b0259e7a462c99e42" in contract
+    )
     assert manifest["B-CRASH-PINNED"]["status"] == "planned"
     assert all(
         manifest[case_id]["status"] == "planned"

@@ -102,9 +102,10 @@ Neither may silently override a narrower implemented owner contract.
   closure lock, and the exact committed-set record without pinning, staging,
   publishing, admission, or production binding; its retained native report
   remained exactly 64 rows and contained no `B-PUB-*` node. PLC9B3e-2a
-  candidate code adds credential-free transaction-pin records, a narrow Port,
+  accepted code adds credential-free transaction-pin records, a narrow Port,
   and a durable adjacent-evidence journal without phase composition or a
-  concrete retention-ledger import.
+  concrete retention-ledger import; its retained report remained exactly 64
+  rows and contained neither `B-CRASH-PINNED` nor a `B-PUB-*` node.
   Transaction-pin runtime composition, publication, and production routing
   remain unimplemented.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum

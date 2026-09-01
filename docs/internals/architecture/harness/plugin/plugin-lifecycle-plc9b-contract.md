@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.3e2a-candidate.
+- Contract version: PLC9B.3e2a.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -50,7 +50,7 @@
   retaining dark operation. B3e-1 accepted code adds strict credential-free
   typed stable refs, immutable closure-node/lock records, and an exact
   committed-set ref. It constructs no pin, stages no store object, publishes
-  no namespace, and promotes no global manifest row. B3e-2a candidate code
+  no namespace, and promotes no global manifest row. B3e-2a accepted code
   adds exact transaction-pin targets/requests/receipts, a narrow retention
   Port, and an owner-side durable pin-evidence journal without phase
   integration or a concrete retention-ledger import.
@@ -760,7 +760,7 @@ PR check passed. Harness Quality run `33521945259`, Linux harness job
 The XML executed the unchanged 64 manifest nodes with zero skips, failures, or
 errors and contained no `B-PUB-*` node.
 
-## PLC9B3e-2a Candidate Transaction-Pin Contract
+## PLC9B3e-2a Accepted Transaction-Pin Contract
 
 B3e-2a freezes the transaction-retention boundary before runtime composition.
 `PackageTransactionPinRequestV1` is constructed from one complete
@@ -792,6 +792,14 @@ transaction_pinned` orchestration and crash replay. No concrete
 `PluginPackageLifecycleLedger`, store, publication, admission, desired-state,
 or production module imports this component, so `B-CRASH-PINNED`, every
 `B-PUB-*` row, and all later rows remain `planned`.
+
+B3e-2a was accepted on 2026-09-01 against candidate head `712adde3` after every
+PR check passed. Harness Quality run `33526455182`, Linux harness job
+`99918424525`, retained `plc9b-linux-native-pytest-report` artifact ID
+`9807880155` with upload digest
+`a00c4a93f714c662534e7ffac9c9cb619ae18689aafe727b0259e7a462c99e42`.
+The XML executed the unchanged 64 manifest nodes with zero skips, failures, or
+errors and contained neither `B-CRASH-PINNED` nor a `B-PUB-*` node.
 
 ## First Principles
 
