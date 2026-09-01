@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.3e3a-candidate.
+- Contract version: PLC9B.3e3a.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -57,7 +57,7 @@
   composes that Port with the accepted closure-plan evidence and lifecycle
   phase CAS, supports restart recovery without a live closure candidate, and
   implements the native-accepted `B-CRASH-PINNED` row.
-  B3e-3a candidate code freezes a dark role-separated staging boundary, an
+  B3e-3a accepted code freezes a dark role-separated staging boundary, an
   authority-issued logical Plugin-root target, exact store-issued receipt
   evidence, and one Package-owner journal record that atomically binds the
   complete closure lock to its committed-set ref. It imports no concrete
@@ -848,7 +848,7 @@ PR check passed. Harness Quality run `33532486596`, Linux harness job
 The XML executed exactly 65 manifest nodes, including `B-CRASH-PINNED`, with
 zero skips, failures, or errors and contained no `B-PUB-*` node.
 
-## PLC9B3e-3a Candidate Staging And Atomic Set Contracts
+## PLC9B3e-3a Accepted Staging And Atomic Set Contracts
 
 B3e-3a separates physical store ownership from Package transaction atomicity.
 `PackagePluginRootTargetV1` is a versioned, credential-free logical target
@@ -887,7 +887,7 @@ and revalidates the complete embedded closure rather than trusting projected
 digests or a root-only marker. A stable ref appearing in either store is not
 itself a committed set.
 
-This candidate slice supplies contracts and local journals only. It does not
+This accepted slice supplies contracts and local journals only. It does not
 call either staging Port, revalidate a live candidate at the call edge, advance
 `transaction_pinned -> staging -> set_published`, import a concrete dependency
 or Plugin revision store, expose a public facade, publish an admission handle,
@@ -895,6 +895,15 @@ change desired state, or bind a production route. B3e-3b owns that composition,
 including classification recheck and restart recovery. Therefore
 `B-CRASH-STAGING`, `B-CRASH-SET`, and every `B-PUB-*` row remain `planned` in
 B3e-3a.
+
+B3e-3a was accepted on 2026-09-01 against candidate head `c70a39f4` after every
+PR check passed. Harness Quality run `33537324112`, Linux harness job
+`99954713682`, retained `plc9b-linux-native-pytest-report` artifact ID
+`9812156268` with upload digest
+`d8fbdd16b4a84de341ad7244ffa1af5d4dafd79a9c4b097fc612258a0ebf4450`.
+The XML executed the unchanged 65 manifest nodes with zero skips, failures, or
+errors, included `B-CRASH-PINNED`, and contained neither `B-CRASH-STAGING`,
+`B-CRASH-SET`, nor a `B-PUB-*` node.
 
 ## First Principles
 

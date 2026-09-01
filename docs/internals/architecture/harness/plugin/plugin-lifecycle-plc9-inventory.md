@@ -111,7 +111,7 @@
   executed exactly 65 native manifest nodes with zero skips, failures, or
   errors and no `B-PUB-*` node. Staging, publication, later transaction phases,
   and every production route remain migration obligations.
-  PLC9B3e-3a candidate code now separates a neutral dependency staging Port
+  PLC9B3e-3a accepted code now separates a neutral dependency staging Port
   from the designated Plugin-root staging Port, binds the latter to an
   authority-issued logical Product/scope/Installation/Plugin target, and
   journals exact typed staging receipts beside the Package transaction. A
@@ -119,7 +119,9 @@
   closure lock and its sole committed-set ref. These are dark contracts and
   local evidence only: no concrete store, phase runtime, admission, desired
   state, public facade, or production route imports them, and no global
-  manifest row is promoted.
+  manifest row is promoted. All PR checks passed and retained artifact
+  `9812156268` executed the unchanged 65 native manifest nodes without skips,
+  failures, errors, `B-CRASH-STAGING`, `B-CRASH-SET`, or any `B-PUB-*` node.
 
 This inventory distinguishes accepted reusable owners, Product adapters,
 parallel compatibility paths, and missing target boundaries. “Migrate” or
