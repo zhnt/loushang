@@ -74,14 +74,15 @@
   passed; retained artifact `9799493328` executed the unchanged 52-row Linux
   manifest with zero skips, failures, or errors. Its component fixtures do not
   promote global manifest rows.
-  PLC9B3d candidate code binds a complete credential-free resolution basis
+  PLC9B3d-1 accepted dark code binds a complete credential-free resolution basis
   before artifact I/O, journals every resolver selection before dependency
   Source access, journals the exact verified plan before the closure phase CAS,
   reopens durable dependency evidence without resolver or Source calls, and
   transfers dependency cleanup debt to the existing cleanup-domain owner. It
-  remains dark. B3d-1 makes the two resolving/closure crash rows executable;
-  they remain candidate evidence until the retained Linux-native report passes,
-  while the closure/limit rows remain planned.
+  remains dark. B3d-1 accepts the two resolving/closure crash rows after all PR
+  checks passed and retained artifact `9802403797` executed exactly 54 native
+  manifest nodes with zero skips, failures, or errors; the closure/limit rows
+  remain planned.
   Publication, later transaction phases, and every production route remain
   migration obligations; no global adversarial row is promoted.
 

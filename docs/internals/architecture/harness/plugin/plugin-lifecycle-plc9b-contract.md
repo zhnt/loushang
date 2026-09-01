@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.3d1-candidate.
+- Contract version: PLC9B.3d1.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -42,9 +42,9 @@
   promotes no global manifest row. B3d candidate code adds a credential-free
   resolution-basis/selection/plan journal, local artifact replay, dependency
   cleanup-debt handoff, and the dark `resolving_closure -> closure_verified`
-  lifecycle owner. B3d-1 candidate code makes the two closure crash rows
-  executable; the remaining closure/limit rows stay planned, and no B3d row is
-  accepted until retained native CI evidence passes.
+  lifecycle owner. B3d-1 accepts the two closure crash rows after their
+  retained Linux-native report passed; the remaining closure/limit rows stay
+  planned.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -585,7 +585,7 @@ Its XML executed exactly 52 tests with zero skips, failures, or errors,
 confirming that recursive closure composition remained dark and promoted no
 global manifest row.
 
-## PLC9B3d Candidate Durable Closure Recovery
+## PLC9B3d-1 Accepted Durable Closure Recovery
 
 B3d introduces one append-only closure-resolution journal per owner state
 layout. The first record for an operation attempt is a credential-free
@@ -623,12 +623,12 @@ owner as an exact durable tombstone, while the operation journal records the
 sanitized closure failure independently. Cleanup status is projected separately
 from operation status and can be repaired under its own cleanup CAS domain.
 
-This remains candidate code. It creates no stable artifact ref, transaction
+This remains dark accepted code. It creates no stable artifact ref, transaction
 pin, immutable artifact-store write, committed set, desired-state mutation, or
 CLI/RPC/Session/startup route. B3d-1 makes `B-CRASH-RESOLVING` and
 `B-CRASH-CLOSURE` executable with complete root evidence, resolution-journal,
 bounded-residue, zero-reentry, and secret-redaction oracles. Their acceptance
-still requires the mandatory Linux-native workflow and retained non-skippable
+was proven by the mandatory Linux-native workflow and retained non-skippable
 XML. `B-LIMIT-GRAPH/SOLVER/REQUESTS` and all `B-CLOSURE-*` remain `planned`.
 B3e still owns typed refs, pins, and atomic committed-set publication.
 
@@ -638,7 +638,16 @@ Harness Quality run `33510638346`, Linux harness job `99865166671`. Its retained
 `288f5975cd12912aa84a298ce74a2fac4ab76e3b8e83aaa8b5fac969f19597c3`;
 the XML executed the unchanged 52 accepted manifest nodes with zero skips,
 failures, or errors. This proves the dark mechanism did not silently promote a
-row. B3d-1's two new executable crash rows require their own later native run.
+row. B3d-1's two new executable crash rows required the separate native run
+recorded below.
+
+B3d-1 was accepted on 2026-09-01 against final review-fix head `3ed13f43`.
+Every PR check passed; Harness Quality run `33512955335`, Linux harness job
+`99872863556`, retained `plc9b-linux-native-pytest-report` artifact ID
+`9802403797` with upload digest
+`c64edbacb07c7a9701c058b63b340f0f9560abd6161ffba7ab1dd08aca883705`.
+Its XML executed exactly 54 manifest nodes, including `B-CRASH-RESOLVING` and
+`B-CRASH-CLOSURE`, with zero skips, failures, or errors.
 
 ## First Principles
 

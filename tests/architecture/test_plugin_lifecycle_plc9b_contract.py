@@ -482,7 +482,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.3d1-candidate" in contract
+    assert "Contract version: PLC9B.3d1" in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
@@ -494,7 +494,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
     assert "PLC9B3a Accepted Dark Closure-v2 Verifier Slice" in contract
     assert "PLC9B3b Accepted Durable Closure Inputs" in contract
     assert "PLC9B3c Accepted Recursive Closure Builder" in contract
-    assert "PLC9B3d Candidate Durable Closure Recovery" in contract
+    assert "PLC9B3d-1 Accepted Durable Closure Recovery" in contract
     assert "Harness Quality run `33505702666`" in contract
     assert "Linux\nharness job `99849101216`" in contract
     assert "(ID\n`9799493328`)" in contract
@@ -1971,8 +1971,13 @@ def test_plc9b3d_candidate_binds_recovery_before_io_and_remains_dark() -> None:
         assert evidence in journal_tests + owner_tests + runtime_tests
     normalized = " ".join(contract.split())
     assert "basis -> selection* -> verified_plan" in normalized
-    assert "This remains candidate code" in contract
-    assert "PLC9B3d candidate code binds a complete credential-free" in inventory
+    assert "This remains dark accepted code" in contract
+    assert "PLC9B3d-1 accepted dark code binds a complete credential-free" in inventory
+    assert "final review-fix head `3ed13f43`" in contract
+    assert "Harness Quality run `33512955335`" in contract
+    assert "Linux harness job\n`99872863556`" in contract
+    assert "artifact ID\n`9802403797`" in contract
+    assert "executed exactly 54 manifest nodes" in contract
 
 
 def test_plc9b2f_windows_backend_is_rooted_and_has_a_nonskippable_native_gate(
