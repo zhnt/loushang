@@ -27,6 +27,8 @@
   Windows Shell Compatibility run `33486925218` at head `fb263301`: five tests
   ran with zero skips, failures, or errors, and their XML was retained in
   artifact `windows-shell-pytest-reports` (ID `9792151355`).
+  PLC9B2g adds six composed acquisition manifest fixtures as a Linux-native
+  candidate; their rows remain planned until the non-skippable CI report passes.
   Publication, later transaction phases, and every production route remain
   migration obligations; no global adversarial row is promoted.
 

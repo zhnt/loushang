@@ -3,6 +3,7 @@ from __future__ import annotations
 import inspect
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from hashlib import sha256
 from pathlib import Path
 
 import pytest
@@ -13,6 +14,35 @@ from loushang.harness.resources.packages.plugin_lifecycle import (
     PackageLifecycleIngressRequestV1,
     PackageLifecycleJournal,
     PackageLifecycleOwner,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.acquisition import (
+    AuthenticatedSourceEnvelopeV1,
+    BoundedAcquisitionSinkPort,
+    PackageAcquisitionBudgetV1,
+    PackageAcquisitionError,
+    PackageAcquisitionOwner,
+    PackageAcquisitionRequestV1,
+    PackageQuarantineStore,
+    SourceAdapterResultV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.cleanup import (
+    PackageQuarantineCleanupJournal,
+    PackageQuarantineCleanupOwner,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.phase_evidence import (
+    PackageArtifactEvidenceJournal,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    PackageLifecycleRequestV1,
+    PluginBoundPackageClassificationV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.runtime import (
+    PackageArtifactExecutionRequestV1,
+    PackageArtifactLifecycleOwner,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.wheel import (
+    PackageInspectionBudgetV1,
+    PackageWheelVerifier,
 )
 
 IMPLEMENTED_B1_MANIFEST_CASES = (
@@ -26,6 +56,19 @@ IMPLEMENTED_B1_MANIFEST_CASES = (
     "B-ENTRY-DISABLED",
 )
 
+PLC9B2G_CANDIDATE_MANIFEST_CASES = (
+    "B-ACQ-AUTH",
+    "B-ACQ-PROVENANCE",
+    "B-ACQ-BYTES",
+    "B-ACQ-REDIRECT",
+    "B-ACQ-TIMEOUT",
+    "B-ACQ-DIGEST",
+)
+
+IMPLEMENTED_MANIFEST_CASES = (
+    IMPLEMENTED_B1_MANIFEST_CASES + PLC9B2G_CANDIDATE_MANIFEST_CASES
+)
+
 
 @dataclass
 class _Authority:
@@ -36,6 +79,119 @@ class _Authority:
         _request: object,
     ) -> PackageClassificationFactsV1:
         return self.facts
+
+
+@dataclass
+class _Clock:
+    now: float = 100.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+@dataclass
+class _StableClassificationRecheck:
+    def recheck(
+        self,
+        _request: PackageLifecycleRequestV1,
+        prior: PluginBoundPackageClassificationV1,
+    ) -> PluginBoundPackageClassificationV1:
+        return prior
+
+
+@dataclass
+class _SourceStream:
+    envelope: AuthenticatedSourceEnvelopeV1
+    chunks: tuple[bytes, ...]
+    request_count: int = 1
+    redirects: tuple[str, ...] = ()
+    clock: _Clock | None = None
+    advance_seconds: float = 0.0
+    requests_started: int = 0
+    redirects_started: int = 0
+    writes_started: int = 0
+
+    def transfer_to(self, sink: BoundedAcquisitionSinkPort) -> SourceAdapterResultV1:
+        for _index in range(self.request_count):
+            sink.begin_request()
+            self.requests_started += 1
+        for redirect in self.redirects:
+            sink.record_redirect(redirect)
+            self.redirects_started += 1
+        for chunk in self.chunks:
+            sink.write(chunk)
+            self.writes_started += 1
+            if self.clock is not None:
+                self.clock.now += self.advance_seconds
+        return SourceAdapterResultV1(disposition="complete")
+
+
+@dataclass
+class _SourceAuthority:
+    case_id: str
+    secret: str
+    clock: _Clock | None = None
+    authorize_calls: int = 0
+    stream: _SourceStream | None = None
+
+    def authorize(self, request: PackageAcquisitionRequestV1) -> _SourceStream:
+        self.authorize_calls += 1
+        if self.case_id == "B-ACQ-AUTH":
+            raise PackageAcquisitionError(
+                f"registry rejected credential {self.secret}",
+                code="package_source_unauthorized",
+                stage="acquiring",
+                retryable=False,
+                consumed_bytes=0,
+            )
+
+        chunks = (b"wheel",)
+        request_count = 1
+        redirects: tuple[str, ...] = ()
+        advance_seconds = 0.0
+        canonical_source_identity = request.canonical_source_identity
+        expected_digest = sha256(b"".join(chunks)).hexdigest()
+        if self.case_id == "B-ACQ-PROVENANCE":
+            canonical_source_identity = "https://other.example.test/acme.whl"
+        elif self.case_id == "B-ACQ-BYTES":
+            chunks = (b"12345678", b"overflow")
+            expected_digest = sha256(b"".join(chunks)).hexdigest()
+        elif self.case_id == "B-ACQ-REDIRECT":
+            chunks = ()
+            redirects = (
+                "https://mirror-1.example.test/acme.whl",
+                "https://mirror-2.example.test/acme.whl",
+            )
+            expected_digest = sha256(b"").hexdigest()
+        elif self.case_id == "B-ACQ-TIMEOUT":
+            chunks = (b"first", b"second")
+            expected_digest = sha256(b"".join(chunks)).hexdigest()
+            advance_seconds = 0.006
+        elif self.case_id == "B-ACQ-DIGEST":
+            chunks = (b"changed-wheel",)
+            expected_digest = "d" * 64
+
+        self.stream = _SourceStream(
+            envelope=AuthenticatedSourceEnvelopeV1(
+                operation_id=request.operation_id,
+                node_id=request.node_id,
+                canonical_source_identity=canonical_source_identity,
+                origin_kind="https",
+                authentication_decision="authorized",
+                authority_id="source-authority:manifest",
+                requested_locator_digest=request.requested_locator_digest,
+                expected_artifact_digest=expected_digest,
+                redirect_policy_revision="redirect-policy:1",
+                policy_revision=request.policy_revision,
+                capture_epoch=1,
+            ),
+            chunks=chunks,
+            request_count=request_count,
+            redirects=redirects,
+            clock=self.clock,
+            advance_seconds=advance_seconds,
+        )
+        return self.stream
 
 
 def _facts(*present: str) -> PackageClassificationFactsV1:
@@ -96,7 +252,64 @@ def _owner(
     )
 
 
-@pytest.mark.parametrize("case_id", IMPLEMENTED_B1_MANIFEST_CASES)
+def _b2_owner(tmp_path: Path, *, case_id: str, secret: str):
+    lifecycle_journal = PackageLifecycleJournal(
+        tmp_path / "package-lifecycle.jsonl"
+    )
+    kernel = PackageLifecycleOwner(
+        journal=lifecycle_journal,
+        classification_authority=_Authority(_facts("explicit_plugin_intent")),
+        enabled=True,
+    )
+    store = PackageQuarantineStore(tmp_path / "quarantine")
+    evidence_journal = PackageArtifactEvidenceJournal(
+        tmp_path / "package-artifact-evidence.jsonl"
+    )
+    cleanup_journal = PackageQuarantineCleanupJournal(
+        tmp_path / "package-quarantine-cleanup.jsonl"
+    )
+    cleanup_owner = PackageQuarantineCleanupOwner(
+        journal=cleanup_journal,
+        store=store,
+    )
+    clock = _Clock() if case_id == "B-ACQ-TIMEOUT" else None
+    source_authority = _SourceAuthority(
+        case_id=case_id,
+        secret=secret,
+        clock=clock,
+    )
+    artifact_owner = PackageArtifactLifecycleOwner(
+        kernel=kernel,
+        classification_recheck=_StableClassificationRecheck(),
+        acquisition_owner=PackageAcquisitionOwner(
+            source_authority=source_authority,
+            quarantine_store=store,
+            clock=clock,
+        ),
+        evidence_journal=evidence_journal,
+        cleanup_owner=cleanup_owner,
+        wheel_verifier=PackageWheelVerifier(),
+        acquisition_budgets=PackageAcquisitionBudgetV1(
+            max_transport_bytes=8 if case_id == "B-ACQ-BYTES" else 1024,
+            max_requests=1,
+            max_redirects=1,
+            max_wall_time_ms=5 if case_id == "B-ACQ-TIMEOUT" else 1000,
+        ),
+        inspection_budgets=PackageInspectionBudgetV1(),
+        supported_tags=frozenset({"py3-none-any"}),
+    )
+    return (
+        kernel,
+        artifact_owner,
+        lifecycle_journal,
+        evidence_journal,
+        cleanup_journal,
+        store,
+        source_authority,
+    )
+
+
+@pytest.mark.parametrize("case_id", IMPLEMENTED_MANIFEST_CASES)
 def test_manifest_case(case_id: str, tmp_path: Path) -> None:
     if case_id == "B-CLASS-PLUGIN":
         owner, journal = _owner(
@@ -203,10 +416,97 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
         assert status.failure.code == "package_route_unavailable"
         assert journal.records() == ()
         assert not journal.path.exists()
-    else:  # pragma: no cover - the parametrization is deliberately closed
-        raise AssertionError(f"Unhandled PLC9B1 manifest case: {case_id}")
+    elif case_id in PLC9B2G_CANDIDATE_MANIFEST_CASES:
+        secret = f"manifest-secret-{case_id.lower()}"
+        (
+            kernel,
+            artifact_owner,
+            journal,
+            evidence_journal,
+            cleanup_journal,
+            store,
+            source_authority,
+        ) = _b2_owner(tmp_path, case_id=case_id, secret=secret)
+        classified = kernel.submit(
+            _request(
+                source=(
+                    f"https://user:{secret}@packages.example.test/acme.whl"
+                    f"?token={secret}#{secret}"
+                )
+            )
+        )
+        execution = PackageArtifactExecutionRequestV1(
+            operation_id=classified.operation_id,
+            request_fingerprint=classified.request_fingerprint,
+            expected_attempt_epoch=classified.attempt_epoch,
+            wheel_filename="acme-1.0-py3-none-any.whl",
+            credential_reference=f"opaque:{secret}",
+        )
+        before_outside = tmp_path / "outside-sentinel"
+        before_outside.write_bytes(b"preserve")
 
-    _assert_no_capability_side_effect(tmp_path)
+        result = artifact_owner.execute(execution)
+
+        expected = {
+            "B-ACQ-AUTH": (
+                "acquiring",
+                "rejected",
+                "package_source_unauthorized",
+            ),
+            "B-ACQ-PROVENANCE": (
+                "acquiring",
+                "rejected",
+                "package_source_provenance_changed",
+            ),
+            "B-ACQ-BYTES": (
+                "acquiring",
+                "retryable_failure",
+                "package_acquisition_limit_exceeded",
+            ),
+            "B-ACQ-REDIRECT": (
+                "acquiring",
+                "retryable_failure",
+                "package_acquisition_limit_exceeded",
+            ),
+            "B-ACQ-TIMEOUT": (
+                "acquiring",
+                "retryable_failure",
+                "package_operation_timed_out",
+            ),
+            "B-ACQ-DIGEST": (
+                "acquired",
+                "rejected",
+                "package_acquisition_digest_mismatch",
+            ),
+        }[case_id]
+        assert (
+            result.status.phase,
+            result.status.disposition,
+            result.status.failure.code if result.status.failure is not None else None,
+        ) == expected
+        assert result.candidate is None
+        assert result.cleanup_status is None
+        assert source_authority.authorize_calls == 1
+        assert evidence_journal.records() == ()
+        assert cleanup_journal.records() == ()
+        assert store.attempt_names() == ()
+        assert store.total_residue_bytes() == 0
+        assert before_outside.read_bytes() == b"preserve"
+        records = journal.records()
+        replay = artifact_owner.execute(execution)
+        assert replay.status == result.status
+        assert replay.candidate is None
+        assert journal.records() == records
+        assert source_authority.authorize_calls == 1
+        assert secret not in repr(result)
+        for path in tmp_path.rglob("*"):
+            if path.is_file():
+                assert secret.encode() not in path.read_bytes()
+    else:  # pragma: no cover - the parametrization is deliberately closed
+        raise AssertionError(f"Unhandled PLC9B manifest case: {case_id}")
+
+    if case_id in IMPLEMENTED_B1_MANIFEST_CASES:
+        _assert_no_capability_side_effect(tmp_path)
 
 
 def _assert_classification(status: object, *, decision: str, code: str | None) -> None:

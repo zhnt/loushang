@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.2f.
+- Contract version: PLC9B.2g-candidate.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -21,7 +21,9 @@
   Windows rooted-handle backend and mandatory CI fixture. Its non-skippable
   native gate passed against commit `fb263301` in Windows Shell Compatibility
   run `33486925218`: all five fixtures executed with zero skips, failures, or
-  errors, and the XML reports were persisted as an Actions artifact.
+  errors, and the XML reports were persisted as an Actions artifact. B2g adds
+  the first six acquisition-level end-to-end manifest fixtures as a candidate;
+  their rows remain `planned` until the non-skippable Linux CI gate passes.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -259,6 +261,28 @@ This acceptance is scoped to the rooted Windows quarantine backend and the five
 named fixtures. It does not promote broader manifest rows whose complete
 caller response, phase journal, cleanup repair, closure, or publication oracle
 is still absent.
+
+## PLC9B2g Acquisition Manifest Candidate
+
+The first B2 manifest acceptance slice executes `B-ACQ-AUTH`,
+`B-ACQ-PROVENANCE`, `B-ACQ-BYTES`, `B-ACQ-REDIRECT`, `B-ACQ-TIMEOUT`, and
+`B-ACQ-DIGEST` through the composed dark artifact owner rather than testing an
+isolated exception. Each fixture begins with the single ingress/classification
+authority and observes the typed caller status plus the operation or attempt
+journal selected by the frozen journal-effect policy.
+
+The fixtures additionally prove exact replay without a second Source Authority
+call, empty evidence and cleanup journals, zero quarantine residue, an unchanged
+outside sentinel, and absence of the injected credential from result repr and
+every persisted file. Byte and time consumption are checked before the failing
+edge; authorization and provenance refusal occur before a quarantine attempt;
+declared digest mismatch terminates at the adjacent `acquired` stage.
+
+This is a candidate until the exact parameterized nodes run in the
+`plc9b-linux-native` job and its XML verifier rejects empty, skipped, failing,
+or errored output. Until then the six manifest rows remain `planned`. The slice
+does not activate a production route, inspect an archive, publish an artifact,
+or alter desired state.
 
 ## First Principles
 
