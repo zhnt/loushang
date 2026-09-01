@@ -162,7 +162,7 @@ def test_package_projection_is_available_without_coding() -> None:
         "scope": "project",
         "version": "1.0.0",
         "source": "/workspace/packages/review-pack",
-        "path": "/workspace/packages/review-pack",
+        "path": str(Path("/workspace/packages/review-pack")),
         "enabled": True,
         "prompts": 0,
         "skills": 0,

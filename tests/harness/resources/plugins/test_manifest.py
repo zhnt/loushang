@@ -530,10 +530,11 @@ def test_plugin_manifest_parser_normalizes_compatible_package_root_alias(
 
 def test_package_manifest_view_projects_package_root_symlink_loop_as_diagnostic(
     tmp_path: Path,
+    symlink_or_skip,
 ) -> None:
     root = tmp_path / "review-pack"
     root.mkdir()
-    (root / "loop").symlink_to("loop")
+    symlink_or_skip(root / "loop", "loop")
     manifest_path = root / "plugin.json"
     manifest_path.write_text(
         json.dumps({"name": "review-pack", "packageRoot": "loop"}),
@@ -549,10 +550,11 @@ def test_package_manifest_view_projects_package_root_symlink_loop_as_diagnostic(
 
 def test_resource_package_view_projects_package_root_symlink_loop_as_diagnostic(
     tmp_path: Path,
+    symlink_or_skip,
 ) -> None:
     root = tmp_path / "resource-pack"
     root.mkdir()
-    (root / "loop").symlink_to("loop")
+    symlink_or_skip(root / "loop", "loop")
     manifest_path = root / "loushang-package.json"
     manifest_path.write_text(
         json.dumps({"name": "resource-pack", "packageRoot": "loop"}),
@@ -584,11 +586,12 @@ def test_package_manifest_view_projects_canonical_plugin_parser_error(
 
 def test_package_manifest_view_rejects_dangling_plugin_manifest_symlink(
     tmp_path: Path,
+    symlink_or_skip,
 ) -> None:
     root = tmp_path / "review-pack"
     root.mkdir()
     manifest_path = root / "plugin.json"
-    manifest_path.symlink_to(root / "missing-plugin.json")
+    symlink_or_skip(manifest_path, root / "missing-plugin.json")
 
     resolved = resolve_package_manifest(root)
 
@@ -599,6 +602,7 @@ def test_package_manifest_view_rejects_dangling_plugin_manifest_symlink(
 
 def test_resolver_rejects_package_root_replaced_after_resolution(
     tmp_path: Path,
+    symlink_or_skip,
 ) -> None:
     root = tmp_path / "review-pack"
     package_root = root / "resources"
@@ -612,7 +616,7 @@ def test_resolver_rejects_package_root_replaced_after_resolution(
     resolver = PluginResolver()
     plugin = resolver.resolve_plugin(root)
     package_root.rmdir()
-    package_root.symlink_to(outside, target_is_directory=True)
+    symlink_or_skip(package_root, outside, target_is_directory=True)
 
     with pytest.raises(PluginManifestError) as caught:
         resolver.resolve_resources(plugin)
