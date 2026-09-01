@@ -31,6 +31,9 @@
   Linux Harness Quality run `33487861156`: its report executed 14 total nodes
   with zero skips, failures, or errors and was retained as artifact
   `plc9b-linux-native-pytest-report` (ID `9792500305`).
+  PLC9B2h adds 24 composed archive/path/type/limit/wheel manifest fixtures as a
+  Linux-native candidate. The hardlink row remains planned because Wheel ZIP
+  has no portable hardlink relation encoding; no surrogate fixture is claimed.
   Publication, later transaction phases, and every production route remain
   migration obligations; no global adversarial row is promoted.
 

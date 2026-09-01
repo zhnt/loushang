@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.2g.
+- Contract version: PLC9B.2h-candidate.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -23,7 +23,9 @@
   run `33486925218`: all five fixtures executed with zero skips, failures, or
   errors, and the XML reports were persisted as an Actions artifact. B2g adds
   the first six implemented acquisition-level end-to-end manifest fixtures;
-  their non-skippable Linux CI gate and persisted XML evidence passed.
+  their non-skippable Linux CI gate and persisted XML evidence passed. B2h adds
+  24 archive/path/type/limit/wheel manifest fixtures as a candidate; their rows
+  remain `planned` until the Linux-native CI report executes without skips.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -290,6 +292,34 @@ The six `B-ACQ-*` rows named above are therefore `implemented`. The slice does
 not activate a production route, inspect an archive, publish an artifact, or
 alter desired state; every broader row remains `planned` until its own complete
 oracle executes.
+
+## PLC9B2h Archive And Wheel Manifest Candidate
+
+B2h drives 24 additional rows through the composed dark artifact owner: all
+five `B-ARCH-*` rows; portable absolute, traversal, empty-component,
+separator-ambiguous, and Unicode-collision path rows; POSIX symlink, device,
+socket, and FIFO entry types; entry, metadata-memory, and wall-clock limits;
+and the seven source-distribution/arbitrary-ZIP/tag/METADATA/RECORD wheel rows.
+Each fixture proves the caller-visible status and operation journal append,
+one bounded acquisition evidence record, exact replay without a second Source
+call, empty cleanup debt, zero quarantine residue, an unchanged outside
+sentinel, no imported wheel module, and no persisted credential.
+
+Executable evidence corrected two planned-row labels without weakening a
+barrier. A backslash-containing ZIP name is rejected as an ambiguous path
+before separator normalization, so `B-PATH-COLLISION-SEP` returns
+`package_archive_path_rejected`; treating it as a normalized candidate would
+create an avoidable alias surface. WHEEL and METADATA identity are validated
+before materialization, so `B-WHEEL-METADATA` is rejected at `inspecting`, not
+at `extracted`. RECORD relation failures remain at the adjacent `extracted`
+proof barrier and still occur before a tree becomes selectable.
+
+`B-TYPE-HARDLINK` is deliberately not included. Wheel's ZIP format carries no
+portable hardlink inode/relation field, and substituting symlink or duplicate
+bytes would be false evidence. That row remains `planned` pending an explicit
+not-applicable contract disposition or a real encodable fixture. All 24 B2h
+rows remain `planned` until the exact nodes pass the non-skippable
+`plc9b-linux-native` report and its artifact is retained.
 
 ## First Principles
 
@@ -752,7 +782,7 @@ B-PATH-WIN-ROOT | windows-native | inspecting | drive_or_unc_path | package_arch
 B-PATH-WIN-ADS | windows-native | inspecting | alternate_data_stream | package_archive_path_rejected | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-WIN-ADS] | windows-shell-compatibility.yml#plc9b-windows-native | planned
 B-PATH-WIN-RESERVED | windows-native | inspecting | reserved_device_name | package_archive_path_rejected | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-WIN-RESERVED] | windows-shell-compatibility.yml#plc9b-windows-native | planned
 B-PATH-WIN-TRAILING | windows-native | inspecting | trailing_dot_or_space | package_archive_path_rejected | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-WIN-TRAILING] | windows-shell-compatibility.yml#plc9b-windows-native | planned
-B-PATH-COLLISION-SEP | any | inspecting | separator_collision | package_archive_name_collision | rejected@inspecting | no_outside_write;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-COLLISION-SEP] | harness-quality.yml#plc9b-linux-native | planned
+B-PATH-COLLISION-SEP | any | inspecting | separator_ambiguous_path | package_archive_path_rejected | rejected@inspecting | no_outside_write;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-COLLISION-SEP] | harness-quality.yml#plc9b-linux-native | planned
 B-PATH-COLLISION-UNICODE | any | inspecting | unicode_collision | package_archive_name_collision | rejected@inspecting | no_outside_write;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-COLLISION-UNICODE] | harness-quality.yml#plc9b-linux-native | planned
 B-PATH-COLLISION-CASE | windows-native | inspecting | casefold_collision | package_archive_name_collision | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-COLLISION-CASE] | windows-shell-compatibility.yml#plc9b-windows-native | planned
 B-TYPE-SYMLINK | posix-native | inspecting | symlink_entry | package_archive_entry_type_rejected | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-TYPE-SYMLINK] | harness-quality.yml#plc9b-linux-native | planned
@@ -771,7 +801,7 @@ B-LIMIT-REQUESTS | any | acquiring | request_redirect_artifact_count | package_r
 B-WHEEL-SDIST | any | inspecting | source_distribution | package_artifact_type_rejected | rejected@inspecting | no_process;no_import;no_publication;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-WHEEL-SDIST] | harness-quality.yml#plc9b-linux-native | planned
 B-WHEEL-ZIP | any | inspecting | arbitrary_zip_or_editable | package_artifact_type_rejected | rejected@inspecting | no_process;no_import;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-WHEEL-ZIP] | harness-quality.yml#plc9b-linux-native | planned
 B-WHEEL-TAGS | any | inspecting | unsupported_wheel_tags | package_artifact_type_rejected | rejected@inspecting | no_publication;no_binding | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-WHEEL-TAGS] | harness-quality.yml#plc9b-linux-native | planned
-B-WHEEL-METADATA | any | extracted | wheel_metadata_mismatch | package_wheel_metadata_invalid | rejected@extracted | no_publication;no_binding;no_desired | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-WHEEL-METADATA] | harness-quality.yml#plc9b-linux-native | planned
+B-WHEEL-METADATA | any | inspecting | wheel_metadata_mismatch | package_wheel_metadata_invalid | rejected@inspecting | no_publication;no_binding;no_desired | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-WHEEL-METADATA] | harness-quality.yml#plc9b-linux-native | planned
 B-WHEEL-RECORD-HASH | any | extracted | record_hash_or_size | package_wheel_record_invalid | rejected@extracted | no_publication;no_binding;no_desired | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-WHEEL-RECORD-HASH] | harness-quality.yml#plc9b-linux-native | planned
 B-WHEEL-RECORD-SET | any | extracted | record_missing_or_unlisted | package_wheel_record_invalid | rejected@extracted | no_publication;no_binding;no_desired | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-WHEEL-RECORD-SET] | harness-quality.yml#plc9b-linux-native | planned
 B-WHEEL-RECORD-ALGO | any | extracted | weak_or_unknown_record_hash | package_wheel_record_invalid | rejected@extracted | no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-WHEEL-RECORD-ALGO] | harness-quality.yml#plc9b-linux-native | planned

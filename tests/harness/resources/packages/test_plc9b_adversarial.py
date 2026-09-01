@@ -1,6 +1,13 @@
 from __future__ import annotations
 
+import base64
+import csv
 import inspect
+import io
+import stat
+import struct
+import sys
+import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from hashlib import sha256
@@ -65,9 +72,258 @@ IMPLEMENTED_B2_MANIFEST_CASES = (
     "B-ACQ-DIGEST",
 )
 
-IMPLEMENTED_MANIFEST_CASES = (
-    IMPLEMENTED_B1_MANIFEST_CASES + IMPLEMENTED_B2_MANIFEST_CASES
+PLC9B2H_CANDIDATE_MANIFEST_CASES = (
+    "B-ARCH-TRUNCATED",
+    "B-ARCH-HEADERS",
+    "B-ARCH-OVERLAP",
+    "B-ARCH-COMPRESSION",
+    "B-ARCH-TRAILING",
+    "B-PATH-ABSOLUTE",
+    "B-PATH-TRAVERSAL",
+    "B-PATH-EMPTY",
+    "B-PATH-COLLISION-SEP",
+    "B-PATH-COLLISION-UNICODE",
+    "B-TYPE-SYMLINK",
+    "B-TYPE-DEVICE",
+    "B-TYPE-SOCKET",
+    "B-TYPE-FIFO",
+    "B-LIMIT-ENTRY",
+    "B-LIMIT-MEMORY",
+    "B-LIMIT-CPU",
+    "B-WHEEL-SDIST",
+    "B-WHEEL-ZIP",
+    "B-WHEEL-TAGS",
+    "B-WHEEL-METADATA",
+    "B-WHEEL-RECORD-HASH",
+    "B-WHEEL-RECORD-SET",
+    "B-WHEEL-RECORD-ALGO",
 )
+
+EXECUTABLE_MANIFEST_CASES = (
+    IMPLEMENTED_B1_MANIFEST_CASES
+    + IMPLEMENTED_B2_MANIFEST_CASES
+    + PLC9B2H_CANDIDATE_MANIFEST_CASES
+)
+
+WHEEL_FILENAME = "acme_plugin-1.0-py3-none-any.whl"
+DIST_INFO = "acme_plugin-1.0.dist-info"
+
+
+def _record_digest(payload: bytes) -> str:
+    digest = base64.urlsafe_b64encode(sha256(payload).digest()).rstrip(b"=")
+    return "sha256=" + digest.decode()
+
+
+def _wheel_bytes(
+    *,
+    extra_files: dict[str, bytes] | None = None,
+    entry_modes: dict[str, int] | None = None,
+    package_metadata: bytes | None = None,
+    record_rows: list[tuple[str, str, str]] | None = None,
+) -> bytes:
+    files = {
+        "acme_plugin/__init__.py": b"VALUE = 1\n",
+        f"{DIST_INFO}/WHEEL": (
+            b"Wheel-Version: 1.0\n"
+            b"Generator: plc9b-manifest\n"
+            b"Root-Is-Purelib: true\n"
+            b"Tag: py3-none-any\n\n"
+        ),
+        f"{DIST_INFO}/METADATA": package_metadata
+        or b"Metadata-Version: 2.1\nName: acme-plugin\nVersion: 1.0\n\n",
+    }
+    files.update(extra_files or {})
+    if record_rows is None:
+        record_rows = [
+            (name, _record_digest(payload), str(len(payload)))
+            for name, payload in files.items()
+        ]
+        record_rows.append((f"{DIST_INFO}/RECORD", "", ""))
+    record = io.StringIO(newline="")
+    csv.writer(record, lineterminator="\n").writerows(record_rows)
+    files[f"{DIST_INFO}/RECORD"] = record.getvalue().encode()
+
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for name, payload in files.items():
+            info = zipfile.ZipInfo(name)
+            info.create_system = 3
+            info.external_attr = (
+                (entry_modes or {}).get(name, stat.S_IFREG | 0o644) << 16
+            )
+            info.compress_type = zipfile.ZIP_DEFLATED
+            archive.writestr(info, payload)
+    return output.getvalue()
+
+
+def _record_rows() -> list[tuple[str, str, str]]:
+    files = {
+        "acme_plugin/__init__.py": b"VALUE = 1\n",
+        f"{DIST_INFO}/WHEEL": (
+            b"Wheel-Version: 1.0\n"
+            b"Generator: plc9b-manifest\n"
+            b"Root-Is-Purelib: true\n"
+            b"Tag: py3-none-any\n\n"
+        ),
+        f"{DIST_INFO}/METADATA": (
+            b"Metadata-Version: 2.1\nName: acme-plugin\nVersion: 1.0\n\n"
+        ),
+    }
+    rows = [
+        (name, _record_digest(payload), str(len(payload)))
+        for name, payload in files.items()
+    ]
+    rows.append((f"{DIST_INFO}/RECORD", "", ""))
+    return rows
+
+
+def _corrupt_local_header(payload: bytes) -> bytes:
+    changed = bytearray(payload)
+    central = changed.index(b"PK\x01\x02")
+    local_offset = struct.unpack_from("<L", changed, central + 42)[0]
+    changed[local_offset + 8 : local_offset + 10] = struct.pack("<H", 0)
+    return bytes(changed)
+
+
+def _claim_overlapping_local_entry(payload: bytes) -> bytes:
+    changed = bytearray(payload)
+    central_offsets: list[int] = []
+    cursor = 0
+    while (offset := changed.find(b"PK\x01\x02", cursor)) >= 0:
+        central_offsets.append(offset)
+        cursor = offset + 4
+    assert len(central_offsets) >= 2
+    first_local = struct.unpack_from("<L", changed, central_offsets[0] + 42)[0]
+    struct.pack_into("<L", changed, central_offsets[1] + 42, first_local)
+    return bytes(changed)
+
+
+def _claim_unsupported_compression(payload: bytes) -> bytes:
+    changed = bytearray(payload)
+    central = changed.index(b"PK\x01\x02")
+    struct.pack_into("<H", changed, central + 10, 99)
+    return bytes(changed)
+
+
+@dataclass(frozen=True)
+class _InspectionFixture:
+    payload: bytes
+    wheel_filename: str = WHEEL_FILENAME
+    supported_tags: frozenset[str] = frozenset({"py3-none-any"})
+    budgets: PackageInspectionBudgetV1 = PackageInspectionBudgetV1()
+    verifier: PackageWheelVerifier | None = None
+
+
+def _inspection_fixture(case_id: str) -> _InspectionFixture:
+    base = _wheel_bytes()
+    if case_id == "B-ARCH-TRUNCATED":
+        return _InspectionFixture(payload=base[:-8])
+    if case_id == "B-ARCH-HEADERS":
+        return _InspectionFixture(payload=_corrupt_local_header(base))
+    if case_id == "B-ARCH-OVERLAP":
+        return _InspectionFixture(payload=_claim_overlapping_local_entry(base))
+    if case_id == "B-ARCH-COMPRESSION":
+        return _InspectionFixture(payload=_claim_unsupported_compression(base))
+    if case_id == "B-ARCH-TRAILING":
+        return _InspectionFixture(payload=base + b"attacker-payload")
+    if case_id == "B-PATH-ABSOLUTE":
+        return _InspectionFixture(
+            payload=_wheel_bytes(extra_files={"/absolute.py": b"hostile"})
+        )
+    if case_id == "B-PATH-TRAVERSAL":
+        return _InspectionFixture(
+            payload=_wheel_bytes(extra_files={"../escape.py": b"hostile"})
+        )
+    if case_id == "B-PATH-EMPTY":
+        return _InspectionFixture(
+            payload=_wheel_bytes(extra_files={"pkg//empty.py": b"hostile"})
+        )
+    if case_id == "B-PATH-COLLISION-SEP":
+        return _InspectionFixture(
+            payload=_wheel_bytes(
+                extra_files={
+                    "pkg/name.py": b"one",
+                    "pkg\\name.py": b"two",
+                }
+            )
+        )
+    if case_id == "B-PATH-COLLISION-UNICODE":
+        return _InspectionFixture(
+            payload=_wheel_bytes(
+                extra_files={
+                    "pkg/caf\N{LATIN SMALL LETTER E WITH ACUTE}.py": b"one",
+                    "pkg/cafe\N{COMBINING ACUTE ACCENT}.py": b"two",
+                }
+            )
+        )
+    entry_types = {
+        "B-TYPE-SYMLINK": stat.S_IFLNK | 0o777,
+        "B-TYPE-DEVICE": stat.S_IFCHR | 0o600,
+        "B-TYPE-SOCKET": stat.S_IFSOCK | 0o600,
+        "B-TYPE-FIFO": stat.S_IFIFO | 0o600,
+    }
+    if case_id in entry_types:
+        name = "pkg/hostile-entry"
+        return _InspectionFixture(
+            payload=_wheel_bytes(
+                extra_files={name: b"hostile"},
+                entry_modes={name: entry_types[case_id]},
+            )
+        )
+    if case_id == "B-LIMIT-ENTRY":
+        return _InspectionFixture(
+            payload=_wheel_bytes(extra_files={"pkg/large.bin": b"x" * 200}),
+            budgets=PackageInspectionBudgetV1(
+                max_entries=4,
+                max_total_expanded_bytes=128,
+                max_entry_expanded_bytes=64,
+            ),
+        )
+    if case_id == "B-LIMIT-MEMORY":
+        return _InspectionFixture(
+            payload=base,
+            budgets=PackageInspectionBudgetV1(max_metadata_bytes=64),
+        )
+    if case_id == "B-LIMIT-CPU":
+        return _InspectionFixture(
+            payload=base,
+            budgets=PackageInspectionBudgetV1(max_wall_time_ms=1),
+            verifier=PackageWheelVerifier(clock=_AdvancingInspectionClock()),
+        )
+    if case_id == "B-WHEEL-SDIST":
+        return _InspectionFixture(
+            payload=base,
+            wheel_filename="acme_plugin-1.0.tar.gz",
+        )
+    if case_id == "B-WHEEL-ZIP":
+        return _InspectionFixture(
+            payload=base,
+            wheel_filename="acme_plugin-1.0.zip",
+        )
+    if case_id == "B-WHEEL-TAGS":
+        return _InspectionFixture(
+            payload=base,
+            supported_tags=frozenset({"cp313-cp313-win_amd64"}),
+        )
+    if case_id == "B-WHEEL-METADATA":
+        return _InspectionFixture(
+            payload=_wheel_bytes(
+                package_metadata=(
+                    b"Metadata-Version: 2.1\nName: another-project\nVersion: 9\n\n"
+                )
+            )
+        )
+    rows = _record_rows()
+    if case_id == "B-WHEEL-RECORD-HASH":
+        rows[0] = (rows[0][0], "sha256=" + "A" * 43, rows[0][2])
+        return _InspectionFixture(payload=_wheel_bytes(record_rows=rows))
+    if case_id == "B-WHEEL-RECORD-SET":
+        rows.pop(0)
+        return _InspectionFixture(payload=_wheel_bytes(record_rows=rows))
+    if case_id == "B-WHEEL-RECORD-ALGO":
+        rows[0] = (rows[0][0], "md5=deadbeef", rows[0][2])
+        return _InspectionFixture(payload=_wheel_bytes(record_rows=rows))
+    raise AssertionError(f"Unhandled PLC9B2h inspection fixture: {case_id}")
 
 
 @dataclass
@@ -86,6 +342,15 @@ class _Clock:
     now: float = 100.0
 
     def __call__(self) -> float:
+        return self.now
+
+
+@dataclass
+class _AdvancingInspectionClock:
+    now: float = 100.0
+
+    def __call__(self) -> float:
+        self.now += 0.002
         return self.now
 
 
@@ -130,6 +395,7 @@ class _SourceStream:
 class _SourceAuthority:
     case_id: str
     secret: str
+    payload: bytes | None = None
     clock: _Clock | None = None
     authorize_calls: int = 0
     stream: _SourceStream | None = None
@@ -145,7 +411,7 @@ class _SourceAuthority:
                 consumed_bytes=0,
             )
 
-        chunks = (b"wheel",)
+        chunks = (self.payload if self.payload is not None else b"wheel",)
         request_count = 1
         redirects: tuple[str, ...] = ()
         advance_seconds = 0.0
@@ -252,7 +518,16 @@ def _owner(
     )
 
 
-def _b2_owner(tmp_path: Path, *, case_id: str, secret: str):
+def _b2_owner(
+    tmp_path: Path,
+    *,
+    case_id: str,
+    secret: str,
+    payload: bytes | None = None,
+    inspection_budgets: PackageInspectionBudgetV1 | None = None,
+    wheel_verifier: PackageWheelVerifier | None = None,
+    supported_tags: frozenset[str] | None = None,
+):
     lifecycle_journal = PackageLifecycleJournal(
         tmp_path / "package-lifecycle.jsonl"
     )
@@ -276,6 +551,7 @@ def _b2_owner(tmp_path: Path, *, case_id: str, secret: str):
     source_authority = _SourceAuthority(
         case_id=case_id,
         secret=secret,
+        payload=payload,
         clock=clock,
     )
     artifact_owner = PackageArtifactLifecycleOwner(
@@ -288,15 +564,17 @@ def _b2_owner(tmp_path: Path, *, case_id: str, secret: str):
         ),
         evidence_journal=evidence_journal,
         cleanup_owner=cleanup_owner,
-        wheel_verifier=PackageWheelVerifier(),
+        wheel_verifier=wheel_verifier or PackageWheelVerifier(),
         acquisition_budgets=PackageAcquisitionBudgetV1(
-            max_transport_bytes=8 if case_id == "B-ACQ-BYTES" else 1024,
+            max_transport_bytes=(
+                8 if case_id == "B-ACQ-BYTES" else 256 * 1024
+            ),
             max_requests=1,
             max_redirects=1,
             max_wall_time_ms=5 if case_id == "B-ACQ-TIMEOUT" else 1000,
         ),
-        inspection_budgets=PackageInspectionBudgetV1(),
-        supported_tags=frozenset({"py3-none-any"}),
+        inspection_budgets=inspection_budgets or PackageInspectionBudgetV1(),
+        supported_tags=supported_tags or frozenset({"py3-none-any"}),
     )
     return (
         kernel,
@@ -309,7 +587,7 @@ def _b2_owner(tmp_path: Path, *, case_id: str, secret: str):
     )
 
 
-@pytest.mark.parametrize("case_id", IMPLEMENTED_MANIFEST_CASES)
+@pytest.mark.parametrize("case_id", EXECUTABLE_MANIFEST_CASES)
 def test_manifest_case(case_id: str, tmp_path: Path) -> None:
     if case_id == "B-CLASS-PLUGIN":
         owner, journal = _owner(
@@ -492,6 +770,100 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
         assert store.attempt_names() == ()
         assert store.total_residue_bytes() == 0
         assert before_outside.read_bytes() == b"preserve"
+        records = journal.records()
+        replay = artifact_owner.execute(execution)
+        assert replay.status == result.status
+        assert replay.candidate is None
+        assert journal.records() == records
+        assert source_authority.authorize_calls == 1
+        assert secret not in repr(result)
+        for path in tmp_path.rglob("*"):
+            if path.is_file():
+                assert secret.encode() not in path.read_bytes()
+    elif case_id in PLC9B2H_CANDIDATE_MANIFEST_CASES:
+        fixture = _inspection_fixture(case_id)
+        secret = f"manifest-secret-{case_id.lower()}"
+        (
+            kernel,
+            artifact_owner,
+            journal,
+            evidence_journal,
+            cleanup_journal,
+            store,
+            source_authority,
+        ) = _b2_owner(
+            tmp_path,
+            case_id=case_id,
+            secret=secret,
+            payload=fixture.payload,
+            inspection_budgets=fixture.budgets,
+            wheel_verifier=fixture.verifier,
+            supported_tags=fixture.supported_tags,
+        )
+        classified = kernel.submit(
+            _request(
+                source=(
+                    f"https://user:{secret}@packages.example.test/hostile.whl"
+                    f"?token={secret}#{secret}"
+                )
+            )
+        )
+        execution = PackageArtifactExecutionRequestV1(
+            operation_id=classified.operation_id,
+            request_fingerprint=classified.request_fingerprint,
+            expected_attempt_epoch=classified.attempt_epoch,
+            wheel_filename=fixture.wheel_filename,
+            credential_reference=f"opaque:{secret}",
+        )
+        outside = tmp_path / "outside-sentinel"
+        outside.write_bytes(b"preserve")
+        process_marker = tmp_path / "artifact-process-marker"
+
+        result = artifact_owner.execute(execution)
+
+        if case_id.startswith("B-ARCH-"):
+            expected_code = "package_archive_malformed"
+        elif case_id in {
+            "B-PATH-ABSOLUTE",
+            "B-PATH-TRAVERSAL",
+            "B-PATH-EMPTY",
+            "B-PATH-COLLISION-SEP",
+        }:
+            expected_code = "package_archive_path_rejected"
+        elif case_id == "B-PATH-COLLISION-UNICODE":
+            expected_code = "package_archive_name_collision"
+        elif case_id.startswith("B-TYPE-"):
+            expected_code = "package_archive_entry_type_rejected"
+        elif case_id.startswith("B-LIMIT-"):
+            expected_code = "package_resource_limit_exceeded"
+        elif case_id in {"B-WHEEL-SDIST", "B-WHEEL-ZIP", "B-WHEEL-TAGS"}:
+            expected_code = "package_artifact_type_rejected"
+        elif case_id == "B-WHEEL-METADATA":
+            expected_code = "package_wheel_metadata_invalid"
+        else:
+            expected_code = "package_wheel_record_invalid"
+        expected_phase = (
+            "extracted" if case_id.startswith("B-WHEEL-RECORD-") else "inspecting"
+        )
+        assert result.status.phase == expected_phase
+        assert result.status.disposition == "rejected"
+        assert result.status.failure is not None
+        assert result.status.failure.code == expected_code
+        assert result.candidate is None
+        assert result.cleanup_status is None
+        assert source_authority.authorize_calls == 1
+        assert source_authority.stream is not None
+        assert source_authority.stream.requests_started == 1
+        assert source_authority.stream.writes_started == 1
+        evidence = evidence_journal.records()
+        assert len(evidence) == 1
+        assert evidence[0].evidence_kind == "bounded_acquisition"
+        assert cleanup_journal.records() == ()
+        assert store.attempt_names() == ()
+        assert store.total_residue_bytes() == 0
+        assert outside.read_bytes() == b"preserve"
+        assert not process_marker.exists()
+        assert "acme_plugin" not in sys.modules
         records = journal.records()
         replay = artifact_owner.execute(execution)
         assert replay.status == result.status

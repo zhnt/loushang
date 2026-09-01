@@ -361,6 +361,10 @@ def _implemented_b2_manifest_cases() -> set[str]:
     return _literal_manifest_cases("IMPLEMENTED_B2_MANIFEST_CASES")
 
 
+def _plc9b2h_candidate_manifest_cases() -> set[str]:
+    return _literal_manifest_cases("PLC9B2H_CANDIDATE_MANIFEST_CASES")
+
+
 def _journal_effect_policy() -> list[tuple[str, str, str]]:
     contract = _source(CONTRACT)
     block = contract.split("<!-- plc9b-journal-effect-policy:start -->", 1)[1]
@@ -444,11 +448,12 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.2g" in contract
+    assert "Contract version: PLC9B.2h-candidate" in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
     assert "PLC9B2g Accepted Acquisition Manifest Slice" in contract
+    assert "PLC9B2h Archive And Wheel Manifest Candidate" in contract
     assert "Harness Quality run `33487861156`" in contract
     assert "Artifact `plc9b-linux-native-pytest-report` (ID `9792500305`)" in (
         " ".join(contract.split())
@@ -652,12 +657,13 @@ def test_plc9b_transaction_never_confuses_publication_with_selection() -> None:
         assert boundary in contract
 
 
-def test_plc9b_adversarial_manifest_tracks_exact_b1_and_b2_progress() -> None:
+def test_plc9b_adversarial_manifest_tracks_accepted_and_candidate_progress() -> None:
     manifest = _adversarial_manifest()
     categories = Counter(case_id.split("-", 2)[1] for case_id in manifest)
     implemented_b1 = _implemented_b1_manifest_cases()
     implemented_b2 = _implemented_b2_manifest_cases()
     implemented = implemented_b1 | implemented_b2
+    b2h_candidate = _plc9b2h_candidate_manifest_cases()
 
     assert len(manifest) == 127
     assert categories == EXPECTED_MANIFEST_CATEGORY_COUNTS
@@ -703,6 +709,41 @@ def test_plc9b_adversarial_manifest_tracks_exact_b1_and_b2_progress() -> None:
         "B-ACQ-DIGEST",
     }
     assert implemented_b1.isdisjoint(implemented_b2)
+    assert b2h_candidate == {
+        "B-ARCH-TRUNCATED",
+        "B-ARCH-HEADERS",
+        "B-ARCH-OVERLAP",
+        "B-ARCH-COMPRESSION",
+        "B-ARCH-TRAILING",
+        "B-PATH-ABSOLUTE",
+        "B-PATH-TRAVERSAL",
+        "B-PATH-EMPTY",
+        "B-PATH-COLLISION-SEP",
+        "B-PATH-COLLISION-UNICODE",
+        "B-TYPE-SYMLINK",
+        "B-TYPE-DEVICE",
+        "B-TYPE-SOCKET",
+        "B-TYPE-FIFO",
+        "B-LIMIT-ENTRY",
+        "B-LIMIT-MEMORY",
+        "B-LIMIT-CPU",
+        "B-WHEEL-SDIST",
+        "B-WHEEL-ZIP",
+        "B-WHEEL-TAGS",
+        "B-WHEEL-METADATA",
+        "B-WHEEL-RECORD-HASH",
+        "B-WHEEL-RECORD-SET",
+        "B-WHEEL-RECORD-ALGO",
+    }
+    assert implemented.isdisjoint(b2h_candidate)
+    assert all(manifest[case_id]["status"] == "planned" for case_id in b2h_candidate)
+    separator = manifest["B-PATH-COLLISION-SEP"]
+    assert separator["fixture"] == "separator_ambiguous_path"
+    assert separator["code"] == "package_archive_path_rejected"
+    metadata = manifest["B-WHEEL-METADATA"]
+    assert metadata["barrier"] == "inspecting"
+    assert metadata["disposition"] == "rejected@inspecting"
+    assert manifest["B-TYPE-HARDLINK"]["status"] == "planned"
     assert len(manifest) - len(implemented) == 113
     workflow = _source(HARNESS_WORKFLOW)
     assert "PLC9B Linux native adversarial gate (plc9b-linux-native)" in workflow
