@@ -13,7 +13,7 @@
   inert records, classification, journal CAS, retry/cancel/status, and disabled
   refusal. It has no production composition or artifact capability; all
   acquisition/publication target rows below remain migration obligations.
-- PLC9B2a/B2b/B2c/B2d/B2e/B2f-candidate refinement: unbound Source
+- PLC9B2a/B2b/B2c/B2d/B2e/B2f refinement: unbound Source
   Authority/bounded-sink/quarantine, safe wheel inspection, dark
   phase-CAS/evidence composition, and cleanup-domain tombstones exist inside
   the same Package owner boundary. Raw ZIP-layout, path/type/budget,
@@ -23,8 +23,10 @@
   acquired/verified crash adoption are append-once or exactly replayable.
   Recovery reconstructs process-local candidates from durable local evidence
   without Source reauthorization. A Package-local `NtCreateFile` rooted-handle
-  backend and non-skippable native Windows fixture set are present as the B2f
-  candidate, but native acceptance still requires the Windows CI result.
+  backend and non-skippable native Windows fixture set were accepted by
+  Windows Shell Compatibility run `33486925218` at head `fb263301`: five tests
+  ran with zero skips, failures, or errors, and their XML was retained in
+  artifact `windows-shell-pytest-reports` (ID `9792151355`).
   Publication, later transaction phases, and every production route remain
   migration obligations; no global adversarial row is promoted.
 

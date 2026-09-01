@@ -436,7 +436,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.2f-candidate" in contract
+    assert "Contract version: PLC9B.2f" in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
@@ -1489,8 +1489,18 @@ def test_plc9b2f_windows_backend_is_rooted_and_has_a_nonskippable_native_gate(
     windows = _source(WINDOWS_QUARANTINE)
     native_tests = _source(WINDOWS_NATIVE_TEST)
     workflow = _source(WINDOWS_WORKFLOW)
+    normalized_contract = " ".join(contract.split())
 
-    assert "PLC9B2f Native Windows Quarantine Candidate" in contract
+    assert "PLC9B2f Accepted Native Windows Quarantine" in normalized_contract
+    assert "Windows Shell Compatibility run `33486925218`" in normalized_contract
+    assert (
+        "`5 passed`, `0 skipped`, `0 failures`, and `0 errors`"
+        in normalized_contract
+    )
+    assert (
+        "artifact `windows-shell-pytest-reports` (ID `9792151355`)"
+        in normalized_contract
+    )
     assert "NtCreateFile" in windows
     assert "root_directory" in windows
     assert "_FILE_OPEN_REPARSE_POINT" in windows
