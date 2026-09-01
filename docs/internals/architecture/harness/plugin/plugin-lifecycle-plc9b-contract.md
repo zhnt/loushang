@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.3c-candidate.
+- Contract version: PLC9B.3c.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -36,7 +36,7 @@
   manifest row before recursive owner composition is executable. B3b is the
   accepted adjacent-evidence slice that durably binds authenticated Source
   facts and reconstructs dependency headers without changing accepted v1
-  receipt or wheel-evidence schemas. B3c is a dark candidate recursive closure
+  receipt or wheel-evidence schemas. B3c is an accepted dark recursive closure
   builder over those accepted components. It has no lifecycle-phase journal,
   recovery, stable-ref, publication, or production binding, so it still
   promotes no global manifest row.
@@ -530,7 +530,7 @@ Its XML executed exactly 52 tests with zero skips, failures, or errors,
 confirming that durable closure inputs changed the evidence sequence without
 promoting any additional global manifest row.
 
-## PLC9B3c Candidate Recursive Closure Builder
+## PLC9B3c Accepted Recursive Closure Builder
 
 `loushang.harness.resources.packages.plugin_lifecycle.closure_owner` composes
 the accepted B2/B3 components into a process-local recursive builder. It starts
@@ -561,16 +561,24 @@ authority. The resulting complete candidate set is delegated to the accepted
 pure `PackageClosureVerifier`; the recursive builder does not duplicate or
 weaken its graph proof.
 
-B3c remains a component candidate. It does not journal
+B3c is accepted only as a dark component. It does not journal
 `resolving_closure -> closure_verified`, durably record resolver selections or
 the closure plan, recover a partial graph, integrate cleanup debt after process
 loss, create transaction pins or typed stable refs, publish a committed set,
 mutate desired state, or bind a CLI/RPC/Session/startup route. Therefore all
 `B-LIMIT-GRAPH/SOLVER/REQUESTS`, `B-CLOSURE-*`, `B-CRASH-RESOLVING`, and
-`B-CRASH-CLOSURE` rows remain `planned`. Candidate acceptance requires the
-complete Harness gate and retained non-skippable Linux manifest report; B3d
-owns lifecycle-phase and recovery integration, while B3e owns stable refs,
-pins, and atomic committed-set publication.
+`B-CRASH-CLOSURE` rows remain `planned`. B3d owns lifecycle-phase and recovery
+integration, while B3e owns stable refs, pins, and atomic committed-set
+publication.
+
+B3c was accepted on 2026-09-01 by Harness Quality run `33505702666`, Linux
+harness job `99849101216`, against candidate head `9d1db33a`; all PR checks
+passed. The retained `plc9b-linux-native-pytest-report` artifact (ID
+`9799493328`) has upload digest
+`1022791049963c23171204823fdae22d4d70f1f6a06d505a8d837f2aef426b8d`.
+Its XML executed exactly 52 tests with zero skips, failures, or errors,
+confirming that recursive closure composition remained dark and promoted no
+global manifest row.
 
 ## First Principles
 

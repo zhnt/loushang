@@ -470,7 +470,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.3c-candidate" in contract
+    assert "Contract version: PLC9B.3c" in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
@@ -481,7 +481,14 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
     assert "PLC9B2k Accepted POSIX Hardlink Normalization Slice" in contract
     assert "PLC9B3a Accepted Dark Closure-v2 Verifier Slice" in contract
     assert "PLC9B3b Accepted Durable Closure Inputs" in contract
-    assert "PLC9B3c Candidate Recursive Closure Builder" in contract
+    assert "PLC9B3c Accepted Recursive Closure Builder" in contract
+    assert "Harness Quality run `33505702666`" in contract
+    assert "Linux\nharness job `99849101216`" in contract
+    assert "(ID\n`9799493328`)" in contract
+    assert (
+        "1022791049963c23171204823fdae22d4d70f1f6a06d505a8d837f2aef426b8d"
+        in contract
+    )
     assert "Harness Quality run `33501681463`" in contract
     assert "Linux\nharness job `99836237482`" in contract
     assert "(ID\n`9797945496`)" in contract
@@ -1859,7 +1866,7 @@ def test_plc9b3c_recursive_builder_is_selection_only_dark_and_unpromoted() -> No
         "rejects_direct_url_requirement_without_resolver_call",
     ):
         assert evidence in component_tests
-    assert "B3c remains a component candidate" in contract
+    assert "B3c is accepted only as a dark component" in contract
     assert "does not journal\n`resolving_closure -> closure_verified`" in contract
 
 
