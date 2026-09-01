@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.3d2b.
+- Contract version: PLC9B.3e1-candidate.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -47,7 +47,10 @@
   closure-limit rows after their separate retained report passed, without
   changing the accepted crash evidence. B3d-2b accepts all seven composed
   closure-integrity rows after their separate retained report passed, while
-  retaining dark operation.
+  retaining dark operation. B3e-1 candidate code adds strict credential-free
+  typed stable refs, immutable closure-node/lock records, and an exact
+  committed-set ref. It constructs no pin, stages no store object, publishes
+  no namespace, and promotes no global manifest row.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -715,6 +718,36 @@ Quality run `33521116497`, Linux harness job `99900313474`, retained
 `41c3d0111fabf31a22dee0269c51bae36da9e6a5e1e9df03eec78be86dca4780`.
 The XML executed exactly 64 manifest nodes, including all seven
 `B-CLOSURE-*` fixtures, with zero skips, failures, or errors.
+
+## PLC9B3e-1 Candidate Typed Commit Records
+
+B3e-1 freezes the credential-free records that later transaction phases may
+consume without granting those phases any capability. `VerifiedArtifactRefV1`
+can represent only a neutral dependency-store revision;
+`PluginRevisionRefV1` can represent only the designated Plugin root and binds
+its Installation/Plugin identities. Both refs bind store identity/revision,
+canonical distribution/version, artifact digest, and extraction-tree digest
+to a deterministic content identifier. Their strict wire decoders reject
+unknown fields and future versions; neither schema can carry a pathname,
+credential, file handle, transaction pin, or mutable store object.
+
+`DependencyClosureLockV2` is constructed once from an accepted
+`VerifiedClosurePlanV2` plus one exact typed ref for every plan node. It
+requires the root/dependency ref type dictated by each node, revalidates every
+artifact/tree/name/version fact, reconstructs the complete plan including
+`maxDepth`, and rechecks both the prepublication graph digest and verified-plan
+fingerprint before accepting its own lock digest. A missing, extra,
+role-confused, reordered, or modified ref/node fails closed.
+
+`CommittedPackageSetRefV1` is the sole record shape for one logical set. It
+binds the exact designated root and canonical dependency refs to
+operation/attempt, request, Product/scope, Installation/Plugin,
+classification, closure-lock and prepublication graph digests, and one commit
+revision. This candidate does not yet prove that any store issued a ref: B3e-2
+must introduce the narrow transaction-pin/store ports and durable pin journal,
+and B3e-3 must own staging plus atomic set publication. No production module or
+public facade imports these records, no desired state changes, and all
+`B-PUB-*` and later crash rows remain `planned`.
 
 ## First Principles
 

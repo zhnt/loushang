@@ -26,6 +26,7 @@ CLOSURE_VERIFIER = OWNER_KERNEL_ROOT / "closure.py"
 CLOSURE_OWNER = OWNER_KERNEL_ROOT / "closure_owner.py"
 CLOSURE_JOURNAL = OWNER_KERNEL_ROOT / "closure_journal.py"
 CLOSURE_RUNTIME = OWNER_KERNEL_ROOT / "closure_runtime.py"
+COMMIT_RECORDS = OWNER_KERNEL_ROOT / "commit_records.py"
 CLOSURE_TEST = Path("tests/harness/resources/packages/test_plc9b_closure.py")
 CLOSURE_OWNER_TEST = Path(
     "tests/harness/resources/packages/test_plc9b_closure_owner.py"
@@ -35,6 +36,9 @@ CLOSURE_JOURNAL_TEST = Path(
 )
 CLOSURE_RUNTIME_TEST = Path(
     "tests/harness/resources/packages/test_plc9b_closure_runtime.py"
+)
+COMMIT_RECORDS_TEST = Path(
+    "tests/harness/resources/packages/test_plc9b_commit_records.py"
 )
 PYPROJECT = Path("pyproject.toml")
 WINDOWS_NATIVE_TEST = Path(
@@ -485,7 +489,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.3d2b" in contract
+    assert "Contract version: PLC9B.3e1-candidate" in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
@@ -500,6 +504,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
     assert "PLC9B3d-1 Accepted Durable Closure Recovery" in contract
     assert "PLC9B3d-2a Accepted Composed Closure Limits" in contract
     assert "PLC9B3d-2b Accepted Composed Closure Integrity" in contract
+    assert "PLC9B3e-1 Candidate Typed Commit Records" in contract
     assert "Harness Quality run `33505702666`" in contract
     assert "Linux\nharness job `99849101216`" in contract
     assert "(ID\n`9799493328`)" in contract
@@ -2007,13 +2012,76 @@ def test_plc9b3d_candidate_binds_recovery_before_io_and_remains_dark() -> None:
     assert "Linux harness job `99900313474`" in normalized
     assert "artifact ID `9805712792`" in normalized
     assert (
-        "41c3d0111fabf31a22dee0269c51bae36da9e6a5e1e9df03eec78be86dca4780"
-        in contract
+        "41c3d0111fabf31a22dee0269c51bae36da9e6a5e1e9df03eec78be86dca4780" in contract
     )
     assert "executed exactly 64 manifest nodes" in contract
     assert "cleanup-debt custody for every rejected candidate" in inventory
     assert "retained artifact `9805712792` executed exactly 64 native" in (
         " ".join(inventory.split())
+    )
+
+
+def test_plc9b3e1_typed_commit_records_are_strict_dark_and_unpromoted() -> None:
+    contract = _source(CONTRACT)
+    inventory = _source(INVENTORY)
+    source = _source(COMMIT_RECORDS)
+    component_tests = _source(COMMIT_RECORDS_TEST)
+    package_facade = _source(PACKAGE_ROOT / "__init__.py")
+    internal_facade = _source(OWNER_KERNEL_ROOT / "__init__.py")
+    author_sdk = _source(AUTHOR_SDK)
+    manifest = _adversarial_manifest()
+
+    assert COMMIT_RECORDS.is_file()
+    for symbol in (
+        "class VerifiedArtifactRefV1:",
+        "class PluginRevisionRefV1:",
+        "class DependencyClosureNodeV2:",
+        "class DependencyClosureLockV2:",
+        "class CommittedPackageSetRefV1:",
+    ):
+        assert symbol in source
+        public_name = symbol.removeprefix("class ").removesuffix(":")
+        assert public_name not in package_facade
+        assert public_name not in internal_facade
+        assert public_name not in author_sdk
+    tree = ast.parse(source, filename=str(COMMIT_RECORDS))
+    imported = {
+        node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
+    }
+    imported.update(
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    )
+    forbidden_modules = (
+        "loushang.harness.plugin_management",
+        "loushang.harness.resources.plugins.revisions",
+        "loushang.coding",
+        "loushang.foundation",
+        "pathlib",
+        "subprocess",
+    )
+    assert not any(
+        module == forbidden or module.startswith(f"{forbidden}.")
+        for module in imported
+        for forbidden in forbidden_modules
+    )
+    for evidence in (
+        "requires_the_exact_typed_node_set",
+        "rejects_role_confusion_and_changed_artifact_evidence",
+        "revalidates_embedded_plan_instead_of_only_its_digest",
+        "reject_extensions_and_future_versions",
+        "rejects_root_identity_drift_and_is_credential_free",
+        "nested_ref_tampering_is_rejected",
+    ):
+        assert evidence in component_tests
+    assert "B3e-1 freezes the credential-free records" in contract
+    assert "PLC9B3e-1 candidate code adds internal strict typed" in inventory
+    assert all(
+        manifest[case_id]["status"] == "planned"
+        for case_id in manifest
+        if case_id.startswith("B-PUB-")
     )
 
 
