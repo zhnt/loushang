@@ -1193,8 +1193,9 @@ native identity, it is a collision and fails with
 `package_publication_collision`; bytes and a predictable digest name confer no
 authority. Candidate-free receipt validation reopens the configured root,
 selects the exact durable settlement, revalidates the complete physical tree,
-and returns only that same credential-free receipt. Abandoned pre-rename
-records authorize no substituted tree and remain auditable.
+and returns only that same credential-free receipt. Pre-rename records remain
+auditable; a retry whose complete observed native identity differs requires a
+separate authorization record.
 
 The composed adversarial manifest promotes `B-PUB-COLLISION` at the `staging`
 barrier and `B-PUB-REUSE` through `committed`; all twelve physical publication
