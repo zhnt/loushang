@@ -90,11 +90,14 @@
   cleanup-debt custody for every rejected candidate, after all PR checks passed
   and retained artifact `9805712792` executed exactly 64 native manifest nodes
   with zero skips, failures, or errors.
-  PLC9B3e-1 candidate code adds internal strict typed root/dependency refs, an
+  PLC9B3e-1 accepted code adds internal strict typed root/dependency refs, an
   immutable closure lock that reconstructs and revalidates the accepted v2
   plan, and one exact committed-set ref. It has no store or retention-ledger
   import, live pin, staging writer, atomic publication, admission, desired-state
   effect, or production route. No global adversarial row is promoted.
+  All PR checks passed and retained artifact `9806065559` executed the
+  unchanged 64 native manifest nodes without skips, failures, errors, or any
+  `B-PUB-*` node.
   Pins, publication, later transaction phases, and every production route
   remain migration obligations.
 

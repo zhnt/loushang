@@ -489,7 +489,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.3e1-candidate" in contract
+    assert "Contract version: PLC9B.3e1" in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
@@ -504,7 +504,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
     assert "PLC9B3d-1 Accepted Durable Closure Recovery" in contract
     assert "PLC9B3d-2a Accepted Composed Closure Limits" in contract
     assert "PLC9B3d-2b Accepted Composed Closure Integrity" in contract
-    assert "PLC9B3e-1 Candidate Typed Commit Records" in contract
+    assert "PLC9B3e-1 Accepted Typed Commit Records" in contract
     assert "Harness Quality run `33505702666`" in contract
     assert "Linux\nharness job `99849101216`" in contract
     assert "(ID\n`9799493328`)" in contract
@@ -2077,7 +2077,17 @@ def test_plc9b3e1_typed_commit_records_are_strict_dark_and_unpromoted() -> None:
     ):
         assert evidence in component_tests
     assert "B3e-1 freezes the credential-free records" in contract
-    assert "PLC9B3e-1 candidate code adds internal strict typed" in inventory
+    assert "PLC9B3e-1 accepted code adds internal strict typed" in inventory
+    normalized = " ".join(contract.split())
+    assert "B3e-1 was accepted on 2026-09-01 against candidate head `7e9bebba`" in (
+        normalized
+    )
+    assert "Harness Quality run `33521945259`" in normalized
+    assert "Linux harness job `99903140145`" in normalized
+    assert "artifact ID `9806065559`" in normalized
+    assert (
+        "0796849b296edb53f9f2a804e7db35b8467dad375a11695870e86e221bf124bd" in contract
+    )
     assert all(
         manifest[case_id]["status"] == "planned"
         for case_id in manifest

@@ -98,9 +98,10 @@ Neither may silently override a narrower implemented owner contract.
   closure-limit rows after the retained 57-row Linux-native report passed;
   B3d-2b accepts all seven closure-integrity rows with bounded cleanup-debt
   custody after the retained 64-row Linux-native report passed. PLC9B3e-1
-  candidate code adds dark credential-free typed stable refs, an immutable
+  accepted code adds dark credential-free typed stable refs, an immutable
   closure lock, and the exact committed-set record without pinning, staging,
-  publishing, admission, or production binding.
+  publishing, admission, or production binding; its retained native report
+  remained exactly 64 rows and contained no `B-PUB-*` node.
   Transaction pins, publication, and production routing remain unimplemented.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.

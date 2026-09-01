@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.3e1-candidate.
+- Contract version: PLC9B.3e1.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -47,7 +47,7 @@
   closure-limit rows after their separate retained report passed, without
   changing the accepted crash evidence. B3d-2b accepts all seven composed
   closure-integrity rows after their separate retained report passed, while
-  retaining dark operation. B3e-1 candidate code adds strict credential-free
+  retaining dark operation. B3e-1 accepted code adds strict credential-free
   typed stable refs, immutable closure-node/lock records, and an exact
   committed-set ref. It constructs no pin, stages no store object, publishes
   no namespace, and promotes no global manifest row.
@@ -719,7 +719,7 @@ Quality run `33521116497`, Linux harness job `99900313474`, retained
 The XML executed exactly 64 manifest nodes, including all seven
 `B-CLOSURE-*` fixtures, with zero skips, failures, or errors.
 
-## PLC9B3e-1 Candidate Typed Commit Records
+## PLC9B3e-1 Accepted Typed Commit Records
 
 B3e-1 freezes the credential-free records that later transaction phases may
 consume without granting those phases any capability. `VerifiedArtifactRefV1`
@@ -743,11 +743,19 @@ role-confused, reordered, or modified ref/node fails closed.
 binds the exact designated root and canonical dependency refs to
 operation/attempt, request, Product/scope, Installation/Plugin,
 classification, closure-lock and prepublication graph digests, and one commit
-revision. This candidate does not yet prove that any store issued a ref: B3e-2
+revision. This record slice does not yet prove that any store issued a ref: B3e-2
 must introduce the narrow transaction-pin/store ports and durable pin journal,
 and B3e-3 must own staging plus atomic set publication. No production module or
 public facade imports these records, no desired state changes, and all
 `B-PUB-*` and later crash rows remain `planned`.
+
+B3e-1 was accepted on 2026-09-01 against candidate head `7e9bebba` after every
+PR check passed. Harness Quality run `33521945259`, Linux harness job
+`99903140145`, retained `plc9b-linux-native-pytest-report` artifact ID
+`9806065559` with upload digest
+`0796849b296edb53f9f2a804e7db35b8467dad375a11695870e86e221bf124bd`.
+The XML executed the unchanged 64 manifest nodes with zero skips, failures, or
+errors and contained no `B-PUB-*` node.
 
 ## First Principles
 
