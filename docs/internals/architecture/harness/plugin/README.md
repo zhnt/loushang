@@ -85,8 +85,10 @@ Neither may silently override a narrower implemented owner contract.
   Windows archive path/type matrix. PLC9B2j is the accepted Linux-native slice
   for artifact identity, early crash, and cleanup-debt recovery. PLC9B2k is the
   accepted POSIX-native slice proving Wheel 1.x hardlinked sources are
-  normalized to independent regular files. Closure, publication, and
-  production routing remain unimplemented.
+  normalized to independent regular files. PLC9B3a is a dark pure closure-v2
+  verifier candidate with component-level adversarial fixtures; recursive
+  owner composition, typed refs, publication, and production routing remain
+  unimplemented.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)

@@ -19,6 +19,9 @@ PACKAGE_SOURCE_RESOLVER = PACKAGE_ROOT / "source_resolver.py"
 OWNER_KERNEL_ROOT = PACKAGE_ROOT / "plugin_lifecycle"
 BOUNDED_ACQUISITION = OWNER_KERNEL_ROOT / "acquisition.py"
 WINDOWS_QUARANTINE = OWNER_KERNEL_ROOT / "windows_quarantine.py"
+CLOSURE_VERIFIER = OWNER_KERNEL_ROOT / "closure.py"
+CLOSURE_TEST = Path("tests/harness/resources/packages/test_plc9b_closure.py")
+PYPROJECT = Path("pyproject.toml")
 WINDOWS_NATIVE_TEST = Path(
     "tests/harness/resources/packages/test_plc9b_windows_native.py"
 )
@@ -460,7 +463,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.2k" in contract
+    assert "Contract version: PLC9B.3a-candidate" in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
@@ -469,6 +472,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
     assert "PLC9B2i Accepted Windows Archive Manifest Slice" in contract
     assert "PLC9B2j Accepted Recovery And Cleanup Manifest Slice" in contract
     assert "PLC9B2k Accepted POSIX Hardlink Normalization Slice" in contract
+    assert "PLC9B3a Dark Closure-v2 Verifier Candidate" in contract
     assert "Harness Quality run `33493714647`" in contract
     assert "Artifact `plc9b-linux-native-pytest-report` (ID `9794816942`)" in (
         " ".join(contract.split())
@@ -1626,6 +1630,80 @@ def test_plc9b2a_acquisition_is_unbound_bounded_and_pathless() -> None:
             "tarfile",
         )
     )
+
+
+def test_plc9b3a_closure_verifier_is_dark_pure_and_does_not_promote_rows() -> None:
+    contract = _source(CONTRACT)
+    source = _source(CLOSURE_VERIFIER)
+    component_tests = _source(CLOSURE_TEST)
+    package_facade = _source(OWNER_KERNEL_ROOT / "__init__.py")
+    author_sdk = _source(AUTHOR_SDK)
+    project = _source(PYPROJECT)
+    manifest = _adversarial_manifest()
+
+    assert CLOSURE_VERIFIER.is_file()
+    assert "class PackageClosureVerifier:" in source
+    assert "class VerifiedClosurePlanV2:" in source
+    assert "class VerifiedClosurePlanNodeV2:" in source
+    assert "class PackageResolutionEnvironmentV1:" in source
+    assert '"packaging>=24,<27"' in project
+    for forbidden_symbol in (
+        "PluginRevisionStore",
+        "PluginPackageLifecycleLedger",
+        "PackageLifecycleOwner",
+        "open(",
+        "Path(",
+    ):
+        assert forbidden_symbol not in source
+    tree = ast.parse(source, filename=str(CLOSURE_VERIFIER))
+    imported = {
+        node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
+    }
+    imported.update(
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    )
+    forbidden_modules = {
+        "httpx",
+        "pathlib",
+        "requests",
+        "socket",
+        "subprocess",
+        "urllib.request",
+    }
+    assert not any(
+        module == forbidden or module.startswith(f"{forbidden}.")
+        for module in imported
+        for forbidden in forbidden_modules
+    )
+    for internal_symbol in (
+        "PackageClosureVerifier",
+        "VerifiedClosurePlanV2",
+        "PackageClosureVerificationRequestV2",
+    ):
+        assert internal_symbol not in package_facade
+        assert internal_symbol not in author_sdk
+
+    component_case_ids = {
+        "B-LIMIT-GRAPH",
+        "B-LIMIT-SOLVER",
+        "B-LIMIT-REQUESTS",
+        "B-CLOSURE-MISSING",
+        "B-CLOSURE-DIGEST",
+        "B-CLOSURE-ORIGIN",
+        "B-CLOSURE-MARKER",
+        "B-CLOSURE-NAME",
+        "B-CLOSURE-CYCLE",
+        "B-CLOSURE-V1",
+    }
+    assert all(case_id in component_tests for case_id in component_case_ids)
+    assert all(
+        manifest[case_id]["status"] == "planned" for case_id in component_case_ids
+    )
+    assert "component evidence only" in contract
+    assert "creates no\ntyped stable ref" in contract
 
 
 def test_plc9b2f_windows_backend_is_rooted_and_has_a_nonskippable_native_gate(

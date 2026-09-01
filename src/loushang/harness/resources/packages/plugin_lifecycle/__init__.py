@@ -2,9 +2,9 @@
 
 This package is intentionally not re-exported from the public Package facade.
 PLC9B1 contains only inert records, classification, durable status, and CAS
-mechanics. Later dark submodules add explicitly injected acquisition and
-quarantine capabilities, but this package still has no production route,
-publication, process, or desired-state authority.
+mechanics. Later dark submodules add explicitly injected acquisition,
+quarantine, wheel, and pure closure-verification capabilities, but this package
+still has no production route, publication, process, or desired-state authority.
 """
 
 from __future__ import annotations

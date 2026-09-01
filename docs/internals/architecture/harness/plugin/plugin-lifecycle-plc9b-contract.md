@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.2k.
+- Contract version: PLC9B.3a-candidate.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -32,6 +32,8 @@
   rejected quarantine cleanup debt after their Linux-native report passed.
   B2k corrects the hardlink threat model and implements one POSIX-native source
   normalization row after its Linux-native report passed.
+  B3a adds a dark, pure closure-v2 verifier candidate; it promotes no global
+  manifest row before recursive owner composition is executable.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -425,6 +427,44 @@ The row is therefore `implemented`.
 A future Wheel version that standardizes link semantics is unsupported input
 until a separate reviewed contract and verifier are implemented; it cannot
 inherit B2k's normalization proof.
+
+## PLC9B3a Dark Closure-v2 Verifier Candidate
+
+`loushang.harness.resources.packages.plugin_lifecycle.closure` introduces a
+pure verification boundary over complete, already-proved artifact evidence. It
+accepts no path, file handle, Source adapter, network client, store, retention
+owner, journal writer, management service, or Product transport. Its only
+artifact inputs are typed authenticated Source envelopes, bounded acquisition
+receipts, and verified-wheel evidence. It therefore cannot acquire, stage,
+publish, pin, select, bind, or mutate desired state.
+
+The candidate adds strict versioned values for the complete resolution
+environment, normalized PEP 508 requirements, resolved requirement decisions,
+closure budgets, artifact candidates, closure-plan nodes, and
+`VerifiedClosurePlanV2`. `packaging` is a direct runtime dependency solely for
+the standardized requirement/specifier/marker grammar; PLC9B does not maintain
+a second handwritten dependency-language parser.
+
+The verifier proves one designated root, one operation and attempt, exact
+Source-envelope -> acquisition-receipt -> wheel-evidence identity, compatible
+environment tags, globally unique canonical distribution names, authorized
+selected origins and digests, reproducible marker results, satisfiable version
+specifiers, and the exact union of extras requested by incoming edges. Optional
+dependency markers are evaluated against each node's selected extras, not a
+host-global `extra` value. The verifier also proves complete reachability,
+acyclicity, and graph/solver/marker/artifact/request/redirect/depth budgets. It
+emits nodes in canonical order and binds the full graph plus
+resolution-environment fingerprint into one deterministic SHA-256 graph digest.
+Strict decoding re-proves node, edge, root, reachability, depth, and digest
+invariants rather than trusting serialized summary fields.
+
+Unit fixtures cover `B-LIMIT-GRAPH`, `B-LIMIT-SOLVER`, `B-LIMIT-REQUESTS`, and
+all seven `B-CLOSURE-*` threat classes, including v1 replay-only refusal. These
+fixtures are component evidence only: every corresponding global manifest row
+remains `planned` until the Package owner recursively acquires/verifies every
+node, journals `resolving_closure -> closure_verified`, proves crash/cancel
+replay, and the complete non-skippable Linux report passes. B3a creates no
+typed stable ref, transaction pin, committed set, or production route.
 
 ## First Principles
 

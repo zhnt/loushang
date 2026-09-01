@@ -15,6 +15,7 @@ dependencies = [
   "httpx>=0.28,<1",
   "markdown-it-py>=4.2,<5",
   "openai>=2.30.0",
+  "packaging>=24,<27",
   "pillow>=12.2.0",
   "pygments>=2.19,<3",
   "wcwidth==0.8.2",
