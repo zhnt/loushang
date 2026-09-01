@@ -110,7 +110,12 @@ Neither may silently override a narrower implemented owner contract.
   ordering, phase CAS, retry adoption, and candidate-free restart recovery. Its
   composed `B-CRASH-PINNED` row passed in the retained 65-row Linux-native
   report with zero skips, failures, or errors; publication and production
-  routing remain unimplemented.
+  routing remain unimplemented. PLC9B3e-3a candidate code adds dark,
+  role-separated staging contracts with an authority-issued Plugin-root
+  target, exact adjacent staging evidence, and a Package-owner atomic
+  closure-lock/committed-set journal. It composes no store or lifecycle phase,
+  keeps all publication/crash rows planned, and remains private to the Package
+  owner boundary.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)

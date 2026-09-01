@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.3e2b.
+- Contract version: PLC9B.3e3a-candidate.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -57,6 +57,11 @@
   composes that Port with the accepted closure-plan evidence and lifecycle
   phase CAS, supports restart recovery without a live closure candidate, and
   implements the native-accepted `B-CRASH-PINNED` row.
+  B3e-3a candidate code freezes a dark role-separated staging boundary, an
+  authority-issued logical Plugin-root target, exact store-issued receipt
+  evidence, and one Package-owner journal record that atomically binds the
+  complete closure lock to its committed-set ref. It imports no concrete
+  store, composes no lifecycle phase, and promotes no manifest row.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -842,6 +847,54 @@ PR check passed. Harness Quality run `33532486596`, Linux harness job
 `e4af1f9c36f060548d634a48b55bd7db6c95e7af9635d6c784596680b065f78c`.
 The XML executed exactly 65 manifest nodes, including `B-CRASH-PINNED`, with
 zero skips, failures, or errors and contained no `B-PUB-*` node.
+
+## PLC9B3e-3a Candidate Staging And Atomic Set Contracts
+
+B3e-3a separates physical store ownership from Package transaction atomicity.
+`PackagePluginRootTargetV1` is a versioned, credential-free logical target
+issued by an authority outside the store adapter. It binds operation/request,
+Product/scope, Installation/Plugin, and authority revision without granting a
+pathname, file handle, namespace, or desired-state capability. A root staging
+request must carry that target; a dependency request cannot carry one.
+
+`PackageArtifactStagingRequestV1` binds one exact node from the current durable
+`VerifiedClosurePlanV2` to an acquired graph-wide transaction-pin receipt. The
+request rechecks the operation, request/classification fingerprints, recovery
+identity, complete canonical pin target set, designated root, and
+prepublication graph digest. A compatible earlier-attempt pin may be adopted
+only when those graph-wide facts are unchanged. Separate
+`PackageDependencyStagingPort.stage_dependency` and
+`PackagePluginRootStagingPort.stage_root` methods preserve distinct store
+owners. They consume the already verified opaque candidate and return only a
+strict `PackageArtifactStagingReceiptV1`; the receipt must contain the stable
+ref type and artifact/tree/name/version identity required by that exact plan
+node, and a Plugin-root ref must match the authority-issued
+Installation/Plugin target.
+
+`PackageArtifactStagingJournal` is adjacent Package-owner evidence, not a
+physical store. It durably records at most one exact receipt per
+operation/node, exactly replays the same receipt, rejects changed store refs
+without mutation, validates strict nested records and contiguous revisions,
+and repairs only a partial final JSONL record. It never obtains a store path,
+live handle, credential, publication namespace, or cleanup authority.
+
+After every node has a typed stable ref, `PackageCommittedSetJournal.publish`
+creates the complete `DependencyClosureLockV2`/`CommittedPackageSetRefV1`
+pair under one durable Package-owner lock and appends both in one record. One
+operation can have exactly one set; concurrent exact publication converges to
+the same set and changed identity fails without append. Replay reconstructs
+and revalidates the complete embedded closure rather than trusting projected
+digests or a root-only marker. A stable ref appearing in either store is not
+itself a committed set.
+
+This candidate slice supplies contracts and local journals only. It does not
+call either staging Port, revalidate a live candidate at the call edge, advance
+`transaction_pinned -> staging -> set_published`, import a concrete dependency
+or Plugin revision store, expose a public facade, publish an admission handle,
+change desired state, or bind a production route. B3e-3b owns that composition,
+including classification recheck and restart recovery. Therefore
+`B-CRASH-STAGING`, `B-CRASH-SET`, and every `B-PUB-*` row remain `planned` in
+B3e-3a.
 
 ## First Principles
 

@@ -29,6 +29,8 @@ CLOSURE_RUNTIME = OWNER_KERNEL_ROOT / "closure_runtime.py"
 COMMIT_RECORDS = OWNER_KERNEL_ROOT / "commit_records.py"
 TRANSACTION_PINS = OWNER_KERNEL_ROOT / "transaction_pins.py"
 TRANSACTION_PIN_RUNTIME = OWNER_KERNEL_ROOT / "transaction_pin_runtime.py"
+STAGING = OWNER_KERNEL_ROOT / "staging.py"
+COMMITTED_SETS = OWNER_KERNEL_ROOT / "committed_sets.py"
 CLOSURE_TEST = Path("tests/harness/resources/packages/test_plc9b_closure.py")
 CLOSURE_OWNER_TEST = Path(
     "tests/harness/resources/packages/test_plc9b_closure_owner.py"
@@ -47,6 +49,10 @@ TRANSACTION_PINS_TEST = Path(
 )
 TRANSACTION_PIN_RUNTIME_TEST = Path(
     "tests/harness/resources/packages/test_plc9b_transaction_pin_runtime.py"
+)
+STAGING_TEST = Path("tests/harness/resources/packages/test_plc9b_staging.py")
+COMMITTED_SETS_TEST = Path(
+    "tests/harness/resources/packages/test_plc9b_committed_sets.py"
 )
 PYPROJECT = Path("pyproject.toml")
 WINDOWS_NATIVE_TEST = Path(
@@ -501,7 +507,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.3e2b" in contract
+    assert "Contract version: PLC9B.3e3a-candidate" in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
@@ -517,6 +523,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
     assert "PLC9B3d-2a Accepted Composed Closure Limits" in contract
     assert "PLC9B3d-2b Accepted Composed Closure Integrity" in contract
     assert "PLC9B3e-1 Accepted Typed Commit Records" in contract
+    assert "PLC9B3e-3a Candidate Staging And Atomic Set Contracts" in contract
     assert "PLC9B3e-2a Accepted Transaction-Pin Contract" in contract
     assert "Harness Quality run `33505702666`" in contract
     assert "Linux\nharness job `99849101216`" in contract
@@ -2308,6 +2315,131 @@ def test_plc9b3e2b_transaction_pin_runtime_orders_effects_and_recovers_dark() ->
     )
     assert "executed exactly 65 manifest nodes" in normalized
     assert manifest["B-CRASH-PINNED"]["status"] == "implemented"
+    assert all(
+        manifest[case_id]["status"] == "planned"
+        for case_id in manifest
+        if case_id.startswith("B-PUB-")
+    )
+
+
+def test_plc9b3e3a_staging_and_atomic_set_contracts_are_dark_and_role_safe() -> None:
+    contract = _source(CONTRACT)
+    inventory = _source(INVENTORY)
+    index = _source(INDEX)
+    staging_source = _source(STAGING)
+    committed_source = _source(COMMITTED_SETS)
+    staging_tests = _source(STAGING_TEST)
+    committed_tests = _source(COMMITTED_SETS_TEST)
+    package_facade = _source(PACKAGE_ROOT / "__init__.py")
+    internal_facade = _source(OWNER_KERNEL_ROOT / "__init__.py")
+    author_sdk = _source(AUTHOR_SDK)
+    manifest = _adversarial_manifest()
+
+    assert STAGING.is_file()
+    assert COMMITTED_SETS.is_file()
+    symbols = (
+        "PackagePluginRootTargetV1",
+        "PackageArtifactStagingRequestV1",
+        "PackageArtifactStagingReceiptV1",
+        "PackageDependencyStagingPort",
+        "PackagePluginRootStagingPort",
+        "PackageArtifactStagingRecordV1",
+        "PackageArtifactStagingJournal",
+        "PackageCommittedSetRecordV1",
+        "PackageCommittedSetJournal",
+    )
+    combined_source = staging_source + committed_source
+    for symbol in symbols:
+        assert f"class {symbol}" in combined_source
+        assert symbol not in package_facade
+        assert symbol not in internal_facade
+        assert symbol not in author_sdk
+
+    staging_tree = ast.parse(staging_source, filename=str(STAGING))
+    port_methods = {
+        node.name: {
+            member.name
+            for member in node.body
+            if isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef))
+        }
+        for node in staging_tree.body
+        if isinstance(node, ast.ClassDef)
+        and node.name
+        in {"PackageDependencyStagingPort", "PackagePluginRootStagingPort"}
+    }
+    assert port_methods == {
+        "PackageDependencyStagingPort": {"stage_dependency"},
+        "PackagePluginRootStagingPort": {"stage_root"},
+    }
+
+    for source, path in (
+        (staging_source, STAGING),
+        (committed_source, COMMITTED_SETS),
+    ):
+        tree = ast.parse(source, filename=str(path))
+        imported = {
+            node.module or ""
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom)
+        }
+        imported.update(
+            alias.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Import)
+            for alias in node.names
+        )
+        forbidden_modules = (
+            "loushang.harness.plugin_management",
+            "loushang.harness.resources.plugins.revisions",
+            "loushang.coding",
+            "loushang.foundation",
+            "subprocess",
+        )
+        assert not any(
+            module == forbidden or module.startswith(f"{forbidden}.")
+            for module in imported
+            for forbidden in forbidden_modules
+        )
+
+    for forbidden_capability in (
+        "PluginRevisionStore",
+        "PluginPackageLifecycleLedger",
+        "PluginManagementService",
+        "PackageOperationsRuntime",
+    ):
+        assert forbidden_capability not in combined_source
+
+    for evidence in (
+        "requests_and_receipts_are_exact_role_safe_round_trips",
+        "requires_exact_acquired_graph_wide_pin",
+        "requires_authoritative_root_target_only_for_root",
+        "rejects_role_or_plugin_identity_confusion",
+        "wire_is_credential_path_handle_free_and_strict",
+        "records_exact_nodes_and_replays_after_restart",
+        "rejects_changed_ref_without_mutation",
+        "repairs_partial_tail_and_rejects_duplicate_keys",
+    ):
+        assert evidence in staging_tests
+    for evidence in (
+        "atomically_records_lock_and_exact_set",
+        "serializes_concurrent_exact_publication",
+        "rejects_changed_identity_without_mutation",
+        "revalidates_full_lock_not_only_projection",
+        "wire_is_credential_path_handle_free_and_strict",
+        "repairs_partial_tail_and_rejects_duplicate_keys",
+    ):
+        assert evidence in committed_tests
+
+    normalized = " ".join(contract.split())
+    assert "B3e-3a separates physical store ownership" in normalized
+    assert (
+        "creates the complete `DependencyClosureLockV2`/`CommittedPackageSetRefV1` pair under one durable Package-owner lock"
+        in normalized
+    )
+    assert "PLC9B3e-3a candidate code now separates" in inventory
+    assert "PLC9B3e-3a candidate code adds dark" in index
+    assert manifest["B-CRASH-STAGING"]["status"] == "planned"
+    assert manifest["B-CRASH-SET"]["status"] == "planned"
     assert all(
         manifest[case_id]["status"] == "planned"
         for case_id in manifest
