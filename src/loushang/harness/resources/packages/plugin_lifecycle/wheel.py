@@ -59,12 +59,23 @@ class PackageWheelVerificationError(RuntimeError):
         code: str,
         stage: InspectionStage,
         consumed_bytes: int = 0,
+        rejection_code: str | None = None,
+        rejection_stage: InspectionStage | None = None,
     ) -> None:
         super().__init__(message)
         self.code = code
         self.stage = stage
         self.retryable = False
         self.consumed_bytes = consumed_bytes
+        self.rejection_code = rejection_code
+        self.rejection_stage = rejection_stage
+        if (rejection_code is None) != (rejection_stage is None):
+            raise ValueError("Cleanup debt must retain the complete rejection")
+        if code == "package_quarantine_cleanup_retryable":
+            if rejection_code is None or rejection_stage is None:
+                raise ValueError("Cleanup debt requires its original rejection")
+        elif rejection_code is not None or rejection_stage is not None:
+            raise ValueError("Only cleanup debt may carry an original rejection")
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,9 +161,7 @@ class PackageInspectionBudgetV1:
             max_wall_time_ms=_wire_int(
                 document["maxWallTimeMs"], name="wall-clock budget"
             ),
-            budget_version=_wire_int(
-                document["budgetVersion"], name="budget version"
-            ),
+            budget_version=_wire_int(document["budgetVersion"], name="budget version"),
         )
 
 
@@ -268,9 +277,7 @@ class VerifiedWheelArtifactV1:
             operation_id=_wire_string(document["operationId"], name="operation id"),
             attempt_epoch=_wire_int(document["attemptEpoch"], name="attempt epoch"),
             node_id=_wire_string(document["nodeId"], name="node id"),
-            distribution=_wire_string(
-                document["distribution"], name="distribution"
-            ),
+            distribution=_wire_string(document["distribution"], name="distribution"),
             version=_wire_string(document["version"], name="version"),
             wheel_filename=_wire_string(
                 document["wheelFilename"], name="wheel filename"
@@ -286,9 +293,7 @@ class VerifiedWheelArtifactV1:
             package_metadata_digest=_wire_string(
                 document["packageMetadataDigest"], name="METADATA digest"
             ),
-            record_digest=_wire_string(
-                document["recordDigest"], name="RECORD digest"
-            ),
+            record_digest=_wire_string(document["recordDigest"], name="RECORD digest"),
             record_verified=record_verified,
             entry_count=_wire_int(document["entryCount"], name="entry count"),
             expanded_byte_count=_wire_int(
@@ -454,16 +459,17 @@ class PackageWheelVerifier:
                 extraction_tree_digest=tree_digest,
             )
             return VerifiedWheelCandidate(acquired=candidate, evidence=evidence)
-        except PackageWheelVerificationError:
-            _cleanup_rejected(candidate)
+        except PackageWheelVerificationError as rejection:
+            _cleanup_rejected(candidate, rejection=rejection)
             raise
         except Exception:
-            _cleanup_rejected(candidate)
-            raise PackageWheelVerificationError(
+            malformed_rejection = PackageWheelVerificationError(
                 "Package archive structure is malformed",
                 code="package_archive_malformed",
                 stage="inspecting",
-            ) from None
+            )
+            _cleanup_rejected(candidate, rejection=malformed_rejection)
+            raise malformed_rejection from None
 
 
 def _parse_wheel_filename(
@@ -1066,14 +1072,20 @@ def _check_time(
         )
 
 
-def _cleanup_rejected(candidate: AcquiredPackageCandidate) -> None:
+def _cleanup_rejected(
+    candidate: AcquiredPackageCandidate,
+    *,
+    rejection: PackageWheelVerificationError,
+) -> None:
     try:
         candidate.cleanup()
     except OSError:
         raise PackageWheelVerificationError(
             "Rejected Package quarantine requires bounded owner cleanup",
             code="package_quarantine_cleanup_retryable",
-            stage="inspecting",
+            stage=rejection.stage,
+            rejection_code=rejection.code,
+            rejection_stage=rejection.stage,
         ) from None
 
 

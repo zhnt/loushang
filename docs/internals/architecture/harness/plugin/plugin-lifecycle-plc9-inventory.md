@@ -13,15 +13,16 @@
   inert records, classification, journal CAS, retry/cancel/status, and disabled
   refusal. It has no production composition or artifact capability; all
   acquisition/publication target rows below remain migration obligations.
-- PLC9B2a/B2b/B2c refinement: unbound Source Authority/bounded-sink/quarantine,
-  safe wheel inspection, and dark phase-CAS/evidence composition exist inside
+- PLC9B2a/B2b/B2c/B2d refinement: unbound Source
+  Authority/bounded-sink/quarantine, safe wheel inspection, dark
+  phase-CAS/evidence composition, and cleanup-domain tombstones exist inside
   the same Package owner boundary. Raw ZIP-layout, path/type/budget,
   WHEEL/METADATA/RECORD, and rooted
   POSIX extraction proofs now precede materialization. Adjacent operation
-  phases and typed acquisition/wheel evidence are append-once, while crash
-  adoption, cleanup tombstones, native Windows containment, publication, and
-  every production route remain migration obligations; no global adversarial
-  row is promoted.
+  phases, typed acquisition/wheel evidence, and exact cleanup repair are
+  append-once. Acquired/verified crash adoption, native Windows containment,
+  publication, and every production route remain migration obligations; no
+  global adversarial row is promoted.
 
 This inventory distinguishes accepted reusable owners, Product adapters,
 parallel compatibility paths, and missing target boundaries. “Migrate” or

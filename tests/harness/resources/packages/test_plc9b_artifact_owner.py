@@ -17,6 +17,7 @@ from loushang.harness.resources.packages.plugin_lifecycle import (
     PackageLifecycleOwner,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.acquisition import (
+    AcquiredPackageCandidate,
     AuthenticatedSourceEnvelopeV1,
     BoundedAcquisitionSinkPort,
     PackageAcquisitionBudgetV1,
@@ -25,6 +26,10 @@ from loushang.harness.resources.packages.plugin_lifecycle.acquisition import (
     PackageAcquisitionRequestV1,
     PackageQuarantineStore,
     SourceAdapterResultV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.cleanup import (
+    PackageQuarantineCleanupJournal,
+    PackageQuarantineCleanupOwner,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.phase_evidence import (
     PackageArtifactEvidenceJournal,
@@ -40,6 +45,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.runtime import (
 from loushang.harness.resources.packages.plugin_lifecycle.wheel import (
     PackageInspectionBudgetV1,
     PackageWheelVerifier,
+    VerifiedWheelCandidate,
 )
 
 WHEEL_FILENAME = "acme_plugin-1.0-py3-none-any.whl"
@@ -95,9 +101,15 @@ class _Recheck:
 class _Stream:
     envelope: AuthenticatedSourceEnvelopeV1
     payload: bytes
+    store: PackageQuarantineStore | None = None
+    inject_residue: bool = False
 
     def transfer_to(self, sink: BoundedAcquisitionSinkPort) -> SourceAdapterResultV1:
         sink.begin_request()
+        if self.inject_residue:
+            assert self.store is not None
+            attempt = self.store.root / self.store.attempt_names()[0]
+            (attempt / "acquisition-cleanup-debt").write_bytes(b"bounded")
         sink.write(self.payload)
         return SourceAdapterResultV1(disposition="complete")
 
@@ -106,6 +118,8 @@ class _Stream:
 class _SourceAuthority:
     payload: bytes
     denied: bool = False
+    store: PackageQuarantineStore | None = None
+    inject_residue: bool = False
 
     def authorize(self, request: PackageAcquisitionRequestV1) -> _Stream:
         if self.denied:
@@ -131,6 +145,31 @@ class _SourceAuthority:
                 capture_epoch=1,
             ),
             payload=self.payload,
+            store=self.store,
+            inject_residue=self.inject_residue,
+        )
+
+
+class _ResidueWheelVerifier(PackageWheelVerifier):
+    def __init__(self, store: PackageQuarantineStore) -> None:
+        super().__init__()
+        self._store = store
+
+    def verify(
+        self,
+        candidate: AcquiredPackageCandidate,
+        *,
+        wheel_filename: str,
+        supported_tags: frozenset[str],
+        budgets: PackageInspectionBudgetV1,
+    ) -> VerifiedWheelCandidate:
+        attempt = self._store.root / self._store.attempt_names()[0]
+        (attempt / "injected-cleanup-debt").write_bytes(b"bounded")
+        return super().verify(
+            candidate,
+            wheel_filename=wheel_filename,
+            supported_tags=supported_tags,
+            budgets=budgets,
         )
 
 
@@ -189,6 +228,8 @@ def _owners(
     denied: bool = False,
     max_transport_bytes: int = 128 * 1024,
     recheck: _Recheck | None = None,
+    residue_on_rejection: bool = False,
+    residue_during_acquisition: bool = False,
 ):
     lifecycle_journal = PackageLifecycleJournal(tmp_path / "lifecycle.jsonl")
     kernel = PackageLifecycleOwner(
@@ -198,15 +239,27 @@ def _owners(
     )
     store = PackageQuarantineStore(tmp_path / "quarantine")
     evidence = PackageArtifactEvidenceJournal(tmp_path / "evidence.jsonl")
+    cleanup = PackageQuarantineCleanupJournal(tmp_path / "cleanup.jsonl")
+    cleanup_owner = PackageQuarantineCleanupOwner(journal=cleanup, store=store)
     artifact_owner = PackageArtifactLifecycleOwner(
         kernel=kernel,
         classification_recheck=recheck or _Recheck(),
         acquisition_owner=PackageAcquisitionOwner(
-            source_authority=_SourceAuthority(payload=payload, denied=denied),
+            source_authority=_SourceAuthority(
+                payload=payload,
+                denied=denied,
+                store=store,
+                inject_residue=residue_during_acquisition,
+            ),
             quarantine_store=store,
         ),
         evidence_journal=evidence,
-        wheel_verifier=PackageWheelVerifier(),
+        cleanup_owner=cleanup_owner,
+        wheel_verifier=(
+            _ResidueWheelVerifier(store)
+            if residue_on_rejection
+            else PackageWheelVerifier()
+        ),
         acquisition_budgets=PackageAcquisitionBudgetV1(
             max_transport_bytes=max_transport_bytes,
             max_requests=1,
@@ -216,7 +269,7 @@ def _owners(
         inspection_budgets=PackageInspectionBudgetV1(),
         supported_tags=frozenset({"py3-none-any"}),
     )
-    return kernel, artifact_owner, lifecycle_journal, evidence, store
+    return kernel, artifact_owner, lifecycle_journal, evidence, cleanup_owner, store
 
 
 def _execute_request(status, secret: str = "credential-ref-secret"):
@@ -233,7 +286,9 @@ def test_dark_artifact_owner_journals_exact_phases_and_typed_evidence(
     tmp_path: Path,
 ) -> None:
     payload = _wheel_bytes()
-    kernel, owner, journal, evidence, store = _owners(tmp_path, payload=payload)
+    kernel, owner, journal, evidence, _cleanup, store = _owners(
+        tmp_path, payload=payload
+    )
     classified = kernel.submit(_ingress())
 
     result = owner.execute(_execute_request(classified))
@@ -261,7 +316,7 @@ def test_dark_artifact_owner_journals_exact_phases_and_typed_evidence(
 def test_source_and_archive_failures_have_one_typed_response_and_no_residue(
     tmp_path: Path,
 ) -> None:
-    kernel, owner, journal, evidence, store = _owners(
+    kernel, owner, journal, evidence, _cleanup, store = _owners(
         tmp_path / "denied", payload=_wheel_bytes(), denied=True
     )
     classified = kernel.submit(_ingress())
@@ -274,7 +329,7 @@ def test_source_and_archive_failures_have_one_typed_response_and_no_residue(
     assert store.attempt_names() == ()
     assert len(journal.records()) == 4
 
-    kernel, owner, journal, evidence, store = _owners(
+    kernel, owner, journal, evidence, _cleanup, store = _owners(
         tmp_path / "malformed", payload=b"not-a-wheel"
     )
     classified = kernel.submit(_ingress())
@@ -292,7 +347,7 @@ def test_acquisition_limit_is_attempt_retryable_and_secrets_never_persist(
     tmp_path: Path,
 ) -> None:
     secret = "never-persist-this-secret"
-    kernel, owner, journal, evidence, store = _owners(
+    kernel, owner, journal, evidence, _cleanup, store = _owners(
         tmp_path,
         payload=_wheel_bytes(),
         max_transport_bytes=32,
@@ -318,7 +373,7 @@ def test_acquisition_limit_is_attempt_retryable_and_secrets_never_persist(
 def test_classification_recheck_changes_fail_before_source_or_quarantine(
     tmp_path: Path,
 ) -> None:
-    kernel, owner, _journal, evidence, store = _owners(
+    kernel, owner, _journal, evidence, _cleanup, store = _owners(
         tmp_path,
         payload=_wheel_bytes(),
         recheck=_Recheck(changed=True),
@@ -332,4 +387,72 @@ def test_classification_recheck_changes_fail_before_source_or_quarantine(
     assert changed.status.failure is not None
     assert changed.status.failure.code == "package_target_classification_changed"
     assert evidence.records() == ()
+    assert store.attempt_names() == ()
+
+
+def test_cleanup_debt_preserves_original_rejection_and_repairs_separately(
+    tmp_path: Path,
+) -> None:
+    kernel, owner, journal, evidence, cleanup, store = _owners(
+        tmp_path,
+        payload=b"not-a-wheel",
+        residue_on_rejection=True,
+    )
+    classified = kernel.submit(_ingress())
+
+    result = owner.execute(_execute_request(classified))
+
+    assert result.status.phase == "inspecting"
+    assert result.status.disposition == "rejected"
+    assert result.status.failure is not None
+    assert result.status.failure.code == "package_archive_malformed"
+    assert result.cleanup_status is not None
+    assert result.cleanup_status.disposition == "cleanup_retryable"
+    assert result.cleanup_status.failure is not None
+    assert result.cleanup_status.failure.retry_domain == "cleanup"
+    assert len(evidence.records()) == 1
+    assert len(cleanup.journal.records()) == 1
+    assert len(store.attempt_names()) == 1
+    assert journal.records()[-1].status.failure == result.status.failure
+
+    repaired = cleanup.repair(
+        result.cleanup_status.target.cleanup_id,
+        expected_cleanup_revision=result.cleanup_status.cleanup_revision,
+    )
+    assert repaired.disposition == "cleanup_complete"
+    assert store.attempt_names() == ()
+    assert journal.records()[-1].status == result.status
+
+
+def test_acquisition_cleanup_debt_keeps_retry_in_attempt_domain(
+    tmp_path: Path,
+) -> None:
+    kernel, owner, journal, evidence, cleanup, store = _owners(
+        tmp_path,
+        payload=_wheel_bytes(),
+        max_transport_bytes=32,
+        residue_during_acquisition=True,
+    )
+    classified = kernel.submit(_ingress())
+
+    result = owner.execute(_execute_request(classified))
+
+    assert result.status.phase == "acquiring"
+    assert result.status.disposition == "retryable_failure"
+    assert result.status.failure is not None
+    assert result.status.failure.code == "package_acquisition_limit_exceeded"
+    assert result.status.failure.retry_domain == "operation"
+    assert result.cleanup_status is not None
+    assert result.cleanup_status.failure is not None
+    assert result.cleanup_status.failure.retry_domain == "cleanup"
+    assert evidence.records() == ()
+    assert len(cleanup.journal.records()) == 1
+    assert len(store.attempt_names()) == 1
+    assert journal.records()[-1].record_kind == "attempt"
+
+    repaired = cleanup.repair(
+        result.cleanup_status.target.cleanup_id,
+        expected_cleanup_revision=result.cleanup_status.cleanup_revision,
+    )
+    assert repaired.disposition == "cleanup_complete"
     assert store.attempt_names() == ()

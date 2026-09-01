@@ -2,8 +2,9 @@
 
 ## Status
 
-- Contract version: PLC9B.2c.
-- Delivery status: PLC9B1 dark Owner Kernel and the unbound PLC9B2a/B2b/B2c safe
+- Contract version: PLC9B.2d.
+- Delivery status: PLC9B1 dark Owner Kernel and the unbound
+  PLC9B2a/B2b/B2c/B2d safe
   acquisition and wheel-inspection components are implemented. Versioned inert
   request/classification/status/failure evidence, the owner-revisioned
   three-way classifier, operation/attempt phase-CAS journal, and typed
@@ -15,8 +16,8 @@
   claims pass. B2c binds those dark components to operation phase-CAS plus a
   typed evidence journal, but no production route. Native Windows
   root-relative extraction, dependency resolution, publication, and every
-  production acquisition route remain absent; cleanup tombstones and crash
-  adoption are not yet complete.
+  production acquisition route remain absent. B2d adds durable cleanup-domain
+  tombstones and exact repair; acquired/verified crash adoption remains open.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -88,9 +89,9 @@ the first independently testable B2 component without activating it:
 
 The portable fallback rejects link/reparse roots and every currently visible
 link/reparse ancestor, but it is not accepted as native Windows containment.
-The Windows root-relative handle implementation, operation-phase integration,
-cleanup tombstone, and native swap fixtures remain open B2 work. Consequently
-these B2 components promote no global adversarial manifest row:
+The Windows root-relative handle implementation, acquired/verified crash
+adoption, and native swap fixtures remain open B2 work. Consequently these B2
+components promote no global adversarial manifest row:
 the `B-ACQ-*`, `B-LIMIT-*`, `B-STATE-*`, and later-phase crash rows retain
 `planned` until the complete caller response, journal effect, and native oracle
 specified by each row are executable.
@@ -151,10 +152,43 @@ schema, ordering, contiguous revision, and CAS-predecessor validation.
 
 This sub-slice intentionally does not claim complete B2 recovery. An evidence
 append followed by a crash before its operation-phase append still needs a
-rooted acquired/verified candidate reopen/adoption path. Cleanup failure still
-needs a durable cleanup-domain tombstone and repair operation, and Windows
-still needs native root-relative create/open/swap fixtures. Accordingly no
-additional global adversarial manifest row changes from `planned` in B2c.
+rooted acquired/verified candidate reopen/adoption path. B2d below closes the
+durable cleanup-domain tombstone/repair obligation; Windows still needs native
+root-relative create/open/swap fixtures. Accordingly no additional global
+adversarial manifest row changes from `planned` in B2c.
+
+## PLC9B2d Durable Quarantine Cleanup Domain
+
+An acquisition or wheel rejection first preserves its original operation or
+attempt-domain failure. If immediate cleanup cannot remove the exact
+owner-created attempt, the artifact owner additionally appends one versioned
+cleanup tombstone. The two facts are deliberately not collapsed:
+
+- operation/attempt status retains the original code, stage, retryability, and
+  request fingerprint;
+- cleanup status uses `package_quarantine_cleanup_retryable`, subject kind
+  `cleanup`, retry domain `cleanup`, and operator action `repair`;
+- the tombstone contains only operation/node/attempt identity, store and
+  attempt filesystem identities, a deterministic owner attempt name, and a
+  SHA-256 cleanup id. It contains no absolute path, Source locator, credential,
+  archive entry name, or unbounded error text; and
+- deferring cleanup closes the live owner descriptors before transferring the
+  inert tombstone to the durable cleanup journal.
+
+Repair holds cleanup-domain CAS, reopens only the configured quarantine store,
+proves its identity and the exact attempt identity, and recursively deletes
+children with no-follow root-relative operations on descriptor-capable POSIX.
+Links are unlinked as entries and never traversed. A changed/moved attempt
+fails without a journal append or outside deletion. If deletion completed but
+the process crashed before `cleanup_complete`, replay scans the fixed store for
+the original attempt identity; only proven absence permits the completion
+append. Repair never advances, retries, or reopens the terminal/retryable
+Package operation.
+
+The portable path implementation remains defense-in-depth and does not satisfy
+the Windows native gate. Therefore `B-STATE-REJECT-CLEANUP` remains `planned`
+until the same tombstone/repair/swap oracle runs on native Windows CI; B2d's
+component and Linux tests alone do not promote the global row.
 
 ## First Principles
 

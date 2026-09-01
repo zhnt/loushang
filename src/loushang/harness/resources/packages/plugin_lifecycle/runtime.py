@@ -9,9 +9,14 @@ from typing import Protocol, cast
 
 from loushang.harness.resources.packages.plugin_lifecycle.acquisition import (
     PackageAcquisitionBudgetV1,
+    PackageAcquisitionCleanupDebtError,
     PackageAcquisitionError,
     PackageAcquisitionOwner,
     PackageAcquisitionRequestV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.cleanup import (
+    PackageQuarantineCleanupOwner,
+    PackageQuarantineCleanupStatusV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.owner import (
     PackageLifecycleOwner,
@@ -82,6 +87,7 @@ class PackageArtifactExecutionResult:
         repr=False,
         compare=False,
     )
+    cleanup_status: PackageQuarantineCleanupStatusV1 | None = None
 
     def __post_init__(self) -> None:
         if self.status.phase == "extracted" and self.status.disposition == "active":
@@ -89,6 +95,11 @@ class PackageArtifactExecutionResult:
                 raise ValueError("Extracted Package status requires a candidate")
         elif self.candidate is not None:
             raise ValueError("Only an extracted Package status carries a candidate")
+        if self.cleanup_status is not None and (
+            self.status.disposition not in {"rejected", "retryable_failure"}
+            or self.cleanup_status.target.operation_id != self.status.operation_id
+        ):
+            raise ValueError("Cleanup debt must accompany its rejected operation")
 
 
 class PackageArtifactLifecycleOwner:
@@ -101,6 +112,7 @@ class PackageArtifactLifecycleOwner:
         classification_recheck: PackageClassificationRecheckPort,
         acquisition_owner: PackageAcquisitionOwner,
         evidence_journal: PackageArtifactEvidenceJournal,
+        cleanup_owner: PackageQuarantineCleanupOwner,
         wheel_verifier: PackageWheelVerifier,
         acquisition_budgets: PackageAcquisitionBudgetV1,
         inspection_budgets: PackageInspectionBudgetV1,
@@ -114,6 +126,8 @@ class PackageArtifactLifecycleOwner:
             raise TypeError("Package acquisition owner is required")
         if not isinstance(evidence_journal, PackageArtifactEvidenceJournal):
             raise TypeError("Package artifact evidence journal is required")
+        if not isinstance(cleanup_owner, PackageQuarantineCleanupOwner):
+            raise TypeError("Package quarantine cleanup owner is required")
         if not isinstance(wheel_verifier, PackageWheelVerifier):
             raise TypeError("Package wheel verifier is required")
         if not isinstance(acquisition_budgets, PackageAcquisitionBudgetV1):
@@ -126,6 +140,7 @@ class PackageArtifactLifecycleOwner:
         self._classification_recheck = classification_recheck
         self._acquisition_owner = acquisition_owner
         self._evidence_journal = evidence_journal
+        self._cleanup_owner = cleanup_owner
         self._wheel_verifier = wheel_verifier
         self._acquisition_budgets = acquisition_budgets
         self._inspection_budgets = inspection_budgets
@@ -215,6 +230,23 @@ class PackageArtifactLifecycleOwner:
                 acquisition_request,
                 budgets=self._acquisition_budgets,
             )
+        except PackageAcquisitionCleanupDebtError as debt:
+            cleanup_status = self._cleanup_owner.record_pending(
+                debt.target,
+                rejection_code=debt.rejection.code,
+                rejection_stage=cast(PackageLifecyclePhase, debt.rejection.stage),
+            )
+            failure = _acquisition_failure(acquiring, debt.rejection)
+            rejected = self._kernel.record_failure(
+                failure,
+                expected_phase="acquiring",
+                expected_journal_revision=acquiring.journal_revision,
+                expected_attempt_epoch=acquiring.attempt_epoch,
+            )
+            return PackageArtifactExecutionResult(
+                status=rejected,
+                cleanup_status=cleanup_status,
+            )
         except PackageAcquisitionError as error:
             failure = _acquisition_failure(acquiring, error)
             return PackageArtifactExecutionResult(
@@ -263,6 +295,37 @@ class PackageArtifactLifecycleOwner:
                 budgets=self._inspection_budgets,
             )
         except PackageWheelVerificationError as error:
+            if error.code == "package_quarantine_cleanup_retryable":
+                if error.rejection_code is None or error.rejection_stage is None:
+                    raise RuntimeError("Cleanup debt lost its original rejection")
+                target = acquired_candidate.cleanup_target()
+                try:
+                    cleanup_status = self._cleanup_owner.record_pending(
+                        target,
+                        rejection_code=error.rejection_code,
+                        rejection_stage=cast(
+                            PackageLifecyclePhase,
+                            error.rejection_stage,
+                        ),
+                    )
+                finally:
+                    acquired_candidate.defer_cleanup()
+                rejection = PackageWheelVerificationError(
+                    "Package artifact was rejected",
+                    code=error.rejection_code,
+                    stage=error.rejection_stage,
+                )
+                failure = _wheel_failure(inspecting, rejection)
+                rejected = self._kernel.record_failure(
+                    failure,
+                    expected_phase="inspecting",
+                    expected_journal_revision=inspecting.journal_revision,
+                    expected_attempt_epoch=inspecting.attempt_epoch,
+                )
+                return PackageArtifactExecutionResult(
+                    status=rejected,
+                    cleanup_status=cleanup_status,
+                )
             failure = _wheel_failure(inspecting, error)
             return PackageArtifactExecutionResult(
                 status=self._kernel.record_failure(

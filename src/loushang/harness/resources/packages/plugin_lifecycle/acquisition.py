@@ -23,6 +23,7 @@ AUTHENTICATED_SOURCE_ENVELOPE_VERSION = 1
 SOURCE_ADAPTER_RESULT_VERSION = 1
 PACKAGE_ACQUISITION_BUDGET_VERSION = 1
 BOUNDED_ACQUISITION_RECEIPT_VERSION = 1
+PACKAGE_QUARANTINE_CLEANUP_TARGET_VERSION = 1
 
 SourceOriginKind = Literal["https", "registry", "git", "local"]
 SourceAuthenticationDecision = Literal["authorized", "denied"]
@@ -51,6 +52,20 @@ class PackageAcquisitionError(RuntimeError):
         self.stage = stage
         self.retryable = retryable
         self.consumed_bytes = consumed_bytes
+
+
+class PackageAcquisitionCleanupDebtError(RuntimeError):
+    """A sanitized acquisition rejection plus durable cleanup capability."""
+
+    def __init__(
+        self,
+        *,
+        rejection: PackageAcquisitionError,
+        target: PackageQuarantineCleanupTargetV1,
+    ) -> None:
+        super().__init__("Rejected Package acquisition requires owner cleanup")
+        self.rejection = rejection
+        self.target = target
 
 
 @dataclass(frozen=True, slots=True)
@@ -441,6 +456,102 @@ class BoundedAcquisitionReceiptV1:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class PackageQuarantineCleanupTargetV1:
+    operation_id: str
+    attempt_epoch: int
+    node_id: str
+    store_identity: tuple[int, int]
+    attempt_identity: tuple[int, int]
+    attempt_name: str
+    cleanup_id: str
+    target_version: int = PACKAGE_QUARANTINE_CLEANUP_TARGET_VERSION
+
+    def __post_init__(self) -> None:
+        for value, name in (
+            (self.operation_id, "cleanup operation id"),
+            (self.node_id, "cleanup node id"),
+            (self.attempt_name, "cleanup attempt name"),
+        ):
+            _require_safe_label(value, name=name)
+        _require_positive(self.attempt_epoch, name="cleanup attempt epoch")
+        for identity, name in (
+            (self.store_identity, "cleanup store identity"),
+            (self.attempt_identity, "cleanup attempt identity"),
+        ):
+            if (
+                not isinstance(identity, tuple)
+                or len(identity) != 2
+                or any(
+                    not isinstance(item, int) or isinstance(item, bool) or item < 0
+                    for item in identity
+                )
+            ):
+                raise ValueError(f"{name} must contain two non-negative integers")
+        _require_sha256(self.cleanup_id, name="cleanup id")
+        expected = sha256(
+            canonical_json_bytes(
+                {
+                    "attemptEpoch": self.attempt_epoch,
+                    "attemptIdentity": list(self.attempt_identity),
+                    "attemptName": self.attempt_name,
+                    "nodeId": self.node_id,
+                    "operationId": self.operation_id,
+                    "storeIdentity": list(self.store_identity),
+                }
+            )
+        ).hexdigest()
+        if self.cleanup_id != expected:
+            raise ValueError("Cleanup id does not match its exact owner target")
+        if self.target_version != PACKAGE_QUARANTINE_CLEANUP_TARGET_VERSION:
+            raise ValueError("Unsupported Package quarantine cleanup target")
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "attemptEpoch": self.attempt_epoch,
+            "attemptIdentity": list(self.attempt_identity),
+            "attemptName": self.attempt_name,
+            "cleanupId": self.cleanup_id,
+            "nodeId": self.node_id,
+            "operationId": self.operation_id,
+            "storeIdentity": list(self.store_identity),
+            "targetVersion": self.target_version,
+        }
+
+    @classmethod
+    def from_dict(cls, value: object) -> PackageQuarantineCleanupTargetV1:
+        document = _exact_dict(
+            value,
+            fields={
+                "attemptEpoch",
+                "attemptIdentity",
+                "attemptName",
+                "cleanupId",
+                "nodeId",
+                "operationId",
+                "storeIdentity",
+                "targetVersion",
+            },
+            name="Package quarantine cleanup target",
+        )
+        return cls(
+            operation_id=_wire_string(document["operationId"], name="operation id"),
+            attempt_epoch=_wire_positive(
+                document["attemptEpoch"], name="attempt epoch"
+            ),
+            node_id=_wire_string(document["nodeId"], name="node id"),
+            store_identity=_wire_identity(
+                document["storeIdentity"], name="store identity"
+            ),
+            attempt_identity=_wire_identity(
+                document["attemptIdentity"], name="attempt identity"
+            ),
+            attempt_name=_wire_string(document["attemptName"], name="attempt name"),
+            cleanup_id=_wire_string(document["cleanupId"], name="cleanup id"),
+            target_version=_wire_int(document["targetVersion"], name="target version"),
+        )
+
+
 class BoundedAcquisitionSinkPort(Protocol):
     def begin_request(self) -> None: ...
 
@@ -504,6 +615,58 @@ class PackageQuarantineStore:
         request: PackageAcquisitionRequestV1,
     ) -> _QuarantineAttempt:
         return _QuarantineAttempt.create(self.root, request)
+
+    def _repair(self, target: PackageQuarantineCleanupTargetV1) -> None:
+        if not isinstance(target, PackageQuarantineCleanupTargetV1):
+            raise TypeError("Package quarantine cleanup target is required")
+        if _supports_descriptor_relative_io():
+            root_fd = _open_directory(self.root)
+            try:
+                if _identity(os.fstat(root_fd)) != target.store_identity:
+                    raise OSError("Package cleanup store identity changed")
+                try:
+                    attempt_fd = _open_directory(target.attempt_name, dir_fd=root_fd)
+                except FileNotFoundError:
+                    if _directory_identity_exists_at(
+                        root_fd,
+                        target.attempt_identity,
+                    ):
+                        raise OSError("Package cleanup attempt identity moved") from None
+                    return
+                try:
+                    if _identity(os.fstat(attempt_fd)) != target.attempt_identity:
+                        raise OSError("Package cleanup attempt identity changed")
+                    _remove_directory_contents_at(attempt_fd)
+                    visible = _open_directory(target.attempt_name, dir_fd=root_fd)
+                    try:
+                        if _identity(os.fstat(visible)) != target.attempt_identity:
+                            raise OSError("Package cleanup attempt identity changed")
+                    finally:
+                        os.close(visible)
+                finally:
+                    os.close(attempt_fd)
+                os.rmdir(target.attempt_name, dir_fd=root_fd)
+            finally:
+                os.close(root_fd)
+            return
+        _require_private_directory(self.root)
+        if _identity(self.root.lstat()) != target.store_identity:
+            raise OSError("Package cleanup store identity changed")
+        attempt_path = self.root / target.attempt_name
+        if not attempt_path.exists() and not attempt_path.is_symlink():
+            if _directory_identity_exists_portable(
+                self.root,
+                target.attempt_identity,
+            ):
+                raise OSError("Package cleanup attempt identity moved")
+            return
+        _require_private_directory(attempt_path)
+        if _identity(attempt_path.lstat()) != target.attempt_identity:
+            raise OSError("Package cleanup attempt identity changed")
+        _remove_directory_contents_portable(attempt_path)
+        if _identity(attempt_path.lstat()) != target.attempt_identity:
+            raise OSError("Package cleanup attempt identity changed")
+        attempt_path.rmdir()
 
 
 class _QuarantineAttempt:
@@ -708,6 +871,42 @@ class _QuarantineAttempt:
                 path.unlink()
             self._attempt_path.rmdir()
             self._closed = True
+
+    def _cleanup_target(
+        self,
+        *,
+        operation_id: str,
+        attempt_epoch: int,
+        node_id: str,
+    ) -> PackageQuarantineCleanupTargetV1:
+        values = {
+            "attemptEpoch": attempt_epoch,
+            "attemptIdentity": list(self._attempt_identity),
+            "attemptName": self._attempt_name,
+            "nodeId": node_id,
+            "operationId": operation_id,
+            "storeIdentity": list(self._root_identity),
+        }
+        return PackageQuarantineCleanupTargetV1(
+            operation_id=operation_id,
+            attempt_epoch=attempt_epoch,
+            node_id=node_id,
+            store_identity=self._root_identity,
+            attempt_identity=self._attempt_identity,
+            attempt_name=self._attempt_name,
+            cleanup_id=sha256(canonical_json_bytes(values)).hexdigest(),
+        )
+
+    def _abandon_for_repair(self) -> None:
+        if self._closed:
+            return
+        if self._attempt_fd is not None:
+            os.close(self._attempt_fd)
+            self._attempt_fd = None
+        if self._root_fd is not None:
+            os.close(self._root_fd)
+            self._root_fd = None
+        self._closed = True
 
     def _cleanup_tree(self) -> None:
         if self._tree_identity is None:
@@ -1031,6 +1230,21 @@ class AcquiredPackageCandidate:
         self._attempt._cleanup()
         self._closed = True
 
+    def cleanup_target(self) -> PackageQuarantineCleanupTargetV1:
+        return self._attempt._cleanup_target(
+            operation_id=self.receipt.operation_id,
+            attempt_epoch=self.receipt.attempt_epoch,
+            node_id=self.receipt.node_id,
+        )
+
+    def defer_cleanup(self) -> PackageQuarantineCleanupTargetV1:
+        if self._closed:
+            raise RuntimeError("Acquired Package candidate is closed")
+        target = self.cleanup_target()
+        self._attempt._abandon_for_repair()
+        self._closed = True
+        return target
+
 
 class PackageAcquisitionOwner:
     """Authenticate and stream bytes without giving adapters a pathname."""
@@ -1140,20 +1354,70 @@ class PackageAcquisitionOwner:
                 adapter_result=result,
             )
             return AcquiredPackageCandidate(attempt=attempt, receipt=receipt)
-        except PackageAcquisitionError:
+        except PackageAcquisitionError as error:
             sink._abort()
-            attempt._cleanup()
-            raise
+            rejection = _sanitize_transfer_error(error, consumed_bytes=sink._byte_count)
+            try:
+                attempt._cleanup()
+            except OSError:
+                target = attempt._cleanup_target(
+                    operation_id=request.operation_id,
+                    attempt_epoch=request.attempt_epoch,
+                    node_id=request.node_id,
+                )
+                attempt._abandon_for_repair()
+                raise PackageAcquisitionCleanupDebtError(
+                    rejection=rejection,
+                    target=target,
+                ) from None
+            raise rejection from None
         except Exception:
             sink._abort()
-            attempt._cleanup()
-            raise PackageAcquisitionError(
+            rejection = PackageAcquisitionError(
                 "Source adapter was interrupted",
                 code="package_operation_interrupted",
                 stage="acquiring",
                 retryable=True,
                 consumed_bytes=sink._byte_count,
-            ) from None
+            )
+            try:
+                attempt._cleanup()
+            except OSError:
+                target = attempt._cleanup_target(
+                    operation_id=request.operation_id,
+                    attempt_epoch=request.attempt_epoch,
+                    node_id=request.node_id,
+                )
+                attempt._abandon_for_repair()
+                raise PackageAcquisitionCleanupDebtError(
+                    rejection=rejection,
+                    target=target,
+                ) from None
+            raise rejection from None
+
+
+def _sanitize_transfer_error(
+    error: PackageAcquisitionError,
+    *,
+    consumed_bytes: int,
+) -> PackageAcquisitionError:
+    policies: dict[str, tuple[AcquisitionStage, bool]] = {
+        "package_acquisition_limit_exceeded": ("acquiring", True),
+        "package_operation_timed_out": ("acquiring", True),
+        "package_source_provenance_changed": ("acquiring", False),
+        "package_acquisition_digest_mismatch": ("acquired", False),
+        "package_artifact_identity_changed": ("acquired", False),
+        "package_operation_interrupted": ("acquiring", True),
+    }
+    code = error.code if error.code in policies else "package_operation_interrupted"
+    stage, retryable = policies[code]
+    return PackageAcquisitionError(
+        "Package acquisition was rejected",
+        code=code,
+        stage=stage,
+        retryable=retryable,
+        consumed_bytes=consumed_bytes,
+    )
 
 
 def _verify_envelope(
@@ -1212,6 +1476,71 @@ def _open_relative_directory(root_fd: int, parts: tuple[str, ...]) -> int:
     except Exception:
         os.close(current_fd)
         raise
+
+
+def _remove_directory_contents_at(directory_fd: int) -> None:
+    for name in os.listdir(directory_fd):
+        metadata = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+        if stat.S_ISDIR(metadata.st_mode) and not _is_reparse(metadata):
+            child_fd = _open_directory(name, dir_fd=directory_fd)
+            child_identity = _identity(os.fstat(child_fd))
+            try:
+                _remove_directory_contents_at(child_fd)
+                visible = _open_directory(name, dir_fd=directory_fd)
+                try:
+                    if _identity(os.fstat(visible)) != child_identity:
+                        raise OSError("Package cleanup child identity changed")
+                finally:
+                    os.close(visible)
+            finally:
+                os.close(child_fd)
+            os.rmdir(name, dir_fd=directory_fd)
+        else:
+            os.unlink(name, dir_fd=directory_fd)
+
+
+def _directory_identity_exists_at(
+    directory_fd: int,
+    expected: tuple[int, int],
+) -> bool:
+    for name in os.listdir(directory_fd):
+        metadata = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+        if (
+            stat.S_ISDIR(metadata.st_mode)
+            and not _is_reparse(metadata)
+            and _identity(metadata) == expected
+        ):
+            return True
+    return False
+
+
+def _remove_directory_contents_portable(directory: Path) -> None:
+    for entry in os.scandir(directory):
+        metadata = entry.stat(follow_symlinks=False)
+        path = Path(entry.path)
+        if stat.S_ISDIR(metadata.st_mode) and not _is_reparse(metadata):
+            identity = _identity(metadata)
+            _remove_directory_contents_portable(path)
+            if _identity(path.lstat()) != identity:
+                raise OSError("Package cleanup child identity changed")
+            path.rmdir()
+        else:
+            path.unlink()
+
+
+def _directory_identity_exists_portable(
+    directory: Path,
+    expected: tuple[int, int],
+) -> bool:
+    for entry in os.scandir(directory):
+        metadata = entry.stat(follow_symlinks=False)
+        if (
+            stat.S_ISDIR(metadata.st_mode)
+            and not _is_reparse(metadata)
+            and _identity(metadata) == expected
+        ):
+            return True
+    return False
 
 
 def _require_private_directory(path: Path) -> None:
@@ -1293,6 +1622,15 @@ def _wire_nonnegative(value: object, *, name: str) -> int:
     return result
 
 
+def _wire_identity(value: object, *, name: str) -> tuple[int, int]:
+    if not isinstance(value, list) or len(value) != 2:
+        raise TypeError(f"{name} must be a two-item list")
+    return (
+        _wire_nonnegative(value[0], name=f"{name} device"),
+        _wire_nonnegative(value[1], name=f"{name} inode"),
+    )
+
+
 def _require_nonempty(value: str, *, name: str) -> None:
     if not isinstance(value, str) or not value:
         raise ValueError(f"{name} must be a non-empty string")
@@ -1326,9 +1664,11 @@ __all__ = [
     "BoundedAcquisitionReceiptV1",
     "BoundedAcquisitionSinkPort",
     "PackageAcquisitionBudgetV1",
+    "PackageAcquisitionCleanupDebtError",
     "PackageAcquisitionError",
     "PackageAcquisitionOwner",
     "PackageAcquisitionRequestV1",
+    "PackageQuarantineCleanupTargetV1",
     "PackageQuarantineStore",
     "PackageSourceAuthorityPort",
     "SourceAdapterResultV1",
