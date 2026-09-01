@@ -86,9 +86,10 @@
   composed closure-limit rows with real root evidence and a dependency
   selection after all PR checks passed and retained artifact `9803312387`
   executed exactly 57 native manifest nodes with zero skips, failures, or
-  errors. B3d-2b candidate code now composes all seven closure-integrity rows,
-  including cleanup-debt custody for every rejected candidate; their separate
-  native acceptance evidence remains pending.
+  errors. B3d-2b accepts all seven closure-integrity rows, including
+  cleanup-debt custody for every rejected candidate, after all PR checks passed
+  and retained artifact `9805712792` executed exactly 64 native manifest nodes
+  with zero skips, failures, or errors.
   Publication, later transaction phases, and every production route remain
   migration obligations; no global adversarial row is promoted.
 

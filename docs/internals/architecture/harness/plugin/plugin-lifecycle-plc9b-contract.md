@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.3d2b-candidate.
+- Contract version: PLC9B.3d2b.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -45,8 +45,9 @@
   lifecycle owner. B3d-1 accepts the two closure crash rows after their
   retained Linux-native report passed. B3d-2a accepts the three composed
   closure-limit rows after their separate retained report passed, without
-  changing the accepted crash evidence. B3d-2b candidate code makes all seven
-  composed closure-integrity rows executable while retaining dark operation.
+  changing the accepted crash evidence. B3d-2b accepts all seven composed
+  closure-integrity rows after their separate retained report passed, while
+  retaining dark operation.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -684,7 +685,7 @@ Quality run `33515285825`, Linux harness job `99880656864`, retained
 The XML executed exactly 57 manifest nodes, including all three `B-LIMIT-*`
 closure fixtures, with zero skips, failures, or errors.
 
-## PLC9B3d-2b Candidate Composed Closure Integrity
+## PLC9B3d-2b Accepted Composed Closure Integrity
 
 B3d-2b composes the same accepted lifecycle, Source Authority, bounded
 acquisition, Wheel verification, selection journal, recursive owner, cleanup
@@ -704,10 +705,16 @@ stable rejection code, and exposes no quarantine path. Same-distribution
 selection drift is a closure conflict; first-acquisition evidence mismatch
 remains artifact invalid.
 
-This is candidate evidence only. The seven rows are executable and the local
-64-row manifest passes, but B3d-2b is not accepted until all PR checks pass and
-the retained Linux-native XML executes exactly 64 manifest nodes without skips,
-failures, or errors. B3e remains out of scope.
+The seven rows are accepted after all PR checks passed and the retained
+Linux-native XML executed exactly 64 manifest nodes without skips, failures, or
+errors. B3e remains out of scope.
+
+B3d-2b was accepted on 2026-09-01 against candidate head `86858f32`. Harness
+Quality run `33521116497`, Linux harness job `99900313474`, retained
+`plc9b-linux-native-pytest-report` artifact ID `9805712792` with upload digest
+`41c3d0111fabf31a22dee0269c51bae36da9e6a5e1e9df03eec78be86dca4780`.
+The XML executed exactly 64 manifest nodes, including all seven
+`B-CLOSURE-*` fixtures, with zero skips, failures, or errors.
 
 ## First Principles
 

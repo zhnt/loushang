@@ -485,7 +485,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.3d2b-candidate" in contract
+    assert "Contract version: PLC9B.3d2b" in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
@@ -499,7 +499,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
     assert "PLC9B3c Accepted Recursive Closure Builder" in contract
     assert "PLC9B3d-1 Accepted Durable Closure Recovery" in contract
     assert "PLC9B3d-2a Accepted Composed Closure Limits" in contract
-    assert "PLC9B3d-2b Candidate Composed Closure Integrity" in contract
+    assert "PLC9B3d-2b Accepted Composed Closure Integrity" in contract
     assert "Harness Quality run `33505702666`" in contract
     assert "Linux\nharness job `99849101216`" in contract
     assert "(ID\n`9799493328`)" in contract
@@ -2000,9 +2000,21 @@ def test_plc9b3d_candidate_binds_recovery_before_io_and_remains_dark() -> None:
     assert "retained artifact `9803312387` executed exactly 57 native" in (
         " ".join(inventory.split())
     )
-    assert "This is candidate evidence only" in contract
-    assert "local\n64-row manifest passes" in contract
+    assert "B3d-2b was accepted on 2026-09-01 against candidate head `86858f32`" in (
+        contract
+    )
+    assert "Harness Quality run `33521116497`" in normalized
+    assert "Linux harness job `99900313474`" in normalized
+    assert "artifact ID `9805712792`" in normalized
+    assert (
+        "41c3d0111fabf31a22dee0269c51bae36da9e6a5e1e9df03eec78be86dca4780"
+        in contract
+    )
+    assert "executed exactly 64 manifest nodes" in contract
     assert "cleanup-debt custody for every rejected candidate" in inventory
+    assert "retained artifact `9805712792` executed exactly 64 native" in (
+        " ".join(inventory.split())
+    )
 
 
 def test_plc9b2f_windows_backend_is_rooted_and_has_a_nonskippable_native_gate() -> None:
