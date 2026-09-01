@@ -44,6 +44,27 @@ jobs:
           uv run python scripts/dev/verify_pytest_xml.py
           .artifacts/windows-shell-plc9b-native.xml
 
+      - name: Run PLC9B native Windows manifest tests
+        env:
+          PYTEST_ADDOPTS: >-
+            -o faulthandler_timeout=60
+            --junitxml=.artifacts/windows-shell-plc9b-manifest.xml
+        run: >-
+          uv run pytest
+          "tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-WIN-ROOT]"
+          "tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-WIN-ADS]"
+          "tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-WIN-RESERVED]"
+          "tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-WIN-TRAILING]"
+          "tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-COLLISION-CASE]"
+          "tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-TYPE-REPARSE]"
+          "tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-TYPE-JUNCTION]"
+          -q
+
+      - name: Reject empty, skipped, or failing PLC9B manifest report
+        run: >-
+          uv run python scripts/dev/verify_pytest_xml.py
+          .artifacts/windows-shell-plc9b-manifest.xml
+
       - name: Run native Windows shell compatibility tests
         env:
           PYTEST_ADDOPTS: >-

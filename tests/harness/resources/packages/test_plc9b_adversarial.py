@@ -99,10 +99,21 @@ IMPLEMENTED_B2H_MANIFEST_CASES = (
     "B-WHEEL-RECORD-ALGO",
 )
 
+PLC9B2I_WINDOWS_CANDIDATE_MANIFEST_CASES = (
+    "B-PATH-WIN-ROOT",
+    "B-PATH-WIN-ADS",
+    "B-PATH-WIN-RESERVED",
+    "B-PATH-WIN-TRAILING",
+    "B-PATH-COLLISION-CASE",
+    "B-TYPE-REPARSE",
+    "B-TYPE-JUNCTION",
+)
+
 EXECUTABLE_MANIFEST_CASES = (
     IMPLEMENTED_B1_MANIFEST_CASES
     + IMPLEMENTED_B2_MANIFEST_CASES
     + IMPLEMENTED_B2H_MANIFEST_CASES
+    + PLC9B2I_WINDOWS_CANDIDATE_MANIFEST_CASES
 )
 
 WHEEL_FILENAME = "acme_plugin-1.0-py3-none-any.whl"
@@ -118,6 +129,7 @@ def _wheel_bytes(
     *,
     extra_files: dict[str, bytes] | None = None,
     entry_modes: dict[str, int] | None = None,
+    windows_attributes: dict[str, int] | None = None,
     package_metadata: bytes | None = None,
     record_rows: list[tuple[str, str, str]] | None = None,
 ) -> bytes:
@@ -147,10 +159,14 @@ def _wheel_bytes(
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for name, payload in files.items():
             info = zipfile.ZipInfo(name)
-            info.create_system = 3
-            info.external_attr = (
-                (entry_modes or {}).get(name, stat.S_IFREG | 0o644) << 16
-            )
+            if name in (windows_attributes or {}):
+                info.create_system = 0
+                info.external_attr = (windows_attributes or {})[name]
+            else:
+                info.create_system = 3
+                info.external_attr = (
+                    (entry_modes or {}).get(name, stat.S_IFREG | 0o644) << 16
+                )
             info.compress_type = zipfile.ZIP_DEFLATED
             archive.writestr(info, payload)
     return output.getvalue()
@@ -256,6 +272,27 @@ def _inspection_fixture(case_id: str) -> _InspectionFixture:
                 }
             )
         )
+    windows_paths = {
+        "B-PATH-WIN-ROOT": "C:/escape.py",
+        "B-PATH-WIN-ADS": "pkg/file.py:stream",
+        "B-PATH-WIN-RESERVED": "pkg/CON",
+        "B-PATH-WIN-TRAILING": "pkg/trailing. ",
+    }
+    if case_id in windows_paths:
+        return _InspectionFixture(
+            payload=_wheel_bytes(
+                extra_files={windows_paths[case_id]: b"hostile"}
+            )
+        )
+    if case_id == "B-PATH-COLLISION-CASE":
+        return _InspectionFixture(
+            payload=_wheel_bytes(
+                extra_files={
+                    "pkg/Name.py": b"one",
+                    "pkg/name.py": b"two",
+                }
+            )
+        )
     entry_types = {
         "B-TYPE-SYMLINK": stat.S_IFLNK | 0o777,
         "B-TYPE-DEVICE": stat.S_IFCHR | 0o600,
@@ -268,6 +305,22 @@ def _inspection_fixture(case_id: str) -> _InspectionFixture:
             payload=_wheel_bytes(
                 extra_files={name: b"hostile"},
                 entry_modes={name: entry_types[case_id]},
+            )
+        )
+    if case_id == "B-TYPE-REPARSE":
+        name = "pkg/reparse-entry"
+        return _InspectionFixture(
+            payload=_wheel_bytes(
+                extra_files={name: b"hostile"},
+                windows_attributes={name: 0x400},
+            )
+        )
+    if case_id == "B-TYPE-JUNCTION":
+        name = "pkg/junction/"
+        return _InspectionFixture(
+            payload=_wheel_bytes(
+                extra_files={name: b""},
+                windows_attributes={name: 0x400 | 0x10},
             )
         )
     if case_id == "B-LIMIT-ENTRY":
@@ -780,7 +833,10 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
         for path in tmp_path.rglob("*"):
             if path.is_file():
                 assert secret.encode() not in path.read_bytes()
-    elif case_id in IMPLEMENTED_B2H_MANIFEST_CASES:
+    elif case_id in (
+        IMPLEMENTED_B2H_MANIFEST_CASES
+        + PLC9B2I_WINDOWS_CANDIDATE_MANIFEST_CASES
+    ):
         fixture = _inspection_fixture(case_id)
         secret = f"manifest-secret-{case_id.lower()}"
         (
@@ -828,9 +884,16 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
             "B-PATH-TRAVERSAL",
             "B-PATH-EMPTY",
             "B-PATH-COLLISION-SEP",
+            "B-PATH-WIN-ROOT",
+            "B-PATH-WIN-ADS",
+            "B-PATH-WIN-RESERVED",
+            "B-PATH-WIN-TRAILING",
         }:
             expected_code = "package_archive_path_rejected"
-        elif case_id == "B-PATH-COLLISION-UNICODE":
+        elif case_id in {
+            "B-PATH-COLLISION-UNICODE",
+            "B-PATH-COLLISION-CASE",
+        }:
             expected_code = "package_archive_name_collision"
         elif case_id.startswith("B-TYPE-"):
             expected_code = "package_archive_entry_type_rejected"

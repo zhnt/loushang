@@ -81,8 +81,9 @@ Neither may silently override a narrower implemented owner contract.
   adoption are implemented by PLC9B2b/B2c/B2d/B2e. PLC9B2f supplies the
   accepted native Windows rooted-handle backend and its mandatory CI oracle.
   PLC9B2g is the accepted acquisition-level manifest slice; PLC9B2h is the
-  accepted Linux archive/path/type/limit/wheel matrix. Closure, publication,
-  and production routing remain unimplemented.
+  accepted Linux archive/path/type/limit/wheel matrix; PLC9B2i is the candidate
+  Windows archive path/type matrix. Closure, publication, and production
+  routing remain unimplemented.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)

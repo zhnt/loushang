@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.2h.
+- Contract version: PLC9B.2i-candidate.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -26,6 +26,8 @@
   their non-skippable Linux CI gate and persisted XML evidence passed. B2h adds
   24 implemented archive/path/type/limit/wheel manifest fixtures; their
   Linux-native CI report executed without skips and persisted its XML evidence.
+  B2i adds seven Windows path, collision, reparse, and junction rows as a
+  candidate with a dedicated non-skippable Windows report.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -328,6 +330,25 @@ persisted the XML with upload digest
 `a858b55a60665b69b1a83dbfe29ef00d3b0ef48107b1d7c112a297f0a125e50f`.
 The 24 rows named above are therefore `implemented`; this does not promote the
 hardlink, Windows-native, cleanup/recovery, closure, publication, or route rows.
+
+## PLC9B2i Windows Archive Manifest Candidate
+
+B2i adds exact fixtures for `B-PATH-WIN-ROOT`, `B-PATH-WIN-ADS`,
+`B-PATH-WIN-RESERVED`, `B-PATH-WIN-TRAILING`, `B-PATH-COLLISION-CASE`,
+`B-TYPE-REPARSE`, and `B-TYPE-JUNCTION`. The path fixtures encode drive-root,
+alternate-data-stream, reserved-device, trailing-dot/space, and case-fold
+aliases directly in the central directory. Reparse uses a Windows-made file
+entry with `FILE_ATTRIBUTE_REPARSE_POINT`; junction uses a Windows-made
+directory entry carrying both directory and reparse attributes. Neither type
+is simulated with a POSIX symlink.
+
+The Windows workflow names all seven pytest nodes explicitly, writes a separate
+`windows-shell-plc9b-manifest.xml`, rejects an empty, skipped, failing, or
+errored report, and includes it in the persisted shell artifact. Portable local
+execution is defense-in-depth only and cannot accept a Windows-native row. The
+seven rows remain `planned` until that exact report passes on Windows 2022.
+This slice remains dark and performs no publication, binding, desired-state
+mutation, process execution, import, or peer fallback.
 
 ## First Principles
 
