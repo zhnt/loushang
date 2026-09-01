@@ -72,7 +72,7 @@ IMPLEMENTED_B2_MANIFEST_CASES = (
     "B-ACQ-DIGEST",
 )
 
-PLC9B2H_CANDIDATE_MANIFEST_CASES = (
+IMPLEMENTED_B2H_MANIFEST_CASES = (
     "B-ARCH-TRUNCATED",
     "B-ARCH-HEADERS",
     "B-ARCH-OVERLAP",
@@ -102,7 +102,7 @@ PLC9B2H_CANDIDATE_MANIFEST_CASES = (
 EXECUTABLE_MANIFEST_CASES = (
     IMPLEMENTED_B1_MANIFEST_CASES
     + IMPLEMENTED_B2_MANIFEST_CASES
-    + PLC9B2H_CANDIDATE_MANIFEST_CASES
+    + IMPLEMENTED_B2H_MANIFEST_CASES
 )
 
 WHEEL_FILENAME = "acme_plugin-1.0-py3-none-any.whl"
@@ -780,7 +780,7 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
         for path in tmp_path.rglob("*"):
             if path.is_file():
                 assert secret.encode() not in path.read_bytes()
-    elif case_id in PLC9B2H_CANDIDATE_MANIFEST_CASES:
+    elif case_id in IMPLEMENTED_B2H_MANIFEST_CASES:
         fixture = _inspection_fixture(case_id)
         secret = f"manifest-secret-{case_id.lower()}"
         (

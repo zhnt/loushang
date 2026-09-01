@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.2h-candidate.
+- Contract version: PLC9B.2h.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -24,8 +24,8 @@
   errors, and the XML reports were persisted as an Actions artifact. B2g adds
   the first six implemented acquisition-level end-to-end manifest fixtures;
   their non-skippable Linux CI gate and persisted XML evidence passed. B2h adds
-  24 archive/path/type/limit/wheel manifest fixtures as a candidate; their rows
-  remain `planned` until the Linux-native CI report executes without skips.
+  24 implemented archive/path/type/limit/wheel manifest fixtures; their
+  Linux-native CI report executed without skips and persisted its XML evidence.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -293,7 +293,7 @@ not activate a production route, inspect an archive, publish an artifact, or
 alter desired state; every broader row remains `planned` until its own complete
 oracle executes.
 
-## PLC9B2h Archive And Wheel Manifest Candidate
+## PLC9B2h Accepted Archive And Wheel Manifest Slice
 
 B2h drives 24 additional rows through the composed dark artifact owner: all
 five `B-ARCH-*` rows; portable absolute, traversal, empty-component,
@@ -317,9 +317,17 @@ proof barrier and still occur before a tree becomes selectable.
 `B-TYPE-HARDLINK` is deliberately not included. Wheel's ZIP format carries no
 portable hardlink inode/relation field, and substituting symlink or duplicate
 bytes would be false evidence. That row remains `planned` pending an explicit
-not-applicable contract disposition or a real encodable fixture. All 24 B2h
-rows remain `planned` until the exact nodes pass the non-skippable
-`plc9b-linux-native` report and its artifact is retained.
+not-applicable contract disposition or a real encodable fixture.
+
+B2h was accepted on 2026-09-01 by
+[Harness Quality run `33489524268`](https://github.com/zhnt/loushang/actions/runs/33489524268),
+Linux harness job `99797440636`, against head `85896c68`. The report executed
+all 38 then-implemented manifest nodes with `0 skipped`, `0 failures`, and
+`0 errors`. Artifact `plc9b-linux-native-pytest-report` (ID `9793161479`)
+persisted the XML with upload digest
+`a858b55a60665b69b1a83dbfe29ef00d3b0ef48107b1d7c112a297f0a125e50f`.
+The 24 rows named above are therefore `implemented`; this does not promote the
+hardlink, Windows-native, cleanup/recovery, closure, publication, or route rows.
 
 ## First Principles
 
@@ -770,41 +778,41 @@ B-ACQ-REDIRECT | any | acquiring | redirect_limit | package_acquisition_limit_ex
 B-ACQ-TIMEOUT | any | acquiring | wall_clock_limit | package_operation_timed_out | retryable_failure@acquiring | bounded_residue;no_publication;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ACQ-TIMEOUT] | harness-quality.yml#plc9b-linux-native | implemented
 B-ACQ-DIGEST | any | acquired | declared_digest_mismatch | package_acquisition_digest_mismatch | rejected@acquired | no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ACQ-DIGEST] | harness-quality.yml#plc9b-linux-native | implemented
 B-ACQ-IDENTITY | any | inspecting | archive_replacement | package_artifact_identity_changed | rejected@inspecting | no_outside_write;no_publication;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ACQ-IDENTITY] | harness-quality.yml#plc9b-linux-native | planned
-B-ARCH-TRUNCATED | any | inspecting | truncated_archive | package_archive_malformed | rejected@inspecting | bounded_residue;no_outside_write;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ARCH-TRUNCATED] | harness-quality.yml#plc9b-linux-native | planned
-B-ARCH-HEADERS | any | inspecting | inconsistent_headers | package_archive_malformed | rejected@inspecting | no_outside_write;no_publication;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ARCH-HEADERS] | harness-quality.yml#plc9b-linux-native | planned
-B-ARCH-OVERLAP | any | inspecting | overlapping_entries | package_archive_malformed | rejected@inspecting | no_outside_write;no_publication;bounded_residue | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ARCH-OVERLAP] | harness-quality.yml#plc9b-linux-native | planned
-B-ARCH-COMPRESSION | any | inspecting | unsupported_compression_or_encryption | package_archive_malformed | rejected@inspecting | no_process;no_outside_write;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ARCH-COMPRESSION] | harness-quality.yml#plc9b-linux-native | planned
-B-ARCH-TRAILING | any | inspecting | trailing_payload | package_archive_malformed | rejected@inspecting | no_outside_write;no_publication;no_binding | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ARCH-TRAILING] | harness-quality.yml#plc9b-linux-native | planned
-B-PATH-ABSOLUTE | any | inspecting | absolute_path | package_archive_path_rejected | rejected@inspecting | no_outside_write;no_publication;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-ABSOLUTE] | harness-quality.yml#plc9b-linux-native | planned
-B-PATH-TRAVERSAL | any | inspecting | parent_traversal | package_archive_path_rejected | rejected@inspecting | no_outside_write;no_publication;no_binding | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-TRAVERSAL] | harness-quality.yml#plc9b-linux-native | planned
-B-PATH-EMPTY | any | inspecting | empty_or_dot_component | package_archive_path_rejected | rejected@inspecting | no_outside_write;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-EMPTY] | harness-quality.yml#plc9b-linux-native | planned
+B-ARCH-TRUNCATED | any | inspecting | truncated_archive | package_archive_malformed | rejected@inspecting | bounded_residue;no_outside_write;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ARCH-TRUNCATED] | harness-quality.yml#plc9b-linux-native | implemented
+B-ARCH-HEADERS | any | inspecting | inconsistent_headers | package_archive_malformed | rejected@inspecting | no_outside_write;no_publication;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ARCH-HEADERS] | harness-quality.yml#plc9b-linux-native | implemented
+B-ARCH-OVERLAP | any | inspecting | overlapping_entries | package_archive_malformed | rejected@inspecting | no_outside_write;no_publication;bounded_residue | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ARCH-OVERLAP] | harness-quality.yml#plc9b-linux-native | implemented
+B-ARCH-COMPRESSION | any | inspecting | unsupported_compression_or_encryption | package_archive_malformed | rejected@inspecting | no_process;no_outside_write;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ARCH-COMPRESSION] | harness-quality.yml#plc9b-linux-native | implemented
+B-ARCH-TRAILING | any | inspecting | trailing_payload | package_archive_malformed | rejected@inspecting | no_outside_write;no_publication;no_binding | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ARCH-TRAILING] | harness-quality.yml#plc9b-linux-native | implemented
+B-PATH-ABSOLUTE | any | inspecting | absolute_path | package_archive_path_rejected | rejected@inspecting | no_outside_write;no_publication;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-ABSOLUTE] | harness-quality.yml#plc9b-linux-native | implemented
+B-PATH-TRAVERSAL | any | inspecting | parent_traversal | package_archive_path_rejected | rejected@inspecting | no_outside_write;no_publication;no_binding | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-TRAVERSAL] | harness-quality.yml#plc9b-linux-native | implemented
+B-PATH-EMPTY | any | inspecting | empty_or_dot_component | package_archive_path_rejected | rejected@inspecting | no_outside_write;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-EMPTY] | harness-quality.yml#plc9b-linux-native | implemented
 B-PATH-WIN-ROOT | windows-native | inspecting | drive_or_unc_path | package_archive_path_rejected | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-WIN-ROOT] | windows-shell-compatibility.yml#plc9b-windows-native | planned
 B-PATH-WIN-ADS | windows-native | inspecting | alternate_data_stream | package_archive_path_rejected | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-WIN-ADS] | windows-shell-compatibility.yml#plc9b-windows-native | planned
 B-PATH-WIN-RESERVED | windows-native | inspecting | reserved_device_name | package_archive_path_rejected | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-WIN-RESERVED] | windows-shell-compatibility.yml#plc9b-windows-native | planned
 B-PATH-WIN-TRAILING | windows-native | inspecting | trailing_dot_or_space | package_archive_path_rejected | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-WIN-TRAILING] | windows-shell-compatibility.yml#plc9b-windows-native | planned
-B-PATH-COLLISION-SEP | any | inspecting | separator_ambiguous_path | package_archive_path_rejected | rejected@inspecting | no_outside_write;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-COLLISION-SEP] | harness-quality.yml#plc9b-linux-native | planned
-B-PATH-COLLISION-UNICODE | any | inspecting | unicode_collision | package_archive_name_collision | rejected@inspecting | no_outside_write;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-COLLISION-UNICODE] | harness-quality.yml#plc9b-linux-native | planned
+B-PATH-COLLISION-SEP | any | inspecting | separator_ambiguous_path | package_archive_path_rejected | rejected@inspecting | no_outside_write;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-COLLISION-SEP] | harness-quality.yml#plc9b-linux-native | implemented
+B-PATH-COLLISION-UNICODE | any | inspecting | unicode_collision | package_archive_name_collision | rejected@inspecting | no_outside_write;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-COLLISION-UNICODE] | harness-quality.yml#plc9b-linux-native | implemented
 B-PATH-COLLISION-CASE | windows-native | inspecting | casefold_collision | package_archive_name_collision | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-COLLISION-CASE] | windows-shell-compatibility.yml#plc9b-windows-native | planned
-B-TYPE-SYMLINK | posix-native | inspecting | symlink_entry | package_archive_entry_type_rejected | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-TYPE-SYMLINK] | harness-quality.yml#plc9b-linux-native | planned
+B-TYPE-SYMLINK | posix-native | inspecting | symlink_entry | package_archive_entry_type_rejected | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-TYPE-SYMLINK] | harness-quality.yml#plc9b-linux-native | implemented
 B-TYPE-HARDLINK | posix-native | inspecting | hardlink_entry | package_archive_entry_type_rejected | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-TYPE-HARDLINK] | harness-quality.yml#plc9b-linux-native | planned
-B-TYPE-DEVICE | posix-native | inspecting | device_entry | package_archive_entry_type_rejected | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-TYPE-DEVICE] | harness-quality.yml#plc9b-linux-native | planned
-B-TYPE-SOCKET | posix-native | inspecting | socket_entry | package_archive_entry_type_rejected | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-TYPE-SOCKET] | harness-quality.yml#plc9b-linux-native | planned
-B-TYPE-FIFO | posix-native | inspecting | fifo_entry | package_archive_entry_type_rejected | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-TYPE-FIFO] | harness-quality.yml#plc9b-linux-native | planned
+B-TYPE-DEVICE | posix-native | inspecting | device_entry | package_archive_entry_type_rejected | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-TYPE-DEVICE] | harness-quality.yml#plc9b-linux-native | implemented
+B-TYPE-SOCKET | posix-native | inspecting | socket_entry | package_archive_entry_type_rejected | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-TYPE-SOCKET] | harness-quality.yml#plc9b-linux-native | implemented
+B-TYPE-FIFO | posix-native | inspecting | fifo_entry | package_archive_entry_type_rejected | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-TYPE-FIFO] | harness-quality.yml#plc9b-linux-native | implemented
 B-TYPE-REPARSE | windows-native | inspecting | reparse_entry | package_archive_entry_type_rejected | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-TYPE-REPARSE] | windows-shell-compatibility.yml#plc9b-windows-native | planned
 B-TYPE-JUNCTION | windows-native | inspecting | junction_entry | package_archive_entry_type_rejected | rejected@inspecting | no_outside_write;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-TYPE-JUNCTION] | windows-shell-compatibility.yml#plc9b-windows-native | planned
-B-LIMIT-ENTRY | any | inspecting | entry_or_expansion_budget | package_resource_limit_exceeded | rejected@inspecting | bounded_residue;no_publication;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-LIMIT-ENTRY] | harness-quality.yml#plc9b-linux-native | planned
-B-LIMIT-MEMORY | any | inspecting | parser_or_metadata_memory | package_resource_limit_exceeded | rejected@inspecting | bounded_residue;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-LIMIT-MEMORY] | harness-quality.yml#plc9b-linux-native | planned
-B-LIMIT-CPU | any | inspecting | cpu_or_wall_budget | package_resource_limit_exceeded | rejected@inspecting | bounded_residue;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-LIMIT-CPU] | harness-quality.yml#plc9b-linux-native | planned
+B-LIMIT-ENTRY | any | inspecting | entry_or_expansion_budget | package_resource_limit_exceeded | rejected@inspecting | bounded_residue;no_publication;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-LIMIT-ENTRY] | harness-quality.yml#plc9b-linux-native | implemented
+B-LIMIT-MEMORY | any | inspecting | parser_or_metadata_memory | package_resource_limit_exceeded | rejected@inspecting | bounded_residue;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-LIMIT-MEMORY] | harness-quality.yml#plc9b-linux-native | implemented
+B-LIMIT-CPU | any | inspecting | cpu_or_wall_budget | package_resource_limit_exceeded | rejected@inspecting | bounded_residue;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-LIMIT-CPU] | harness-quality.yml#plc9b-linux-native | implemented
 B-LIMIT-GRAPH | any | resolving_closure | closure_node_edge_depth | package_resource_limit_exceeded | rejected@resolving_closure | no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-LIMIT-GRAPH] | harness-quality.yml#plc9b-linux-native | planned
 B-LIMIT-SOLVER | any | resolving_closure | solver_or_marker_steps | package_resource_limit_exceeded | rejected@resolving_closure | no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-LIMIT-SOLVER] | harness-quality.yml#plc9b-linux-native | planned
 B-LIMIT-REQUESTS | any | acquiring | request_redirect_artifact_count | package_resource_limit_exceeded | rejected@acquiring | no_extra_network;no_publication;bounded_residue | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-LIMIT-REQUESTS] | harness-quality.yml#plc9b-linux-native | planned
-B-WHEEL-SDIST | any | inspecting | source_distribution | package_artifact_type_rejected | rejected@inspecting | no_process;no_import;no_publication;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-WHEEL-SDIST] | harness-quality.yml#plc9b-linux-native | planned
-B-WHEEL-ZIP | any | inspecting | arbitrary_zip_or_editable | package_artifact_type_rejected | rejected@inspecting | no_process;no_import;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-WHEEL-ZIP] | harness-quality.yml#plc9b-linux-native | planned
-B-WHEEL-TAGS | any | inspecting | unsupported_wheel_tags | package_artifact_type_rejected | rejected@inspecting | no_publication;no_binding | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-WHEEL-TAGS] | harness-quality.yml#plc9b-linux-native | planned
-B-WHEEL-METADATA | any | inspecting | wheel_metadata_mismatch | package_wheel_metadata_invalid | rejected@inspecting | no_publication;no_binding;no_desired | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-WHEEL-METADATA] | harness-quality.yml#plc9b-linux-native | planned
-B-WHEEL-RECORD-HASH | any | extracted | record_hash_or_size | package_wheel_record_invalid | rejected@extracted | no_publication;no_binding;no_desired | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-WHEEL-RECORD-HASH] | harness-quality.yml#plc9b-linux-native | planned
-B-WHEEL-RECORD-SET | any | extracted | record_missing_or_unlisted | package_wheel_record_invalid | rejected@extracted | no_publication;no_binding;no_desired | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-WHEEL-RECORD-SET] | harness-quality.yml#plc9b-linux-native | planned
-B-WHEEL-RECORD-ALGO | any | extracted | weak_or_unknown_record_hash | package_wheel_record_invalid | rejected@extracted | no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-WHEEL-RECORD-ALGO] | harness-quality.yml#plc9b-linux-native | planned
+B-WHEEL-SDIST | any | inspecting | source_distribution | package_artifact_type_rejected | rejected@inspecting | no_process;no_import;no_publication;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-WHEEL-SDIST] | harness-quality.yml#plc9b-linux-native | implemented
+B-WHEEL-ZIP | any | inspecting | arbitrary_zip_or_editable | package_artifact_type_rejected | rejected@inspecting | no_process;no_import;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-WHEEL-ZIP] | harness-quality.yml#plc9b-linux-native | implemented
+B-WHEEL-TAGS | any | inspecting | unsupported_wheel_tags | package_artifact_type_rejected | rejected@inspecting | no_publication;no_binding | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-WHEEL-TAGS] | harness-quality.yml#plc9b-linux-native | implemented
+B-WHEEL-METADATA | any | inspecting | wheel_metadata_mismatch | package_wheel_metadata_invalid | rejected@inspecting | no_publication;no_binding;no_desired | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-WHEEL-METADATA] | harness-quality.yml#plc9b-linux-native | implemented
+B-WHEEL-RECORD-HASH | any | extracted | record_hash_or_size | package_wheel_record_invalid | rejected@extracted | no_publication;no_binding;no_desired | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-WHEEL-RECORD-HASH] | harness-quality.yml#plc9b-linux-native | implemented
+B-WHEEL-RECORD-SET | any | extracted | record_missing_or_unlisted | package_wheel_record_invalid | rejected@extracted | no_publication;no_binding;no_desired | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-WHEEL-RECORD-SET] | harness-quality.yml#plc9b-linux-native | implemented
+B-WHEEL-RECORD-ALGO | any | extracted | weak_or_unknown_record_hash | package_wheel_record_invalid | rejected@extracted | no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-WHEEL-RECORD-ALGO] | harness-quality.yml#plc9b-linux-native | implemented
 B-CLOSURE-MISSING | any | resolving_closure | missing_dependency | package_closure_artifact_invalid | rejected@resolving_closure | no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CLOSURE-MISSING] | harness-quality.yml#plc9b-linux-native | planned
 B-CLOSURE-DIGEST | any | resolving_closure | dependency_digest_mismatch | package_closure_artifact_invalid | rejected@resolving_closure | no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CLOSURE-DIGEST] | harness-quality.yml#plc9b-linux-native | planned
 B-CLOSURE-ORIGIN | any | resolving_closure | dependency_unauthorized_origin | package_closure_artifact_invalid | rejected@resolving_closure | no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CLOSURE-ORIGIN] | harness-quality.yml#plc9b-linux-native | planned
