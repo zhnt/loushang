@@ -32,6 +32,7 @@ TRANSACTION_PIN_RUNTIME = OWNER_KERNEL_ROOT / "transaction_pin_runtime.py"
 STAGING = OWNER_KERNEL_ROOT / "staging.py"
 COMMITTED_SETS = OWNER_KERNEL_ROOT / "committed_sets.py"
 STAGING_SET_RUNTIME = OWNER_KERNEL_ROOT / "staging_set_runtime.py"
+TREE_TRANSFER = OWNER_KERNEL_ROOT / "tree_transfer.py"
 CLOSURE_TEST = Path("tests/harness/resources/packages/test_plc9b_closure.py")
 CLOSURE_OWNER_TEST = Path(
     "tests/harness/resources/packages/test_plc9b_closure_owner.py"
@@ -57,6 +58,9 @@ COMMITTED_SETS_TEST = Path(
 )
 STAGING_SET_RUNTIME_TEST = Path(
     "tests/harness/resources/packages/test_plc9b_staging_set_runtime.py"
+)
+TREE_TRANSFER_TEST = Path(
+    "tests/harness/resources/packages/test_plc9b_verified_tree_transfer.py"
 )
 PYPROJECT = Path("pyproject.toml")
 WINDOWS_NATIVE_TEST = Path(
@@ -515,7 +519,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.3e3b" in contract
+    assert "Contract version: PLC9B.3e3c0-candidate" in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
@@ -533,6 +537,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
     assert "PLC9B3e-1 Accepted Typed Commit Records" in contract
     assert "PLC9B3e-3a Accepted Staging And Atomic Set Contracts" in contract
     assert "PLC9B3e-3b Accepted Staging And Set Runtime" in contract
+    assert "PLC9B3e-3c0 Candidate Verified-Tree Transfer Contracts" in contract
     assert "PLC9B3e-2a Accepted Transaction-Pin Contract" in contract
     assert "Harness Quality run `33505702666`" in contract
     assert "Linux\nharness job `99849101216`" in contract
@@ -2597,8 +2602,7 @@ def test_plc9b3e3b_runtime_orders_staging_set_effects_and_recovers_dark() -> Non
     assert "Linux harness job `99966966810`" in normalized
     assert "artifact ID `9813586958`" in normalized
     assert (
-        "5937ae3e1a55da57edf996537d6c0b547c3769c290dbd7ac9fd59691ab39d2fd"
-        in contract
+        "5937ae3e1a55da57edf996537d6c0b547c3769c290dbd7ac9fd59691ab39d2fd" in contract
     )
     assert "executed exactly 67 manifest nodes" in normalized
     assert manifest["B-CRASH-STAGING"]["status"] == "implemented"
@@ -2608,6 +2612,93 @@ def test_plc9b3e3b_runtime_orders_staging_set_effects_and_recovers_dark() -> Non
         for case_id in manifest
         if case_id.startswith("B-PUB-")
     )
+
+
+def test_plc9b3e3c0_freezes_pathless_role_separated_transfer_contracts() -> None:
+    contract = _source(CONTRACT)
+    inventory = _source(INVENTORY)
+    index = _source(INDEX)
+    source = _source(TREE_TRANSFER)
+    wheel = _source(WHEEL_VERIFIER)
+    component_tests = _source(TREE_TRANSFER_TEST)
+    adversarial_tests = _source(ADVERSARIAL_TEST)
+    package_facade = _source(PACKAGE_ROOT / "__init__.py")
+    internal_facade = _source(OWNER_KERNEL_ROOT / "__init__.py")
+    author_sdk = _source(AUTHOR_SDK)
+    manifest = _adversarial_manifest()
+
+    assert TREE_TRANSFER.is_file()
+    assert TREE_TRANSFER_TEST.is_file()
+    symbols = (
+        "PackageVerifiedTreeEntryV1",
+        "PackageVerifiedTreeManifestV1",
+        "PackageVerifiedTreeFileSinkPort",
+        "PackageVerifiedTreeSinkPort",
+        "PackageVerifiedTreeTransferPort",
+        "PackageDependencyMaterializationRootPort",
+        "PackagePluginRootMaterializationRootPort",
+    )
+    for symbol in symbols:
+        assert f"class {symbol}" in source
+        assert symbol not in package_facade
+        assert symbol not in internal_facade
+        assert symbol not in author_sdk
+
+    tree = ast.parse(source, filename=str(TREE_TRANSFER))
+    imported = {
+        node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
+    }
+    forbidden_modules = (
+        "loushang.harness.plugin_management",
+        "loushang.harness.resources.plugins.revisions",
+        "loushang.coding",
+        "loushang.foundation",
+        "os",
+        "pathlib",
+        "subprocess",
+    )
+    assert not any(
+        module == forbidden or module.startswith(f"{forbidden}.")
+        for module in imported
+        for forbidden in forbidden_modules
+    )
+    for forbidden_capability in (
+        "PluginRevisionStore",
+        "PluginPackageLifecycleLedger",
+        "PackageOperationsRuntime",
+        "PythonPackageInstallerBackend",
+    ):
+        assert forbidden_capability not in source
+
+    assert "PackageVerifiedTreeManifestV1.create" in wheel
+    assert "def transfer_manifest" in wheel
+    for evidence in (
+        "manifest_binds_canonical_files_to_verified_wheel_evidence",
+        "entry_rejects_nonportable_or_ambiguous_logical_paths",
+        "manifest_rejects_order_tree_or_evidence_drift",
+        "manifest_wire_is_strict_and_contains_no_physical_authority",
+        "transfer_contracts_keep_source_store_and_root_roles_separate",
+    ):
+        assert evidence in component_tests
+    assert "PLANNED_B3E3C_MATERIALIZATION_MANIFEST_CASES" in adversarial_tests
+    assert "PLANNED_B4_COMMIT_ADMISSION_MANIFEST_CASES" in adversarial_tests
+
+    publication_cases = {
+        case_id for case_id in manifest if case_id.startswith("B-PUB-")
+    }
+    assert len(publication_cases) == 13
+    assert all(
+        manifest[case_id]["status"] == "planned" for case_id in publication_cases
+    )
+    assert manifest["B-PUB-UNCOMMITTED"]["status"] == "planned"
+
+    normalized = " ".join(contract.split())
+    assert "B3e-3c0 closes the missing data-plane contract" in normalized
+    assert "The manifest is deliberately files-only" in normalized
+    assert "all 13 `B-PUB-*` rows remain `planned`" in normalized
+    assert "B-PUB-UNCOMMITTED` remains a PLC9B4 commit-admission gate" in normalized
+    assert "PLC9B3e-3c0 candidate code adds a strict files-only" in inventory
+    assert "PLC9B3e-3c0 candidate contracts bind a files-only" in index
 
 
 def test_plc9b2f_windows_backend_is_rooted_and_has_a_nonskippable_native_gate() -> None:

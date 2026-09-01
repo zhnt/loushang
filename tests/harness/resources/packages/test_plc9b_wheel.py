@@ -197,6 +197,20 @@ def test_valid_wheel_is_fully_verified_before_controlled_extraction(
     assert verified.evidence.entry_count == 4
     assert verified.requires_dist == ()
     assert len(verified.evidence.extraction_tree_digest) == 64
+    assert verified.transfer_manifest.extraction_tree_digest == (
+        verified.evidence.extraction_tree_digest
+    )
+    assert verified.transfer_manifest.wheel_evidence_fingerprint == (
+        verified.evidence.fingerprint
+    )
+    assert tuple(
+        entry.logical_path for entry in verified.transfer_manifest.entries
+    ) == (
+        "acme_plugin/__init__.py",
+        "acme_plugin-1.0.dist-info/METADATA",
+        "acme_plugin-1.0.dist-info/RECORD",
+        "acme_plugin-1.0.dist-info/WHEEL",
+    )
     assert "path" not in str(verified.evidence.to_dict()).lower()
     assert (
         VerifiedWheelArtifactV1.from_dict(verified.evidence.to_dict())

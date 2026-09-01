@@ -132,6 +132,13 @@
   state, and production routing remain absent. All PR checks passed and
   retained artifact `9813586958` executed exactly 67 native manifest nodes
   without skips, failures, errors, or any `B-PUB-*` node.
+  PLC9B3e-3c0 candidate code adds a strict files-only transfer manifest bound
+  to exact Wheel evidence and separates quarantine-owned byte transfer from
+  dependency-store and designated Plugin-root sink authorities. These are
+  dark records and Protocols only: there is no transfer loop, concrete Store,
+  native publication root, stable-ref issuance, admission, or production
+  route. All 13 `B-PUB-*` rows remain planned; `B-PUB-UNCOMMITTED` stays with
+  PLC9B4 commit admission rather than physical materialization.
 
 This inventory distinguishes accepted reusable owners, Product adapters,
 parallel compatibility paths, and missing target boundaries. “Migrate” or

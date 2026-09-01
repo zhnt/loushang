@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.3e3b.
+- Contract version: PLC9B.3e3c0-candidate.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -67,6 +67,11 @@
   supports candidate-free durable resume/recovery, and implements
   `B-CRASH-STAGING` plus `B-CRASH-SET` without a concrete store or public
   publication namespace.
+  B3e-3c0 candidate code freezes a files-only verified-tree manifest and three
+  separate short-lived capabilities for quarantine-owned transfer,
+  dependency-store materialization roots, and designated Plugin-root
+  materialization roots. It performs no store write and promotes no manifest
+  row.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -963,6 +968,51 @@ PR check passed. Harness Quality run `33541012780`, Linux harness job
 The XML executed exactly 67 manifest nodes with zero skips, failures, or
 errors, included `B-CRASH-PINNED`, `B-CRASH-STAGING`, and `B-CRASH-SET`, and
 contained no `B-PUB-*` node.
+
+## PLC9B3e-3c0 Candidate Verified-Tree Transfer Contracts
+
+B3e-3c0 closes the missing data-plane contract between an opaque verified
+candidate and a Store without transferring a quarantine pathname or source
+handle. Wheel verification now constructs one credential-free
+`PackageVerifiedTreeManifestV1` after extraction succeeds. The manifest binds
+the exact Wheel-evidence fingerprint, operation/attempt/node, canonical
+distribution/version, artifact digest, extraction-tree digest, total expanded
+bytes, and the canonically ordered set of logical regular files with exact
+SHA-256 and size. Its fingerprint is independently recomputed on every decode.
+
+The manifest is deliberately files-only. Its order is the already accepted
+component-tuple order used by Wheel extraction, so this slice does not rewrite
+an accepted tree digest. Destination directories are derived by the Store from
+verified file parents. Empty directories, archive directory entries, links,
+reparse points, devices, sockets, and FIFOs are never transferable objects.
+Logical paths must remain NFC-normalized and portable across POSIX and Windows;
+they are data, not host paths.
+
+`PackageVerifiedTreeTransferPort` is the only future reader of the rooted
+quarantine tree. It will receive the exact staging request, its live candidate,
+and a Store-owned sink already bound to that request and manifest. The sink
+opens only the next declared file writer, accepts bounded byte chunks, and can
+finish or abort. It never supplies a destination pathname or native handle to
+the transfer owner. The transfer owner never chooses a destination name,
+reopens a caller path, or constructs a stable ref.
+
+Store authority is role-separated before native code exists:
+`PackageDependencyMaterializationRootPort.open_dependency_sink` cannot open a
+Plugin root, while `PackagePluginRootMaterializationRootPort.open_root_sink`
+requires the existing authority-designated root staging request. Each future
+implementation must pin and validate its configured root with native handles,
+own partial-object cleanup, recheck every written file digest and byte count,
+durably settle the object, and only then let its sink issue the existing typed
+`PackageArtifactStagingReceiptV1`. Process-local sink/root handles are never
+serialized or returned to the Package transaction owner.
+
+This candidate slice defines records and Protocols and attaches the exact
+manifest to `VerifiedWheelCandidate`; it implements no transfer loop, Store
+sink, native root backend, namespace rename, collision/reuse decision, or
+staging adapter. Therefore all 13 `B-PUB-*` rows remain `planned`. The first 12
+physical materialization/root/collision/reuse rows belong to the B3e-3c native
+implementation slices. `B-PUB-UNCOMMITTED` remains a PLC9B4 commit-admission
+gate even after safe bytes exist in a Store.
 
 ## First Principles
 

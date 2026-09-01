@@ -29,6 +29,11 @@ from loushang.harness.resources.packages.plugin_lifecycle.acquisition import (
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.tree_transfer import (
+    PackageVerifiedTreeEntryV1,
+    PackageVerifiedTreeManifestV1,
+    verified_tree_digest,
+)
 
 PACKAGE_INSPECTION_BUDGET_VERSION = 1
 VERIFIED_WHEEL_ARTIFACT_VERSION = 1
@@ -319,12 +324,17 @@ class VerifiedWheelCandidate:
         *,
         acquired: AcquiredPackageCandidate,
         evidence: VerifiedWheelArtifactV1,
+        transfer_manifest: PackageVerifiedTreeManifestV1,
         requires_dist: tuple[str, ...],
         requires_python: str | None,
         provides_extra: tuple[str, ...],
     ) -> None:
+        if not isinstance(transfer_manifest, PackageVerifiedTreeManifestV1):
+            raise TypeError("Verified-tree transfer manifest is required")
+        transfer_manifest.validate_evidence(evidence)
         self._acquired = acquired
         self.evidence = evidence
+        self._transfer_manifest = transfer_manifest
         self.requires_dist = requires_dist
         self.requires_python = requires_python
         self.provides_extra = provides_extra
@@ -345,6 +355,12 @@ class VerifiedWheelCandidate:
     @property
     def acquisition_receipt(self) -> BoundedAcquisitionReceiptV1:
         return self._acquired.receipt
+
+    @property
+    def transfer_manifest(self) -> PackageVerifiedTreeManifestV1:
+        """Return verified logical files only, never a quarantine pathname."""
+
+        return self._transfer_manifest
 
     def cleanup(self) -> None:
         if self._closed:
@@ -477,7 +493,7 @@ class PackageWheelVerifier:
                     started_at=started_at,
                     clock=self._clock,
                 )
-                tree_digest = _extract_verified_tree(
+                tree_entries = _extract_verified_tree(
                     candidate,
                     artifact,
                     entries=entries,
@@ -486,6 +502,7 @@ class PackageWheelVerifier:
                     started_at=started_at,
                     clock=self._clock,
                 )
+                tree_digest = verified_tree_digest(tree_entries)
             evidence = VerifiedWheelArtifactV1(
                 operation_id=candidate.receipt.operation_id,
                 attempt_epoch=candidate.receipt.attempt_epoch,
@@ -506,9 +523,14 @@ class PackageWheelVerifier:
                 expanded_byte_count=content.expanded_bytes,
                 extraction_tree_digest=tree_digest,
             )
+            transfer_manifest = PackageVerifiedTreeManifestV1.create(
+                evidence,
+                entries=tree_entries,
+            )
             return VerifiedWheelCandidate(
                 acquired=candidate,
                 evidence=evidence,
+                transfer_manifest=transfer_manifest,
                 requires_dist=metadata_claims.requires_dist,
                 requires_python=metadata_claims.requires_python,
                 provides_extra=metadata_claims.provides_extra,
@@ -976,9 +998,9 @@ def _extract_verified_tree(
     budgets: PackageInspectionBudgetV1,
     started_at: float,
     clock: Callable[[], float],
-) -> str:
+) -> tuple[PackageVerifiedTreeEntryV1, ...]:
     writer = candidate._attempt._begin_extraction()
-    tree_records: list[dict[str, object]] = []
+    tree_entries: list[PackageVerifiedTreeEntryV1] = []
     try:
         artifact.seek(0)
         with zipfile.ZipFile(artifact, "r") as archive:
@@ -1014,19 +1036,18 @@ def _extract_verified_tree(
                         stage="extracted",
                         consumed_bytes=byte_count,
                     )
-                tree_records.append(
-                    {
-                        "digest": digest.hexdigest(),
-                        "path": "/".join(entry.canonical_parts),
-                        "size": byte_count,
-                        "type": "regular_file",
-                    }
+                tree_entries.append(
+                    PackageVerifiedTreeEntryV1(
+                        logical_path="/".join(entry.canonical_parts),
+                        content_digest=digest.hexdigest(),
+                        byte_count=byte_count,
+                    )
                 )
         writer._finish()
     except Exception:
         writer._abort()
         raise
-    return sha256(canonical_json_bytes(tree_records)).hexdigest()
+    return tuple(tree_entries)
 
 
 def _revalidate_artifact_identity(

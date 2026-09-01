@@ -55,6 +55,11 @@ from loushang.harness.resources.packages.plugin_lifecycle.transaction_pins impor
     PackageTransactionPinReceiptV1,
     PackageTransactionPinRequestV1,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.tree_transfer import (
+    PackageVerifiedTreeEntryV1,
+    PackageVerifiedTreeManifestV1,
+    verified_tree_digest,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.wheel import (
     VerifiedWheelArtifactV1,
     VerifiedWheelCandidate,
@@ -298,7 +303,6 @@ def _verified_candidate(
         distribution="dependency",
         version="2.0",
         artifact_digest="4" * 64,
-        tree_digest="3" * 64,
         attempt_epoch=attempt_epoch,
     )
     requirement = ResolvedPackageRequirementV1(
@@ -313,7 +317,6 @@ def _verified_candidate(
         distribution="root-plugin",
         version="1.0",
         artifact_digest="6" * 64,
-        tree_digest="5" * 64,
         attempt_epoch=attempt_epoch,
         requirements=(requirement,),
         selected_edges=(dependency_node.node_id,),
@@ -342,11 +345,18 @@ def _wheel_candidate(
     distribution: str,
     version: str,
     artifact_digest: str,
-    tree_digest: str,
     attempt_epoch: int,
     requirements: tuple[ResolvedPackageRequirementV1, ...] = (),
     selected_edges: tuple[str, ...] = (),
 ) -> tuple[VerifiedWheelCandidate, VerifiedClosurePlanNodeV2, _Acquired]:
+    transfer_entries = (
+        PackageVerifiedTreeEntryV1(
+            logical_path=f"{distribution.replace('-', '_')}/payload.py",
+            content_digest=sha256(b"0123456789").hexdigest(),
+            byte_count=10,
+        ),
+    )
+    tree_digest = verified_tree_digest(transfer_entries)
     source = f"https://packages.example.test/{distribution}.whl"
     envelope = AuthenticatedSourceEnvelopeV1(
         operation_id=OPERATION_ID,
@@ -398,9 +408,14 @@ def _wheel_candidate(
         extraction_tree_digest=tree_digest,
     )
     acquired = _Acquired(envelope, acquisition)
+    transfer_manifest = PackageVerifiedTreeManifestV1.create(
+        wheel,
+        entries=transfer_entries,
+    )
     candidate = VerifiedWheelCandidate(
         acquired=acquired,  # type: ignore[arg-type]
         evidence=wheel,
+        transfer_manifest=transfer_manifest,
         requires_dist=(),
         requires_python=None,
         provides_extra=(),
