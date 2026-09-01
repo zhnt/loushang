@@ -179,7 +179,9 @@ def _capture_portable(
         )
         if (
             not _same_file_snapshot(metadata, after_read)
-            or not _same_file_snapshot(metadata, after_path)
+            or not _same_file_snapshot(before, after_path)
+            or (metadata.st_dev, metadata.st_ino)
+            != (after_path.st_dev, after_path.st_ino)
             or len(body) != metadata.st_size
         ):
             raise ContainedFileCaptureError(

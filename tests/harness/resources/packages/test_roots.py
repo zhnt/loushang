@@ -413,6 +413,7 @@ def test_resource_loader_rejects_changed_published_plugin_revision(
 
 def test_unsafe_plugin_revision_diagnostic_retains_configured_source(
     tmp_path: Path,
+    symlink_or_skip,
 ) -> None:
     root = tmp_path / "plugins" / "review-pack"
     root.mkdir(parents=True)
@@ -420,7 +421,7 @@ def test_unsafe_plugin_revision_diagnostic_retains_configured_source(
         json.dumps({"name": "review-pack"}),
         encoding="utf-8",
     )
-    (root / "linked.txt").symlink_to(tmp_path / "outside.txt")
+    symlink_or_skip(root / "linked.txt", tmp_path / "outside.txt")
     diagnostics = DiagnosticsService()
 
     with pytest.raises(PluginRevisionError) as caught:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
@@ -292,15 +293,6 @@ async def _native_source_handles_are_narrow_and_discovery_is_generation_exact(
     root_handles = _root_handles(workspace, resource_root)
     with pytest.raises(TypeError, match="Host-minted"):
         type(root_handles[0])()
-    symlink = tmp_path / "resource-link"
-    symlink.symlink_to(resource_root, target_is_directory=True)
-    with pytest.raises(ValueError, match="must not be a symlink"):
-        mint_native_resource_root_handle(
-            handle_id="symlink-root",
-            root=symlink,
-            source_class="project_local",
-            root_kind="standard",
-        )
 
     shadow = await run_first_party_resource_catalog_shadow(
         product_id="coding",
@@ -333,19 +325,43 @@ async def _native_source_handles_are_narrow_and_discovery_is_generation_exact(
         await source_lease.aclose()
     assert await shadow.dispose() == ()
 
+
+def test_native_resource_root_handle_rejects_symlink(
+    tmp_path: Path,
+    symlink_or_skip: Callable[..., None],
+) -> None:
+    _workspace, resource_root, _skill_body = _fixture_workspace(tmp_path)
+    symlink = tmp_path / "resource-link"
+    symlink_or_skip(symlink, resource_root, target_is_directory=True)
+    with pytest.raises(ValueError, match="must not be a symlink"):
+        mint_native_resource_root_handle(
+            handle_id="symlink-root",
+            root=symlink,
+            source_class="project_local",
+            root_kind="standard",
+        )
+
+
+def test_native_source_discovery_rejects_symlink(
+    tmp_path: Path,
+    symlink_or_skip: Callable[..., None],
+) -> None:
+    workspace, resource_root, _skill_body = _fixture_workspace(tmp_path)
     outside = tmp_path / "outside.md"
     outside.write_text("outside", encoding="utf-8")
-    (resource_root / "prompts" / "escape.md").symlink_to(outside)
+    symlink_or_skip(resource_root / "prompts" / "escape.md", outside)
     with pytest.raises(NativeResourceSourceError) as escaped:
-        await run_first_party_resource_catalog_shadow(
-            product_id="coding",
-            scope_id="workspace:test",
-            runtime_id="resource-shadow:symlink",
-            product_policy_revision="coding-resource-shadow-v1",
-            root_handles=root_handles,
-            issued_at=10,
-            expires_at=100,
-            now=20,
+        asyncio.run(
+            run_first_party_resource_catalog_shadow(
+                product_id="coding",
+                scope_id="workspace:test",
+                runtime_id="resource-shadow:symlink",
+                product_policy_revision="coding-resource-shadow-v1",
+                root_handles=_root_handles(workspace, resource_root),
+                issued_at=10,
+                expires_at=100,
+                now=20,
+            )
         )
     assert escaped.value.code == "resource_source_discovery_failed"
     assert escaped.value.reason == "symlink_not_allowed"

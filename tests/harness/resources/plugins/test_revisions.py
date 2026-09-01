@@ -35,10 +35,11 @@ def test_revision_store_publishes_content_addressed_snapshot_and_keeps_source_id
     assert published.manifest.root == published.root
     assert published.manifest_path == published.root / "plugin.json"
     assert published.manifest_digest == package.manifest_digest
-    assert published.root.stat().st_mode & 0o077 == 0
-    assert (
-        published.root / "resources" / "prompts" / "review.md"
-    ).stat().st_mode & 0o077 == 0
+    if os.name == "posix":
+        assert published.root.stat().st_mode & 0o077 == 0
+        assert (
+            published.root / "resources" / "prompts" / "review.md"
+        ).stat().st_mode & 0o077 == 0
     handle.verify()
     with handle.open_file("resources/prompts/review.md") as stream:
         assert stream.read() == b"review v1"
@@ -65,8 +66,11 @@ def test_revision_store_keeps_staging_root_writable_until_atomic_publish(
         PluginManifestParser().parse(source)
     )
 
-    assert observed_staging_modes == [0o700]
-    assert stat.S_IMODE(published.root.stat().st_mode) == 0o500
+    if os.name == "posix":
+        assert observed_staging_modes == [0o700]
+        assert stat.S_IMODE(published.root.stat().st_mode) == 0o500
+    else:
+        assert len(observed_staging_modes) == 1
 
 
 def test_revision_store_removes_new_revision_when_final_freeze_fails(
@@ -159,6 +163,7 @@ def test_portable_revision_backend_preserves_verified_snapshot_contract(
 def test_portable_revision_backend_rejects_symbolic_links(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    symlink_or_skip,
 ) -> None:
     import loushang.harness.resources.plugins.revisions as revisions_module
 
@@ -168,7 +173,10 @@ def test_portable_revision_backend_rejects_symbolic_links(
         lambda: False,
     )
     source = _plugin(tmp_path / "source")
-    (source / "resources" / "prompts" / "linked.md").symlink_to("review.md")
+    symlink_or_skip(
+        source / "resources" / "prompts" / "linked.md",
+        "review.md",
+    )
 
     with pytest.raises(PluginRevisionError) as caught:
         PluginRevisionStore(tmp_path / "revisions").publish(
@@ -230,6 +238,7 @@ def test_revision_store_reopen_rehashes_complete_published_tree(
 def test_portable_revision_reopen_rejects_reparse_entry(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    symlink_or_skip,
 ) -> None:
     import loushang.harness.resources.plugins.revisions as revisions_module
 
@@ -242,7 +251,10 @@ def test_portable_revision_reopen_rejects_reparse_entry(
     prompt.parent.chmod(0o700)
     prompt.chmod(0o600)
     prompt.unlink()
-    prompt.symlink_to(source_root / "resources" / "prompts" / "review.md")
+    symlink_or_skip(
+        prompt,
+        source_root / "resources" / "prompts" / "review.md",
+    )
     monkeypatch.setattr(
         revisions_module,
         "_supports_descriptor_relative_revision_io",
@@ -313,9 +325,13 @@ def test_revision_handle_acquires_independently_disposable_lease(
 
 def test_revision_store_rejects_symbolic_links_without_publishing(
     tmp_path: Path,
+    symlink_or_skip,
 ) -> None:
     source = _plugin(tmp_path / "source")
-    (source / "resources" / "prompts" / "linked.md").symlink_to("review.md")
+    symlink_or_skip(
+        source / "resources" / "prompts" / "linked.md",
+        "review.md",
+    )
     store = PluginRevisionStore(tmp_path / "revisions")
 
     with pytest.raises(PluginRevisionError) as caught:
@@ -399,6 +415,7 @@ def test_verified_revision_detects_entry_added_after_directory_listing(
 
 def test_verified_revision_open_is_relative_nofollow_and_digest_checked(
     tmp_path: Path,
+    symlink_or_skip,
 ) -> None:
     source = _plugin(tmp_path / "source")
     published = PluginRevisionStore(tmp_path / "revisions").publish(
@@ -415,7 +432,10 @@ def test_verified_revision_open_is_relative_nofollow_and_digest_checked(
     prompt.parent.chmod(0o755)
     prompt.chmod(0o644)
     prompt.unlink()
-    prompt.symlink_to(source / "resources" / "prompts" / "review.md")
+    symlink_or_skip(
+        prompt,
+        source / "resources" / "prompts" / "review.md",
+    )
     with pytest.raises(PluginRevisionError) as symlink:
         handle.open_file("resources/prompts/review.md")
     assert symlink.value.code == "plugin_revision_changed"

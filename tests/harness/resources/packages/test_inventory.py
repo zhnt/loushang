@@ -36,6 +36,7 @@ def test_package_inventory_preserves_skill_ignore_and_nested_stop_semantics(
 
 def test_package_inventory_rejects_symlink_reads_and_invalid_theme_json(
     tmp_path: Path,
+    symlink_or_skip,
 ) -> None:
     root = tmp_path / "package"
     prompts = root / "prompts"
@@ -44,7 +45,7 @@ def test_package_inventory_rejects_symlink_reads_and_invalid_theme_json(
     themes.mkdir(parents=True)
     outside_prompt = tmp_path / "outside.md"
     outside_prompt.write_text("outside", encoding="utf-8")
-    (prompts / "outside.md").symlink_to(outside_prompt)
+    symlink_or_skip(prompts / "outside.md", outside_prompt)
     (themes / "valid.json").write_text("{}", encoding="utf-8")
     (themes / "invalid.json").write_text("[]", encoding="utf-8")
 
