@@ -123,7 +123,7 @@ materializes packages.
 
 PLC9B.0 freezes the pre-runtime-migration snapshot at parent `4bd71d63` in two
 independent source-wide inventories: 95 ingress/declaration rows with 151
-occurrences, and 117 effect/capability rows with 132 occurrences. The executable
+occurrences, and 141 effect/capability rows with 156 occurrences. The executable
 guard parses Python syntax across `src/loushang`, including module/class/function
 scope, imports/renamed imports, names, attributes, and exact dynamic strings.
 Any count or qualified-site change must update this canonical inventory and
@@ -143,9 +143,11 @@ receive the same security-boundary review.
 | Future ingress/classifier | one Package lifecycle ingress composition in `loushang.harness.resources.packages` (absent in PLC9B.0) | Sole three-way classification authority; transports submit unclassified requests and cannot choose non-Plugin fallback |
 | Future complete transaction | one Package lifecycle composition in `loushang.harness.resources.packages` (absent in PLC9B.0) | Sole owner of quarantine, limits, inert extraction, wheel/closure verification, retention-pin coordination, staged committed-set publication, durable phases, and final receipt |
 | Source adapter | future typed Source Authority byte/provenance port over current policy/Git/Python inputs (absent in PLC9B.0) | Authenticated provenance and bounded streaming only; never receives an owner path or publication/binding authority |
-| Publication primitive | `src/loushang/harness/resources/plugins/revisions.py::PluginRevisionStore` | Current final-namespace publish/reopen is reusable tree verification but insufficient for Package commit; future staging consumes only a verified-candidate capability and durable receipts carry stable refs, never live handles |
-| Commit admission | future read-only Package commit-admission port (absent in PLC9B.0) | Proves stable-ref membership in one committed set before the store returns a short-lived verified handle; raw digest/source is insufficient |
-| Recursive closure evidence | future closure v2 owned by the PLC9B Package lifecycle owner (absent in PLC9B.0) | Every node binds Source-envelope, acquisition, wheel, stable publication-ref, and environment evidence; `PluginDependencyClosureLock` v1 remains replay-only |
+| Neutral artifact publication primitive | future inert artifact-store evolution in `loushang.harness.resources.packages` (absent in PLC9B.0) | Sole physical owner of dependency trees and their `VerifiedArtifactRefV1` values; it never stores/designates a Plugin root or commits/admits a graph |
+| Plugin-root publication primitive | `src/loushang/harness/resources/plugins/revisions.py::PluginRevisionStore` | Sole physical owner of the root tree and its only stable `PluginRevisionRefV1`, bound to Installation/Plugin identity; it never owns dependencies or logical set commit |
+| Committed-set owner | future PLC9B Package lifecycle owner (absent in PLC9B.0) | Sole writer of `CommittedPackageSetRefV1`, binding one designated Plugin root plus exact dependency refs to request/operation, Product/scope, identities, closure/set digest, and commit revision |
+| Commit admission | future read-only Package commit-admission port (absent in PLC9B.0) | Proves that the requested `PluginRevisionRefV1` is the designated root of the exact committed set for the request/operation, Product/scope, Installation/Plugin, and closure digest; dependency-as-root and cross-set/scope/Plugin refs fail without reopening |
+| Recursive closure evidence | future closure v2 owned by the PLC9B Package lifecycle owner (absent in PLC9B.0) | Freezes a prepublication verified plan first, then constructs immutable nodes/lock once from exact typed stable refs; digested evidence is never patched and `PluginDependencyClosureLock` v1 remains replay-only |
 | Retention evidence | future narrow retention port over `src/loushang/harness/plugin_management/package_lifecycle.py::PluginPackageLifecycleLedger` | Transaction pins cover the complete graph before staging and transfer only after desired evidence; Package owner does not import the ledger, which never acquires, extracts, publishes, selects, or deletes by itself |
 
 The first machine-checked block freezes lifecycle ingress declarations,
@@ -310,21 +312,44 @@ src/loushang/harness/resources/packages/materializer.py::GitPackageMaterializerB
 src/loushang/harness/resources/packages/materializer.py::PackageMaterializer::PackageMaterializer = 1
 src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.__init__::PluginRevisionStore = 1
 src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.__init__::PythonPackageInstallerBackend = 1
+src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.__init__::_plugin_revision_store = 1
+src/loushang/harness/resources/packages/materializer.py::PackageMaterializer._bind_plugin_packages::_bind_plugin_packages = 1
+src/loushang/harness/resources/packages/materializer.py::PackageMaterializer._run_backend_for_record::_run_backend_for_record = 1
+src/loushang/harness/resources/packages/materializer.py::PackageMaterializer._run_backend_for_record_sync::_run_backend_for_record_sync = 1
+src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.bind_plugin_packages::_bind_plugin_packages = 1
 src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.bind_plugin_packages::bind_plugin_packages = 1
 src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.forget_plugin_binding::forget_plugin_binding = 1
 src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.forget_remote_source::forget_remote_source = 1
+src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.materialize_remote_source::_run_backend_for_record = 1
 src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.materialize_remote_source::materialize_remote_source = 1
+src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.materialize_remote_source::prepare_remote_source = 1
+src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.materialize_remote_source_sync::_run_backend_for_record_sync = 1
 src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.materialize_remote_source_sync::materialize_remote_source_sync = 1
+src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.materialize_remote_source_sync::prepare_remote_source = 1
+src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.materialize_temporary_remote_source::_run_backend_for_record = 1
+src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.materialize_temporary_remote_source::materialize_temporary_remote_source = 1
+src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.materialize_temporary_remote_source_sync::_run_backend_for_record_sync = 1
+src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.materialize_temporary_remote_source_sync::materialize_temporary_remote_source_sync = 1
+src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.prepare_remote_source::prepare_remote_source = 1
+src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.publish_plugin_packages::PluginRevisionStore.publish_all = 1
+src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.publish_plugin_packages::_plugin_revision_store = 1
 src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.publish_plugin_packages::publish_all = 1
 src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.publish_plugin_packages::publish_plugin_packages = 1
+src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.rebind_plugin_packages::_bind_plugin_packages = 1
 src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.rebind_plugin_packages::rebind_plugin_packages = 1
 src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.remove_remote_source::remove_remote_source = 1
 src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.reopen_plugin_package::PluginRevisionStore.reopen = 1
+src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.reopen_plugin_package::_plugin_revision_store = 1
 src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.reopen_plugin_package::reopen_plugin_package = 1
 src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.update_all_remote_sources::update_all_remote_sources = 1
 src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.update_all_remote_sources::update_remote_source = 1
+src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.update_remote_source::_run_backend_for_record = 1
+src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.update_remote_source::prepare_remote_source = 1
 src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.update_remote_source::update_remote_source = 1
+src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.update_remote_source_sync::_run_backend_for_record_sync = 1
+src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.update_remote_source_sync::prepare_remote_source = 1
 src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.update_remote_source_sync::update_remote_source_sync = 1
+src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.uses_storage_authority::_plugin_revision_store = 1
 src/loushang/harness/resources/packages/materializer.py::PythonPackageInstallerBackend::PythonPackageInstallerBackend = 1
 src/loushang/harness/resources/packages/materializer.py::_record_with_local_git_state::GitPackageMaterializerBackend = 1
 src/loushang/harness/resources/packages/operations.py::<module>::PackageOperationsRuntime = 1
@@ -353,6 +378,7 @@ src/loushang/harness/resources/packages/session.py::SessionPackageController.pre
 src/loushang/harness/resources/packages/source_resolver.py::<module>::PackageMaterializer = 1
 src/loushang/harness/resources/packages/source_resolver.py::PackageSourceResolver::PackageMaterializer = 1
 src/loushang/harness/resources/packages/source_resolver.py::PackageSourceResolver::PackageSourceResolver = 1
+src/loushang/harness/resources/packages/source_resolver.py::PackageSourceResolver.prepare_configured_remote_records::prepare_remote_source = 1
 src/loushang/harness/resources/packages/source_resolver.py::PackageSourceResolver.resolve_configured_sources_sync::materialize_remote_source_sync = 1
 src/loushang/harness/resources/plugins/__init__.py::<module>::PluginRevisionStore = 2
 src/loushang/harness/resources/plugins/authority.py::PluginBindingStore.bind_plugin_packages::bind_plugin_packages = 1

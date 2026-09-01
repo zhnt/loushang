@@ -51,11 +51,11 @@ CLI / RPC / Session / startup / direct compatibility adapter
         -> per-artifact Source Authority byte/provenance port
         -> owner-created quarantine + verified-candidate capability
         -> narrow retention-pin port
-        -> PluginRevisionStore staging + atomic committed-set manifest
-        -> durable Package commit receipt with stable revision refs
+        -> neutral artifact staging + designated Plugin-root publication
+        -> atomic committed-set manifest + durable Package commit receipt
      -> non-Plugin: separately accepted non-Plugin authority only
 
-management command -> Package commit-admission port -> exact stable revision ref
+management command -> Package commit-admission port -> exact designated root ref
                    -> PluginRevisionStore returns short-lived verified handle
 PluginPackageLifecycleLedger <- narrow retention evidence port
 ```
@@ -73,9 +73,10 @@ Ownership is deliberately split only at stable evidence boundaries:
 | Package lifecycle ingress/classification authority | classify one typed request as `plugin_bound`, `non_plugin`, or `indeterminate`; bind the decision to owner revisions and an input fingerprint | transports cannot classify, submit a boolean, inspect an archive, or choose a fallback |
 | Source Authority port | authenticate one root or dependency origin and return versioned provenance, expected content identity when available, and a bounded byte stream | cannot choose a filesystem path, extract, resolve dependencies, publish, bind, enable, or delete |
 | PLC9B Package lifecycle owner | own quarantine, enforce every budget, inspect/extract, verify every wheel and recursive node, coordinate pins/staging/commit, journal phases, and issue the final receipt | cannot execute package code, mutate desired enablement, invent Source provenance, or delete live revisions |
-| `PluginRevisionStore` evolution | consume a pinned verified-candidate capability, stage/freeze content, publish an atomic committed-set manifest, and reopen a stable committed ref as a short-lived verified handle | current digest/source-only `reopen` and final-namespace `publish` do not satisfy Package commit admission; the store does not authenticate Sources, parse archives, verify closure, or decide desired state |
+| neutral artifact store evolution | consume pinned verified-candidate capabilities and issue `VerifiedArtifactRefV1` values only for inert dependency trees | cannot store or designate the Plugin root, commit a graph, authenticate Sources, verify closure, decide desired state, or return a selectable live handle |
+| `PluginRevisionStore` evolution | consume the designated root candidate and issue one `PluginRevisionRefV1` bound to Installation/Plugin identity | current digest/source-only `reopen` and final-namespace `publish` do not satisfy Package commit admission; the store does not own dependencies, committed sets, Source authentication, closure, or desired state |
 | closure-v2 evidence owner | bind every recursive node to its source, acquisition, wheel-verification and publication evidence plus the exact resolution environment | v1 replay records are not upgraded or reinterpreted as recursive evidence |
-| Package commit-admission port | prove that a stable revision ref is a member of one exact committed publication receipt and closure graph | cannot create refs, accept raw digests, mutate desired state, or return an uncommitted/staged object |
+| Package commit-admission port | prove that a designated `PluginRevisionRefV1` is the root of one exact `CommittedPackageSetRefV1` for the request/operation, Product/scope, Installation/Plugin, and closure digest | cannot admit a dependency as root, mix refs from another set/operation/scope/Plugin, accept raw digests, mutate desired state, or return an uncommitted/staged object |
 | narrow retention port over `PluginPackageLifecycleLedger` | obtain/transfer/release transaction and dependency pins for the exact root and dependency set | Package owner does not import the concrete ledger; the ledger does not acquire, extract, publish, select, or erase artifacts |
 | management application | verify commit admission, reopen an exact stable ref, and consume it in a separately authorized install/update command | does not accept mutable source paths, raw digest/source pairs, live handles in durable records, or infer success from publication alone |
 
@@ -126,11 +127,14 @@ types are intentionally absent in PLC9B.0.
 | bounded acquisition receipt v1 | node identity, envelope fingerprint, actual byte digest/count, request/redirect/time budgets, termination disposition, owner sink identity, and source-adapter result; no source pathname or secret |
 | quarantine receipt v1 | owner root identity, private operation-directory identity, every byte/entry/path/parser/memory/time/closure/solver budget and consumption, platform normalization profile, attempt epoch, and creation phase |
 | verified wheel artifact v1 | canonical distribution name/version, wheel filename and compatible tags, artifact digest/size, canonical metadata digests, complete RECORD verification, and extraction-tree digest |
-| dependency closure node v2 | canonical project identity, source-envelope fingerprint, acquisition-receipt fingerprint, wheel-evidence fingerprint, artifact/tree digests, normalized requirements, selected edges, and later stable publication ref |
-| dependency closure lock v2 | root node, every recursive node, directed edges, marker evaluation, exact resolution-environment fingerprint, canonical order, node/set counts, and graph digest |
+| verified closure plan v2 | designated root identity and role, every recursive node's canonical project identity, source-envelope fingerprint, acquisition-receipt fingerprint, wheel-evidence fingerprint, artifact/tree digests, normalized requirements, selected edges, markers, environment fingerprint, canonical order, counts, and prepublication graph digest; no stable refs yet |
+| dependency closure node v2 | one immutable node constructed after staging from the corresponding verified-plan node plus exactly one typed stable publication ref and its store identity |
+| dependency closure lock v2 | designated root node, every recursive immutable node, directed edges, marker evaluation, exact resolution-environment fingerprint, canonical order, node/set counts, and final graph/set digest |
+| typed stable refs v1 | `VerifiedArtifactRefV1` is a neutral dependency-only artifact ref, `PluginRevisionRefV1` is the designated Installation/Plugin root's only physical stable ref, and `CommittedPackageSetRefV1` binds exactly one root plus dependency refs to the request/operation, Product/scope, identities, closure digest, and commit revision |
 | retention-pin receipt v1 | operation/attempt, exact root and dependency candidates, pin kind/owner revision/lease, acquisition/release/transfer state, and recovery identity |
-| immutable publication receipt v1 | operation identity, classification and quarantine fingerprints, complete closure graph/set digest, exact stable published revision refs (never live handles), committed-set manifest identity, retention-pin evidence, store/root identity, phase sequence, and commit revision |
-| Package lifecycle status/failure v1 | operation/request fingerprint, phase, attempt epoch, terminal disposition, evidence references, stable failure code/stage/retryability/operator action, redacted bounded details, and status revision |
+| retention handoff receipt v1 | handoff identity/receipt fingerprint, committed Package operation/receipt, exact transaction/dependency pin sets, desired command identity and expected revision, attempt epoch, state/revision, durable desired receipt when committed, and replay identity |
+| immutable publication receipt v1 | operation/request identity, Product/scope and Installation/Plugin identities, classification and quarantine fingerprints, designated-root role/ref, complete closure graph/set digest, exact typed stable refs (never live handles), committed-set ref, retention-pin evidence, store/root identities, phase sequence, and commit revision |
+| Package lifecycle status/failure v1 | subject kind/id, operation/request fingerprint, phase, attempt epoch, terminal disposition, evidence references, stable failure code/stage/retryability/retry domain/operator action, redacted bounded details, and status revision |
 
 `PluginDependencyClosureLock` v1 remains replay-only and keeps its existing
 meaning: final package-tree digest plus installed `name==version` facts. A v1
@@ -146,6 +150,22 @@ The resolution environment covers every input that can change marker or wheel
 compatibility selection. Canonical distribution names are compared after the
 same specified normalization, and two artifacts that normalize to one name are
 a terminal conflict, never a cycle-tolerant or last-writer-wins choice.
+
+Closure evidence has two construction edges. `closure_verified` freezes the
+complete `VerifiedClosurePlanV2` before publication and proves all Source,
+artifact, resolution, and graph facts without pretending stable refs exist.
+After every candidate is staged, the owner constructs every immutable closure
+node and `DependencyClosureLockV2` once from the plan plus typed refs. Digested
+evidence is never patched in place. The Package owner then writes the sole
+`CommittedPackageSetRefV1`; neutral and Plugin-root stores retain authority only
+over their respective typed refs.
+
+There is no second physical root publication: the root closure node contains
+exactly one `PluginRevisionRefV1` and its `PluginRevisionStore` identity, while
+every dependency node contains exactly one `VerifiedArtifactRefV1` and neutral
+store identity. The Package owner coordinates transaction retention across the
+set and cleans only its quarantine; each store owns ref integrity/reopen, and
+PLC9D later owns pin-authorized physical deletion through those store owners.
 
 ## Owner Transaction And Recovery
 
@@ -191,24 +211,56 @@ the same actual artifact digest and evidence chain.
   revalidates staged identity and either advances the same set or transfers it
   to evidence-backed cleanup. Directory existence alone is never admission.
 - `committed` durably binds the set manifest and transaction pin. The read-only
-  Package commit-admission port is the only route from a stable ref to a
-  short-lived `VerifiedRevisionHandle`.
-- A later desired install/update first obtains dependency-retention pins under
-  one handoff identity, then commits desired state, then presents the durable
-  desired receipt to the retention port. That owner atomically records handoff
-  completion and releases the transaction pin. There is no cross-owner atomic
-  claim: a crash leaves both pins, never a zero-pin gap, and exact replay
-  completes the same handoff. Rejection, cancellation, or never-selected
+  Package commit-admission port is the only route from a designated root ref to
+  a short-lived `VerifiedRevisionHandle`. Admission checks the request and
+  operation fingerprints, Product/scope, Installation/Plugin identities,
+  designated-root role/ref, exact committed-set identity, and closure/set
+  digest. A dependency, a ref from another set, or a wrong operation, scope, or
+  Plugin fails without reopening any store object.
+- A later desired install/update uses one durable `RetentionHandoffReceiptV1`
+  state machine: `opened -> dependency_pinned -> desired_committed -> settled`
+  (or `aborted` before desired commit). It first obtains the exact dependency
+  pin set under the handoff identity, then commits desired state with an
+  expected-revision CAS, then presents that durable desired receipt to the
+  retention port. Only after the retention owner atomically records `settled`
+  may it release the transaction pin. There is no cross-owner atomic claim: a
+  crash before desired commit leaves the transaction pin plus any acquired
+  dependency pins; a crash after desired commit leaves both complete pin sets;
+  replay from any edge converges to the exact set and never creates a zero-pin
+  gap. A rejected desired CAS aborts/releases only dependency pins and retains
+  the transaction pin. Stale receipts and concurrent replay cannot release or
+  widen either set. Rejection, cancellation, or never-selected
   publication keeps the transaction pin visible to the same recovery state
   machine. PLC9D owns physical artifact deletion; PLC9B owns bounded quarantine
   cleanup and cannot silently drop retention evidence.
 
 Slow Source I/O, parsing, hashing, and extraction never hold the journal lock.
-Each attempt instead owns a bounded lease/fencing epoch. Every phase append is
+Before creating a quarantine, each attempt reserves bytes/count against the
+global quota and obtains a unique, owner-created, isolated directory plus a
+bounded lease/fencing epoch. A stale attempt can write only inside that exact
+directory until its lease/deadline and cannot write a newer attempt's directory
+or any staged/publication namespace; its bounded residue remains charged until
+rooted cleanup succeeds. Every phase append is
 an expected-phase compare-and-swap over `(operation, request fingerprint,
 attempt epoch, prior journal revision)`. A stale worker cannot append, renew a
 lease, stage, publish a set, or commit after a newer recovery attempt has won.
-Store/transaction/pin locks have a fixed order and bounded critical sections.
+No owner holds its lock while calling another owner, performing I/O, or waiting
+on a lease. Publication and later selection are two distinct lock-free sagas:
+
+1. The Package owner performs and releases its operation-phase CAS; calls the
+   retention port to acquire the transaction pin and waits for that owner to
+   release; calls stores in canonical `(store identity, typed ref)` order, each
+   store holding and releasing only its own lock; performs/releases the
+   committed-set CAS; then performs/releases the operation `committed` CAS and
+   returns the receipt. It never calls the desired application.
+2. A later management command first passes commit admission, calls the retention
+   owner to acquire exact dependency pins and record `dependency_pinned`, calls
+   the desired owner for its expected-revision CAS after the retention call has
+   returned, then calls the retention owner again to record `desired_committed`
+   and `settled` and release the transaction pin. Rejection calls that same
+   retention owner to record `aborted` and release only dependency pins.
+
+No cross-owner locks are nested, and every critical section is bounded.
 Concurrent same-input attempts converge; different input rejects; an existing
 digest is reusable only after exact candidate, set-membership, and store-identity
 revalidation.
@@ -216,8 +268,13 @@ revalidation.
 ## Status, Diagnostics, And Operator Actions
 
 `PackageLifecycleFailureV1` is a closed, versioned application record. It
-contains `code`, `stage`, `retryable`, `operator_action`, `operation_id`,
-`evidence_ref`, and bounded redacted details. `operator_action` is exactly one
+contains `code`, `stage`, `retryable`, `retry_domain`, `operator_action`,
+`subject_kind`, `subject_id`, `operation_id`, `evidence_ref`, and bounded
+redacted details. Subject kind is versioned and routes a typed command to the
+exact operation, handoff receipt, or cleanup tombstone; a handoff subject id is
+its handoff identity plus receipt fingerprint. `retry_domain` is exactly one of
+`none`, `operation`, `handoff`, or `cleanup`; cleanup retryability never
+reopens or retries a terminal operation. `operator_action` is exactly one
 of `none`, `retry`, `repair`, `upgrade_runtime`, `offline_restore`, or
 `review_policy`. The initial code set is:
 
@@ -232,10 +289,34 @@ of `none`, `retry`, `repair`, `upgrade_runtime`, `offline_restore`, or
 | `package_closure_artifact_invalid`, `package_closure_conflict`, `package_closure_evidence_unsupported` | terminal for the graph/evidence version |
 | `package_publication_root_untrusted`, `package_publication_collision`, `package_commit_admission_denied` | terminal security failure; repair never overwrites or admits an uncommitted ref |
 | `package_operation_interrupted` | retryable with a greater fenced attempt epoch |
+| `package_attempt_stale` | terminal local refusal for the stale attempt; retry/recovery continues under the already-winning operation identity |
+| `package_quarantine_cleanup_retryable` | terminal operation plus retryable owner-root cleanup substatus; retry domain `cleanup`, operator action `repair` |
 | `package_operation_identity_conflict` | terminal; caller must use a new operation identity |
 | `package_operation_cancelled` | terminal and operator-requested; a retry is a new operation |
+| `package_retention_handoff_interrupted` | retryable fenced replay of the same handoff receipt; exact pins remain visible |
+| `package_desired_revision_conflict` | terminal handoff abort; desired state and transaction pin remain unchanged |
+| `package_retention_handoff_stale` | terminal caller refusal with no journal or pin mutation |
 | `package_runtime_epoch_unsupported` | terminal in-process; upgrade runtime or offline restore |
 | `package_route_unavailable` | terminal while PLC9B is disabled; never invokes a peer installer |
+
+The retry policy is independently machine checked. `conditional` becomes true
+only when the named condition is proved by the failure evidence; transports do
+not reinterpret it. A typed retry requires the matching subject kind/id and
+never falls through to another domain.
+
+<!-- plc9b-retry-policy:start -->
+```text
+selector | retryability | retry_domain | retry_action
+package_acquisition_limit_exceeded | conditional:no_acquired_digest | operation | retry
+package_operation_timed_out | conditional:no_acquired_digest | operation | retry
+package_operation_interrupted | true | operation | retry
+package_retention_handoff_interrupted | true | handoff | retry
+package_quarantine_cleanup_retryable | true | cleanup | repair
+package_attempt_stale | false | none | none
+package_retention_handoff_stale | false | none | none
+default | false | none | none
+```
+<!-- plc9b-retry-policy:end -->
 
 Every transport projects the same record without changing the code or
 retryability. CLI emits the code, operation id and evidence reference and exits
@@ -293,9 +374,11 @@ digest-addressed wheel to this same boundary.
 Rejected/cancelled quarantine is owner-local temporary state, not artifact GC.
 The versioned quota profile bounds outstanding quarantine count, aggregate
 bytes, and maximum age per store. A terminal disposition attempts immediate
-rooted cleanup; cleanup failure records `package_operation_interrupted`, keeps a
+rooted cleanup; cleanup failure records
+`package_quarantine_cleanup_retryable` in retry domain `cleanup`, keeps a
 bounded tombstone/status projection, and blocks new admission before exceeding
-the store quota. Repair retries only exact owner-root cleanup. Evidence journals
+the store quota. Repair retries only exact owner-root cleanup and never resumes
+the terminal Package operation. Evidence journals
 retain bounded fingerprints/status, not untrusted bytes; TTL never authorizes
 deletion of a committed or pinned immutable revision.
 The operation's terminal `rejected`/`cancelled` disposition never reopens; a
@@ -309,7 +392,7 @@ of `src/loushang`. It has two independent machine-checked blocks:
 
 - an ingress/declaration inventory of 95 exact `(path, qualified scope,
   lifecycle symbol)` rows and 151 occurrences; and
-- an effect/capability inventory of 117 exact rows and 132 occurrences covering
+- an effect/capability inventory of 141 exact rows and 156 occurrences covering
   materializer/backend/store/source-resolver/operations construction plus
   materialize/update/remove/forget/publish/bind/reopen capabilities.
 
@@ -348,10 +431,27 @@ row to `required`, provide the exact collected pytest node and workflow job, and
 make either a missing node or a skip fail that job.
 
 `platform` is `any`, `posix-native`, or `windows-native`. `disposition` is the
-exact journal result. Oracles use a closed vocabulary: `no_outside_write`,
+caller-visible response outcome, not permission to append a terminal journal
+row. The separate journal-effect policy below resolves each response to an
+owned append or to `no_append:unchanged`; a refusal can never terminate or
+alter an already-valid winner. Oracles use a closed vocabulary: `no_outside_write`,
 `no_process`, `no_import`, `no_extra_network`, `no_publication`, `no_binding`,
 `no_desired`, `no_peer_fallback`, `no_secret`, `bounded_residue`,
-`same_receipt`, `pin_visible`, `single_owner`, and `no_skip`.
+`same_receipt`, `pin_visible`, `single_owner`, `b_namespace_unreachable`,
+`exact_pin_set`, `no_zero_pin`,
+`transaction_pin_released`, `desired_unchanged`, `handle_released`,
+`no_reopen`, `no_handle_issued`, `dependency_pins_released`,
+`instance_unchanged`, `binding_unchanged`, `enablement_unchanged`,
+`legacy_snapshot_exact`, and `no_skip`. `handle_released` is proved after both
+success and refusal by native rename/delete/open probes against every opened
+root/ancestor/entry handle; garbage collection or process exit is not proof.
+Each `*_unchanged` oracle compares the named canonical projection's exact
+before/after revision and bytes, not merely absence of a new row.
+For restore, `legacy_snapshot_exact` compares the restored result to the
+authenticated pre-B backup. For adoption, it compares the legacy namespace
+before/after. Both cover the legacy root pointer, fence, Source configuration,
+lock/binding history, desired/Instance/enablement state, and store bytes as one
+snapshot; a newly isolated B publication is outside that comparison.
 
 <!-- plc9b-adversarial-manifest:start -->
 ```text
@@ -411,10 +511,25 @@ B-CLOSURE-NAME | any | resolving_closure | duplicate_name_or_version | package_c
 B-CLOSURE-CYCLE | any | resolving_closure | dependency_cycle | package_closure_conflict | rejected@resolving_closure | no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CLOSURE-CYCLE] | harness-quality.yml#plc9b-linux-native | planned
 B-CLOSURE-V1 | any | resolving_closure | v1_or_future_evidence | package_closure_evidence_unsupported | rejected@resolving_closure | no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CLOSURE-V1] | harness-quality.yml#plc9b-linux-native | planned
 B-PUB-PRECREATE | any | staging | precreated_quarantine | package_publication_root_untrusted | rejected@staging | no_outside_write;no_publication;pin_visible | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-PRECREATE] | harness-quality.yml#plc9b-linux-native | planned
-B-PUB-SWAP | any | staging | ancestor_or_entry_swap | package_publication_root_untrusted | rejected@staging | no_outside_write;no_publication;pin_visible | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-SWAP] | harness-quality.yml#plc9b-linux-native | planned
+B-PUB-POSIX-ROOT-SWAP | posix-native | staging | root_rename_replace_swap | package_publication_root_untrusted | rejected@staging | no_outside_write;no_publication;pin_visible;handle_released;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-POSIX-ROOT-SWAP] | harness-quality.yml#plc9b-linux-native | planned
+B-PUB-POSIX-ANCESTOR-SWAP | posix-native | staging | ancestor_rename_replace_swap | package_publication_root_untrusted | rejected@staging | no_outside_write;no_publication;pin_visible;handle_released;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-POSIX-ANCESTOR-SWAP] | harness-quality.yml#plc9b-linux-native | planned
+B-PUB-POSIX-HANDLE-SUCCESS | posix-native | committed | successful_native_handle_lifecycle | ok | committed@committed | same_receipt;pin_visible;handle_released;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-POSIX-HANDLE-SUCCESS] | harness-quality.yml#plc9b-linux-native | planned
+B-PUB-POSIX-HANDLE-REJECT | posix-native | rejected | rejected_native_handle_lifecycle | package_publication_root_untrusted | rejected@staging | no_outside_write;no_publication;pin_visible;handle_released;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-POSIX-HANDLE-REJECT] | harness-quality.yml#plc9b-linux-native | planned
+B-PUB-SWAP-WINDOWS | windows-native | staging | ancestor_or_entry_reparse_swap | package_publication_root_untrusted | rejected@staging | no_outside_write;no_publication;pin_visible;handle_released;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-SWAP-WINDOWS] | windows-shell-compatibility.yml#plc9b-windows-native | planned
+B-PUB-WIN-ROOT-ABA | windows-native | staging | root_rename_replace_aba | package_publication_root_untrusted | rejected@staging | no_outside_write;no_publication;pin_visible;handle_released;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-WIN-ROOT-ABA] | windows-shell-compatibility.yml#plc9b-windows-native | planned
+B-PUB-WIN-ANCESTOR-ABA | windows-native | staging | ancestor_junction_reparse_aba | package_publication_root_untrusted | rejected@staging | no_outside_write;no_publication;pin_visible;handle_released;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-WIN-ANCESTOR-ABA] | windows-shell-compatibility.yml#plc9b-windows-native | planned
+B-PUB-WIN-HANDLE-SUCCESS | windows-native | committed | successful_native_handle_lifecycle | ok | committed@committed | same_receipt;pin_visible;handle_released;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-WIN-HANDLE-SUCCESS] | windows-shell-compatibility.yml#plc9b-windows-native | planned
+B-PUB-WIN-HANDLE-REJECT | windows-native | rejected | rejected_native_handle_lifecycle | package_publication_root_untrusted | rejected@staging | no_outside_write;no_publication;pin_visible;handle_released;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-WIN-HANDLE-REJECT] | windows-shell-compatibility.yml#plc9b-windows-native | planned
 B-PUB-COLLISION | any | set_published | same_digest_different_identity | package_publication_collision | rejected@staging | no_publication;no_binding;pin_visible | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-COLLISION] | harness-quality.yml#plc9b-linux-native | planned
 B-PUB-REUSE | any | set_published | exact_committed_set_exists | ok | committed@committed | same_receipt;pin_visible;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-REUSE] | harness-quality.yml#plc9b-linux-native | planned
-B-PUB-UNCOMMITTED | any | set_published | stable_ref_without_commit_receipt | package_commit_admission_denied | rejected@staging | no_binding;no_desired;pin_visible;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-UNCOMMITTED] | harness-quality.yml#plc9b-linux-native | planned
+B-PUB-UNCOMMITTED | any | set_published | stable_ref_without_commit_receipt | package_commit_admission_denied | rejected@staging | no_binding;no_desired;pin_visible;no_reopen;no_handle_issued;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-UNCOMMITTED] | harness-quality.yml#plc9b-linux-native | planned
+B-ADMISSION-DEPENDENCY | any | committed | dependency_ref_claimed_as_root | package_commit_admission_denied | rejected@committed | no_binding;no_desired;pin_visible;no_reopen;no_handle_issued;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ADMISSION-DEPENDENCY] | harness-quality.yml#plc9b-linux-native | planned
+B-ADMISSION-WRONG-SET | any | committed | ref_from_other_committed_set | package_commit_admission_denied | rejected@committed | no_binding;no_desired;pin_visible;no_reopen;no_handle_issued;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ADMISSION-WRONG-SET] | harness-quality.yml#plc9b-linux-native | planned
+B-ADMISSION-WRONG-REQUEST | any | committed | request_fingerprint_mismatch | package_commit_admission_denied | rejected@committed | no_binding;no_desired;pin_visible;no_reopen;no_handle_issued;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ADMISSION-WRONG-REQUEST] | harness-quality.yml#plc9b-linux-native | planned
+B-ADMISSION-WRONG-OPERATION | any | committed | operation_fingerprint_mismatch | package_commit_admission_denied | rejected@committed | no_binding;no_desired;pin_visible;no_reopen;no_handle_issued;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ADMISSION-WRONG-OPERATION] | harness-quality.yml#plc9b-linux-native | planned
+B-ADMISSION-WRONG-SCOPE | any | committed | product_or_scope_mismatch | package_commit_admission_denied | rejected@committed | no_binding;no_desired;pin_visible;no_reopen;no_handle_issued;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ADMISSION-WRONG-SCOPE] | harness-quality.yml#plc9b-linux-native | planned
+B-ADMISSION-WRONG-PLUGIN | any | committed | installation_or_plugin_mismatch | package_commit_admission_denied | rejected@committed | no_binding;no_desired;pin_visible;no_reopen;no_handle_issued;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ADMISSION-WRONG-PLUGIN] | harness-quality.yml#plc9b-linux-native | planned
+B-ADMISSION-DIGEST-TAMPER | any | committed | closure_or_set_digest_tamper | package_commit_admission_denied | rejected@committed | no_binding;no_desired;pin_visible;no_reopen;no_handle_issued;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ADMISSION-DIGEST-TAMPER] | harness-quality.yml#plc9b-linux-native | planned
 B-CRASH-ACCEPTED | any | accepted | crash_edge | package_operation_interrupted | retryable_failure@accepted | same_receipt;no_publication;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CRASH-ACCEPTED] | harness-quality.yml#plc9b-linux-native | planned
 B-CRASH-CLASSIFIED | any | classified | crash_edge | package_operation_interrupted | retryable_failure@classified | same_receipt;no_publication;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CRASH-CLASSIFIED] | harness-quality.yml#plc9b-linux-native | planned
 B-CRASH-ACQUIRING | any | acquiring | crash_edge | package_operation_interrupted | retryable_failure@acquiring | same_receipt;bounded_residue;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CRASH-ACQUIRING] | harness-quality.yml#plc9b-linux-native | planned
@@ -429,7 +544,13 @@ B-CRASH-SET | any | set_published | crash_edge | package_operation_interrupted |
 B-CRASH-COMMITTED | any | committed | crash_after_edge | ok | committed@committed | same_receipt;pin_visible;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CRASH-COMMITTED] | harness-quality.yml#plc9b-linux-native | planned
 B-CONCUR-SAME | any | each_phase | concurrent_same_fingerprint | ok | committed@committed | same_receipt;single_owner;pin_visible | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CONCUR-SAME] | harness-quality.yml#plc9b-linux-native | planned
 B-CONCUR-CONFLICT | any | classified | concurrent_different_fingerprint | package_operation_identity_conflict | rejected@classified | single_owner;no_publication;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CONCUR-CONFLICT] | harness-quality.yml#plc9b-linux-native | planned
-B-CONCUR-STALE | any | each_phase | stale_attempt_epoch | package_operation_identity_conflict | rejected@prior_phase | single_owner;no_publication;no_binding;pin_visible | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CONCUR-STALE] | harness-quality.yml#plc9b-linux-native | planned
+B-CONCUR-STALE | any | each_phase | stale_attempt_epoch | package_attempt_stale | rejected@prior_phase | single_owner;no_publication;no_binding;pin_visible | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CONCUR-STALE] | harness-quality.yml#plc9b-linux-native | planned
+B-HANDOFF-BEFORE-DESIRED | any | dependency_pinned | crash_after_dependency_pins | package_retention_handoff_interrupted | retryable_failure@dependency_pinned | exact_pin_set;no_zero_pin;desired_unchanged;pin_visible | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-HANDOFF-BEFORE-DESIRED] | harness-quality.yml#plc9b-linux-native | planned
+B-HANDOFF-AFTER-DESIRED | any | desired_committed | crash_before_handoff_settlement | package_retention_handoff_interrupted | retryable_failure@desired_committed | exact_pin_set;no_zero_pin;pin_visible;same_receipt | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-HANDOFF-AFTER-DESIRED] | harness-quality.yml#plc9b-linux-native | planned
+B-HANDOFF-AFTER-SETTLEMENT | any | settled | replay_after_transaction_pin_release | ok | settled@settled | exact_pin_set;no_zero_pin;transaction_pin_released;same_receipt | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-HANDOFF-AFTER-SETTLEMENT] | harness-quality.yml#plc9b-linux-native | planned
+B-HANDOFF-DESIRED-REJECT | any | dependency_pinned | desired_expected_revision_rejected | package_desired_revision_conflict | rejected@dependency_pinned | exact_pin_set;no_zero_pin;dependency_pins_released;desired_unchanged;pin_visible | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-HANDOFF-DESIRED-REJECT] | harness-quality.yml#plc9b-linux-native | planned
+B-HANDOFF-STALE-RECEIPT | any | each_handoff_phase | stale_handoff_receipt | package_retention_handoff_stale | rejected@prior_handoff | exact_pin_set;no_zero_pin;desired_unchanged;same_receipt | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-HANDOFF-STALE-RECEIPT] | harness-quality.yml#plc9b-linux-native | planned
+B-HANDOFF-CONCURRENT-REPLAY | any | each_handoff_phase | concurrent_exact_handoff_replay | ok | settled@settled | exact_pin_set;no_zero_pin;transaction_pin_released;same_receipt;single_owner | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-HANDOFF-CONCURRENT-REPLAY] | harness-quality.yml#plc9b-linux-native | planned
 B-ENTRY-CLI | any | classified | cli_plugin_bound | ok | committed@committed | single_owner;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ENTRY-CLI] | harness-quality.yml#plc9b-linux-native | planned
 B-ENTRY-RPC | any | classified | rpc_plugin_bound | ok | committed@committed | single_owner;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ENTRY-RPC] | harness-quality.yml#plc9b-linux-native | planned
 B-ENTRY-SESSION | any | classified | session_plugin_bound | ok | committed@committed | single_owner;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ENTRY-SESSION] | harness-quality.yml#plc9b-linux-native | planned
@@ -444,15 +565,97 @@ B-NOEXEC-ENTRYPOINT | any | extracted | malicious_entrypoint_metadata | ok | com
 B-NOEXEC-ADJACENT | any | extracted | adjacent_executable | ok | committed@committed | no_process;no_import;no_extra_network | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-NOEXEC-ADJACENT] | harness-quality.yml#plc9b-linux-native | planned
 B-STATE-CANCEL-EARLY | any | each_phase_before_transaction_pinned | operator_cancel | package_operation_cancelled | cancelled@prior_phase | bounded_residue;no_publication;no_binding;no_desired | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-STATE-CANCEL-EARLY] | harness-quality.yml#plc9b-linux-native | planned
 B-STATE-CANCEL-PINNED | any | each_precommit_phase_from_transaction_pinned | operator_cancel | package_operation_cancelled | cancelled@prior_phase | no_binding;no_desired;pin_visible;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-STATE-CANCEL-PINNED] | harness-quality.yml#plc9b-linux-native | planned
-B-STATE-REJECT-CLEANUP | any | rejected | quarantine_cleanup_failure | package_operation_interrupted | rejected@cleanup_retryable | bounded_residue;no_binding;no_desired;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-STATE-REJECT-CLEANUP] | harness-quality.yml#plc9b-linux-native | planned
+B-STATE-REJECT-CLEANUP | any | rejected | quarantine_cleanup_failure | package_quarantine_cleanup_retryable | rejected@cleanup_retryable | bounded_residue;no_binding;no_desired;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-STATE-REJECT-CLEANUP] | harness-quality.yml#plc9b-linux-native | planned
 B-STATE-SECRETS | any | each_phase | credentialed_private_locator | ok | committed@committed | no_secret;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-STATE-SECRETS] | harness-quality.yml#plc9b-linux-native | planned
 B-STATE-STATUS | any | rejected | transport_status_mapping | package_archive_malformed | rejected@inspecting | same_receipt;no_secret;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-STATE-STATUS] | harness-quality.yml#plc9b-linux-native | planned
 B-COMPAT-EPOCH | any | accepted | newer_lifecycle_epoch | package_runtime_epoch_unsupported | rejected@accepted | no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-EPOCH] | harness-quality.yml#plc9b-linux-native | planned
 B-COMPAT-MIXED | any | accepted | mixed_fence_aware_processes | package_runtime_epoch_unsupported | rejected@accepted | single_owner;no_publication;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-MIXED] | harness-quality.yml#plc9b-linux-native | planned
-B-COMPAT-LEGACY | any | classified | legacy_lock_binding_revision | package_closure_evidence_unsupported | rejected@classified | no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-LEGACY] | harness-quality.yml#plc9b-linux-native | planned
+B-COMPAT-LEGACY | any | classified | legacy_binding_history_hint | ok | classified@plugin_bound | no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-LEGACY] | harness-quality.yml#plc9b-linux-native | planned
 B-COMPAT-ROLLFORWARD | any | retryable_failure | upgrade_downgrade_rollforward | ok | committed@committed | same_receipt;pin_visible;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ROLLFORWARD] | harness-quality.yml#plc9b-linux-native | planned
+B-COMPAT-CUTOVER-POSIX | posix-native | accepted | offline_quiescent_namespaced_cutover | ok | accepted@epoch_fenced | single_owner;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-CUTOVER-POSIX] | harness-quality.yml#plc9b-linux-native | planned
+B-COMPAT-CUTOVER-WINDOWS | windows-native | accepted | offline_quiescent_namespaced_cutover | ok | accepted@epoch_fenced | single_owner;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-CUTOVER-WINDOWS] | windows-shell-compatibility.yml#plc9b-windows-native | planned
+B-COMPAT-PREFENCE-LIVE-POSIX | posix-native | accepted | pre_fence_writer_blocks_cutover | package_runtime_epoch_unsupported | rejected@pre_fence | single_owner;no_publication;no_binding;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-PREFENCE-LIVE-POSIX] | harness-quality.yml#plc9b-linux-native | planned
+B-COMPAT-PREFENCE-LIVE-WINDOWS | windows-native | accepted | pre_fence_writer_blocks_cutover | package_runtime_epoch_unsupported | rejected@pre_fence | single_owner;no_publication;no_binding;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-PREFENCE-LIVE-WINDOWS] | windows-shell-compatibility.yml#plc9b-windows-native | planned
+B-COMPAT-OFFLINE-RESTORE-POSIX | posix-native | accepted | complete_pre_b_restore_exclusive_old_runtime | ok | accepted@offline_restore | single_owner;legacy_snapshot_exact;b_namespace_unreachable;no_peer_fallback;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-OFFLINE-RESTORE-POSIX] | harness-quality.yml#plc9b-linux-native | planned
+B-COMPAT-OFFLINE-RESTORE-WINDOWS | windows-native | accepted | complete_pre_b_restore_exclusive_old_runtime | ok | accepted@offline_restore | single_owner;legacy_snapshot_exact;b_namespace_unreachable;no_peer_fallback;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-OFFLINE-RESTORE-WINDOWS] | windows-shell-compatibility.yml#plc9b-windows-native | planned
+B-COMPAT-ADOPT | any | committed | authenticated_legacy_reacquisition | ok | committed@committed | same_receipt;pin_visible;legacy_snapshot_exact;desired_unchanged;instance_unchanged;binding_unchanged;enablement_unchanged | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ADOPT] | harness-quality.yml#plc9b-linux-native | planned
+B-COMPAT-ADOPT-UNAUTHORIZED | any | acquiring | legacy_reacquisition_unauthorized | package_source_unauthorized | rejected@acquiring | legacy_snapshot_exact;desired_unchanged;instance_unchanged;binding_unchanged;enablement_unchanged;no_publication;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ADOPT-UNAUTHORIZED] | harness-quality.yml#plc9b-linux-native | planned
+B-COMPAT-ADOPT-UNAVAILABLE | any | acquiring | registry_network_temporarily_unavailable | package_operation_timed_out | retryable_failure@acquiring | bounded_residue;legacy_snapshot_exact;desired_unchanged;instance_unchanged;binding_unchanged;enablement_unchanged;no_publication;no_extra_network;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ADOPT-UNAVAILABLE] | harness-quality.yml#plc9b-linux-native | planned
+B-COMPAT-ADOPT-CRASH | any | each_precommit_phase | adoption_crash_and_retry | package_operation_interrupted | retryable_failure@prior_phase | same_receipt;bounded_residue;legacy_snapshot_exact;desired_unchanged;instance_unchanged;binding_unchanged;enablement_unchanged | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ADOPT-CRASH] | harness-quality.yml#plc9b-linux-native | planned
+B-COMPAT-ADOPT-CRASH-AFTER-COMMITTED | any | committed | adoption_crash_after_committed_edge | ok | committed@committed | same_receipt;pin_visible;legacy_snapshot_exact;desired_unchanged;instance_unchanged;binding_unchanged;enablement_unchanged | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ADOPT-CRASH-AFTER-COMMITTED] | harness-quality.yml#plc9b-linux-native | planned
 ```
 <!-- plc9b-adversarial-manifest:end -->
+
+The first matching selector below determines both the sole journal owner and
+its transition; caller response never selects a journal. Every `append_once`
+uses a stable event identity plus expected journal revision, permits one winning
+CAS, and requires exact replay to return the original receipt with byte-for-byte
+unchanged revision/state. `response_state` means the response state to the left
+of `@`, not its diagnostic code. `no_append:unchanged` performs no append in any
+domain. In particular, a handoff never mutates the already-committed Package
+operation journal.
+
+The closed domains and legal appended states are: `operation` = every monotonic
+phase from `accepted` through `committed`, plus terminal `rejected` or
+`cancelled`; `attempt` = `retryable_failure`;
+`handoff_attempt` = `retryable_failure`; `handoff` = `aborted` or `settled`;
+`cleanup` = `cleanup_retryable`; and `epoch` = `epoch_fenced`. Domain `none`
+has only `no_append:unchanged`. All terminal states and retryable attempt
+outcomes are append-once; exact replay never adds another status revision.
+
+Each domain maps to one concrete authority and stable subject journal key.
+Fingerprints, epochs, and revisions are genesis-bound or expected-CAS values,
+never key components that could fork a conflicting request into an empty peer
+journal. Caller ports request a transition; they never write the target journal
+directly.
+
+<!-- plc9b-journal-domain-authority:start -->
+```text
+journal_domain | sole_authority | stable_journal_key | bound_or_expected_cas_value | allowed_writer_port
+operation | PLC9B Package lifecycle owner | operation_id | request_fingerprint+prior_journal_revision | PackageOperationJournalCAS
+attempt | PLC9B Package lifecycle owner | operation_id+attempt_epoch | parent_request_fingerprint+parent_journal_revision | PackageAttemptJournalCAS
+handoff_attempt | retention-handoff owner over PluginPackageLifecycleLedger | handoff_id+attempt_epoch | parent_receipt_fingerprint+parent_handoff_revision | RetentionHandoffJournalCAS
+handoff | retention-handoff owner over PluginPackageLifecycleLedger | handoff_id | receipt_fingerprint+prior_handoff_revision | RetentionHandoffJournalCAS
+cleanup | PLC9B Package lifecycle owner | quarantine_tombstone_id | cleanup_revision | PackageCleanupJournalCAS
+epoch | Package epoch cutover coordinator in Package lifecycle composition | store_root_identity | current_epoch+prior_fence_revision | PackageEpochJournalCAS
+none | no authority | no journal | no value | no writer
+```
+<!-- plc9b-journal-domain-authority:end -->
+
+<!-- plc9b-journal-effect-policy:start -->
+```text
+selector | journal_domain | journal_transition
+B-PUB-REUSE | none | no_append:unchanged
+B-PUB-UNCOMMITTED | none | no_append:unchanged
+B-ADMISSION-* | none | no_append:unchanged
+B-CRASH-COMMITTED | operation | append_once:committed_then_no_append
+B-CRASH-* | attempt | append_once:retryable_failure_then_no_append
+B-ACQ-BYTES | attempt | append_once:retryable_failure_then_no_append
+B-ACQ-REDIRECT | attempt | append_once:retryable_failure_then_no_append
+B-ACQ-TIMEOUT | attempt | append_once:retryable_failure_then_no_append
+B-CONCUR-SAME | operation | append_once:committed_then_no_append
+B-CONCUR-CONFLICT | none | no_append:unchanged
+B-CONCUR-STALE | none | no_append:unchanged
+B-HANDOFF-BEFORE-DESIRED | handoff_attempt | append_once:retryable_failure_then_no_append
+B-HANDOFF-AFTER-DESIRED | handoff_attempt | append_once:retryable_failure_then_no_append
+B-HANDOFF-AFTER-SETTLEMENT | none | no_append:unchanged
+B-HANDOFF-DESIRED-REJECT | handoff | append_once:aborted_then_no_append
+B-HANDOFF-STALE-RECEIPT | none | no_append:unchanged
+B-HANDOFF-CONCURRENT-REPLAY | handoff | append_once:settled_then_no_append
+B-ENTRY-PUBLISH | none | no_append:unchanged
+B-ENTRY-DISABLED | none | no_append:unchanged
+B-STATE-REJECT-CLEANUP | cleanup | append_once:cleanup_retryable_then_no_append
+B-COMPAT-EPOCH | none | no_append:unchanged
+B-COMPAT-MIXED | none | no_append:unchanged
+B-COMPAT-CUTOVER-* | epoch | append_once:epoch_fenced_then_no_append
+B-COMPAT-PREFENCE-LIVE-* | none | no_append:unchanged
+B-COMPAT-OFFLINE-RESTORE-* | none | no_append:unchanged
+B-COMPAT-ADOPT-UNAVAILABLE | attempt | append_once:retryable_failure_then_no_append
+B-COMPAT-ADOPT-CRASH | attempt | append_once:retryable_failure_then_no_append
+B-COMPAT-ADOPT-CRASH-AFTER-COMMITTED | none | no_append:unchanged
+default | operation | append_once:response_state_then_no_append
+```
+<!-- plc9b-journal-effect-policy:end -->
 
 Native Windows rows run only in the named Windows workflow and native POSIX
 rows in the named Harness workflow. The job collects the exact node ids and
@@ -462,30 +665,57 @@ state and peer-fallback oracles, not merely an exception string.
 
 ## Epoch, Upgrade, And Downgrade Fence
 
-The future owner records a Package lifecycle epoch and minimum fence-aware
-runtime against the exact Package-store root identity before any v2 transaction
-or staged object. Every fence-aware process checks that record before Source,
-lockfile, binding, revision, or quarantine access. A newer epoch, an active
-different-epoch lease, or unknown evidence yields
+The first B epoch is an offline, fail-closed cutover rather than a record that
+an already-running pre-fence writer could ignore. The coordinator exclusively
+holds the existing common coordination lock, proves all legacy leases and
+process registrations quiescent, snapshots the complete pre-B state, creates a
+fresh identity-pinned B-epoch namespace unreachable through old writable root
+names, writes the minimum-runtime fence, and atomically switches the Product
+root pointer. Only then may the first B transaction start. The legacy namespace
+becomes read-only replay/restore input. If quiescence, exclusive ownership,
+snapshot durability, or atomic pointer replacement cannot be proved, cutover
+aborts without changing either root. Supervisors also refuse to start a
+pre-fence binary against the new root.
+
+This establishes the Package lifecycle epoch and minimum fence-aware runtime
+against the exact new root identity before any B transaction or staged object.
+
+Every fence-aware process checks the epoch record and exact Package-store root
+identity before Source, lockfile, binding, revision, or quarantine access. A
+newer epoch, an active different-epoch lease, or unknown evidence yields
 `package_runtime_epoch_unsupported`; mixed-epoch writers are never admitted.
 
 A pre-fence binary cannot be made safe by a record it does not understand.
 Direct downgrade after any B epoch state exists is unsupported. The only
 pre-fence recovery is an offline restore of the complete pre-B Package store,
 Source configuration, lock/binding history, desired-state backup, and fence
-record, followed by exclusive old-runtime startup. Otherwise operators upgrade
-to the minimum fence-aware runtime and roll forward. Crash recovery by an older
+record, including the exact legacy root pointer, followed by exclusive
+old-runtime startup. Restore writes no B-epoch Package, handoff, cleanup, or
+epoch journal; optional operator audit lives outside both restored and B store
+namespaces. Native fixtures prove the restored snapshot byte-for-byte, that the
+B namespace/fence are unreachable from the restored root and old runtime, and
+successful exclusive old-runtime startup. Otherwise operators
+upgrade to the minimum fence-aware runtime and roll forward. Crash recovery by an older
 fence-aware epoch also refuses before touching paths.
 
 Existing lockfiles, bindings, closure-v1 records, and published revisions remain
-replay/retention evidence but are `legacy_unverified`; they never satisfy B
-classification, recursive closure, commit admission, or dependency pinning.
-Existing desired/Instance state is not silently deleted, rebound, or claimed as
-B-verified. Adoption requires authenticated reacquisition and the complete B
-transaction under a new operation. If reacquisition is impossible, a future
-explicit operator trust-import contract is required; PLC9B.0 does not invent
-one. Upgrade -> downgrade refusal -> roll-forward, mixed-process, old-state, and
-offline-restore fixtures are mandatory manifest cases.
+replay/retention evidence but are `legacy_unverified`. Existing binding/history
+is a one-way input that may classify a request as `plugin_bound`; it cannot
+prove `non_plugin` and cannot satisfy B recursive closure, commit admission, or
+dependency pinning. Existing desired/Instance/binding state is never silently
+deleted, rebound, enabled, disabled, or claimed as B-verified.
+
+Adoption requires authenticated reacquisition and the complete B transaction
+under a new operation. Successful adoption publishes evidence but does not
+implicitly change desired, Instance, binding, or enablement state. Crash/retry
+uses the same operation fingerprint and receipt. If reacquisition is
+unavailable, all legacy state remains byte-for-byte authoritative and visible;
+the attempt refuses without implicit rebind/enable. A future explicit operator
+trust-import contract would require separate review; PLC9B.0 does not invent
+one. Upgrade -> downgrade refusal -> roll-forward, native initial cutover with
+live pre-fence-writer refusal, authenticated adoption, unavailable
+reacquisition, adoption crash/retry, old-state, and exclusive offline-restore
+fixtures are mandatory manifest cases.
 
 ## Rollout, Rollback, And Deletion Gates
 
