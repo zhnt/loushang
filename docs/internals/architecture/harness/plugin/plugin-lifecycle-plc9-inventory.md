@@ -82,10 +82,12 @@
   remains dark. B3d-1 accepts the two resolving/closure crash rows after all PR
   checks passed and retained artifact `9802403797` executed exactly 54 native
   manifest nodes with zero skips, failures, or errors; the closure/limit rows
-  were still planned at that acceptance point. B3d-2a candidate code now makes
-  the three composed closure-limit rows executable with real root evidence and
-  a dependency selection, while all seven closure-integrity rows remain
-  planned pending their own composition.
+  were still planned at that acceptance point. B3d-2a accepts the three
+  composed closure-limit rows with real root evidence and a dependency
+  selection after all PR checks passed and retained artifact `9803312387`
+  executed exactly 57 native manifest nodes with zero skips, failures, or
+  errors. All seven closure-integrity rows remain planned pending their own
+  composition.
   Publication, later transaction phases, and every production route remain
   migration obligations; no global adversarial row is promoted.
 

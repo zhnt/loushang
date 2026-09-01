@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.3d2a-candidate.
+- Contract version: PLC9B.3d2a.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -43,9 +43,9 @@
   resolution-basis/selection/plan journal, local artifact replay, dependency
   cleanup-debt handoff, and the dark `resolving_closure -> closure_verified`
   lifecycle owner. B3d-1 accepts the two closure crash rows after their
-  retained Linux-native report passed; the remaining closure/limit rows stay
-  planned. B3d-2a candidate code makes the three composed closure-limit rows
-  executable without changing the accepted crash evidence.
+  retained Linux-native report passed. B3d-2a accepts the three composed
+  closure-limit rows after their separate retained report passed, without
+  changing the accepted crash evidence. Closure-integrity rows stay planned.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -650,7 +650,7 @@ Every PR check passed; Harness Quality run `33512955335`, Linux harness job
 Its XML executed exactly 54 manifest nodes, including `B-CRASH-RESOLVING` and
 `B-CRASH-CLOSURE`, with zero skips, failures, or errors.
 
-## PLC9B3d-2a Candidate Composed Closure Limits
+## PLC9B3d-2a Accepted Composed Closure Limits
 
 B3d-2a composes the accepted lifecycle, Source, acquisition, Wheel, selection
 journal, recursive builder, and closure runtime for `B-LIMIT-GRAPH`,
@@ -671,10 +671,17 @@ private acquisition is considered. Therefore B3d-2a refines
 loop for each graph node. The original no-extra-network and bounded-residue
 oracles are unchanged.
 
-This is candidate evidence only. `B-LIMIT-GRAPH/SOLVER/REQUESTS` are executable
-but not accepted until all PR checks pass and the retained Linux-native XML
-executes exactly 57 manifest nodes without skips, failures, or errors. All
-seven `B-CLOSURE-*` rows remain `planned`; B3e remains out of scope.
+`B-LIMIT-GRAPH/SOLVER/REQUESTS` are accepted after all PR checks passed and the
+retained Linux-native XML executed exactly 57 manifest nodes without skips,
+failures, or errors. All seven `B-CLOSURE-*` rows remain `planned`; B3e remains
+out of scope.
+
+B3d-2a was accepted on 2026-09-01 against candidate head `68406b31`. Harness
+Quality run `33515285825`, Linux harness job `99880656864`, retained
+`plc9b-linux-native-pytest-report` artifact ID `9803312387` with upload digest
+`58e17cd15e241b62f6d7382b08adcdee0a349ec849ed94a6fd0975d329c2520e`.
+The XML executed exactly 57 manifest nodes, including all three `B-LIMIT-*`
+closure fixtures, with zero skips, failures, or errors.
 
 ## First Principles
 

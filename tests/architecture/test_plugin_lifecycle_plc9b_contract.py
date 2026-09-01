@@ -486,7 +486,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.3d2a-candidate" in contract
+    assert "Contract version: PLC9B.3d2a" in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
@@ -499,7 +499,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
     assert "PLC9B3b Accepted Durable Closure Inputs" in contract
     assert "PLC9B3c Accepted Recursive Closure Builder" in contract
     assert "PLC9B3d-1 Accepted Durable Closure Recovery" in contract
-    assert "PLC9B3d-2a Candidate Composed Closure Limits" in contract
+    assert "PLC9B3d-2a Accepted Composed Closure Limits" in contract
     assert "Harness Quality run `33505702666`" in contract
     assert "Linux\nharness job `99849101216`" in contract
     assert "(ID\n`9799493328`)" in contract
@@ -1998,8 +1998,20 @@ def test_plc9b3d_candidate_binds_recovery_before_io_and_remains_dark() -> None:
     assert "Linux harness job\n`99872863556`" in contract
     assert "artifact ID\n`9802403797`" in contract
     assert "executed exactly 54 manifest nodes" in contract
-    assert "This is candidate evidence only" in contract
-    assert "executes exactly 57 manifest nodes" in contract
+    assert "B3d-2a was accepted on 2026-09-01 against candidate head `68406b31`" in (
+        contract
+    )
+    assert "Harness Quality run `33515285825`" in normalized
+    assert "Linux harness job `99880656864`" in normalized
+    assert "artifact ID `9803312387`" in normalized
+    assert (
+        "58e17cd15e241b62f6d7382b08adcdee0a349ec849ed94a6fd0975d329c2520e"
+        in contract
+    )
+    assert "executed exactly 57 manifest nodes" in contract
+    assert "retained artifact `9803312387` executed exactly 57 native" in (
+        " ".join(inventory.split())
+    )
 
 
 def test_plc9b2f_windows_backend_is_rooted_and_has_a_nonskippable_native_gate(
