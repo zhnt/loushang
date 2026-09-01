@@ -501,7 +501,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.3e2b-candidate" in contract
+    assert "Contract version: PLC9B.3e2b" in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
@@ -2295,7 +2295,18 @@ def test_plc9b3e2b_transaction_pin_runtime_orders_effects_and_recovers_dark() ->
     assert "IMPLEMENTED_B3E_PIN_MANIFEST_CASES" in adversarial_tests
     assert "physical_acquisitions == 1" in adversarial_tests
     assert "B3e-2b composes the accepted typed pin contract" in contract
-    assert "PLC9B3e-2b candidate code composes" in inventory
+    assert "PLC9B3e-2b accepted code composes" in inventory
+    normalized = " ".join(contract.split())
+    assert "B3e-2b was accepted on 2026-09-01 against candidate head `8f637de7`" in (
+        normalized
+    )
+    assert "Harness Quality run `33532486596`" in normalized
+    assert "Linux harness job `99938764642`" in normalized
+    assert "artifact ID `9810291887`" in normalized
+    assert (
+        "e4af1f9c36f060548d634a48b55bd7db6c95e7af9635d6c784596680b065f78c" in contract
+    )
+    assert "executed exactly 65 manifest nodes" in normalized
     assert manifest["B-CRASH-PINNED"]["status"] == "implemented"
     assert all(
         manifest[case_id]["status"] == "planned"

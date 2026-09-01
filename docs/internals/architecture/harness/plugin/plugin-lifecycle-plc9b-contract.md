@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.3e2b-candidate.
+- Contract version: PLC9B.3e2b.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -53,10 +53,10 @@
   no namespace, and promotes no global manifest row. B3e-2a accepted code
   adds exact transaction-pin targets/requests/receipts, a narrow retention
   Port, and an owner-side durable pin-evidence journal without phase
-  integration or a concrete retention-ledger import. B3e-2b candidate code
+  integration or a concrete retention-ledger import. B3e-2b accepted code
   composes that Port with the accepted closure-plan evidence and lifecycle
   phase CAS, supports restart recovery without a live closure candidate, and
-  implements `B-CRASH-PINNED`; native CI acceptance is still pending.
+  implements the native-accepted `B-CRASH-PINNED` row.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -804,7 +804,7 @@ PR check passed. Harness Quality run `33526455182`, Linux harness job
 The XML executed the unchanged 64 manifest nodes with zero skips, failures, or
 errors and contained neither `B-CRASH-PINNED` nor a `B-PUB-*` node.
 
-## PLC9B3e-2b Candidate Transaction-Pin Runtime
+## PLC9B3e-2b Accepted Transaction-Pin Runtime
 
 B3e-2b composes the accepted typed pin contract without importing a concrete
 retention ledger. `PackageTransactionPinLifecycleOwner.pin` first requires the
@@ -831,10 +831,17 @@ The composed `B-CRASH-PINNED` fixture traverses real acquisition, Wheel proof,
 closure proof, pin acquisition, interruption at `transaction_pinned`, and a new
 owner instance over the durable journals. It requires the same receipt, exactly
 one physical retention acquisition, a still-visible pin, no second Source call,
-and no publication, binding, desired-state, or credential residue. The row is
-implemented in the candidate but is not accepted until its non-skippable
-Linux-native XML is retained and verified. Every `B-PUB-*` row remains
-`planned`; B3e-3 still owns staging and atomic committed-set publication.
+and no publication, binding, desired-state, or credential residue. Every
+`B-PUB-*` row remains `planned`; B3e-3 still owns staging and atomic
+committed-set publication.
+
+B3e-2b was accepted on 2026-09-01 against candidate head `8f637de7` after every
+PR check passed. Harness Quality run `33532486596`, Linux harness job
+`99938764642`, retained `plc9b-linux-native-pytest-report` artifact ID
+`9810291887` with upload digest
+`e4af1f9c36f060548d634a48b55bd7db6c95e7af9635d6c784596680b065f78c`.
+The XML executed exactly 65 manifest nodes, including `B-CRASH-PINNED`, with
+zero skips, failures, or errors and contained no `B-PUB-*` node.
 
 ## First Principles
 

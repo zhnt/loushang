@@ -104,12 +104,13 @@
   composition and promotes no manifest row. All PR checks passed and retained
   artifact `9807880155` executed the unchanged 64 native manifest nodes without
   skips, failures, errors, `B-CRASH-PINNED`, or any `B-PUB-*` node.
-  PLC9B3e-2b candidate code composes the narrow retention Port with durable
+  PLC9B3e-2b accepted code composes the narrow retention Port with durable
   closure evidence and `closure_verified -> transaction_pinned` CAS. It adds
   candidate-free restart recovery and implements the composed
-  `B-CRASH-PINNED` row pending native CI acceptance. Staging, publication,
-  later transaction phases, and every production route remain migration
-  obligations.
+  `B-CRASH-PINNED` row. All PR checks passed and retained artifact `9810291887`
+  executed exactly 65 native manifest nodes with zero skips, failures, or
+  errors and no `B-PUB-*` node. Staging, publication, later transaction phases,
+  and every production route remain migration obligations.
 
 This inventory distinguishes accepted reusable owners, Product adapters,
 parallel compatibility paths, and missing target boundaries. “Migrate” or
