@@ -64,6 +64,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.phase_evidence import 
     PackageArtifactEvidenceJournal,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    PackageLifecycleFailureV1,
     PluginBoundPackageClassificationV1,
     canonical_json_bytes,
 )
@@ -209,12 +210,15 @@ class _ArtifactOwner:
     kernel: PackageLifecycleOwner
     root: _Root
     calls: int = 0
+    result_override: PackageArtifactExecutionResult | None = None
 
     def execute(
         self,
         _execution: PackageArtifactExecutionRequestV1,
     ) -> PackageArtifactExecutionResult:
         self.calls += 1
+        if self.result_override is not None:
+            return self.result_override
         status = self.kernel.status(OPERATION_ID)
         assert status is not None
         candidate = (
@@ -500,6 +504,31 @@ def _basis(
     )
 
 
+def _pending_cleanup_status(tmp_path: Path) -> PackageQuarantineCleanupStatusV1:
+    target_values = {
+        "attemptEpoch": 1,
+        "attemptIdentity": [3, 4],
+        "attemptName": "attempt-dependency",
+        "nodeId": "dependency-node",
+        "operationId": OPERATION_ID,
+        "storeIdentity": [1, 2],
+    }
+    target = PackageQuarantineCleanupTargetV1(
+        operation_id=OPERATION_ID,
+        attempt_epoch=1,
+        node_id="dependency-node",
+        store_identity=(1, 2),
+        attempt_identity=(3, 4),
+        attempt_name="attempt-dependency",
+        cleanup_id=sha256(canonical_json_bytes(target_values)).hexdigest(),
+    )
+    return PackageQuarantineCleanupJournal(tmp_path / "cleanup.jsonl").append_pending(
+        target,
+        rejection_code="package_wheel_metadata_invalid",
+        rejection_stage="inspecting",
+    )
+
+
 def test_closure_runtime_commits_plan_before_closure_verified_phase(
     tmp_path: Path,
 ) -> None:
@@ -633,30 +662,7 @@ def test_closure_runtime_records_typed_closure_failure_without_secret_echo(
 def test_closure_runtime_projects_dependency_cleanup_debt_separately(
     tmp_path: Path,
 ) -> None:
-    target_values = {
-        "attemptEpoch": 1,
-        "attemptIdentity": [3, 4],
-        "attemptName": "attempt-dependency",
-        "nodeId": "dependency-node",
-        "operationId": OPERATION_ID,
-        "storeIdentity": [1, 2],
-    }
-    target = PackageQuarantineCleanupTargetV1(
-        operation_id=OPERATION_ID,
-        attempt_epoch=1,
-        node_id="dependency-node",
-        store_identity=(1, 2),
-        attempt_identity=(3, 4),
-        attempt_name="attempt-dependency",
-        cleanup_id=sha256(canonical_json_bytes(target_values)).hexdigest(),
-    )
-    cleanup_status = PackageQuarantineCleanupJournal(
-        tmp_path / "cleanup.jsonl"
-    ).append_pending(
-        target,
-        rejection_code="package_wheel_metadata_invalid",
-        rejection_stage="inspecting",
-    )
+    cleanup_status = _pending_cleanup_status(tmp_path)
     builder = _ClosureBuilder(cleanup_status=cleanup_status)
     _kernel, owner, _artifact, _builder, _resolution, execution, _root = _setup(
         tmp_path,
@@ -672,6 +678,39 @@ def test_closure_runtime_projects_dependency_cleanup_debt_separately(
     assert result.cleanup_status == cleanup_status
     assert result.cleanup_status.failure is not None
     assert result.cleanup_status.failure.retry_domain == "cleanup"
+
+
+def test_closure_runtime_preserves_root_artifact_cleanup_projection(
+    tmp_path: Path,
+) -> None:
+    kernel, owner, artifact, builder, _resolution, execution, _root = _setup(
+        tmp_path,
+        phase="resolving_closure",
+    )
+    current = kernel.status(OPERATION_ID)
+    assert current is not None
+    rejected = kernel.record_failure(
+        PackageLifecycleFailureV1.for_operation(
+            "package_closure_artifact_invalid",
+            stage="resolving_closure",
+            operation_id=OPERATION_ID,
+            evidence_ref="6" * 64,
+        ),
+        expected_phase="resolving_closure",
+        expected_journal_revision=current.journal_revision,
+        expected_attempt_epoch=current.attempt_epoch,
+    )
+    cleanup_status = _pending_cleanup_status(tmp_path)
+    artifact.result_override = PackageArtifactExecutionResult(
+        status=rejected,
+        cleanup_status=cleanup_status,
+    )
+
+    result = owner.execute(execution)
+
+    assert result.status == rejected
+    assert result.cleanup_status == cleanup_status
+    assert builder.calls == 0
 
 
 def test_closure_runtime_terminal_cancel_does_not_reenter_builder(

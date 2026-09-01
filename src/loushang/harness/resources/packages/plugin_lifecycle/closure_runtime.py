@@ -233,7 +233,10 @@ class PackageClosureLifecycleOwner:
         status = artifact_result.status
         root = artifact_result.candidate
         if root is None:
-            return PackageClosureExecutionResult(status=status)
+            return PackageClosureExecutionResult(
+                status=status,
+                cleanup_status=artifact_result.cleanup_status,
+            )
         if status.phase == "extracted":
             try:
                 status = self._kernel.advance(
