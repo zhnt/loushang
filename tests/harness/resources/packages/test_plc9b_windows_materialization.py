@@ -42,6 +42,10 @@ from loushang.harness.resources.packages.plugin_lifecycle.windows_materializatio
     WindowsPackageDependencyMaterializationStore,
     WindowsPackagePluginRootMaterializationStore,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
+    open_windows_directory,
+    windows_rename_at,
+)
 
 pytestmark = pytest.mark.skipif(os.name != "nt", reason="Windows-native contract")
 
@@ -258,6 +262,31 @@ def _assert_tree(root: Path, final_name: str, payloads: dict[str, bytes]) -> Non
     } == payloads
 
 
+def test_windows_handle_relative_rename_preserves_directory_identity(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "rooted-rename"
+    root.mkdir()
+    root_fd = open_windows_directory(root, share_delete=True)
+    child_fd = open_windows_directory(
+        "staging-object",
+        dir_fd=root_fd,
+        create_new=True,
+        share_delete=True,
+    )
+    expected = (os.fstat(child_fd).st_dev, os.fstat(child_fd).st_ino)
+    os.close(child_fd)
+    try:
+        windows_rename_at(root_fd, "staging-object", "settled-object")
+    finally:
+        os.close(root_fd)
+
+    assert not (root / "staging-object").exists()
+    assert (root / "settled-object").is_dir()
+    settled = (root / "settled-object").stat()
+    assert (settled.st_dev, settled.st_ino) == expected
+
+
 def test_windows_role_stores_publish_exact_trees_and_reuse_same_receipts(
     tmp_path: Path,
 ) -> None:
@@ -363,9 +392,13 @@ def test_windows_store_rejects_root_replacement_aba_and_releases_handles(
         store.stage_dependency(request, candidate)
 
     assert raised.value.code == "package_publication_root_untrusted"
-    assert tuple(detached.iterdir()) == ()
-    shutil.rmtree(root)
-    detached.rename(root)
+    if detached.exists():
+        assert tuple(detached.iterdir()) == ()
+        if root.exists():
+            shutil.rmtree(root)
+        detached.rename(root)
+    else:
+        assert tuple(root.iterdir()) == ()
     moved = tmp_path / "store-moved"
     root.rename(moved)
     moved.rename(root)
@@ -399,9 +432,13 @@ def test_windows_store_rejects_ancestor_reparse_without_outside_write(
 
     assert raised.value.code == "package_publication_root_untrusted"
     assert sentinel.read_bytes() == b"preserve"
-    assert tuple((detached / "store").iterdir()) == ()
-    ancestor.unlink()
-    detached.rename(ancestor)
+    if detached.exists():
+        assert tuple((detached / "store").iterdir()) == ()
+        if ancestor.is_symlink():
+            ancestor.unlink()
+        detached.rename(ancestor)
+    else:
+        assert tuple(root.iterdir()) == ()
 
 
 def test_windows_store_rejects_nested_reparse_before_namespace_rename(

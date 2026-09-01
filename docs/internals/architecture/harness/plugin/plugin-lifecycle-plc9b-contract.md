@@ -1126,7 +1126,7 @@ digest, byte count, stable identity, reparse state, and single-link ownership,
 then flushed with `FlushFileBuffers`. Settlement rewalks and hashes the exact
 owned staging tree, executes one optional adversarial barrier, revalidates the
 root and complete owned tree, and finally uses
-`SetFileInformationByHandle(FileRenameInfo)` with the pinned root handle for a
+`NtSetInformationFile(FileRenameInformation)` with the pinned root handle for a
 same-root non-replacing atomic rename. The final tree is reopened, identity
 checked, and fully hashed before a receipt is returned. Abort deletes only
 entries whose recorded native identities still match and releases the source,

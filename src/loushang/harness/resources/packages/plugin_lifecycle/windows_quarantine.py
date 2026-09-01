@@ -162,21 +162,26 @@ def windows_rename_at(
     import msvcrt
     from ctypes import wintypes
 
-    old_component = _component(old_name)
-    new_component = _component(new_name)
-    raw_handle = _open_for_delete(directory_fd, old_component)
+    raw_handle = _open_for_delete(directory_fd, _component(old_name))
     try:
-        encoded_name = new_component.encode("utf-16-le")
+        encoded_name = _component(new_name).encode("utf-16-le")
 
-        class _FileRenameInfo(ctypes.Structure):
+        class _IoStatusValue(ctypes.Union):
+            _fields_ = (("status", wintypes.LONG), ("pointer", wintypes.LPVOID))
+
+        class _IoStatusBlock(ctypes.Structure):
+            _anonymous_ = ("value",)
+            _fields_ = (("value", _IoStatusValue), ("information", ctypes.c_size_t))
+
+        class _FileRenameInformation(ctypes.Structure):
             _fields_ = (
-                ("replace_if_exists", wintypes.BOOL),
+                ("replace_if_exists", ctypes.c_ubyte),
                 ("root_directory", wintypes.HANDLE),
                 ("file_name_length", wintypes.DWORD),
                 ("file_name", ctypes.c_byte * len(encoded_name)),
             )
 
-        information = _FileRenameInfo(
+        information = _FileRenameInformation(
             replace_if_exists=False,
             root_directory=wintypes.HANDLE(
                 getattr(msvcrt, "get_osfhandle")(directory_fd)
@@ -186,22 +191,29 @@ def windows_rename_at(
                 encoded_name
             ),
         )
-        kernel32 = getattr(ctypes, "WinDLL")("kernel32", use_last_error=True)
-        set_information = kernel32.SetFileInformationByHandle
+        io_status = _IoStatusBlock()
+        ntdll = getattr(ctypes, "WinDLL")("ntdll")
+        set_information = ntdll.NtSetInformationFile
         set_information.argtypes = (
             wintypes.HANDLE,
-            ctypes.c_int,
+            ctypes.POINTER(_IoStatusBlock),
             wintypes.LPVOID,
-            wintypes.DWORD,
+            wintypes.ULONG,
+            ctypes.c_int,
         )
-        set_information.restype = wintypes.BOOL
-        if not set_information(
+        set_information.restype = wintypes.LONG
+        status = set_information(
             wintypes.HANDLE(raw_handle),
-            _FILE_RENAME_INFO,
+            ctypes.byref(io_status),
             ctypes.byref(information),
             ctypes.sizeof(information),
-        ):
-            _raise_last_windows_error()
+            _FILE_RENAME_INFORMATION,
+        )
+        if status < 0:
+            rtl_status_to_dos_error = ntdll.RtlNtStatusToDosError
+            rtl_status_to_dos_error.argtypes = (wintypes.LONG,)
+            rtl_status_to_dos_error.restype = wintypes.ULONG
+            raise getattr(ctypes, "WinError")(rtl_status_to_dos_error(status))
     finally:
         _close_handle(raw_handle)
 
@@ -578,7 +590,7 @@ _FILE_OPEN = 1
 _FILE_CREATE = 2
 _OPEN_EXISTING = 3
 _OBJ_CASE_INSENSITIVE = 0x00000040
-_FILE_RENAME_INFO = 3
+_FILE_RENAME_INFORMATION = 10
 _FILE_DISPOSITION_INFO = 4
 _FILE_ATTRIBUTE_TAG_INFO = 9
 _DIRECTORY_READ_ACCESS = (

@@ -547,6 +547,8 @@ class _WindowsVerifiedTreeSink:
                 raise OSError("Package Store staging path identity changed")
         finally:
             os.close(visible)
+        os.close(self._staging_fd)
+        self._staging_fd = None
         if self._commit_probe is not None:
             self._commit_probe()
         try:
@@ -575,8 +577,6 @@ class _WindowsVerifiedTreeSink:
                 "Package Store final identity already exists",
                 code="package_publication_collision",
             )
-        os.close(self._staging_fd)
-        self._staging_fd = None
         try:
             windows_rename_at(
                 self._root.descriptor,

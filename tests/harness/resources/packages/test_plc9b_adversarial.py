@@ -2288,26 +2288,26 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
                 plugin_root.chmod(0o755)
             elif case_id == "B-PUB-SWAP-WINDOWS":
                 (staging_path / "root_plugin").rename(detached_entry)
+                entry_swapped = True
                 (staging_path / "root_plugin").symlink_to(
                     outside_target,
                     target_is_directory=True,
                 )
-                entry_swapped = True
             elif case_id == "B-PUB-WIN-ROOT-ABA":
                 plugin_root.rename(detached_root)
-                shutil.copytree(detached_root, plugin_root)
                 root_swapped = True
+                shutil.copytree(detached_root, plugin_root)
             elif case_id == "B-PUB-WIN-ANCESTOR-ABA":
                 plugin_authority.rename(detached_authority)
+                ancestor_swapped = True
                 plugin_authority.symlink_to(
                     outside_target,
                     target_is_directory=True,
                 )
-                ancestor_swapped = True
             elif case_id == "B-PUB-WIN-HANDLE-REJECT":
                 staging_path.rename(detached_staging)
-                staging_path.symlink_to(outside_target, target_is_directory=True)
                 staging_swapped = True
+                staging_path.symlink_to(outside_target, target_is_directory=True)
 
         handle_success = case_id in {
             "B-PUB-POSIX-HANDLE-SUCCESS",
@@ -2362,7 +2362,8 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
 
         if root_swapped:
             if windows_case:
-                shutil.rmtree(plugin_root)
+                if plugin_root.exists():
+                    shutil.rmtree(plugin_root)
                 detached_root.rename(plugin_root)
             else:
                 replacement = plugin_authority / "plugin-revision-store-replacement"
@@ -2371,7 +2372,8 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
                 replacement.rmdir()
         if ancestor_swapped:
             if windows_case:
-                plugin_authority.unlink()
+                if plugin_authority.is_symlink():
+                    plugin_authority.unlink()
                 detached_authority.rename(plugin_authority)
             else:
                 replacement_authority = (
@@ -2382,10 +2384,12 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
                 (replacement_authority / "plugin-revision-store").rmdir()
                 replacement_authority.rmdir()
         if entry_swapped:
-            (staging_path / "root_plugin").unlink()
+            if (staging_path / "root_plugin").is_symlink():
+                (staging_path / "root_plugin").unlink()
             shutil.rmtree(staging_path)
         if staging_swapped:
-            staging_path.unlink()
+            if staging_path.is_symlink():
+                staging_path.unlink()
             shutil.rmtree(detached_staging)
         if case_id == "B-PUB-POSIX-HANDLE-REJECT":
             plugin_root.chmod(0o700)

@@ -2922,6 +2922,7 @@ def test_plc9b3e3c2_windows_materialization_is_rooted_role_safe_and_native() -> 
     ):
         assert rooted_primitive in windows_store
     assert "SetFileInformationByHandle" in windows_primitives
+    assert "NtSetInformationFile" in windows_primitives
     assert "Path.rename" not in windows_store
     assert ".resolve(" not in windows_store
 
@@ -2943,6 +2944,7 @@ def test_plc9b3e3c2_windows_materialization_is_rooted_role_safe_and_native() -> 
     )
     for evidence in (
         "publish_exact_trees_and_reuse_same_receipts",
+        "handle_relative_rename_preserves_directory_identity",
         "rejects_configured_root_replacement_before_sink",
         "rejects_root_replacement_aba_and_releases_handles",
         "rejects_ancestor_reparse_without_outside_write",
