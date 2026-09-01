@@ -41,9 +41,13 @@ from loushang.harness.resources.packages.plugin_lifecycle.cleanup import (
     PackageQuarantineCleanupOwner,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.closure import (
+    NormalizedPackageRequirementV1,
     PackageClosureBudgetV1,
     PackageClosureVerifier,
     PackageResolutionEnvironmentV1,
+    ResolvedPackageRequirementV1,
+    VerifiedClosurePlanNodeV2,
+    VerifiedClosurePlanV2,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.closure_journal import (
     PackageClosureResolutionBasisV1,
@@ -60,7 +64,14 @@ from loushang.harness.resources.packages.plugin_lifecycle.closure_runtime import
     PackageClosureExecutionRequestV2,
     PackageClosureLifecycleOwner,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.commit_admission import (
+    PackageCommitAdmissionOwner,
+    PackageCommitAdmissionRequestV1,
+    PackageCommitLifecycleOwner,
+    PackagePublicationReceiptV1,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.commit_records import (
+    DependencyClosureLockV2,
     PluginRevisionRefV1,
     VerifiedArtifactRefV1,
 )
@@ -225,8 +236,18 @@ IMPLEMENTED_B3E3C3_SETTLEMENT_MANIFEST_CASES = (
     "B-PUB-COLLISION",
     "B-PUB-REUSE",
 )
+IMPLEMENTED_B4A_COMMIT_ADMISSION_MANIFEST_CASES = (
+    "B-PUB-UNCOMMITTED",
+    "B-ADMISSION-DEPENDENCY",
+    "B-ADMISSION-WRONG-SET",
+    "B-ADMISSION-WRONG-REQUEST",
+    "B-ADMISSION-WRONG-OPERATION",
+    "B-ADMISSION-WRONG-SCOPE",
+    "B-ADMISSION-WRONG-PLUGIN",
+    "B-ADMISSION-DIGEST-TAMPER",
+)
 PLANNED_B3E3C_MATERIALIZATION_MANIFEST_CASES: tuple[str, ...] = ()
-PLANNED_B4_COMMIT_ADMISSION_MANIFEST_CASES = ("B-PUB-UNCOMMITTED",)
+PLANNED_B4_COMMIT_ADMISSION_MANIFEST_CASES: tuple[str, ...] = ()
 
 EXECUTABLE_MANIFEST_CASES = (
     IMPLEMENTED_B1_MANIFEST_CASES
@@ -242,6 +263,7 @@ EXECUTABLE_MANIFEST_CASES = (
     + IMPLEMENTED_B3E_STAGING_SET_MANIFEST_CASES
     + IMPLEMENTED_B3E3C1_POSIX_MANIFEST_CASES
     + IMPLEMENTED_B3E3C3_SETTLEMENT_MANIFEST_CASES
+    + IMPLEMENTED_B4A_COMMIT_ADMISSION_MANIFEST_CASES
     + (IMPLEMENTED_B3E3C2_WINDOWS_MANIFEST_CASES if os.name == "nt" else ())
 )
 
@@ -1350,6 +1372,200 @@ def _land_artifact_phase(
     return inspecting, candidate, execution
 
 
+@dataclass(frozen=True)
+class _ManifestCommitAdmissionFixture:
+    kernel: PackageLifecycleOwner
+    committed_sets: PackageCommittedSetJournal
+    pin_journal: PackageTransactionPinJournal
+    pin_receipt: PackageTransactionPinReceiptV1
+    commit_owner: PackageCommitLifecycleOwner
+    admission_owner: PackageCommitAdmissionOwner
+
+
+def _manifest_commit_admission_fixture(
+    tmp_path: Path,
+) -> _ManifestCommitAdmissionFixture:
+    journal = PackageLifecycleJournal(tmp_path / "package-lifecycle.jsonl")
+    kernel = PackageLifecycleOwner(
+        journal=journal,
+        classification_authority=_Authority(_facts("explicit_plugin_intent")),
+        enabled=True,
+    )
+    status = kernel.submit(_request())
+    assert status.classification is not None
+    for phase in (
+        "acquiring",
+        "acquired",
+        "inspecting",
+        "extracted",
+        "resolving_closure",
+        "closure_verified",
+    ):
+        prior = status.phase
+        status = kernel.advance(
+            status.operation_id,
+            next_phase=phase,  # type: ignore[arg-type]
+            expected_phase=prior,
+            expected_journal_revision=status.journal_revision,
+            expected_attempt_epoch=status.attempt_epoch,
+        )
+
+    dependency = VerifiedClosurePlanNodeV2(
+        node_id="manifest-admission-dependency",
+        role="dependency",
+        distribution="dependency",
+        version="2.0",
+        canonical_source_identity="https://packages.example.test/dependency.whl",
+        source_envelope_fingerprint="1" * 64,
+        acquisition_receipt_fingerprint="2" * 64,
+        wheel_evidence_fingerprint="3" * 64,
+        artifact_digest="4" * 64,
+        extraction_tree_digest="5" * 64,
+        selected_extras=(),
+        requirements=(),
+        selected_edges=(),
+    )
+    root_requirement = ResolvedPackageRequirementV1(
+        requirement=NormalizedPackageRequirementV1.parse("dependency==2.0"),
+        marker_applies=True,
+        selected_node_id=dependency.node_id,
+        expected_source_identity=dependency.canonical_source_identity,
+        expected_artifact_digest=dependency.artifact_digest,
+    )
+    root = VerifiedClosurePlanNodeV2(
+        node_id="manifest-admission-root",
+        role="root",
+        distribution="acme",
+        version="1.0",
+        canonical_source_identity="https://packages.example.test/acme.whl",
+        source_envelope_fingerprint="a" * 64,
+        acquisition_receipt_fingerprint="b" * 64,
+        wheel_evidence_fingerprint="c" * 64,
+        artifact_digest="d" * 64,
+        extraction_tree_digest="e" * 64,
+        selected_extras=(),
+        requirements=(root_requirement,),
+        selected_edges=(dependency.node_id,),
+    )
+    plan = VerifiedClosurePlanV2.create(
+        operation_id=status.operation_id,
+        attempt_epoch=status.attempt_epoch,
+        root_node_id=root.node_id,
+        resolution_environment_fingerprint="e" * 64,
+        nodes=(root, dependency),
+        max_depth=1,
+    )
+    pin_request = PackageTransactionPinRequestV1.create(
+        plan,
+        request_fingerprint=status.request_fingerprint,
+        classification_fingerprint=status.classification.evidence_ref,
+        recovery_identity="manifest-commit-admission",
+    )
+    pin_receipt = PackageTransactionPinReceiptV1.acquire(
+        pin_request,
+        pin_id="f" * 64,
+        owner_identity="manifest-retention-owner",
+        owner_revision=1,
+        lease_id="manifest-admission-lease",
+        lease_revision=1,
+    )
+    pin_journal = PackageTransactionPinJournal(
+        tmp_path / "package-transaction-pins.jsonl"
+    )
+    pin_journal.append(pin_receipt)
+    for phase in ("transaction_pinned", "staging"):
+        prior = status.phase
+        status = kernel.advance(
+            status.operation_id,
+            next_phase=phase,  # type: ignore[arg-type]
+            expected_phase=prior,
+            expected_journal_revision=status.journal_revision,
+            expected_attempt_epoch=status.attempt_epoch,
+        )
+
+    root_ref = PluginRevisionRefV1.create(
+        store_identity="manifest-plugin-store",
+        store_revision="manifest-plugin-revision:1",
+        installation_id="manifest-installation",
+        plugin_id="acme.plugin",
+        distribution=root.distribution,
+        version=root.version,
+        artifact_digest=root.artifact_digest,
+        extraction_tree_digest=root.extraction_tree_digest,
+    )
+    dependency_ref = VerifiedArtifactRefV1.create(
+        store_identity="manifest-dependency-store",
+        store_revision="manifest-dependency-revision:1",
+        distribution=dependency.distribution,
+        version=dependency.version,
+        artifact_digest=dependency.artifact_digest,
+        extraction_tree_digest=dependency.extraction_tree_digest,
+    )
+    closure_lock = DependencyClosureLockV2.create(
+        plan,
+        stable_refs={
+            root.node_id: root_ref,
+            dependency.node_id: dependency_ref,
+        },
+    )
+    committed_sets = PackageCommittedSetJournal(
+        tmp_path / "package-committed-sets.jsonl"
+    )
+    committed_sets.publish(
+        closure_lock,
+        request_fingerprint=status.request_fingerprint,
+        product_id="coding",
+        scope_id="workspace:manifest",
+        installation_id="manifest-installation",
+        plugin_id="acme.plugin",
+        classification_fingerprint=status.classification.evidence_ref,
+    )
+    status = kernel.advance(
+        status.operation_id,
+        next_phase="set_published",
+        expected_phase="staging",
+        expected_journal_revision=status.journal_revision,
+        expected_attempt_epoch=status.attempt_epoch,
+    )
+    assert status.phase == "set_published"
+    return _ManifestCommitAdmissionFixture(
+        kernel=kernel,
+        committed_sets=committed_sets,
+        pin_journal=pin_journal,
+        pin_receipt=pin_receipt,
+        commit_owner=PackageCommitLifecycleOwner(
+            kernel=kernel,
+            committed_sets=committed_sets,
+            pin_journal=pin_journal,
+        ),
+        admission_owner=PackageCommitAdmissionOwner(
+            lifecycle_journal=journal,
+            committed_sets=committed_sets,
+            pin_journal=pin_journal,
+        ),
+    )
+
+
+def _manifest_admission_request(
+    receipt: PackagePublicationReceiptV1,
+    **changes: object,
+) -> PackageCommitAdmissionRequestV1:
+    values: dict[str, object] = {
+        "operation_id": receipt.operation_id,
+        "request_fingerprint": receipt.request_fingerprint,
+        "product_id": receipt.product_id,
+        "scope_id": receipt.scope_id,
+        "installation_id": receipt.installation_id,
+        "plugin_id": receipt.plugin_id,
+        "claimed_root_ref": receipt.committed_set.root_ref,
+        "committed_set_id": receipt.committed_set.set_id,
+        "closure_lock_digest": receipt.committed_set.closure_lock_digest,
+        "publication_receipt": receipt,
+    }
+    values.update(changes)
+    return PackageCommitAdmissionRequestV1.create(**values)  # type: ignore[arg-type]
+
+
 @pytest.mark.parametrize("case_id", EXECUTABLE_MANIFEST_CASES)
 def test_manifest_case(case_id: str, tmp_path: Path) -> None:
     if case_id == "B-CLASS-PLUGIN":
@@ -1458,6 +1674,81 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
         assert status.failure.code == "package_route_unavailable"
         assert journal.records() == ()
         assert not journal.path.exists()
+    elif case_id in IMPLEMENTED_B4A_COMMIT_ADMISSION_MANIFEST_CASES:
+        fixture = _manifest_commit_admission_fixture(tmp_path)
+        current = fixture.kernel.status("manifest-operation")
+        committed_record = fixture.committed_sets.current("manifest-operation")
+        assert current is not None and current.phase == "set_published"
+        assert committed_record is not None
+        if case_id == "B-PUB-UNCOMMITTED":
+            admission_request = PackageCommitAdmissionRequestV1.create(
+                operation_id=current.operation_id,
+                request_fingerprint=current.request_fingerprint,
+                product_id="coding",
+                scope_id="workspace:manifest",
+                installation_id="manifest-installation",
+                plugin_id="acme.plugin",
+                claimed_root_ref=committed_record.committed_set.root_ref,
+                committed_set_id=committed_record.committed_set.set_id,
+                closure_lock_digest=committed_record.closure_lock.lock_digest,
+                publication_receipt=None,
+            )
+        else:
+            publication = fixture.commit_owner.commit("manifest-operation")
+            if case_id == "B-ADMISSION-DEPENDENCY":
+                changes: dict[str, object] = {
+                    "claimed_root_ref": committed_record.committed_set.dependency_refs[
+                        0
+                    ]
+                }
+            elif case_id == "B-ADMISSION-WRONG-SET":
+                other_root = PluginRevisionRefV1.create(
+                    store_identity="manifest-plugin-store",
+                    store_revision="manifest-plugin-revision:other",
+                    installation_id="manifest-installation",
+                    plugin_id="acme.plugin",
+                    distribution="acme",
+                    version="1.0",
+                    artifact_digest="d" * 64,
+                    extraction_tree_digest="e" * 64,
+                )
+                changes = {
+                    "claimed_root_ref": other_root,
+                    "committed_set_id": "0" * 64,
+                }
+            elif case_id == "B-ADMISSION-WRONG-REQUEST":
+                changes = {"request_fingerprint": "0" * 64}
+            elif case_id == "B-ADMISSION-WRONG-OPERATION":
+                changes = {"operation_id": "manifest-operation-other"}
+            elif case_id == "B-ADMISSION-WRONG-SCOPE":
+                changes = {"scope_id": "workspace:other"}
+            elif case_id == "B-ADMISSION-WRONG-PLUGIN":
+                changes = {"plugin_id": "other.plugin"}
+            else:
+                assert case_id == "B-ADMISSION-DIGEST-TAMPER"
+                changes = {"closure_lock_digest": "0" * 64}
+            admission_request = _manifest_admission_request(
+                publication,
+                **changes,
+            )
+        lifecycle_before = fixture.kernel.journal.records()
+        committed_before = fixture.committed_sets.records()
+        pins_before = fixture.pin_journal.records()
+
+        result = fixture.admission_owner.admit(admission_request)
+
+        assert result.code == "package_commit_admission_denied"
+        assert result.disposition == "rejected"
+        assert result.receipt is None
+        assert result.failure is not None
+        assert fixture.kernel.journal.records() == lifecycle_before
+        assert fixture.committed_sets.records() == committed_before
+        assert fixture.pin_journal.records() == pins_before
+        assert fixture.pin_journal.current_for_operation(
+            "manifest-operation"
+        ) == (fixture.pin_receipt)
+        assert not (tmp_path / "binding.json").exists()
+        assert not (tmp_path / "desired.json").exists()
     elif case_id in IMPLEMENTED_B2_MANIFEST_CASES:
         secret = f"manifest-secret-{case_id.lower()}"
         (

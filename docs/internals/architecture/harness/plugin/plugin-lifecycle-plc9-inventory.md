@@ -174,6 +174,16 @@
   `9821924161` executed 74 manifest nodes and retained Windows artifact
   `9821946893` executed 19 native component tests plus 12 manifest nodes, all
   with zero skips, failures, or errors.
+  PLC9B4a candidate code closes the logical commit-admission boundary without
+  opening a Product route. A sole commit owner validates the exact terminal
+  set and live transaction pin before appending `committed`; its immutable
+  receipt is deterministically recoverable from those durable journals. A
+  separate read-only admission owner reprojects and compares operation/request,
+  Product/scope, Installation/Plugin, designated root, set, closure, and pin
+  evidence. It returns no path, runtime handle, store capability, binding, or
+  desired-state authority. `B-PUB-UNCOMMITTED` and all seven `B-ADMISSION-*`
+  threats are executable; B4b retention handoff and B4c epoch fencing remain
+  later gates.
 
 This inventory distinguishes accepted reusable owners, Product adapters,
 parallel compatibility paths, and missing target boundaries. “Migrate” or

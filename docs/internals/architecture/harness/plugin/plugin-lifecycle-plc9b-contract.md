@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.3e3c3.
+- Contract version: PLC9B.4a-candidate.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -86,8 +86,15 @@
   Store-private durable settlement authority. It authorizes the exact root,
   tree, member identities, manifest, and receipt before namespace rename,
   recovers the rename-to-receipt crash window, and implements collision/reuse
-  without adding a public route. `B-PUB-UNCOMMITTED` remains planned for
-  PLC9B4 commit admission.
+  without adding a public route. B4a candidate code adds a deterministic
+  immutable Package publication receipt, the sole `set_published -> committed`
+  CAS owner, and a candidate-free read-only commit-admission owner. Admission
+  reprojects the receipt from the terminal lifecycle, exact committed-set, and
+  still-live transaction-pin journals; it returns only a stable admission
+  receipt, never a path, store capability, reopened object, or live handle.
+  The missing-receipt and seven cross-context admission threats are executable;
+  retention handoff, recovery/epoch fencing, public routing, and desired-state
+  mutation remain closed.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -1724,14 +1731,14 @@ B-PUB-WIN-HANDLE-SUCCESS | windows-native | committed | successful_native_handle
 B-PUB-WIN-HANDLE-REJECT | windows-native | rejected | rejected_native_handle_lifecycle | package_publication_root_untrusted | rejected@staging | no_outside_write;no_publication;pin_visible;handle_released;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-WIN-HANDLE-REJECT] | windows-shell-compatibility.yml#plc9b-windows-native | implemented
 B-PUB-COLLISION | any | staging | same_digest_different_identity | package_publication_collision | rejected@staging | no_publication;no_binding;pin_visible | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-COLLISION] | harness-quality.yml#plc9b-linux-native | implemented
 B-PUB-REUSE | any | set_published | exact_committed_set_exists | ok | committed@committed | same_receipt;pin_visible;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-REUSE] | harness-quality.yml#plc9b-linux-native | implemented
-B-PUB-UNCOMMITTED | any | set_published | stable_ref_without_commit_receipt | package_commit_admission_denied | rejected@staging | no_binding;no_desired;pin_visible;no_reopen;no_handle_issued;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-UNCOMMITTED] | harness-quality.yml#plc9b-linux-native | planned
-B-ADMISSION-DEPENDENCY | any | committed | dependency_ref_claimed_as_root | package_commit_admission_denied | rejected@committed | no_binding;no_desired;pin_visible;no_reopen;no_handle_issued;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ADMISSION-DEPENDENCY] | harness-quality.yml#plc9b-linux-native | planned
-B-ADMISSION-WRONG-SET | any | committed | ref_from_other_committed_set | package_commit_admission_denied | rejected@committed | no_binding;no_desired;pin_visible;no_reopen;no_handle_issued;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ADMISSION-WRONG-SET] | harness-quality.yml#plc9b-linux-native | planned
-B-ADMISSION-WRONG-REQUEST | any | committed | request_fingerprint_mismatch | package_commit_admission_denied | rejected@committed | no_binding;no_desired;pin_visible;no_reopen;no_handle_issued;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ADMISSION-WRONG-REQUEST] | harness-quality.yml#plc9b-linux-native | planned
-B-ADMISSION-WRONG-OPERATION | any | committed | operation_fingerprint_mismatch | package_commit_admission_denied | rejected@committed | no_binding;no_desired;pin_visible;no_reopen;no_handle_issued;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ADMISSION-WRONG-OPERATION] | harness-quality.yml#plc9b-linux-native | planned
-B-ADMISSION-WRONG-SCOPE | any | committed | product_or_scope_mismatch | package_commit_admission_denied | rejected@committed | no_binding;no_desired;pin_visible;no_reopen;no_handle_issued;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ADMISSION-WRONG-SCOPE] | harness-quality.yml#plc9b-linux-native | planned
-B-ADMISSION-WRONG-PLUGIN | any | committed | installation_or_plugin_mismatch | package_commit_admission_denied | rejected@committed | no_binding;no_desired;pin_visible;no_reopen;no_handle_issued;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ADMISSION-WRONG-PLUGIN] | harness-quality.yml#plc9b-linux-native | planned
-B-ADMISSION-DIGEST-TAMPER | any | committed | closure_or_set_digest_tamper | package_commit_admission_denied | rejected@committed | no_binding;no_desired;pin_visible;no_reopen;no_handle_issued;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ADMISSION-DIGEST-TAMPER] | harness-quality.yml#plc9b-linux-native | planned
+B-PUB-UNCOMMITTED | any | set_published | stable_ref_without_commit_receipt | package_commit_admission_denied | rejected@staging | no_binding;no_desired;pin_visible;no_reopen;no_handle_issued;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-UNCOMMITTED] | harness-quality.yml#plc9b-linux-native | implemented
+B-ADMISSION-DEPENDENCY | any | committed | dependency_ref_claimed_as_root | package_commit_admission_denied | rejected@committed | no_binding;no_desired;pin_visible;no_reopen;no_handle_issued;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ADMISSION-DEPENDENCY] | harness-quality.yml#plc9b-linux-native | implemented
+B-ADMISSION-WRONG-SET | any | committed | ref_from_other_committed_set | package_commit_admission_denied | rejected@committed | no_binding;no_desired;pin_visible;no_reopen;no_handle_issued;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ADMISSION-WRONG-SET] | harness-quality.yml#plc9b-linux-native | implemented
+B-ADMISSION-WRONG-REQUEST | any | committed | request_fingerprint_mismatch | package_commit_admission_denied | rejected@committed | no_binding;no_desired;pin_visible;no_reopen;no_handle_issued;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ADMISSION-WRONG-REQUEST] | harness-quality.yml#plc9b-linux-native | implemented
+B-ADMISSION-WRONG-OPERATION | any | committed | operation_fingerprint_mismatch | package_commit_admission_denied | rejected@committed | no_binding;no_desired;pin_visible;no_reopen;no_handle_issued;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ADMISSION-WRONG-OPERATION] | harness-quality.yml#plc9b-linux-native | implemented
+B-ADMISSION-WRONG-SCOPE | any | committed | product_or_scope_mismatch | package_commit_admission_denied | rejected@committed | no_binding;no_desired;pin_visible;no_reopen;no_handle_issued;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ADMISSION-WRONG-SCOPE] | harness-quality.yml#plc9b-linux-native | implemented
+B-ADMISSION-WRONG-PLUGIN | any | committed | installation_or_plugin_mismatch | package_commit_admission_denied | rejected@committed | no_binding;no_desired;pin_visible;no_reopen;no_handle_issued;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ADMISSION-WRONG-PLUGIN] | harness-quality.yml#plc9b-linux-native | implemented
+B-ADMISSION-DIGEST-TAMPER | any | committed | closure_or_set_digest_tamper | package_commit_admission_denied | rejected@committed | no_binding;no_desired;pin_visible;no_reopen;no_handle_issued;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ADMISSION-DIGEST-TAMPER] | harness-quality.yml#plc9b-linux-native | implemented
 B-CRASH-ACCEPTED | any | accepted | crash_edge | package_operation_interrupted | retryable_failure@accepted | same_receipt;no_publication;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CRASH-ACCEPTED] | harness-quality.yml#plc9b-linux-native | implemented
 B-CRASH-CLASSIFIED | any | classified | crash_edge | package_operation_interrupted | retryable_failure@classified | same_receipt;no_publication;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CRASH-CLASSIFIED] | harness-quality.yml#plc9b-linux-native | implemented
 B-CRASH-ACQUIRING | any | acquiring | crash_edge | package_operation_interrupted | retryable_failure@acquiring | same_receipt;bounded_residue;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CRASH-ACQUIRING] | harness-quality.yml#plc9b-linux-native | implemented
