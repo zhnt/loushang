@@ -31,6 +31,8 @@ ENABLEMENT_MIGRATION = Path(
 )
 CODING_LIFECYCLE = Path("src/loushang/coding/_plugin_lifecycle.py")
 WINDOWS_WORKFLOW = Path(".github/workflows/windows-shell-compatibility.yml")
+CODING_MANAGEMENT_TEST = Path("tests/coding/test_plugin_management_cli.py")
+JOURNAL_TEST = Path("tests/harness/journal/test_jsonl.py")
 
 
 def _source(path: Path) -> str:
@@ -170,6 +172,8 @@ def test_plc9a1_coding_transport_adapter_does_not_construct_owner_stores() -> No
     config_runtime = _source(CONFIG_RUNTIME)
     config_file_transaction = _source(CONFIG_FILE_TRANSACTION)
     journal = _source(JOURNAL)
+    coding_management_test = _source(CODING_MANAGEMENT_TEST)
+    journal_test = _source(JOURNAL_TEST)
     desired_ledger = _source(DESIRED_LEDGER)
     enablement_migration = _source(ENABLEMENT_MIGRATION)
 
@@ -197,6 +201,13 @@ def test_plc9a1_coding_transport_adapter_does_not_construct_owner_stores() -> No
     assert "file_list_directory" in lifecycle
     assert "share_read_write" in lifecycle
     assert "tests/coding/test_plugin_management_cli.py" in windows_workflow
+    assert "test_windows_descriptor_relative_read_rejects_reparse_child" in (
+        coding_management_test
+    )
+    assert "test_windows_compatibility_reconcile_survives_full_root_aba" in (
+        coding_management_test
+    )
+    assert r'"entry\0tail"' in journal_test
     assert "file_flag_open_reparse_point" in journal
     assert "NtCreateFile" in journal
     assert "root_directory" in journal

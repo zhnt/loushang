@@ -1620,7 +1620,7 @@ def _supports_descriptor_relative_private_state_io() -> bool:
 
 
 def _supports_portable_private_state_io() -> bool:
-    """Return whether open child handles pin parent paths on this host."""
+    """Return whether identity-checked Windows root descriptors are available."""
 
     return os.name == "nt"
 
