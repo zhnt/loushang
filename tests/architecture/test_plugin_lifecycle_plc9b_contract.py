@@ -463,7 +463,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.3a-candidate" in contract
+    assert "Contract version: PLC9B.3a" in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
@@ -472,7 +472,9 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
     assert "PLC9B2i Accepted Windows Archive Manifest Slice" in contract
     assert "PLC9B2j Accepted Recovery And Cleanup Manifest Slice" in contract
     assert "PLC9B2k Accepted POSIX Hardlink Normalization Slice" in contract
-    assert "PLC9B3a Dark Closure-v2 Verifier Candidate" in contract
+    assert "PLC9B3a Accepted Dark Closure-v2 Verifier Slice" in contract
+    assert "Harness Quality run `33497159996`" in contract
+    assert "Linux harness job `99821888267`" in contract
     assert "Harness Quality run `33493714647`" in contract
     assert "Artifact `plc9b-linux-native-pytest-report` (ID `9794816942`)" in (
         " ".join(contract.split())

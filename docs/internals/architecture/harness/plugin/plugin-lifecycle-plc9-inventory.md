@@ -46,12 +46,14 @@
   PLC9B2j accepts six exact Linux-native artifact-identity, early-crash, and
   cleanup-debt fixtures after the persisted non-skippable Linux report passed
   all 51 manifest nodes without skips, failures, or errors.
-  PLC9B3a adds an unbound pure closure-v2 verifier candidate over typed Source,
+  PLC9B3a adds an accepted unbound pure closure-v2 verifier over typed Source,
   acquisition, and wheel evidence. It deterministically proves PEP 508 marker/
   specifier decisions, origin/digest binding, graph completeness, acyclicity,
   canonical identity, and composed budgets, but owns no I/O, pin, store,
   journal, publication, or transport capability. Its component fixtures do not
-  promote global manifest rows.
+  promote global manifest rows. Harness Quality run `33497159996` accepted the
+  component after Ruff and mypy passed and the full gate reported 3624 passed,
+  20 skipped.
   Publication, later transaction phases, and every production route remain
   migration obligations; no global adversarial row is promoted.
 

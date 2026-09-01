@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.3a-candidate.
+- Contract version: PLC9B.3a.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -32,7 +32,7 @@
   rejected quarantine cleanup debt after their Linux-native report passed.
   B2k corrects the hardlink threat model and implements one POSIX-native source
   normalization row after its Linux-native report passed.
-  B3a adds a dark, pure closure-v2 verifier candidate; it promotes no global
+  B3a adds an accepted dark, pure closure-v2 verifier; it promotes no global
   manifest row before recursive owner composition is executable.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
@@ -428,7 +428,7 @@ A future Wheel version that standardizes link semantics is unsupported input
 until a separate reviewed contract and verifier are implemented; it cannot
 inherit B2k's normalization proof.
 
-## PLC9B3a Dark Closure-v2 Verifier Candidate
+## PLC9B3a Accepted Dark Closure-v2 Verifier Slice
 
 `loushang.harness.resources.packages.plugin_lifecycle.closure` introduces a
 pure verification boundary over complete, already-proved artifact evidence. It
@@ -465,6 +465,14 @@ remains `planned` until the Package owner recursively acquires/verifies every
 node, journals `resolving_closure -> closure_verified`, proves crash/cancel
 replay, and the complete non-skippable Linux report passes. B3a creates no
 typed stable ref, transaction pin, committed set, or production route.
+
+B3a was accepted on 2026-09-01 by
+[Harness Quality run `33497159996`](https://github.com/zhnt/loushang/actions/runs/33497159996),
+Linux harness job `99821888267`, against head `37d5b521`. The complete Harness
+gate reported Ruff success, mypy success across 626 source files, and `3624
+passed, 20 skipped`; all PR checks passed. The separately retained manifest
+report still executed exactly the 52 previously implemented rows, confirming
+that this component acceptance did not promote any global adversarial row.
 
 ## First Principles
 
