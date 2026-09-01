@@ -124,11 +124,13 @@ Neither may silently override a narrower implemented owner contract.
   publication-root safety, admission, or production routing. Its retained
   67-row Linux-native report passed with zero skips, failures, or errors,
   included all three committed-phase crash rows, and contained no publication
-  node. PLC9B3e-3c0 candidate contracts bind a files-only logical transfer
+  node. PLC9B3e-3c0 accepted contracts bind a files-only logical transfer
   manifest to exact Wheel evidence and separate quarantine transfer,
   dependency-root sinks, and designated Plugin-root sinks. They expose no
   physical path or handle, perform no Store effect, and keep every publication
-  row planned pending native backends and later commit admission.
+  row planned pending native backends and later commit admission. Its retained
+  67-row Linux-native report passed without skips, failures, errors, or a
+  publication node.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)

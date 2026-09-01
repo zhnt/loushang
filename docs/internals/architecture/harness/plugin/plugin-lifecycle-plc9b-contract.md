@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.3e3c0-candidate.
+- Contract version: PLC9B.3e3c0.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -67,7 +67,7 @@
   supports candidate-free durable resume/recovery, and implements
   `B-CRASH-STAGING` plus `B-CRASH-SET` without a concrete store or public
   publication namespace.
-  B3e-3c0 candidate code freezes a files-only verified-tree manifest and three
+  B3e-3c0 accepted code freezes a files-only verified-tree manifest and three
   separate short-lived capabilities for quarantine-owned transfer,
   dependency-store materialization roots, and designated Plugin-root
   materialization roots. It performs no store write and promotes no manifest
@@ -969,7 +969,7 @@ The XML executed exactly 67 manifest nodes with zero skips, failures, or
 errors, included `B-CRASH-PINNED`, `B-CRASH-STAGING`, and `B-CRASH-SET`, and
 contained no `B-PUB-*` node.
 
-## PLC9B3e-3c0 Candidate Verified-Tree Transfer Contracts
+## PLC9B3e-3c0 Accepted Verified-Tree Transfer Contracts
 
 B3e-3c0 closes the missing data-plane contract between an opaque verified
 candidate and a Store without transferring a quarantine pathname or source
@@ -1013,6 +1013,15 @@ staging adapter. Therefore all 13 `B-PUB-*` rows remain `planned`. The first 12
 physical materialization/root/collision/reuse rows belong to the B3e-3c native
 implementation slices. `B-PUB-UNCOMMITTED` remains a PLC9B4 commit-admission
 gate even after safe bytes exist in a Store.
+
+B3e-3c0 was accepted on 2026-09-01 against candidate head `1b00b8cd` after
+every PR check passed. Harness Quality run `33545076092`, Linux harness job
+`99980454997`, retained `plc9b-linux-native-pytest-report` artifact ID
+`9815136763` with upload digest
+`16f5c3d4ab46c10b42ef32e88024299c295ca51406f99f71348c571251d1c5f1`.
+The XML executed the unchanged 67 manifest nodes with zero skips, failures, or
+errors, included `B-CRASH-PINNED`, `B-CRASH-STAGING`, and `B-CRASH-SET`, and
+contained no `B-PUB-*` node.
 
 ## First Principles
 

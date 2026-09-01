@@ -519,7 +519,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.3e3c0-candidate" in contract
+    assert "Contract version: PLC9B.3e3c0" in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
@@ -537,7 +537,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
     assert "PLC9B3e-1 Accepted Typed Commit Records" in contract
     assert "PLC9B3e-3a Accepted Staging And Atomic Set Contracts" in contract
     assert "PLC9B3e-3b Accepted Staging And Set Runtime" in contract
-    assert "PLC9B3e-3c0 Candidate Verified-Tree Transfer Contracts" in contract
+    assert "PLC9B3e-3c0 Accepted Verified-Tree Transfer Contracts" in contract
     assert "PLC9B3e-2a Accepted Transaction-Pin Contract" in contract
     assert "Harness Quality run `33505702666`" in contract
     assert "Linux\nharness job `99849101216`" in contract
@@ -2697,8 +2697,18 @@ def test_plc9b3e3c0_freezes_pathless_role_separated_transfer_contracts() -> None
     assert "The manifest is deliberately files-only" in normalized
     assert "all 13 `B-PUB-*` rows remain `planned`" in normalized
     assert "B-PUB-UNCOMMITTED` remains a PLC9B4 commit-admission gate" in normalized
-    assert "PLC9B3e-3c0 candidate code adds a strict files-only" in inventory
-    assert "PLC9B3e-3c0 candidate contracts bind a files-only" in index
+    assert "PLC9B3e-3c0 accepted code adds a strict files-only" in inventory
+    assert "PLC9B3e-3c0 accepted contracts bind a files-only" in index
+    assert "B3e-3c0 was accepted on 2026-09-01 against candidate head `1b00b8cd`" in (
+        normalized
+    )
+    assert "Harness Quality run `33545076092`" in normalized
+    assert "Linux harness job `99980454997`" in normalized
+    assert "artifact ID `9815136763`" in normalized
+    assert (
+        "16f5c3d4ab46c10b42ef32e88024299c295ca51406f99f71348c571251d1c5f1" in contract
+    )
+    assert "executed the unchanged 67 manifest nodes" in normalized
 
 
 def test_plc9b2f_windows_backend_is_rooted_and_has_a_nonskippable_native_gate() -> None:
