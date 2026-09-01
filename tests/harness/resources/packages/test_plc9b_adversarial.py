@@ -23,6 +23,7 @@ from loushang.harness.resources.packages.plugin_lifecycle import (
     PackageLifecycleOwner,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.acquisition import (
+    AcquiredPackageCandidate,
     AuthenticatedSourceEnvelopeV1,
     BoundedAcquisitionSinkPort,
     PackageAcquisitionBudgetV1,
@@ -41,6 +42,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.phase_evidence import 
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     PackageLifecycleRequestV1,
+    PackageLifecycleStatusV1,
     PluginBoundPackageClassificationV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.runtime import (
@@ -50,6 +52,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.runtime import (
 from loushang.harness.resources.packages.plugin_lifecycle.wheel import (
     PackageInspectionBudgetV1,
     PackageWheelVerifier,
+    VerifiedWheelCandidate,
 )
 
 IMPLEMENTED_B1_MANIFEST_CASES = (
@@ -109,11 +112,21 @@ IMPLEMENTED_B2I_WINDOWS_MANIFEST_CASES = (
     "B-TYPE-JUNCTION",
 )
 
+PLC9B2J_RECOVERY_CANDIDATE_MANIFEST_CASES = (
+    "B-ACQ-IDENTITY",
+    "B-CRASH-ACQUIRING",
+    "B-CRASH-ACQUIRED",
+    "B-CRASH-INSPECTING",
+    "B-CRASH-EXTRACTED",
+    "B-STATE-REJECT-CLEANUP",
+)
+
 EXECUTABLE_MANIFEST_CASES = (
     IMPLEMENTED_B1_MANIFEST_CASES
     + IMPLEMENTED_B2_MANIFEST_CASES
     + IMPLEMENTED_B2H_MANIFEST_CASES
     + IMPLEMENTED_B2I_WINDOWS_MANIFEST_CASES
+    + PLC9B2J_RECOVERY_CANDIDATE_MANIFEST_CASES
 )
 
 WHEEL_FILENAME = "acme_plugin-1.0-py3-none-any.whl"
@@ -513,6 +526,29 @@ class _SourceAuthority:
         return self.stream
 
 
+class _CleanupDebtWheelVerifier(PackageWheelVerifier):
+    def __init__(self, store: PackageQuarantineStore) -> None:
+        super().__init__()
+        self._store = store
+
+    def verify(
+        self,
+        candidate: AcquiredPackageCandidate,
+        *,
+        wheel_filename: str,
+        supported_tags: frozenset[str],
+        budgets: PackageInspectionBudgetV1,
+    ) -> VerifiedWheelCandidate:
+        attempt = self._store.root / self._store.attempt_names()[0]
+        (attempt / "manifest-cleanup-debt").write_bytes(b"bounded-debt")
+        return super().verify(
+            candidate,
+            wheel_filename=wheel_filename,
+            supported_tags=supported_tags,
+            budgets=budgets,
+        )
+
+
 def _facts(*present: str) -> PackageClassificationFactsV1:
     present_set = set(present)
     kinds = (
@@ -580,6 +616,7 @@ def _b2_owner(
     inspection_budgets: PackageInspectionBudgetV1 | None = None,
     wheel_verifier: PackageWheelVerifier | None = None,
     supported_tags: frozenset[str] | None = None,
+    cleanup_debt: bool = False,
 ):
     lifecycle_journal = PackageLifecycleJournal(
         tmp_path / "package-lifecycle.jsonl"
@@ -617,7 +654,14 @@ def _b2_owner(
         ),
         evidence_journal=evidence_journal,
         cleanup_owner=cleanup_owner,
-        wheel_verifier=wheel_verifier or PackageWheelVerifier(),
+        wheel_verifier=(
+            wheel_verifier
+            or (
+                _CleanupDebtWheelVerifier(store)
+                if cleanup_debt
+                else PackageWheelVerifier()
+            )
+        ),
         acquisition_budgets=PackageAcquisitionBudgetV1(
             max_transport_bytes=(
                 8 if case_id == "B-ACQ-BYTES" else 256 * 1024
@@ -638,6 +682,93 @@ def _b2_owner(
         store,
         source_authority,
     )
+
+
+def _artifact_execution(
+    status: PackageLifecycleStatusV1,
+    *,
+    secret: str,
+) -> PackageArtifactExecutionRequestV1:
+    return PackageArtifactExecutionRequestV1(
+        operation_id=status.operation_id,
+        request_fingerprint=status.request_fingerprint,
+        expected_attempt_epoch=status.attempt_epoch,
+        wheel_filename=WHEEL_FILENAME,
+        credential_reference=f"opaque:{secret}",
+    )
+
+
+def _land_artifact_phase(
+    *,
+    kernel: PackageLifecycleOwner,
+    artifact_owner: PackageArtifactLifecycleOwner,
+    evidence_journal: PackageArtifactEvidenceJournal,
+    classified: PackageLifecycleStatusV1,
+    target_phase: str,
+    secret: str,
+) -> tuple[
+    PackageLifecycleStatusV1,
+    AcquiredPackageCandidate | VerifiedWheelCandidate | None,
+    PackageArtifactExecutionRequestV1,
+]:
+    execution = _artifact_execution(classified, secret=secret)
+    if target_phase == "extracted":
+        result = artifact_owner.execute(execution)
+        assert result.status.phase == "extracted"
+        assert result.candidate is not None
+        return result.status, result.candidate, execution
+
+    acquiring = kernel.advance(
+        classified.operation_id,
+        next_phase="acquiring",
+        expected_phase="classified",
+        expected_journal_revision=classified.journal_revision,
+        expected_attempt_epoch=classified.attempt_epoch,
+    )
+    if target_phase == "acquiring":
+        return acquiring, None, execution
+
+    request = kernel.journal.request(acquiring.operation_id)
+    assert request is not None
+    acquisition_request = PackageAcquisitionRequestV1(
+        operation_id=request.operation_id,
+        attempt_epoch=acquiring.attempt_epoch,
+        node_id="root",
+        canonical_source_identity=request.canonical_source_identity,
+        request_fingerprint=request.request_fingerprint,
+        requested_locator_digest=sha256(
+            request.canonical_source_identity.encode("utf-8")
+        ).hexdigest(),
+        policy_revision=request.policy_revision,
+        credential_reference=f"opaque:{secret}",
+    )
+    candidate = artifact_owner._acquisition_owner.acquire(
+        acquisition_request,
+        budgets=artifact_owner._acquisition_budgets,
+    )
+    evidence_journal.append(
+        request_fingerprint=request.request_fingerprint,
+        evidence=candidate.receipt,
+    )
+    acquired = kernel.advance(
+        acquiring.operation_id,
+        next_phase="acquired",
+        expected_phase="acquiring",
+        expected_journal_revision=acquiring.journal_revision,
+        expected_attempt_epoch=acquiring.attempt_epoch,
+    )
+    if target_phase == "acquired":
+        return acquired, candidate, execution
+
+    assert target_phase == "inspecting"
+    inspecting = kernel.advance(
+        acquired.operation_id,
+        next_phase="inspecting",
+        expected_phase="acquired",
+        expected_journal_revision=acquired.journal_revision,
+        expected_attempt_epoch=acquired.attempt_epoch,
+    )
+    return inspecting, candidate, execution
 
 
 @pytest.mark.parametrize("case_id", EXECUTABLE_MANIFEST_CASES)
@@ -833,6 +964,223 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
         for path in tmp_path.rglob("*"):
             if path.is_file():
                 assert secret.encode() not in path.read_bytes()
+    elif case_id == "B-ACQ-IDENTITY":
+        secret = f"manifest-secret-{case_id.lower()}"
+        payload = _wheel_bytes()
+        (
+            kernel,
+            artifact_owner,
+            journal,
+            evidence_journal,
+            cleanup_journal,
+            store,
+            source_authority,
+        ) = _b2_owner(
+            tmp_path,
+            case_id=case_id,
+            secret=secret,
+            payload=payload,
+        )
+        classified = kernel.submit(
+            _request(
+                source=(
+                    f"https://user:{secret}@packages.example.test/{WHEEL_FILENAME}"
+                    f"?token={secret}#{secret}"
+                )
+            )
+        )
+        inspecting, candidate, execution = _land_artifact_phase(
+            kernel=kernel,
+            artifact_owner=artifact_owner,
+            evidence_journal=evidence_journal,
+            classified=classified,
+            target_phase="inspecting",
+            secret=secret,
+        )
+        assert candidate is not None
+        candidate.suspend_for_recovery()
+        attempt = store.root / store.attempt_names()[0]
+        artifact = next(path for path in attempt.iterdir() if path.is_file())
+        original = artifact.read_bytes()
+        artifact.unlink()
+        artifact.write_bytes(bytes([original[0] ^ 1]) + original[1:])
+        outside = tmp_path / "outside-sentinel"
+        outside.write_bytes(b"preserve")
+        evidence_before = evidence_journal.records()
+
+        result = artifact_owner.execute(execution)
+
+        assert result.status.phase == inspecting.phase
+        assert result.status.disposition == "rejected"
+        assert result.status.failure is not None
+        assert result.status.failure.code == "package_artifact_identity_changed"
+        assert result.candidate is None
+        assert result.cleanup_status is None
+        assert evidence_journal.records() == evidence_before
+        assert len(evidence_before) == 1
+        assert source_authority.authorize_calls == 1
+        assert cleanup_journal.records() == ()
+        assert store.attempt_names() == ()
+        assert outside.read_bytes() == b"preserve"
+        records = journal.records()
+        assert artifact_owner.execute(execution).status == result.status
+        assert journal.records() == records
+        assert source_authority.authorize_calls == 1
+        assert secret not in repr(result)
+    elif case_id.startswith("B-CRASH-") and case_id not in {
+        "B-CRASH-ACCEPTED",
+        "B-CRASH-CLASSIFIED",
+    }:
+        target_phase = {
+            "B-CRASH-ACQUIRING": "acquiring",
+            "B-CRASH-ACQUIRED": "acquired",
+            "B-CRASH-INSPECTING": "inspecting",
+            "B-CRASH-EXTRACTED": "extracted",
+        }[case_id]
+        secret = f"manifest-secret-{case_id.lower()}"
+        (
+            kernel,
+            artifact_owner,
+            journal,
+            evidence_journal,
+            cleanup_journal,
+            store,
+            source_authority,
+        ) = _b2_owner(
+            tmp_path,
+            case_id=case_id,
+            secret=secret,
+            payload=_wheel_bytes(),
+        )
+        classified = kernel.submit(
+            _request(
+                source=(
+                    f"https://user:{secret}@packages.example.test/{WHEEL_FILENAME}"
+                    f"?token={secret}#{secret}"
+                )
+            )
+        )
+        current, candidate, execution = _land_artifact_phase(
+            kernel=kernel,
+            artifact_owner=artifact_owner,
+            evidence_journal=evidence_journal,
+            classified=classified,
+            target_phase=target_phase,
+            secret=secret,
+        )
+        if candidate is not None:
+            candidate.suspend_for_recovery()
+        outside = tmp_path / "outside-sentinel"
+        outside.write_bytes(b"preserve")
+        evidence_before = evidence_journal.records()
+        records_before = journal.records()
+        source_calls = source_authority.authorize_calls
+
+        interrupted = kernel.interrupt(
+            current.operation_id,
+            expected_phase=current.phase,
+            expected_journal_revision=current.journal_revision,
+            expected_attempt_epoch=current.attempt_epoch,
+        )
+
+        assert interrupted.phase == target_phase
+        assert interrupted.disposition == "retryable_failure"
+        assert interrupted.request_fingerprint == current.request_fingerprint
+        assert interrupted.attempt_epoch == current.attempt_epoch
+        assert interrupted.failure is not None
+        assert interrupted.failure.code == "package_operation_interrupted"
+        assert interrupted.failure.retry_domain == "operation"
+        assert interrupted.failure.operator_action == "retry"
+        assert evidence_journal.records() == evidence_before
+        assert len(journal.records()) == len(records_before) + 1
+        record_count = len(journal.records())
+        assert (
+            kernel.interrupt(
+                current.operation_id,
+                expected_phase=current.phase,
+                expected_journal_revision=current.journal_revision,
+                expected_attempt_epoch=current.attempt_epoch,
+            )
+            == interrupted
+        )
+        assert len(journal.records()) == record_count
+        assert artifact_owner.execute(execution).status == interrupted
+        assert source_authority.authorize_calls == source_calls
+        assert cleanup_journal.records() == ()
+        assert len(store.attempt_names()) <= 1
+        assert store.total_residue_bytes() <= 512 * 1024
+        assert outside.read_bytes() == b"preserve"
+        assert secret not in repr(interrupted)
+        for path in tmp_path.rglob("*"):
+            if path.is_file():
+                assert secret.encode() not in path.read_bytes()
+    elif case_id == "B-STATE-REJECT-CLEANUP":
+        secret = f"manifest-secret-{case_id.lower()}"
+        (
+            kernel,
+            artifact_owner,
+            journal,
+            evidence_journal,
+            cleanup_journal,
+            store,
+            source_authority,
+        ) = _b2_owner(
+            tmp_path,
+            case_id=case_id,
+            secret=secret,
+            payload=b"not-a-wheel",
+            cleanup_debt=True,
+        )
+        classified = kernel.submit(
+            _request(
+                source=(
+                    f"https://user:{secret}@packages.example.test/rejected.whl"
+                    f"?token={secret}#{secret}"
+                )
+            )
+        )
+        execution = _artifact_execution(classified, secret=secret)
+        outside = tmp_path / "outside-sentinel"
+        outside.write_bytes(b"preserve")
+
+        result = artifact_owner.execute(execution)
+
+        assert result.status.phase == "inspecting"
+        assert result.status.disposition == "rejected"
+        assert result.status.failure is not None
+        assert result.status.failure.code == "package_archive_malformed"
+        assert result.cleanup_status is not None
+        assert result.cleanup_status.disposition == "cleanup_retryable"
+        assert result.cleanup_status.failure is not None
+        assert (
+            result.cleanup_status.failure.code
+            == "package_quarantine_cleanup_retryable"
+        )
+        assert result.cleanup_status.failure.retry_domain == "cleanup"
+        assert result.cleanup_status.failure.operator_action == "repair"
+        assert len(evidence_journal.records()) == 1
+        assert len(cleanup_journal.records()) == 1
+        assert len(store.attempt_names()) == 1
+        assert store.total_residue_bytes() <= 512 * 1024
+        assert outside.read_bytes() == b"preserve"
+        operation_records = journal.records()
+        cleanup_records = cleanup_journal.records()
+        replay = artifact_owner.execute(execution)
+        assert replay.status == result.status
+        assert replay.cleanup_status is None
+        assert journal.records() == operation_records
+        assert cleanup_journal.records() == cleanup_records
+        repaired = PackageQuarantineCleanupOwner(
+            journal=cleanup_journal,
+            store=store,
+        ).repair(
+            result.cleanup_status.target.cleanup_id,
+            expected_cleanup_revision=result.cleanup_status.cleanup_revision,
+        )
+        assert repaired.disposition == "cleanup_complete"
+        assert store.attempt_names() == ()
+        assert source_authority.authorize_calls == 1
+        assert secret not in repr(result)
     elif case_id in (
         IMPLEMENTED_B2H_MANIFEST_CASES
         + IMPLEMENTED_B2I_WINDOWS_MANIFEST_CASES

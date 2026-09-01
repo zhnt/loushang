@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.2i.
+- Contract version: PLC9B.2j-candidate.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -28,6 +28,8 @@
   Linux-native CI report executed without skips and persisted its XML evidence.
   B2i implements seven Windows path, collision, reparse, and junction rows;
   their dedicated non-skippable Windows report passed and retained its XML.
+  B2j adds artifact-identity replacement, four early crash edges, and rejected
+  quarantine cleanup debt as a Linux-native candidate.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -357,6 +359,30 @@ upload digest
 The seven rows are therefore `implemented`. This slice remains dark and
 performs no publication, binding, desired-state mutation, process execution,
 import, or peer fallback.
+
+## PLC9B2j Recovery And Cleanup Manifest Candidate
+
+B2j names exactly six fixtures: `B-ACQ-IDENTITY`, `B-CRASH-ACQUIRING`,
+`B-CRASH-ACQUIRED`, `B-CRASH-INSPECTING`, `B-CRASH-EXTRACTED`, and
+`B-STATE-REJECT-CLEANUP`.
+
+The identity fixture lands a durable bounded-acquisition receipt, advances to
+`inspecting`, closes process-local handles, replaces the quarantined artifact,
+and proves replay rejects the changed inode and bytes without Source
+reauthorization or outside deletion. Each crash fixture interrupts at the
+named last-proved phase and proves an append-once `package_operation_interrupted`
+attempt response, unchanged request fingerprint and artifact evidence, bounded
+owner-root residue, and no Source or publication replay. The cleanup fixture
+separates the terminal `package_archive_malformed` operation result from its
+append-once `package_quarantine_cleanup_retryable` cleanup substatus, then
+repairs only the exact owner-root tombstone without reopening the operation.
+
+The existing `plc9b-linux-native` workflow executes the complete adversarial
+file, writes a dedicated verified XML report, rejects empty, skipped, failing,
+or errored reports, and persists the XML artifact. Portable local execution is
+defense-in-depth only. These six rows remain `planned` until that exact report
+passes on native Linux against the candidate head. Closure, pins, publication,
+commit admission, desired state, binding, and production routes remain absent.
 
 ## First Principles
 
