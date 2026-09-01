@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from loushang.harness.resources import _safe_files
 from loushang.harness.resources.plugins.safe_files import (
     ContainedFileCaptureError,
     capture_contained_regular_file,
@@ -37,12 +39,17 @@ def test_portable_capture_requests_binary_mode(
     target = root / "small.json"
     target.write_bytes(b"{\r\n}")
     binary_flag = 1 << 29
+    platform_binary_flag = getattr(os, "O_BINARY", 0)
     real_open = os.open
     opened_flags: list[int] = []
 
     def recording_open(path, flags, mode=0o777):
         opened_flags.append(flags)
-        return real_open(path, flags & ~binary_flag, mode)
+        return real_open(
+            path,
+            (flags & ~binary_flag) | platform_binary_flag,
+            mode,
+        )
 
     monkeypatch.setattr(os, "supports_dir_fd", set())
     monkeypatch.setattr(os, "O_BINARY", binary_flag, raising=False)
@@ -53,6 +60,40 @@ def test_portable_capture_requests_binary_mode(
     assert captured.body == b"{\r\n}"
     assert opened_flags
     assert all(flags & binary_flag for flags in opened_flags)
+
+
+def test_portable_capture_compares_stability_within_each_metadata_view(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "package"
+    root.mkdir()
+    target = root / "small.json"
+    target.write_bytes(b"{}")
+    real_path_metadata = _safe_files._portable_path_metadata
+
+    def path_metadata_with_distinct_ctime(*args, **kwargs):
+        metadata = real_path_metadata(*args, **kwargs)
+        return SimpleNamespace(
+            st_mode=metadata.st_mode,
+            st_dev=metadata.st_dev,
+            st_ino=metadata.st_ino,
+            st_size=metadata.st_size,
+            st_mtime_ns=metadata.st_mtime_ns,
+            st_ctime_ns=metadata.st_ctime_ns + 1,
+            st_file_attributes=getattr(metadata, "st_file_attributes", 0),
+        )
+
+    monkeypatch.setattr(os, "supports_dir_fd", set())
+    monkeypatch.setattr(
+        _safe_files,
+        "_portable_path_metadata",
+        path_metadata_with_distinct_ctime,
+    )
+
+    captured = capture_contained_regular_file(root, "small.json", max_bytes=2)
+
+    assert captured.body == b"{}"
 
 
 def test_contained_capture_rejects_link_traversal(tmp_path: Path) -> None:
