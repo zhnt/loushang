@@ -122,14 +122,16 @@
   manifest row is promoted. All PR checks passed and retained artifact
   `9812156268` executed the unchanged 65 native manifest nodes without skips,
   failures, errors, `B-CRASH-STAGING`, `B-CRASH-SET`, or any `B-PUB-*` node.
-  PLC9B3e-3b candidate code composes the accepted Ports and journals behind
+  PLC9B3e-3b accepted code composes the accepted Ports and journals behind
   `transaction_pinned -> staging -> set_published` CAS. It validates every live
   candidate against the durable plan, stages dependencies before the Plugin
   root, adopts only exact prior-attempt receipts, rechecks classification before
   atomic set publication, and supports candidate-free resume/recovery. The
   composed `B-CRASH-STAGING` and `B-CRASH-SET` rows are executable; concrete
   store materialization, native publication-root defenses, admission, desired
-  state, and production routing remain absent.
+  state, and production routing remain absent. All PR checks passed and
+  retained artifact `9813586958` executed exactly 67 native manifest nodes
+  without skips, failures, errors, or any `B-PUB-*` node.
 
 This inventory distinguishes accepted reusable owners, Product adapters,
 parallel compatibility paths, and missing target boundaries. “Migrate” or

@@ -117,11 +117,14 @@ Neither may silently override a narrower implemented owner contract.
   keeps all publication/crash rows planned, and remains private to the Package
   owner boundary. Its retained 65-row Linux-native report passed with zero
   skips, failures, or errors and contained no staging/set crash or publication
-  node. PLC9B3e-3b candidate code composes those dark contracts through
+  node. PLC9B3e-3b accepted code composes those dark contracts through
   deterministic dependency-first staging, classification recheck, atomic set
   evidence, and candidate-free recovery. It makes `B-CRASH-STAGING` and
   `B-CRASH-SET` executable without claiming a concrete store, native
-  publication-root safety, admission, or production routing.
+  publication-root safety, admission, or production routing. Its retained
+  67-row Linux-native report passed with zero skips, failures, or errors,
+  included all three committed-phase crash rows, and contained no publication
+  node.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)

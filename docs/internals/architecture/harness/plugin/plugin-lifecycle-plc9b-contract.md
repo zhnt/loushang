@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.3e3b-candidate.
+- Contract version: PLC9B.3e3b.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -62,7 +62,7 @@
   evidence, and one Package-owner journal record that atomically binds the
   complete closure lock to its committed-set ref. It imports no concrete
   store, composes no lifecycle phase, and promotes no manifest row.
-  B3e-3b candidate code composes those accepted contracts behind the existing
+  B3e-3b accepted code composes those accepted contracts behind the existing
   lifecycle CAS, rechecks classification immediately before set publication,
   supports candidate-free durable resume/recovery, and implements
   `B-CRASH-STAGING` plus `B-CRASH-SET` without a concrete store or public
@@ -910,7 +910,7 @@ The XML executed the unchanged 65 manifest nodes with zero skips, failures, or
 errors, included `B-CRASH-PINNED`, and contained neither `B-CRASH-STAGING`,
 `B-CRASH-SET`, nor a `B-PUB-*` node.
 
-## PLC9B3e-3b Candidate Staging And Set Runtime
+## PLC9B3e-3b Accepted Staging And Set Runtime
 
 `PackageStagingSetLifecycleOwner.stage_and_publish` composes the accepted pin,
 staging, and committed-set contracts without importing a concrete store. It
@@ -954,6 +954,15 @@ call, and no binding/desired/public namespace. The set case additionally
 requires the exact atomic committed-set record. These rows do not prove native
 publication-root safety or concrete immutable-store materialization, so every
 `B-PUB-*` row remains `planned` for B3e-3c.
+
+B3e-3b was accepted on 2026-09-01 against candidate head `0dadf471` after every
+PR check passed. Harness Quality run `33541012780`, Linux harness job
+`99966966810`, retained `plc9b-linux-native-pytest-report` artifact ID
+`9813586958` with upload digest
+`5937ae3e1a55da57edf996537d6c0b547c3769c290dbd7ac9fd59691ab39d2fd`.
+The XML executed exactly 67 manifest nodes with zero skips, failures, or
+errors, included `B-CRASH-PINNED`, `B-CRASH-STAGING`, and `B-CRASH-SET`, and
+contained no `B-PUB-*` node.
 
 ## First Principles
 

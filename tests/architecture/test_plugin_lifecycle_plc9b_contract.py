@@ -515,7 +515,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.3e3b-candidate" in contract
+    assert "Contract version: PLC9B.3e3b" in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
@@ -532,7 +532,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
     assert "PLC9B3d-2b Accepted Composed Closure Integrity" in contract
     assert "PLC9B3e-1 Accepted Typed Commit Records" in contract
     assert "PLC9B3e-3a Accepted Staging And Atomic Set Contracts" in contract
-    assert "PLC9B3e-3b Candidate Staging And Set Runtime" in contract
+    assert "PLC9B3e-3b Accepted Staging And Set Runtime" in contract
     assert "PLC9B3e-2a Accepted Transaction-Pin Contract" in contract
     assert "Harness Quality run `33505702666`" in contract
     assert "Linux\nharness job `99849101216`" in contract
@@ -2582,14 +2582,25 @@ def test_plc9b3e3b_runtime_orders_staging_set_effects_and_recovers_dark() -> Non
     assert "source_authority.authorize_calls == source_calls == 1" in (
         adversarial_tests
     )
-    assert "B3e-3b candidate code composes" in inventory
-    assert "PLC9B3e-3b candidate code composes" in index
+    assert "B3e-3b accepted code composes" in inventory
+    assert "PLC9B3e-3b accepted code composes" in index
     normalized = " ".join(contract.split())
     assert "Staging order is dependencies first" in normalized
     assert (
         "classification-recheck Port immediately before creating any committed set"
         in (normalized)
     )
+    assert "B3e-3b was accepted on 2026-09-01 against candidate head `0dadf471`" in (
+        normalized
+    )
+    assert "Harness Quality run `33541012780`" in normalized
+    assert "Linux harness job `99966966810`" in normalized
+    assert "artifact ID `9813586958`" in normalized
+    assert (
+        "5937ae3e1a55da57edf996537d6c0b547c3769c290dbd7ac9fd59691ab39d2fd"
+        in contract
+    )
+    assert "executed exactly 67 manifest nodes" in normalized
     assert manifest["B-CRASH-STAGING"]["status"] == "implemented"
     assert manifest["B-CRASH-SET"]["status"] == "implemented"
     assert all(
