@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.3e3a.
+- Contract version: PLC9B.3e3b-candidate.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -62,6 +62,11 @@
   evidence, and one Package-owner journal record that atomically binds the
   complete closure lock to its committed-set ref. It imports no concrete
   store, composes no lifecycle phase, and promotes no manifest row.
+  B3e-3b candidate code composes those accepted contracts behind the existing
+  lifecycle CAS, rechecks classification immediately before set publication,
+  supports candidate-free durable resume/recovery, and implements
+  `B-CRASH-STAGING` plus `B-CRASH-SET` without a concrete store or public
+  publication namespace.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -905,6 +910,51 @@ The XML executed the unchanged 65 manifest nodes with zero skips, failures, or
 errors, included `B-CRASH-PINNED`, and contained neither `B-CRASH-STAGING`,
 `B-CRASH-SET`, nor a `B-PUB-*` node.
 
+## PLC9B3e-3b Candidate Staging And Set Runtime
+
+`PackageStagingSetLifecycleOwner.stage_and_publish` composes the accepted pin,
+staging, and committed-set contracts without importing a concrete store. It
+first requires the active `transaction_pinned` operation, current durable
+closure plan, exact acquired pin receipt, authority-issued logical root target,
+and a live closure candidate whose Source/acquisition/Wheel evidence exactly
+matches every current plan node. A mismatch suspends process-local candidates
+before any store call.
+
+Staging order is dependencies first and the designated Plugin root last. Each
+role-specific owner receives only its exact staging request and opaque verified
+candidate. The Package owner validates the returned typed ref, durably appends
+the staging receipt, and only after every node receipt exists advances
+`transaction_pinned -> staging`. An external store effect before its local
+receipt is recovered by repeating the exact idempotent request; a local receipt
+before phase CAS is adopted only after reconstructing its original attempt plan
+and proving that its graph, pin, classification, target, and node still cover
+the current attempt.
+
+At `staging`, the runtime calls the classification-recheck Port immediately
+before creating any committed set. Changed owner facts durably reject with
+`package_target_classification_changed`, leaving the graph pinned but without a
+set. An unchanged classification allows the Package owner to construct the
+complete closure lock from all staging receipts, atomically append the lock/set
+record, and only then advance `staging -> set_published`. A phase-CAS race never
+undoes or guesses about an already durable receipt or set.
+
+`resume` can complete an active operation after all staging receipts are
+durable without reopening Source or requiring live candidates. `recover` is
+read-only: it reconstructs the current/prior plan relationships, pin, complete
+typed receipt set, root target, closure lock, and committed set, then returns
+the existing lifecycle disposition without repeating store or publication
+effects. This is the recovery seam used by the two new composed fixtures.
+
+`B-CRASH-STAGING` and `B-CRASH-SET` traverse real authenticated acquisition,
+safe Wheel extraction, closure verification, and transaction pinning before
+using idempotent dark Store Port fixtures. Each crashes immediately after the
+named lifecycle phase CAS and restarts over the durable journals. They require
+one physical root stage, the same typed receipt, a visible pin, no second Source
+call, and no binding/desired/public namespace. The set case additionally
+requires the exact atomic committed-set record. These rows do not prove native
+publication-root safety or concrete immutable-store materialization, so every
+`B-PUB-*` row remains `planned` for B3e-3c.
+
 ## First Principles
 
 1. Untrusted bytes are data, never a pathname, command, module, or build plan.
@@ -1429,8 +1479,8 @@ B-CRASH-EXTRACTED | any | extracted | crash_edge | package_operation_interrupted
 B-CRASH-RESOLVING | any | resolving_closure | crash_edge | package_operation_interrupted | retryable_failure@resolving_closure | same_receipt;bounded_residue;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CRASH-RESOLVING] | harness-quality.yml#plc9b-linux-native | implemented
 B-CRASH-CLOSURE | any | closure_verified | crash_edge | package_operation_interrupted | retryable_failure@closure_verified | same_receipt;no_publication;no_binding | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CRASH-CLOSURE] | harness-quality.yml#plc9b-linux-native | implemented
 B-CRASH-PINNED | any | transaction_pinned | crash_edge | package_operation_interrupted | retryable_failure@transaction_pinned | same_receipt;pin_visible;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CRASH-PINNED] | harness-quality.yml#plc9b-linux-native | implemented
-B-CRASH-STAGING | any | staging | crash_edge | package_operation_interrupted | retryable_failure@staging | same_receipt;pin_visible;no_binding | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CRASH-STAGING] | harness-quality.yml#plc9b-linux-native | planned
-B-CRASH-SET | any | set_published | crash_edge | package_operation_interrupted | retryable_failure@set_published | same_receipt;pin_visible;no_binding;no_desired | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CRASH-SET] | harness-quality.yml#plc9b-linux-native | planned
+B-CRASH-STAGING | any | staging | crash_edge | package_operation_interrupted | retryable_failure@staging | same_receipt;pin_visible;no_binding | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CRASH-STAGING] | harness-quality.yml#plc9b-linux-native | implemented
+B-CRASH-SET | any | set_published | crash_edge | package_operation_interrupted | retryable_failure@set_published | same_receipt;pin_visible;no_binding;no_desired | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CRASH-SET] | harness-quality.yml#plc9b-linux-native | implemented
 B-CRASH-COMMITTED | any | committed | crash_after_edge | ok | committed@committed | same_receipt;pin_visible;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CRASH-COMMITTED] | harness-quality.yml#plc9b-linux-native | planned
 B-CONCUR-SAME | any | each_phase | concurrent_same_fingerprint | ok | committed@committed | same_receipt;single_owner;pin_visible | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CONCUR-SAME] | harness-quality.yml#plc9b-linux-native | planned
 B-CONCUR-CONFLICT | any | classified | concurrent_different_fingerprint | package_operation_identity_conflict | rejected@classified | single_owner;no_publication;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CONCUR-CONFLICT] | harness-quality.yml#plc9b-linux-native | implemented

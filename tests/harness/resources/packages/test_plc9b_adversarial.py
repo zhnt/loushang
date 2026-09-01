@@ -59,10 +59,18 @@ from loushang.harness.resources.packages.plugin_lifecycle.closure_runtime import
     PackageClosureExecutionRequestV2,
     PackageClosureLifecycleOwner,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.commit_records import (
+    PluginRevisionRefV1,
+    VerifiedArtifactRefV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.committed_sets import (
+    PackageCommittedSetJournal,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.phase_evidence import (
     PackageArtifactEvidenceJournal,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    PackageLifecyclePhase,
     PackageLifecycleRequestV1,
     PackageLifecycleStatusV1,
     PluginBoundPackageClassificationV1,
@@ -70,6 +78,15 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
 from loushang.harness.resources.packages.plugin_lifecycle.runtime import (
     PackageArtifactExecutionRequestV1,
     PackageArtifactLifecycleOwner,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.staging import (
+    PackageArtifactStagingJournal,
+    PackageArtifactStagingReceiptV1,
+    PackageArtifactStagingRequestV1,
+    PackagePluginRootTargetV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.staging_set_runtime import (
+    PackageStagingSetLifecycleOwner,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.transaction_pin_runtime import (
     PackageTransactionPinLifecycleOwner,
@@ -174,6 +191,10 @@ IMPLEMENTED_B3D_INTEGRITY_MANIFEST_CASES = (
     "B-CLOSURE-V1",
 )
 IMPLEMENTED_B3E_PIN_MANIFEST_CASES = ("B-CRASH-PINNED",)
+IMPLEMENTED_B3E_STAGING_SET_MANIFEST_CASES = (
+    "B-CRASH-STAGING",
+    "B-CRASH-SET",
+)
 
 EXECUTABLE_MANIFEST_CASES = (
     IMPLEMENTED_B1_MANIFEST_CASES
@@ -186,6 +207,7 @@ EXECUTABLE_MANIFEST_CASES = (
     + IMPLEMENTED_B3D_LIMIT_MANIFEST_CASES
     + IMPLEMENTED_B3D_INTEGRITY_MANIFEST_CASES
     + IMPLEMENTED_B3E_PIN_MANIFEST_CASES
+    + IMPLEMENTED_B3E_STAGING_SET_MANIFEST_CASES
 )
 
 WHEEL_FILENAME = "acme_plugin-1.0-py3-none-any.whl"
@@ -623,6 +645,133 @@ class _TransactionPinRetentionOwner:
             lease_revision=receipt.lease_revision + 1,
             transition_evidence_ref=transition_evidence_ref,
         )
+
+
+class _ManifestCrashEdge(RuntimeError):
+    pass
+
+
+class _CrashAfterPhasePackageOwner(PackageLifecycleOwner):
+    def __init__(
+        self,
+        *,
+        journal: PackageLifecycleJournal,
+        facts: PackageClassificationFactsV1,
+        crash_after: PackageLifecyclePhase,
+    ) -> None:
+        super().__init__(
+            journal=journal,
+            classification_authority=_Authority(facts),
+            enabled=True,
+        )
+        self._crash_after: PackageLifecyclePhase | None = crash_after
+
+    def advance(
+        self,
+        operation_id: str,
+        *,
+        next_phase: PackageLifecyclePhase,
+        expected_phase: PackageLifecyclePhase,
+        expected_journal_revision: int,
+        expected_attempt_epoch: int,
+    ) -> PackageLifecycleStatusV1:
+        status = super().advance(
+            operation_id,
+            next_phase=next_phase,
+            expected_phase=expected_phase,
+            expected_journal_revision=expected_journal_revision,
+            expected_attempt_epoch=expected_attempt_epoch,
+        )
+        if self._crash_after == next_phase:
+            self._crash_after = None
+            raise _ManifestCrashEdge(next_phase)
+        return status
+
+
+@dataclass
+class _ManifestRootTargetAuthority:
+    calls: int = 0
+
+    def issue_target(
+        self,
+        request: PackageLifecycleRequestV1,
+        _classification: PluginBoundPackageClassificationV1,
+    ) -> PackagePluginRootTargetV1:
+        self.calls += 1
+        return PackagePluginRootTargetV1.create(
+            operation_id=request.operation_id,
+            request_fingerprint=request.request_fingerprint,
+            product_id=request.product_id,
+            scope_id=request.scope_id,
+            installation_id="manifest-installation",
+            plugin_id=request.requested_plugin_id or "manifest-plugin",
+            authority_id="manifest-root-target-authority",
+            authority_revision="manifest-root-target:1",
+        )
+
+
+@dataclass
+class _ManifestDependencyStagingOwner:
+    receipts: dict[str, PackageArtifactStagingReceiptV1] = field(default_factory=dict)
+    physical_stages: int = 0
+
+    def stage_dependency(
+        self,
+        request: PackageArtifactStagingRequestV1,
+        _candidate: VerifiedWheelCandidate,
+    ) -> PackageArtifactStagingReceiptV1:
+        existing = self.receipts.get(request.staging_request_id)
+        if existing is not None:
+            return existing
+        node = request.plan_node
+        receipt = PackageArtifactStagingReceiptV1.create(
+            request,
+            stable_ref=VerifiedArtifactRefV1.create(
+                store_identity="manifest-dependency-store",
+                store_revision=f"dependency:{node.artifact_digest}",
+                distribution=node.distribution,
+                version=node.version,
+                artifact_digest=node.artifact_digest,
+                extraction_tree_digest=node.extraction_tree_digest,
+            ),
+        )
+        self.receipts[request.staging_request_id] = receipt
+        self.physical_stages += 1
+        return receipt
+
+
+@dataclass
+class _ManifestRootStagingOwner:
+    receipts: dict[str, PackageArtifactStagingReceiptV1] = field(default_factory=dict)
+    physical_stages: int = 0
+
+    def stage_root(
+        self,
+        request: PackageArtifactStagingRequestV1,
+        _candidate: VerifiedWheelCandidate,
+    ) -> PackageArtifactStagingReceiptV1:
+        existing = self.receipts.get(request.staging_request_id)
+        if existing is not None:
+            return existing
+        target = request.root_target
+        assert target is not None
+        node = request.plan_node
+        receipt = PackageArtifactStagingReceiptV1.create(
+            request,
+            stable_ref=PluginRevisionRefV1.create(
+                store_identity="manifest-plugin-revision-store",
+                store_revision=f"plugin:{node.artifact_digest}",
+                installation_id=target.installation_id,
+                plugin_id=target.plugin_id,
+                distribution=node.distribution,
+                version=node.version,
+                artifact_digest=node.artifact_digest,
+                extraction_tree_digest=node.extraction_tree_digest,
+            ),
+        )
+        self.receipts[request.staging_request_id] = receipt
+        self.physical_stages += 1
+        return receipt
 
 
 @dataclass
@@ -1813,6 +1962,154 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
         assert len(retention.calls) == 2
         assert len(pin_journal.records()) == 1
         assert len(journal.records()) == len(lifecycle_before) + 1
+        assert evidence_journal.records() == evidence_before
+        assert resolution_journal.records() == resolution_before
+        assert source_authority.authorize_calls == source_calls == 1
+        assert resolver.calls == 0
+        assert cleanup_journal.records() == ()
+        assert len(store.attempt_names()) == 1
+        assert not (tmp_path / "published").exists()
+        assert not (tmp_path / "binding.json").exists()
+        assert not (tmp_path / "desired.json").exists()
+        assert secret not in repr(recovered)
+        for path in tmp_path.rglob("*"):
+            if path.is_file():
+                assert secret.encode() not in path.read_bytes()
+    elif case_id in IMPLEMENTED_B3E_STAGING_SET_MANIFEST_CASES:
+        secret = f"manifest-secret-{case_id.lower()}"
+        environment = _closure_environment()
+        (
+            kernel,
+            _artifact_owner,
+            journal,
+            evidence_journal,
+            cleanup_journal,
+            store,
+            source_authority,
+            closure_owner,
+            resolution_journal,
+            resolver,
+        ) = _b3d_owner(tmp_path, case_id=case_id, secret=secret)
+        classified = kernel.submit(
+            _request(
+                source=(
+                    f"https://user:{secret}@packages.example.test/{WHEEL_FILENAME}"
+                    f"?token={secret}#{secret}"
+                ),
+                environment_fingerprint=environment.fingerprint,
+            )
+        )
+        closure_result = closure_owner.execute(
+            PackageClosureExecutionRequestV2(
+                artifact=_artifact_execution(classified, secret=secret),
+                resolution_environment=environment,
+                budgets=PackageClosureBudgetV1(),
+            )
+        )
+        assert closure_result.candidate is not None
+        retention = _TransactionPinRetentionOwner()
+        pin_journal = PackageTransactionPinJournal(
+            tmp_path / "package-transaction-pins.jsonl"
+        )
+        pin_owner = PackageTransactionPinLifecycleOwner(
+            kernel=kernel,
+            closure_plans=resolution_journal,
+            retention=retention,
+            pin_journal=pin_journal,
+        )
+        pinned = pin_owner.pin(
+            closure_result.candidate,
+            recovery_identity="manifest-recovery-staging-set",
+        )
+        assert pinned.status.phase == "transaction_pinned"
+        assert pinned.receipt is not None
+        lifecycle_before = journal.records()
+        evidence_before = evidence_journal.records()
+        resolution_before = resolution_journal.records()
+        source_calls = source_authority.authorize_calls
+        staging_journal = PackageArtifactStagingJournal(
+            tmp_path / "package-artifact-staging.jsonl"
+        )
+        committed_sets = PackageCommittedSetJournal(
+            tmp_path / "package-committed-sets.jsonl"
+        )
+        dependency_staging = _ManifestDependencyStagingOwner()
+        root_staging = _ManifestRootStagingOwner()
+        root_targets = _ManifestRootTargetAuthority()
+        crash_phase: PackageLifecyclePhase = (
+            "staging" if case_id == "B-CRASH-STAGING" else "set_published"
+        )
+        crash_kernel = _CrashAfterPhasePackageOwner(
+            journal=PackageLifecycleJournal(journal.path),
+            facts=_facts("explicit_plugin_intent"),
+            crash_after=crash_phase,
+        )
+        staging_owner = PackageStagingSetLifecycleOwner(
+            kernel=crash_kernel,
+            classification_recheck=_StableClassificationRecheck(),
+            closure_plans=PackageClosureResolutionJournal(resolution_journal.path),
+            pin_journal=PackageTransactionPinJournal(pin_journal.path),
+            root_targets=root_targets,
+            dependency_staging=dependency_staging,
+            root_staging=root_staging,
+            staging_journal=staging_journal,
+            committed_sets=committed_sets,
+        )
+
+        with pytest.raises(_ManifestCrashEdge, match=crash_phase):
+            staging_owner.stage_and_publish(closure_result.candidate)
+
+        crashed = crash_kernel.status(classified.operation_id)
+        assert crashed is not None and crashed.phase == crash_phase
+        interrupted = crash_kernel.interrupt(
+            crashed.operation_id,
+            expected_phase=crashed.phase,
+            expected_journal_revision=crashed.journal_revision,
+            expected_attempt_epoch=crashed.attempt_epoch,
+        )
+        restarted_kernel = PackageLifecycleOwner(
+            journal=PackageLifecycleJournal(journal.path),
+            classification_authority=_Authority(_facts("explicit_plugin_intent")),
+            enabled=True,
+        )
+        restarted_owner = PackageStagingSetLifecycleOwner(
+            kernel=restarted_kernel,
+            classification_recheck=_StableClassificationRecheck(),
+            closure_plans=PackageClosureResolutionJournal(resolution_journal.path),
+            pin_journal=PackageTransactionPinJournal(pin_journal.path),
+            root_targets=root_targets,
+            dependency_staging=dependency_staging,
+            root_staging=root_staging,
+            staging_journal=PackageArtifactStagingJournal(staging_journal.path),
+            committed_sets=PackageCommittedSetJournal(committed_sets.path),
+        )
+        recovered = restarted_owner.recover(classified.operation_id)
+
+        assert interrupted.phase == crash_phase
+        assert interrupted.disposition == "retryable_failure"
+        assert interrupted.failure is not None
+        assert interrupted.failure.code == "package_operation_interrupted"
+        assert recovered.status == interrupted
+        assert len(recovered.staging_receipts) == 1
+        assert recovered.staging_receipts == staging_journal.receipts(
+            classified.operation_id
+        )
+        if case_id == "B-CRASH-STAGING":
+            assert recovered.committed_set is None
+            assert committed_sets.records() == ()
+        else:
+            assert recovered.committed_set is not None
+            assert recovered.committed_set == committed_sets.records()[0].committed_set
+        assert root_targets.calls == 1
+        assert root_staging.physical_stages == 1
+        assert dependency_staging.physical_stages == 0
+        assert retention.receipts[classified.operation_id] == pinned.receipt
+        assert retention.physical_acquisitions == 1
+        assert len(pin_journal.records()) == 1
+        expected_lifecycle_growth = 2 if case_id == "B-CRASH-STAGING" else 3
+        assert (
+            len(journal.records()) == len(lifecycle_before) + expected_lifecycle_growth
+        )
         assert evidence_journal.records() == evidence_before
         assert resolution_journal.records() == resolution_before
         assert source_authority.authorize_calls == source_calls == 1

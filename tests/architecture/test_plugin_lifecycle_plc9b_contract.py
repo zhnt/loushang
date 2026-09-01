@@ -31,6 +31,7 @@ TRANSACTION_PINS = OWNER_KERNEL_ROOT / "transaction_pins.py"
 TRANSACTION_PIN_RUNTIME = OWNER_KERNEL_ROOT / "transaction_pin_runtime.py"
 STAGING = OWNER_KERNEL_ROOT / "staging.py"
 COMMITTED_SETS = OWNER_KERNEL_ROOT / "committed_sets.py"
+STAGING_SET_RUNTIME = OWNER_KERNEL_ROOT / "staging_set_runtime.py"
 CLOSURE_TEST = Path("tests/harness/resources/packages/test_plc9b_closure.py")
 CLOSURE_OWNER_TEST = Path(
     "tests/harness/resources/packages/test_plc9b_closure_owner.py"
@@ -53,6 +54,9 @@ TRANSACTION_PIN_RUNTIME_TEST = Path(
 STAGING_TEST = Path("tests/harness/resources/packages/test_plc9b_staging.py")
 COMMITTED_SETS_TEST = Path(
     "tests/harness/resources/packages/test_plc9b_committed_sets.py"
+)
+STAGING_SET_RUNTIME_TEST = Path(
+    "tests/harness/resources/packages/test_plc9b_staging_set_runtime.py"
 )
 PYPROJECT = Path("pyproject.toml")
 WINDOWS_NATIVE_TEST = Path(
@@ -426,6 +430,10 @@ def _implemented_b3e_pin_manifest_cases() -> set[str]:
     return _literal_manifest_cases("IMPLEMENTED_B3E_PIN_MANIFEST_CASES")
 
 
+def _implemented_b3e_staging_set_manifest_cases() -> set[str]:
+    return _literal_manifest_cases("IMPLEMENTED_B3E_STAGING_SET_MANIFEST_CASES")
+
+
 def _journal_effect_policy() -> list[tuple[str, str, str]]:
     contract = _source(CONTRACT)
     block = contract.split("<!-- plc9b-journal-effect-policy:start -->", 1)[1]
@@ -507,7 +515,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.3e3a" in contract
+    assert "Contract version: PLC9B.3e3b-candidate" in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
@@ -524,6 +532,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
     assert "PLC9B3d-2b Accepted Composed Closure Integrity" in contract
     assert "PLC9B3e-1 Accepted Typed Commit Records" in contract
     assert "PLC9B3e-3a Accepted Staging And Atomic Set Contracts" in contract
+    assert "PLC9B3e-3b Candidate Staging And Set Runtime" in contract
     assert "PLC9B3e-2a Accepted Transaction-Pin Contract" in contract
     assert "Harness Quality run `33505702666`" in contract
     assert "Linux\nharness job `99849101216`" in contract
@@ -767,6 +776,7 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
     implemented_b3d_limits = _implemented_b3d_limit_manifest_cases()
     implemented_b3d_integrity = _implemented_b3d_integrity_manifest_cases()
     implemented_b3e_pins = _implemented_b3e_pin_manifest_cases()
+    implemented_b3e_staging_sets = _implemented_b3e_staging_set_manifest_cases()
     implemented = (
         implemented_b1
         | implemented_b2
@@ -778,6 +788,7 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
         | implemented_b3d_limits
         | implemented_b3d_integrity
         | implemented_b3e_pins
+        | implemented_b3e_staging_sets
     )
 
     assert len(manifest) == 127
@@ -939,6 +950,22 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
         | implemented_b3d_limits
         | implemented_b3d_integrity
     ).isdisjoint(implemented_b3e_pins)
+    assert implemented_b3e_staging_sets == {
+        "B-CRASH-STAGING",
+        "B-CRASH-SET",
+    }
+    assert (
+        implemented_b1
+        | implemented_b2
+        | implemented_b2h
+        | implemented_b2i
+        | implemented_b2j
+        | implemented_b2k
+        | implemented_b3d
+        | implemented_b3d_limits
+        | implemented_b3d_integrity
+        | implemented_b3e_pins
+    ).isdisjoint(implemented_b3e_staging_sets)
     separator = manifest["B-PATH-COLLISION-SEP"]
     assert separator["fixture"] == "separator_ambiguous_path"
     assert separator["code"] == "package_archive_path_rejected"
@@ -952,7 +979,7 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
     assert hardlink["code"] == "ok"
     assert hardlink["disposition"] == "extracted@independent_regular_files"
     assert hardlink["status"] == "implemented"
-    assert len(manifest) - len(implemented) == 62
+    assert len(manifest) - len(implemented) == 60
     workflow = _source(HARNESS_WORKFLOW)
     assert "PLC9B Linux native adversarial gate (plc9b-linux-native)" in workflow
     assert "tests/harness/resources/packages/test_plc9b_adversarial.py" in workflow
@@ -2447,8 +2474,124 @@ def test_plc9b3e3a_staging_and_atomic_set_contracts_are_dark_and_role_safe() -> 
     assert (
         "d8fbdd16b4a84de341ad7244ffa1af5d4dafd79a9c4b097fc612258a0ebf4450" in contract
     )
-    assert manifest["B-CRASH-STAGING"]["status"] == "planned"
-    assert manifest["B-CRASH-SET"]["status"] == "planned"
+    assert all(
+        manifest[case_id]["status"] == "planned"
+        for case_id in manifest
+        if case_id.startswith("B-PUB-")
+    )
+
+
+def test_plc9b3e3b_runtime_orders_staging_set_effects_and_recovers_dark() -> None:
+    contract = _source(CONTRACT)
+    inventory = _source(INVENTORY)
+    index = _source(INDEX)
+    source = _source(STAGING_SET_RUNTIME)
+    component_tests = _source(STAGING_SET_RUNTIME_TEST)
+    adversarial_tests = _source(ADVERSARIAL_TEST)
+    package_facade = _source(PACKAGE_ROOT / "__init__.py")
+    internal_facade = _source(OWNER_KERNEL_ROOT / "__init__.py")
+    author_sdk = _source(AUTHOR_SDK)
+    manifest = _adversarial_manifest()
+
+    assert STAGING_SET_RUNTIME.is_file()
+    for symbol in (
+        "PackageStagingClosurePlanEvidencePort",
+        "PackagePluginRootTargetAuthorityPort",
+        "PackageStagingSetExecutionResult",
+        "PackageStagingSetLifecycleOwner",
+    ):
+        assert f"class {symbol}" in source
+        assert symbol not in package_facade
+        assert symbol not in internal_facade
+        assert symbol not in author_sdk
+
+    tree = ast.parse(source, filename=str(STAGING_SET_RUNTIME))
+    owner = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef)
+        and node.name == "PackageStagingSetLifecycleOwner"
+    )
+    public_methods = {
+        node.name
+        for node in owner.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and not node.name.startswith("_")
+    }
+    assert public_methods == {"stage_and_publish", "resume", "recover"}
+    stage_method = next(
+        node
+        for node in owner.body
+        if isinstance(node, ast.FunctionDef) and node.name == "stage_and_publish"
+    )
+    stage_source = ast.get_source_segment(source, stage_method)
+    assert stage_source is not None
+    assert 'node.role == "dependency"' in stage_source
+    assert 'node.role == "root"' in stage_source
+    assert stage_source.index('node.role == "dependency"') < stage_source.index(
+        'node.role == "root"'
+    )
+    assert stage_source.index("self._staging_journal.append") < stage_source.index(
+        'next_phase="staging"'
+    )
+    publish_method = next(
+        node
+        for node in owner.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_publish_from_evidence"
+    )
+    publish_source = ast.get_source_segment(source, publish_method)
+    assert publish_source is not None
+    assert (
+        publish_source.index("self._classification_recheck.recheck")
+        < publish_source.index("self._committed_sets.publish")
+        < publish_source.index('next_phase="set_published"')
+    )
+    imported = {
+        node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
+    }
+    forbidden_modules = (
+        "loushang.harness.plugin_management",
+        "loushang.harness.resources.plugins.revisions",
+        "loushang.coding",
+        "loushang.foundation",
+        "subprocess",
+    )
+    assert not any(
+        module == forbidden or module.startswith(f"{forbidden}.")
+        for module in imported
+        for forbidden in forbidden_modules
+    )
+    for forbidden_capability in (
+        "PluginRevisionStore",
+        "PluginPackageLifecycleLedger",
+        "PluginManagementService",
+        "PackageOperationsRuntime",
+    ):
+        assert forbidden_capability not in source
+    for evidence in (
+        "stages_journals_rechecks_and_publishes_exact_set",
+        "rechecks_classification_after_staging_before_set",
+        "rejects_live_candidate_drift_before_store_effect",
+        "resumes_receipts_after_crash_before_set",
+        "recovers_set_after_crash_without_live_candidate",
+        "adopts_prior_attempt_receipts_without_restage",
+    ):
+        assert evidence in component_tests
+    assert "IMPLEMENTED_B3E_STAGING_SET_MANIFEST_CASES" in adversarial_tests
+    assert "root_staging.physical_stages == 1" in adversarial_tests
+    assert "source_authority.authorize_calls == source_calls == 1" in (
+        adversarial_tests
+    )
+    assert "B3e-3b candidate code composes" in inventory
+    assert "PLC9B3e-3b candidate code composes" in index
+    normalized = " ".join(contract.split())
+    assert "Staging order is dependencies first" in normalized
+    assert (
+        "classification-recheck Port immediately before creating any committed set"
+        in (normalized)
+    )
+    assert manifest["B-CRASH-STAGING"]["status"] == "implemented"
+    assert manifest["B-CRASH-SET"]["status"] == "implemented"
     assert all(
         manifest[case_id]["status"] == "planned"
         for case_id in manifest
