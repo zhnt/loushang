@@ -39,6 +39,14 @@ from loushang.harness.resources.packages.plugin_lifecycle.acquisition import (
     PackageQuarantineStore,
     SourceAdapterResultV1,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.adoption import (
+    PackageLegacyAdoptionOwner,
+    PackageLegacyAdoptionRequestV1,
+    PackageLegacyStateEvidenceV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.adoption_transaction import (
+    PackageLegacyAdoptionTransactionAdapter,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.cleanup import (
     PackageQuarantineCleanupJournal,
     PackageQuarantineCleanupOwner,
@@ -83,6 +91,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.committed_sets import 
 )
 from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
     PackageEpochFenceJournal,
+    PackageEpochFenceReceiptV1,
     PackageEpochFenceRequestV1,
     PackageEpochLeaseSnapshotV1,
     PackageEpochRuntimeAdmissionOwner,
@@ -316,6 +325,7 @@ IMPLEMENTED_B4C2_WINDOWS_EPOCH_CUTOVER_MANIFEST_CASES = (
 IMPLEMENTED_B4C3C_LINUX_OFFLINE_RESTORE_MANIFEST_CASES = (
     "B-COMPAT-OFFLINE-RESTORE-POSIX",
 )
+IMPLEMENTED_B4C4D_LINUX_ADOPTION_MANIFEST_CASES = ("B-COMPAT-ADOPT",)
 PLANNED_B3E3C_MATERIALIZATION_MANIFEST_CASES: tuple[str, ...] = ()
 PLANNED_B4_COMMIT_ADMISSION_MANIFEST_CASES: tuple[str, ...] = ()
 
@@ -345,6 +355,11 @@ EXECUTABLE_MANIFEST_CASES = (
     + (IMPLEMENTED_B4C2_WINDOWS_EPOCH_CUTOVER_MANIFEST_CASES if os.name == "nt" else ())
     + (
         IMPLEMENTED_B4C3C_LINUX_OFFLINE_RESTORE_MANIFEST_CASES
+        if sys.platform.startswith("linux")
+        else ()
+    )
+    + (
+        IMPLEMENTED_B4C4D_LINUX_ADOPTION_MANIFEST_CASES
         if sys.platform.startswith("linux")
         else ()
     )
@@ -2337,6 +2352,259 @@ def _manifest_linux_offline_restore_fixture(
     )
 
 
+@dataclass
+class _ManifestAdoptionFenceReader:
+    journal: PackageEpochFenceJournal
+    calls: int = 0
+
+    def current(self, store_id: str) -> PackageEpochFenceReceiptV1 | None:
+        self.calls += 1
+        return self.journal.current(store_id)
+
+
+@dataclass
+class _ManifestAdoptionLegacyStateOwner:
+    root: Path
+    store_id: str
+    legacy_root_identity: str
+    calls: int = 0
+
+    def capture(self) -> PackageLegacyStateEvidenceV1:
+        state_digest, entry_count, byte_count = _manifest_tree_metrics(self.root)
+        return PackageLegacyStateEvidenceV1.create(
+            store_id=self.store_id,
+            legacy_root_identity=_manifest_directory_identity(self.root),
+            state_digest=state_digest,
+            entry_count=entry_count,
+            byte_count=byte_count,
+        )
+
+    def observe(
+        self,
+        *,
+        store_id: str,
+        legacy_root_identity: str,
+    ) -> PackageLegacyStateEvidenceV1:
+        assert store_id == self.store_id
+        assert legacy_root_identity == self.legacy_root_identity
+        self.calls += 1
+        return self.capture()
+
+
+@dataclass(frozen=True)
+class _ManifestNativeAdoptionFixture:
+    owner: PackageLegacyAdoptionOwner
+    request: PackageLegacyAdoptionRequestV1
+    kernel: PackageLifecycleOwner
+    lifecycle_journal: PackageLifecycleJournal
+    evidence_journal: PackageArtifactEvidenceJournal
+    resolution_journal: PackageClosureResolutionJournal
+    pin_journal: PackageTransactionPinJournal
+    staging_journal: PackageArtifactStagingJournal
+    committed_sets: PackageCommittedSetJournal
+    fence_journal: PackageEpochFenceJournal
+    fence_reader: _ManifestAdoptionFenceReader
+    legacy_state: _ManifestAdoptionLegacyStateOwner
+    source_authority: _SourceAuthority
+    resolver: _NoDependencyResolver
+    retention: _TransactionPinRetentionOwner
+    root_targets: _ManifestRootTargetAuthority
+    root_staging: _ManifestNativeRootStagingOwner
+    root_settlements: PackageStoreSettlementJournal
+    current_root: Path
+    product_files: tuple[tuple[Path, bytes], ...]
+    secret: str
+
+
+def _manifest_native_adoption_fixture(
+    tmp_path: Path,
+) -> _ManifestNativeAdoptionFixture:
+    store_id = "package-store:manifest-adoption"
+    secret = "manifest-secret-b-compat-adopt"
+    environment = _closure_environment()
+    (
+        kernel,
+        _artifact_owner,
+        lifecycle_journal,
+        evidence_journal,
+        _cleanup_journal,
+        _quarantine,
+        source_authority,
+        closure_owner,
+        resolution_journal,
+        resolver,
+    ) = _b3d_owner(
+        tmp_path,
+        case_id="B-COMPAT-ADOPT",
+        secret=secret,
+    )
+    classified = kernel.submit(
+        _request(
+            source=(
+                f"https://user:{secret}@packages.example.test/{WHEEL_FILENAME}"
+                f"?token={secret}#{secret}"
+            ),
+            environment_fingerprint=environment.fingerprint,
+        )
+    )
+    assert classified.classification is not None
+
+    legacy_root = tmp_path / "legacy-package-snapshot"
+    legacy_root.mkdir(mode=0o700)
+    product_payloads = {
+        "binding_history.json": b'{"binding":"legacy"}\n',
+        "desired_state.json": b'{"desired":"legacy"}\n',
+        "enablement_state.json": b'{"enabled":true}\n',
+        "fence_record.json": b'{"epoch":1}\n',
+        "instance_state.json": b'{"instance":"legacy"}\n',
+        "legacy_root_pointer.json": b'{"root":"legacy"}\n',
+        "lock_history.json": b'{"lock":"legacy"}\n',
+        "source_configuration.json": b'{"source":"private-index"}\n',
+        "store_bytes.bin": b"legacy-package-store-bytes\n",
+    }
+    product_files: list[tuple[Path, bytes]] = []
+    for name, payload in sorted(product_payloads.items()):
+        path = legacy_root / name
+        path.write_bytes(payload)
+        path.chmod(0o600)
+        product_files.append((path, payload))
+    legacy_root_identity = _manifest_directory_identity(legacy_root)
+    legacy_state = _ManifestAdoptionLegacyStateOwner(
+        root=legacy_root,
+        store_id=store_id,
+        legacy_root_identity=legacy_root_identity,
+    )
+    legacy_evidence = legacy_state.capture()
+
+    dependency_root = tmp_path / "adoption-dependency-store"
+    plugin_authority = tmp_path / "adoption-plugin-authority"
+    plugin_root = plugin_authority / "plugin-revision-store"
+    dependency_root.mkdir(mode=0o700)
+    plugin_authority.mkdir(mode=0o700)
+    plugin_root.mkdir(mode=0o700)
+    fence_journal = PackageEpochFenceJournal(tmp_path / "manifest-adoption-epoch.jsonl")
+    fence = fence_journal.publish(
+        PackageEpochFenceRequestV1.create(
+            store_id=store_id,
+            prior_fence=None,
+            legacy_root_identity=legacy_root_identity,
+            fenced_root_identity=_manifest_directory_identity(plugin_root),
+            namespace_id=sha256(b"manifest-adoption-current-namespace").hexdigest(),
+            minimum_runtime_version="2.0.0",
+            minimum_runtime_protocol_epoch=2,
+            quiescence_receipt_id=sha256(b"manifest-adoption-quiescence").hexdigest(),
+            snapshot_receipt_id=sha256(b"manifest-adoption-snapshot").hexdigest(),
+            root_switch_receipt_id=sha256(b"manifest-adoption-root-switch").hexdigest(),
+        )
+    )
+    adoption_request = PackageLegacyAdoptionRequestV1.create(
+        current_fence=fence,
+        legacy_state=legacy_evidence,
+        operation_id=classified.operation_id,
+        transaction_request_fingerprint=classified.request_fingerprint,
+        expected_classification_fingerprint=(classified.classification.evidence_ref),
+        expected_attempt_epoch=classified.attempt_epoch,
+        product_id="coding",
+        scope_id="workspace:manifest",
+        installation_id="manifest-installation",
+        plugin_id="acme.plugin",
+    )
+    execution = PackageClosureExecutionRequestV2(
+        artifact=_artifact_execution(classified, secret=secret),
+        resolution_environment=environment,
+        budgets=PackageClosureBudgetV1(),
+    )
+
+    retention = _TransactionPinRetentionOwner()
+    pin_journal = PackageTransactionPinJournal(
+        tmp_path / "manifest-adoption-transaction-pins.jsonl"
+    )
+    pin_owner = PackageTransactionPinLifecycleOwner(
+        kernel=kernel,
+        closure_plans=resolution_journal,
+        retention=retention,
+        pin_journal=pin_journal,
+    )
+    dependency_settlements = PackageStoreSettlementJournal(
+        tmp_path / "manifest-adoption-dependency-settlements.jsonl"
+    )
+    root_settlements = PackageStoreSettlementJournal(
+        tmp_path / "manifest-adoption-root-settlements.jsonl"
+    )
+    root_staging = _ManifestNativeRootStagingOwner(
+        PosixPackagePluginRootMaterializationStore(
+            plugin_root,
+            store_identity="manifest-plugin-revision-store",
+            settlement_journal=root_settlements,
+        )
+    )
+    root_targets = _ManifestRootTargetAuthority()
+    staging_journal = PackageArtifactStagingJournal(
+        tmp_path / "manifest-adoption-staging.jsonl"
+    )
+    committed_sets = PackageCommittedSetJournal(
+        tmp_path / "manifest-adoption-committed-sets.jsonl"
+    )
+    staging_owner = PackageStagingSetLifecycleOwner(
+        kernel=kernel,
+        classification_recheck=_StableClassificationRecheck(),
+        closure_plans=resolution_journal,
+        pin_journal=pin_journal,
+        root_targets=root_targets,
+        dependency_staging=PosixPackageDependencyMaterializationStore(
+            dependency_root,
+            store_identity="manifest-dependency-store",
+            settlement_journal=dependency_settlements,
+        ),
+        root_staging=root_staging,
+        staging_journal=staging_journal,
+        committed_sets=committed_sets,
+    )
+    transaction = PackageLegacyAdoptionTransactionAdapter(
+        kernel=kernel,
+        execution=execution,
+        recovery_identity="manifest-legacy-adoption-recovery",
+        closure=closure_owner,
+        pins=pin_owner,
+        staging=staging_owner,
+        commit=PackageCommitLifecycleOwner(
+            kernel=kernel,
+            committed_sets=committed_sets,
+            pin_journal=pin_journal,
+        ),
+    )
+    fence_reader = _ManifestAdoptionFenceReader(fence_journal)
+    owner = PackageLegacyAdoptionOwner(
+        store_id=store_id,
+        fences=fence_reader,
+        legacy_state=legacy_state,
+        transaction=transaction,
+    )
+    return _ManifestNativeAdoptionFixture(
+        owner=owner,
+        request=adoption_request,
+        kernel=kernel,
+        lifecycle_journal=lifecycle_journal,
+        evidence_journal=evidence_journal,
+        resolution_journal=resolution_journal,
+        pin_journal=pin_journal,
+        staging_journal=staging_journal,
+        committed_sets=committed_sets,
+        fence_journal=fence_journal,
+        fence_reader=fence_reader,
+        legacy_state=legacy_state,
+        source_authority=source_authority,
+        resolver=resolver,
+        retention=retention,
+        root_targets=root_targets,
+        root_staging=root_staging,
+        root_settlements=root_settlements,
+        current_root=plugin_root,
+        product_files=tuple(product_files),
+        secret=secret,
+    )
+
+
 @pytest.mark.parametrize("case_id", EXECUTABLE_MANIFEST_CASES)
 def test_manifest_case(case_id: str, tmp_path: Path) -> None:
     if case_id == "B-CLASS-PLUGIN":
@@ -2445,6 +2713,78 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
         assert status.failure.code == "package_route_unavailable"
         assert journal.records() == ()
         assert not journal.path.exists()
+    elif case_id in IMPLEMENTED_B4C4D_LINUX_ADOPTION_MANIFEST_CASES:
+        assert sys.platform.startswith("linux")
+        fixture = _manifest_native_adoption_fixture(tmp_path)
+
+        adopted = fixture.owner.adopt(fixture.request)
+        after_first = (
+            fixture.lifecycle_journal.records(),
+            fixture.evidence_journal.records(),
+            fixture.resolution_journal.records(),
+            fixture.pin_journal.records(),
+            fixture.staging_journal.records(),
+            fixture.committed_sets.records(),
+            fixture.fence_journal.records(),
+            fixture.root_settlements.records(),
+        )
+        replay = fixture.owner.adopt(fixture.request)
+
+        assert adopted == replay
+        assert adopted.disposition == "adopted"
+        assert adopted.code == "ok"
+        assert adopted.receipt is not None
+        publication = adopted.receipt.publication
+        assert publication.operation_id == fixture.request.operation_id
+        assert publication.committed_set.root_ref.plugin_id == "acme.plugin"
+        assert publication.committed_set.root_ref.installation_id == (
+            "manifest-installation"
+        )
+        committed = fixture.kernel.status(fixture.request.operation_id)
+        assert committed is not None
+        assert committed.phase == "committed"
+        assert committed.disposition == "committed"
+        pin = fixture.pin_journal.current_for_operation(fixture.request.operation_id)
+        assert pin is not None and pin.state == "acquired"
+        assert fixture.retention.receipts[fixture.request.operation_id] == pin
+        assert fixture.retention.physical_acquisitions == 1
+        assert len(fixture.retention.calls) == 1
+        assert fixture.source_authority.authorize_calls == 1
+        assert fixture.source_authority.stream is not None
+        assert fixture.source_authority.stream.requests_started == 1
+        assert fixture.source_authority.stream.redirects_started == 0
+        assert fixture.resolver.calls == 0
+        assert fixture.root_targets.calls == 1
+        assert fixture.root_staging.calls == 1
+        assert len(fixture.staging_journal.records()) == 1
+        assert len(fixture.committed_sets.records()) == 1
+        assert len(fixture.root_settlements.records()) == 1
+        assert fixture.fence_reader.calls == 4
+        assert fixture.legacy_state.calls == 4
+        current_fence = fixture.fence_journal.current(fixture.request.store_id)
+        assert current_fence is not None
+        assert current_fence.fenced_root_identity == _manifest_directory_identity(
+            fixture.current_root
+        )
+        assert fixture.legacy_state.capture().evidence_id == (
+            fixture.request.legacy_state_evidence_id
+        )
+        for path, payload in fixture.product_files:
+            assert path.read_bytes() == payload
+        assert after_first == (
+            fixture.lifecycle_journal.records(),
+            fixture.evidence_journal.records(),
+            fixture.resolution_journal.records(),
+            fixture.pin_journal.records(),
+            fixture.staging_journal.records(),
+            fixture.committed_sets.records(),
+            fixture.fence_journal.records(),
+            fixture.root_settlements.records(),
+        )
+        assert fixture.secret not in repr((fixture.request, adopted, replay))
+        for path in tmp_path.rglob("*"):
+            if path.is_file():
+                assert fixture.secret.encode() not in path.read_bytes()
     elif case_id in IMPLEMENTED_B4A_COMMIT_ADMISSION_MANIFEST_CASES:
         fixture = _manifest_commit_admission_fixture(tmp_path)
         current = fixture.kernel.status("manifest-operation")

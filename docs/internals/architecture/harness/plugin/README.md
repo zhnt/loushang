@@ -258,6 +258,15 @@ Neither may silently override a narrower implemented owner contract.
   resolver calls, does not append evidence or move lifecycle phase, and the
   adoption adapter replays the existing pin before ordinary staging/commit.
   Native end-to-end adoption and all five adoption manifest rows remain closed.
+  PLC9B4c4d candidate evidence composes the positive adoption path through the
+  production authenticated-acquisition, verification, closure, pin,
+  POSIX-native Store, committed-set, commit, transaction, and adoption owners.
+  It proves exact receipt replay, one physical Source request/pin/publication,
+  a still-visible acquired pin, filesystem-recaptured legacy snapshot equality,
+  unchanged Product-domain bytes, and no credential persistence. The positive
+  `B-COMPAT-ADOPT` row now executes as Linux native node 94; the four
+  failure/crash adoption rows, Windows restore, and Product routing remain
+  closed pending their own retained evidence.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)

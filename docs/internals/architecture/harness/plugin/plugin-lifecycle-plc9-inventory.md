@@ -302,6 +302,15 @@
   accepted staging/commit sequence. Missing or changed evidence fails closed.
   The seams remain dark, and native end-to-end adoption plus all five adoption
   manifest rows remain closed.
+  PLC9B4c4d candidate evidence composes the positive legacy-adoption path from
+  the production lifecycle, authenticated acquisition, quarantine, Wheel,
+  closure, pin, POSIX-native Store, committed-set, commit, transaction, and
+  adoption owners. Durable fence reads and filesystem-backed legacy-state
+  recapture bracket both initial adoption and exact replay; the pin remains
+  visible and all legacy/Product-domain bytes remain unchanged. Only
+  `B-COMPAT-ADOPT` is promoted, increasing the Linux native manifest from 93
+  to 94 nodes. The four adoption failure/crash rows, Windows restore, recovery
+  convergence, and Product routing remain closed pending their own evidence.
 
 This inventory distinguishes accepted reusable owners, Product adapters,
 parallel compatibility paths, and missing target boundaries. “Migrate” or

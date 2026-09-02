@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.4c4c-candidate.
+- Contract version: PLC9B.4c4d-candidate.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -1843,6 +1843,42 @@ benchmark (`0.76s/MB` versus its `0.35s/MB` budget). That benchmark then passed
 alone and as its complete three-test file. This split evidence is recorded
 explicitly and does not promote the candidate or any adoption manifest row.
 
+## PLC9B4c4d Candidate Native Positive Adoption Evidence
+
+The positive legacy-adoption path is now composed in the mandatory Linux
+manifest gate from the production lifecycle, authenticated acquisition,
+quarantine, Wheel verification, recursive closure, transaction-pin,
+POSIX-native revision Store, committed-set, commit, transaction-adapter, and
+adoption owners. The deterministic Source Port serves a real local Wheel under
+an authenticated envelope without introducing a live-network dependency. The
+current fence is read from the durable epoch journal, and every legacy-state
+observation recomputes evidence from the actual immutable snapshot directory.
+
+The fixture adopts once and replays once. It requires the exact same adoption
+and publication receipt, one Source authorization/request, one physical pin,
+one native root settlement, one staging receipt, one committed set, a still
+acquired transaction pin, unchanged fence and B evidence journals on replay,
+and byte-for-byte unchanged legacy Source, lock/binding, Desired, Instance,
+enablement, root-pointer, fence, and Store state. It also scans all durable
+artifacts for the private credential and proves the dependency resolver was
+never consulted for the root-only closure.
+
+This promotes only `B-COMPAT-ADOPT`, making it Linux manifest node 94. The
+unauthorized, unavailable, every-precommit-phase crash, and
+crash-after-committed rows remain planned until their exact failure and replay
+oracles execute. Windows offline restore, public routing, and Product-state
+composition remain closed. Local execution of the new manifest node passed;
+retained CI evidence is still required before accepting the slice.
+
+Local PLC9B4c4d validation passed the complete 140-test PLC9B
+architecture/manifest regression, including all 94 Linux manifest nodes with
+no skips. `make check-harness` passed Ruff and mypy over 649 source files;
+pytest passed 3,920 tests with 33 expected platform skips and failed only the
+unrelated host-load-sensitive transcript benchmark (`0.72s/MB` versus its
+`0.35s/MB` budget). The complete three-test benchmark file then passed in
+isolation. This split evidence is recorded explicitly and does not replace the
+required retained Linux gate artifact.
+
 ## First Principles
 
 1. Untrusted bytes are data, never a pathname, command, module, or build plan.
@@ -2406,7 +2442,7 @@ B-COMPAT-PREFENCE-LIVE-POSIX | posix-native | accepted | pre_fence_writer_blocks
 B-COMPAT-PREFENCE-LIVE-WINDOWS | windows-native | accepted | pre_fence_writer_blocks_cutover | package_runtime_epoch_unsupported | rejected@pre_fence | single_owner;no_publication;no_binding;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-PREFENCE-LIVE-WINDOWS] | windows-shell-compatibility.yml#plc9b-windows-native | implemented
 B-COMPAT-OFFLINE-RESTORE-POSIX | posix-native | accepted | complete_pre_b_restore_exclusive_old_runtime | ok | accepted@offline_restore | single_owner;legacy_snapshot_exact;b_namespace_unreachable;no_peer_fallback;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-OFFLINE-RESTORE-POSIX] | harness-quality.yml#plc9b-linux-native | implemented
 B-COMPAT-OFFLINE-RESTORE-WINDOWS | windows-native | accepted | complete_pre_b_restore_exclusive_old_runtime | ok | accepted@offline_restore | single_owner;legacy_snapshot_exact;b_namespace_unreachable;no_peer_fallback;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-OFFLINE-RESTORE-WINDOWS] | windows-shell-compatibility.yml#plc9b-windows-native | planned
-B-COMPAT-ADOPT | any | committed | authenticated_legacy_reacquisition | ok | committed@committed | same_receipt;pin_visible;legacy_snapshot_exact;desired_unchanged;instance_unchanged;binding_unchanged;enablement_unchanged | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ADOPT] | harness-quality.yml#plc9b-linux-native | planned
+B-COMPAT-ADOPT | any | committed | authenticated_legacy_reacquisition | ok | committed@committed | same_receipt;pin_visible;legacy_snapshot_exact;desired_unchanged;instance_unchanged;binding_unchanged;enablement_unchanged | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ADOPT] | harness-quality.yml#plc9b-linux-native | implemented
 B-COMPAT-ADOPT-UNAUTHORIZED | any | acquiring | legacy_reacquisition_unauthorized | package_source_unauthorized | rejected@acquiring | legacy_snapshot_exact;desired_unchanged;instance_unchanged;binding_unchanged;enablement_unchanged;no_publication;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ADOPT-UNAUTHORIZED] | harness-quality.yml#plc9b-linux-native | planned
 B-COMPAT-ADOPT-UNAVAILABLE | any | acquiring | registry_network_temporarily_unavailable | package_operation_timed_out | retryable_failure@acquiring | bounded_residue;legacy_snapshot_exact;desired_unchanged;instance_unchanged;binding_unchanged;enablement_unchanged;no_publication;no_extra_network;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ADOPT-UNAVAILABLE] | harness-quality.yml#plc9b-linux-native | planned
 B-COMPAT-ADOPT-CRASH | any | each_precommit_phase | adoption_crash_and_retry | package_operation_interrupted | retryable_failure@prior_phase | same_receipt;bounded_residue;legacy_snapshot_exact;desired_unchanged;instance_unchanged;binding_unchanged;enablement_unchanged | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ADOPT-CRASH] | harness-quality.yml#plc9b-linux-native | planned
