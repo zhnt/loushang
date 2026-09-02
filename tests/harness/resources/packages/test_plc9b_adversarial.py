@@ -331,6 +331,9 @@ IMPLEMENTED_B4C4E_LINUX_ADOPTION_FAILURE_MANIFEST_CASES = (
     "B-COMPAT-ADOPT-UNAUTHORIZED",
     "B-COMPAT-ADOPT-UNAVAILABLE",
 )
+IMPLEMENTED_B4C4F_LINUX_ADOPTION_COMMITTED_CRASH_MANIFEST_CASES = (
+    "B-COMPAT-ADOPT-CRASH-AFTER-COMMITTED",
+)
 PLANNED_B3E3C_MATERIALIZATION_MANIFEST_CASES: tuple[str, ...] = ()
 PLANNED_B4_COMMIT_ADMISSION_MANIFEST_CASES: tuple[str, ...] = ()
 
@@ -370,6 +373,11 @@ EXECUTABLE_MANIFEST_CASES = (
     )
     + (
         IMPLEMENTED_B4C4E_LINUX_ADOPTION_FAILURE_MANIFEST_CASES
+        if sys.platform.startswith("linux")
+        else ()
+    )
+    + (
+        IMPLEMENTED_B4C4F_LINUX_ADOPTION_COMMITTED_CRASH_MANIFEST_CASES
         if sys.platform.startswith("linux")
         else ()
     )
@@ -2448,6 +2456,7 @@ class _ManifestNativeAdoptionFixture:
     product_projections: _ManifestProductProjectionOwner
     product_projection_before: tuple[tuple[str, int, bytes], ...]
     coordination: _ManifestAdoptionCoordination
+    commit: PackageCommitLifecycleOwner | _ManifestCrashAfterCommittedCommitOwner
     secret: str
 
 
@@ -2496,6 +2505,25 @@ class _ManifestProductProjectionOwner:
         return tuple(captured)
 
 
+class _ManifestCrashAfterCommitted(RuntimeError):
+    pass
+
+
+@dataclass
+class _ManifestCrashAfterCommittedCommitOwner:
+    owner: PackageCommitLifecycleOwner
+    crashed: bool = False
+    calls: int = 0
+
+    def commit(self, operation_id: str) -> PackagePublicationReceiptV1:
+        self.calls += 1
+        receipt = self.owner.commit(operation_id)
+        if not self.crashed:
+            self.crashed = True
+            raise _ManifestCrashAfterCommitted
+        return receipt
+
+
 def _assert_manifest_secret_absent(root: Path, secret: str) -> None:
     encoded = secret.encode()
     for path in root.rglob("*"):
@@ -2514,6 +2542,7 @@ def _manifest_native_adoption_fixture(
     fenced_root_identity: str | None = None,
     adoption_installation_id: str = "manifest-installation",
     case_id: str = "B-COMPAT-ADOPT",
+    crash_after_committed: bool = False,
 ) -> _ManifestNativeAdoptionFixture:
     store_id = "package-store:manifest-adoption"
     secret = "manifest-secret-b-compat-adopt"
@@ -2663,6 +2692,16 @@ def _manifest_native_adoption_fixture(
         staging_journal=staging_journal,
         committed_sets=committed_sets,
     )
+    durable_commit = PackageCommitLifecycleOwner(
+        kernel=kernel,
+        committed_sets=committed_sets,
+        pin_journal=pin_journal,
+    )
+    commit: PackageCommitLifecycleOwner | _ManifestCrashAfterCommittedCommitOwner = (
+        _ManifestCrashAfterCommittedCommitOwner(durable_commit)
+        if crash_after_committed
+        else durable_commit
+    )
     transaction = PackageLegacyAdoptionTransactionAdapter(
         kernel=kernel,
         execution=execution,
@@ -2670,11 +2709,7 @@ def _manifest_native_adoption_fixture(
         closure=closure_owner,
         pins=pin_owner,
         staging=staging_owner,
-        commit=PackageCommitLifecycleOwner(
-            kernel=kernel,
-            committed_sets=committed_sets,
-            pin_journal=pin_journal,
-        ),
+        commit=commit,
     )
     fence_reader = _ManifestAdoptionFenceReader(fence_journal)
     coordination = _ManifestAdoptionCoordination()
@@ -2710,6 +2745,7 @@ def _manifest_native_adoption_fixture(
         product_projections=product_projections,
         product_projection_before=product_projection_before,
         coordination=coordination,
+        commit=commit,
         secret=secret,
     )
 
@@ -2758,6 +2794,32 @@ def test_native_adoption_rejects_wrong_physical_authority_before_source(
         fixture.committed_sets.records(),
         fixture.root_settlements.records(),
         fixture.product_projections.capture(),
+    )
+
+
+def test_native_adoption_committed_replay_requires_durable_root_target(
+    tmp_path: Path,
+) -> None:
+    assert sys.platform.startswith("linux")
+    fixture = _manifest_native_adoption_fixture(tmp_path)
+    adopted = fixture.owner.adopt(fixture.request)
+    assert adopted.disposition == "adopted"
+    before = (
+        fixture.lifecycle_journal.records(),
+        fixture.committed_sets.records(),
+        fixture.root_settlements.records(),
+    )
+    fixture.staging_journal.path.write_bytes(b"")
+
+    refused = fixture.owner.adopt(fixture.request)
+
+    assert refused.disposition == "rejected"
+    assert refused.code == "package_operation_identity_conflict"
+    assert fixture.source_authority.authorize_calls == 1
+    assert before == (
+        fixture.lifecycle_journal.records(),
+        fixture.committed_sets.records(),
+        fixture.root_settlements.records(),
     )
 
 
@@ -2928,6 +2990,67 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
             fixture.root_settlements.records(),
         )
         assert fixture.secret not in repr((fixture.request, failed, replay))
+        _assert_manifest_secret_absent(tmp_path, fixture.secret)
+    elif case_id in IMPLEMENTED_B4C4F_LINUX_ADOPTION_COMMITTED_CRASH_MANIFEST_CASES:
+        assert sys.platform.startswith("linux")
+        fixture = _manifest_native_adoption_fixture(
+            tmp_path,
+            case_id=case_id,
+            crash_after_committed=True,
+        )
+        with pytest.raises(_ManifestCrashAfterCommitted):
+            fixture.owner.adopt(fixture.request)
+        committed = fixture.kernel.status(fixture.request.operation_id)
+        assert committed is not None
+        assert (committed.phase, committed.disposition) == ("committed", "committed")
+        after_crash = (
+            fixture.lifecycle_journal.records(),
+            fixture.evidence_journal.records(),
+            fixture.resolution_journal.records(),
+            fixture.pin_journal.records(),
+            fixture.staging_journal.records(),
+            fixture.committed_sets.records(),
+            fixture.fence_journal.records(),
+            fixture.root_settlements.records(),
+        )
+
+        recovered = fixture.owner.adopt(fixture.request)
+        replay = fixture.owner.adopt(fixture.request)
+
+        assert recovered == replay
+        assert recovered.disposition == "adopted"
+        assert recovered.code == "ok"
+        assert recovered.receipt is not None
+        assert recovered.receipt.publication.committed_set.root_ref.installation_id == (
+            "manifest-installation"
+        )
+        assert fixture.source_authority.authorize_calls == 1
+        assert fixture.source_authority.stream is not None
+        assert fixture.source_authority.stream.requests_started == 1
+        assert fixture.retention.physical_acquisitions == 1
+        assert fixture.root_staging.calls == 1
+        assert len(fixture.staging_journal.records()) == 1
+        assert len(fixture.committed_sets.records()) == 1
+        assert len(fixture.root_settlements.records()) == 1
+        assert isinstance(fixture.commit, _ManifestCrashAfterCommittedCommitOwner)
+        assert fixture.commit.calls == 3
+        assert fixture.legacy_state.capture().evidence_id == (
+            fixture.request.legacy_state_evidence_id
+        )
+        assert fixture.product_projections.capture() == (
+            fixture.product_projection_before
+        )
+        assert after_crash == (
+            fixture.lifecycle_journal.records(),
+            fixture.evidence_journal.records(),
+            fixture.resolution_journal.records(),
+            fixture.pin_journal.records(),
+            fixture.staging_journal.records(),
+            fixture.committed_sets.records(),
+            fixture.fence_journal.records(),
+            fixture.root_settlements.records(),
+        )
+        assert fixture.secret not in repr((fixture.request, recovered, replay))
         _assert_manifest_secret_absent(tmp_path, fixture.secret)
     elif case_id in IMPLEMENTED_B4C4D_LINUX_ADOPTION_MANIFEST_CASES:
         assert sys.platform.startswith("linux")

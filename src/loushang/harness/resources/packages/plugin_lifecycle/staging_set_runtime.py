@@ -68,6 +68,19 @@ from loushang.harness.resources.packages.plugin_lifecycle.wheel import (
     VerifiedWheelCandidate,
 )
 
+_ADOPTION_FRESH_TARGET_PHASES = frozenset(
+    {
+        "classified",
+        "acquiring",
+        "acquired",
+        "inspecting",
+        "extracted",
+        "resolving_closure",
+        "closure_verified",
+        "transaction_pinned",
+    }
+)
+
 
 class PackageStagingClosurePlanEvidencePort(Protocol):
     """Read-only durable closure plan evidence for current and prior attempts."""
@@ -574,6 +587,8 @@ class PackageStagingSetLifecycleOwner:
             return None
         target = self._durable_root_target(adoption.operation_id)
         if target is None:
+            if status.phase not in _ADOPTION_FRESH_TARGET_PHASES:
+                return None
             target = self._root_targets.issue_target(request, status.classification)
         if (
             not self._target_matches(target, request, status)

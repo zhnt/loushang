@@ -317,6 +317,11 @@
   or publication effect, while legacy and four independently revisioned Product
   projections remain exact. The Linux native manifest therefore grows from 94
   to 96 nodes; the two crash rows remain closed.
+  PLC9B4c4f candidate evidence adds the post-commit-CAS crash edge. Recovery
+  and replay require the durable root target and native root identity, return
+  one exact receipt, and do not repeat Source, pin, staging, settlement, or
+  committed-set effects. This promotes Linux native node 97; only the
+  every-precommit crash row remains closed.
 
 This inventory distinguishes accepted reusable owners, Product adapters,
 parallel compatibility paths, and missing target boundaries. “Migrate” or

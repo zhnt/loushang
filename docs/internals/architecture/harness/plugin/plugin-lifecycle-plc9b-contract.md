@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.4c4e-candidate.
+- Contract version: PLC9B.4c4f-candidate.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -1900,6 +1900,27 @@ This promotes `B-COMPAT-ADOPT-UNAUTHORIZED` and
 every-precommit-phase crash and crash-after-committed rows remain planned.
 Retained Linux CI evidence is still required before accepting this candidate.
 
+## PLC9B4c4f Candidate Crash-After-Committed Evidence
+
+The Linux-native adoption fixture now injects a one-shot crash immediately
+after the production commit owner has durably advanced the lifecycle to
+`committed` and constructed its publication receipt. The first caller receives
+no receipt. Restart and a further replay both reauthorize the exact durable
+root target and native Store, then reconstruct the same adoption and
+publication receipt from committed-set and transaction-pin evidence.
+
+The crash edge executes Source acquisition, physical pin acquisition, native
+root settlement, staging evidence, and committed-set publication exactly once.
+Neither recovery nor replay grows lifecycle, acquisition, resolution, pin,
+staging, committed-set, fence, or settlement journals. The complete legacy
+snapshot and the revision plus canonical bytes of all four Product projections
+remain exact, and the credential scan covers path components, regular files,
+and symlink targets.
+
+This promotes `B-COMPAT-ADOPT-CRASH-AFTER-COMMITTED` as Linux manifest node
+97. `B-COMPAT-ADOPT-CRASH` remains planned pending every-precommit-phase
+interruption evidence. Retained Linux CI evidence remains required.
+
 ## First Principles
 
 1. Untrusted bytes are data, never a pathname, command, module, or build plan.
@@ -2467,7 +2488,7 @@ B-COMPAT-ADOPT | posix-native | committed | authenticated_legacy_reacquisition |
 B-COMPAT-ADOPT-UNAUTHORIZED | posix-native | acquiring | legacy_reacquisition_unauthorized | package_source_unauthorized | rejected@acquiring | legacy_snapshot_exact;desired_unchanged;instance_unchanged;binding_unchanged;enablement_unchanged;no_publication;no_peer_fallback;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ADOPT-UNAUTHORIZED] | harness-quality.yml#plc9b-linux-native | implemented
 B-COMPAT-ADOPT-UNAVAILABLE | posix-native | acquiring | registry_network_temporarily_unavailable | package_operation_timed_out | retryable_failure@acquiring | bounded_residue;legacy_snapshot_exact;desired_unchanged;instance_unchanged;binding_unchanged;enablement_unchanged;no_publication;no_extra_network;no_peer_fallback;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ADOPT-UNAVAILABLE] | harness-quality.yml#plc9b-linux-native | implemented
 B-COMPAT-ADOPT-CRASH | any | each_precommit_phase | adoption_crash_and_retry | package_operation_interrupted | retryable_failure@prior_phase | same_receipt;bounded_residue;legacy_snapshot_exact;desired_unchanged;instance_unchanged;binding_unchanged;enablement_unchanged | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ADOPT-CRASH] | harness-quality.yml#plc9b-linux-native | planned
-B-COMPAT-ADOPT-CRASH-AFTER-COMMITTED | any | committed | adoption_crash_after_committed_edge | ok | committed@committed | same_receipt;pin_visible;legacy_snapshot_exact;desired_unchanged;instance_unchanged;binding_unchanged;enablement_unchanged | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ADOPT-CRASH-AFTER-COMMITTED] | harness-quality.yml#plc9b-linux-native | planned
+B-COMPAT-ADOPT-CRASH-AFTER-COMMITTED | posix-native | committed | adoption_crash_after_committed_edge | ok | committed@committed | same_receipt;pin_visible;legacy_snapshot_exact;desired_unchanged;instance_unchanged;binding_unchanged;enablement_unchanged;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ADOPT-CRASH-AFTER-COMMITTED] | harness-quality.yml#plc9b-linux-native | implemented
 ```
 <!-- plc9b-adversarial-manifest:end -->
 

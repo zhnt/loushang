@@ -273,6 +273,11 @@ Neither may silently override a narrower implemented owner contract.
   publication or bounded residue, and preserve independent revisioned Product
   projections plus the complete legacy snapshot. The two crash rows remain
   closed.
+  PLC9B4c4f candidate evidence promotes crash-after-committed as Linux native
+  node 97. A one-shot post-CAS crash yields no first receipt; restart and replay
+  reauthorize the durable root and reconstruct the same receipt without
+  repeating Source, pin, staging, settlement, or committed-set effects. The
+  every-precommit crash row remains closed.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)
