@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.4c0.
+- Contract version: PLC9B.4c1-candidate.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -102,8 +102,11 @@
   route. Accepted B4c0 code adds the dark, evidence-only epoch-fence journal
   and read-only runtime admission owner. It makes newer-runtime-epoch and
   mixed-active-epoch refusal executable without creating a namespace or
-  switching a root. Native cutover, offline restore, recovery convergence,
-  public routing, and concrete desired-state composition remain closed.
+  switching a root. B4c1 candidate code adds a POSIX-native offline cutover
+  owner over exclusive quiescence and snapshot Ports. It makes the POSIX
+  cutover and pre-fence-live refusal rows executable; Windows cutover, offline
+  restore, recovery convergence, public routing, and concrete desired-state
+  composition remain closed.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -1378,6 +1381,52 @@ digest `edbb4a5ddd43fbdf6b5aa8f4b7a0c9f5aae1ddac418cda79a74e3f8d0e58bf47`
 prove that the native XML executed exactly 90 manifest nodes, including
 `B-COMPAT-EPOCH` and `B-COMPAT-MIXED`, with zero skips, failures, or errors.
 
+## PLC9B4c1 Candidate POSIX Native Cutover
+
+`PackagePosixEpochCutoverOwner` is the first native cutover capability. Its
+public request/result, quiescence, snapshot, failure, and root-switch records
+are strict versioned, fingerprinted, credential-free, and pathless. Filesystem
+paths exist only in the configured POSIX owner. The coordination Port returns
+one complete quiescence projection while retaining its exclusive lock; any
+active fence-aware lease or pre-fence registration returns
+`package_runtime_epoch_unsupported` at `pre_fence` before snapshot access,
+namespace creation, or epoch append.
+
+There is deliberately no second `active-root` file. The current durable head
+of `PackageEpochFenceJournal` is the sole Product-root pointer: the native
+owner first pins the complete authority ancestor chain and its `epochs`
+directory, verifies the exact legacy root, accepts a durable snapshot receipt,
+creates a fresh empty sibling `epochs/<namespace-id>` with descriptor-relative
+`O_NOFOLLOW` calls, flushes it, and revalidates every identity. The adjacent
+epoch append then records the quiescence, snapshot, native root-switch receipt,
+minimum protocol, namespace, and exact new root identity as one visibility
+edge. Failure before that append removes only the identity-matched empty
+namespace; the old root and fence remain authoritative.
+
+Exact replay verifies the currently selected namespace identity and returns the
+same fence/root-switch result without reacquiring quiescence, recapturing a
+snapshot, or appending. A precreated namespace, ancestor/root replacement,
+stale fence, invalid snapshot projection, or unsafe cleanup fails closed.
+Opened native descriptors are closed on success and refusal, and the POSIX
+fixtures prove subsequent rename/delete/open operations rather than relying on
+process exit.
+
+`B-COMPAT-CUTOVER-POSIX` and `B-COMPAT-PREFENCE-LIVE-POSIX` are executable in
+the non-skippable Linux manifest, raising its expected collection from 90 to
+92. The module remains dark and exports no Package facade, author SDK,
+CLI/RPC/Session/startup route, Product adapter, concrete lease registry, or
+concrete snapshot/restore store. The snapshot receipt is an authority boundary;
+B4c3 must implement and verify the complete backup/restore owner before either
+offline-restore row can move. Windows native cutover remains B4c2.
+
+The B4c1 candidate passed local `make check-harness`: Ruff passed, mypy passed
+over 643 source files, and pytest completed 3,837 tests with 23 expected skips.
+The eleven POSIX cutover component tests, complete 92-row Linux manifest, and
+39 PLC9B architecture contracts passed together as a 142-test focused
+regression. An intervening full run hit only the unrelated strict transcript
+load-performance threshold under shared load; the exact test passed in
+isolation and the subsequent complete gate passed.
+
 ## First Principles
 
 1. Untrusted bytes are data, never a pathname, command, module, or build plan.
@@ -1935,9 +1984,9 @@ B-COMPAT-EPOCH | any | accepted | newer_lifecycle_epoch | package_runtime_epoch_
 B-COMPAT-MIXED | any | accepted | mixed_fence_aware_processes | package_runtime_epoch_unsupported | rejected@accepted | single_owner;no_publication;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-MIXED] | harness-quality.yml#plc9b-linux-native | implemented
 B-COMPAT-LEGACY | any | classified | legacy_binding_history_hint | ok | classified@plugin_bound | no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-LEGACY] | harness-quality.yml#plc9b-linux-native | planned
 B-COMPAT-ROLLFORWARD | any | retryable_failure | upgrade_downgrade_rollforward | ok | committed@committed | same_receipt;pin_visible;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ROLLFORWARD] | harness-quality.yml#plc9b-linux-native | planned
-B-COMPAT-CUTOVER-POSIX | posix-native | accepted | offline_quiescent_namespaced_cutover | ok | accepted@epoch_fenced | single_owner;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-CUTOVER-POSIX] | harness-quality.yml#plc9b-linux-native | planned
+B-COMPAT-CUTOVER-POSIX | posix-native | accepted | offline_quiescent_namespaced_cutover | ok | accepted@epoch_fenced | single_owner;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-CUTOVER-POSIX] | harness-quality.yml#plc9b-linux-native | implemented
 B-COMPAT-CUTOVER-WINDOWS | windows-native | accepted | offline_quiescent_namespaced_cutover | ok | accepted@epoch_fenced | single_owner;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-CUTOVER-WINDOWS] | windows-shell-compatibility.yml#plc9b-windows-native | planned
-B-COMPAT-PREFENCE-LIVE-POSIX | posix-native | accepted | pre_fence_writer_blocks_cutover | package_runtime_epoch_unsupported | rejected@pre_fence | single_owner;no_publication;no_binding;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-PREFENCE-LIVE-POSIX] | harness-quality.yml#plc9b-linux-native | planned
+B-COMPAT-PREFENCE-LIVE-POSIX | posix-native | accepted | pre_fence_writer_blocks_cutover | package_runtime_epoch_unsupported | rejected@pre_fence | single_owner;no_publication;no_binding;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-PREFENCE-LIVE-POSIX] | harness-quality.yml#plc9b-linux-native | implemented
 B-COMPAT-PREFENCE-LIVE-WINDOWS | windows-native | accepted | pre_fence_writer_blocks_cutover | package_runtime_epoch_unsupported | rejected@pre_fence | single_owner;no_publication;no_binding;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-PREFENCE-LIVE-WINDOWS] | windows-shell-compatibility.yml#plc9b-windows-native | planned
 B-COMPAT-OFFLINE-RESTORE-POSIX | posix-native | accepted | complete_pre_b_restore_exclusive_old_runtime | ok | accepted@offline_restore | single_owner;legacy_snapshot_exact;b_namespace_unreachable;no_peer_fallback;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-OFFLINE-RESTORE-POSIX] | harness-quality.yml#plc9b-linux-native | planned
 B-COMPAT-OFFLINE-RESTORE-WINDOWS | windows-native | accepted | complete_pre_b_restore_exclusive_old_runtime | ok | accepted@offline_restore | single_owner;legacy_snapshot_exact;b_namespace_unreachable;no_peer_fallback;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-OFFLINE-RESTORE-WINDOWS] | windows-shell-compatibility.yml#plc9b-windows-native | planned

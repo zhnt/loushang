@@ -183,6 +183,15 @@ Neither may silently override a narrower implemented owner contract.
   with 23 expected skips. Candidate `18f0bab8` passed all 23 PR checks, and
   retained Linux artifact `9826705491` executed exactly 90 manifest nodes with
   no skips, failures, or errors.
+  PLC9B4c1 candidate code adds a dark POSIX-native offline cutover owner over
+  exclusive quiescence and snapshot Ports. It creates a fresh identity-pinned
+  sibling namespace and treats the adjacent epoch-journal append as the sole
+  atomic Product-root pointer; live pre-fence writers reject before native
+  mutation. The two POSIX compatibility rows are executable, raising the
+  Linux manifest to 92 nodes. Windows cutover, concrete restore/recovery,
+  adoption, and all Product routes remain closed. Local `make check-harness`
+  passed Ruff, mypy over 643 source files, and 3,837 tests with 23 expected
+  skips; the focused regression passed all 142 tests.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)

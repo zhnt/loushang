@@ -39,6 +39,7 @@ STORE_SETTLEMENTS = OWNER_KERNEL_ROOT / "store_settlements.py"
 COMMIT_ADMISSION = OWNER_KERNEL_ROOT / "commit_admission.py"
 RETENTION_HANDOFF = OWNER_KERNEL_ROOT / "retention_handoff.py"
 EPOCH_FENCE = OWNER_KERNEL_ROOT / "epoch_fence.py"
+POSIX_EPOCH_CUTOVER = OWNER_KERNEL_ROOT / "posix_epoch_cutover.py"
 CLOSURE_TEST = Path("tests/harness/resources/packages/test_plc9b_closure.py")
 CLOSURE_OWNER_TEST = Path(
     "tests/harness/resources/packages/test_plc9b_closure_owner.py"
@@ -82,6 +83,9 @@ RETENTION_HANDOFF_TEST = Path(
 )
 EPOCH_FENCE_TEST = Path(
     "tests/harness/resources/packages/test_plc9b_epoch_fence.py"
+)
+POSIX_EPOCH_CUTOVER_TEST = Path(
+    "tests/harness/resources/packages/test_plc9b_posix_epoch_cutover.py"
 )
 PYPROJECT = Path("pyproject.toml")
 WINDOWS_NATIVE_TEST = Path(
@@ -207,6 +211,10 @@ PLC9B4B_RETENTION_HANDOFF_CASES = {
 PLC9B4C0_EPOCH_ADMISSION_CASES = {
     "B-COMPAT-EPOCH",
     "B-COMPAT-MIXED",
+}
+PLC9B4C1_POSIX_EPOCH_CUTOVER_CASES = {
+    "B-COMPAT-CUTOVER-POSIX",
+    "B-COMPAT-PREFENCE-LIVE-POSIX",
 }
 ALLOWED_PLATFORMS = {"any", "posix-native", "windows-native"}
 ALLOWED_ORACLES = {
@@ -550,6 +558,12 @@ def _implemented_b4c0_epoch_admission_manifest_cases() -> set[str]:
     return _literal_manifest_cases("IMPLEMENTED_B4C0_EPOCH_ADMISSION_MANIFEST_CASES")
 
 
+def _implemented_b4c1_posix_epoch_cutover_manifest_cases() -> set[str]:
+    return _literal_manifest_cases(
+        "IMPLEMENTED_B4C1_POSIX_EPOCH_CUTOVER_MANIFEST_CASES"
+    )
+
+
 def _journal_effect_policy() -> list[tuple[str, str, str]]:
     contract = _source(CONTRACT)
     block = contract.split("<!-- plc9b-journal-effect-policy:start -->", 1)[1]
@@ -631,7 +645,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.4c0." in contract
+    assert "Contract version: PLC9B.4c1-candidate." in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
@@ -901,6 +915,9 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
     implemented_b4a_admission = _implemented_b4a_commit_admission_manifest_cases()
     implemented_b4b_handoff = _implemented_b4b_retention_handoff_manifest_cases()
     implemented_b4c0_epoch = _implemented_b4c0_epoch_admission_manifest_cases()
+    implemented_b4c1_posix = (
+        _implemented_b4c1_posix_epoch_cutover_manifest_cases()
+    )
     implemented = (
         implemented_b1
         | implemented_b2
@@ -919,6 +936,7 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
         | implemented_b4a_admission
         | implemented_b4b_handoff
         | implemented_b4c0_epoch
+        | implemented_b4c1_posix
     )
 
     assert len(manifest) == 127
@@ -1195,6 +1213,26 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
         | implemented_b4a_admission
         | implemented_b4b_handoff
     ).isdisjoint(implemented_b4c0_epoch)
+    assert implemented_b4c1_posix == PLC9B4C1_POSIX_EPOCH_CUTOVER_CASES
+    assert (
+        implemented_b1
+        | implemented_b2
+        | implemented_b2h
+        | implemented_b2i
+        | implemented_b2j
+        | implemented_b2k
+        | implemented_b3d
+        | implemented_b3d_limits
+        | implemented_b3d_integrity
+        | implemented_b3e_pins
+        | implemented_b3e_staging_sets
+        | implemented_b3e3c1_posix
+        | implemented_b3e3c2_windows
+        | implemented_b3e3c3_settlement
+        | implemented_b4a_admission
+        | implemented_b4b_handoff
+        | implemented_b4c0_epoch
+    ).isdisjoint(implemented_b4c1_posix)
     separator = manifest["B-PATH-COLLISION-SEP"]
     assert separator["fixture"] == "separator_ambiguous_path"
     assert separator["code"] == "package_archive_path_rejected"
@@ -1208,7 +1246,7 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
     assert hardlink["code"] == "ok"
     assert hardlink["disposition"] == "extracted@independent_regular_files"
     assert hardlink["status"] == "implemented"
-    assert len(manifest) - len(implemented) == 32
+    assert len(manifest) - len(implemented) == 30
     workflow = _source(HARNESS_WORKFLOW)
     assert "PLC9B Linux native adversarial gate (plc9b-linux-native)" in workflow
     assert "tests/harness/resources/packages/test_plc9b_adversarial.py" in workflow
@@ -3514,7 +3552,7 @@ def test_plc9b4b_retention_handoff_is_dark_exact_and_no_zero_pin() -> None:
         assert {"exact_pin_set", "no_zero_pin"} <= set(row["oracles"].split(";"))
 
     normalized = " ".join(contract.split())
-    assert "PLC9B.4c0." in contract
+    assert "PLC9B.4c1-candidate." in contract
     assert "PLC9B4b Accepted Retention Handoff" in normalized
     assert "opened -> dependency_pinned -> desired_committed -> settled" in normalized
     assert "No journal lock is held" in normalized
@@ -3645,7 +3683,7 @@ def test_plc9b4c0_epoch_admission_is_dark_read_only_and_fail_closed() -> None:
         )
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c0." in contract
+    assert "Contract version: PLC9B.4c1-candidate." in contract
     assert "PLC9B4c0 Accepted Epoch Admission" in normalized
     assert "human-readable minimum runtime version is diagnostic evidence" in (
         normalized
@@ -3664,6 +3702,125 @@ def test_plc9b4c0_epoch_admission_is_dark_read_only_and_fail_closed() -> None:
     assert "zero skips, failures, or errors" in normalized
     assert "Accepted PLC9B4c0 code adds an evidence-only" in inventory
     assert "Accepted PLC9B4c0 code adds the dark adjacent" in index
+
+
+def test_plc9b4c1_posix_cutover_has_one_native_owner_and_one_visibility_edge() -> None:
+    contract = _source(CONTRACT)
+    inventory = _source(INVENTORY)
+    index = _source(INDEX)
+    source = _source(POSIX_EPOCH_CUTOVER)
+    component_tests = _source(POSIX_EPOCH_CUTOVER_TEST)
+    adversarial_tests = _source(ADVERSARIAL_TEST)
+    manifest = _adversarial_manifest()
+
+    assert POSIX_EPOCH_CUTOVER.is_file()
+    assert POSIX_EPOCH_CUTOVER_TEST.is_file()
+    for symbol in (
+        "PackageEpochCutoverQuiescenceReceiptV1",
+        "PackageEpochCutoverSnapshotReceiptV1",
+        "PackageEpochCutoverCoordinationPort",
+        "PackageEpochCutoverSnapshotPort",
+        "PackagePosixEpochCutoverRequestV1",
+        "PackagePosixEpochRootSwitchReceiptV1",
+        "PackagePosixEpochCutoverFailureV1",
+        "PackagePosixEpochCutoverResultV1",
+        "PackagePosixEpochCutoverOwner",
+    ):
+        assert symbol in source
+
+    tree = ast.parse(source, filename=str(POSIX_EPOCH_CUTOVER))
+    imported = {
+        node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
+    }
+    forbidden_modules = (
+        "loushang.harness.plugin_management",
+        "loushang.harness.resources.plugins",
+        "loushang.coding",
+        "loushang.foundation",
+    )
+    assert not any(
+        module == forbidden or module.startswith(f"{forbidden}.")
+        for module in imported
+        for forbidden in forbidden_modules
+    )
+    for forbidden_symbol in (
+        "PluginPackageLifecycleLedger",
+        "PluginDesiredStateLedger",
+        "PackageMaterializer",
+        "subprocess",
+        "active-root",
+    ):
+        assert forbidden_symbol not in source
+    assert "os.O_NOFOLLOW" in source
+    assert "dir_fd=epochs_fd" in source
+    assert "os.fsync" in source
+    assert "self._journal.publish(epoch_request)" in source
+
+    internal_facade = _source(OWNER_KERNEL_ROOT / "__init__.py")
+    package_facade = _source(PACKAGE_ROOT / "__init__.py")
+    author_sdk = _source(AUTHOR_SDK)
+    for symbol in (
+        "PackagePosixEpochCutoverOwner",
+        "PackagePosixEpochCutoverRequestV1",
+        "PackageEpochCutoverCoordinationPort",
+        "PackageEpochCutoverSnapshotPort",
+    ):
+        assert symbol not in internal_facade
+        assert symbol not in package_facade
+        assert symbol not in author_sdk
+
+    for evidence in (
+        "test_posix_cutover_uses_epoch_append_as_the_only_atomic_root_pointer",
+        "test_posix_cutover_advances_only_from_the_exact_current_namespace",
+        "test_posix_cutover_concurrent_exact_requests_converge_once",
+        "test_posix_cutover_refuses_live_pre_fence_writer_before_native_mutation",
+        "test_posix_cutover_refuses_fence_aware_live_lease_without_append",
+        "test_posix_cutover_rejects_precreated_namespace_without_trusting_it",
+        "test_posix_cutover_detects_authority_root_swap_before_fence_and_cleans_residue",
+        "test_posix_cutover_detects_epochs_directory_swap_before_fence",
+        "test_posix_cutover_detects_authority_permission_drift_before_fence",
+        "test_posix_cutover_releases_every_native_descriptor",
+        "test_posix_cutover_records_reject_extended_or_forged_wire_values",
+    ):
+        assert evidence in component_tests
+    assert "IMPLEMENTED_B4C1_POSIX_EPOCH_CUTOVER_MANIFEST_CASES" in (
+        adversarial_tests
+    )
+    assert (
+        _implemented_b4c1_posix_epoch_cutover_manifest_cases()
+        == PLC9B4C1_POSIX_EPOCH_CUTOVER_CASES
+    )
+    assert manifest["B-COMPAT-CUTOVER-POSIX"]["status"] == "implemented"
+    assert manifest["B-COMPAT-PREFENCE-LIVE-POSIX"]["status"] == "implemented"
+    assert _journal_policy_for("B-COMPAT-CUTOVER-POSIX") == (
+        "epoch",
+        "append_once:epoch_fenced_then_no_append",
+    )
+    assert _journal_policy_for("B-COMPAT-PREFENCE-LIVE-POSIX") == (
+        "none",
+        "no_append:unchanged",
+    )
+    for case_id in (
+        "B-COMPAT-CUTOVER-WINDOWS",
+        "B-COMPAT-PREFENCE-LIVE-WINDOWS",
+    ):
+        assert manifest[case_id]["status"] == "planned"
+
+    normalized = " ".join(contract.split())
+    assert "Contract version: PLC9B.4c1-candidate." in contract
+    assert "PLC9B4c1 Candidate POSIX Native Cutover" in normalized
+    assert "no second `active-root` file" in normalized
+    assert "sole Product-root pointer" in normalized
+    assert "before snapshot access, namespace creation, or epoch append" in normalized
+    assert "expected collection from 90 to 92" in normalized
+    assert "concrete snapshot/restore store" in normalized
+    assert "mypy passed over 643 source files" in normalized
+    assert "pytest completed 3,837 tests" in normalized
+    assert "142-test focused regression" in normalized
+    assert "exact test passed in isolation" in normalized
+    assert "subsequent complete gate passed" in normalized
+    assert "PLC9B4c1 candidate code adds the dark POSIX-native" in inventory
+    assert "PLC9B4c1 candidate code adds a dark POSIX-native" in index
 
 
 def test_plc9b2f_windows_backend_is_rooted_and_has_a_nonskippable_native_gate() -> None:

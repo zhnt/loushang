@@ -210,6 +210,18 @@
   all 23 PR checks; retained Linux artifact `9826705491` executed exactly 90
   manifest nodes with zero skips, failures, or errors and contained both B4c0
   compatibility rows.
+  PLC9B4c1 candidate code adds the dark POSIX-native offline cutover owner. An
+  exclusive quiescence Port rejects live fence-aware or pre-fence writers
+  before snapshot or path access. On success the owner pins the configured
+  authority chain, creates and flushes a fresh identity-bound sibling epoch
+  namespace, and uses the single adjacent epoch append as the only atomic root
+  pointer. Precreated namespaces and authority swaps fail closed; exact replay
+  performs no second snapshot or append. The two POSIX cutover rows are
+  executable, so the Linux manifest now collects 92 nodes. Windows cutover,
+  concrete backup/restore, recovery convergence, adoption, and every Product
+  route remain closed. Local `make check-harness` passed Ruff, mypy over 643
+  source files, and 3,837 tests with 23 expected skips; the focused component,
+  manifest, and architecture regression passed all 142 tests.
 
 This inventory distinguishes accepted reusable owners, Product adapters,
 parallel compatibility paths, and missing target boundaries. “Migrate” or

@@ -10,7 +10,9 @@ import stat
 import struct
 import sys
 import zipfile
+from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path
@@ -90,6 +92,13 @@ from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
 )
 from loushang.harness.resources.packages.plugin_lifecycle.phase_evidence import (
     PackageArtifactEvidenceJournal,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
+    PackageEpochCutoverQuiescenceReceiptV1,
+    PackageEpochCutoverSnapshotReceiptV1,
+    PackagePosixEpochCutoverOwner,
+    PackagePosixEpochCutoverRequestV1,
+    PackagePosixEpochCutoverResultV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.posix_materialization import (
     PosixPackageDependencyMaterializationStore,
@@ -278,6 +287,10 @@ IMPLEMENTED_B4C0_EPOCH_ADMISSION_MANIFEST_CASES = (
     "B-COMPAT-EPOCH",
     "B-COMPAT-MIXED",
 )
+IMPLEMENTED_B4C1_POSIX_EPOCH_CUTOVER_MANIFEST_CASES = (
+    "B-COMPAT-CUTOVER-POSIX",
+    "B-COMPAT-PREFENCE-LIVE-POSIX",
+)
 PLANNED_B3E3C_MATERIALIZATION_MANIFEST_CASES: tuple[str, ...] = ()
 PLANNED_B4_COMMIT_ADMISSION_MANIFEST_CASES: tuple[str, ...] = ()
 
@@ -298,6 +311,11 @@ EXECUTABLE_MANIFEST_CASES = (
     + IMPLEMENTED_B4A_COMMIT_ADMISSION_MANIFEST_CASES
     + IMPLEMENTED_B4B_RETENTION_HANDOFF_MANIFEST_CASES
     + IMPLEMENTED_B4C0_EPOCH_ADMISSION_MANIFEST_CASES
+    + (
+        IMPLEMENTED_B4C1_POSIX_EPOCH_CUTOVER_MANIFEST_CASES
+        if os.name == "posix"
+        else ()
+    )
     + (IMPLEMENTED_B3E3C2_WINDOWS_MANIFEST_CASES if os.name == "nt" else ())
 )
 
@@ -1917,6 +1935,116 @@ def _manifest_epoch_admission_fixture(
     )
 
 
+@dataclass
+class _ManifestEpochCutoverCoordination:
+    active_pre_fence_registration_ids: tuple[str, ...] = ()
+    calls: int = 0
+
+    def __post_init__(self) -> None:
+        self._lock = Lock()
+
+    @contextmanager
+    def exclusive_quiescence(
+        self,
+        *,
+        store_id: str,
+    ) -> Iterator[PackageEpochCutoverQuiescenceReceiptV1]:
+        with self._lock:
+            self.calls += 1
+            yield PackageEpochCutoverQuiescenceReceiptV1.create(
+                store_id=store_id,
+                owner_revision=1,
+                active_runtime_lease_ids=(),
+                active_pre_fence_registration_ids=(
+                    self.active_pre_fence_registration_ids
+                ),
+            )
+
+
+@dataclass
+class _ManifestEpochCutoverSnapshots:
+    calls: int = 0
+
+    def capture(
+        self,
+        *,
+        store_id: str,
+        legacy_root_identity: str,
+        quiescence_receipt_id: str,
+    ) -> PackageEpochCutoverSnapshotReceiptV1:
+        self.calls += 1
+        return PackageEpochCutoverSnapshotReceiptV1.create(
+            store_id=store_id,
+            legacy_root_identity=legacy_root_identity,
+            quiescence_receipt_id=quiescence_receipt_id,
+            snapshot_id=sha256(
+                f"{store_id}:{legacy_root_identity}:manifest".encode()
+            ).hexdigest(),
+            snapshot_revision=1,
+            entry_count=2,
+            byte_count=15,
+        )
+
+
+@dataclass(frozen=True)
+class _ManifestEpochCutoverFixture:
+    owner: PackagePosixEpochCutoverOwner
+    request: PackagePosixEpochCutoverRequestV1
+    journal: PackageEpochFenceJournal
+    coordination: _ManifestEpochCutoverCoordination
+    snapshots: _ManifestEpochCutoverSnapshots
+    authority: Path
+    legacy: Path
+    epochs: Path
+
+
+def _manifest_posix_epoch_cutover_fixture(
+    tmp_path: Path,
+    *,
+    pre_fence_live: bool,
+) -> _ManifestEpochCutoverFixture:
+    assert os.name == "posix"
+    authority = tmp_path / "manifest-package-epoch-authority"
+    legacy = authority / "legacy"
+    epochs = authority / "epochs"
+    authority.mkdir(mode=0o700)
+    legacy.mkdir(mode=0o700)
+    epochs.mkdir(mode=0o700)
+    (legacy / "state.json").write_bytes(b'{"legacy":1}\n')
+    coordination = _ManifestEpochCutoverCoordination(
+        active_pre_fence_registration_ids=(
+            ("f" * 64,) if pre_fence_live else ()
+        )
+    )
+    snapshots = _ManifestEpochCutoverSnapshots()
+    journal = PackageEpochFenceJournal(tmp_path / "manifest-package-epoch.jsonl")
+    owner = PackagePosixEpochCutoverOwner(
+        authority,
+        store_id="package-store:manifest-posix-cutover",
+        epoch_journal=journal,
+        coordination=coordination,
+        snapshots=snapshots,
+    )
+    request = PackagePosixEpochCutoverRequestV1.create(
+        store_id="package-store:manifest-posix-cutover",
+        prior_fence=None,
+        expected_legacy_root_identity=owner.current_root_identity(),
+        namespace_id="e" * 64,
+        minimum_runtime_version="2.0.0",
+        minimum_runtime_protocol_epoch=2,
+    )
+    return _ManifestEpochCutoverFixture(
+        owner=owner,
+        request=request,
+        journal=journal,
+        coordination=coordination,
+        snapshots=snapshots,
+        authority=authority,
+        legacy=legacy,
+        epochs=epochs,
+    )
+
+
 @pytest.mark.parametrize("case_id", EXECUTABLE_MANIFEST_CASES)
 def test_manifest_case(case_id: str, tmp_path: Path) -> None:
     if case_id == "B-CLASS-PLUGIN":
@@ -2258,6 +2386,71 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
         )
         serialized = repr((result, fixture.journal.records())).lower()
         for forbidden in ("password", "credential", "token", "reopen", "handle"):
+            assert forbidden not in serialized
+        assert not (tmp_path / "binding.json").exists()
+        assert not (tmp_path / "desired.json").exists()
+    elif case_id in IMPLEMENTED_B4C1_POSIX_EPOCH_CUTOVER_MANIFEST_CASES:
+        assert os.name == "posix"
+        pre_fence_live = case_id == "B-COMPAT-PREFENCE-LIVE-POSIX"
+        fixture = _manifest_posix_epoch_cutover_fixture(
+            tmp_path,
+            pre_fence_live=pre_fence_live,
+        )
+        legacy_before = (fixture.legacy / "state.json").read_bytes()
+
+        result = fixture.owner.cutover(fixture.request)
+
+        if pre_fence_live:
+            assert result.disposition == "rejected"
+            assert result.code == "package_runtime_epoch_unsupported"
+            assert result.failure is not None
+            assert result.failure.barrier == "pre_fence"
+            assert result.failure.operator_action == "upgrade_runtime"
+            assert result.failure.evidence_ref == "f" * 64
+            assert result.fence is None
+            assert result.switch_receipt is None
+            assert fixture.snapshots.calls == 0
+            assert fixture.journal.records() == ()
+            assert tuple(fixture.epochs.iterdir()) == ()
+        else:
+            assert result.disposition == "fenced"
+            assert result.code == "ok"
+            assert result.failure is None
+            assert result.fence is not None
+            assert result.switch_receipt is not None
+            assert result.fence.request.namespace_id == fixture.request.namespace_id
+            assert result.fence.request.root_switch_receipt_id == (
+                result.switch_receipt.switch_receipt_id
+            )
+            assert result.fence == fixture.journal.current(fixture.request.store_id)
+            assert len(fixture.journal.records()) == 1
+            assert fixture.snapshots.calls == 1
+            replay = fixture.owner.cutover(fixture.request)
+            assert replay == result
+            assert fixture.coordination.calls == 1
+            assert fixture.snapshots.calls == 1
+            assert (fixture.epochs / fixture.request.namespace_id).is_dir()
+            assert not (fixture.authority / "active-root").exists()
+            detached = tmp_path / "manifest-package-epoch-detached"
+            fixture.authority.rename(detached)
+            detached.rename(fixture.authority)
+            detached_epoch = tmp_path / "manifest-detached-epoch"
+            (fixture.epochs / fixture.request.namespace_id).rename(detached_epoch)
+            detached_epoch.rmdir()
+        assert fixture.coordination.calls == 1
+        assert (fixture.legacy / "state.json").read_bytes() == legacy_before
+        assert PackagePosixEpochCutoverRequestV1.from_dict(
+            fixture.request.to_dict()
+        ) == fixture.request
+        assert PackagePosixEpochCutoverResultV1.from_dict(result.to_dict()) == result
+        serialized = repr((fixture.request, result)).lower()
+        for forbidden in (
+            "password",
+            "credential",
+            "token",
+            "handle",
+            str(tmp_path).lower(),
+        ):
             assert forbidden not in serialized
         assert not (tmp_path / "binding.json").exists()
         assert not (tmp_path / "desired.json").exists()
