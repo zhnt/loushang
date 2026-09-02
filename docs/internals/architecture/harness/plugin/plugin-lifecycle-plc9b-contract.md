@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.4c2.
+- Contract version: PLC9B.4c3a-candidate.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -104,11 +104,13 @@
   mixed-active-epoch refusal executable without creating a namespace or
   switching a root. B4c1 accepted code adds a POSIX-native offline cutover
   owner over exclusive quiescence and snapshot Ports. It makes the POSIX
-  cutover and pre-fence-live refusal rows executable. B4c2 candidate code adds
+  cutover and pre-fence-live refusal rows executable. B4c2 accepted code adds
   the symmetric Windows rooted-handle owner and makes the corresponding two
-  Windows rows executable only in their mandatory native gate. Offline
-  restore, recovery convergence, public routing, and concrete desired-state
-  composition remain closed.
+  Windows rows executable only in their mandatory native gate. B4c3a candidate
+  code freezes the pathless, genesis-bound offline-restore protocol over
+  complete pre-B snapshot evidence, isolated materialization, and exclusive
+  old-runtime activation Ports. Native restore, adoption, recovery convergence,
+  public routing, and concrete desired-state composition remain closed.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -1491,6 +1493,67 @@ prove the native gate. The artifact digest matched the downloaded archive;
 B4c2 component cases, and `windows-shell-plc9b-manifest.xml` executed exactly
 14 nodes, including `B-COMPAT-CUTOVER-WINDOWS` and
 `B-COMPAT-PREFENCE-LIVE-WINDOWS`, with zero skips, failures, or errors.
+
+## PLC9B4c3a Candidate Offline Restore Protocol
+
+`PackageOfflineRestoreOwner` is a dark, pathless coordinator for the only
+supported pre-fence recovery: restore the exact complete pre-B backup into an
+isolated root and activate one exclusive old runtime. The request binds the
+current B fence/root, the immutable genesis fence, the genesis snapshot
+receipt, a complete snapshot-evidence fingerprint, the isolated namespace,
+and the requested legacy runtime version. A later B snapshot cannot be
+substituted for the genesis backup, and a stale current fence rejects before
+snapshot access or materialization.
+
+The owner revalidates the bound genesis/current fence exactly three times,
+all while holding one exclusive quiescence scope: before reading snapshot
+evidence, after materialization and before activation, and after activation
+before returning success. A lock-free preliminary read would only optimize a
+stale request; it adds no safety guarantee, so the protocol deliberately omits
+it.
+
+`PackageOfflineRestoreSnapshotEvidenceV1` does not reinterpret the opaque B4c1
+snapshot identifier as a content hash. It adds a separate exact tree digest,
+state-manifest digest, and a closed coverage tuple for store bytes, Source
+configuration, lock and binding history, Desired, Instance, enablement, the
+legacy root pointer, and the pre-B fence record. The trusted snapshot-evidence
+Port must return that exact record under the same exclusive quiescence held by
+cutover. Missing, partial, extended, cross-store, or substituted evidence fails
+closed.
+
+The materialization Port may create only an isolated restore namespace. Its
+strict receipt proves the exact snapshot/tree/state identities,
+`legacy_snapshot_exact`, and `b_namespace_unreachable`; it returns no path or
+native handle. The activation Port accepts only that receipt and returns an
+exclusive old-runtime instance/lease bound to the same restored-root identity
+and version. Exact replay must return the same receipts without a second
+physical restore or activation. If the epoch changes after materialization or
+activation, the owner deactivates the issued runtime when present, discards
+only the exact isolated tree, and returns `package_offline_restore_stale`.
+Unprovable cleanup becomes `package_offline_restore_cleanup_failed` rather than
+leaving a nominal success.
+
+The owner reads the epoch chain but has no append capability and never writes
+the epoch, lifecycle, attempt, handoff, cleanup, Desired, binding, Instance, or
+enablement journals. Its failure/result records are strict, versioned, bounded,
+and credential-free. It remains absent from the Package facade, author SDK,
+CLI, RPC, Session, startup, Product adapters, and public plugin-management
+surface.
+
+B4c3a deliberately supplies no POSIX or Windows filesystem materializer and no
+legacy process launcher. Therefore `B-COMPAT-OFFLINE-RESTORE-POSIX`,
+`B-COMPAT-OFFLINE-RESTORE-WINDOWS`, and all five `B-COMPAT-ADOPT*` rows remain
+planned. The native rows move only after their corresponding rooted backend
+executes without skips in its mandatory platform CI; adoption still requires
+authenticated reacquisition and the complete B transaction rather than a
+trust import. The component suite currently covers success/replay, active
+writer refusal before snapshot access, stale-fence refusal, snapshot
+substitution, fence drift cleanup, activation mismatch cleanup, 16-way exact
+convergence, explicit post-activation fence drift cleanup, and strict wire
+rejection. Local `make check-harness` passed Ruff, mypy over 645 source files,
+and 3,846 tests with 33 expected skips. The focused component and architecture
+gate passed 50 tests; the component, retained 92-row Linux manifest, and
+architecture regression passed all 142 tests.
 
 ## First Principles
 
