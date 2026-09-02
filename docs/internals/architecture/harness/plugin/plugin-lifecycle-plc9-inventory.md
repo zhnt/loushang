@@ -323,12 +323,13 @@
   committed-set effects. This promotes Linux native node 97; only the
   every-precommit crash row remains closed.
   PLC9B4c4g candidate evidence exercises every durable pre-commit adoption
-  phase with both caller recovery of the same active attempt and independent
-  supervisor interruption projection. Recovery converges on one exact receipt
-  without repeated Source, pin, staging, settlement, or committed-set effects;
-  interruption appends one exact retryable failure and replay appends nothing.
-  This promotes Linux native node 98 and makes all five adoption rows
-  executable and nonskippable in the retained Linux gate.
+  phase by reconstructing the complete Package owner graph over durable
+  evidence. Recovery resumes the same active attempt and converges on one exact
+  receipt without repeated Source, pin, staging, settlement, or committed-set
+  effects. It does not fabricate an interruption event for a dead process;
+  explicit supervisor interruption and greater-epoch retry stay separate. This
+  promotes Linux native node 98 and makes all five adoption rows executable and
+  nonskippable in the retained Linux gate.
 
 This inventory distinguishes accepted reusable owners, Product adapters,
 parallel compatibility paths, and missing target boundaries. “Migrate” or

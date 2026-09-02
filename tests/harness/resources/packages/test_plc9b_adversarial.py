@@ -797,10 +797,29 @@ class _StableClassificationRecheck:
 
 
 @dataclass
-class _TransactionPinRetentionOwner:
+class _TransactionPinRetentionState:
     receipts: dict[str, PackageTransactionPinReceiptV1] = field(default_factory=dict)
     calls: list[PackageTransactionPinRequestV1] = field(default_factory=list)
     physical_acquisitions: int = 0
+
+
+@dataclass
+class _TransactionPinRetentionOwner:
+    state: _TransactionPinRetentionState = field(
+        default_factory=_TransactionPinRetentionState
+    )
+
+    @property
+    def receipts(self) -> dict[str, PackageTransactionPinReceiptV1]:
+        return self.state.receipts
+
+    @property
+    def calls(self) -> list[PackageTransactionPinRequestV1]:
+        return self.state.calls
+
+    @property
+    def physical_acquisitions(self) -> int:
+        return self.state.physical_acquisitions
 
     def acquire(
         self,
@@ -821,7 +840,7 @@ class _TransactionPinRetentionOwner:
             lease_revision=1,
         )
         self.receipts[request.operation_id] = receipt
-        self.physical_acquisitions += 1
+        self.state.physical_acquisitions += 1
         return receipt
 
     def release(
@@ -881,15 +900,26 @@ class _CrashAfterPhasePackageOwner(PackageLifecycleOwner):
 
 
 @dataclass
-class _ManifestRootTargetAuthority:
+class _ManifestRootTargetAuthorityState:
     calls: int = 0
+
+
+@dataclass
+class _ManifestRootTargetAuthority:
+    state: _ManifestRootTargetAuthorityState = field(
+        default_factory=_ManifestRootTargetAuthorityState
+    )
+
+    @property
+    def calls(self) -> int:
+        return self.state.calls
 
     def issue_target(
         self,
         request: PackageLifecycleRequestV1,
         _classification: PluginBoundPackageClassificationV1,
     ) -> PackagePluginRootTargetV1:
-        self.calls += 1
+        self.state.calls += 1
         return PackagePluginRootTargetV1.create(
             operation_id=request.operation_id,
             request_fingerprint=request.request_fingerprint,
@@ -967,14 +997,29 @@ class _ManifestRootStagingOwner:
 
 
 @dataclass
+class _ManifestNativeRootStagingState:
+    calls: int = 0
+    same_receipt: bool = False
+
+
+@dataclass
 class _ManifestNativeRootStagingOwner:
     store: (
         PosixPackagePluginRootMaterializationStore
         | WindowsPackagePluginRootMaterializationStore
     )
     verify_reuse: bool = False
-    same_receipt: bool = False
-    calls: int = 0
+    state: _ManifestNativeRootStagingState = field(
+        default_factory=_ManifestNativeRootStagingState
+    )
+
+    @property
+    def calls(self) -> int:
+        return self.state.calls
+
+    @property
+    def same_receipt(self) -> bool:
+        return self.state.same_receipt
 
     def authorize_adoption(
         self,
@@ -994,12 +1039,12 @@ class _ManifestNativeRootStagingOwner:
         request: PackageArtifactStagingRequestV1,
         candidate: VerifiedWheelCandidate,
     ) -> PackageArtifactStagingReceiptV1:
-        self.calls += 1
+        self.state.calls += 1
         receipt = self.store.stage_root(request, candidate)
         if self.verify_reuse:
             replay = self.store.stage_root(request, candidate)
             assert replay == receipt
-            self.same_receipt = True
+            self.state.same_receipt = True
         return receipt
 
 
@@ -2464,6 +2509,7 @@ class _ManifestAdoptionLegacyStateOwner:
 class _ManifestNativeAdoptionFixture:
     owner: PackageLegacyAdoptionOwner
     request: PackageLegacyAdoptionRequestV1
+    execution: PackageClosureExecutionRequestV2
     kernel: PackageLifecycleOwner
     lifecycle_journal: PackageLifecycleJournal
     evidence_journal: PackageArtifactEvidenceJournal
@@ -2544,11 +2590,13 @@ class _ManifestCrashAfterCommittedCommitOwner:
     owner: PackageCommitLifecycleOwner
     crashed: bool = False
     calls: int = 0
+    pre_crash_receipt: PackagePublicationReceiptV1 | None = None
 
     def commit(self, operation_id: str) -> PackagePublicationReceiptV1:
         self.calls += 1
         receipt = self.owner.commit(operation_id)
         if not self.crashed:
+            self.pre_crash_receipt = receipt
             self.crashed = True
             raise _ManifestCrashAfterCommitted
         return receipt
@@ -2755,6 +2803,7 @@ def _manifest_native_adoption_fixture(
     return _ManifestNativeAdoptionFixture(
         owner=owner,
         request=adoption_request,
+        execution=execution,
         kernel=kernel,
         lifecycle_journal=lifecycle_journal,
         evidence_journal=evidence_journal,
@@ -2779,6 +2828,170 @@ def _manifest_native_adoption_fixture(
         coordination=coordination,
         commit=commit,
         secret=secret,
+    )
+
+
+def _restart_manifest_native_adoption_fixture(
+    fixture: _ManifestNativeAdoptionFixture,
+) -> _ManifestNativeAdoptionFixture:
+    """Rebuild the complete Package owner graph over durable local evidence."""
+
+    root = fixture.lifecycle_journal.path.parent
+    lifecycle_journal = PackageLifecycleJournal(fixture.lifecycle_journal.path)
+    kernel = PackageLifecycleOwner(
+        journal=lifecycle_journal,
+        classification_authority=_Authority(_facts("explicit_plugin_intent")),
+        enabled=True,
+    )
+    quarantine = PackageQuarantineStore(fixture.quarantine.root)
+    evidence_journal = PackageArtifactEvidenceJournal(fixture.evidence_journal.path)
+    cleanup_journal = PackageQuarantineCleanupJournal(
+        root / "package-quarantine-cleanup.jsonl"
+    )
+    cleanup_owner = PackageQuarantineCleanupOwner(
+        journal=cleanup_journal,
+        store=quarantine,
+    )
+    artifact_owner = PackageArtifactLifecycleOwner(
+        kernel=kernel,
+        classification_recheck=_StableClassificationRecheck(),
+        acquisition_owner=PackageAcquisitionOwner(
+            source_authority=fixture.source_authority,
+            quarantine_store=quarantine,
+            clock=fixture.source_authority.clock,
+        ),
+        evidence_journal=evidence_journal,
+        cleanup_owner=cleanup_owner,
+        wheel_verifier=PackageWheelVerifier(),
+        acquisition_budgets=PackageAcquisitionBudgetV1(
+            max_transport_bytes=256 * 1024,
+            max_requests=1,
+            max_redirects=1,
+            max_wall_time_ms=1000,
+        ),
+        inspection_budgets=PackageInspectionBudgetV1(),
+        supported_tags=frozenset({"py3-none-any"}),
+    )
+    resolution_journal = PackageClosureResolutionJournal(
+        fixture.resolution_journal.path
+    )
+    recursive_owner = PackageRecursiveClosureOwner(
+        resolver=fixture.resolver,
+        acquisition_owner=artifact_owner._acquisition_owner,
+        evidence_journal=evidence_journal,
+        wheel_verifier=artifact_owner._wheel_verifier,
+        closure_verifier=PackageClosureVerifier(),
+        acquisition_budgets=artifact_owner._acquisition_budgets,
+        inspection_budgets=artifact_owner._inspection_budgets,
+        cleanup_owner=artifact_owner._cleanup_owner,
+        selection_journal=resolution_journal,
+    )
+    closure_owner = PackageClosureLifecycleOwner(
+        kernel=kernel,
+        artifact_owner=artifact_owner,
+        closure_builder=recursive_owner,
+        resolution_journal=resolution_journal,
+    )
+    retention = _TransactionPinRetentionOwner(fixture.retention.state)
+    pin_journal = PackageTransactionPinJournal(fixture.pin_journal.path)
+    pin_owner = PackageTransactionPinLifecycleOwner(
+        kernel=kernel,
+        closure_plans=resolution_journal,
+        retention=retention,
+        pin_journal=pin_journal,
+    )
+    root_settlements = PackageStoreSettlementJournal(
+        fixture.root_settlements.path
+    )
+    dependency_settlements = PackageStoreSettlementJournal(
+        root / "manifest-adoption-dependency-settlements.jsonl"
+    )
+    root_staging = _ManifestNativeRootStagingOwner(
+        PosixPackagePluginRootMaterializationStore(
+            fixture.current_root,
+            store_identity="manifest-plugin-revision-store",
+            package_store_id=fixture.request.store_id,
+            settlement_journal=root_settlements,
+        ),
+        state=fixture.root_staging.state,
+    )
+    root_targets = _ManifestRootTargetAuthority(fixture.root_targets.state)
+    staging_journal = PackageArtifactStagingJournal(fixture.staging_journal.path)
+    committed_sets = PackageCommittedSetJournal(fixture.committed_sets.path)
+    staging_owner = PackageStagingSetLifecycleOwner(
+        kernel=kernel,
+        classification_recheck=_StableClassificationRecheck(),
+        closure_plans=resolution_journal,
+        pin_journal=pin_journal,
+        root_targets=root_targets,
+        dependency_staging=PosixPackageDependencyMaterializationStore(
+            root / "adoption-dependency-store",
+            store_identity="manifest-dependency-store",
+            settlement_journal=dependency_settlements,
+        ),
+        root_staging=root_staging,
+        staging_journal=staging_journal,
+        committed_sets=committed_sets,
+    )
+    commit = PackageCommitLifecycleOwner(
+        kernel=kernel,
+        committed_sets=committed_sets,
+        pin_journal=pin_journal,
+    )
+    transaction = PackageLegacyAdoptionTransactionAdapter(
+        kernel=kernel,
+        execution=fixture.execution,
+        recovery_identity="manifest-legacy-adoption-recovery",
+        closure=closure_owner,
+        pins=pin_owner,
+        staging=staging_owner,
+        commit=commit,
+    )
+    fence_journal = PackageEpochFenceJournal(fixture.fence_journal.path)
+    fence_reader = _ManifestAdoptionFenceReader(fence_journal)
+    legacy_state = _ManifestAdoptionLegacyStateOwner(
+        root=fixture.legacy_state.root,
+        store_id=fixture.legacy_state.store_id,
+        legacy_root_identity=fixture.legacy_state.legacy_root_identity,
+    )
+    coordination = _ManifestAdoptionCoordination()
+    owner = PackageLegacyAdoptionOwner(
+        store_id=fixture.request.store_id,
+        fences=fence_reader,
+        legacy_state=legacy_state,
+        transaction=transaction,
+        coordination=coordination,
+    )
+    return _ManifestNativeAdoptionFixture(
+        owner=owner,
+        request=fixture.request,
+        execution=fixture.execution,
+        kernel=kernel,
+        lifecycle_journal=lifecycle_journal,
+        evidence_journal=evidence_journal,
+        resolution_journal=resolution_journal,
+        pin_journal=pin_journal,
+        staging_journal=staging_journal,
+        committed_sets=committed_sets,
+        fence_journal=fence_journal,
+        fence_reader=fence_reader,
+        legacy_state=legacy_state,
+        source_authority=fixture.source_authority,
+        quarantine=quarantine,
+        resolver=fixture.resolver,
+        retention=retention,
+        root_targets=root_targets,
+        root_staging=root_staging,
+        root_settlements=root_settlements,
+        current_root=fixture.current_root,
+        product_files=fixture.product_files,
+        product_projections=_ManifestProductProjectionOwner(
+            paths=fixture.product_projections.paths
+        ),
+        product_projection_before=fixture.product_projection_before,
+        coordination=coordination,
+        commit=commit,
+        secret=fixture.secret,
     )
 
 
@@ -3039,6 +3252,11 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
             assert crashed is not None
             assert (crashed.phase, crashed.disposition) == (phase, "active")
 
+            prior_owner = fixture.owner
+            prior_kernel = fixture.kernel
+            fixture = _restart_manifest_native_adoption_fixture(fixture)
+            assert fixture.owner is not prior_owner
+            assert fixture.kernel is not prior_kernel
             recovered = fixture.owner.adopt(fixture.request)
             after_recovery = (
                 fixture.lifecycle_journal.records(),
@@ -3083,55 +3301,6 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
                 fixture.root_settlements.records(),
             )
             _assert_manifest_secret_absent(recovery_root, fixture.secret)
-
-            interrupted_root = tmp_path / f"interrupt-{phase}"
-            interrupted_root.mkdir(mode=0o700)
-            interrupted_fixture = _manifest_native_adoption_fixture(
-                interrupted_root,
-                case_id=case_id,
-                crash_after_phase=phase,
-            )
-            with pytest.raises(_ManifestCrashEdge, match=phase):
-                interrupted_fixture.owner.adopt(interrupted_fixture.request)
-            before_interrupt = interrupted_fixture.kernel.status(
-                interrupted_fixture.request.operation_id
-            )
-            assert before_interrupt is not None
-            before_interrupt_records = (
-                interrupted_fixture.lifecycle_journal.records()
-            )
-            interrupted = interrupted_fixture.kernel.interrupt(
-                before_interrupt.operation_id,
-                expected_phase=before_interrupt.phase,
-                expected_journal_revision=before_interrupt.journal_revision,
-                expected_attempt_epoch=before_interrupt.attempt_epoch,
-            )
-            after_interrupt = interrupted_fixture.lifecycle_journal.records()
-            assert len(after_interrupt) == len(before_interrupt_records) + 1
-            interrupt_replay = interrupted_fixture.kernel.interrupt(
-                before_interrupt.operation_id,
-                expected_phase=before_interrupt.phase,
-                expected_journal_revision=before_interrupt.journal_revision,
-                expected_attempt_epoch=before_interrupt.attempt_epoch,
-            )
-            assert interrupt_replay == interrupted
-            assert interrupted_fixture.lifecycle_journal.records() == after_interrupt
-            assert interrupted.phase == phase
-            assert interrupted.disposition == "retryable_failure"
-            assert interrupted.failure is not None
-            assert interrupted.failure.code == "package_operation_interrupted"
-            assert interrupted.failure.stage == phase
-            assert interrupted_fixture.product_projections.capture() == (
-                interrupted_fixture.product_projection_before
-            )
-            assert interrupted_fixture.legacy_state.capture().evidence_id == (
-                interrupted_fixture.request.legacy_state_evidence_id
-            )
-            assert interrupted_fixture.quarantine.total_residue_bytes() <= 256 * 1024
-            _assert_manifest_secret_absent(
-                interrupted_root,
-                interrupted_fixture.secret,
-            )
     elif case_id in IMPLEMENTED_B4C4F_LINUX_ADOPTION_COMMITTED_CRASH_MANIFEST_CASES:
         assert sys.platform.startswith("linux")
         fixture = _manifest_native_adoption_fixture(
@@ -3144,6 +3313,9 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
         committed = fixture.kernel.status(fixture.request.operation_id)
         assert committed is not None
         assert (committed.phase, committed.disposition) == ("committed", "committed")
+        assert isinstance(fixture.commit, _ManifestCrashAfterCommittedCommitOwner)
+        crashed_commit = fixture.commit
+        assert crashed_commit.pre_crash_receipt is not None
         after_crash = (
             fixture.lifecycle_journal.records(),
             fixture.evidence_journal.records(),
@@ -3155,6 +3327,11 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
             fixture.root_settlements.records(),
         )
 
+        prior_owner = fixture.owner
+        prior_kernel = fixture.kernel
+        fixture = _restart_manifest_native_adoption_fixture(fixture)
+        assert fixture.owner is not prior_owner
+        assert fixture.kernel is not prior_kernel
         recovered = fixture.owner.adopt(fixture.request)
         replay = fixture.owner.adopt(fixture.request)
 
@@ -3162,6 +3339,7 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
         assert recovered.disposition == "adopted"
         assert recovered.code == "ok"
         assert recovered.receipt is not None
+        assert recovered.receipt.publication == crashed_commit.pre_crash_receipt
         assert recovered.receipt.publication.committed_set.root_ref.installation_id == (
             "manifest-installation"
         )
@@ -3169,12 +3347,14 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
         assert fixture.source_authority.stream is not None
         assert fixture.source_authority.stream.requests_started == 1
         assert fixture.retention.physical_acquisitions == 1
+        pin = fixture.pin_journal.current_for_operation(fixture.request.operation_id)
+        assert pin is not None and pin.state == "acquired"
+        assert fixture.retention.receipts[fixture.request.operation_id] == pin
         assert fixture.root_staging.calls == 1
         assert len(fixture.staging_journal.records()) == 1
         assert len(fixture.committed_sets.records()) == 1
         assert len(fixture.root_settlements.records()) == 1
-        assert isinstance(fixture.commit, _ManifestCrashAfterCommittedCommitOwner)
-        assert fixture.commit.calls == 3
+        assert crashed_commit.calls == 1
         assert fixture.legacy_state.capture().evidence_id == (
             fixture.request.legacy_state_evidence_id
         )

@@ -1938,9 +1938,9 @@ def test_plc9b_manifest_covers_every_route_and_native_platform_evidence() -> Non
         "B-COMPAT-ADOPT-CRASH": (
             "posix-native",
             "each_precommit_phase",
-            "adoption_crash_and_retry",
-            "package_operation_interrupted",
-            "retryable_failure@prior_phase",
+            "adoption_process_crash_and_resume",
+            "ok",
+            "committed@committed",
             unchanged | {"same_receipt", "bounded_residue", "no_skip"},
             "harness-quality.yml#plc9b-linux-native",
         ),
@@ -4821,8 +4821,11 @@ def test_plc9b4c4f_crash_after_committed_replays_exact_receipt() -> None:
         "_ManifestCrashAfterCommittedCommitOwner",
         "with pytest.raises(_ManifestCrashAfterCommitted)",
         'assert (committed.phase, committed.disposition) == ("committed", "committed")',
+        "_restart_manifest_native_adoption_fixture(fixture)",
+        "crashed_commit.pre_crash_receipt is not None",
+        "recovered.receipt.publication == crashed_commit.pre_crash_receipt",
+        'pin is not None and pin.state == "acquired"',
         "assert recovered == replay",
-        "assert fixture.commit.calls == 3",
         "assert after_crash == (",
     ):
         assert evidence in tests
@@ -4833,7 +4836,7 @@ def test_plc9b4c4f_crash_after_committed_replays_exact_receipt() -> None:
     assert "Linux native node 97" in " ".join(index.split())
 
 
-def test_plc9b4c4g_every_precommit_adoption_phase_recovers_and_interrupts() -> None:
+def test_plc9b4c4g_every_precommit_adoption_phase_rebuilds_and_recovers() -> None:
     contract = _source(CONTRACT)
     inventory = _source(INVENTORY)
     index = _source(INDEX)
@@ -4844,8 +4847,9 @@ def test_plc9b4c4g_every_precommit_adoption_phase_recovers_and_interrupts() -> N
     assert row["status"] == "implemented"
     assert row["platform"] == "posix-native"
     assert row["barrier"] == "each_precommit_phase"
-    assert row["code"] == "package_operation_interrupted"
-    assert row["disposition"] == "retryable_failure@prior_phase"
+    assert row["fixture"] == "adoption_process_crash_and_resume"
+    assert row["code"] == "ok"
+    assert row["disposition"] == "committed@committed"
     assert {
         "same_receipt",
         "bounded_residue",
@@ -4874,11 +4878,12 @@ def test_plc9b4c4g_every_precommit_adoption_phase_recovers_and_interrupts() -> N
         "IMPLEMENTED_B4C4G_LINUX_ADOPTION_PRECOMMIT_CRASH_MANIFEST_CASES",
         "ADOPTION_PRECOMMIT_CRASH_PHASES",
         "with pytest.raises(_ManifestCrashEdge, match=phase)",
+        'assert (crashed.phase, crashed.disposition) == (phase, "active")',
+        "_restart_manifest_native_adoption_fixture(fixture)",
+        "assert fixture.owner is not prior_owner",
+        "assert fixture.kernel is not prior_kernel",
         "assert recovered == replay, phase",
         "fixture.source_authority.authorize_calls == 1",
-        "len(after_interrupt) == len(before_interrupt_records) + 1",
-        "interrupted_fixture.lifecycle_journal.records() == after_interrupt",
-        'interrupted.failure.code == "package_operation_interrupted"',
         "fixture.product_projections.capture()",
         "_assert_manifest_secret_absent(",
     ):
@@ -4887,8 +4892,9 @@ def test_plc9b4c4g_every_precommit_adoption_phase_recovers_and_interrupts() -> N
     normalized = " ".join(contract.split())
     assert "Contract version: PLC9B.4c4g-candidate." in contract
     assert "PLC9B4c4g Candidate Every-Precommit Crash Evidence" in normalized
-    assert "same durable active attempt" in normalized
-    assert "`interrupt` appends exactly one" in normalized
+    assert "complete Package kernel, artifact/closure, pin, staging," in normalized
+    assert "same still-active attempt" in normalized
+    assert "does not synthesize `package_operation_interrupted`" in normalized
     assert "Linux manifest node 98" in normalized
     assert "all five adoption rows" in " ".join(inventory.split()).lower()
     assert "Linux native node 98" in " ".join(inventory.split())

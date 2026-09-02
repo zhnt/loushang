@@ -1905,9 +1905,12 @@ Retained Linux CI evidence is still required before accepting this candidate.
 The Linux-native adoption fixture now injects a one-shot crash immediately
 after the production commit owner has durably advanced the lifecycle to
 `committed` and constructed its publication receipt. The first caller receives
-no receipt. Restart and a further replay both reauthorize the exact durable
-root target and native Store, then reconstruct the same adoption and
-publication receipt from committed-set and transaction-pin evidence.
+no receipt. A completely rebuilt Package owner graph and a further replay both
+reauthorize the exact durable root target and native Store, then reconstruct
+the same adoption and publication receipt from committed-set and
+transaction-pin evidence. The fixture retains the pre-crash publication
+receipt and requires recovery to reproduce it exactly; it also reads the
+durable transaction pin and requires it to remain `acquired`.
 
 The crash edge executes Source acquisition, physical pin acquisition, native
 root settlement, staging evidence, and committed-set publication exactly once.
@@ -1927,21 +1930,24 @@ The final adoption compatibility row now injects a one-shot process-boundary
 failure immediately after each durable pre-commit lifecycle phase:
 `acquiring`, `acquired`, `inspecting`, `extracted`, `resolving_closure`,
 `closure_verified`, `transaction_pinned`, `staging`, and `set_published`.
-For each edge, a subsequent caller invocation resumes the same durable active
-attempt and reaches `committed`; a further invocation returns the exact same
-adoption and publication receipt. Source authorization and transfer, physical
-pin acquisition, native root settlement, staging, and committed-set
-publication each occur at most once.
+For each edge, the complete Package kernel, artifact/closure, pin, staging,
+commit, and adoption owner graph is reconstructed over the durable journals
+and native stores. The new graph resumes the same still-active attempt and
+reaches `committed`; a further invocation returns the exact same adoption and
+publication receipt. Source authorization and transfer, physical pin
+acquisition, native root settlement, staging, and committed-set publication
+each occur at most once. Recovery keeps quarantine residue bounded, preserves
+the complete filesystem-recaptured legacy snapshot and all four independent
+Product projections, and leaves no credential in path components, regular
+files, or symlink targets.
 
-An independent fixture at every edge models the supervisor projection of a
-process that does not return: `interrupt` appends exactly one
-`package_operation_interrupted` failure at the prior durable phase and exact
-replay appends nothing. This is deliberately not the lifecycle `retry`
-operation, which creates a new attempt epoch; changing cross-attempt artifact
-ownership is outside this evidence slice. Both recovery and interruption keep
-quarantine residue bounded, preserve the complete filesystem-recaptured legacy
-snapshot and all four independent Product projections, and leave no credential
-in path components, regular files, or symlink targets.
+A process that died cannot durably report its own interruption. Therefore this
+row does not synthesize `package_operation_interrupted` or create a second
+attempt epoch. A supervisor that explicitly abandons a still-active attempt
+uses the separate lifecycle `interrupt` operation; only its later explicit
+`retry` may create a greater fenced attempt. Combining that control action
+with transparent process-crash recovery would either fabricate an event or
+silently weaken attempt fencing.
 
 This promotes `B-COMPAT-ADOPT-CRASH` as Linux manifest node 98. All five
 `B-COMPAT-ADOPT*` rows are now executable and nonskippable in the named Linux
@@ -2514,7 +2520,7 @@ B-COMPAT-OFFLINE-RESTORE-WINDOWS | windows-native | accepted | complete_pre_b_re
 B-COMPAT-ADOPT | posix-native | committed | authenticated_legacy_reacquisition | ok | committed@committed | same_receipt;pin_visible;legacy_snapshot_exact;desired_unchanged;instance_unchanged;binding_unchanged;enablement_unchanged;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ADOPT] | harness-quality.yml#plc9b-linux-native | implemented
 B-COMPAT-ADOPT-UNAUTHORIZED | posix-native | acquiring | legacy_reacquisition_unauthorized | package_source_unauthorized | rejected@acquiring | legacy_snapshot_exact;desired_unchanged;instance_unchanged;binding_unchanged;enablement_unchanged;no_publication;no_peer_fallback;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ADOPT-UNAUTHORIZED] | harness-quality.yml#plc9b-linux-native | implemented
 B-COMPAT-ADOPT-UNAVAILABLE | posix-native | acquiring | registry_network_temporarily_unavailable | package_operation_timed_out | retryable_failure@acquiring | bounded_residue;legacy_snapshot_exact;desired_unchanged;instance_unchanged;binding_unchanged;enablement_unchanged;no_publication;no_extra_network;no_peer_fallback;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ADOPT-UNAVAILABLE] | harness-quality.yml#plc9b-linux-native | implemented
-B-COMPAT-ADOPT-CRASH | posix-native | each_precommit_phase | adoption_crash_and_retry | package_operation_interrupted | retryable_failure@prior_phase | same_receipt;bounded_residue;legacy_snapshot_exact;desired_unchanged;instance_unchanged;binding_unchanged;enablement_unchanged;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ADOPT-CRASH] | harness-quality.yml#plc9b-linux-native | implemented
+B-COMPAT-ADOPT-CRASH | posix-native | each_precommit_phase | adoption_process_crash_and_resume | ok | committed@committed | same_receipt;bounded_residue;legacy_snapshot_exact;desired_unchanged;instance_unchanged;binding_unchanged;enablement_unchanged;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ADOPT-CRASH] | harness-quality.yml#plc9b-linux-native | implemented
 B-COMPAT-ADOPT-CRASH-AFTER-COMMITTED | posix-native | committed | adoption_crash_after_committed_edge | ok | committed@committed | same_receipt;pin_visible;legacy_snapshot_exact;desired_unchanged;instance_unchanged;binding_unchanged;enablement_unchanged;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ADOPT-CRASH-AFTER-COMMITTED] | harness-quality.yml#plc9b-linux-native | implemented
 ```
 <!-- plc9b-adversarial-manifest:end -->
@@ -2584,7 +2590,6 @@ B-COMPAT-CUTOVER-* | epoch | append_once:epoch_fenced_then_no_append
 B-COMPAT-PREFENCE-LIVE-* | none | no_append:unchanged
 B-COMPAT-OFFLINE-RESTORE-* | none | no_append:unchanged
 B-COMPAT-ADOPT-UNAVAILABLE | attempt | append_once:retryable_failure_then_no_append
-B-COMPAT-ADOPT-CRASH | attempt | append_once:retryable_failure_then_no_append
 B-COMPAT-ADOPT-CRASH-AFTER-COMMITTED | none | no_append:unchanged
 default | operation | append_once:response_state_then_no_append
 ```
