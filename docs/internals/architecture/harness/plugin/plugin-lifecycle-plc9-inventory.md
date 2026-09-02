@@ -311,6 +311,12 @@
   `B-COMPAT-ADOPT` is promoted, increasing the Linux native manifest from 93
   to 94 nodes. The four adoption failure/crash rows, Windows restore, recovery
   convergence, and Product routing remain closed pending their own evidence.
+  PLC9B4c4e candidate evidence executes authenticated Source refusal and
+  bounded network unavailability through the same native adoption composition.
+  Exact replay performs no extra network call, pin, staging, settlement, set,
+  or publication effect, while legacy and four independently revisioned Product
+  projections remain exact. The Linux native manifest therefore grows from 94
+  to 96 nodes; the two crash rows remain closed.
 
 This inventory distinguishes accepted reusable owners, Product adapters,
 parallel compatibility paths, and missing target boundaries. “Migrate” or

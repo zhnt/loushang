@@ -267,6 +267,12 @@ Neither may silently override a narrower implemented owner contract.
   `B-COMPAT-ADOPT` row now executes as Linux native node 94; the four
   failure/crash adoption rows, Windows restore, and Product routing remain
   closed pending their own retained evidence.
+  PLC9B4c4e candidate evidence promotes the unauthorized and temporarily
+  unavailable adoption Source paths as Linux native nodes 95 and 96. Both
+  fail or retry at `acquiring`, replay without extra network work, leave no
+  publication or bounded residue, and preserve independent revisioned Product
+  projections plus the complete legacy snapshot. The two crash rows remain
+  closed.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)

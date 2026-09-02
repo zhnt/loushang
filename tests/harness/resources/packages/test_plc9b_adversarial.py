@@ -327,6 +327,10 @@ IMPLEMENTED_B4C3C_LINUX_OFFLINE_RESTORE_MANIFEST_CASES = (
     "B-COMPAT-OFFLINE-RESTORE-POSIX",
 )
 IMPLEMENTED_B4C4D_LINUX_ADOPTION_MANIFEST_CASES = ("B-COMPAT-ADOPT",)
+IMPLEMENTED_B4C4E_LINUX_ADOPTION_FAILURE_MANIFEST_CASES = (
+    "B-COMPAT-ADOPT-UNAUTHORIZED",
+    "B-COMPAT-ADOPT-UNAVAILABLE",
+)
 PLANNED_B3E3C_MATERIALIZATION_MANIFEST_CASES: tuple[str, ...] = ()
 PLANNED_B4_COMMIT_ADMISSION_MANIFEST_CASES: tuple[str, ...] = ()
 
@@ -361,6 +365,11 @@ EXECUTABLE_MANIFEST_CASES = (
     )
     + (
         IMPLEMENTED_B4C4D_LINUX_ADOPTION_MANIFEST_CASES
+        if sys.platform.startswith("linux")
+        else ()
+    )
+    + (
+        IMPLEMENTED_B4C4E_LINUX_ADOPTION_FAILURE_MANIFEST_CASES
         if sys.platform.startswith("linux")
         else ()
     )
@@ -1006,7 +1015,7 @@ class _SourceAuthority:
 
     def authorize(self, request: PackageAcquisitionRequestV1) -> _SourceStream:
         self.authorize_calls += 1
-        if self.case_id == "B-ACQ-AUTH":
+        if self.case_id in {"B-ACQ-AUTH", "B-COMPAT-ADOPT-UNAUTHORIZED"}:
             raise PackageAcquisitionError(
                 f"registry rejected credential {self.secret}",
                 code="package_source_unauthorized",
@@ -1046,7 +1055,7 @@ class _SourceAuthority:
                 "https://mirror-2.example.test/acme.whl",
             )
             expected_digest = sha256(b"").hexdigest()
-        elif self.case_id == "B-ACQ-TIMEOUT":
+        elif self.case_id in {"B-ACQ-TIMEOUT", "B-COMPAT-ADOPT-UNAVAILABLE"}:
             chunks = (b"first", b"second")
             expected_digest = sha256(b"".join(chunks)).hexdigest()
             advance_seconds = 0.006
@@ -1295,7 +1304,11 @@ def _b2_owner(
         journal=cleanup_journal,
         store=store,
     )
-    clock = _Clock() if case_id == "B-ACQ-TIMEOUT" else None
+    clock = (
+        _Clock()
+        if case_id in {"B-ACQ-TIMEOUT", "B-COMPAT-ADOPT-UNAVAILABLE"}
+        else None
+    )
     source_authority = _SourceAuthority(
         case_id=case_id,
         secret=secret,
@@ -1325,7 +1338,11 @@ def _b2_owner(
             max_transport_bytes=(8 if case_id == "B-ACQ-BYTES" else 256 * 1024),
             max_requests=1,
             max_redirects=1,
-            max_wall_time_ms=5 if case_id == "B-ACQ-TIMEOUT" else 1000,
+            max_wall_time_ms=(
+                5
+                if case_id in {"B-ACQ-TIMEOUT", "B-COMPAT-ADOPT-UNAVAILABLE"}
+                else 1000
+            ),
         ),
         inspection_budgets=inspection_budgets or PackageInspectionBudgetV1(),
         supported_tags=supported_tags or frozenset({"py3-none-any"}),
@@ -2420,6 +2437,7 @@ class _ManifestNativeAdoptionFixture:
     fence_reader: _ManifestAdoptionFenceReader
     legacy_state: _ManifestAdoptionLegacyStateOwner
     source_authority: _SourceAuthority
+    quarantine: PackageQuarantineStore
     resolver: _NoDependencyResolver
     retention: _TransactionPinRetentionOwner
     root_targets: _ManifestRootTargetAuthority
@@ -2495,6 +2513,7 @@ def _manifest_native_adoption_fixture(
     *,
     fenced_root_identity: str | None = None,
     adoption_installation_id: str = "manifest-installation",
+    case_id: str = "B-COMPAT-ADOPT",
 ) -> _ManifestNativeAdoptionFixture:
     store_id = "package-store:manifest-adoption"
     secret = "manifest-secret-b-compat-adopt"
@@ -2505,14 +2524,14 @@ def _manifest_native_adoption_fixture(
         lifecycle_journal,
         evidence_journal,
         _cleanup_journal,
-        _quarantine,
+        quarantine,
         source_authority,
         closure_owner,
         resolution_journal,
         resolver,
     ) = _b3d_owner(
         tmp_path,
-        case_id="B-COMPAT-ADOPT",
+        case_id=case_id,
         secret=secret,
     )
     classified = kernel.submit(
@@ -2680,6 +2699,7 @@ def _manifest_native_adoption_fixture(
         fence_reader=fence_reader,
         legacy_state=legacy_state,
         source_authority=source_authority,
+        quarantine=quarantine,
         resolver=resolver,
         retention=retention,
         root_targets=root_targets,
@@ -2849,6 +2869,66 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
         assert status.failure.code == "package_route_unavailable"
         assert journal.records() == ()
         assert not journal.path.exists()
+    elif case_id in IMPLEMENTED_B4C4E_LINUX_ADOPTION_FAILURE_MANIFEST_CASES:
+        assert sys.platform.startswith("linux")
+        fixture = _manifest_native_adoption_fixture(tmp_path, case_id=case_id)
+        legacy_before = fixture.legacy_state.capture()
+        product_before = fixture.product_projections.capture()
+
+        failed = fixture.owner.adopt(fixture.request)
+        after_first = (
+            fixture.lifecycle_journal.records(),
+            fixture.evidence_journal.records(),
+            fixture.resolution_journal.records(),
+            fixture.pin_journal.records(),
+            fixture.staging_journal.records(),
+            fixture.committed_sets.records(),
+            fixture.fence_journal.records(),
+            fixture.root_settlements.records(),
+        )
+        replay = fixture.owner.adopt(fixture.request)
+
+        expected = {
+            "B-COMPAT-ADOPT-UNAUTHORIZED": (
+                "package_source_unauthorized",
+                "rejected",
+            ),
+            "B-COMPAT-ADOPT-UNAVAILABLE": (
+                "package_operation_timed_out",
+                "retryable_failure",
+            ),
+        }[case_id]
+        assert failed == replay
+        assert (failed.code, failed.disposition) == expected
+        assert failed.failure is not None
+        assert failed.failure.stage == "acquiring"
+        assert fixture.source_authority.authorize_calls == 1
+        if fixture.source_authority.stream is not None:
+            assert fixture.source_authority.stream.requests_started == 1
+            assert fixture.source_authority.stream.redirects_started == 0
+        assert fixture.resolver.calls == 0
+        assert fixture.retention.physical_acquisitions == 0
+        assert fixture.pin_journal.records() == ()
+        assert fixture.staging_journal.records() == ()
+        assert fixture.committed_sets.records() == ()
+        assert fixture.root_settlements.records() == ()
+        assert fixture.root_staging.calls == 0
+        assert fixture.quarantine.attempt_names() == ()
+        assert fixture.quarantine.total_residue_bytes() == 0
+        assert fixture.legacy_state.capture() == legacy_before
+        assert fixture.product_projections.capture() == product_before
+        assert after_first == (
+            fixture.lifecycle_journal.records(),
+            fixture.evidence_journal.records(),
+            fixture.resolution_journal.records(),
+            fixture.pin_journal.records(),
+            fixture.staging_journal.records(),
+            fixture.committed_sets.records(),
+            fixture.fence_journal.records(),
+            fixture.root_settlements.records(),
+        )
+        assert fixture.secret not in repr((fixture.request, failed, replay))
+        _assert_manifest_secret_absent(tmp_path, fixture.secret)
     elif case_id in IMPLEMENTED_B4C4D_LINUX_ADOPTION_MANIFEST_CASES:
         assert sys.platform.startswith("linux")
         fixture = _manifest_native_adoption_fixture(tmp_path)
@@ -2891,7 +2971,7 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
         assert fixture.source_authority.stream.requests_started == 1
         assert fixture.source_authority.stream.redirects_started == 0
         assert fixture.resolver.calls == 0
-        assert fixture.root_targets.calls == 1
+        assert fixture.root_targets.calls == 2
         assert fixture.root_staging.calls == 1
         assert len(fixture.staging_journal.records()) == 1
         assert len(fixture.committed_sets.records()) == 1

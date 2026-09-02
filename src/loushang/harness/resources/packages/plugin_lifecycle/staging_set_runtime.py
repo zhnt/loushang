@@ -91,24 +91,6 @@ class PackagePluginRootTargetAuthorityPort(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
-class PackageStagingAdoptionAuthorization:
-    """Ephemeral proof that one adoption request names this staging root."""
-
-    adoption_request_id: str
-    store_id: str
-    current_root_identity: str
-    target: PackagePluginRootTargetV1
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.target, PackagePluginRootTargetV1):
-            raise TypeError("Package Plugin root target is required")
-        if not self.adoption_request_id or not self.store_id:
-            raise ValueError("Package adoption authority identity is required")
-        if len(self.current_root_identity) != 64:
-            raise ValueError("Package adoption root identity is invalid")
-
-
-@dataclass(frozen=True, slots=True)
 class PackageStagingSetExecutionResult:
     status: PackageLifecycleStatusV1
     staging_receipts: tuple[PackageArtifactStagingReceiptV1, ...] = ()
@@ -185,7 +167,7 @@ class PackageStagingSetLifecycleOwner:
         self,
         candidate: VerifiedPackageClosureCandidate,
         *,
-        adoption_authorization: PackageStagingAdoptionAuthorization | None = None,
+        adoption_request: PackageLegacyAdoptionRequestV1 | None = None,
     ) -> PackageStagingSetExecutionResult:
         if not isinstance(candidate, VerifiedPackageClosureCandidate):
             raise TypeError("Verified Package closure candidate is required")
@@ -211,7 +193,7 @@ class PackageStagingSetLifecycleOwner:
             candidate.suspend_for_recovery()
             return self.recover(
                 status.operation_id,
-                adoption_authorization=adoption_authorization,
+                adoption_request=adoption_request,
             )
         durable_plan = self._plan(status.operation_id, status.attempt_epoch)
         if durable_plan != plan or not self._live_candidates_match(candidate, plan):
@@ -234,22 +216,10 @@ class PackageStagingSetLifecycleOwner:
         assert status.classification is not None
         target = (
             self._root_targets.issue_target(request, status.classification)
-            if adoption_authorization is None
-            else adoption_authorization.target
+            if adoption_request is None
+            else self._adoption_target(adoption_request, status, request)
         )
         if not self._target_matches(target, request, status):
-            candidate.suspend_for_recovery()
-            return PackageStagingSetExecutionResult(
-                status=_local_refusal(
-                    status,
-                    code="package_operation_identity_conflict",
-                )
-            )
-        if adoption_authorization is not None and not self._authorization_matches(
-            adoption_authorization,
-            target=target,
-            operation_id=status.operation_id,
-        ):
             candidate.suspend_for_recovery()
             return PackageStagingSetExecutionResult(
                 status=_local_refusal(
@@ -382,7 +352,7 @@ class PackageStagingSetLifecycleOwner:
         self,
         operation_id: str,
         *,
-        adoption_authorization: PackageStagingAdoptionAuthorization | None = None,
+        adoption_request: PackageLegacyAdoptionRequestV1 | None = None,
     ) -> PackageStagingSetExecutionResult:
         """Finish after every staging receipt is durable, without live candidates."""
 
@@ -409,7 +379,7 @@ class PackageStagingSetLifecycleOwner:
         if status.phase == "set_published":
             return self.recover(
                 operation_id,
-                adoption_authorization=adoption_authorization,
+                adoption_request=adoption_request,
             )
         plan = self._plan(operation_id, status.attempt_epoch)
         if plan is None:
@@ -429,11 +399,11 @@ class PackageStagingSetLifecycleOwner:
                 )
             )
         target, receipts = context
-        if adoption_authorization is not None and not self._authorization_matches(
-            adoption_authorization,
-            target=target,
-            operation_id=status.operation_id,
-        ):
+        if adoption_request is not None and self._adoption_target(
+            adoption_request,
+            status,
+            request,
+        ) != target:
             return PackageStagingSetExecutionResult(
                 status=_local_refusal(
                     status,
@@ -463,7 +433,7 @@ class PackageStagingSetLifecycleOwner:
         self,
         operation_id: str,
         *,
-        adoption_authorization: PackageStagingAdoptionAuthorization | None = None,
+        adoption_request: PackageLegacyAdoptionRequestV1 | None = None,
     ) -> PackageStagingSetExecutionResult:
         """Read and revalidate staging/set evidence without repeating effects."""
 
@@ -505,10 +475,10 @@ class PackageStagingSetLifecycleOwner:
                 )
             )
         target, receipts = context
-        if adoption_authorization is not None and not self._authorization_matches(
-            adoption_authorization,
-            target=target,
-            operation_id=status.operation_id,
+        request = self._kernel.journal.request(operation_id)
+        if adoption_request is not None and (
+            request is None
+            or self._adoption_target(adoption_request, status, request) != target
         ):
             return PackageStagingSetExecutionResult(
                 status=_local_refusal(
@@ -565,21 +535,38 @@ class PackageStagingSetLifecycleOwner:
     def authorize_adoption(
         self,
         adoption: PackageLegacyAdoptionRequestV1,
-    ) -> PackageStagingAdoptionAuthorization | None:
+    ) -> bool:
         """Bind adoption identity to this owner's logical and physical root."""
 
         if not isinstance(adoption, PackageLegacyAdoptionRequestV1):
             raise TypeError("Legacy Package adoption request is required")
         status = self._kernel.status(adoption.operation_id)
         request = self._kernel.journal.request(adoption.operation_id)
+        return bool(
+            status is not None
+            and request is not None
+            and self._adoption_target(adoption, status, request) is not None
+        )
+
+    def _adoption_target(
+        self,
+        adoption: PackageLegacyAdoptionRequestV1,
+        status: PackageLifecycleStatusV1,
+        request: PackageLifecycleRequestV1,
+    ) -> PackagePluginRootTargetV1 | None:
         if (
-            status is None
-            or request is None
+            status.operation_id != adoption.operation_id
+            or request.operation_id != adoption.operation_id
             or status.disposition not in {"active", "committed"}
+            or status.attempt_epoch != adoption.expected_attempt_epoch
             or status.classification is None
             or status.classification.decision != "plugin_bound"
             or status.request_fingerprint
             != adoption.transaction_request_fingerprint
+            or request.request_fingerprint
+            != adoption.transaction_request_fingerprint
+            or status.classification.evidence_ref
+            != adoption.expected_classification_fingerprint
             or request.product_id != adoption.product_id
             or request.scope_id != adoption.scope_id
             or request.requested_plugin_id != adoption.plugin_id
@@ -607,12 +594,7 @@ class PackageStagingSetLifecycleOwner:
             return None
         if accepted is not True:
             return None
-        return PackageStagingAdoptionAuthorization(
-            adoption_request_id=adoption.request_id,
-            store_id=adoption.store_id,
-            current_root_identity=adoption.current_root_identity,
-            target=target,
-        )
+        return target
 
     def _durable_root_target(
         self,
@@ -627,19 +609,6 @@ class PackageStagingSetLifecycleOwner:
         except Exception:
             return None
         return targets[0] if len(targets) == 1 else None
-
-    @staticmethod
-    def _authorization_matches(
-        authorization: PackageStagingAdoptionAuthorization,
-        *,
-        target: PackagePluginRootTargetV1,
-        operation_id: str,
-    ) -> bool:
-        return bool(
-            isinstance(authorization, PackageStagingAdoptionAuthorization)
-            and authorization.target == target
-            and authorization.target.operation_id == operation_id
-        )
 
     def _publish_from_evidence(
         self,
@@ -1000,7 +969,6 @@ def _local_refusal(
 
 __all__ = [
     "PackagePluginRootTargetAuthorityPort",
-    "PackageStagingAdoptionAuthorization",
     "PackageStagingClosurePlanEvidencePort",
     "PackageStagingSetExecutionResult",
     "PackageStagingSetLifecycleOwner",

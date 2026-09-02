@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.4c4d-candidate.
+- Contract version: PLC9B.4c4e-candidate.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -1879,6 +1879,27 @@ unrelated host-load-sensitive transcript benchmark (`0.72s/MB` versus its
 isolation. This split evidence is recorded explicitly and does not replace the
 required retained Linux gate artifact.
 
+## PLC9B4c4e Candidate Adoption Source Failure Evidence
+
+The Linux-native adoption composition now executes the two authenticated
+Source failure rows. An unauthorized credential terminates as
+`package_source_unauthorized` with `rejected@acquiring`; a transport whose
+wall-time budget expires terminates as `package_operation_timed_out` with
+`retryable_failure@acquiring`. Both outcomes are replayed through the same
+adoption owner without a second Source authorization or request.
+
+The executable oracles require zero pin, staging, native settlement,
+committed-set, or publication effects; empty bounded quarantine residue; an
+unchanged filesystem-recaptured legacy snapshot; and unchanged revision plus
+canonical bytes for the independent binding, Desired, Instance, and enablement
+projections. Path components, regular-file contents, and symlink targets are
+also scanned without following symlinks for credential persistence.
+
+This promotes `B-COMPAT-ADOPT-UNAUTHORIZED` and
+`B-COMPAT-ADOPT-UNAVAILABLE` as Linux manifest nodes 95 and 96. The
+every-precommit-phase crash and crash-after-committed rows remain planned.
+Retained Linux CI evidence is still required before accepting this candidate.
+
 ## First Principles
 
 1. Untrusted bytes are data, never a pathname, command, module, or build plan.
@@ -2443,8 +2464,8 @@ B-COMPAT-PREFENCE-LIVE-WINDOWS | windows-native | accepted | pre_fence_writer_bl
 B-COMPAT-OFFLINE-RESTORE-POSIX | posix-native | accepted | complete_pre_b_restore_exclusive_old_runtime | ok | accepted@offline_restore | single_owner;legacy_snapshot_exact;b_namespace_unreachable;no_peer_fallback;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-OFFLINE-RESTORE-POSIX] | harness-quality.yml#plc9b-linux-native | implemented
 B-COMPAT-OFFLINE-RESTORE-WINDOWS | windows-native | accepted | complete_pre_b_restore_exclusive_old_runtime | ok | accepted@offline_restore | single_owner;legacy_snapshot_exact;b_namespace_unreachable;no_peer_fallback;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-OFFLINE-RESTORE-WINDOWS] | windows-shell-compatibility.yml#plc9b-windows-native | planned
 B-COMPAT-ADOPT | posix-native | committed | authenticated_legacy_reacquisition | ok | committed@committed | same_receipt;pin_visible;legacy_snapshot_exact;desired_unchanged;instance_unchanged;binding_unchanged;enablement_unchanged;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ADOPT] | harness-quality.yml#plc9b-linux-native | implemented
-B-COMPAT-ADOPT-UNAUTHORIZED | any | acquiring | legacy_reacquisition_unauthorized | package_source_unauthorized | rejected@acquiring | legacy_snapshot_exact;desired_unchanged;instance_unchanged;binding_unchanged;enablement_unchanged;no_publication;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ADOPT-UNAUTHORIZED] | harness-quality.yml#plc9b-linux-native | planned
-B-COMPAT-ADOPT-UNAVAILABLE | any | acquiring | registry_network_temporarily_unavailable | package_operation_timed_out | retryable_failure@acquiring | bounded_residue;legacy_snapshot_exact;desired_unchanged;instance_unchanged;binding_unchanged;enablement_unchanged;no_publication;no_extra_network;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ADOPT-UNAVAILABLE] | harness-quality.yml#plc9b-linux-native | planned
+B-COMPAT-ADOPT-UNAUTHORIZED | posix-native | acquiring | legacy_reacquisition_unauthorized | package_source_unauthorized | rejected@acquiring | legacy_snapshot_exact;desired_unchanged;instance_unchanged;binding_unchanged;enablement_unchanged;no_publication;no_peer_fallback;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ADOPT-UNAUTHORIZED] | harness-quality.yml#plc9b-linux-native | implemented
+B-COMPAT-ADOPT-UNAVAILABLE | posix-native | acquiring | registry_network_temporarily_unavailable | package_operation_timed_out | retryable_failure@acquiring | bounded_residue;legacy_snapshot_exact;desired_unchanged;instance_unchanged;binding_unchanged;enablement_unchanged;no_publication;no_extra_network;no_peer_fallback;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ADOPT-UNAVAILABLE] | harness-quality.yml#plc9b-linux-native | implemented
 B-COMPAT-ADOPT-CRASH | any | each_precommit_phase | adoption_crash_and_retry | package_operation_interrupted | retryable_failure@prior_phase | same_receipt;bounded_residue;legacy_snapshot_exact;desired_unchanged;instance_unchanged;binding_unchanged;enablement_unchanged | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ADOPT-CRASH] | harness-quality.yml#plc9b-linux-native | planned
 B-COMPAT-ADOPT-CRASH-AFTER-COMMITTED | any | committed | adoption_crash_after_committed_edge | ok | committed@committed | same_receipt;pin_visible;legacy_snapshot_exact;desired_unchanged;instance_unchanged;binding_unchanged;enablement_unchanged | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ADOPT-CRASH-AFTER-COMMITTED] | harness-quality.yml#plc9b-linux-native | planned
 ```

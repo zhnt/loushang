@@ -59,11 +59,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
 from loushang.harness.resources.packages.plugin_lifecycle.runtime import (
     PackageArtifactExecutionRequestV1,
 )
-from loushang.harness.resources.packages.plugin_lifecycle.staging import (
-    PackagePluginRootTargetV1,
-)
 from loushang.harness.resources.packages.plugin_lifecycle.staging_set_runtime import (
-    PackageStagingAdoptionAuthorization,
     PackageStagingSetExecutionResult,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.transaction_pin_runtime import (
@@ -438,32 +434,17 @@ class _Staging:
 
     def authorize_adoption(
         self,
-        request: PackageLegacyAdoptionRequestV1,
-    ) -> PackageStagingAdoptionAuthorization:
-        target = PackagePluginRootTargetV1.create(
-            operation_id=OPERATION_ID,
-            request_fingerprint=request.transaction_request_fingerprint,
-            product_id=PRODUCT_ID,
-            scope_id=SCOPE_ID,
-            installation_id=INSTALLATION_ID,
-            plugin_id=PLUGIN_ID,
-            authority_id="adoption-transaction-target-authority",
-            authority_revision="adoption-transaction-target:1",
-        )
-        return PackageStagingAdoptionAuthorization(
-            adoption_request_id=request.request_id,
-            store_id=request.store_id,
-            current_root_identity=request.current_root_identity,
-            target=target,
-        )
+        _request: PackageLegacyAdoptionRequestV1,
+    ) -> bool:
+        return True
 
     def stage_and_publish(
         self,
         candidate: VerifiedPackageClosureCandidate,
         *,
-        adoption_authorization: PackageStagingAdoptionAuthorization | None = None,
+        adoption_request: PackageLegacyAdoptionRequestV1 | None = None,
     ) -> PackageStagingSetExecutionResult:
-        assert adoption_authorization is not None
+        assert adoption_request == self.fixture.request
         assert candidate is self.fixture.candidate
         self.stage_calls += 1
         return self._publish()
@@ -472,9 +453,9 @@ class _Staging:
         self,
         _operation_id: str,
         *,
-        adoption_authorization: PackageStagingAdoptionAuthorization | None = None,
+        adoption_request: PackageLegacyAdoptionRequestV1 | None = None,
     ) -> PackageStagingSetExecutionResult:
-        assert adoption_authorization is not None
+        assert adoption_request == self.fixture.request
         self.resume_calls += 1
         return self._publish()
 
@@ -553,24 +534,9 @@ class _Never:
 
     def authorize_adoption(
         self,
-        request: PackageLegacyAdoptionRequestV1,
-    ) -> PackageStagingAdoptionAuthorization:
-        target = PackagePluginRootTargetV1.create(
-            operation_id=OPERATION_ID,
-            request_fingerprint=request.transaction_request_fingerprint,
-            product_id=PRODUCT_ID,
-            scope_id=SCOPE_ID,
-            installation_id=INSTALLATION_ID,
-            plugin_id=PLUGIN_ID,
-            authority_id="adoption-transaction-target-authority",
-            authority_revision="adoption-transaction-target:1",
-        )
-        return PackageStagingAdoptionAuthorization(
-            adoption_request_id=request.request_id,
-            store_id=request.store_id,
-            current_root_identity=request.current_root_identity,
-            target=target,
-        )
+        _request: PackageLegacyAdoptionRequestV1,
+    ) -> bool:
+        return True
 
     def stage_and_publish(self, _candidate: object, **_kwargs: object) -> object:
         self.calls += 1
@@ -769,7 +735,7 @@ def test_adoption_transaction_resumes_set_published_without_prior_phase_replay(
     assert pinned.candidate is fixture.candidate
     staged = staging.stage_and_publish(
         fixture.candidate,
-        adoption_authorization=staging.authorize_adoption(fixture.request),
+        adoption_request=fixture.request,
     )
     assert staged.status.phase == "set_published"
     never = _Never()
@@ -886,7 +852,7 @@ def test_adoption_transaction_suspends_candidate_when_staging_crashes(
         def authorize_adoption(
             self,
             request: PackageLegacyAdoptionRequestV1,
-        ) -> PackageStagingAdoptionAuthorization:
+        ) -> bool:
             return _staging.authorize_adoption(request)
 
         def stage_and_publish(self, _candidate: object, **_kwargs: object) -> object:
@@ -958,6 +924,53 @@ def test_adoption_transaction_crash_after_commit_replays_without_prior_effects(
     assert result.disposition == "adopted"
     assert never.calls == 0
     assert replay_commit.calls == 1
+
+
+def test_adoption_transaction_rejects_missing_authority_on_committed_replay(
+    tmp_path: Path,
+) -> None:
+    fixture = _fixture(tmp_path)
+    closure, pins, staging, commit = _success_components(fixture)
+    owner, _fences, _legacy = _outer(
+        fixture,
+        _adapter(
+            fixture,
+            closure=closure,
+            pins=pins,
+            staging=staging,
+            commit=commit,
+        ),
+    )
+    assert owner.adopt(fixture.request).disposition == "adopted"
+    before = fixture.kernel.journal.records()
+
+    class _RejectingStaging(_Never):
+        def authorize_adoption(
+            self,
+            _request: PackageLegacyAdoptionRequestV1,
+        ) -> bool:
+            return False
+
+    never = _Never()
+    rejecting = _RejectingStaging()
+    replay_owner, _replay_fences, _replay_legacy = _outer(
+        fixture,
+        _adapter(
+            fixture,
+            closure=never,
+            pins=never,
+            staging=rejecting,
+            commit=never,
+        ),
+    )
+
+    refused = replay_owner.adopt(fixture.request)
+
+    assert refused.disposition == "rejected"
+    assert refused.code == "package_operation_identity_conflict"
+    assert fixture.kernel.journal.records() == before
+    assert never.calls == 0
+    assert rejecting.calls == 0
 
 
 def test_adoption_transaction_rejects_phase_result_not_owned_by_kernel(

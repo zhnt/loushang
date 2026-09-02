@@ -35,7 +35,6 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
     PackageLifecycleStatusV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.staging_set_runtime import (
-    PackageStagingAdoptionAuthorization,
     PackageStagingSetExecutionResult,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.transaction_pin_runtime import (
@@ -82,20 +81,20 @@ class PackageLegacyStagingExecutionPort(Protocol):
     def authorize_adoption(
         self,
         request: PackageLegacyAdoptionRequestV1,
-    ) -> PackageStagingAdoptionAuthorization | None: ...
+    ) -> bool: ...
 
     def stage_and_publish(
         self,
         candidate: VerifiedPackageClosureCandidate,
         *,
-        adoption_authorization: PackageStagingAdoptionAuthorization | None = None,
+        adoption_request: PackageLegacyAdoptionRequestV1 | None = None,
     ) -> PackageStagingSetExecutionResult: ...
 
     def resume(
         self,
         operation_id: str,
         *,
-        adoption_authorization: PackageStagingAdoptionAuthorization | None = None,
+        adoption_request: PackageLegacyAdoptionRequestV1 | None = None,
     ) -> PackageStagingSetExecutionResult: ...
 
 
@@ -156,14 +155,14 @@ class PackageLegacyAdoptionTransactionAdapter:
         if not self._preflight_matches(request, status, lifecycle_request):
             return self._refused(request, status)
         if status.disposition != "active":
-            if status.disposition == "committed" and (
-                self._staging.authorize_adoption(request) is None
+            if (
+                status.disposition == "committed"
+                and self._staging.authorize_adoption(request) is not True
             ):
                 return self._refused(request, status)
             return self._finish(request, status)
 
-        authorization = self._staging.authorize_adoption(request)
-        if not _authorization_matches_request(authorization, request):
+        if self._staging.authorize_adoption(request) is not True:
             return self._refused(request, status)
 
         if status.phase in _CLOSURE_PHASES:
@@ -227,7 +226,7 @@ class PackageLegacyAdoptionTransactionAdapter:
             try:
                 staged = self._staging.stage_and_publish(
                     pinned.candidate,
-                    adoption_authorization=authorization,
+                    adoption_request=request,
                 )
             finally:
                 pinned.candidate.suspend_for_recovery()
@@ -236,13 +235,13 @@ class PackageLegacyAdoptionTransactionAdapter:
         if status.phase in _STAGING_RECOVERY_PHASES:
             staged = self._staging.resume(
                 request.operation_id,
-                adoption_authorization=authorization,
+                adoption_request=request,
             )
             return self._after_staging(request, staged)
         if status.phase == "set_published":
             staged = self._staging.resume(
                 request.operation_id,
-                adoption_authorization=authorization,
+                adoption_request=request,
             )
             return self._after_staging(request, staged)
         return self._refused(request, status)
@@ -408,25 +407,6 @@ def _candidate_matches(
     return (
         candidate.plan.operation_id == request.operation_id
         and candidate.plan.attempt_epoch == request.expected_attempt_epoch
-    )
-
-
-def _authorization_matches_request(
-    authorization: object,
-    request: PackageLegacyAdoptionRequestV1,
-) -> bool:
-    return bool(
-        isinstance(authorization, PackageStagingAdoptionAuthorization)
-        and authorization.adoption_request_id == request.request_id
-        and authorization.store_id == request.store_id
-        and authorization.current_root_identity == request.current_root_identity
-        and authorization.target.operation_id == request.operation_id
-        and authorization.target.request_fingerprint
-        == request.transaction_request_fingerprint
-        and authorization.target.product_id == request.product_id
-        and authorization.target.scope_id == request.scope_id
-        and authorization.target.installation_id == request.installation_id
-        and authorization.target.plugin_id == request.plugin_id
     )
 
 
