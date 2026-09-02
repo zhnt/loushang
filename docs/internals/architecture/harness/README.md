@@ -283,6 +283,12 @@ description.
   defines live tool activation, dynamic command composition and dispatch, and
   selected command-tool execution while Products retain policy, command
   implementations, extension semantics, prompts, and presentation.
+- [Tool Governance Glossary](tool-governance-glossary.md) defines the canonical
+  terms for Tool identity, publication, intent, policy, effective planning,
+  execution, and compatibility surfaces.
+- [Harness Tool Governance](tool-governance.md) defines the target Catalog,
+  session Intent, Policy, immutable per-Model-Call Tool Plan, owner-generation
+  publication, concurrency, persistence, observability, and migration contract.
 - [Standard Session Command Pack Boundary](session-command-pack-boundary.md)
   defines the shared parsing and callback delegation for selected session
   commands while Products retain descriptor order, wording, result projection,
