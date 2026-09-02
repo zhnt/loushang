@@ -645,7 +645,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.4c1-candidate." in contract
+    assert "Contract version: PLC9B.4c1." in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
@@ -3552,7 +3552,7 @@ def test_plc9b4b_retention_handoff_is_dark_exact_and_no_zero_pin() -> None:
         assert {"exact_pin_set", "no_zero_pin"} <= set(row["oracles"].split(";"))
 
     normalized = " ".join(contract.split())
-    assert "PLC9B.4c1-candidate." in contract
+    assert "PLC9B.4c1." in contract
     assert "PLC9B4b Accepted Retention Handoff" in normalized
     assert "opened -> dependency_pinned -> desired_committed -> settled" in normalized
     assert "No journal lock is held" in normalized
@@ -3683,7 +3683,7 @@ def test_plc9b4c0_epoch_admission_is_dark_read_only_and_fail_closed() -> None:
         )
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c1-candidate." in contract
+    assert "Contract version: PLC9B.4c1." in contract
     assert "PLC9B4c0 Accepted Epoch Admission" in normalized
     assert "human-readable minimum runtime version is diagnostic evidence" in (
         normalized
@@ -3807,8 +3807,8 @@ def test_plc9b4c1_posix_cutover_has_one_native_owner_and_one_visibility_edge() -
         assert manifest[case_id]["status"] == "planned"
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c1-candidate." in contract
-    assert "PLC9B4c1 Candidate POSIX Native Cutover" in normalized
+    assert "Contract version: PLC9B.4c1." in contract
+    assert "PLC9B4c1 Accepted POSIX Native Cutover" in normalized
     assert "no second `active-root` file" in normalized
     assert "sole Product-root pointer" in normalized
     assert "before snapshot access, namespace creation, or epoch append" in normalized
@@ -3819,8 +3819,20 @@ def test_plc9b4c1_posix_cutover_has_one_native_owner_and_one_visibility_edge() -
     assert "142-test focused regression" in normalized
     assert "exact test passed in isolation" in normalized
     assert "subsequent complete gate passed" in normalized
-    assert "PLC9B4c1 candidate code adds the dark POSIX-native" in inventory
-    assert "PLC9B4c1 candidate code adds a dark POSIX-native" in index
+    assert "B4c1 was accepted on 2026-09-02 against candidate head `e99945d2`" in (
+        normalized
+    )
+    assert "Harness Quality run `33581165668`" in normalized
+    assert "Linux job `100095571513`" in normalized
+    assert "retained artifact `9828433273`" in normalized
+    assert (
+        "b0b616a4e408d8b2b959d9d736d232c26892dc42c3132f4001b0eb0e7c9de2e3"
+        in contract
+    )
+    assert "exactly 92 manifest nodes" in normalized
+    assert "zero skips, failures, or errors" in normalized
+    assert "PLC9B4c1 accepted code adds the dark POSIX-native" in inventory
+    assert "PLC9B4c1 accepted code adds a dark POSIX-native" in index
 
 
 def test_plc9b2f_windows_backend_is_rooted_and_has_a_nonskippable_native_gate() -> None:

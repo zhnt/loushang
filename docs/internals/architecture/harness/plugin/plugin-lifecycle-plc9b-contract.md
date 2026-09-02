@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.4c1-candidate.
+- Contract version: PLC9B.4c1.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -102,7 +102,7 @@
   route. Accepted B4c0 code adds the dark, evidence-only epoch-fence journal
   and read-only runtime admission owner. It makes newer-runtime-epoch and
   mixed-active-epoch refusal executable without creating a namespace or
-  switching a root. B4c1 candidate code adds a POSIX-native offline cutover
+  switching a root. B4c1 accepted code adds a POSIX-native offline cutover
   owner over exclusive quiescence and snapshot Ports. It makes the POSIX
   cutover and pre-fence-live refusal rows executable; Windows cutover, offline
   restore, recovery convergence, public routing, and concrete desired-state
@@ -1381,7 +1381,7 @@ digest `edbb4a5ddd43fbdf6b5aa8f4b7a0c9f5aae1ddac418cda79a74e3f8d0e58bf47`
 prove that the native XML executed exactly 90 manifest nodes, including
 `B-COMPAT-EPOCH` and `B-COMPAT-MIXED`, with zero skips, failures, or errors.
 
-## PLC9B4c1 Candidate POSIX Native Cutover
+## PLC9B4c1 Accepted POSIX Native Cutover
 
 `PackagePosixEpochCutoverOwner` is the first native cutover capability. Its
 public request/result, quiescence, snapshot, failure, and root-switch records
@@ -1426,6 +1426,15 @@ The eleven POSIX cutover component tests, complete 92-row Linux manifest, and
 regression. An intervening full run hit only the unrelated strict transcript
 load-performance threshold under shared load; the exact test passed in
 isolation and the subsequent complete gate passed.
+
+B4c1 was accepted on 2026-09-02 against candidate head `e99945d2`. All 23 PR
+checks passed after rerunning one unrelated `rust-analyzer-live` readiness race
+that returned zero references on its first query. Harness Quality run
+`33581165668`, Linux job `100095571513`, retained artifact `9828433273`, and
+digest `b0b616a4e408d8b2b959d9d736d232c26892dc42c3132f4001b0eb0e7c9de2e3`
+prove that the native XML executed exactly 92 manifest nodes, including
+`B-COMPAT-CUTOVER-POSIX` and `B-COMPAT-PREFENCE-LIVE-POSIX`, with zero skips,
+failures, or errors.
 
 ## First Principles
 

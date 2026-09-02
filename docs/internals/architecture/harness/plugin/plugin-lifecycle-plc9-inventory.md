@@ -210,7 +210,7 @@
   all 23 PR checks; retained Linux artifact `9826705491` executed exactly 90
   manifest nodes with zero skips, failures, or errors and contained both B4c0
   compatibility rows.
-  PLC9B4c1 candidate code adds the dark POSIX-native offline cutover owner. An
+  PLC9B4c1 accepted code adds the dark POSIX-native offline cutover owner. An
   exclusive quiescence Port rejects live fence-aware or pre-fence writers
   before snapshot or path access. On success the owner pins the configured
   authority chain, creates and flushes a fresh identity-bound sibling epoch
@@ -221,7 +221,10 @@
   concrete backup/restore, recovery convergence, adoption, and every Product
   route remain closed. Local `make check-harness` passed Ruff, mypy over 643
   source files, and 3,837 tests with 23 expected skips; the focused component,
-  manifest, and architecture regression passed all 142 tests.
+  manifest, and architecture regression passed all 142 tests. Candidate
+  `e99945d2` passed all 23 PR checks; retained Linux artifact `9828433273`
+  executed exactly 92 manifest nodes with zero skips, failures, or errors and
+  contained both POSIX cutover rows.
 
 This inventory distinguishes accepted reusable owners, Product adapters,
 parallel compatibility paths, and missing target boundaries. “Migrate” or
