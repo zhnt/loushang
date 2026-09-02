@@ -240,7 +240,7 @@
   23 PR checks; retained Windows artifact `9829593062` executed exactly 29 PLC9B
   native-component tests and 14 manifest nodes, including both B4c2 rows, with
   zero skips, failures, or errors.
-  PLC9B4c3a candidate code adds strict offline-restore request, complete
+  PLC9B4c3a accepted code adds strict offline-restore request, complete
   snapshot-evidence, materialization, legacy-runtime activation, failure, and
   result records plus one dark coordinator. The snapshot evidence has a
   separate exact tree digest and closed complete-state coverage instead of
@@ -249,8 +249,9 @@
   exclusive old-runtime activation, rechecks the immutable epoch chain around
   both effects, and performs exact deactivation/discard on drift. It imports no
   native backend, process launcher, Product state owner, or public route;
-  POSIX/Windows restore and all adoption manifest rows remain planned. Final
-  candidate validation counts are recorded in the PLC9B contract.
+  POSIX/Windows restore and all adoption manifest rows remain planned. Candidate
+  `2fe7953a` passed all 23 PR checks; retained Linux artifact `9831701194`
+  executed exactly 92 manifest nodes with zero skips, failures, or errors.
 
 This inventory distinguishes accepted reusable owners, Product adapters,
 parallel compatibility paths, and missing target boundaries. “Migrate” or

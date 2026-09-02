@@ -663,7 +663,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.4c3a-candidate." in contract
+    assert "Contract version: PLC9B.4c3a." in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
@@ -3574,7 +3574,7 @@ def test_plc9b4b_retention_handoff_is_dark_exact_and_no_zero_pin() -> None:
         assert {"exact_pin_set", "no_zero_pin"} <= set(row["oracles"].split(";"))
 
     normalized = " ".join(contract.split())
-    assert "PLC9B.4c3a-candidate." in contract
+    assert "PLC9B.4c3a." in contract
     assert "PLC9B4b Accepted Retention Handoff" in normalized
     assert "opened -> dependency_pinned -> desired_committed -> settled" in normalized
     assert "No journal lock is held" in normalized
@@ -3705,7 +3705,7 @@ def test_plc9b4c0_epoch_admission_is_dark_read_only_and_fail_closed() -> None:
         )
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c3a-candidate." in contract
+    assert "Contract version: PLC9B.4c3a." in contract
     assert "PLC9B4c0 Accepted Epoch Admission" in normalized
     assert "human-readable minimum runtime version is diagnostic evidence" in (
         normalized
@@ -3829,7 +3829,7 @@ def test_plc9b4c1_posix_cutover_has_one_native_owner_and_one_visibility_edge() -
         assert manifest[case_id]["status"] == "implemented"
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c3a-candidate." in contract
+    assert "Contract version: PLC9B.4c3a." in contract
     assert "PLC9B4c1 Accepted POSIX Native Cutover" in normalized
     assert "no second `active-root` file" in normalized
     assert "sole Product-root pointer" in normalized
@@ -3948,7 +3948,7 @@ def test_plc9b4c2_windows_cutover_is_rooted_native_and_non_skippable() -> None:
     assert workflow.count("scripts/dev/verify_pytest_xml.py") >= 5
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c3a-candidate." in contract
+    assert "Contract version: PLC9B.4c3a." in contract
     assert "PLC9B4c2 Accepted Windows Native Cutover" in normalized
     assert "same fingerprint domain" in normalized
     assert "rooted `NtCreateFile`" in normalized
@@ -4085,14 +4085,14 @@ def test_plc9b4c3a_offline_restore_protocol_is_complete_dark_and_unpromoted() ->
     assert "IMPLEMENTED_B4C3" not in component_tests
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c3a-candidate." in contract
-    assert "PLC9B4c3a Candidate Offline Restore Protocol" in normalized
+    assert "Contract version: PLC9B.4c3a." in contract
+    assert "PLC9B4c3a Accepted Offline Restore Protocol" in normalized
     assert "does not reinterpret the opaque B4c1 snapshot identifier" in normalized
     assert "closed coverage tuple" in normalized
     assert "no POSIX or Windows filesystem materializer" in normalized
     assert "all five `B-COMPAT-ADOPT*` rows remain planned" in normalized
-    assert "PLC9B4c3a candidate code adds strict offline-restore" in inventory
-    assert "PLC9B4c3a candidate code adds the dark, pathless" in index
+    assert "PLC9B4c3a accepted code adds strict offline-restore" in inventory
+    assert "PLC9B4c3a accepted code adds the dark, pathless" in index
 
 
 def test_plc9b2f_windows_backend_is_rooted_and_has_a_nonskippable_native_gate() -> None:

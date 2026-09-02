@@ -207,14 +207,16 @@ Neither may silently override a narrower implemented owner contract.
   artifact `9829593062` then executed all 29 PLC9B native-component tests and
   all 14 Windows manifest nodes with zero skips, failures, or errors; all 23
   candidate PR checks passed.
-  PLC9B4c3a candidate code adds the dark, pathless offline-restore protocol.
+  PLC9B4c3a accepted code adds the dark, pathless offline-restore protocol.
   It binds the exact current and genesis fences to complete pre-B snapshot
   evidence covering store bytes plus Source, lock/binding, Desired, Instance,
   enablement, root-pointer, and fence state. Exclusive quiescence encloses
   evidence lookup, isolated materialization, and old-runtime activation; fence
   drift deactivates and discards exact residue. Native restore and adoption
   remain unimplemented, so all seven remaining compatibility rows stay planned.
-  Final candidate validation counts are recorded in the PLC9B contract.
+  Candidate `2fe7953a` passed all 23 PR checks; retained Linux artifact
+  `9831701194` executed the unchanged 92 manifest nodes with zero skips,
+  failures, or errors.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)

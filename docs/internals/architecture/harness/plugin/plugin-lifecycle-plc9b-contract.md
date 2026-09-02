@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.4c3a-candidate.
+- Contract version: PLC9B.4c3a.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -106,7 +106,7 @@
   owner over exclusive quiescence and snapshot Ports. It makes the POSIX
   cutover and pre-fence-live refusal rows executable. B4c2 accepted code adds
   the symmetric Windows rooted-handle owner and makes the corresponding two
-  Windows rows executable only in their mandatory native gate. B4c3a candidate
+  Windows rows executable only in their mandatory native gate. B4c3a accepted
   code freezes the pathless, genesis-bound offline-restore protocol over
   complete pre-B snapshot evidence, isolated materialization, and exclusive
   old-runtime activation Ports. Native restore, adoption, recovery convergence,
@@ -1494,7 +1494,7 @@ B4c2 component cases, and `windows-shell-plc9b-manifest.xml` executed exactly
 14 nodes, including `B-COMPAT-CUTOVER-WINDOWS` and
 `B-COMPAT-PREFENCE-LIVE-WINDOWS`, with zero skips, failures, or errors.
 
-## PLC9B4c3a Candidate Offline Restore Protocol
+## PLC9B4c3a Accepted Offline Restore Protocol
 
 `PackageOfflineRestoreOwner` is a dark, pathless coordinator for the only
 supported pre-fence recovery: restore the exact complete pre-B backup into an
@@ -1554,6 +1554,17 @@ rejection. Local `make check-harness` passed Ruff, mypy over 645 source files,
 and 3,846 tests with 33 expected skips. The focused component and architecture
 gate passed 50 tests; the component, retained 92-row Linux manifest, and
 architecture regression passed all 142 tests.
+
+B4c3a was accepted on 2026-09-02 against candidate head `2fe7953a` after all
+23 PR checks passed. Harness Quality run `33590923267`, Linux job
+`100124580593`, retained artifact `9831701194`, and digest
+`31cd75bfd6c1953e8415d148791ad688789cdfdb6584f65b0f5e4b13dbecd42b`
+prove the retained gate. `plc9b-linux-native.xml` executed exactly the
+unchanged 92 manifest nodes with zero skips, failures, or errors and contained
+none of the seven still-planned offline-restore/adoption nodes. Windows Shell
+Compatibility failed once only in the unrelated child-process lease sweep
+after process termination; the log contained no PLC9B path, and the isolated
+job rerun `100125098199` passed. The PR remains Draft.
 
 ## First Principles
 
