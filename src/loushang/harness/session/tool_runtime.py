@@ -153,6 +153,10 @@ class SessionToolRuntime:
         self._sync_available(activate_new=False, rebind=False)
         self._activation.request(tool_names)
 
+    def activate_tool_names(self, tool_names: Iterable[str]) -> None:
+        self._sync_available(activate_new=False, rebind=False)
+        self._activation.activate(tool_names)
+
     def resolve_active_tool_definitions(
         self, tool_names: Iterable[str]
     ) -> tuple[list[ToolDefinition], list[str]]:

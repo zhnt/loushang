@@ -148,6 +148,19 @@ class ToolActivationCoordinator(Generic[T]):
             rebind=rebind,
         )
 
+    def activate(
+        self,
+        names: Iterable[str],
+        *,
+        rebind: bool = True,
+    ) -> ToolActivationChange[T]:
+        """Add requested names without discarding deferred activation intent."""
+
+        return self.request(
+            (*self._requested_names, *names),
+            rebind=rebind,
+        )
+
     def refresh(
         self,
         available: Iterable[T],

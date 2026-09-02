@@ -58,6 +58,54 @@ def test_requested_missing_tool_reactivates_after_deterministic_refresh() -> Non
     assert rebound == [removed, restored]
 
 
+def test_activate_adds_names_without_dropping_missing_requests() -> None:
+    coordinator = ToolActivationCoordinator(
+        available=(Tool("spawn_agent"),),
+        requested_names=("read", "bash"),
+    )
+
+    activated = coordinator.activate(("spawn_agent", "spawn_agent"))
+
+    assert activated.current.requested_names == ("read", "bash", "spawn_agent")
+    assert activated.current.active_names == ("spawn_agent",)
+    assert activated.diff.requested_added == ("spawn_agent",)
+    assert activated.diff.activated == ("spawn_agent",)
+
+    published = coordinator.refresh(
+        (Tool("spawn_agent"), Tool("read"), Tool("bash")),
+        activate_new=False,
+    )
+
+    assert published.current.requested_names == ("read", "bash", "spawn_agent")
+    assert published.current.active_names == ("read", "bash", "spawn_agent")
+
+
+def test_activate_does_not_restore_names_removed_by_exact_request() -> None:
+    coordinator = ToolActivationCoordinator(
+        available=(Tool("read"), Tool("spawn_agent")),
+        requested_names=("read",),
+    )
+    coordinator.request(())
+
+    change = coordinator.activate(("spawn_agent",))
+
+    assert change.current.requested_names == ("spawn_agent",)
+    assert change.current.active_names == ("spawn_agent",)
+
+
+def test_activate_respects_allowed_names() -> None:
+    coordinator = ToolActivationCoordinator(
+        available=(Tool("read"), Tool("spawn_agent")),
+        requested_names=("read",),
+        allowed_names=("read",),
+    )
+
+    change = coordinator.activate(("spawn_agent",))
+
+    assert change.current.requested_names == ("read",)
+    assert change.current.active_names == ("read",)
+
+
 def test_refresh_auto_activates_new_tools_in_available_order() -> None:
     coordinator = ToolActivationCoordinator(
         available=(Tool("read"),),

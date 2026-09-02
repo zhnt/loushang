@@ -243,6 +243,9 @@ class SessionToolController:
     def apply_active_tools(self, tool_names: list[str]) -> None:
         self._runtime.apply_active_tools(tool_names)
 
+    def activate_tool_names(self, tool_names: list[str]) -> None:
+        self._runtime.activate_tool_names(tool_names)
+
     def build_tool_context(self, *, tool_call_id: str) -> ToolCallContext:
         return ToolCallContext(
             tool_call_id=tool_call_id,

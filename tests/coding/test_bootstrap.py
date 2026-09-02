@@ -1634,6 +1634,62 @@ def test_create_agent_session_runtime_builds_working_default_sessions(tmp_path) 
     asyncio.run(scenario())
 
 
+def test_multiagent_tools_preserve_deferred_base_tools_for_first_model_call(
+    tmp_path: Path,
+) -> None:
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.tool_pack import coding_default_active_tool_names
+    from loushang.harness.environment import LocalHostEnvironmentProbe
+    from loushang.harness.tools.multiagent import MULTIAGENT_TOOL_NAMES
+
+    model_tool_sets: list[tuple[str, ...]] = []
+
+    async def stream_fn(model, context, options=None):
+        del model, options
+        model_tool_sets.append(tuple(tool.name for tool in context.tools or ()))
+        return _stream_with_final_message(_assistant_message("bootstrapped"))
+
+    async def scenario() -> None:
+        project = tmp_path / "project"
+        project.mkdir()
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(project),
+            persist=False,
+        )
+        session = create_agent_session(
+            session_manager=manager,
+            model=_model(),
+            stream_fn=stream_fn,
+            services=create_services(
+                settings_manager=SettingsManager(
+                    ControlConfig(capabilities={"coding.lsp": "disabled"})
+                )
+            ),
+            enable_multiagent=True,
+        )
+        expected_base_names = set(
+            coding_default_active_tool_names(LocalHostEnvironmentProbe().detect())
+        )
+        expected_names = expected_base_names | set(MULTIAGENT_TOOL_NAMES)
+
+        try:
+            assert set(session.get_active_tool_names()) == set(MULTIAGENT_TOOL_NAMES)
+
+            await session.prompt("Inspect the workspace.")
+
+            assert len(model_tool_sets) == 1
+            assert set(model_tool_sets[0]) == expected_names
+            assert set(session.get_active_tool_names()) == expected_names
+            assert {tool.name for tool in session.agent.tools} == expected_names
+        finally:
+            await session.dispose()
+
+    asyncio.run(scenario())
+
+
 @pytest.mark.parametrize(
     ("value", "error"),
     (("", ValueError), (" coding-standard ", ValueError), (False, TypeError)),

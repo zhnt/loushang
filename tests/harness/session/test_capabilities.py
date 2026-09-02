@@ -126,6 +126,36 @@ def test_session_tool_runtime_rebinds_only_product_selected_tools() -> None:
     assert prompt_rebuilds == [["bash"]]
 
 
+def test_session_tool_runtime_additive_activation_preserves_deferred_requests() -> None:
+    registry = _ToolRegistry([_tool_definition("spawn_agent")])
+    prompt_rebuilds: list[list[str]] = []
+    runtime = SessionToolRuntime(
+        agent=_Agent(),
+        tool_registry=registry,
+        allowed_tool_names=None,
+        initial_active_tool_names=["read"],
+        default_active_tool_names=lambda: ["read"],
+        should_activate_new_tool=lambda _name, _definition: False,
+        build_tool_context=lambda *, tool_call_id: {"call_id": tool_call_id},
+        rebuild_prompt=lambda definitions: prompt_rebuilds.append(
+            [definition.name for definition in definitions or ()]
+        ),
+    )
+
+    runtime.activate_tool_names(["spawn_agent", "spawn_agent"])
+    runtime.register_runtime_tool(_tool_definition("read"))
+
+    assert runtime.get_active_tool_names() == ["read", "spawn_agent"]
+    assert registry.materialized == [
+        ["spawn_agent"],
+        ["read", "spawn_agent"],
+    ]
+    assert prompt_rebuilds == [
+        ["spawn_agent"],
+        ["read", "spawn_agent"],
+    ]
+
+
 def test_staged_disabled_runtime_tool_remains_on_demand_after_publication() -> None:
     registry = WorkspaceToolRegistry()
     runtime = SessionToolRuntime(

@@ -183,16 +183,8 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
             for tool in tools
         )
         if activate:
-            active = self._composition.tool_controller.get_active_tool_names()
-            self._composition.tool_controller.apply_active_tools(
-                [
-                    *active,
-                    *(
-                        definition.name
-                        for definition in definitions
-                        if definition.name not in active
-                    ),
-                ]
+            self._composition.tool_controller.activate_tool_names(
+                [definition.name for definition in definitions]
             )
         return definitions
 
