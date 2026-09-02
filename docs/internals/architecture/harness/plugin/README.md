@@ -173,6 +173,14 @@ Neither may silently override a narrower implemented owner contract.
   `plugin_management` ledgers; B4c epoch fencing and Product adapters remain
   closed. All 23 PR checks passed, and retained Linux artifact `9825049355`
   executed exactly 88 manifest nodes with no skips, failures, or errors.
+  PLC9B4c0 candidate code adds the dark adjacent epoch-fence journal and a
+  read-only runtime admission owner over exact fence/root/protocol and complete
+  active-lease evidence. Newer/older runtime epochs and mixed active epochs
+  fail closed without journal or Product mutation, making `B-COMPAT-EPOCH` and
+  `B-COMPAT-MIXED` executable. Native root cutover, offline restore, adoption,
+  recovery convergence, and every Product route remain closed. Local
+  `make check-harness` passed Ruff, mypy over 642 source files, and 3,824 tests
+  with 23 expected skips.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)

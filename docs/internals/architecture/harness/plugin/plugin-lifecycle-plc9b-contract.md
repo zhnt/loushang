@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.4b.
+- Contract version: PLC9B.4c0-candidate.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -99,8 +99,11 @@
   `opened -> dependency_pinned -> desired_committed -> settled` recovery path
   (or pre-commit `aborted`) makes all six retention-handoff threats executable
   without importing a concrete management ledger or exposing a production
-  route. Recovery/epoch fencing, public routing, and concrete desired-state
-  composition remain closed.
+  route. B4c0 candidate code adds the dark, evidence-only epoch-fence journal
+  and read-only runtime admission owner. It makes newer-runtime-epoch and
+  mixed-active-epoch refusal executable without creating a namespace or
+  switching a root. Native cutover, offline restore, recovery convergence,
+  public routing, and concrete desired-state composition remain closed.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -1323,8 +1326,52 @@ Its XML executed exactly 88 manifest nodes, including all six
 `B-HANDOFF-*` rows, with zero skips, failures, or errors. Local
 `make check-harness` passed Ruff, mypy over 641 source files, and 3,813 tests
 with 23 expected skips; the 127 focused B4b component, manifest, and PLC9B
-architecture tests also passed. B4c recovery/epoch fencing remains the next
-closed gate.
+architecture tests also passed. B4c native cutover remains the next closed
+gate after the evidence-only admission slice.
+
+## PLC9B4c0 Candidate Epoch Admission
+
+B4c0 freezes the evidence boundary before native root mutation exists.
+`PackageEpochFenceRequestV1` binds one stable Package-store identity, the exact
+adjacent prior/next epochs and fence revision, old and new opaque native root
+identities, a fresh namespace identity, the minimum runtime protocol epoch,
+and opaque quiescence, snapshot, and atomic root-switch receipt identities.
+The human-readable minimum runtime version is diagnostic evidence; the
+positive numeric protocol epoch is the enforcement value.
+
+`PackageEpochFenceJournal` owns one dense, adjacent fence chain for one store.
+Genesis is epoch one; a successor must name the exact prior fence, revision,
+epoch, and current fenced root. Exact replay returns the current durable head,
+while a stale, cross-store, skipped, future-version, duplicate-key, or corrupt
+record fails closed. This dark journal records already-proved cutover evidence;
+it has no path, native root capability, snapshot reader, pointer-switch
+capability, process launcher, or legacy-store writer. B4c1/B4c2 must provide
+the native coordinator and Ports before a `B-COMPAT-CUTOVER-*` row can move.
+
+`PackageEpochRuntimeAdmissionOwner` is read-only over the fence and active
+lease authorities. It checks the exact fence, root identity, runtime epoch,
+and minimum protocol before consulting the lease owner. It then requires the
+requester's exact active lease and rejects the complete snapshot if any active
+lease names another epoch or root. The durable fence is read again after the
+lease snapshot; a concurrent fence advance rejects instead of admitting the
+now-stale runtime. Rejection returns
+`package_runtime_epoch_unsupported` with `upgrade_runtime` before lease access
+for an old/new runtime, or `offline_restore` for a contradictory live lease
+set. Admission and refusal append no epoch, operation, attempt, handoff,
+Desired, retention, binding, or publication record.
+
+`B-COMPAT-EPOCH` and `B-COMPAT-MIXED` are executable through this dark owner.
+The module remains internal to
+`harness.resources.packages.plugin_lifecycle`, exports no Package facade or
+author-SDK symbol, imports no concrete Product/management ledger, and opens no
+CLI/RPC/Session/startup route. Native POSIX/Windows cutover, pre-fence-live
+refusal, offline restore, adoption, and composed committed/concurrency recovery
+remain planned.
+
+The B4c0 candidate passed local `make check-harness`: Ruff passed, mypy passed
+over 642 source files, and pytest completed 3,824 tests with 23 expected skips.
+The nine epoch component tests, complete 90-row Linux manifest, and 38 PLC9B
+architecture contracts passed together as a 137-test focused regression.
 
 ## First Principles
 
@@ -1879,8 +1926,8 @@ B-STATE-CANCEL-PINNED | any | each_precommit_phase_from_transaction_pinned | ope
 B-STATE-REJECT-CLEANUP | any | rejected | quarantine_cleanup_failure | package_quarantine_cleanup_retryable | rejected@cleanup_retryable | bounded_residue;no_binding;no_desired;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-STATE-REJECT-CLEANUP] | harness-quality.yml#plc9b-linux-native | implemented
 B-STATE-SECRETS | any | each_phase | credentialed_private_locator | ok | committed@committed | no_secret;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-STATE-SECRETS] | harness-quality.yml#plc9b-linux-native | planned
 B-STATE-STATUS | any | rejected | transport_status_mapping | package_archive_malformed | rejected@inspecting | same_receipt;no_secret;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-STATE-STATUS] | harness-quality.yml#plc9b-linux-native | planned
-B-COMPAT-EPOCH | any | accepted | newer_lifecycle_epoch | package_runtime_epoch_unsupported | rejected@accepted | no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-EPOCH] | harness-quality.yml#plc9b-linux-native | planned
-B-COMPAT-MIXED | any | accepted | mixed_fence_aware_processes | package_runtime_epoch_unsupported | rejected@accepted | single_owner;no_publication;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-MIXED] | harness-quality.yml#plc9b-linux-native | planned
+B-COMPAT-EPOCH | any | accepted | newer_lifecycle_epoch | package_runtime_epoch_unsupported | rejected@accepted | no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-EPOCH] | harness-quality.yml#plc9b-linux-native | implemented
+B-COMPAT-MIXED | any | accepted | mixed_fence_aware_processes | package_runtime_epoch_unsupported | rejected@accepted | single_owner;no_publication;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-MIXED] | harness-quality.yml#plc9b-linux-native | implemented
 B-COMPAT-LEGACY | any | classified | legacy_binding_history_hint | ok | classified@plugin_bound | no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-LEGACY] | harness-quality.yml#plc9b-linux-native | planned
 B-COMPAT-ROLLFORWARD | any | retryable_failure | upgrade_downgrade_rollforward | ok | committed@committed | same_receipt;pin_visible;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ROLLFORWARD] | harness-quality.yml#plc9b-linux-native | planned
 B-COMPAT-CUTOVER-POSIX | posix-native | accepted | offline_quiescent_namespaced_cutover | ok | accepted@epoch_fenced | single_owner;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-CUTOVER-POSIX] | harness-quality.yml#plc9b-linux-native | planned

@@ -79,6 +79,15 @@ from loushang.harness.resources.packages.plugin_lifecycle.commit_records import 
 from loushang.harness.resources.packages.plugin_lifecycle.committed_sets import (
     PackageCommittedSetJournal,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
+    PackageEpochFenceJournal,
+    PackageEpochFenceRequestV1,
+    PackageEpochLeaseSnapshotV1,
+    PackageEpochRuntimeAdmissionOwner,
+    PackageEpochRuntimeAdmissionRequestV1,
+    PackageEpochRuntimeAdmissionResultV1,
+    PackageEpochRuntimeLeaseV1,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.phase_evidence import (
     PackageArtifactEvidenceJournal,
 )
@@ -265,6 +274,10 @@ IMPLEMENTED_B4B_RETENTION_HANDOFF_MANIFEST_CASES = (
     "B-HANDOFF-STALE-RECEIPT",
     "B-HANDOFF-CONCURRENT-REPLAY",
 )
+IMPLEMENTED_B4C0_EPOCH_ADMISSION_MANIFEST_CASES = (
+    "B-COMPAT-EPOCH",
+    "B-COMPAT-MIXED",
+)
 PLANNED_B3E3C_MATERIALIZATION_MANIFEST_CASES: tuple[str, ...] = ()
 PLANNED_B4_COMMIT_ADMISSION_MANIFEST_CASES: tuple[str, ...] = ()
 
@@ -284,6 +297,7 @@ EXECUTABLE_MANIFEST_CASES = (
     + IMPLEMENTED_B3E3C3_SETTLEMENT_MANIFEST_CASES
     + IMPLEMENTED_B4A_COMMIT_ADMISSION_MANIFEST_CASES
     + IMPLEMENTED_B4B_RETENTION_HANDOFF_MANIFEST_CASES
+    + IMPLEMENTED_B4C0_EPOCH_ADMISSION_MANIFEST_CASES
     + (IMPLEMENTED_B3E3C2_WINDOWS_MANIFEST_CASES if os.name == "nt" else ())
 )
 
@@ -1810,6 +1824,99 @@ def _manifest_retention_handoff_fixture(
     )
 
 
+@dataclass
+class _ManifestEpochLeaseAuthority:
+    snapshot_value: PackageEpochLeaseSnapshotV1
+    calls: int = 0
+
+    def snapshot(self, *, store_id: str) -> PackageEpochLeaseSnapshotV1:
+        self.calls += 1
+        assert store_id == self.snapshot_value.store_id
+        return self.snapshot_value
+
+
+@dataclass(frozen=True)
+class _ManifestEpochAdmissionFixture:
+    journal: PackageEpochFenceJournal
+    owner: PackageEpochRuntimeAdmissionOwner
+    leases: _ManifestEpochLeaseAuthority
+    request: PackageEpochRuntimeAdmissionRequestV1
+
+
+def _manifest_epoch_admission_fixture(
+    tmp_path: Path,
+    *,
+    mixed_epoch: bool,
+) -> _ManifestEpochAdmissionFixture:
+    journal = PackageEpochFenceJournal(tmp_path / "package-epoch.jsonl")
+    first = journal.publish(
+        PackageEpochFenceRequestV1.create(
+            store_id="package-store:manifest",
+            prior_fence=None,
+            legacy_root_identity="1" * 64,
+            fenced_root_identity="2" * 64,
+            namespace_id="3" * 64,
+            minimum_runtime_version="1.0.0",
+            minimum_runtime_protocol_epoch=1,
+            quiescence_receipt_id="4" * 64,
+            snapshot_receipt_id="5" * 64,
+            root_switch_receipt_id="6" * 64,
+        )
+    )
+    current = journal.publish(
+        PackageEpochFenceRequestV1.create(
+            store_id=first.store_id,
+            prior_fence=first,
+            legacy_root_identity=first.fenced_root_identity,
+            fenced_root_identity="7" * 64,
+            namespace_id="8" * 64,
+            minimum_runtime_version="2.0.0",
+            minimum_runtime_protocol_epoch=2,
+            quiescence_receipt_id="9" * 64,
+            snapshot_receipt_id="a" * 64,
+            root_switch_receipt_id="b" * 64,
+        )
+    )
+    current_lease = PackageEpochRuntimeLeaseV1.create(
+        runtime_id="runtime:manifest-current",
+        runtime_epoch=current.epoch,
+        store_root_identity=current.fenced_root_identity,
+        registration_receipt_id="c" * 64,
+    )
+    stale_lease = PackageEpochRuntimeLeaseV1.create(
+        runtime_id="runtime:manifest-stale",
+        runtime_epoch=first.epoch,
+        store_root_identity=first.fenced_root_identity,
+        registration_receipt_id="d" * 64,
+    )
+    active_leases = (
+        (current_lease, stale_lease) if mixed_epoch else (current_lease,)
+    )
+    leases = _ManifestEpochLeaseAuthority(
+        PackageEpochLeaseSnapshotV1.create(
+            store_id=current.store_id,
+            owner_revision=2,
+            active_leases=active_leases,
+        )
+    )
+    request_lease = current_lease if mixed_epoch else stale_lease
+    request = PackageEpochRuntimeAdmissionRequestV1.create(
+        fence=current,
+        runtime_id=request_lease.runtime_id,
+        runtime_version="2.0.0" if mixed_epoch else "1.0.0",
+        runtime_protocol_epoch=2 if mixed_epoch else 1,
+        runtime_epoch=request_lease.runtime_epoch,
+        store_root_identity=request_lease.store_root_identity,
+        lease_id=request_lease.lease_id,
+    )
+    return _ManifestEpochAdmissionFixture(
+        journal=journal,
+        owner=PackageEpochRuntimeAdmissionOwner(fences=journal, leases=leases),
+        leases=leases,
+        request=request,
+    )
+
+
 @pytest.mark.parametrize("case_id", EXECUTABLE_MANIFEST_CASES)
 def test_manifest_case(case_id: str, tmp_path: Path) -> None:
     if case_id == "B-CLASS-PLUGIN":
@@ -2151,6 +2258,39 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
         )
         serialized = repr((result, fixture.journal.records())).lower()
         for forbidden in ("password", "credential", "token", "reopen", "handle"):
+            assert forbidden not in serialized
+        assert not (tmp_path / "binding.json").exists()
+        assert not (tmp_path / "desired.json").exists()
+    elif case_id in IMPLEMENTED_B4C0_EPOCH_ADMISSION_MANIFEST_CASES:
+        mixed_epoch = case_id == "B-COMPAT-MIXED"
+        fixture = _manifest_epoch_admission_fixture(
+            tmp_path,
+            mixed_epoch=mixed_epoch,
+        )
+        records_before = fixture.journal.records()
+
+        result = fixture.owner.admit(fixture.request)
+
+        assert result.disposition == "rejected"
+        assert result.code == "package_runtime_epoch_unsupported"
+        assert result.receipt is None
+        assert result.failure is not None
+        assert result.failure.operator_action == (
+            "offline_restore" if mixed_epoch else "upgrade_runtime"
+        )
+        assert fixture.leases.calls == (1 if mixed_epoch else 0)
+        assert fixture.journal.records() == records_before
+        assert (
+            PackageEpochRuntimeAdmissionRequestV1.from_dict(
+                fixture.request.to_dict()
+            )
+            == fixture.request
+        )
+        assert PackageEpochRuntimeAdmissionResultV1.from_dict(result.to_dict()) == (
+            result
+        )
+        serialized = repr((fixture.request, result, records_before)).lower()
+        for forbidden in ("password", "credential", "token", "path", "handle"):
             assert forbidden not in serialized
         assert not (tmp_path / "binding.json").exists()
         assert not (tmp_path / "desired.json").exists()
