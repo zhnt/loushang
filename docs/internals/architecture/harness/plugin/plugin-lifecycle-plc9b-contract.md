@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.4c4f-candidate.
+- Contract version: PLC9B.4c4g-candidate.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -1921,6 +1921,33 @@ This promotes `B-COMPAT-ADOPT-CRASH-AFTER-COMMITTED` as Linux manifest node
 97. `B-COMPAT-ADOPT-CRASH` remains planned pending every-precommit-phase
 interruption evidence. Retained Linux CI evidence remains required.
 
+## PLC9B4c4g Candidate Every-Precommit Crash Evidence
+
+The final adoption compatibility row now injects a one-shot process-boundary
+failure immediately after each durable pre-commit lifecycle phase:
+`acquiring`, `acquired`, `inspecting`, `extracted`, `resolving_closure`,
+`closure_verified`, `transaction_pinned`, `staging`, and `set_published`.
+For each edge, a subsequent caller invocation resumes the same durable active
+attempt and reaches `committed`; a further invocation returns the exact same
+adoption and publication receipt. Source authorization and transfer, physical
+pin acquisition, native root settlement, staging, and committed-set
+publication each occur at most once.
+
+An independent fixture at every edge models the supervisor projection of a
+process that does not return: `interrupt` appends exactly one
+`package_operation_interrupted` failure at the prior durable phase and exact
+replay appends nothing. This is deliberately not the lifecycle `retry`
+operation, which creates a new attempt epoch; changing cross-attempt artifact
+ownership is outside this evidence slice. Both recovery and interruption keep
+quarantine residue bounded, preserve the complete filesystem-recaptured legacy
+snapshot and all four independent Product projections, and leave no credential
+in path components, regular files, or symlink targets.
+
+This promotes `B-COMPAT-ADOPT-CRASH` as Linux manifest node 98. All five
+`B-COMPAT-ADOPT*` rows are now executable and nonskippable in the named Linux
+native gate. Retained Linux CI evidence remains required before accepting the
+candidate.
+
 ## First Principles
 
 1. Untrusted bytes are data, never a pathname, command, module, or build plan.
@@ -2487,7 +2514,7 @@ B-COMPAT-OFFLINE-RESTORE-WINDOWS | windows-native | accepted | complete_pre_b_re
 B-COMPAT-ADOPT | posix-native | committed | authenticated_legacy_reacquisition | ok | committed@committed | same_receipt;pin_visible;legacy_snapshot_exact;desired_unchanged;instance_unchanged;binding_unchanged;enablement_unchanged;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ADOPT] | harness-quality.yml#plc9b-linux-native | implemented
 B-COMPAT-ADOPT-UNAUTHORIZED | posix-native | acquiring | legacy_reacquisition_unauthorized | package_source_unauthorized | rejected@acquiring | legacy_snapshot_exact;desired_unchanged;instance_unchanged;binding_unchanged;enablement_unchanged;no_publication;no_peer_fallback;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ADOPT-UNAUTHORIZED] | harness-quality.yml#plc9b-linux-native | implemented
 B-COMPAT-ADOPT-UNAVAILABLE | posix-native | acquiring | registry_network_temporarily_unavailable | package_operation_timed_out | retryable_failure@acquiring | bounded_residue;legacy_snapshot_exact;desired_unchanged;instance_unchanged;binding_unchanged;enablement_unchanged;no_publication;no_extra_network;no_peer_fallback;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ADOPT-UNAVAILABLE] | harness-quality.yml#plc9b-linux-native | implemented
-B-COMPAT-ADOPT-CRASH | any | each_precommit_phase | adoption_crash_and_retry | package_operation_interrupted | retryable_failure@prior_phase | same_receipt;bounded_residue;legacy_snapshot_exact;desired_unchanged;instance_unchanged;binding_unchanged;enablement_unchanged | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ADOPT-CRASH] | harness-quality.yml#plc9b-linux-native | planned
+B-COMPAT-ADOPT-CRASH | posix-native | each_precommit_phase | adoption_crash_and_retry | package_operation_interrupted | retryable_failure@prior_phase | same_receipt;bounded_residue;legacy_snapshot_exact;desired_unchanged;instance_unchanged;binding_unchanged;enablement_unchanged;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ADOPT-CRASH] | harness-quality.yml#plc9b-linux-native | implemented
 B-COMPAT-ADOPT-CRASH-AFTER-COMMITTED | posix-native | committed | adoption_crash_after_committed_edge | ok | committed@committed | same_receipt;pin_visible;legacy_snapshot_exact;desired_unchanged;instance_unchanged;binding_unchanged;enablement_unchanged;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ADOPT-CRASH-AFTER-COMMITTED] | harness-quality.yml#plc9b-linux-native | implemented
 ```
 <!-- plc9b-adversarial-manifest:end -->

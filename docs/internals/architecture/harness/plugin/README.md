@@ -278,6 +278,13 @@ Neither may silently override a narrower implemented owner contract.
   reauthorize the durable root and reconstruct the same receipt without
   repeating Source, pin, staging, settlement, or committed-set effects. The
   every-precommit crash row remains closed.
+  PLC9B4c4g candidate evidence injects a one-shot crash after each of the nine
+  durable pre-commit phases. Caller recovery resumes the same active attempt
+  to one exact receipt without repeating Source, pin, staging, settlement, or
+  committed-set effects; an independent supervisor projection records one
+  exact retryable interruption and replays without a second append. This
+  promotes `B-COMPAT-ADOPT-CRASH` as Linux native node 98, so all five adoption
+  rows are executable and nonskippable in the retained Linux gate.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)

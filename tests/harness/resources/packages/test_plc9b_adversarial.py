@@ -334,6 +334,20 @@ IMPLEMENTED_B4C4E_LINUX_ADOPTION_FAILURE_MANIFEST_CASES = (
 IMPLEMENTED_B4C4F_LINUX_ADOPTION_COMMITTED_CRASH_MANIFEST_CASES = (
     "B-COMPAT-ADOPT-CRASH-AFTER-COMMITTED",
 )
+IMPLEMENTED_B4C4G_LINUX_ADOPTION_PRECOMMIT_CRASH_MANIFEST_CASES = (
+    "B-COMPAT-ADOPT-CRASH",
+)
+ADOPTION_PRECOMMIT_CRASH_PHASES: tuple[PackageLifecyclePhase, ...] = (
+    "acquiring",
+    "acquired",
+    "inspecting",
+    "extracted",
+    "resolving_closure",
+    "closure_verified",
+    "transaction_pinned",
+    "staging",
+    "set_published",
+)
 PLANNED_B3E3C_MATERIALIZATION_MANIFEST_CASES: tuple[str, ...] = ()
 PLANNED_B4_COMMIT_ADMISSION_MANIFEST_CASES: tuple[str, ...] = ()
 
@@ -378,6 +392,11 @@ EXECUTABLE_MANIFEST_CASES = (
     )
     + (
         IMPLEMENTED_B4C4F_LINUX_ADOPTION_COMMITTED_CRASH_MANIFEST_CASES
+        if sys.platform.startswith("linux")
+        else ()
+    )
+    + (
+        IMPLEMENTED_B4C4G_LINUX_ADOPTION_PRECOMMIT_CRASH_MANIFEST_CASES
         if sys.platform.startswith("linux")
         else ()
     )
@@ -1294,12 +1313,21 @@ def _b2_owner(
     wheel_verifier: PackageWheelVerifier | None = None,
     supported_tags: frozenset[str] | None = None,
     cleanup_debt: bool = False,
+    crash_after_phase: PackageLifecyclePhase | None = None,
 ):
     lifecycle_journal = PackageLifecycleJournal(tmp_path / "package-lifecycle.jsonl")
-    kernel = PackageLifecycleOwner(
-        journal=lifecycle_journal,
-        classification_authority=_Authority(_facts("explicit_plugin_intent")),
-        enabled=True,
+    kernel = (
+        PackageLifecycleOwner(
+            journal=lifecycle_journal,
+            classification_authority=_Authority(_facts("explicit_plugin_intent")),
+            enabled=True,
+        )
+        if crash_after_phase is None
+        else _CrashAfterPhasePackageOwner(
+            journal=lifecycle_journal,
+            facts=_facts("explicit_plugin_intent"),
+            crash_after=crash_after_phase,
+        )
     )
     store = PackageQuarantineStore(tmp_path / "quarantine")
     evidence_journal = PackageArtifactEvidenceJournal(
@@ -1375,6 +1403,7 @@ def _b3d_owner(
     payloads: dict[str, bytes] | None = None,
     resolver: _NoDependencyResolver | _ManifestResolver | None = None,
     closure_builder: _LegacyClosureBuilder | None = None,
+    crash_after_phase: PackageLifecyclePhase | None = None,
 ):
     components = _b2_owner(
         tmp_path,
@@ -1382,6 +1411,7 @@ def _b3d_owner(
         secret=secret,
         payload=root_payload or _wheel_bytes(),
         payloads=payloads,
+        crash_after_phase=crash_after_phase,
     )
     (
         kernel,
@@ -2543,6 +2573,7 @@ def _manifest_native_adoption_fixture(
     adoption_installation_id: str = "manifest-installation",
     case_id: str = "B-COMPAT-ADOPT",
     crash_after_committed: bool = False,
+    crash_after_phase: PackageLifecyclePhase | None = None,
 ) -> _ManifestNativeAdoptionFixture:
     store_id = "package-store:manifest-adoption"
     secret = "manifest-secret-b-compat-adopt"
@@ -2562,6 +2593,7 @@ def _manifest_native_adoption_fixture(
         tmp_path,
         case_id=case_id,
         secret=secret,
+        crash_after_phase=crash_after_phase,
     )
     classified = kernel.submit(
         _request(
@@ -2991,6 +3023,115 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
         )
         assert fixture.secret not in repr((fixture.request, failed, replay))
         _assert_manifest_secret_absent(tmp_path, fixture.secret)
+    elif case_id in IMPLEMENTED_B4C4G_LINUX_ADOPTION_PRECOMMIT_CRASH_MANIFEST_CASES:
+        assert sys.platform.startswith("linux")
+        for phase in ADOPTION_PRECOMMIT_CRASH_PHASES:
+            recovery_root = tmp_path / f"recover-{phase}"
+            recovery_root.mkdir(mode=0o700)
+            fixture = _manifest_native_adoption_fixture(
+                recovery_root,
+                case_id=case_id,
+                crash_after_phase=phase,
+            )
+            with pytest.raises(_ManifestCrashEdge, match=phase):
+                fixture.owner.adopt(fixture.request)
+            crashed = fixture.kernel.status(fixture.request.operation_id)
+            assert crashed is not None
+            assert (crashed.phase, crashed.disposition) == (phase, "active")
+
+            recovered = fixture.owner.adopt(fixture.request)
+            after_recovery = (
+                fixture.lifecycle_journal.records(),
+                fixture.evidence_journal.records(),
+                fixture.resolution_journal.records(),
+                fixture.pin_journal.records(),
+                fixture.staging_journal.records(),
+                fixture.committed_sets.records(),
+                fixture.fence_journal.records(),
+                fixture.root_settlements.records(),
+            )
+            replay = fixture.owner.adopt(fixture.request)
+
+            assert recovered == replay, phase
+            assert recovered.disposition == "adopted", phase
+            assert recovered.receipt is not None
+            assert fixture.source_authority.authorize_calls == 1
+            assert fixture.source_authority.stream is not None
+            assert fixture.source_authority.stream.requests_started == 1
+            assert fixture.retention.physical_acquisitions == 1
+            assert fixture.root_staging.calls == 1
+            assert len(fixture.pin_journal.records()) == 1
+            assert len(fixture.staging_journal.records()) == 1
+            assert len(fixture.committed_sets.records()) == 1
+            assert len(fixture.root_settlements.records()) == 1
+            assert len(fixture.quarantine.attempt_names()) == 1
+            assert fixture.quarantine.total_residue_bytes() <= 256 * 1024
+            assert fixture.legacy_state.capture().evidence_id == (
+                fixture.request.legacy_state_evidence_id
+            )
+            assert fixture.product_projections.capture() == (
+                fixture.product_projection_before
+            )
+            assert after_recovery == (
+                fixture.lifecycle_journal.records(),
+                fixture.evidence_journal.records(),
+                fixture.resolution_journal.records(),
+                fixture.pin_journal.records(),
+                fixture.staging_journal.records(),
+                fixture.committed_sets.records(),
+                fixture.fence_journal.records(),
+                fixture.root_settlements.records(),
+            )
+            _assert_manifest_secret_absent(recovery_root, fixture.secret)
+
+            interrupted_root = tmp_path / f"interrupt-{phase}"
+            interrupted_root.mkdir(mode=0o700)
+            interrupted_fixture = _manifest_native_adoption_fixture(
+                interrupted_root,
+                case_id=case_id,
+                crash_after_phase=phase,
+            )
+            with pytest.raises(_ManifestCrashEdge, match=phase):
+                interrupted_fixture.owner.adopt(interrupted_fixture.request)
+            before_interrupt = interrupted_fixture.kernel.status(
+                interrupted_fixture.request.operation_id
+            )
+            assert before_interrupt is not None
+            before_interrupt_records = (
+                interrupted_fixture.lifecycle_journal.records()
+            )
+            interrupted = interrupted_fixture.kernel.interrupt(
+                before_interrupt.operation_id,
+                expected_phase=before_interrupt.phase,
+                expected_journal_revision=before_interrupt.journal_revision,
+                expected_attempt_epoch=before_interrupt.attempt_epoch,
+            )
+            after_interrupt = interrupted_fixture.lifecycle_journal.records()
+            assert len(after_interrupt) == len(before_interrupt_records) + 1
+            interrupt_replay = interrupted_fixture.kernel.interrupt(
+                before_interrupt.operation_id,
+                expected_phase=before_interrupt.phase,
+                expected_journal_revision=before_interrupt.journal_revision,
+                expected_attempt_epoch=before_interrupt.attempt_epoch,
+            )
+            assert interrupt_replay == interrupted
+            assert interrupted_fixture.lifecycle_journal.records() == after_interrupt
+            assert interrupted.phase == phase
+            assert interrupted.disposition == "retryable_failure"
+            assert interrupted.failure is not None
+            assert interrupted.failure.code == "package_operation_interrupted"
+            assert interrupted.failure.stage == phase
+            assert interrupted_fixture.product_projections.capture() == (
+                interrupted_fixture.product_projection_before
+            )
+            assert interrupted_fixture.legacy_state.capture().evidence_id == (
+                interrupted_fixture.request.legacy_state_evidence_id
+            )
+            assert interrupted_fixture.quarantine.total_residue_bytes() <= 256 * 1024
+            _assert_manifest_secret_absent(
+                interrupted_root,
+                interrupted_fixture.secret,
+            )
     elif case_id in IMPLEMENTED_B4C4F_LINUX_ADOPTION_COMMITTED_CRASH_MANIFEST_CASES:
         assert sys.platform.startswith("linux")
         fixture = _manifest_native_adoption_fixture(
