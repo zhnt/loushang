@@ -63,6 +63,7 @@ from loushang.harness.capabilities.session_contracts import (
     SESSION_WORKSPACE_PROCESS_REQUIREMENT,
     SESSION_WORKSPACE_TOOL_REQUIREMENT,
 )
+from loushang.harness.capabilities.tool_intent import DefaultToolProfileSnapshot
 from loushang.harness.config.agent import (
     CompactionSettings,
     RetrySettings,
@@ -306,6 +307,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
         allowed_tool_names: list[str] | None = None,
         active_tool_names: list[str] | None = None,
         default_activate_new_tools: bool | None = None,
+        default_tool_profile: DefaultToolProfileSnapshot | None = None,
         show_empty_tool_prompt: bool = False,
         base_prompt: str | None = None,
         diagnostics_service: DiagnosticsService | None = None,
@@ -646,6 +648,43 @@ class AgentProductSession(AgentSessionAdapterMixin):
         self._installed_transport_requirement: bool | None = None
         self._extension_tool_registration_leases = []
         self._tool_registry = tool_registry
+        resolved_default_activation = (
+            active_tool_names is None
+            if default_activate_new_tools is None
+            else default_activate_new_tools
+        )
+        if default_tool_profile is not None:
+            if not isinstance(default_tool_profile, DefaultToolProfileSnapshot):
+                raise TypeError(
+                    "default_tool_profile must be a DefaultToolProfileSnapshot"
+                )
+            if (
+                default_activate_new_tools is not None
+                and default_tool_profile.automatic_selection_enabled
+                != default_activate_new_tools
+            ):
+                raise ValueError(
+                    "default Tool profile conflicts with legacy auto-selection input"
+                )
+            self._default_tool_profile = default_tool_profile
+        else:
+            static_default_names = tuple(
+                definition.name
+                for definition in (
+                    tool_registry.list_enabled_definitions()
+                    if tool_registry is not None
+                    else ()
+                )
+            )
+            self._default_tool_profile = DefaultToolProfileSnapshot(
+                profile_id=f"{initial_profile.product_id}.tools.default",
+                profile_revision=0,
+                static_default_names=static_default_names,
+                automatic_selection_policy_fingerprint=(
+                    f"{initial_profile.product_id}.tools.legacy-auto.v1"
+                ),
+                automatic_selection_enabled=resolved_default_activation,
+            )
         self.diagnostics_service = diagnostics_service
         self._package_materializer = package_materializer
         self._selected_plugin_packages = tuple(selected_plugin_packages)
@@ -779,7 +818,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
             self._composition_ports(
                 allowed_tool_names=allowed_tool_names,
                 active_tool_names=active_tool_names,
-                default_activate_new_tools=default_activate_new_tools,
+                default_tool_profile=self._default_tool_profile,
                 show_empty_tool_prompt=show_empty_tool_prompt,
             )
         )
@@ -956,7 +995,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
         *,
         allowed_tool_names: list[str] | None,
         active_tool_names: list[str] | None,
-        default_activate_new_tools: bool | None,
+        default_tool_profile: DefaultToolProfileSnapshot,
         show_empty_tool_prompt: bool,
     ) -> SessionCompositionPorts:
         def build_command_controller(
@@ -1034,7 +1073,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 tool_registry=self._tool_registry,
                 allowed_tool_names=allowed_tool_names,
                 active_tool_names=active_tool_names,
-                default_activate_new_tools=default_activate_new_tools,
+                default_tool_profile=default_tool_profile,
                 show_empty_tool_prompt=show_empty_tool_prompt,
                 base_prompt=self._base_prompt,
                 diagnostics_service=self.diagnostics_service,

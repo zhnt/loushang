@@ -131,6 +131,31 @@ def test_session_without_registry_rejects_raw_runtime_tools(
         AgentSession(agent=agent, session_manager=manager)
 
 
+def test_coding_default_profile_keeps_unpublished_base_tools_pending(tmp_path) -> None:
+    from loushang.agent import Agent
+    from loushang.coding import SessionManager
+    from loushang.coding.session import AgentSession
+    from loushang.coding.tool_pack import CODING_DEFAULT_ACTIVE_TOOL_NAMES
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
+
+    session = AgentSession(
+        agent=Agent(initial_state={"system_prompt": "Base prompt.", "tools": []}),
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        ),
+        tool_registry=ToolRegistry(),
+        active_tool_names=(),
+        base_prompt="Base prompt.",
+    )
+
+    profile = session._composition.tool_controller.default_tool_profile
+    assert profile is not None
+    assert profile.static_default_names == CODING_DEFAULT_ACTIVE_TOOL_NAMES
+    assert session.get_active_tool_names() == []
+
+
 def test_agent_session_tracks_active_tool_names_and_runtime_tools(tmp_path) -> None:
     from pathlib import Path
 

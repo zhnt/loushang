@@ -4,7 +4,11 @@
 
 - Design status: reviewed target contract; runtime implementation is
   incremental and is not completed by this document.
+- Implementation status: P1A governed intent semantics are implemented behind
+  opt-in capabilities; existing Product sessions remain on isolated
+  `legacy_positive` state pending the P1B atomic control-surface cutover.
 - Tracking issue: `#517`.
+- P1A implementation issue: `#518`.
 - P0 prerequisite: `#516` preserves deferred positive Tool Intent when a local
   contributor performs Additive Activation.
 - Canonical vocabulary: [Tool Governance Glossary](tool-governance-glossary.md).
@@ -214,6 +218,7 @@ Generations. A future public record should carry at least:
 ```text
 ToolCatalogSnapshot
   catalog_epoch
+  catalog_epoch_generation
   catalog_revision
   entries[]
     tool_name
@@ -236,6 +241,8 @@ Catalog identity is split deliberately:
 
 - `catalog_epoch` fences one session-local Catalog realization across process
   reconstruction;
+- `catalog_epoch_generation` is the monotonic session fence that prevents an
+  older opaque epoch from being accepted after rehydration;
 - `catalog_revision` identifies one global observation;
 - `owner_generation` identifies one owner's replacement unit;
 - `definition_fingerprint` detects schema/metadata replacement under the same
@@ -289,6 +296,7 @@ DefaultToolProfileSnapshot
   static_default_names[]
   automatic_selection_policy_fingerprint
   automatic_selection_enabled
+  automatic_selection_excluded_names[]  # transitional executable policy data
 ```
 
 Product composition may publish a new profile revision, for example when
@@ -324,7 +332,9 @@ ToolIntentSnapshot
     decision_profile_revision
     candidate_fingerprint
     selected_by_default
-  observed_catalog_cursor = (catalog_epoch, catalog_revision)
+  observed_catalog_cursor =
+    (catalog_epoch, catalog_epoch_generation, catalog_revision)
+  observed_catalog_fingerprint
 ```
 
 For one Tool Name, the decision is exactly one of:
@@ -617,7 +627,8 @@ CompleteToolIntentRestorer
   replace_tool_intent(snapshot, expected_revision)
 
 ToolDefaultProfilePublisher
-  publish_profile(snapshot, expected_profile_revision, expected_intent_revision)
+  publish_profile(assembler_change, expected_profile_revision,
+                  expected_intent_revision)
 
 ToolDefaultProfileContributorHandle  # namespace/contributor bound
   replace_contribution(fragment, expected_contribution_revision)
@@ -642,7 +653,7 @@ publisher or user editor. Only the Product profile assembler receives
 | `set_explicit_only(names, expected_revision)` | Enter `explicit_only` and commit the exact ordered positive selection, including an empty no-tools selection. | `ToolIntentUserEditor` operating from an authoritative intent snapshot. |
 | `replace_tool_intent(snapshot, expected_revision)` | Replace the entire intent state for one session with a typed complete snapshot. | Restore/import/migration owner holding complete session intent. |
 | `replace_contribution(fragment, expected_revision)` | Replace only the handle-bound Product default-profile contribution and ask the assembler to publish a new complete profile. | Exact `ToolDefaultProfileContributorHandle`, such as the base or multi-agent Product composition owner. |
-| `publish_profile(snapshot, expectations)` | Bind a complete Product profile revision, preserve user overrides and seen-name decisions, and schedule reconciliation without making seen names new. | Product profile assembler through `ToolDefaultProfilePublisher`. |
+| `publish_profile(assembler_change, expectations)` | Bind the complete profile from an assembler-issued change on the same revision stream, preserve user overrides and seen-name decisions, and schedule reconciliation without making seen names new. | Product profile assembler through `ToolDefaultProfilePublisher`. |
 | `publish_generation(generation, entries, admission_receipt, expectations)` | Atomically replace only the handle-bound Owner Key's Catalog slice. | Exact `OwnerGenerationHandle`; caller cannot supply its own Owner identity. |
 | `withdraw_generation(expected_generation)` | Remove only the handle-bound Owner generation from availability. | Exact `OwnerGenerationHandle` or lifecycle supervisor capability. |
 | `build_tool_plan(call_context)` | Read immutable snapshots and create one call-scoped plan. | Model invocation owner. |
@@ -1069,6 +1080,24 @@ control paths; changing only `ToolActivationCoordinator` is insufficient:
 | `Agent.tools` and `get_active_tool_names()` | Compatibility projections, never mutation input or call-time authority. |
 
 ### Slice P1A: Intent Semantics
+
+Implementation note (2026-09-02):
+`loushang.harness.capabilities.tool_intent` now provides the revisioned
+governed-v1 state, narrow mutation capabilities, separate Default-Selection
+Reconciler, legacy-positive conversion characterization, and namespace-bound
+default-profile assembler. `SessionToolController` receives a revisioned
+Product profile instead of declaring Coding defaults. The live session cutover
+remains P1B scope so there is still exactly one intent engine per session.
+Review hardening adds content-bound Catalog observations, a restorable monotonic
+epoch fence, canonical decision sequences, atomic legacy publication/default
+reconciliation coordination, rollback-safe first-seen provenance, and
+content-bound assembler receipts on one revision stream. Legacy selection and
+rebind callbacks run outside the coordinator state lock; revision CAS retries
+selection, while a failed publication either restores an exactly consecutive
+checkpoint or compensates only the automatic request and first-seen decisions
+introduced by its own revision. Profile receipt authority is weakly retained
+for exactly the lifetime of each live receipt, so repeated reload/no-op changes
+do not accumulate in a long-lived assembler.
 
 - Add typed selection mode, explicit-enable, explicit-disable, reset,
   Automatic Selection Decision, profile snapshot, and revision state to

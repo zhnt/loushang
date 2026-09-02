@@ -135,7 +135,9 @@ target APIs land, interpret existing names as follows:
 | registry `enabled` | Definition remains listed and manually selectable but is excluded from enabled/default selection views | Legacy Default-Selection Eligibility, not target Catalog visibility. On-demand Arch/LSP Tools must remain Available. |
 | `request(names)` / `apply_active_tools(names)` | Exact replacement of positive requested names and caller order | Isolated `LegacyPositiveIntentState`, not a lossless Exact Intent Replacement in the target three-state model. |
 | `activate(names)` / `activate_tool_names(names)` | Ordered union with existing positive requested names | Transitional Additive Activation. Current Product-composition callers must migrate to a default-profile capability rather than becoming user Explicit Enable. |
-| `refresh(..., activate_new=True)` | Republish availability and optionally append newly seen names selected by Product policy | Transitional implicit reconciliation without durable decision outcomes or suppression; it must be replaced by the Default-Selection Reconciler. |
+| `refresh(...)` | Republish the legacy available view without changing positive intent | P1A separated publication from legacy default reconciliation; governed sessions use a Catalog observation and `DefaultSelectionReconciler`. |
+| `refresh_and_reconcile_default_selection(...)` | Atomic transitional legacy publication plus lock-free-callback, CAS-retried first-seen reconciliation | Still limited to `LegacyPositiveIntentState`; failed view publication uses an exact consecutive checkpoint or revision-attributed delta compensation, not an unfenced whole-state rewind. The separate `refresh(...)`/`reconcile_default_selection(...)` surfaces retain stale-publication checks only for compatibility. |
+| `GovernedToolIntentCoordinator` | Revisioned explicit enable/disable/reset, automatic decisions, and bound profile state | P1A opt-in engine; it does not become authoritative for an existing session until the P1B one-way cutover. |
 | `Agent.tools` | Mutable materialized tool list | Projection target, never the Catalog or source of durable intent. |
 
 ## Required Language Rules

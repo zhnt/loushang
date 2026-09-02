@@ -481,6 +481,97 @@ def test_tool_controller_live_bind_rolls_back_when_view_rebind_fails() -> None:
     assert agent.system_prompt == stable_prompt
 
 
+def test_live_bind_rebind_failure_does_not_consume_default_first_seen() -> None:
+    registry = ToolRegistry()
+    agent = Agent(initial_state={"system_prompt": "stable", "tools": []})
+    controller = ToolController(
+        agent=agent,
+        get_cwd=lambda: "/tmp/project",
+        tool_registry=registry,
+        allowed_tool_names=None,
+        initial_active_tool_names=[],
+        base_prompt="Base prompt.",
+        get_resource_bundle=lambda: None,
+        get_diagnostics_service=lambda: None,
+        default_activate_new_tools=True,
+    )
+    rebuild_prompt = controller._runtime.rebuild_prompt
+    failures_remaining = 1
+
+    def fail_once(definitions: list[ToolDefinition] | None) -> None:
+        nonlocal failures_remaining
+        if failures_remaining:
+            failures_remaining -= 1
+            raise RuntimeError("injected prompt failure")
+        rebuild_prompt(definitions)
+
+    controller._runtime.rebuild_prompt = fail_once
+    definition = _tool_definition("runtime_tool")
+    owner = RegistrationOwner(
+        owner_kind="extension",
+        owner_id="demo",
+        runtime_id="session-1",
+        generation=0,
+    )
+
+    with pytest.raises(RuntimeError, match="injected prompt failure"):
+        controller.bind_runtime_tool(definition, owner=owner)
+
+    lease = controller.bind_runtime_tool(definition, owner=owner)
+    assert controller.get_active_tool_names() == ["runtime_tool"]
+    assert [tool.name for tool in agent.tools] == ["runtime_tool"]
+    assert asyncio.run(lease.dispose()).state == "removed"
+
+
+def test_live_bind_failure_compensates_its_default_without_losing_newer_intent() -> (
+    None
+):
+    registry = ToolRegistry()
+    manual = _tool_definition("manual")
+    registry.register_tool(manual)
+    agent = Agent(initial_state={"system_prompt": "stable", "tools": []})
+    controller = ToolController(
+        agent=agent,
+        get_cwd=lambda: "/tmp/project",
+        tool_registry=registry,
+        allowed_tool_names=None,
+        initial_active_tool_names=[],
+        base_prompt="Base prompt.",
+        get_resource_bundle=lambda: None,
+        get_diagnostics_service=lambda: None,
+        default_activate_new_tools=True,
+    )
+    rebuild_prompt = controller._runtime.rebuild_prompt
+    first_rebind = True
+
+    def mutate_then_fail(definitions: list[ToolDefinition] | None) -> None:
+        nonlocal first_rebind
+        if first_rebind:
+            first_rebind = False
+            controller.activate_tool_names(["manual"])
+            raise RuntimeError("injected prompt failure")
+        rebuild_prompt(definitions)
+
+    controller._runtime.rebuild_prompt = mutate_then_fail
+    plugin = _tool_definition("plugin")
+    owner = RegistrationOwner(
+        owner_kind="extension",
+        owner_id="demo",
+        runtime_id="session-1",
+        generation=0,
+    )
+
+    with pytest.raises(RuntimeError, match="injected prompt failure"):
+        controller.bind_runtime_tool(plugin, owner=owner)
+
+    assert controller.get_active_tool_names() == ["manual"]
+    assert [tool.name for tool in agent.tools] == ["manual"]
+
+    lease = controller.bind_runtime_tool(plugin, owner=owner)
+    assert controller.get_active_tool_names() == ["manual", "plugin"]
+    assert asyncio.run(lease.dispose()).state == "removed"
+
+
 def test_tool_controller_live_dispose_retries_view_rebind_after_exact_removal() -> (
     None
 ):

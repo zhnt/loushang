@@ -27,6 +27,7 @@ from loushang.ai.utils.capabilities import validate_image_input_compatibility
 from loushang.harness.approval import ApprovalResolver
 from loushang.harness.capabilities import StagedResourceCompositionCandidate
 from loushang.harness.capabilities.prompt_assembly import SkillPromptSummary
+from loushang.harness.capabilities.tool_intent import DefaultToolProfileSnapshot
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.events import (
@@ -218,7 +219,7 @@ class SessionFoundationInputs:
     tool_registry: WorkspaceToolRegistry | None
     allowed_tool_names: list[str] | None
     active_tool_names: list[str] | None
-    default_activate_new_tools: bool | None
+    default_tool_profile: DefaultToolProfileSnapshot
     show_empty_tool_prompt: bool
     base_prompt: str
     diagnostics_service: DiagnosticsService | None
@@ -408,13 +409,36 @@ def _legacy_composition_inputs(
                 f"legacy SessionCompositionPorts is missing {name!r}"
             ) from exc
 
+    active_tool_names = take("active_tool_names")
+    tool_registry = take("tool_registry")
+    default_activate_new_tools = remaining.pop("default_activate_new_tools", None)
+    default_tool_profile = remaining.pop("default_tool_profile", None)
+    if default_tool_profile is None:
+        default_tool_profile = DefaultToolProfileSnapshot(
+            profile_id="legacy.session.tools.default",
+            profile_revision=0,
+            static_default_names=tuple(
+                definition.name
+                for definition in (
+                    tool_registry.list_enabled_definitions()
+                    if tool_registry is not None
+                    else ()
+                )
+            ),
+            automatic_selection_policy_fingerprint="legacy.session.tools.auto.v1",
+            automatic_selection_enabled=(
+                active_tool_names is None
+                if default_activate_new_tools is None
+                else default_activate_new_tools
+            ),
+        )
     foundation = SessionFoundationInputs(
         resource_loader=take("resource_loader"),
         get_resource_bundle=take("get_resource_bundle"),
-        tool_registry=take("tool_registry"),
+        tool_registry=tool_registry,
         allowed_tool_names=take("allowed_tool_names"),
-        active_tool_names=take("active_tool_names"),
-        default_activate_new_tools=take("default_activate_new_tools"),
+        active_tool_names=active_tool_names,
+        default_tool_profile=default_tool_profile,
         show_empty_tool_prompt=take("show_empty_tool_prompt"),
         base_prompt=take("base_prompt"),
         diagnostics_service=take("diagnostics_service"),
@@ -1044,10 +1068,9 @@ def _build_tool_controller(
             inputs.active_tool_names or [tool.name for tool in ports.agent.tools]
         ),
         default_activate_new_tools=(
-            inputs.active_tool_names is None
-            if inputs.default_activate_new_tools is None
-            else inputs.default_activate_new_tools
+            inputs.default_tool_profile.automatic_selection_enabled
         ),
+        default_tool_profile=inputs.default_tool_profile,
         show_empty_tool_prompt=inputs.show_empty_tool_prompt,
         base_prompt=inputs.base_prompt,
         get_resource_bundle=inputs.get_resource_bundle,

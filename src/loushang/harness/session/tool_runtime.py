@@ -8,6 +8,8 @@ from typing import Any, Protocol
 
 from loushang.agent.types import AgentTool
 from loushang.harness.capabilities.tools import (
+    LegacyToolActivationCheckpoint,
+    StaleToolActivationCheckpointError,
     ToolActivationChange,
     ToolActivationCoordinator,
 )
@@ -221,7 +223,7 @@ class SessionToolRuntime:
             tool,
             source_info=source_info,
         )
-        previous_requested_names = self._activation.snapshot().requested_names
+        activation_checkpoint = self._activation.checkpoint()
         registry_lease = self.tool_registry.bind_tool(
             registration.definition,
             owner=owner,
@@ -233,14 +235,16 @@ class SessionToolRuntime:
             else:
                 self._sync_available(activate_new=True, rebind=True)
         except BaseException as bind_error:
+            failed_transition = self._activation.failed_rebind_transition(bind_error)
             rollback = self.tool_registry._rollback_tool_binding(registry_lease)
             if rollback.state not in {"removed", "already_removed"}:
                 bind_error.add_note("tool registry binding rollback failed")
-            try:
-                self._sync_available(activate_new=False, rebind=False)
-                self._activation.request(previous_requested_names, rebind=True)
-            except BaseException:
-                bind_error.add_note("tool binding view rollback failed")
+            self._restore_activation_after_failure(
+                activation_checkpoint,
+                transition=failed_transition,
+                error=bind_error,
+                context="tool binding",
+            )
             raise
 
         return self._runtime_view_lease(registry_lease)
@@ -301,6 +305,11 @@ class SessionToolRuntime:
         staged: bool = False,
         activate_new_on_publish: bool = True,
     ) -> RegistrationLease:
+        activation_checkpoint: LegacyToolActivationCheckpoint[
+            ToolDefinition
+        ] | None = None
+        activation_change: ToolActivationChange[ToolDefinition] | None = None
+
         async def dispose_runtime_binding() -> RegistrationDisposalResult:
             result = await registry_lease.dispose()
             if result.state in {"removed", "already_removed"}:
@@ -308,20 +317,67 @@ class SessionToolRuntime:
             return result
 
         def activate_runtime_binding() -> None:
-            registry_lease.activate()
-            self._sync_available(
-                activate_new=activate_new_on_publish,
-                rebind=True,
-            )
+            nonlocal activation_checkpoint, activation_change
+            activation_checkpoint = self._activation.checkpoint()
+            try:
+                registry_lease.activate()
+                activation_change = self._sync_available(
+                    activate_new=activate_new_on_publish,
+                    rebind=True,
+                )
+            except BaseException as activation_error:
+                failed_transition = self._activation.failed_rebind_transition(
+                    activation_error
+                )
+                try:
+                    registry_lease.deactivate()
+                except BaseException:
+                    activation_error.add_note("staged tool deactivation failed")
+                self._restore_activation_after_failure(
+                    activation_checkpoint,
+                    transition=failed_transition,
+                    error=activation_error,
+                    context="staged tool",
+                )
+                activation_checkpoint = None
+                activation_change = None
+                raise
 
         def deactivate_runtime_binding() -> None:
+            nonlocal activation_checkpoint, activation_change
             registry_lease.deactivate()
-            self._sync_available(activate_new=False, rebind=True)
+            if activation_checkpoint is None or activation_change is None:
+                self._sync_available(activate_new=False, rebind=True)
+                return
+            self._restore_activation_publication(
+                activation_checkpoint,
+                transition=(
+                    activation_change.previous.revision,
+                    activation_change.current.revision,
+                    activation_change.current.revision,
+                ),
+                error=None,
+                context="staged tool deactivation",
+            )
+            activation_checkpoint = None
+            activation_change = None
 
         def rollback_runtime_binding() -> RegistrationDisposalResult:
             result = registry_lease.rollback_registration()
             if result.state in {"removed", "already_removed"}:
-                self._sync_available(activate_new=False, rebind=True)
+                if activation_checkpoint is None or activation_change is None:
+                    self._sync_available(activate_new=False, rebind=True)
+                else:
+                    self._restore_activation_publication(
+                        activation_checkpoint,
+                        transition=(
+                            activation_change.previous.revision,
+                            activation_change.current.revision,
+                            activation_change.current.revision,
+                        ),
+                        error=None,
+                        context="staged tool rollback",
+                    )
             return result
 
         return RegistrationLease(
@@ -333,11 +389,106 @@ class SessionToolRuntime:
             rollback=rollback_runtime_binding,
         )
 
-    def _sync_available(self, *, activate_new: bool, rebind: bool) -> None:
-        self._activation.refresh(
+    def _sync_available(
+        self,
+        *,
+        activate_new: bool,
+        rebind: bool,
+    ) -> ToolActivationChange[ToolDefinition]:
+        return self._activation.refresh_and_reconcile_default_selection(
             self._available_definitions(),
-            activate_new=activate_new,
+            eligible_names=self._legacy_default_selection_eligible_names(),
+            enabled=activate_new,
             rebind=rebind,
+        )
+
+    def _restore_activation_after_failure(
+        self,
+        checkpoint: LegacyToolActivationCheckpoint[ToolDefinition],
+        *,
+        transition: tuple[int, int, int] | None,
+        error: BaseException,
+        context: str,
+    ) -> None:
+        self._restore_activation_publication(
+            checkpoint,
+            transition=transition,
+            error=error,
+            context=context,
+        )
+
+    def _restore_activation_publication(
+        self,
+        checkpoint: LegacyToolActivationCheckpoint[ToolDefinition],
+        *,
+        transition: tuple[int, int, int] | None,
+        error: BaseException | None,
+        context: str,
+    ) -> None:
+        previous_revision: int | None
+        publication_revision: int | None
+        failed_revision: int | None
+        if transition is not None:
+            previous_revision, publication_revision, failed_revision = transition
+        else:
+            previous_revision = None
+            publication_revision = None
+            failed_revision = None
+        if (
+            previous_revision is not None
+            and publication_revision is not None
+            and failed_revision is not None
+            and checkpoint.revision == previous_revision
+            and publication_revision == failed_revision
+        ):
+            try:
+                self._activation.restore_checkpoint(
+                    checkpoint,
+                    expected_previous_revision=previous_revision,
+                    expected_revision=publication_revision,
+                    rebind=True,
+                )
+                return
+            except StaleToolActivationCheckpointError:
+                if error is not None:
+                    error.add_note(
+                        f"{context} checkpoint rollback skipped after a newer mutation"
+                    )
+            except BaseException:
+                if error is not None:
+                    error.add_note(f"{context} view rollback failed")
+                    return
+                raise
+        if publication_revision is not None:
+            try:
+                self._activation.compensate_failed_publication(
+                    checkpoint,
+                    publication_revision=publication_revision,
+                    rebind=False,
+                )
+            except BaseException:
+                if error is not None:
+                    error.add_note(f"{context} intent compensation failed")
+                else:
+                    raise
+        elif error is not None:
+            error.add_note(f"{context} rollback lacked a committed revision receipt")
+        try:
+            self._sync_available(activate_new=False, rebind=True)
+        except BaseException:
+            if error is not None:
+                error.add_note(f"{context} view resynchronization failed")
+            else:
+                raise
+
+    def _legacy_default_selection_eligible_names(self) -> tuple[str, ...]:
+        contributions = self.tool_registry.list_contributions()
+        if not contributions:
+            return tuple(definition.name for definition in self._available_definitions())
+        return tuple(
+            contribution.definition.name
+            for contribution in contributions
+            if contribution.enabled
         )
 
     def _rebind_active_tools(

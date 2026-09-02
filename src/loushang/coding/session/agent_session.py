@@ -54,6 +54,11 @@ from loushang.coding.runtime_capability_admission import (
     resolve_coding_capability_profile,
 )
 from loushang.coding.session_manager import SessionManager
+from loushang.coding.tool_pack import (
+    CODING_BUILTIN_TOOL_NAMES,
+    coding_default_active_tool_names,
+    coding_platform_tool_names,
+)
 from loushang.harness.approval import InteractiveApprovalResolver
 from loushang.harness.capabilities import (
     CapabilityBundleProviderBinding,
@@ -61,10 +66,12 @@ from loushang.harness.capabilities import (
     stage_resource_composition_candidate,
 )
 from loushang.harness.capabilities.graph_runtime import CapabilityFacetSet
+from loushang.harness.capabilities.tool_intent import DefaultToolProfileSnapshot
 from loushang.harness.commands import normalize_command_name
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticDraft
+from loushang.harness.environment import LocalHostEnvironmentProbe
 from loushang.harness.events import RuntimeEvent
 from loushang.harness.extensions.agent import ExtensionRunner
 from loushang.harness.extensions.context import SessionStartEvent
@@ -396,6 +403,35 @@ class AgentSession(AgentProductSession):
             locally_created_capability_runtime = resolved_capability_runtime
         elif resolution is not None:
             resolved_capability_runtime.select_final_profile(resolution.profile)
+        host_environment = (
+            coding_base_plugin_assembly.host_environment
+            if coding_base_plugin_assembly is not None
+            else LocalHostEnvironmentProbe().detect()
+        )
+        selected_base_tool_names = (
+            set(coding_base_plugin_assembly.tool_names)
+            if coding_base_plugin_assembly is not None
+            else set(coding_default_active_tool_names(host_environment))
+        )
+        coding_default_profile = DefaultToolProfileSnapshot(
+            profile_id="coding.tools.default",
+            profile_revision=0,
+            static_default_names=tuple(
+                name
+                for name in coding_default_active_tool_names(host_environment)
+                if name in selected_base_tool_names
+            ),
+            automatic_selection_policy_fingerprint="coding.tools.legacy-auto.v1",
+            automatic_selection_enabled=(
+                active_tool_names is None
+                if default_activate_new_tools is None
+                else default_activate_new_tools
+            ),
+            automatic_selection_excluded_names=coding_platform_tool_names(
+                CODING_BUILTIN_TOOL_NAMES,
+                host_environment,
+            ),
+        )
         try:
             if side_question_binding is None:
                 side_question_binding = (
@@ -426,6 +462,7 @@ class AgentSession(AgentProductSession):
                 allowed_tool_names=allowed_tool_names,
                 active_tool_names=active_tool_names,
                 default_activate_new_tools=default_activate_new_tools,
+                default_tool_profile=coding_default_profile,
                 show_empty_tool_prompt=show_empty_tool_prompt,
                 base_prompt=base_prompt,
                 diagnostics_service=diagnostics_service,
