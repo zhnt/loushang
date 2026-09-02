@@ -232,7 +232,7 @@ class PackageStagingSetLifecycleOwner:
             if adoption_request is None
             else self._adoption_target(adoption_request, status, request)
         )
-        if not self._target_matches(target, request, status):
+        if target is None or not self._target_matches(target, request, status):
             candidate.suspend_for_recovery()
             return PackageStagingSetExecutionResult(
                 status=_local_refusal(
