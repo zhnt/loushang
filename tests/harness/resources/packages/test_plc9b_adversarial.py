@@ -1151,6 +1151,13 @@ class _LegacyClosureBuilder:
             root.cleanup()
         raise AssertionError("Legacy closure evidence unexpectedly satisfied v2")
 
+    def reacquire(
+        self,
+        root: VerifiedWheelCandidate,
+        request: PackageRecursiveClosureRequestV2,
+    ) -> VerifiedPackageClosureCandidate:
+        return self.build(root, request)
+
 
 def _facts(*present: str) -> PackageClassificationFactsV1:
     present_set = set(present)

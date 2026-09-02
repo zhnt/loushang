@@ -631,6 +631,74 @@ def test_extracted_phase_reconstructs_process_local_candidate_idempotently(
     assert store.attempt_names() == ()
 
 
+def test_transaction_pin_reacquires_verified_root_without_source_access_or_phase_change(
+    tmp_path: Path,
+) -> None:
+    kernel, owner, _journal, evidence, _cleanup, store = _owners(
+        tmp_path,
+        payload=_wheel_bytes(),
+    )
+    classified = kernel.submit(_ingress())
+    initial = owner.execute(_execute_request(classified))
+    assert initial.candidate is not None
+    status = initial.status
+    for phase in ("resolving_closure", "closure_verified", "transaction_pinned"):
+        status = kernel.advance(
+            status.operation_id,
+            next_phase=phase,
+            expected_phase=status.phase,
+            expected_journal_revision=status.journal_revision,
+            expected_attempt_epoch=status.attempt_epoch,
+        )
+    initial.candidate.suspend_for_recovery()
+    owner._acquisition_owner._source_authority.denied = True
+
+    reacquired = owner.reacquire(_execute_request(status))
+
+    assert reacquired.status == status
+    assert kernel.status(status.operation_id) == status
+    assert reacquired.candidate is not None
+    assert len(evidence.records()) == 3
+    reacquired.candidate.cleanup()
+    assert store.attempt_names() == ()
+
+
+def test_transaction_pin_reacquisition_fails_closed_when_evidence_is_incomplete(
+    tmp_path: Path,
+) -> None:
+    kernel, owner, _journal, evidence, _cleanup, store = _owners(
+        tmp_path,
+        payload=_wheel_bytes(),
+        denied=True,
+    )
+    status = kernel.submit(_ingress())
+    for phase in (
+        "acquiring",
+        "acquired",
+        "inspecting",
+        "extracted",
+        "resolving_closure",
+        "closure_verified",
+        "transaction_pinned",
+    ):
+        status = kernel.advance(
+            status.operation_id,
+            next_phase=phase,
+            expected_phase=status.phase,
+            expected_journal_revision=status.journal_revision,
+            expected_attempt_epoch=status.attempt_epoch,
+        )
+
+    rejected = owner.reacquire(_execute_request(status))
+
+    assert rejected.status.phase == "transaction_pinned"
+    assert rejected.status.disposition == "rejected"
+    assert rejected.status.failure is not None
+    assert rejected.status.failure.code == "package_operation_identity_conflict"
+    assert evidence.records() == ()
+    assert store.attempt_names() == ()
+
+
 def test_recovery_rejects_artifact_replacement_without_source_or_outside_delete(
     tmp_path: Path,
 ) -> None:

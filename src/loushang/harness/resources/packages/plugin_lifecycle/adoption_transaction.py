@@ -1,4 +1,4 @@
-"""Dark PLC9B4c4b adapter over the accepted complete B transaction owners.
+"""Dark PLC9B4c4c adapter over the accepted complete B transaction owners.
 
 The adapter is scoped to one operation.  Its private execution binding may
 hold an opaque credential reference, while the adoption protocol remains
@@ -50,6 +50,7 @@ _CLOSURE_PHASES = frozenset(
         "extracted",
         "resolving_closure",
         "closure_verified",
+        "transaction_pinned",
     }
 )
 _STAGING_RECOVERY_PHASES = frozenset({"staging"})
@@ -57,6 +58,11 @@ _STAGING_RECOVERY_PHASES = frozenset({"staging"})
 
 class PackageLegacyClosureExecutionPort(Protocol):
     def execute(
+        self,
+        execution: PackageClosureExecutionRequestV2,
+    ) -> PackageClosureExecutionResult: ...
+
+    def reacquire(
         self,
         execution: PackageClosureExecutionRequestV2,
     ) -> PackageClosureExecutionResult: ...
@@ -105,7 +111,7 @@ class PackageLegacyAdoptionTransactionAdapter:
         if not isinstance(recovery_identity, str) or not recovery_identity:
             raise ValueError("Package recovery identity is required")
         for owner, methods, name in (
-            (closure, ("execute",), "closure execution owner"),
+            (closure, ("execute", "reacquire"), "closure execution owner"),
             (pins, ("pin",), "transaction pin owner"),
             (
                 staging,
@@ -140,7 +146,11 @@ class PackageLegacyAdoptionTransactionAdapter:
             return self._finish(request, status)
 
         if status.phase in _CLOSURE_PHASES:
-            closure = self._closure.execute(self._execution)
+            closure = (
+                self._closure.reacquire(self._execution)
+                if status.phase == "transaction_pinned"
+                else self._closure.execute(self._execution)
+            )
             if not isinstance(closure, PackageClosureExecutionResult):
                 return self._refused(request, status)
             status = closure.status
@@ -199,13 +209,6 @@ class PackageLegacyAdoptionTransactionAdapter:
                 pinned.candidate.suspend_for_recovery()
             return self._after_staging(request, staged)
 
-        if status.phase == "transaction_pinned":
-            # The accepted staging owner can resume without a live candidate
-            # only after every staging receipt is durable, represented by the
-            # later ``staging`` phase.  A bare durable pin is insufficient to
-            # reconstruct the opaque verified candidates, so this candidate
-            # slice must fail closed until a reacquisition seam exists.
-            return self._unavailable(request, status)
         if status.phase in _STAGING_RECOVERY_PHASES:
             staged = self._staging.resume(request.operation_id)
             return self._after_staging(request, staged)
@@ -330,17 +333,6 @@ class PackageLegacyAdoptionTransactionAdapter:
             request,
             status,
             code="package_operation_identity_conflict",
-        )
-
-    @staticmethod
-    def _unavailable(
-        request: PackageLegacyAdoptionRequestV1,
-        status: PackageLifecycleStatusV1,
-    ) -> PackageLegacyAdoptionTransactionResultV1:
-        return PackageLegacyAdoptionTransactionAdapter._local_failure(
-            request,
-            status,
-            code="package_route_unavailable",
         )
 
     @staticmethod

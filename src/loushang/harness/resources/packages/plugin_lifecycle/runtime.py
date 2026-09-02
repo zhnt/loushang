@@ -101,6 +101,7 @@ class PackageArtifactExecutionResult:
                 "extracted",
                 "resolving_closure",
                 "closure_verified",
+                "transaction_pinned",
             }
             and self.status.disposition == "active"
         ):
@@ -485,6 +486,120 @@ class PackageArtifactLifecycleOwner:
             return PackageArtifactExecutionResult(status=status, candidate=verified)
         raise RuntimeError("Unsupported active Package artifact phase")
 
+    def reacquire(
+        self,
+        execution: PackageArtifactExecutionRequestV1,
+    ) -> PackageArtifactExecutionResult:
+        """Reopen one pinned, already-verified root without Source authority."""
+
+        if not isinstance(execution, PackageArtifactExecutionRequestV1):
+            raise TypeError("Package artifact execution request is required")
+        status = self._kernel.status(execution.operation_id)
+        request = self._kernel.journal.request(execution.operation_id)
+        if status is None or request is None:
+            raise ValueError("Package lifecycle operation does not exist")
+        if execution.request_fingerprint != status.request_fingerprint:
+            return PackageArtifactExecutionResult(
+                status=_local_refusal(
+                    status,
+                    code="package_operation_identity_conflict",
+                    evidence_ref=status.request_fingerprint,
+                )
+            )
+        if execution.expected_attempt_epoch != status.attempt_epoch:
+            return PackageArtifactExecutionResult(
+                status=_local_refusal(
+                    status,
+                    code="package_attempt_stale",
+                    evidence_ref=status.request_fingerprint,
+                )
+            )
+        if (
+            status.disposition != "active"
+            or status.phase != "transaction_pinned"
+            or status.classification is None
+            or status.classification.decision != "plugin_bound"
+        ):
+            return PackageArtifactExecutionResult(status=status)
+
+        acquisition_request = PackageAcquisitionRequestV1(
+            operation_id=request.operation_id,
+            attempt_epoch=status.attempt_epoch,
+            node_id="root",
+            canonical_source_identity=request.canonical_source_identity,
+            request_fingerprint=request.request_fingerprint,
+            requested_locator_digest=sha256(
+                request.canonical_source_identity.encode("utf-8")
+            ).hexdigest(),
+            policy_revision=request.policy_revision,
+            credential_reference=execution.credential_reference,
+        )
+        try:
+            source_record = self._evidence_journal.find(
+                operation_id=status.operation_id,
+                attempt_epoch=status.attempt_epoch,
+                node_id="root",
+                kind="authenticated_source",
+            )
+            acquired_record = self._evidence_journal.find(
+                operation_id=status.operation_id,
+                attempt_epoch=status.attempt_epoch,
+                node_id="root",
+                kind="bounded_acquisition",
+            )
+            verified_record = self._evidence_journal.find(
+                operation_id=status.operation_id,
+                attempt_epoch=status.attempt_epoch,
+                node_id="root",
+                kind="verified_wheel",
+            )
+        except PackageArtifactEvidenceJournalError:
+            return self._record_identity_failure(status, stage=status.phase)
+        if (
+            source_record is None
+            or acquired_record is None
+            or verified_record is None
+            or source_record.request_fingerprint != request.request_fingerprint
+            or acquired_record.request_fingerprint != request.request_fingerprint
+            or verified_record.request_fingerprint != request.request_fingerprint
+            or not isinstance(
+                source_record.evidence,
+                PackageAuthenticatedSourceEvidenceV1,
+            )
+            or not isinstance(acquired_record.evidence, BoundedAcquisitionReceiptV1)
+            or not isinstance(verified_record.evidence, VerifiedWheelArtifactV1)
+        ):
+            return self._record_identity_failure(status, stage=status.phase)
+
+        reopened = self._reopen_candidate(
+            status,
+            acquisition_request,
+            acquired_record.evidence,
+            reset_extraction=True,
+            authenticated_envelope=source_record.evidence.envelope,
+        )
+        if isinstance(reopened, PackageArtifactExecutionResult):
+            return reopened
+        verified = self._verify_candidate(status, reopened, execution)
+        if isinstance(verified, PackageArtifactExecutionResult):
+            return verified
+        if verified.evidence != verified_record.evidence:
+            verified.cleanup()
+            return self._record_identity_failure(status, stage=status.phase)
+        current = self._kernel.status(status.operation_id)
+        if current != status:
+            verified.suspend_for_recovery()
+            if current is None:
+                raise ValueError("Package lifecycle operation disappeared")
+            return PackageArtifactExecutionResult(
+                status=_local_refusal(
+                    current,
+                    code="package_operation_identity_conflict",
+                    evidence_ref=current.request_fingerprint,
+                )
+            )
+        return PackageArtifactExecutionResult(status=status, candidate=verified)
+
     def _recheck_classification(
         self,
         status: PackageLifecycleStatusV1,
@@ -625,7 +740,12 @@ class PackageArtifactLifecycleOwner:
                     stage=error.rejection_stage,
                 )
             rejection_stage = cast(PackageLifecyclePhase, rejection.stage)
-            if status.phase in {"extracted", "resolving_closure", "closure_verified"}:
+            if status.phase in {
+                "extracted",
+                "resolving_closure",
+                "closure_verified",
+                "transaction_pinned",
+            }:
                 rejection_stage = status.phase
             failure = _wheel_failure(
                 status,

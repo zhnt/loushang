@@ -294,6 +294,14 @@
   lifecycle/pin/set/commit evidence but deterministic closure and staging
   Ports, so all five adoption rows, native end-to-end acquisition, Windows
   restore, and Product routing remain closed.
+  PLC9B4c4c candidate code adds explicit recovery-only `reacquire` seams to the
+  artifact, recursive-closure, and closure-lifecycle owners. An active pinned
+  attempt can now reconstruct live verified candidates from exact durable
+  evidence without Source or resolver fallback, journal append, or lifecycle
+  movement; the adoption adapter replays the same durable pin and continues the
+  accepted staging/commit sequence. Missing or changed evidence fails closed.
+  The seams remain dark, and native end-to-end adoption plus all five adoption
+  manifest rows remain closed.
 
 This inventory distinguishes accepted reusable owners, Product adapters,
 parallel compatibility paths, and missing target boundaries. “Migrate” or

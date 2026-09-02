@@ -506,6 +506,24 @@ class PackageRecursiveClosureOwner:
         root: VerifiedWheelCandidate,
         request: PackageRecursiveClosureRequestV2,
     ) -> VerifiedPackageClosureCandidate:
+        return self._build(root, request, durable_only=False)
+
+    def reacquire(
+        self,
+        root: VerifiedWheelCandidate,
+        request: PackageRecursiveClosureRequestV2,
+    ) -> VerifiedPackageClosureCandidate:
+        """Rebuild a closure exclusively from durable, already-verified evidence."""
+
+        return self._build(root, request, durable_only=True)
+
+    def _build(
+        self,
+        root: VerifiedWheelCandidate,
+        request: PackageRecursiveClosureRequestV2,
+        *,
+        durable_only: bool,
+    ) -> VerifiedPackageClosureCandidate:
         if not isinstance(root, VerifiedWheelCandidate):
             raise TypeError("Verified root Wheel candidate is required")
         if not isinstance(request, PackageRecursiveClosureRequestV2):
@@ -590,7 +608,10 @@ class PackageRecursiveClosureOwner:
                     key = (node_id, selection_request.requirement_fingerprint)
                     selection = selections.get(key)
                     if selection is None:
-                        selection = self._resolve(selection_request)
+                        selection = self._resolve(
+                            selection_request,
+                            durable_only=durable_only,
+                        )
                         selections[key] = selection
                     child_id = by_distribution.get(selection.project_name)
                     selected_id = child_id or selection.node_id
@@ -622,6 +643,7 @@ class PackageRecursiveClosureOwner:
                             selection,
                             request,
                             acquisition_budgets=acquisition_budgets,
+                            durable_only=durable_only,
                         )
                         child_id = child.evidence.node_id
                         states[child_id] = _NodeState(
@@ -792,11 +814,18 @@ class PackageRecursiveClosureOwner:
     def _resolve(
         self,
         request: PackageDependencySelectionRequestV1,
+        *,
+        durable_only: bool,
     ) -> PackageDependencySelectionV1:
         if self._selection_journal is not None:
             durable = self._selection_journal.selection(request)
             if durable is not None:
                 return self._require_resolver_selection(request, durable)
+        if durable_only:
+            raise PackageDependencyResolutionError(
+                "Package dependency selection is not durable",
+                code="package_closure_artifact_invalid",
+            )
         try:
             selection = self._resolver.resolve(request)
         except PackageDependencyResolutionError:
@@ -868,6 +897,7 @@ class PackageRecursiveClosureOwner:
         request: PackageRecursiveClosureRequestV2,
         *,
         acquisition_budgets: PackageAcquisitionBudgetV1,
+        durable_only: bool,
     ) -> VerifiedWheelCandidate:
         acquisition_request = PackageAcquisitionRequestV1(
             operation_id=request.operation_id,
@@ -910,6 +940,15 @@ class PackageRecursiveClosureOwner:
         ):
             raise PackageClosureVerificationError(
                 "Package dependency evidence chain is incomplete",
+                code="package_closure_artifact_invalid",
+            )
+        if durable_only and (
+            source_evidence is None
+            or receipt is None
+            or durable_verified is None
+        ):
+            raise PackageClosureVerificationError(
+                "Package dependency recovery evidence is incomplete",
                 code="package_closure_artifact_invalid",
             )
         try:

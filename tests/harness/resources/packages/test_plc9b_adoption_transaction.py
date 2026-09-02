@@ -294,6 +294,7 @@ def _advance(
 class _Closure:
     fixture: _Fixture
     calls: int = 0
+    reacquire_calls: int = 0
 
     def execute(
         self,
@@ -313,6 +314,19 @@ class _Closure:
         )
         for phase in phases:
             status = _advance(self.fixture.kernel, status, phase)
+        return PackageClosureExecutionResult(
+            status=status,
+            candidate=self.fixture.candidate,
+        )
+
+    def reacquire(
+        self,
+        execution: PackageClosureExecutionRequestV2,
+    ) -> PackageClosureExecutionResult:
+        assert execution is self.fixture.execution
+        self.reacquire_calls += 1
+        status = self.fixture.kernel.status(OPERATION_ID)
+        assert status is not None and status.phase == "transaction_pinned"
         return PackageClosureExecutionResult(
             status=status,
             candidate=self.fixture.candidate,
@@ -352,6 +366,9 @@ class _FailingClosure:
         )
         return PackageClosureExecutionResult(status=failed)
 
+    def reacquire(self, _execution: PackageClosureExecutionRequestV2) -> object:
+        raise AssertionError("reacquisition must not run")
+
 
 @dataclass
 class _Pins:
@@ -383,8 +400,14 @@ class _Pins:
             lease_id="adoption-lease",
             lease_revision=1,
         )
-        self.fixture.pin_journal.append(receipt)
-        pinned = _advance(self.fixture.kernel, status, "transaction_pinned")
+        durable = self.fixture.pin_journal.current_for_operation(OPERATION_ID)
+        if durable is None:
+            self.fixture.pin_journal.append(receipt)
+            pinned = _advance(self.fixture.kernel, status, "transaction_pinned")
+        else:
+            assert durable == receipt
+            assert status.phase == "transaction_pinned"
+            pinned = status
         return PackageTransactionPinExecutionResult(
             status=pinned,
             candidate=candidate,
@@ -466,6 +489,10 @@ class _Never:
     def execute(self, _execution: object) -> object:
         self.calls += 1
         raise AssertionError("closure must not run")
+
+    def reacquire(self, _execution: object) -> object:
+        self.calls += 1
+        raise AssertionError("closure reacquisition must not run")
 
     def pin(self, _candidate: object, *, recovery_identity: str) -> object:
         del recovery_identity
@@ -692,11 +719,11 @@ def test_adoption_transaction_resumes_set_published_without_prior_phase_replay(
     assert commit.calls == 1
 
 
-def test_adoption_transaction_refuses_bare_transaction_pin_without_reacquisition(
+def test_adoption_transaction_reacquires_bare_transaction_pin_and_commits(
     tmp_path: Path,
 ) -> None:
     fixture = _fixture(tmp_path)
-    closure, pins, _staging, _commit = _success_components(fixture)
+    closure, pins, staging, commit = _success_components(fixture)
     closure_result = closure.execute(fixture.execution)
     assert closure_result.candidate is fixture.candidate
     pinned = pins.pin(
@@ -705,23 +732,26 @@ def test_adoption_transaction_refuses_bare_transaction_pin_without_reacquisition
     )
     assert pinned.status.phase == "transaction_pinned"
     fixture.candidate.suspend_for_recovery()
-    never = _Never()
     adapter = _adapter(
         fixture,
-        closure=never,
-        pins=never,
-        staging=never,
-        commit=never,
+        closure=closure,
+        pins=pins,
+        staging=staging,
+        commit=commit,
     )
     owner, _fences, _legacy = _outer(fixture, adapter)
 
     result = owner.adopt(fixture.request)
 
-    assert result.disposition == "rejected"
-    assert result.code == "package_route_unavailable"
-    assert never.calls == 0
+    assert result.disposition == "adopted"
+    assert closure.calls == 1
+    assert closure.reacquire_calls == 1
+    assert pins.calls == 2
+    assert staging.stage_calls == 1
+    assert staging.resume_calls == 0
+    assert commit.calls == 1
     current = fixture.kernel.status(OPERATION_ID)
-    assert current is not None and current.phase == "transaction_pinned"
+    assert current is not None and current.phase == "committed"
 
 
 def test_adoption_transaction_resumes_staging_after_receipts_are_durable(
@@ -869,6 +899,9 @@ def test_adoption_transaction_rejects_phase_result_not_owned_by_kernel(
                 status=lied,
                 candidate=fixture.candidate,
             )
+
+        def reacquire(self, _execution: object) -> object:
+            raise AssertionError("reacquisition must not run")
 
     never = _Never()
     adapter = _adapter(

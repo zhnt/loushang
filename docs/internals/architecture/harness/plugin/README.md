@@ -251,6 +251,13 @@ Neither may silently override a narrower implemented owner contract.
   verified candidates and therefore fails closed until a reacquisition seam is
   supplied. The adapter remains dark; native end-to-end acquisition and all
   five adoption manifest rows remain closed.
+  PLC9B4c4c candidate code supplies that seam without adding ambient
+  authority. The artifact and closure owners reopen and reverify the exact
+  pinned attempt solely from durable authenticated-source, acquisition, Wheel,
+  selection, and closure-plan evidence. Recovery never falls back to Source or
+  resolver calls, does not append evidence or move lifecycle phase, and the
+  adoption adapter replays the existing pin before ordinary staging/commit.
+  Native end-to-end adoption and all five adoption manifest rows remain closed.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)

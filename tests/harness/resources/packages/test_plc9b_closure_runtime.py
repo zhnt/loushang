@@ -229,6 +229,21 @@ class _ArtifactOwner:
         )
         return PackageArtifactExecutionResult(status=status, candidate=candidate)
 
+    def reacquire(
+        self,
+        _execution: PackageArtifactExecutionRequestV1,
+    ) -> PackageArtifactExecutionResult:
+        self.calls += 1
+        status = self.kernel.status(OPERATION_ID)
+        assert status is not None
+        candidate = (
+            cast(VerifiedWheelCandidate, self.root)
+            if status.disposition == "active"
+            and status.phase == "transaction_pinned"
+            else None
+        )
+        return PackageArtifactExecutionResult(status=status, candidate=candidate)
+
 
 @dataclass
 class _ClosureBuilder:
@@ -261,6 +276,13 @@ class _ClosureBuilder:
             ),
             candidates=(_root,),
         )
+
+    def reacquire(
+        self,
+        root: VerifiedWheelCandidate,
+        request: PackageRecursiveClosureRequestV2,
+    ) -> VerifiedPackageClosureCandidate:
+        return self.build(root, request)
 
 
 @dataclass
@@ -444,6 +466,8 @@ def _setup(
         "inspecting",
         "extracted",
         "resolving_closure",
+        "closure_verified",
+        "transaction_pinned",
     ):
         if status.phase == phase:
             break
@@ -577,6 +601,61 @@ def test_closure_runtime_replays_plan_append_crash_and_verified_phase(
     assert replayed.candidate.plan == plan
     assert builder.calls == 2
     assert len(resolution.records()) == 2
+
+
+def test_closure_runtime_reacquires_pinned_candidate_without_journal_mutation(
+    tmp_path: Path,
+) -> None:
+    (
+        kernel,
+        owner,
+        artifact,
+        builder,
+        resolution,
+        execution,
+        _root,
+    ) = _setup(tmp_path, phase="transaction_pinned")
+    plan = _plan(
+        attempt_epoch=1,
+        environment_fingerprint=execution.resolution_environment.fingerprint,
+    )
+    resolution.bind_basis(_basis(kernel, execution))
+    resolution.append_plan(
+        request_fingerprint=execution.artifact.request_fingerprint,
+        plan=plan,
+    )
+    before = kernel.status(OPERATION_ID)
+
+    result = owner.reacquire(execution)
+
+    assert result.status == before
+    assert result.candidate is not None
+    assert result.candidate.plan == plan
+    assert artifact.calls == 1
+    assert builder.calls == 1
+    assert len(resolution.records()) == 2
+    assert kernel.status(OPERATION_ID) == before
+
+
+def test_closure_runtime_refuses_pinned_reacquisition_without_durable_plan(
+    tmp_path: Path,
+) -> None:
+    kernel, owner, artifact, builder, resolution, execution, _root = _setup(
+        tmp_path,
+        phase="transaction_pinned",
+    )
+    resolution.bind_basis(_basis(kernel, execution))
+    before = kernel.status(OPERATION_ID)
+
+    result = owner.reacquire(execution)
+
+    assert result.status.disposition == "rejected"
+    assert result.status.failure is not None
+    assert result.status.failure.code == "package_operation_identity_conflict"
+    assert artifact.calls == 0
+    assert builder.calls == 0
+    assert len(resolution.records()) == 1
+    assert kernel.status(OPERATION_ID) == before
 
 
 def test_closure_runtime_rejects_changed_durable_plan_without_phase_advance(
@@ -976,5 +1055,25 @@ def test_real_closure_runtime_recovers_graph_without_resolver_or_source_io(
     assert len(authority.calls) == 2
     assert len(resolution.records()) == 3
     assert len(evidence.records()) == 6
-    replayed.candidate.cleanup()
+    pinned = kernel.advance(
+        OPERATION_ID,
+        next_phase="transaction_pinned",
+        expected_phase="closure_verified",
+        expected_journal_revision=replayed.status.journal_revision,
+        expected_attempt_epoch=replayed.status.attempt_epoch,
+    )
+    replayed.candidate.suspend_for_recovery()
+    resolver.selections.clear()
+    authority.payloads.clear()
+
+    reacquired = owner.reacquire(execution)
+
+    assert reacquired.status == pinned
+    assert reacquired.candidate is not None
+    assert reacquired.candidate.plan == first_plan
+    assert resolver.calls == []
+    assert len(authority.calls) == 2
+    assert len(resolution.records()) == 3
+    assert len(evidence.records()) == 6
+    reacquired.candidate.cleanup()
     assert store.attempt_names() == ()

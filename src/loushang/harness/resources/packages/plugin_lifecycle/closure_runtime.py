@@ -41,6 +41,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.phase_evidence import 
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     PackageLifecycleFailureV1,
     PackageLifecyclePhase,
+    PackageLifecycleRequestV1,
     PackageLifecycleStatusV1,
     canonical_json_bytes,
 )
@@ -62,9 +63,20 @@ class PackageVerifiedRootOwnerPort(Protocol):
         execution: PackageArtifactExecutionRequestV1,
     ) -> PackageArtifactExecutionResult: ...
 
+    def reacquire(
+        self,
+        execution: PackageArtifactExecutionRequestV1,
+    ) -> PackageArtifactExecutionResult: ...
+
 
 class PackageRecursiveClosureBuilderPort(Protocol):
     def build(
+        self,
+        root: VerifiedWheelCandidate,
+        request: PackageRecursiveClosureRequestV2,
+    ) -> VerifiedPackageClosureCandidate: ...
+
+    def reacquire(
         self,
         root: VerifiedWheelCandidate,
         request: PackageRecursiveClosureRequestV2,
@@ -106,7 +118,7 @@ class PackageClosureExecutionResult:
 
     def __post_init__(self) -> None:
         if (
-            self.status.phase == "closure_verified"
+            self.status.phase in {"closure_verified", "transaction_pinned"}
             and self.status.disposition == "active"
         ):
             if not isinstance(self.candidate, VerifiedPackageClosureCandidate):
@@ -133,9 +145,15 @@ class PackageClosureLifecycleOwner:
     ) -> None:
         if not isinstance(kernel, PackageLifecycleOwner):
             raise TypeError("Package lifecycle kernel is required")
-        if not callable(getattr(artifact_owner, "execute", None)):
+        if any(
+            not callable(getattr(artifact_owner, method, None))
+            for method in ("execute", "reacquire")
+        ):
             raise TypeError("Verified root owner is required")
-        if not callable(getattr(closure_builder, "build", None)):
+        if any(
+            not callable(getattr(closure_builder, method, None))
+            for method in ("build", "reacquire")
+        ):
             raise TypeError("Recursive Package closure builder is required")
         if not isinstance(resolution_journal, PackageClosureResolutionJournal):
             raise TypeError("Package closure resolution journal is required")
@@ -148,52 +166,10 @@ class PackageClosureLifecycleOwner:
         self,
         execution: PackageClosureExecutionRequestV2,
     ) -> PackageClosureExecutionResult:
-        if not isinstance(execution, PackageClosureExecutionRequestV2):
-            raise TypeError("Package closure execution request is required")
-        status = self._kernel.status(execution.artifact.operation_id)
-        request = self._kernel.journal.request(execution.artifact.operation_id)
-        if status is None or request is None:
-            raise ValueError("Package lifecycle operation does not exist")
-        if execution.artifact.request_fingerprint != status.request_fingerprint:
-            return PackageClosureExecutionResult(
-                status=_local_refusal(
-                    status,
-                    code="package_operation_identity_conflict",
-                )
-            )
-        if execution.artifact.expected_attempt_epoch != status.attempt_epoch:
-            return PackageClosureExecutionResult(
-                status=_local_refusal(status, code="package_attempt_stale")
-            )
-        if (
-            request.request_fingerprint != status.request_fingerprint
-            or request.resolution_environment_fingerprint
-            != execution.resolution_environment.fingerprint
-        ):
-            return PackageClosureExecutionResult(
-                status=_local_refusal(
-                    status,
-                    code="package_operation_identity_conflict",
-                )
-            )
-        try:
-            requested = NormalizedPackageRequirementV1.parse(
-                request.requested_package
-            )
-        except ValueError:
-            return PackageClosureExecutionResult(
-                status=_local_refusal(
-                    status,
-                    code="package_operation_identity_conflict",
-                )
-            )
-        if requested.extras != execution.root_extras:
-            return PackageClosureExecutionResult(
-                status=_local_refusal(
-                    status,
-                    code="package_operation_identity_conflict",
-                )
-            )
+        context = self._execution_context(execution)
+        if isinstance(context, PackageClosureExecutionResult):
+            return context
+        status, request = context
         if (
             status.disposition == "active"
             and status.phase
@@ -348,6 +324,176 @@ class PackageClosureLifecycleOwner:
                 return PackageClosureExecutionResult(status=verified)
             status = verified
         return PackageClosureExecutionResult(status=status, candidate=closure)
+
+    def reacquire(
+        self,
+        execution: PackageClosureExecutionRequestV2,
+    ) -> PackageClosureExecutionResult:
+        """Rebuild a pinned closure without resolver, Source, or phase authority."""
+
+        context = self._execution_context(execution)
+        if isinstance(context, PackageClosureExecutionResult):
+            return context
+        status, request = context
+        if (
+            status.disposition != "active"
+            or status.phase != "transaction_pinned"
+            or status.classification is None
+            or status.classification.decision != "plugin_bound"
+        ):
+            return PackageClosureExecutionResult(status=status)
+
+        expected_basis = PackageClosureResolutionBasisV1(
+            operation_id=status.operation_id,
+            attempt_epoch=status.attempt_epoch,
+            request_fingerprint=status.request_fingerprint,
+            policy_revision=request.policy_revision,
+            quota_profile_revision=request.quota_profile_revision,
+            resolution_environment=execution.resolution_environment,
+            budgets=execution.budgets,
+            root_extras=execution.root_extras,
+        )
+        try:
+            durable_basis = self._resolution_journal.basis(
+                operation_id=status.operation_id,
+                attempt_epoch=status.attempt_epoch,
+            )
+            durable_plan = self._resolution_journal.plan(
+                operation_id=status.operation_id,
+                attempt_epoch=status.attempt_epoch,
+            )
+        except PackageClosureResolutionJournalError:
+            return PackageClosureExecutionResult(
+                status=_local_refusal(
+                    status,
+                    code="package_operation_identity_conflict",
+                )
+            )
+        if durable_basis != expected_basis or durable_plan is None:
+            return PackageClosureExecutionResult(
+                status=_local_refusal(
+                    status,
+                    code="package_operation_identity_conflict",
+                )
+            )
+
+        artifact_result = self._artifact_owner.reacquire(execution.artifact)
+        root = artifact_result.candidate
+        if root is None:
+            return PackageClosureExecutionResult(
+                status=artifact_result.status,
+                cleanup_status=artifact_result.cleanup_status,
+            )
+        if artifact_result.status != status:
+            root.suspend_for_recovery()
+            return PackageClosureExecutionResult(
+                status=_local_refusal(
+                    artifact_result.status,
+                    code="package_operation_identity_conflict",
+                )
+            )
+        closure: VerifiedPackageClosureCandidate | None = None
+        try:
+            closure = self._closure_builder.reacquire(
+                root,
+                PackageRecursiveClosureRequestV2(
+                    operation_id=status.operation_id,
+                    attempt_epoch=status.attempt_epoch,
+                    request_fingerprint=status.request_fingerprint,
+                    policy_revision=request.policy_revision,
+                    resolution_environment=execution.resolution_environment,
+                    budgets=execution.budgets,
+                    root_extras=execution.root_extras,
+                    credential_reference=execution.artifact.credential_reference,
+                ),
+            )
+        except _CLOSURE_REJECTIONS as error:
+            return PackageClosureExecutionResult(
+                status=self._record_failure(
+                    status,
+                    code=_failure_code(error),
+                ),
+                cleanup_status=(
+                    error.cleanup_status
+                    if isinstance(error, PackageClosureCleanupDebtError)
+                    else None
+                ),
+            )
+        if closure.plan != durable_plan:
+            closure.suspend_for_recovery()
+            return PackageClosureExecutionResult(
+                status=_local_refusal(
+                    status,
+                    code="package_operation_identity_conflict",
+                )
+            )
+        current = self._kernel.status(status.operation_id)
+        if current != status:
+            closure.suspend_for_recovery()
+            if current is None:
+                raise ValueError("Package lifecycle operation disappeared")
+            return PackageClosureExecutionResult(
+                status=_local_refusal(
+                    current,
+                    code="package_operation_identity_conflict",
+                )
+            )
+        return PackageClosureExecutionResult(status=status, candidate=closure)
+
+    def _execution_context(
+        self,
+        execution: PackageClosureExecutionRequestV2,
+    ) -> (
+        tuple[PackageLifecycleStatusV1, PackageLifecycleRequestV1]
+        | PackageClosureExecutionResult
+    ):
+        if not isinstance(execution, PackageClosureExecutionRequestV2):
+            raise TypeError("Package closure execution request is required")
+        status = self._kernel.status(execution.artifact.operation_id)
+        request = self._kernel.journal.request(execution.artifact.operation_id)
+        if status is None or request is None:
+            raise ValueError("Package lifecycle operation does not exist")
+        if execution.artifact.request_fingerprint != status.request_fingerprint:
+            return PackageClosureExecutionResult(
+                status=_local_refusal(
+                    status,
+                    code="package_operation_identity_conflict",
+                )
+            )
+        if execution.artifact.expected_attempt_epoch != status.attempt_epoch:
+            return PackageClosureExecutionResult(
+                status=_local_refusal(status, code="package_attempt_stale")
+            )
+        if (
+            request.request_fingerprint != status.request_fingerprint
+            or request.resolution_environment_fingerprint
+            != execution.resolution_environment.fingerprint
+        ):
+            return PackageClosureExecutionResult(
+                status=_local_refusal(
+                    status,
+                    code="package_operation_identity_conflict",
+                )
+            )
+        try:
+            requested = NormalizedPackageRequirementV1.parse(
+                request.requested_package
+            )
+        except ValueError:
+            return PackageClosureExecutionResult(
+                status=_local_refusal(
+                    status,
+                    code="package_operation_identity_conflict",
+                )
+            )
+        if requested.extras != execution.root_extras:
+            return PackageClosureExecutionResult(
+                status=_local_refusal(
+                    status,
+                    code="package_operation_identity_conflict",
+                )
+            )
+        return status, request
 
     def _record_failure(
         self,

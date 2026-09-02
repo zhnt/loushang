@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.4c4b-candidate.
+- Contract version: PLC9B.4c4c-candidate.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -115,9 +115,12 @@
   POSIX restore row in its named Linux-native gate. B4c4a candidate code adds
   the dark, pathless legacy-adoption protocol around one separately owned,
   complete B transaction. B4c4b candidate code adds the one-operation adapter
-  that composes the accepted B phase owners behind that Port. Windows restore,
-  native end-to-end adoption evidence, all adoption manifest rows, public
-  routing, and concrete desired-state composition remain closed.
+  that composes the accepted B phase owners behind that Port. B4c4c candidate
+  code adds a recovery-only pinned-candidate reacquisition seam: it rebuilds
+  verified root and closure candidates exclusively from exact durable evidence,
+  never falling back to resolver or Source authority. Windows restore, native
+  end-to-end adoption evidence, all adoption manifest rows, public routing, and
+  concrete desired-state composition remain closed.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -1796,6 +1799,48 @@ tests and 116 cross-module lifecycle tests. `make check-harness` then passed
 Ruff, mypy over 649 source files, and 3,914 tests with 33 expected platform
 skips. The five adoption manifest rows remain planned because these local
 component results are not native end-to-end adoption evidence.
+
+## PLC9B4c4c Candidate Pinned-Candidate Reacquisition
+
+`PackageArtifactLifecycleOwner.reacquire`,
+`PackageRecursiveClosureOwner.reacquire`, and
+`PackageClosureLifecycleOwner.reacquire` form one explicit recovery-only seam
+for an active `transaction_pinned` attempt. Reacquisition here means reopening
+the same quarantined bytes named by the durable authenticated-Source and
+bounded-acquisition receipts, re-running Wheel and closure verification, and
+requiring exact equality with the durable verified-Wheel evidence, resolution
+basis, dependency selections, and verified closure plan. It is not a second
+download and it cannot authorize a Source or invoke a dependency resolver.
+
+The recursive owner carries an explicit `durable_only` execution mode. Missing
+selection or artifact evidence rejects before either external Port is called;
+changed bytes, metadata, environment, budgets, extras, request identity,
+attempt epoch, or plan also reject. Successful reconstruction does not append
+evidence or advance the lifecycle journal. The closure owner checks that the
+kernel status is byte-for-byte unchanged before returning the live candidate.
+
+The adoption adapter now dispatches `transaction_pinned` to this recovery-only
+seam, replays the exact existing pin through the pin owner, and then continues
+through the ordinary staging/set and commit owners. Candidate suspension still
+brackets every escaping exception or invalid owner result. Component tests
+cover artifact reconstruction without Source access, incomplete-evidence
+refusal, closure reconstruction without Source/resolver calls or journal
+mutation, missing-plan refusal, exact pin replay, and adoption completion from
+the bare pinned phase.
+
+This is still dark candidate code. It does not supply the native end-to-end
+legacy acquisition fixture, unauthorized/unavailable network cases, crash at
+every precommit phase, or retained CI evidence required by the five adoption
+manifest rows. All five `B-COMPAT-ADOPT*` rows therefore remain planned, and
+Windows restore, public routing, and Product-state composition remain closed.
+
+Local PLC9B4c4c validation passed 101 focused owner/adapter/architecture tests
+and the retained `B-CLOSURE-V1` manifest node. The full Harness attempt passed
+Ruff and mypy over 649 source files; pytest passed 3,918 tests with 33 expected
+platform skips and failed only the unrelated host-load-sensitive transcript
+benchmark (`0.76s/MB` versus its `0.35s/MB` budget). That benchmark then passed
+alone and as its complete three-test file. This split evidence is recorded
+explicitly and does not promote the candidate or any adoption manifest row.
 
 ## First Principles
 

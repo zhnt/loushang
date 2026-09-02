@@ -108,6 +108,9 @@ LEGACY_ADOPTION_TEST = Path(
 LEGACY_ADOPTION_TRANSACTION_TEST = Path(
     "tests/harness/resources/packages/test_plc9b_adoption_transaction.py"
 )
+ARTIFACT_RUNTIME_TEST = Path(
+    "tests/harness/resources/packages/test_plc9b_artifact_owner.py"
+)
 PYPROJECT = Path("pyproject.toml")
 WINDOWS_NATIVE_TEST = Path(
     "tests/harness/resources/packages/test_plc9b_windows_native.py"
@@ -685,7 +688,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.4c4b-candidate." in contract
+    assert "Contract version: PLC9B.4c4c-candidate." in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
@@ -3597,7 +3600,7 @@ def test_plc9b4b_retention_handoff_is_dark_exact_and_no_zero_pin() -> None:
         assert {"exact_pin_set", "no_zero_pin"} <= set(row["oracles"].split(";"))
 
     normalized = " ".join(contract.split())
-    assert "PLC9B.4c4b-candidate." in contract
+    assert "PLC9B.4c4c-candidate." in contract
     assert "PLC9B4b Accepted Retention Handoff" in normalized
     assert "opened -> dependency_pinned -> desired_committed -> settled" in normalized
     assert "No journal lock is held" in normalized
@@ -3725,7 +3728,7 @@ def test_plc9b4c0_epoch_admission_is_dark_read_only_and_fail_closed() -> None:
         assert {"no_publication", "no_peer_fallback"} <= set(row["oracles"].split(";"))
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c4b-candidate." in contract
+    assert "Contract version: PLC9B.4c4c-candidate." in contract
     assert "PLC9B4c0 Accepted Epoch Admission" in normalized
     assert "human-readable minimum runtime version is diagnostic evidence" in (
         normalized
@@ -3847,7 +3850,7 @@ def test_plc9b4c1_posix_cutover_has_one_native_owner_and_one_visibility_edge() -
         assert manifest[case_id]["status"] == "implemented"
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c4b-candidate." in contract
+    assert "Contract version: PLC9B.4c4c-candidate." in contract
     assert "PLC9B4c1 Accepted POSIX Native Cutover" in normalized
     assert "no second `active-root` file" in normalized
     assert "sole Product-root pointer" in normalized
@@ -3965,7 +3968,7 @@ def test_plc9b4c2_windows_cutover_is_rooted_native_and_non_skippable() -> None:
     assert workflow.count("scripts/dev/verify_pytest_xml.py") >= 5
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c4b-candidate." in contract
+    assert "Contract version: PLC9B.4c4c-candidate." in contract
     assert "PLC9B4c2 Accepted Windows Native Cutover" in normalized
     assert "same fingerprint domain" in normalized
     assert "rooted `NtCreateFile`" in normalized
@@ -4100,7 +4103,7 @@ def test_plc9b4c3a_offline_restore_stays_dark_and_unpromoted() -> None:
     assert "IMPLEMENTED_B4C3" not in component_tests
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c4b-candidate." in contract
+    assert "Contract version: PLC9B.4c4c-candidate." in contract
     assert "PLC9B4c3a Accepted Offline Restore Protocol" in normalized
     assert "does not reinterpret the opaque B4c1 snapshot identifier" in normalized
     assert "closed coverage tuple" in normalized
@@ -4244,7 +4247,7 @@ def test_plc9b4c3b_posix_materializer_is_rooted_exact_and_dark() -> None:
         assert manifest[case_id]["status"] == "planned"
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c4b-candidate." in contract
+    assert "Contract version: PLC9B.4c4c-candidate." in contract
     assert "PLC9B4c3b Candidate POSIX Offline Restore Materialization" in normalized
     assert "authenticated snapshot authority" in normalized
     assert "requires its native directory identity" in normalized
@@ -4345,7 +4348,7 @@ def test_plc9b4c3c_linux_activation_is_native_exclusive_dark_and_promoted() -> N
         assert manifest[case_id]["status"] == "planned"
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c4b-candidate." in contract
+    assert "Contract version: PLC9B.4c4c-candidate." in contract
     assert "PLC9B4c3c Candidate Linux Legacy Runtime Activation" in normalized
     assert "owned by `loushang.harness.sandbox`" in normalized
     assert "the resource kernel remains backend-free" in inventory
@@ -4457,7 +4460,7 @@ def test_plc9b4c4a_adoption_protocol_is_pathless_dark_and_unpromoted() -> None:
     assert "IMPLEMENTED_B4C4" not in adversarial_tests
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c4b-candidate." in contract
+    assert "Contract version: PLC9B.4c4c-candidate." in contract
     assert "PLC9B4c4a Candidate Legacy Adoption Protocol" in normalized
     assert "complete immutable legacy-state observation" in normalized
     assert "does not itself reacquire, stage, publish, or commit" in normalized
@@ -4470,13 +4473,19 @@ def test_plc9b4c4a_adoption_protocol_is_pathless_dark_and_unpromoted() -> None:
     assert "PLC9B4c4a candidate code freezes a dark, pathless" in index
 
 
-def test_plc9b4c4b_adoption_transaction_composes_existing_owners_and_stays_dark(
+def test_plc9b4c4c_pinned_reacquisition_is_evidence_only_and_stays_dark(
 ) -> None:
     contract = _source(CONTRACT)
     inventory = _source(INVENTORY)
     index = _source(INDEX)
     source = _source(LEGACY_ADOPTION_TRANSACTION)
     component_tests = _source(LEGACY_ADOPTION_TRANSACTION_TEST)
+    artifact_source = _source(ARTIFACT_RUNTIME)
+    closure_owner_source = _source(CLOSURE_OWNER)
+    closure_runtime_source = _source(CLOSURE_RUNTIME)
+    artifact_tests = _source(ARTIFACT_RUNTIME_TEST)
+    closure_owner_tests = _source(CLOSURE_OWNER_TEST)
+    closure_tests = _source(CLOSURE_RUNTIME_TEST)
     adversarial_tests = _source(ADVERSARIAL_TEST)
     internal_facade = _source(OWNER_KERNEL_ROOT / "__init__.py")
     package_facade = _source(PACKAGE_ROOT / "__init__.py")
@@ -4535,6 +4544,7 @@ def test_plc9b4c4b_adoption_transaction_composes_existing_owners_and_stays_dark(
         "lifecycle_request.scope_id == request.scope_id",
         "lifecycle_request.requested_plugin_id == request.plugin_id",
         "request.expected_classification_fingerprint",
+        "self._closure.reacquire(self._execution)",
         "self._staging.resume(request.operation_id)",
         "__all__ = ()",
     ):
@@ -4553,7 +4563,7 @@ def test_plc9b4c4b_adoption_transaction_composes_existing_owners_and_stays_dark(
         "preserves_acquisition_failure_without_later_effects",
         "refuses_product_substitution_before_effect",
         "resumes_set_published_without_prior_phase_replay",
-        "refuses_bare_transaction_pin_without_reacquisition",
+        "reacquires_bare_transaction_pin_and_commits",
         "resumes_staging_after_receipts_are_durable",
         "suspends_candidate_when_staging_crashes",
         "crash_after_commit_replays_without_prior_effects",
@@ -4572,12 +4582,14 @@ def test_plc9b4c4b_adoption_transaction_composes_existing_owners_and_stays_dark(
     assert "IMPLEMENTED_B4C4" not in adversarial_tests
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c4b-candidate." in contract
+    assert "Contract version: PLC9B.4c4c-candidate." in contract
     assert "PLC9B4c4b Candidate Adoption Transaction Adapter" in normalized
+    assert "PLC9B4c4c Candidate Pinned-Candidate Reacquisition" in normalized
     assert "one-operation least-authority capability" in normalized
     assert "closure -> pin -> staging/set -> commit" in normalized
     assert "journal-confirmed status after every owner return" in normalized
-    assert "bare `transaction_pinned` state fails closed" in normalized
+    assert "It is not a second download" in normalized
+    assert "never falling back to resolver or Source authority" in normalized
     assert "all five adoption manifest rows remain planned" in normalized
     assert "69 focused adoption/architecture tests" in normalized
     assert "116 cross-module lifecycle tests" in normalized
@@ -4585,6 +4597,24 @@ def test_plc9b4c4b_adoption_transaction_composes_existing_owners_and_stays_dark(
     assert "3,914 tests with 33 expected platform skips" in normalized
     assert "PLC9B4c4b candidate code composes the existing" in inventory
     assert "PLC9B4c4b candidate code adds a one-operation" in index
+    assert "PLC9B4c4c candidate code adds explicit recovery-only" in inventory
+    assert "PLC9B4c4c candidate code supplies that seam" in index
+    assert "def reacquire(" in artifact_source
+    assert "status.phase != \"transaction_pinned\"" in artifact_source
+    assert "self._acquisition_owner.reopen_acquired" in artifact_source
+    assert "def reacquire(" in closure_owner_source
+    assert "durable_only=True" in closure_owner_source
+    assert "if durable_only:" in closure_owner_source
+    assert "def reacquire(" in closure_runtime_source
+    assert "durable_basis != expected_basis" in closure_runtime_source
+    assert "closure.plan != durable_plan" in closure_runtime_source
+    assert "kernel.status(status.operation_id) == status" in artifact_tests
+    assert "evidence_is_incomplete" in artifact_tests
+    assert "never_falls_back_to_resolver_or_source" in closure_owner_tests
+    assert "without_journal_mutation" in closure_tests
+    assert "without_durable_plan" in closure_tests
+    assert "authority.payloads.clear()" in closure_tests
+    assert "resolver.selections.clear()" in closure_tests
 
 
 def test_plc9b2f_windows_backend_is_rooted_and_has_a_nonskippable_native_gate() -> None:

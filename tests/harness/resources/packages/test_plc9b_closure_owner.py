@@ -507,7 +507,7 @@ def test_recursive_owner_replays_durable_selections_and_artifacts_without_io(
     fixture.resolver.calls.clear()
 
     reopened_root = _reopen_root(fixture)
-    replayed = fixture.owner.build(reopened_root, fixture.request)
+    replayed = fixture.owner.reacquire(reopened_root, fixture.request)
 
     assert replayed.plan == first_plan
     assert fixture.resolver.calls == []
@@ -515,6 +515,26 @@ def test_recursive_owner_replays_durable_selections_and_artifacts_without_io(
     assert len(fixture.resolution.records()) == 3
     assert len(fixture.evidence.records()) == 9
     replayed.cleanup()
+    assert fixture.store.attempt_names() == ()
+
+
+def test_recursive_reacquisition_never_falls_back_to_resolver_or_source(
+    tmp_path: Path,
+) -> None:
+    fixture = _fixture(
+        tmp_path,
+        {
+            "root-plugin": ("1.0", ("dep==2",)),
+            "dep": ("2.0", ()),
+        },
+    )
+
+    with pytest.raises(PackageDependencyResolutionError) as rejected:
+        fixture.owner.reacquire(fixture.root, fixture.request)
+
+    assert rejected.value.code == "package_closure_artifact_invalid"
+    assert fixture.resolver.calls == []
+    assert len(fixture.authority.calls) == 1
     assert fixture.store.attempt_names() == ()
 
 
