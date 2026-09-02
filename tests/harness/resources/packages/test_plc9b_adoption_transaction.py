@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from threading import Lock
@@ -58,7 +59,11 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
 from loushang.harness.resources.packages.plugin_lifecycle.runtime import (
     PackageArtifactExecutionRequestV1,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.staging import (
+    PackagePluginRootTargetV1,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.staging_set_runtime import (
+    PackageStagingAdoptionAuthorization,
     PackageStagingSetExecutionResult,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.transaction_pin_runtime import (
@@ -108,6 +113,16 @@ class _Authority:
             policy_revision="classification-policy:1",
             classifier_epoch=1,
         )
+
+
+class _Coordination:
+    def __init__(self) -> None:
+        self._lock = Lock()
+
+    @contextmanager
+    def hold(self, _request: PackageLegacyAdoptionRequestV1):
+        with self._lock:
+            yield
 
 
 @dataclass
@@ -421,21 +436,58 @@ class _Staging:
     stage_calls: int = 0
     resume_calls: int = 0
 
+    def authorize_adoption(
+        self,
+        request: PackageLegacyAdoptionRequestV1,
+    ) -> PackageStagingAdoptionAuthorization:
+        target = PackagePluginRootTargetV1.create(
+            operation_id=OPERATION_ID,
+            request_fingerprint=request.transaction_request_fingerprint,
+            product_id=PRODUCT_ID,
+            scope_id=SCOPE_ID,
+            installation_id=INSTALLATION_ID,
+            plugin_id=PLUGIN_ID,
+            authority_id="adoption-transaction-target-authority",
+            authority_revision="adoption-transaction-target:1",
+        )
+        return PackageStagingAdoptionAuthorization(
+            adoption_request_id=request.request_id,
+            store_id=request.store_id,
+            current_root_identity=request.current_root_identity,
+            target=target,
+        )
+
     def stage_and_publish(
         self,
         candidate: VerifiedPackageClosureCandidate,
+        *,
+        adoption_authorization: PackageStagingAdoptionAuthorization | None = None,
     ) -> PackageStagingSetExecutionResult:
+        assert adoption_authorization is not None
         assert candidate is self.fixture.candidate
         self.stage_calls += 1
         return self._publish()
 
-    def resume(self, _operation_id: str) -> PackageStagingSetExecutionResult:
+    def resume(
+        self,
+        _operation_id: str,
+        *,
+        adoption_authorization: PackageStagingAdoptionAuthorization | None = None,
+    ) -> PackageStagingSetExecutionResult:
+        assert adoption_authorization is not None
         self.resume_calls += 1
         return self._publish()
 
     def _publish(self) -> PackageStagingSetExecutionResult:
         status = self.fixture.kernel.status(OPERATION_ID)
         assert status is not None and status.classification is not None
+        if status.phase == "set_published":
+            current = self.fixture.committed_sets.current(OPERATION_ID)
+            assert current is not None
+            return PackageStagingSetExecutionResult(
+                status=status,
+                committed_set=current.committed_set,
+            )
         if status.phase == "transaction_pinned":
             status = _advance(self.fixture.kernel, status, "staging")
         root = self.fixture.candidate.plan.nodes[0]
@@ -499,11 +551,32 @@ class _Never:
         self.calls += 1
         raise AssertionError("pin must not run")
 
-    def stage_and_publish(self, _candidate: object) -> object:
+    def authorize_adoption(
+        self,
+        request: PackageLegacyAdoptionRequestV1,
+    ) -> PackageStagingAdoptionAuthorization:
+        target = PackagePluginRootTargetV1.create(
+            operation_id=OPERATION_ID,
+            request_fingerprint=request.transaction_request_fingerprint,
+            product_id=PRODUCT_ID,
+            scope_id=SCOPE_ID,
+            installation_id=INSTALLATION_ID,
+            plugin_id=PLUGIN_ID,
+            authority_id="adoption-transaction-target-authority",
+            authority_revision="adoption-transaction-target:1",
+        )
+        return PackageStagingAdoptionAuthorization(
+            adoption_request_id=request.request_id,
+            store_id=request.store_id,
+            current_root_identity=request.current_root_identity,
+            target=target,
+        )
+
+    def stage_and_publish(self, _candidate: object, **_kwargs: object) -> object:
         self.calls += 1
         raise AssertionError("staging must not run")
 
-    def resume(self, _operation_id: str) -> object:
+    def resume(self, _operation_id: str, **_kwargs: object) -> object:
         self.calls += 1
         raise AssertionError("resume must not run")
 
@@ -551,6 +624,7 @@ def _outer(
             fences=fences,
             legacy_state=legacy,
             transaction=transaction,
+            coordination=_Coordination(),
         ),
         fences,
         legacy,
@@ -693,7 +767,10 @@ def test_adoption_transaction_resumes_set_published_without_prior_phase_replay(
         recovery_identity="legacy-adoption-recovery",
     )
     assert pinned.candidate is fixture.candidate
-    staged = staging.stage_and_publish(fixture.candidate)
+    staged = staging.stage_and_publish(
+        fixture.candidate,
+        adoption_authorization=staging.authorize_adoption(fixture.request),
+    )
     assert staged.status.phase == "set_published"
     never = _Never()
     commit = _Commit(
@@ -707,7 +784,7 @@ def test_adoption_transaction_resumes_set_published_without_prior_phase_replay(
         fixture,
         closure=never,
         pins=never,
-        staging=never,
+        staging=staging,
         commit=commit,
     )
     owner, _fences, _legacy = _outer(fixture, adapter)
@@ -716,6 +793,7 @@ def test_adoption_transaction_resumes_set_published_without_prior_phase_replay(
 
     assert result.disposition == "adopted"
     assert never.calls == 0
+    assert staging.resume_calls == 1
     assert commit.calls == 1
 
 
@@ -805,10 +883,16 @@ def test_adoption_transaction_suspends_candidate_when_staging_crashes(
     monkeypatch.setattr(fixture.candidate, "suspend_for_recovery", counted_suspend)
 
     class _CrashingStaging:
-        def stage_and_publish(self, _candidate: object) -> object:
+        def authorize_adoption(
+            self,
+            request: PackageLegacyAdoptionRequestV1,
+        ) -> PackageStagingAdoptionAuthorization:
+            return _staging.authorize_adoption(request)
+
+        def stage_and_publish(self, _candidate: object, **_kwargs: object) -> object:
             raise _CrashDuringStaging
 
-        def resume(self, _operation_id: str) -> object:
+        def resume(self, _operation_id: str, **_kwargs: object) -> object:
             raise AssertionError("resume must not run")
 
     never = _Never()

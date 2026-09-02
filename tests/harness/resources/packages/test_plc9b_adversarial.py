@@ -4,6 +4,7 @@ import base64
 import csv
 import inspect
 import io
+import json
 import os
 import shutil
 import stat
@@ -938,6 +939,19 @@ class _ManifestNativeRootStagingOwner:
     verify_reuse: bool = False
     same_receipt: bool = False
     calls: int = 0
+
+    def authorize_adoption(
+        self,
+        *,
+        store_id: str,
+        current_root_identity: str,
+        target: PackagePluginRootTargetV1,
+    ) -> bool:
+        return self.store.authorize_adoption(
+            store_id=store_id,
+            current_root_identity=current_root_identity,
+            target=target,
+        )
 
     def stage_root(
         self,
@@ -2413,11 +2427,74 @@ class _ManifestNativeAdoptionFixture:
     root_settlements: PackageStoreSettlementJournal
     current_root: Path
     product_files: tuple[tuple[Path, bytes], ...]
+    product_projections: _ManifestProductProjectionOwner
+    product_projection_before: tuple[tuple[str, int, bytes], ...]
+    coordination: _ManifestAdoptionCoordination
     secret: str
+
+
+class _ManifestAdoptionCoordination:
+    def __init__(self) -> None:
+        self.lock = Lock()
+
+    @contextmanager
+    def hold(self, _request: PackageLegacyAdoptionRequestV1) -> Iterator[None]:
+        with self.lock:
+            yield
+
+
+@dataclass(frozen=True)
+class _ManifestProductProjectionOwner:
+    paths: tuple[tuple[str, Path], ...]
+
+    @classmethod
+    def create(cls, root: Path) -> _ManifestProductProjectionOwner:
+        root.mkdir(mode=0o700)
+        paths: list[tuple[str, Path]] = []
+        for domain in ("binding", "desired", "enablement", "instance"):
+            path = root / f"{domain}.json"
+            path.write_bytes(
+                canonical_json_bytes(
+                    {
+                        "domain": domain,
+                        "projectionVersion": 1,
+                        "revision": 1,
+                        "value": "legacy",
+                    }
+                )
+                + b"\n"
+            )
+            path.chmod(0o600)
+            paths.append((domain, path))
+        return cls(paths=tuple(paths))
+
+    def capture(self) -> tuple[tuple[str, int, bytes], ...]:
+        captured: list[tuple[str, int, bytes]] = []
+        for domain, path in self.paths:
+            payload = path.read_bytes()
+            document = json.loads(payload)
+            assert document["domain"] == domain
+            captured.append((domain, int(document["revision"]), payload))
+        return tuple(captured)
+
+
+def _assert_manifest_secret_absent(root: Path, secret: str) -> None:
+    encoded = secret.encode()
+    for path in root.rglob("*"):
+        relative = path.relative_to(root)
+        assert all(secret not in component for component in relative.parts)
+        metadata = path.lstat()
+        if stat.S_ISLNK(metadata.st_mode):
+            assert secret not in os.readlink(path)
+        elif stat.S_ISREG(metadata.st_mode):
+            assert encoded not in path.read_bytes()
 
 
 def _manifest_native_adoption_fixture(
     tmp_path: Path,
+    *,
+    fenced_root_identity: str | None = None,
+    adoption_installation_id: str = "manifest-installation",
 ) -> _ManifestNativeAdoptionFixture:
     store_id = "package-store:manifest-adoption"
     secret = "manifest-secret-b-compat-adopt"
@@ -2475,6 +2552,10 @@ def _manifest_native_adoption_fixture(
         legacy_root_identity=legacy_root_identity,
     )
     legacy_evidence = legacy_state.capture()
+    product_projections = _ManifestProductProjectionOwner.create(
+        tmp_path / "manifest-product-projections"
+    )
+    product_projection_before = product_projections.capture()
 
     dependency_root = tmp_path / "adoption-dependency-store"
     plugin_authority = tmp_path / "adoption-plugin-authority"
@@ -2488,7 +2569,9 @@ def _manifest_native_adoption_fixture(
             store_id=store_id,
             prior_fence=None,
             legacy_root_identity=legacy_root_identity,
-            fenced_root_identity=_manifest_directory_identity(plugin_root),
+            fenced_root_identity=(
+                fenced_root_identity or _manifest_directory_identity(plugin_root)
+            ),
             namespace_id=sha256(b"manifest-adoption-current-namespace").hexdigest(),
             minimum_runtime_version="2.0.0",
             minimum_runtime_protocol_epoch=2,
@@ -2506,7 +2589,7 @@ def _manifest_native_adoption_fixture(
         expected_attempt_epoch=classified.attempt_epoch,
         product_id="coding",
         scope_id="workspace:manifest",
-        installation_id="manifest-installation",
+        installation_id=adoption_installation_id,
         plugin_id="acme.plugin",
     )
     execution = PackageClosureExecutionRequestV2(
@@ -2535,6 +2618,7 @@ def _manifest_native_adoption_fixture(
         PosixPackagePluginRootMaterializationStore(
             plugin_root,
             store_identity="manifest-plugin-revision-store",
+            package_store_id=store_id,
             settlement_journal=root_settlements,
         )
     )
@@ -2574,11 +2658,13 @@ def _manifest_native_adoption_fixture(
         ),
     )
     fence_reader = _ManifestAdoptionFenceReader(fence_journal)
+    coordination = _ManifestAdoptionCoordination()
     owner = PackageLegacyAdoptionOwner(
         store_id=store_id,
         fences=fence_reader,
         legacy_state=legacy_state,
         transaction=transaction,
+        coordination=coordination,
     )
     return _ManifestNativeAdoptionFixture(
         owner=owner,
@@ -2601,7 +2687,57 @@ def _manifest_native_adoption_fixture(
         root_settlements=root_settlements,
         current_root=plugin_root,
         product_files=tuple(product_files),
+        product_projections=product_projections,
+        product_projection_before=product_projection_before,
+        coordination=coordination,
         secret=secret,
+    )
+
+
+@pytest.mark.parametrize(
+    ("fixture_options", "reason"),
+    (
+        (
+            {"fenced_root_identity": sha256(b"wrong-native-root").hexdigest()},
+            "root",
+        ),
+        ({"adoption_installation_id": "wrong-installation"}, "installation"),
+    ),
+)
+def test_native_adoption_rejects_wrong_physical_authority_before_source(
+    tmp_path: Path,
+    fixture_options: dict[str, str],
+    reason: str,
+) -> None:
+    assert sys.platform.startswith("linux")
+    fixture = _manifest_native_adoption_fixture(tmp_path, **fixture_options)
+    before = (
+        fixture.lifecycle_journal.records(),
+        fixture.evidence_journal.records(),
+        fixture.resolution_journal.records(),
+        fixture.pin_journal.records(),
+        fixture.staging_journal.records(),
+        fixture.committed_sets.records(),
+        fixture.root_settlements.records(),
+        fixture.product_projections.capture(),
+    )
+
+    result = fixture.owner.adopt(fixture.request)
+
+    assert result.disposition == "rejected", reason
+    assert result.code == "package_operation_identity_conflict"
+    assert fixture.source_authority.authorize_calls == 0
+    assert fixture.retention.physical_acquisitions == 0
+    assert fixture.root_staging.calls == 0
+    assert before == (
+        fixture.lifecycle_journal.records(),
+        fixture.evidence_journal.records(),
+        fixture.resolution_journal.records(),
+        fixture.pin_journal.records(),
+        fixture.staging_journal.records(),
+        fixture.committed_sets.records(),
+        fixture.root_settlements.records(),
+        fixture.product_projections.capture(),
     )
 
 
@@ -2728,6 +2864,7 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
             fixture.fence_journal.records(),
             fixture.root_settlements.records(),
         )
+        product_projection_after_first = fixture.product_projections.capture()
         replay = fixture.owner.adopt(fixture.request)
 
         assert adopted == replay
@@ -2771,6 +2908,10 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
         )
         for path, payload in fixture.product_files:
             assert path.read_bytes() == payload
+        assert fixture.product_projection_before == product_projection_after_first
+        assert fixture.product_projection_before == (
+            fixture.product_projections.capture()
+        )
         assert after_first == (
             fixture.lifecycle_journal.records(),
             fixture.evidence_journal.records(),
@@ -2782,9 +2923,7 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
             fixture.root_settlements.records(),
         )
         assert fixture.secret not in repr((fixture.request, adopted, replay))
-        for path in tmp_path.rglob("*"):
-            if path.is_file():
-                assert fixture.secret.encode() not in path.read_bytes()
+        _assert_manifest_secret_absent(tmp_path, fixture.secret)
     elif case_id in IMPLEMENTED_B4A_COMMIT_ADMISSION_MANIFEST_CASES:
         fixture = _manifest_commit_admission_fixture(tmp_path)
         current = fixture.kernel.status("manifest-operation")

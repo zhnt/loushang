@@ -10,6 +10,7 @@ the fence and legacy observation remain unchanged.
 from __future__ import annotations
 
 import re
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from hashlib import sha256
 from typing import Literal, Protocol, cast
@@ -882,6 +883,15 @@ class PackageLegacyAdoptionTransactionPort(Protocol):
     ) -> PackageLegacyAdoptionTransactionResultV1: ...
 
 
+class PackageLegacyAdoptionCoordinationPort(Protocol):
+    """Serialize adoption with every writer of its fence and legacy namespace."""
+
+    def hold(
+        self,
+        request: PackageLegacyAdoptionRequestV1,
+    ) -> AbstractContextManager[None]: ...
+
+
 class PackageLegacyAdoptionOwner:
     """Read-only coordinator around one separately-owned complete B transaction."""
 
@@ -892,12 +902,14 @@ class PackageLegacyAdoptionOwner:
         fences: PackageEpochFenceReadPort,
         legacy_state: PackageLegacyStateEvidencePort,
         transaction: PackageLegacyAdoptionTransactionPort,
+        coordination: PackageLegacyAdoptionCoordinationPort,
     ) -> None:
         _require_safe_id(store_id, name="Package store identity")
         for owner, method, name in (
             (fences, "current", "epoch fence reader"),
             (legacy_state, "observe", "legacy state evidence owner"),
             (transaction, "adopt", "adoption transaction owner"),
+            (coordination, "hold", "adoption coordination owner"),
         ):
             if not callable(getattr(owner, method, None)):
                 raise TypeError(f"Package {name} is required")
@@ -905,6 +917,7 @@ class PackageLegacyAdoptionOwner:
         self._fences = fences
         self._legacy_state = legacy_state
         self._transaction = transaction
+        self._coordination = coordination
 
     def adopt(
         self,
@@ -912,39 +925,46 @@ class PackageLegacyAdoptionOwner:
     ) -> PackageLegacyAdoptionResultV1:
         if not isinstance(request, PackageLegacyAdoptionRequestV1):
             raise TypeError("Legacy Package adoption request is required")
-        if request.store_id != self._store_id or not self._fence_matches(request):
+        if request.store_id != self._store_id:
             return self._coordinator_failure(
                 request,
                 code="package_runtime_epoch_unsupported",
                 evidence_ref=request.current_fence_id,
             )
-        before = self._legacy_state.observe(
-            store_id=request.store_id,
-            legacy_root_identity=request.legacy_root_identity,
-        )
-        if not request.matches_legacy_state(before):
-            return self._coordinator_failure(
-                request,
-                code="package_operation_identity_conflict",
-                evidence_ref=request.legacy_state_evidence_id,
+        with self._coordination.hold(request):
+            if not self._fence_matches(request):
+                return self._coordinator_failure(
+                    request,
+                    code="package_runtime_epoch_unsupported",
+                    evidence_ref=request.current_fence_id,
+                )
+            before = self._legacy_state.observe(
+                store_id=request.store_id,
+                legacy_root_identity=request.legacy_root_identity,
             )
-        transaction = self._transaction.adopt(request)
-        after = self._legacy_state.observe(
-            store_id=request.store_id,
-            legacy_root_identity=request.legacy_root_identity,
-        )
-        if after != before or not request.matches_legacy_state(after):
-            return self._coordinator_failure(
-                request,
-                code="package_operation_identity_conflict",
-                evidence_ref=before.evidence_id,
+            if not request.matches_legacy_state(before):
+                return self._coordinator_failure(
+                    request,
+                    code="package_operation_identity_conflict",
+                    evidence_ref=request.legacy_state_evidence_id,
+                )
+            transaction = self._transaction.adopt(request)
+            after = self._legacy_state.observe(
+                store_id=request.store_id,
+                legacy_root_identity=request.legacy_root_identity,
             )
-        if not self._fence_matches(request):
-            return self._coordinator_failure(
-                request,
-                code="package_runtime_epoch_unsupported",
-                evidence_ref=request.current_fence_id,
-            )
+            if after != before or not request.matches_legacy_state(after):
+                return self._coordinator_failure(
+                    request,
+                    code="package_operation_identity_conflict",
+                    evidence_ref=before.evidence_id,
+                )
+            if not self._fence_matches(request):
+                return self._coordinator_failure(
+                    request,
+                    code="package_runtime_epoch_unsupported",
+                    evidence_ref=request.current_fence_id,
+                )
         if not isinstance(
             transaction,
             PackageLegacyAdoptionTransactionResultV1,

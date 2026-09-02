@@ -23,9 +23,13 @@ from loushang.harness.resources.packages.plugin_lifecycle.commit_records import 
     PluginRevisionRefV1,
     VerifiedArtifactRefV1,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    canonical_json_bytes,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.staging import (
     PackageArtifactStagingReceiptV1,
     PackageArtifactStagingRequestV1,
+    PackagePluginRootTargetV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.store_settlements import (
     PackageStoreSettlementJournal,
@@ -98,6 +102,7 @@ class PosixPackagePluginRootMaterializationStore:
         root: str | Path,
         *,
         store_identity: str,
+        package_store_id: str | None = None,
         settlement_journal: PackageStoreSettlementJournal,
         transfer: PackageVerifiedTreeTransferOwner | None = None,
         commit_probe: Callable[[], None] | None = None,
@@ -112,6 +117,9 @@ class PosixPackagePluginRootMaterializationStore:
             commit_probe=commit_probe,
             receipt_probe=receipt_probe,
         )
+        if package_store_id is not None and not package_store_id:
+            raise ValueError("Package store identity is required")
+        self._package_store_id = package_store_id
 
     def open_root_sink(
         self,
@@ -132,6 +140,23 @@ class PosixPackagePluginRootMaterializationStore:
         receipt: PackageArtifactStagingReceiptV1,
     ) -> PackageArtifactStagingReceiptV1:
         return self._store.validate_receipt(receipt)
+
+    def authorize_adoption(
+        self,
+        *,
+        store_id: str,
+        current_root_identity: str,
+        target: PackagePluginRootTargetV1,
+    ) -> bool:
+        """Prove that an adoption request names this exact configured root."""
+
+        if (
+            self._package_store_id is None
+            or store_id != self._package_store_id
+            or not isinstance(target, PackagePluginRootTargetV1)
+        ):
+            return False
+        return self._store.authorizes_root_identity(current_root_identity)
 
 
 class _PosixRoleStore:
@@ -241,6 +266,35 @@ class _PosixRoleStore:
                 durable_owner_lock.__exit__(None, None, None)
             finally:
                 self._lock.release()
+
+    def authorizes_root_identity(self, expected_identity: str) -> bool:
+        if self._role != "root" or not isinstance(expected_identity, str):
+            return False
+        self._lock.acquire()
+        try:
+            root = _PinnedPosixRoot.open(
+                self._root,
+                expected_identities=self._root_identities,
+            )
+            try:
+                metadata = os.fstat(root.descriptor)
+                observed = sha256(
+                    canonical_json_bytes(
+                        {
+                            "device": metadata.st_dev,
+                            "fileType": "directory",
+                            "inode": metadata.st_ino,
+                            "identityVersion": 1,
+                        }
+                    )
+                ).hexdigest()
+                return observed == expected_identity
+            finally:
+                root.close()
+        except Exception:
+            return False
+        finally:
+            self._lock.release()
 
     def _validate_receipt_at_root(
         self,

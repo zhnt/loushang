@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from threading import Lock
+from threading import Event, Lock
 
 import pytest
 
@@ -86,6 +87,16 @@ class _Authority:
             policy_revision="classification-policy:1",
             classifier_epoch=1,
         )
+
+
+class _Coordination:
+    def __init__(self) -> None:
+        self._lock = Lock()
+
+    @contextmanager
+    def hold(self, _request: PackageLegacyAdoptionRequestV1):
+        with self._lock:
+            yield
 
 
 @dataclass
@@ -337,6 +348,7 @@ def _owner(
     fences: _Fences | None = None,
     legacy: _LegacyState | None = None,
     transaction: _Transaction | None = None,
+    coordination: _Coordination | None = None,
 ) -> tuple[PackageLegacyAdoptionOwner, _Fences, _LegacyState, _Transaction]:
     fence_owner = fences or _Fences((fixture.fence,))
     legacy_owner = legacy or _LegacyState((fixture.legacy,))
@@ -347,11 +359,67 @@ def _owner(
             fences=fence_owner,
             legacy_state=legacy_owner,
             transaction=transaction_owner,
+            coordination=coordination or _Coordination(),
         ),
         fence_owner,
         legacy_owner,
         transaction_owner,
     )
+
+
+def test_adoption_guard_serializes_legacy_mutation_across_commit(
+    tmp_path: Path,
+) -> None:
+    fixture = _fixture(tmp_path)
+    coordination = _Coordination()
+    legacy = _LegacyState((fixture.legacy,))
+    entered = Event()
+    release = Event()
+    transaction = _Transaction(_transaction_result(fixture))
+
+    original_adopt = transaction.adopt
+
+    def blocked_adopt(
+        request: PackageLegacyAdoptionRequestV1,
+    ) -> PackageLegacyAdoptionTransactionResultV1:
+        entered.set()
+        assert release.wait(timeout=5)
+        return original_adopt(request)
+
+    transaction.adopt = blocked_adopt  # type: ignore[method-assign]
+    owner, _fences, _legacy, _transaction_owner = _owner(
+        fixture,
+        legacy=legacy,
+        transaction=transaction,
+        coordination=coordination,
+    )
+    writer_entered = Event()
+    changed = PackageLegacyStateEvidenceV1.create(
+        store_id=STORE_ID,
+        legacy_root_identity=LEGACY_ROOT_ID,
+        state_digest="9" * 64,
+        entry_count=fixture.legacy.entry_count,
+        byte_count=fixture.legacy.byte_count,
+    )
+
+    def mutate() -> None:
+        with coordination.hold(fixture.request):
+            writer_entered.set()
+            legacy.evidence = (changed,)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        adoption = executor.submit(owner.adopt, fixture.request)
+        assert entered.wait(timeout=5)
+        writer = executor.submit(mutate)
+        assert not writer_entered.wait(timeout=0.05)
+        release.set()
+        assert adoption.result(timeout=5).disposition == "adopted"
+        writer.result(timeout=5)
+
+    refused = owner.adopt(fixture.request)
+    assert refused.disposition == "rejected"
+    assert refused.code == "package_operation_identity_conflict"
+    assert transaction.calls == 1
 
 
 def _failed_status(

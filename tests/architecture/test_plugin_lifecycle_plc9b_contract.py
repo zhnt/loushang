@@ -4644,7 +4644,7 @@ def test_plc9b4c4d_positive_adoption_uses_native_composition_and_is_promoted() -
 
     row = manifest["B-COMPAT-ADOPT"]
     assert row["status"] == "implemented"
-    assert row["platform"] == "any"
+    assert row["platform"] == "posix-native"
     assert row["workflow"] == "harness-quality.yml#plc9b-linux-native"
     assert {
         "same_receipt",
@@ -4654,6 +4654,7 @@ def test_plc9b4c4d_positive_adoption_uses_native_composition_and_is_promoted() -
         "instance_unchanged",
         "binding_unchanged",
         "enablement_unchanged",
+        "no_skip",
     } == set(row["oracles"].split(";"))
     for case_id in (
         "B-COMPAT-ADOPT-UNAUTHORIZED",
@@ -4679,7 +4680,11 @@ def test_plc9b4c4d_positive_adoption_uses_native_composition_and_is_promoted() -
         "fixture.legacy_state.calls == 4",
         "legacy_root_identity=_manifest_directory_identity(self.root)",
         "current_fence.fenced_root_identity == _manifest_directory_identity(",
-        "fixture.secret.encode() not in path.read_bytes()",
+        "fixture.product_projection_before == product_projection_after_first",
+        "metadata = path.lstat()",
+        "secret not in os.readlink(path)",
+        "test_native_adoption_rejects_wrong_physical_authority_before_source",
+        "package_store_id=store_id",
     ):
         assert evidence in adversarial_tests
     assert "PLC9B Linux native adversarial gate (plc9b-linux-native)" in workflow
