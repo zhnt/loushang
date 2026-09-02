@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.4c0-candidate.
+- Contract version: PLC9B.4c0.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -99,7 +99,7 @@
   `opened -> dependency_pinned -> desired_committed -> settled` recovery path
   (or pre-commit `aborted`) makes all six retention-handoff threats executable
   without importing a concrete management ledger or exposing a production
-  route. B4c0 candidate code adds the dark, evidence-only epoch-fence journal
+  route. Accepted B4c0 code adds the dark, evidence-only epoch-fence journal
   and read-only runtime admission owner. It makes newer-runtime-epoch and
   mixed-active-epoch refusal executable without creating a namespace or
   switching a root. Native cutover, offline restore, recovery convergence,
@@ -1329,7 +1329,7 @@ with 23 expected skips; the 127 focused B4b component, manifest, and PLC9B
 architecture tests also passed. B4c native cutover remains the next closed
 gate after the evidence-only admission slice.
 
-## PLC9B4c0 Candidate Epoch Admission
+## PLC9B4c0 Accepted Epoch Admission
 
 B4c0 freezes the evidence boundary before native root mutation exists.
 `PackageEpochFenceRequestV1` binds one stable Package-store identity, the exact
@@ -1368,10 +1368,15 @@ CLI/RPC/Session/startup route. Native POSIX/Windows cutover, pre-fence-live
 refusal, offline restore, adoption, and composed committed/concurrency recovery
 remain planned.
 
-The B4c0 candidate passed local `make check-harness`: Ruff passed, mypy passed
+The B4c0 slice passed local `make check-harness`: Ruff passed, mypy passed
 over 642 source files, and pytest completed 3,824 tests with 23 expected skips.
 The nine epoch component tests, complete 90-row Linux manifest, and 38 PLC9B
 architecture contracts passed together as a 137-test focused regression.
+Candidate `18f0bab8` passed all 23 PR checks. Harness Quality run
+`33576206559`, Linux job `100080609111`, retained artifact `9826705491`, and
+digest `edbb4a5ddd43fbdf6b5aa8f4b7a0c9f5aae1ddac418cda79a74e3f8d0e58bf47`
+prove that the native XML executed exactly 90 manifest nodes, including
+`B-COMPAT-EPOCH` and `B-COMPAT-MIXED`, with zero skips, failures, or errors.
 
 ## First Principles
 

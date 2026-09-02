@@ -198,7 +198,7 @@
   checks passed; retained Linux artifact `9825049355` executed exactly 88
   manifest nodes with zero skips, failures, or errors and contained all six
   B4b rows.
-  PLC9B4c0 candidate code adds an evidence-only adjacent epoch-fence journal,
+  Accepted PLC9B4c0 code adds an evidence-only adjacent epoch-fence journal,
   credential-free active-runtime lease snapshots, and read-only runtime
   admission. Exact fence/root/protocol mismatch is rejected before consulting
   leases; any active different-epoch/root lease rejects without mutation.
@@ -206,7 +206,10 @@
   pathname or native switch capability and leaves POSIX/Windows cutover,
   offline restore, adoption, recovery convergence, and Product routing as
   later gates. Local `make check-harness` passed Ruff, mypy over 642 source
-  files, and 3,824 tests with 23 expected skips.
+  files, and 3,824 tests with 23 expected skips. Candidate `18f0bab8` passed
+  all 23 PR checks; retained Linux artifact `9826705491` executed exactly 90
+  manifest nodes with zero skips, failures, or errors and contained both B4c0
+  compatibility rows.
 
 This inventory distinguishes accepted reusable owners, Product adapters,
 parallel compatibility paths, and missing target boundaries. “Migrate” or
