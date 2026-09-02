@@ -659,7 +659,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.4c2-candidate." in contract
+    assert "Contract version: PLC9B.4c2." in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
@@ -3570,7 +3570,7 @@ def test_plc9b4b_retention_handoff_is_dark_exact_and_no_zero_pin() -> None:
         assert {"exact_pin_set", "no_zero_pin"} <= set(row["oracles"].split(";"))
 
     normalized = " ".join(contract.split())
-    assert "PLC9B.4c2-candidate." in contract
+    assert "PLC9B.4c2." in contract
     assert "PLC9B4b Accepted Retention Handoff" in normalized
     assert "opened -> dependency_pinned -> desired_committed -> settled" in normalized
     assert "No journal lock is held" in normalized
@@ -3701,7 +3701,7 @@ def test_plc9b4c0_epoch_admission_is_dark_read_only_and_fail_closed() -> None:
         )
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c2-candidate." in contract
+    assert "Contract version: PLC9B.4c2." in contract
     assert "PLC9B4c0 Accepted Epoch Admission" in normalized
     assert "human-readable minimum runtime version is diagnostic evidence" in (
         normalized
@@ -3825,7 +3825,7 @@ def test_plc9b4c1_posix_cutover_has_one_native_owner_and_one_visibility_edge() -
         assert manifest[case_id]["status"] == "implemented"
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c2-candidate." in contract
+    assert "Contract version: PLC9B.4c2." in contract
     assert "PLC9B4c1 Accepted POSIX Native Cutover" in normalized
     assert "no second `active-root` file" in normalized
     assert "sole Product-root pointer" in normalized
@@ -3944,8 +3944,8 @@ def test_plc9b4c2_windows_cutover_is_rooted_native_and_non_skippable() -> None:
     assert workflow.count("scripts/dev/verify_pytest_xml.py") >= 5
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c2-candidate." in contract
-    assert "PLC9B4c2 Candidate Windows Native Cutover" in normalized
+    assert "Contract version: PLC9B.4c2." in contract
+    assert "PLC9B4c2 Accepted Windows Native Cutover" in normalized
     assert "same fingerprint domain" in normalized
     assert "rooted `NtCreateFile`" in normalized
     assert "there is no second `active-root` file" in normalized
@@ -3954,9 +3954,21 @@ def test_plc9b4c2_windows_cutover_is_rooted_native_and_non_skippable() -> None:
     assert "mypy passed over 644 source files" in normalized
     assert "pytest completed 3,837 tests with 33 expected skips" in normalized
     assert "132-passed, 10-skipped focused regression" in normalized
-    assert "14-row Windows manifest" in normalized
-    assert "PLC9B4c2 candidate code adds the corresponding dark" in inventory
-    assert "PLC9B4c2 candidate code adds the symmetric dark" in index
+    assert "B4c2 was accepted on 2026-09-02 against candidate head `3d5d4394`" in (
+        normalized
+    )
+    assert "after all 23 PR checks passed" in normalized
+    assert "Windows Shell Compatibility run `33584494760`" in normalized
+    assert "native job `100105659525`" in normalized
+    assert "retained artifact `9829593062`" in normalized
+    assert (
+        "2967396b3f0888379f6dbda3504c8dd4ee465b61e35fff36ad1f91f0f3a76e5a"
+        in normalized
+    )
+    assert "executed exactly 29 tests, including all ten B4c2" in normalized
+    assert "executed exactly 14 nodes" in normalized
+    assert "PLC9B4c2 accepted code adds the corresponding dark" in inventory
+    assert "PLC9B4c2 accepted code adds the symmetric dark" in index
 
 
 def test_plc9b2f_windows_backend_is_rooted_and_has_a_nonskippable_native_gate() -> None:

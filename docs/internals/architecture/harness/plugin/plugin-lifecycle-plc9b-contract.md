@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.4c2-candidate.
+- Contract version: PLC9B.4c2.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -1438,7 +1438,7 @@ prove that the native XML executed exactly 92 manifest nodes, including
 `B-COMPAT-CUTOVER-POSIX` and `B-COMPAT-PREFENCE-LIVE-POSIX`, with zero skips,
 failures, or errors.
 
-## PLC9B4c2 Candidate Windows Native Cutover
+## PLC9B4c2 Accepted Windows Native Cutover
 
 `PackageWindowsEpochCutoverOwner` preserves the B4c1 state machine rather than
 forking a second interpretation. The Windows request, result, failure, and
@@ -1480,9 +1480,17 @@ over 644 source files, and pytest completed 3,837 tests with 33 expected skips
 in 8 minutes 22 seconds. The complete 92-row Linux manifest and 40 PLC9B
 architecture contracts passed with the candidate component file as a
 132-passed, 10-skipped focused regression. Those ten skips are the native
-Windows component tests and are intentionally not acceptance evidence; B4c2
-remains a candidate until the Windows component and 14-row Windows manifest
-XML reports execute without skips, failures, or errors.
+Windows component tests and were intentionally not used as acceptance evidence.
+
+B4c2 was accepted on 2026-09-02 against candidate head `3d5d4394` after all 23
+PR checks passed. Windows Shell Compatibility run `33584494760`, native job
+`100105659525`, retained artifact `9829593062`, and digest
+`2967396b3f0888379f6dbda3504c8dd4ee465b61e35fff36ad1f91f0f3a76e5a`
+prove the native gate. The artifact digest matched the downloaded archive;
+`windows-shell-plc9b-native.xml` executed exactly 29 tests, including all ten
+B4c2 component cases, and `windows-shell-plc9b-manifest.xml` executed exactly
+14 nodes, including `B-COMPAT-CUTOVER-WINDOWS` and
+`B-COMPAT-PREFENCE-LIVE-WINDOWS`, with zero skips, failures, or errors.
 
 ## First Principles
 

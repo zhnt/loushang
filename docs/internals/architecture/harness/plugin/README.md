@@ -194,7 +194,7 @@ Neither may silently override a narrower implemented owner contract.
   skips; the focused regression passed all 142 tests. Candidate `e99945d2`
   passed all 23 PR checks, and retained Linux artifact `9828433273` executed
   exactly 92 manifest nodes with no skips, failures, or errors.
-  PLC9B4c2 candidate code adds the symmetric dark Windows-native cutover owner.
+  PLC9B4c2 accepted code adds the symmetric dark Windows-native cutover owner.
   It reuses the exact B4c1 pathless schema and epoch visibility edge while
   preparing, identity-pinning, flushing, reopening, and cleaning the sibling
   namespace through rooted Windows handles. The two Windows compatibility
@@ -202,7 +202,11 @@ Neither may silently override a narrower implemented owner contract.
   restore/recovery, adoption, and all Product routes remain closed. Local
   `make check-harness` passed Ruff, mypy over 644 source files, and 3,837 tests
   with 33 expected skips; the focused regression passed 132 tests with the ten
-  Windows-native component tests collected but skipped on Linux.
+  Windows-native component tests collected but skipped on Linux. Windows Shell
+  Compatibility run `33584494760`, native job `100105659525`, and retained
+  artifact `9829593062` then executed all 29 PLC9B native-component tests and
+  all 14 Windows manifest nodes with zero skips, failures, or errors; all 23
+  candidate PR checks passed.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)

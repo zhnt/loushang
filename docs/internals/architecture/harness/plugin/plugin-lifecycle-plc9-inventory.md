@@ -225,7 +225,7 @@
   `e99945d2` passed all 23 PR checks; retained Linux artifact `9828433273`
   executed exactly 92 manifest nodes with zero skips, failures, or errors and
   contained both POSIX cutover rows.
-  PLC9B4c2 candidate code adds the corresponding dark Windows-native cutover
+  PLC9B4c2 accepted code adds the corresponding dark Windows-native cutover
   owner. It keeps one cross-platform pathless wire schema and one adjacent
   epoch pointer, but replaces every native path operation with rooted Windows
   directory handles, complete ancestor identity pins, direct-child creation,
@@ -236,7 +236,10 @@
   Product route remain closed. Local `make check-harness` passed Ruff, mypy
   over 644 source files, and 3,837 tests with 33 expected skips; the focused
   Linux regression passed 132 tests and collected the ten Windows-native
-  component tests as explicit platform skips pending native evidence.
+  component tests as explicit platform skips. Candidate `3d5d4394` passed all
+  23 PR checks; retained Windows artifact `9829593062` executed exactly 29 PLC9B
+  native-component tests and 14 manifest nodes, including both B4c2 rows, with
+  zero skips, failures, or errors.
 
 This inventory distinguishes accepted reusable owners, Product adapters,
 parallel compatibility paths, and missing target boundaries. “Migrate” or
