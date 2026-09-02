@@ -40,6 +40,7 @@ COMMIT_ADMISSION = OWNER_KERNEL_ROOT / "commit_admission.py"
 RETENTION_HANDOFF = OWNER_KERNEL_ROOT / "retention_handoff.py"
 EPOCH_FENCE = OWNER_KERNEL_ROOT / "epoch_fence.py"
 POSIX_EPOCH_CUTOVER = OWNER_KERNEL_ROOT / "posix_epoch_cutover.py"
+WINDOWS_EPOCH_CUTOVER = OWNER_KERNEL_ROOT / "windows_epoch_cutover.py"
 CLOSURE_TEST = Path("tests/harness/resources/packages/test_plc9b_closure.py")
 CLOSURE_OWNER_TEST = Path(
     "tests/harness/resources/packages/test_plc9b_closure_owner.py"
@@ -86,6 +87,9 @@ EPOCH_FENCE_TEST = Path(
 )
 POSIX_EPOCH_CUTOVER_TEST = Path(
     "tests/harness/resources/packages/test_plc9b_posix_epoch_cutover.py"
+)
+WINDOWS_EPOCH_CUTOVER_TEST = Path(
+    "tests/harness/resources/packages/test_plc9b_windows_epoch_cutover.py"
 )
 PYPROJECT = Path("pyproject.toml")
 WINDOWS_NATIVE_TEST = Path(
@@ -215,6 +219,10 @@ PLC9B4C0_EPOCH_ADMISSION_CASES = {
 PLC9B4C1_POSIX_EPOCH_CUTOVER_CASES = {
     "B-COMPAT-CUTOVER-POSIX",
     "B-COMPAT-PREFENCE-LIVE-POSIX",
+}
+PLC9B4C2_WINDOWS_EPOCH_CUTOVER_CASES = {
+    "B-COMPAT-CUTOVER-WINDOWS",
+    "B-COMPAT-PREFENCE-LIVE-WINDOWS",
 }
 ALLOWED_PLATFORMS = {"any", "posix-native", "windows-native"}
 ALLOWED_ORACLES = {
@@ -564,6 +572,12 @@ def _implemented_b4c1_posix_epoch_cutover_manifest_cases() -> set[str]:
     )
 
 
+def _implemented_b4c2_windows_epoch_cutover_manifest_cases() -> set[str]:
+    return _literal_manifest_cases(
+        "IMPLEMENTED_B4C2_WINDOWS_EPOCH_CUTOVER_MANIFEST_CASES"
+    )
+
+
 def _journal_effect_policy() -> list[tuple[str, str, str]]:
     contract = _source(CONTRACT)
     block = contract.split("<!-- plc9b-journal-effect-policy:start -->", 1)[1]
@@ -645,7 +659,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.4c1." in contract
+    assert "Contract version: PLC9B.4c2-candidate." in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
@@ -918,6 +932,9 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
     implemented_b4c1_posix = (
         _implemented_b4c1_posix_epoch_cutover_manifest_cases()
     )
+    implemented_b4c2_windows = (
+        _implemented_b4c2_windows_epoch_cutover_manifest_cases()
+    )
     implemented = (
         implemented_b1
         | implemented_b2
@@ -937,6 +954,7 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
         | implemented_b4b_handoff
         | implemented_b4c0_epoch
         | implemented_b4c1_posix
+        | implemented_b4c2_windows
     )
 
     assert len(manifest) == 127
@@ -1246,7 +1264,7 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
     assert hardlink["code"] == "ok"
     assert hardlink["disposition"] == "extracted@independent_regular_files"
     assert hardlink["status"] == "implemented"
-    assert len(manifest) - len(implemented) == 30
+    assert len(manifest) - len(implemented) == 28
     workflow = _source(HARNESS_WORKFLOW)
     assert "PLC9B Linux native adversarial gate (plc9b-linux-native)" in workflow
     assert "tests/harness/resources/packages/test_plc9b_adversarial.py" in workflow
@@ -3138,7 +3156,7 @@ def test_plc9b3e3c2_windows_materialization_is_rooted_role_safe_and_native() -> 
     for case_id in PLC9B3E3C2_WINDOWS_CASES:
         assert f"test_manifest_case[{case_id}]" in workflow
     assert "test_plc9b_windows_materialization.py" in workflow
-    assert workflow.count("test_plc9b_adversarial.py::test_manifest_case[B-") == 12
+    assert workflow.count("test_plc9b_adversarial.py::test_manifest_case[B-") == 14
     _assert_current_publication_statuses(manifest)
     assert manifest["B-PUB-UNCOMMITTED"]["status"] == "implemented"
 
@@ -3552,7 +3570,7 @@ def test_plc9b4b_retention_handoff_is_dark_exact_and_no_zero_pin() -> None:
         assert {"exact_pin_set", "no_zero_pin"} <= set(row["oracles"].split(";"))
 
     normalized = " ".join(contract.split())
-    assert "PLC9B.4c1." in contract
+    assert "PLC9B.4c2-candidate." in contract
     assert "PLC9B4b Accepted Retention Handoff" in normalized
     assert "opened -> dependency_pinned -> desired_committed -> settled" in normalized
     assert "No journal lock is held" in normalized
@@ -3683,7 +3701,7 @@ def test_plc9b4c0_epoch_admission_is_dark_read_only_and_fail_closed() -> None:
         )
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c1." in contract
+    assert "Contract version: PLC9B.4c2-candidate." in contract
     assert "PLC9B4c0 Accepted Epoch Admission" in normalized
     assert "human-readable minimum runtime version is diagnostic evidence" in (
         normalized
@@ -3804,10 +3822,10 @@ def test_plc9b4c1_posix_cutover_has_one_native_owner_and_one_visibility_edge() -
         "B-COMPAT-CUTOVER-WINDOWS",
         "B-COMPAT-PREFENCE-LIVE-WINDOWS",
     ):
-        assert manifest[case_id]["status"] == "planned"
+        assert manifest[case_id]["status"] == "implemented"
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c1." in contract
+    assert "Contract version: PLC9B.4c2-candidate." in contract
     assert "PLC9B4c1 Accepted POSIX Native Cutover" in normalized
     assert "no second `active-root` file" in normalized
     assert "sole Product-root pointer" in normalized
@@ -3833,6 +3851,112 @@ def test_plc9b4c1_posix_cutover_has_one_native_owner_and_one_visibility_edge() -
     assert "zero skips, failures, or errors" in normalized
     assert "PLC9B4c1 accepted code adds the dark POSIX-native" in inventory
     assert "PLC9B4c1 accepted code adds a dark POSIX-native" in index
+
+
+def test_plc9b4c2_windows_cutover_is_rooted_native_and_non_skippable() -> None:
+    contract = _source(CONTRACT)
+    inventory = _source(INVENTORY)
+    index = _source(INDEX)
+    source = _source(WINDOWS_EPOCH_CUTOVER)
+    component_tests = _source(WINDOWS_EPOCH_CUTOVER_TEST)
+    adversarial_tests = _source(ADVERSARIAL_TEST)
+    workflow = _source(WINDOWS_WORKFLOW)
+    internal_facade = _source(OWNER_KERNEL_ROOT / "__init__.py")
+    package_facade = _source(PACKAGE_ROOT / "__init__.py")
+    author_sdk = _source(AUTHOR_SDK)
+    manifest = _adversarial_manifest()
+
+    assert WINDOWS_EPOCH_CUTOVER.is_file()
+    assert WINDOWS_EPOCH_CUTOVER_TEST.is_file()
+    for symbol in (
+        "PackageWindowsEpochCutoverError",
+        "PackageWindowsEpochCutoverRequestV1",
+        "PackageWindowsEpochRootSwitchReceiptV1",
+        "PackageWindowsEpochCutoverFailureV1",
+        "PackageWindowsEpochCutoverResultV1",
+        "PackageWindowsEpochCutoverOwner",
+    ):
+        assert symbol in source
+    for rooted_primitive in (
+        "open_windows_directory",
+        "windows_flush_directory",
+        "windows_listdir_at",
+        "windows_rmdir_at",
+    ):
+        assert rooted_primitive in source
+    assert "self._journal.publish(epoch_request)" in source
+    assert "PackageWindowsEpochCutoverRequestV1: TypeAlias" in source
+    assert "NtFlushBuffersFileEx" in _source(WINDOWS_QUARANTINE)
+    assert "PackagePosixEpochCutoverOwner" not in source
+    assert "active-root" not in source
+
+    tree = ast.parse(source, filename=str(WINDOWS_EPOCH_CUTOVER))
+    imported = {
+        node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
+    }
+    forbidden_modules = (
+        "loushang.harness.plugin_management",
+        "loushang.harness.resources.plugins",
+        "loushang.coding",
+        "loushang.foundation",
+    )
+    assert not any(
+        module == forbidden or module.startswith(f"{forbidden}.")
+        for module in imported
+        for forbidden in forbidden_modules
+    )
+    for symbol in (
+        "PackageWindowsEpochCutoverOwner",
+        "PackageWindowsEpochCutoverRequestV1",
+    ):
+        assert symbol not in internal_facade
+        assert symbol not in package_facade
+        assert symbol not in author_sdk
+
+    for evidence in (
+        "test_windows_cutover_uses_epoch_append_as_the_only_atomic_root_pointer",
+        "test_windows_cutover_advances_only_from_the_exact_current_namespace",
+        "test_windows_cutover_concurrent_exact_requests_converge_once",
+        "test_windows_cutover_refuses_live_writer_before_native_mutation",
+        "test_windows_cutover_rejects_precreated_namespace_without_trusting_it",
+        "test_windows_cutover_blocks_namespace_swap_and_cleans_residue",
+        "test_windows_cutover_releases_every_native_descriptor",
+        "test_windows_cutover_records_reject_extended_or_forged_wire_values",
+    ):
+        assert evidence in component_tests
+    assert "IMPLEMENTED_B4C2_WINDOWS_EPOCH_CUTOVER_MANIFEST_CASES" in (
+        adversarial_tests
+    )
+    assert (
+        _implemented_b4c2_windows_epoch_cutover_manifest_cases()
+        == PLC9B4C2_WINDOWS_EPOCH_CUTOVER_CASES
+    )
+    for case_id in PLC9B4C2_WINDOWS_EPOCH_CUTOVER_CASES:
+        assert manifest[case_id]["status"] == "implemented"
+        assert manifest[case_id]["platform"] == "windows-native"
+        assert manifest[case_id]["workflow"].startswith(
+            "windows-shell-compatibility.yml#"
+        )
+        assert f"test_manifest_case[{case_id}]" in workflow
+    assert "tests/harness/resources/packages/test_plc9b_windows_epoch_cutover.py" in (
+        workflow
+    )
+    assert workflow.count("scripts/dev/verify_pytest_xml.py") >= 5
+
+    normalized = " ".join(contract.split())
+    assert "Contract version: PLC9B.4c2-candidate." in contract
+    assert "PLC9B4c2 Candidate Windows Native Cutover" in normalized
+    assert "same fingerprint domain" in normalized
+    assert "rooted `NtCreateFile`" in normalized
+    assert "there is no second `active-root` file" in normalized
+    assert "Linux collection skips it" in normalized
+    assert "B4c3 still owns complete offline restore" in normalized
+    assert "mypy passed over 644 source files" in normalized
+    assert "pytest completed 3,837 tests with 33 expected skips" in normalized
+    assert "132-passed, 10-skipped focused regression" in normalized
+    assert "14-row Windows manifest" in normalized
+    assert "PLC9B4c2 candidate code adds the corresponding dark" in inventory
+    assert "PLC9B4c2 candidate code adds the symmetric dark" in index
 
 
 def test_plc9b2f_windows_backend_is_rooted_and_has_a_nonskippable_native_gate() -> None:
@@ -3865,7 +3989,7 @@ def test_plc9b2f_windows_backend_is_rooted_and_has_a_nonskippable_native_gate() 
     assert "test_plc9b_windows_native.py" in workflow
     assert "windows-shell-plc9b-native.xml" in workflow
     assert "include-hidden-files: true" in workflow
-    assert workflow.count("test_plc9b_adversarial.py::test_manifest_case[B-") == 12
+    assert workflow.count("test_plc9b_adversarial.py::test_manifest_case[B-") == 14
     for case_id in _implemented_b2i_windows_manifest_cases():
         assert f"test_manifest_case[{case_id}]" in workflow
     assert "windows-shell-plc9b-manifest.xml" in workflow

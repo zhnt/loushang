@@ -149,6 +149,11 @@ from loushang.harness.resources.packages.plugin_lifecycle.wheel import (
     PackageWheelVerifier,
     VerifiedWheelCandidate,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.windows_epoch_cutover import (
+    PackageWindowsEpochCutoverOwner,
+    PackageWindowsEpochCutoverRequestV1,
+    PackageWindowsEpochCutoverResultV1,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.windows_materialization import (
     WindowsPackageDependencyMaterializationStore,
     WindowsPackagePluginRootMaterializationStore,
@@ -291,6 +296,10 @@ IMPLEMENTED_B4C1_POSIX_EPOCH_CUTOVER_MANIFEST_CASES = (
     "B-COMPAT-CUTOVER-POSIX",
     "B-COMPAT-PREFENCE-LIVE-POSIX",
 )
+IMPLEMENTED_B4C2_WINDOWS_EPOCH_CUTOVER_MANIFEST_CASES = (
+    "B-COMPAT-CUTOVER-WINDOWS",
+    "B-COMPAT-PREFENCE-LIVE-WINDOWS",
+)
 PLANNED_B3E3C_MATERIALIZATION_MANIFEST_CASES: tuple[str, ...] = ()
 PLANNED_B4_COMMIT_ADMISSION_MANIFEST_CASES: tuple[str, ...] = ()
 
@@ -317,6 +326,11 @@ EXECUTABLE_MANIFEST_CASES = (
         else ()
     )
     + (IMPLEMENTED_B3E3C2_WINDOWS_MANIFEST_CASES if os.name == "nt" else ())
+    + (
+        IMPLEMENTED_B4C2_WINDOWS_EPOCH_CUTOVER_MANIFEST_CASES
+        if os.name == "nt"
+        else ()
+    )
 )
 
 WHEEL_FILENAME = "acme_plugin-1.0-py3-none-any.whl"
@@ -1998,6 +2012,18 @@ class _ManifestEpochCutoverFixture:
     epochs: Path
 
 
+@dataclass(frozen=True)
+class _ManifestWindowsEpochCutoverFixture:
+    owner: PackageWindowsEpochCutoverOwner
+    request: PackageWindowsEpochCutoverRequestV1
+    journal: PackageEpochFenceJournal
+    coordination: _ManifestEpochCutoverCoordination
+    snapshots: _ManifestEpochCutoverSnapshots
+    authority: Path
+    legacy: Path
+    epochs: Path
+
+
 def _manifest_posix_epoch_cutover_fixture(
     tmp_path: Path,
     *,
@@ -2034,6 +2060,52 @@ def _manifest_posix_epoch_cutover_fixture(
         minimum_runtime_protocol_epoch=2,
     )
     return _ManifestEpochCutoverFixture(
+        owner=owner,
+        request=request,
+        journal=journal,
+        coordination=coordination,
+        snapshots=snapshots,
+        authority=authority,
+        legacy=legacy,
+        epochs=epochs,
+    )
+
+
+def _manifest_windows_epoch_cutover_fixture(
+    tmp_path: Path,
+    *,
+    pre_fence_live: bool,
+) -> _ManifestWindowsEpochCutoverFixture:
+    assert os.name == "nt"
+    authority = tmp_path / "manifest-package-epoch-authority"
+    legacy = authority / "legacy"
+    epochs = authority / "epochs"
+    legacy.mkdir(parents=True)
+    epochs.mkdir()
+    (legacy / "state.json").write_bytes(b'{"legacy":1}\n')
+    coordination = _ManifestEpochCutoverCoordination(
+        active_pre_fence_registration_ids=(
+            ("f" * 64,) if pre_fence_live else ()
+        )
+    )
+    snapshots = _ManifestEpochCutoverSnapshots()
+    journal = PackageEpochFenceJournal(tmp_path / "manifest-package-epoch.jsonl")
+    owner = PackageWindowsEpochCutoverOwner(
+        authority,
+        store_id="package-store:manifest-windows-cutover",
+        epoch_journal=journal,
+        coordination=coordination,
+        snapshots=snapshots,
+    )
+    request = PackageWindowsEpochCutoverRequestV1.create(
+        store_id="package-store:manifest-windows-cutover",
+        prior_fence=None,
+        expected_legacy_root_identity=owner.current_root_identity(),
+        namespace_id="d" * 64,
+        minimum_runtime_version="2.0.0",
+        minimum_runtime_protocol_epoch=2,
+    )
+    return _ManifestWindowsEpochCutoverFixture(
         owner=owner,
         request=request,
         journal=journal,
@@ -2443,6 +2515,71 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
             fixture.request.to_dict()
         ) == fixture.request
         assert PackagePosixEpochCutoverResultV1.from_dict(result.to_dict()) == result
+        serialized = repr((fixture.request, result)).lower()
+        for forbidden in (
+            "password",
+            "credential",
+            "token",
+            "handle",
+            str(tmp_path).lower(),
+        ):
+            assert forbidden not in serialized
+        assert not (tmp_path / "binding.json").exists()
+        assert not (tmp_path / "desired.json").exists()
+    elif case_id in IMPLEMENTED_B4C2_WINDOWS_EPOCH_CUTOVER_MANIFEST_CASES:
+        assert os.name == "nt"
+        pre_fence_live = case_id == "B-COMPAT-PREFENCE-LIVE-WINDOWS"
+        fixture = _manifest_windows_epoch_cutover_fixture(
+            tmp_path,
+            pre_fence_live=pre_fence_live,
+        )
+        legacy_before = (fixture.legacy / "state.json").read_bytes()
+
+        result = fixture.owner.cutover(fixture.request)
+
+        if pre_fence_live:
+            assert result.disposition == "rejected"
+            assert result.code == "package_runtime_epoch_unsupported"
+            assert result.failure is not None
+            assert result.failure.barrier == "pre_fence"
+            assert result.failure.operator_action == "upgrade_runtime"
+            assert result.failure.evidence_ref == "f" * 64
+            assert result.fence is None
+            assert result.switch_receipt is None
+            assert fixture.snapshots.calls == 0
+            assert fixture.journal.records() == ()
+            assert tuple(fixture.epochs.iterdir()) == ()
+        else:
+            assert result.disposition == "fenced"
+            assert result.code == "ok"
+            assert result.failure is None
+            assert result.fence is not None
+            assert result.switch_receipt is not None
+            assert result.fence.request.namespace_id == fixture.request.namespace_id
+            assert result.fence.request.root_switch_receipt_id == (
+                result.switch_receipt.switch_receipt_id
+            )
+            assert result.fence == fixture.journal.current(fixture.request.store_id)
+            assert len(fixture.journal.records()) == 1
+            assert fixture.snapshots.calls == 1
+            replay = fixture.owner.cutover(fixture.request)
+            assert replay == result
+            assert fixture.coordination.calls == 1
+            assert fixture.snapshots.calls == 1
+            assert (fixture.epochs / fixture.request.namespace_id).is_dir()
+            assert not (fixture.authority / "active-root").exists()
+            detached = tmp_path / "manifest-package-epoch-detached"
+            fixture.authority.rename(detached)
+            detached.rename(fixture.authority)
+            detached_epoch = tmp_path / "manifest-detached-epoch"
+            (fixture.epochs / fixture.request.namespace_id).rename(detached_epoch)
+            detached_epoch.rmdir()
+        assert fixture.coordination.calls == 1
+        assert (fixture.legacy / "state.json").read_bytes() == legacy_before
+        assert PackageWindowsEpochCutoverRequestV1.from_dict(
+            fixture.request.to_dict()
+        ) == fixture.request
+        assert PackageWindowsEpochCutoverResultV1.from_dict(result.to_dict()) == result
         serialized = repr((fixture.request, result)).lower()
         for forbidden in (
             "password",

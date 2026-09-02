@@ -38,6 +38,7 @@ jobs:
           uv run pytest
           tests/harness/resources/packages/test_plc9b_windows_native.py
           tests/harness/resources/packages/test_plc9b_windows_materialization.py
+          tests/harness/resources/packages/test_plc9b_windows_epoch_cutover.py
           -q
 
       - name: Reject empty, skipped, or failing PLC9B native report
@@ -64,6 +65,8 @@ jobs:
           "tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-WIN-ANCESTOR-ABA]"
           "tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-WIN-HANDLE-SUCCESS]"
           "tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-WIN-HANDLE-REJECT]"
+          "tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-CUTOVER-WINDOWS]"
+          "tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-PREFENCE-LIVE-WINDOWS]"
           -q
 
       - name: Reject empty, skipped, or failing PLC9B manifest report

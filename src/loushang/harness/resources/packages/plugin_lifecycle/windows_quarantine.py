@@ -234,6 +234,47 @@ def windows_flush_file(descriptor: int) -> None:
         _raise_last_windows_error()
 
 
+def windows_flush_directory(descriptor: int) -> None:
+    """Synchronously flush directory data and metadata through its native handle."""
+
+    import ctypes
+    import msvcrt
+    from ctypes import wintypes
+
+    _require_direct_directory(os.fstat(descriptor))
+
+    class _IoStatusValue(ctypes.Union):
+        _fields_ = (("status", wintypes.LONG), ("pointer", wintypes.LPVOID))
+
+    class _IoStatusBlock(ctypes.Structure):
+        _anonymous_ = ("value",)
+        _fields_ = (("value", _IoStatusValue), ("information", ctypes.c_size_t))
+
+    ntdll = getattr(ctypes, "WinDLL")("ntdll")
+    flush = ntdll.NtFlushBuffersFileEx
+    flush.argtypes = (
+        wintypes.HANDLE,
+        wintypes.ULONG,
+        wintypes.LPVOID,
+        wintypes.ULONG,
+        ctypes.POINTER(_IoStatusBlock),
+    )
+    flush.restype = wintypes.LONG
+    io_status = _IoStatusBlock()
+    status = flush(
+        wintypes.HANDLE(getattr(msvcrt, "get_osfhandle")(descriptor)),
+        0,
+        None,
+        0,
+        ctypes.byref(io_status),
+    )
+    if status < 0:
+        rtl_status_to_dos_error = ntdll.RtlNtStatusToDosError
+        rtl_status_to_dos_error.argtypes = (wintypes.LONG,)
+        rtl_status_to_dos_error.restype = wintypes.ULONG
+        raise getattr(ctypes, "WinError")(rtl_status_to_dos_error(status))
+
+
 def _open_directory_path(
     path: Path,
     *,
@@ -611,6 +652,7 @@ __all__ = [
     "open_windows_directory",
     "open_windows_regular_file_at",
     "supports_windows_rooted_io",
+    "windows_flush_directory",
     "windows_flush_file",
     "windows_listdir_at",
     "windows_rename_at",
