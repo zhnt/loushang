@@ -427,7 +427,11 @@ class PackageLegacyAdoptionTransactionResultV1:
                 raise ValueError("Committed adoption transaction requires publication")
             if not _publication_matches_status(self.publication, self.status):
                 raise ValueError("Adoption publication does not match transaction")
-        elif self.status.disposition in {"rejected", "retryable_failure"}:
+        elif self.status.disposition in {
+            "cancelled",
+            "rejected",
+            "retryable_failure",
+        }:
             if self.publication is not None or self.status.failure is None:
                 raise ValueError("Failed adoption transaction is inconsistent")
         else:

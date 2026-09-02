@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.4c4a-candidate.
+- Contract version: PLC9B.4c4b-candidate.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -114,9 +114,10 @@
   Linux/Bubblewrap legacy-process activation owner and promotes the complete
   POSIX restore row in its named Linux-native gate. B4c4a candidate code adds
   the dark, pathless legacy-adoption protocol around one separately owned,
-  complete B transaction. Windows restore, a concrete adoption adapter, all
-  adoption manifest rows, public routing, and concrete desired-state
-  composition remain closed.
+  complete B transaction. B4c4b candidate code adds the one-operation adapter
+  that composes the accepted B phase owners behind that Port. Windows restore,
+  native end-to-end adoption evidence, all adoption manifest rows, public
+  routing, and concrete desired-state composition remain closed.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -1741,6 +1742,60 @@ tests. `make check-harness` then passed Ruff, mypy over 648 source files, and
 3,903 tests with 33 expected platform skips. These local results establish the
 candidate's dark protocol boundary; they do not promote an adoption manifest
 row or substitute for future native end-to-end evidence.
+
+## PLC9B4c4b Candidate Adoption Transaction Adapter
+
+`PackageLegacyAdoptionTransactionAdapter` is a one-operation least-authority
+capability that implements the B4c4a transaction Port by composing the existing
+`closure -> pin -> staging/set -> commit` owners. It does not duplicate their
+acquisition, verification, retention, Store, publication, or lifecycle-CAS
+logic. The adapter's private execution binding may contain the opaque
+credential reference required by authenticated Source acquisition; the
+pathless adoption request and every returned status/receipt remain
+credential-free. The adapter is not a dataclass, supplies no diagnostic
+representation of its binding, and is absent from every facade and production
+route.
+
+Before the first effect it requires one exact journalled install request and
+matches operation/request/classification/attempt, Product, scope, Plugin, and
+resolution-environment identities against the adoption and execution
+bindings. Early active phases enter the accepted closure owner, its exact live
+candidate passes to the pin owner, and only that same candidate can pass to the
+staging/set owner. The commit owner remains the sole
+`set_published -> committed` writer. The adapter requires the shared
+journal-confirmed status after every owner return, so a Port cannot advance the
+composition with an invented phase result.
+
+Durable phase dispatch is deliberately small. `staging` enters the existing
+candidate-free resume path because that accepted phase proves every staging
+receipt is durable; `set_published` or `committed` enters exact commit replay
+without repeating Source, pin, or staging effects. A bare
+`transaction_pinned` state fails closed with `package_route_unavailable`:
+retention evidence alone cannot reconstruct the opaque verified candidates,
+and this adapter does not invent a reacquisition capability. Typed rejected,
+cancelled, and retryable statuses retain their original failure. Unexpected
+crashes remain exceptions, with any live candidate suspended before they
+escape, so the journal and accepted owner recovery rules—not an adapter-local
+shadow state—determine the next invocation. The adapter neither submits a new
+operation nor retries an attempt automatically, and it cannot touch Desired,
+Instance, binding, enablement, or legacy state.
+
+Component tests exercise the real lifecycle journal, transaction-pin record,
+committed-set record, and commit owner around deterministic closure/staging
+test Ports. They prove ordering, pre-effect identity refusal, typed acquisition
+failure, fail-closed bare-pin recovery, candidate-free resume from durable
+staging, candidate suspension on a staging crash, committed replay,
+post-commit crash recovery, and rejection of an owner result not confirmed by
+the shared journal. They do not yet execute authenticated network
+reacquisition or native materialization; therefore all five adoption manifest
+rows remain planned. That end-to-end composition and retained gate evidence
+belong to the next acceptance slice.
+
+Local PLC9B4c4b candidate validation passed 69 focused adoption/architecture
+tests and 116 cross-module lifecycle tests. `make check-harness` then passed
+Ruff, mypy over 649 source files, and 3,914 tests with 33 expected platform
+skips. The five adoption manifest rows remain planned because these local
+component results are not native end-to-end adoption evidence.
 
 ## First Principles
 

@@ -587,6 +587,35 @@ def test_adoption_protocol_preserves_transaction_failure_semantics(
     assert PackageLegacyAdoptionResultV1.from_dict(result.to_dict()) == result
 
 
+def test_adoption_protocol_preserves_cancelled_transaction_as_rejection(
+    tmp_path: Path,
+) -> None:
+    fixture = _fixture(tmp_path)
+    failure = PackageLifecycleFailureV1.for_operation(
+        "package_operation_cancelled",
+        stage="acquiring",
+        operation_id=fixture.request.operation_id,
+        evidence_ref=fixture.request.transaction_request_fingerprint,
+    )
+    cancelled = replace(
+        fixture.committed,
+        phase="acquiring",
+        disposition="cancelled",
+        failure=failure,
+    )
+    owner, _fences, _legacy, _transaction_owner = _owner(
+        fixture,
+        transaction=_Transaction(_transaction_result(fixture, status=cancelled)),
+    )
+
+    result = owner.adopt(fixture.request)
+
+    assert result.disposition == "rejected"
+    assert result.code == "package_operation_cancelled"
+    assert result.failure is not None
+    assert result.failure.transaction_failure == failure
+
+
 def test_adoption_protocol_rejects_cross_request_transaction_result(
     tmp_path: Path,
 ) -> None:

@@ -242,6 +242,15 @@ Neither may silently override a narrower implemented owner contract.
   while the fence and legacy state remain unchanged. It owns no source,
   filesystem, process, publication, Product-state, or public-route capability;
   the concrete adapter and all five adoption manifest rows remain closed.
+  PLC9B4c4b candidate code adds a one-operation adoption transaction adapter
+  that sequences the existing closure, pin, staging/set, and commit owners. Its
+  private execution binding may retain an opaque credential reference, while
+  adoption requests/results stay pathless and credential-free. Shared-journal
+  confirmation rejects invented phase results, and durable staging/commit
+  replay skips prior effects. A bare transaction pin cannot reconstruct live
+  verified candidates and therefore fails closed until a reacquisition seam is
+  supplied. The adapter remains dark; native end-to-end acquisition and all
+  five adoption manifest rows remain closed.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)

@@ -283,6 +283,17 @@
   path, native handle, Product state, or production capability. A concrete
   transaction adapter, all five adoption manifest rows, Windows restore,
   recovery convergence, and Product routing remain closed.
+  PLC9B4c4b candidate code composes the existing closure, transaction-pin,
+  staging/set, and commit owners behind the pathless adoption transaction Port.
+  The adapter is a one-operation private capability: it may retain an opaque
+  credential reference in its execution binding, but returns only the existing
+  credential-free lifecycle/publication evidence. Exact journal confirmation
+  follows every phase owner, and durable staging/commit phases resume without
+  repeating prior effects. A bare transaction pin fails closed because it
+  cannot reconstruct live verified candidates. Tests use real
+  lifecycle/pin/set/commit evidence but deterministic closure and staging
+  Ports, so all five adoption rows, native end-to-end acquisition, Windows
+  restore, and Product routing remain closed.
 
 This inventory distinguishes accepted reusable owners, Product adapters,
 parallel compatibility paths, and missing target boundaries. “Migrate” or
