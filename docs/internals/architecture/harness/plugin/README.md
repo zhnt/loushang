@@ -226,6 +226,15 @@ Neither may silently override a narrower implemented owner contract.
   native process-start proof, so `B-COMPAT-OFFLINE-RESTORE-POSIX` remains
   planned and the Linux manifest remains at 92 nodes; Windows restore, concrete
   legacy process launchers, adoption, and Product binding remain closed.
+  PLC9B4c3c candidate code adds one dark Linux/Bubblewrap activation adapter
+  owned by `loushang.harness.sandbox`; the resource kernel remains backend-free.
+  It verifies the durable restored tree and current-B identity, requires an
+  application readiness handshake, proves the real sandbox child's namespaces
+  and view of the restored/B roots through procfs, persists a private
+  identity-bound process marker, and uses a guardian plus pidfds for exact
+  replay/deactivation without worker-thread or PID-reuse races. The
+  complete POSIX offline-restore row now executes as node 93 in the named Linux
+  native gate; Windows restore, adoption, and Product routing remain closed.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)

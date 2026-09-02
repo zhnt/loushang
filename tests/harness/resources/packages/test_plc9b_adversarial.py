@@ -90,6 +90,12 @@ from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
     PackageEpochRuntimeAdmissionResultV1,
     PackageEpochRuntimeLeaseV1,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.offline_restore import (
+    PACKAGE_PRE_B_SNAPSHOT_DOMAINS,
+    PackageOfflineRestoreOwner,
+    PackageOfflineRestoreRequestV1,
+    PackageOfflineRestoreSnapshotEvidenceV1,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.phase_evidence import (
     PackageArtifactEvidenceJournal,
 )
@@ -104,11 +110,15 @@ from loushang.harness.resources.packages.plugin_lifecycle.posix_materialization 
     PosixPackageDependencyMaterializationStore,
     PosixPackagePluginRootMaterializationStore,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.posix_offline_restore import (
+    PackagePosixOfflineRestoreMaterializer,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     PackageLifecyclePhase,
     PackageLifecycleRequestV1,
     PackageLifecycleStatusV1,
     PluginBoundPackageClassificationV1,
+    canonical_json_bytes,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.retention_handoff import (
     PackageDependencyPinReceiptV1,
@@ -160,6 +170,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.windows_materializatio
 )
 from loushang.harness.resources.plugins.dependencies import (
     PluginDependencyClosureLock,
+)
+from loushang.harness.sandbox.package_legacy_runtime import (
+    PackageLinuxLegacyRuntimeActivationOwner,
 )
 
 IMPLEMENTED_B1_MANIFEST_CASES = (
@@ -300,6 +313,9 @@ IMPLEMENTED_B4C2_WINDOWS_EPOCH_CUTOVER_MANIFEST_CASES = (
     "B-COMPAT-CUTOVER-WINDOWS",
     "B-COMPAT-PREFENCE-LIVE-WINDOWS",
 )
+IMPLEMENTED_B4C3C_LINUX_OFFLINE_RESTORE_MANIFEST_CASES = (
+    "B-COMPAT-OFFLINE-RESTORE-POSIX",
+)
 PLANNED_B3E3C_MATERIALIZATION_MANIFEST_CASES: tuple[str, ...] = ()
 PLANNED_B4_COMMIT_ADMISSION_MANIFEST_CASES: tuple[str, ...] = ()
 
@@ -326,9 +342,10 @@ EXECUTABLE_MANIFEST_CASES = (
         else ()
     )
     + (IMPLEMENTED_B3E3C2_WINDOWS_MANIFEST_CASES if os.name == "nt" else ())
+    + (IMPLEMENTED_B4C2_WINDOWS_EPOCH_CUTOVER_MANIFEST_CASES if os.name == "nt" else ())
     + (
-        IMPLEMENTED_B4C2_WINDOWS_EPOCH_CUTOVER_MANIFEST_CASES
-        if os.name == "nt"
+        IMPLEMENTED_B4C3C_LINUX_OFFLINE_RESTORE_MANIFEST_CASES
+        if sys.platform.startswith("linux")
         else ()
     )
 )
@@ -1921,9 +1938,7 @@ def _manifest_epoch_admission_fixture(
         store_root_identity=first.fenced_root_identity,
         registration_receipt_id="d" * 64,
     )
-    active_leases = (
-        (current_lease, stale_lease) if mixed_epoch else (current_lease,)
-    )
+    active_leases = (current_lease, stale_lease) if mixed_epoch else (current_lease,)
     leases = _ManifestEpochLeaseAuthority(
         PackageEpochLeaseSnapshotV1.create(
             store_id=current.store_id,
@@ -2038,9 +2053,7 @@ def _manifest_posix_epoch_cutover_fixture(
     epochs.mkdir(mode=0o700)
     (legacy / "state.json").write_bytes(b'{"legacy":1}\n')
     coordination = _ManifestEpochCutoverCoordination(
-        active_pre_fence_registration_ids=(
-            ("f" * 64,) if pre_fence_live else ()
-        )
+        active_pre_fence_registration_ids=(("f" * 64,) if pre_fence_live else ())
     )
     snapshots = _ManifestEpochCutoverSnapshots()
     journal = PackageEpochFenceJournal(tmp_path / "manifest-package-epoch.jsonl")
@@ -2084,9 +2097,7 @@ def _manifest_windows_epoch_cutover_fixture(
     epochs.mkdir()
     (legacy / "state.json").write_bytes(b'{"legacy":1}\n')
     coordination = _ManifestEpochCutoverCoordination(
-        active_pre_fence_registration_ids=(
-            ("f" * 64,) if pre_fence_live else ()
-        )
+        active_pre_fence_registration_ids=(("f" * 64,) if pre_fence_live else ())
     )
     snapshots = _ManifestEpochCutoverSnapshots()
     journal = PackageEpochFenceJournal(tmp_path / "manifest-package-epoch.jsonl")
@@ -2114,6 +2125,208 @@ def _manifest_windows_epoch_cutover_fixture(
         authority=authority,
         legacy=legacy,
         epochs=epochs,
+    )
+
+
+@dataclass
+class _ManifestOfflineRestoreSnapshots:
+    evidence: PackageOfflineRestoreSnapshotEvidenceV1
+    calls: int = 0
+
+    def snapshot(
+        self,
+        snapshot_receipt_id: str,
+    ) -> PackageOfflineRestoreSnapshotEvidenceV1 | None:
+        self.calls += 1
+        if snapshot_receipt_id != self.evidence.snapshot.receipt_id:
+            return None
+        return self.evidence
+
+
+@dataclass(frozen=True)
+class _ManifestLinuxOfflineRestoreFixture:
+    owner: PackageOfflineRestoreOwner
+    materializer: PackagePosixOfflineRestoreMaterializer
+    activation: PackageLinuxLegacyRuntimeActivationOwner
+    request: PackageOfflineRestoreRequestV1
+    journal: PackageEpochFenceJournal
+    coordination: _ManifestEpochCutoverCoordination
+    snapshots: _ManifestOfflineRestoreSnapshots
+    source: Path
+    restore_root: Path
+    activation_root: Path
+    current_b_root: Path
+
+
+def _manifest_directory_identity(path: Path) -> str:
+    metadata = path.stat()
+    return sha256(
+        canonical_json_bytes(
+            {
+                "device": metadata.st_dev,
+                "fileType": "directory",
+                "identityVersion": 1,
+                "inode": metadata.st_ino,
+            }
+        )
+    ).hexdigest()
+
+
+def _manifest_tree_metrics(payload: Path) -> tuple[str, int, int]:
+    entries: list[dict[str, object]] = []
+    byte_count = 0
+    for path in sorted(payload.rglob("*"), key=lambda item: item.as_posix()):
+        relative = path.relative_to(payload).as_posix()
+        metadata = path.lstat()
+        mode = stat.S_IMODE(metadata.st_mode)
+        if path.is_dir():
+            entries.append({"kind": "directory", "logicalPath": relative, "mode": mode})
+            continue
+        contents = path.read_bytes()
+        byte_count += len(contents)
+        entries.append(
+            {
+                "byteCount": len(contents),
+                "contentDigest": sha256(contents).hexdigest(),
+                "kind": "file",
+                "logicalPath": relative,
+                "mode": mode,
+            }
+        )
+    digest = sha256(
+        canonical_json_bytes({"entries": entries, "manifestVersion": 1})
+    ).hexdigest()
+    return digest, len(entries), byte_count
+
+
+def _manifest_legacy_runtime_command(current_b_root: Path) -> tuple[str, ...]:
+    script = f"""
+import os
+import pathlib
+import time
+
+if pathlib.Path("legacy-state.json").read_bytes() != b'{{"legacy":1}}\\n':
+    raise SystemExit(41)
+try:
+    pathlib.Path({str(current_b_root)!r}, "epoch-b.json").read_bytes()
+except OSError:
+    pass
+else:
+    raise SystemExit(42)
+descriptor = int(os.environ.pop("LOUSHANG_LEGACY_RUNTIME_READY_FD"))
+token = os.environ.pop("LOUSHANG_LEGACY_RUNTIME_READY_TOKEN")
+os.write(descriptor, f"ready:{{token}}\\n".encode())
+os.close(descriptor)
+while True:
+    time.sleep(60)
+"""
+    return ("/usr/bin/python3", "-I", "-S", "-c", script)
+
+
+def _manifest_linux_offline_restore_fixture(
+    tmp_path: Path,
+) -> _ManifestLinuxOfflineRestoreFixture:
+    assert sys.platform.startswith("linux")
+    store_id = "package-store:manifest-linux-offline-restore"
+    snapshot_root = tmp_path / "manifest-snapshot-authority"
+    restore_root = tmp_path / "manifest-restore-authority"
+    activation_root = tmp_path / "manifest-activation-authority"
+    current_b_root = tmp_path / "manifest-current-b-authority"
+    for root in (snapshot_root, restore_root, activation_root, current_b_root):
+        root.mkdir(mode=0o700)
+    (current_b_root / "epoch-b.json").write_bytes(b'{"epoch":"B"}\n')
+    snapshot_id = sha256(b"manifest-pre-b-snapshot").hexdigest()
+    source = snapshot_root / snapshot_id / "payload"
+    source.mkdir(parents=True, mode=0o700)
+    (source / "legacy-state.json").write_bytes(b'{"legacy":1}\n')
+    tree_digest, entry_count, byte_count = _manifest_tree_metrics(source)
+    snapshot = PackageEpochCutoverSnapshotReceiptV1.create(
+        store_id=store_id,
+        legacy_root_identity=sha256(b"manifest-legacy-root").hexdigest(),
+        quiescence_receipt_id=sha256(b"manifest-quiescence").hexdigest(),
+        snapshot_id=snapshot_id,
+        snapshot_revision=1,
+        entry_count=entry_count,
+        byte_count=byte_count,
+    )
+    state_manifest = canonical_json_bytes(
+        {
+            "byteCount": snapshot.byte_count,
+            "coveredDomains": list(PACKAGE_PRE_B_SNAPSHOT_DOMAINS),
+            "entryCount": snapshot.entry_count,
+            "legacyRootIdentity": snapshot.legacy_root_identity,
+            "manifestVersion": 1,
+            "snapshotId": snapshot.snapshot_id,
+            "snapshotReceiptId": snapshot.receipt_id,
+            "snapshotRevision": snapshot.snapshot_revision,
+            "storeId": snapshot.store_id,
+            "treeDigest": tree_digest,
+        }
+    )
+    (source.parent / "state-manifest.json").write_bytes(state_manifest)
+    evidence = PackageOfflineRestoreSnapshotEvidenceV1.create(
+        snapshot,
+        snapshot_tree_digest=tree_digest,
+        state_manifest_digest=sha256(state_manifest).hexdigest(),
+    )
+    journal = PackageEpochFenceJournal(tmp_path / "manifest-offline-epoch.jsonl")
+    current = journal.publish(
+        PackageEpochFenceRequestV1.create(
+            store_id=store_id,
+            prior_fence=None,
+            legacy_root_identity=snapshot.legacy_root_identity,
+            fenced_root_identity=_manifest_directory_identity(current_b_root),
+            namespace_id=sha256(b"manifest-current-b-namespace").hexdigest(),
+            minimum_runtime_version="2.0.0",
+            minimum_runtime_protocol_epoch=2,
+            quiescence_receipt_id=snapshot.quiescence_receipt_id,
+            snapshot_receipt_id=snapshot.receipt_id,
+            root_switch_receipt_id=sha256(b"manifest-root-switch").hexdigest(),
+        )
+    )
+    request = PackageOfflineRestoreRequestV1.create(
+        current_fence=current,
+        genesis_fence=current,
+        snapshot_evidence=evidence,
+        restore_namespace_id=sha256(b"manifest-isolated-restore").hexdigest(),
+        legacy_runtime_version="1.9.0",
+    )
+    coordination = _ManifestEpochCutoverCoordination()
+    snapshots = _ManifestOfflineRestoreSnapshots(evidence)
+    materializer = PackagePosixOfflineRestoreMaterializer(
+        snapshot_root,
+        restore_root,
+        current_b_authority_root=current_b_root,
+        store_id=store_id,
+    )
+    activation = PackageLinuxLegacyRuntimeActivationOwner(
+        restore_root,
+        activation_root,
+        current_b_authority_root=current_b_root,
+        store_id=store_id,
+        legacy_runtime_version=request.legacy_runtime_version,
+        command=_manifest_legacy_runtime_command(current_b_root),
+    )
+    owner = PackageOfflineRestoreOwner(
+        store_id=store_id,
+        epoch_journal=journal,
+        coordination=coordination,
+        snapshots=snapshots,
+        materialization=materializer,
+        activation=activation,
+    )
+    return _ManifestLinuxOfflineRestoreFixture(
+        owner=owner,
+        materializer=materializer,
+        activation=activation,
+        request=request,
+        journal=journal,
+        coordination=coordination,
+        snapshots=snapshots,
+        source=source,
+        restore_root=restore_root,
+        activation_root=activation_root,
+        current_b_root=current_b_root,
     )
 
 
@@ -2461,6 +2674,53 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
             assert forbidden not in serialized
         assert not (tmp_path / "binding.json").exists()
         assert not (tmp_path / "desired.json").exists()
+    elif case_id in IMPLEMENTED_B4C3C_LINUX_OFFLINE_RESTORE_MANIFEST_CASES:
+        assert sys.platform.startswith("linux")
+        fixture = _manifest_linux_offline_restore_fixture(tmp_path)
+        journal_before = fixture.journal.path.read_bytes()
+        b_before = (fixture.current_b_root / "epoch-b.json").read_bytes()
+        source_before = (fixture.source / "legacy-state.json").read_bytes()
+
+        result = fixture.owner.restore(fixture.request)
+        replay = fixture.owner.restore(fixture.request)
+
+        assert result == replay
+        assert result.disposition == "restored"
+        assert result.code == "ok"
+        assert result.failure is None
+        assert result.materialization is not None
+        assert result.activation is not None
+        assert result.materialization.legacy_snapshot_exact is True
+        assert result.materialization.b_namespace_unreachable is True
+        assert result.activation.exclusive_old_runtime is True
+        restored = (
+            fixture.restore_root
+            / fixture.request.restore_namespace_id
+            / "payload"
+            / "legacy-state.json"
+        )
+        assert restored.read_bytes() == source_before
+        assert (fixture.activation_root / "active-runtime.json").is_file()
+        assert fixture.journal.path.read_bytes() == journal_before
+        assert (fixture.current_b_root / "epoch-b.json").read_bytes() == b_before
+        assert fixture.coordination.calls == 2
+        assert fixture.snapshots.calls == 2
+        serialized = repr(result).lower()
+        for forbidden in (
+            "password",
+            "credential",
+            "token",
+            "handle",
+            str(tmp_path).lower(),
+        ):
+            assert forbidden not in serialized
+
+        fixture.activation.deactivate(result.activation)
+        fixture.materializer.discard(result.materialization)
+        assert not (
+            fixture.restore_root / fixture.request.restore_namespace_id
+        ).exists()
+        assert not (fixture.activation_root / "active-runtime.json").exists()
     elif case_id in IMPLEMENTED_B4C1_POSIX_EPOCH_CUTOVER_MANIFEST_CASES:
         assert os.name == "posix"
         pre_fence_live = case_id == "B-COMPAT-PREFENCE-LIVE-POSIX"
@@ -2511,9 +2771,10 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
             detached_epoch.rmdir()
         assert fixture.coordination.calls == 1
         assert (fixture.legacy / "state.json").read_bytes() == legacy_before
-        assert PackagePosixEpochCutoverRequestV1.from_dict(
-            fixture.request.to_dict()
-        ) == fixture.request
+        assert (
+            PackagePosixEpochCutoverRequestV1.from_dict(fixture.request.to_dict())
+            == fixture.request
+        )
         assert PackagePosixEpochCutoverResultV1.from_dict(result.to_dict()) == result
         serialized = repr((fixture.request, result)).lower()
         for forbidden in (
@@ -2576,9 +2837,10 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
             detached_epoch.rmdir()
         assert fixture.coordination.calls == 1
         assert (fixture.legacy / "state.json").read_bytes() == legacy_before
-        assert PackageWindowsEpochCutoverRequestV1.from_dict(
-            fixture.request.to_dict()
-        ) == fixture.request
+        assert (
+            PackageWindowsEpochCutoverRequestV1.from_dict(fixture.request.to_dict())
+            == fixture.request
+        )
         assert PackageWindowsEpochCutoverResultV1.from_dict(result.to_dict()) == result
         serialized = repr((fixture.request, result)).lower()
         for forbidden in (
@@ -2611,9 +2873,7 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
         assert fixture.leases.calls == (1 if mixed_epoch else 0)
         assert fixture.journal.records() == records_before
         assert (
-            PackageEpochRuntimeAdmissionRequestV1.from_dict(
-                fixture.request.to_dict()
-            )
+            PackageEpochRuntimeAdmissionRequestV1.from_dict(fixture.request.to_dict())
             == fixture.request
         )
         assert PackageEpochRuntimeAdmissionResultV1.from_dict(result.to_dict()) == (

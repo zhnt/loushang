@@ -19,6 +19,11 @@ jobs:
 
       - uses: astral-sh/setup-uv@v5
 
+      - name: Install PLC9B Linux native isolation dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes bubblewrap
+
       - name: Install dependencies
         run: make bootstrap
 

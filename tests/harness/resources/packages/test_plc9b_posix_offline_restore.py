@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import errno
+import json
 import multiprocessing
 import os
 import stat
+import sys
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
@@ -38,6 +40,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.posix_offline_restore 
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     canonical_json_bytes,
+)
+from loushang.harness.sandbox.package_legacy_runtime import (
+    PackageLinuxLegacyRuntimeActivationOwner,
 )
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="POSIX-native contract")
@@ -219,6 +224,31 @@ def _restored_payload(
     restore_root: Path, request: PackageOfflineRestoreRequestV1
 ) -> Path:
     return restore_root / request.restore_namespace_id / "payload"
+
+
+def _legacy_runtime_command(b_root: Path) -> tuple[str, ...]:
+    script = f"""
+import os
+import pathlib
+import time
+
+root = pathlib.Path.cwd()
+if (root / "store" / "plugin.py").read_bytes() != b"VALUE = 1\\n":
+    raise SystemExit(31)
+try:
+    pathlib.Path({str(b_root)!r}, "must-not-be-reachable.json").read_bytes()
+except OSError:
+    pass
+else:
+    raise SystemExit(32)
+descriptor = int(os.environ.pop("LOUSHANG_LEGACY_RUNTIME_READY_FD"))
+token = os.environ.pop("LOUSHANG_LEGACY_RUNTIME_READY_TOKEN")
+os.write(descriptor, f"ready:{{token}}\\n".encode())
+os.close(descriptor)
+while True:
+    time.sleep(60)
+"""
+    return ("/usr/bin/python3", "-I", "-S", "-c", script)
 
 
 @dataclass
@@ -1104,3 +1134,330 @@ def test_posix_offline_restore_releases_native_descriptors(tmp_path: Path) -> No
         if any(target == root or root in target.parents for root in authority_paths)
     }
     assert leaked == set()
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="Linux Bubblewrap activation contract",
+)
+def test_linux_legacy_runtime_activates_replays_and_deactivates_real_process(
+    tmp_path: Path,
+) -> None:
+    materializer, request, evidence, quiescence, _source, restore_root, b_root = (
+        _fixture(tmp_path)
+    )
+    materialization = materializer.restore(request, evidence, quiescence)
+    activation_root = tmp_path / "legacy-runtime-activation"
+    activation_root.mkdir(mode=0o700)
+    owner = PackageLinuxLegacyRuntimeActivationOwner(
+        restore_root,
+        activation_root,
+        current_b_authority_root=b_root,
+        store_id=STORE_ID,
+        legacy_runtime_version=request.legacy_runtime_version,
+        command=_legacy_runtime_command(b_root),
+    )
+    b_before = (b_root / "must-not-be-reachable.json").read_bytes()
+
+    receipt = owner.activate(request, materialization)
+    marker_path = activation_root / "active-runtime.json"
+    marker_before = marker_path.read_bytes()
+    replay_owner = PackageLinuxLegacyRuntimeActivationOwner(
+        restore_root,
+        activation_root,
+        current_b_authority_root=b_root,
+        store_id=STORE_ID,
+        legacy_runtime_version=request.legacy_runtime_version,
+        command=_legacy_runtime_command(b_root),
+    )
+    replay = replay_owner.activate(request, materialization)
+
+    assert replay == receipt
+    assert marker_path.read_bytes() == marker_before
+    marker = json.loads(marker_before)
+    assert marker["receipt"] == receipt.to_dict()
+    assert marker["supervisorPid"] != marker["sandboxPid"]
+    assert receipt.matches(request, materialization)
+    assert receipt.exclusive_old_runtime is True
+    assert (b_root / "must-not-be-reachable.json").read_bytes() == b_before
+    serialized = repr(receipt).lower()
+    assert str(tmp_path).lower() not in serialized
+
+    replay_owner.deactivate(receipt)
+    replay_owner.deactivate(receipt)
+
+    assert not marker_path.exists()
+    assert {path.name for path in activation_root.iterdir()} == {".legacy-runtime.lock"}
+    materializer.discard(materialization)
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="Linux Bubblewrap activation contract",
+)
+def test_linux_legacy_runtime_rejects_missing_readiness_without_process_residue(
+    tmp_path: Path,
+) -> None:
+    materializer, request, evidence, quiescence, _source, restore_root, b_root = (
+        _fixture(tmp_path)
+    )
+    materialization = materializer.restore(request, evidence, quiescence)
+    activation_root = tmp_path / "legacy-runtime-activation"
+    activation_root.mkdir(mode=0o700)
+    owner = PackageLinuxLegacyRuntimeActivationOwner(
+        restore_root,
+        activation_root,
+        current_b_authority_root=b_root,
+        store_id=STORE_ID,
+        legacy_runtime_version=request.legacy_runtime_version,
+        command=(
+            "/usr/bin/python3",
+            "-I",
+            "-S",
+            "-c",
+            "import time; time.sleep(5)",
+        ),
+        startup_timeout_seconds=0.1,
+    )
+
+    with pytest.raises(PackageOfflineRestoreError) as raised:
+        owner.activate(request, materialization)
+
+    assert raised.value.code == "package_offline_restore_activation_invalid"
+    assert {path.name for path in activation_root.iterdir()} == {".legacy-runtime.lock"}
+    materializer.discard(materialization)
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="Linux Bubblewrap activation contract",
+)
+def test_linux_legacy_runtime_rejects_second_sandbox_profile_while_active(
+    tmp_path: Path,
+) -> None:
+    materializer, request, evidence, quiescence, _source, restore_root, b_root = (
+        _fixture(tmp_path)
+    )
+    materialization = materializer.restore(request, evidence, quiescence)
+    activation_root = tmp_path / "legacy-runtime-activation"
+    activation_root.mkdir(mode=0o700)
+    first = PackageLinuxLegacyRuntimeActivationOwner(
+        restore_root,
+        activation_root,
+        current_b_authority_root=b_root,
+        store_id=STORE_ID,
+        legacy_runtime_version=request.legacy_runtime_version,
+        command=_legacy_runtime_command(b_root),
+    )
+    receipt = first.activate(request, materialization)
+    second = PackageLinuxLegacyRuntimeActivationOwner(
+        restore_root,
+        activation_root,
+        current_b_authority_root=b_root,
+        store_id=STORE_ID,
+        legacy_runtime_version=request.legacy_runtime_version,
+        command=(*_legacy_runtime_command(b_root), "profile-change"),
+    )
+
+    try:
+        with pytest.raises(PackageOfflineRestoreError) as raised:
+            second.activate(request, materialization)
+        assert raised.value.code == "package_offline_restore_activation_invalid"
+        assert (activation_root / "active-runtime.json").is_file()
+    finally:
+        first.deactivate(receipt)
+        materializer.discard(materialization)
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="Linux Bubblewrap activation contract",
+)
+def test_linux_legacy_runtime_rejects_restore_over_independent_activation_budget(
+    tmp_path: Path,
+) -> None:
+    materializer, request, evidence, quiescence, _source, restore_root, b_root = (
+        _fixture(tmp_path)
+    )
+    materialization = materializer.restore(request, evidence, quiescence)
+    activation_root = tmp_path / "legacy-runtime-activation"
+    activation_root.mkdir(mode=0o700)
+    owners = (
+        PackageLinuxLegacyRuntimeActivationOwner(
+            restore_root,
+            activation_root,
+            current_b_authority_root=b_root,
+            store_id=STORE_ID,
+            legacy_runtime_version=request.legacy_runtime_version,
+            command=_legacy_runtime_command(b_root),
+            maximum_entries=0,
+        ),
+        PackageLinuxLegacyRuntimeActivationOwner(
+            restore_root,
+            activation_root,
+            current_b_authority_root=b_root,
+            store_id=STORE_ID,
+            legacy_runtime_version=request.legacy_runtime_version,
+            command=_legacy_runtime_command(b_root),
+            maximum_bytes=0,
+        ),
+        PackageLinuxLegacyRuntimeActivationOwner(
+            restore_root,
+            activation_root,
+            current_b_authority_root=b_root,
+            store_id=STORE_ID,
+            legacy_runtime_version=request.legacy_runtime_version,
+            command=_legacy_runtime_command(b_root),
+            maximum_depth=0,
+        ),
+    )
+
+    for owner in owners:
+        with pytest.raises(PackageOfflineRestoreError) as raised:
+            owner.activate(request, materialization)
+
+        assert raised.value.code == "package_offline_restore_activation_invalid"
+    assert {path.name for path in activation_root.iterdir()} == {".legacy-runtime.lock"}
+    materializer.discard(materialization)
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="Linux Bubblewrap activation contract",
+)
+def test_linux_legacy_runtime_tampered_marker_refuses_cleanup_without_signalling(
+    tmp_path: Path,
+) -> None:
+    materializer, request, evidence, quiescence, _source, restore_root, b_root = (
+        _fixture(tmp_path)
+    )
+    materialization = materializer.restore(request, evidence, quiescence)
+    activation_root = tmp_path / "legacy-runtime-activation"
+    activation_root.mkdir(mode=0o700)
+    owner = PackageLinuxLegacyRuntimeActivationOwner(
+        restore_root,
+        activation_root,
+        current_b_authority_root=b_root,
+        store_id=STORE_ID,
+        legacy_runtime_version=request.legacy_runtime_version,
+        command=_legacy_runtime_command(b_root),
+    )
+    receipt = owner.activate(request, materialization)
+    marker_path = activation_root / "active-runtime.json"
+    original = marker_path.read_bytes()
+    tampered = json.loads(original)
+    supervisor_pid = tampered["supervisorPid"]
+    tampered["supervisorStartTime"] += 1
+    marker_path.write_bytes(canonical_json_bytes(tampered))
+
+    try:
+        with pytest.raises(PackageOfflineRestoreError) as raised:
+            owner.deactivate(receipt)
+        assert raised.value.code == "package_offline_restore_cleanup_failed"
+        os.kill(supervisor_pid, 0)
+        assert marker_path.is_file()
+    finally:
+        marker_path.write_bytes(original)
+        owner.deactivate(receipt)
+        materializer.discard(materialization)
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="Linux Bubblewrap activation contract",
+)
+def test_linux_legacy_runtime_concurrent_owners_publish_one_live_process(
+    tmp_path: Path,
+) -> None:
+    materializer, request, evidence, quiescence, _source, restore_root, b_root = (
+        _fixture(tmp_path)
+    )
+    materialization = materializer.restore(request, evidence, quiescence)
+    activation_root = tmp_path / "legacy-runtime-activation"
+    activation_root.mkdir(mode=0o700)
+    owners = tuple(
+        PackageLinuxLegacyRuntimeActivationOwner(
+            restore_root,
+            activation_root,
+            current_b_authority_root=b_root,
+            store_id=STORE_ID,
+            legacy_runtime_version=request.legacy_runtime_version,
+            command=_legacy_runtime_command(b_root),
+        )
+        for _index in range(8)
+    )
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        receipts = tuple(
+            executor.map(
+                lambda owner: owner.activate(request, materialization),
+                owners,
+            )
+        )
+
+    assert len(set(receipts)) == 1
+    marker = json.loads((activation_root / "active-runtime.json").read_bytes())
+    assert marker["receipt"] == receipts[0].to_dict()
+    os.kill(marker["supervisorPid"], 0)
+
+    owners[-1].deactivate(receipts[0])
+    materializer.discard(materialization)
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="Linux Bubblewrap activation contract",
+)
+def test_posix_offline_restore_native_process_composition_converges_exactly(
+    tmp_path: Path,
+) -> None:
+    materialization, request, evidence, _quiescence, source, restore_root, b_root = (
+        _fixture(tmp_path)
+    )
+    activation_root = tmp_path / "legacy-runtime-activation"
+    activation_root.mkdir(mode=0o700)
+    activation = PackageLinuxLegacyRuntimeActivationOwner(
+        restore_root,
+        activation_root,
+        current_b_authority_root=b_root,
+        store_id=STORE_ID,
+        legacy_runtime_version=request.legacy_runtime_version,
+        command=_legacy_runtime_command(b_root),
+    )
+    journal = PackageEpochFenceJournal(tmp_path / "package-epoch.jsonl")
+    coordination = _Coordination()
+    owner = PackageOfflineRestoreOwner(
+        store_id=STORE_ID,
+        epoch_journal=journal,
+        coordination=coordination,
+        snapshots=_Snapshots(evidence),
+        materialization=materialization,
+        activation=activation,
+    )
+    journal_before = journal.path.read_bytes()
+    b_before = (b_root / "must-not-be-reachable.json").read_bytes()
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        results = tuple(executor.map(lambda _index: owner.restore(request), range(8)))
+
+    assert len(set(results)) == 1
+    result = results[0]
+    assert result.disposition == "restored"
+    assert result.materialization is not None
+    assert result.activation is not None
+    restored = _restored_payload(restore_root, request)
+    assert {
+        path.relative_to(restored).as_posix(): path.read_bytes()
+        for path in restored.rglob("*")
+        if path.is_file()
+    } == {
+        path.relative_to(source).as_posix(): path.read_bytes()
+        for path in source.rglob("*")
+        if path.is_file()
+    }
+    assert journal.path.read_bytes() == journal_before
+    assert (b_root / "must-not-be-reachable.json").read_bytes() == b_before
+    assert coordination.calls == 8
+
+    activation.deactivate(result.activation)
+    materialization.discard(result.materialization)

@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.4c3b-candidate.
+- Contract version: PLC9B.4c3c-candidate.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -110,11 +110,11 @@
   code freezes the pathless, genesis-bound offline-restore protocol over
   complete pre-B snapshot evidence, isolated materialization, and exclusive
   old-runtime activation Ports. B4c3b candidate code adds the POSIX rooted
-  snapshot-to-isolated-root materializer. The complete POSIX restore row stays
-  planned until a concrete legacy-process launcher proves native activation.
-  Windows restore, adoption, recovery convergence, a concrete
-  legacy-process launcher, public routing, and concrete desired-state
-  composition remain closed.
+  snapshot-to-isolated-root materializer. B4c3c candidate code adds the
+  Linux/Bubblewrap legacy-process activation owner and promotes the complete
+  POSIX restore row in its named Linux-native gate. Windows restore, adoption,
+  recovery convergence, public routing, and concrete desired-state composition
+  remain closed.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -1640,6 +1640,65 @@ passed. `make check-harness` then passed Ruff, mypy over 646 source files, and
 3,882 tests with 33 expected skips. These local results are candidate evidence,
 not a substitute for retained native CI evidence.
 
+## PLC9B4c3c Candidate Linux Legacy Runtime Activation
+
+`PackageLinuxLegacyRuntimeActivationOwner` is the concrete adapter, owned by
+`loushang.harness.sandbox`, behind the accepted pathless resource Port. The
+resource package retains the protocol, policy-neutral coordinator, and POSIX
+materializer; it does not depend on a process-isolation backend. The adapter's
+configured restore, activation, and current-B authorities are private,
+identity-pinned, and pairwise disjoint. It
+accepts only the configured store/runtime version and an exact canonical
+materialization marker whose payload identity, tree digest, counts, and current
+B-root identity still match the request. Independent entry, byte, and depth
+budgets bound that activation-time rescan. Paths, commands, environment, PIDs,
+and native handles never enter the request or activation receipt.
+
+The owner requires a successfully probed `LinuxBubblewrapBackend` with
+filesystem allow/deny roots, private temporary storage, network isolation, and
+inherited subprocess isolation. The child receives only platform runtime roots,
+the restored payload as its writable working root, `/dev`, a new `/proc`, and a
+one-use readiness pipe; the snapshot, activation, current-B, and remaining host
+roots are not mounted. A bounded application readiness acknowledgement is
+necessary but not sufficient: after it arrives, the owner finds Bubblewrap's
+single real sandbox child and independently proves distinct mount, PID, network,
+IPC, UTS, and user namespaces through procfs. It reopens the child root, proves
+the restored directory has the receipt-bound native identity, and proves the
+current B authority identity is not visible at its host pathname.
+
+A private `flock` linearizes owners and one canonical activation marker binds
+the receipt to the host boot, exact sandbox profile, supervisor PID/start time,
+and sandbox-child PID/start time. Those native facts are private recovery
+evidence, not durable public API. Exact live replay returns the same receipt;
+a different request/profile, stale/reused PID, changed ancestor, altered marker,
+missing namespace, or missing readiness fails closed. Deactivation signals only
+identity-matching recorded processes through PID file descriptors, escalates
+after a bounded grace period, reaps an owned child when possible, then removes
+only the exact unchanged marker. A dedicated guardian thread creates and waits
+for Bubblewrap, so `--die-with-parent` follows the activation lifetime rather
+than an incidental caller worker thread. Unprovable process or marker cleanup
+is explicit cleanup debt.
+
+The adapter composes its package resource Port and the existing sandbox command
+planner rather than importing Product process hosting, Approval, Session,
+coding, Package management, or peer installation. It remains absent from all
+facades and production routes. The mandatory Linux workflow installs
+Bubblewrap explicitly, and the promoted
+`B-COMPAT-OFFLINE-RESTORE-POSIX` fixture performs a complete materialization,
+real old-runtime readiness/B-unreachability probe, exact replay, deactivation,
+and isolated-tree discard without a skip. The Linux manifest now contains 93
+nodes. Windows restore and all five adoption rows remain planned; retained CI
+evidence and review acceptance are still required before this candidate is
+accepted.
+
+The post-fix local evidence executed seven focused native process lifecycle,
+failure, budget, tamper, concurrency, and composition scenarios. The complete
+Linux adversarial manifest executed exactly 93 tests with zero skips, failures,
+or errors, and its XML verifier passed. `make check-harness` then passed Ruff,
+mypy over 647 source files, and 3,890 tests with 33 expected platform skips.
+These local results are candidate evidence, not a substitute for retained CI
+evidence.
+
 ## First Principles
 
 1. Untrusted bytes are data, never a pathname, command, module, or build plan.
@@ -2201,7 +2260,7 @@ B-COMPAT-CUTOVER-POSIX | posix-native | accepted | offline_quiescent_namespaced_
 B-COMPAT-CUTOVER-WINDOWS | windows-native | accepted | offline_quiescent_namespaced_cutover | ok | accepted@epoch_fenced | single_owner;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-CUTOVER-WINDOWS] | windows-shell-compatibility.yml#plc9b-windows-native | implemented
 B-COMPAT-PREFENCE-LIVE-POSIX | posix-native | accepted | pre_fence_writer_blocks_cutover | package_runtime_epoch_unsupported | rejected@pre_fence | single_owner;no_publication;no_binding;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-PREFENCE-LIVE-POSIX] | harness-quality.yml#plc9b-linux-native | implemented
 B-COMPAT-PREFENCE-LIVE-WINDOWS | windows-native | accepted | pre_fence_writer_blocks_cutover | package_runtime_epoch_unsupported | rejected@pre_fence | single_owner;no_publication;no_binding;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-PREFENCE-LIVE-WINDOWS] | windows-shell-compatibility.yml#plc9b-windows-native | implemented
-B-COMPAT-OFFLINE-RESTORE-POSIX | posix-native | accepted | complete_pre_b_restore_exclusive_old_runtime | ok | accepted@offline_restore | single_owner;legacy_snapshot_exact;b_namespace_unreachable;no_peer_fallback;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-OFFLINE-RESTORE-POSIX] | harness-quality.yml#plc9b-linux-native | planned
+B-COMPAT-OFFLINE-RESTORE-POSIX | posix-native | accepted | complete_pre_b_restore_exclusive_old_runtime | ok | accepted@offline_restore | single_owner;legacy_snapshot_exact;b_namespace_unreachable;no_peer_fallback;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-OFFLINE-RESTORE-POSIX] | harness-quality.yml#plc9b-linux-native | implemented
 B-COMPAT-OFFLINE-RESTORE-WINDOWS | windows-native | accepted | complete_pre_b_restore_exclusive_old_runtime | ok | accepted@offline_restore | single_owner;legacy_snapshot_exact;b_namespace_unreachable;no_peer_fallback;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-OFFLINE-RESTORE-WINDOWS] | windows-shell-compatibility.yml#plc9b-windows-native | planned
 B-COMPAT-ADOPT | any | committed | authenticated_legacy_reacquisition | ok | committed@committed | same_receipt;pin_visible;legacy_snapshot_exact;desired_unchanged;instance_unchanged;binding_unchanged;enablement_unchanged | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ADOPT] | harness-quality.yml#plc9b-linux-native | planned
 B-COMPAT-ADOPT-UNAUTHORIZED | any | acquiring | legacy_reacquisition_unauthorized | package_source_unauthorized | rejected@acquiring | legacy_snapshot_exact;desired_unchanged;instance_unchanged;binding_unchanged;enablement_unchanged;no_publication;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ADOPT-UNAUTHORIZED] | harness-quality.yml#plc9b-linux-native | planned

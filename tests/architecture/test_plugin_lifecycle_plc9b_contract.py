@@ -43,6 +43,9 @@ POSIX_EPOCH_CUTOVER = OWNER_KERNEL_ROOT / "posix_epoch_cutover.py"
 WINDOWS_EPOCH_CUTOVER = OWNER_KERNEL_ROOT / "windows_epoch_cutover.py"
 OFFLINE_RESTORE = OWNER_KERNEL_ROOT / "offline_restore.py"
 POSIX_OFFLINE_RESTORE = OWNER_KERNEL_ROOT / "posix_offline_restore.py"
+LINUX_LEGACY_RUNTIME = Path(
+    "src/loushang/harness/sandbox/package_legacy_runtime.py"
+)
 CLOSURE_TEST = Path("tests/harness/resources/packages/test_plc9b_closure.py")
 CLOSURE_OWNER_TEST = Path(
     "tests/harness/resources/packages/test_plc9b_closure_owner.py"
@@ -84,9 +87,7 @@ COMMIT_ADMISSION_TEST = Path(
 RETENTION_HANDOFF_TEST = Path(
     "tests/harness/resources/packages/test_plc9b_retention_handoff.py"
 )
-EPOCH_FENCE_TEST = Path(
-    "tests/harness/resources/packages/test_plc9b_epoch_fence.py"
-)
+EPOCH_FENCE_TEST = Path("tests/harness/resources/packages/test_plc9b_epoch_fence.py")
 POSIX_EPOCH_CUTOVER_TEST = Path(
     "tests/harness/resources/packages/test_plc9b_posix_epoch_cutover.py"
 )
@@ -231,6 +232,9 @@ PLC9B4C1_POSIX_EPOCH_CUTOVER_CASES = {
 PLC9B4C2_WINDOWS_EPOCH_CUTOVER_CASES = {
     "B-COMPAT-CUTOVER-WINDOWS",
     "B-COMPAT-PREFENCE-LIVE-WINDOWS",
+}
+PLC9B4C3C_LINUX_OFFLINE_RESTORE_CASES = {
+    "B-COMPAT-OFFLINE-RESTORE-POSIX",
 }
 ALLOWED_PLATFORMS = {"any", "posix-native", "windows-native"}
 ALLOWED_ORACLES = {
@@ -586,6 +590,12 @@ def _implemented_b4c2_windows_epoch_cutover_manifest_cases() -> set[str]:
     )
 
 
+def _implemented_b4c3c_linux_offline_restore_manifest_cases() -> set[str]:
+    return _literal_manifest_cases(
+        "IMPLEMENTED_B4C3C_LINUX_OFFLINE_RESTORE_MANIFEST_CASES"
+    )
+
+
 def _journal_effect_policy() -> list[tuple[str, str, str]]:
     contract = _source(CONTRACT)
     block = contract.split("<!-- plc9b-journal-effect-policy:start -->", 1)[1]
@@ -667,7 +677,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.4c3b-candidate." in contract
+    assert "Contract version: PLC9B.4c3c-candidate." in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
@@ -937,11 +947,10 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
     implemented_b4a_admission = _implemented_b4a_commit_admission_manifest_cases()
     implemented_b4b_handoff = _implemented_b4b_retention_handoff_manifest_cases()
     implemented_b4c0_epoch = _implemented_b4c0_epoch_admission_manifest_cases()
-    implemented_b4c1_posix = (
-        _implemented_b4c1_posix_epoch_cutover_manifest_cases()
-    )
-    implemented_b4c2_windows = (
-        _implemented_b4c2_windows_epoch_cutover_manifest_cases()
+    implemented_b4c1_posix = _implemented_b4c1_posix_epoch_cutover_manifest_cases()
+    implemented_b4c2_windows = _implemented_b4c2_windows_epoch_cutover_manifest_cases()
+    implemented_b4c3c_linux_restore = (
+        _implemented_b4c3c_linux_offline_restore_manifest_cases()
     )
     implemented = (
         implemented_b1
@@ -963,6 +972,7 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
         | implemented_b4c0_epoch
         | implemented_b4c1_posix
         | implemented_b4c2_windows
+        | implemented_b4c3c_linux_restore
     )
 
     assert len(manifest) == 127
@@ -1272,7 +1282,11 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
     assert hardlink["code"] == "ok"
     assert hardlink["disposition"] == "extracted@independent_regular_files"
     assert hardlink["status"] == "implemented"
-    assert len(manifest) - len(implemented) == 28
+    assert implemented_b4c3c_linux_restore == (PLC9B4C3C_LINUX_OFFLINE_RESTORE_CASES)
+    assert (implemented - implemented_b4c3c_linux_restore).isdisjoint(
+        implemented_b4c3c_linux_restore
+    )
+    assert len(manifest) - len(implemented) == 27
     workflow = _source(HARNESS_WORKFLOW)
     assert "PLC9B Linux native adversarial gate (plc9b-linux-native)" in workflow
     assert "tests/harness/resources/packages/test_plc9b_adversarial.py" in workflow
@@ -2044,7 +2058,7 @@ def test_plc9b1_owner_kernel_stays_internal_dark_and_capability_free() -> None:
                 for alias in node.names
             ):
                 production_importers.append(path)
-    assert production_importers == []
+    assert set(production_importers) <= {LINUX_LEGACY_RUNTIME}
 
 
 def test_plc9b2a_acquisition_is_unbound_bounded_and_pathless() -> None:
@@ -3180,8 +3194,7 @@ def test_plc9b3e3c2_windows_materialization_is_rooted_role_safe_and_native() -> 
     assert "native job `100013505482`" in normalized
     assert "artifact ID `9818964189`" in normalized
     assert (
-        "a21ad27b18a117350817b5640566b04d66cb599b026b67d30657a20433cc5adb"
-        in contract
+        "a21ad27b18a117350817b5640566b04d66cb599b026b67d30657a20433cc5adb" in contract
     )
     assert "native-component XML executed exactly 15 tests" in normalized
     assert "manifest XML executed exactly 12 nodes" in normalized
@@ -3270,8 +3283,7 @@ def test_plc9b3e3c3_settlement_authority_is_durable_exact_and_store_private() ->
             assert evidence in tests
     assert "IMPLEMENTED_B3E3C3_SETTLEMENT_MANIFEST_CASES" in adversarial_tests
     assert (
-        _implemented_b3e3c3_settlement_manifest_cases()
-        == PLC9B3E3C3_SETTLEMENT_CASES
+        _implemented_b3e3c3_settlement_manifest_cases() == PLC9B3E3C3_SETTLEMENT_CASES
     )
     collision = manifest["B-PUB-COLLISION"]
     assert collision["barrier"] == "staging"
@@ -3305,12 +3317,10 @@ def test_plc9b3e3c3_settlement_authority_is_durable_exact_and_store_private() ->
     assert "native job `100039113787`" in normalized
     assert "artifact ID `9821946893`" in normalized
     assert (
-        "1a5b51eeef36ebac93c29ff98898d00cdcc6816a270628c80cfcd4f9b2b53647"
-        in contract
+        "1a5b51eeef36ebac93c29ff98898d00cdcc6816a270628c80cfcd4f9b2b53647" in contract
     )
     assert (
-        "d69e337d062601c55641166cca1d0a193017b12ca49dcf1ef2b5f2ca0fab2ac4"
-        in contract
+        "d69e337d062601c55641166cca1d0a193017b12ca49dcf1ef2b5f2ca0fab2ac4" in contract
     )
     assert "PLC9B3e-3c3 accepted code adds Store-private" in _source(INVENTORY)
     assert "PLC9B3e-3c3 accepted code adds a durable" in _source(INDEX)
@@ -3379,10 +3389,12 @@ def test_plc9b4a_commit_admission_is_dark_read_only_and_exact() -> None:
         ]
 
     admission_calls = called_names(admit)
-    assert not ({"advance", "append", "publish", "reopen", "open"} & set(admission_calls))
+    assert not (
+        {"advance", "append", "publish", "reopen", "open"} & set(admission_calls)
+    )
     assert called_names(commit).count("advance") == 1
     assert "PackagePublicationReceiptV1.create" in source
-    assert "pin_receipt.state != \"acquired\"" in source
+    assert 'pin_receipt.state != "acquired"' in source
     assert "isinstance(request.claimed_root_ref, PluginRevisionRefV1)" in source
     assert "request.publication_receipt == expected" in source
 
@@ -3437,8 +3449,7 @@ def test_plc9b4a_commit_admission_is_dark_read_only_and_exact() -> None:
     assert "Linux harness job `100051011649`" in normalized
     assert "artifact ID `9823339334`" in normalized
     assert (
-        "1635536cd35bb7dcb2138ab723bade9cd807d5379de7db3a31b798b3fff289bd"
-        in contract
+        "1635536cd35bb7dcb2138ab723bade9cd807d5379de7db3a31b798b3fff289bd" in contract
     )
     assert "XML executed exactly 82 manifest nodes" in normalized
     assert "PLC9B4a accepted code closes the logical commit-admission" in inventory
@@ -3578,7 +3589,7 @@ def test_plc9b4b_retention_handoff_is_dark_exact_and_no_zero_pin() -> None:
         assert {"exact_pin_set", "no_zero_pin"} <= set(row["oracles"].split(";"))
 
     normalized = " ".join(contract.split())
-    assert "PLC9B.4c3b-candidate." in contract
+    assert "PLC9B.4c3c-candidate." in contract
     assert "PLC9B4b Accepted Retention Handoff" in normalized
     assert "opened -> dependency_pinned -> desired_committed -> settled" in normalized
     assert "No journal lock is held" in normalized
@@ -3592,8 +3603,7 @@ def test_plc9b4b_retention_handoff_is_dark_exact_and_no_zero_pin() -> None:
     assert "Linux harness job `100065909160`" in normalized
     assert "artifact ID `9825049355`" in normalized
     assert (
-        "311c66abff263261b430955ea1aef27bef58db3a0a74079593e40d9909846974"
-        in normalized
+        "311c66abff263261b430955ea1aef27bef58db3a0a74079593e40d9909846974" in normalized
     )
     assert "executed exactly 88 manifest nodes" in normalized
     assert "B4c native cutover remains the next closed gate" in normalized
@@ -3704,12 +3714,10 @@ def test_plc9b4c0_epoch_admission_is_dark_read_only_and_fail_closed() -> None:
         assert row["status"] == "implemented"
         assert row["code"] == "package_runtime_epoch_unsupported"
         assert _journal_policy_for(case_id) == ("none", "no_append:unchanged")
-        assert {"no_publication", "no_peer_fallback"} <= set(
-            row["oracles"].split(";")
-        )
+        assert {"no_publication", "no_peer_fallback"} <= set(row["oracles"].split(";"))
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c3b-candidate." in contract
+    assert "Contract version: PLC9B.4c3c-candidate." in contract
     assert "PLC9B4c0 Accepted Epoch Admission" in normalized
     assert "human-readable minimum runtime version is diagnostic evidence" in (
         normalized
@@ -3809,9 +3817,7 @@ def test_plc9b4c1_posix_cutover_has_one_native_owner_and_one_visibility_edge() -
         "test_posix_cutover_records_reject_extended_or_forged_wire_values",
     ):
         assert evidence in component_tests
-    assert "IMPLEMENTED_B4C1_POSIX_EPOCH_CUTOVER_MANIFEST_CASES" in (
-        adversarial_tests
-    )
+    assert "IMPLEMENTED_B4C1_POSIX_EPOCH_CUTOVER_MANIFEST_CASES" in (adversarial_tests)
     assert (
         _implemented_b4c1_posix_epoch_cutover_manifest_cases()
         == PLC9B4C1_POSIX_EPOCH_CUTOVER_CASES
@@ -3833,7 +3839,7 @@ def test_plc9b4c1_posix_cutover_has_one_native_owner_and_one_visibility_edge() -
         assert manifest[case_id]["status"] == "implemented"
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c3b-candidate." in contract
+    assert "Contract version: PLC9B.4c3c-candidate." in contract
     assert "PLC9B4c1 Accepted POSIX Native Cutover" in normalized
     assert "no second `active-root` file" in normalized
     assert "sole Product-root pointer" in normalized
@@ -3852,8 +3858,7 @@ def test_plc9b4c1_posix_cutover_has_one_native_owner_and_one_visibility_edge() -
     assert "Linux job `100095571513`" in normalized
     assert "retained artifact `9828433273`" in normalized
     assert (
-        "b0b616a4e408d8b2b959d9d736d232c26892dc42c3132f4001b0eb0e7c9de2e3"
-        in contract
+        "b0b616a4e408d8b2b959d9d736d232c26892dc42c3132f4001b0eb0e7c9de2e3" in contract
     )
     assert "exactly 92 manifest nodes" in normalized
     assert "zero skips, failures, or errors" in normalized
@@ -3952,7 +3957,7 @@ def test_plc9b4c2_windows_cutover_is_rooted_native_and_non_skippable() -> None:
     assert workflow.count("scripts/dev/verify_pytest_xml.py") >= 5
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c3b-candidate." in contract
+    assert "Contract version: PLC9B.4c3c-candidate." in contract
     assert "PLC9B4c2 Accepted Windows Native Cutover" in normalized
     assert "same fingerprint domain" in normalized
     assert "rooted `NtCreateFile`" in normalized
@@ -3970,8 +3975,7 @@ def test_plc9b4c2_windows_cutover_is_rooted_native_and_non_skippable() -> None:
     assert "native job `100105659525`" in normalized
     assert "retained artifact `9829593062`" in normalized
     assert (
-        "2967396b3f0888379f6dbda3504c8dd4ee465b61e35fff36ad1f91f0f3a76e5a"
-        in normalized
+        "2967396b3f0888379f6dbda3504c8dd4ee465b61e35fff36ad1f91f0f3a76e5a" in normalized
     )
     assert "executed exactly 29 tests, including all ten B4c2" in normalized
     assert "executed exactly 14 nodes" in normalized
@@ -4016,9 +4020,7 @@ def test_plc9b4c3a_offline_restore_stays_dark_and_unpromoted() -> None:
         if isinstance(node, ast.Import)
         for alias in node.names
     } | {
-        node.module or ""
-        for node in ast.walk(tree)
-        if isinstance(node, ast.ImportFrom)
+        node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
     }
     for forbidden in (
         "os",
@@ -4077,7 +4079,6 @@ def test_plc9b4c3a_offline_restore_stays_dark_and_unpromoted() -> None:
         assert evidence in component_tests
 
     remaining = {
-        "B-COMPAT-OFFLINE-RESTORE-POSIX",
         "B-COMPAT-OFFLINE-RESTORE-WINDOWS",
         "B-COMPAT-ADOPT",
         "B-COMPAT-ADOPT-UNAUTHORIZED",
@@ -4091,7 +4092,7 @@ def test_plc9b4c3a_offline_restore_stays_dark_and_unpromoted() -> None:
     assert "IMPLEMENTED_B4C3" not in component_tests
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c3b-candidate." in contract
+    assert "Contract version: PLC9B.4c3c-candidate." in contract
     assert "PLC9B4c3a Accepted Offline Restore Protocol" in normalized
     assert "does not reinterpret the opaque B4c1 snapshot identifier" in normalized
     assert "closed coverage tuple" in normalized
@@ -4103,7 +4104,7 @@ def test_plc9b4c3a_offline_restore_stays_dark_and_unpromoted() -> None:
     assert "PLC9B4c3a accepted code adds the dark, pathless" in index
 
 
-def test_plc9b4c3b_posix_materializer_is_rooted_exact_dark_and_unpromoted() -> None:
+def test_plc9b4c3b_posix_materializer_is_rooted_exact_and_dark() -> None:
     contract = _source(CONTRACT)
     inventory = _source(INVENTORY)
     index = _source(INDEX)
@@ -4200,7 +4201,7 @@ def test_plc9b4c3b_posix_materializer_is_rooted_exact_dark_and_unpromoted() -> N
         "releases_native_descriptors",
     ):
         assert evidence in component_tests
-    assert "IMPLEMENTED_B4C3B_POSIX_OFFLINE_RESTORE_MANIFEST_CASES" not in (
+    assert "IMPLEMENTED_B4C3C_LINUX_OFFLINE_RESTORE_MANIFEST_CASES" in (
         adversarial_tests
     )
     assert "test_posix_offline_restore_candidate_composes_pathless_protocol" in (
@@ -4208,7 +4209,7 @@ def test_plc9b4c3b_posix_materializer_is_rooted_exact_dark_and_unpromoted() -> N
     )
     assert "candidate_discards_real_tree_after_fence_drift" in component_tests
     row = manifest["B-COMPAT-OFFLINE-RESTORE-POSIX"]
-    assert row["status"] == "planned"
+    assert row["status"] == "implemented"
     assert row["platform"] == "posix-native"
     assert row["workflow"] == "harness-quality.yml#plc9b-linux-native"
     assert _journal_policy_for("B-COMPAT-OFFLINE-RESTORE-POSIX") == (
@@ -4235,7 +4236,7 @@ def test_plc9b4c3b_posix_materializer_is_rooted_exact_dark_and_unpromoted() -> N
         assert manifest[case_id]["status"] == "planned"
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c3b-candidate." in contract
+    assert "Contract version: PLC9B.4c3c-candidate." in contract
     assert "PLC9B4c3b Candidate POSIX Offline Restore Materialization" in normalized
     assert "authenticated snapshot authority" in normalized
     assert "requires its native directory identity" in normalized
@@ -4247,6 +4248,105 @@ def test_plc9b4c3b_posix_materializer_is_rooted_exact_dark_and_unpromoted() -> N
     assert "not proof that an old-runtime process started" in normalized
     assert "PLC9B4c3b candidate code adds the dark POSIX-native" in inventory
     assert "PLC9B4c3b candidate code adds rooted POSIX" in index
+
+
+def test_plc9b4c3c_linux_activation_is_native_exclusive_dark_and_promoted() -> None:
+    contract = _source(CONTRACT)
+    inventory = _source(INVENTORY)
+    index = _source(INDEX)
+    source = _source(LINUX_LEGACY_RUNTIME)
+    component_tests = _source(POSIX_OFFLINE_RESTORE_TEST)
+    adversarial_tests = _source(ADVERSARIAL_TEST)
+    workflow = _source(HARNESS_WORKFLOW)
+    internal_facade = _source(OWNER_KERNEL_ROOT / "__init__.py")
+    sandbox_facade = _source(Path("src/loushang/harness/sandbox/__init__.py"))
+    package_facade = _source(PACKAGE_ROOT / "__init__.py")
+    author_sdk = _source(AUTHOR_SDK)
+    manifest = _adversarial_manifest()
+
+    assert LINUX_LEGACY_RUNTIME.is_file()
+    assert "class PackageLinuxLegacyRuntimeActivationOwner" in source
+    assert LINUX_LEGACY_RUNTIME.parent == Path("src/loushang/harness/sandbox")
+    assert "def _prepare_guarded_command(" in _source(
+        Path("src/loushang/harness/sandbox/backends/linux.py")
+    )
+    for invariant in (
+        "LinuxBubblewrapBackend",
+        "SandboxScopeRequest",
+        "subprocess.Popen",
+        "LOUSHANG_LEGACY_RUNTIME_READY_FD",
+        "flock",
+        "/proc/{marker.sandbox.pid}/root",
+        "_process_children",
+        "_namespace_identity",
+        "_open_matching_pidfd",
+        "_spawn_guarded_process",
+        "_directory_identity(payload_fd)",
+        "package_offline_restore_cleanup_failed",
+    ):
+        assert invariant in source
+    for namespace in ("mnt", "pid", "net", "ipc", "uts", "user"):
+        assert f'"{namespace}"' in source
+    for forbidden_capability in (
+        "PackageEpochFenceJournal",
+        "PackageLifecycleOwner",
+        "PackageMaterializer",
+        "PackageOperationsRuntime",
+        "PluginRevisionStore",
+        "self._journal.publish",
+        "loushang.coding",
+        "loushang.foundation",
+        "loushang.harness.plugin_management",
+    ):
+        assert forbidden_capability not in source
+    assert "__all__ = ()" in source
+    for facade in (internal_facade, sandbox_facade, package_facade, author_sdk):
+        assert "PackageLinuxLegacyRuntimeActivationOwner" not in facade
+
+    for evidence in (
+        "activates_replays_and_deactivates_real_process",
+        "rejects_missing_readiness_without_process_residue",
+        "rejects_second_sandbox_profile_while_active",
+        "rejects_restore_over_independent_activation_budget",
+        "tampered_marker_refuses_cleanup_without_signalling",
+        "concurrent_owners_publish_one_live_process",
+        "native_process_composition_converges_exactly",
+    ):
+        assert evidence in component_tests
+    assert "IMPLEMENTED_B4C3C_LINUX_OFFLINE_RESTORE_MANIFEST_CASES" in (
+        adversarial_tests
+    )
+    assert "_manifest_linux_offline_restore_fixture" in adversarial_tests
+    row = manifest["B-COMPAT-OFFLINE-RESTORE-POSIX"]
+    assert row["status"] == "implemented"
+    assert row["platform"] == "posix-native"
+    assert row["workflow"] == "harness-quality.yml#plc9b-linux-native"
+    assert "Install PLC9B Linux native isolation dependency" in workflow
+    assert "sudo apt-get install --yes bubblewrap" in workflow
+    assert workflow.index("sudo apt-get install --yes bubblewrap") < workflow.index(
+        "PLC9B Linux native adversarial gate (plc9b-linux-native)"
+    )
+    for case_id in (
+        "B-COMPAT-OFFLINE-RESTORE-WINDOWS",
+        "B-COMPAT-ADOPT",
+        "B-COMPAT-ADOPT-UNAUTHORIZED",
+        "B-COMPAT-ADOPT-UNAVAILABLE",
+        "B-COMPAT-ADOPT-CRASH",
+        "B-COMPAT-ADOPT-CRASH-AFTER-COMMITTED",
+    ):
+        assert manifest[case_id]["status"] == "planned"
+
+    normalized = " ".join(contract.split())
+    assert "Contract version: PLC9B.4c3c-candidate." in contract
+    assert "PLC9B4c3c Candidate Linux Legacy Runtime Activation" in normalized
+    assert "owned by `loushang.harness.sandbox`" in normalized
+    assert "the resource kernel remains backend-free" in inventory
+    assert "single real sandbox child" in normalized
+    assert "distinct mount, PID, network, IPC, UTS, and user namespaces" in normalized
+    assert "The Linux manifest now contains 93 nodes" in normalized
+    assert "3,890 tests with 33 expected platform skips" in normalized
+    assert "PLC9B4c3c candidate code adds the concrete Linux/Bubblewrap" in inventory
+    assert "PLC9B4c3c candidate code adds one dark Linux/Bubblewrap" in index
 
 
 def test_plc9b2f_windows_backend_is_rooted_and_has_a_nonskippable_native_gate() -> None:

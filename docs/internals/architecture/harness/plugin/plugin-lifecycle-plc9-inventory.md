@@ -265,6 +265,16 @@
   offline-restore row remains planned and the Linux native gate remains at 92
   nodes. POSIX and Windows launchers, Windows restore, all adoption work,
   recovery composition, and Product routing remain closed.
+  PLC9B4c3c candidate code adds the concrete Linux/Bubblewrap activation
+  adapter under `loushang.harness.sandbox`, behind the accepted pathless Port;
+  the resource kernel remains backend-free. A private cross-process lock admits
+  one sandbox profile and one live old-runtime process, while readiness, procfs
+  namespace/root identity checks, guardian lifetime, pidfd signalling, exact
+  replay, and bounded deactivation make
+  `B-COMPAT-OFFLINE-RESTORE-POSIX` executable in the mandatory Linux gate. The
+  Linux manifest therefore advances from 92 to 93 nodes. The activation path
+  remains dark; Windows restore, adoption, recovery convergence, and Product
+  routing remain closed.
 
 This inventory distinguishes accepted reusable owners, Product adapters,
 parallel compatibility paths, and missing target boundaries. “Migrate” or
