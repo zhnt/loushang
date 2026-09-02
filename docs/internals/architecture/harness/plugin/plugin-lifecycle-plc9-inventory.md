@@ -252,6 +252,19 @@
   POSIX/Windows restore and all adoption manifest rows remain planned. Candidate
   `2fe7953a` passed all 23 PR checks; retained Linux artifact `9831701194`
   executed exactly 92 manifest nodes with zero skips, failures, or errors.
+  PLC9B4c3b candidate code adds the dark POSIX-native snapshot-to-restore
+  materializer behind the accepted pathless Port. It owns disjoint pinned
+  snapshot, restore, and current-B authorities, binds the latter to the
+  request's fenced-root identity, and validates one canonical complete-state
+  manifest plus the exact payload tree, rejects links/special members, copies
+  through rooted no-follow descriptors, and publishes one isolated namespace
+  through a flushed atomic no-replace edge. A rooted cross-process lock and
+  strict receipt marker make exact replay converge; identity-bound cleanup
+  refuses foreign or changed trees. The composition fixture uses the accepted
+  activation Port but does not launch an old process, so the complete POSIX
+  offline-restore row remains planned and the Linux native gate remains at 92
+  nodes. POSIX and Windows launchers, Windows restore, all adoption work,
+  recovery composition, and Product routing remain closed.
 
 This inventory distinguishes accepted reusable owners, Product adapters,
 parallel compatibility paths, and missing target boundaries. “Migrate” or

@@ -217,6 +217,15 @@ Neither may silently override a narrower implemented owner contract.
   Candidate `2fe7953a` passed all 23 PR checks; retained Linux artifact
   `9831701194` executed the unchanged 92 manifest nodes with zero skips,
   failures, or errors.
+  PLC9B4c3b candidate code adds rooted POSIX snapshot verification, a
+  request-bound current-B identity check, exact no-follow copying, durable
+  same-request replay, atomic isolated namespace publication, and
+  identity-bound discard behind the accepted offline-restore Port. The request
+  and receipt remain pathless and no Product journal or public route is added.
+  Its in-memory activation-Port composition is not a
+  native process-start proof, so `B-COMPAT-OFFLINE-RESTORE-POSIX` remains
+  planned and the Linux manifest remains at 92 nodes; Windows restore, concrete
+  legacy process launchers, adoption, and Product binding remain closed.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)

@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.4c3a.
+- Contract version: PLC9B.4c3b-candidate.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -109,8 +109,12 @@
   Windows rows executable only in their mandatory native gate. B4c3a accepted
   code freezes the pathless, genesis-bound offline-restore protocol over
   complete pre-B snapshot evidence, isolated materialization, and exclusive
-  old-runtime activation Ports. Native restore, adoption, recovery convergence,
-  public routing, and concrete desired-state composition remain closed.
+  old-runtime activation Ports. B4c3b candidate code adds the POSIX rooted
+  snapshot-to-isolated-root materializer. The complete POSIX restore row stays
+  planned until a concrete legacy-process launcher proves native activation.
+  Windows restore, adoption, recovery convergence, a concrete
+  legacy-process launcher, public routing, and concrete desired-state
+  composition remain closed.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -1540,7 +1544,7 @@ and credential-free. It remains absent from the Package facade, author SDK,
 CLI, RPC, Session, startup, Product adapters, and public plugin-management
 surface.
 
-B4c3a deliberately supplies no POSIX or Windows filesystem materializer and no
+B4c3a deliberately supplied no POSIX or Windows filesystem materializer and no
 legacy process launcher. Therefore `B-COMPAT-OFFLINE-RESTORE-POSIX`,
 `B-COMPAT-OFFLINE-RESTORE-WINDOWS`, and all five `B-COMPAT-ADOPT*` rows remain
 planned. The native rows move only after their corresponding rooted backend
@@ -1565,6 +1569,76 @@ none of the seven still-planned offline-restore/adoption nodes. Windows Shell
 Compatibility failed once only in the unrelated child-process lease sweep
 after process termination; the log contained no PLC9B path, and the isolated
 job rerun `100125098199` passed. The PR remains Draft.
+
+## PLC9B4c3b Candidate POSIX Offline Restore Materialization
+
+`PackagePosixOfflineRestoreMaterializer` is the one native capability owner
+between an authenticated snapshot authority and a disjoint isolated restore
+authority. It also pins the current B-root authority and requires its native
+directory identity to equal the pathless request's fenced-root identity before
+any staging effect. All three roots are configured internally, must be
+absolute, private, identity-pinned, pairwise non-nested, and never enter a
+request, receipt, journal, or public API. This proves the restored tree cannot
+alias or contain the B tree; process-level unreachability remains the future
+launcher/sandbox owner's responsibility. The adapter receives only the B4c3a
+pathless request, authenticated snapshot evidence, and exclusive-quiescence
+receipt.
+
+Independent configured entry, byte, and depth limits reject self-consistent but
+unbounded evidence before staging. The internal snapshot bundle has one
+`payload` directory and one canonical
+`state-manifest.json`. The payload tree digest covers every directory and
+regular file name, mode, byte count, and file digest; its total entry and byte
+counts must equal the cutover snapshot receipt. The state manifest separately
+binds the store, legacy root, snapshot identity/revision/receipt, exact payload
+metrics, tree digest, and the closed set of all pre-B state domains. A missing,
+extended, non-canonical, substituted, over-budget, soft-linked, hard-linked, or
+special member rejects before the restore authority gains a namespace.
+
+Every traversal and copy is rooted in pinned directory descriptors with
+`O_NOFOLLOW`; opened identities and stable metadata are rechecked around reads,
+and the complete authenticated source is scanned again after the copy. The
+owner copies into a request-specific private staging namespace, flushes files
+and directories, writes a strict pathless receipt marker beside (not inside)
+the payload, then uses one atomic no-replace visibility edge to publish the
+isolated restore namespace. It reopens and verifies the visible namespace,
+payload identity, receipt, and exact tree before returning.
+
+A private rooted `flock` serializes threads, processes, and restarted owners.
+An exact replay validates the durable receipt and tree and returns the same
+materialization receipt without a second copy. A foreign final or staging
+namespace is never adopted. Pre-publication failure removes only the
+identity-matched owned staging tree; post-rename validation failure removes the
+same isolated tree. `discard` is idempotent for absence, but otherwise requires
+the exact receipt marker, restored-root identity, tree digest, counts, entry
+types, and native identities before descriptor-relative cleanup. Unprovable
+cleanup is explicit `package_offline_restore_cleanup_failed` debt.
+
+The adapter imports no Product Package owner, plugin revision store, coding
+runtime, or peer installer. It cannot read or append the epoch, lifecycle,
+handoff, cleanup, Desired, binding, Instance, or enablement journals, and it
+does not launch a legacy process. A POSIX candidate component fixture composes
+the real native materializer with the already-frozen exclusive activation
+Port; the test activation is protocol evidence, not a production process
+launcher or a public route.
+
+The candidate composition test proves 16-way convergence, exact legacy bytes,
+an activation-Port receipt, unchanged epoch bytes, and an untouched,
+structurally unreachable B root. That in-memory Port fixture is protocol
+evidence, not proof that an old-runtime process started successfully and
+exclusively. Therefore `B-COMPAT-OFFLINE-RESTORE-POSIX` remains planned and the
+mandatory `plc9b-linux-native` gate remains at 92 manifest nodes. The row may
+move only after a concrete native launcher and process-level fixture prove the
+full scenario. The Windows restore row and all five adoption rows also remain
+planned. B4c3b remains a candidate pending retained native CI evidence and
+review acceptance.
+
+The post-review local gate passed 38 focused materializer, protocol-composition,
+and architecture tests. The unchanged Linux adversarial manifest produced
+exactly 92 tests with zero skips, failures, or errors, and its XML verifier
+passed. `make check-harness` then passed Ruff, mypy over 646 source files, and
+3,882 tests with 33 expected skips. These local results are candidate evidence,
+not a substitute for retained native CI evidence.
 
 ## First Principles
 
