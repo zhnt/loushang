@@ -43,6 +43,7 @@ POSIX_EPOCH_CUTOVER = OWNER_KERNEL_ROOT / "posix_epoch_cutover.py"
 WINDOWS_EPOCH_CUTOVER = OWNER_KERNEL_ROOT / "windows_epoch_cutover.py"
 OFFLINE_RESTORE = OWNER_KERNEL_ROOT / "offline_restore.py"
 POSIX_OFFLINE_RESTORE = OWNER_KERNEL_ROOT / "posix_offline_restore.py"
+LEGACY_ADOPTION = OWNER_KERNEL_ROOT / "adoption.py"
 LINUX_LEGACY_RUNTIME = Path(
     "src/loushang/harness/sandbox/package_legacy_runtime.py"
 )
@@ -99,6 +100,9 @@ OFFLINE_RESTORE_TEST = Path(
 )
 POSIX_OFFLINE_RESTORE_TEST = Path(
     "tests/harness/resources/packages/test_plc9b_posix_offline_restore.py"
+)
+LEGACY_ADOPTION_TEST = Path(
+    "tests/harness/resources/packages/test_plc9b_adoption.py"
 )
 PYPROJECT = Path("pyproject.toml")
 WINDOWS_NATIVE_TEST = Path(
@@ -677,7 +681,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.4c3c-candidate." in contract
+    assert "Contract version: PLC9B.4c4a-candidate." in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
@@ -3589,7 +3593,7 @@ def test_plc9b4b_retention_handoff_is_dark_exact_and_no_zero_pin() -> None:
         assert {"exact_pin_set", "no_zero_pin"} <= set(row["oracles"].split(";"))
 
     normalized = " ".join(contract.split())
-    assert "PLC9B.4c3c-candidate." in contract
+    assert "PLC9B.4c4a-candidate." in contract
     assert "PLC9B4b Accepted Retention Handoff" in normalized
     assert "opened -> dependency_pinned -> desired_committed -> settled" in normalized
     assert "No journal lock is held" in normalized
@@ -3717,7 +3721,7 @@ def test_plc9b4c0_epoch_admission_is_dark_read_only_and_fail_closed() -> None:
         assert {"no_publication", "no_peer_fallback"} <= set(row["oracles"].split(";"))
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c3c-candidate." in contract
+    assert "Contract version: PLC9B.4c4a-candidate." in contract
     assert "PLC9B4c0 Accepted Epoch Admission" in normalized
     assert "human-readable minimum runtime version is diagnostic evidence" in (
         normalized
@@ -3839,7 +3843,7 @@ def test_plc9b4c1_posix_cutover_has_one_native_owner_and_one_visibility_edge() -
         assert manifest[case_id]["status"] == "implemented"
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c3c-candidate." in contract
+    assert "Contract version: PLC9B.4c4a-candidate." in contract
     assert "PLC9B4c1 Accepted POSIX Native Cutover" in normalized
     assert "no second `active-root` file" in normalized
     assert "sole Product-root pointer" in normalized
@@ -3957,7 +3961,7 @@ def test_plc9b4c2_windows_cutover_is_rooted_native_and_non_skippable() -> None:
     assert workflow.count("scripts/dev/verify_pytest_xml.py") >= 5
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c3c-candidate." in contract
+    assert "Contract version: PLC9B.4c4a-candidate." in contract
     assert "PLC9B4c2 Accepted Windows Native Cutover" in normalized
     assert "same fingerprint domain" in normalized
     assert "rooted `NtCreateFile`" in normalized
@@ -4092,7 +4096,7 @@ def test_plc9b4c3a_offline_restore_stays_dark_and_unpromoted() -> None:
     assert "IMPLEMENTED_B4C3" not in component_tests
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c3c-candidate." in contract
+    assert "Contract version: PLC9B.4c4a-candidate." in contract
     assert "PLC9B4c3a Accepted Offline Restore Protocol" in normalized
     assert "does not reinterpret the opaque B4c1 snapshot identifier" in normalized
     assert "closed coverage tuple" in normalized
@@ -4236,7 +4240,7 @@ def test_plc9b4c3b_posix_materializer_is_rooted_exact_and_dark() -> None:
         assert manifest[case_id]["status"] == "planned"
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c3c-candidate." in contract
+    assert "Contract version: PLC9B.4c4a-candidate." in contract
     assert "PLC9B4c3b Candidate POSIX Offline Restore Materialization" in normalized
     assert "authenticated snapshot authority" in normalized
     assert "requires its native directory identity" in normalized
@@ -4337,7 +4341,7 @@ def test_plc9b4c3c_linux_activation_is_native_exclusive_dark_and_promoted() -> N
         assert manifest[case_id]["status"] == "planned"
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c3c-candidate." in contract
+    assert "Contract version: PLC9B.4c4a-candidate." in contract
     assert "PLC9B4c3c Candidate Linux Legacy Runtime Activation" in normalized
     assert "owned by `loushang.harness.sandbox`" in normalized
     assert "the resource kernel remains backend-free" in inventory
@@ -4347,6 +4351,118 @@ def test_plc9b4c3c_linux_activation_is_native_exclusive_dark_and_promoted() -> N
     assert "3,890 tests with 33 expected platform skips" in normalized
     assert "PLC9B4c3c candidate code adds the concrete Linux/Bubblewrap" in inventory
     assert "PLC9B4c3c candidate code adds one dark Linux/Bubblewrap" in index
+
+
+def test_plc9b4c4a_adoption_protocol_is_pathless_dark_and_unpromoted() -> None:
+    contract = _source(CONTRACT)
+    inventory = _source(INVENTORY)
+    index = _source(INDEX)
+    source = _source(LEGACY_ADOPTION)
+    component_tests = _source(LEGACY_ADOPTION_TEST)
+    adversarial_tests = _source(ADVERSARIAL_TEST)
+    internal_facade = _source(OWNER_KERNEL_ROOT / "__init__.py")
+    package_facade = _source(PACKAGE_ROOT / "__init__.py")
+    management_facade = _source(PACKAGE_LIFECYCLE)
+    author_sdk = _source(AUTHOR_SDK)
+    manifest = _adversarial_manifest()
+
+    assert LEGACY_ADOPTION.is_file()
+    assert LEGACY_ADOPTION_TEST.is_file()
+    for symbol in (
+        "PackageLegacyStateEvidenceV1",
+        "PackageLegacyAdoptionRequestV1",
+        "PackageLegacyAdoptionTransactionResultV1",
+        "PackageLegacyAdoptionReceiptV1",
+        "PackageLegacyAdoptionFailureV1",
+        "PackageLegacyAdoptionResultV1",
+        "PackageLegacyStateEvidencePort",
+        "PackageLegacyAdoptionTransactionPort",
+        "PackageLegacyAdoptionOwner",
+    ):
+        assert f"class {symbol}" in source
+        assert symbol not in internal_facade
+        assert symbol not in package_facade
+        assert symbol not in management_facade
+        assert symbol not in author_sdk
+
+    tree = ast.parse(source, filename=str(LEGACY_ADOPTION))
+    imported = {
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    } | {
+        node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
+    }
+    for forbidden in (
+        "os",
+        "pathlib",
+        "socket",
+        "subprocess",
+        "urllib",
+        "httpx",
+        "requests",
+        "loushang.coding",
+        "loushang.foundation",
+        "loushang.harness.plugin_management",
+    ):
+        assert not any(
+            module == forbidden or module.startswith(f"{forbidden}.")
+            for module in imported
+        )
+    for invariant in (
+        "PACKAGE_PRE_B_SNAPSHOT_DOMAINS",
+        "transaction_request_fingerprint",
+        "expected_classification_fingerprint",
+        "expected_attempt_epoch",
+        "PackagePublicationReceiptV1",
+        'classification.decision != "plugin_bound"',
+        "after != before",
+        "_transaction_matches_request",
+        "__all__ = ()",
+    ):
+        assert invariant in source
+    assert source.count("self._fence_matches(request)") == 2
+    assert source.count("self._legacy_state.observe(") == 2
+
+    for evidence in (
+        "replays_exact_committed_receipt_without_legacy_mutation",
+        "rejects_stale_fence_before_legacy_or_transaction",
+        "rejects_legacy_root_outside_current_fence",
+        "rejects_changed_legacy_before_transaction",
+        "rejects_changed_classification_evidence",
+        "rejects_legacy_drift_after_transaction",
+        "rejects_fence_drift_after_transaction",
+        "preserves_transaction_failure_semantics",
+        "rejects_cross_request_transaction_result",
+        "concurrent_replay_converges_to_one_receipt",
+        "rejects_extended_wire_objects",
+    ):
+        assert evidence in component_tests
+
+    adoption_rows = (
+        "B-COMPAT-ADOPT",
+        "B-COMPAT-ADOPT-UNAUTHORIZED",
+        "B-COMPAT-ADOPT-UNAVAILABLE",
+        "B-COMPAT-ADOPT-CRASH",
+        "B-COMPAT-ADOPT-CRASH-AFTER-COMMITTED",
+    )
+    for case_id in adoption_rows:
+        assert manifest[case_id]["status"] == "planned"
+    assert "IMPLEMENTED_B4C4" not in adversarial_tests
+
+    normalized = " ".join(contract.split())
+    assert "Contract version: PLC9B.4c4a-candidate." in contract
+    assert "PLC9B4c4a Candidate Legacy Adoption Protocol" in normalized
+    assert "complete immutable legacy-state observation" in normalized
+    assert "does not itself reacquire, stage, publish, or commit" in normalized
+    assert "all five adoption manifest rows remain planned" in normalized
+    assert "57 focused adoption/architecture tests" in normalized
+    assert "105 cross-module lifecycle" in normalized
+    assert "mypy over 648 source files" in normalized
+    assert "3,903 tests with 33 expected platform skips" in normalized
+    assert "PLC9B4c4a candidate code adds the dark, pathless" in inventory
+    assert "PLC9B4c4a candidate code freezes a dark, pathless" in index
 
 
 def test_plc9b2f_windows_backend_is_rooted_and_has_a_nonskippable_native_gate() -> None:

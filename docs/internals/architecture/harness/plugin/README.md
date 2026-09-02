@@ -235,6 +235,13 @@ Neither may silently override a narrower implemented owner contract.
   replay/deactivation without worker-thread or PID-reuse races. The
   complete POSIX offline-restore row now executes as node 93 in the named Linux
   native gate; Windows restore, adoption, and Product routing remain closed.
+  PLC9B4c4a candidate code freezes a dark, pathless legacy-adoption coordinator
+  in the Package resource-owner kernel. Its versioned evidence binds an exact
+  current fence and complete immutable legacy state around a separately owned
+  B transaction, and it accepts only an exact committed Plugin-bound receipt
+  while the fence and legacy state remain unchanged. It owns no source,
+  filesystem, process, publication, Product-state, or public-route capability;
+  the concrete adapter and all five adoption manifest rows remain closed.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)

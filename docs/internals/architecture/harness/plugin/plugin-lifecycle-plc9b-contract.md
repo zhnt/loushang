@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.4c3c-candidate.
+- Contract version: PLC9B.4c4a-candidate.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -112,9 +112,11 @@
   old-runtime activation Ports. B4c3b candidate code adds the POSIX rooted
   snapshot-to-isolated-root materializer. B4c3c candidate code adds the
   Linux/Bubblewrap legacy-process activation owner and promotes the complete
-  POSIX restore row in its named Linux-native gate. Windows restore, adoption,
-  recovery convergence, public routing, and concrete desired-state composition
-  remain closed.
+  POSIX restore row in its named Linux-native gate. B4c4a candidate code adds
+  the dark, pathless legacy-adoption protocol around one separately owned,
+  complete B transaction. Windows restore, a concrete adoption adapter, all
+  adoption manifest rows, public routing, and concrete desired-state
+  composition remain closed.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -1698,6 +1700,47 @@ or errors, and its XML verifier passed. `make check-harness` then passed Ruff,
 mypy over 647 source files, and 3,890 tests with 33 expected platform skips.
 These local results are candidate evidence, not a substitute for retained CI
 evidence.
+
+## PLC9B4c4a Candidate Legacy Adoption Protocol
+
+`PackageLegacyAdoptionOwner` freezes the policy-neutral seam between legacy
+state observation and one separately owned, complete B transaction. Its
+versioned request binds the exact current fence and B-root identity, a complete
+immutable legacy-state observation, the operation/request fingerprint and
+classification fingerprint, the attempt epoch, and the Product/scope/
+installation/Plugin identities. The
+closed legacy observation covers all pre-B domains. No source locator,
+credential, path, native handle, Desired record, Instance record, binding
+record, enablement record, or mutable capability crosses the request boundary.
+
+The coordinator proves the exact current fence and legacy observation before
+calling the transaction Port, then proves both again after it returns. A
+transaction result is admissible only when it belongs to the exact adoption
+request and terminates in either the original typed failure or a committed,
+Plugin-bound publication. Success additionally binds the committed-set
+identity, closure-lock identity, stable root revision, and transaction-pin
+receipt already proven by the B publication receipt. Fence drift, legacy-state
+drift, cross-request substitution, non-Plugin classification, or mismatched
+publication evidence fails closed. The coordinator preserves the transaction's
+typed rejection/retry semantics and does not itself reacquire, stage, publish,
+or commit.
+
+This slice intentionally provides only versioned records, narrow Ports, and a
+dark coordinator in the resource-owner kernel. It imports no filesystem,
+process, network, credential, Product-management, coding, or Foundation
+capability; it is absent from internal, Package, management, and author
+facades. Component fixtures compose the coordinator with real lifecycle,
+transaction-pin, committed-set, and commit-admission evidence, but the future
+transaction Port still has no concrete end-to-end acquisition-to-commit
+adapter. Consequently all five adoption manifest rows remain planned; Windows
+restore, recovery orchestration, and public routing remain closed.
+
+The post-audit local evidence passed 57 focused adoption/architecture tests and
+105 cross-module lifecycle, commit, pin, fence, restore, and architecture
+tests. `make check-harness` then passed Ruff, mypy over 648 source files, and
+3,903 tests with 33 expected platform skips. These local results establish the
+candidate's dark protocol boundary; they do not promote an adoption manifest
+row or substitute for future native end-to-end evidence.
 
 ## First Principles
 

@@ -275,6 +275,14 @@
   Linux manifest therefore advances from 92 to 93 nodes. The activation path
   remains dark; Windows restore, adoption, recovery convergence, and Product
   routing remain closed.
+  PLC9B4c4a candidate code adds the dark, pathless legacy-adoption protocol to
+  the resource-owner kernel. It binds an exact current fence and complete
+  immutable legacy-state observation around one narrow, separately owned B
+  transaction Port, accepts only the exact committed Plugin-bound publication,
+  and preserves typed terminal failures. It exposes no locator, credential,
+  path, native handle, Product state, or production capability. A concrete
+  transaction adapter, all five adoption manifest rows, Windows restore,
+  recovery convergence, and Product routing remain closed.
 
 This inventory distinguishes accepted reusable owners, Product adapters,
 parallel compatibility paths, and missing target boundaries. “Migrate” or
