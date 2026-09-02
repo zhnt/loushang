@@ -117,13 +117,21 @@ class PackageClosureExecutionResult:
     cleanup_status: PackageQuarantineCleanupStatusV1 | None = None
 
     def __post_init__(self) -> None:
+        if self.candidate is not None and not isinstance(
+            self.candidate,
+            VerifiedPackageClosureCandidate,
+        ):
+            raise ValueError("Package closure candidate has an invalid type")
         if (
-            self.status.phase in {"closure_verified", "transaction_pinned"}
+            self.status.phase == "closure_verified"
             and self.status.disposition == "active"
         ):
-            if not isinstance(self.candidate, VerifiedPackageClosureCandidate):
+            if self.candidate is None:
                 raise ValueError("Verified closure status requires a candidate")
-        elif self.candidate is not None:
+        elif self.candidate is not None and not (
+            self.status.phase == "transaction_pinned"
+            and self.status.disposition == "active"
+        ):
             raise ValueError("Only verified closure status carries a candidate")
         if self.cleanup_status is not None and (
             self.status.disposition not in {"rejected", "retryable_failure"}
@@ -407,6 +415,14 @@ class PackageClosureLifecycleOwner:
                     credential_reference=execution.artifact.credential_reference,
                 ),
             )
+        except PackageClosureResolutionJournalError:
+            root.suspend_for_recovery()
+            return PackageClosureExecutionResult(
+                status=_local_refusal(
+                    status,
+                    code="package_operation_identity_conflict",
+                )
+            )
         except _CLOSURE_REJECTIONS as error:
             return PackageClosureExecutionResult(
                 status=self._record_failure(
@@ -419,7 +435,28 @@ class PackageClosureLifecycleOwner:
                     else None
                 ),
             )
-        if closure.plan != durable_plan:
+        try:
+            revalidated_basis = self._resolution_journal.basis(
+                operation_id=status.operation_id,
+                attempt_epoch=status.attempt_epoch,
+            )
+            revalidated_plan = self._resolution_journal.plan(
+                operation_id=status.operation_id,
+                attempt_epoch=status.attempt_epoch,
+            )
+        except PackageClosureResolutionJournalError:
+            closure.suspend_for_recovery()
+            return PackageClosureExecutionResult(
+                status=_local_refusal(
+                    status,
+                    code="package_operation_identity_conflict",
+                )
+            )
+        if (
+            revalidated_basis != expected_basis
+            or revalidated_plan != durable_plan
+            or closure.plan != revalidated_plan
+        ):
             closure.suspend_for_recovery()
             return PackageClosureExecutionResult(
                 status=_local_refusal(

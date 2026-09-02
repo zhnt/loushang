@@ -1817,7 +1817,8 @@ selection or artifact evidence rejects before either external Port is called;
 changed bytes, metadata, environment, budgets, extras, request identity,
 attempt epoch, or plan also reject. Successful reconstruction does not append
 evidence or advance the lifecycle journal. The closure owner checks that the
-kernel status is byte-for-byte unchanged before returning the live candidate.
+resolution basis and plan remain exact after reconstruction and that the kernel
+status is byte-for-byte unchanged before returning the live candidate.
 
 The adoption adapter now dispatches `transaction_pinned` to this recovery-only
 seam, replays the exact existing pin through the pin owner, and then continues

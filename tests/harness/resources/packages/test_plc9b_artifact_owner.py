@@ -653,6 +653,10 @@ def test_transaction_pin_reacquires_verified_root_without_source_access_or_phase
     initial.candidate.suspend_for_recovery()
     owner._acquisition_owner._source_authority.denied = True
 
+    observed = owner.execute(_execute_request(status))
+    assert observed.status == status
+    assert observed.candidate is None
+
     reacquired = owner.reacquire(_execute_request(status))
 
     assert reacquired.status == status

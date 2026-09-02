@@ -626,12 +626,18 @@ def test_closure_runtime_reacquires_pinned_candidate_without_journal_mutation(
     )
     before = kernel.status(OPERATION_ID)
 
+    observed = owner.execute(execution)
+    assert observed.status == before
+    assert observed.candidate is None
+    assert artifact.calls == 1
+    assert builder.calls == 0
+
     result = owner.reacquire(execution)
 
     assert result.status == before
     assert result.candidate is not None
     assert result.candidate.plan == plan
-    assert artifact.calls == 1
+    assert artifact.calls == 2
     assert builder.calls == 1
     assert len(resolution.records()) == 2
     assert kernel.status(OPERATION_ID) == before
@@ -655,6 +661,37 @@ def test_closure_runtime_refuses_pinned_reacquisition_without_durable_plan(
     assert artifact.calls == 0
     assert builder.calls == 0
     assert len(resolution.records()) == 1
+    assert kernel.status(OPERATION_ID) == before
+
+
+def test_closure_runtime_revalidates_resolution_journal_after_reacquisition(
+    tmp_path: Path,
+) -> None:
+    builder = _CorruptingClosureBuilder()
+    kernel, owner, artifact, _builder, resolution, execution, root = _setup(
+        tmp_path,
+        phase="transaction_pinned",
+        builder=builder,
+    )
+    builder.resolution = resolution
+    resolution.bind_basis(_basis(kernel, execution))
+    resolution.append_plan(
+        request_fingerprint=execution.artifact.request_fingerprint,
+        plan=_plan(
+            attempt_epoch=1,
+            environment_fingerprint=execution.resolution_environment.fingerprint,
+        ),
+    )
+    before = kernel.status(OPERATION_ID)
+
+    result = owner.reacquire(execution)
+
+    assert result.status.disposition == "rejected"
+    assert result.status.failure is not None
+    assert result.status.failure.code == "package_operation_identity_conflict"
+    assert artifact.calls == 1
+    assert builder.calls == 1
+    assert root.suspended is True
     assert kernel.status(OPERATION_ID) == before
 
 

@@ -95,19 +95,17 @@ class PackageArtifactExecutionResult:
     cleanup_status: PackageQuarantineCleanupStatusV1 | None = None
 
     def __post_init__(self) -> None:
-        if (
-            self.status.phase
-            in {
-                "extracted",
-                "resolving_closure",
-                "closure_verified",
-                "transaction_pinned",
-            }
-            and self.status.disposition == "active"
-        ):
+        if self.status.phase in {
+            "extracted",
+            "resolving_closure",
+            "closure_verified",
+        } and self.status.disposition == "active":
             if self.candidate is None:
                 raise ValueError("Verified Package artifact phase requires a candidate")
-        elif self.candidate is not None:
+        elif self.candidate is not None and not (
+            self.status.phase == "transaction_pinned"
+            and self.status.disposition == "active"
+        ):
             raise ValueError(
                 "Only a verified Package artifact phase carries a candidate"
             )

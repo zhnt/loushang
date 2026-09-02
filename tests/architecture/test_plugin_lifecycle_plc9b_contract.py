@@ -4607,12 +4607,14 @@ def test_plc9b4c4c_pinned_reacquisition_is_evidence_only_and_stays_dark(
     assert "if durable_only:" in closure_owner_source
     assert "def reacquire(" in closure_runtime_source
     assert "durable_basis != expected_basis" in closure_runtime_source
-    assert "closure.plan != durable_plan" in closure_runtime_source
+    assert "revalidated_plan != durable_plan" in closure_runtime_source
+    assert "closure.plan != revalidated_plan" in closure_runtime_source
     assert "kernel.status(status.operation_id) == status" in artifact_tests
     assert "evidence_is_incomplete" in artifact_tests
     assert "never_falls_back_to_resolver_or_source" in closure_owner_tests
     assert "without_journal_mutation" in closure_tests
     assert "without_durable_plan" in closure_tests
+    assert "revalidates_resolution_journal_after_reacquisition" in closure_tests
     assert "authority.payloads.clear()" in closure_tests
     assert "resolver.selections.clear()" in closure_tests
 
