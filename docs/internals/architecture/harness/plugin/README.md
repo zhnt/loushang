@@ -291,6 +291,28 @@ Neither may silently override a narrower implemented owner contract.
   executed all 98 Linux manifest nodes plus three authority/recovery guard
   tests with zero skips, failures, or errors; artifact upload digest
   `1822656d9150bd1b2ff602906ae229922bcc04527bec6a6f41f3edfb34934d98`.
+  PLC9B4c5 accepted code adds the dark Windows rooted-handle peer of the
+  accepted POSIX offline-restore materializer plus a separately owned
+  zero-capability AppContainer/Job old-runtime activation adapter. It publishes
+  one exact isolated namespace, proves restored-root reachability and current-B
+  denial with the real process token, binds replay to native process identity,
+  and reverses the process tree and granted authority. Five component cases and
+  `B-COMPAT-OFFLINE-RESTORE-WINDOWS` run without skips in the mandatory Windows
+  native XML gates.
+  PLC9B4d accepted code closes fourteen remaining recovery, concurrency,
+  cancellation, status, compatibility, no-execution, drift, and secret-
+  persistence rows. Exact terminal replay stays read-only and fenced retry is
+  the only roll-forward route for an interrupted pinned attempt.
+  PLC9B5 accepted code adds one internal, capability-poor Product router for
+  CLI, RPC, Session, startup, and operations provenance. Plugin-bound routes
+  share one transaction Port; direct materialization and publication bypasses
+  are durably refused. Its seven cross-platform nodes complete the 127-row
+  PLC9B adversarial manifest without adding an author-SDK surface.
+  Final candidate `fb0832d6` passed all 23 PR checks. Retained Linux run
+  `33709473590`/artifact `9876413745` executed 119 manifest nodes plus three
+  guards; Windows run `33709473605`/artifact `9876434660` executed 34 native
+  component tests and all 15 Windows manifest nodes. All retained PLC9B XML
+  reports recorded zero skips, failures, and errors.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)

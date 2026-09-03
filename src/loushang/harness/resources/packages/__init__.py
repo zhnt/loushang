@@ -61,6 +61,16 @@ if TYPE_CHECKING:
         PackageSourceRegistration,
         PackageUpdatePreparation,
     )
+    from loushang.harness.resources.packages.product_lifecycle import (
+        PACKAGE_PRODUCT_PUBLISH_ATTEMPT_VERSION,
+        PACKAGE_PRODUCT_ROUTE_VERSION,
+        PackageProductEntrypoint,
+        PackageProductLifecycleRouter,
+        PackageProductLifecycleTransactionPort,
+        PackageProductPublishAttemptV1,
+        PackageProductRouteContractError,
+        PackageProductRouteRequestV1,
+    )
     from loushang.harness.resources.packages.projection import (
         collect_projected_package_entries,
         project_package_entries,
@@ -103,6 +113,8 @@ if TYPE_CHECKING:
     )
 
 _EXPORT_MODULES = {
+    "PACKAGE_PRODUCT_PUBLISH_ATTEMPT_VERSION": "loushang.harness.resources.packages.product_lifecycle",
+    "PACKAGE_PRODUCT_ROUTE_VERSION": "loushang.harness.resources.packages.product_lifecycle",
     "FilesystemPackageResourceInventory": "loushang.harness.resources.packages.inventory",
     "GitPackageMaterializerBackend": "loushang.harness.resources.packages.materializer",
     "MissingSourceAction": "loushang.harness.resources.packages.source_resolver",
@@ -125,6 +137,12 @@ _EXPORT_MODULES = {
     "PackageMutationRequiresAsyncError": "loushang.harness.resources.packages.operations",
     "PackageOperationsRuntime": "loushang.harness.resources.packages.operations",
     "PackageProgressEvent": "loushang.harness.resources.packages.materializer",
+    "PackageProductEntrypoint": "loushang.harness.resources.packages.product_lifecycle",
+    "PackageProductLifecycleRouter": "loushang.harness.resources.packages.product_lifecycle",
+    "PackageProductLifecycleTransactionPort": "loushang.harness.resources.packages.product_lifecycle",
+    "PackageProductPublishAttemptV1": "loushang.harness.resources.packages.product_lifecycle",
+    "PackageProductRouteContractError": "loushang.harness.resources.packages.product_lifecycle",
+    "PackageProductRouteRequestV1": "loushang.harness.resources.packages.product_lifecycle",
     "PackageResolveResult": "loushang.harness.resources.packages.source_resolver",
     "PackageSourceConfig": "loushang.harness.resources.packages.source",
     "PackageSourceIdentity": "loushang.harness.resources.packages.source",

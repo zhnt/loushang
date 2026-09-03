@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.4c4g-accepted.
+- Contract version: PLC9B.5-accepted.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -121,8 +121,12 @@
   never falling back to resolver or Source authority. B4c4d through B4c4g add
   native positive, Source-failure, post-commit-crash, and every-precommit-crash
   adoption evidence; all five adoption rows are accepted in the retained Linux
-  gate. Windows restore, public routing, and concrete desired-state composition
-  remain closed.
+  gate. B4c5 adds the Windows rooted materializer and zero-capability
+  AppContainer/Job activation owner. B4d closes recovery, concurrency, state,
+  and non-execution evidence. B5 adds the capability-poor internal Product
+  router and durable bypass refusal. All 127 adversarial rows are implemented;
+  public Product activation and concrete desired-state composition remain
+  separate rollout decisions.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -1972,6 +1976,125 @@ policy that prevented Bubblewrap from initializing loopback; the workflow now
 enables unprivileged user namespaces in the isolated hosted job, after which
 the unchanged native sandbox probe and all six namespace assertions passed.
 
+## PLC9B4c5 Accepted Windows Offline Restore And Activation
+
+`PackageWindowsOfflineRestoreMaterializer` is the Windows-native peer of the
+accepted POSIX materializer behind the same pathless B4c3a Port. It owns three
+configured, pairwise-disjoint authorities for authenticated snapshots,
+isolated restore namespaces, and the current B root. Each authority pins the
+complete visible ancestor chain from its volume root through native directory
+handles opened without delete sharing; no configured path or handle enters a
+request, receipt, journal, facade, or Product route.
+
+Snapshot inspection accepts only direct, non-reparse directories and
+single-link regular files. Entry, byte, and depth budgets are enforced during
+rooted traversal. The canonical state manifest and payload tree are checked
+against independent digests before copying and rechecked before publication.
+Copying creates every member relative to already-open directory handles,
+flushes files and directories, writes the exact pathless receipt, and exposes
+the namespace through one handle-relative atomic no-replace rename. A rooted
+cross-process Windows byte-range lock serializes owners and exact replay
+revalidates the durable tree instead of copying it again.
+
+Cleanup reopens and identity-checks every member before deleting it and refuses
+foreign, reparse, hard-linked, or changed residue. The current B authority is
+reopened and matched to the request's fenced-root identity before and after
+publication. Four native component cases cover exact replay/discard,
+cross-owner convergence, authenticated snapshot tamper, and current-B root
+replacement in the mandatory Windows XML gate.
+
+`PackageWindowsLegacyRuntimeActivationOwner` is separately owned by
+`loushang.harness.sandbox`. It gives one request-specific, zero-capability
+AppContainer read authority over the exact restored root and write authority
+over a private readiness directory, then launches the old runtime in a named
+kill-on-close Job Object. The owner verifies the process token's AppContainer
+SID and empty capability set, proves restored-root reachability and current-B
+unreachability while impersonating that token, binds replay to PID plus native
+creation time, and reverses the process tree, ACL grants, profile, marker, and
+runtime directory on deactivation or failed activation.
+
+The fifth native component case covers exclusive activation, exact replay,
+readiness, native authority checks, and reversible cleanup. The composed
+`B-COMPAT-OFFLINE-RESTORE-WINDOWS` case executes the pathless coordinator,
+snapshot evidence, rooted materializer, and AppContainer/Job activation as one
+Windows-native manifest node with no Source or peer fallback.
+
+## PLC9B4d Accepted Recovery, State, And No-Execution Closure
+
+B4d closes the fourteen platform-neutral and Linux-native adversarial rows
+that do not depend on Product route activation. The lifecycle journal now
+treats exact replay of the terminal `set_published -> committed` edge as an
+idempotent read: the existing committed status is returned only when the
+attempt epoch and prior edge evidence match, and no duplicate journal record
+is appended. Concurrent identical callers converge at every phase; stale
+attempts are refused without altering the winning attempt. Cancellation is
+exercised at every phase before `transaction_pinned` and at every remaining
+pre-commit phase, preserving the phase evidence and all publication, binding,
+and desired-state boundaries.
+
+The complete Linux adoption composition rechecks classification immediately
+before staging, rejects a changed owner revision without publication, and
+proves that import traps, entry-point metadata, and adjacent executable files
+remain inert through commit. Source distributions carrying setup or build
+hooks are refused at `inspecting`, before extraction. Subprocess, import-side
+effect, and network traps make these no-execution claims behavioral rather
+than source-text assertions.
+
+Credential-bearing Source locators traverse the real composed pipeline while
+all durable journals, roots, receipts, statuses, and exception projections are
+scanned for the secret. A rejected status is serialized, deserialized,
+reloaded from the journal, and replayed without changing its failure code or
+leaking that secret. Existing Plugin history independently proves
+`plugin_bound`, and an interrupted pinned attempt rolls forward under one
+greater fenced attempt epoch to the exact committed replay. These cases bring
+the Linux adversarial manifest from 98 to 112 nodes; the seven Product entry
+routes and the Windows offline-restore row remain separate activation gates.
+
+## PLC9B5 Accepted Product Routing And Bypass Closure
+
+`PackageProductLifecycleRouter` is the capability-poor Product adapter above
+the accepted lifecycle owner. CLI, RPC, Session, startup, and operations
+requests carry transport provenance in `PackageProductRouteRequestV1`, but the
+provenance never changes classification or transaction authority. All five
+routes submit the same unclassified ingress to the same lifecycle owner and
+may call only one injected `PackageProductLifecycleTransactionPort`. Exact
+replay returns the durable terminal status without calling that Port again.
+
+The adapter imports no current materializer, Source resolver, publisher,
+binding store, settings manager, or Product ledger. A Plugin-bound
+`direct_materializer` request is durably rejected at `classified` with
+`package_route_unavailable`; a `PackageProductPublishAttemptV1` is durably
+rejected at its existing `staging` edge through the same lifecycle owner.
+Exact refusal replay appends no second record. Neither refusal has a peer
+capability to invoke. Disabled and indeterminate routing
+retain the owner kernel's existing fail-closed behavior, while a proved
+`non_plugin` classification is returned untouched for a separately accepted
+non-Plugin authority rather than being reinterpreted by this adapter.
+
+The seven route cases execute on every platform and bring the Linux manifest
+from 112 to 119 nodes. They prove one terminal operation identity, read-only
+exact replay, no peer fallback, no publication or binding from bypass routes,
+and one durable staging refusal after a direct-publish attempt. The adapter is
+exported only from the internal Harness Package facade; it is not part of the
+Plugin author SDK and does not expose the dark owner kernel.
+
+PLC9B4c5, PLC9B4d, and PLC9B5 were accepted on 2026-09-03 against candidate
+head `fb0832d6` after all 23 PR checks passed. Harness Quality run
+`33709473590`, Linux job `100505687540`, and retained
+`plc9b-linux-native-pytest-report` artifact ID `9876413745` with upload digest
+`9421c302fdc608ae3ae9b90fedd6803fd2359b6280572221d74c7f98f9588423`
+executed all 119 applicable Linux manifest nodes plus three authority/recovery
+guards, 122 tests total, with zero skips, failures, or errors. Windows Shell
+Compatibility run `33709473605`, job `100505687757`, and retained
+`windows-shell-pytest-reports` artifact ID `9876434660` with upload digest
+`29555877945e00bfe76beffc8068e3a978b3ca27eff9f33632a680669cc2ffdc`
+executed 34 native component tests and all 15 Windows manifest nodes, including
+`B-COMPAT-OFFLINE-RESTORE-WINDOWS`, with zero skips, failures, or errors.
+Local `make check-harness` also passed Ruff, mypy over 654 source files, and
+4,008 tests with 38 expected platform skips; the focused PLC9B Product,
+adversarial, and architecture suites passed 184 and 174 tests after their
+respective changes.
+
 ## First Principles
 
 1. Untrusted bytes are data, never a pathname, command, module, or build plan.
@@ -2416,7 +2539,7 @@ case_id | platform | barrier | fixture | code | disposition | oracles | test_nod
 B-CLASS-PLUGIN | any | classified | explicit_plugin_intent | ok | classified@plugin_bound | single_owner;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CLASS-PLUGIN] | harness-quality.yml#plc9b-linux-native | implemented
 B-CLASS-NONPLUGIN | any | classified | independent_non_plugin_evidence | ok | classified@non_plugin | single_owner;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CLASS-NONPLUGIN] | harness-quality.yml#plc9b-linux-native | implemented
 B-CLASS-INDETERMINATE | any | classified | unknown_source | package_target_classification_indeterminate | rejected@classified | no_publication;no_binding;no_desired;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CLASS-INDETERMINATE] | harness-quality.yml#plc9b-linux-native | implemented
-B-CLASS-CHANGED | any | staging | classification_revision_race | package_target_classification_changed | rejected@staging | no_publication;no_binding;no_desired;no_peer_fallback;pin_visible | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CLASS-CHANGED] | harness-quality.yml#plc9b-linux-native | planned
+B-CLASS-CHANGED | any | staging | classification_revision_race | package_target_classification_changed | rejected@staging | no_publication;no_binding;no_desired;no_peer_fallback;pin_visible | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CLASS-CHANGED] | harness-quality.yml#plc9b-linux-native | implemented
 B-CLASS-SPOOF | any | classified | caller_non_plugin_boolean | package_target_classification_indeterminate | rejected@classified | single_owner;no_publication;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CLASS-SPOOF] | harness-quality.yml#plc9b-linux-native | implemented
 B-ACQ-AUTH | any | acquiring | unauthenticated_origin | package_source_unauthorized | rejected@acquiring | no_extra_network;no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ACQ-AUTH] | harness-quality.yml#plc9b-linux-native | implemented
 B-ACQ-PROVENANCE | any | acquiring | changed_authority | package_source_provenance_changed | rejected@acquiring | no_publication;no_binding;no_peer_fallback;no_secret | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ACQ-PROVENANCE] | harness-quality.yml#plc9b-linux-native | implemented
@@ -2498,43 +2621,43 @@ B-CRASH-CLOSURE | any | closure_verified | crash_edge | package_operation_interr
 B-CRASH-PINNED | any | transaction_pinned | crash_edge | package_operation_interrupted | retryable_failure@transaction_pinned | same_receipt;pin_visible;no_publication | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CRASH-PINNED] | harness-quality.yml#plc9b-linux-native | implemented
 B-CRASH-STAGING | any | staging | crash_edge | package_operation_interrupted | retryable_failure@staging | same_receipt;pin_visible;no_binding | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CRASH-STAGING] | harness-quality.yml#plc9b-linux-native | implemented
 B-CRASH-SET | any | set_published | crash_edge | package_operation_interrupted | retryable_failure@set_published | same_receipt;pin_visible;no_binding;no_desired | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CRASH-SET] | harness-quality.yml#plc9b-linux-native | implemented
-B-CRASH-COMMITTED | any | committed | crash_after_edge | ok | committed@committed | same_receipt;pin_visible;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CRASH-COMMITTED] | harness-quality.yml#plc9b-linux-native | planned
-B-CONCUR-SAME | any | each_phase | concurrent_same_fingerprint | ok | committed@committed | same_receipt;single_owner;pin_visible | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CONCUR-SAME] | harness-quality.yml#plc9b-linux-native | planned
+B-CRASH-COMMITTED | any | committed | crash_after_edge | ok | committed@committed | same_receipt;pin_visible;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CRASH-COMMITTED] | harness-quality.yml#plc9b-linux-native | implemented
+B-CONCUR-SAME | any | each_phase | concurrent_same_fingerprint | ok | committed@committed | same_receipt;single_owner;pin_visible | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CONCUR-SAME] | harness-quality.yml#plc9b-linux-native | implemented
 B-CONCUR-CONFLICT | any | classified | concurrent_different_fingerprint | package_operation_identity_conflict | rejected@classified | single_owner;no_publication;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CONCUR-CONFLICT] | harness-quality.yml#plc9b-linux-native | implemented
-B-CONCUR-STALE | any | each_phase | stale_attempt_epoch | package_attempt_stale | rejected@prior_phase | single_owner;no_publication;no_binding;pin_visible | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CONCUR-STALE] | harness-quality.yml#plc9b-linux-native | planned
+B-CONCUR-STALE | any | each_phase | stale_attempt_epoch | package_attempt_stale | rejected@prior_phase | single_owner;no_publication;no_binding;pin_visible | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-CONCUR-STALE] | harness-quality.yml#plc9b-linux-native | implemented
 B-HANDOFF-BEFORE-DESIRED | any | dependency_pinned | crash_after_dependency_pins | package_retention_handoff_interrupted | retryable_failure@dependency_pinned | exact_pin_set;no_zero_pin;desired_unchanged;pin_visible | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-HANDOFF-BEFORE-DESIRED] | harness-quality.yml#plc9b-linux-native | implemented
 B-HANDOFF-AFTER-DESIRED | any | desired_committed | crash_before_handoff_settlement | package_retention_handoff_interrupted | retryable_failure@desired_committed | exact_pin_set;no_zero_pin;pin_visible;same_receipt | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-HANDOFF-AFTER-DESIRED] | harness-quality.yml#plc9b-linux-native | implemented
 B-HANDOFF-AFTER-SETTLEMENT | any | settled | replay_after_transaction_pin_release | ok | settled@settled | exact_pin_set;no_zero_pin;transaction_pin_released;same_receipt | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-HANDOFF-AFTER-SETTLEMENT] | harness-quality.yml#plc9b-linux-native | implemented
 B-HANDOFF-DESIRED-REJECT | any | dependency_pinned | desired_expected_revision_rejected | package_desired_revision_conflict | rejected@dependency_pinned | exact_pin_set;no_zero_pin;dependency_pins_released;desired_unchanged;pin_visible | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-HANDOFF-DESIRED-REJECT] | harness-quality.yml#plc9b-linux-native | implemented
 B-HANDOFF-STALE-RECEIPT | any | each_handoff_phase | stale_handoff_receipt | package_retention_handoff_stale | rejected@prior_handoff | exact_pin_set;no_zero_pin;desired_unchanged;same_receipt | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-HANDOFF-STALE-RECEIPT] | harness-quality.yml#plc9b-linux-native | implemented
 B-HANDOFF-CONCURRENT-REPLAY | any | each_handoff_phase | concurrent_exact_handoff_replay | ok | settled@settled | exact_pin_set;no_zero_pin;transaction_pin_released;same_receipt;single_owner | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-HANDOFF-CONCURRENT-REPLAY] | harness-quality.yml#plc9b-linux-native | implemented
-B-ENTRY-CLI | any | classified | cli_plugin_bound | ok | committed@committed | single_owner;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ENTRY-CLI] | harness-quality.yml#plc9b-linux-native | planned
-B-ENTRY-RPC | any | classified | rpc_plugin_bound | ok | committed@committed | single_owner;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ENTRY-RPC] | harness-quality.yml#plc9b-linux-native | planned
-B-ENTRY-SESSION | any | classified | session_plugin_bound | ok | committed@committed | single_owner;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ENTRY-SESSION] | harness-quality.yml#plc9b-linux-native | planned
-B-ENTRY-STARTUP | any | classified | startup_plugin_bound | ok | committed@committed | single_owner;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ENTRY-STARTUP] | harness-quality.yml#plc9b-linux-native | planned
-B-ENTRY-OPERATIONS | any | classified | operations_plugin_bound | ok | committed@committed | single_owner;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ENTRY-OPERATIONS] | harness-quality.yml#plc9b-linux-native | planned
-B-ENTRY-MATERIALIZER | any | classified | direct_materializer_plugin_bound | package_route_unavailable | rejected@classified | single_owner;no_publication;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ENTRY-MATERIALIZER] | harness-quality.yml#plc9b-linux-native | planned
-B-ENTRY-PUBLISH | any | staging | direct_publish_or_bind | package_route_unavailable | rejected@staging | single_owner;no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ENTRY-PUBLISH] | harness-quality.yml#plc9b-linux-native | planned
+B-ENTRY-CLI | any | classified | cli_plugin_bound | ok | committed@committed | single_owner;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ENTRY-CLI] | harness-quality.yml#plc9b-linux-native | implemented
+B-ENTRY-RPC | any | classified | rpc_plugin_bound | ok | committed@committed | single_owner;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ENTRY-RPC] | harness-quality.yml#plc9b-linux-native | implemented
+B-ENTRY-SESSION | any | classified | session_plugin_bound | ok | committed@committed | single_owner;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ENTRY-SESSION] | harness-quality.yml#plc9b-linux-native | implemented
+B-ENTRY-STARTUP | any | classified | startup_plugin_bound | ok | committed@committed | single_owner;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ENTRY-STARTUP] | harness-quality.yml#plc9b-linux-native | implemented
+B-ENTRY-OPERATIONS | any | classified | operations_plugin_bound | ok | committed@committed | single_owner;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ENTRY-OPERATIONS] | harness-quality.yml#plc9b-linux-native | implemented
+B-ENTRY-MATERIALIZER | any | classified | direct_materializer_plugin_bound | package_route_unavailable | rejected@classified | single_owner;no_publication;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ENTRY-MATERIALIZER] | harness-quality.yml#plc9b-linux-native | implemented
+B-ENTRY-PUBLISH | any | staging | direct_publish_or_bind | package_route_unavailable | rejected@staging | single_owner;no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ENTRY-PUBLISH] | harness-quality.yml#plc9b-linux-native | implemented
 B-ENTRY-DISABLED | any | classified | plc9b_owner_disabled | package_route_unavailable | rejected@classified | no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-ENTRY-DISABLED] | harness-quality.yml#plc9b-linux-native | implemented
-B-NOEXEC-IMPORT | any | extracted | import_trap | ok | committed@committed | no_process;no_import;no_extra_network | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-NOEXEC-IMPORT] | harness-quality.yml#plc9b-linux-native | planned
-B-NOEXEC-SETUP | any | extracted | setup_or_build_hook | package_artifact_type_rejected | rejected@extracted | no_process;no_import;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-NOEXEC-SETUP] | harness-quality.yml#plc9b-linux-native | planned
-B-NOEXEC-ENTRYPOINT | any | extracted | malicious_entrypoint_metadata | ok | committed@committed | no_process;no_import;no_extra_network | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-NOEXEC-ENTRYPOINT] | harness-quality.yml#plc9b-linux-native | planned
-B-NOEXEC-ADJACENT | any | extracted | adjacent_executable | ok | committed@committed | no_process;no_import;no_extra_network | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-NOEXEC-ADJACENT] | harness-quality.yml#plc9b-linux-native | planned
-B-STATE-CANCEL-EARLY | any | each_phase_before_transaction_pinned | operator_cancel | package_operation_cancelled | cancelled@prior_phase | bounded_residue;no_publication;no_binding;no_desired | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-STATE-CANCEL-EARLY] | harness-quality.yml#plc9b-linux-native | planned
-B-STATE-CANCEL-PINNED | any | each_precommit_phase_from_transaction_pinned | operator_cancel | package_operation_cancelled | cancelled@prior_phase | no_binding;no_desired;pin_visible;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-STATE-CANCEL-PINNED] | harness-quality.yml#plc9b-linux-native | planned
+B-NOEXEC-IMPORT | any | extracted | import_trap | ok | committed@committed | no_process;no_import;no_extra_network | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-NOEXEC-IMPORT] | harness-quality.yml#plc9b-linux-native | implemented
+B-NOEXEC-SETUP | any | inspecting | setup_or_build_hook | package_artifact_type_rejected | rejected@inspecting | no_process;no_import;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-NOEXEC-SETUP] | harness-quality.yml#plc9b-linux-native | implemented
+B-NOEXEC-ENTRYPOINT | any | extracted | malicious_entrypoint_metadata | ok | committed@committed | no_process;no_import;no_extra_network | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-NOEXEC-ENTRYPOINT] | harness-quality.yml#plc9b-linux-native | implemented
+B-NOEXEC-ADJACENT | any | extracted | adjacent_executable | ok | committed@committed | no_process;no_import;no_extra_network | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-NOEXEC-ADJACENT] | harness-quality.yml#plc9b-linux-native | implemented
+B-STATE-CANCEL-EARLY | any | each_phase_before_transaction_pinned | operator_cancel | package_operation_cancelled | cancelled@prior_phase | bounded_residue;no_publication;no_binding;no_desired | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-STATE-CANCEL-EARLY] | harness-quality.yml#plc9b-linux-native | implemented
+B-STATE-CANCEL-PINNED | any | each_precommit_phase_from_transaction_pinned | operator_cancel | package_operation_cancelled | cancelled@prior_phase | no_binding;no_desired;pin_visible;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-STATE-CANCEL-PINNED] | harness-quality.yml#plc9b-linux-native | implemented
 B-STATE-REJECT-CLEANUP | any | rejected | quarantine_cleanup_failure | package_quarantine_cleanup_retryable | rejected@cleanup_retryable | bounded_residue;no_binding;no_desired;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-STATE-REJECT-CLEANUP] | harness-quality.yml#plc9b-linux-native | implemented
-B-STATE-SECRETS | any | each_phase | credentialed_private_locator | ok | committed@committed | no_secret;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-STATE-SECRETS] | harness-quality.yml#plc9b-linux-native | planned
-B-STATE-STATUS | any | rejected | transport_status_mapping | package_archive_malformed | rejected@inspecting | same_receipt;no_secret;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-STATE-STATUS] | harness-quality.yml#plc9b-linux-native | planned
+B-STATE-SECRETS | any | each_phase | credentialed_private_locator | ok | committed@committed | no_secret;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-STATE-SECRETS] | harness-quality.yml#plc9b-linux-native | implemented
+B-STATE-STATUS | any | rejected | transport_status_mapping | package_archive_malformed | rejected@inspecting | same_receipt;no_secret;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-STATE-STATUS] | harness-quality.yml#plc9b-linux-native | implemented
 B-COMPAT-EPOCH | any | accepted | newer_lifecycle_epoch | package_runtime_epoch_unsupported | rejected@accepted | no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-EPOCH] | harness-quality.yml#plc9b-linux-native | implemented
 B-COMPAT-MIXED | any | accepted | mixed_fence_aware_processes | package_runtime_epoch_unsupported | rejected@accepted | single_owner;no_publication;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-MIXED] | harness-quality.yml#plc9b-linux-native | implemented
-B-COMPAT-LEGACY | any | classified | legacy_binding_history_hint | ok | classified@plugin_bound | no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-LEGACY] | harness-quality.yml#plc9b-linux-native | planned
-B-COMPAT-ROLLFORWARD | any | retryable_failure | upgrade_downgrade_rollforward | ok | committed@committed | same_receipt;pin_visible;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ROLLFORWARD] | harness-quality.yml#plc9b-linux-native | planned
+B-COMPAT-LEGACY | any | classified | legacy_binding_history_hint | ok | classified@plugin_bound | no_publication;no_binding;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-LEGACY] | harness-quality.yml#plc9b-linux-native | implemented
+B-COMPAT-ROLLFORWARD | any | retryable_failure | upgrade_downgrade_rollforward | ok | committed@committed | same_receipt;pin_visible;no_peer_fallback | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ROLLFORWARD] | harness-quality.yml#plc9b-linux-native | implemented
 B-COMPAT-CUTOVER-POSIX | posix-native | accepted | offline_quiescent_namespaced_cutover | ok | accepted@epoch_fenced | single_owner;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-CUTOVER-POSIX] | harness-quality.yml#plc9b-linux-native | implemented
 B-COMPAT-CUTOVER-WINDOWS | windows-native | accepted | offline_quiescent_namespaced_cutover | ok | accepted@epoch_fenced | single_owner;no_publication;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-CUTOVER-WINDOWS] | windows-shell-compatibility.yml#plc9b-windows-native | implemented
 B-COMPAT-PREFENCE-LIVE-POSIX | posix-native | accepted | pre_fence_writer_blocks_cutover | package_runtime_epoch_unsupported | rejected@pre_fence | single_owner;no_publication;no_binding;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-PREFENCE-LIVE-POSIX] | harness-quality.yml#plc9b-linux-native | implemented
 B-COMPAT-PREFENCE-LIVE-WINDOWS | windows-native | accepted | pre_fence_writer_blocks_cutover | package_runtime_epoch_unsupported | rejected@pre_fence | single_owner;no_publication;no_binding;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-PREFENCE-LIVE-WINDOWS] | windows-shell-compatibility.yml#plc9b-windows-native | implemented
 B-COMPAT-OFFLINE-RESTORE-POSIX | posix-native | accepted | complete_pre_b_restore_exclusive_old_runtime | ok | accepted@offline_restore | single_owner;legacy_snapshot_exact;b_namespace_unreachable;no_peer_fallback;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-OFFLINE-RESTORE-POSIX] | harness-quality.yml#plc9b-linux-native | implemented
-B-COMPAT-OFFLINE-RESTORE-WINDOWS | windows-native | accepted | complete_pre_b_restore_exclusive_old_runtime | ok | accepted@offline_restore | single_owner;legacy_snapshot_exact;b_namespace_unreachable;no_peer_fallback;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-OFFLINE-RESTORE-WINDOWS] | windows-shell-compatibility.yml#plc9b-windows-native | planned
+B-COMPAT-OFFLINE-RESTORE-WINDOWS | windows-native | accepted | complete_pre_b_restore_exclusive_old_runtime | ok | accepted@offline_restore | single_owner;legacy_snapshot_exact;b_namespace_unreachable;no_peer_fallback;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-OFFLINE-RESTORE-WINDOWS] | windows-shell-compatibility.yml#plc9b-windows-native | implemented
 B-COMPAT-ADOPT | posix-native | committed | authenticated_legacy_reacquisition | ok | committed@committed | same_receipt;pin_visible;legacy_snapshot_exact;desired_unchanged;instance_unchanged;binding_unchanged;enablement_unchanged;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ADOPT] | harness-quality.yml#plc9b-linux-native | implemented
 B-COMPAT-ADOPT-UNAUTHORIZED | posix-native | acquiring | legacy_reacquisition_unauthorized | package_source_unauthorized | rejected@acquiring | legacy_snapshot_exact;desired_unchanged;instance_unchanged;binding_unchanged;enablement_unchanged;no_publication;no_peer_fallback;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ADOPT-UNAUTHORIZED] | harness-quality.yml#plc9b-linux-native | implemented
 B-COMPAT-ADOPT-UNAVAILABLE | posix-native | acquiring | registry_network_temporarily_unavailable | package_operation_timed_out | retryable_failure@acquiring | bounded_residue;legacy_snapshot_exact;desired_unchanged;instance_unchanged;binding_unchanged;enablement_unchanged;no_publication;no_extra_network;no_peer_fallback;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ADOPT-UNAVAILABLE] | harness-quality.yml#plc9b-linux-native | implemented

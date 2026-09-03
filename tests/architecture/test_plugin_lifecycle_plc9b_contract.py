@@ -43,10 +43,13 @@ POSIX_EPOCH_CUTOVER = OWNER_KERNEL_ROOT / "posix_epoch_cutover.py"
 WINDOWS_EPOCH_CUTOVER = OWNER_KERNEL_ROOT / "windows_epoch_cutover.py"
 OFFLINE_RESTORE = OWNER_KERNEL_ROOT / "offline_restore.py"
 POSIX_OFFLINE_RESTORE = OWNER_KERNEL_ROOT / "posix_offline_restore.py"
+WINDOWS_OFFLINE_RESTORE = OWNER_KERNEL_ROOT / "windows_offline_restore.py"
 LEGACY_ADOPTION = OWNER_KERNEL_ROOT / "adoption.py"
 LEGACY_ADOPTION_TRANSACTION = OWNER_KERNEL_ROOT / "adoption_transaction.py"
-LINUX_LEGACY_RUNTIME = Path(
-    "src/loushang/harness/sandbox/package_legacy_runtime.py"
+PRODUCT_LIFECYCLE = Path("src/loushang/harness/resources/packages/product_lifecycle.py")
+LINUX_LEGACY_RUNTIME = Path("src/loushang/harness/sandbox/package_legacy_runtime.py")
+WINDOWS_LEGACY_RUNTIME = Path(
+    "src/loushang/harness/sandbox/package_windows_legacy_runtime.py"
 )
 CLOSURE_TEST = Path("tests/harness/resources/packages/test_plc9b_closure.py")
 CLOSURE_OWNER_TEST = Path(
@@ -102,9 +105,10 @@ OFFLINE_RESTORE_TEST = Path(
 POSIX_OFFLINE_RESTORE_TEST = Path(
     "tests/harness/resources/packages/test_plc9b_posix_offline_restore.py"
 )
-LEGACY_ADOPTION_TEST = Path(
-    "tests/harness/resources/packages/test_plc9b_adoption.py"
+WINDOWS_OFFLINE_RESTORE_TEST = Path(
+    "tests/harness/resources/packages/test_plc9b_windows_offline_restore.py"
 )
+LEGACY_ADOPTION_TEST = Path("tests/harness/resources/packages/test_plc9b_adoption.py")
 LEGACY_ADOPTION_TRANSACTION_TEST = Path(
     "tests/harness/resources/packages/test_plc9b_adoption_transaction.py"
 )
@@ -246,6 +250,9 @@ PLC9B4C2_WINDOWS_EPOCH_CUTOVER_CASES = {
 }
 PLC9B4C3C_LINUX_OFFLINE_RESTORE_CASES = {
     "B-COMPAT-OFFLINE-RESTORE-POSIX",
+}
+PLC9B4C5_WINDOWS_OFFLINE_RESTORE_CASES = {
+    "B-COMPAT-OFFLINE-RESTORE-WINDOWS",
 }
 PLC9B4C4D_LINUX_ADOPTION_CASES = {
     "B-COMPAT-ADOPT",
@@ -642,6 +649,12 @@ def _implemented_b4c3c_linux_offline_restore_manifest_cases() -> set[str]:
     )
 
 
+def _implemented_b4c5_windows_offline_restore_manifest_cases() -> set[str]:
+    return _literal_manifest_cases(
+        "IMPLEMENTED_B4C5_WINDOWS_OFFLINE_RESTORE_MANIFEST_CASES"
+    )
+
+
 def _implemented_b4c4d_linux_adoption_manifest_cases() -> set[str]:
     return _literal_manifest_cases("IMPLEMENTED_B4C4D_LINUX_ADOPTION_MANIFEST_CASES")
 
@@ -662,6 +675,28 @@ def _implemented_b4c4g_linux_adoption_precommit_crash_manifest_cases() -> set[st
     return _literal_manifest_cases(
         "IMPLEMENTED_B4C4G_LINUX_ADOPTION_PRECOMMIT_CRASH_MANIFEST_CASES"
     )
+
+
+def _implemented_b4d_state_manifest_cases() -> set[str]:
+    return _literal_manifest_cases("IMPLEMENTED_B4D_STATE_MANIFEST_CASES")
+
+
+def _implemented_b4d_linux_pipeline_manifest_cases() -> set[str]:
+    return _literal_manifest_cases("IMPLEMENTED_B4D_LINUX_PIPELINE_MANIFEST_CASES")
+
+
+def _implemented_b5_routing_manifest_cases() -> set[str]:
+    return _literal_manifest_cases("IMPLEMENTED_B5_ROUTING_MANIFEST_CASES")
+
+
+def test_plc9b4d_contract_freezes_recovery_state_and_noexec_scope() -> None:
+    contract = _source(CONTRACT)
+
+    assert "## PLC9B4d Accepted Recovery, State, And No-Execution Closure" in contract
+    assert "Linux adversarial manifest from 98 to 112 nodes" in contract
+    assert "before `transaction_pinned`" in contract
+    assert "Subprocess, import-side" in contract
+    assert "greater fenced attempt epoch" in contract
 
 
 def _journal_effect_policy() -> list[tuple[str, str, str]]:
@@ -745,7 +780,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.4c4g-accepted." in contract
+    assert "Contract version: PLC9B.5-accepted." in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
@@ -1020,6 +1055,9 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
     implemented_b4c3c_linux_restore = (
         _implemented_b4c3c_linux_offline_restore_manifest_cases()
     )
+    implemented_b4c5_windows_restore = (
+        _implemented_b4c5_windows_offline_restore_manifest_cases()
+    )
     implemented_b4c4d_linux_adoption = (
         _implemented_b4c4d_linux_adoption_manifest_cases()
     )
@@ -1032,6 +1070,9 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
     implemented_b4c4g_linux_adoption_precommit_crash = (
         _implemented_b4c4g_linux_adoption_precommit_crash_manifest_cases()
     )
+    implemented_b4d_state = _implemented_b4d_state_manifest_cases()
+    implemented_b4d_linux_pipeline = _implemented_b4d_linux_pipeline_manifest_cases()
+    implemented_b5_routing = _implemented_b5_routing_manifest_cases()
     implemented = (
         implemented_b1
         | implemented_b2
@@ -1053,10 +1094,14 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
         | implemented_b4c1_posix
         | implemented_b4c2_windows
         | implemented_b4c3c_linux_restore
+        | implemented_b4c5_windows_restore
         | implemented_b4c4d_linux_adoption
         | implemented_b4c4e_linux_adoption_failure
         | implemented_b4c4f_linux_adoption_committed_crash
         | implemented_b4c4g_linux_adoption_precommit_crash
+        | implemented_b4d_state
+        | implemented_b4d_linux_pipeline
+        | implemented_b5_routing
     )
 
     assert len(manifest) == 127
@@ -1370,6 +1415,12 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
     assert (implemented - implemented_b4c3c_linux_restore).isdisjoint(
         implemented_b4c3c_linux_restore
     )
+    assert implemented_b4c5_windows_restore == (
+        PLC9B4C5_WINDOWS_OFFLINE_RESTORE_CASES
+    )
+    assert (implemented - implemented_b4c5_windows_restore).isdisjoint(
+        implemented_b4c5_windows_restore
+    )
     assert implemented_b4c4d_linux_adoption == PLC9B4C4D_LINUX_ADOPTION_CASES
     assert (implemented - implemented_b4c4d_linux_adoption).isdisjoint(
         implemented_b4c4d_linux_adoption
@@ -1385,17 +1436,27 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
         implemented_b4c4f_linux_adoption_committed_crash
         == PLC9B4C4F_LINUX_ADOPTION_COMMITTED_CRASH_CASES
     )
-    assert (
-        implemented - implemented_b4c4f_linux_adoption_committed_crash
-    ).isdisjoint(implemented_b4c4f_linux_adoption_committed_crash)
+    assert (implemented - implemented_b4c4f_linux_adoption_committed_crash).isdisjoint(
+        implemented_b4c4f_linux_adoption_committed_crash
+    )
     assert (
         implemented_b4c4g_linux_adoption_precommit_crash
         == PLC9B4C4G_LINUX_ADOPTION_PRECOMMIT_CRASH_CASES
     )
-    assert (
-        implemented - implemented_b4c4g_linux_adoption_precommit_crash
-    ).isdisjoint(implemented_b4c4g_linux_adoption_precommit_crash)
-    assert len(manifest) - len(implemented) == 22
+    assert (implemented - implemented_b4c4g_linux_adoption_precommit_crash).isdisjoint(
+        implemented_b4c4g_linux_adoption_precommit_crash
+    )
+    assert implemented_b5_routing == {
+        "B-ENTRY-CLI",
+        "B-ENTRY-RPC",
+        "B-ENTRY-SESSION",
+        "B-ENTRY-STARTUP",
+        "B-ENTRY-OPERATIONS",
+        "B-ENTRY-MATERIALIZER",
+        "B-ENTRY-PUBLISH",
+    }
+    assert (implemented - implemented_b5_routing).isdisjoint(implemented_b5_routing)
+    assert len(manifest) - len(implemented) == 0
     workflow = _source(HARNESS_WORKFLOW)
     assert "PLC9B Linux native adversarial gate (plc9b-linux-native)" in workflow
     assert "tests/harness/resources/packages/test_plc9b_adversarial.py" in workflow
@@ -2168,7 +2229,61 @@ def test_plc9b1_owner_kernel_stays_internal_dark_and_capability_free() -> None:
                 for alias in node.names
             ):
                 production_importers.append(path)
-    assert set(production_importers) <= {LINUX_LEGACY_RUNTIME}
+    assert set(production_importers) <= {
+        LINUX_LEGACY_RUNTIME,
+        PRODUCT_LIFECYCLE,
+        WINDOWS_LEGACY_RUNTIME,
+    }
+
+
+def test_plc9b5_product_router_is_capability_poor_and_internal() -> None:
+    source = _source(PRODUCT_LIFECYCLE)
+    facade = _source(PACKAGE_ROOT / "__init__.py")
+    author_sdk = _source(AUTHOR_SDK)
+    contract = _source(CONTRACT)
+    tree = ast.parse(source, filename=str(PRODUCT_LIFECYCLE))
+    imported = {
+        node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
+    }
+    loushang_imports = {module for module in imported if module.startswith("loushang.")}
+
+    assert loushang_imports == {
+        "loushang.harness.resources.packages.plugin_lifecycle.owner",
+        "loushang.harness.resources.packages.plugin_lifecycle.records",
+    }
+    assert "class PackageProductLifecycleRouter:" in source
+    assert "class PackageProductLifecycleTransactionPort(Protocol):" in source
+    assert (
+        '_TRANSACTION_ENTRYPOINTS = frozenset({"cli", "rpc", "session", '
+        '"startup", "operations"})' in source
+    )
+    assert "self._transaction.execute(request, classified=status)" in source
+    assert "def refuse_direct_publish(" in source
+    for forbidden in (
+        "PackageMaterializer",
+        "PackageSourceResolver",
+        "PluginRevisionStore",
+        "publish_plugin_packages",
+        "materialize_remote_source",
+        "bind_plugin_packages",
+        "subprocess",
+        "socket",
+    ):
+        assert forbidden not in source
+    for exported in (
+        "PackageProductLifecycleRouter",
+        "PackageProductLifecycleTransactionPort",
+        "PackageProductRouteRequestV1",
+        "PackageProductPublishAttemptV1",
+    ):
+        assert f'"{exported}":' in facade
+        assert exported not in author_sdk
+    assert "## PLC9B5 Accepted Product Routing And Bypass Closure" in contract
+    assert "from 112 to 119 nodes" in contract
+    normalized = " ".join(contract.split())
+    assert "Harness Quality run `33709473590`" in normalized
+    assert "122 tests total" in normalized
+    assert "all 23 PR checks passed" in normalized
 
 
 def test_plc9b2a_acquisition_is_unbound_bounded_and_pathless() -> None:
@@ -3293,7 +3408,7 @@ def test_plc9b3e3c2_windows_materialization_is_rooted_role_safe_and_native() -> 
     for case_id in PLC9B3E3C2_WINDOWS_CASES:
         assert f"test_manifest_case[{case_id}]" in workflow
     assert "test_plc9b_windows_materialization.py" in workflow
-    assert workflow.count("test_plc9b_adversarial.py::test_manifest_case[B-") == 14
+    assert workflow.count("test_plc9b_adversarial.py::test_manifest_case[B-") == 15
     _assert_current_publication_statuses(manifest)
     assert manifest["B-PUB-UNCOMMITTED"]["status"] == "implemented"
 
@@ -3704,7 +3819,7 @@ def test_plc9b4b_retention_handoff_is_dark_exact_and_no_zero_pin() -> None:
         assert {"exact_pin_set", "no_zero_pin"} <= set(row["oracles"].split(";"))
 
     normalized = " ".join(contract.split())
-    assert "PLC9B.4c4g-accepted." in contract
+    assert "PLC9B.5-accepted." in contract
     assert "PLC9B4b Accepted Retention Handoff" in normalized
     assert "opened -> dependency_pinned -> desired_committed -> settled" in normalized
     assert "No journal lock is held" in normalized
@@ -3832,7 +3947,7 @@ def test_plc9b4c0_epoch_admission_is_dark_read_only_and_fail_closed() -> None:
         assert {"no_publication", "no_peer_fallback"} <= set(row["oracles"].split(";"))
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c4g-accepted." in contract
+    assert "Contract version: PLC9B.5-accepted." in contract
     assert "PLC9B4c0 Accepted Epoch Admission" in normalized
     assert "human-readable minimum runtime version is diagnostic evidence" in (
         normalized
@@ -3954,7 +4069,7 @@ def test_plc9b4c1_posix_cutover_has_one_native_owner_and_one_visibility_edge() -
         assert manifest[case_id]["status"] == "implemented"
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c4g-accepted." in contract
+    assert "Contract version: PLC9B.5-accepted." in contract
     assert "PLC9B4c1 Accepted POSIX Native Cutover" in normalized
     assert "no second `active-root` file" in normalized
     assert "sole Product-root pointer" in normalized
@@ -4072,7 +4187,7 @@ def test_plc9b4c2_windows_cutover_is_rooted_native_and_non_skippable() -> None:
     assert workflow.count("scripts/dev/verify_pytest_xml.py") >= 5
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c4g-accepted." in contract
+    assert "Contract version: PLC9B.5-accepted." in contract
     assert "PLC9B4c2 Accepted Windows Native Cutover" in normalized
     assert "same fingerprint domain" in normalized
     assert "rooted `NtCreateFile`" in normalized
@@ -4193,17 +4308,14 @@ def test_plc9b4c3a_offline_restore_stays_dark_and_unpromoted() -> None:
     ):
         assert evidence in component_tests
 
-    remaining = {
-        "B-COMPAT-OFFLINE-RESTORE-WINDOWS",
-    }
-    assert {
-        case_id for case_id in remaining if manifest[case_id]["status"] != "planned"
-    } == set()
+    assert (
+        manifest["B-COMPAT-OFFLINE-RESTORE-WINDOWS"]["status"] == "implemented"
+    )
     assert manifest["B-COMPAT-ADOPT"]["status"] == "implemented"
     assert "IMPLEMENTED_B4C3" not in component_tests
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c4g-accepted." in contract
+    assert "Contract version: PLC9B.5-accepted." in contract
     assert "PLC9B4c3a Accepted Offline Restore Protocol" in normalized
     assert "does not reinterpret the opaque B4c1 snapshot identifier" in normalized
     assert "closed coverage tuple" in normalized
@@ -4336,11 +4448,11 @@ def test_plc9b4c3b_posix_materializer_is_rooted_exact_and_dark() -> None:
     } <= set(row["oracles"].split(";"))
     assert "tests/harness/resources/packages/test_plc9b_adversarial.py" in workflow
     assert "scripts/dev/verify_pytest_xml.py" in workflow
-    assert manifest["B-COMPAT-OFFLINE-RESTORE-WINDOWS"]["status"] == "planned"
+    assert manifest["B-COMPAT-OFFLINE-RESTORE-WINDOWS"]["status"] == "implemented"
     assert manifest["B-COMPAT-ADOPT"]["status"] == "implemented"
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c4g-accepted." in contract
+    assert "Contract version: PLC9B.5-accepted." in contract
     assert "PLC9B4c3b Accepted POSIX Offline Restore Materialization" in normalized
     assert "authenticated snapshot authority" in normalized
     assert "requires its native directory identity" in normalized
@@ -4430,11 +4542,11 @@ def test_plc9b4c3c_linux_activation_is_native_exclusive_dark_and_promoted() -> N
     assert workflow.index("sudo apt-get install --yes bubblewrap") < workflow.index(
         "PLC9B Linux native adversarial gate (plc9b-linux-native)"
     )
-    assert manifest["B-COMPAT-OFFLINE-RESTORE-WINDOWS"]["status"] == "planned"
+    assert manifest["B-COMPAT-OFFLINE-RESTORE-WINDOWS"]["status"] == "implemented"
     assert manifest["B-COMPAT-ADOPT"]["status"] == "implemented"
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c4g-accepted." in contract
+    assert "Contract version: PLC9B.5-accepted." in contract
     assert "PLC9B4c3c Accepted Linux Legacy Runtime Activation" in normalized
     assert "owned by `loushang.harness.sandbox`" in normalized
     assert "the resource kernel remains backend-free" in inventory
@@ -4538,7 +4650,7 @@ def test_plc9b4c4a_adoption_protocol_is_pathless_and_stays_internal() -> None:
     assert "IMPLEMENTED_B4C4D_LINUX_ADOPTION_MANIFEST_CASES" in adversarial_tests
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c4g-accepted." in contract
+    assert "Contract version: PLC9B.5-accepted." in contract
     assert "PLC9B4c4a Accepted Legacy Adoption Protocol" in normalized
     assert "complete immutable legacy-state observation" in normalized
     assert "does not itself reacquire, stage, publish, or commit" in normalized
@@ -4551,8 +4663,7 @@ def test_plc9b4c4a_adoption_protocol_is_pathless_and_stays_internal() -> None:
     assert "PLC9B4c4a accepted code freezes a dark, pathless" in index
 
 
-def test_plc9b4c4c_pinned_reacquisition_is_evidence_only_and_stays_dark(
-) -> None:
+def test_plc9b4c4c_pinned_reacquisition_is_evidence_only_and_stays_dark() -> None:
     contract = _source(CONTRACT)
     inventory = _source(INVENTORY)
     index = _source(INDEX)
@@ -4623,8 +4734,8 @@ def test_plc9b4c4c_pinned_reacquisition_is_evidence_only_and_stays_dark(
         "lifecycle_request.requested_plugin_id == request.plugin_id",
         "request.expected_classification_fingerprint",
         "self._closure.reacquire(self._execution)",
-            "self._staging.authorize_adoption(request) is not True",
-            "adoption_request=request",
+        "self._staging.authorize_adoption(request) is not True",
+        "adoption_request=request",
         "__all__ = ()",
     ):
         assert invariant in source
@@ -4654,7 +4765,7 @@ def test_plc9b4c4c_pinned_reacquisition_is_evidence_only_and_stays_dark(
     assert "IMPLEMENTED_B4C4D_LINUX_ADOPTION_MANIFEST_CASES" in adversarial_tests
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c4g-accepted." in contract
+    assert "Contract version: PLC9B.5-accepted." in contract
     assert "PLC9B4c4b Accepted Adoption Transaction Adapter" in normalized
     assert "PLC9B4c4c Accepted Pinned-Candidate Reacquisition" in normalized
     assert "one-operation least-authority capability" in normalized
@@ -4672,7 +4783,7 @@ def test_plc9b4c4c_pinned_reacquisition_is_evidence_only_and_stays_dark(
     assert "PLC9B4c4c accepted code adds explicit recovery-only" in inventory
     assert "PLC9B4c4c accepted code supplies that seam" in index
     assert "def reacquire(" in artifact_source
-    assert "status.phase != \"transaction_pinned\"" in artifact_source
+    assert 'status.phase != "transaction_pinned"' in artifact_source
     assert "self._acquisition_owner.reopen_acquired" in artifact_source
     assert "def reacquire(" in closure_owner_source
     assert "durable_only=True" in closure_owner_source
@@ -4741,7 +4852,7 @@ def test_plc9b4c4d_positive_adoption_uses_native_composition_and_is_promoted() -
     assert "scripts/dev/verify_pytest_xml.py" in workflow
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c4g-accepted." in contract
+    assert "Contract version: PLC9B.5-accepted." in contract
     assert "PLC9B4c4d Accepted Native Positive Adoption Evidence" in normalized
     assert "production lifecycle, authenticated acquisition" in normalized
     assert "POSIX-native revision Store" in normalized
@@ -4890,7 +5001,7 @@ def test_plc9b4c4g_every_precommit_adoption_phase_rebuilds_and_recovers() -> Non
         assert evidence in tests
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c4g-accepted." in contract
+    assert "Contract version: PLC9B.5-accepted." in contract
     assert "PLC9B4c4g Accepted Every-Precommit Crash Evidence" in normalized
     assert "complete Package kernel, artifact/closure, pin, staging," in normalized
     assert "same still-active attempt" in normalized
@@ -4900,6 +5011,114 @@ def test_plc9b4c4g_every_precommit_adoption_phase_rebuilds_and_recovers() -> Non
     assert "Linux native node 98" in " ".join(inventory.split())
     assert "all five adoption rows" in " ".join(index.split()).lower()
     assert "Linux native node 98" in " ".join(index.split())
+
+
+def test_plc9b4c5_windows_restore_is_rooted_isolated_and_promoted() -> None:
+    contract = _source(CONTRACT)
+    inventory = _source(INVENTORY)
+    index = _source(INDEX)
+    source = _source(WINDOWS_OFFLINE_RESTORE)
+    runtime_source = _source(WINDOWS_LEGACY_RUNTIME)
+    component_tests = _source(WINDOWS_OFFLINE_RESTORE_TEST)
+    adversarial_tests = _source(ADVERSARIAL_TEST)
+    workflow = _source(WINDOWS_WORKFLOW)
+    internal_facade = _source(OWNER_KERNEL_ROOT / "__init__.py")
+    package_facade = _source(PACKAGE_ROOT / "__init__.py")
+    author_sdk = _source(AUTHOR_SDK)
+    manifest = _adversarial_manifest()
+
+    assert WINDOWS_OFFLINE_RESTORE.is_file()
+    assert WINDOWS_OFFLINE_RESTORE_TEST.is_file()
+    assert "class PackageWindowsOfflineRestoreMaterializer" in source
+    for rooted_primitive in (
+        "open_windows_directory",
+        "open_windows_regular_file_at",
+        "windows_listdir_at",
+        "windows_rename_at",
+        "windows_flush_directory",
+        "windows_rmdir_at",
+        "windows_unlink_at",
+        "_PinnedWindowsRoot",
+        "_msvcrt",
+    ):
+        assert rooted_primitive in source
+    for invariant in (
+        "PACKAGE_PRE_B_SNAPSHOT_DOMAINS",
+        "snapshot_tree_digest",
+        "state_manifest_digest",
+        "current_b_authority_root",
+        "PackageOfflineRestoreMaterializationReceiptV1.create",
+        "package_offline_restore_cleanup_failed",
+        "expected_identities=self._current_b_identities",
+        "__all__ = ()",
+    ):
+        assert invariant in source
+    for facade in (internal_facade, package_facade, author_sdk):
+        assert "PackageWindowsOfflineRestoreMaterializer" not in facade
+        assert "PackageWindowsLegacyRuntimeActivationOwner" not in facade
+
+    tree = ast.parse(source, filename=str(WINDOWS_OFFLINE_RESTORE))
+    imported = {
+        node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
+    }
+    for forbidden in (
+        "loushang.coding",
+        "loushang.foundation",
+        "loushang.harness.plugin_management",
+        "loushang.harness.sandbox",
+        "subprocess",
+    ):
+        assert not any(
+            module == forbidden or module.startswith(f"{forbidden}.")
+            for module in imported
+        )
+
+    for evidence in (
+        "materializes_exact_tree_replays_and_discards",
+        "concurrent_owners_converge_on_one_tree",
+        "rejects_snapshot_tamper_without_restore_residue",
+        "rejects_replaced_current_b_authority",
+        "appcontainer_activation_is_exclusive_replayable_and_reversible",
+    ):
+        assert evidence in component_tests
+    for invariant in (
+        "PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES",
+        "CreateAppContainerProfile",
+        "CreateProcessAsUserW",
+        "AssignProcessToJobObject",
+        "JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE",
+        "TOKEN_IS_APP_CONTAINER",
+        "TOKEN_CAPABILITIES",
+        "CapabilityCount = 0",
+        "restored_root",
+        "current_b_root",
+    ):
+        assert invariant in runtime_source
+    assert "test_plc9b_windows_offline_restore.py" in workflow
+    assert "IMPLEMENTED_B4C5_WINDOWS_OFFLINE_RESTORE_MANIFEST_CASES" in (
+        adversarial_tests
+    )
+    assert (
+        _implemented_b4c5_windows_offline_restore_manifest_cases()
+        == PLC9B4C5_WINDOWS_OFFLINE_RESTORE_CASES
+    )
+    assert "test_manifest_case[B-COMPAT-OFFLINE-RESTORE-WINDOWS]" in workflow
+    row = manifest["B-COMPAT-OFFLINE-RESTORE-WINDOWS"]
+    assert row["status"] == "implemented"
+    assert row["platform"] == "windows-native"
+    assert row["workflow"] == "windows-shell-compatibility.yml#plc9b-windows-native"
+
+    normalized = " ".join(contract.split())
+    assert "PLC9B4c5 Accepted Windows Offline Restore And Activation" in normalized
+    assert "complete visible ancestor chain" in normalized
+    assert "handle-relative atomic no-replace rename" in normalized
+    assert "zero-capability AppContainer" in normalized
+    assert "kill-on-close Job Object" in normalized
+    assert "Windows Shell Compatibility run `33709473605`" in normalized
+    assert "all 15 Windows manifest nodes" in normalized
+    assert "artifact ID `9876434660`" in normalized
+    assert "PLC9B4c5 accepted code adds a dark Windows" in inventory
+    assert "PLC9B4c5 accepted code adds the dark Windows" in index
 
 
 def test_plc9b2f_windows_backend_is_rooted_and_has_a_nonskippable_native_gate() -> None:
@@ -4932,7 +5151,7 @@ def test_plc9b2f_windows_backend_is_rooted_and_has_a_nonskippable_native_gate() 
     assert "test_plc9b_windows_native.py" in workflow
     assert "windows-shell-plc9b-native.xml" in workflow
     assert "include-hidden-files: true" in workflow
-    assert workflow.count("test_plc9b_adversarial.py::test_manifest_case[B-") == 14
+    assert workflow.count("test_plc9b_adversarial.py::test_manifest_case[B-") == 15
     for case_id in _implemented_b2i_windows_manifest_cases():
         assert f"test_manifest_case[{case_id}]" in workflow
     assert "windows-shell-plc9b-manifest.xml" in workflow

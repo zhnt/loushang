@@ -7,8 +7,10 @@ import io
 import json
 import os
 import shutil
+import socket
 import stat
 import struct
+import subprocess
 import sys
 import zipfile
 from collections.abc import Iterator
@@ -124,8 +126,10 @@ from loushang.harness.resources.packages.plugin_lifecycle.posix_offline_restore 
     PackagePosixOfflineRestoreMaterializer,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    PackageLifecycleCancelRequestV1,
     PackageLifecyclePhase,
     PackageLifecycleRequestV1,
+    PackageLifecycleRetryRequestV1,
     PackageLifecycleStatusV1,
     PluginBoundPackageClassificationV1,
     canonical_json_bytes,
@@ -178,11 +182,23 @@ from loushang.harness.resources.packages.plugin_lifecycle.windows_materializatio
     WindowsPackageDependencyMaterializationStore,
     WindowsPackagePluginRootMaterializationStore,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.windows_offline_restore import (
+    PackageWindowsOfflineRestoreMaterializer,
+)
+from loushang.harness.resources.packages.product_lifecycle import (
+    PackageProductEntrypoint,
+    PackageProductLifecycleRouter,
+    PackageProductPublishAttemptV1,
+    PackageProductRouteRequestV1,
+)
 from loushang.harness.resources.plugins.dependencies import (
     PluginDependencyClosureLock,
 )
 from loushang.harness.sandbox.package_legacy_runtime import (
     PackageLinuxLegacyRuntimeActivationOwner,
+)
+from loushang.harness.sandbox.package_windows_legacy_runtime import (
+    PackageWindowsLegacyRuntimeActivationOwner,
 )
 
 IMPLEMENTED_B1_MANIFEST_CASES = (
@@ -326,6 +342,9 @@ IMPLEMENTED_B4C2_WINDOWS_EPOCH_CUTOVER_MANIFEST_CASES = (
 IMPLEMENTED_B4C3C_LINUX_OFFLINE_RESTORE_MANIFEST_CASES = (
     "B-COMPAT-OFFLINE-RESTORE-POSIX",
 )
+IMPLEMENTED_B4C5_WINDOWS_OFFLINE_RESTORE_MANIFEST_CASES = (
+    "B-COMPAT-OFFLINE-RESTORE-WINDOWS",
+)
 IMPLEMENTED_B4C4D_LINUX_ADOPTION_MANIFEST_CASES = ("B-COMPAT-ADOPT",)
 IMPLEMENTED_B4C4E_LINUX_ADOPTION_FAILURE_MANIFEST_CASES = (
     "B-COMPAT-ADOPT-UNAUTHORIZED",
@@ -336,6 +355,33 @@ IMPLEMENTED_B4C4F_LINUX_ADOPTION_COMMITTED_CRASH_MANIFEST_CASES = (
 )
 IMPLEMENTED_B4C4G_LINUX_ADOPTION_PRECOMMIT_CRASH_MANIFEST_CASES = (
     "B-COMPAT-ADOPT-CRASH",
+)
+IMPLEMENTED_B4D_STATE_MANIFEST_CASES = (
+    "B-CRASH-COMMITTED",
+    "B-CONCUR-SAME",
+    "B-CONCUR-STALE",
+    "B-STATE-CANCEL-EARLY",
+    "B-STATE-CANCEL-PINNED",
+    "B-STATE-STATUS",
+    "B-COMPAT-LEGACY",
+    "B-COMPAT-ROLLFORWARD",
+)
+IMPLEMENTED_B4D_LINUX_PIPELINE_MANIFEST_CASES = (
+    "B-CLASS-CHANGED",
+    "B-NOEXEC-IMPORT",
+    "B-NOEXEC-SETUP",
+    "B-NOEXEC-ENTRYPOINT",
+    "B-NOEXEC-ADJACENT",
+    "B-STATE-SECRETS",
+)
+IMPLEMENTED_B5_ROUTING_MANIFEST_CASES = (
+    "B-ENTRY-CLI",
+    "B-ENTRY-RPC",
+    "B-ENTRY-SESSION",
+    "B-ENTRY-STARTUP",
+    "B-ENTRY-OPERATIONS",
+    "B-ENTRY-MATERIALIZER",
+    "B-ENTRY-PUBLISH",
 )
 ADOPTION_PRECOMMIT_CRASH_PHASES: tuple[PackageLifecyclePhase, ...] = (
     "acquiring",
@@ -381,6 +427,11 @@ EXECUTABLE_MANIFEST_CASES = (
         else ()
     )
     + (
+        IMPLEMENTED_B4C5_WINDOWS_OFFLINE_RESTORE_MANIFEST_CASES
+        if os.name == "nt"
+        else ()
+    )
+    + (
         IMPLEMENTED_B4C4D_LINUX_ADOPTION_MANIFEST_CASES
         if sys.platform.startswith("linux")
         else ()
@@ -400,6 +451,13 @@ EXECUTABLE_MANIFEST_CASES = (
         if sys.platform.startswith("linux")
         else ()
     )
+    + IMPLEMENTED_B4D_STATE_MANIFEST_CASES
+    + (
+        IMPLEMENTED_B4D_LINUX_PIPELINE_MANIFEST_CASES
+        if sys.platform.startswith("linux")
+        else ()
+    )
+    + IMPLEMENTED_B5_ROUTING_MANIFEST_CASES
 )
 
 WHEEL_FILENAME = "acme_plugin-1.0-py3-none-any.whl"
@@ -794,6 +852,28 @@ class _StableClassificationRecheck:
         prior: PluginBoundPackageClassificationV1,
     ) -> PluginBoundPackageClassificationV1:
         return prior
+
+
+@dataclass
+class _ChangedClassificationRecheck:
+    def recheck(
+        self,
+        _request: PackageLifecycleRequestV1,
+        prior: PluginBoundPackageClassificationV1,
+    ) -> PluginBoundPackageClassificationV1:
+        facts = PackageClassificationFactsV1(
+            facts=prior.basis_facts.facts,
+            policy_revision="classification-policy:changed",
+            classifier_epoch=prior.classifier_epoch + 1,
+        )
+        return PluginBoundPackageClassificationV1(
+            decision=prior.decision,
+            request_fingerprint=prior.request_fingerprint,
+            basis_facts=facts,
+            policy_revision=facts.policy_revision,
+            classifier_epoch=facts.classifier_epoch,
+            canonical_source_identity=prior.canonical_source_identity,
+        )
 
 
 @dataclass
@@ -1294,11 +1374,12 @@ def _facts(*present: str) -> PackageClassificationFactsV1:
 
 def _request(
     *,
+    operation_id: str = "manifest-operation",
     source: str = "https://packages.example.test/acme.whl",
     environment_fingerprint: str = "e" * 64,
 ) -> PackageLifecycleIngressRequestV1:
     return PackageLifecycleIngressRequestV1(
-        operation_id="manifest-operation",
+        operation_id=operation_id,
         action="install",
         product_id="coding",
         scope_id="workspace:manifest",
@@ -1347,6 +1428,56 @@ def _owner(
     )
 
 
+_LIFECYCLE_PHASES: tuple[PackageLifecyclePhase, ...] = (
+    "accepted",
+    "classified",
+    "acquiring",
+    "acquired",
+    "inspecting",
+    "extracted",
+    "resolving_closure",
+    "closure_verified",
+    "transaction_pinned",
+    "staging",
+    "set_published",
+    "committed",
+)
+
+
+def _advance_lifecycle(
+    owner: PackageLifecycleOwner,
+    status: PackageLifecycleStatusV1,
+    target: PackageLifecyclePhase,
+) -> PackageLifecycleStatusV1:
+    current = status
+    start = _LIFECYCLE_PHASES.index(current.phase)
+    end = _LIFECYCLE_PHASES.index(target)
+    for next_phase in _LIFECYCLE_PHASES[start + 1 : end + 1]:
+        current = owner.advance(
+            current.operation_id,
+            next_phase=next_phase,
+            expected_phase=current.phase,
+            expected_journal_revision=current.journal_revision,
+            expected_attempt_epoch=current.attempt_epoch,
+        )
+    return current
+
+
+@dataclass
+class _ManifestProductTransaction:
+    owner: PackageLifecycleOwner
+    calls: list[PackageProductEntrypoint] = field(default_factory=list)
+
+    def execute(
+        self,
+        request: PackageProductRouteRequestV1,
+        *,
+        classified: PackageLifecycleStatusV1,
+    ) -> PackageLifecycleStatusV1:
+        self.calls.append(request.entrypoint)
+        return _advance_lifecycle(self.owner, classified, "committed")
+
+
 def _b2_owner(
     tmp_path: Path,
     *,
@@ -1386,9 +1517,7 @@ def _b2_owner(
         store=store,
     )
     clock = (
-        _Clock()
-        if case_id in {"B-ACQ-TIMEOUT", "B-COMPAT-ADOPT-UNAVAILABLE"}
-        else None
+        _Clock() if case_id in {"B-ACQ-TIMEOUT", "B-COMPAT-ADOPT-UNAVAILABLE"} else None
     )
     source_authority = _SourceAuthority(
         case_id=case_id,
@@ -2294,6 +2423,21 @@ class _ManifestLinuxOfflineRestoreFixture:
     current_b_root: Path
 
 
+@dataclass(frozen=True)
+class _ManifestWindowsOfflineRestoreFixture:
+    owner: PackageOfflineRestoreOwner
+    materializer: PackageWindowsOfflineRestoreMaterializer
+    activation: PackageWindowsLegacyRuntimeActivationOwner
+    request: PackageOfflineRestoreRequestV1
+    journal: PackageEpochFenceJournal
+    coordination: _ManifestEpochCutoverCoordination
+    snapshots: _ManifestOfflineRestoreSnapshots
+    source: Path
+    restore_root: Path
+    activation_root: Path
+    current_b_root: Path
+
+
 def _manifest_directory_identity(path: Path) -> str:
     metadata = path.stat()
     return sha256(
@@ -2466,6 +2610,130 @@ def _manifest_linux_offline_restore_fixture(
     )
 
 
+def _manifest_windows_offline_restore_fixture(
+    tmp_path: Path,
+) -> _ManifestWindowsOfflineRestoreFixture:
+    assert os.name == "nt"
+    store_id = "package-store:manifest-windows-offline-restore"
+    snapshot_root = tmp_path / "manifest-snapshot-authority"
+    restore_root = tmp_path / "manifest-restore-authority"
+    activation_root = tmp_path / "manifest-activation-authority"
+    current_b_root = tmp_path / "manifest-current-b-authority"
+    for root in (snapshot_root, restore_root, activation_root, current_b_root):
+        root.mkdir()
+    (current_b_root / "epoch-b.json").write_bytes(b'{"epoch":"B"}\n')
+    snapshot_id = sha256(b"manifest-windows-pre-b-snapshot").hexdigest()
+    source = snapshot_root / snapshot_id / "payload"
+    source.mkdir(parents=True)
+    (source / "legacy-state.json").write_bytes(b'{"legacy":1}\n')
+    tree_digest, entry_count, byte_count = _manifest_tree_metrics(source)
+    snapshot = PackageEpochCutoverSnapshotReceiptV1.create(
+        store_id=store_id,
+        legacy_root_identity=sha256(b"manifest-windows-legacy-root").hexdigest(),
+        quiescence_receipt_id=sha256(b"manifest-windows-quiescence").hexdigest(),
+        snapshot_id=snapshot_id,
+        snapshot_revision=1,
+        entry_count=entry_count,
+        byte_count=byte_count,
+    )
+    state_manifest = canonical_json_bytes(
+        {
+            "byteCount": snapshot.byte_count,
+            "coveredDomains": list(PACKAGE_PRE_B_SNAPSHOT_DOMAINS),
+            "entryCount": snapshot.entry_count,
+            "legacyRootIdentity": snapshot.legacy_root_identity,
+            "manifestVersion": 1,
+            "snapshotId": snapshot.snapshot_id,
+            "snapshotReceiptId": snapshot.receipt_id,
+            "snapshotRevision": snapshot.snapshot_revision,
+            "storeId": snapshot.store_id,
+            "treeDigest": tree_digest,
+        }
+    )
+    (source.parent / "state-manifest.json").write_bytes(state_manifest)
+    evidence = PackageOfflineRestoreSnapshotEvidenceV1.create(
+        snapshot,
+        snapshot_tree_digest=tree_digest,
+        state_manifest_digest=sha256(state_manifest).hexdigest(),
+    )
+    journal = PackageEpochFenceJournal(
+        tmp_path / "manifest-windows-offline-epoch.jsonl"
+    )
+    current = journal.publish(
+        PackageEpochFenceRequestV1.create(
+            store_id=store_id,
+            prior_fence=None,
+            legacy_root_identity=snapshot.legacy_root_identity,
+            fenced_root_identity=_manifest_directory_identity(current_b_root),
+            namespace_id=sha256(b"manifest-windows-current-b-namespace").hexdigest(),
+            minimum_runtime_version="2.0.0",
+            minimum_runtime_protocol_epoch=2,
+            quiescence_receipt_id=snapshot.quiescence_receipt_id,
+            snapshot_receipt_id=snapshot.receipt_id,
+            root_switch_receipt_id=sha256(
+                b"manifest-windows-root-switch"
+            ).hexdigest(),
+        )
+    )
+    request = PackageOfflineRestoreRequestV1.create(
+        current_fence=current,
+        genesis_fence=current,
+        snapshot_evidence=evidence,
+        restore_namespace_id=sha256(
+            b"manifest-windows-isolated-restore"
+        ).hexdigest(),
+        legacy_runtime_version="1.9.0",
+    )
+    coordination = _ManifestEpochCutoverCoordination()
+    snapshots = _ManifestOfflineRestoreSnapshots(evidence)
+    materializer = PackageWindowsOfflineRestoreMaterializer(
+        snapshot_root,
+        restore_root,
+        current_b_authority_root=current_b_root,
+        store_id=store_id,
+    )
+    command = (
+        os.environ.get("COMSPEC", r"C:\Windows\System32\cmd.exe"),
+        "/d",
+        "/q",
+        "/c",
+        (
+            "> %LOUSHANG_LEGACY_RUNTIME_READY_PATH% "
+            "echo %LOUSHANG_LEGACY_RUNTIME_READY_TOKEN% && "
+            "for /L %i in (1,1,2147483647) do ver >nul 2>&1"
+        ),
+    )
+    activation = PackageWindowsLegacyRuntimeActivationOwner(
+        restore_root,
+        activation_root,
+        current_b_authority_root=current_b_root,
+        store_id=store_id,
+        legacy_runtime_version=request.legacy_runtime_version,
+        command=command,
+    )
+    owner = PackageOfflineRestoreOwner(
+        store_id=store_id,
+        epoch_journal=journal,
+        coordination=coordination,
+        snapshots=snapshots,
+        materialization=materializer,
+        activation=activation,
+    )
+    return _ManifestWindowsOfflineRestoreFixture(
+        owner=owner,
+        materializer=materializer,
+        activation=activation,
+        request=request,
+        journal=journal,
+        coordination=coordination,
+        snapshots=snapshots,
+        source=source,
+        restore_root=restore_root,
+        activation_root=activation_root,
+        current_b_root=current_b_root,
+    )
+
+
 @dataclass
 class _ManifestAdoptionFenceReader:
     journal: PackageEpochFenceJournal
@@ -2622,9 +2890,13 @@ def _manifest_native_adoption_fixture(
     case_id: str = "B-COMPAT-ADOPT",
     crash_after_committed: bool = False,
     crash_after_phase: PackageLifecyclePhase | None = None,
+    root_payload: bytes | None = None,
+    secret: str = "manifest-secret-b-compat-adopt",
+    staging_classification_recheck: (
+        _StableClassificationRecheck | _ChangedClassificationRecheck | None
+    ) = None,
 ) -> _ManifestNativeAdoptionFixture:
     store_id = "package-store:manifest-adoption"
-    secret = "manifest-secret-b-compat-adopt"
     environment = _closure_environment()
     (
         kernel,
@@ -2642,6 +2914,7 @@ def _manifest_native_adoption_fixture(
         case_id=case_id,
         secret=secret,
         crash_after_phase=crash_after_phase,
+        root_payload=root_payload,
     )
     classified = kernel.submit(
         _request(
@@ -2759,7 +3032,9 @@ def _manifest_native_adoption_fixture(
     )
     staging_owner = PackageStagingSetLifecycleOwner(
         kernel=kernel,
-        classification_recheck=_StableClassificationRecheck(),
+        classification_recheck=(
+            staging_classification_recheck or _StableClassificationRecheck()
+        ),
         closure_plans=resolution_journal,
         pin_journal=pin_journal,
         root_targets=root_targets,
@@ -2900,9 +3175,7 @@ def _restart_manifest_native_adoption_fixture(
         retention=retention,
         pin_journal=pin_journal,
     )
-    root_settlements = PackageStoreSettlementJournal(
-        fixture.root_settlements.path
-    )
+    root_settlements = PackageStoreSettlementJournal(fixture.root_settlements.path)
     dependency_settlements = PackageStoreSettlementJournal(
         root / "manifest-adoption-dependency-settlements.jsonl"
     )
@@ -3069,7 +3342,11 @@ def test_native_adoption_committed_replay_requires_durable_root_target(
 
 
 @pytest.mark.parametrize("case_id", EXECUTABLE_MANIFEST_CASES)
-def test_manifest_case(case_id: str, tmp_path: Path) -> None:
+def test_manifest_case(
+    case_id: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     if case_id == "B-CLASS-PLUGIN":
         owner, journal = _owner(
             tmp_path,
@@ -3108,6 +3385,348 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
             code="package_target_classification_indeterminate",
         )
         _assert_replay_is_single_owner(owner, journal)
+    elif case_id == "B-CLASS-CHANGED":
+        assert sys.platform.startswith("linux")
+        fixture = _manifest_native_adoption_fixture(
+            tmp_path,
+            case_id=case_id,
+            staging_classification_recheck=_ChangedClassificationRecheck(),
+        )
+        product_before = fixture.product_projections.capture()
+
+        result = fixture.owner.adopt(fixture.request)
+        replay = fixture.owner.adopt(fixture.request)
+
+        assert result == replay
+        assert result.disposition == "rejected"
+        assert result.code == "package_target_classification_changed"
+        status = fixture.kernel.status(fixture.request.operation_id)
+        assert status is not None
+        assert (status.phase, status.disposition) == ("staging", "rejected")
+        assert len(fixture.pin_journal.records()) == 1
+        assert fixture.committed_sets.records() == ()
+        assert fixture.product_projections.capture() == product_before
+        assert not (tmp_path / "binding.json").exists()
+        assert not (tmp_path / "desired.json").exists()
+    elif case_id == "B-CRASH-COMMITTED":
+        owner, journal = _owner(
+            tmp_path,
+            facts=_facts("explicit_plugin_intent"),
+        )
+        classified = owner.submit(_request())
+        published = _advance_lifecycle(owner, classified, "set_published")
+        committed = owner.advance(
+            published.operation_id,
+            next_phase="committed",
+            expected_phase="set_published",
+            expected_journal_revision=published.journal_revision,
+            expected_attempt_epoch=published.attempt_epoch,
+        )
+        before = journal.records()
+        restarted = PackageLifecycleOwner(
+            journal=PackageLifecycleJournal(journal.path),
+            classification_authority=_Authority(_facts("explicit_plugin_intent")),
+            enabled=True,
+        )
+
+        replay = restarted.advance(
+            published.operation_id,
+            next_phase="committed",
+            expected_phase="set_published",
+            expected_journal_revision=published.journal_revision,
+            expected_attempt_epoch=published.attempt_epoch,
+        )
+
+        assert replay == committed
+        assert journal.records() == before
+        assert committed.disposition == "committed"
+    elif case_id == "B-CONCUR-SAME":
+        owner, journal = _owner(
+            tmp_path,
+            facts=_facts("explicit_plugin_intent"),
+        )
+        current = owner.accept(_request())
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            classified = tuple(
+                executor.map(
+                    lambda _index: owner.classify(
+                        current.operation_id,
+                        expected_journal_revision=current.journal_revision,
+                        expected_attempt_epoch=current.attempt_epoch,
+                    ),
+                    range(8),
+                )
+            )
+        assert len(set(classified)) == 1
+        current = classified[0]
+        for next_phase in _LIFECYCLE_PHASES[2:]:
+            before = len(journal.records())
+            with ThreadPoolExecutor(max_workers=8) as executor:
+                results = tuple(
+                    executor.map(
+                        lambda _index, current=current, next_phase=next_phase: (
+                            owner.advance(
+                                current.operation_id,
+                                next_phase=next_phase,
+                                expected_phase=current.phase,
+                                expected_journal_revision=current.journal_revision,
+                                expected_attempt_epoch=current.attempt_epoch,
+                            )
+                        ),
+                        range(8),
+                    )
+                )
+            assert len(set(results)) == 1
+            assert len(journal.records()) == before + 1
+            current = results[0]
+        assert (current.phase, current.disposition) == ("committed", "committed")
+    elif case_id == "B-CONCUR-STALE":
+        for phase in _LIFECYCLE_PHASES[:-1]:
+            root = tmp_path / phase
+            root.mkdir()
+            owner, journal = _owner(
+                root,
+                facts=_facts("explicit_plugin_intent"),
+            )
+            current = owner.accept(_request(operation_id=f"stale-{phase}"))
+            if phase != "accepted":
+                current = owner.classify(
+                    current.operation_id,
+                    expected_journal_revision=current.journal_revision,
+                    expected_attempt_epoch=current.attempt_epoch,
+                )
+                current = _advance_lifecycle(owner, current, phase)
+            prior = current
+            interrupted = owner.interrupt(
+                current.operation_id,
+                expected_phase=current.phase,
+                expected_journal_revision=current.journal_revision,
+                expected_attempt_epoch=current.attempt_epoch,
+            )
+            resumed = owner.retry(
+                PackageLifecycleRetryRequestV1(
+                    operation_id=current.operation_id,
+                    request_fingerprint=current.request_fingerprint,
+                    expected_attempt_epoch=interrupted.attempt_epoch,
+                )
+            )
+            before = journal.records()
+
+            stale = owner.cancel(
+                PackageLifecycleCancelRequestV1(
+                    operation_id=prior.operation_id,
+                    request_fingerprint=prior.request_fingerprint,
+                    expected_phase=prior.phase,
+                    expected_journal_revision=prior.journal_revision,
+                    expected_attempt_epoch=prior.attempt_epoch,
+                )
+            )
+
+            assert stale.disposition == "rejected"
+            assert stale.failure is not None
+            assert stale.failure.code == "package_attempt_stale"
+            assert stale.attempt_epoch == resumed.attempt_epoch == 2
+            assert journal.records() == before
+    elif case_id in {"B-STATE-CANCEL-EARLY", "B-STATE-CANCEL-PINNED"}:
+        transaction_pinned_index = _LIFECYCLE_PHASES.index("transaction_pinned")
+        phases = (
+            _LIFECYCLE_PHASES[:transaction_pinned_index]
+            if case_id == "B-STATE-CANCEL-EARLY"
+            else _LIFECYCLE_PHASES[transaction_pinned_index:-1]
+        )
+        for phase in phases:
+            root = tmp_path / phase
+            root.mkdir()
+            owner, journal = _owner(
+                root,
+                facts=_facts("explicit_plugin_intent"),
+            )
+            current = owner.accept(_request(operation_id=f"cancel-{phase}"))
+            if phase != "accepted":
+                current = owner.classify(
+                    current.operation_id,
+                    expected_journal_revision=current.journal_revision,
+                    expected_attempt_epoch=current.attempt_epoch,
+                )
+                current = _advance_lifecycle(owner, current, phase)
+            before = len(journal.records())
+            request = PackageLifecycleCancelRequestV1(
+                operation_id=current.operation_id,
+                request_fingerprint=current.request_fingerprint,
+                expected_phase=current.phase,
+                expected_journal_revision=current.journal_revision,
+                expected_attempt_epoch=current.attempt_epoch,
+            )
+
+            cancelled = owner.cancel(request)
+            replay = owner.cancel(request)
+
+            assert replay == cancelled
+            assert cancelled.disposition == "cancelled"
+            assert cancelled.failure is not None
+            assert cancelled.failure.code == "package_operation_cancelled"
+            assert len(journal.records()) == before + 1
+            assert not (root / "binding.json").exists()
+            assert not (root / "desired.json").exists()
+    elif case_id in {
+        "B-NOEXEC-IMPORT",
+        "B-NOEXEC-SETUP",
+        "B-NOEXEC-ENTRYPOINT",
+        "B-NOEXEC-ADJACENT",
+    }:
+        assert sys.platform.startswith("linux")
+        sentinel = tmp_path / "artifact-executed"
+        trap = (
+            "from pathlib import Path\n"
+            f"Path({str(sentinel)!r}).write_text('executed')\n"
+            "def main():\n"
+            f"    Path({str(sentinel)!r}).write_text('entrypoint')\n"
+        ).encode()
+        extras: dict[str, bytes] = {}
+        modes: dict[str, int] = {}
+        if case_id == "B-NOEXEC-IMPORT":
+            extras["acme_plugin/import_trap.py"] = trap
+        elif case_id == "B-NOEXEC-ENTRYPOINT":
+            extras["acme_plugin/entrypoint_trap.py"] = trap
+            extras[f"{DIST_INFO}/entry_points.txt"] = (
+                b"[console_scripts]\nacme-trap=acme_plugin.entrypoint_trap:main\n"
+            )
+        elif case_id == "B-NOEXEC-ADJACENT":
+            name = "acme_plugin/post-install"
+            extras[name] = f"#!/bin/sh\necho executed > {sentinel}\n".encode()
+            modes[name] = stat.S_IFREG | 0o755
+
+        def forbidden_effect(*_args: object, **_kwargs: object) -> None:
+            raise AssertionError("Package inspection executed an external effect")
+
+        monkeypatch.setattr(subprocess, "Popen", forbidden_effect)
+        monkeypatch.setattr(os, "system", forbidden_effect)
+        monkeypatch.setattr(socket, "create_connection", forbidden_effect)
+
+        if case_id == "B-NOEXEC-SETUP":
+            (
+                kernel,
+                artifact_owner,
+                _journal,
+                _evidence,
+                _cleanup,
+                _store,
+                _source,
+            ) = _b2_owner(
+                tmp_path,
+                case_id=case_id,
+                secret="noexec-secret",
+                payload=_wheel_bytes(
+                    extra_files={"setup.py": trap, "pyproject.toml": trap}
+                ),
+            )
+            classified = kernel.submit(_request())
+            result = artifact_owner.execute(
+                PackageArtifactExecutionRequestV1(
+                    operation_id=classified.operation_id,
+                    request_fingerprint=classified.request_fingerprint,
+                    expected_attempt_epoch=classified.attempt_epoch,
+                    wheel_filename="acme_plugin-1.0.tar.gz",
+                    credential_reference="opaque:noexec-secret",
+                )
+            )
+            assert result.status.disposition == "rejected"
+            assert result.status.failure is not None
+            assert result.status.failure.code == "package_artifact_type_rejected"
+        else:
+            fixture = _manifest_native_adoption_fixture(
+                tmp_path,
+                case_id=case_id,
+                root_payload=_wheel_bytes(extra_files=extras, entry_modes=modes),
+            )
+            result = fixture.owner.adopt(fixture.request)
+            assert result.disposition == "adopted"
+            assert fixture.kernel.status(fixture.request.operation_id).phase == (
+                "committed"
+            )
+        assert not sentinel.exists()
+    elif case_id == "B-STATE-SECRETS":
+        assert sys.platform.startswith("linux")
+        secret = "state-secret-never-persist"
+        fixture = _manifest_native_adoption_fixture(
+            tmp_path,
+            case_id=case_id,
+            secret=secret,
+        )
+
+        result = fixture.owner.adopt(fixture.request)
+
+        assert result.disposition == "adopted"
+        assert secret not in repr(result)
+        _assert_manifest_secret_absent(tmp_path, secret)
+    elif case_id == "B-STATE-STATUS":
+        secret = "status-secret-never-persist"
+        (
+            kernel,
+            artifact_owner,
+            journal,
+            _evidence,
+            _cleanup,
+            _store,
+            _source,
+        ) = _b2_owner(
+            tmp_path,
+            case_id=case_id,
+            secret=secret,
+            payload=_wheel_bytes()[:-8],
+        )
+        classified = kernel.submit(_request())
+
+        result = artifact_owner.execute(_artifact_execution(classified, secret=secret))
+        replay = artifact_owner.execute(_artifact_execution(classified, secret=secret))
+
+        assert replay.status == result.status
+        assert result.status.failure is not None
+        assert result.status.failure.code == "package_archive_malformed"
+        assert (
+            PackageLifecycleStatusV1.from_dict(result.status.to_dict()) == result.status
+        )
+        assert journal.status(classified.operation_id) == result.status
+        assert secret not in repr((result, replay, journal.records()))
+    elif case_id == "B-COMPAT-LEGACY":
+        owner, journal = _owner(
+            tmp_path,
+            facts=_facts("existing_plugin_history"),
+        )
+
+        status = owner.submit(_request())
+
+        _assert_classification(status, decision="plugin_bound", code=None)
+        _assert_replay_is_single_owner(owner, journal)
+        _assert_no_capability_side_effect(tmp_path)
+    elif case_id == "B-COMPAT-ROLLFORWARD":
+        owner, journal = _owner(
+            tmp_path,
+            facts=_facts("explicit_plugin_intent"),
+        )
+        current = owner.submit(_request())
+        current = _advance_lifecycle(owner, current, "transaction_pinned")
+        interrupted = owner.interrupt(
+            current.operation_id,
+            expected_phase=current.phase,
+            expected_journal_revision=current.journal_revision,
+            expected_attempt_epoch=current.attempt_epoch,
+        )
+        resumed = owner.retry(
+            PackageLifecycleRetryRequestV1(
+                operation_id=current.operation_id,
+                request_fingerprint=current.request_fingerprint,
+                expected_attempt_epoch=interrupted.attempt_epoch,
+            )
+        )
+        committed = _advance_lifecycle(owner, resumed, "committed")
+        before = journal.records()
+
+        replay = owner.submit(_request())
+
+        assert replay == committed
+        assert replay.disposition == "committed"
+        assert journal.records() == before
     elif case_id in {"B-CRASH-ACCEPTED", "B-CRASH-CLASSIFIED"}:
         owner, journal = _owner(
             tmp_path,
@@ -3163,6 +3782,99 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
         assert conflict.failure.code == "package_operation_identity_conflict"
         assert journal.status(accepted.operation_id) == accepted
         assert len(journal.records()) == 2
+    elif case_id in {
+        "B-ENTRY-CLI",
+        "B-ENTRY-RPC",
+        "B-ENTRY-SESSION",
+        "B-ENTRY-STARTUP",
+        "B-ENTRY-OPERATIONS",
+    }:
+        entrypoint: PackageProductEntrypoint = {
+            "B-ENTRY-CLI": "cli",
+            "B-ENTRY-RPC": "rpc",
+            "B-ENTRY-SESSION": "session",
+            "B-ENTRY-STARTUP": "startup",
+            "B-ENTRY-OPERATIONS": "operations",
+        }[case_id]  # type: ignore[assignment]
+        owner, journal = _owner(
+            tmp_path,
+            facts=_facts("explicit_plugin_intent"),
+        )
+        transaction = _ManifestProductTransaction(owner)
+        router = PackageProductLifecycleRouter(
+            owner=owner,
+            transaction=transaction,
+        )
+        route = PackageProductRouteRequestV1(
+            entrypoint=entrypoint,
+            ingress=_request(),
+        )
+
+        committed = router.route(route)
+        before = journal.records()
+        replay = router.route(route)
+
+        assert replay == committed
+        assert (committed.phase, committed.disposition) == (
+            "committed",
+            "committed",
+        )
+        assert transaction.calls == [entrypoint]
+        assert journal.records() == before
+        _assert_no_capability_side_effect(tmp_path)
+    elif case_id == "B-ENTRY-MATERIALIZER":
+        owner, journal = _owner(
+            tmp_path,
+            facts=_facts("explicit_plugin_intent"),
+        )
+        transaction = _ManifestProductTransaction(owner)
+        router = PackageProductLifecycleRouter(
+            owner=owner,
+            transaction=transaction,
+        )
+        route = PackageProductRouteRequestV1(
+            entrypoint="direct_materializer",
+            ingress=_request(),
+        )
+
+        refused = router.route(route)
+        before = journal.records()
+        replay = router.route(route)
+
+        assert replay == refused
+        assert (refused.phase, refused.disposition) == ("classified", "rejected")
+        assert refused.failure is not None
+        assert refused.failure.code == "package_route_unavailable"
+        assert transaction.calls == []
+        assert journal.records() == before
+        _assert_no_capability_side_effect(tmp_path)
+    elif case_id == "B-ENTRY-PUBLISH":
+        owner, journal = _owner(
+            tmp_path,
+            facts=_facts("explicit_plugin_intent"),
+        )
+        transaction = _ManifestProductTransaction(owner)
+        router = PackageProductLifecycleRouter(
+            owner=owner,
+            transaction=transaction,
+        )
+        current = _advance_lifecycle(owner, owner.submit(_request()), "staging")
+        before = journal.records()
+        attempt = PackageProductPublishAttemptV1(status=current)
+
+        refused = router.refuse_direct_publish(attempt)
+        after = journal.records()
+        replay = router.refuse_direct_publish(attempt)
+
+        assert replay == refused
+        assert (refused.phase, refused.disposition) == ("staging", "rejected")
+        assert refused.failure is not None
+        assert refused.failure.code == "package_route_unavailable"
+        assert owner.status(current.operation_id) == refused
+        assert transaction.calls == []
+        assert len(after) == len(before) + 1
+        assert journal.records() == after
+        _assert_no_capability_side_effect(tmp_path)
     elif case_id == "B-ENTRY-DISABLED":
         owner, journal = _owner(
             tmp_path,
@@ -3687,6 +4399,53 @@ def test_manifest_case(case_id: str, tmp_path: Path) -> None:
     elif case_id in IMPLEMENTED_B4C3C_LINUX_OFFLINE_RESTORE_MANIFEST_CASES:
         assert sys.platform.startswith("linux")
         fixture = _manifest_linux_offline_restore_fixture(tmp_path)
+        journal_before = fixture.journal.path.read_bytes()
+        b_before = (fixture.current_b_root / "epoch-b.json").read_bytes()
+        source_before = (fixture.source / "legacy-state.json").read_bytes()
+
+        result = fixture.owner.restore(fixture.request)
+        replay = fixture.owner.restore(fixture.request)
+
+        assert result == replay
+        assert result.disposition == "restored"
+        assert result.code == "ok"
+        assert result.failure is None
+        assert result.materialization is not None
+        assert result.activation is not None
+        assert result.materialization.legacy_snapshot_exact is True
+        assert result.materialization.b_namespace_unreachable is True
+        assert result.activation.exclusive_old_runtime is True
+        restored = (
+            fixture.restore_root
+            / fixture.request.restore_namespace_id
+            / "payload"
+            / "legacy-state.json"
+        )
+        assert restored.read_bytes() == source_before
+        assert (fixture.activation_root / "active-runtime.json").is_file()
+        assert fixture.journal.path.read_bytes() == journal_before
+        assert (fixture.current_b_root / "epoch-b.json").read_bytes() == b_before
+        assert fixture.coordination.calls == 2
+        assert fixture.snapshots.calls == 2
+        serialized = repr(result).lower()
+        for forbidden in (
+            "password",
+            "credential",
+            "token",
+            "handle",
+            str(tmp_path).lower(),
+        ):
+            assert forbidden not in serialized
+
+        fixture.activation.deactivate(result.activation)
+        fixture.materializer.discard(result.materialization)
+        assert not (
+            fixture.restore_root / fixture.request.restore_namespace_id
+        ).exists()
+        assert not (fixture.activation_root / "active-runtime.json").exists()
+    elif case_id in IMPLEMENTED_B4C5_WINDOWS_OFFLINE_RESTORE_MANIFEST_CASES:
+        assert os.name == "nt"
+        fixture = _manifest_windows_offline_restore_fixture(tmp_path)
         journal_before = fixture.journal.path.read_bytes()
         b_before = (fixture.current_b_root / "epoch-b.json").read_bytes()
         source_before = (fixture.source / "legacy-state.json").read_bytes()

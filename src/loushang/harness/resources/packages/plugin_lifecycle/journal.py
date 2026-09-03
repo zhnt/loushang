@@ -209,7 +209,13 @@ class PackageLifecycleJournal:
             records = self._load_unlocked()
             requests, statuses = _project_state(records)
             current = self._current(statuses, operation_id)
-            if current.phase == next_phase and current.disposition == "active":
+            expected_disposition = (
+                "committed" if next_phase == "committed" else "active"
+            )
+            if (
+                current.phase == next_phase
+                and current.disposition == expected_disposition
+            ):
                 if current.attempt_epoch != expected_attempt_epoch:
                     raise self._stale_attempt()
                 last = _last_operation_record(records, operation_id)
