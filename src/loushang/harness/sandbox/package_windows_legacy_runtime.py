@@ -1351,10 +1351,14 @@ def _process_identity(process: int, pid: int) -> _ProcessIdentity:
 
 
 def _process_active(process: int) -> bool:
+    return _process_exit_code(process) == _STILL_ACTIVE
+
+
+def _process_exit_code(process: int) -> int:
     code = _wintypes.DWORD()
     if not _kernel32().GetExitCodeProcess(process, ctypes.byref(code)):
         raise ctypes.WinError(ctypes.get_last_error())
-    return int(code.value) == _STILL_ACTIVE
+    return int(code.value)
 
 
 def _terminate_job(job: int, process: int | None, timeout: float) -> None:
@@ -1371,8 +1375,12 @@ def _terminate_job(job: int, process: int | None, timeout: float) -> None:
 def _await_ready(path: Path, token: str, process: int, timeout: float) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        if not _process_active(process):
-            raise OSError("Windows legacy runtime exited before readiness")
+        exit_code = _process_exit_code(process)
+        if exit_code != _STILL_ACTIVE:
+            raise OSError(
+                "Windows legacy runtime exited before readiness "
+                f"with status 0x{exit_code:08x}"
+            )
         try:
             payload = path.read_bytes()
         except FileNotFoundError:

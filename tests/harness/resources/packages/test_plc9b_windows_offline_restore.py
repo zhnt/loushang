@@ -277,7 +277,7 @@ def test_windows_appcontainer_activation_is_exclusive_replayable_and_reversible(
             "if not exist store\\plugin.py exit /b 23 & "
             '> "%LOUSHANG_LEGACY_RUNTIME_READY_PATH%" '
             "echo %LOUSHANG_LEGACY_RUNTIME_READY_TOKEN% & "
-            "for /L %i in (0,0,1) do @choice /C Y /N /D Y /T 1 >nul 2>&1"
+            "for /L %i in (0,1,2147483647) do @ver >nul"
         ),
     )
     activation = PackageWindowsLegacyRuntimeActivationOwner(
