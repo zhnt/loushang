@@ -576,6 +576,9 @@ class PackageWindowsLegacyRuntimeActivationOwner:
                 if profile_sid is not None:
                     _free_sid(profile_sid)
                 if not completed:
+                    if runtime_fd is not None:
+                        os.close(runtime_fd)
+                        runtime_fd = None
                     cleanup_error = self._rollback_start(
                         activation_root,
                         runtime_name=runtime_name,
@@ -1190,7 +1193,8 @@ def _launch_appcontainer_process(
             )
             + "\x00\x00"
         )
-        if not _kernel32().CreateProcessW(
+        if not _advapi32().CreateProcessAsUserW(
+            None,
             command[0],
             command_line,
             None,
@@ -1619,6 +1623,20 @@ def _advapi32() -> Any:
             ctypes.POINTER(_wintypes.DWORD),
         ]
         dll.GetTokenInformation.restype = _wintypes.BOOL
+        dll.CreateProcessAsUserW.argtypes = [
+            handle,
+            _wintypes.LPCWSTR,
+            _wintypes.LPWSTR,
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+            _wintypes.BOOL,
+            _wintypes.DWORD,
+            ctypes.c_void_p,
+            _wintypes.LPCWSTR,
+            ctypes.POINTER(_STARTUPINFOEXW),
+            ctypes.POINTER(_PROCESS_INFORMATION),
+        ]
+        dll.CreateProcessAsUserW.restype = _wintypes.BOOL
         dll.DuplicateToken.argtypes = [handle, ctypes.c_int, ctypes.POINTER(handle)]
         dll.DuplicateToken.restype = _wintypes.BOOL
         dll.ImpersonateLoggedOnUser.argtypes = [handle]
