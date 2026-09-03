@@ -182,6 +182,12 @@ from loushang.harness.resources.packages.plugin_lifecycle.windows_materializatio
     WindowsPackageDependencyMaterializationStore,
     WindowsPackagePluginRootMaterializationStore,
 )
+from loushang.harness.resources.packages.product_lifecycle import (
+    PackageProductEntrypoint,
+    PackageProductLifecycleRouter,
+    PackageProductPublishAttemptV1,
+    PackageProductRouteRequestV1,
+)
 from loushang.harness.resources.plugins.dependencies import (
     PluginDependencyClosureLock,
 )
@@ -359,6 +365,15 @@ IMPLEMENTED_B4D_LINUX_PIPELINE_MANIFEST_CASES = (
     "B-NOEXEC-ADJACENT",
     "B-STATE-SECRETS",
 )
+IMPLEMENTED_B5_ROUTING_MANIFEST_CASES = (
+    "B-ENTRY-CLI",
+    "B-ENTRY-RPC",
+    "B-ENTRY-SESSION",
+    "B-ENTRY-STARTUP",
+    "B-ENTRY-OPERATIONS",
+    "B-ENTRY-MATERIALIZER",
+    "B-ENTRY-PUBLISH",
+)
 ADOPTION_PRECOMMIT_CRASH_PHASES: tuple[PackageLifecyclePhase, ...] = (
     "acquiring",
     "acquired",
@@ -428,6 +443,7 @@ EXECUTABLE_MANIFEST_CASES = (
         if sys.platform.startswith("linux")
         else ()
     )
+    + IMPLEMENTED_B5_ROUTING_MANIFEST_CASES
 )
 
 WHEEL_FILENAME = "acme_plugin-1.0-py3-none-any.whl"
@@ -1431,6 +1447,21 @@ def _advance_lifecycle(
             expected_attempt_epoch=current.attempt_epoch,
         )
     return current
+
+
+@dataclass
+class _ManifestProductTransaction:
+    owner: PackageLifecycleOwner
+    calls: list[PackageProductEntrypoint] = field(default_factory=list)
+
+    def execute(
+        self,
+        request: PackageProductRouteRequestV1,
+        *,
+        classified: PackageLifecycleStatusV1,
+    ) -> PackageLifecycleStatusV1:
+        self.calls.append(request.entrypoint)
+        return _advance_lifecycle(self.owner, classified, "committed")
 
 
 def _b2_owner(
@@ -3598,6 +3629,99 @@ def test_manifest_case(
         assert conflict.failure.code == "package_operation_identity_conflict"
         assert journal.status(accepted.operation_id) == accepted
         assert len(journal.records()) == 2
+    elif case_id in {
+        "B-ENTRY-CLI",
+        "B-ENTRY-RPC",
+        "B-ENTRY-SESSION",
+        "B-ENTRY-STARTUP",
+        "B-ENTRY-OPERATIONS",
+    }:
+        entrypoint: PackageProductEntrypoint = {
+            "B-ENTRY-CLI": "cli",
+            "B-ENTRY-RPC": "rpc",
+            "B-ENTRY-SESSION": "session",
+            "B-ENTRY-STARTUP": "startup",
+            "B-ENTRY-OPERATIONS": "operations",
+        }[case_id]  # type: ignore[assignment]
+        owner, journal = _owner(
+            tmp_path,
+            facts=_facts("explicit_plugin_intent"),
+        )
+        transaction = _ManifestProductTransaction(owner)
+        router = PackageProductLifecycleRouter(
+            owner=owner,
+            transaction=transaction,
+        )
+        route = PackageProductRouteRequestV1(
+            entrypoint=entrypoint,
+            ingress=_request(),
+        )
+
+        committed = router.route(route)
+        before = journal.records()
+        replay = router.route(route)
+
+        assert replay == committed
+        assert (committed.phase, committed.disposition) == (
+            "committed",
+            "committed",
+        )
+        assert transaction.calls == [entrypoint]
+        assert journal.records() == before
+        _assert_no_capability_side_effect(tmp_path)
+    elif case_id == "B-ENTRY-MATERIALIZER":
+        owner, journal = _owner(
+            tmp_path,
+            facts=_facts("explicit_plugin_intent"),
+        )
+        transaction = _ManifestProductTransaction(owner)
+        router = PackageProductLifecycleRouter(
+            owner=owner,
+            transaction=transaction,
+        )
+        route = PackageProductRouteRequestV1(
+            entrypoint="direct_materializer",
+            ingress=_request(),
+        )
+
+        refused = router.route(route)
+        before = journal.records()
+        replay = router.route(route)
+
+        assert replay == refused
+        assert (refused.phase, refused.disposition) == ("classified", "rejected")
+        assert refused.failure is not None
+        assert refused.failure.code == "package_route_unavailable"
+        assert transaction.calls == []
+        assert journal.records() == before
+        _assert_no_capability_side_effect(tmp_path)
+    elif case_id == "B-ENTRY-PUBLISH":
+        owner, journal = _owner(
+            tmp_path,
+            facts=_facts("explicit_plugin_intent"),
+        )
+        transaction = _ManifestProductTransaction(owner)
+        router = PackageProductLifecycleRouter(
+            owner=owner,
+            transaction=transaction,
+        )
+        current = _advance_lifecycle(owner, owner.submit(_request()), "staging")
+        before = journal.records()
+        attempt = PackageProductPublishAttemptV1(status=current)
+
+        refused = router.refuse_direct_publish(attempt)
+        after = journal.records()
+        replay = router.refuse_direct_publish(attempt)
+
+        assert replay == refused
+        assert (refused.phase, refused.disposition) == ("staging", "rejected")
+        assert refused.failure is not None
+        assert refused.failure.code == "package_route_unavailable"
+        assert owner.status(current.operation_id) == refused
+        assert transaction.calls == []
+        assert len(after) == len(before) + 1
+        assert journal.records() == after
+        _assert_no_capability_side_effect(tmp_path)
     elif case_id == "B-ENTRY-DISABLED":
         owner, journal = _owner(
             tmp_path,

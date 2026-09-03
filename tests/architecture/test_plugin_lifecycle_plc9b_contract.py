@@ -46,6 +46,7 @@ POSIX_OFFLINE_RESTORE = OWNER_KERNEL_ROOT / "posix_offline_restore.py"
 WINDOWS_OFFLINE_RESTORE = OWNER_KERNEL_ROOT / "windows_offline_restore.py"
 LEGACY_ADOPTION = OWNER_KERNEL_ROOT / "adoption.py"
 LEGACY_ADOPTION_TRANSACTION = OWNER_KERNEL_ROOT / "adoption_transaction.py"
+PRODUCT_LIFECYCLE = Path("src/loushang/harness/resources/packages/product_lifecycle.py")
 LINUX_LEGACY_RUNTIME = Path("src/loushang/harness/sandbox/package_legacy_runtime.py")
 WINDOWS_LEGACY_RUNTIME = Path(
     "src/loushang/harness/sandbox/package_windows_legacy_runtime.py"
@@ -675,6 +676,10 @@ def _implemented_b4d_linux_pipeline_manifest_cases() -> set[str]:
     return _literal_manifest_cases("IMPLEMENTED_B4D_LINUX_PIPELINE_MANIFEST_CASES")
 
 
+def _implemented_b5_routing_manifest_cases() -> set[str]:
+    return _literal_manifest_cases("IMPLEMENTED_B5_ROUTING_MANIFEST_CASES")
+
+
 def test_plc9b4d_contract_freezes_recovery_state_and_noexec_scope() -> None:
     contract = _source(CONTRACT)
 
@@ -1054,9 +1059,8 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
         _implemented_b4c4g_linux_adoption_precommit_crash_manifest_cases()
     )
     implemented_b4d_state = _implemented_b4d_state_manifest_cases()
-    implemented_b4d_linux_pipeline = (
-        _implemented_b4d_linux_pipeline_manifest_cases()
-    )
+    implemented_b4d_linux_pipeline = _implemented_b4d_linux_pipeline_manifest_cases()
+    implemented_b5_routing = _implemented_b5_routing_manifest_cases()
     implemented = (
         implemented_b1
         | implemented_b2
@@ -1084,6 +1088,7 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
         | implemented_b4c4g_linux_adoption_precommit_crash
         | implemented_b4d_state
         | implemented_b4d_linux_pipeline
+        | implemented_b5_routing
     )
 
     assert len(manifest) == 127
@@ -1422,7 +1427,17 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
     assert (implemented - implemented_b4c4g_linux_adoption_precommit_crash).isdisjoint(
         implemented_b4c4g_linux_adoption_precommit_crash
     )
-    assert len(manifest) - len(implemented) == 8
+    assert implemented_b5_routing == {
+        "B-ENTRY-CLI",
+        "B-ENTRY-RPC",
+        "B-ENTRY-SESSION",
+        "B-ENTRY-STARTUP",
+        "B-ENTRY-OPERATIONS",
+        "B-ENTRY-MATERIALIZER",
+        "B-ENTRY-PUBLISH",
+    }
+    assert (implemented - implemented_b5_routing).isdisjoint(implemented_b5_routing)
+    assert len(manifest) - len(implemented) == 1
     workflow = _source(HARNESS_WORKFLOW)
     assert "PLC9B Linux native adversarial gate (plc9b-linux-native)" in workflow
     assert "tests/harness/resources/packages/test_plc9b_adversarial.py" in workflow
@@ -2197,8 +2212,55 @@ def test_plc9b1_owner_kernel_stays_internal_dark_and_capability_free() -> None:
                 production_importers.append(path)
     assert set(production_importers) <= {
         LINUX_LEGACY_RUNTIME,
+        PRODUCT_LIFECYCLE,
         WINDOWS_LEGACY_RUNTIME,
     }
+
+
+def test_plc9b5_product_router_is_capability_poor_and_internal() -> None:
+    source = _source(PRODUCT_LIFECYCLE)
+    facade = _source(PACKAGE_ROOT / "__init__.py")
+    author_sdk = _source(AUTHOR_SDK)
+    contract = _source(CONTRACT)
+    tree = ast.parse(source, filename=str(PRODUCT_LIFECYCLE))
+    imported = {
+        node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
+    }
+    loushang_imports = {module for module in imported if module.startswith("loushang.")}
+
+    assert loushang_imports == {
+        "loushang.harness.resources.packages.plugin_lifecycle.owner",
+        "loushang.harness.resources.packages.plugin_lifecycle.records",
+    }
+    assert "class PackageProductLifecycleRouter:" in source
+    assert "class PackageProductLifecycleTransactionPort(Protocol):" in source
+    assert (
+        '_TRANSACTION_ENTRYPOINTS = frozenset({"cli", "rpc", "session", '
+        '"startup", "operations"})' in source
+    )
+    assert "self._transaction.execute(request, classified=status)" in source
+    assert "def refuse_direct_publish(" in source
+    for forbidden in (
+        "PackageMaterializer",
+        "PackageSourceResolver",
+        "PluginRevisionStore",
+        "publish_plugin_packages",
+        "materialize_remote_source",
+        "bind_plugin_packages",
+        "subprocess",
+        "socket",
+    ):
+        assert forbidden not in source
+    for exported in (
+        "PackageProductLifecycleRouter",
+        "PackageProductLifecycleTransactionPort",
+        "PackageProductRouteRequestV1",
+        "PackageProductPublishAttemptV1",
+    ):
+        assert f'"{exported}":' in facade
+        assert exported not in author_sdk
+    assert "## PLC9B5 Candidate Product Routing And Bypass Closure" in contract
+    assert "from 112 to 119 nodes" in contract
 
 
 def test_plc9b2a_acquisition_is_unbound_bounded_and_pathless() -> None:
