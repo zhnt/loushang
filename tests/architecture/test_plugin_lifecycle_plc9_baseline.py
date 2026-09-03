@@ -236,6 +236,7 @@ PACKAGE_ENTRYPOINT_ROOTS = (
     Path("src/loushang/harness/resources/packages"),
 )
 PACKAGE_ENTRYPOINT_SYMBOLS = {
+    "execute_package_lifecycle",
     "get_packages",
     "materialize_package",
     "install_package",
@@ -973,16 +974,21 @@ def test_plc9_freezes_named_package_lifecycle_sites_and_occurrences() -> None:
     add_methods(
         RPC_PACKAGES,
         "_DynamicPackageCapabilities",
-        rpc_methods,
+        {"get_packages", "update_packages", "check_package_updates"},
         count=2,
     )
-    expected[
-        (
-            RPC_PACKAGES,
-            "_DynamicPackageCapabilities.uninstall_package",
-            "uninstall_package_async",
-        )
-    ] = 1
+    add_methods(
+        RPC_PACKAGES,
+        "_DynamicPackageCapabilities",
+        {
+            "materialize_package",
+            "install_package",
+            "update_package",
+            "remove_package",
+            "uninstall_package",
+        },
+        count=1,
+    )
     expected[(RPC_PACKAGES, "RpcPackageCommands.bindings", "get_packages")] = 1
     expected[(RPC_PACKAGES, "RpcPackageCommands.get_packages", "get_packages")] = 6
 
@@ -1039,6 +1045,37 @@ def test_plc9_freezes_named_package_lifecycle_sites_and_occurrences() -> None:
         expected[(PACKAGE_CLI, "run_package_lifecycle", symbol)] = count
     expected[(PACKAGE_CLI, "_invoke_source_operation", "uninstall_package")] = 2
     expected[(PACKAGE_CLI, "_invoke_source_operation", "uninstall_package_async")] = 1
+    expected[(PACKAGE_CLI, "_invoke_source_operation", "execute_package_lifecycle")] = 1
+    for symbol in {
+        "install_package",
+        "materialize_package",
+        "remove_package",
+        "uninstall_package",
+        "update_package",
+    }:
+        expected[(PACKAGE_CLI, "_lifecycle_action", symbol)] = 1
+    for symbol in {
+        "install_package",
+        "materialize_package",
+        "remove_package",
+        "uninstall_package",
+        "uninstall_package_async",
+        "update_package",
+    }:
+        expected[(RPC_PACKAGES, "_DynamicPackageCapabilities._invoke_lifecycle", symbol)] = 1
+    expected[
+        (
+            RPC_PACKAGES,
+            "_DynamicPackageCapabilities._invoke_lifecycle",
+            "execute_package_lifecycle",
+        )
+    ] = 1
+    for path, owner, count in (
+        (SESSION_FACADE_OPTIONAL, "SessionPackagePort", 1),
+        (SESSION_FACADE_OPTIONAL, "SessionFacadeOptionalOperations", 2),
+        (PACKAGE_SESSION, "SessionPackageController", 1),
+    ):
+        expected[(path, f"{owner}.execute_package_lifecycle", "execute_package_lifecycle")] = count
     agent_args = Path("src/loushang/harness/cli/agent_args.py")
     expected[(agent_args, "agent_cli_argument_values", "update_packages")] = 1
     expected[(agent_args, "agent_cli_argument_values", "check_package_updates")] = 1
@@ -1052,10 +1089,10 @@ def test_plc9_freezes_named_package_lifecycle_sites_and_occurrences() -> None:
     expected[
         (
             PACKAGE_SOURCE_RESOLVER,
-            "PackageSourceResolver.resolve_configured_sources_sync",
+            "PackageSourceResolver._materialize_startup_source",
             "materialize_remote_source_sync",
         )
-    ] = 1
+    ] = 2
     expected[
         (
             PACKAGE_MATERIALIZER,

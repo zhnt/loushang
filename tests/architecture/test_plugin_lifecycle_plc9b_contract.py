@@ -129,6 +129,7 @@ AUTHOR_SDK = Path("src/loushang/plugin/__init__.py")
 
 SOURCE_ROOT = Path("src/loushang")
 PACKAGE_ENTRYPOINT_SYMBOLS = {
+    "execute_package_lifecycle",
     "get_packages",
     "materialize_package",
     "install_package",
@@ -848,8 +849,8 @@ def test_plc9b_canonical_entrypoint_inventory_exactly_matches_source_ast() -> No
     documented = _documented_entrypoint_counts()
     actual = _package_entrypoint_scope_counts()
 
-    assert len(documented) == 95
-    assert sum(documented.values()) == 151
+    assert len(documented) == 110
+    assert sum(documented.values()) == 163
     assert actual == documented
     assert "test_plc9_freezes_named_package_lifecycle_sites_and_occurrences" in (
         _source(BASELINE_TEST)
@@ -862,13 +863,13 @@ def test_plc9b_effect_inventory_freezes_owner_and_bypass_capabilities() -> None:
     actual = _package_effect_scope_counts()
 
     assert len(documented) == 141
-    assert sum(documented.values()) == 156
+    assert sum(documented.values()) == 157
     assert actual == documented
-    assert "141 effect/capability rows with 156 occurrences" in inventory
+    assert "141 effect/capability rows\nwith 157 occurrences" in inventory
     for required in (
         (
             PACKAGE_OPERATIONS,
-            "PackageOperationsRuntime.materialize",
+            "PackageOperationsRuntime._materialize_legacy",
             "materialize_remote_source",
         ),
         (
@@ -2229,7 +2230,11 @@ def test_plc9b1_owner_kernel_stays_internal_dark_and_capability_free() -> None:
                 for alias in node.names
             ):
                 production_importers.append(path)
-    assert set(production_importers) <= {
+    assert set(production_importers) == {
+        Path("src/loushang/harness/plugin_management/package_product.py"),
+        Path("src/loushang/harness/resources/packages/product_activation.py"),
+        Path("src/loushang/harness/resources/packages/product_composition.py"),
+        Path("src/loushang/harness/resources/packages/product_contract.py"),
         LINUX_LEGACY_RUNTIME,
         PRODUCT_LIFECYCLE,
         WINDOWS_LEGACY_RUNTIME,
@@ -2250,6 +2255,7 @@ def test_plc9b5_product_router_is_capability_poor_and_internal() -> None:
     assert loushang_imports == {
         "loushang.harness.resources.packages.plugin_lifecycle.owner",
         "loushang.harness.resources.packages.plugin_lifecycle.records",
+        "loushang.harness.resources.packages.product_contract",
     }
     assert "class PackageProductLifecycleRouter:" in source
     assert "class PackageProductLifecycleTransactionPort(Protocol):" in source

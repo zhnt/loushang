@@ -61,10 +61,32 @@ if TYPE_CHECKING:
         PackageSourceRegistration,
         PackageUpdatePreparation,
     )
+    from loushang.harness.resources.packages.product_activation import (
+        PACKAGE_PRODUCT_ACTIVATION_VERSION,
+        PackageProductActivationError,
+        PackageProductIngressFactoryPort,
+        PackageProductLifecycleActivation,
+        PackageProductRecoveryPort,
+    )
+    from loushang.harness.resources.packages.product_composition import (
+        PackageRetentionHandoffRecovery,
+        compose_package_product_lifecycle,
+    )
+    from loushang.harness.resources.packages.product_contract import (
+        PACKAGE_PRODUCT_INTENT_VERSION,
+        PACKAGE_PRODUCT_OUTCOME_VERSION,
+        PACKAGE_PRODUCT_RECORD_VERSION,
+        PackageProductEntrypoint,
+        PackageProductLifecycleAction,
+        PackageProductLifecycleIntentV1,
+        PackageProductLifecycleOperationPort,
+        PackageProductLifecycleOutcomeV1,
+        PackageProductLifecycleRecordV1,
+        PackageProductRoutingDisposition,
+    )
     from loushang.harness.resources.packages.product_lifecycle import (
         PACKAGE_PRODUCT_PUBLISH_ATTEMPT_VERSION,
         PACKAGE_PRODUCT_ROUTE_VERSION,
-        PackageProductEntrypoint,
         PackageProductLifecycleRouter,
         PackageProductLifecycleTransactionPort,
         PackageProductPublishAttemptV1,
@@ -76,6 +98,7 @@ if TYPE_CHECKING:
         project_package_entries,
         project_package_entry,
         serialize_package_materialization_record,
+        serialize_package_operation_record,
     )
     from loushang.harness.resources.packages.roots import (
         ResolvedPackageResourceRoots,
@@ -113,7 +136,11 @@ if TYPE_CHECKING:
     )
 
 _EXPORT_MODULES = {
+    "PACKAGE_PRODUCT_ACTIVATION_VERSION": "loushang.harness.resources.packages.product_activation",
+    "PACKAGE_PRODUCT_INTENT_VERSION": "loushang.harness.resources.packages.product_contract",
+    "PACKAGE_PRODUCT_OUTCOME_VERSION": "loushang.harness.resources.packages.product_contract",
     "PACKAGE_PRODUCT_PUBLISH_ATTEMPT_VERSION": "loushang.harness.resources.packages.product_lifecycle",
+    "PACKAGE_PRODUCT_RECORD_VERSION": "loushang.harness.resources.packages.product_contract",
     "PACKAGE_PRODUCT_ROUTE_VERSION": "loushang.harness.resources.packages.product_lifecycle",
     "FilesystemPackageResourceInventory": "loushang.harness.resources.packages.inventory",
     "GitPackageMaterializerBackend": "loushang.harness.resources.packages.materializer",
@@ -137,13 +164,24 @@ _EXPORT_MODULES = {
     "PackageMutationRequiresAsyncError": "loushang.harness.resources.packages.operations",
     "PackageOperationsRuntime": "loushang.harness.resources.packages.operations",
     "PackageProgressEvent": "loushang.harness.resources.packages.materializer",
-    "PackageProductEntrypoint": "loushang.harness.resources.packages.product_lifecycle",
+    "PackageProductEntrypoint": "loushang.harness.resources.packages.product_contract",
+    "PackageProductActivationError": "loushang.harness.resources.packages.product_activation",
+    "PackageProductIngressFactoryPort": "loushang.harness.resources.packages.product_activation",
+    "PackageProductLifecycleActivation": "loushang.harness.resources.packages.product_activation",
+    "PackageProductLifecycleAction": "loushang.harness.resources.packages.product_contract",
+    "PackageProductLifecycleIntentV1": "loushang.harness.resources.packages.product_contract",
+    "PackageProductLifecycleOperationPort": "loushang.harness.resources.packages.product_contract",
+    "PackageProductLifecycleOutcomeV1": "loushang.harness.resources.packages.product_contract",
+    "PackageProductLifecycleRecordV1": "loushang.harness.resources.packages.product_contract",
     "PackageProductLifecycleRouter": "loushang.harness.resources.packages.product_lifecycle",
     "PackageProductLifecycleTransactionPort": "loushang.harness.resources.packages.product_lifecycle",
     "PackageProductPublishAttemptV1": "loushang.harness.resources.packages.product_lifecycle",
     "PackageProductRouteContractError": "loushang.harness.resources.packages.product_lifecycle",
     "PackageProductRouteRequestV1": "loushang.harness.resources.packages.product_lifecycle",
+    "PackageProductRecoveryPort": "loushang.harness.resources.packages.product_activation",
+    "PackageProductRoutingDisposition": "loushang.harness.resources.packages.product_contract",
     "PackageResolveResult": "loushang.harness.resources.packages.source_resolver",
+    "PackageRetentionHandoffRecovery": "loushang.harness.resources.packages.product_composition",
     "PackageSourceConfig": "loushang.harness.resources.packages.source",
     "PackageSourceIdentity": "loushang.harness.resources.packages.source",
     "PackageSourcePolicy": "loushang.harness.resources.packages.materializer",
@@ -164,6 +202,7 @@ _EXPORT_MODULES = {
     "clone_source_and_ref": "loushang.harness.resources.packages.source",
     "collect_package_catalog": "loushang.harness.resources.packages.catalog",
     "collect_projected_package_entries": "loushang.harness.resources.packages.projection",
+    "compose_package_product_lifecycle": "loushang.harness.resources.packages.product_composition",
     "configure_resource_loader_roots": "loushang.harness.resources.packages.roots",
     "configured_package_sources": "loushang.harness.resources.packages.source_resolver",
     "empty_package_summary": "loushang.harness.resources.packages.catalog",
@@ -187,6 +226,7 @@ _EXPORT_MODULES = {
     "resolve_package_resource_roots": "loushang.harness.resources.packages.roots",
     "resolve_session_package_install_root": "loushang.harness.resources.packages.materializer",
     "serialize_package_materialization_record": "loushang.harness.resources.packages.projection",
+    "serialize_package_operation_record": "loushang.harness.resources.packages.projection",
     "summarize_profiled_package_resources": "loushang.harness.resources.packages.catalog",
     "summarize_package_resources": "loushang.harness.resources.packages.catalog",
     "summarize_package_inventory": "loushang.harness.resources.packages.inventory",

@@ -15,6 +15,9 @@ from loushang.harness.resources.packages.materializer import (
     PackageMaterializationRecord,
     PackageMaterializer,
 )
+from loushang.harness.resources.packages.product_contract import (
+    PackageProductLifecycleRecordV1,
+)
 from loushang.harness.resources.packages.source import PackageSourceConfig
 
 
@@ -53,6 +56,16 @@ def project_package_entries(
     """Project shared package records into the established listing shape."""
 
     return [project_package_entry(entry) for entry in entries]
+
+
+def serialize_package_operation_record(
+    record: PackageMaterializationRecord | PackageProductLifecycleRecordV1,
+) -> dict[str, object]:
+    """Serialize legacy or PLC9A2 pathless lifecycle evidence."""
+
+    if isinstance(record, PackageProductLifecycleRecordV1):
+        return record.to_dict()
+    return serialize_package_materialization_record(record)
 
 
 def project_package_entry(entry: PackageCatalogEntry) -> dict[str, object]:

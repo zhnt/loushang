@@ -361,3 +361,53 @@ def test_rpc_package_uninstall_prefers_runtime_owner_before_session_async_name()
     assert json.loads(stdout.getvalue())["data"] == {
         "record": {"lifecycle": "uninstalled", "source": "pack"}
     }
+
+
+def test_rpc_package_lifecycle_uses_correlated_typed_product_route() -> None:
+    class _Runtime:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, str, str, str, str]] = []
+
+        async def execute_package_lifecycle(
+            self,
+            action: str,
+            source: str,
+            *,
+            entrypoint: str,
+            operation_id: str,
+            scope: str,
+        ) -> dict[str, object]:
+            self.calls.append((action, source, entrypoint, operation_id, scope))
+            return {"lifecycle": "installed", "operationId": operation_id}
+
+        async def install_package(self, source: str) -> object:
+            raise AssertionError(f"dynamic fallback used for {source}")
+
+    runtime = _Runtime()
+    stdout = StringIO()
+    commands = RpcPackageCommands(
+        runtime=runtime,
+        get_session=object,
+        output=RpcOutput(stdout),
+    )
+
+    asyncio.run(
+        dict(commands.bindings())["install_package"](
+            "request-1",
+            {"source": "acme"},
+        )
+    )
+
+    assert len(runtime.calls) == 1
+    action, source, entrypoint, operation_id, scope = runtime.calls[0]
+    assert (action, source, entrypoint, scope) == (
+        "install",
+        "acme",
+        "rpc",
+        "project",
+    )
+    assert len(operation_id) == 64
+    assert "request-1" not in operation_id
+    assert json.loads(stdout.getvalue())["data"]["record"]["operationId"] == (
+        operation_id
+    )

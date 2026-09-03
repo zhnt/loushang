@@ -24,6 +24,9 @@ from loushang.harness.resources.packages.catalog_diagnostics import (
     record_package_lockfile_diagnostics,
 )
 from loushang.harness.resources.packages.materializer import PackageMaterializer
+from loushang.harness.resources.packages.product_contract import (
+    PackageProductLifecycleOperationPort,
+)
 from loushang.harness.resources.packages.roots import (
     SelectedPluginPackageInput,
     configure_resource_loader_roots,
@@ -71,6 +74,7 @@ class StandardAgentSessionConfigurationRequest(Generic[StandardExtensionT]):
         CatalogBootstrapProjectionPreparer | None
     ) = None
     selected_plugin_packages: tuple[SelectedPluginPackageInput, ...] = ()
+    package_product_lifecycle: PackageProductLifecycleOperationPort | None = None
 
     def __post_init__(self) -> None:
         selected_plugin_packages = tuple(self.selected_plugin_packages)
@@ -183,6 +187,7 @@ class StandardAgentSessionConfigurationRuntime(Generic[StandardExtensionT]):
             materializer=request.package_materializer,
             diagnostics_service=request.diagnostics_service,
             session_id=request.session_id,
+            product_lifecycle=request.package_product_lifecycle,
         ).resolve_configured_sources_sync(
             missing_source_action="install",
             phase="startup",

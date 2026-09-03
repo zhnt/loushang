@@ -119,3 +119,44 @@ def test_package_lifecycle_failure_supports_wire_name_variants() -> None:
         {"lifecycle": "failed", "error_message": "broken"}
     ) == "broken"
     assert package_lifecycle_failure({"lifecycle": "installed"}) is None
+
+
+def test_package_lifecycle_uses_typed_product_route_without_dynamic_fallback() -> None:
+    class ProductSession:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, str, str, str, str]] = []
+
+        async def execute_package_lifecycle(
+            self,
+            action: str,
+            source: str,
+            *,
+            entrypoint: str,
+            operation_id: str,
+            scope: str,
+        ) -> dict[str, object]:
+            self.calls.append((action, source, entrypoint, operation_id, scope))
+            return {"lifecycle": "installed", "operationId": operation_id}
+
+        async def install_package(self, source: str, *, scope: str) -> object:
+            raise AssertionError(f"dynamic fallback used for {scope}:{source}")
+
+    session = ProductSession()
+
+    result = asyncio.run(
+        run_package_lifecycle(
+            session,
+            PackageLifecycleRequest(install=("acme",), scope="project"),
+        )
+    )
+
+    assert len(session.calls) == 1
+    action, source, entrypoint, operation_id, scope = session.calls[0]
+    assert (action, source, entrypoint, scope) == (
+        "install",
+        "acme",
+        "cli",
+        "project",
+    )
+    assert len(operation_id) == 32
+    assert result.outputs[0]["record"]["operationId"] == operation_id

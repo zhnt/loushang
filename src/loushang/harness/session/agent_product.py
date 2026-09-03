@@ -100,6 +100,9 @@ from loushang.harness.resources._skill_catalog_status import (
 from loushang.harness.resources.loader import ResourceLoader
 from loushang.harness.resources.packages.catalog import PackageSummaryProvider
 from loushang.harness.resources.packages.materializer import PackageMaterializer
+from loushang.harness.resources.packages.product_contract import (
+    PackageProductLifecycleOperationPort,
+)
 from loushang.harness.resources.packages.roots import SelectedPluginPackageInput
 from loushang.harness.resources.packages.session import (
     SessionPackageController,
@@ -312,6 +315,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
         base_prompt: str | None = None,
         diagnostics_service: DiagnosticsService | None = None,
         package_materializer: PackageMaterializer | None = None,
+        package_product_lifecycle: PackageProductLifecycleOperationPort | None = None,
         selected_plugin_packages: tuple[SelectedPluginPackageInput, ...] = (),
         session_start_event: SessionStartEvent | None = None,
         api_registry: APIRegistry | None = None,
@@ -756,6 +760,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                     self._composition.resource_refresh_runtime.refresh_catalog is None
                 )
             ),
+            product_lifecycle=package_product_lifecycle,
         )
         self._extension_provider_controller = ExtensionProviderRuntime(
             model_registry=self.model_registry,

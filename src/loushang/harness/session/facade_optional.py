@@ -18,6 +18,10 @@ from loushang.harness.diagnostics.types import (
     DiagnosticSummary,
     ErrorReport,
 )
+from loushang.harness.resources.packages.product_contract import (
+    PackageProductEntrypoint,
+    PackageProductLifecycleAction,
+)
 
 
 class SessionSettingsPort(Protocol):
@@ -143,6 +147,16 @@ class SessionPackagePort(Protocol):
 
     async def uninstall_package_async(
         self, source: str, *, scope: str = "project"
+    ) -> dict[str, object]: ...
+
+    async def execute_package_lifecycle(
+        self,
+        action: PackageProductLifecycleAction,
+        source: str,
+        *,
+        entrypoint: PackageProductEntrypoint,
+        operation_id: str,
+        scope: str = "project",
     ) -> dict[str, object]: ...
 
 
@@ -317,6 +331,23 @@ class SessionFacadeOptionalOperations:
     ) -> dict[str, object]:
         return await self._require_packages().uninstall_package_async(
             source,
+            scope=scope,
+        )
+
+    async def execute_package_lifecycle(
+        self,
+        action: PackageProductLifecycleAction,
+        source: str,
+        *,
+        entrypoint: PackageProductEntrypoint,
+        operation_id: str,
+        scope: str = "project",
+    ) -> dict[str, object]:
+        return await self._require_packages().execute_package_lifecycle(
+            action,
+            source,
+            entrypoint=entrypoint,
+            operation_id=operation_id,
             scope=scope,
         )
 

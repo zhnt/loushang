@@ -9,7 +9,7 @@ and publication routes are refusals, never alternate implementations.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, Protocol
+from typing import Protocol
 
 from loushang.harness.resources.packages.plugin_lifecycle.owner import (
     PackageLifecycleOwner,
@@ -19,18 +19,12 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
     PackageLifecycleIngressRequestV1,
     PackageLifecycleStatusV1,
 )
+from loushang.harness.resources.packages.product_contract import (
+    PackageProductEntrypoint,
+)
 
 PACKAGE_PRODUCT_ROUTE_VERSION = 1
 PACKAGE_PRODUCT_PUBLISH_ATTEMPT_VERSION = 1
-
-PackageProductEntrypoint = Literal[
-    "cli",
-    "rpc",
-    "session",
-    "startup",
-    "operations",
-    "direct_materializer",
-]
 
 _PRODUCT_ENTRYPOINTS = frozenset(
     {

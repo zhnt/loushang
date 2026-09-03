@@ -19,13 +19,19 @@ from loushang.harness.resources.packages.catalog_diagnostics import (
 from loushang.harness.resources.packages.materializer import PackageMaterializer
 from loushang.harness.resources.packages.operations import (
     PackageMutationRequiresAsyncError,
+    PackageOperationRecord,
     PackageOperationsRuntime,
     PackageResourceRefreshOutcome,
     PackageResourceRefreshTransactionRunner,
 )
+from loushang.harness.resources.packages.product_contract import (
+    PackageProductEntrypoint,
+    PackageProductLifecycleAction,
+    PackageProductLifecycleOperationPort,
+)
 from loushang.harness.resources.packages.projection import (
     project_package_entries,
-    serialize_package_materialization_record,
+    serialize_package_operation_record,
 )
 from loushang.harness.resources.packages.roots import (
     ResourceRootSettingsManager,
@@ -82,6 +88,7 @@ class SessionPackageController:
     selected_plugin_packages: tuple[SelectedPluginPackageInput, ...] = ()
     refresh_resource_transaction: PackageResourceRefreshTransactionRunner | None = None
     summary_provider: PackageSummaryProvider | None = None
+    product_lifecycle: PackageProductLifecycleOperationPort | None = None
     supports_synchronous_refresh: Callable[[], bool] = lambda: True
     _operations: PackageOperationsRuntime = field(init=False, repr=False)
 
@@ -99,6 +106,7 @@ class SessionPackageController:
             refresh_resources=self.refresh_package_resources,
             prepare_updates=self.prepare_configured_remote_package_records,
             refresh_transaction=self.refresh_resource_transaction,
+            product_lifecycle=self.product_lifecycle,
         )
 
     @property
@@ -132,25 +140,25 @@ class SessionPackageController:
         return project_package_entries(entries)
 
     async def materialize_package(self, source: str) -> dict[str, object]:
-        return serialize_package_materialization_record(
-            await self._operations.materialize(source)
+        return serialize_package_operation_record(
+            await self._operations.materialize(source, entrypoint="session")
         )
 
     async def install_package(
         self, source: str, *, scope: str = "project"
     ) -> dict[str, object]:
-        return serialize_package_materialization_record(
-            await self._operations.install(source, scope=scope)
+        return serialize_package_operation_record(
+            await self._operations.install(source, scope=scope, entrypoint="session")
         )
 
     async def update_package(self, source: str) -> dict[str, object]:
-        return serialize_package_materialization_record(
-            await self._operations.update(source)
+        return serialize_package_operation_record(
+            await self._operations.update(source, entrypoint="session")
         )
 
     async def update_packages(self) -> list[dict[str, object]]:
-        records = await self._operations.update_all()
-        return [serialize_package_materialization_record(record) for record in records]
+        records = await self._operations.update_all(entrypoint="session")
+        return [serialize_package_operation_record(record) for record in records]
 
     async def check_package_updates(self) -> list[dict[str, object]]:
         materializer = self.get_package_materializer()
@@ -162,7 +170,9 @@ class SessionPackageController:
         return updates
 
     def remove_package(self, source: str) -> dict[str, object]:
-        return serialize_package_materialization_record(self._operations.remove(source))
+        return serialize_package_operation_record(
+            self._operations.remove(source, entrypoint="session")
+        )
 
     def uninstall_package(
         self, source: str, *, scope: str = "project"
@@ -171,16 +181,75 @@ class SessionPackageController:
             raise PackageMutationRequiresAsyncError(
                 "Catalog-backed package uninstall requires uninstall_package_async()"
             )
-        return serialize_package_materialization_record(
-            self._operations.uninstall_sync(source, scope=scope)
+        return serialize_package_operation_record(
+            self._operations.uninstall_sync(
+                source,
+                scope=scope,
+                entrypoint="session",
+            )
         )
 
     async def uninstall_package_async(
         self, source: str, *, scope: str = "project"
     ) -> dict[str, object]:
-        return serialize_package_materialization_record(
-            await self._operations.uninstall(source, scope=scope)
+        return serialize_package_operation_record(
+            await self._operations.uninstall(
+                source,
+                scope=scope,
+                entrypoint="session",
+            )
         )
+
+    async def execute_package_lifecycle(
+        self,
+        action: PackageProductLifecycleAction,
+        source: str,
+        *,
+        entrypoint: PackageProductEntrypoint,
+        operation_id: str,
+        scope: str = "project",
+    ) -> dict[str, object]:
+        """Route one explicitly correlated transport request exactly once."""
+
+        record: PackageOperationRecord
+        if action == "materialize":
+            record = await self._operations.materialize(
+                source,
+                entrypoint=entrypoint,
+                operation_id=operation_id,
+                scope=scope,
+            )
+        elif action == "install":
+            record = await self._operations.install(
+                source,
+                scope=scope,
+                entrypoint=entrypoint,
+                operation_id=operation_id,
+            )
+        elif action == "update":
+            record = await self._operations.update(
+                source,
+                entrypoint=entrypoint,
+                operation_id=operation_id,
+                scope=scope,
+            )
+        elif action == "remove":
+            record = self._operations.remove(
+                source,
+                entrypoint=entrypoint,
+                operation_id=operation_id,
+                scope=scope,
+            )
+        elif action == "uninstall":
+            record = await self._operations.uninstall(
+                source,
+                scope=scope,
+                entrypoint=entrypoint,
+                operation_id=operation_id,
+            )
+        else:
+            raise ValueError("Unsupported Package lifecycle action")
+        return serialize_package_operation_record(record)
 
     def _add_package_source(
         self,

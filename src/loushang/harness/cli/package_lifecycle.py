@@ -5,6 +5,11 @@ from __future__ import annotations
 import inspect
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from uuid import uuid4
+
+from loushang.harness.resources.packages.product_contract import (
+    PackageProductLifecycleAction,
+)
 
 
 class PackageLifecycleError(RuntimeError):
@@ -127,14 +132,27 @@ async def _invoke_source_operation(
     outputs: Sequence[dict[str, object]],
 ) -> object:
     try:
-        method = _require_method(
-            session,
-            "uninstall_package_async"
-            if command == "uninstall_package"
-            else command,
-            fallback=command if command == "uninstall_package" else None,
-        )
-        result = method(source, scope=scope) if scope is not None else method(source)
+        executor = getattr(session, "execute_package_lifecycle", None)
+        if callable(executor):
+            action = _lifecycle_action(command)
+            result = executor(
+                action,
+                source,
+                entrypoint="cli",
+                operation_id=uuid4().hex,
+                scope=scope or "project",
+            )
+        else:
+            method = _require_method(
+                session,
+                "uninstall_package_async"
+                if command == "uninstall_package"
+                else command,
+                fallback=command if command == "uninstall_package" else None,
+            )
+            result = (
+                method(source, scope=scope) if scope is not None else method(source)
+            )
         if inspect.isawaitable(result):
             return await result
     except PackageLifecycleError as error:
@@ -143,6 +161,22 @@ async def _invoke_source_operation(
     except Exception as error:
         raise PackageLifecycleError(str(error), outputs=tuple(outputs)) from error
     return result
+
+
+def _lifecycle_action(command: str) -> PackageProductLifecycleAction:
+    actions: dict[str, PackageProductLifecycleAction] = {
+        "install_package": "install",
+        "materialize_package": "materialize",
+        "update_package": "update",
+        "remove_package": "remove",
+        "uninstall_package": "uninstall",
+    }
+    try:
+        return actions[command]
+    except KeyError as exc:
+        raise PackageLifecycleError(
+            f"Unsupported Package lifecycle command: {command}"
+        ) from exc
 
 
 async def _invoke_operation(

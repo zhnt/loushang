@@ -5,11 +5,16 @@ from __future__ import annotations
 import inspect
 from collections.abc import Callable
 from dataclasses import dataclass
+from hashlib import sha256
 from typing import Any, Protocol
+from uuid import uuid4
 
 from loushang.harness.host.rpc.arguments import optional_string, require_string
 from loushang.harness.host.rpc.output import RpcOutput
 from loushang.harness.host.rpc.routing import LegacyRpcHandler
+from loushang.harness.resources.packages.product_contract import (
+    PackageProductLifecycleAction,
+)
 
 
 class _PackageCapabilityUnavailable(RuntimeError):
@@ -21,15 +26,15 @@ class _PackageCapabilities(Protocol):
 
     def get_packages(self, *, catalog_path: str | None) -> object: ...
 
-    def materialize_package(self, source: str) -> object: ...
+    def materialize_package(self, source: str, *, operation_id: str) -> object: ...
 
-    def install_package(self, source: str) -> object: ...
+    def install_package(self, source: str, *, operation_id: str) -> object: ...
 
-    def update_package(self, source: str) -> object: ...
+    def update_package(self, source: str, *, operation_id: str) -> object: ...
 
-    def remove_package(self, source: str) -> object: ...
+    def remove_package(self, source: str, *, operation_id: str) -> object: ...
 
-    def uninstall_package(self, source: str) -> object: ...
+    def uninstall_package(self, source: str, *, operation_id: str) -> object: ...
 
     def update_packages(self) -> object: ...
 
@@ -48,23 +53,20 @@ class _DynamicPackageCapabilities:
     def get_packages(self, *, catalog_path: str | None) -> object:
         return self._invoke("get_packages", catalog_path=catalog_path)
 
-    def materialize_package(self, source: str) -> object:
-        return self._invoke("materialize_package", source)
+    def materialize_package(self, source: str, *, operation_id: str) -> object:
+        return self._invoke_lifecycle("materialize", source, operation_id=operation_id)
 
-    def install_package(self, source: str) -> object:
-        return self._invoke("install_package", source)
+    def install_package(self, source: str, *, operation_id: str) -> object:
+        return self._invoke_lifecycle("install", source, operation_id=operation_id)
 
-    def update_package(self, source: str) -> object:
-        return self._invoke("update_package", source)
+    def update_package(self, source: str, *, operation_id: str) -> object:
+        return self._invoke_lifecycle("update", source, operation_id=operation_id)
 
-    def remove_package(self, source: str) -> object:
-        return self._invoke("remove_package", source)
+    def remove_package(self, source: str, *, operation_id: str) -> object:
+        return self._invoke_lifecycle("remove", source, operation_id=operation_id)
 
-    def uninstall_package(self, source: str) -> object:
-        return self._invoke_first(
-            ("uninstall_package_async", "uninstall_package"),
-            source,
-        )
+    def uninstall_package(self, source: str, *, operation_id: str) -> object:
+        return self._invoke_lifecycle("uninstall", source, operation_id=operation_id)
 
     def update_packages(self) -> object:
         return self._invoke("update_packages")
@@ -89,11 +91,38 @@ class _DynamicPackageCapabilities:
                     return method(*args, **kwargs)
         raise _PackageCapabilityUnavailable
 
+    def _invoke_lifecycle(
+        self,
+        action: PackageProductLifecycleAction,
+        source: str,
+        *,
+        operation_id: str,
+    ) -> object:
+        session = self._get_session()
+        for owner in (self._runtime, session):
+            executor = getattr(owner, "execute_package_lifecycle", None)
+            if callable(executor):
+                return executor(
+                    action,
+                    source,
+                    entrypoint="rpc",
+                    operation_id=operation_id,
+                    scope="project",
+                )
+        method_names = {
+            "materialize": ("materialize_package",),
+            "install": ("install_package",),
+            "update": ("update_package",),
+            "remove": ("remove_package",),
+            "uninstall": ("uninstall_package_async", "uninstall_package"),
+        }[action]
+        return self._invoke_first(method_names, source)
+
 
 @dataclass(frozen=True)
 class _LifecycleSpec:
     command: str
-    operation: Callable[[_PackageCapabilities, str], object]
+    operation: Callable[[_PackageCapabilities, str, str], object]
     unavailable: str
     failure: str
     invalid: str
@@ -116,7 +145,9 @@ class _CollectionSpec:
 _LIFECYCLE_SPECS = (
     _LifecycleSpec(
         "materialize_package",
-        lambda capabilities, source: capabilities.materialize_package(source),
+        lambda capabilities, source, operation_id: capabilities.materialize_package(
+            source, operation_id=operation_id
+        ),
         "Package materialization is not available.",
         "Failed to materialize package",
         "Package materialization returned an invalid response.",
@@ -125,7 +156,9 @@ _LIFECYCLE_SPECS = (
     ),
     _LifecycleSpec(
         "install_package",
-        lambda capabilities, source: capabilities.install_package(source),
+        lambda capabilities, source, operation_id: capabilities.install_package(
+            source, operation_id=operation_id
+        ),
         "Package installation is not available.",
         "Failed to install package",
         "Package installation returned an invalid response.",
@@ -134,7 +167,9 @@ _LIFECYCLE_SPECS = (
     ),
     _LifecycleSpec(
         "update_package",
-        lambda capabilities, source: capabilities.update_package(source),
+        lambda capabilities, source, operation_id: capabilities.update_package(
+            source, operation_id=operation_id
+        ),
         "Package update is not available.",
         "Failed to update package",
         "Package update returned an invalid response.",
@@ -143,7 +178,9 @@ _LIFECYCLE_SPECS = (
     ),
     _LifecycleSpec(
         "remove_package",
-        lambda capabilities, source: capabilities.remove_package(source),
+        lambda capabilities, source, operation_id: capabilities.remove_package(
+            source, operation_id=operation_id
+        ),
         "Package removal is not available.",
         "Failed to remove package",
         "Package removal returned an invalid response.",
@@ -152,7 +189,9 @@ _LIFECYCLE_SPECS = (
     ),
     _LifecycleSpec(
         "uninstall_package",
-        lambda capabilities, source: capabilities.uninstall_package(source),
+        lambda capabilities, source, operation_id: capabilities.uninstall_package(
+            source, operation_id=operation_id
+        ),
         "Package uninstallation is not available.",
         "Failed to uninstall package",
         "Package uninstallation returned an invalid response.",
@@ -255,7 +294,11 @@ class RpcPackageCommands:
         ) -> None:
             source = require_string(payload, "source")
             try:
-                record = spec.operation(self._capabilities, source)
+                record = spec.operation(
+                    self._capabilities,
+                    source,
+                    _rpc_operation_id(command_id, spec.command),
+                )
                 if inspect.isawaitable(record):
                     record = await record
             except _PackageCapabilityUnavailable:
@@ -336,6 +379,12 @@ class RpcPackageCommands:
             )
 
         return handle
+
+
+def _rpc_operation_id(command_id: str | None, command: str) -> str:
+    if command_id is None:
+        return uuid4().hex
+    return sha256(f"rpc:{command}:{command_id}".encode()).hexdigest()
 
 
 def _lifecycle_failure(record: dict[str, Any]) -> str | None:

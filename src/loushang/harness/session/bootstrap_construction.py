@@ -23,6 +23,9 @@ from loushang.harness.resources.activation import (
     SkillActivationRuntime,
 )
 from loushang.harness.resources.packages.materializer import PackageMaterializer
+from loushang.harness.resources.packages.product_contract import (
+    PackageProductLifecycleOperationPort,
+)
 from loushang.harness.resources.packages.roots import SelectedPluginPackageInput
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.runtime import ResolvedRuntimeProfile
@@ -459,6 +462,7 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
         *,
         services: BootstrapServices,
         package_materializer: PackageMaterializer,
+        package_product_lifecycle: PackageProductLifecycleOperationPort | None = None,
         session_id: str,
         cwd: str,
         extension_flag_values: ExtensionFlagValues | None,
@@ -625,6 +629,7 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
                             prepare_catalog_bootstrap_projection
                         ),
                         selected_plugin_packages=tuple(selected_plugin_packages),
+                        package_product_lifecycle=package_product_lifecycle,
                     ),
                     ports=AgentProductConstructionPorts(
                         activate_resources=(

@@ -23,6 +23,12 @@ from threading import Lock
 
 import pytest
 
+from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
+from loushang.harness.plugin_management.package_product import (
+    PluginManagementPackageDesiredStateAdapter,
+)
+from loushang.harness.plugin_management.records import PluginPackageRevisionRefV1
+from loushang.harness.plugin_management.service import PluginManagementService
 from loushang.harness.resources.packages.plugin_lifecycle import (
     PackageClassificationBasisFactV1,
     PackageClassificationFactsV1,
@@ -125,6 +131,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.posix_materialization 
 from loushang.harness.resources.packages.plugin_lifecycle.posix_offline_restore import (
     PackagePosixOfflineRestoreMaterializer,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.product_retention import (
+    PackageProductRetentionSettlementOwner,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     PackageLifecycleCancelRequestV1,
     PackageLifecyclePhase,
@@ -184,6 +193,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.windows_materializatio
 )
 from loushang.harness.resources.packages.plugin_lifecycle.windows_offline_restore import (
     PackageWindowsOfflineRestoreMaterializer,
+)
+from loushang.harness.resources.packages.product_composition import (
+    PackageRetentionHandoffRecovery,
 )
 from loushang.harness.resources.packages.product_lifecycle import (
     PackageProductEntrypoint,
@@ -2091,6 +2103,7 @@ class _ManifestRetentionHandoffFixture:
     request: PackageRetentionHandoffRequestV1
     journal: PackageRetentionHandoffJournal
     owner: PackageRetentionHandoffOwner
+    admission: PackageCommitAdmissionOwner
     retention: _ManifestRetentionSettlementOwner
     desired: _ManifestDesiredStateCommitOwner
     pin_journal: PackageTransactionPinJournal
@@ -2132,9 +2145,126 @@ def _manifest_retention_handoff_fixture(
             retention=retention,
             desired_state=desired,
         ),
+        admission=admission.admission_owner,
         retention=retention,
         desired=desired,
         pin_journal=admission.pin_journal,
+    )
+
+
+@dataclass(frozen=True)
+class _ManifestDesiredRevisionProjection:
+    ledger: PluginDesiredStateLedger
+
+    def project(
+        self,
+        request: PackageDesiredStateCommitRequestV1,
+    ) -> PluginPackageRevisionRefV1:
+        return PluginPackageRevisionRefV1(
+            plugin_id=request.plugin_id,
+            plugin_version=request.root_ref.version,
+            package_content_digest=request.root_ref.artifact_digest,
+            dependency_lock_digest="7" * 64,
+            package_source_identity="https://packages.example.test/acme.whl",
+        )
+
+    def inventory_revision(self) -> int:
+        return self.ledger.snapshot().inventory_revision
+
+
+def test_plc9a2_desired_adapter_commits_exact_disabled_revision_and_reports_cas(
+    tmp_path: Path,
+) -> None:
+    fixture = _manifest_retention_handoff_fixture(tmp_path)
+    ledger = PluginDesiredStateLedger(tmp_path / "product-desired.jsonl")
+    service = PluginManagementService(
+        desired_state=ledger,
+        operation_journal_path=tmp_path / "product-operations.jsonl",
+    )
+    adapter = PluginManagementPackageDesiredStateAdapter(
+        management=service,
+        revisions=_ManifestDesiredRevisionProjection(ledger),
+        installation_scope="workspace",
+        actor_id="product-runtime",
+        policy_revision="product-policy:1",
+    )
+
+    result = adapter.commit(fixture.request.desired_request)
+
+    assert result.disposition == "committed"
+    assert result.receipt is not None
+    state = ledger.snapshot().installations[0]
+    assert state.selection.desired_state == "installed_disabled"
+    assert state.selection.package_revision is not None
+    assert (
+        state.selection.package_revision.package_content_digest
+        == fixture.request.desired_request.root_ref.artifact_digest
+    )
+    repeated = adapter.commit(fixture.request.desired_request)
+    assert repeated == result
+
+    conflicting_request = PackageDesiredStateCommitRequestV1.create(
+        fixture.request.admission_request,
+        command_id="manifest-desired-conflict",
+        command_fingerprint=sha256(b"manifest-desired-conflict").hexdigest(),
+        expected_inventory_revision=0,
+    )
+    conflict = adapter.commit(conflicting_request)
+    assert conflict.disposition == "rejected"
+    assert conflict.failure is not None
+    assert conflict.failure.observed_inventory_revision == 1
+
+
+def test_plc9a2_retention_owner_repairs_release_before_settlement_crash(
+    tmp_path: Path,
+) -> None:
+    fixture = _manifest_retention_handoff_fixture(tmp_path)
+    journal = PackageRetentionHandoffJournal(tmp_path / "product-handoff.jsonl")
+    retention = PackageProductRetentionSettlementOwner(
+        path=tmp_path / "product-retention.jsonl",
+        transaction_pins=fixture.pin_journal,
+    )
+    owner = PackageRetentionHandoffOwner(
+        journal=journal,
+        admission=fixture.admission,
+        retention=retention,
+        desired_state=fixture.desired,
+    )
+    append = retention._append_unlocked
+    interrupted = True
+
+    def interrupt_settlement(
+        records: tuple[object, ...],
+        receipt: PackageDependencyPinReceiptV1,
+    ) -> None:
+        nonlocal interrupted
+        if interrupted and receipt.state == "settled":
+            interrupted = False
+            raise RuntimeError("simulated crash after transaction-pin release")
+        append(records, receipt)  # type: ignore[arg-type]
+
+    retention._append_unlocked = interrupt_settlement  # type: ignore[method-assign]
+    first = owner.execute(fixture.request)
+    assert first.disposition == "retryable_failure"
+    assert first.receipt is not None
+    assert first.receipt.state == "desired_committed"
+    released = fixture.pin_journal.current(
+        operation_id=fixture.request.operation_id,
+        pin_request_id=fixture.request.transaction_pin_receipt.pin_request.pin_request_id,
+    )
+    assert released is not None and released.state == "released"
+
+    recovered = PackageRetentionHandoffRecovery(
+        journal=journal,
+        owner=owner,
+    ).recover()
+
+    assert recovered == (fixture.request.handoff_id,)
+    current = journal.current(fixture.request.handoff_id)
+    assert current is not None and current.state == "settled"
+    assert tuple(record.receipt.state for record in retention.records()) == (
+        "acquired",
+        "settled",
     )
 
 

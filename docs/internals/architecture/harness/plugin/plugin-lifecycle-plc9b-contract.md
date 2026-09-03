@@ -2467,9 +2467,9 @@ The canonical source occurrence inventory is maintained in
 `plugin-lifecycle-plc9-inventory.md` and verified from the Python AST across all
 of `src/loushang`. It has two independent machine-checked blocks:
 
-- an ingress/declaration inventory of 95 exact `(path, qualified scope,
-  lifecycle symbol)` rows and 151 occurrences; and
-- an effect/capability inventory of 141 exact rows and 156 occurrences covering
+- an ingress/declaration inventory of 110 exact `(path, qualified scope,
+  lifecycle symbol)` rows and 163 occurrences; and
+- an effect/capability inventory of 141 exact rows and 157 occurrences covering
   materializer/backend/store/source-resolver/operations construction plus
   materialize/update/remove/forget/publish/bind/reopen capabilities.
 
