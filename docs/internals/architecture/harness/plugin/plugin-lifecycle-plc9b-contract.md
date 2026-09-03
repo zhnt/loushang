@@ -1972,6 +1972,38 @@ policy that prevented Bubblewrap from initializing loopback; the workflow now
 enables unprivileged user namespaces in the isolated hosted job, after which
 the unchanged native sandbox probe and all six namespace assertions passed.
 
+## PLC9B4c5a Candidate Windows Offline Restore Materialization
+
+`PackageWindowsOfflineRestoreMaterializer` is the Windows-native peer of the
+accepted POSIX materializer behind the same pathless B4c3a Port. It owns three
+configured, pairwise-disjoint authorities for authenticated snapshots,
+isolated restore namespaces, and the current B root. Each authority pins the
+complete visible ancestor chain from its volume root through native directory
+handles opened without delete sharing; no configured path or handle enters a
+request, receipt, journal, facade, or Product route.
+
+Snapshot inspection accepts only direct, non-reparse directories and
+single-link regular files. Entry, byte, and depth budgets are enforced during
+rooted traversal. The canonical state manifest and payload tree are checked
+against independent digests before copying and rechecked before publication.
+Copying creates every member relative to already-open directory handles,
+flushes files and directories, writes the exact pathless receipt, and exposes
+the namespace through one handle-relative atomic no-replace rename. A rooted
+cross-process Windows byte-range lock serializes owners and exact replay
+revalidates the durable tree instead of copying it again.
+
+Cleanup reopens and identity-checks every member before deleting it and refuses
+foreign, reparse, hard-linked, or changed residue. The current B authority is
+reopened and matched to the request's fenced-root identity before and after
+publication. Four native component cases cover exact replay/discard,
+cross-owner convergence, authenticated snapshot tamper, and current-B root
+replacement in the mandatory Windows XML gate.
+
+This slice deliberately supplies no process launcher. Therefore
+`B-COMPAT-OFFLINE-RESTORE-WINDOWS` remains planned until a separately owned
+AppContainer/Job activation adapter proves an actual exclusive old runtime,
+network denial, and current-B filesystem unreachability without a skip.
+
 ## First Principles
 
 1. Untrusted bytes are data, never a pathname, command, module, or build plan.

@@ -39,6 +39,7 @@ jobs:
           tests/harness/resources/packages/test_plc9b_windows_native.py
           tests/harness/resources/packages/test_plc9b_windows_materialization.py
           tests/harness/resources/packages/test_plc9b_windows_epoch_cutover.py
+          tests/harness/resources/packages/test_plc9b_windows_offline_restore.py
           -q
 
       - name: Reject empty, skipped, or failing PLC9B native report

@@ -43,11 +43,10 @@ POSIX_EPOCH_CUTOVER = OWNER_KERNEL_ROOT / "posix_epoch_cutover.py"
 WINDOWS_EPOCH_CUTOVER = OWNER_KERNEL_ROOT / "windows_epoch_cutover.py"
 OFFLINE_RESTORE = OWNER_KERNEL_ROOT / "offline_restore.py"
 POSIX_OFFLINE_RESTORE = OWNER_KERNEL_ROOT / "posix_offline_restore.py"
+WINDOWS_OFFLINE_RESTORE = OWNER_KERNEL_ROOT / "windows_offline_restore.py"
 LEGACY_ADOPTION = OWNER_KERNEL_ROOT / "adoption.py"
 LEGACY_ADOPTION_TRANSACTION = OWNER_KERNEL_ROOT / "adoption_transaction.py"
-LINUX_LEGACY_RUNTIME = Path(
-    "src/loushang/harness/sandbox/package_legacy_runtime.py"
-)
+LINUX_LEGACY_RUNTIME = Path("src/loushang/harness/sandbox/package_legacy_runtime.py")
 CLOSURE_TEST = Path("tests/harness/resources/packages/test_plc9b_closure.py")
 CLOSURE_OWNER_TEST = Path(
     "tests/harness/resources/packages/test_plc9b_closure_owner.py"
@@ -102,9 +101,10 @@ OFFLINE_RESTORE_TEST = Path(
 POSIX_OFFLINE_RESTORE_TEST = Path(
     "tests/harness/resources/packages/test_plc9b_posix_offline_restore.py"
 )
-LEGACY_ADOPTION_TEST = Path(
-    "tests/harness/resources/packages/test_plc9b_adoption.py"
+WINDOWS_OFFLINE_RESTORE_TEST = Path(
+    "tests/harness/resources/packages/test_plc9b_windows_offline_restore.py"
 )
+LEGACY_ADOPTION_TEST = Path("tests/harness/resources/packages/test_plc9b_adoption.py")
 LEGACY_ADOPTION_TRANSACTION_TEST = Path(
     "tests/harness/resources/packages/test_plc9b_adoption_transaction.py"
 )
@@ -1385,16 +1385,16 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
         implemented_b4c4f_linux_adoption_committed_crash
         == PLC9B4C4F_LINUX_ADOPTION_COMMITTED_CRASH_CASES
     )
-    assert (
-        implemented - implemented_b4c4f_linux_adoption_committed_crash
-    ).isdisjoint(implemented_b4c4f_linux_adoption_committed_crash)
+    assert (implemented - implemented_b4c4f_linux_adoption_committed_crash).isdisjoint(
+        implemented_b4c4f_linux_adoption_committed_crash
+    )
     assert (
         implemented_b4c4g_linux_adoption_precommit_crash
         == PLC9B4C4G_LINUX_ADOPTION_PRECOMMIT_CRASH_CASES
     )
-    assert (
-        implemented - implemented_b4c4g_linux_adoption_precommit_crash
-    ).isdisjoint(implemented_b4c4g_linux_adoption_precommit_crash)
+    assert (implemented - implemented_b4c4g_linux_adoption_precommit_crash).isdisjoint(
+        implemented_b4c4g_linux_adoption_precommit_crash
+    )
     assert len(manifest) - len(implemented) == 22
     workflow = _source(HARNESS_WORKFLOW)
     assert "PLC9B Linux native adversarial gate (plc9b-linux-native)" in workflow
@@ -4551,8 +4551,7 @@ def test_plc9b4c4a_adoption_protocol_is_pathless_and_stays_internal() -> None:
     assert "PLC9B4c4a accepted code freezes a dark, pathless" in index
 
 
-def test_plc9b4c4c_pinned_reacquisition_is_evidence_only_and_stays_dark(
-) -> None:
+def test_plc9b4c4c_pinned_reacquisition_is_evidence_only_and_stays_dark() -> None:
     contract = _source(CONTRACT)
     inventory = _source(INVENTORY)
     index = _source(INDEX)
@@ -4623,8 +4622,8 @@ def test_plc9b4c4c_pinned_reacquisition_is_evidence_only_and_stays_dark(
         "lifecycle_request.requested_plugin_id == request.plugin_id",
         "request.expected_classification_fingerprint",
         "self._closure.reacquire(self._execution)",
-            "self._staging.authorize_adoption(request) is not True",
-            "adoption_request=request",
+        "self._staging.authorize_adoption(request) is not True",
+        "adoption_request=request",
         "__all__ = ()",
     ):
         assert invariant in source
@@ -4672,7 +4671,7 @@ def test_plc9b4c4c_pinned_reacquisition_is_evidence_only_and_stays_dark(
     assert "PLC9B4c4c accepted code adds explicit recovery-only" in inventory
     assert "PLC9B4c4c accepted code supplies that seam" in index
     assert "def reacquire(" in artifact_source
-    assert "status.phase != \"transaction_pinned\"" in artifact_source
+    assert 'status.phase != "transaction_pinned"' in artifact_source
     assert "self._acquisition_owner.reopen_acquired" in artifact_source
     assert "def reacquire(" in closure_owner_source
     assert "durable_only=True" in closure_owner_source
@@ -4900,6 +4899,85 @@ def test_plc9b4c4g_every_precommit_adoption_phase_rebuilds_and_recovers() -> Non
     assert "Linux native node 98" in " ".join(inventory.split())
     assert "all five adoption rows" in " ".join(index.split()).lower()
     assert "Linux native node 98" in " ".join(index.split())
+
+
+def test_plc9b4c5a_windows_restore_materializer_is_rooted_exact_and_dark() -> None:
+    contract = _source(CONTRACT)
+    inventory = _source(INVENTORY)
+    index = _source(INDEX)
+    source = _source(WINDOWS_OFFLINE_RESTORE)
+    component_tests = _source(WINDOWS_OFFLINE_RESTORE_TEST)
+    workflow = _source(WINDOWS_WORKFLOW)
+    internal_facade = _source(OWNER_KERNEL_ROOT / "__init__.py")
+    package_facade = _source(PACKAGE_ROOT / "__init__.py")
+    author_sdk = _source(AUTHOR_SDK)
+    manifest = _adversarial_manifest()
+
+    assert WINDOWS_OFFLINE_RESTORE.is_file()
+    assert WINDOWS_OFFLINE_RESTORE_TEST.is_file()
+    assert "class PackageWindowsOfflineRestoreMaterializer" in source
+    for rooted_primitive in (
+        "open_windows_directory",
+        "open_windows_regular_file_at",
+        "windows_listdir_at",
+        "windows_rename_at",
+        "windows_flush_directory",
+        "windows_rmdir_at",
+        "windows_unlink_at",
+        "_PinnedWindowsRoot",
+        "_msvcrt",
+    ):
+        assert rooted_primitive in source
+    for invariant in (
+        "PACKAGE_PRE_B_SNAPSHOT_DOMAINS",
+        "snapshot_tree_digest",
+        "state_manifest_digest",
+        "current_b_authority_root",
+        "PackageOfflineRestoreMaterializationReceiptV1.create",
+        "package_offline_restore_cleanup_failed",
+        "expected_identities=self._current_b_identities",
+        "__all__ = ()",
+    ):
+        assert invariant in source
+    for facade in (internal_facade, package_facade, author_sdk):
+        assert "PackageWindowsOfflineRestoreMaterializer" not in facade
+
+    tree = ast.parse(source, filename=str(WINDOWS_OFFLINE_RESTORE))
+    imported = {
+        node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
+    }
+    for forbidden in (
+        "loushang.coding",
+        "loushang.foundation",
+        "loushang.harness.plugin_management",
+        "loushang.harness.sandbox",
+        "subprocess",
+    ):
+        assert not any(
+            module == forbidden or module.startswith(f"{forbidden}.")
+            for module in imported
+        )
+
+    for evidence in (
+        "materializes_exact_tree_replays_and_discards",
+        "concurrent_owners_converge_on_one_tree",
+        "rejects_snapshot_tamper_without_restore_residue",
+        "rejects_replaced_current_b_authority",
+    ):
+        assert evidence in component_tests
+    assert "test_plc9b_windows_offline_restore.py" in workflow
+    row = manifest["B-COMPAT-OFFLINE-RESTORE-WINDOWS"]
+    assert row["status"] == "planned"
+    assert row["platform"] == "windows-native"
+    assert row["workflow"] == "windows-shell-compatibility.yml#plc9b-windows-native"
+
+    normalized = " ".join(contract.split())
+    assert "PLC9B4c5a Candidate Windows Offline Restore Materialization" in normalized
+    assert "complete visible ancestor chain" in normalized
+    assert "handle-relative atomic no-replace rename" in normalized
+    assert "supplies no process launcher" in normalized
+    assert "PLC9B4c5a candidate code adds a dark Windows" in inventory
+    assert "PLC9B4c5a candidate code adds the dark Windows" in index
 
 
 def test_plc9b2f_windows_backend_is_rooted_and_has_a_nonskippable_native_gate() -> None:

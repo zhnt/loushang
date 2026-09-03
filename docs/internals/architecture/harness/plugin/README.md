@@ -291,6 +291,14 @@ Neither may silently override a narrower implemented owner contract.
   executed all 98 Linux manifest nodes plus three authority/recovery guard
   tests with zero skips, failures, or errors; artifact upload digest
   `1822656d9150bd1b2ff602906ae229922bcc04527bec6a6f41f3edfb34934d98`.
+  PLC9B4c5a candidate code adds the dark Windows rooted-handle peer of the
+  accepted POSIX offline-restore materializer. It verifies and copies the
+  complete authenticated snapshot through pinned ancestors, publishes one
+  isolated namespace by an atomic handle-relative rename, and provides exact
+  cross-process replay and identity-bound cleanup. Four component cases are in
+  the mandatory Windows native XML gate. The Windows compatibility manifest
+  row remains planned until a concrete AppContainer/Job old-runtime activation
+  adapter proves process-level B unreachability.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)
