@@ -47,6 +47,9 @@ WINDOWS_OFFLINE_RESTORE = OWNER_KERNEL_ROOT / "windows_offline_restore.py"
 LEGACY_ADOPTION = OWNER_KERNEL_ROOT / "adoption.py"
 LEGACY_ADOPTION_TRANSACTION = OWNER_KERNEL_ROOT / "adoption_transaction.py"
 LINUX_LEGACY_RUNTIME = Path("src/loushang/harness/sandbox/package_legacy_runtime.py")
+WINDOWS_LEGACY_RUNTIME = Path(
+    "src/loushang/harness/sandbox/package_windows_legacy_runtime.py"
+)
 CLOSURE_TEST = Path("tests/harness/resources/packages/test_plc9b_closure.py")
 CLOSURE_OWNER_TEST = Path(
     "tests/harness/resources/packages/test_plc9b_closure_owner.py"
@@ -664,6 +667,24 @@ def _implemented_b4c4g_linux_adoption_precommit_crash_manifest_cases() -> set[st
     )
 
 
+def _implemented_b4d_state_manifest_cases() -> set[str]:
+    return _literal_manifest_cases("IMPLEMENTED_B4D_STATE_MANIFEST_CASES")
+
+
+def _implemented_b4d_linux_pipeline_manifest_cases() -> set[str]:
+    return _literal_manifest_cases("IMPLEMENTED_B4D_LINUX_PIPELINE_MANIFEST_CASES")
+
+
+def test_plc9b4d_contract_freezes_recovery_state_and_noexec_scope() -> None:
+    contract = _source(CONTRACT)
+
+    assert "## PLC9B4d Candidate Recovery, State, And No-Execution Closure" in contract
+    assert "Linux adversarial manifest from 98 to 112 nodes" in contract
+    assert "before `transaction_pinned`" in contract
+    assert "Subprocess, import-side" in contract
+    assert "greater fenced attempt epoch" in contract
+
+
 def _journal_effect_policy() -> list[tuple[str, str, str]]:
     contract = _source(CONTRACT)
     block = contract.split("<!-- plc9b-journal-effect-policy:start -->", 1)[1]
@@ -1032,6 +1053,10 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
     implemented_b4c4g_linux_adoption_precommit_crash = (
         _implemented_b4c4g_linux_adoption_precommit_crash_manifest_cases()
     )
+    implemented_b4d_state = _implemented_b4d_state_manifest_cases()
+    implemented_b4d_linux_pipeline = (
+        _implemented_b4d_linux_pipeline_manifest_cases()
+    )
     implemented = (
         implemented_b1
         | implemented_b2
@@ -1057,6 +1082,8 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
         | implemented_b4c4e_linux_adoption_failure
         | implemented_b4c4f_linux_adoption_committed_crash
         | implemented_b4c4g_linux_adoption_precommit_crash
+        | implemented_b4d_state
+        | implemented_b4d_linux_pipeline
     )
 
     assert len(manifest) == 127
@@ -1395,7 +1422,7 @@ def test_plc9b_adversarial_manifest_tracks_exact_accepted_progress() -> None:
     assert (implemented - implemented_b4c4g_linux_adoption_precommit_crash).isdisjoint(
         implemented_b4c4g_linux_adoption_precommit_crash
     )
-    assert len(manifest) - len(implemented) == 22
+    assert len(manifest) - len(implemented) == 8
     workflow = _source(HARNESS_WORKFLOW)
     assert "PLC9B Linux native adversarial gate (plc9b-linux-native)" in workflow
     assert "tests/harness/resources/packages/test_plc9b_adversarial.py" in workflow
@@ -2168,7 +2195,10 @@ def test_plc9b1_owner_kernel_stays_internal_dark_and_capability_free() -> None:
                 for alias in node.names
             ):
                 production_importers.append(path)
-    assert set(production_importers) <= {LINUX_LEGACY_RUNTIME}
+    assert set(production_importers) <= {
+        LINUX_LEGACY_RUNTIME,
+        WINDOWS_LEGACY_RUNTIME,
+    }
 
 
 def test_plc9b2a_acquisition_is_unbound_bounded_and_pathless() -> None:
