@@ -974,7 +974,13 @@ def test_plc9_freezes_named_package_lifecycle_sites_and_occurrences() -> None:
     add_methods(
         RPC_PACKAGES,
         "_DynamicPackageCapabilities",
-        {"get_packages", "update_packages", "check_package_updates"},
+        {"update_packages", "check_package_updates"},
+        count=1,
+    )
+    add_methods(
+        RPC_PACKAGES,
+        "_DynamicPackageCapabilities",
+        {"get_packages"},
         count=2,
     )
     add_methods(
@@ -1038,14 +1044,17 @@ def test_plc9_freezes_named_package_lifecycle_sites_and_occurrences() -> None:
         "materialize_package": 1,
         "update_package": 1,
         "remove_package": 1,
-        "uninstall_package": 2,
+        "uninstall_package": 1,
         "install_package": 2,
     }
     for symbol, count in cli_sites.items():
         expected[(PACKAGE_CLI, "run_package_lifecycle", symbol)] = count
-    expected[(PACKAGE_CLI, "_invoke_source_operation", "uninstall_package")] = 2
+    expected[(PACKAGE_CLI, "_invoke_source_operation", "uninstall_package")] = 3
     expected[(PACKAGE_CLI, "_invoke_source_operation", "uninstall_package_async")] = 1
     expected[(PACKAGE_CLI, "_invoke_source_operation", "execute_package_lifecycle")] = 1
+    expected[(PACKAGE_CLI, "_invoke_source_operation", "install_package")] = 1
+    expected[(PACKAGE_CLI, "_invoke_operation", "update_packages")] = 2
+    expected[(PACKAGE_CLI, "_invoke_operation", "check_package_updates")] = 1
     for symbol in {
         "install_package",
         "materialize_package",
@@ -1069,6 +1078,20 @@ def test_plc9_freezes_named_package_lifecycle_sites_and_occurrences() -> None:
             "_DynamicPackageCapabilities._invoke_lifecycle",
             "execute_package_lifecycle",
         )
+    ] = 3
+    expected[
+        (
+            RPC_PACKAGES,
+            "_DynamicPackageCapabilities._invoke_collection",
+            "update_packages",
+        )
+    ] = 1
+    expected[
+        (
+            RPC_PACKAGES,
+            "_DynamicPackageCapabilities._invoke_collection",
+            "check_package_updates",
+        )
     ] = 1
     for path, owner, count in (
         (SESSION_FACADE_OPTIONAL, "SessionPackagePort", 1),
@@ -1076,6 +1099,13 @@ def test_plc9_freezes_named_package_lifecycle_sites_and_occurrences() -> None:
         (PACKAGE_SESSION, "SessionPackageController", 1),
     ):
         expected[(path, f"{owner}.execute_package_lifecycle", "execute_package_lifecycle")] = count
+    expected[
+        (
+            PACKAGE_SESSION,
+            "SessionPackageController.execute_package_lifecycle_collection",
+            "check_package_updates",
+        )
+    ] = 1
     agent_args = Path("src/loushang/harness/cli/agent_args.py")
     expected[(agent_args, "agent_cli_argument_values", "update_packages")] = 1
     expected[(agent_args, "agent_cli_argument_values", "check_package_updates")] = 1

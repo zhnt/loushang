@@ -9,7 +9,7 @@ prevents the core surface from becoming the owner of Product-specific policy.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Protocol
+from typing import Literal, Protocol
 
 from loushang.agent import ThinkingLevel
 from loushang.harness.diagnostics.types import (
@@ -139,6 +139,12 @@ class SessionPackagePort(Protocol):
 
     async def check_package_updates(self) -> list[dict[str, object]]: ...
 
+    @property
+    def package_product_binding_id(self) -> str | None: ...
+
+    @property
+    def package_product_lifecycle_mode(self) -> str: ...
+
     def remove_package(self, source: str) -> dict[str, object]: ...
 
     def uninstall_package(
@@ -158,6 +164,15 @@ class SessionPackagePort(Protocol):
         operation_id: str,
         scope: str = "project",
     ) -> dict[str, object]: ...
+
+    async def execute_package_lifecycle_collection(
+        self,
+        action: Literal["update", "check"],
+        *,
+        entrypoint: PackageProductEntrypoint,
+        operation_id: str,
+        scope: str = "project",
+    ) -> list[dict[str, object]]: ...
 
 
 class SessionFacadeOptionalOperations:
@@ -318,6 +333,14 @@ class SessionFacadeOptionalOperations:
     async def check_package_updates(self) -> list[dict[str, object]]:
         return await self._require_packages().check_package_updates()
 
+    @property
+    def package_product_binding_id(self) -> str | None:
+        return self.packages.package_product_binding_id if self.packages else None
+
+    @property
+    def package_product_lifecycle_mode(self) -> str:
+        return self.packages.package_product_lifecycle_mode if self.packages else "legacy"
+
     def remove_package(self, source: str) -> dict[str, object]:
         return self._require_packages().remove_package(source)
 
@@ -346,6 +369,21 @@ class SessionFacadeOptionalOperations:
         return await self._require_packages().execute_package_lifecycle(
             action,
             source,
+            entrypoint=entrypoint,
+            operation_id=operation_id,
+            scope=scope,
+        )
+
+    async def execute_package_lifecycle_collection(
+        self,
+        action: Literal["update", "check"],
+        *,
+        entrypoint: PackageProductEntrypoint,
+        operation_id: str,
+        scope: str = "project",
+    ) -> list[dict[str, object]]:
+        return await self._require_packages().execute_package_lifecycle_collection(
+            action,
             entrypoint=entrypoint,
             operation_id=operation_id,
             scope=scope,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from hashlib import sha256
 from typing import Protocol
 
 from loushang.harness.resources.packages.plugin_lifecycle.journal import (
@@ -59,6 +60,12 @@ class PackageLifecycleOwner:
     @property
     def journal(self) -> PackageLifecycleJournal:
         return self._journal
+
+    @property
+    def binding_id(self) -> str:
+        """Opaque identity shared by adapters bound to this exact journal."""
+
+        return sha256(str(self._journal.path).encode("utf-8")).hexdigest()
 
     def submit(
         self,

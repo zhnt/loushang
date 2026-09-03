@@ -33,6 +33,7 @@ from loushang.harness.resources.packages.plugin_lifecycle import (
     PackageClassificationBasisFactV1,
     PackageClassificationFactsV1,
     PackageLifecycleIngressRequestV1,
+    PackageLifecycleIngressRequestV2,
     PackageLifecycleJournal,
     PackageLifecycleOwner,
 )
@@ -104,6 +105,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
     PackageEpochFenceRequestV1,
     PackageEpochLeaseSnapshotV1,
     PackageEpochRuntimeAdmissionOwner,
+    PackageEpochRuntimeAdmissionReceiptV1,
     PackageEpochRuntimeAdmissionRequestV1,
     PackageEpochRuntimeAdmissionResultV1,
     PackageEpochRuntimeLeaseV1,
@@ -199,6 +201,7 @@ from loushang.harness.resources.packages.product_composition import (
 )
 from loushang.harness.resources.packages.product_lifecycle import (
     PackageProductEntrypoint,
+    PackageProductLifecycleExecutionBinding,
     PackageProductLifecycleRouter,
     PackageProductPublishAttemptV1,
     PackageProductRouteRequestV1,
@@ -1480,14 +1483,58 @@ class _ManifestProductTransaction:
     owner: PackageLifecycleOwner
     calls: list[PackageProductEntrypoint] = field(default_factory=list)
 
+    @property
+    def owner_binding_id(self) -> str:
+        return self.owner.binding_id
+
     def execute(
         self,
         request: PackageProductRouteRequestV1,
         *,
-        classified: PackageLifecycleStatusV1,
+        current: PackageLifecycleStatusV1,
     ) -> PackageLifecycleStatusV1:
         self.calls.append(request.entrypoint)
-        return _advance_lifecycle(self.owner, classified, "committed")
+        return _advance_lifecycle(self.owner, current, "committed")
+
+
+def _manifest_product_admission() -> PackageEpochRuntimeAdmissionReceiptV1:
+    fence = PackageEpochFenceReceiptV1.create(
+        PackageEpochFenceRequestV1.create(
+            store_id="package-store:product",
+            prior_fence=None,
+            legacy_root_identity="1" * 64,
+            fenced_root_identity="2" * 64,
+            namespace_id="3" * 64,
+            minimum_runtime_version="1.0.0",
+            minimum_runtime_protocol_epoch=1,
+            quiescence_receipt_id="4" * 64,
+            snapshot_receipt_id="5" * 64,
+            root_switch_receipt_id="6" * 64,
+        )
+    )
+    lease = PackageEpochRuntimeLeaseV1.create(
+        runtime_id="runtime:product",
+        runtime_epoch=fence.epoch,
+        store_root_identity=fence.fenced_root_identity,
+        registration_receipt_id="7" * 64,
+    )
+    request = PackageEpochRuntimeAdmissionRequestV1.create(
+        fence=fence,
+        runtime_id=lease.runtime_id,
+        runtime_version="1.0.0",
+        runtime_protocol_epoch=1,
+        runtime_epoch=lease.runtime_epoch,
+        store_root_identity=lease.store_root_identity,
+        lease_id=lease.lease_id,
+    )
+    return PackageEpochRuntimeAdmissionReceiptV1.create(
+        request,
+        snapshot=PackageEpochLeaseSnapshotV1.create(
+            store_id=fence.store_id,
+            owner_revision=1,
+            active_leases=(lease,),
+        ),
+    )
 
 
 def _b2_owner(
@@ -2800,18 +2847,14 @@ def _manifest_windows_offline_restore_fixture(
             minimum_runtime_protocol_epoch=2,
             quiescence_receipt_id=snapshot.quiescence_receipt_id,
             snapshot_receipt_id=snapshot.receipt_id,
-            root_switch_receipt_id=sha256(
-                b"manifest-windows-root-switch"
-            ).hexdigest(),
+            root_switch_receipt_id=sha256(b"manifest-windows-root-switch").hexdigest(),
         )
     )
     request = PackageOfflineRestoreRequestV1.create(
         current_fence=current,
         genesis_fence=current,
         snapshot_evidence=evidence,
-        restore_namespace_id=sha256(
-            b"manifest-windows-isolated-restore"
-        ).hexdigest(),
+        restore_namespace_id=sha256(b"manifest-windows-isolated-restore").hexdigest(),
         legacy_runtime_version="1.9.0",
     )
     coordination = _ManifestEpochCutoverCoordination()
@@ -3932,12 +3975,18 @@ def test_manifest_case(
         )
         transaction = _ManifestProductTransaction(owner)
         router = PackageProductLifecycleRouter(
-            owner=owner,
-            transaction=transaction,
+            execution=PackageProductLifecycleExecutionBinding(owner, transaction),
         )
+        admission = _manifest_product_admission()
         route = PackageProductRouteRequestV1(
             entrypoint=entrypoint,
-            ingress=_request(),
+            ingress=PackageLifecycleIngressRequestV2.bind_runtime_admission(
+                _request(),
+                runtime_admission_request_id=(
+                    admission.request.admission_request_id
+                ),
+            ),
+            admission=admission,
         )
 
         committed = router.route(route)
@@ -3959,12 +4008,18 @@ def test_manifest_case(
         )
         transaction = _ManifestProductTransaction(owner)
         router = PackageProductLifecycleRouter(
-            owner=owner,
-            transaction=transaction,
+            execution=PackageProductLifecycleExecutionBinding(owner, transaction),
         )
+        admission = _manifest_product_admission()
         route = PackageProductRouteRequestV1(
             entrypoint="direct_materializer",
-            ingress=_request(),
+            ingress=PackageLifecycleIngressRequestV2.bind_runtime_admission(
+                _request(),
+                runtime_admission_request_id=(
+                    admission.request.admission_request_id
+                ),
+            ),
+            admission=admission,
         )
 
         refused = router.route(route)
@@ -3985,8 +4040,7 @@ def test_manifest_case(
         )
         transaction = _ManifestProductTransaction(owner)
         router = PackageProductLifecycleRouter(
-            owner=owner,
-            transaction=transaction,
+            execution=PackageProductLifecycleExecutionBinding(owner, transaction),
         )
         current = _advance_lifecycle(owner, owner.submit(_request()), "staging")
         before = journal.records()
@@ -6318,4 +6372,7 @@ def _assert_replay_is_single_owner(
 
 def _assert_no_capability_side_effect(tmp_path: Path) -> None:
     names = {path.name for path in tmp_path.rglob("*") if path.is_file()}
-    assert names <= {"package-lifecycle.jsonl", "package-lifecycle.jsonl.lock"}
+    assert names <= {
+        "package-lifecycle.jsonl",
+        "package-lifecycle.jsonl.lock",
+    }

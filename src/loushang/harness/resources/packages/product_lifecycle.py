@@ -11,12 +11,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
+from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
+    PackageEpochRuntimeAdmissionReceiptV1,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.owner import (
     PackageLifecycleOwner,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     PackageLifecycleFailureV1,
-    PackageLifecycleIngressRequestV1,
+    PackageLifecycleIngressRequestV2,
     PackageLifecycleStatusV1,
 )
 from loushang.harness.resources.packages.product_contract import (
@@ -44,14 +47,22 @@ class PackageProductRouteRequestV1:
     """Bind Product transport provenance to one pathless ingress request."""
 
     entrypoint: PackageProductEntrypoint
-    ingress: PackageLifecycleIngressRequestV1
+    ingress: PackageLifecycleIngressRequestV2
+    admission: PackageEpochRuntimeAdmissionReceiptV1
     route_version: int = PACKAGE_PRODUCT_ROUTE_VERSION
 
     def __post_init__(self) -> None:
         if self.entrypoint not in _PRODUCT_ENTRYPOINTS:
             raise ValueError("Unsupported Package Product entrypoint")
-        if not isinstance(self.ingress, PackageLifecycleIngressRequestV1):
-            raise TypeError("Package lifecycle ingress request is required")
+        if not isinstance(self.ingress, PackageLifecycleIngressRequestV2):
+            raise TypeError("Package lifecycle ingress request v2 is required")
+        if not isinstance(self.admission, PackageEpochRuntimeAdmissionReceiptV1):
+            raise TypeError("Package runtime admission receipt is required")
+        if (
+            self.ingress.runtime_admission_request_id
+            != self.admission.request.admission_request_id
+        ):
+            raise ValueError("Package runtime admission identity is inconsistent")
         if self.route_version != PACKAGE_PRODUCT_ROUTE_VERSION:
             raise ValueError("Unsupported Package Product route request")
 
@@ -73,16 +84,38 @@ class PackageProductPublishAttemptV1:
 class PackageProductLifecycleTransactionPort(Protocol):
     """The sole Product-facing capability that may run a PLC9B transaction."""
 
+    @property
+    def owner_binding_id(self) -> str: ...
+
     def execute(
         self,
         request: PackageProductRouteRequestV1,
         *,
-        classified: PackageLifecycleStatusV1,
+        current: PackageLifecycleStatusV1,
     ) -> PackageLifecycleStatusV1: ...
 
 
 class PackageProductRouteContractError(RuntimeError):
     """A configured transaction Port violated the Product routing contract."""
+
+
+@dataclass(frozen=True, slots=True)
+class PackageProductLifecycleExecutionBinding:
+    """Indivisible owner/transaction pair for one durable lifecycle journal."""
+
+    owner: PackageLifecycleOwner
+    transaction: PackageProductLifecycleTransactionPort
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.owner, PackageLifecycleOwner):
+            raise TypeError("Package lifecycle owner is required")
+        if not callable(getattr(self.transaction, "execute", None)):
+            raise TypeError("Package Product transaction Port is required")
+        transaction_owner = getattr(self.transaction, "owner_binding_id", None)
+        if transaction_owner != self.owner.binding_id:
+            raise PackageProductRouteContractError(
+                "Package Product transaction is bound to a different owner"
+            )
 
 
 class PackageProductLifecycleRouter:
@@ -91,15 +124,13 @@ class PackageProductLifecycleRouter:
     def __init__(
         self,
         *,
-        owner: PackageLifecycleOwner,
-        transaction: PackageProductLifecycleTransactionPort,
+        execution: PackageProductLifecycleExecutionBinding,
     ) -> None:
-        if not isinstance(owner, PackageLifecycleOwner):
-            raise TypeError("Package lifecycle owner is required")
-        if not callable(getattr(transaction, "execute", None)):
-            raise TypeError("Package Product transaction Port is required")
-        self._owner = owner
-        self._transaction = transaction
+        if not isinstance(execution, PackageProductLifecycleExecutionBinding):
+            raise TypeError("Package Product lifecycle execution binding is required")
+        self._owner = execution.owner
+        self._transaction = execution.transaction
+        self._owner_binding_id = execution.owner.binding_id
 
     def route(
         self,
@@ -112,7 +143,7 @@ class PackageProductLifecycleRouter:
         status = self._owner.submit(request.ingress)
         if status.disposition == "committed":
             return status
-        if status.disposition != "active" or status.phase != "classified":
+        if status.disposition != "active":
             return status
         classification = status.classification
         if classification is None:
@@ -124,13 +155,22 @@ class PackageProductLifecycleRouter:
             # classification.  This router deliberately holds no such peer.
             return status
         if request.entrypoint == "direct_materializer":
+            if status.phase != "classified":
+                raise PackageProductRouteContractError(
+                    "Direct Package materializer replay crossed a transaction edge"
+                )
             return self._reject_direct_materializer(status)
         if request.entrypoint not in _TRANSACTION_ENTRYPOINTS:
             raise PackageProductRouteContractError(
                 "Package Product entrypoint has no transaction route"
             )
 
-        result = self._transaction.execute(request, classified=status)
+        if self._transaction.owner_binding_id != self._owner_binding_id:
+            raise PackageProductRouteContractError(
+                "Package Product transaction owner changed after composition"
+            )
+
+        result = self._transaction.execute(request, current=status)
         if not isinstance(result, PackageLifecycleStatusV1):
             raise PackageProductRouteContractError(
                 "Package Product transaction returned invalid status"
@@ -201,11 +241,11 @@ class PackageProductLifecycleRouter:
             expected_attempt_epoch=status.attempt_epoch,
         )
 
-
 __all__ = [
     "PACKAGE_PRODUCT_PUBLISH_ATTEMPT_VERSION",
     "PACKAGE_PRODUCT_ROUTE_VERSION",
     "PackageProductEntrypoint",
+    "PackageProductLifecycleExecutionBinding",
     "PackageProductLifecycleRouter",
     "PackageProductLifecycleTransactionPort",
     "PackageProductPublishAttemptV1",

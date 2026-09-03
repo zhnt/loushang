@@ -160,3 +160,50 @@ def test_package_lifecycle_uses_typed_product_route_without_dynamic_fallback() -
     )
     assert len(operation_id) == 32
     assert result.outputs[0]["record"]["operationId"] == operation_id
+
+
+def test_package_lifecycle_uses_typed_product_collections_with_compat_scope() -> None:
+    class ProductSession:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, str, str, str]] = []
+
+        async def execute_package_lifecycle_collection(
+            self,
+            action: str,
+            *,
+            entrypoint: str,
+            operation_id: str,
+            scope: str,
+        ) -> list[dict[str, object]]:
+            self.calls.append((action, entrypoint, operation_id, scope))
+            return [{"lifecycle": "checked" if action == "check" else "updated"}]
+
+        async def check_package_updates(self) -> object:
+            raise AssertionError("legacy check helper used")
+
+        async def update_packages(self) -> object:
+            raise AssertionError("legacy bulk helper used")
+
+    session = ProductSession()
+
+    result = asyncio.run(
+        run_package_lifecycle(
+            session,
+            PackageLifecycleRequest(
+                check_updates=True,
+                update_all=True,
+                scope="global",
+            ),
+        )
+    )
+
+    assert [(action, entrypoint, scope) for action, entrypoint, _id, scope in session.calls] == [
+        ("check", "cli", "global"),
+        ("update", "cli", "global"),
+    ]
+    assert all(len(operation_id) == 32 for _, _, operation_id, _ in session.calls)
+    assert session.calls[0][2] != session.calls[1][2]
+    assert [output["command"] for output in result.outputs] == [
+        "check_package_updates",
+        "update_packages",
+    ]

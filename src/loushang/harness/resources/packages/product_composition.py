@@ -18,11 +18,13 @@ from loushang.harness.resources.packages.plugin_lifecycle.retention_handoff impo
 )
 from loushang.harness.resources.packages.product_activation import (
     PackageProductActivationError,
+    PackageProductEpochTransactionGuardPort,
     PackageProductIngressFactoryPort,
     PackageProductLifecycleActivation,
     PackageProductRecoveryPort,
 )
 from loushang.harness.resources.packages.product_lifecycle import (
+    PackageProductLifecycleExecutionBinding,
     PackageProductLifecycleRouter,
     PackageProductLifecycleTransactionPort,
 )
@@ -72,19 +74,25 @@ def compose_package_product_lifecycle(
     ingress_factory: PackageProductIngressFactoryPort,
     runtime_admission: PackageEpochRuntimeAdmissionOwner,
     admission_request: PackageEpochRuntimeAdmissionRequestV1,
+    transaction_guard: PackageProductEpochTransactionGuardPort,
     recoveries: tuple[PackageProductRecoveryPort, ...] = (),
 ) -> PackageProductLifecycleActivation:
     """Build the sole Product router; the caller explicitly activates it."""
 
+    execution = PackageProductLifecycleExecutionBinding(
+        owner=owner,
+        transaction=transaction,
+    )
     return PackageProductLifecycleActivation(
         product_id=product_id,
+        binding_id=execution.owner.binding_id,
         router=PackageProductLifecycleRouter(
-            owner=owner,
-            transaction=transaction,
+            execution=execution,
         ),
         ingress_factory=ingress_factory,
         runtime_admission=runtime_admission,
         admission_request=admission_request,
+        transaction_guard=transaction_guard,
         recoveries=recoveries,
     )
 

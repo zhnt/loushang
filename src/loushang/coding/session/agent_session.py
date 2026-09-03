@@ -80,6 +80,8 @@ from loushang.harness.multiagent import DelegatedExecutionProfile
 from loushang.harness.policy import PolicyEvaluator
 from loushang.harness.resources.loader import ResourceLoader
 from loushang.harness.resources.packages.product_contract import (
+    PackageProductLifecycleInventoryPort,
+    PackageProductLifecycleMode,
     PackageProductLifecycleOperationPort,
 )
 from loushang.harness.resources.packages.roots import SelectedPluginPackageInput
@@ -191,6 +193,8 @@ class AgentSession(AgentProductSession):
         diagnostics_service: DiagnosticsService | None = None,
         package_materializer: PackageMaterializer | None = None,
         package_product_lifecycle: PackageProductLifecycleOperationPort | None = None,
+        package_product_inventory: PackageProductLifecycleInventoryPort | None = None,
+        package_product_lifecycle_mode: PackageProductLifecycleMode = "legacy",
         session_start_event: SessionStartEvent | None = None,
         api_registry: APIRegistry | None = None,
         footer_data_provider: FooterDataProvider | None = None,
@@ -472,6 +476,8 @@ class AgentSession(AgentProductSession):
                 diagnostics_service=diagnostics_service,
                 package_materializer=package_materializer,
                 package_product_lifecycle=package_product_lifecycle,
+                package_product_inventory=package_product_inventory,
+                package_product_lifecycle_mode=package_product_lifecycle_mode,
                 selected_plugin_packages=(
                     (
                         SelectedPluginPackageInput(

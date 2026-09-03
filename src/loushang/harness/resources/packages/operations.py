@@ -6,6 +6,7 @@ import asyncio
 import inspect
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from hashlib import sha256
 from pathlib import Path
 from typing import Protocol, TypeVar
 from uuid import uuid4
@@ -17,8 +18,13 @@ from loushang.harness.resources.packages.product_contract import (
     PackageProductEntrypoint,
     PackageProductLifecycleAction,
     PackageProductLifecycleIntentV1,
+    PackageProductLifecycleInventoryPort,
+    PackageProductLifecycleMode,
     PackageProductLifecycleOperationPort,
     PackageProductLifecycleRecordV1,
+    PackageProductUpdateManifestReceiptV1,
+    PackageProductUpdateTargetV1,
+    canonicalize_package_product_scope,
 )
 from loushang.harness.resources.packages.settings_mutation import (
     PackageSourceSettingsMutation,
@@ -112,11 +118,34 @@ class PackageOperationsRuntime:
     prepare_updates: PackageUpdatePreparation | None = None
     refresh_transaction: PackageResourceRefreshTransactionRunner | None = None
     product_lifecycle: PackageProductLifecycleOperationPort | None = None
+    product_inventory: PackageProductLifecycleInventoryPort | None = None
+    product_lifecycle_mode: PackageProductLifecycleMode = "legacy"
     _settings_transaction_lock: asyncio.Lock = field(
         init=False,
         default_factory=asyncio.Lock,
         repr=False,
     )
+
+    def __post_init__(self) -> None:
+        if self.product_lifecycle_mode not in {"legacy", "dark", "enforced"}:
+            raise ValueError("Unsupported Package Product lifecycle mode")
+        if self.product_lifecycle_mode == "legacy":
+            if self.product_lifecycle is not None or self.product_inventory is not None:
+                raise ValueError("Legacy Package mode cannot receive Product bindings")
+            return
+        if self.product_lifecycle is None:
+            if self.product_lifecycle_mode == "enforced":
+                raise ValueError("Enforced Package Product mode requires activation")
+            if self.product_inventory is not None:
+                raise ValueError("Package Product inventory requires activation")
+            return
+        if getattr(self.product_lifecycle, "active", None) is not True:
+            raise ValueError("Package Product lifecycle must be activated before use")
+        if self.product_inventory is not None and (
+            getattr(self.product_inventory, "binding_id", None)
+            != self.product_lifecycle.binding_id
+        ):
+            raise ValueError("Package Product inventory owner does not match lifecycle")
 
     async def materialize(
         self,
@@ -194,21 +223,73 @@ class PackageOperationsRuntime:
         *,
         entrypoint: PackageProductEntrypoint = "operations",
         scope: str = "project",
+        operation_id: str | None = None,
     ) -> list[PackageOperationRecord]:
+        scope = canonicalize_package_product_scope(scope)
+        lifecycle = self.product_lifecycle
+        if lifecycle is not None:
+            inventory = self.product_inventory
+            if inventory is None:
+                raise RuntimeError("Package Product update inventory is not available")
+            batch_id = operation_id or uuid4().hex
+
+            async def bind_inventory() -> tuple[PackageProductUpdateTargetV1, ...]:
+                if inventory.binding_id != lifecycle.binding_id:
+                    raise RuntimeError(
+                        "Package Product inventory owner changed after composition"
+                    )
+                targets = inventory.list_update_targets(scope=scope)
+                if not isinstance(targets, tuple) or any(
+                    not isinstance(target, PackageProductUpdateTargetV1)
+                    or target.scope != scope
+                    for target in targets
+                ):
+                    raise RuntimeError("Package Product update inventory is invalid")
+                ordered = tuple(sorted(targets, key=lambda target: target.target_ref))
+                if len({target.target_ref for target in ordered}) != len(ordered):
+                    raise RuntimeError(
+                        "Package Product update inventory contains duplicates"
+                    )
+                if inventory.binding_id != lifecycle.binding_id:
+                    raise RuntimeError(
+                        "Package Product inventory owner changed after listing"
+                    )
+                receipt = inventory.bind_update_targets(
+                    operation_id=batch_id,
+                    scope=scope,
+                    targets=ordered,
+                )
+                expected_receipt = PackageProductUpdateManifestReceiptV1.create(
+                    binding_id=lifecycle.binding_id,
+                    operation_id=batch_id,
+                    scope=scope,
+                    target_refs=tuple(target.target_ref for target in ordered),
+                )
+                if receipt != expected_receipt:
+                    raise RuntimeError(
+                        "Package Product update manifest receipt is invalid"
+                    )
+                if inventory.binding_id != lifecycle.binding_id:
+                    raise RuntimeError(
+                        "Package Product inventory owner changed after composition"
+                    )
+                return ordered
+
+            ordered = await lifecycle.execute_guarded_query(bind_inventory)
+            return [
+                await self.update(
+                    target.source,
+                    entrypoint=entrypoint,
+                    scope=target.scope,
+                    operation_id=sha256(
+                        f"{batch_id}\0{target.target_ref}".encode("utf-8")
+                    ).hexdigest(),
+                )
+                for target in ordered
+            ]
         if self.prepare_updates is not None:
             await _resolve(self.prepare_updates())
         materializer = self._require_materializer()
-        if self.product_lifecycle is not None:
-            records = materializer.list_records()
-            return [
-                await self.update(
-                    record.source,
-                    entrypoint=entrypoint,
-                    scope=scope,
-                )
-                for record in records
-                if record.lifecycle == "installed"
-            ]
         legacy_records: list[PackageOperationRecord] = [
             record for record in await materializer.update_all_remote_sources()
         ]
@@ -480,6 +561,8 @@ class PackageOperationsRuntime:
     ) -> PackageProductLifecycleRecordV1 | None:
         lifecycle = self.product_lifecycle
         if lifecycle is None:
+            if self.product_lifecycle_mode == "enforced":
+                raise RuntimeError("Package Product lifecycle is not available")
             return None
         intent = PackageProductLifecycleIntentV1(
             operation_id=operation_id or uuid4().hex,
@@ -522,6 +605,7 @@ __all__ = [
     "PackageMaterializerProvider",
     "PackageOperationRecord",
     "PackageOperationsRuntime",
+    "PackageProductLifecycleInventoryPort",
     "PackageMutationRequiresAsyncError",
     "PackageResourceRefresh",
     "PackageResourceRefreshOutcome",

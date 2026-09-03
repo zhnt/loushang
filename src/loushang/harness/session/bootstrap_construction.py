@@ -24,6 +24,8 @@ from loushang.harness.resources.activation import (
 )
 from loushang.harness.resources.packages.materializer import PackageMaterializer
 from loushang.harness.resources.packages.product_contract import (
+    PackageProductLifecycleInventoryPort,
+    PackageProductLifecycleMode,
     PackageProductLifecycleOperationPort,
 )
 from loushang.harness.resources.packages.roots import SelectedPluginPackageInput
@@ -61,6 +63,7 @@ class _RootOwnedResourceHandles(Protocol):
     def activate_resources(self, bundle: ResourceBundle) -> ResourceActivation: ...
 
     def dispose(self) -> None: ...
+
 
 AgentT = TypeVar("AgentT")
 SessionT = TypeVar("SessionT")
@@ -463,6 +466,8 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
         services: BootstrapServices,
         package_materializer: PackageMaterializer,
         package_product_lifecycle: PackageProductLifecycleOperationPort | None = None,
+        package_product_inventory: PackageProductLifecycleInventoryPort | None = None,
+        package_product_lifecycle_mode: PackageProductLifecycleMode = "legacy",
         session_id: str,
         cwd: str,
         extension_flag_values: ExtensionFlagValues | None,
@@ -630,6 +635,8 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
                         ),
                         selected_plugin_packages=tuple(selected_plugin_packages),
                         package_product_lifecycle=package_product_lifecycle,
+                        package_product_inventory=package_product_inventory,
+                        package_product_lifecycle_mode=package_product_lifecycle_mode,
                     ),
                     ports=AgentProductConstructionPorts(
                         activate_resources=(

@@ -12,6 +12,11 @@ INVENTORY = Path(
 INDEX = Path("docs/internals/architecture/harness/plugin/README.md")
 ACTIVATION = Path("src/loushang/harness/resources/packages/product_activation.py")
 PRODUCT_CONTRACT = Path("src/loushang/harness/resources/packages/product_contract.py")
+PRODUCT_INVENTORY = Path("src/loushang/harness/resources/packages/product_inventory.py")
+PRODUCT_LIFECYCLE = Path("src/loushang/harness/resources/packages/product_lifecycle.py")
+KERNEL_RECORDS = Path(
+    "src/loushang/harness/resources/packages/plugin_lifecycle/records.py"
+)
 COMPOSITION = Path("src/loushang/harness/resources/packages/product_composition.py")
 RETENTION = Path(
     "src/loushang/harness/resources/packages/plugin_lifecycle/product_retention.py"
@@ -84,6 +89,13 @@ def test_plc9a2_contract_is_indexed_and_inventory_names_every_new_owner() -> Non
         "PackageProductRetentionSettlementOwner",
         "PackageOperationsRuntime",
         "PackageSourceResolver.resolve_configured_sources_sync",
+        "PackageProductLifecycleExecutionBinding",
+        "PackageProductEpochTransactionGuardPort",
+        "PackageProductLifecycleInventoryPort",
+        "PackageProductLifecycleMode",
+        "PackageProductUpdateCheckRequestV1",
+        "PackageProductUpdateManifestJournal",
+        "PackageProductUpdateManifestReceiptV1",
     ):
         assert owner in inventory
     assert "UI/management-SDK transport bindings" in inventory
@@ -99,9 +111,8 @@ def test_plc9a2_product_activation_is_capability_poor_and_pathless() -> None:
         if module.startswith("loushang.")
     }
 
-    assert contract_imports == {
-        "loushang.harness.resources.packages.plugin_lifecycle.records"
-    }
+    assert contract_imports == set()
+    assert "PackageProductLifecycleEvidenceV1" in contract
     assert not any(
         module.startswith(
             (
@@ -130,7 +141,83 @@ def test_plc9a2_product_activation_is_capability_poor_and_pathless() -> None:
         PRODUCT_CONTRACT, "PackageProductLifecycleRecordV1.to_dict"
     )
     assert "for recovery in self._recoveries" in source
-    assert source.count("self._admit()") == 2
+    assert source.count("self._admit()") == 3
+
+
+def test_plc9a2_freezes_atomic_admission_guard_and_inventory_owners() -> None:
+    lifecycle = _source(PRODUCT_LIFECYCLE)
+    inventory = _source(PRODUCT_INVENTORY)
+    records = _source(KERNEL_RECORDS)
+
+    route = _function_source(ACTIVATION, "PackageProductLifecycleActivation.route")
+    query = _function_source(
+        ACTIVATION,
+        "PackageProductLifecycleActivation.execute_guarded_query",
+    )
+    guarded = _function_source(
+        ACTIVATION,
+        "PackageProductLifecycleActivation._route_guarded",
+    )
+    assert route.index("with guard:") < route.index("self._admit()") < route.index(
+        "self._route_guarded("
+    )
+    assert query.index("with guard:") < query.index("self._admit()") < query.index(
+        "await query()"
+    )
+    assert "receipt.request.admission_request_id" in guarded
+    assert guarded.index("bind_runtime_admission(") < guarded.index(
+        "self._router.route("
+    )
+    assert (
+        "runtime_admission_request_id=("
+        in guarded
+    )
+    assert "resolution_environment_fingerprint=sha256" not in guarded
+    assert "PACKAGE_LIFECYCLE_REQUEST_VERSION = 1" in records
+    assert "PACKAGE_LIFECYCLE_REQUEST_V2_VERSION = 2" in records
+    assert "class PackageLifecycleIngressRequestV2(" in records
+    assert "class PackageLifecycleRequestV2(" in records
+    assert "decode_package_lifecycle_request(" in records
+    assert '"runtimeAdmissionRequestId"' in records
+    assert "PackageProductLifecycleExecutionBinding" in lifecycle
+    assert "self._transaction.owner_binding_id != self._owner_binding_id" in lifecycle
+    assert "self.ingress.runtime_admission_request_id" in lifecycle
+    assert "self.admission.request.admission_request_id" in lifecycle
+    assert "_PackageProductAdmissionJournal" not in lifecycle
+
+    update_all = _function_source(OPERATIONS, "PackageOperationsRuntime.update_all")
+    check = _function_source(SESSION, "SessionPackageController.check_package_updates")
+    for body in (update_all, check):
+        assert "inventory.binding_id != lifecycle.binding_id" in body
+        assert "execute_guarded_query" in body
+    assert "inventory.bind_update_targets(" in update_all
+    assert "PackageProductUpdateManifestReceiptV1.create(" in update_all
+    assert "receipt != expected_receipt" in update_all
+    assert "class PackageProductUpdateManifestJournal:" in inventory
+    assert '"bindingId": self.binding_id' in inventory
+    assert "item.binding_id != self._binding_id" in inventory
+    assert "_assert_private_storage(self._path)" in inventory
+    assert 'JournalLoadPolicy(partial_tail="repair")' in inventory
+    assert inventory.count("append_jsonl_record(") == 1
+    for forbidden in ("source_locator", "credential_reference", "target.source"):
+        assert forbidden not in inventory
+    assert "PackageProductLifecycleMode = Literal[\"legacy\", \"dark\", \"enforced\"]" in (
+        _source(PRODUCT_CONTRACT)
+    )
+    assert "package_product_update_manifest_conflict" in inventory
+    assert "PackageProductUpdateCheckRequestV1(" in check
+    assert "inventory.check_updates(request=request)" in check
+    rpc = _source(RPC)
+    contract = _source(PRODUCT_CONTRACT)
+    assert "PACKAGE_PRODUCT_LIFECYCLE_FAILURE_CODES = frozenset(" in contract
+    assert "self.failure_code not in PACKAGE_PRODUCT_LIFECYCLE_FAILURE_CODES" in (
+        contract
+    )
+    assert "_validate_product_update_checks(result)" in rpc
+    assert "_validate_product_lifecycle_records(" in rpc
+    assert "_ProductPackageOperationError" in rpc
+    assert 'item.get("kind") == "plugin_package"' in rpc
+    assert 'item["name"] != expected_name' in rpc
 
 
 def test_plc9a2_transports_depend_on_the_product_contract_not_owner_internals() -> None:
@@ -228,9 +315,29 @@ def test_plc9a2_transports_and_startup_use_one_typed_lifecycle_seam() -> None:
     assert cli.index('getattr(session, "execute_package_lifecycle"') < cli.index(
         "_require_method("
     )
-    assert rpc.index('getattr(owner, "execute_package_lifecycle"') < rpc.index(
+    assert rpc.index('getattr(session, "execute_package_lifecycle"') < rpc.index(
         "method_names = {"
     )
+    assert "for owner in (self._runtime, session)" not in _function_source(
+        RPC, "_DynamicPackageCapabilities._invoke_lifecycle"
+    )
+    for method in (
+        "_DynamicPackageCapabilities._invoke_lifecycle",
+        "_DynamicPackageCapabilities._invoke_collection",
+    ):
+        body = _function_source(RPC, method)
+        assert body.index("self._product_owner(session)") < body.index(
+            "if callable(executor)"
+            if method.endswith("_invoke_lifecycle")
+            else "if callable(collection)"
+        )
+    product_owner = _function_source(
+        RPC,
+        "_DynamicPackageCapabilities._product_owner",
+    )
+    assert "if session_binding is None:" in product_owner
+    assert "runtime_binding is not None" in product_owner
+    assert "return session" in product_owner
     startup_route = _function_source(
         STARTUP, "PackageSourceResolver._materialize_startup_source"
     )

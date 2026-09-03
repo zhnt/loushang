@@ -9,6 +9,7 @@ from uuid import uuid4
 
 from loushang.harness.resources.packages.product_contract import (
     PackageProductLifecycleAction,
+    canonicalize_package_product_scope,
 )
 
 
@@ -98,7 +99,10 @@ async def run_package_lifecycle(
         ):
             continue
         records = await _invoke_operation(
-            session, command=method_name, outputs=outputs
+            session,
+            command=method_name,
+            scope=request.scope,
+            outputs=outputs,
         )
         if command == "update_packages" and isinstance(records, list):
             _raise_for_failed_records(records, outputs=outputs)
@@ -115,7 +119,7 @@ async def run_package_lifecycle(
                 session,
                 command=command,
                 source=source,
-                scope=request.scope if command == "uninstall_package" else None,
+                scope=request.scope,
                 outputs=outputs,
             )
             outputs.append(_record_output(command, record, outputs=outputs))
@@ -128,19 +132,20 @@ async def _invoke_source_operation(
     *,
     command: str,
     source: str,
-    scope: str | None,
+    scope: str,
     outputs: Sequence[dict[str, object]],
 ) -> object:
     try:
         executor = getattr(session, "execute_package_lifecycle", None)
         if callable(executor):
             action = _lifecycle_action(command)
+            canonicalize_package_product_scope(scope)
             result = executor(
                 action,
                 source,
                 entrypoint="cli",
                 operation_id=uuid4().hex,
-                scope=scope or "project",
+                scope=scope,
             )
         else:
             method = _require_method(
@@ -151,7 +156,9 @@ async def _invoke_source_operation(
                 fallback=command if command == "uninstall_package" else None,
             )
             result = (
-                method(source, scope=scope) if scope is not None else method(source)
+                method(source, scope=scope)
+                if command in {"install_package", "uninstall_package"}
+                else method(source)
             )
         if inspect.isawaitable(result):
             return await result
@@ -183,11 +190,24 @@ async def _invoke_operation(
     session: object,
     *,
     command: str,
+    scope: str,
     outputs: Sequence[dict[str, object]],
 ) -> object:
     try:
-        method = _require_method(session, command)
-        result = method()
+        collection = getattr(session, "execute_package_lifecycle_collection", None)
+        if command in {"update_packages", "check_package_updates"} and callable(
+            collection
+        ):
+            canonicalize_package_product_scope(scope)
+            result = collection(
+                "update" if command == "update_packages" else "check",
+                entrypoint="cli",
+                operation_id=uuid4().hex,
+                scope=scope,
+            )
+        else:
+            method = _require_method(session, command)
+            result = method()
         if inspect.isawaitable(result):
             return await result
     except PackageLifecycleError as error:

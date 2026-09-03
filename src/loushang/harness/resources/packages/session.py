@@ -6,6 +6,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal, Protocol, cast
+from uuid import uuid4
 
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.resources.loader import ResourceLoader
@@ -27,7 +28,12 @@ from loushang.harness.resources.packages.operations import (
 from loushang.harness.resources.packages.product_contract import (
     PackageProductEntrypoint,
     PackageProductLifecycleAction,
+    PackageProductLifecycleInventoryPort,
+    PackageProductLifecycleMode,
     PackageProductLifecycleOperationPort,
+    PackageProductUpdateCheckRequestV1,
+    PackageProductUpdateCheckV1,
+    canonicalize_package_product_scope,
 )
 from loushang.harness.resources.packages.projection import (
     project_package_entries,
@@ -89,6 +95,8 @@ class SessionPackageController:
     refresh_resource_transaction: PackageResourceRefreshTransactionRunner | None = None
     summary_provider: PackageSummaryProvider | None = None
     product_lifecycle: PackageProductLifecycleOperationPort | None = None
+    product_inventory: PackageProductLifecycleInventoryPort | None = None
+    product_lifecycle_mode: PackageProductLifecycleMode = "legacy"
     supports_synchronous_refresh: Callable[[], bool] = lambda: True
     _operations: PackageOperationsRuntime = field(init=False, repr=False)
 
@@ -107,6 +115,8 @@ class SessionPackageController:
             prepare_updates=self.prepare_configured_remote_package_records,
             refresh_transaction=self.refresh_resource_transaction,
             product_lifecycle=self.product_lifecycle,
+            product_inventory=self.product_inventory,
+            product_lifecycle_mode=self.product_lifecycle_mode,
         )
 
     @property
@@ -156,11 +166,67 @@ class SessionPackageController:
             await self._operations.update(source, entrypoint="session")
         )
 
-    async def update_packages(self) -> list[dict[str, object]]:
-        records = await self._operations.update_all(entrypoint="session")
+    async def update_packages(
+        self,
+        *,
+        operation_id: str | None = None,
+        scope: str = "project",
+    ) -> list[dict[str, object]]:
+        records = await self._operations.update_all(
+            entrypoint="session",
+            operation_id=operation_id,
+            scope=scope,
+        )
         return [serialize_package_operation_record(record) for record in records]
 
-    async def check_package_updates(self) -> list[dict[str, object]]:
+    @property
+    def package_product_binding_id(self) -> str | None:
+        lifecycle = self.product_lifecycle
+        return None if lifecycle is None else lifecycle.binding_id
+
+    @property
+    def package_product_lifecycle_mode(self) -> PackageProductLifecycleMode:
+        return self.product_lifecycle_mode
+
+    async def check_package_updates(
+        self,
+        *,
+        scope: str = "project",
+        operation_id: str | None = None,
+        entrypoint: PackageProductEntrypoint = "session",
+    ) -> list[dict[str, object]]:
+        if self.product_lifecycle is not None:
+            lifecycle = self.product_lifecycle
+            inventory = self.product_inventory
+            if inventory is None:
+                raise RuntimeError("Package Product update inventory is not available")
+            canonical_scope = canonicalize_package_product_scope(scope)
+            request = PackageProductUpdateCheckRequestV1(
+                operation_id=operation_id or uuid4().hex,
+                entrypoint=entrypoint,
+                scope=canonical_scope,
+            )
+
+            async def check_inventory() -> tuple[PackageProductUpdateCheckV1, ...]:
+                if inventory.binding_id != lifecycle.binding_id:
+                    raise RuntimeError(
+                        "Package Product inventory owner changed after composition"
+                    )
+                product_updates = await inventory.check_updates(request=request)
+                if not isinstance(product_updates, tuple) or any(
+                    not isinstance(update, PackageProductUpdateCheckV1)
+                    or update.scope != canonical_scope
+                    for update in product_updates
+                ):
+                    raise RuntimeError("Package Product update checks are invalid")
+                if inventory.binding_id != lifecycle.binding_id:
+                    raise RuntimeError(
+                        "Package Product inventory owner changed after composition"
+                    )
+                return product_updates
+
+            product_updates = await lifecycle.execute_guarded_query(check_inventory)
+            return [update.to_dict() for update in product_updates]
         materializer = self.get_package_materializer()
         if materializer is None:
             raise RuntimeError("Package materializer is not available.")
@@ -251,6 +317,31 @@ class SessionPackageController:
             raise ValueError("Unsupported Package lifecycle action")
         return serialize_package_operation_record(record)
 
+    async def execute_package_lifecycle_collection(
+        self,
+        action: Literal["update", "check"],
+        *,
+        entrypoint: PackageProductEntrypoint,
+        operation_id: str,
+        scope: str = "project",
+    ) -> list[dict[str, object]]:
+        """Route one correlated Product bulk operation into stable child ids."""
+
+        if action == "update":
+            records = await self._operations.update_all(
+                entrypoint=entrypoint,
+                operation_id=operation_id,
+                scope=scope,
+            )
+            return [serialize_package_operation_record(record) for record in records]
+        if action == "check":
+            return await self.check_package_updates(
+                scope=scope,
+                operation_id=operation_id,
+                entrypoint=entrypoint,
+            )
+        raise ValueError("Unsupported Package lifecycle collection action")
+
     def _add_package_source(
         self,
         source: str,
@@ -288,24 +379,16 @@ class SessionPackageController:
                 changed=False,
                 restore=lambda: None,
             )
-        resolved_scope = cast(
-            SettingsScope,
-            scope if scope in {"global", "project", "session"} else "session",
+        if scope == "user":
+            scope = "global"
+        if scope not in {"global", "project", "session"}:
+            raise ValueError("Unsupported Package settings scope")
+        resolved_scope = cast(SettingsScope, scope)
+        return settings_manager.begin_package_source_mutation(
+            source,
+            scope=resolved_scope,
+            present=present,
         )
-        try:
-            return settings_manager.begin_package_source_mutation(
-                source,
-                scope=resolved_scope,
-                present=present,
-            )
-        except ValueError:
-            if resolved_scope == "session":
-                raise
-            return settings_manager.begin_package_source_mutation(
-                source,
-                scope="session",
-                present=present,
-            )
 
     def refresh_package_resources(self) -> object | Awaitable[object]:
         if self.get_resource_loader() is None:

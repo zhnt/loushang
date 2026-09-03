@@ -15,6 +15,7 @@ from loushang.harness.resources.packages.materializer import (
 )
 from loushang.harness.resources.packages.product_contract import (
     PackageProductLifecycleIntentV1,
+    PackageProductLifecycleMode,
     PackageProductLifecycleOperationPort,
     PackageProductLifecycleRecordV1,
 )
@@ -56,6 +57,23 @@ class PackageSourceResolver:
     diagnostics_service: DiagnosticsService | None = None
     session_id: str | None = None
     product_lifecycle: PackageProductLifecycleOperationPort | None = None
+    product_lifecycle_mode: PackageProductLifecycleMode = "legacy"
+
+    def __post_init__(self) -> None:
+        if self.product_lifecycle_mode not in {"legacy", "dark", "enforced"}:
+            raise ValueError("Unsupported Package Product lifecycle mode")
+        if self.product_lifecycle_mode == "legacy":
+            if self.product_lifecycle is not None:
+                raise ValueError(
+                    "Legacy Package mode cannot receive Product activation"
+                )
+            return
+        if self.product_lifecycle is None:
+            if self.product_lifecycle_mode == "enforced":
+                raise ValueError("Enforced Package Product mode requires activation")
+            return
+        if getattr(self.product_lifecycle, "active", None) is not True:
+            raise ValueError("Package Product lifecycle must be activated before use")
 
     def resolve_configured_sources_sync(
         self,
@@ -63,15 +81,22 @@ class PackageSourceResolver:
         missing_source_action: MissingSourceAction | MissingSourceResolver = "install",
         phase: DiagnosticPhase = "runtime",
     ) -> PackageResolveResult:
-        records: list[PackageMaterializationRecord | PackageProductLifecycleRecordV1] = []
+        records: list[
+            PackageMaterializationRecord | PackageProductLifecycleRecordV1
+        ] = []
         skipped: list[str] = []
         failed: list[str] = []
+        scopes = package_source_scopes(self.settings_manager)
         for package_source in configured_package_sources(self.settings_manager):
             source = package_source.source
             if not is_remote_package_source(source):
                 continue
             existing_record = self.materializer.get_record(source)
-            if existing_record is not None and existing_record.lifecycle == "installed":
+            if (
+                self.product_lifecycle is None
+                and existing_record is not None
+                and existing_record.lifecycle == "installed"
+            ):
                 records.append(existing_record)
                 continue
             action = (
@@ -89,7 +114,10 @@ class PackageSourceResolver:
                 failed.append(source)
                 self._record_missing_source_error(source, phase=phase)
                 continue
-            materialized = self._materialize_startup_source(source)
+            materialized = self._materialize_startup_source(
+                source,
+                scope=scopes.get(source, "session"),
+            )
             if materialized.lifecycle == "failed":
                 failed.append(source)
                 self._record_materialization_failure(materialized, phase=phase)
@@ -104,19 +132,21 @@ class PackageSourceResolver:
     def _materialize_startup_source(
         self,
         source: str,
+        *,
+        scope: str,
     ) -> PackageMaterializationRecord | PackageProductLifecycleRecordV1:
         lifecycle = self.product_lifecycle
         if lifecycle is None:
             return self.materializer.materialize_remote_source_sync(source)
         operation_id = sha256(
-            f"startup:{self.session_id or 'product'}:{source}".encode()
+            f"startup:{self.session_id or 'product'}:{scope}:{source}".encode()
         ).hexdigest()
         outcome = lifecycle.route(
             PackageProductLifecycleIntentV1(
                 operation_id=operation_id,
                 action="materialize",
                 source=source,
-                scope="session",
+                scope=scope,
             ),
             entrypoint="startup",
         )

@@ -849,8 +849,8 @@ def test_plc9b_canonical_entrypoint_inventory_exactly_matches_source_ast() -> No
     documented = _documented_entrypoint_counts()
     actual = _package_entrypoint_scope_counts()
 
-    assert len(documented) == 110
-    assert sum(documented.values()) == 163
+    assert len(documented) == 116
+    assert sum(documented.values()) == 170
     assert actual == documented
     assert "test_plc9_freezes_named_package_lifecycle_sites_and_occurrences" in (
         _source(BASELINE_TEST)
@@ -2234,7 +2234,6 @@ def test_plc9b1_owner_kernel_stays_internal_dark_and_capability_free() -> None:
         Path("src/loushang/harness/plugin_management/package_product.py"),
         Path("src/loushang/harness/resources/packages/product_activation.py"),
         Path("src/loushang/harness/resources/packages/product_composition.py"),
-        Path("src/loushang/harness/resources/packages/product_contract.py"),
         LINUX_LEGACY_RUNTIME,
         PRODUCT_LIFECYCLE,
         WINDOWS_LEGACY_RUNTIME,
@@ -2253,6 +2252,7 @@ def test_plc9b5_product_router_is_capability_poor_and_internal() -> None:
     loushang_imports = {module for module in imported if module.startswith("loushang.")}
 
     assert loushang_imports == {
+        "loushang.harness.resources.packages.plugin_lifecycle.epoch_fence",
         "loushang.harness.resources.packages.plugin_lifecycle.owner",
         "loushang.harness.resources.packages.plugin_lifecycle.records",
         "loushang.harness.resources.packages.product_contract",
@@ -2263,7 +2263,7 @@ def test_plc9b5_product_router_is_capability_poor_and_internal() -> None:
         '_TRANSACTION_ENTRYPOINTS = frozenset({"cli", "rpc", "session", '
         '"startup", "operations"})' in source
     )
-    assert "self._transaction.execute(request, classified=status)" in source
+    assert "self._transaction.execute(request, current=status)" in source
     assert "def refuse_direct_publish(" in source
     for forbidden in (
         "PackageMaterializer",
