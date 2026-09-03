@@ -23,10 +23,17 @@ from threading import Lock
 
 import pytest
 
+from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
+from loushang.harness.plugin_management.package_product import (
+    PluginManagementPackageDesiredStateAdapter,
+)
+from loushang.harness.plugin_management.records import PluginPackageRevisionRefV1
+from loushang.harness.plugin_management.service import PluginManagementService
 from loushang.harness.resources.packages.plugin_lifecycle import (
     PackageClassificationBasisFactV1,
     PackageClassificationFactsV1,
     PackageLifecycleIngressRequestV1,
+    PackageLifecycleIngressRequestV2,
     PackageLifecycleJournal,
     PackageLifecycleOwner,
 )
@@ -98,6 +105,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
     PackageEpochFenceRequestV1,
     PackageEpochLeaseSnapshotV1,
     PackageEpochRuntimeAdmissionOwner,
+    PackageEpochRuntimeAdmissionReceiptV1,
     PackageEpochRuntimeAdmissionRequestV1,
     PackageEpochRuntimeAdmissionResultV1,
     PackageEpochRuntimeLeaseV1,
@@ -124,6 +132,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.posix_materialization 
 )
 from loushang.harness.resources.packages.plugin_lifecycle.posix_offline_restore import (
     PackagePosixOfflineRestoreMaterializer,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.product_retention import (
+    PackageProductRetentionSettlementOwner,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.records import (
     PackageLifecycleCancelRequestV1,
@@ -185,8 +196,12 @@ from loushang.harness.resources.packages.plugin_lifecycle.windows_materializatio
 from loushang.harness.resources.packages.plugin_lifecycle.windows_offline_restore import (
     PackageWindowsOfflineRestoreMaterializer,
 )
+from loushang.harness.resources.packages.product_composition import (
+    PackageRetentionHandoffRecovery,
+)
 from loushang.harness.resources.packages.product_lifecycle import (
     PackageProductEntrypoint,
+    PackageProductLifecycleExecutionBinding,
     PackageProductLifecycleRouter,
     PackageProductPublishAttemptV1,
     PackageProductRouteRequestV1,
@@ -1468,14 +1483,58 @@ class _ManifestProductTransaction:
     owner: PackageLifecycleOwner
     calls: list[PackageProductEntrypoint] = field(default_factory=list)
 
+    @property
+    def owner_binding_id(self) -> str:
+        return self.owner.binding_id
+
     def execute(
         self,
         request: PackageProductRouteRequestV1,
         *,
-        classified: PackageLifecycleStatusV1,
+        current: PackageLifecycleStatusV1,
     ) -> PackageLifecycleStatusV1:
         self.calls.append(request.entrypoint)
-        return _advance_lifecycle(self.owner, classified, "committed")
+        return _advance_lifecycle(self.owner, current, "committed")
+
+
+def _manifest_product_admission() -> PackageEpochRuntimeAdmissionReceiptV1:
+    fence = PackageEpochFenceReceiptV1.create(
+        PackageEpochFenceRequestV1.create(
+            store_id="package-store:product",
+            prior_fence=None,
+            legacy_root_identity="1" * 64,
+            fenced_root_identity="2" * 64,
+            namespace_id="3" * 64,
+            minimum_runtime_version="1.0.0",
+            minimum_runtime_protocol_epoch=1,
+            quiescence_receipt_id="4" * 64,
+            snapshot_receipt_id="5" * 64,
+            root_switch_receipt_id="6" * 64,
+        )
+    )
+    lease = PackageEpochRuntimeLeaseV1.create(
+        runtime_id="runtime:product",
+        runtime_epoch=fence.epoch,
+        store_root_identity=fence.fenced_root_identity,
+        registration_receipt_id="7" * 64,
+    )
+    request = PackageEpochRuntimeAdmissionRequestV1.create(
+        fence=fence,
+        runtime_id=lease.runtime_id,
+        runtime_version="1.0.0",
+        runtime_protocol_epoch=1,
+        runtime_epoch=lease.runtime_epoch,
+        store_root_identity=lease.store_root_identity,
+        lease_id=lease.lease_id,
+    )
+    return PackageEpochRuntimeAdmissionReceiptV1.create(
+        request,
+        snapshot=PackageEpochLeaseSnapshotV1.create(
+            store_id=fence.store_id,
+            owner_revision=1,
+            active_leases=(lease,),
+        ),
+    )
 
 
 def _b2_owner(
@@ -2091,6 +2150,7 @@ class _ManifestRetentionHandoffFixture:
     request: PackageRetentionHandoffRequestV1
     journal: PackageRetentionHandoffJournal
     owner: PackageRetentionHandoffOwner
+    admission: PackageCommitAdmissionOwner
     retention: _ManifestRetentionSettlementOwner
     desired: _ManifestDesiredStateCommitOwner
     pin_journal: PackageTransactionPinJournal
@@ -2132,9 +2192,126 @@ def _manifest_retention_handoff_fixture(
             retention=retention,
             desired_state=desired,
         ),
+        admission=admission.admission_owner,
         retention=retention,
         desired=desired,
         pin_journal=admission.pin_journal,
+    )
+
+
+@dataclass(frozen=True)
+class _ManifestDesiredRevisionProjection:
+    ledger: PluginDesiredStateLedger
+
+    def project(
+        self,
+        request: PackageDesiredStateCommitRequestV1,
+    ) -> PluginPackageRevisionRefV1:
+        return PluginPackageRevisionRefV1(
+            plugin_id=request.plugin_id,
+            plugin_version=request.root_ref.version,
+            package_content_digest=request.root_ref.artifact_digest,
+            dependency_lock_digest="7" * 64,
+            package_source_identity="https://packages.example.test/acme.whl",
+        )
+
+    def inventory_revision(self) -> int:
+        return self.ledger.snapshot().inventory_revision
+
+
+def test_plc9a2_desired_adapter_commits_exact_disabled_revision_and_reports_cas(
+    tmp_path: Path,
+) -> None:
+    fixture = _manifest_retention_handoff_fixture(tmp_path)
+    ledger = PluginDesiredStateLedger(tmp_path / "product-desired.jsonl")
+    service = PluginManagementService(
+        desired_state=ledger,
+        operation_journal_path=tmp_path / "product-operations.jsonl",
+    )
+    adapter = PluginManagementPackageDesiredStateAdapter(
+        management=service,
+        revisions=_ManifestDesiredRevisionProjection(ledger),
+        installation_scope="workspace",
+        actor_id="product-runtime",
+        policy_revision="product-policy:1",
+    )
+
+    result = adapter.commit(fixture.request.desired_request)
+
+    assert result.disposition == "committed"
+    assert result.receipt is not None
+    state = ledger.snapshot().installations[0]
+    assert state.selection.desired_state == "installed_disabled"
+    assert state.selection.package_revision is not None
+    assert (
+        state.selection.package_revision.package_content_digest
+        == fixture.request.desired_request.root_ref.artifact_digest
+    )
+    repeated = adapter.commit(fixture.request.desired_request)
+    assert repeated == result
+
+    conflicting_request = PackageDesiredStateCommitRequestV1.create(
+        fixture.request.admission_request,
+        command_id="manifest-desired-conflict",
+        command_fingerprint=sha256(b"manifest-desired-conflict").hexdigest(),
+        expected_inventory_revision=0,
+    )
+    conflict = adapter.commit(conflicting_request)
+    assert conflict.disposition == "rejected"
+    assert conflict.failure is not None
+    assert conflict.failure.observed_inventory_revision == 1
+
+
+def test_plc9a2_retention_owner_repairs_release_before_settlement_crash(
+    tmp_path: Path,
+) -> None:
+    fixture = _manifest_retention_handoff_fixture(tmp_path)
+    journal = PackageRetentionHandoffJournal(tmp_path / "product-handoff.jsonl")
+    retention = PackageProductRetentionSettlementOwner(
+        path=tmp_path / "product-retention.jsonl",
+        transaction_pins=fixture.pin_journal,
+    )
+    owner = PackageRetentionHandoffOwner(
+        journal=journal,
+        admission=fixture.admission,
+        retention=retention,
+        desired_state=fixture.desired,
+    )
+    append = retention._append_unlocked
+    interrupted = True
+
+    def interrupt_settlement(
+        records: tuple[object, ...],
+        receipt: PackageDependencyPinReceiptV1,
+    ) -> None:
+        nonlocal interrupted
+        if interrupted and receipt.state == "settled":
+            interrupted = False
+            raise RuntimeError("simulated crash after transaction-pin release")
+        append(records, receipt)  # type: ignore[arg-type]
+
+    retention._append_unlocked = interrupt_settlement  # type: ignore[method-assign]
+    first = owner.execute(fixture.request)
+    assert first.disposition == "retryable_failure"
+    assert first.receipt is not None
+    assert first.receipt.state == "desired_committed"
+    released = fixture.pin_journal.current(
+        operation_id=fixture.request.operation_id,
+        pin_request_id=fixture.request.transaction_pin_receipt.pin_request.pin_request_id,
+    )
+    assert released is not None and released.state == "released"
+
+    recovered = PackageRetentionHandoffRecovery(
+        journal=journal,
+        owner=owner,
+    ).recover()
+
+    assert recovered == (fixture.request.handoff_id,)
+    current = journal.current(fixture.request.handoff_id)
+    assert current is not None and current.state == "settled"
+    assert tuple(record.receipt.state for record in retention.records()) == (
+        "acquired",
+        "settled",
     )
 
 
@@ -2670,18 +2847,14 @@ def _manifest_windows_offline_restore_fixture(
             minimum_runtime_protocol_epoch=2,
             quiescence_receipt_id=snapshot.quiescence_receipt_id,
             snapshot_receipt_id=snapshot.receipt_id,
-            root_switch_receipt_id=sha256(
-                b"manifest-windows-root-switch"
-            ).hexdigest(),
+            root_switch_receipt_id=sha256(b"manifest-windows-root-switch").hexdigest(),
         )
     )
     request = PackageOfflineRestoreRequestV1.create(
         current_fence=current,
         genesis_fence=current,
         snapshot_evidence=evidence,
-        restore_namespace_id=sha256(
-            b"manifest-windows-isolated-restore"
-        ).hexdigest(),
+        restore_namespace_id=sha256(b"manifest-windows-isolated-restore").hexdigest(),
         legacy_runtime_version="1.9.0",
     )
     coordination = _ManifestEpochCutoverCoordination()
@@ -3802,12 +3975,18 @@ def test_manifest_case(
         )
         transaction = _ManifestProductTransaction(owner)
         router = PackageProductLifecycleRouter(
-            owner=owner,
-            transaction=transaction,
+            execution=PackageProductLifecycleExecutionBinding(owner, transaction),
         )
+        admission = _manifest_product_admission()
         route = PackageProductRouteRequestV1(
             entrypoint=entrypoint,
-            ingress=_request(),
+            ingress=PackageLifecycleIngressRequestV2.bind_runtime_admission(
+                _request(),
+                runtime_admission_request_id=(
+                    admission.request.admission_request_id
+                ),
+            ),
+            admission=admission,
         )
 
         committed = router.route(route)
@@ -3829,12 +4008,18 @@ def test_manifest_case(
         )
         transaction = _ManifestProductTransaction(owner)
         router = PackageProductLifecycleRouter(
-            owner=owner,
-            transaction=transaction,
+            execution=PackageProductLifecycleExecutionBinding(owner, transaction),
         )
+        admission = _manifest_product_admission()
         route = PackageProductRouteRequestV1(
             entrypoint="direct_materializer",
-            ingress=_request(),
+            ingress=PackageLifecycleIngressRequestV2.bind_runtime_admission(
+                _request(),
+                runtime_admission_request_id=(
+                    admission.request.admission_request_id
+                ),
+            ),
+            admission=admission,
         )
 
         refused = router.route(route)
@@ -3855,8 +4040,7 @@ def test_manifest_case(
         )
         transaction = _ManifestProductTransaction(owner)
         router = PackageProductLifecycleRouter(
-            owner=owner,
-            transaction=transaction,
+            execution=PackageProductLifecycleExecutionBinding(owner, transaction),
         )
         current = _advance_lifecycle(owner, owner.submit(_request()), "staging")
         before = journal.records()
@@ -6188,4 +6372,7 @@ def _assert_replay_is_single_owner(
 
 def _assert_no_capability_side_effect(tmp_path: Path) -> None:
     names = {path.name for path in tmp_path.rglob("*") if path.is_file()}
-    assert names <= {"package-lifecycle.jsonl", "package-lifecycle.jsonl.lock"}
+    assert names <= {
+        "package-lifecycle.jsonl",
+        "package-lifecycle.jsonl.lock",
+    }

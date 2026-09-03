@@ -119,3 +119,91 @@ def test_package_lifecycle_failure_supports_wire_name_variants() -> None:
         {"lifecycle": "failed", "error_message": "broken"}
     ) == "broken"
     assert package_lifecycle_failure({"lifecycle": "installed"}) is None
+
+
+def test_package_lifecycle_uses_typed_product_route_without_dynamic_fallback() -> None:
+    class ProductSession:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, str, str, str, str]] = []
+
+        async def execute_package_lifecycle(
+            self,
+            action: str,
+            source: str,
+            *,
+            entrypoint: str,
+            operation_id: str,
+            scope: str,
+        ) -> dict[str, object]:
+            self.calls.append((action, source, entrypoint, operation_id, scope))
+            return {"lifecycle": "installed", "operationId": operation_id}
+
+        async def install_package(self, source: str, *, scope: str) -> object:
+            raise AssertionError(f"dynamic fallback used for {scope}:{source}")
+
+    session = ProductSession()
+
+    result = asyncio.run(
+        run_package_lifecycle(
+            session,
+            PackageLifecycleRequest(install=("acme",), scope="project"),
+        )
+    )
+
+    assert len(session.calls) == 1
+    action, source, entrypoint, operation_id, scope = session.calls[0]
+    assert (action, source, entrypoint, scope) == (
+        "install",
+        "acme",
+        "cli",
+        "project",
+    )
+    assert len(operation_id) == 32
+    assert result.outputs[0]["record"]["operationId"] == operation_id
+
+
+def test_package_lifecycle_uses_typed_product_collections_with_compat_scope() -> None:
+    class ProductSession:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, str, str, str]] = []
+
+        async def execute_package_lifecycle_collection(
+            self,
+            action: str,
+            *,
+            entrypoint: str,
+            operation_id: str,
+            scope: str,
+        ) -> list[dict[str, object]]:
+            self.calls.append((action, entrypoint, operation_id, scope))
+            return [{"lifecycle": "checked" if action == "check" else "updated"}]
+
+        async def check_package_updates(self) -> object:
+            raise AssertionError("legacy check helper used")
+
+        async def update_packages(self) -> object:
+            raise AssertionError("legacy bulk helper used")
+
+    session = ProductSession()
+
+    result = asyncio.run(
+        run_package_lifecycle(
+            session,
+            PackageLifecycleRequest(
+                check_updates=True,
+                update_all=True,
+                scope="global",
+            ),
+        )
+    )
+
+    assert [(action, entrypoint, scope) for action, entrypoint, _id, scope in session.calls] == [
+        ("check", "cli", "global"),
+        ("update", "cli", "global"),
+    ]
+    assert all(len(operation_id) == 32 for _, _, operation_id, _ in session.calls)
+    assert session.calls[0][2] != session.calls[1][2]
+    assert [output["command"] for output in result.outputs] == [
+        "check_package_updates",
+        "update_packages",
+    ]

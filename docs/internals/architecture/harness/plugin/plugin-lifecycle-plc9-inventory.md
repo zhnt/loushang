@@ -426,14 +426,22 @@ it must not absorb Skill, theme, model, or unrelated Product settings.
 | --- | --- | --- | --- |
 | Standard CLI grammar | `src/loushang/harness/cli/profile.py` and `src/loushang/harness/cli/parser.py::build_parser` | Exposes Package materialize/install/update/remove/uninstall and Plugin source/list/enable/disable flags; `--add-plugin`/`--remove-plugin` are compatibility aliases for source mutation | Preserve alias meaning, deprecate rather than reinterpret, and add distinct desired-state commands through a versioned CLI contract |
 | CLI Package startup arguments | `src/loushang/harness/cli/agent_args.py::agent_cli_argument_values` | Projects startup `update_packages` and `check_package_updates` flags into normalized launch values | Retain as inert argument projection; execution remains behind the same PLC9B Package route/refusal gate |
-| CLI Package dispatcher | `src/loushang/harness/cli/package_lifecycle.py::run_package_lifecycle` | Dynamically invokes Package methods on the Session | PLC9B routes Plugin-bound artifacts to the canonical Package/Plugin port or rejects before mutation; PLC9A must not mislabel these as desired commands |
+| CLI Package dispatcher | `src/loushang/harness/cli/package_lifecycle.py::run_package_lifecycle` | A2 prefers `execute_package_lifecycle` with explicit `cli` provenance and one operation id per source; the compatibility method path remains only for Products without the typed seam | Retain the generic compatibility path; an activated Product Session always exposes the typed seam, so Plugin-bound input cannot bypass classification |
 | Shared CLI composition | `src/loushang/harness/cli/host_operations.py::run_standard_cli_operations` | Composes Plugin listing/toggles and Package lifecycle operations as separate early operations | PLC9A1 migrates list/enable/disable; PLC9B migrates artifact operations; retain unrelated Skill/Package behavior |
-| RPC Package commands | `src/loushang/harness/host/rpc/commands/packages.py::RpcPackageCommands` | Resolves runtime first, then Session, for materialize/install/update/remove/uninstall; this is already an RPC surface but not a Plugin management projection | PLC9A2 applies versioned common-port conformance; Plugin-bound artifact commands remain disabled/refused until PLC9B |
+| RPC Package commands | `src/loushang/harness/host/rpc/commands/packages.py::RpcPackageCommands` | A2 resolves the typed executor across runtime/Session before compatibility methods, preserves `rpc` provenance, and derives a stable operation id from the RPC command id | Retain as the existing Package RPC projection; it is not a second Plugin-management protocol and holds no owner/store/materializer authority |
 | Session lifecycle facade | `src/loushang/harness/session/lifecycle_adapter.py::SessionLifecycleOperationAdapter` | Passes Package lifecycle calls to the current Session by dynamic method lookup | Replace Plugin-bound fallback with typed application ports; no concrete ledger/store mutation in the adapter |
-| Public Session optional forwarding | `src/loushang/harness/session/facade_optional.py::SessionPackagePort` and `src/loushang/harness/session/facade_optional.py::SessionFacadeOptionalOperations` | Defines and forwards the public optional Package methods to the Product-bound Package port | Keep as a forwarding-only public seam; apply the same PLC9B route/refusal and PLC9A2 conformance contract without importing concrete lifecycle owners |
-| Session Package controller | `src/loushang/harness/resources/packages/session.py::SessionPackageController` | Owns current Package list/materialize/install/update/remove/uninstall Product composition | Retain for non-Plugin Packages; route or reject Plugin-bound operations at the canonical lifecycle seam |
-| Package operation coordinator | `src/loushang/harness/resources/packages/operations.py::PackageOperationsRuntime` | Coordinates materialization, settings publication, update, remove, async uninstall, and legacy sync uninstall | PLC9B owns artifact transaction migration; PLC9E removes the sync compatibility path after the async caller/conformance gate |
-| Startup source resolver | `src/loushang/harness/resources/packages/source_resolver.py::PackageSourceResolver.resolve_configured_sources_sync` | Defaults missing configured remote sources to synchronous auto-materialization | PLC9B covers this entrypoint; Plugin-bound sources cannot auto-publish outside the bounded Package sink |
+| Public Session optional forwarding | `src/loushang/harness/session/facade_optional.py::SessionPackagePort` and `src/loushang/harness/session/facade_optional.py::SessionFacadeOptionalOperations` | A2 adds a typed, correlated lifecycle forwarder and retains legacy optional methods for compatibility | Keep forwarding-only; it imports records/provenance types but no concrete lifecycle owner |
+| Session Package controller | `src/loushang/harness/resources/packages/session.py::SessionPackageController` | A2 owns one `execute_package_lifecycle` dispatcher and serializes either legacy records or pathless Product records | Retain for non-Plugin Packages; Product-bound operations preserve caller provenance and route once through `PackageOperationsRuntime` |
+| Package operation coordinator | `src/loushang/harness/resources/packages/operations.py::PackageOperationsRuntime` | A2 classifies every single-source operation before materializer, settings, remove, or forget; active bulk update routes each installed record separately | Retain as the choke point; only explicit `non_plugin` may enter legacy behavior, while PLC9E later removes the sync compatibility path |
+| Product application contract | `src/loushang/harness/resources/packages/product_contract.py` | A2 owns the versioned intent/outcome/pathless record, action/provenance types, and capability-poor operation Port separately from concrete activation | Transports and Product Session composition depend only on this contract; it imports no materializer, settings, Store, CLI/RPC, process, or filesystem owner |
+| Product execution binding | `src/loushang/harness/resources/packages/product_lifecycle.py::PackageProductLifecycleExecutionBinding` | Indivisibly binds one lifecycle journal owner to one transaction port and rechecks the transaction's opaque owner binding immediately before every effect | Retain as the only Product-to-transaction binding; no transport or inventory may synthesize the owner identity |
+| Product epoch transaction/query guard | `src/loushang/harness/resources/packages/product_activation.py::PackageProductEpochTransactionGuardPort`, `PackageProductLifecycleActivation.route`, and `PackageProductLifecycleActivation.execute_guarded_query` | Holds the cutover-paired shared runtime guard across fresh admission plus the complete transaction or inventory query; failure deactivates the binding | A2.3 must compose the guard from the same coordination identity as offline cutover; transports receive no lock/path capability |
+| Product lifecycle inventory and rollout mode | `src/loushang/harness/resources/packages/product_contract.py::PackageProductLifecycleInventoryPort`, `PackageProductLifecycleMode`, `PackageProductUpdateTargetV1`, `PackageProductUpdateCheckRequestV1`, and `PackageProductUpdateCheckV1` | Inventory targets bind opaque refs to exact Source identity; the typed check request carries operation id, entrypoint, and canonical scope; check output derives an opaque name and generic failure code; `legacy`, `dark`, and `enforced` are validated at the operation owner | Product inventory must carry the lifecycle `binding_id`, which is rechecked around every inventory access; legacy settings translate canonical `user` back to compatibility `global` without scope fallback |
+| Product update batch manifest | `src/loushang/harness/resources/packages/product_inventory.py::PackageProductUpdateManifestJournal` and `src/loushang/harness/resources/packages/product_contract.py::PackageProductUpdateManifestReceiptV1` | Sole durable writer for credential-free `owner binding + batch operation id + canonical scope + ordered target refs`; it returns an exact pathless receipt, rejects unsafe existing storage, and makes owner/target drift fail closed | Retain separate from the lifecycle journal because it owns collection membership, not child effects; use the shared durable JSONL contract in a private directory with regular-file/no-link/owner/mode checks, directory fsync, lock, and partial-tail repair |
+| Product activation/composition | `src/loushang/harness/resources/packages/product_activation.py::PackageProductLifecycleActivation`, `src/loushang/harness/resources/packages/product_composition.py::compose_package_product_lifecycle`, and `src/loushang/harness/resources/packages/plugin_lifecycle/records.py::PackageLifecycleIngressRequestV2`/`PackageLifecycleRequestV2` | A2 recovers durable handoffs, admits/rechecks the exact epoch, writes the stable admission-request identity into an independent V2 lifecycle request field covered by the atomic accept/request fingerprint, preserves the V1 schema/fingerprint and real resolution-environment fingerprint, and requires the Product route DTO to match ingress with its admission receipt | Product must inject the same activated binding into bootstrap and Session; no default singleton, ambient Store, path, materializer, or deletion authority |
+| Desired-state handoff adapter | `src/loushang/harness/plugin_management/package_product.py::PluginManagementPackageDesiredStateAdapter` | Maps the accepted post-publication install handoff to the sole management command owner with exact Package revision and inventory CAS evidence | Keep capability-poor and install-only in v1; remove/GC requires its separately accepted lifecycle contract |
+| Product retention settlement | `src/loushang/harness/resources/packages/plugin_lifecycle/product_retention.py::PackageProductRetentionSettlementOwner` | Durably owns dependency pin evidence and replay-safe exact transaction-pin release after desired commit | Retain as the narrow handoff port implementation; it has no Store deletion, acquisition, selection, or transport authority |
+| Startup source resolver | `src/loushang/harness/resources/packages/source_resolver.py::PackageSourceResolver.resolve_configured_sources_sync` | A2 routes a missing source with `startup` provenance before any synchronous legacy materialization | Only explicit `non_plugin` may fall back; Product-bound refusal is returned as a handled pathless record |
 
 Source operations and desired operations are never synonyms:
 
@@ -455,8 +463,8 @@ not an authority boundary.
 | Existing source policy port | `src/loushang/harness/resources/packages/materializer.py::PackageSourcePolicy` | Allows/denies a source string before materialization | Retain as one policy input only; it is not authenticated provenance, a bounded sink, or the complete Source Authority |
 | Python installer backend | `src/loushang/harness/resources/packages/materializer.py::PythonPackageInstallerBackend` | Calls `uv pip install` and falls back to `python -m pip install` into a temporary target; the command does not enforce verified wheel-only input | Must not publish untrusted Plugin packages after PLC9B; replace with verified wheel acquisition/extraction or a separately accepted contained build service |
 | Git materializer backend | `src/loushang/harness/resources/packages/materializer.py::GitPackageMaterializerBackend` | Shells out to fetch/clone/checkout Git sources as a source adapter/backend | Limit to authenticated fetch plus provenance/bytes; it must not choose final quarantine, publication, binding, or runtime authority |
-| Startup auto-materializer | `src/loushang/harness/resources/packages/source_resolver.py::PackageSourceResolver.resolve_configured_sources_sync` | Missing configured remote sources default to `install` and call synchronous materialization | Route Plugin-bound input through PLC9B or fail closed; startup cannot be a second safe-publication owner |
-| Package operation runtime | `src/loushang/harness/resources/packages/operations.py::PackageOperationsRuntime` | Coordinates current materialize/install/update/remove/uninstall and settings refresh | Retain non-Plugin behavior; all Plugin-bound paths pass the Package owner and management boundaries |
+| Startup auto-materializer | `src/loushang/harness/resources/packages/source_resolver.py::PackageSourceResolver.resolve_configured_sources_sync` | A2 routes each missing source through the Product lifecycle before the synchronous legacy materializer | Retain explicit-non-Plugin fallback only; startup remains neither a classifier nor a safe-publication owner |
+| Package operation runtime | `src/loushang/harness/resources/packages/operations.py::PackageOperationsRuntime` | A2 is the one pre-effect classification choke point for materialize/install/update/remove/uninstall and per-record bulk update | Retain non-Plugin behavior; handled Plugin input cannot reach settings, materializer, mutable removal, or forget peers |
 | Direct mutable removal | `src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.remove_remote_source` | Directly `shutil.rmtree()`s the mutable materialized target and updates the lockfile without Package lifecycle GC evidence | Never use as immutable Plugin revision GC; route/refuse Plugin-bound targets and narrow/delete at PLC9E after replay/pin/rollback proof |
 | Binding/history forgetting | `src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.forget_remote_source` and `src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.forget_plugin_binding` | Removes current source records/bindings and can remove replay binding history | Preserve history required by desired revisions and pinned Sessions; mutation needs canonical lifecycle evidence or must refuse |
 | Verified revision store | `src/loushang/harness/resources/plugins/revisions.py::PluginRevisionStore` | Copies a resolved local tree into owner-created quarantine, rejects unsafe filesystem entries, computes content identity, freezes, and atomically renames an immutable revision | Retain as a safe publication primitive; integrate only after bounded archive/wheel extraction and dependency closure verification |
@@ -472,9 +480,10 @@ materializes packages.
 
 ## PLC9B.0 Exact Entrypoint And Owner Inventory
 
-PLC9B.0 freezes the pre-runtime-migration snapshot at parent `4bd71d63` in two
-independent source-wide inventories: 95 ingress/declaration rows with 151
-occurrences, and 141 effect/capability rows with 156 occurrences. The executable
+PLC9B.0 began with the pre-runtime-migration snapshot at parent `4bd71d63`; A2
+revises the same two independently checked source-wide inventories to 110
+ingress/declaration rows with 163 occurrences and 141 effect/capability rows
+with 157 occurrences. The executable
 guard parses Python syntax across `src/loushang`, including module/class/function
 scope, imports/renamed imports, names, attributes, and exact dynamic strings.
 Any count or qualified-site change must update this canonical inventory and
@@ -520,15 +529,24 @@ src/loushang/harness/cli/host_operations.py::agent_standard_cli_operation_reques
 src/loushang/harness/cli/host_operations.py::agent_standard_cli_operation_request::update_packages = 1
 src/loushang/harness/cli/launch.py::agent_cli_launch_plan::check_package_updates = 2
 src/loushang/harness/cli/launch.py::agent_cli_launch_plan::update_packages = 2
-src/loushang/harness/cli/package_lifecycle.py::_invoke_source_operation::uninstall_package = 2
+src/loushang/harness/cli/package_lifecycle.py::_invoke_source_operation::execute_package_lifecycle = 1
+src/loushang/harness/cli/package_lifecycle.py::_invoke_source_operation::install_package = 1
+src/loushang/harness/cli/package_lifecycle.py::_invoke_source_operation::uninstall_package = 3
 src/loushang/harness/cli/package_lifecycle.py::_invoke_source_operation::uninstall_package_async = 1
+src/loushang/harness/cli/package_lifecycle.py::_lifecycle_action::install_package = 1
+src/loushang/harness/cli/package_lifecycle.py::_lifecycle_action::materialize_package = 1
+src/loushang/harness/cli/package_lifecycle.py::_lifecycle_action::remove_package = 1
+src/loushang/harness/cli/package_lifecycle.py::_lifecycle_action::uninstall_package = 1
+src/loushang/harness/cli/package_lifecycle.py::_lifecycle_action::update_package = 1
 src/loushang/harness/cli/package_lifecycle.py::run_package_lifecycle::check_package_updates = 3
 src/loushang/harness/cli/package_lifecycle.py::run_package_lifecycle::install_package = 2
 src/loushang/harness/cli/package_lifecycle.py::run_package_lifecycle::materialize_package = 1
 src/loushang/harness/cli/package_lifecycle.py::run_package_lifecycle::remove_package = 1
-src/loushang/harness/cli/package_lifecycle.py::run_package_lifecycle::uninstall_package = 2
+src/loushang/harness/cli/package_lifecycle.py::run_package_lifecycle::uninstall_package = 1
 src/loushang/harness/cli/package_lifecycle.py::run_package_lifecycle::update_package = 1
 src/loushang/harness/cli/package_lifecycle.py::run_package_lifecycle::update_packages = 4
+src/loushang/harness/cli/package_lifecycle.py::_invoke_operation::check_package_updates = 1
+src/loushang/harness/cli/package_lifecycle.py::_invoke_operation::update_packages = 2
 src/loushang/harness/cli/profile.py::<module>::check_package_updates = 1
 src/loushang/harness/cli/profile.py::<module>::install_package = 1
 src/loushang/harness/cli/profile.py::<module>::materialize_package = 1
@@ -545,15 +563,23 @@ src/loushang/harness/host/rpc/commands/packages.py::<module>::update_package = 2
 src/loushang/harness/host/rpc/commands/packages.py::<module>::update_packages = 2
 src/loushang/harness/host/rpc/commands/packages.py::RpcPackageCommands.bindings::get_packages = 2
 src/loushang/harness/host/rpc/commands/packages.py::RpcPackageCommands.get_packages::get_packages = 6
-src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities.check_package_updates::check_package_updates = 2
+src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities.check_package_updates::check_package_updates = 1
 src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities.get_packages::get_packages = 2
-src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities.install_package::install_package = 2
-src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities.materialize_package::materialize_package = 2
-src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities.remove_package::remove_package = 2
-src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities.uninstall_package::uninstall_package = 2
-src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities.uninstall_package::uninstall_package_async = 1
-src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities.update_package::update_package = 2
-src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities.update_packages::update_packages = 2
+src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities.install_package::install_package = 1
+src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities.materialize_package::materialize_package = 1
+src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities.remove_package::remove_package = 1
+src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities.uninstall_package::uninstall_package = 1
+src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities.update_package::update_package = 1
+src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities.update_packages::update_packages = 1
+src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities._invoke_collection::check_package_updates = 1
+src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities._invoke_collection::update_packages = 1
+src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities._invoke_lifecycle::execute_package_lifecycle = 3
+src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities._invoke_lifecycle::install_package = 1
+src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities._invoke_lifecycle::materialize_package = 1
+src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities._invoke_lifecycle::remove_package = 1
+src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities._invoke_lifecycle::uninstall_package = 1
+src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities._invoke_lifecycle::uninstall_package_async = 1
+src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities._invoke_lifecycle::update_package = 1
 src/loushang/harness/host/rpc/commands/packages.py::_PackageCapabilities.check_package_updates::check_package_updates = 1
 src/loushang/harness/host/rpc/commands/packages.py::_PackageCapabilities.get_packages::get_packages = 1
 src/loushang/harness/host/rpc/commands/packages.py::_PackageCapabilities.install_package::install_package = 1
@@ -565,6 +591,8 @@ src/loushang/harness/host/rpc/commands/packages.py::_PackageCapabilities.update_
 src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.check_package_updates::check_package_updates = 1
 src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.materialize_remote_source_sync::materialize_remote_source_sync = 1
 src/loushang/harness/resources/packages/session.py::SessionPackageController.check_package_updates::check_package_updates = 2
+src/loushang/harness/resources/packages/session.py::SessionPackageController.execute_package_lifecycle::execute_package_lifecycle = 1
+src/loushang/harness/resources/packages/session.py::SessionPackageController.execute_package_lifecycle_collection::check_package_updates = 1
 src/loushang/harness/resources/packages/session.py::SessionPackageController.get_packages::get_packages = 1
 src/loushang/harness/resources/packages/session.py::SessionPackageController.install_package::install_package = 1
 src/loushang/harness/resources/packages/session.py::SessionPackageController.materialize_package::materialize_package = 1
@@ -573,8 +601,9 @@ src/loushang/harness/resources/packages/session.py::SessionPackageController.uni
 src/loushang/harness/resources/packages/session.py::SessionPackageController.uninstall_package_async::uninstall_package_async = 1
 src/loushang/harness/resources/packages/session.py::SessionPackageController.update_package::update_package = 1
 src/loushang/harness/resources/packages/session.py::SessionPackageController.update_packages::update_packages = 1
-src/loushang/harness/resources/packages/source_resolver.py::PackageSourceResolver.resolve_configured_sources_sync::materialize_remote_source_sync = 1
+src/loushang/harness/resources/packages/source_resolver.py::PackageSourceResolver._materialize_startup_source::materialize_remote_source_sync = 2
 src/loushang/harness/session/facade_optional.py::SessionFacadeOptionalOperations.check_package_updates::check_package_updates = 2
+src/loushang/harness/session/facade_optional.py::SessionFacadeOptionalOperations.execute_package_lifecycle::execute_package_lifecycle = 2
 src/loushang/harness/session/facade_optional.py::SessionFacadeOptionalOperations.get_packages::get_packages = 2
 src/loushang/harness/session/facade_optional.py::SessionFacadeOptionalOperations.install_package::install_package = 2
 src/loushang/harness/session/facade_optional.py::SessionFacadeOptionalOperations.materialize_package::materialize_package = 2
@@ -584,6 +613,7 @@ src/loushang/harness/session/facade_optional.py::SessionFacadeOptionalOperations
 src/loushang/harness/session/facade_optional.py::SessionFacadeOptionalOperations.update_package::update_package = 2
 src/loushang/harness/session/facade_optional.py::SessionFacadeOptionalOperations.update_packages::update_packages = 2
 src/loushang/harness/session/facade_optional.py::SessionPackagePort.check_package_updates::check_package_updates = 1
+src/loushang/harness/session/facade_optional.py::SessionPackagePort.execute_package_lifecycle::execute_package_lifecycle = 1
 src/loushang/harness/session/facade_optional.py::SessionPackagePort.get_packages::get_packages = 1
 src/loushang/harness/session/facade_optional.py::SessionPackagePort.install_package::install_package = 1
 src/loushang/harness/session/facade_optional.py::SessionPackagePort.materialize_package::materialize_package = 1
@@ -711,8 +741,8 @@ src/loushang/harness/resources/packages/operations.py::PackageMaterializerPort.u
 src/loushang/harness/resources/packages/operations.py::PackageMaterializerPort.update_remote_source::update_remote_source = 1
 src/loushang/harness/resources/packages/operations.py::PackageOperationsRuntime::PackageOperationsRuntime = 1
 src/loushang/harness/resources/packages/operations.py::PackageOperationsRuntime._forget_remote_source::forget_remote_source = 1
-src/loushang/harness/resources/packages/operations.py::PackageOperationsRuntime.materialize::materialize_remote_source = 1
-src/loushang/harness/resources/packages/operations.py::PackageOperationsRuntime.remove::remove_remote_source = 1
+src/loushang/harness/resources/packages/operations.py::PackageOperationsRuntime._materialize_legacy::materialize_remote_source = 1
+src/loushang/harness/resources/packages/operations.py::PackageOperationsRuntime._remove_legacy::remove_remote_source = 1
 src/loushang/harness/resources/packages/operations.py::PackageOperationsRuntime.update::update_remote_source = 1
 src/loushang/harness/resources/packages/operations.py::PackageOperationsRuntime.update_all::update_all_remote_sources = 1
 src/loushang/harness/resources/packages/projection.py::<module>::PackageMaterializer = 1
@@ -730,7 +760,7 @@ src/loushang/harness/resources/packages/source_resolver.py::<module>::PackageMat
 src/loushang/harness/resources/packages/source_resolver.py::PackageSourceResolver::PackageMaterializer = 1
 src/loushang/harness/resources/packages/source_resolver.py::PackageSourceResolver::PackageSourceResolver = 1
 src/loushang/harness/resources/packages/source_resolver.py::PackageSourceResolver.prepare_configured_remote_records::prepare_remote_source = 1
-src/loushang/harness/resources/packages/source_resolver.py::PackageSourceResolver.resolve_configured_sources_sync::materialize_remote_source_sync = 1
+src/loushang/harness/resources/packages/source_resolver.py::PackageSourceResolver._materialize_startup_source::materialize_remote_source_sync = 2
 src/loushang/harness/resources/plugins/__init__.py::<module>::PluginRevisionStore = 2
 src/loushang/harness/resources/plugins/authority.py::PluginBindingStore.bind_plugin_packages::bind_plugin_packages = 1
 src/loushang/harness/resources/plugins/authority.py::PluginBindingStore.publish_plugin_packages::publish_plugin_packages = 1
@@ -825,7 +855,8 @@ and transport-neutral query port is now implemented by
 `src/loushang/harness/plugin_management/application.py` and frozen by the
 PLC9A1 contract:
 
-- RPC/UI/management-SDK transport conformance fixture (CLI is bound in A1-3);
+- UI/management-SDK transport bindings and their conformance fixtures; CLI and
+  the existing Package RPC surface are bound through A2;
 - complete bounded byte/archive/wheel materialization transaction;
 - versioned `local_worker` execution-topology IR, handshake, semantic protocol, and
   supervised domain-host envelope;

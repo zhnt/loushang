@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from hashlib import sha256
 from io import StringIO
 
 import pytest
@@ -29,6 +30,32 @@ from loushang.harness.host.rpc.projections import (
 )
 from loushang.harness.host.rpc.routing import legacy_rpc_routes
 from loushang.harness.session import CommandExecutionResult
+
+
+def _product_record(
+    operation_id: str,
+    *,
+    action: str = "install",
+    source_digit: str = "1",
+    failed: bool = False,
+) -> dict[str, object]:
+    source = f"sha256:{source_digit * 64}"
+    return {
+        "action": action,
+        "errorCode": "package_operation_interrupted" if failed else "",
+        "errorMessage": "package_operation_interrupted" if failed else "",
+        "kind": "plugin_package",
+        "lifecycle": "failed" if failed else "installed",
+        "name": f"plugin-{source_digit * 12}",
+        "operationId": operation_id,
+        "packageLifecycleDisposition": (
+            "retryable_failure" if failed else "committed"
+        ),
+        "packageLifecyclePhase": "acquired" if failed else "committed",
+        "path": "",
+        "recordVersion": 1,
+        "source": source,
+    }
 
 
 def test_rpc_package_keeps_the_stable_host_exports() -> None:
@@ -86,20 +113,12 @@ def test_legacy_rpc_routes_adapt_sync_and_async_handlers_without_name_lookup() -
     def sync_handler(command_id: str | None, payload: dict[str, object]) -> None:
         calls.append(("sync", command_id, payload))
 
-    async def async_handler(
-        command_id: str | None, payload: dict[str, object]
-    ) -> None:
+    async def async_handler(command_id: str | None, payload: dict[str, object]) -> None:
         calls.append(("async", command_id, payload))
 
-    routes = legacy_rpc_routes(
-        (("sync", sync_handler), ("async", async_handler))
-    )
-    asyncio.run(
-        routes[0].handler(JsonlCommand("one", "sync", {"value": "a"}))
-    )
-    asyncio.run(
-        routes[1].handler(JsonlCommand("two", "async", {"value": "b"}))
-    )
+    routes = legacy_rpc_routes((("sync", sync_handler), ("async", async_handler)))
+    asyncio.run(routes[0].handler(JsonlCommand("one", "sync", {"value": "a"})))
+    asyncio.run(routes[1].handler(JsonlCommand("two", "async", {"value": "b"})))
 
     assert calls == [
         ("sync", "one", {"value": "a"}),
@@ -326,9 +345,7 @@ def test_rpc_package_commands_resolve_the_current_rebound_session() -> None:
 
     commands.get_packages("packages", {})
 
-    assert json.loads(stdout.getvalue())["data"] == {
-        "packages": [{"name": "after"}]
-    }
+    assert json.loads(stdout.getvalue())["data"] == {"packages": [{"name": "after"}]}
 
 
 def test_rpc_package_uninstall_prefers_runtime_owner_before_session_async_name() -> (
@@ -361,3 +378,507 @@ def test_rpc_package_uninstall_prefers_runtime_owner_before_session_async_name()
     assert json.loads(stdout.getvalue())["data"] == {
         "record": {"lifecycle": "uninstalled", "source": "pack"}
     }
+
+
+def test_rpc_package_lifecycle_uses_correlated_typed_product_route() -> None:
+    class _Runtime:
+        async def install_package(self, source: str) -> object:
+            raise AssertionError(f"runtime fallback used for {source}")
+
+    class _Session:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, str, str, str, str]] = []
+
+        async def execute_package_lifecycle(
+            self,
+            action: str,
+            source: str,
+            *,
+            entrypoint: str,
+            operation_id: str,
+            scope: str,
+        ) -> dict[str, object]:
+            self.calls.append((action, source, entrypoint, operation_id, scope))
+            return {"lifecycle": "installed", "operationId": operation_id}
+
+    runtime = _Runtime()
+    session = _Session()
+    stdout = StringIO()
+    commands = RpcPackageCommands(
+        runtime=runtime,
+        get_session=lambda: session,
+        output=RpcOutput(stdout),
+    )
+
+    asyncio.run(
+        dict(commands.bindings())["install_package"](
+            "request-1",
+            {"source": "acme", "scope": "user"},
+        )
+    )
+
+    assert len(session.calls) == 1
+    action, source, entrypoint, operation_id, scope = session.calls[0]
+    assert (action, source, entrypoint, scope) == (
+        "install",
+        "acme",
+        "rpc",
+        "user",
+    )
+    assert len(operation_id) == 64
+    assert "request-1" not in operation_id
+    assert json.loads(stdout.getvalue())["data"]["record"]["operationId"] == (
+        operation_id
+    )
+
+
+def test_rpc_refuses_mismatched_runtime_and_session_product_owners() -> None:
+    class Owner:
+        def __init__(self, binding_id: str) -> None:
+            self.package_product_binding_id = binding_id
+            self.calls = 0
+
+        async def execute_package_lifecycle(self, *args: object, **kwargs: object):
+            del args, kwargs
+            self.calls += 1
+            return {"lifecycle": "installed"}
+
+    runtime = Owner("runtime-owner")
+    session = Owner("session-owner")
+    stdout = StringIO()
+    commands = RpcPackageCommands(
+        runtime=runtime,
+        get_session=lambda: session,
+        output=RpcOutput(stdout),
+    )
+
+    asyncio.run(
+        dict(commands.bindings())["install_package"](
+            "request-1",
+            {"source": "acme"},
+        )
+    )
+
+    response = json.loads(stdout.getvalue())
+    assert response["success"] is False
+    assert runtime.calls == session.calls == 0
+
+
+def test_rpc_enforced_product_mode_never_uses_hidden_legacy_helper() -> None:
+    class Runtime:
+        package_product_lifecycle_mode = "enforced"
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def install_package(self, source: str) -> dict[str, object]:
+            del source
+            self.calls += 1
+            return {"lifecycle": "installed"}
+
+    class Session:
+        package_product_lifecycle_mode = "enforced"
+        package_product_binding_id = "owner:test"
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def install_package(self, source: str) -> dict[str, object]:
+            del source
+            self.calls += 1
+            return {"lifecycle": "installed"}
+
+    runtime = Runtime()
+    session = Session()
+    stdout = StringIO()
+    commands = RpcPackageCommands(
+        runtime=runtime,
+        get_session=lambda: session,
+        output=RpcOutput(stdout),
+    )
+
+    asyncio.run(
+        dict(commands.bindings())["install_package"](
+            "request-1",
+            {"source": "acme"},
+        )
+    )
+
+    assert json.loads(stdout.getvalue())["success"] is False
+    assert runtime.calls == session.calls == 0
+
+
+def test_rpc_runtime_typed_route_requires_same_session_owner() -> None:
+    class Runtime:
+        package_product_binding_id = "owner:test"
+
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, str, str]] = []
+
+        async def execute_package_lifecycle(
+            self,
+            action: str,
+            source: str,
+            *,
+            entrypoint: str,
+            operation_id: str,
+            scope: str,
+        ) -> dict[str, object]:
+            self.calls.append((action, entrypoint, scope))
+            del source
+            return _product_record(operation_id)
+
+    class Session:
+        package_product_binding_id = "owner:test"
+        package_product_lifecycle_mode = "enforced"
+
+    runtime = Runtime()
+    stdout = StringIO()
+    commands = RpcPackageCommands(
+        runtime=runtime,
+        get_session=Session,
+        output=RpcOutput(stdout),
+    )
+
+    asyncio.run(
+        dict(commands.bindings())["install_package"](
+            "request-1",
+            {"source": "acme", "scope": "global"},
+        )
+    )
+
+    assert runtime.calls == [("install", "rpc", "global")]
+    assert json.loads(stdout.getvalue())["success"] is True
+
+
+def test_rpc_update_check_uses_correlated_product_collection() -> None:
+    class Session:
+        package_product_binding_id = "owner:test"
+        package_product_lifecycle_mode = "enforced"
+
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, str, str]] = []
+
+        async def execute_package_lifecycle_collection(
+            self,
+            action: str,
+            *,
+            entrypoint: str,
+            operation_id: str,
+            scope: str,
+        ) -> list[dict[str, object]]:
+            self.calls.append((action, entrypoint, scope))
+            return [
+                {
+                    "checkVersion": 1,
+                    "errorCode": "",
+                    "name": "plugin-111111111111",
+                    "scope": scope,
+                    "source": f"sha256:{'1' * 64}",
+                    "updateAvailable": False,
+                }
+            ]
+
+    session = Session()
+    stdout = StringIO()
+    commands = RpcPackageCommands(
+        runtime=object(),
+        get_session=lambda: session,
+        output=RpcOutput(stdout),
+    )
+
+    asyncio.run(
+        dict(commands.bindings())["check_package_updates"](
+            "request-1",
+            {"scope": "session"},
+        )
+    )
+
+    assert session.calls == [("check", "rpc", "session")]
+    assert json.loads(stdout.getvalue())["success"] is True
+
+
+@pytest.mark.parametrize("action", ["install_package", "check_package_updates"])
+def test_rpc_refuses_runtime_product_owner_without_session_attestation(
+    action: str,
+) -> None:
+    class Runtime:
+        package_product_binding_id = "owner:test"
+        package_product_lifecycle_mode = "enforced"
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def execute_package_lifecycle(self, *args: object, **kwargs: object):
+            del args, kwargs
+            self.calls += 1
+            return {"lifecycle": "installed"}
+
+        async def execute_package_lifecycle_collection(
+            self, *args: object, **kwargs: object
+        ):
+            del args, kwargs
+            self.calls += 1
+            return []
+
+    class Session:
+        package_product_lifecycle_mode = "legacy"
+
+    runtime = Runtime()
+    stdout = StringIO()
+    commands = RpcPackageCommands(
+        runtime=runtime,
+        get_session=Session,
+        output=RpcOutput(stdout),
+    )
+
+    payload = {"source": "acme"} if action == "install_package" else {}
+    asyncio.run(dict(commands.bindings())[action]("request-1", payload))
+
+    assert json.loads(stdout.getvalue())["success"] is False
+    assert runtime.calls == 0
+
+
+@pytest.mark.parametrize("failure_kind", ["exception", "invalid_projection"])
+def test_rpc_product_update_check_never_leaks_runtime_details(
+    failure_kind: str,
+) -> None:
+    secret = "file:///home/alice/private/acme.whl?token=secret"
+
+    class Runtime:
+        package_product_binding_id = "owner:test"
+
+        async def execute_package_lifecycle_collection(
+            self, *args: object, **kwargs: object
+        ) -> list[dict[str, object]]:
+            del args, kwargs
+            if failure_kind == "exception":
+                raise RuntimeError(secret)
+            return [{"source": secret}]
+
+    class Session:
+        package_product_binding_id = "owner:test"
+        package_product_lifecycle_mode = "enforced"
+
+    stdout = StringIO()
+    commands = RpcPackageCommands(
+        runtime=Runtime(),
+        get_session=Session,
+        output=RpcOutput(stdout),
+    )
+
+    asyncio.run(
+        dict(commands.bindings())["check_package_updates"]("request-1", {})
+    )
+
+    response = stdout.getvalue()
+    assert secret not in response
+    assert json.loads(response)["success"] is False
+
+
+@pytest.mark.parametrize("failure_kind", ["exception", "invalid_projection"])
+def test_rpc_product_lifecycle_never_leaks_runtime_details(
+    failure_kind: str,
+) -> None:
+    secret = "file:///home/alice/private/acme.whl?token=secret"
+
+    class Runtime:
+        package_product_binding_id = "owner:test"
+
+        async def execute_package_lifecycle(
+            self, *args: object, **kwargs: object
+        ) -> dict[str, object]:
+            del args, kwargs
+            if failure_kind == "exception":
+                raise RuntimeError(secret)
+            return {"lifecycle": "installed", "path": secret}
+
+    class Session:
+        package_product_binding_id = "owner:test"
+        package_product_lifecycle_mode = "enforced"
+
+    stdout = StringIO()
+    commands = RpcPackageCommands(
+        runtime=Runtime(),
+        get_session=Session,
+        output=RpcOutput(stdout),
+    )
+
+    asyncio.run(
+        dict(commands.bindings())["install_package"](
+            "request-1",
+            {"source": "acme"},
+        )
+    )
+
+    response = stdout.getvalue()
+    assert secret not in response
+    assert json.loads(response)["success"] is False
+
+
+@pytest.mark.parametrize("collection", [False, True])
+@pytest.mark.parametrize("field", ["name", "errorCode"])
+def test_rpc_product_lifecycle_rejects_unclassified_detail_channels(
+    collection: bool,
+    field: str,
+) -> None:
+    secret = "file:///home/alice/private/acme.whl?token=secret"
+
+    class Session:
+        package_product_binding_id = "owner:test"
+        package_product_lifecycle_mode = "enforced"
+
+        async def execute_package_lifecycle(
+            self, *args: object, operation_id: str, **kwargs: object
+        ) -> dict[str, object]:
+            del args, kwargs
+            record = _product_record(operation_id, failed=field == "errorCode")
+            record[field] = secret
+            if field == "errorCode":
+                record["errorMessage"] = secret
+            return record
+
+        async def execute_package_lifecycle_collection(
+            self, *args: object, operation_id: str, **kwargs: object
+        ) -> list[dict[str, object]]:
+            del args, kwargs
+            source = f"sha256:{'1' * 64}"
+            child_id = sha256(f"{operation_id}\0{source}".encode()).hexdigest()
+            record = _product_record(
+                child_id,
+                action="update",
+                failed=field == "errorCode",
+            )
+            record[field] = secret
+            if field == "errorCode":
+                record["errorMessage"] = secret
+            return [record]
+
+    stdout = StringIO()
+    commands = RpcPackageCommands(
+        runtime=object(),
+        get_session=Session,
+        output=RpcOutput(stdout),
+    )
+    command = "update_packages" if collection else "install_package"
+    payload = {} if collection else {"source": "acme"}
+    asyncio.run(dict(commands.bindings())[command]("request-1", payload))
+
+    response = stdout.getvalue()
+    assert secret not in response
+    assert json.loads(response)["success"] is False
+
+
+def test_rpc_product_bulk_success_projection_cannot_add_secret_fields() -> None:
+    secret = "file:///home/alice/private/acme.whl?token=secret"
+
+    class Session:
+        package_product_binding_id = "owner:test"
+        package_product_lifecycle_mode = "enforced"
+
+        async def execute_package_lifecycle_collection(
+            self, *args: object, **kwargs: object
+        ) -> list[dict[str, object]]:
+            del args, kwargs
+            return [{"lifecycle": "installed", "path": secret}]
+
+    stdout = StringIO()
+    commands = RpcPackageCommands(
+        runtime=object(),
+        get_session=Session,
+        output=RpcOutput(stdout),
+    )
+
+    asyncio.run(dict(commands.bindings())["update_packages"]("request-1", {}))
+
+    response = stdout.getvalue()
+    assert secret not in response
+    assert json.loads(response)["success"] is False
+
+
+@pytest.mark.parametrize("failed_rows", [(True,), (False, True)])
+def test_rpc_product_bulk_failure_never_returns_success(
+    failed_rows: tuple[bool, ...],
+) -> None:
+    class Session:
+        package_product_binding_id = "owner:test"
+        package_product_lifecycle_mode = "enforced"
+
+        async def execute_package_lifecycle_collection(
+            self,
+            _action: str,
+            *,
+            entrypoint: str,
+            operation_id: str,
+            scope: str,
+        ) -> list[dict[str, object]]:
+            del entrypoint, scope
+            result = []
+            for index, failed in enumerate(failed_rows, start=1):
+                source = f"sha256:{str(index) * 64}"
+                child_id = sha256(
+                    f"{operation_id}\0{source}".encode()
+                ).hexdigest()
+                result.append(
+                    _product_record(
+                        child_id,
+                        action="update",
+                        source_digit=str(index),
+                        failed=failed,
+                    )
+                )
+            return result
+
+    stdout = StringIO()
+    commands = RpcPackageCommands(
+        runtime=object(),
+        get_session=Session,
+        output=RpcOutput(stdout),
+    )
+
+    asyncio.run(dict(commands.bindings())["update_packages"]("request-1", {}))
+
+    response = json.loads(stdout.getvalue())
+    assert response["success"] is False
+    assert response["errorCode"] == "package_update_failed"
+    assert "data" not in response
+    assert "private detail" not in stdout.getvalue()
+
+
+def test_rpc_update_collection_replays_same_command_correlation() -> None:
+    class Session:
+        package_product_binding_id = "owner:test"
+        package_product_lifecycle_mode = "enforced"
+
+        def __init__(self) -> None:
+            self.operation_ids: list[str] = []
+
+        async def execute_package_lifecycle_collection(
+            self,
+            action: str,
+            *,
+            entrypoint: str,
+            operation_id: str,
+            scope: str,
+        ) -> list[dict[str, object]]:
+            assert (action, entrypoint, scope) == ("update", "rpc", "global")
+            self.operation_ids.append(operation_id)
+            source = f"sha256:{'1' * 64}"
+            child_id = sha256(f"{operation_id}\0{source}".encode()).hexdigest()
+            return [_product_record(child_id, action="update")]
+
+    session = Session()
+    stdout = StringIO()
+    commands = RpcPackageCommands(
+        runtime=object(),
+        get_session=lambda: session,
+        output=RpcOutput(stdout),
+    )
+    handler = dict(commands.bindings())["update_packages"]
+
+    asyncio.run(handler("request-1", {"scope": "global"}))
+    asyncio.run(handler("request-1", {"scope": "global"}))
+
+    assert len(session.operation_ids) == 2
+    assert session.operation_ids[0] == session.operation_ids[1]
+    assert len(session.operation_ids[0]) == 64

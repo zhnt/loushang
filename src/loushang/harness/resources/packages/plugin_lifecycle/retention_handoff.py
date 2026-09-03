@@ -2255,7 +2255,10 @@ class PackageRetentionHandoffOwner:
         self._journal = journal
         self._admission = admission
         self._retention = retention
-        self._desired_state = desired_state
+        # This is a narrow handoff port, not the desired-state ledger.  Keep
+        # its name distinct so ownership scanners cannot mistake delegation
+        # to PluginManagementService for a second durable writer.
+        self._desired_commit = desired_state
 
     def execute(
         self,
@@ -2325,7 +2328,9 @@ class PackageRetentionHandoffOwner:
                 assert current.dependency_pin_receipt is not None
                 dependency_receipt = current.dependency_pin_receipt
                 try:
-                    desired_result = self._desired_state.commit(request.desired_request)
+                    desired_result = self._desired_commit.commit(
+                        request.desired_request
+                    )
                 except Exception:
                     return self._interrupted(current)
                 if (

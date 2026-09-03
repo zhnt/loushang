@@ -107,6 +107,12 @@ from loushang.harness.plugin_management.package_lifecycle import (
     PluginPackageLifecycleSnapshotV1,
     PluginPackageRetentionSnapshotV1,
 )
+from loushang.harness.plugin_management.package_product import (
+    PACKAGE_PRODUCT_DESIRED_ADAPTER_VERSION,
+    PackageProductDesiredRevisionProjectionPort,
+    PluginManagementCommandSubmitPort,
+    PluginManagementPackageDesiredStateAdapter,
+)
 from loushang.harness.plugin_management.package_records import (
     PLUGIN_CLEANUP_ATTEMPT_VERSION,
     PLUGIN_CLEANUP_REPAIR_DECISION_VERSION,
@@ -235,6 +241,7 @@ __all__ = [
     "PLUGIN_PACKAGE_PIN_RELEASE_VERSION",
     "PLUGIN_PACKAGE_PIN_VERSION",
     "PLUGIN_PACKAGE_RECOVERY_BARRIER_VERSION",
+    "PACKAGE_PRODUCT_DESIRED_ADAPTER_VERSION",
     "PLUGIN_OWNER_RETIREMENT_OUTCOME_VERSION",
     "PLUGIN_OWNER_RETIREMENT_PLAN_VERSION",
     "PLUGIN_OWNER_RETIREMENT_TARGET_VERSION",
@@ -331,6 +338,9 @@ __all__ = [
     "PluginPackagePinV1",
     "PluginPackageRecoveryBarrierV1",
     "PluginPackageRetentionSnapshotV1",
+    "PackageProductDesiredRevisionProjectionPort",
+    "PluginManagementCommandSubmitPort",
+    "PluginManagementPackageDesiredStateAdapter",
     "PluginOwnerRetirementOutcomeV1",
     "PluginOwnerRetirementPlanV1",
     "PluginOwnerRetirementTargetV1",

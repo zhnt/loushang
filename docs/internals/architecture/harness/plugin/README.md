@@ -72,6 +72,10 @@ Neither may silently override a narrower implemented owner contract.
   freezes the internal transport-neutral command/query boundary, read-only
   owner-revisioned projection, one-way enablement migration, and Coding CLI
   adaptation without widening the public author SDK.
+- [PLC9A2 Product Routing Contract](plugin-lifecycle-plc9a2-contract.md)
+  freezes Product-owned recovery/epoch activation, one typed Package intent
+  across operations/Session/CLI/RPC/startup, and explicit-non-Plugin-only
+  fallback without granting transports Store or deletion authority.
 - [PLC9B Safe Package Boundary Contract](plugin-lifecycle-plc9b-contract.md)
   freezes the Package acquisition owner, exact entrypoint inventory, versioned
   wheel/closure/publication evidence, fail-closed recovery, and mandatory

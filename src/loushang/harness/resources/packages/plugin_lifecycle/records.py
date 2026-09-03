@@ -11,6 +11,7 @@ from typing import Literal, cast
 from urllib.parse import SplitResult, urlsplit, urlunsplit
 
 PACKAGE_LIFECYCLE_REQUEST_VERSION = 1
+PACKAGE_LIFECYCLE_REQUEST_V2_VERSION = 2
 PACKAGE_CLASSIFICATION_FACT_VERSION = 1
 PACKAGE_CLASSIFICATION_FACTS_VERSION = 1
 PACKAGE_CLASSIFICATION_VERSION = 1
@@ -458,6 +459,203 @@ class PackageLifecycleRequestV1:
                 document["requestVersion"], name="request version"
             ),
         )
+
+
+@dataclass(frozen=True, slots=True)
+class PackageLifecycleIngressRequestV2(PackageLifecycleIngressRequestV1):
+    """Ingress with an independently bound runtime-admission identity."""
+
+    request_version: int = PACKAGE_LIFECYCLE_REQUEST_V2_VERSION
+    runtime_admission_request_id: str = ""
+
+    def __post_init__(self) -> None:
+        PackageLifecycleIngressRequestV1(
+            operation_id=self.operation_id,
+            action=self.action,
+            product_id=self.product_id,
+            scope_id=self.scope_id,
+            requested_package=self.requested_package,
+            requested_plugin_id=self.requested_plugin_id,
+            source_locator=self.source_locator,
+            policy_revision=self.policy_revision,
+            quota_profile_revision=self.quota_profile_revision,
+            resolution_environment_fingerprint=(
+                self.resolution_environment_fingerprint
+            ),
+        )
+        _require_sha256(
+            self.runtime_admission_request_id,
+            name="runtime admission request id",
+        )
+        if self.request_version != PACKAGE_LIFECYCLE_REQUEST_V2_VERSION:
+            raise ValueError("Unsupported Package lifecycle request v2")
+
+    @classmethod
+    def bind_runtime_admission(
+        cls,
+        ingress: PackageLifecycleIngressRequestV1,
+        *,
+        runtime_admission_request_id: str,
+    ) -> PackageLifecycleIngressRequestV2:
+        if not isinstance(ingress, PackageLifecycleIngressRequestV1):
+            raise TypeError("Package lifecycle ingress request is required")
+        if isinstance(ingress, PackageLifecycleIngressRequestV2):
+            if (
+                ingress.runtime_admission_request_id
+                != runtime_admission_request_id
+            ):
+                raise ValueError("Package runtime admission identity changed")
+            return ingress
+        return cls(
+            operation_id=ingress.operation_id,
+            action=ingress.action,
+            product_id=ingress.product_id,
+            scope_id=ingress.scope_id,
+            requested_package=ingress.requested_package,
+            requested_plugin_id=ingress.requested_plugin_id,
+            source_locator=ingress.source_locator,
+            policy_revision=ingress.policy_revision,
+            quota_profile_revision=ingress.quota_profile_revision,
+            resolution_environment_fingerprint=(
+                ingress.resolution_environment_fingerprint
+            ),
+            runtime_admission_request_id=runtime_admission_request_id,
+        )
+
+    def bind_classification_facts(
+        self,
+        facts: PackageClassificationFactsV1,
+    ) -> PackageLifecycleRequestV2:
+        if not isinstance(facts, PackageClassificationFactsV1):
+            raise TypeError("Package classification facts are required")
+        return PackageLifecycleRequestV2(
+            operation_id=self.operation_id,
+            action=self.action,
+            product_id=self.product_id,
+            scope_id=self.scope_id,
+            requested_package=self.requested_package,
+            requested_plugin_id=self.requested_plugin_id,
+            canonical_source_identity=canonicalize_source_identity(
+                self.source_locator
+            ),
+            policy_revision=self.policy_revision,
+            quota_profile_revision=self.quota_profile_revision,
+            resolution_environment_fingerprint=(
+                self.resolution_environment_fingerprint
+            ),
+            classification_facts=facts,
+            runtime_admission_request_id=self.runtime_admission_request_id,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class PackageLifecycleRequestV2(PackageLifecycleRequestV1):
+    """Durable request whose fingerprint includes runtime admission."""
+
+    request_version: int = PACKAGE_LIFECYCLE_REQUEST_V2_VERSION
+    runtime_admission_request_id: str = ""
+
+    def __post_init__(self) -> None:
+        PackageLifecycleRequestV1(
+            operation_id=self.operation_id,
+            action=self.action,
+            product_id=self.product_id,
+            scope_id=self.scope_id,
+            requested_package=self.requested_package,
+            requested_plugin_id=self.requested_plugin_id,
+            canonical_source_identity=self.canonical_source_identity,
+            policy_revision=self.policy_revision,
+            quota_profile_revision=self.quota_profile_revision,
+            resolution_environment_fingerprint=(
+                self.resolution_environment_fingerprint
+            ),
+            classification_facts=self.classification_facts,
+        )
+        _require_sha256(
+            self.runtime_admission_request_id,
+            name="runtime admission request id",
+        )
+        if self.request_version != PACKAGE_LIFECYCLE_REQUEST_V2_VERSION:
+            raise ValueError("Unsupported Package lifecycle request v2")
+
+    def to_dict(self) -> dict[str, object]:
+        document = PackageLifecycleRequestV1.to_dict(self)
+        document["runtimeAdmissionRequestId"] = self.runtime_admission_request_id
+        return document
+
+    @classmethod
+    def from_dict(cls, value: object) -> PackageLifecycleRequestV2:
+        document = _exact_dict(
+            value,
+            fields={
+                "action",
+                "canonicalSourceIdentity",
+                "classificationFacts",
+                "operationId",
+                "policyRevision",
+                "productId",
+                "quotaProfileRevision",
+                "requestVersion",
+                "requestedPackage",
+                "requestedPluginId",
+                "resolutionEnvironmentFingerprint",
+                "runtimeAdmissionRequestId",
+                "scopeId",
+            },
+            name="Package lifecycle request v2",
+        )
+        return cls(
+            operation_id=_wire_string(document["operationId"], name="operation id"),
+            action=cast(
+                PackageLifecycleAction,
+                _wire_string(document["action"], name="Package action"),
+            ),
+            product_id=_wire_string(document["productId"], name="Product id"),
+            scope_id=_wire_string(document["scopeId"], name="scope id"),
+            requested_package=_wire_string(
+                document["requestedPackage"], name="requested Package"
+            ),
+            requested_plugin_id=_wire_optional_string(
+                document["requestedPluginId"], name="requested Plugin id"
+            ),
+            canonical_source_identity=_wire_string(
+                document["canonicalSourceIdentity"],
+                name="canonical Source identity",
+            ),
+            policy_revision=_wire_string(
+                document["policyRevision"], name="Package policy revision"
+            ),
+            quota_profile_revision=_wire_string(
+                document["quotaProfileRevision"], name="quota profile revision"
+            ),
+            resolution_environment_fingerprint=_wire_string(
+                document["resolutionEnvironmentFingerprint"],
+                name="resolution environment fingerprint",
+            ),
+            classification_facts=PackageClassificationFactsV1.from_dict(
+                document["classificationFacts"]
+            ),
+            runtime_admission_request_id=_wire_string(
+                document["runtimeAdmissionRequestId"],
+                name="runtime admission request id",
+            ),
+            request_version=_wire_int(
+                document["requestVersion"], name="request version"
+            ),
+        )
+
+
+def decode_package_lifecycle_request(value: object) -> PackageLifecycleRequestV1:
+    """Decode the durable request version without changing V1 wire identity."""
+
+    if not isinstance(value, Mapping):
+        raise ValueError("Package lifecycle request must be an object")
+    version = value.get("requestVersion")
+    if version == PACKAGE_LIFECYCLE_REQUEST_VERSION:
+        return PackageLifecycleRequestV1.from_dict(value)
+    if version == PACKAGE_LIFECYCLE_REQUEST_V2_VERSION:
+        return PackageLifecycleRequestV2.from_dict(value)
+    raise ValueError("Unsupported Package lifecycle request")
 
 
 @dataclass(frozen=True, slots=True)
@@ -966,7 +1164,7 @@ class PackageLifecycleJournalRecordV1:
             prior_attempt_revision=_wire_nonnegative(
                 document["priorAttemptRevision"], name="prior attempt revision"
             ),
-            request=PackageLifecycleRequestV1.from_dict(document["request"]),
+            request=decode_package_lifecycle_request(document["request"]),
             status=PackageLifecycleStatusV1.from_dict(document["status"]),
             record_version=_wire_int(
                 document["recordVersion"], name="record version"
@@ -1146,12 +1344,15 @@ __all__ = [
     "PackageLifecycleCancelRequestV1",
     "PackageLifecycleFailureV1",
     "PackageLifecycleIngressRequestV1",
+    "PackageLifecycleIngressRequestV2",
     "PackageLifecycleJournalRecordV1",
     "PackageLifecycleRequestV1",
+    "PackageLifecycleRequestV2",
     "PackageLifecycleRetryRequestV1",
     "PackageLifecycleStatusV1",
     "PluginBoundPackageClassificationV1",
     "canonical_json_bytes",
     "canonicalize_source_identity",
     "classify_package_request",
+    "decode_package_lifecycle_request",
 ]
