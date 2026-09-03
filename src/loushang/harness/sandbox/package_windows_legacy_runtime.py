@@ -935,12 +935,31 @@ def _runtime_environment(
     token: str,
     runtime_path: Path,
 ) -> dict[str, str]:
+    system_root = os.environ.get("SYSTEMROOT", r"C:\Windows")
+    system_drive = os.environ.get("SYSTEMDRIVE", Path(system_root).drive or "C:")
+    user_profile = os.environ.get(
+        "USERPROFILE", str(Path(system_drive + os.sep) / "Users" / "Default")
+    )
     environment = {
         "COMSPEC": os.environ.get("COMSPEC", r"C:\Windows\System32\cmd.exe"),
+        "APPDATA": os.environ.get(
+            "APPDATA", str(Path(user_profile) / "AppData" / "Roaming")
+        ),
+        "HOMEDRIVE": os.environ.get("HOMEDRIVE", system_drive),
+        "HOMEPATH": os.environ.get("HOMEPATH", r"\Users\Default"),
+        "LOCALAPPDATA": os.environ.get(
+            "LOCALAPPDATA", str(Path(user_profile) / "AppData" / "Local")
+        ),
+        "OS": "Windows_NT",
         "PATH": os.environ.get("PATH", r"C:\Windows\System32"),
-        "SYSTEMROOT": os.environ.get("SYSTEMROOT", r"C:\Windows"),
+        "PATHEXT": os.environ.get("PATHEXT", ".COM;.EXE;.BAT;.CMD"),
+        "PROGRAMDATA": os.environ.get("PROGRAMDATA", r"C:\ProgramData"),
+        "SYSTEMDRIVE": system_drive,
+        "SYSTEMROOT": system_root,
         "TEMP": str(runtime_path),
         "TMP": str(runtime_path),
+        "USERPROFILE": user_profile,
+        "WINDIR": os.environ.get("WINDIR", system_root),
         **dict(values),
     }
     environment[_READY_PATH_ENV] = str(ready_path)
