@@ -144,6 +144,14 @@ from loushang.harness.resources.packages.materializer import (
     GitPackageMaterializerBackend,
     resolve_session_package_install_root,
 )
+from loushang.harness.resources.packages.product_contract import (
+    PackageProductLifecycleInventoryPort,
+    PackageProductLifecycleMode,
+    PackageProductLifecycleOperationPort,
+)
+from loushang.harness.resources.packages.product_runtime import (
+    PackageProductRuntimeFactoryPort,
+)
 from loushang.harness.resources.packages.roots import SelectedPluginPackageInput
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.session import (
@@ -488,6 +496,7 @@ def _create_agent_session(
     agent_factory: AgentFactory = Agent,
     session_start_event: SessionStartEvent | None = None,
     package_materializer: PackageMaterializer | None = None,
+    package_product_runtime_factory: PackageProductRuntimeFactoryPort | None = None,
     append_system_prompt: list[str] | tuple[str, ...] | None = None,
     extension_flag_values: ExtensionFlagValues | None = None,
     approval_resolver: InteractiveApprovalResolver | None = None,
@@ -1129,6 +1138,9 @@ def _create_agent_session(
         initial_active_tool_names: list[str] | None,
         session_base_prompt: str,
         session_no_tools_mode: NoToolsMode | None,
+        package_product_lifecycle: PackageProductLifecycleOperationPort | None,
+        package_product_inventory: PackageProductLifecycleInventoryPort | None,
+        package_product_lifecycle_mode: PackageProductLifecycleMode,
     ) -> AgentSession:
         if len(prepared_resource_catalog_adapters) != 1:
             raise RuntimeError(
@@ -1374,6 +1386,9 @@ def _create_agent_session(
                 diagnostics_service=services.diagnostics_service,
                 session_start_event=session_start_event,
                 package_materializer=resolved_package_materializer,
+                package_product_lifecycle=package_product_lifecycle,
+                package_product_inventory=package_product_inventory,
+                package_product_lifecycle_mode=package_product_lifecycle_mode,
                 exec_service=sandbox_runtime.exec_service,
                 approval_resolver=approval_resolver,
                 tool_policy_evaluator=tool_policy_evaluator,
@@ -1425,6 +1440,7 @@ def _create_agent_session(
         result = construction_binding.construct(
             services=services,
             package_materializer=resolved_package_materializer,
+            package_product_runtime_factory=package_product_runtime_factory,
             session_id=session_id,
             cwd=session_manager.get_cwd(),
             extension_flag_values=extension_flag_values,
@@ -1621,6 +1637,7 @@ def create_agent_session(
     agent_factory: AgentFactory = Agent,
     session_start_event: SessionStartEvent | None = None,
     package_materializer: PackageMaterializer | None = None,
+    package_product_runtime_factory: PackageProductRuntimeFactoryPort | None = None,
     append_system_prompt: list[str] | tuple[str, ...] | None = None,
     extension_flag_values: ExtensionFlagValues | None = None,
     approval_resolver: InteractiveApprovalResolver | None = None,
@@ -1648,6 +1665,7 @@ def create_agent_session(
         agent_factory=agent_factory,
         session_start_event=session_start_event,
         package_materializer=package_materializer,
+        package_product_runtime_factory=package_product_runtime_factory,
         append_system_prompt=append_system_prompt,
         extension_flag_values=extension_flag_values,
         approval_resolver=approval_resolver,
@@ -1677,6 +1695,7 @@ def create_agent_session_from_services(
     agent_factory: AgentFactory = Agent,
     session_start_event: SessionStartEvent | None = None,
     package_materializer: PackageMaterializer | None = None,
+    package_product_runtime_factory: PackageProductRuntimeFactoryPort | None = None,
     append_system_prompt: list[str] | tuple[str, ...] | None = None,
     approval_resolver: InteractiveApprovalResolver | None = None,
     tool_policy_evaluator: PolicyEvaluator | None = None,
@@ -1706,6 +1725,7 @@ def create_agent_session_from_services(
         agent_factory=agent_factory,
         session_start_event=session_start_event,
         package_materializer=package_materializer,
+        package_product_runtime_factory=package_product_runtime_factory,
         append_system_prompt=append_system_prompt,
         extension_flag_values=extension_flag_values,
         approval_resolver=approval_resolver,
@@ -1734,6 +1754,7 @@ def create_agent_session_result(
     agent_factory: AgentFactory = Agent,
     session_start_event: SessionStartEvent | None = None,
     package_materializer: PackageMaterializer | None = None,
+    package_product_runtime_factory: PackageProductRuntimeFactoryPort | None = None,
     append_system_prompt: list[str] | tuple[str, ...] | None = None,
     extension_flag_values: ExtensionFlagValues | None = None,
     approval_resolver: InteractiveApprovalResolver | None = None,
@@ -1760,6 +1781,7 @@ def create_agent_session_result(
         agent_factory=agent_factory,
         session_start_event=session_start_event,
         package_materializer=package_materializer,
+        package_product_runtime_factory=package_product_runtime_factory,
         append_system_prompt=append_system_prompt,
         extension_flag_values=extension_flag_values,
         approval_resolver=approval_resolver,
@@ -1824,6 +1846,7 @@ _CODING_AGENT_PRODUCT_CONSTRUCTION = AgentProductConstructionBinding[
     ExtensionRunner,
 ](
     default_system_prompt=DEFAULT_CODING_SYSTEM_PROMPT,
+    product_id=CODING_PRODUCT_ID,
     bind_capabilities=lambda: stage_resource_composition_candidate(
         CODING_CAPABILITY_PROFILE
     ),

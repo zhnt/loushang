@@ -14,6 +14,7 @@ ACTIVATION = Path("src/loushang/harness/resources/packages/product_activation.py
 PRODUCT_CONTRACT = Path("src/loushang/harness/resources/packages/product_contract.py")
 PRODUCT_INVENTORY = Path("src/loushang/harness/resources/packages/product_inventory.py")
 PRODUCT_LIFECYCLE = Path("src/loushang/harness/resources/packages/product_lifecycle.py")
+PRODUCT_RUNTIME = Path("src/loushang/harness/resources/packages/product_runtime.py")
 KERNEL_RECORDS = Path(
     "src/loushang/harness/resources/packages/plugin_lifecycle/records.py"
 )
@@ -32,6 +33,7 @@ BOOTSTRAP = Path("src/loushang/harness/session/bootstrap_configuration.py")
 CONSTRUCTION = Path("src/loushang/harness/session/bootstrap_construction.py")
 PRODUCT_SESSION = Path("src/loushang/harness/session/agent_product.py")
 CODING_SESSION = Path("src/loushang/coding/session/agent_session.py")
+CODING_BOOTSTRAP = Path("src/loushang/coding/bootstrap.py")
 AUTHOR_SDK = Path("src/loushang/plugin/__init__.py")
 
 
@@ -80,7 +82,7 @@ def test_plc9a2_contract_is_indexed_and_inventory_names_every_new_owner() -> Non
     index = _source(INDEX)
 
     assert index.count("(plugin-lifecycle-plc9a2-contract.md)") == 1
-    for slice_name in ("PLC9A2.0", "PLC9A2.1", "PLC9A2.2"):
+    for slice_name in ("PLC9A2.0", "PLC9A2.1", "PLC9A2.2", "PLC9A2.3"):
         assert slice_name in contract
     for owner in (
         "PackageProductLifecycleActivation",
@@ -96,6 +98,7 @@ def test_plc9a2_contract_is_indexed_and_inventory_names_every_new_owner() -> Non
         "PackageProductUpdateCheckRequestV1",
         "PackageProductUpdateManifestJournal",
         "PackageProductUpdateManifestReceiptV1",
+        "PackageProductRuntimeBindingV1",
     ):
         assert owner in inventory
     assert "UI/management-SDK transport bindings" in inventory
@@ -158,20 +161,21 @@ def test_plc9a2_freezes_atomic_admission_guard_and_inventory_owners() -> None:
         ACTIVATION,
         "PackageProductLifecycleActivation._route_guarded",
     )
-    assert route.index("with guard:") < route.index("self._admit()") < route.index(
-        "self._route_guarded("
+    assert (
+        route.index("with guard:")
+        < route.index("self._admit()")
+        < route.index("self._route_guarded(")
     )
-    assert query.index("with guard:") < query.index("self._admit()") < query.index(
-        "await query()"
+    assert (
+        query.index("with guard:")
+        < query.index("self._admit()")
+        < query.index("await query()")
     )
     assert "receipt.request.admission_request_id" in guarded
     assert guarded.index("bind_runtime_admission(") < guarded.index(
         "self._router.route("
     )
-    assert (
-        "runtime_admission_request_id=("
-        in guarded
-    )
+    assert "runtime_admission_request_id=(" in guarded
     assert "resolution_environment_fingerprint=sha256" not in guarded
     assert "PACKAGE_LIFECYCLE_REQUEST_VERSION = 1" in records
     assert "PACKAGE_LIFECYCLE_REQUEST_V2_VERSION = 2" in records
@@ -201,7 +205,7 @@ def test_plc9a2_freezes_atomic_admission_guard_and_inventory_owners() -> None:
     assert inventory.count("append_jsonl_record(") == 1
     for forbidden in ("source_locator", "credential_reference", "target.source"):
         assert forbidden not in inventory
-    assert "PackageProductLifecycleMode = Literal[\"legacy\", \"dark\", \"enforced\"]" in (
+    assert 'PackageProductLifecycleMode = Literal["legacy", "dark", "enforced"]' in (
         _source(PRODUCT_CONTRACT)
     )
     assert "package_product_update_manifest_conflict" in inventory
@@ -359,6 +363,39 @@ def test_plc9a2_product_binding_is_explicit_at_bootstrap_and_session() -> None:
         product_session
     )
     assert "product_lifecycle=package_product_lifecycle" in product_session
+
+
+def test_plc9a23_activates_one_product_aggregate_before_standard_bootstrap() -> None:
+    runtime = _source(PRODUCT_RUNTIME)
+    coding = _source(CODING_BOOTSTRAP)
+    activate = _function_source(PRODUCT_RUNTIME, "activate_package_product_runtime")
+    binding_activate = _function_source(
+        PRODUCT_RUNTIME,
+        "PackageProductRuntimeBindingV1.activate",
+    )
+    construct = _function_source(
+        CONSTRUCTION,
+        "AgentProductConstructionBinding.construct",
+    )
+
+    assert "class PackageProductRuntimeBindingV1:" in runtime
+    assert "inventory_binding != lifecycle_binding" in runtime
+    assert "binding.product_id != request.product_id" in activate
+    assert "self.lifecycle.activate()" in binding_activate
+    assert "active = self.lifecycle.active" in binding_activate
+    assert "if not active:" in binding_activate
+    assert construct.index("activate_package_product_runtime(") < construct.index(
+        "AgentProductConstructionRuntime["
+    )
+    assert "cannot be mixed with split bindings" in construct
+    for field in ("lifecycle", "inventory", "mode"):
+        assert f"package_runtime.{field}" in construct
+    assert (
+        "package_product_runtime_factory: PackageProductRuntimeFactoryPort | None"
+        in (coding)
+    )
+    assert "product_id=CODING_PRODUCT_ID" in coding
+    assert "package_product_runtime_factory=package_product_runtime_factory" in coding
 
 
 def test_plc9a2_does_not_widen_the_public_author_sdk() -> None:

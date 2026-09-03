@@ -3,7 +3,7 @@
 ## Status
 
 - Contract version: PLC9A2.
-- Delivery status: implemented as PLC9A2.0, PLC9A2.1, and PLC9A2.2; the
+- Delivery status: implemented as PLC9A2.0 through PLC9A2.3; the
   unified PLC9A2 gate is executable.
 - Scope: internal Product composition, recovery/epoch activation, and the
   existing operations, Session, CLI, RPC, and startup Package entrypoints.
@@ -175,6 +175,32 @@ reads run only through `execute_guarded_query`, which holds the same epoch
 guard as a mutation route and deactivates on admission, query, or owner-binding
 failure.
 
+## PLC9A2.3: Product Runtime Activation
+
+`PackageProductRuntimeBindingV1` is the single aggregate delivered by Product
+policy. It indivisibly carries the lifecycle operation port, its same-owner
+inventory port, Product identity, and a non-legacy rollout mode. A
+`PackageProductRuntimeFactoryPort` receives only the Product id, Session id,
+and canonical absolute cwd needed to select the Product's durable authorities.
+It creates one aggregate per construction attempt; Harness validates the exact
+binding and Product identity, invokes recovery/admission through `activate()`,
+and verifies that the lifecycle is active before the standard Session
+activation graph can resolve Package Sources.
+
+`AgentProductConstructionBinding` owns that ordering. Its final Session factory
+receives the same lifecycle, inventory, and mode that were activated; it cannot
+reselect or split the owner. Coding exposes the factory at its canonical
+`create_agent_session*` entrypoints and binds it to `CODING_PRODUCT_ID`.
+Supplying a factory together with the older split internal bindings is rejected.
+Omitting the factory is the rollback switch and remains exactly `legacy`; there
+is no ambient singleton, automatic filesystem policy, or inferred Store.
+
+The factory remains Product-owned because only Product can supply the accepted
+PLC9B transaction, ingress policy, epoch lease/admission request, and the
+transaction guard paired with its offline-cutover coordination authority.
+A2.3 makes that complete composition reachable and activated in production
+bootstrap; it does not synthesize those security inputs inside Harness.
+
 ## Unified Acceptance Gate
 
 The PLC9A2 gate combines:
@@ -193,7 +219,10 @@ The PLC9A2 gate combines:
   refusal; and
 - partial bulk crash/restart, owner-bound manifest receipts, unsafe-storage
   refusal, and Product-owned update-check tests that prove correlation reaches
-  the real inventory while legacy materializer paths stay untouched.
+  the real inventory while legacy materializer paths stay untouched; and
+- aggregate runtime factory tests proving create-once, activation-before-
+  bootstrap, exact Product/owner binding, Coding entrypoint propagation, and
+  omission-as-legacy rollback.
 
 The rollback switch is omission of the Product lifecycle binding. That keeps
 non-Plugin Package behavior intact but disables Plugin artifact activation; it

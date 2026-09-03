@@ -222,6 +222,71 @@ def test_create_agent_session_uses_manager_header_as_agent_session_id(tmp_path) 
     assert session.get_model_selection().model_id == "faux-model"
 
 
+def test_create_agent_session_activates_and_reuses_package_product_runtime(
+    tmp_path,
+) -> None:
+    from typing import Any, cast
+
+    from loushang.coding.bootstrap import create_agent_session
+    from loushang.coding.product_plan import CODING_PRODUCT_ID
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.resources.packages.product_runtime import (
+        PackageProductRuntimeBindingV1,
+    )
+
+    project = tmp_path / "project"
+    project.mkdir()
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(project),
+            persist=False,
+        )
+    )
+
+    class Lifecycle:
+        binding_id = "owner:coding-package"
+        active = False
+
+        def activate(self) -> None:
+            self.active = True
+
+    class Inventory:
+        binding_id = "owner:coding-package"
+
+    lifecycle = Lifecycle()
+    inventory = Inventory()
+    requests = []
+
+    class Factory:
+        def create(self, request):
+            requests.append(request)
+            return PackageProductRuntimeBindingV1(
+                product_id=CODING_PRODUCT_ID,
+                lifecycle=cast(Any, lifecycle),
+                inventory=cast(Any, inventory),
+                mode="enforced",
+            )
+
+    session = create_agent_session(
+        session_manager=manager,
+        model=_model(),
+        package_product_runtime_factory=cast(Any, Factory()),
+    )
+    try:
+        assert lifecycle.active
+        assert len(requests) == 1
+        assert requests[0].product_id == CODING_PRODUCT_ID
+        assert requests[0].session_id == manager.get_header().conversation_id
+        assert requests[0].cwd == str(project.resolve())
+        assert session.package_product_binding_id == lifecycle.binding_id
+        assert session.package_product_lifecycle_mode == "enforced"
+        assert session._package_controller.product_lifecycle is lifecycle
+        assert session._package_controller.product_inventory is inventory
+    finally:
+        asyncio.run(session.dispose())
+
+
 def test_create_agent_session_keeps_runtime_approval_resolver(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session
     from loushang.coding.session_manager import SessionManager
@@ -622,8 +687,7 @@ def test_lsp_preparation_failure_closes_the_prepared_base_revision(
             plugin_lifecycle_module._PROCESS_STARTUP_LEASES
         )
         assert (
-            len(plugin_lifecycle_module._PROCESS_STARTUP_LEASES)
-            == original_lease_count
+            len(plugin_lifecycle_module._PROCESS_STARTUP_LEASES) == original_lease_count
         )
 
 
@@ -688,8 +752,7 @@ def test_base_assembly_failure_releases_ephemeral_startup_lease_and_root(
             plugin_lifecycle_module._PROCESS_STARTUP_LEASES
         )
         assert (
-            len(plugin_lifecycle_module._PROCESS_STARTUP_LEASES)
-            == original_lease_count
+            len(plugin_lifecycle_module._PROCESS_STARTUP_LEASES) == original_lease_count
         )
 
 
@@ -1828,9 +1891,10 @@ def test_coding_multiagent_child_uses_the_product_stream_and_read_only_tools(
         assert terminal.progress.summary == "child complete"
         assert calls == [("faux-model", "Review this change.")]
         [child_prompt] = system_prompts
-        assert child_prompt.count(
-            "Use only the Tool definitions exposed for this Session"
-        ) == 1
+        assert (
+            child_prompt.count("Use only the Tool definitions exposed for this Session")
+            == 1
+        )
         assert "You help users by reading files" not in child_prompt
         assert "writing new files" not in child_prompt
         assert "independent read-only code reviewer" in child_prompt
@@ -1890,9 +1954,7 @@ def test_catalog_owned_child_bash_uses_actor_bound_approval(
     from loushang.harness.policy_engine import PolicyEngine
 
     host_environment = LocalHostEnvironmentProbe().detect()
-    command_tool_name = (
-        "shell" if host_environment.os_family == "windows" else "bash"
-    )
+    command_tool_name = "shell" if host_environment.os_family == "windows" else "bash"
     presented = asyncio.Event()
     approval_payloads: list[dict[str, object]] = []
     model_tool_sets: list[tuple[str, ...]] = []
@@ -2622,9 +2684,12 @@ def test_non_resource_code_plugin_does_not_acquire_resource_authority(
         ]
         assert [skill.name for skill in session.resource_bundle.skills] == ["standard"]
         assert [theme.name for theme in session.resource_bundle.themes] == ["themes"]
-        assert services.diagnostics_service.get_diagnostics(
-            code="coding_resource_catalog_unsupported"
-        ) == []
+        assert (
+            services.diagnostics_service.get_diagnostics(
+                code="coding_resource_catalog_unsupported"
+            )
+            == []
+        )
     finally:
         asyncio.run(session.dispose())
 
