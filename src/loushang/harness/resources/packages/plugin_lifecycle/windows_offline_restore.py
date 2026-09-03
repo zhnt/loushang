@@ -1228,7 +1228,9 @@ def _pinned_roots_overlap(
     left: _PinnedWindowsRoot,
     right: _PinnedWindowsRoot,
 ) -> bool:
-    return bool(set(left.identities) & set(right.identities))
+    left_root = left.identities[-1]
+    right_root = right.identities[-1]
+    return left_root in right.identities or right_root in left.identities
 
 
 def _validate_entry_name(name: str) -> None:
