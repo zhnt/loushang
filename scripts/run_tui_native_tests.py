@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import argparse
 import os
+import subprocess
+import sys
 from collections.abc import Sequence
-
-import pytest
+from pathlib import Path
 
 SHARED_TEST_PATHS = (
     "tests/tui/test_terminal_query_responder.py",
@@ -60,14 +61,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         test_paths = selected_test_paths(args.profile)
     except RuntimeError as error:
         parser.error(str(error))
-    return pytest.main(
+    runner = Path(__file__).resolve().parent / "dev" / "run_pytest.py"
+    return subprocess.run(
         [
+            sys.executable,
+            str(runner),
             *test_paths,
             "--strict-markers",
             "--strict-config",
             *pytest_args,
-        ]
-    )
+        ],
+        check=False,
+    ).returncode
 
 
 if __name__ == "__main__":

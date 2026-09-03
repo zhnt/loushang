@@ -39,7 +39,7 @@ jobs:
 
       - name: Deterministic render and playback contracts
         run: >-
-          uv run pytest tests/tui tests/harnesstui tests/coding
+          uv run python scripts/dev/run_pytest.py tests/tui tests/harnesstui tests/coding
           -m tui_render_contract --strict-markers --strict-config
           --junitxml=.artifacts/deterministic-render.xml -q
 
@@ -168,7 +168,7 @@ jobs:
         env:
           LOUSHANG_REQUIRE_TMUX: "1"
         run: >-
-          uv run pytest tests/coding/test_screen_coding_tui_pty_smoke.py
+          uv run python scripts/dev/run_pytest.py tests/coding/test_screen_coding_tui_pty_smoke.py
           -m tui_tmux_integration --strict-markers --strict-config
           --junitxml=.artifacts/tmux-scrollback.xml -q
 

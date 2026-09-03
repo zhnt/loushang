@@ -35,7 +35,7 @@ jobs:
             -o faulthandler_timeout=60
             --junitxml=.artifacts/windows-shell-plc9b-native.xml
         run: >-
-          uv run pytest
+          uv run python scripts/dev/run_pytest.py
           tests/harness/resources/packages/test_plc9b_windows_native.py
           tests/harness/resources/packages/test_plc9b_windows_materialization.py
           tests/harness/resources/packages/test_plc9b_windows_epoch_cutover.py
@@ -53,7 +53,7 @@ jobs:
             -o faulthandler_timeout=60
             --junitxml=.artifacts/windows-shell-plc9b-manifest.xml
         run: >-
-          uv run pytest
+          uv run python scripts/dev/run_pytest.py
           "tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-WIN-ROOT]"
           "tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-WIN-ADS]"
           "tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-WIN-RESERVED]"
@@ -82,7 +82,7 @@ jobs:
             -o faulthandler_timeout=60
             --junitxml=.artifacts/windows-shell-native.xml
         run: >-
-          uv run pytest
+          uv run python scripts/dev/run_pytest.py
           tests/harness/workspace/test_local_process.py
           tests/harness/workspace/test_exec.py
           tests/harness/workspace/test_shell.py
@@ -103,7 +103,7 @@ jobs:
             -o faulthandler_timeout=60
             --junitxml=.artifacts/windows-runtime-lifecycle.xml
         run: >-
-          uv run pytest
+          uv run python scripts/dev/run_pytest.py
           tests/foundation/test_runtime_scope.py
           tests/harness/runtime/test_resources.py
           tests/harness/machine_resources/test_control_plane.py
@@ -126,7 +126,7 @@ jobs:
             -o faulthandler_timeout=60
             --junitxml=.artifacts/windows-shell-policy.xml
         run: >-
-          uv run pytest tests/harness/test_policy_engine.py
+          uv run python scripts/dev/run_pytest.py tests/harness/test_policy_engine.py
           -k "powershell or cmd_policy"
           -q
 

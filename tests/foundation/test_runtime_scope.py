@@ -93,6 +93,7 @@ def test_run_lease_creates_private_tree_and_close_removes_it(tmp_path: Path) -> 
         encoding="utf-8"
     )
     if os.name == "posix":
+        assert stat.S_IMODE(scope.paths.runtime.stat().st_mode) == 0o700
         assert stat.S_IMODE(scope.runs_root.stat().st_mode) == 0o700
         assert stat.S_IMODE(scope.run_dir.stat().st_mode) == 0o700
         assert stat.S_IMODE((scope.run_dir / ".lease").stat().st_mode) == 0o600
@@ -102,6 +103,69 @@ def test_run_lease_creates_private_tree_and_close_removes_it(tmp_path: Path) -> 
 
     assert lease.active is False
     assert not scope.run_dir.exists()
+
+
+def test_runtime_scope_supports_disjoint_safe_run_namespaces(tmp_path: Path) -> None:
+    paths = _scope(tmp_path, "a" * 32).paths
+    application = resolve_runtime_scope(paths=paths, run_id="a" * 32)
+    pytest_scope = resolve_runtime_scope(
+        paths=paths,
+        run_id="b" * 32,
+        run_namespace="pytest-runs",
+    )
+
+    assert application.runs_root == paths.runtime / "runs"
+    assert pytest_scope.runs_root == paths.runtime / "pytest-runs"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX private mode contract")
+def test_run_lease_repairs_an_owned_group_writable_runtime_root(
+    tmp_path: Path,
+) -> None:
+    scope = _scope(tmp_path, "a" * 32)
+    scope.paths.runtime.mkdir(mode=0o770, parents=True)
+    scope.paths.runtime.chmod(0o770)
+
+    lease = RunLease.acquire(scope)
+    try:
+        assert stat.S_IMODE(scope.paths.runtime.stat().st_mode) == 0o700
+    finally:
+        lease.close()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX read-only mode contract")
+def test_run_lease_close_repairs_only_owned_read_only_entries(
+    tmp_path: Path,
+) -> None:
+    scope = _scope(tmp_path, "a" * 32)
+    lease = RunLease.acquire(scope)
+    locked = scope.run_dir / "locked"
+    locked.mkdir()
+    payload = locked / "payload"
+    payload.write_text("test", encoding="utf-8")
+    payload.chmod(0o400)
+    locked.chmod(0o500)
+
+    lease.close()
+
+    assert not scope.run_dir.exists()
+    assert tuple(scope.runs_root.iterdir()) == ()
+
+
+@pytest.mark.parametrize(
+    "namespace",
+    ("", ".", "../runs", "pytest/runs", "UPPER", "_private", "a" * 65),
+)
+def test_runtime_scope_rejects_unsafe_run_namespaces(
+    tmp_path: Path,
+    namespace: str,
+) -> None:
+    with pytest.raises(ValueError, match="run namespace"):
+        resolve_runtime_scope(
+            paths=_scope(tmp_path, "a" * 32).paths,
+            run_id="b" * 32,
+            run_namespace=namespace,
+        )
 
 
 def test_run_lease_completes_short_os_writes(tmp_path: Path, monkeypatch) -> None:
