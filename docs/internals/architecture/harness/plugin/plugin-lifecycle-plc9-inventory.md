@@ -335,13 +335,26 @@
   executed all 98 Linux manifest nodes plus three authority/recovery guard
   tests with zero skips, failures, or errors; artifact upload digest
   `1822656d9150bd1b2ff602906ae229922bcc04527bec6a6f41f3edfb34934d98`.
-  PLC9B4c5a candidate code adds a dark Windows rooted-handle snapshot-to-
-  restore adapter behind the accepted pathless materialization Port. It pins
-  the snapshot, restore, and current-B ancestor chains, validates the complete
-  canonical bundle, copies and flushes it through direct handles, atomically
-  publishes one isolated namespace, and supports exact replay and guarded
-  cleanup. Its four native component cases are mandatory; process activation,
-  the Windows offline-restore manifest row, and Product routing remain closed.
+  PLC9B4c5 accepted code adds a dark Windows rooted-handle snapshot-to-restore
+  adapter and a separately owned zero-capability AppContainer/Job activation
+  adapter behind the accepted pathless Ports. It pins the snapshot, restore,
+  and current-B ancestor chains, validates the complete canonical bundle,
+  atomically publishes one isolated namespace, proves restored-root access and
+  current-B denial with the process token, and reverses the exact process/ACL/
+  profile authority. Five native component cases and the composed Windows
+  offline-restore manifest row are mandatory and nonskippable. Recovery/state/
+  no-execution and Product routing close in the adjacent B4d/B5 slices.
+  PLC9B4d accepted code closes fourteen recovery, concurrency, cancellation,
+  status, compatibility, no-execution, classification-drift, and secret-
+  persistence rows. Exact committed replay is read-only, same-operation callers
+  converge, stale attempts cannot alter the winner, and an interrupted pinned
+  attempt rolls forward only under a greater fenced attempt epoch.
+  PLC9B5 accepted code adds one capability-poor internal Product router for
+  CLI, RPC, Session, startup, and operations provenance. All five Plugin-bound
+  routes call only one injected transaction Port; direct materializer and
+  publication attempts are durably refused without peer capability. Seven
+  platform-neutral route rows make every PLC9B adversarial manifest row
+  implemented while keeping the adapter out of the author SDK.
 
 This inventory distinguishes accepted reusable owners, Product adapters,
 parallel compatibility paths, and missing target boundaries. “Migrate” or

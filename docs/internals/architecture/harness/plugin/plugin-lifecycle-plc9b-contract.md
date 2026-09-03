@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.4c4g-accepted.
+- Contract version: PLC9B.5-accepted.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -121,8 +121,12 @@
   never falling back to resolver or Source authority. B4c4d through B4c4g add
   native positive, Source-failure, post-commit-crash, and every-precommit-crash
   adoption evidence; all five adoption rows are accepted in the retained Linux
-  gate. Windows restore, public routing, and concrete desired-state composition
-  remain closed.
+  gate. B4c5 adds the Windows rooted materializer and zero-capability
+  AppContainer/Job activation owner. B4d closes recovery, concurrency, state,
+  and non-execution evidence. B5 adds the capability-poor internal Product
+  router and durable bypass refusal. All 127 adversarial rows are implemented;
+  public Product activation and concrete desired-state composition remain
+  separate rollout decisions.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -1972,7 +1976,7 @@ policy that prevented Bubblewrap from initializing loopback; the workflow now
 enables unprivileged user namespaces in the isolated hosted job, after which
 the unchanged native sandbox probe and all six namespace assertions passed.
 
-## PLC9B4c5a Candidate Windows Offline Restore Materialization
+## PLC9B4c5 Accepted Windows Offline Restore And Activation
 
 `PackageWindowsOfflineRestoreMaterializer` is the Windows-native peer of the
 accepted POSIX materializer behind the same pathless B4c3a Port. It owns three
@@ -1999,12 +2003,23 @@ publication. Four native component cases cover exact replay/discard,
 cross-owner convergence, authenticated snapshot tamper, and current-B root
 replacement in the mandatory Windows XML gate.
 
-This slice deliberately supplies no process launcher. Therefore
-`B-COMPAT-OFFLINE-RESTORE-WINDOWS` remains planned until a separately owned
-AppContainer/Job activation adapter proves an actual exclusive old runtime,
-network denial, and current-B filesystem unreachability without a skip.
+`PackageWindowsLegacyRuntimeActivationOwner` is separately owned by
+`loushang.harness.sandbox`. It gives one request-specific, zero-capability
+AppContainer read authority over the exact restored root and write authority
+over a private readiness directory, then launches the old runtime in a named
+kill-on-close Job Object. The owner verifies the process token's AppContainer
+SID and empty capability set, proves restored-root reachability and current-B
+unreachability while impersonating that token, binds replay to PID plus native
+creation time, and reverses the process tree, ACL grants, profile, marker, and
+runtime directory on deactivation or failed activation.
 
-## PLC9B4d Candidate Recovery, State, And No-Execution Closure
+The fifth native component case covers exclusive activation, exact replay,
+readiness, native authority checks, and reversible cleanup. The composed
+`B-COMPAT-OFFLINE-RESTORE-WINDOWS` case executes the pathless coordinator,
+snapshot evidence, rooted materializer, and AppContainer/Job activation as one
+Windows-native manifest node with no Source or peer fallback.
+
+## PLC9B4d Accepted Recovery, State, And No-Execution Closure
 
 B4d closes the fourteen platform-neutral and Linux-native adversarial rows
 that do not depend on Product route activation. The lifecycle journal now
@@ -2035,7 +2050,7 @@ greater fenced attempt epoch to the exact committed replay. These cases bring
 the Linux adversarial manifest from 98 to 112 nodes; the seven Product entry
 routes and the Windows offline-restore row remain separate activation gates.
 
-## PLC9B5 Candidate Product Routing And Bypass Closure
+## PLC9B5 Accepted Product Routing And Bypass Closure
 
 `PackageProductLifecycleRouter` is the capability-poor Product adapter above
 the accepted lifecycle owner. CLI, RPC, Session, startup, and operations
@@ -2625,7 +2640,7 @@ B-COMPAT-CUTOVER-WINDOWS | windows-native | accepted | offline_quiescent_namespa
 B-COMPAT-PREFENCE-LIVE-POSIX | posix-native | accepted | pre_fence_writer_blocks_cutover | package_runtime_epoch_unsupported | rejected@pre_fence | single_owner;no_publication;no_binding;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-PREFENCE-LIVE-POSIX] | harness-quality.yml#plc9b-linux-native | implemented
 B-COMPAT-PREFENCE-LIVE-WINDOWS | windows-native | accepted | pre_fence_writer_blocks_cutover | package_runtime_epoch_unsupported | rejected@pre_fence | single_owner;no_publication;no_binding;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-PREFENCE-LIVE-WINDOWS] | windows-shell-compatibility.yml#plc9b-windows-native | implemented
 B-COMPAT-OFFLINE-RESTORE-POSIX | posix-native | accepted | complete_pre_b_restore_exclusive_old_runtime | ok | accepted@offline_restore | single_owner;legacy_snapshot_exact;b_namespace_unreachable;no_peer_fallback;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-OFFLINE-RESTORE-POSIX] | harness-quality.yml#plc9b-linux-native | implemented
-B-COMPAT-OFFLINE-RESTORE-WINDOWS | windows-native | accepted | complete_pre_b_restore_exclusive_old_runtime | ok | accepted@offline_restore | single_owner;legacy_snapshot_exact;b_namespace_unreachable;no_peer_fallback;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-OFFLINE-RESTORE-WINDOWS] | windows-shell-compatibility.yml#plc9b-windows-native | planned
+B-COMPAT-OFFLINE-RESTORE-WINDOWS | windows-native | accepted | complete_pre_b_restore_exclusive_old_runtime | ok | accepted@offline_restore | single_owner;legacy_snapshot_exact;b_namespace_unreachable;no_peer_fallback;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-OFFLINE-RESTORE-WINDOWS] | windows-shell-compatibility.yml#plc9b-windows-native | implemented
 B-COMPAT-ADOPT | posix-native | committed | authenticated_legacy_reacquisition | ok | committed@committed | same_receipt;pin_visible;legacy_snapshot_exact;desired_unchanged;instance_unchanged;binding_unchanged;enablement_unchanged;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ADOPT] | harness-quality.yml#plc9b-linux-native | implemented
 B-COMPAT-ADOPT-UNAUTHORIZED | posix-native | acquiring | legacy_reacquisition_unauthorized | package_source_unauthorized | rejected@acquiring | legacy_snapshot_exact;desired_unchanged;instance_unchanged;binding_unchanged;enablement_unchanged;no_publication;no_peer_fallback;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ADOPT-UNAUTHORIZED] | harness-quality.yml#plc9b-linux-native | implemented
 B-COMPAT-ADOPT-UNAVAILABLE | posix-native | acquiring | registry_network_temporarily_unavailable | package_operation_timed_out | retryable_failure@acquiring | bounded_residue;legacy_snapshot_exact;desired_unchanged;instance_unchanged;binding_unchanged;enablement_unchanged;no_publication;no_extra_network;no_peer_fallback;no_skip | tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-ADOPT-UNAVAILABLE] | harness-quality.yml#plc9b-linux-native | implemented

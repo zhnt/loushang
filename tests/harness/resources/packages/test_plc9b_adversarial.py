@@ -182,6 +182,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.windows_materializatio
     WindowsPackageDependencyMaterializationStore,
     WindowsPackagePluginRootMaterializationStore,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.windows_offline_restore import (
+    PackageWindowsOfflineRestoreMaterializer,
+)
 from loushang.harness.resources.packages.product_lifecycle import (
     PackageProductEntrypoint,
     PackageProductLifecycleRouter,
@@ -193,6 +196,9 @@ from loushang.harness.resources.plugins.dependencies import (
 )
 from loushang.harness.sandbox.package_legacy_runtime import (
     PackageLinuxLegacyRuntimeActivationOwner,
+)
+from loushang.harness.sandbox.package_windows_legacy_runtime import (
+    PackageWindowsLegacyRuntimeActivationOwner,
 )
 
 IMPLEMENTED_B1_MANIFEST_CASES = (
@@ -336,6 +342,9 @@ IMPLEMENTED_B4C2_WINDOWS_EPOCH_CUTOVER_MANIFEST_CASES = (
 IMPLEMENTED_B4C3C_LINUX_OFFLINE_RESTORE_MANIFEST_CASES = (
     "B-COMPAT-OFFLINE-RESTORE-POSIX",
 )
+IMPLEMENTED_B4C5_WINDOWS_OFFLINE_RESTORE_MANIFEST_CASES = (
+    "B-COMPAT-OFFLINE-RESTORE-WINDOWS",
+)
 IMPLEMENTED_B4C4D_LINUX_ADOPTION_MANIFEST_CASES = ("B-COMPAT-ADOPT",)
 IMPLEMENTED_B4C4E_LINUX_ADOPTION_FAILURE_MANIFEST_CASES = (
     "B-COMPAT-ADOPT-UNAUTHORIZED",
@@ -415,6 +424,11 @@ EXECUTABLE_MANIFEST_CASES = (
     + (
         IMPLEMENTED_B4C3C_LINUX_OFFLINE_RESTORE_MANIFEST_CASES
         if sys.platform.startswith("linux")
+        else ()
+    )
+    + (
+        IMPLEMENTED_B4C5_WINDOWS_OFFLINE_RESTORE_MANIFEST_CASES
+        if os.name == "nt"
         else ()
     )
     + (
@@ -2409,6 +2423,21 @@ class _ManifestLinuxOfflineRestoreFixture:
     current_b_root: Path
 
 
+@dataclass(frozen=True)
+class _ManifestWindowsOfflineRestoreFixture:
+    owner: PackageOfflineRestoreOwner
+    materializer: PackageWindowsOfflineRestoreMaterializer
+    activation: PackageWindowsLegacyRuntimeActivationOwner
+    request: PackageOfflineRestoreRequestV1
+    journal: PackageEpochFenceJournal
+    coordination: _ManifestEpochCutoverCoordination
+    snapshots: _ManifestOfflineRestoreSnapshots
+    source: Path
+    restore_root: Path
+    activation_root: Path
+    current_b_root: Path
+
+
 def _manifest_directory_identity(path: Path) -> str:
     metadata = path.stat()
     return sha256(
@@ -2567,6 +2596,130 @@ def _manifest_linux_offline_restore_fixture(
         activation=activation,
     )
     return _ManifestLinuxOfflineRestoreFixture(
+        owner=owner,
+        materializer=materializer,
+        activation=activation,
+        request=request,
+        journal=journal,
+        coordination=coordination,
+        snapshots=snapshots,
+        source=source,
+        restore_root=restore_root,
+        activation_root=activation_root,
+        current_b_root=current_b_root,
+    )
+
+
+def _manifest_windows_offline_restore_fixture(
+    tmp_path: Path,
+) -> _ManifestWindowsOfflineRestoreFixture:
+    assert os.name == "nt"
+    store_id = "package-store:manifest-windows-offline-restore"
+    snapshot_root = tmp_path / "manifest-snapshot-authority"
+    restore_root = tmp_path / "manifest-restore-authority"
+    activation_root = tmp_path / "manifest-activation-authority"
+    current_b_root = tmp_path / "manifest-current-b-authority"
+    for root in (snapshot_root, restore_root, activation_root, current_b_root):
+        root.mkdir()
+    (current_b_root / "epoch-b.json").write_bytes(b'{"epoch":"B"}\n')
+    snapshot_id = sha256(b"manifest-windows-pre-b-snapshot").hexdigest()
+    source = snapshot_root / snapshot_id / "payload"
+    source.mkdir(parents=True)
+    (source / "legacy-state.json").write_bytes(b'{"legacy":1}\n')
+    tree_digest, entry_count, byte_count = _manifest_tree_metrics(source)
+    snapshot = PackageEpochCutoverSnapshotReceiptV1.create(
+        store_id=store_id,
+        legacy_root_identity=sha256(b"manifest-windows-legacy-root").hexdigest(),
+        quiescence_receipt_id=sha256(b"manifest-windows-quiescence").hexdigest(),
+        snapshot_id=snapshot_id,
+        snapshot_revision=1,
+        entry_count=entry_count,
+        byte_count=byte_count,
+    )
+    state_manifest = canonical_json_bytes(
+        {
+            "byteCount": snapshot.byte_count,
+            "coveredDomains": list(PACKAGE_PRE_B_SNAPSHOT_DOMAINS),
+            "entryCount": snapshot.entry_count,
+            "legacyRootIdentity": snapshot.legacy_root_identity,
+            "manifestVersion": 1,
+            "snapshotId": snapshot.snapshot_id,
+            "snapshotReceiptId": snapshot.receipt_id,
+            "snapshotRevision": snapshot.snapshot_revision,
+            "storeId": snapshot.store_id,
+            "treeDigest": tree_digest,
+        }
+    )
+    (source.parent / "state-manifest.json").write_bytes(state_manifest)
+    evidence = PackageOfflineRestoreSnapshotEvidenceV1.create(
+        snapshot,
+        snapshot_tree_digest=tree_digest,
+        state_manifest_digest=sha256(state_manifest).hexdigest(),
+    )
+    journal = PackageEpochFenceJournal(
+        tmp_path / "manifest-windows-offline-epoch.jsonl"
+    )
+    current = journal.publish(
+        PackageEpochFenceRequestV1.create(
+            store_id=store_id,
+            prior_fence=None,
+            legacy_root_identity=snapshot.legacy_root_identity,
+            fenced_root_identity=_manifest_directory_identity(current_b_root),
+            namespace_id=sha256(b"manifest-windows-current-b-namespace").hexdigest(),
+            minimum_runtime_version="2.0.0",
+            minimum_runtime_protocol_epoch=2,
+            quiescence_receipt_id=snapshot.quiescence_receipt_id,
+            snapshot_receipt_id=snapshot.receipt_id,
+            root_switch_receipt_id=sha256(
+                b"manifest-windows-root-switch"
+            ).hexdigest(),
+        )
+    )
+    request = PackageOfflineRestoreRequestV1.create(
+        current_fence=current,
+        genesis_fence=current,
+        snapshot_evidence=evidence,
+        restore_namespace_id=sha256(
+            b"manifest-windows-isolated-restore"
+        ).hexdigest(),
+        legacy_runtime_version="1.9.0",
+    )
+    coordination = _ManifestEpochCutoverCoordination()
+    snapshots = _ManifestOfflineRestoreSnapshots(evidence)
+    materializer = PackageWindowsOfflineRestoreMaterializer(
+        snapshot_root,
+        restore_root,
+        current_b_authority_root=current_b_root,
+        store_id=store_id,
+    )
+    command = (
+        os.environ.get("COMSPEC", r"C:\Windows\System32\cmd.exe"),
+        "/d",
+        "/q",
+        "/c",
+        (
+            "> %LOUSHANG_LEGACY_RUNTIME_READY_PATH% "
+            "echo %LOUSHANG_LEGACY_RUNTIME_READY_TOKEN% && "
+            "for /L %i in (1,1,2147483647) do ver >nul 2>&1"
+        ),
+    )
+    activation = PackageWindowsLegacyRuntimeActivationOwner(
+        restore_root,
+        activation_root,
+        current_b_authority_root=current_b_root,
+        store_id=store_id,
+        legacy_runtime_version=request.legacy_runtime_version,
+        command=command,
+    )
+    owner = PackageOfflineRestoreOwner(
+        store_id=store_id,
+        epoch_journal=journal,
+        coordination=coordination,
+        snapshots=snapshots,
+        materialization=materializer,
+        activation=activation,
+    )
+    return _ManifestWindowsOfflineRestoreFixture(
         owner=owner,
         materializer=materializer,
         activation=activation,
@@ -4246,6 +4399,53 @@ def test_manifest_case(
     elif case_id in IMPLEMENTED_B4C3C_LINUX_OFFLINE_RESTORE_MANIFEST_CASES:
         assert sys.platform.startswith("linux")
         fixture = _manifest_linux_offline_restore_fixture(tmp_path)
+        journal_before = fixture.journal.path.read_bytes()
+        b_before = (fixture.current_b_root / "epoch-b.json").read_bytes()
+        source_before = (fixture.source / "legacy-state.json").read_bytes()
+
+        result = fixture.owner.restore(fixture.request)
+        replay = fixture.owner.restore(fixture.request)
+
+        assert result == replay
+        assert result.disposition == "restored"
+        assert result.code == "ok"
+        assert result.failure is None
+        assert result.materialization is not None
+        assert result.activation is not None
+        assert result.materialization.legacy_snapshot_exact is True
+        assert result.materialization.b_namespace_unreachable is True
+        assert result.activation.exclusive_old_runtime is True
+        restored = (
+            fixture.restore_root
+            / fixture.request.restore_namespace_id
+            / "payload"
+            / "legacy-state.json"
+        )
+        assert restored.read_bytes() == source_before
+        assert (fixture.activation_root / "active-runtime.json").is_file()
+        assert fixture.journal.path.read_bytes() == journal_before
+        assert (fixture.current_b_root / "epoch-b.json").read_bytes() == b_before
+        assert fixture.coordination.calls == 2
+        assert fixture.snapshots.calls == 2
+        serialized = repr(result).lower()
+        for forbidden in (
+            "password",
+            "credential",
+            "token",
+            "handle",
+            str(tmp_path).lower(),
+        ):
+            assert forbidden not in serialized
+
+        fixture.activation.deactivate(result.activation)
+        fixture.materializer.discard(result.materialization)
+        assert not (
+            fixture.restore_root / fixture.request.restore_namespace_id
+        ).exists()
+        assert not (fixture.activation_root / "active-runtime.json").exists()
+    elif case_id in IMPLEMENTED_B4C5_WINDOWS_OFFLINE_RESTORE_MANIFEST_CASES:
+        assert os.name == "nt"
+        fixture = _manifest_windows_offline_restore_fixture(tmp_path)
         journal_before = fixture.journal.path.read_bytes()
         b_before = (fixture.current_b_root / "epoch-b.json").read_bytes()
         source_before = (fixture.source / "legacy-state.json").read_bytes()
