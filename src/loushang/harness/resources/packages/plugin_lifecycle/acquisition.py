@@ -1,0 +1,2248 @@
+"""PLC9B2 bounded Source acquisition into owner-created quarantine."""
+
+from __future__ import annotations
+
+import os
+import re
+import stat
+import time
+from collections.abc import Callable, Mapping
+from contextlib import suppress
+from dataclasses import dataclass, field
+from hashlib import sha256
+from pathlib import Path
+from typing import BinaryIO, Literal, Protocol, cast
+
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    canonical_json_bytes,
+    canonicalize_source_identity,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.windows_quarantine import (
+    open_windows_directory,
+    open_windows_regular_file_at,
+    supports_windows_rooted_io,
+    windows_listdir_at,
+    windows_rmdir_at,
+    windows_stat_at,
+    windows_unlink_at,
+)
+
+PACKAGE_ACQUISITION_REQUEST_VERSION = 1
+AUTHENTICATED_SOURCE_ENVELOPE_VERSION = 1
+PACKAGE_AUTHENTICATED_SOURCE_EVIDENCE_VERSION = 1
+SOURCE_ADAPTER_RESULT_VERSION = 1
+PACKAGE_ACQUISITION_BUDGET_VERSION = 1
+BOUNDED_ACQUISITION_RECEIPT_VERSION = 1
+PACKAGE_QUARANTINE_CLEANUP_TARGET_VERSION = 1
+
+SourceOriginKind = Literal["https", "registry", "git", "local"]
+SourceAuthenticationDecision = Literal["authorized", "denied"]
+SourceAdapterDisposition = Literal["complete"]
+AcquisitionStage = Literal["acquiring", "acquired"]
+
+_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
+_ORIGIN_KINDS = {"https", "registry", "git", "local"}
+_WINDOWS_REPARSE_ATTRIBUTE = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+
+
+class PackageAcquisitionError(RuntimeError):
+    """Bounded, secret-free acquisition failure."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str,
+        stage: AcquisitionStage,
+        retryable: bool,
+        consumed_bytes: int,
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+        self.stage = stage
+        self.retryable = retryable
+        self.consumed_bytes = consumed_bytes
+
+
+class PackageAcquisitionCleanupDebtError(RuntimeError):
+    """A sanitized acquisition rejection plus durable cleanup capability."""
+
+    def __init__(
+        self,
+        *,
+        rejection: PackageAcquisitionError,
+        target: PackageQuarantineCleanupTargetV1,
+    ) -> None:
+        super().__init__("Rejected Package acquisition requires owner cleanup")
+        self.rejection = rejection
+        self.target = target
+
+
+@dataclass(frozen=True, slots=True)
+class PackageAcquisitionRequestV1:
+    operation_id: str
+    attempt_epoch: int
+    node_id: str
+    canonical_source_identity: str
+    request_fingerprint: str
+    requested_locator_digest: str
+    policy_revision: str
+    credential_reference: str | None = field(default=None, repr=False, compare=False)
+    request_version: int = PACKAGE_ACQUISITION_REQUEST_VERSION
+
+    def __post_init__(self) -> None:
+        for value, name in (
+            (self.canonical_source_identity, "canonical Source identity"),
+        ):
+            _require_nonempty(value, name=name)
+        for value, name in (
+            (self.operation_id, "operation id"),
+            (self.node_id, "node id"),
+            (self.policy_revision, "Source policy revision"),
+        ):
+            _require_safe_label(value, name=name)
+        _require_positive(self.attempt_epoch, name="attempt epoch")
+        _require_sha256(self.request_fingerprint, name="request fingerprint")
+        _require_sha256(
+            self.requested_locator_digest,
+            name="requested locator digest",
+        )
+        if canonicalize_source_identity(self.canonical_source_identity) != (
+            self.canonical_source_identity
+        ):
+            raise ValueError("Canonical Source identity contains secret-bearing parts")
+        if self.credential_reference is not None:
+            _require_nonempty(
+                self.credential_reference,
+                name="credential reference",
+            )
+        if self.request_version != PACKAGE_ACQUISITION_REQUEST_VERSION:
+            raise ValueError("Unsupported Package acquisition request")
+
+
+@dataclass(frozen=True, slots=True)
+class AuthenticatedSourceEnvelopeV1:
+    operation_id: str
+    node_id: str
+    canonical_source_identity: str
+    origin_kind: SourceOriginKind
+    authentication_decision: SourceAuthenticationDecision
+    authority_id: str
+    requested_locator_digest: str
+    expected_artifact_digest: str | None
+    redirect_policy_revision: str
+    policy_revision: str
+    capture_epoch: int
+    envelope_version: int = AUTHENTICATED_SOURCE_ENVELOPE_VERSION
+
+    def __post_init__(self) -> None:
+        for value, name in (
+            (self.canonical_source_identity, "canonical Source identity"),
+        ):
+            _require_nonempty(value, name=name)
+        for value, name in (
+            (self.operation_id, "operation id"),
+            (self.node_id, "node id"),
+            (self.authority_id, "Source authority id"),
+            (self.redirect_policy_revision, "redirect policy revision"),
+            (self.policy_revision, "Source policy revision"),
+        ):
+            _require_safe_label(value, name=name)
+        if canonicalize_source_identity(self.canonical_source_identity) != (
+            self.canonical_source_identity
+        ):
+            raise ValueError("Authenticated Source identity is not canonical")
+        if self.origin_kind not in _ORIGIN_KINDS:
+            raise ValueError("Unsupported authenticated Source origin kind")
+        if self.authentication_decision not in {"authorized", "denied"}:
+            raise ValueError("Unsupported Source authentication decision")
+        _require_sha256(
+            self.requested_locator_digest,
+            name="requested locator digest",
+        )
+        if self.expected_artifact_digest is not None:
+            _require_sha256(
+                self.expected_artifact_digest,
+                name="expected artifact digest",
+            )
+        _require_positive(self.capture_epoch, name="Source capture epoch")
+        if self.envelope_version != AUTHENTICATED_SOURCE_ENVELOPE_VERSION:
+            raise ValueError("Unsupported authenticated Source envelope")
+
+    @property
+    def fingerprint(self) -> str:
+        return sha256(canonical_json_bytes(self.to_dict())).hexdigest()
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "authenticationDecision": self.authentication_decision,
+            "authorityId": self.authority_id,
+            "canonicalSourceIdentity": self.canonical_source_identity,
+            "captureEpoch": self.capture_epoch,
+            "envelopeVersion": self.envelope_version,
+            "expectedArtifactDigest": self.expected_artifact_digest,
+            "nodeId": self.node_id,
+            "operationId": self.operation_id,
+            "originKind": self.origin_kind,
+            "policyRevision": self.policy_revision,
+            "redirectPolicyRevision": self.redirect_policy_revision,
+            "requestedLocatorDigest": self.requested_locator_digest,
+        }
+
+    @classmethod
+    def from_dict(cls, value: object) -> AuthenticatedSourceEnvelopeV1:
+        document = _exact_dict(
+            value,
+            fields={
+                "authenticationDecision",
+                "authorityId",
+                "canonicalSourceIdentity",
+                "captureEpoch",
+                "envelopeVersion",
+                "expectedArtifactDigest",
+                "nodeId",
+                "operationId",
+                "originKind",
+                "policyRevision",
+                "redirectPolicyRevision",
+                "requestedLocatorDigest",
+            },
+            name="authenticated Source envelope",
+        )
+        return cls(
+            operation_id=_wire_string(document["operationId"], name="operation id"),
+            node_id=_wire_string(document["nodeId"], name="node id"),
+            canonical_source_identity=_wire_string(
+                document["canonicalSourceIdentity"],
+                name="canonical Source identity",
+            ),
+            origin_kind=cast(
+                SourceOriginKind,
+                _wire_string(document["originKind"], name="Source origin kind"),
+            ),
+            authentication_decision=cast(
+                SourceAuthenticationDecision,
+                _wire_string(
+                    document["authenticationDecision"],
+                    name="Source authentication decision",
+                ),
+            ),
+            authority_id=_wire_string(
+                document["authorityId"], name="Source authority id"
+            ),
+            requested_locator_digest=_wire_string(
+                document["requestedLocatorDigest"],
+                name="requested locator digest",
+            ),
+            expected_artifact_digest=_wire_optional_string(
+                document["expectedArtifactDigest"],
+                name="expected artifact digest",
+            ),
+            redirect_policy_revision=_wire_string(
+                document["redirectPolicyRevision"],
+                name="redirect policy revision",
+            ),
+            policy_revision=_wire_string(
+                document["policyRevision"], name="Source policy revision"
+            ),
+            capture_epoch=_wire_positive(
+                document["captureEpoch"], name="Source capture epoch"
+            ),
+            envelope_version=_wire_int(
+                document["envelopeVersion"], name="Source envelope version"
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class PackageAuthenticatedSourceEvidenceV1:
+    """Attempt-scoped durable projection of an authenticated Source envelope."""
+
+    attempt_epoch: int
+    envelope: AuthenticatedSourceEnvelopeV1
+    evidence_version: int = PACKAGE_AUTHENTICATED_SOURCE_EVIDENCE_VERSION
+
+    def __post_init__(self) -> None:
+        _require_positive(self.attempt_epoch, name="attempt epoch")
+        if not isinstance(self.envelope, AuthenticatedSourceEnvelopeV1):
+            raise TypeError("Authenticated Source envelope is required")
+        if self.envelope.authentication_decision != "authorized":
+            raise ValueError("Durable Source evidence must be authorized")
+        if self.evidence_version != PACKAGE_AUTHENTICATED_SOURCE_EVIDENCE_VERSION:
+            raise ValueError("Unsupported authenticated Source evidence")
+
+    @property
+    def operation_id(self) -> str:
+        return self.envelope.operation_id
+
+    @property
+    def node_id(self) -> str:
+        return self.envelope.node_id
+
+    @property
+    def fingerprint(self) -> str:
+        return sha256(canonical_json_bytes(self.to_dict())).hexdigest()
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "attemptEpoch": self.attempt_epoch,
+            "envelope": self.envelope.to_dict(),
+            "evidenceVersion": self.evidence_version,
+        }
+
+    @classmethod
+    def from_dict(cls, value: object) -> PackageAuthenticatedSourceEvidenceV1:
+        document = _exact_dict(
+            value,
+            fields={"attemptEpoch", "envelope", "evidenceVersion"},
+            name="authenticated Source evidence",
+        )
+        return cls(
+            attempt_epoch=_wire_positive(
+                document["attemptEpoch"], name="attempt epoch"
+            ),
+            envelope=AuthenticatedSourceEnvelopeV1.from_dict(document["envelope"]),
+            evidence_version=_wire_int(
+                document["evidenceVersion"], name="Source evidence version"
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SourceAdapterResultV1:
+    disposition: SourceAdapterDisposition
+    adapter_revision: str = "source-adapter:v1"
+    result_version: int = SOURCE_ADAPTER_RESULT_VERSION
+
+    def __post_init__(self) -> None:
+        if self.disposition != "complete":
+            raise ValueError("Unsupported Source adapter disposition")
+        _require_safe_label(self.adapter_revision, name="Source adapter revision")
+        if self.result_version != SOURCE_ADAPTER_RESULT_VERSION:
+            raise ValueError("Unsupported Source adapter result")
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "adapterRevision": self.adapter_revision,
+            "disposition": self.disposition,
+            "resultVersion": self.result_version,
+        }
+
+    @classmethod
+    def from_dict(cls, value: object) -> SourceAdapterResultV1:
+        document = _exact_dict(
+            value,
+            fields={"adapterRevision", "disposition", "resultVersion"},
+            name="Source adapter result",
+        )
+        return cls(
+            disposition=cast(
+                SourceAdapterDisposition,
+                _wire_string(
+                    document["disposition"], name="Source adapter disposition"
+                ),
+            ),
+            adapter_revision=_wire_string(
+                document["adapterRevision"], name="Source adapter revision"
+            ),
+            result_version=_wire_int(
+                document["resultVersion"], name="Source adapter result version"
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class PackageAcquisitionBudgetV1:
+    max_transport_bytes: int
+    max_requests: int
+    max_redirects: int
+    max_wall_time_ms: int
+    budget_version: int = PACKAGE_ACQUISITION_BUDGET_VERSION
+
+    def __post_init__(self) -> None:
+        _require_positive(self.max_transport_bytes, name="transport byte budget")
+        _require_positive(self.max_requests, name="request budget")
+        _require_nonnegative(self.max_redirects, name="redirect budget")
+        _require_positive(self.max_wall_time_ms, name="wall-clock budget")
+        if self.budget_version != PACKAGE_ACQUISITION_BUDGET_VERSION:
+            raise ValueError("Unsupported Package acquisition budget")
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "budgetVersion": self.budget_version,
+            "maxRedirects": self.max_redirects,
+            "maxRequests": self.max_requests,
+            "maxTransportBytes": self.max_transport_bytes,
+            "maxWallTimeMs": self.max_wall_time_ms,
+        }
+
+    @classmethod
+    def from_dict(cls, value: object) -> PackageAcquisitionBudgetV1:
+        document = _exact_dict(
+            value,
+            fields={
+                "budgetVersion",
+                "maxRedirects",
+                "maxRequests",
+                "maxTransportBytes",
+                "maxWallTimeMs",
+            },
+            name="Package acquisition budget",
+        )
+        return cls(
+            max_transport_bytes=_wire_positive(
+                document["maxTransportBytes"], name="transport byte budget"
+            ),
+            max_requests=_wire_positive(document["maxRequests"], name="request budget"),
+            max_redirects=_wire_nonnegative(
+                document["maxRedirects"], name="redirect budget"
+            ),
+            max_wall_time_ms=_wire_positive(
+                document["maxWallTimeMs"], name="wall-clock budget"
+            ),
+            budget_version=_wire_int(document["budgetVersion"], name="budget version"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class BoundedAcquisitionReceiptV1:
+    operation_id: str
+    attempt_epoch: int
+    node_id: str
+    envelope_fingerprint: str
+    actual_byte_digest: str
+    actual_byte_count: int
+    request_count: int
+    redirect_count: int
+    budgets: PackageAcquisitionBudgetV1
+    sink_identity: str
+    adapter_result: SourceAdapterResultV1
+    disposition: Literal["complete"] = "complete"
+    receipt_version: int = BOUNDED_ACQUISITION_RECEIPT_VERSION
+
+    def __post_init__(self) -> None:
+        for value, name in (
+            (self.operation_id, "operation id"),
+            (self.node_id, "node id"),
+        ):
+            _require_nonempty(value, name=name)
+        _require_positive(self.attempt_epoch, name="attempt epoch")
+        _require_sha256(self.envelope_fingerprint, name="envelope fingerprint")
+        _require_sha256(self.actual_byte_digest, name="actual byte digest")
+        _require_nonnegative(self.actual_byte_count, name="actual byte count")
+        _require_positive(self.request_count, name="request count")
+        _require_nonnegative(self.redirect_count, name="redirect count")
+        if self.actual_byte_count > self.budgets.max_transport_bytes:
+            raise ValueError("Acquisition receipt exceeds transport budget")
+        if self.request_count > self.budgets.max_requests:
+            raise ValueError("Acquisition receipt exceeds request budget")
+        if self.redirect_count > self.budgets.max_redirects:
+            raise ValueError("Acquisition receipt exceeds redirect budget")
+        _require_sha256(self.sink_identity, name="sink identity")
+        if self.disposition != "complete":
+            raise ValueError("Unsupported acquisition disposition")
+        if self.receipt_version != BOUNDED_ACQUISITION_RECEIPT_VERSION:
+            raise ValueError("Unsupported bounded acquisition receipt")
+
+    @property
+    def fingerprint(self) -> str:
+        return sha256(canonical_json_bytes(self.to_dict())).hexdigest()
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "actualByteCount": self.actual_byte_count,
+            "actualByteDigest": self.actual_byte_digest,
+            "adapterResult": self.adapter_result.to_dict(),
+            "attemptEpoch": self.attempt_epoch,
+            "budgets": self.budgets.to_dict(),
+            "disposition": self.disposition,
+            "envelopeFingerprint": self.envelope_fingerprint,
+            "nodeId": self.node_id,
+            "operationId": self.operation_id,
+            "receiptVersion": self.receipt_version,
+            "redirectCount": self.redirect_count,
+            "requestCount": self.request_count,
+            "sinkIdentity": self.sink_identity,
+        }
+
+    @classmethod
+    def from_dict(cls, value: object) -> BoundedAcquisitionReceiptV1:
+        document = _exact_dict(
+            value,
+            fields={
+                "actualByteCount",
+                "actualByteDigest",
+                "adapterResult",
+                "attemptEpoch",
+                "budgets",
+                "disposition",
+                "envelopeFingerprint",
+                "nodeId",
+                "operationId",
+                "receiptVersion",
+                "redirectCount",
+                "requestCount",
+                "sinkIdentity",
+            },
+            name="bounded acquisition receipt",
+        )
+        return cls(
+            operation_id=_wire_string(document["operationId"], name="operation id"),
+            attempt_epoch=_wire_positive(
+                document["attemptEpoch"], name="attempt epoch"
+            ),
+            node_id=_wire_string(document["nodeId"], name="node id"),
+            envelope_fingerprint=_wire_string(
+                document["envelopeFingerprint"], name="envelope fingerprint"
+            ),
+            actual_byte_digest=_wire_string(
+                document["actualByteDigest"], name="actual byte digest"
+            ),
+            actual_byte_count=_wire_nonnegative(
+                document["actualByteCount"], name="actual byte count"
+            ),
+            request_count=_wire_positive(
+                document["requestCount"], name="request count"
+            ),
+            redirect_count=_wire_nonnegative(
+                document["redirectCount"], name="redirect count"
+            ),
+            budgets=PackageAcquisitionBudgetV1.from_dict(document["budgets"]),
+            sink_identity=_wire_string(document["sinkIdentity"], name="sink identity"),
+            adapter_result=SourceAdapterResultV1.from_dict(document["adapterResult"]),
+            disposition=cast(
+                Literal["complete"],
+                _wire_string(document["disposition"], name="disposition"),
+            ),
+            receipt_version=_wire_int(
+                document["receiptVersion"], name="receipt version"
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class PackageQuarantineCleanupTargetV1:
+    operation_id: str
+    attempt_epoch: int
+    node_id: str
+    store_identity: tuple[int, int]
+    attempt_identity: tuple[int, int]
+    attempt_name: str
+    cleanup_id: str
+    target_version: int = PACKAGE_QUARANTINE_CLEANUP_TARGET_VERSION
+
+    def __post_init__(self) -> None:
+        for value, name in (
+            (self.operation_id, "cleanup operation id"),
+            (self.node_id, "cleanup node id"),
+            (self.attempt_name, "cleanup attempt name"),
+        ):
+            _require_safe_label(value, name=name)
+        _require_positive(self.attempt_epoch, name="cleanup attempt epoch")
+        for identity, name in (
+            (self.store_identity, "cleanup store identity"),
+            (self.attempt_identity, "cleanup attempt identity"),
+        ):
+            if (
+                not isinstance(identity, tuple)
+                or len(identity) != 2
+                or any(
+                    not isinstance(item, int) or isinstance(item, bool) or item < 0
+                    for item in identity
+                )
+            ):
+                raise ValueError(f"{name} must contain two non-negative integers")
+        _require_sha256(self.cleanup_id, name="cleanup id")
+        expected = sha256(
+            canonical_json_bytes(
+                {
+                    "attemptEpoch": self.attempt_epoch,
+                    "attemptIdentity": list(self.attempt_identity),
+                    "attemptName": self.attempt_name,
+                    "nodeId": self.node_id,
+                    "operationId": self.operation_id,
+                    "storeIdentity": list(self.store_identity),
+                }
+            )
+        ).hexdigest()
+        if self.cleanup_id != expected:
+            raise ValueError("Cleanup id does not match its exact owner target")
+        if self.target_version != PACKAGE_QUARANTINE_CLEANUP_TARGET_VERSION:
+            raise ValueError("Unsupported Package quarantine cleanup target")
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "attemptEpoch": self.attempt_epoch,
+            "attemptIdentity": list(self.attempt_identity),
+            "attemptName": self.attempt_name,
+            "cleanupId": self.cleanup_id,
+            "nodeId": self.node_id,
+            "operationId": self.operation_id,
+            "storeIdentity": list(self.store_identity),
+            "targetVersion": self.target_version,
+        }
+
+    @classmethod
+    def from_dict(cls, value: object) -> PackageQuarantineCleanupTargetV1:
+        document = _exact_dict(
+            value,
+            fields={
+                "attemptEpoch",
+                "attemptIdentity",
+                "attemptName",
+                "cleanupId",
+                "nodeId",
+                "operationId",
+                "storeIdentity",
+                "targetVersion",
+            },
+            name="Package quarantine cleanup target",
+        )
+        return cls(
+            operation_id=_wire_string(document["operationId"], name="operation id"),
+            attempt_epoch=_wire_positive(
+                document["attemptEpoch"], name="attempt epoch"
+            ),
+            node_id=_wire_string(document["nodeId"], name="node id"),
+            store_identity=_wire_identity(
+                document["storeIdentity"], name="store identity"
+            ),
+            attempt_identity=_wire_identity(
+                document["attemptIdentity"], name="attempt identity"
+            ),
+            attempt_name=_wire_string(document["attemptName"], name="attempt name"),
+            cleanup_id=_wire_string(document["cleanupId"], name="cleanup id"),
+            target_version=_wire_int(document["targetVersion"], name="target version"),
+        )
+
+
+class BoundedAcquisitionSinkPort(Protocol):
+    def begin_request(self) -> None: ...
+
+    def record_redirect(self, canonical_source_identity: str) -> None: ...
+
+    def write(self, chunk: bytes) -> None: ...
+
+
+class AuthenticatedSourceStreamPort(Protocol):
+    envelope: AuthenticatedSourceEnvelopeV1
+
+    def transfer_to(
+        self, sink: BoundedAcquisitionSinkPort
+    ) -> SourceAdapterResultV1: ...
+
+
+class PackageSourceAuthorityPort(Protocol):
+    def authorize(
+        self,
+        request: PackageAcquisitionRequestV1,
+    ) -> AuthenticatedSourceStreamPort: ...
+
+
+class _AuthorizedPackageSource:
+    """One-shot process-local Source capability with no pathname authority."""
+
+    def __init__(
+        self,
+        *,
+        stream: AuthenticatedSourceStreamPort,
+        envelope: AuthenticatedSourceEnvelopeV1,
+        owner_token: object,
+    ) -> None:
+        self._stream = stream
+        self.envelope = envelope
+        self._owner_token = owner_token
+        self._claimed = False
+
+    def __repr__(self) -> str:
+        return (
+            "_AuthorizedPackageSource("
+            f"operation_id={self.envelope.operation_id!r}, "
+            f"node_id={self.envelope.node_id!r}, "
+            f"fingerprint={self.envelope.fingerprint!r})"
+        )
+
+    def _claim(self, owner_token: object) -> AuthenticatedSourceStreamPort:
+        if owner_token is not self._owner_token:
+            raise TypeError("Authenticated Package Source owner changed")
+        if self._claimed:
+            raise RuntimeError("Authenticated Package Source was already consumed")
+        self._claimed = True
+        return self._stream
+
+
+class PackageQuarantineStore:
+    """Owner-created private attempt roots; Source adapters never receive it."""
+
+    def __init__(self, root: str | Path) -> None:
+        self.root = Path(os.path.abspath(Path(root).expanduser()))
+        _require_no_link_ancestors(self.root.parent)
+        if self.root.exists() or self.root.is_symlink():
+            _require_private_directory(self.root)
+        self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
+        _require_no_link_ancestors(self.root)
+        _require_private_directory(self.root)
+        if _supports_descriptor_relative_io():
+            root_fd = _open_directory(self.root)
+            try:
+                _require_no_link_ancestors(self.root)
+                self._root_identity = _identity(os.fstat(root_fd))
+                if _identity(self.root.lstat()) != self._root_identity:
+                    raise OSError("Package quarantine root identity changed")
+            finally:
+                os.close(root_fd)
+        else:
+            self._root_identity = _identity(self.root.lstat())
+
+    def attempt_names(self) -> tuple[str, ...]:
+        self._require_root_identity()
+        return tuple(
+            sorted(
+                entry.name
+                for entry in os.scandir(self.root)
+                if entry.is_dir(follow_symlinks=False)
+            )
+        )
+
+    def total_residue_bytes(self) -> int:
+        self._require_root_identity()
+        total = 0
+        for directory, names, files in os.walk(self.root, followlinks=False):
+            names[:] = [
+                name for name in names if not (Path(directory) / name).is_symlink()
+            ]
+            for name in files:
+                path = Path(directory) / name
+                metadata = path.lstat()
+                if stat.S_ISREG(metadata.st_mode) and not _is_reparse(metadata):
+                    total += metadata.st_size
+        return total
+
+    def _begin(
+        self,
+        request: PackageAcquisitionRequestV1,
+    ) -> _QuarantineAttempt:
+        return _QuarantineAttempt.create(
+            self.root,
+            request,
+            expected_root_identity=self._root_identity,
+        )
+
+    def _reopen(
+        self,
+        request: PackageAcquisitionRequestV1,
+        receipt: BoundedAcquisitionReceiptV1,
+        *,
+        reset_extraction: bool,
+    ) -> _QuarantineAttempt:
+        return _QuarantineAttempt.reopen(
+            self.root,
+            request,
+            receipt,
+            reset_extraction=reset_extraction,
+            expected_root_identity=self._root_identity,
+        )
+
+    def _repair(self, target: PackageQuarantineCleanupTargetV1) -> None:
+        if not isinstance(target, PackageQuarantineCleanupTargetV1):
+            raise TypeError("Package quarantine cleanup target is required")
+        if _supports_descriptor_relative_io():
+            root_fd = _open_directory(self.root)
+            try:
+                if _identity(os.fstat(root_fd)) != self._root_identity:
+                    raise OSError("Package cleanup store identity changed")
+                if _identity(os.fstat(root_fd)) != target.store_identity:
+                    raise OSError("Package cleanup store identity changed")
+                try:
+                    attempt_fd = _open_directory(target.attempt_name, dir_fd=root_fd)
+                except FileNotFoundError:
+                    if _directory_identity_exists_at(
+                        root_fd,
+                        target.attempt_identity,
+                    ):
+                        raise OSError(
+                            "Package cleanup attempt identity moved"
+                        ) from None
+                    return
+                try:
+                    if _identity(os.fstat(attempt_fd)) != target.attempt_identity:
+                        raise OSError("Package cleanup attempt identity changed")
+                    _remove_directory_contents_at(attempt_fd)
+                    visible = _open_directory(target.attempt_name, dir_fd=root_fd)
+                    try:
+                        if _identity(os.fstat(visible)) != target.attempt_identity:
+                            raise OSError("Package cleanup attempt identity changed")
+                    finally:
+                        os.close(visible)
+                finally:
+                    os.close(attempt_fd)
+                _rmdir_at(root_fd, target.attempt_name)
+            finally:
+                os.close(root_fd)
+            return
+        _require_private_directory(self.root)
+        if _identity(self.root.lstat()) != self._root_identity:
+            raise OSError("Package cleanup store identity changed")
+        if _identity(self.root.lstat()) != target.store_identity:
+            raise OSError("Package cleanup store identity changed")
+        attempt_path = self.root / target.attempt_name
+        if not attempt_path.exists() and not attempt_path.is_symlink():
+            if _directory_identity_exists_portable(
+                self.root,
+                target.attempt_identity,
+            ):
+                raise OSError("Package cleanup attempt identity moved")
+            return
+        _require_private_directory(attempt_path)
+        if _identity(attempt_path.lstat()) != target.attempt_identity:
+            raise OSError("Package cleanup attempt identity changed")
+        _remove_directory_contents_portable(attempt_path)
+        if _identity(attempt_path.lstat()) != target.attempt_identity:
+            raise OSError("Package cleanup attempt identity changed")
+        attempt_path.rmdir()
+
+    def _require_root_identity(self) -> None:
+        _require_no_link_ancestors(self.root)
+        _require_private_directory(self.root)
+        if _identity(self.root.lstat()) != self._root_identity:
+            raise OSError("Package quarantine root identity changed")
+
+
+class _QuarantineAdoptionError(OSError):
+    """Recovery failed after the exact durable owner attempt was proved."""
+
+    def __init__(self, attempt: _QuarantineAttempt) -> None:
+        super().__init__("Durable Package quarantine state cannot be adopted")
+        self.attempt = attempt
+
+
+class _QuarantineAttempt:
+    def __init__(
+        self,
+        *,
+        store_root: Path,
+        attempt_name: str,
+        root_fd: int | None,
+        attempt_fd: int | None,
+        root_identity: tuple[int, int],
+        attempt_identity: tuple[int, int],
+        artifact_name: str,
+    ) -> None:
+        self._store_root = store_root
+        self._attempt_name = attempt_name
+        self._root_fd = root_fd
+        self._attempt_fd = attempt_fd
+        self._root_identity = root_identity
+        self._attempt_identity = attempt_identity
+        self._artifact_name = artifact_name
+        self._tree_identity: tuple[int, int] | None = None
+        self._tree_entries: dict[tuple[str, ...], tuple[int, int]] = {}
+        self._closed = False
+
+    @classmethod
+    def create(
+        cls,
+        store_root: Path,
+        request: PackageAcquisitionRequestV1,
+        *,
+        expected_root_identity: tuple[int, int],
+    ) -> _QuarantineAttempt:
+        attempt_name, artifact_name = _attempt_entry_names(request)
+        if _supports_descriptor_relative_io():
+            root_fd = _open_directory(store_root)
+            try:
+                root_identity = _identity(os.fstat(root_fd))
+                if root_identity != expected_root_identity:
+                    raise OSError("Package quarantine root identity changed")
+                attempt_fd = _create_directory_at(root_fd, attempt_name)
+            except Exception:
+                os.close(root_fd)
+                raise
+            attempt_identity = _identity(os.fstat(attempt_fd))
+            return cls(
+                store_root=store_root,
+                attempt_name=attempt_name,
+                root_fd=root_fd,
+                attempt_fd=attempt_fd,
+                root_identity=root_identity,
+                attempt_identity=attempt_identity,
+                artifact_name=artifact_name,
+            )
+        attempt_path = store_root / attempt_name
+        if _identity(store_root.lstat()) != expected_root_identity:
+            raise OSError("Package quarantine root identity changed")
+        attempt_path.mkdir(mode=0o700, exist_ok=False)
+        _require_private_directory(attempt_path)
+        return cls(
+            store_root=store_root,
+            attempt_name=attempt_name,
+            root_fd=None,
+            attempt_fd=None,
+            root_identity=_identity(store_root.lstat()),
+            attempt_identity=_identity(attempt_path.lstat()),
+            artifact_name=artifact_name,
+        )
+
+    @classmethod
+    def reopen(
+        cls,
+        store_root: Path,
+        request: PackageAcquisitionRequestV1,
+        receipt: BoundedAcquisitionReceiptV1,
+        *,
+        reset_extraction: bool,
+        expected_root_identity: tuple[int, int],
+    ) -> _QuarantineAttempt:
+        if (
+            receipt.operation_id != request.operation_id
+            or receipt.attempt_epoch != request.attempt_epoch
+            or receipt.node_id != request.node_id
+        ):
+            raise OSError("Durable acquisition receipt does not identify this attempt")
+        attempt_name, artifact_name = _attempt_entry_names(request)
+        if _supports_descriptor_relative_io():
+            root_fd = _open_directory(store_root)
+            try:
+                root_identity = _identity(os.fstat(root_fd))
+                if root_identity != expected_root_identity:
+                    raise OSError("Package quarantine root identity changed")
+                attempt_fd = _open_directory(attempt_name, dir_fd=root_fd)
+            except Exception:
+                os.close(root_fd)
+                raise
+            attempt_identity = _identity(os.fstat(attempt_fd))
+            attempt = cls(
+                store_root=store_root,
+                attempt_name=attempt_name,
+                root_fd=root_fd,
+                attempt_fd=attempt_fd,
+                root_identity=root_identity,
+                attempt_identity=attempt_identity,
+                artifact_name=artifact_name,
+            )
+        else:
+            _require_private_directory(store_root)
+            if _identity(store_root.lstat()) != expected_root_identity:
+                raise OSError("Package quarantine root identity changed")
+            attempt_path = store_root / attempt_name
+            _require_private_directory(attempt_path)
+            attempt = cls(
+                store_root=store_root,
+                attempt_name=attempt_name,
+                root_fd=None,
+                attempt_fd=None,
+                root_identity=_identity(store_root.lstat()),
+                attempt_identity=_identity(attempt_path.lstat()),
+                artifact_name=artifact_name,
+            )
+        sink_identity_proved = False
+        try:
+            if attempt._sink_identity != receipt.sink_identity:
+                raise OSError("Quarantine attempt identity changed")
+            sink_identity_proved = True
+            with attempt._open_artifact_for_read() as artifact:
+                if os.fstat(artifact.fileno()).st_size != receipt.actual_byte_count:
+                    raise OSError("Quarantine artifact size changed")
+            if reset_extraction:
+                attempt._reset_extraction_for_reverification()
+            elif attempt._tree_exists():
+                raise OSError("Unexpected extraction tree precedes inspection")
+            return attempt
+        except Exception as error:
+            if sink_identity_proved:
+                raise _QuarantineAdoptionError(attempt) from error
+            attempt._abandon_for_repair()
+            raise
+
+    @property
+    def _sink_identity(self) -> str:
+        return sha256(
+            canonical_json_bytes(
+                {
+                    "attemptIdentity": list(self._attempt_identity),
+                    "artifactName": self._artifact_name,
+                    "rootIdentity": list(self._root_identity),
+                }
+            )
+        ).hexdigest()
+
+    def _open_artifact_for_write(self) -> BinaryIO:
+        self._verify()
+        if self._attempt_fd is not None:
+            descriptor = _open_regular_file_at(
+                self._attempt_fd,
+                self._artifact_name,
+                create_new=True,
+                write=True,
+            )
+            return os.fdopen(descriptor, "wb", buffering=0)
+        path = self._attempt_path / self._artifact_name
+        return path.open("xb", buffering=0)
+
+    def _open_artifact_for_read(self) -> BinaryIO:
+        self._verify()
+        if self._attempt_fd is not None:
+            descriptor = _open_regular_file_at(
+                self._attempt_fd,
+                self._artifact_name,
+                create_new=False,
+                write=False,
+            )
+            handle = os.fdopen(descriptor, "rb")
+            metadata = os.fstat(handle.fileno())
+            if not stat.S_ISREG(metadata.st_mode) or _is_reparse(metadata):
+                handle.close()
+                raise OSError("Quarantine artifact is not a regular file")
+            return handle
+        path = self._attempt_path / self._artifact_name
+        metadata = path.lstat()
+        if not stat.S_ISREG(metadata.st_mode) or _is_reparse(metadata):
+            raise OSError("Quarantine artifact is not a regular file")
+        return path.open("rb")
+
+    def _begin_extraction(self) -> _QuarantineTreeWriter:
+        self._verify()
+        if self._tree_identity is not None:
+            raise OSError("Quarantine extraction tree already exists")
+        tree_name = "tree"
+        if self._attempt_fd is not None:
+            tree_fd = _create_directory_at(self._attempt_fd, tree_name)
+            self._tree_identity = _identity(os.fstat(tree_fd))
+            return _QuarantineTreeWriter(attempt=self, tree_fd=tree_fd)
+        tree_path = self._attempt_path / tree_name
+        tree_path.mkdir(mode=0o700)
+        _require_private_directory(tree_path)
+        self._tree_identity = _identity(tree_path.lstat())
+        return _QuarantineTreeWriter(attempt=self, tree_fd=None)
+
+    def _open_verified_tree_file(self, logical_path: str) -> BinaryIO:
+        """Open one recorded extraction file without exposing its pathname."""
+
+        self._verify()
+        parts = tuple(logical_path.split("/"))
+        if not parts or any(not part or part in {".", ".."} for part in parts):
+            raise OSError("Verified extraction entry identity changed")
+        expected_file = self._tree_entries.get(parts)
+        if self._tree_identity is None or expected_file is None:
+            raise OSError("Verified extraction entry identity changed")
+        if self._attempt_fd is not None:
+            current_fd = _open_directory("tree", dir_fd=self._attempt_fd)
+            try:
+                if _identity(os.fstat(current_fd)) != self._tree_identity:
+                    raise OSError("Quarantine extraction tree identity changed")
+                for depth, part in enumerate(parts[:-1], start=1):
+                    expected_directory = self._tree_entries.get(parts[:depth])
+                    if expected_directory is None:
+                        raise OSError("Verified extraction ancestor identity changed")
+                    child_fd = _open_directory(part, dir_fd=current_fd)
+                    metadata = os.fstat(child_fd)
+                    if (
+                        _identity(metadata) != expected_directory
+                        or not stat.S_ISDIR(metadata.st_mode)
+                        or _is_reparse(metadata)
+                    ):
+                        os.close(child_fd)
+                        raise OSError("Verified extraction ancestor identity changed")
+                    os.close(current_fd)
+                    current_fd = child_fd
+                descriptor = _open_regular_file_at(
+                    current_fd,
+                    parts[-1],
+                    create_new=False,
+                    write=False,
+                )
+                metadata = os.fstat(descriptor)
+                if (
+                    _identity(metadata) != expected_file
+                    or not stat.S_ISREG(metadata.st_mode)
+                    or _is_reparse(metadata)
+                    or metadata.st_nlink != 1
+                ):
+                    os.close(descriptor)
+                    raise OSError("Verified extraction file identity changed")
+                return os.fdopen(descriptor, "rb")
+            finally:
+                os.close(current_fd)
+        tree_path = self._attempt_path / "tree"
+        tree_metadata = tree_path.lstat()
+        if (
+            _identity(tree_metadata) != self._tree_identity
+            or not stat.S_ISDIR(tree_metadata.st_mode)
+            or _is_reparse(tree_metadata)
+        ):
+            raise OSError("Quarantine extraction tree identity changed")
+        for depth in range(1, len(parts)):
+            ancestor = tree_path / Path(*parts[:depth])
+            metadata = ancestor.lstat()
+            if (
+                _identity(metadata) != self._tree_entries.get(parts[:depth])
+                or not stat.S_ISDIR(metadata.st_mode)
+                or _is_reparse(metadata)
+            ):
+                raise OSError("Verified extraction ancestor identity changed")
+        path = tree_path / Path(*parts)
+        metadata = path.lstat()
+        if (
+            _identity(metadata) != expected_file
+            or not stat.S_ISREG(metadata.st_mode)
+            or _is_reparse(metadata)
+            or metadata.st_nlink != 1
+        ):
+            raise OSError("Verified extraction file identity changed")
+        handle = path.open("rb")
+        opened = os.fstat(handle.fileno())
+        if (
+            _identity(opened) != expected_file
+            or not stat.S_ISREG(opened.st_mode)
+            or opened.st_nlink != 1
+        ):
+            handle.close()
+            raise OSError("Verified extraction file identity changed")
+        return handle
+
+    def _tree_exists(self) -> bool:
+        self._verify()
+        if self._attempt_fd is not None:
+            try:
+                _stat_at(self._attempt_fd, "tree")
+            except FileNotFoundError:
+                return False
+            return True
+        tree_path = self._attempt_path / "tree"
+        return tree_path.exists() or tree_path.is_symlink()
+
+    def _reset_extraction_for_reverification(self) -> None:
+        self._verify()
+        if not self._tree_exists():
+            return
+        if self._attempt_fd is not None:
+            tree_fd = _open_directory("tree", dir_fd=self._attempt_fd)
+            tree_identity = _identity(os.fstat(tree_fd))
+            try:
+                _remove_directory_contents_at(tree_fd)
+                visible = _open_directory("tree", dir_fd=self._attempt_fd)
+                try:
+                    if _identity(os.fstat(visible)) != tree_identity:
+                        raise OSError("Quarantine extraction tree identity changed")
+                finally:
+                    os.close(visible)
+            finally:
+                os.close(tree_fd)
+            _rmdir_at(self._attempt_fd, "tree")
+        else:
+            tree_path = self._attempt_path / "tree"
+            _require_private_directory(tree_path)
+            tree_identity = _identity(tree_path.lstat())
+            _remove_directory_contents_portable(tree_path)
+            if _identity(tree_path.lstat()) != tree_identity:
+                raise OSError("Quarantine extraction tree identity changed")
+            tree_path.rmdir()
+        self._tree_identity = None
+        self._tree_entries.clear()
+
+    def _verify(self) -> None:
+        if self._closed:
+            raise OSError("Quarantine attempt is closed")
+        if self._root_fd is not None and self._attempt_fd is not None:
+            if _identity(os.fstat(self._root_fd)) != self._root_identity:
+                raise OSError("Quarantine root descriptor identity changed")
+            visible_root = _open_directory(self._store_root)
+            try:
+                if _identity(os.fstat(visible_root)) != self._root_identity:
+                    raise OSError("Quarantine root path identity changed")
+                visible_attempt = _open_directory(
+                    self._attempt_name,
+                    dir_fd=visible_root,
+                )
+                try:
+                    if _identity(os.fstat(visible_attempt)) != self._attempt_identity:
+                        raise OSError("Quarantine attempt path identity changed")
+                finally:
+                    os.close(visible_attempt)
+            finally:
+                os.close(visible_root)
+            return
+        _require_private_directory(self._store_root)
+        _require_private_directory(self._attempt_path)
+        if _identity(self._store_root.lstat()) != self._root_identity:
+            raise OSError("Quarantine root path identity changed")
+        if _identity(self._attempt_path.lstat()) != self._attempt_identity:
+            raise OSError("Quarantine attempt path identity changed")
+
+    @property
+    def _attempt_path(self) -> Path:
+        return self._store_root / self._attempt_name
+
+    def _cleanup(self) -> None:
+        if self._closed:
+            return
+        attempt_fd = self._attempt_fd
+        root_fd = self._root_fd
+        if root_fd is not None:
+            if attempt_fd is not None:
+                self._cleanup_tree()
+                with suppress(FileNotFoundError):
+                    _unlink_at(attempt_fd, self._artifact_name)
+                os.close(attempt_fd)
+                self._attempt_fd = None
+            try:
+                _rmdir_at(root_fd, self._attempt_name)
+            except OSError:
+                raise
+            else:
+                os.close(root_fd)
+                self._root_fd = None
+                self._closed = True
+                return
+        else:
+            self._cleanup_tree()
+            path = self._attempt_path / self._artifact_name
+            with suppress(FileNotFoundError):
+                path.unlink()
+            self._attempt_path.rmdir()
+            self._closed = True
+
+    def _cleanup_target(
+        self,
+        *,
+        operation_id: str,
+        attempt_epoch: int,
+        node_id: str,
+    ) -> PackageQuarantineCleanupTargetV1:
+        values = {
+            "attemptEpoch": attempt_epoch,
+            "attemptIdentity": list(self._attempt_identity),
+            "attemptName": self._attempt_name,
+            "nodeId": node_id,
+            "operationId": operation_id,
+            "storeIdentity": list(self._root_identity),
+        }
+        return PackageQuarantineCleanupTargetV1(
+            operation_id=operation_id,
+            attempt_epoch=attempt_epoch,
+            node_id=node_id,
+            store_identity=self._root_identity,
+            attempt_identity=self._attempt_identity,
+            attempt_name=self._attempt_name,
+            cleanup_id=sha256(canonical_json_bytes(values)).hexdigest(),
+        )
+
+    def _abandon_for_repair(self) -> None:
+        if self._closed:
+            return
+        if self._attempt_fd is not None:
+            os.close(self._attempt_fd)
+            self._attempt_fd = None
+        if self._root_fd is not None:
+            os.close(self._root_fd)
+            self._root_fd = None
+        self._closed = True
+
+    def _cleanup_tree(self) -> None:
+        if self._tree_identity is None:
+            return
+        for parts in sorted(
+            self._tree_entries,
+            key=lambda value: (len(value), value),
+            reverse=True,
+        ):
+            expected = self._tree_entries[parts]
+            if self._attempt_fd is not None:
+                tree_fd = _open_directory("tree", dir_fd=self._attempt_fd)
+                try:
+                    if _identity(os.fstat(tree_fd)) != self._tree_identity:
+                        raise OSError("Quarantine extraction tree identity changed")
+                    parent_fd = _open_relative_directory(tree_fd, parts[:-1])
+                    try:
+                        metadata = _stat_at(parent_fd, parts[-1])
+                        if _identity(metadata) != expected or _is_reparse(metadata):
+                            raise OSError(
+                                "Quarantine extraction entry identity changed"
+                            )
+                        if stat.S_ISDIR(metadata.st_mode):
+                            _rmdir_at(parent_fd, parts[-1])
+                        elif stat.S_ISREG(metadata.st_mode):
+                            _unlink_at(parent_fd, parts[-1])
+                        else:
+                            raise OSError("Quarantine extraction entry type changed")
+                    finally:
+                        os.close(parent_fd)
+                finally:
+                    os.close(tree_fd)
+            else:
+                path = self._attempt_path / "tree" / Path(*parts)
+                metadata = path.lstat()
+                if _identity(metadata) != expected or _is_reparse(metadata):
+                    raise OSError("Quarantine extraction entry identity changed")
+                if stat.S_ISDIR(metadata.st_mode):
+                    path.rmdir()
+                elif stat.S_ISREG(metadata.st_mode):
+                    path.unlink()
+                else:
+                    raise OSError("Quarantine extraction entry type changed")
+            del self._tree_entries[parts]
+        if self._attempt_fd is not None:
+            metadata = _stat_at(self._attempt_fd, "tree")
+            if _identity(metadata) != self._tree_identity or _is_reparse(metadata):
+                raise OSError("Quarantine extraction tree identity changed")
+            _rmdir_at(self._attempt_fd, "tree")
+        else:
+            tree_path = self._attempt_path / "tree"
+            metadata = tree_path.lstat()
+            if _identity(metadata) != self._tree_identity or _is_reparse(metadata):
+                raise OSError("Quarantine extraction tree identity changed")
+            tree_path.rmdir()
+        self._tree_identity = None
+
+
+class _QuarantineTreeWriter:
+    """Rooted writer available only to the inert wheel verifier."""
+
+    def __init__(
+        self,
+        *,
+        attempt: _QuarantineAttempt,
+        tree_fd: int | None,
+    ) -> None:
+        self._attempt = attempt
+        self._tree_fd = tree_fd
+        self._closed = False
+
+    def _ensure_directory(self, parts: tuple[str, ...]) -> None:
+        self._require_open()
+        for depth in range(1, len(parts) + 1):
+            current = parts[:depth]
+            if current in self._attempt._tree_entries:
+                continue
+            if self._tree_fd is not None:
+                parent_fd = _open_relative_directory(self._tree_fd, current[:-1])
+                try:
+                    child_fd = _create_directory_at(parent_fd, current[-1])
+                    try:
+                        identity = _identity(os.fstat(child_fd))
+                    finally:
+                        os.close(child_fd)
+                finally:
+                    os.close(parent_fd)
+            else:
+                path = self._attempt._attempt_path / "tree" / Path(*current)
+                path.mkdir(mode=0o700)
+                _require_private_directory(path)
+                identity = _identity(path.lstat())
+            self._attempt._tree_entries[current] = identity
+
+    def _open_file(self, parts: tuple[str, ...]) -> BinaryIO:
+        self._require_open()
+        if not parts:
+            raise ValueError("Extracted file path is required")
+        self._ensure_directory(parts[:-1])
+        if parts in self._attempt._tree_entries:
+            raise FileExistsError("Extracted entry already exists")
+        if self._tree_fd is not None:
+            parent_fd = _open_relative_directory(self._tree_fd, parts[:-1])
+            try:
+                descriptor = _open_regular_file_at(
+                    parent_fd,
+                    parts[-1],
+                    create_new=True,
+                    write=True,
+                )
+            finally:
+                os.close(parent_fd)
+            handle = os.fdopen(descriptor, "wb", buffering=0)
+            self._attempt._tree_entries[parts] = _identity(os.fstat(descriptor))
+            return handle
+        path = self._attempt._attempt_path / "tree" / Path(*parts)
+        handle = path.open("xb", buffering=0)
+        metadata = os.fstat(handle.fileno())
+        if not stat.S_ISREG(metadata.st_mode) or _is_reparse(metadata):
+            handle.close()
+            raise OSError("Extracted entry is not a regular file")
+        self._attempt._tree_entries[parts] = _identity(metadata)
+        return handle
+
+    def _finish(self) -> None:
+        self._require_open()
+        if self._tree_fd is not None:
+            _sync_directory(self._tree_fd)
+            os.close(self._tree_fd)
+            self._tree_fd = None
+        self._closed = True
+        self._attempt._verify()
+
+    def _abort(self) -> None:
+        if self._closed:
+            return
+        if self._tree_fd is not None:
+            os.close(self._tree_fd)
+            self._tree_fd = None
+        self._closed = True
+
+    def _require_open(self) -> None:
+        if self._closed:
+            raise RuntimeError("Quarantine extraction writer is closed")
+        self._attempt._verify()
+
+
+class _BoundedAcquisitionSink:
+    def __init__(
+        self,
+        *,
+        attempt: _QuarantineAttempt,
+        budgets: PackageAcquisitionBudgetV1,
+        clock: Callable[[], float],
+    ) -> None:
+        self._attempt = attempt
+        self._budgets = budgets
+        self._clock = clock
+        self._started_at = clock()
+        self._handle = attempt._open_artifact_for_write()
+        self._digest = sha256()
+        self._byte_count = 0
+        self._request_count = 0
+        self._redirect_count = 0
+        self._closed = False
+
+    def begin_request(self) -> None:
+        self._check_open_and_time()
+        if self._request_count + 1 > self._budgets.max_requests:
+            self._raise_limit()
+        self._request_count += 1
+
+    def record_redirect(self, canonical_source_identity: str) -> None:
+        self._check_open_and_time()
+        canonical = canonicalize_source_identity(canonical_source_identity)
+        if canonical != canonical_source_identity:
+            raise PackageAcquisitionError(
+                "Redirect Source identity is not canonical",
+                code="package_source_provenance_changed",
+                stage="acquiring",
+                retryable=False,
+                consumed_bytes=self._byte_count,
+            )
+        if self._redirect_count + 1 > self._budgets.max_redirects:
+            self._raise_limit()
+        self._redirect_count += 1
+
+    def write(self, chunk: bytes) -> None:
+        self._check_open_and_time()
+        if not isinstance(chunk, bytes):
+            raise TypeError("Bounded acquisition sink accepts bytes")
+        if self._byte_count + len(chunk) > self._budgets.max_transport_bytes:
+            self._raise_limit()
+        self._attempt._verify()
+        self._handle.write(chunk)
+        self._digest.update(chunk)
+        self._byte_count += len(chunk)
+
+    def _finish(
+        self,
+        *,
+        expected_digest: str | None,
+        adapter_result: SourceAdapterResultV1,
+    ) -> tuple[str, int, int, int]:
+        self._check_open_and_time()
+        if self._request_count < 1:
+            raise PackageAcquisitionError(
+                "Source adapter completed without a request",
+                code="package_source_provenance_changed",
+                stage="acquiring",
+                retryable=False,
+                consumed_bytes=self._byte_count,
+            )
+        if not isinstance(adapter_result, SourceAdapterResultV1):
+            raise TypeError("Source adapter result is required")
+        self._handle.flush()
+        os.fsync(self._handle.fileno())
+        self._handle.close()
+        self._closed = True
+        actual_digest = self._digest.hexdigest()
+        if expected_digest is not None and actual_digest != expected_digest:
+            raise PackageAcquisitionError(
+                "Acquired artifact digest does not match Source evidence",
+                code="package_acquisition_digest_mismatch",
+                stage="acquired",
+                retryable=False,
+                consumed_bytes=self._byte_count,
+            )
+        return (
+            actual_digest,
+            self._byte_count,
+            self._request_count,
+            self._redirect_count,
+        )
+
+    def _abort(self) -> None:
+        if not self._closed:
+            self._closed = True
+            self._handle.close()
+
+    def _check_open_and_time(self) -> None:
+        if self._closed:
+            raise RuntimeError("Bounded acquisition sink is closed")
+        elapsed_ms = (self._clock() - self._started_at) * 1000
+        if elapsed_ms > self._budgets.max_wall_time_ms:
+            raise PackageAcquisitionError(
+                "Package acquisition exceeded the wall-clock budget",
+                code="package_operation_timed_out",
+                stage="acquiring",
+                retryable=True,
+                consumed_bytes=self._byte_count,
+            )
+
+    def _raise_limit(self) -> None:
+        raise PackageAcquisitionError(
+            "Package acquisition exceeded a resource budget",
+            code="package_acquisition_limit_exceeded",
+            stage="acquiring",
+            retryable=True,
+            consumed_bytes=self._byte_count,
+        )
+
+
+class AcquiredPackageCandidate:
+    """Private capability passed only to the inert verifier in the next edge."""
+
+    def __init__(
+        self,
+        *,
+        attempt: _QuarantineAttempt,
+        receipt: BoundedAcquisitionReceiptV1,
+        authenticated_envelope: AuthenticatedSourceEnvelopeV1 | None = None,
+    ) -> None:
+        self._attempt = attempt
+        self.receipt = receipt
+        self.authenticated_envelope = authenticated_envelope
+        self._closed = False
+
+    def __repr__(self) -> str:
+        return (
+            "AcquiredPackageCandidate("
+            f"operation_id={self.receipt.operation_id!r}, "
+            f"node_id={self.receipt.node_id!r}, "
+            f"digest={self.receipt.actual_byte_digest!r})"
+        )
+
+    def open_for_verifier(self) -> BinaryIO:
+        if self._closed:
+            raise RuntimeError("Acquired Package candidate is closed")
+        handle = self._attempt._open_artifact_for_read()
+        digest = sha256()
+        byte_count = 0
+        try:
+            while chunk := handle.read(64 * 1024):
+                digest.update(chunk)
+                byte_count += len(chunk)
+        except Exception:
+            handle.close()
+            raise
+        if (
+            byte_count != self.receipt.actual_byte_count
+            or digest.hexdigest() != self.receipt.actual_byte_digest
+        ):
+            handle.close()
+            raise PackageAcquisitionError(
+                "Acquired artifact identity changed before verification",
+                code="package_artifact_identity_changed",
+                stage="acquired",
+                retryable=False,
+                consumed_bytes=byte_count,
+            )
+        handle.seek(0)
+        return handle
+
+    def _open_verified_tree_file(self, logical_path: str) -> BinaryIO:
+        if self._closed:
+            raise RuntimeError("Acquired Package candidate is closed")
+        return self._attempt._open_verified_tree_file(logical_path)
+
+    def cleanup(self) -> None:
+        if self._closed:
+            return
+        self._attempt._cleanup()
+        self._closed = True
+
+    def cleanup_target(self) -> PackageQuarantineCleanupTargetV1:
+        return self._attempt._cleanup_target(
+            operation_id=self.receipt.operation_id,
+            attempt_epoch=self.receipt.attempt_epoch,
+            node_id=self.receipt.node_id,
+        )
+
+    def defer_cleanup(self) -> PackageQuarantineCleanupTargetV1:
+        if self._closed:
+            raise RuntimeError("Acquired Package candidate is closed")
+        target = self.cleanup_target()
+        self._attempt._abandon_for_repair()
+        self._closed = True
+        return target
+
+    def suspend_for_recovery(self) -> None:
+        """Release process-local handles while preserving durable quarantine state."""
+
+        if self._closed:
+            return
+        self._attempt._abandon_for_repair()
+        self._closed = True
+
+
+class PackageAcquisitionOwner:
+    """Authenticate and stream bytes without giving adapters a pathname."""
+
+    def __init__(
+        self,
+        *,
+        source_authority: PackageSourceAuthorityPort,
+        quarantine_store: PackageQuarantineStore,
+        clock: Callable[[], float] | None = None,
+    ) -> None:
+        if not callable(getattr(source_authority, "authorize", None)):
+            raise TypeError("Package Source authority is required")
+        if not isinstance(quarantine_store, PackageQuarantineStore):
+            raise TypeError("Package quarantine store is required")
+        self._source_authority = source_authority
+        self._quarantine_store = quarantine_store
+        self._clock = clock or time.monotonic
+        self._authorization_token = object()
+
+    def acquire(
+        self,
+        request: PackageAcquisitionRequestV1,
+        *,
+        budgets: PackageAcquisitionBudgetV1,
+    ) -> AcquiredPackageCandidate:
+        if not isinstance(request, PackageAcquisitionRequestV1):
+            raise TypeError("Package acquisition request is required")
+        if not isinstance(budgets, PackageAcquisitionBudgetV1):
+            raise TypeError("Package acquisition budgets are required")
+        source = self.authorize_source(request)
+        return self.acquire_authorized(request, source, budgets=budgets)
+
+    def authorize_source(
+        self,
+        request: PackageAcquisitionRequestV1,
+        *,
+        expected_envelope: AuthenticatedSourceEnvelopeV1 | None = None,
+    ) -> _AuthorizedPackageSource:
+        """Return a one-shot Source capability after exact authority validation."""
+
+        if not isinstance(request, PackageAcquisitionRequestV1):
+            raise TypeError("Package acquisition request is required")
+        if expected_envelope is not None and not isinstance(
+            expected_envelope, AuthenticatedSourceEnvelopeV1
+        ):
+            raise TypeError("Expected authenticated Source envelope is invalid")
+        try:
+            stream = self._source_authority.authorize(request)
+        except PackageAcquisitionError as exc:
+            code = (
+                exc.code
+                if exc.code
+                in {
+                    "package_source_unauthorized",
+                    "package_source_provenance_changed",
+                }
+                else "package_source_unauthorized"
+            )
+            raise PackageAcquisitionError(
+                "Source authority refused acquisition",
+                code=code,
+                stage="acquiring",
+                retryable=False,
+                consumed_bytes=0,
+            ) from None
+        except Exception:
+            raise PackageAcquisitionError(
+                "Source authority refused acquisition",
+                code="package_source_unauthorized",
+                stage="acquiring",
+                retryable=False,
+                consumed_bytes=0,
+            ) from None
+        envelope = getattr(stream, "envelope", None)
+        if not isinstance(envelope, AuthenticatedSourceEnvelopeV1):
+            raise PackageAcquisitionError(
+                "Source authority returned no authenticated envelope",
+                code="package_source_unauthorized",
+                stage="acquiring",
+                retryable=False,
+                consumed_bytes=0,
+            )
+        _verify_envelope(request, envelope)
+        if expected_envelope is not None and envelope != expected_envelope:
+            raise PackageAcquisitionError(
+                "Authenticated Source evidence changed on replay",
+                code="package_source_provenance_changed",
+                stage="acquiring",
+                retryable=False,
+                consumed_bytes=0,
+            )
+        return _AuthorizedPackageSource(
+            stream=stream,
+            envelope=envelope,
+            owner_token=self._authorization_token,
+        )
+
+    def acquire_authorized(
+        self,
+        request: PackageAcquisitionRequestV1,
+        source: _AuthorizedPackageSource,
+        *,
+        budgets: PackageAcquisitionBudgetV1,
+    ) -> AcquiredPackageCandidate:
+        """Stream one already-authenticated Source into owner-created quarantine."""
+
+        if not isinstance(request, PackageAcquisitionRequestV1):
+            raise TypeError("Package acquisition request is required")
+        if not isinstance(source, _AuthorizedPackageSource):
+            raise TypeError("Authorized Package Source is required")
+        if not isinstance(budgets, PackageAcquisitionBudgetV1):
+            raise TypeError("Package acquisition budgets are required")
+        envelope = source.envelope
+        _verify_envelope(request, envelope)
+        stream = source._claim(self._authorization_token)
+        try:
+            attempt = self._quarantine_store._begin(request)
+        except FileExistsError:
+            raise PackageAcquisitionError(
+                "Package acquisition attempt identity already exists",
+                code="package_operation_identity_conflict",
+                stage="acquiring",
+                retryable=False,
+                consumed_bytes=0,
+            ) from None
+        except OSError:
+            raise PackageAcquisitionError(
+                "Package quarantine identity could not be proved",
+                code="package_artifact_identity_changed",
+                stage="acquiring",
+                retryable=False,
+                consumed_bytes=0,
+            ) from None
+        sink = _BoundedAcquisitionSink(
+            attempt=attempt,
+            budgets=budgets,
+            clock=self._clock,
+        )
+        try:
+            result = stream.transfer_to(sink)
+            digest, count, requests, redirects = sink._finish(
+                expected_digest=envelope.expected_artifact_digest,
+                adapter_result=result,
+            )
+            receipt = BoundedAcquisitionReceiptV1(
+                operation_id=request.operation_id,
+                attempt_epoch=request.attempt_epoch,
+                node_id=request.node_id,
+                envelope_fingerprint=envelope.fingerprint,
+                actual_byte_digest=digest,
+                actual_byte_count=count,
+                request_count=requests,
+                redirect_count=redirects,
+                budgets=budgets,
+                sink_identity=attempt._sink_identity,
+                adapter_result=result,
+            )
+            return AcquiredPackageCandidate(
+                attempt=attempt,
+                receipt=receipt,
+                authenticated_envelope=envelope,
+            )
+        except PackageAcquisitionError as error:
+            sink._abort()
+            rejection = _sanitize_transfer_error(error, consumed_bytes=sink._byte_count)
+            try:
+                attempt._cleanup()
+            except OSError:
+                target = attempt._cleanup_target(
+                    operation_id=request.operation_id,
+                    attempt_epoch=request.attempt_epoch,
+                    node_id=request.node_id,
+                )
+                attempt._abandon_for_repair()
+                raise PackageAcquisitionCleanupDebtError(
+                    rejection=rejection,
+                    target=target,
+                ) from None
+            raise rejection from None
+        except Exception:
+            sink._abort()
+            rejection = PackageAcquisitionError(
+                "Source adapter was interrupted",
+                code="package_operation_interrupted",
+                stage="acquiring",
+                retryable=True,
+                consumed_bytes=sink._byte_count,
+            )
+            try:
+                attempt._cleanup()
+            except OSError:
+                target = attempt._cleanup_target(
+                    operation_id=request.operation_id,
+                    attempt_epoch=request.attempt_epoch,
+                    node_id=request.node_id,
+                )
+                attempt._abandon_for_repair()
+                raise PackageAcquisitionCleanupDebtError(
+                    rejection=rejection,
+                    target=target,
+                ) from None
+            raise rejection from None
+
+    def reopen_acquired(
+        self,
+        request: PackageAcquisitionRequestV1,
+        receipt: BoundedAcquisitionReceiptV1,
+        *,
+        reset_extraction: bool,
+        authenticated_envelope: AuthenticatedSourceEnvelopeV1 | None = None,
+    ) -> AcquiredPackageCandidate:
+        """Adopt durable local evidence without consulting Source Authority."""
+
+        if not isinstance(request, PackageAcquisitionRequestV1):
+            raise TypeError("Package acquisition request is required")
+        if not isinstance(receipt, BoundedAcquisitionReceiptV1):
+            raise TypeError("Bounded acquisition receipt is required")
+        if authenticated_envelope is not None:
+            if not isinstance(authenticated_envelope, AuthenticatedSourceEnvelopeV1):
+                raise TypeError("Authenticated Source envelope is invalid")
+            _verify_envelope(request, authenticated_envelope)
+            if authenticated_envelope.fingerprint != receipt.envelope_fingerprint:
+                raise PackageAcquisitionError(
+                    "Durable Source evidence changed before recovery",
+                    code="package_source_provenance_changed",
+                    stage="acquiring",
+                    retryable=False,
+                    consumed_bytes=0,
+                )
+        try:
+            attempt = self._quarantine_store._reopen(
+                request,
+                receipt,
+                reset_extraction=reset_extraction,
+            )
+        except _QuarantineAdoptionError as error:
+            rejection = PackageAcquisitionError(
+                "Durable Package quarantine state could not be adopted",
+                code="package_artifact_identity_changed",
+                stage="acquired",
+                retryable=False,
+                consumed_bytes=0,
+            )
+            candidate = AcquiredPackageCandidate(
+                attempt=error.attempt,
+                receipt=receipt,
+                authenticated_envelope=authenticated_envelope,
+            )
+            try:
+                candidate.cleanup()
+            except OSError:
+                target = candidate.cleanup_target()
+                candidate.defer_cleanup()
+                raise PackageAcquisitionCleanupDebtError(
+                    rejection=rejection,
+                    target=target,
+                ) from None
+            raise rejection from None
+        except OSError:
+            raise PackageAcquisitionError(
+                "Durable Package artifact identity could not be recovered",
+                code="package_artifact_identity_changed",
+                stage="acquired",
+                retryable=False,
+                consumed_bytes=0,
+            ) from None
+        candidate = AcquiredPackageCandidate(
+            attempt=attempt,
+            receipt=receipt,
+            authenticated_envelope=authenticated_envelope,
+        )
+        try:
+            with candidate.open_for_verifier():
+                pass
+        except (OSError, PackageAcquisitionError) as error:
+            consumed_bytes = (
+                error.consumed_bytes
+                if isinstance(error, PackageAcquisitionError)
+                else 0
+            )
+            rejection = PackageAcquisitionError(
+                "Durable Package artifact identity changed",
+                code="package_artifact_identity_changed",
+                stage="acquired",
+                retryable=False,
+                consumed_bytes=consumed_bytes,
+            )
+            try:
+                candidate.cleanup()
+            except OSError:
+                target = candidate.cleanup_target()
+                candidate.defer_cleanup()
+                raise PackageAcquisitionCleanupDebtError(
+                    rejection=rejection,
+                    target=target,
+                ) from None
+            raise rejection from None
+        return candidate
+
+
+def _sanitize_transfer_error(
+    error: PackageAcquisitionError,
+    *,
+    consumed_bytes: int,
+) -> PackageAcquisitionError:
+    policies: dict[str, tuple[AcquisitionStage, bool]] = {
+        "package_acquisition_limit_exceeded": ("acquiring", True),
+        "package_operation_timed_out": ("acquiring", True),
+        "package_source_provenance_changed": ("acquiring", False),
+        "package_acquisition_digest_mismatch": ("acquired", False),
+        "package_artifact_identity_changed": ("acquired", False),
+        "package_operation_interrupted": ("acquiring", True),
+    }
+    code = error.code if error.code in policies else "package_operation_interrupted"
+    stage, retryable = policies[code]
+    return PackageAcquisitionError(
+        "Package acquisition was rejected",
+        code=code,
+        stage=stage,
+        retryable=retryable,
+        consumed_bytes=consumed_bytes,
+    )
+
+
+def _verify_envelope(
+    request: PackageAcquisitionRequestV1,
+    envelope: AuthenticatedSourceEnvelopeV1,
+) -> None:
+    if envelope.authentication_decision != "authorized":
+        raise PackageAcquisitionError(
+            "Source authority denied acquisition",
+            code="package_source_unauthorized",
+            stage="acquiring",
+            retryable=False,
+            consumed_bytes=0,
+        )
+    if (
+        envelope.operation_id != request.operation_id
+        or envelope.node_id != request.node_id
+        or envelope.canonical_source_identity != request.canonical_source_identity
+        or envelope.requested_locator_digest != request.requested_locator_digest
+        or envelope.policy_revision != request.policy_revision
+    ):
+        raise PackageAcquisitionError(
+            "Authenticated Source evidence changed before acquisition",
+            code="package_source_provenance_changed",
+            stage="acquiring",
+            retryable=False,
+            consumed_bytes=0,
+        )
+
+
+def _attempt_entry_names(
+    request: PackageAcquisitionRequestV1,
+) -> tuple[str, str]:
+    seed = canonical_json_bytes(
+        {
+            "attemptEpoch": request.attempt_epoch,
+            "nodeId": request.node_id,
+            "operationId": request.operation_id,
+        }
+    )
+    return (
+        f"attempt-{sha256(seed).hexdigest()}",
+        f"artifact-{sha256(request.node_id.encode()).hexdigest()}",
+    )
+
+
+def _supports_descriptor_relative_io() -> bool:
+    if supports_windows_rooted_io():
+        return True
+    return (
+        os.name == "posix"
+        and os.open in os.supports_dir_fd
+        and os.mkdir in os.supports_dir_fd
+        and os.rmdir in os.supports_dir_fd
+        and os.unlink in os.supports_dir_fd
+        and hasattr(os, "O_NOFOLLOW")
+    )
+
+
+def _open_directory(path: str | Path, *, dir_fd: int | None = None) -> int:
+    if os.name == "nt":
+        return open_windows_directory(path, dir_fd=dir_fd)
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+    return os.open(path, flags, dir_fd=dir_fd)
+
+
+def _create_directory_at(directory_fd: int, name: str) -> int:
+    if os.name == "nt":
+        return open_windows_directory(name, dir_fd=directory_fd, create_new=True)
+    os.mkdir(name, mode=0o700, dir_fd=directory_fd)
+    return _open_directory(name, dir_fd=directory_fd)
+
+
+def _open_regular_file_at(
+    directory_fd: int,
+    name: str,
+    *,
+    create_new: bool,
+    write: bool,
+) -> int:
+    if os.name == "nt":
+        return open_windows_regular_file_at(
+            directory_fd,
+            name,
+            create_new=create_new,
+            write=write,
+        )
+    flags = (
+        (os.O_WRONLY if write else os.O_RDONLY)
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    if create_new:
+        flags |= os.O_CREAT | os.O_EXCL
+    return os.open(name, flags, 0o600, dir_fd=directory_fd)
+
+
+def _stat_at(directory_fd: int, name: str) -> os.stat_result:
+    if os.name == "nt":
+        return windows_stat_at(directory_fd, name)
+    return os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+
+
+def _listdir_at(directory_fd: int) -> tuple[str, ...]:
+    if os.name == "nt":
+        return windows_listdir_at(directory_fd)
+    return tuple(os.listdir(directory_fd))
+
+
+def _unlink_at(directory_fd: int, name: str) -> None:
+    if os.name == "nt":
+        windows_unlink_at(directory_fd, name)
+        return
+    os.unlink(name, dir_fd=directory_fd)
+
+
+def _rmdir_at(directory_fd: int, name: str) -> None:
+    if os.name == "nt":
+        windows_rmdir_at(directory_fd, name)
+        return
+    os.rmdir(name, dir_fd=directory_fd)
+
+
+def _sync_directory(directory_fd: int) -> None:
+    if os.name != "nt":
+        os.fsync(directory_fd)
+
+
+def _open_relative_directory(root_fd: int, parts: tuple[str, ...]) -> int:
+    current_fd = os.dup(root_fd)
+    try:
+        for part in parts:
+            child_fd = _open_directory(part, dir_fd=current_fd)
+            os.close(current_fd)
+            current_fd = child_fd
+        return current_fd
+    except Exception:
+        os.close(current_fd)
+        raise
+
+
+def _remove_directory_contents_at(directory_fd: int) -> None:
+    for name in _listdir_at(directory_fd):
+        metadata = _stat_at(directory_fd, name)
+        if stat.S_ISDIR(metadata.st_mode) and not _is_reparse(metadata):
+            child_fd = _open_directory(name, dir_fd=directory_fd)
+            child_identity = _identity(os.fstat(child_fd))
+            try:
+                _remove_directory_contents_at(child_fd)
+                visible = _open_directory(name, dir_fd=directory_fd)
+                try:
+                    if _identity(os.fstat(visible)) != child_identity:
+                        raise OSError("Package cleanup child identity changed")
+                finally:
+                    os.close(visible)
+            finally:
+                os.close(child_fd)
+            _rmdir_at(directory_fd, name)
+        else:
+            _unlink_at(directory_fd, name)
+
+
+def _directory_identity_exists_at(
+    directory_fd: int,
+    expected: tuple[int, int],
+) -> bool:
+    for name in _listdir_at(directory_fd):
+        metadata = _stat_at(directory_fd, name)
+        if (
+            stat.S_ISDIR(metadata.st_mode)
+            and not _is_reparse(metadata)
+            and _identity(metadata) == expected
+        ):
+            return True
+    return False
+
+
+def _remove_directory_contents_portable(directory: Path) -> None:
+    for entry in os.scandir(directory):
+        metadata = entry.stat(follow_symlinks=False)
+        path = Path(entry.path)
+        if stat.S_ISDIR(metadata.st_mode) and not _is_reparse(metadata):
+            identity = _identity(metadata)
+            _remove_directory_contents_portable(path)
+            if _identity(path.lstat()) != identity:
+                raise OSError("Package cleanup child identity changed")
+            path.rmdir()
+        else:
+            path.unlink()
+
+
+def _directory_identity_exists_portable(
+    directory: Path,
+    expected: tuple[int, int],
+) -> bool:
+    for entry in os.scandir(directory):
+        metadata = entry.stat(follow_symlinks=False)
+        if (
+            stat.S_ISDIR(metadata.st_mode)
+            and not _is_reparse(metadata)
+            and _identity(metadata) == expected
+        ):
+            return True
+    return False
+
+
+def _require_private_directory(path: Path) -> None:
+    metadata = path.lstat()
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or stat.S_ISLNK(metadata.st_mode)
+        or _is_reparse(metadata)
+    ):
+        raise OSError("Package quarantine root is not a private directory")
+    if os.name == "posix" and metadata.st_mode & 0o077:
+        raise OSError("Package quarantine root permissions are not private")
+
+
+def _require_no_link_ancestors(path: Path) -> None:
+    for candidate in (path, *path.parents):
+        if not candidate.exists() and not candidate.is_symlink():
+            continue
+        metadata = candidate.lstat()
+        if stat.S_ISLNK(metadata.st_mode) or _is_reparse(metadata):
+            raise OSError("Package quarantine path traverses a link or reparse point")
+
+
+def _is_reparse(metadata: os.stat_result) -> bool:
+    return bool(
+        getattr(metadata, "st_reparse_tag", 0)
+        or (
+            _WINDOWS_REPARSE_ATTRIBUTE
+            and getattr(metadata, "st_file_attributes", 0) & _WINDOWS_REPARSE_ATTRIBUTE
+        )
+    )
+
+
+def _identity(metadata: os.stat_result) -> tuple[int, int]:
+    return int(metadata.st_dev), int(metadata.st_ino)
+
+
+def _exact_dict(
+    value: object,
+    *,
+    fields: set[str],
+    name: str,
+) -> dict[str, object]:
+    if not isinstance(value, Mapping):
+        raise TypeError(f"{name} must be an object")
+    document = dict(value)
+    if set(document) != fields:
+        raise ValueError(f"{name} fields do not match the versioned schema")
+    return cast(dict[str, object], document)
+
+
+def _wire_string(value: object, *, name: str) -> str:
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"{name} must be a non-empty string")
+    return value
+
+
+def _wire_optional_string(value: object, *, name: str) -> str | None:
+    if value is None:
+        return None
+    return _wire_string(value, name=name)
+
+
+def _wire_int(value: object, *, name: str) -> int:
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise TypeError(f"{name} must be an integer")
+    return value
+
+
+def _wire_positive(value: object, *, name: str) -> int:
+    result = _wire_int(value, name=name)
+    _require_positive(result, name=name)
+    return result
+
+
+def _wire_nonnegative(value: object, *, name: str) -> int:
+    result = _wire_int(value, name=name)
+    _require_nonnegative(result, name=name)
+    return result
+
+
+def _wire_identity(value: object, *, name: str) -> tuple[int, int]:
+    if not isinstance(value, list) or len(value) != 2:
+        raise TypeError(f"{name} must be a two-item list")
+    return (
+        _wire_nonnegative(value[0], name=f"{name} device"),
+        _wire_nonnegative(value[1], name=f"{name} inode"),
+    )
+
+
+def _require_nonempty(value: str, *, name: str) -> None:
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"{name} must be a non-empty string")
+
+
+def _require_safe_label(value: str, *, name: str) -> None:
+    _require_nonempty(value, name=name)
+    if len(value) > 128 or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]*", value) is None:
+        raise ValueError(f"{name} must be a bounded secret-free label")
+
+
+def _require_sha256(value: str, *, name: str) -> None:
+    if not isinstance(value, str) or _SHA256.fullmatch(value) is None:
+        raise ValueError(f"{name} must be lowercase hexadecimal SHA-256")
+
+
+def _require_positive(value: int, *, name: str) -> None:
+    if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+        raise ValueError(f"{name} must be a positive integer")
+
+
+def _require_nonnegative(value: int, *, name: str) -> None:
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ValueError(f"{name} must be a non-negative integer")
+
+
+__all__ = [
+    "AcquiredPackageCandidate",
+    "AuthenticatedSourceEnvelopeV1",
+    "AuthenticatedSourceStreamPort",
+    "BoundedAcquisitionReceiptV1",
+    "BoundedAcquisitionSinkPort",
+    "PackageAcquisitionBudgetV1",
+    "PackageAcquisitionCleanupDebtError",
+    "PackageAcquisitionError",
+    "PackageAcquisitionOwner",
+    "PackageAcquisitionRequestV1",
+    "PackageAuthenticatedSourceEvidenceV1",
+    "PackageQuarantineCleanupTargetV1",
+    "PackageQuarantineStore",
+    "PackageSourceAuthorityPort",
+    "SourceAdapterResultV1",
+]

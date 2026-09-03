@@ -29,13 +29,60 @@ jobs:
       - name: Create report directory
         run: uv run python -c "from pathlib import Path; Path('.artifacts').mkdir(exist_ok=True)"
 
+      - name: Run PLC9B native Windows quarantine tests
+        env:
+          PYTEST_ADDOPTS: >-
+            -o faulthandler_timeout=60
+            --junitxml=.artifacts/windows-shell-plc9b-native.xml
+        run: >-
+          uv run python scripts/dev/run_pytest.py
+          tests/harness/resources/packages/test_plc9b_windows_native.py
+          tests/harness/resources/packages/test_plc9b_windows_materialization.py
+          tests/harness/resources/packages/test_plc9b_windows_epoch_cutover.py
+          tests/harness/resources/packages/test_plc9b_windows_offline_restore.py
+          -q
+
+      - name: Reject empty, skipped, or failing PLC9B native report
+        run: >-
+          uv run python scripts/dev/verify_pytest_xml.py
+          .artifacts/windows-shell-plc9b-native.xml
+
+      - name: Run PLC9B native Windows manifest tests
+        env:
+          PYTEST_ADDOPTS: >-
+            -o faulthandler_timeout=60
+            --junitxml=.artifacts/windows-shell-plc9b-manifest.xml
+        run: >-
+          uv run python scripts/dev/run_pytest.py
+          "tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-WIN-ROOT]"
+          "tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-WIN-ADS]"
+          "tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-WIN-RESERVED]"
+          "tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-WIN-TRAILING]"
+          "tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PATH-COLLISION-CASE]"
+          "tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-TYPE-REPARSE]"
+          "tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-TYPE-JUNCTION]"
+          "tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-SWAP-WINDOWS]"
+          "tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-WIN-ROOT-ABA]"
+          "tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-WIN-ANCESTOR-ABA]"
+          "tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-WIN-HANDLE-SUCCESS]"
+          "tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-PUB-WIN-HANDLE-REJECT]"
+          "tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-CUTOVER-WINDOWS]"
+          "tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-PREFENCE-LIVE-WINDOWS]"
+          "tests/harness/resources/packages/test_plc9b_adversarial.py::test_manifest_case[B-COMPAT-OFFLINE-RESTORE-WINDOWS]"
+          -q
+
+      - name: Reject empty, skipped, or failing PLC9B manifest report
+        run: >-
+          uv run python scripts/dev/verify_pytest_xml.py
+          .artifacts/windows-shell-plc9b-manifest.xml
+
       - name: Run native Windows shell compatibility tests
         env:
           PYTEST_ADDOPTS: >-
             -o faulthandler_timeout=60
             --junitxml=.artifacts/windows-shell-native.xml
         run: >-
-          uv run pytest
+          uv run python scripts/dev/run_pytest.py
           tests/harness/workspace/test_local_process.py
           tests/harness/workspace/test_exec.py
           tests/harness/workspace/test_shell.py
@@ -56,7 +103,7 @@ jobs:
             -o faulthandler_timeout=60
             --junitxml=.artifacts/windows-runtime-lifecycle.xml
         run: >-
-          uv run pytest
+          uv run python scripts/dev/run_pytest.py
           tests/foundation/test_runtime_scope.py
           tests/harness/runtime/test_resources.py
           tests/harness/machine_resources/test_control_plane.py
@@ -79,7 +126,7 @@ jobs:
             -o faulthandler_timeout=60
             --junitxml=.artifacts/windows-shell-policy.xml
         run: >-
-          uv run pytest tests/harness/test_policy_engine.py
+          uv run python scripts/dev/run_pytest.py tests/harness/test_policy_engine.py
           -k "powershell or cmd_policy"
           -q
 
@@ -92,4 +139,5 @@ jobs:
         with:
           name: windows-shell-pytest-reports
           path: .artifacts/windows-shell-*.xml
+          include-hidden-files: true
           if-no-files-found: warn

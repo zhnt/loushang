@@ -11,6 +11,9 @@ from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
 from loushang.harness.bootstrap import BootstrapActivationRuntime
 from loushang.harness.config.agent import ControlConfig
 from loushang.harness.diagnostics.service import DiagnosticsService
+from loushang.harness.resources.packages.product_runtime import (
+    PackageProductRuntimeBindingV1,
+)
 from loushang.harness.session.bootstrap import (
     AgentBootstrapRequest,
     AgentBootstrapRuntime,
@@ -226,6 +229,9 @@ def test_agent_product_construction_runtime_composes_existing_owners(
                 get_model=lambda pattern: f"model:{pattern}",
             ),
             diagnostics_service=diagnostics,
+            package_product_lifecycle=None,
+            package_product_inventory=None,
+            package_product_lifecycle_mode="legacy",
         ),
     )
     monkeypatch.setattr(
@@ -301,7 +307,7 @@ def test_agent_product_construction_runtime_composes_existing_owners(
             agent_factory=lambda **kwargs: (
                 actions.append(("agent", kwargs)) or FakeAgent()
             ),
-            session_factory=lambda agent, bundle, extensions, registry, active, prompt, mode: (
+            session_factory=lambda agent, bundle, extensions, registry, active, prompt, mode, _lifecycle, _inventory, _lifecycle_mode: (
                 agent.session_id,
                 bundle,
                 extensions,
@@ -387,6 +393,9 @@ def test_agent_product_construction_binding_compiles_research_policy(
         _active,
         _prompt,
         _mode,
+        _product_lifecycle,
+        _product_inventory,
+        _product_lifecycle_mode,
     ):
         session_capabilities.append(capabilities)
         return object()
@@ -434,8 +443,128 @@ def test_agent_product_construction_binding_compiles_research_policy(
         None,
         "research prompt",
         None,
+        None,
+        None,
+        "legacy",
     )
     assert session_capabilities == [capability_runtime]
+
+
+def test_agent_product_construction_activates_aggregate_package_runtime_first(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    calls: list[object] = []
+
+    class Lifecycle:
+        binding_id = "owner:research"
+        active = False
+
+        def activate(self) -> None:
+            calls.append("activate:packages")
+            self.active = True
+
+    class Inventory:
+        binding_id = "owner:research"
+
+    lifecycle = Lifecycle()
+    inventory = Inventory()
+
+    class Factory:
+        def create(self, request):
+            calls.append(("create:packages", request))
+            return PackageProductRuntimeBindingV1(
+                product_id="research",
+                lifecycle=cast(Any, lifecycle),
+                inventory=cast(Any, inventory),
+                mode="enforced",
+            )
+
+    def construct(_self, request):
+        calls.append("construct:session")
+        assert lifecycle.active
+        session = request.session_factory(
+            object(),
+            object(),
+            object(),
+            None,
+            None,
+            "prompt",
+            None,
+            request.configuration.package_product_lifecycle,
+            request.configuration.package_product_inventory,
+            request.configuration.package_product_lifecycle_mode,
+        )
+        return SimpleNamespace(session=session)
+
+    monkeypatch.setattr(
+        bootstrap_construction_module.AgentProductConstructionRuntime,
+        "construct",
+        construct,
+    )
+    services = BootstrapServices(
+        settings_manager=SimpleNamespace(
+            get_settings=lambda: SimpleNamespace(thinking_level="off")
+        ),
+        model_registry=object(),
+        resource_loader=object(),
+        diagnostics_service=object(),
+    )
+    capability_runtime = cast(
+        Any,
+        SimpleNamespace(
+            skill_activation=object(),
+            activate_resources=lambda bundle: bundle,
+            prompt_section_composer=object(),
+            tool_pack_composer=object(),
+            dispose=lambda: None,
+        ),
+    )
+    captured: list[tuple[object, object, object]] = []
+    binding = AgentProductConstructionBinding[object, object, object](
+        default_system_prompt="research",
+        product_id="research",
+        bind_capabilities=lambda: capability_runtime,
+        create_extension_runtime=lambda bundle: bundle,
+        source_identity_check=lambda _cwd: cast(Any, None),
+        list_tool_definitions=lambda _runtime: (),
+        get_tool_source_info=lambda _runtime, _name: None,
+    )
+
+    binding.construct(
+        services=services,
+        package_materializer=cast(Any, "materializer"),
+        package_product_runtime_factory=cast(Any, Factory()),
+        session_id="session:research",
+        cwd=str(tmp_path),
+        extension_flag_values=None,
+        explicit_system_prompt=None,
+        append_system_prompt=(),
+        model=None,
+        thinking_level=None,
+        tools=None,
+        tool_registry=None,
+        allowed_tool_names=None,
+        active_tool_names=None,
+        no_tools=None,
+        stream_fn=None,
+        convert_to_llm=lambda value: value,
+        agent_factory=lambda **_kwargs: object(),
+        session_factory=lambda _capabilities, _agent, _bundle, _extensions, _registry, _active, _prompt, _mode, product_lifecycle, product_inventory, product_mode: (
+            captured.append((product_lifecycle, product_inventory, product_mode))
+            or object()
+        ),
+        on_default_model_unavailable=lambda *_args: None,
+        set_scoped_models=lambda *_args: None,
+    )
+
+    assert calls[0][0] == "create:packages"
+    request = calls[0][1]
+    assert request.product_id == "research"
+    assert request.session_id == "session:research"
+    assert request.cwd == str(tmp_path.resolve())
+    assert calls[1:] == ["activate:packages", "construct:session"]
+    assert captured == [(lifecycle, inventory, "enforced")]
 
 
 def test_agent_product_construction_resolves_final_profile_without_rebinding_resources(
@@ -467,6 +596,9 @@ def test_agent_product_construction_resolves_final_profile_without_rebinding_res
             None,
             "prompt",
             None,
+            None,
+            None,
+            "legacy",
         )
         return SimpleNamespace(session=session)
 
@@ -570,6 +702,9 @@ def test_agent_product_construction_disposes_single_candidate_on_failure(
             None,
             "prompt",
             None,
+            None,
+            None,
+            "legacy",
         )
         raise RuntimeError("construction failed after final binding")
 

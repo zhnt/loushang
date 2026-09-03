@@ -15,6 +15,7 @@ dependencies = [
   "httpx>=0.28,<1",
   "markdown-it-py>=4.2,<5",
   "openai>=2.30.0",
+  "packaging>=24,<27",
   "pillow>=12.2.0",
   "pygments>=2.19,<3",
   "wcwidth==0.8.2",
@@ -38,6 +39,8 @@ dev = [
 pythonpath = ["src"]
 testpaths = ["tests"]
 addopts = ["--import-mode=importlib"]
+tmp_path_retention_count = 0
+tmp_path_retention_policy = "none"
 markers = [
   "live: real provider verification that may require network access and credentials",
   "requires_host_runtime: requires host loopback, process, or file-index capabilities unavailable in a restricted sandbox",

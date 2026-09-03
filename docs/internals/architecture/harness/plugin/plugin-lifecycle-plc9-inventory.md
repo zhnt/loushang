@@ -9,6 +9,363 @@
   [Plugin Lifecycle PLC9.0 Baseline](plugin-lifecycle-plc9-baseline.md).
 - PLC9B.0 refinement:
   [Safe Package Boundary Contract](plugin-lifecycle-plc9b-contract.md).
+- PLC9B1 refinement: the dark internal Owner Kernel now supplies versioned
+  inert records, classification, journal CAS, retry/cancel/status, and disabled
+  refusal. It has no production composition or artifact capability; all
+  acquisition/publication target rows below remain migration obligations.
+- PLC9B2a/B2b/B2c/B2d/B2e/B2f refinement: unbound Source
+  Authority/bounded-sink/quarantine, safe wheel inspection, dark
+  phase-CAS/evidence composition, and cleanup-domain tombstones exist inside
+  the same Package owner boundary. Raw ZIP-layout, path/type/budget,
+  WHEEL/METADATA/RECORD, and rooted
+  POSIX extraction proofs now precede materialization. Adjacent operation
+  phases, typed acquisition/wheel evidence, exact cleanup repair, and rooted
+  acquired/verified crash adoption are append-once or exactly replayable.
+  Recovery reconstructs process-local candidates from durable local evidence
+  without Source reauthorization. A Package-local `NtCreateFile` rooted-handle
+  backend and non-skippable native Windows fixture set were accepted by
+  Windows Shell Compatibility run `33486925218` at head `fb263301`: five tests
+  ran with zero skips, failures, or errors, and their XML was retained in
+  artifact `windows-shell-pytest-reports` (ID `9792151355`).
+  PLC9B2g implements six composed acquisition manifest fixtures, accepted by
+  Linux Harness Quality run `33487861156`: its report executed 14 total nodes
+  with zero skips, failures, or errors and was retained as artifact
+  `plc9b-linux-native-pytest-report` (ID `9792500305`).
+  PLC9B2h implements 24 composed archive/path/type/limit/wheel manifest rows,
+  accepted by Linux Harness Quality run `33489524268`: 38 total nodes ran with
+  zero skips, failures, or errors and artifact `9793161479` retained the XML.
+  Wheel ZIP has no portable hardlink relation encoding; PLC9B2k therefore uses
+  a real POSIX hardlinked source and proves the Wheel 1.x boundary normalizes it
+  to independent regular archive and extracted entries rather than claiming a
+  surrogate hardlink encoding. Linux Harness Quality run `33493714647`
+  accepted that native row after all 52 manifest nodes passed without skips,
+  failures, or errors; artifact `9794816942` retained the XML.
+  PLC9B2i accepts seven exact Windows archive path/type fixtures after their
+  dedicated non-skippable Windows 2022 report passed and its XML was retained;
+  no simulated platform evidence promotes a native row.
+  PLC9B2j accepts six exact Linux-native artifact-identity, early-crash, and
+  cleanup-debt fixtures after the persisted non-skippable Linux report passed
+  all 51 manifest nodes without skips, failures, or errors.
+  PLC9B3a adds an accepted unbound pure closure-v2 verifier over typed Source,
+  acquisition, and wheel evidence. It deterministically proves PEP 508 marker/
+  specifier decisions, origin/digest binding, graph completeness, acyclicity,
+  canonical identity, and composed budgets, but owns no I/O, pin, store,
+  journal, publication, or transport capability. Its component fixtures do not
+  promote global manifest rows. Harness Quality run `33497159996` accepted the
+  component after Ruff and mypy passed and the full gate reported 3624 passed,
+  20 skipped.
+  PLC9B3b is an accepted dark slice that records attempt-scoped authenticated
+  Source evidence before quarantine transfer, requires exact Source
+  reauthorization when only that evidence survived, and reconstructs canonical raw
+  `Requires-Dist` inputs by re-verifying the digest-bound Wheel `METADATA`.
+  Accepted receipt and wheel-evidence v1 schemas remain unchanged; legacy
+  receipt-first evidence can replay B2 behavior but is insufficient for
+  closure-v2. Harness Quality run `33501681463` accepted the slice after all
+  PR checks passed; its retained Linux manifest XML executed the same 52 tests
+  with zero skips, failures, or errors. No global manifest row is promoted.
+  PLC9B3c is an accepted dark recursive builder. Its resolver is selection-only;
+  every selected node still traverses Source Authority, bounded acquisition,
+  Wheel verification, and ordered artifact evidence before the accepted pure
+  closure verifier decides the complete graph. It handles late extra expansion,
+  digest-bound `Requires-Python`/`Provides-Extra`, and aggregate budgets, but
+  has no phase/selection/plan journal, recovery, cleanup-debt integration,
+  stable refs, pins, publication, desired-state mutation, or production route.
+  Harness Quality run `33505702666` accepted the component after all PR checks
+  passed; retained artifact `9799493328` executed the unchanged 52-row Linux
+  manifest with zero skips, failures, or errors. Its component fixtures do not
+  promote global manifest rows.
+  PLC9B3d-1 accepted dark code binds a complete credential-free resolution basis
+  before artifact I/O, journals every resolver selection before dependency
+  Source access, journals the exact verified plan before the closure phase CAS,
+  reopens durable dependency evidence without resolver or Source calls, and
+  transfers dependency cleanup debt to the existing cleanup-domain owner. It
+  remains dark. B3d-1 accepts the two resolving/closure crash rows after all PR
+  checks passed and retained artifact `9802403797` executed exactly 54 native
+  manifest nodes with zero skips, failures, or errors; the closure/limit rows
+  were still planned at that acceptance point. B3d-2a accepts the three
+  composed closure-limit rows with real root evidence and a dependency
+  selection after all PR checks passed and retained artifact `9803312387`
+  executed exactly 57 native manifest nodes with zero skips, failures, or
+  errors. B3d-2b accepts all seven closure-integrity rows, including
+  cleanup-debt custody for every rejected candidate, after all PR checks passed
+  and retained artifact `9805712792` executed exactly 64 native manifest nodes
+  with zero skips, failures, or errors.
+  PLC9B3e-1 accepted code adds internal strict typed root/dependency refs, an
+  immutable closure lock that reconstructs and revalidates the accepted v2
+  plan, and one exact committed-set ref. It has no store or retention-ledger
+  import, live pin, staging writer, atomic publication, admission, desired-state
+  effect, or production route. No global adversarial row is promoted.
+  All PR checks passed and retained artifact `9806065559` executed the
+  unchanged 64 native manifest nodes without skips, failures, errors, or any
+  `B-PUB-*` node.
+  PLC9B3e-2a accepted code adds exact credential-free transaction-pin
+  targets/requests/receipts, a narrow retention Port, and a durable owner-side
+  evidence journal. It has no concrete retention-ledger import or runtime phase
+  composition and promotes no manifest row. All PR checks passed and retained
+  artifact `9807880155` executed the unchanged 64 native manifest nodes without
+  skips, failures, errors, `B-CRASH-PINNED`, or any `B-PUB-*` node.
+  PLC9B3e-2b accepted code composes the narrow retention Port with durable
+  closure evidence and `closure_verified -> transaction_pinned` CAS. It adds
+  candidate-free restart recovery and implements the composed
+  `B-CRASH-PINNED` row. All PR checks passed and retained artifact `9810291887`
+  executed exactly 65 native manifest nodes with zero skips, failures, or
+  errors and no `B-PUB-*` node. Staging, publication, later transaction phases,
+  and every production route remain migration obligations.
+  PLC9B3e-3a accepted code now separates a neutral dependency staging Port
+  from the designated Plugin-root staging Port, binds the latter to an
+  authority-issued logical Product/scope/Installation/Plugin target, and
+  journals exact typed staging receipts beside the Package transaction. A
+  separate Package-owner journal atomically appends the complete immutable
+  closure lock and its sole committed-set ref. These are dark contracts and
+  local evidence only: no concrete store, phase runtime, admission, desired
+  state, public facade, or production route imports them, and no global
+  manifest row is promoted. All PR checks passed and retained artifact
+  `9812156268` executed the unchanged 65 native manifest nodes without skips,
+  failures, errors, `B-CRASH-STAGING`, `B-CRASH-SET`, or any `B-PUB-*` node.
+  PLC9B3e-3b accepted code composes the accepted Ports and journals behind
+  `transaction_pinned -> staging -> set_published` CAS. It validates every live
+  candidate against the durable plan, stages dependencies before the Plugin
+  root, adopts only exact prior-attempt receipts, rechecks classification before
+  atomic set publication, and supports candidate-free resume/recovery. The
+  composed `B-CRASH-STAGING` and `B-CRASH-SET` rows are executable; concrete
+  store materialization, native publication-root defenses, admission, desired
+  state, and production routing remain absent. All PR checks passed and
+  retained artifact `9813586958` executed exactly 67 native manifest nodes
+  without skips, failures, errors, or any `B-PUB-*` node.
+  PLC9B3e-3c0 accepted code adds a strict files-only transfer manifest bound
+  to exact Wheel evidence and separates quarantine-owned byte transfer from
+  dependency-store and designated Plugin-root sink authorities. These are
+  dark records and Protocols only: there is no transfer loop, concrete Store,
+  native publication root, stable-ref issuance, admission, or production
+  route. All 13 `B-PUB-*` rows remain planned; `B-PUB-UNCOMMITTED` stays with
+  PLC9B4 commit admission rather than physical materialization. All PR checks
+  passed and retained artifact `9815136763` executed the unchanged 67 native
+  manifest nodes without skips, failures, errors, or any `B-PUB-*` node.
+  PLC9B3e-3c1 accepted code implements the quarantine-owned identity-checked
+  verified-file reader, bounded transfer owner, and separate POSIX-native
+  dependency/Plugin-root Store adapters. Store operations pin and revalidate
+  the complete visible ancestor chain, use descriptor-relative no-follow
+  creates, sync and settle one immutable tree, fully hash exact reuse, and
+  close every native handle on success or refusal. Five POSIX
+  publication/root/handle rows are executable through the full dark lifecycle;
+  Windows native publication, collision/reuse, commit admission, and production
+  routes remain later gates. All PR checks passed and retained artifact
+  `9817127845` executed exactly 72 manifest nodes with zero skips, failures, or
+  errors and included exactly the five implemented POSIX publication rows.
+  PLC9B3e-3c2 accepted code adds the two role-separated Windows-native Store
+  adapters. They pin and revalidate the full visible ancestor chain, reject
+  reparse/root/ancestor/staging ABA, flush each verified file, and settle by a
+  non-replacing handle-relative rename before fully rehashing the final tree.
+  The retained native artifact `9818964189` executed 15 component tests and 12
+  manifest nodes with zero skips, failures, or errors, including all five
+  Windows publication/ABA/handle rows. Collision/reuse, commit admission, and
+  production routing remain later gates.
+  PLC9B3e-3c3 accepted code adds Store-private durable settlement evidence to
+  both native Store adapters. A pre-rename record binds the complete Store-root
+  chain, final tree and member identities, exact manifest, and exact receipt;
+  a cross-instance owner lock serializes namespace settlement. Restart can
+  recover a renamed tree or validate an exact receipt without a live candidate
+  and without another journal append, while same bytes under a different
+  native identity fail as `package_publication_collision`. The accepted slice makes
+  `B-PUB-COLLISION` and `B-PUB-REUSE` executable; only
+  `B-PUB-UNCOMMITTED` remains planned among publication rows. It adds no public
+  facade, commit-admission route, binding, desired-state mutation, or Product
+  runtime composition. All 23 PR checks passed; retained Linux artifact
+  `9821924161` executed 74 manifest nodes and retained Windows artifact
+  `9821946893` executed 19 native component tests plus 12 manifest nodes, all
+  with zero skips, failures, or errors.
+  PLC9B4a accepted code closes the logical commit-admission boundary without
+  opening a Product route. A sole commit owner validates the exact terminal
+  set and live transaction pin before appending `committed`; its immutable
+  receipt is deterministically recoverable from those durable journals. A
+  separate read-only admission owner reprojects and compares operation/request,
+  Product/scope, Installation/Plugin, designated root, set, closure, and pin
+  evidence. It returns no path, runtime handle, store capability, binding, or
+  desired-state authority. `B-PUB-UNCOMMITTED` and all seven `B-ADMISSION-*`
+  threats are executable; B4b retention handoff and B4c epoch fencing remain
+  later gates. All 23 candidate checks passed; retained Linux artifact
+  `9823339334` executed exactly 82 manifest nodes with zero skips, failures, or
+  errors and contained all eight B4a rows.
+  PLC9B4b accepted code adds the dark retention-handoff record family,
+  strict handoff CAS journal, and coordinator over read-only admission plus
+  narrow Desired-CAS and Retention-settlement Ports. It proves dependency pins
+  exist before Desired commit, preserves the transaction pin on rejection,
+  and releases it only with a receipt that keeps the exact dependency set
+  live. All six `B-HANDOFF-*` threats are executable, including settlement-to-
+  projection crash recovery and concurrent replay. It imports no concrete
+  management ledger, exports no public symbol, and leaves B4c epoch fencing,
+  Product routing, and explicit legacy adapters as later gates. All 23 PR
+  checks passed; retained Linux artifact `9825049355` executed exactly 88
+  manifest nodes with zero skips, failures, or errors and contained all six
+  B4b rows.
+  Accepted PLC9B4c0 code adds an evidence-only adjacent epoch-fence journal,
+  credential-free active-runtime lease snapshots, and read-only runtime
+  admission. Exact fence/root/protocol mismatch is rejected before consulting
+  leases; any active different-epoch/root lease rejects without mutation.
+  `B-COMPAT-EPOCH` and `B-COMPAT-MIXED` are executable. The code owns no
+  pathname or native switch capability and leaves POSIX/Windows cutover,
+  offline restore, adoption, recovery convergence, and Product routing as
+  later gates. Local `make check-harness` passed Ruff, mypy over 642 source
+  files, and 3,824 tests with 23 expected skips. Candidate `18f0bab8` passed
+  all 23 PR checks; retained Linux artifact `9826705491` executed exactly 90
+  manifest nodes with zero skips, failures, or errors and contained both B4c0
+  compatibility rows.
+  PLC9B4c1 accepted code adds the dark POSIX-native offline cutover owner. An
+  exclusive quiescence Port rejects live fence-aware or pre-fence writers
+  before snapshot or path access. On success the owner pins the configured
+  authority chain, creates and flushes a fresh identity-bound sibling epoch
+  namespace, and uses the single adjacent epoch append as the only atomic root
+  pointer. Precreated namespaces and authority swaps fail closed; exact replay
+  performs no second snapshot or append. The two POSIX cutover rows are
+  executable, so the Linux manifest now collects 92 nodes. Windows cutover,
+  concrete backup/restore, recovery convergence, adoption, and every Product
+  route remain closed. Local `make check-harness` passed Ruff, mypy over 643
+  source files, and 3,837 tests with 23 expected skips; the focused component,
+  manifest, and architecture regression passed all 142 tests. Candidate
+  `e99945d2` passed all 23 PR checks; retained Linux artifact `9828433273`
+  executed exactly 92 manifest nodes with zero skips, failures, or errors and
+  contained both POSIX cutover rows.
+  PLC9B4c2 accepted code adds the corresponding dark Windows-native cutover
+  owner. It keeps one cross-platform pathless wire schema and one adjacent
+  epoch pointer, but replaces every native path operation with rooted Windows
+  directory handles, complete ancestor identity pins, direct-child creation,
+  directory flushes, exact visible-child reopening, and identity-bound empty
+  cleanup. `B-COMPAT-CUTOVER-WINDOWS` and
+  `B-COMPAT-PREFENCE-LIVE-WINDOWS` now belong to the mandatory Windows native
+  gate. Concrete backup/restore, recovery convergence, adoption, and every
+  Product route remain closed. Local `make check-harness` passed Ruff, mypy
+  over 644 source files, and 3,837 tests with 33 expected skips; the focused
+  Linux regression passed 132 tests and collected the ten Windows-native
+  component tests as explicit platform skips. Candidate `3d5d4394` passed all
+  23 PR checks; retained Windows artifact `9829593062` executed exactly 29 PLC9B
+  native-component tests and 14 manifest nodes, including both B4c2 rows, with
+  zero skips, failures, or errors.
+  PLC9B4c3a accepted code adds strict offline-restore request, complete
+  snapshot-evidence, materialization, legacy-runtime activation, failure, and
+  result records plus one dark coordinator. The snapshot evidence has a
+  separate exact tree digest and closed complete-state coverage instead of
+  treating the B4c1 opaque snapshot ID as content identity. The coordinator
+  holds exclusive quiescence across evidence lookup, isolated restore, and
+  exclusive old-runtime activation, rechecks the immutable epoch chain around
+  both effects, and performs exact deactivation/discard on drift. It imports no
+  native backend, process launcher, Product state owner, or public route;
+  POSIX/Windows restore and all adoption manifest rows remain planned. Candidate
+  `2fe7953a` passed all 23 PR checks; retained Linux artifact `9831701194`
+  executed exactly 92 manifest nodes with zero skips, failures, or errors.
+  PLC9B4c3b accepted code adds the dark POSIX-native snapshot-to-restore
+  materializer behind the accepted pathless Port. It owns disjoint pinned
+  snapshot, restore, and current-B authorities, binds the latter to the
+  request's fenced-root identity, and validates one canonical complete-state
+  manifest plus the exact payload tree, rejects links/special members, copies
+  through rooted no-follow descriptors, and publishes one isolated namespace
+  through a flushed atomic no-replace edge. A rooted cross-process lock and
+  strict receipt marker make exact replay converge; identity-bound cleanup
+  refuses foreign or changed trees. The composition fixture uses the accepted
+  activation Port but does not launch an old process, so the complete POSIX
+  offline-restore row remains planned and the Linux native gate remains at 92
+  nodes. POSIX and Windows launchers, Windows restore, all adoption work,
+  recovery composition, and Product routing remain closed.
+  PLC9B4c3c accepted code adds the concrete Linux/Bubblewrap activation
+  adapter under `loushang.harness.sandbox`, behind the accepted pathless Port;
+  the resource kernel remains backend-free. A private cross-process lock admits
+  one sandbox profile and one live old-runtime process, while readiness, procfs
+  namespace/root identity checks, guardian lifetime, pidfd signalling, exact
+  replay, and bounded deactivation make
+  `B-COMPAT-OFFLINE-RESTORE-POSIX` executable in the mandatory Linux gate. The
+  Linux manifest therefore advances from 92 to 93 nodes. The activation path
+  remains dark; Windows restore, adoption, recovery convergence, and Product
+  routing remain closed.
+  PLC9B4c4a accepted code adds the dark, pathless legacy-adoption protocol to
+  the resource-owner kernel. It binds an exact current fence and complete
+  immutable legacy-state observation around one narrow, separately owned B
+  transaction Port, accepts only the exact committed Plugin-bound publication,
+  and preserves typed terminal failures. It exposes no locator, credential,
+  path, native handle, Product state, or production capability. A concrete
+  transaction adapter, all five adoption manifest rows, Windows restore,
+  recovery convergence, and Product routing remain closed.
+  PLC9B4c4b accepted code composes the existing closure, transaction-pin,
+  staging/set, and commit owners behind the pathless adoption transaction Port.
+  The adapter is a one-operation private capability: it may retain an opaque
+  credential reference in its execution binding, but returns only the existing
+  credential-free lifecycle/publication evidence. Exact journal confirmation
+  follows every phase owner, and durable staging/commit phases resume without
+  repeating prior effects. A bare transaction pin fails closed because it
+  cannot reconstruct live verified candidates. Tests use real
+  lifecycle/pin/set/commit evidence but deterministic closure and staging
+  Ports, so all five adoption rows, native end-to-end acquisition, Windows
+  restore, and Product routing remain closed.
+  PLC9B4c4c accepted code adds explicit recovery-only `reacquire` seams to the
+  artifact, recursive-closure, and closure-lifecycle owners. An active pinned
+  attempt can now reconstruct live verified candidates from exact durable
+  evidence without Source or resolver fallback, journal append, or lifecycle
+  movement; the adoption adapter replays the same durable pin and continues the
+  accepted staging/commit sequence. Missing or changed evidence fails closed.
+  The seams remain dark, and native end-to-end adoption plus all five adoption
+  manifest rows remain closed.
+  PLC9B4c4d accepted evidence composes the positive legacy-adoption path from
+  the production lifecycle, authenticated acquisition, quarantine, Wheel,
+  closure, pin, POSIX-native Store, committed-set, commit, transaction, and
+  adoption owners. Durable fence reads and filesystem-backed legacy-state
+  recapture bracket both initial adoption and exact replay; the pin remains
+  visible and all legacy/Product-domain bytes remain unchanged. Only
+  `B-COMPAT-ADOPT` is promoted, increasing the Linux native manifest from 93
+  to 94 nodes. The four adoption failure/crash rows, Windows restore, recovery
+  convergence, and Product routing remain closed pending their own evidence.
+  PLC9B4c4e accepted evidence executes authenticated Source refusal and
+  bounded network unavailability through the same native adoption composition.
+  Exact replay performs no extra network call, pin, staging, settlement, set,
+  or publication effect, while legacy and four independently revisioned Product
+  projections remain exact. The Linux native manifest therefore grows from 94
+  to 96 nodes; the two crash rows remain closed.
+  PLC9B4c4f accepted evidence adds the post-commit-CAS crash edge. Recovery
+  and replay require the durable root target and native root identity, return
+  one exact receipt, and do not repeat Source, pin, staging, settlement, or
+  committed-set effects. This promotes Linux native node 97; only the
+  every-precommit crash row remains closed.
+  PLC9B4c4g accepted evidence exercises every durable pre-commit adoption
+  phase by reconstructing the complete Package owner graph over durable
+  evidence. Recovery resumes the same active attempt and converges on one exact
+  receipt without repeated Source, pin, staging, settlement, or committed-set
+  effects. It does not fabricate an interruption event for a dead process;
+  explicit supervisor interruption and greater-epoch retry stay separate. This
+  promotes Linux native node 98 and makes all five adoption rows executable and
+  nonskippable in the retained Linux gate.
+  Candidate head `d961e9d9` passed all 23 PR checks. Harness Quality run
+  `33701887340`, Linux job `100482733307`, and retained artifact `9873812228`
+  executed all 98 Linux manifest nodes plus three authority/recovery guard
+  tests with zero skips, failures, or errors; artifact upload digest
+  `1822656d9150bd1b2ff602906ae229922bcc04527bec6a6f41f3edfb34934d98`.
+  PLC9B4c5 accepted code adds a dark Windows rooted-handle snapshot-to-restore
+  adapter and a separately owned zero-capability AppContainer/Job activation
+  adapter behind the accepted pathless Ports. It pins the snapshot, restore,
+  and current-B ancestor chains, validates the complete canonical bundle,
+  atomically publishes one isolated namespace, proves restored-root access and
+  current-B denial with the process token, and reverses the exact process/ACL/
+  profile authority. Five native component cases and the composed Windows
+  offline-restore manifest row are mandatory and nonskippable. Recovery/state/
+  no-execution and Product routing close in the adjacent B4d/B5 slices.
+  PLC9B4d accepted code closes fourteen recovery, concurrency, cancellation,
+  status, compatibility, no-execution, classification-drift, and secret-
+  persistence rows. Exact committed replay is read-only, same-operation callers
+  converge, stale attempts cannot alter the winner, and an interrupted pinned
+  attempt rolls forward only under a greater fenced attempt epoch.
+  PLC9B5 accepted code adds one capability-poor internal Product router for
+  CLI, RPC, Session, startup, and operations provenance. All five Plugin-bound
+  routes call only one injected transaction Port; direct materializer and
+  publication attempts are durably refused without peer capability. Seven
+  platform-neutral route rows make every PLC9B adversarial manifest row
+  implemented while keeping the adapter out of the author SDK.
+  Final candidate `fb0832d6` passed all 23 PR checks. Retained Linux run
+  `33709473590`/artifact `9876413745` executed 119 manifest nodes plus three
+  guards, while Windows run `33709473605`/artifact `9876434660` executed 34
+  native component tests and all 15 Windows manifest nodes. Every retained
+  PLC9B report recorded zero skips, failures, and errors.
+- PLC9C.0 refinement:
+  [Local Worker Baseline](plugin-lifecycle-plc9c0-baseline.md) freezes the
+  design-only threat model and the current declaration, generic/private launch,
+  Process Host, Sandbox, binding-preparation, generation-owner, and missing
+  Worker seams at source baseline `d2003671`. It adds no execution-model tag,
+  protocol, launch port, process, author-SDK export, or remote-service topology.
 
 This inventory distinguishes accepted reusable owners, Product adapters,
 parallel compatibility paths, and missing target boundaries. “Migrate” or
@@ -75,14 +432,22 @@ it must not absorb Skill, theme, model, or unrelated Product settings.
 | --- | --- | --- | --- |
 | Standard CLI grammar | `src/loushang/harness/cli/profile.py` and `src/loushang/harness/cli/parser.py::build_parser` | Exposes Package materialize/install/update/remove/uninstall and Plugin source/list/enable/disable flags; `--add-plugin`/`--remove-plugin` are compatibility aliases for source mutation | Preserve alias meaning, deprecate rather than reinterpret, and add distinct desired-state commands through a versioned CLI contract |
 | CLI Package startup arguments | `src/loushang/harness/cli/agent_args.py::agent_cli_argument_values` | Projects startup `update_packages` and `check_package_updates` flags into normalized launch values | Retain as inert argument projection; execution remains behind the same PLC9B Package route/refusal gate |
-| CLI Package dispatcher | `src/loushang/harness/cli/package_lifecycle.py::run_package_lifecycle` | Dynamically invokes Package methods on the Session | PLC9B routes Plugin-bound artifacts to the canonical Package/Plugin port or rejects before mutation; PLC9A must not mislabel these as desired commands |
+| CLI Package dispatcher | `src/loushang/harness/cli/package_lifecycle.py::run_package_lifecycle` | A2 prefers `execute_package_lifecycle` with explicit `cli` provenance and one operation id per source; the compatibility method path remains only for Products without the typed seam | Retain the generic compatibility path; an activated Product Session always exposes the typed seam, so Plugin-bound input cannot bypass classification |
 | Shared CLI composition | `src/loushang/harness/cli/host_operations.py::run_standard_cli_operations` | Composes Plugin listing/toggles and Package lifecycle operations as separate early operations | PLC9A1 migrates list/enable/disable; PLC9B migrates artifact operations; retain unrelated Skill/Package behavior |
-| RPC Package commands | `src/loushang/harness/host/rpc/commands/packages.py::RpcPackageCommands` | Resolves runtime first, then Session, for materialize/install/update/remove/uninstall; this is already an RPC surface but not a Plugin management projection | PLC9A2 applies versioned common-port conformance; Plugin-bound artifact commands remain disabled/refused until PLC9B |
+| RPC Package commands | `src/loushang/harness/host/rpc/commands/packages.py::RpcPackageCommands` | A2 resolves the typed executor across runtime/Session before compatibility methods, preserves `rpc` provenance, and derives a stable operation id from the RPC command id | Retain as the existing Package RPC projection; it is not a second Plugin-management protocol and holds no owner/store/materializer authority |
 | Session lifecycle facade | `src/loushang/harness/session/lifecycle_adapter.py::SessionLifecycleOperationAdapter` | Passes Package lifecycle calls to the current Session by dynamic method lookup | Replace Plugin-bound fallback with typed application ports; no concrete ledger/store mutation in the adapter |
-| Public Session optional forwarding | `src/loushang/harness/session/facade_optional.py::SessionPackagePort` and `src/loushang/harness/session/facade_optional.py::SessionFacadeOptionalOperations` | Defines and forwards the public optional Package methods to the Product-bound Package port | Keep as a forwarding-only public seam; apply the same PLC9B route/refusal and PLC9A2 conformance contract without importing concrete lifecycle owners |
-| Session Package controller | `src/loushang/harness/resources/packages/session.py::SessionPackageController` | Owns current Package list/materialize/install/update/remove/uninstall Product composition | Retain for non-Plugin Packages; route or reject Plugin-bound operations at the canonical lifecycle seam |
-| Package operation coordinator | `src/loushang/harness/resources/packages/operations.py::PackageOperationsRuntime` | Coordinates materialization, settings publication, update, remove, async uninstall, and legacy sync uninstall | PLC9B owns artifact transaction migration; PLC9E removes the sync compatibility path after the async caller/conformance gate |
-| Startup source resolver | `src/loushang/harness/resources/packages/source_resolver.py::PackageSourceResolver.resolve_configured_sources_sync` | Defaults missing configured remote sources to synchronous auto-materialization | PLC9B covers this entrypoint; Plugin-bound sources cannot auto-publish outside the bounded Package sink |
+| Public Session optional forwarding | `src/loushang/harness/session/facade_optional.py::SessionPackagePort` and `src/loushang/harness/session/facade_optional.py::SessionFacadeOptionalOperations` | A2 adds a typed, correlated lifecycle forwarder and retains legacy optional methods for compatibility | Keep forwarding-only; it imports records/provenance types but no concrete lifecycle owner |
+| Session Package controller | `src/loushang/harness/resources/packages/session.py::SessionPackageController` | A2 owns one `execute_package_lifecycle` dispatcher and serializes either legacy records or pathless Product records | Retain for non-Plugin Packages; Product-bound operations preserve caller provenance and route once through `PackageOperationsRuntime` |
+| Package operation coordinator | `src/loushang/harness/resources/packages/operations.py::PackageOperationsRuntime` | A2 classifies every single-source operation before materializer, settings, remove, or forget; active bulk update routes each installed record separately | Retain as the choke point; only explicit `non_plugin` may enter legacy behavior, while PLC9E later removes the sync compatibility path |
+| Product application contract | `src/loushang/harness/resources/packages/product_contract.py` | A2 owns the versioned intent/outcome/pathless record, action/provenance types, and capability-poor operation Port separately from concrete activation | Transports and Product Session composition depend only on this contract; it imports no materializer, settings, Store, CLI/RPC, process, or filesystem owner |
+| Product execution binding | `src/loushang/harness/resources/packages/product_lifecycle.py::PackageProductLifecycleExecutionBinding` | Indivisibly binds one lifecycle journal owner to one transaction port and rechecks the transaction's opaque owner binding immediately before every effect | Retain as the only Product-to-transaction binding; no transport or inventory may synthesize the owner identity |
+| Product epoch transaction/query guard | `src/loushang/harness/resources/packages/product_activation.py::PackageProductEpochTransactionGuardPort`, `PackageProductLifecycleActivation.route`, and `PackageProductLifecycleActivation.execute_guarded_query` | Holds the cutover-paired shared runtime guard across fresh admission plus the complete transaction or inventory query; failure deactivates the binding | A2.3 must compose the guard from the same coordination identity as offline cutover; transports receive no lock/path capability |
+| Product lifecycle inventory and rollout mode | `src/loushang/harness/resources/packages/product_contract.py::PackageProductLifecycleInventoryPort`, `PackageProductLifecycleMode`, `PackageProductUpdateTargetV1`, `PackageProductUpdateCheckRequestV1`, and `PackageProductUpdateCheckV1` | Inventory targets bind opaque refs to exact Source identity; the typed check request carries operation id, entrypoint, and canonical scope; check output derives an opaque name and generic failure code; `legacy`, `dark`, and `enforced` are validated at the operation owner | Product inventory must carry the lifecycle `binding_id`, which is rechecked around every inventory access; legacy settings translate canonical `user` back to compatibility `global` without scope fallback |
+| Product update batch manifest | `src/loushang/harness/resources/packages/product_inventory.py::PackageProductUpdateManifestJournal` and `src/loushang/harness/resources/packages/product_contract.py::PackageProductUpdateManifestReceiptV1` | Sole durable writer for credential-free `owner binding + batch operation id + canonical scope + ordered target refs`; it returns an exact pathless receipt, rejects unsafe existing storage, and makes owner/target drift fail closed | Retain separate from the lifecycle journal because it owns collection membership, not child effects; use the shared durable JSONL contract in a private directory with regular-file/no-link/owner/mode checks, directory fsync, lock, and partial-tail repair |
+| Product activation/composition | `src/loushang/harness/resources/packages/product_activation.py::PackageProductLifecycleActivation`, `src/loushang/harness/resources/packages/product_composition.py::compose_package_product_lifecycle`, `src/loushang/harness/resources/packages/product_runtime.py::PackageProductRuntimeBindingV1`, and `src/loushang/harness/resources/packages/plugin_lifecycle/records.py::PackageLifecycleIngressRequestV2`/`PackageLifecycleRequestV2` | A2 recovers durable handoffs, admits/rechecks the exact epoch, writes the stable admission-request identity into an independent V2 lifecycle request field covered by the atomic accept/request fingerprint, preserves the V1 schema/fingerprint and real resolution-environment fingerprint, and requires the Product route DTO to match ingress with its admission receipt. A2.3 validates and activates one Product-owned aggregate before standard Session bootstrap and delivers the same lifecycle/inventory/mode to the Session | Product injects one factory at the canonical bootstrap boundary; omission remains legacy rollback. No default singleton, ambient Store, path, materializer, or deletion authority |
+| Desired-state handoff adapter | `src/loushang/harness/plugin_management/package_product.py::PluginManagementPackageDesiredStateAdapter` | Maps the accepted post-publication install handoff to the sole management command owner with exact Package revision and inventory CAS evidence | Keep capability-poor and install-only in v1; remove/GC requires its separately accepted lifecycle contract |
+| Product retention settlement | `src/loushang/harness/resources/packages/plugin_lifecycle/product_retention.py::PackageProductRetentionSettlementOwner` | Durably owns dependency pin evidence and replay-safe exact transaction-pin release after desired commit | Retain as the narrow handoff port implementation; it has no Store deletion, acquisition, selection, or transport authority |
+| Startup source resolver | `src/loushang/harness/resources/packages/source_resolver.py::PackageSourceResolver.resolve_configured_sources_sync` | A2 routes a missing source with `startup` provenance before any synchronous legacy materialization | Only explicit `non_plugin` may fall back; Product-bound refusal is returned as a handled pathless record |
 
 Source operations and desired operations are never synonyms:
 
@@ -104,8 +469,8 @@ not an authority boundary.
 | Existing source policy port | `src/loushang/harness/resources/packages/materializer.py::PackageSourcePolicy` | Allows/denies a source string before materialization | Retain as one policy input only; it is not authenticated provenance, a bounded sink, or the complete Source Authority |
 | Python installer backend | `src/loushang/harness/resources/packages/materializer.py::PythonPackageInstallerBackend` | Calls `uv pip install` and falls back to `python -m pip install` into a temporary target; the command does not enforce verified wheel-only input | Must not publish untrusted Plugin packages after PLC9B; replace with verified wheel acquisition/extraction or a separately accepted contained build service |
 | Git materializer backend | `src/loushang/harness/resources/packages/materializer.py::GitPackageMaterializerBackend` | Shells out to fetch/clone/checkout Git sources as a source adapter/backend | Limit to authenticated fetch plus provenance/bytes; it must not choose final quarantine, publication, binding, or runtime authority |
-| Startup auto-materializer | `src/loushang/harness/resources/packages/source_resolver.py::PackageSourceResolver.resolve_configured_sources_sync` | Missing configured remote sources default to `install` and call synchronous materialization | Route Plugin-bound input through PLC9B or fail closed; startup cannot be a second safe-publication owner |
-| Package operation runtime | `src/loushang/harness/resources/packages/operations.py::PackageOperationsRuntime` | Coordinates current materialize/install/update/remove/uninstall and settings refresh | Retain non-Plugin behavior; all Plugin-bound paths pass the Package owner and management boundaries |
+| Startup auto-materializer | `src/loushang/harness/resources/packages/source_resolver.py::PackageSourceResolver.resolve_configured_sources_sync` | A2 routes each missing source through the Product lifecycle before the synchronous legacy materializer | Retain explicit-non-Plugin fallback only; startup remains neither a classifier nor a safe-publication owner |
+| Package operation runtime | `src/loushang/harness/resources/packages/operations.py::PackageOperationsRuntime` | A2 is the one pre-effect classification choke point for materialize/install/update/remove/uninstall and per-record bulk update | Retain non-Plugin behavior; handled Plugin input cannot reach settings, materializer, mutable removal, or forget peers |
 | Direct mutable removal | `src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.remove_remote_source` | Directly `shutil.rmtree()`s the mutable materialized target and updates the lockfile without Package lifecycle GC evidence | Never use as immutable Plugin revision GC; route/refuse Plugin-bound targets and narrow/delete at PLC9E after replay/pin/rollback proof |
 | Binding/history forgetting | `src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.forget_remote_source` and `src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.forget_plugin_binding` | Removes current source records/bindings and can remove replay binding history | Preserve history required by desired revisions and pinned Sessions; mutation needs canonical lifecycle evidence or must refuse |
 | Verified revision store | `src/loushang/harness/resources/plugins/revisions.py::PluginRevisionStore` | Copies a resolved local tree into owner-created quarantine, rejects unsafe filesystem entries, computes content identity, freezes, and atomically renames an immutable revision | Retain as a safe publication primitive; integrate only after bounded archive/wheel extraction and dependency closure verification |
@@ -121,9 +486,10 @@ materializes packages.
 
 ## PLC9B.0 Exact Entrypoint And Owner Inventory
 
-PLC9B.0 freezes the pre-runtime-migration snapshot at parent `4bd71d63` in two
-independent source-wide inventories: 95 ingress/declaration rows with 151
-occurrences, and 141 effect/capability rows with 156 occurrences. The executable
+PLC9B.0 began with the pre-runtime-migration snapshot at parent `4bd71d63`; A2
+revises the same two independently checked source-wide inventories to 110
+ingress/declaration rows with 163 occurrences and 141 effect/capability rows
+with 157 occurrences. The executable
 guard parses Python syntax across `src/loushang`, including module/class/function
 scope, imports/renamed imports, names, attributes, and exact dynamic strings.
 Any count or qualified-site change must update this canonical inventory and
@@ -169,15 +535,24 @@ src/loushang/harness/cli/host_operations.py::agent_standard_cli_operation_reques
 src/loushang/harness/cli/host_operations.py::agent_standard_cli_operation_request::update_packages = 1
 src/loushang/harness/cli/launch.py::agent_cli_launch_plan::check_package_updates = 2
 src/loushang/harness/cli/launch.py::agent_cli_launch_plan::update_packages = 2
-src/loushang/harness/cli/package_lifecycle.py::_invoke_source_operation::uninstall_package = 2
+src/loushang/harness/cli/package_lifecycle.py::_invoke_source_operation::execute_package_lifecycle = 1
+src/loushang/harness/cli/package_lifecycle.py::_invoke_source_operation::install_package = 1
+src/loushang/harness/cli/package_lifecycle.py::_invoke_source_operation::uninstall_package = 3
 src/loushang/harness/cli/package_lifecycle.py::_invoke_source_operation::uninstall_package_async = 1
+src/loushang/harness/cli/package_lifecycle.py::_lifecycle_action::install_package = 1
+src/loushang/harness/cli/package_lifecycle.py::_lifecycle_action::materialize_package = 1
+src/loushang/harness/cli/package_lifecycle.py::_lifecycle_action::remove_package = 1
+src/loushang/harness/cli/package_lifecycle.py::_lifecycle_action::uninstall_package = 1
+src/loushang/harness/cli/package_lifecycle.py::_lifecycle_action::update_package = 1
 src/loushang/harness/cli/package_lifecycle.py::run_package_lifecycle::check_package_updates = 3
 src/loushang/harness/cli/package_lifecycle.py::run_package_lifecycle::install_package = 2
 src/loushang/harness/cli/package_lifecycle.py::run_package_lifecycle::materialize_package = 1
 src/loushang/harness/cli/package_lifecycle.py::run_package_lifecycle::remove_package = 1
-src/loushang/harness/cli/package_lifecycle.py::run_package_lifecycle::uninstall_package = 2
+src/loushang/harness/cli/package_lifecycle.py::run_package_lifecycle::uninstall_package = 1
 src/loushang/harness/cli/package_lifecycle.py::run_package_lifecycle::update_package = 1
 src/loushang/harness/cli/package_lifecycle.py::run_package_lifecycle::update_packages = 4
+src/loushang/harness/cli/package_lifecycle.py::_invoke_operation::check_package_updates = 1
+src/loushang/harness/cli/package_lifecycle.py::_invoke_operation::update_packages = 2
 src/loushang/harness/cli/profile.py::<module>::check_package_updates = 1
 src/loushang/harness/cli/profile.py::<module>::install_package = 1
 src/loushang/harness/cli/profile.py::<module>::materialize_package = 1
@@ -194,15 +569,23 @@ src/loushang/harness/host/rpc/commands/packages.py::<module>::update_package = 2
 src/loushang/harness/host/rpc/commands/packages.py::<module>::update_packages = 2
 src/loushang/harness/host/rpc/commands/packages.py::RpcPackageCommands.bindings::get_packages = 2
 src/loushang/harness/host/rpc/commands/packages.py::RpcPackageCommands.get_packages::get_packages = 6
-src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities.check_package_updates::check_package_updates = 2
+src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities.check_package_updates::check_package_updates = 1
 src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities.get_packages::get_packages = 2
-src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities.install_package::install_package = 2
-src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities.materialize_package::materialize_package = 2
-src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities.remove_package::remove_package = 2
-src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities.uninstall_package::uninstall_package = 2
-src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities.uninstall_package::uninstall_package_async = 1
-src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities.update_package::update_package = 2
-src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities.update_packages::update_packages = 2
+src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities.install_package::install_package = 1
+src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities.materialize_package::materialize_package = 1
+src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities.remove_package::remove_package = 1
+src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities.uninstall_package::uninstall_package = 1
+src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities.update_package::update_package = 1
+src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities.update_packages::update_packages = 1
+src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities._invoke_collection::check_package_updates = 1
+src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities._invoke_collection::update_packages = 1
+src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities._invoke_lifecycle::execute_package_lifecycle = 3
+src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities._invoke_lifecycle::install_package = 1
+src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities._invoke_lifecycle::materialize_package = 1
+src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities._invoke_lifecycle::remove_package = 1
+src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities._invoke_lifecycle::uninstall_package = 1
+src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities._invoke_lifecycle::uninstall_package_async = 1
+src/loushang/harness/host/rpc/commands/packages.py::_DynamicPackageCapabilities._invoke_lifecycle::update_package = 1
 src/loushang/harness/host/rpc/commands/packages.py::_PackageCapabilities.check_package_updates::check_package_updates = 1
 src/loushang/harness/host/rpc/commands/packages.py::_PackageCapabilities.get_packages::get_packages = 1
 src/loushang/harness/host/rpc/commands/packages.py::_PackageCapabilities.install_package::install_package = 1
@@ -214,6 +597,8 @@ src/loushang/harness/host/rpc/commands/packages.py::_PackageCapabilities.update_
 src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.check_package_updates::check_package_updates = 1
 src/loushang/harness/resources/packages/materializer.py::PackageMaterializer.materialize_remote_source_sync::materialize_remote_source_sync = 1
 src/loushang/harness/resources/packages/session.py::SessionPackageController.check_package_updates::check_package_updates = 2
+src/loushang/harness/resources/packages/session.py::SessionPackageController.execute_package_lifecycle::execute_package_lifecycle = 1
+src/loushang/harness/resources/packages/session.py::SessionPackageController.execute_package_lifecycle_collection::check_package_updates = 1
 src/loushang/harness/resources/packages/session.py::SessionPackageController.get_packages::get_packages = 1
 src/loushang/harness/resources/packages/session.py::SessionPackageController.install_package::install_package = 1
 src/loushang/harness/resources/packages/session.py::SessionPackageController.materialize_package::materialize_package = 1
@@ -222,8 +607,9 @@ src/loushang/harness/resources/packages/session.py::SessionPackageController.uni
 src/loushang/harness/resources/packages/session.py::SessionPackageController.uninstall_package_async::uninstall_package_async = 1
 src/loushang/harness/resources/packages/session.py::SessionPackageController.update_package::update_package = 1
 src/loushang/harness/resources/packages/session.py::SessionPackageController.update_packages::update_packages = 1
-src/loushang/harness/resources/packages/source_resolver.py::PackageSourceResolver.resolve_configured_sources_sync::materialize_remote_source_sync = 1
+src/loushang/harness/resources/packages/source_resolver.py::PackageSourceResolver._materialize_startup_source::materialize_remote_source_sync = 2
 src/loushang/harness/session/facade_optional.py::SessionFacadeOptionalOperations.check_package_updates::check_package_updates = 2
+src/loushang/harness/session/facade_optional.py::SessionFacadeOptionalOperations.execute_package_lifecycle::execute_package_lifecycle = 2
 src/loushang/harness/session/facade_optional.py::SessionFacadeOptionalOperations.get_packages::get_packages = 2
 src/loushang/harness/session/facade_optional.py::SessionFacadeOptionalOperations.install_package::install_package = 2
 src/loushang/harness/session/facade_optional.py::SessionFacadeOptionalOperations.materialize_package::materialize_package = 2
@@ -233,6 +619,7 @@ src/loushang/harness/session/facade_optional.py::SessionFacadeOptionalOperations
 src/loushang/harness/session/facade_optional.py::SessionFacadeOptionalOperations.update_package::update_package = 2
 src/loushang/harness/session/facade_optional.py::SessionFacadeOptionalOperations.update_packages::update_packages = 2
 src/loushang/harness/session/facade_optional.py::SessionPackagePort.check_package_updates::check_package_updates = 1
+src/loushang/harness/session/facade_optional.py::SessionPackagePort.execute_package_lifecycle::execute_package_lifecycle = 1
 src/loushang/harness/session/facade_optional.py::SessionPackagePort.get_packages::get_packages = 1
 src/loushang/harness/session/facade_optional.py::SessionPackagePort.install_package::install_package = 1
 src/loushang/harness/session/facade_optional.py::SessionPackagePort.materialize_package::materialize_package = 1
@@ -360,8 +747,8 @@ src/loushang/harness/resources/packages/operations.py::PackageMaterializerPort.u
 src/loushang/harness/resources/packages/operations.py::PackageMaterializerPort.update_remote_source::update_remote_source = 1
 src/loushang/harness/resources/packages/operations.py::PackageOperationsRuntime::PackageOperationsRuntime = 1
 src/loushang/harness/resources/packages/operations.py::PackageOperationsRuntime._forget_remote_source::forget_remote_source = 1
-src/loushang/harness/resources/packages/operations.py::PackageOperationsRuntime.materialize::materialize_remote_source = 1
-src/loushang/harness/resources/packages/operations.py::PackageOperationsRuntime.remove::remove_remote_source = 1
+src/loushang/harness/resources/packages/operations.py::PackageOperationsRuntime._materialize_legacy::materialize_remote_source = 1
+src/loushang/harness/resources/packages/operations.py::PackageOperationsRuntime._remove_legacy::remove_remote_source = 1
 src/loushang/harness/resources/packages/operations.py::PackageOperationsRuntime.update::update_remote_source = 1
 src/loushang/harness/resources/packages/operations.py::PackageOperationsRuntime.update_all::update_all_remote_sources = 1
 src/loushang/harness/resources/packages/projection.py::<module>::PackageMaterializer = 1
@@ -379,7 +766,7 @@ src/loushang/harness/resources/packages/source_resolver.py::<module>::PackageMat
 src/loushang/harness/resources/packages/source_resolver.py::PackageSourceResolver::PackageMaterializer = 1
 src/loushang/harness/resources/packages/source_resolver.py::PackageSourceResolver::PackageSourceResolver = 1
 src/loushang/harness/resources/packages/source_resolver.py::PackageSourceResolver.prepare_configured_remote_records::prepare_remote_source = 1
-src/loushang/harness/resources/packages/source_resolver.py::PackageSourceResolver.resolve_configured_sources_sync::materialize_remote_source_sync = 1
+src/loushang/harness/resources/packages/source_resolver.py::PackageSourceResolver._materialize_startup_source::materialize_remote_source_sync = 2
 src/loushang/harness/resources/plugins/__init__.py::<module>::PluginRevisionStore = 2
 src/loushang/harness/resources/plugins/authority.py::PluginBindingStore.bind_plugin_packages::bind_plugin_packages = 1
 src/loushang/harness/resources/plugins/authority.py::PluginBindingStore.publish_plugin_packages::publish_plugin_packages = 1
@@ -418,15 +805,20 @@ capability in a new scope cannot pass silently.
 | Contribution execution model | `src/loushang/harness/resources/plugins/declarations.py::PluginContributionExecutionModel` | Exactly `data_only` or `in_process`; this is the current execution-topology axis | Add `local_worker` only through a new versioned IR/codec and compatibility fixtures; `remote_service` remains separately deferred |
 | Author SDK | `src/loushang/plugin/__init__.py` | Exposes declarative authoring/validation and the narrow Provider runtime ABI; no management, Worker, Process Host, or Sandbox owner objects | Preserve the authority firewall; any future Worker authoring surface is data-only and versioned |
 | Raw process owner | `src/loushang/harness/workspace/process/host.py::ProcessHost` | Owns bounded child count, I/O limits, process lifetime, termination, and an optional containment-planner hook | Reuse only behind the authorized launcher; raw construction/start is not Worker admission |
-| Generic authorized process launcher | `src/loushang/harness/tools/process_hosting.py::ScopeBoundProcessLauncher` | Its public `start` runs Policy/Approval/Authorization and permits the configured best-effort or required containment mode; it rejects private managed requests | Retain for general process Tools, but explicitly forbid this generic public method for managed Worker admission |
+| Generic authorized process launcher | `src/loushang/harness/tools/process_hosting.py::ScopeBoundProcessLauncher.start` | Runs Policy/Approval/Authorization and permits the configured best-effort or required containment mode; it rejects private managed requests | Retain for general process Tools, but explicitly forbid this generic public method for managed Worker admission |
 | Private managed-process substrate | `src/loushang/harness/tools/process_hosting.py::_managed_process_launch_request`, `src/loushang/harness/tools/process_hosting.py::ScopeBoundProcessLauncher._start_managed`, and `src/loushang/harness/tools/process_hosting.py::ScopeBoundProcessLauncher._verify_managed_start_authority` | Existing private mechanics require an owner-minted request/launcher, mandatory Approval, required containment, and verification of a Sandbox-owner-bound plan | Reuse behind a new owner-only `ManagedWorkerLaunchPort`; neither the private symbols nor the generic launcher become a Worker-facing API |
 | Existing managed caller precedent | `src/loushang/harness/tools/skill_actions.py::execute_managed_skill_action` | Managed Skill actions privately construct the sealed request and call the managed start path after verifying authority | Retain as proof of the current owner-only chain, not as a Worker port or declaration contract |
 | Long-lived containment planner | `src/loushang/harness/sandbox/process.py::HostedProcessContainmentPlanner` | Plans/tracks hosted-process containment; required mode fails closed and verifies Sandbox-owned managed plans | Retain as the Worker containment owner; degraded/best-effort plans never satisfy managed Worker admission |
 | Process/Sandbox composition root | `src/loushang/harness/sandbox/runtime.py::SandboxExecutionRuntime.bind_process_launcher` | Mints the current generic launcher over its owned Process Host and containment planner and privately binds managed-owner authority when available; its return type alone does not prove Worker-grade admission | PLC9C adds the separate owner-only managed Worker port at this owner composition boundary; Worker hosts do not construct Process Host/Sandbox directly |
 | Exec-scope Sandbox service | `src/loushang/harness/sandbox/service.py::LocalSandboxService` | Owns selected backend Exec scopes and fail-closed behavior when containment is required | Retain for Exec; do not misidentify it as the complete hosted-Worker chain |
-| Capability domain hosts | `src/loushang/harness/capabilities/component_host.py::CapabilityComponentHost` and `src/loushang/harness/capabilities/owner_component_host.py::CapabilityOwnerComponentHost` | Own Capability semantic admission/binding and exact owner composition | Retain; a Capability Worker protocol terminates here, not in Plugin management |
+| Capability binding preparation hosts | `src/loushang/harness/capabilities/component_host.py::CapabilityComponentHost` and `src/loushang/harness/capabilities/owner_component_host.py::CapabilityOwnerComponentHost` | Prepare exact Capability and owner-component bindings; neither host publishes an owner generation | Retain as exact domain admission/preparation seams; a Worker adapter may delegate here but cannot treat preparation as publication |
+| Capability generation owner | `src/loushang/harness/capabilities/component_runtime.py::CapabilityOwnerComponentRuntime` and `src/loushang/harness/capabilities/component_runtime.py::CapabilityOwnerComponentBinder` | Own current/retired owner-component generations and the atomic publication window after all selected bindings construct | Retain as the Capability publication/retirement owner; neither a Worker transport nor Plugin management may replace it |
 | Resource owner generation | `src/loushang/harness/resource_catalog/generation.py::PreparedResourceOwnerGeneration` | Owns prepared Resource/Skill Catalog generation publication/rollback/retirement | Retain; Worker-derived Resource facts still publish through this owner path |
 | Continuity domain host | `src/loushang/harness/continuity/plugin_provider.py::PluginContinuityProvider` | Owns Continuity provider generation calls, mutation preparation, and domain deletion candidates | Retain; a Worker transport cannot become the Continuity owner |
+| Owner-only Worker launch port | absent at PLC9C.0 | No current public or private type is a `ManagedWorkerLaunchPort`; managed Skill execution is only a precedent over private Process substrate | PLC9C2 introduces a narrow port only at the Process/Sandbox composition root after required containment is bound |
+| Product-neutral Worker transport and supervisor | absent at PLC9C.0 | No handshake, heartbeat, bounded framing, correlation, cancellation tombstone, ordered shutdown, crash fence, exclusive supervisor epoch, or restart-budget owner exists | PLC9C3 adds mechanism only; it owns no semantic action, contribution publication, rollback, or retirement |
+| Exact domain Worker adapter | absent at PLC9C.0 | No Worker envelope binds protocol messages to one Plugin revision, contribution, Product/scope, owner generation, and Host-side domain action | PLC9C4 adds one low-authority read-only adapter; existing exact domain owners retain semantic admission, publication, rollback, and retirement |
+| Remote-service topology | absent at PLC9C.0 | No service identity, authentication, egress, tenant, residency, or remote revocation contract exists | Defer to a separate threat model; never add it as a `local_worker` compatibility arm |
 
 There is no implemented Plugin `local_worker` declaration or supervised Worker
 envelope on this baseline. There is also no accepted `remote_service`
@@ -474,7 +866,8 @@ and transport-neutral query port is now implemented by
 `src/loushang/harness/plugin_management/application.py` and frozen by the
 PLC9A1 contract:
 
-- RPC/UI/management-SDK transport conformance fixture (CLI is bound in A1-3);
+- UI/management-SDK transport bindings and their conformance fixtures; CLI and
+  the existing Package RPC surface are bound through A2;
 - complete bounded byte/archive/wheel materialization transaction;
 - versioned `local_worker` execution-topology IR, handshake, semantic protocol, and
   supervised domain-host envelope;
