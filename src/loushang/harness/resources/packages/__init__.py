@@ -112,6 +112,15 @@ if TYPE_CHECKING:
         PackageProductRouteContractError,
         PackageProductRouteRequestV1,
     )
+    from loushang.harness.resources.packages.product_runtime import (
+        PACKAGE_PRODUCT_RUNTIME_BINDING_VERSION,
+        PACKAGE_PRODUCT_RUNTIME_REQUEST_VERSION,
+        PackageProductRuntimeActivationError,
+        PackageProductRuntimeBindingV1,
+        PackageProductRuntimeFactoryPort,
+        PackageProductRuntimeRequestV1,
+        activate_package_product_runtime,
+    )
     from loushang.harness.resources.packages.projection import (
         collect_projected_package_entries,
         project_package_entries,
@@ -164,6 +173,8 @@ _EXPORT_MODULES = {
     "PACKAGE_PRODUCT_UPDATE_MANIFEST_RECEIPT_VERSION": "loushang.harness.resources.packages.product_contract",
     "PACKAGE_PRODUCT_UPDATE_CHECK_REQUEST_VERSION": "loushang.harness.resources.packages.product_contract",
     "PACKAGE_PRODUCT_ROUTE_VERSION": "loushang.harness.resources.packages.product_lifecycle",
+    "PACKAGE_PRODUCT_RUNTIME_BINDING_VERSION": "loushang.harness.resources.packages.product_runtime",
+    "PACKAGE_PRODUCT_RUNTIME_REQUEST_VERSION": "loushang.harness.resources.packages.product_runtime",
     "PACKAGE_PRODUCT_UPDATE_MANIFEST_VERSION": "loushang.harness.resources.packages.product_inventory",
     "FilesystemPackageResourceInventory": "loushang.harness.resources.packages.inventory",
     "GitPackageMaterializerBackend": "loushang.harness.resources.packages.materializer",
@@ -210,6 +221,10 @@ _EXPORT_MODULES = {
     "PackageProductPublishAttemptV1": "loushang.harness.resources.packages.product_lifecycle",
     "PackageProductRouteContractError": "loushang.harness.resources.packages.product_lifecycle",
     "PackageProductRouteRequestV1": "loushang.harness.resources.packages.product_lifecycle",
+    "PackageProductRuntimeActivationError": "loushang.harness.resources.packages.product_runtime",
+    "PackageProductRuntimeBindingV1": "loushang.harness.resources.packages.product_runtime",
+    "PackageProductRuntimeFactoryPort": "loushang.harness.resources.packages.product_runtime",
+    "PackageProductRuntimeRequestV1": "loushang.harness.resources.packages.product_runtime",
     "PackageProductRecoveryPort": "loushang.harness.resources.packages.product_activation",
     "PackageProductRoutingDisposition": "loushang.harness.resources.packages.product_contract",
     "PackageProductUpdateCheckV1": "loushang.harness.resources.packages.product_contract",
@@ -235,6 +250,7 @@ _EXPORT_MODULES = {
     "PythonPackageInstallerBackend": "loushang.harness.resources.packages.materializer",
     "ResolvedPackageResourceRoots": "loushang.harness.resources.packages.roots",
     "SelectedPluginPackageInput": "loushang.harness.resources.packages.roots",
+    "activate_package_product_runtime": "loushang.harness.resources.packages.product_runtime",
     "clone_source_and_ref": "loushang.harness.resources.packages.source",
     "collect_package_catalog": "loushang.harness.resources.packages.catalog",
     "collect_projected_package_entries": "loushang.harness.resources.packages.projection",

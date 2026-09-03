@@ -35,16 +35,21 @@ class RuntimeScope:
 
     paths: PlatformPaths
     run_id: str
+    run_namespace: str = "runs"
 
     def __post_init__(self) -> None:
         if not _is_runtime_run_id(self.run_id):
             raise ValueError(
                 "runtime run id must be 32 lowercase hexadecimal characters"
             )
+        if not _is_runtime_namespace(self.run_namespace):
+            raise ValueError(
+                "runtime run namespace must be a lowercase safe path component"
+            )
 
     @property
     def runs_root(self) -> Path:
-        return self.paths.runtime / "runs"
+        return self.paths.runtime / self.run_namespace
 
     @property
     def run_dir(self) -> Path:
@@ -63,6 +68,7 @@ def resolve_runtime_scope(
     *,
     paths: PlatformPaths | None = None,
     run_id: str | None = None,
+    run_namespace: str = "runs",
 ) -> RuntimeScope:
     """Resolve one scope without touching the filesystem."""
 
@@ -70,6 +76,7 @@ def resolve_runtime_scope(
     return RuntimeScope(
         paths=paths or resolve_platform_paths(),
         run_id=normalized_run_id,
+        run_namespace=run_namespace,
     )
 
 
@@ -152,6 +159,7 @@ class RunLease:
     ) -> RunLease:
         """Create the run tree, sweep inactive residue, and hold its lock."""
 
+        _prepare_private_directory(scope.paths.runtime)
         _prepare_private_directory(scope.runs_root)
         report = sweep_runtime_runs(scope, policy=sweep_policy, now=now)
         scope.run_dir.mkdir(mode=0o700, exist_ok=False)
@@ -607,7 +615,58 @@ def _remove_owned_run_tree(
             errno.ENOTSUP,
             "safe runtime tree removal is unavailable on this platform",
         )
-    shutil.rmtree(path)
+    shutil.rmtree(
+        path,
+        onerror=lambda function, raw_path, error_info: _retry_owned_tree_removal(
+            root=path,
+            function=function,
+            raw_path=raw_path,
+            error_info=error_info,
+        ),
+    )
+
+
+def _retry_owned_tree_removal(
+    *,
+    root: Path,
+    function: Callable[[str], object],
+    raw_path: str,
+    error_info: tuple[type[BaseException], BaseException, object],
+) -> None:
+    """Repair an owned read-only entry and retry only the failed operation.
+
+    Removing a file requires write access to its parent, so repairing only the
+    failed leaf can strand the quarantined tree.  Both repairs stay within the
+    already-validated quarantine root and never follow links.
+    """
+
+    path = Path(raw_path)
+    if path != root and root not in path.parents:
+        raise error_info[1]
+    try:
+        if path != root:
+            _repair_owned_removal_entry(path.parent, root=root)
+        _repair_owned_removal_entry(path, root=root)
+        function(raw_path)
+    except (NotImplementedError, OSError):
+        raise error_info[1]
+
+
+def _repair_owned_removal_entry(path: Path, *, root: Path) -> None:
+    if path != root and root not in path.parents:
+        raise PermissionError(f"runtime cleanup escaped quarantine root: {path}")
+    metadata = path.lstat()
+    if _is_reparse_point(metadata) or not _owned_by_current_user(metadata):
+        raise PermissionError(f"runtime cleanup entry is not safely owned: {path}")
+    if stat.S_ISLNK(metadata.st_mode):
+        return
+    if stat.S_ISDIR(metadata.st_mode):
+        mode = 0o700
+    elif stat.S_ISREG(metadata.st_mode):
+        mode = 0o600
+    else:
+        raise PermissionError(f"runtime cleanup entry has an unsafe type: {path}")
+    os.chmod(path, mode, follow_symlinks=False)
 
 
 def _validate_lease_identity(
@@ -793,6 +852,17 @@ def _release_candidate(candidate: _InactiveRun) -> None:
 def _is_runtime_run_id(value: str) -> bool:
     return len(value) == 32 and all(
         character in "0123456789abcdef" for character in value
+    )
+
+
+def _is_runtime_namespace(value: str) -> bool:
+    return (
+        1 <= len(value) <= 64
+        and value[0] in "abcdefghijklmnopqrstuvwxyz0123456789"
+        and all(
+            character in "abcdefghijklmnopqrstuvwxyz0123456789-"
+            for character in value
+        )
     )
 
 

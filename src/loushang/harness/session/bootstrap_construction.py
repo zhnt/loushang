@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Generic, Protocol, TypeVar, cast
 
 from loushang.ai.model import Model
@@ -27,6 +28,11 @@ from loushang.harness.resources.packages.product_contract import (
     PackageProductLifecycleInventoryPort,
     PackageProductLifecycleMode,
     PackageProductLifecycleOperationPort,
+)
+from loushang.harness.resources.packages.product_runtime import (
+    PackageProductRuntimeFactoryPort,
+    PackageProductRuntimeRequestV1,
+    activate_package_product_runtime,
 )
 from loushang.harness.resources.packages.roots import SelectedPluginPackageInput
 from loushang.harness.resources.types import ResourceBundle
@@ -301,6 +307,9 @@ class AgentProductConstructionRequest(Generic[AgentT, SessionT, StandardExtensio
             list[str] | None,
             str,
             NoToolsMode | None,
+            PackageProductLifecycleOperationPort | None,
+            PackageProductLifecycleInventoryPort | None,
+            PackageProductLifecycleMode,
         ],
         SessionT,
     ]
@@ -420,6 +429,9 @@ class AgentProductConstructionRuntime(Generic[AgentT, SessionT, StandardExtensio
                         active,
                         prompt,
                         mode,
+                        request.configuration.package_product_lifecycle,
+                        request.configuration.package_product_inventory,
+                        request.configuration.package_product_lifecycle_mode,
                     )
                 ),
             )
@@ -451,6 +463,7 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
         Sequence[ToolDefinition],
     ]
     get_tool_source_info: Callable[[StandardExtensionT, str], object | None]
+    product_id: str | None = None
     product_tool_pack_id: str = "product.registry"
     extension_tool_pack_id: str = "product.extensions"
     bind_session_side_question: (
@@ -468,6 +481,7 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
         package_product_lifecycle: PackageProductLifecycleOperationPort | None = None,
         package_product_inventory: PackageProductLifecycleInventoryPort | None = None,
         package_product_lifecycle_mode: PackageProductLifecycleMode = "legacy",
+        package_product_runtime_factory: PackageProductRuntimeFactoryPort | None = None,
         session_id: str,
         cwd: str,
         extension_flag_values: ExtensionFlagValues | None,
@@ -498,6 +512,9 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
                 list[str] | None,
                 str,
                 NoToolsMode | None,
+                PackageProductLifecycleOperationPort | None,
+                PackageProductLifecycleInventoryPort | None,
+                PackageProductLifecycleMode,
             ],
             SessionT,
         ]
@@ -512,6 +529,9 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
                 list[str] | None,
                 str,
                 NoToolsMode | None,
+                PackageProductLifecycleOperationPort | None,
+                PackageProductLifecycleInventoryPort | None,
+                PackageProductLifecycleMode,
             ],
             SessionT,
         ],
@@ -524,6 +544,18 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
         """Build the canonical request and delegate all execution to its owner."""
 
         settings = services.settings_manager.get_settings()
+        if package_product_runtime_factory is not None and (
+            package_product_lifecycle is not None
+            or package_product_inventory is not None
+            or package_product_lifecycle_mode != "legacy"
+        ):
+            raise ValueError(
+                "Package Product runtime factory cannot be mixed with split bindings"
+            )
+        if package_product_runtime_factory is not None and self.product_id is None:
+            raise ValueError(
+                "Package Product identity is required for runtime activation"
+            )
         bootstrap_capability_runtime = self.bind_capabilities()
         bootstrap_capability_handles = _root_owned_resource_handles(
             bootstrap_capability_runtime
@@ -538,6 +570,9 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
             active: list[str] | None,
             prompt: str,
             mode: NoToolsMode | None,
+            product_lifecycle: PackageProductLifecycleOperationPort | None,
+            product_inventory: PackageProductLifecycleInventoryPort | None,
+            product_lifecycle_mode: PackageProductLifecycleMode,
         ) -> SessionT:
             if self.resolve_session_capability_profile is not None:
                 bootstrap_capability_runtime.select_final_profile(
@@ -562,6 +597,9 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
                             list[str] | None,
                             str,
                             NoToolsMode | None,
+                            PackageProductLifecycleOperationPort | None,
+                            PackageProductLifecycleInventoryPort | None,
+                            PackageProductLifecycleMode,
                         ],
                         SessionT,
                     ],
@@ -576,6 +614,9 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
                     active,
                     prompt,
                     mode,
+                    product_lifecycle,
+                    product_inventory,
+                    product_lifecycle_mode,
                 )
             factory_with_side_question = cast(
                 Callable[
@@ -589,6 +630,9 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
                         list[str] | None,
                         str,
                         NoToolsMode | None,
+                        PackageProductLifecycleOperationPort | None,
+                        PackageProductLifecycleInventoryPort | None,
+                        PackageProductLifecycleMode,
                     ],
                     SessionT,
                 ],
@@ -605,9 +649,25 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
                 active,
                 prompt,
                 mode,
+                product_lifecycle,
+                product_inventory,
+                product_lifecycle_mode,
             )
 
         try:
+            if package_product_runtime_factory is not None:
+                assert self.product_id is not None
+                package_runtime = activate_package_product_runtime(
+                    package_product_runtime_factory,
+                    PackageProductRuntimeRequestV1(
+                        product_id=self.product_id,
+                        session_id=session_id,
+                        cwd=str(Path(cwd).resolve(strict=False)),
+                    ),
+                )
+                package_product_lifecycle = package_runtime.lifecycle
+                package_product_inventory = package_runtime.inventory
+                package_product_lifecycle_mode = package_runtime.mode
             result = AgentProductConstructionRuntime[
                 AgentT,
                 SessionT,

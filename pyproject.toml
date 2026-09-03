@@ -39,6 +39,8 @@ dev = [
 pythonpath = ["src"]
 testpaths = ["tests"]
 addopts = ["--import-mode=importlib"]
+tmp_path_retention_count = 0
+tmp_path_retention_policy = "none"
 markers = [
   "live: real provider verification that may require network access and credentials",
   "requires_host_runtime: requires host loopback, process, or file-index capabilities unavailable in a restricted sandbox",

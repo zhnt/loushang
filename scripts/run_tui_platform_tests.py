@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import argparse
 import os
+import subprocess
+import sys
 from collections.abc import Sequence
-
-import pytest
+from pathlib import Path
 
 SHARED_TEST_PATHS = (
     "tests/tui/test_import_boundaries.py",
@@ -49,14 +50,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         choices=("shared", "posix", "windows", "current"),
     )
     args, pytest_args = parser.parse_known_args(argv)
-    return pytest.main(
+    runner = Path(__file__).resolve().parent / "dev" / "run_pytest.py"
+    return subprocess.run(
         [
+            sys.executable,
+            str(runner),
             *profile_test_paths(args.profile),
             "--strict-markers",
             "--strict-config",
             *pytest_args,
-        ]
-    )
+        ],
+        check=False,
+    ).returncode
 
 
 if __name__ == "__main__":

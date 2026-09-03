@@ -16,6 +16,7 @@ endif
 BINARY_NAME := loushang$(EXE_EXT)
 DIST_BINARY := dist/$(BINARY_NAME)
 AI_OFFLINE_ENV := env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_OAUTH_TOKEN -u ANTHROPIC_BASE_URL -u ARK_API_KEY -u BAIDU_QIANFAN_API_KEY -u COPILOT_GITHUB_TOKEN -u DASHSCOPE_API_KEY -u DEEPSEEK_API_KEY -u GH_TOKEN -u GITHUB_TOKEN -u HUNYUAN_API_KEY -u MINIMAX_API_KEY -u MOONSHOT_API_KEY -u OPENAI_API_KEY -u QIANFAN_API_KEY -u STEPFUN_API_KEY -u STEP_API_KEY -u ZAI_API_KEY
+PYTEST_RUNNER := python scripts/dev/run_pytest.py
 
 HARNESSTUI_SHARED_SOURCES := \
 	src/loushang/harness/commands \
@@ -103,8 +104,16 @@ CODING_TUI_PRODUCT_TEST_PATHS := \
 	tests/coding/test_coding_settings_presentation.py \
 	tests/coding/test_ui_session_view.py
 HARNESS_SOURCES := src/loushang/harness
+HARNESS_RUNTIME_SUPPORT_SOURCES := \
+	src/loushang/foundation/platform_paths.py \
+	src/loushang/foundation/runtime_scope.py \
+	scripts/dev/run_pytest.py \
+	scripts/run_tui_native_tests.py \
+	scripts/run_tui_platform_tests.py
 HARNESS_TEST_PATHS := \
 	tests/harness \
+	tests/dev/test_run_pytest.py \
+	tests/foundation/test_runtime_scope.py \
 	tests/coding/test_agent_session_model_input.py \
 	tests/architecture/test_import_boundaries.py \
 	tests/architecture/test_capability_runtime_convergence_pr0.py \
@@ -129,16 +138,16 @@ bootstrap:
 	. .venv/bin/activate && uv pip install -e .[dev]
 
 test:
-	. .venv/bin/activate && uv run pytest tests -q
+	. .venv/bin/activate && uv run $(PYTEST_RUNNER) tests -q
 
 test-sandbox:
-	. .venv/bin/activate && uv run pytest tests --skip-host-runtime -q
+	. .venv/bin/activate && uv run $(PYTEST_RUNNER) tests --skip-host-runtime -q
 
 test-host-runtime:
-	. .venv/bin/activate && uv run pytest tests -m requires_host_runtime -q
+	. .venv/bin/activate && uv run $(PYTEST_RUNNER) tests -m requires_host_runtime -q
 
 test-ai:
-	. .venv/bin/activate && $(AI_OFFLINE_ENV) uv run pytest tests/ai tests/protocols tests/examples/test_ai_examples.py tests/examples/test_auth_examples.py -m "not live" -q
+	. .venv/bin/activate && $(AI_OFFLINE_ENV) uv run $(PYTEST_RUNNER) tests/ai tests/protocols tests/examples/test_ai_examples.py tests/examples/test_auth_examples.py -m "not live" -q
 
 check-ai: lint-ai typecheck-ai check-ai-catalog check-ai-imports check-ai-examples check-ai-coverage
 
@@ -150,28 +159,28 @@ check-ai-imports:
 
 check-ai-examples:
 	$(AI_OFFLINE_ENV) uv run python scripts/ai/check_examples.py
-	$(AI_OFFLINE_ENV) uv run pytest tests/examples -q
+	$(AI_OFFLINE_ENV) uv run $(PYTEST_RUNNER) tests/examples -q
 
 check-ai-coverage:
 	mkdir -p .artifacts/ai
-	. .venv/bin/activate && $(AI_OFFLINE_ENV) uv run pytest tests/ai tests/protocols tests/examples/test_ai_examples.py -m "not live" --cov=src/loushang/ai --cov-report=term-missing:skip-covered --cov-report=xml:.artifacts/ai/coverage.xml --cov-fail-under=90 -q
+	. .venv/bin/activate && $(AI_OFFLINE_ENV) uv run $(PYTEST_RUNNER) tests/ai tests/protocols tests/examples/test_ai_examples.py -m "not live" --cov=src/loushang/ai --cov-report=term-missing:skip-covered --cov-report=xml:.artifacts/ai/coverage.xml --cov-fail-under=90 -q
 	uv run python scripts/ai/check_coverage_targets.py .artifacts/ai/coverage.xml
 
 check-harness: lint-harness typecheck-harness test-harness
 
 lint-harness:
-	uv --cache-dir .uv-cache run --extra dev ruff check $(HARNESS_SOURCES) $(HARNESS_TEST_PATHS)
+	uv --cache-dir .uv-cache run --extra dev ruff check $(HARNESS_SOURCES) $(HARNESS_RUNTIME_SUPPORT_SOURCES) $(HARNESS_TEST_PATHS)
 
 typecheck-harness:
-	uv --cache-dir .uv-cache run --extra dev mypy --follow-imports=silent $(HARNESS_SOURCES)
+	uv --cache-dir .uv-cache run --extra dev mypy --follow-imports=silent $(HARNESS_SOURCES) $(HARNESS_RUNTIME_SUPPORT_SOURCES)
 
 test-harness:
-	uv --cache-dir .uv-cache run --extra dev pytest $(HARNESS_TEST_PATHS) -q
+	uv --cache-dir .uv-cache run --extra dev $(PYTEST_RUNNER) $(HARNESS_TEST_PATHS) -q
 
 check-architecture-docs:
 	.venv/bin/ruff check scripts/architecture/render_current_package_dependencies.py tests/architecture/test_architecture_documentation.py
 	.venv/bin/python scripts/architecture/render_current_package_dependencies.py --check
-	.venv/bin/python -m pytest tests/architecture/test_architecture_documentation.py -q
+	.venv/bin/python scripts/dev/run_pytest.py tests/architecture/test_architecture_documentation.py -q
 
 check-harnesstui: lint-harnesstui typecheck-harnesstui test-harnesstui
 
@@ -182,13 +191,13 @@ typecheck-harnesstui:
 	uv --cache-dir .uv-cache run --extra dev mypy --follow-imports=silent $(HARNESSTUI_SHARED_SOURCES) $(HARNESSTUI_CODING_ADAPTERS) $(CODING_TUI_PRODUCT_SOURCES)
 
 test-harnesstui:
-	uv --cache-dir .uv-cache run --extra dev pytest $(HARNESSTUI_TEST_PATHS) $(CODING_TUI_PRODUCT_TEST_PATHS) -m "not tui_render_contract" -q
+	uv --cache-dir .uv-cache run --extra dev $(PYTEST_RUNNER) $(HARNESSTUI_TEST_PATHS) $(CODING_TUI_PRODUCT_TEST_PATHS) -m "not tui_render_contract" -q
 
 test-tui:
-	uv --cache-dir .uv-cache run --extra dev pytest tests/tui --skip-host-runtime -q
+	uv --cache-dir .uv-cache run --extra dev $(PYTEST_RUNNER) tests/tui --skip-host-runtime -q
 
 test-tui-render-contract:
-	uv --cache-dir .uv-cache run --extra dev pytest tests/tui tests/harnesstui tests/coding -m tui_render_contract -q
+	uv --cache-dir .uv-cache run --extra dev $(PYTEST_RUNNER) tests/tui tests/harnesstui tests/coding -m tui_render_contract -q
 
 test-tui-terminal-platform:
 	uv --cache-dir .uv-cache run --extra dev python scripts/run_tui_platform_tests.py current -q
@@ -200,7 +209,7 @@ test-tui-native:
 	uv --cache-dir .uv-cache run --extra dev python scripts/run_tui_native_tests.py current -q
 
 test-tui-tmux:
-	LOUSHANG_REQUIRE_TMUX=1 uv --cache-dir .uv-cache run --extra dev pytest tests/coding/test_screen_coding_tui_pty_smoke.py -m tui_tmux_integration --strict-markers --strict-config -q
+	LOUSHANG_REQUIRE_TMUX=1 uv --cache-dir .uv-cache run --extra dev $(PYTEST_RUNNER) tests/coding/test_screen_coding_tui_pty_smoke.py -m tui_tmux_integration --strict-markers --strict-config -q
 
 lane-status:
 	uv run python scripts/dev/lane_status.py
@@ -215,7 +224,7 @@ typecheck-ai:
 	. .venv/bin/activate && uv run mypy src/loushang/ai
 
 vendor-ai-moonshot-anthropic-stream:
-	LOUSHANG_AI_LIVE=1 uv run pytest tests/ai/vendors/moonshot/test_kimi_anthropic_stream_live.py -q -s
+	LOUSHANG_AI_LIVE=1 uv run $(PYTEST_RUNNER) tests/ai/vendors/moonshot/test_kimi_anthropic_stream_live.py -q -s
 
 typecheck-tui:
 	. .venv/bin/activate && mypy src/loushang/tui
@@ -224,25 +233,25 @@ example-ai-kimi-anthropic-stream:
 	uv run python examples/ai/kimi_anthropic_stream.py
 
 vendor-ai-moonshot-anthropic-complete:
-	LOUSHANG_AI_LIVE=1 uv run pytest tests/ai/vendors/moonshot/test_kimi_anthropic_complete_live.py -q -s
+	LOUSHANG_AI_LIVE=1 uv run $(PYTEST_RUNNER) tests/ai/vendors/moonshot/test_kimi_anthropic_complete_live.py -q -s
 
 vendor-ai-moonshot-anthropic-tools:
-	LOUSHANG_AI_LIVE=1 uv run pytest tests/ai/vendors/moonshot/test_kimi_anthropic_tools_live.py -q -s
+	LOUSHANG_AI_LIVE=1 uv run $(PYTEST_RUNNER) tests/ai/vendors/moonshot/test_kimi_anthropic_tools_live.py -q -s
 
 vendor-ai-moonshot-openai-complete:
-	LOUSHANG_AI_LIVE=1 uv run pytest tests/ai/vendors/moonshot/test_kimi_openai_complete_live.py -q -s
+	LOUSHANG_AI_LIVE=1 uv run $(PYTEST_RUNNER) tests/ai/vendors/moonshot/test_kimi_openai_complete_live.py -q -s
 
 vendor-ai-moonshot-openai-stream:
-	LOUSHANG_AI_LIVE=1 uv run pytest tests/ai/vendors/moonshot/test_kimi_openai_stream_live.py -q -s
+	LOUSHANG_AI_LIVE=1 uv run $(PYTEST_RUNNER) tests/ai/vendors/moonshot/test_kimi_openai_stream_live.py -q -s
 
 vendor-ai-moonshot-openai-tools:
-	LOUSHANG_AI_LIVE=1 uv run pytest tests/ai/vendors/moonshot/test_kimi_openai_tools_live.py -q -s
+	LOUSHANG_AI_LIVE=1 uv run $(PYTEST_RUNNER) tests/ai/vendors/moonshot/test_kimi_openai_tools_live.py -q -s
 
 vendor-ai-dashscope-openai-responses-stream:
-	LOUSHANG_AI_LIVE=1 uv run pytest tests/ai/vendors/dashscope/test_openai_responses_stream_live.py -q -s
+	LOUSHANG_AI_LIVE=1 uv run $(PYTEST_RUNNER) tests/ai/vendors/dashscope/test_openai_responses_stream_live.py -q -s
 
 vendor-ai-dashscope-openai-responses-tools:
-	LOUSHANG_AI_LIVE=1 uv run pytest tests/ai/vendors/dashscope/test_openai_responses_tools_live.py -q -s
+	LOUSHANG_AI_LIVE=1 uv run $(PYTEST_RUNNER) tests/ai/vendors/dashscope/test_openai_responses_tools_live.py -q -s
 
 .PHONY: example-ai-offline example-ai-provider-matrix example-ai-provider-smoke
 

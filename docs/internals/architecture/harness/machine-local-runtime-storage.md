@@ -92,6 +92,35 @@ directories, does not follow symbolic links, and verifies the lease file's
 device/inode identity before unlinking it. Cleanup failure leaves reclaimable
 residue and must not replace the application's real shutdown result.
 
+## Pytest scratch governance
+
+Repository test entry points use `scripts/dev/run_pytest.py` rather than giving
+pytest an unmanaged, user-global base directory. Each invocation acquires a
+`RunLease` in the dedicated
+`$LOUSHANG_RUNTIME_DIR/pytest-runs/<run_id>` namespace and binds pytest's
+`--basetemp` below that private run. This keeps test-generated projects outside
+the checkout, makes concurrent invocations disjoint, and prevents temporary
+project discovery from changing merely because a test is run from a worktree.
+
+The pytest namespace is separate from application runs so its aggressive
+startup sweep cannot shorten application crash-evidence retention. A sweep
+removes only a valid, unlocked lease; active test processes and unprovable
+legacy directories remain untouched. Normal exit removes the run directly;
+only a failed removal repairs an owned read-only entry and retries that failed
+operation, avoiding a second full-tree scan. A
+crash leaves a locked-until-process-exit lease that the next managed run can
+safely reclaim.
+
+Before collection, the runner checks filesystem free space and, where the
+platform supports it, performs a real allocation reservation to detect
+per-user quotas that filesystem-wide free-space reports cannot see. The
+default floor is 64 MiB and can be adjusted for a constrained environment via
+`LOUSHANG_PYTEST_MIN_FREE_BYTES`. Caller-provided `--basetemp` is rejected so
+temporary-tree ownership has exactly one authority. Direct pytest invocations
+also retain no completed `tmp_path` trees, but the managed runner is the
+canonical Make and TUI-test entry point because it additionally supplies
+leases, concurrency isolation, quota preflight, and crash recovery.
+
 ## Clipboard images as drafts
 
 Clipboard bytes are transient prompt-draft resources, not workspace files and
