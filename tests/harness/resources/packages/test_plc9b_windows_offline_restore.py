@@ -28,6 +28,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.records import (
 from loushang.harness.resources.packages.plugin_lifecycle.windows_offline_restore import (
     PackageWindowsOfflineRestoreMaterializer,
 )
+from loushang.harness.sandbox.package_windows_legacy_runtime import (
+    PackageWindowsLegacyRuntimeActivationOwner,
+)
 
 pytestmark = pytest.mark.skipif(os.name != "nt", reason="Windows-native contract")
 
@@ -111,6 +114,14 @@ def _fixture(
     (payload / "state").mkdir()
     (payload / "state" / "desired.json").write_bytes(b'{"enabled":true}\n')
     (payload / "empty").mkdir()
+    (payload / "legacy-runtime.cmd").write_bytes(
+        b"@echo off\r\n"
+        b"> \"%LOUSHANG_LEGACY_RUNTIME_READY_PATH%\" "
+        b"echo %LOUSHANG_LEGACY_RUNTIME_READY_TOKEN%\r\n"
+        b":stay\r\n"
+        b"choice /C Y /N /D Y /T 1 >nul 2>&1\r\n"
+        b"goto stay\r\n"
+    )
     tree_digest, entry_count, byte_count = _tree_metrics(payload)
     snapshot = PackageEpochCutoverSnapshotReceiptV1.create(
         store_id=STORE_ID,
@@ -254,3 +265,46 @@ def test_windows_rejects_replaced_current_b_authority(tmp_path: Path) -> None:
 
     assert captured.value.code == "package_offline_restore_materialization_invalid"
     assert set(restore_root.iterdir()) == {restore_root / ".offline-restore.lock"}
+
+
+def test_windows_appcontainer_activation_is_exclusive_replayable_and_reversible(
+    tmp_path: Path,
+) -> None:
+    owner, request, evidence, quiescence, _, restore_root, current_b_root = _fixture(
+        tmp_path
+    )
+    materialization = owner.restore(request, evidence, quiescence)
+    activation_root = tmp_path / "activation-authority"
+    activation_root.mkdir()
+    restored_command = (
+        restore_root / request.restore_namespace_id / "payload" / "legacy-runtime.cmd"
+    )
+    command = (
+        os.environ.get("COMSPEC", r"C:\Windows\System32\cmd.exe"),
+        "/d",
+        "/q",
+        "/c",
+        str(restored_command),
+    )
+    activation = PackageWindowsLegacyRuntimeActivationOwner(
+        restore_root,
+        activation_root,
+        current_b_authority_root=current_b_root,
+        store_id=STORE_ID,
+        legacy_runtime_version=request.legacy_runtime_version,
+        command=command,
+    )
+
+    receipt = activation.activate(request, materialization)
+    replay = activation.activate(request, materialization)
+
+    assert replay == receipt
+    assert receipt.exclusive_old_runtime
+    assert (activation_root / "active-runtime.json").is_file()
+    runtime_root = activation_root / f"runtime-{request.request_id}"
+    assert (runtime_root / "ready.txt").is_file()
+
+    activation.deactivate(receipt)
+    assert not (activation_root / "active-runtime.json").exists()
+    assert not runtime_root.exists()
+    activation.deactivate(receipt)
