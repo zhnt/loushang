@@ -19,8 +19,40 @@ jobs:
 
       - uses: astral-sh/setup-uv@v5
 
+      - name: Install PLC9B Linux native isolation dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
       - name: Install dependencies
         run: make bootstrap
+
+      - name: Create PLC9B report directory
+        run: uv run python -c "from pathlib import Path; Path('.artifacts').mkdir(exist_ok=True)"
+
+      - name: PLC9B Linux native adversarial gate (plc9b-linux-native)
+        env:
+          PYTEST_ADDOPTS: >-
+            -o faulthandler_timeout=60
+            --junitxml=.artifacts/plc9b-linux-native.xml
+        run: >-
+          uv run pytest
+          tests/harness/resources/packages/test_plc9b_adversarial.py
+          -q
+
+      - name: Reject skipped or failing PLC9B manifest cases
+        run: >-
+          uv run python scripts/dev/verify_pytest_xml.py
+          .artifacts/plc9b-linux-native.xml
+
+      - name: Upload PLC9B Linux native report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: plc9b-linux-native-pytest-report
+          path: .artifacts/plc9b-linux-native.xml
+          if-no-files-found: error
 
       - name: Harness quality gate
         run: make check-harness

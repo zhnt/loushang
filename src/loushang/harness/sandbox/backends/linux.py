@@ -188,6 +188,26 @@ class LinuxBubblewrapBackend:
             local_backend=self._local_backend,
         )
 
+    def _prepare_guarded_command(
+        self,
+        request: SandboxScopeRequest,
+        command: tuple[str, ...],
+    ) -> tuple[str, ...]:
+        """Prepare one internal guarded command after the native probe passed."""
+
+        if self._closed:
+            raise RuntimeError("bubblewrap backend is closed")
+        if not self._available or self._resolved_path is None:
+            raise SandboxUnavailableError(
+                "bubblewrap backend must pass its namespace probe before use"
+            )
+        if not command or any(
+            not isinstance(value, str) or not value for value in command
+        ):
+            raise ValueError("bubblewrap command must contain non-empty strings")
+        validate_bubblewrap_scope_request(request)
+        return build_bubblewrap_command(self._resolved_path, request, command)
+
     async def _plan_hosted_process(
         self,
         request: ProcessLaunchRequest,

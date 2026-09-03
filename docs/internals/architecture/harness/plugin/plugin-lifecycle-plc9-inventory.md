@@ -9,6 +9,332 @@
   [Plugin Lifecycle PLC9.0 Baseline](plugin-lifecycle-plc9-baseline.md).
 - PLC9B.0 refinement:
   [Safe Package Boundary Contract](plugin-lifecycle-plc9b-contract.md).
+- PLC9B1 refinement: the dark internal Owner Kernel now supplies versioned
+  inert records, classification, journal CAS, retry/cancel/status, and disabled
+  refusal. It has no production composition or artifact capability; all
+  acquisition/publication target rows below remain migration obligations.
+- PLC9B2a/B2b/B2c/B2d/B2e/B2f refinement: unbound Source
+  Authority/bounded-sink/quarantine, safe wheel inspection, dark
+  phase-CAS/evidence composition, and cleanup-domain tombstones exist inside
+  the same Package owner boundary. Raw ZIP-layout, path/type/budget,
+  WHEEL/METADATA/RECORD, and rooted
+  POSIX extraction proofs now precede materialization. Adjacent operation
+  phases, typed acquisition/wheel evidence, exact cleanup repair, and rooted
+  acquired/verified crash adoption are append-once or exactly replayable.
+  Recovery reconstructs process-local candidates from durable local evidence
+  without Source reauthorization. A Package-local `NtCreateFile` rooted-handle
+  backend and non-skippable native Windows fixture set were accepted by
+  Windows Shell Compatibility run `33486925218` at head `fb263301`: five tests
+  ran with zero skips, failures, or errors, and their XML was retained in
+  artifact `windows-shell-pytest-reports` (ID `9792151355`).
+  PLC9B2g implements six composed acquisition manifest fixtures, accepted by
+  Linux Harness Quality run `33487861156`: its report executed 14 total nodes
+  with zero skips, failures, or errors and was retained as artifact
+  `plc9b-linux-native-pytest-report` (ID `9792500305`).
+  PLC9B2h implements 24 composed archive/path/type/limit/wheel manifest rows,
+  accepted by Linux Harness Quality run `33489524268`: 38 total nodes ran with
+  zero skips, failures, or errors and artifact `9793161479` retained the XML.
+  Wheel ZIP has no portable hardlink relation encoding; PLC9B2k therefore uses
+  a real POSIX hardlinked source and proves the Wheel 1.x boundary normalizes it
+  to independent regular archive and extracted entries rather than claiming a
+  surrogate hardlink encoding. Linux Harness Quality run `33493714647`
+  accepted that native row after all 52 manifest nodes passed without skips,
+  failures, or errors; artifact `9794816942` retained the XML.
+  PLC9B2i accepts seven exact Windows archive path/type fixtures after their
+  dedicated non-skippable Windows 2022 report passed and its XML was retained;
+  no simulated platform evidence promotes a native row.
+  PLC9B2j accepts six exact Linux-native artifact-identity, early-crash, and
+  cleanup-debt fixtures after the persisted non-skippable Linux report passed
+  all 51 manifest nodes without skips, failures, or errors.
+  PLC9B3a adds an accepted unbound pure closure-v2 verifier over typed Source,
+  acquisition, and wheel evidence. It deterministically proves PEP 508 marker/
+  specifier decisions, origin/digest binding, graph completeness, acyclicity,
+  canonical identity, and composed budgets, but owns no I/O, pin, store,
+  journal, publication, or transport capability. Its component fixtures do not
+  promote global manifest rows. Harness Quality run `33497159996` accepted the
+  component after Ruff and mypy passed and the full gate reported 3624 passed,
+  20 skipped.
+  PLC9B3b is an accepted dark slice that records attempt-scoped authenticated
+  Source evidence before quarantine transfer, requires exact Source
+  reauthorization when only that evidence survived, and reconstructs canonical raw
+  `Requires-Dist` inputs by re-verifying the digest-bound Wheel `METADATA`.
+  Accepted receipt and wheel-evidence v1 schemas remain unchanged; legacy
+  receipt-first evidence can replay B2 behavior but is insufficient for
+  closure-v2. Harness Quality run `33501681463` accepted the slice after all
+  PR checks passed; its retained Linux manifest XML executed the same 52 tests
+  with zero skips, failures, or errors. No global manifest row is promoted.
+  PLC9B3c is an accepted dark recursive builder. Its resolver is selection-only;
+  every selected node still traverses Source Authority, bounded acquisition,
+  Wheel verification, and ordered artifact evidence before the accepted pure
+  closure verifier decides the complete graph. It handles late extra expansion,
+  digest-bound `Requires-Python`/`Provides-Extra`, and aggregate budgets, but
+  has no phase/selection/plan journal, recovery, cleanup-debt integration,
+  stable refs, pins, publication, desired-state mutation, or production route.
+  Harness Quality run `33505702666` accepted the component after all PR checks
+  passed; retained artifact `9799493328` executed the unchanged 52-row Linux
+  manifest with zero skips, failures, or errors. Its component fixtures do not
+  promote global manifest rows.
+  PLC9B3d-1 accepted dark code binds a complete credential-free resolution basis
+  before artifact I/O, journals every resolver selection before dependency
+  Source access, journals the exact verified plan before the closure phase CAS,
+  reopens durable dependency evidence without resolver or Source calls, and
+  transfers dependency cleanup debt to the existing cleanup-domain owner. It
+  remains dark. B3d-1 accepts the two resolving/closure crash rows after all PR
+  checks passed and retained artifact `9802403797` executed exactly 54 native
+  manifest nodes with zero skips, failures, or errors; the closure/limit rows
+  were still planned at that acceptance point. B3d-2a accepts the three
+  composed closure-limit rows with real root evidence and a dependency
+  selection after all PR checks passed and retained artifact `9803312387`
+  executed exactly 57 native manifest nodes with zero skips, failures, or
+  errors. B3d-2b accepts all seven closure-integrity rows, including
+  cleanup-debt custody for every rejected candidate, after all PR checks passed
+  and retained artifact `9805712792` executed exactly 64 native manifest nodes
+  with zero skips, failures, or errors.
+  PLC9B3e-1 accepted code adds internal strict typed root/dependency refs, an
+  immutable closure lock that reconstructs and revalidates the accepted v2
+  plan, and one exact committed-set ref. It has no store or retention-ledger
+  import, live pin, staging writer, atomic publication, admission, desired-state
+  effect, or production route. No global adversarial row is promoted.
+  All PR checks passed and retained artifact `9806065559` executed the
+  unchanged 64 native manifest nodes without skips, failures, errors, or any
+  `B-PUB-*` node.
+  PLC9B3e-2a accepted code adds exact credential-free transaction-pin
+  targets/requests/receipts, a narrow retention Port, and a durable owner-side
+  evidence journal. It has no concrete retention-ledger import or runtime phase
+  composition and promotes no manifest row. All PR checks passed and retained
+  artifact `9807880155` executed the unchanged 64 native manifest nodes without
+  skips, failures, errors, `B-CRASH-PINNED`, or any `B-PUB-*` node.
+  PLC9B3e-2b accepted code composes the narrow retention Port with durable
+  closure evidence and `closure_verified -> transaction_pinned` CAS. It adds
+  candidate-free restart recovery and implements the composed
+  `B-CRASH-PINNED` row. All PR checks passed and retained artifact `9810291887`
+  executed exactly 65 native manifest nodes with zero skips, failures, or
+  errors and no `B-PUB-*` node. Staging, publication, later transaction phases,
+  and every production route remain migration obligations.
+  PLC9B3e-3a accepted code now separates a neutral dependency staging Port
+  from the designated Plugin-root staging Port, binds the latter to an
+  authority-issued logical Product/scope/Installation/Plugin target, and
+  journals exact typed staging receipts beside the Package transaction. A
+  separate Package-owner journal atomically appends the complete immutable
+  closure lock and its sole committed-set ref. These are dark contracts and
+  local evidence only: no concrete store, phase runtime, admission, desired
+  state, public facade, or production route imports them, and no global
+  manifest row is promoted. All PR checks passed and retained artifact
+  `9812156268` executed the unchanged 65 native manifest nodes without skips,
+  failures, errors, `B-CRASH-STAGING`, `B-CRASH-SET`, or any `B-PUB-*` node.
+  PLC9B3e-3b accepted code composes the accepted Ports and journals behind
+  `transaction_pinned -> staging -> set_published` CAS. It validates every live
+  candidate against the durable plan, stages dependencies before the Plugin
+  root, adopts only exact prior-attempt receipts, rechecks classification before
+  atomic set publication, and supports candidate-free resume/recovery. The
+  composed `B-CRASH-STAGING` and `B-CRASH-SET` rows are executable; concrete
+  store materialization, native publication-root defenses, admission, desired
+  state, and production routing remain absent. All PR checks passed and
+  retained artifact `9813586958` executed exactly 67 native manifest nodes
+  without skips, failures, errors, or any `B-PUB-*` node.
+  PLC9B3e-3c0 accepted code adds a strict files-only transfer manifest bound
+  to exact Wheel evidence and separates quarantine-owned byte transfer from
+  dependency-store and designated Plugin-root sink authorities. These are
+  dark records and Protocols only: there is no transfer loop, concrete Store,
+  native publication root, stable-ref issuance, admission, or production
+  route. All 13 `B-PUB-*` rows remain planned; `B-PUB-UNCOMMITTED` stays with
+  PLC9B4 commit admission rather than physical materialization. All PR checks
+  passed and retained artifact `9815136763` executed the unchanged 67 native
+  manifest nodes without skips, failures, errors, or any `B-PUB-*` node.
+  PLC9B3e-3c1 accepted code implements the quarantine-owned identity-checked
+  verified-file reader, bounded transfer owner, and separate POSIX-native
+  dependency/Plugin-root Store adapters. Store operations pin and revalidate
+  the complete visible ancestor chain, use descriptor-relative no-follow
+  creates, sync and settle one immutable tree, fully hash exact reuse, and
+  close every native handle on success or refusal. Five POSIX
+  publication/root/handle rows are executable through the full dark lifecycle;
+  Windows native publication, collision/reuse, commit admission, and production
+  routes remain later gates. All PR checks passed and retained artifact
+  `9817127845` executed exactly 72 manifest nodes with zero skips, failures, or
+  errors and included exactly the five implemented POSIX publication rows.
+  PLC9B3e-3c2 accepted code adds the two role-separated Windows-native Store
+  adapters. They pin and revalidate the full visible ancestor chain, reject
+  reparse/root/ancestor/staging ABA, flush each verified file, and settle by a
+  non-replacing handle-relative rename before fully rehashing the final tree.
+  The retained native artifact `9818964189` executed 15 component tests and 12
+  manifest nodes with zero skips, failures, or errors, including all five
+  Windows publication/ABA/handle rows. Collision/reuse, commit admission, and
+  production routing remain later gates.
+  PLC9B3e-3c3 accepted code adds Store-private durable settlement evidence to
+  both native Store adapters. A pre-rename record binds the complete Store-root
+  chain, final tree and member identities, exact manifest, and exact receipt;
+  a cross-instance owner lock serializes namespace settlement. Restart can
+  recover a renamed tree or validate an exact receipt without a live candidate
+  and without another journal append, while same bytes under a different
+  native identity fail as `package_publication_collision`. The accepted slice makes
+  `B-PUB-COLLISION` and `B-PUB-REUSE` executable; only
+  `B-PUB-UNCOMMITTED` remains planned among publication rows. It adds no public
+  facade, commit-admission route, binding, desired-state mutation, or Product
+  runtime composition. All 23 PR checks passed; retained Linux artifact
+  `9821924161` executed 74 manifest nodes and retained Windows artifact
+  `9821946893` executed 19 native component tests plus 12 manifest nodes, all
+  with zero skips, failures, or errors.
+  PLC9B4a accepted code closes the logical commit-admission boundary without
+  opening a Product route. A sole commit owner validates the exact terminal
+  set and live transaction pin before appending `committed`; its immutable
+  receipt is deterministically recoverable from those durable journals. A
+  separate read-only admission owner reprojects and compares operation/request,
+  Product/scope, Installation/Plugin, designated root, set, closure, and pin
+  evidence. It returns no path, runtime handle, store capability, binding, or
+  desired-state authority. `B-PUB-UNCOMMITTED` and all seven `B-ADMISSION-*`
+  threats are executable; B4b retention handoff and B4c epoch fencing remain
+  later gates. All 23 candidate checks passed; retained Linux artifact
+  `9823339334` executed exactly 82 manifest nodes with zero skips, failures, or
+  errors and contained all eight B4a rows.
+  PLC9B4b accepted code adds the dark retention-handoff record family,
+  strict handoff CAS journal, and coordinator over read-only admission plus
+  narrow Desired-CAS and Retention-settlement Ports. It proves dependency pins
+  exist before Desired commit, preserves the transaction pin on rejection,
+  and releases it only with a receipt that keeps the exact dependency set
+  live. All six `B-HANDOFF-*` threats are executable, including settlement-to-
+  projection crash recovery and concurrent replay. It imports no concrete
+  management ledger, exports no public symbol, and leaves B4c epoch fencing,
+  Product routing, and explicit legacy adapters as later gates. All 23 PR
+  checks passed; retained Linux artifact `9825049355` executed exactly 88
+  manifest nodes with zero skips, failures, or errors and contained all six
+  B4b rows.
+  Accepted PLC9B4c0 code adds an evidence-only adjacent epoch-fence journal,
+  credential-free active-runtime lease snapshots, and read-only runtime
+  admission. Exact fence/root/protocol mismatch is rejected before consulting
+  leases; any active different-epoch/root lease rejects without mutation.
+  `B-COMPAT-EPOCH` and `B-COMPAT-MIXED` are executable. The code owns no
+  pathname or native switch capability and leaves POSIX/Windows cutover,
+  offline restore, adoption, recovery convergence, and Product routing as
+  later gates. Local `make check-harness` passed Ruff, mypy over 642 source
+  files, and 3,824 tests with 23 expected skips. Candidate `18f0bab8` passed
+  all 23 PR checks; retained Linux artifact `9826705491` executed exactly 90
+  manifest nodes with zero skips, failures, or errors and contained both B4c0
+  compatibility rows.
+  PLC9B4c1 accepted code adds the dark POSIX-native offline cutover owner. An
+  exclusive quiescence Port rejects live fence-aware or pre-fence writers
+  before snapshot or path access. On success the owner pins the configured
+  authority chain, creates and flushes a fresh identity-bound sibling epoch
+  namespace, and uses the single adjacent epoch append as the only atomic root
+  pointer. Precreated namespaces and authority swaps fail closed; exact replay
+  performs no second snapshot or append. The two POSIX cutover rows are
+  executable, so the Linux manifest now collects 92 nodes. Windows cutover,
+  concrete backup/restore, recovery convergence, adoption, and every Product
+  route remain closed. Local `make check-harness` passed Ruff, mypy over 643
+  source files, and 3,837 tests with 23 expected skips; the focused component,
+  manifest, and architecture regression passed all 142 tests. Candidate
+  `e99945d2` passed all 23 PR checks; retained Linux artifact `9828433273`
+  executed exactly 92 manifest nodes with zero skips, failures, or errors and
+  contained both POSIX cutover rows.
+  PLC9B4c2 accepted code adds the corresponding dark Windows-native cutover
+  owner. It keeps one cross-platform pathless wire schema and one adjacent
+  epoch pointer, but replaces every native path operation with rooted Windows
+  directory handles, complete ancestor identity pins, direct-child creation,
+  directory flushes, exact visible-child reopening, and identity-bound empty
+  cleanup. `B-COMPAT-CUTOVER-WINDOWS` and
+  `B-COMPAT-PREFENCE-LIVE-WINDOWS` now belong to the mandatory Windows native
+  gate. Concrete backup/restore, recovery convergence, adoption, and every
+  Product route remain closed. Local `make check-harness` passed Ruff, mypy
+  over 644 source files, and 3,837 tests with 33 expected skips; the focused
+  Linux regression passed 132 tests and collected the ten Windows-native
+  component tests as explicit platform skips. Candidate `3d5d4394` passed all
+  23 PR checks; retained Windows artifact `9829593062` executed exactly 29 PLC9B
+  native-component tests and 14 manifest nodes, including both B4c2 rows, with
+  zero skips, failures, or errors.
+  PLC9B4c3a accepted code adds strict offline-restore request, complete
+  snapshot-evidence, materialization, legacy-runtime activation, failure, and
+  result records plus one dark coordinator. The snapshot evidence has a
+  separate exact tree digest and closed complete-state coverage instead of
+  treating the B4c1 opaque snapshot ID as content identity. The coordinator
+  holds exclusive quiescence across evidence lookup, isolated restore, and
+  exclusive old-runtime activation, rechecks the immutable epoch chain around
+  both effects, and performs exact deactivation/discard on drift. It imports no
+  native backend, process launcher, Product state owner, or public route;
+  POSIX/Windows restore and all adoption manifest rows remain planned. Candidate
+  `2fe7953a` passed all 23 PR checks; retained Linux artifact `9831701194`
+  executed exactly 92 manifest nodes with zero skips, failures, or errors.
+  PLC9B4c3b accepted code adds the dark POSIX-native snapshot-to-restore
+  materializer behind the accepted pathless Port. It owns disjoint pinned
+  snapshot, restore, and current-B authorities, binds the latter to the
+  request's fenced-root identity, and validates one canonical complete-state
+  manifest plus the exact payload tree, rejects links/special members, copies
+  through rooted no-follow descriptors, and publishes one isolated namespace
+  through a flushed atomic no-replace edge. A rooted cross-process lock and
+  strict receipt marker make exact replay converge; identity-bound cleanup
+  refuses foreign or changed trees. The composition fixture uses the accepted
+  activation Port but does not launch an old process, so the complete POSIX
+  offline-restore row remains planned and the Linux native gate remains at 92
+  nodes. POSIX and Windows launchers, Windows restore, all adoption work,
+  recovery composition, and Product routing remain closed.
+  PLC9B4c3c accepted code adds the concrete Linux/Bubblewrap activation
+  adapter under `loushang.harness.sandbox`, behind the accepted pathless Port;
+  the resource kernel remains backend-free. A private cross-process lock admits
+  one sandbox profile and one live old-runtime process, while readiness, procfs
+  namespace/root identity checks, guardian lifetime, pidfd signalling, exact
+  replay, and bounded deactivation make
+  `B-COMPAT-OFFLINE-RESTORE-POSIX` executable in the mandatory Linux gate. The
+  Linux manifest therefore advances from 92 to 93 nodes. The activation path
+  remains dark; Windows restore, adoption, recovery convergence, and Product
+  routing remain closed.
+  PLC9B4c4a accepted code adds the dark, pathless legacy-adoption protocol to
+  the resource-owner kernel. It binds an exact current fence and complete
+  immutable legacy-state observation around one narrow, separately owned B
+  transaction Port, accepts only the exact committed Plugin-bound publication,
+  and preserves typed terminal failures. It exposes no locator, credential,
+  path, native handle, Product state, or production capability. A concrete
+  transaction adapter, all five adoption manifest rows, Windows restore,
+  recovery convergence, and Product routing remain closed.
+  PLC9B4c4b accepted code composes the existing closure, transaction-pin,
+  staging/set, and commit owners behind the pathless adoption transaction Port.
+  The adapter is a one-operation private capability: it may retain an opaque
+  credential reference in its execution binding, but returns only the existing
+  credential-free lifecycle/publication evidence. Exact journal confirmation
+  follows every phase owner, and durable staging/commit phases resume without
+  repeating prior effects. A bare transaction pin fails closed because it
+  cannot reconstruct live verified candidates. Tests use real
+  lifecycle/pin/set/commit evidence but deterministic closure and staging
+  Ports, so all five adoption rows, native end-to-end acquisition, Windows
+  restore, and Product routing remain closed.
+  PLC9B4c4c accepted code adds explicit recovery-only `reacquire` seams to the
+  artifact, recursive-closure, and closure-lifecycle owners. An active pinned
+  attempt can now reconstruct live verified candidates from exact durable
+  evidence without Source or resolver fallback, journal append, or lifecycle
+  movement; the adoption adapter replays the same durable pin and continues the
+  accepted staging/commit sequence. Missing or changed evidence fails closed.
+  The seams remain dark, and native end-to-end adoption plus all five adoption
+  manifest rows remain closed.
+  PLC9B4c4d accepted evidence composes the positive legacy-adoption path from
+  the production lifecycle, authenticated acquisition, quarantine, Wheel,
+  closure, pin, POSIX-native Store, committed-set, commit, transaction, and
+  adoption owners. Durable fence reads and filesystem-backed legacy-state
+  recapture bracket both initial adoption and exact replay; the pin remains
+  visible and all legacy/Product-domain bytes remain unchanged. Only
+  `B-COMPAT-ADOPT` is promoted, increasing the Linux native manifest from 93
+  to 94 nodes. The four adoption failure/crash rows, Windows restore, recovery
+  convergence, and Product routing remain closed pending their own evidence.
+  PLC9B4c4e accepted evidence executes authenticated Source refusal and
+  bounded network unavailability through the same native adoption composition.
+  Exact replay performs no extra network call, pin, staging, settlement, set,
+  or publication effect, while legacy and four independently revisioned Product
+  projections remain exact. The Linux native manifest therefore grows from 94
+  to 96 nodes; the two crash rows remain closed.
+  PLC9B4c4f accepted evidence adds the post-commit-CAS crash edge. Recovery
+  and replay require the durable root target and native root identity, return
+  one exact receipt, and do not repeat Source, pin, staging, settlement, or
+  committed-set effects. This promotes Linux native node 97; only the
+  every-precommit crash row remains closed.
+  PLC9B4c4g accepted evidence exercises every durable pre-commit adoption
+  phase by reconstructing the complete Package owner graph over durable
+  evidence. Recovery resumes the same active attempt and converges on one exact
+  receipt without repeated Source, pin, staging, settlement, or committed-set
+  effects. It does not fabricate an interruption event for a dead process;
+  explicit supervisor interruption and greater-epoch retry stay separate. This
+  promotes Linux native node 98 and makes all five adoption rows executable and
+  nonskippable in the retained Linux gate.
+  Candidate head `d961e9d9` passed all 23 PR checks. Harness Quality run
+  `33701887340`, Linux job `100482733307`, and retained artifact `9873812228`
+  executed all 98 Linux manifest nodes plus three authority/recovery guard
+  tests with zero skips, failures, or errors; artifact upload digest
+  `1822656d9150bd1b2ff602906ae229922bcc04527bec6a6f41f3edfb34934d98`.
 
 This inventory distinguishes accepted reusable owners, Product adapters,
 parallel compatibility paths, and missing target boundaries. “Migrate” or
