@@ -114,14 +114,6 @@ def _fixture(
     (payload / "state").mkdir()
     (payload / "state" / "desired.json").write_bytes(b'{"enabled":true}\n')
     (payload / "empty").mkdir()
-    (payload / "legacy-runtime.cmd").write_bytes(
-        b"@echo off\r\n"
-        b"> \"%LOUSHANG_LEGACY_RUNTIME_READY_PATH%\" "
-        b"echo %LOUSHANG_LEGACY_RUNTIME_READY_TOKEN%\r\n"
-        b":stay\r\n"
-        b"choice /C Y /N /D Y /T 1 >nul 2>&1\r\n"
-        b"goto stay\r\n"
-    )
     tree_digest, entry_count, byte_count = _tree_metrics(payload)
     snapshot = PackageEpochCutoverSnapshotReceiptV1.create(
         store_id=STORE_ID,
@@ -276,15 +268,17 @@ def test_windows_appcontainer_activation_is_exclusive_replayable_and_reversible(
     materialization = owner.restore(request, evidence, quiescence)
     activation_root = tmp_path / "activation-authority"
     activation_root.mkdir()
-    restored_command = (
-        restore_root / request.restore_namespace_id / "payload" / "legacy-runtime.cmd"
-    )
     command = (
         os.environ.get("COMSPEC", r"C:\Windows\System32\cmd.exe"),
         "/d",
         "/q",
         "/c",
-        str(restored_command),
+        (
+            "if not exist store\\plugin.py exit /b 23 & "
+            '> "%LOUSHANG_LEGACY_RUNTIME_READY_PATH%" '
+            "echo %LOUSHANG_LEGACY_RUNTIME_READY_TOKEN% & "
+            "for /L %i in (0,0,1) do @choice /C Y /N /D Y /T 1 >nul 2>&1"
+        ),
     )
     activation = PackageWindowsLegacyRuntimeActivationOwner(
         restore_root,
