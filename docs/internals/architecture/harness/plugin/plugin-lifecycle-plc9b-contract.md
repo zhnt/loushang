@@ -2,7 +2,7 @@
 
 ## Status
 
-- Contract version: PLC9B.4c4g-candidate.
+- Contract version: PLC9B.4c4g-accepted.
 - Delivery status: PLC9B1 dark Owner Kernel and the unbound
   PLC9B2a/B2b/B2c/B2d/B2e safe
   acquisition and wheel-inspection components are implemented. Versioned inert
@@ -109,18 +109,20 @@
   Windows rows executable only in their mandatory native gate. B4c3a accepted
   code freezes the pathless, genesis-bound offline-restore protocol over
   complete pre-B snapshot evidence, isolated materialization, and exclusive
-  old-runtime activation Ports. B4c3b candidate code adds the POSIX rooted
-  snapshot-to-isolated-root materializer. B4c3c candidate code adds the
+  old-runtime activation Ports. B4c3b accepted code adds the POSIX rooted
+  snapshot-to-isolated-root materializer. B4c3c accepted code adds the
   Linux/Bubblewrap legacy-process activation owner and promotes the complete
-  POSIX restore row in its named Linux-native gate. B4c4a candidate code adds
+  POSIX restore row in its named Linux-native gate. B4c4a accepted code adds
   the dark, pathless legacy-adoption protocol around one separately owned,
-  complete B transaction. B4c4b candidate code adds the one-operation adapter
-  that composes the accepted B phase owners behind that Port. B4c4c candidate
+  complete B transaction. B4c4b accepted code adds the one-operation adapter
+  that composes the accepted B phase owners behind that Port. B4c4c accepted
   code adds a recovery-only pinned-candidate reacquisition seam: it rebuilds
   verified root and closure candidates exclusively from exact durable evidence,
-  never falling back to resolver or Source authority. Windows restore, native
-  end-to-end adoption evidence, all adoption manifest rows, public routing, and
-  concrete desired-state composition remain closed.
+  never falling back to resolver or Source authority. B4c4d through B4c4g add
+  native positive, Source-failure, post-commit-crash, and every-precommit-crash
+  adoption evidence; all five adoption rows are accepted in the retained Linux
+  gate. Windows restore, public routing, and concrete desired-state composition
+  remain closed.
 - Scope: the future Plugin-bound Package acquisition boundary, its exact
   callers and owners, versioned evidence, failure semantics, and adversarial
   acceptance matrix.
@@ -1576,7 +1578,7 @@ Compatibility failed once only in the unrelated child-process lease sweep
 after process termination; the log contained no PLC9B path, and the isolated
 job rerun `100125098199` passed. The PR remains Draft.
 
-## PLC9B4c3b Candidate POSIX Offline Restore Materialization
+## PLC9B4c3b Accepted POSIX Offline Restore Materialization
 
 `PackagePosixOfflineRestoreMaterializer` is the one native capability owner
 between an authenticated snapshot authority and a disjoint isolated restore
@@ -1637,7 +1639,7 @@ mandatory `plc9b-linux-native` gate remains at 92 manifest nodes. The row may
 move only after a concrete native launcher and process-level fixture prove the
 full scenario. The Windows restore row and all five adoption rows also remain
 planned. B4c3b remains a candidate pending retained native CI evidence and
-review acceptance.
+review acceptance; the cumulative acceptance gate below later satisfies both.
 
 The post-review local gate passed 38 focused materializer, protocol-composition,
 and architecture tests. The unchanged Linux adversarial manifest produced
@@ -1646,7 +1648,7 @@ passed. `make check-harness` then passed Ruff, mypy over 646 source files, and
 3,882 tests with 33 expected skips. These local results are candidate evidence,
 not a substitute for retained native CI evidence.
 
-## PLC9B4c3c Candidate Linux Legacy Runtime Activation
+## PLC9B4c3c Accepted Linux Legacy Runtime Activation
 
 `PackageLinuxLegacyRuntimeActivationOwner` is the concrete adapter, owned by
 `loushang.harness.sandbox`, behind the accepted pathless resource Port. The
@@ -1694,8 +1696,8 @@ Bubblewrap explicitly, and the promoted
 real old-runtime readiness/B-unreachability probe, exact replay, deactivation,
 and isolated-tree discard without a skip. The Linux manifest now contains 93
 nodes. Windows restore and all five adoption rows remain planned; retained CI
-evidence and review acceptance are still required before this candidate is
-accepted.
+evidence and review acceptance were still required at this component boundary
+and are supplied by the cumulative acceptance gate below.
 
 The post-fix local evidence executed seven focused native process lifecycle,
 failure, budget, tamper, concurrency, and composition scenarios. The complete
@@ -1705,7 +1707,7 @@ mypy over 647 source files, and 3,890 tests with 33 expected platform skips.
 These local results are candidate evidence, not a substitute for retained CI
 evidence.
 
-## PLC9B4c4a Candidate Legacy Adoption Protocol
+## PLC9B4c4a Accepted Legacy Adoption Protocol
 
 `PackageLegacyAdoptionOwner` freezes the policy-neutral seam between legacy
 state observation and one separately owned, complete B transaction. Its
@@ -1746,7 +1748,7 @@ tests. `make check-harness` then passed Ruff, mypy over 648 source files, and
 candidate's dark protocol boundary; they do not promote an adoption manifest
 row or substitute for future native end-to-end evidence.
 
-## PLC9B4c4b Candidate Adoption Transaction Adapter
+## PLC9B4c4b Accepted Adoption Transaction Adapter
 
 `PackageLegacyAdoptionTransactionAdapter` is a one-operation least-authority
 capability that implements the B4c4a transaction Port by composing the existing
@@ -1800,7 +1802,7 @@ Ruff, mypy over 649 source files, and 3,914 tests with 33 expected platform
 skips. The five adoption manifest rows remain planned because these local
 component results are not native end-to-end adoption evidence.
 
-## PLC9B4c4c Candidate Pinned-Candidate Reacquisition
+## PLC9B4c4c Accepted Pinned-Candidate Reacquisition
 
 `PackageArtifactLifecycleOwner.reacquire`,
 `PackageRecursiveClosureOwner.reacquire`, and
@@ -1829,7 +1831,8 @@ refusal, closure reconstruction without Source/resolver calls or journal
 mutation, missing-plan refusal, exact pin replay, and adoption completion from
 the bare pinned phase.
 
-This is still dark candidate code. It does not supply the native end-to-end
+This was still dark candidate code at this component boundary. It did not
+supply the native end-to-end
 legacy acquisition fixture, unauthorized/unavailable network cases, crash at
 every precommit phase, or retained CI evidence required by the five adoption
 manifest rows. All five `B-COMPAT-ADOPT*` rows therefore remain planned, and
@@ -1841,9 +1844,10 @@ Ruff and mypy over 649 source files; pytest passed 3,918 tests with 33 expected
 platform skips and failed only the unrelated host-load-sensitive transcript
 benchmark (`0.76s/MB` versus its `0.35s/MB` budget). That benchmark then passed
 alone and as its complete three-test file. This split evidence is recorded
-explicitly and does not promote the candidate or any adoption manifest row.
+explicitly and did not promote the component or any adoption manifest row at
+that boundary.
 
-## PLC9B4c4d Candidate Native Positive Adoption Evidence
+## PLC9B4c4d Accepted Native Positive Adoption Evidence
 
 The positive legacy-adoption path is now composed in the mandatory Linux
 manifest gate from the production lifecycle, authenticated acquisition,
@@ -1868,7 +1872,7 @@ unauthorized, unavailable, every-precommit-phase crash, and
 crash-after-committed rows remain planned until their exact failure and replay
 oracles execute. Windows offline restore, public routing, and Product-state
 composition remain closed. Local execution of the new manifest node passed;
-retained CI evidence is still required before accepting the slice.
+the cumulative retained gate below supplies the required acceptance evidence.
 
 Local PLC9B4c4d validation passed the complete 140-test PLC9B
 architecture/manifest regression, including all 94 Linux manifest nodes with
@@ -1879,7 +1883,7 @@ unrelated host-load-sensitive transcript benchmark (`0.72s/MB` versus its
 isolation. This split evidence is recorded explicitly and does not replace the
 required retained Linux gate artifact.
 
-## PLC9B4c4e Candidate Adoption Source Failure Evidence
+## PLC9B4c4e Accepted Adoption Source Failure Evidence
 
 The Linux-native adoption composition now executes the two authenticated
 Source failure rows. An unauthorized credential terminates as
@@ -1898,9 +1902,9 @@ also scanned without following symlinks for credential persistence.
 This promotes `B-COMPAT-ADOPT-UNAUTHORIZED` and
 `B-COMPAT-ADOPT-UNAVAILABLE` as Linux manifest nodes 95 and 96. The
 every-precommit-phase crash and crash-after-committed rows remain planned.
-Retained Linux CI evidence is still required before accepting this candidate.
+The cumulative retained gate below supplies the required acceptance evidence.
 
-## PLC9B4c4f Candidate Crash-After-Committed Evidence
+## PLC9B4c4f Accepted Crash-After-Committed Evidence
 
 The Linux-native adoption fixture now injects a one-shot crash immediately
 after the production commit owner has durably advanced the lifecycle to
@@ -1922,9 +1926,10 @@ and symlink targets.
 
 This promotes `B-COMPAT-ADOPT-CRASH-AFTER-COMMITTED` as Linux manifest node
 97. `B-COMPAT-ADOPT-CRASH` remains planned pending every-precommit-phase
-interruption evidence. Retained Linux CI evidence remains required.
+interruption evidence. The cumulative retained gate below supplies the required
+acceptance evidence.
 
-## PLC9B4c4g Candidate Every-Precommit Crash Evidence
+## PLC9B4c4g Accepted Every-Precommit Crash Evidence
 
 The final adoption compatibility row now injects a one-shot process-boundary
 failure immediately after each durable pre-commit lifecycle phase:
@@ -1951,8 +1956,21 @@ silently weaken attempt fencing.
 
 This promotes `B-COMPAT-ADOPT-CRASH` as Linux manifest node 98. All five
 `B-COMPAT-ADOPT*` rows are now executable and nonskippable in the named Linux
-native gate. Retained Linux CI evidence remains required before accepting the
-candidate.
+native gate.
+
+PLC9B4c3b through PLC9B4c4g were accepted on 2026-09-03 against candidate head
+`d961e9d9` after all 23 PR checks passed. Harness Quality run `33701887340`,
+Linux harness job `100482733307`, and retained
+`plc9b-linux-native-pytest-report` artifact ID `9873812228` with upload digest
+`1822656d9150bd1b2ff602906ae229922bcc04527bec6a6f41f3edfb34934d98`
+prove the native gate. Its XML executed all 98 Linux manifest nodes plus three
+authority/recovery guard tests, 101 tests total, with zero skips, failures, or
+errors. The same candidate passed architecture documentation, Windows shell,
+AI/host/Harness TUI, LSP, install, macOS exec, and cross-platform terminal
+checks. The initial retained run exposed a hosted-runner AppArmor namespace
+policy that prevented Bubblewrap from initializing loopback; the workflow now
+enables unprivileged user namespaces in the isolated hosted job, after which
+the unchanged native sandbox probe and all six namespace assertions passed.
 
 ## First Principles
 

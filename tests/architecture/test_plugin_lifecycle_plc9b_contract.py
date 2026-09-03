@@ -745,7 +745,7 @@ def test_plc9b_contract_is_indexed_and_freezes_dark_b1_runtime() -> None:
 
     assert index.count("(plugin-lifecycle-plc9b-contract.md)") == 1
     assert inventory.count("(plugin-lifecycle-plc9b-contract.md)") == 1
-    assert "Contract version: PLC9B.4c4g-candidate." in contract
+    assert "Contract version: PLC9B.4c4g-accepted." in contract
     assert "PLC9B1 dark Owner Kernel and the unbound" in contract
     assert "PLC9B2a/B2b/B2c/B2d/B2e safe" in contract
     assert "PLC9B2e Evidence-Driven Crash Adoption" in contract
@@ -3704,7 +3704,7 @@ def test_plc9b4b_retention_handoff_is_dark_exact_and_no_zero_pin() -> None:
         assert {"exact_pin_set", "no_zero_pin"} <= set(row["oracles"].split(";"))
 
     normalized = " ".join(contract.split())
-    assert "PLC9B.4c4g-candidate." in contract
+    assert "PLC9B.4c4g-accepted." in contract
     assert "PLC9B4b Accepted Retention Handoff" in normalized
     assert "opened -> dependency_pinned -> desired_committed -> settled" in normalized
     assert "No journal lock is held" in normalized
@@ -3832,7 +3832,7 @@ def test_plc9b4c0_epoch_admission_is_dark_read_only_and_fail_closed() -> None:
         assert {"no_publication", "no_peer_fallback"} <= set(row["oracles"].split(";"))
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c4g-candidate." in contract
+    assert "Contract version: PLC9B.4c4g-accepted." in contract
     assert "PLC9B4c0 Accepted Epoch Admission" in normalized
     assert "human-readable minimum runtime version is diagnostic evidence" in (
         normalized
@@ -3954,7 +3954,7 @@ def test_plc9b4c1_posix_cutover_has_one_native_owner_and_one_visibility_edge() -
         assert manifest[case_id]["status"] == "implemented"
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c4g-candidate." in contract
+    assert "Contract version: PLC9B.4c4g-accepted." in contract
     assert "PLC9B4c1 Accepted POSIX Native Cutover" in normalized
     assert "no second `active-root` file" in normalized
     assert "sole Product-root pointer" in normalized
@@ -4072,7 +4072,7 @@ def test_plc9b4c2_windows_cutover_is_rooted_native_and_non_skippable() -> None:
     assert workflow.count("scripts/dev/verify_pytest_xml.py") >= 5
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c4g-candidate." in contract
+    assert "Contract version: PLC9B.4c4g-accepted." in contract
     assert "PLC9B4c2 Accepted Windows Native Cutover" in normalized
     assert "same fingerprint domain" in normalized
     assert "rooted `NtCreateFile`" in normalized
@@ -4203,7 +4203,7 @@ def test_plc9b4c3a_offline_restore_stays_dark_and_unpromoted() -> None:
     assert "IMPLEMENTED_B4C3" not in component_tests
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c4g-candidate." in contract
+    assert "Contract version: PLC9B.4c4g-accepted." in contract
     assert "PLC9B4c3a Accepted Offline Restore Protocol" in normalized
     assert "does not reinterpret the opaque B4c1 snapshot identifier" in normalized
     assert "closed coverage tuple" in normalized
@@ -4340,8 +4340,8 @@ def test_plc9b4c3b_posix_materializer_is_rooted_exact_and_dark() -> None:
     assert manifest["B-COMPAT-ADOPT"]["status"] == "implemented"
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c4g-candidate." in contract
-    assert "PLC9B4c3b Candidate POSIX Offline Restore Materialization" in normalized
+    assert "Contract version: PLC9B.4c4g-accepted." in contract
+    assert "PLC9B4c3b Accepted POSIX Offline Restore Materialization" in normalized
     assert "authenticated snapshot authority" in normalized
     assert "requires its native directory identity" in normalized
     assert "process-level unreachability remains" in normalized
@@ -4350,8 +4350,8 @@ def test_plc9b4c3b_posix_materializer_is_rooted_exact_and_dark() -> None:
     assert "does not launch a legacy process" in normalized
     assert "remains at 92 manifest nodes" in normalized
     assert "not proof that an old-runtime process started" in normalized
-    assert "PLC9B4c3b candidate code adds the dark POSIX-native" in inventory
-    assert "PLC9B4c3b candidate code adds rooted POSIX" in index
+    assert "PLC9B4c3b accepted code adds the dark POSIX-native" in inventory
+    assert "PLC9B4c3b accepted code adds rooted POSIX" in index
 
 
 def test_plc9b4c3c_linux_activation_is_native_exclusive_dark_and_promoted() -> None:
@@ -4434,16 +4434,16 @@ def test_plc9b4c3c_linux_activation_is_native_exclusive_dark_and_promoted() -> N
     assert manifest["B-COMPAT-ADOPT"]["status"] == "implemented"
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c4g-candidate." in contract
-    assert "PLC9B4c3c Candidate Linux Legacy Runtime Activation" in normalized
+    assert "Contract version: PLC9B.4c4g-accepted." in contract
+    assert "PLC9B4c3c Accepted Linux Legacy Runtime Activation" in normalized
     assert "owned by `loushang.harness.sandbox`" in normalized
     assert "the resource kernel remains backend-free" in inventory
     assert "single real sandbox child" in normalized
     assert "distinct mount, PID, network, IPC, UTS, and user namespaces" in normalized
     assert "The Linux manifest now contains 93 nodes" in normalized
     assert "3,890 tests with 33 expected platform skips" in normalized
-    assert "PLC9B4c3c candidate code adds the concrete Linux/Bubblewrap" in inventory
-    assert "PLC9B4c3c candidate code adds one dark Linux/Bubblewrap" in index
+    assert "PLC9B4c3c accepted code adds the concrete Linux/Bubblewrap" in inventory
+    assert "PLC9B4c3c accepted code adds one dark Linux/Bubblewrap" in index
 
 
 def test_plc9b4c4a_adoption_protocol_is_pathless_and_stays_internal() -> None:
@@ -4538,8 +4538,8 @@ def test_plc9b4c4a_adoption_protocol_is_pathless_and_stays_internal() -> None:
     assert "IMPLEMENTED_B4C4D_LINUX_ADOPTION_MANIFEST_CASES" in adversarial_tests
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c4g-candidate." in contract
-    assert "PLC9B4c4a Candidate Legacy Adoption Protocol" in normalized
+    assert "Contract version: PLC9B.4c4g-accepted." in contract
+    assert "PLC9B4c4a Accepted Legacy Adoption Protocol" in normalized
     assert "complete immutable legacy-state observation" in normalized
     assert "does not itself reacquire, stage, publish, or commit" in normalized
     assert "all five adoption manifest rows remain planned" in normalized
@@ -4547,8 +4547,8 @@ def test_plc9b4c4a_adoption_protocol_is_pathless_and_stays_internal() -> None:
     assert "105 cross-module lifecycle" in normalized
     assert "mypy over 648 source files" in normalized
     assert "3,903 tests with 33 expected platform skips" in normalized
-    assert "PLC9B4c4a candidate code adds the dark, pathless" in inventory
-    assert "PLC9B4c4a candidate code freezes a dark, pathless" in index
+    assert "PLC9B4c4a accepted code adds the dark, pathless" in inventory
+    assert "PLC9B4c4a accepted code freezes a dark, pathless" in index
 
 
 def test_plc9b4c4c_pinned_reacquisition_is_evidence_only_and_stays_dark(
@@ -4654,9 +4654,9 @@ def test_plc9b4c4c_pinned_reacquisition_is_evidence_only_and_stays_dark(
     assert "IMPLEMENTED_B4C4D_LINUX_ADOPTION_MANIFEST_CASES" in adversarial_tests
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c4g-candidate." in contract
-    assert "PLC9B4c4b Candidate Adoption Transaction Adapter" in normalized
-    assert "PLC9B4c4c Candidate Pinned-Candidate Reacquisition" in normalized
+    assert "Contract version: PLC9B.4c4g-accepted." in contract
+    assert "PLC9B4c4b Accepted Adoption Transaction Adapter" in normalized
+    assert "PLC9B4c4c Accepted Pinned-Candidate Reacquisition" in normalized
     assert "one-operation least-authority capability" in normalized
     assert "closure -> pin -> staging/set -> commit" in normalized
     assert "journal-confirmed status after every owner return" in normalized
@@ -4667,10 +4667,10 @@ def test_plc9b4c4c_pinned_reacquisition_is_evidence_only_and_stays_dark(
     assert "116 cross-module lifecycle tests" in normalized
     assert "mypy over 649 source files" in normalized
     assert "3,914 tests with 33 expected platform skips" in normalized
-    assert "PLC9B4c4b candidate code composes the existing" in inventory
-    assert "PLC9B4c4b candidate code adds a one-operation" in index
-    assert "PLC9B4c4c candidate code adds explicit recovery-only" in inventory
-    assert "PLC9B4c4c candidate code supplies that seam" in index
+    assert "PLC9B4c4b accepted code composes the existing" in inventory
+    assert "PLC9B4c4b accepted code adds a one-operation" in index
+    assert "PLC9B4c4c accepted code adds explicit recovery-only" in inventory
+    assert "PLC9B4c4c accepted code supplies that seam" in index
     assert "def reacquire(" in artifact_source
     assert "status.phase != \"transaction_pinned\"" in artifact_source
     assert "self._acquisition_owner.reopen_acquired" in artifact_source
@@ -4741,21 +4741,21 @@ def test_plc9b4c4d_positive_adoption_uses_native_composition_and_is_promoted() -
     assert "scripts/dev/verify_pytest_xml.py" in workflow
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c4g-candidate." in contract
-    assert "PLC9B4c4d Candidate Native Positive Adoption Evidence" in normalized
+    assert "Contract version: PLC9B.4c4g-accepted." in contract
+    assert "PLC9B4c4d Accepted Native Positive Adoption Evidence" in normalized
     assert "production lifecycle, authenticated acquisition" in normalized
     assert "POSIX-native revision Store" in normalized
     assert "making it Linux manifest node 94" in normalized
-    assert "retained CI evidence is still required" in normalized
+    assert "cumulative retained gate below supplies" in normalized
     assert "complete 140-test PLC9B architecture/manifest regression" in normalized
     assert "all 94 Linux manifest nodes with no skips" in normalized
     assert "pytest passed 3,920 tests with 33 expected platform skips" in normalized
     assert "The complete three-test benchmark file then passed" in normalized
-    assert "PLC9B4c4d candidate evidence composes the positive" in inventory
+    assert "PLC9B4c4d accepted evidence composes the positive" in inventory
     assert "increasing the Linux native manifest from 93 to 94 nodes" in " ".join(
         inventory.split()
     )
-    assert "PLC9B4c4d candidate evidence composes the positive" in index
+    assert "PLC9B4c4d accepted evidence composes the positive" in index
     assert "now executes as Linux native node 94" in index
 
 
@@ -4797,7 +4797,7 @@ def test_plc9b4c4e_adoption_source_failures_are_bounded_and_promoted() -> None:
     ):
         assert evidence in tests
     normalized = " ".join(contract.split())
-    assert "PLC9B4c4e Candidate Adoption Source Failure Evidence" in normalized
+    assert "PLC9B4c4e Accepted Adoption Source Failure Evidence" in normalized
     assert "Linux manifest nodes 95 and 96" in normalized
     assert "grows from 94 to 96 nodes" in " ".join(inventory.split())
     assert "Linux native nodes 95 and 96" in " ".join(index.split())
@@ -4830,7 +4830,7 @@ def test_plc9b4c4f_crash_after_committed_replays_exact_receipt() -> None:
     ):
         assert evidence in tests
     normalized = " ".join(contract.split())
-    assert "PLC9B4c4f Candidate Crash-After-Committed Evidence" in normalized
+    assert "PLC9B4c4f Accepted Crash-After-Committed Evidence" in normalized
     assert "Linux manifest node 97" in normalized
     assert "Linux native node 97" in " ".join(inventory.split())
     assert "Linux native node 97" in " ".join(index.split())
@@ -4890,8 +4890,8 @@ def test_plc9b4c4g_every_precommit_adoption_phase_rebuilds_and_recovers() -> Non
         assert evidence in tests
 
     normalized = " ".join(contract.split())
-    assert "Contract version: PLC9B.4c4g-candidate." in contract
-    assert "PLC9B4c4g Candidate Every-Precommit Crash Evidence" in normalized
+    assert "Contract version: PLC9B.4c4g-accepted." in contract
+    assert "PLC9B4c4g Accepted Every-Precommit Crash Evidence" in normalized
     assert "complete Package kernel, artifact/closure, pin, staging," in normalized
     assert "same still-active attempt" in normalized
     assert "does not synthesize `package_operation_interrupted`" in normalized

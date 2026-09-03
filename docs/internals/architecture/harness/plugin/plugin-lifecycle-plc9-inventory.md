@@ -252,7 +252,7 @@
   POSIX/Windows restore and all adoption manifest rows remain planned. Candidate
   `2fe7953a` passed all 23 PR checks; retained Linux artifact `9831701194`
   executed exactly 92 manifest nodes with zero skips, failures, or errors.
-  PLC9B4c3b candidate code adds the dark POSIX-native snapshot-to-restore
+  PLC9B4c3b accepted code adds the dark POSIX-native snapshot-to-restore
   materializer behind the accepted pathless Port. It owns disjoint pinned
   snapshot, restore, and current-B authorities, binds the latter to the
   request's fenced-root identity, and validates one canonical complete-state
@@ -265,7 +265,7 @@
   offline-restore row remains planned and the Linux native gate remains at 92
   nodes. POSIX and Windows launchers, Windows restore, all adoption work,
   recovery composition, and Product routing remain closed.
-  PLC9B4c3c candidate code adds the concrete Linux/Bubblewrap activation
+  PLC9B4c3c accepted code adds the concrete Linux/Bubblewrap activation
   adapter under `loushang.harness.sandbox`, behind the accepted pathless Port;
   the resource kernel remains backend-free. A private cross-process lock admits
   one sandbox profile and one live old-runtime process, while readiness, procfs
@@ -275,7 +275,7 @@
   Linux manifest therefore advances from 92 to 93 nodes. The activation path
   remains dark; Windows restore, adoption, recovery convergence, and Product
   routing remain closed.
-  PLC9B4c4a candidate code adds the dark, pathless legacy-adoption protocol to
+  PLC9B4c4a accepted code adds the dark, pathless legacy-adoption protocol to
   the resource-owner kernel. It binds an exact current fence and complete
   immutable legacy-state observation around one narrow, separately owned B
   transaction Port, accepts only the exact committed Plugin-bound publication,
@@ -283,7 +283,7 @@
   path, native handle, Product state, or production capability. A concrete
   transaction adapter, all five adoption manifest rows, Windows restore,
   recovery convergence, and Product routing remain closed.
-  PLC9B4c4b candidate code composes the existing closure, transaction-pin,
+  PLC9B4c4b accepted code composes the existing closure, transaction-pin,
   staging/set, and commit owners behind the pathless adoption transaction Port.
   The adapter is a one-operation private capability: it may retain an opaque
   credential reference in its execution binding, but returns only the existing
@@ -294,7 +294,7 @@
   lifecycle/pin/set/commit evidence but deterministic closure and staging
   Ports, so all five adoption rows, native end-to-end acquisition, Windows
   restore, and Product routing remain closed.
-  PLC9B4c4c candidate code adds explicit recovery-only `reacquire` seams to the
+  PLC9B4c4c accepted code adds explicit recovery-only `reacquire` seams to the
   artifact, recursive-closure, and closure-lifecycle owners. An active pinned
   attempt can now reconstruct live verified candidates from exact durable
   evidence without Source or resolver fallback, journal append, or lifecycle
@@ -302,7 +302,7 @@
   accepted staging/commit sequence. Missing or changed evidence fails closed.
   The seams remain dark, and native end-to-end adoption plus all five adoption
   manifest rows remain closed.
-  PLC9B4c4d candidate evidence composes the positive legacy-adoption path from
+  PLC9B4c4d accepted evidence composes the positive legacy-adoption path from
   the production lifecycle, authenticated acquisition, quarantine, Wheel,
   closure, pin, POSIX-native Store, committed-set, commit, transaction, and
   adoption owners. Durable fence reads and filesystem-backed legacy-state
@@ -311,18 +311,18 @@
   `B-COMPAT-ADOPT` is promoted, increasing the Linux native manifest from 93
   to 94 nodes. The four adoption failure/crash rows, Windows restore, recovery
   convergence, and Product routing remain closed pending their own evidence.
-  PLC9B4c4e candidate evidence executes authenticated Source refusal and
+  PLC9B4c4e accepted evidence executes authenticated Source refusal and
   bounded network unavailability through the same native adoption composition.
   Exact replay performs no extra network call, pin, staging, settlement, set,
   or publication effect, while legacy and four independently revisioned Product
   projections remain exact. The Linux native manifest therefore grows from 94
   to 96 nodes; the two crash rows remain closed.
-  PLC9B4c4f candidate evidence adds the post-commit-CAS crash edge. Recovery
+  PLC9B4c4f accepted evidence adds the post-commit-CAS crash edge. Recovery
   and replay require the durable root target and native root identity, return
   one exact receipt, and do not repeat Source, pin, staging, settlement, or
   committed-set effects. This promotes Linux native node 97; only the
   every-precommit crash row remains closed.
-  PLC9B4c4g candidate evidence exercises every durable pre-commit adoption
+  PLC9B4c4g accepted evidence exercises every durable pre-commit adoption
   phase by reconstructing the complete Package owner graph over durable
   evidence. Recovery resumes the same active attempt and converges on one exact
   receipt without repeated Source, pin, staging, settlement, or committed-set
@@ -330,6 +330,11 @@
   explicit supervisor interruption and greater-epoch retry stay separate. This
   promotes Linux native node 98 and makes all five adoption rows executable and
   nonskippable in the retained Linux gate.
+  Candidate head `d961e9d9` passed all 23 PR checks. Harness Quality run
+  `33701887340`, Linux job `100482733307`, and retained artifact `9873812228`
+  executed all 98 Linux manifest nodes plus three authority/recovery guard
+  tests with zero skips, failures, or errors; artifact upload digest
+  `1822656d9150bd1b2ff602906ae229922bcc04527bec6a6f41f3edfb34934d98`.
 
 This inventory distinguishes accepted reusable owners, Product adapters,
 parallel compatibility paths, and missing target boundaries. “Migrate” or

@@ -217,7 +217,7 @@ Neither may silently override a narrower implemented owner contract.
   Candidate `2fe7953a` passed all 23 PR checks; retained Linux artifact
   `9831701194` executed the unchanged 92 manifest nodes with zero skips,
   failures, or errors.
-  PLC9B4c3b candidate code adds rooted POSIX snapshot verification, a
+  PLC9B4c3b accepted code adds rooted POSIX snapshot verification, a
   request-bound current-B identity check, exact no-follow copying, durable
   same-request replay, atomic isolated namespace publication, and
   identity-bound discard behind the accepted offline-restore Port. The request
@@ -226,7 +226,7 @@ Neither may silently override a narrower implemented owner contract.
   native process-start proof, so `B-COMPAT-OFFLINE-RESTORE-POSIX` remains
   planned and the Linux manifest remains at 92 nodes; Windows restore, concrete
   legacy process launchers, adoption, and Product binding remain closed.
-  PLC9B4c3c candidate code adds one dark Linux/Bubblewrap activation adapter
+  PLC9B4c3c accepted code adds one dark Linux/Bubblewrap activation adapter
   owned by `loushang.harness.sandbox`; the resource kernel remains backend-free.
   It verifies the durable restored tree and current-B identity, requires an
   application readiness handshake, proves the real sandbox child's namespaces
@@ -235,14 +235,14 @@ Neither may silently override a narrower implemented owner contract.
   replay/deactivation without worker-thread or PID-reuse races. The
   complete POSIX offline-restore row now executes as node 93 in the named Linux
   native gate; Windows restore, adoption, and Product routing remain closed.
-  PLC9B4c4a candidate code freezes a dark, pathless legacy-adoption coordinator
+  PLC9B4c4a accepted code freezes a dark, pathless legacy-adoption coordinator
   in the Package resource-owner kernel. Its versioned evidence binds an exact
   current fence and complete immutable legacy state around a separately owned
   B transaction, and it accepts only an exact committed Plugin-bound receipt
   while the fence and legacy state remain unchanged. It owns no source,
   filesystem, process, publication, Product-state, or public-route capability;
   the concrete adapter and all five adoption manifest rows remain closed.
-  PLC9B4c4b candidate code adds a one-operation adoption transaction adapter
+  PLC9B4c4b accepted code adds a one-operation adoption transaction adapter
   that sequences the existing closure, pin, staging/set, and commit owners. Its
   private execution binding may retain an opaque credential reference, while
   adoption requests/results stay pathless and credential-free. Shared-journal
@@ -251,14 +251,14 @@ Neither may silently override a narrower implemented owner contract.
   verified candidates and therefore fails closed until a reacquisition seam is
   supplied. The adapter remains dark; native end-to-end acquisition and all
   five adoption manifest rows remain closed.
-  PLC9B4c4c candidate code supplies that seam without adding ambient
+  PLC9B4c4c accepted code supplies that seam without adding ambient
   authority. The artifact and closure owners reopen and reverify the exact
   pinned attempt solely from durable authenticated-source, acquisition, Wheel,
   selection, and closure-plan evidence. Recovery never falls back to Source or
   resolver calls, does not append evidence or move lifecycle phase, and the
   adoption adapter replays the existing pin before ordinary staging/commit.
   Native end-to-end adoption and all five adoption manifest rows remain closed.
-  PLC9B4c4d candidate evidence composes the positive adoption path through the
+  PLC9B4c4d accepted evidence composes the positive adoption path through the
   production authenticated-acquisition, verification, closure, pin,
   POSIX-native Store, committed-set, commit, transaction, and adoption owners.
   It proves exact receipt replay, one physical Source request/pin/publication,
@@ -267,18 +267,18 @@ Neither may silently override a narrower implemented owner contract.
   `B-COMPAT-ADOPT` row now executes as Linux native node 94; the four
   failure/crash adoption rows, Windows restore, and Product routing remain
   closed pending their own retained evidence.
-  PLC9B4c4e candidate evidence promotes the unauthorized and temporarily
+  PLC9B4c4e accepted evidence promotes the unauthorized and temporarily
   unavailable adoption Source paths as Linux native nodes 95 and 96. Both
   fail or retry at `acquiring`, replay without extra network work, leave no
   publication or bounded residue, and preserve independent revisioned Product
   projections plus the complete legacy snapshot. The two crash rows remain
   closed.
-  PLC9B4c4f candidate evidence promotes crash-after-committed as Linux native
+  PLC9B4c4f accepted evidence promotes crash-after-committed as Linux native
   node 97. A one-shot post-CAS crash yields no first receipt; restart and replay
   reauthorize the durable root and reconstruct the same receipt without
   repeating Source, pin, staging, settlement, or committed-set effects. The
   every-precommit crash row remains closed.
-  PLC9B4c4g candidate evidence injects a one-shot crash after each of the nine
+  PLC9B4c4g accepted evidence injects a one-shot crash after each of the nine
   durable pre-commit phases. A completely rebuilt Package owner graph resumes
   the same active attempt to one exact receipt without repeating Source, pin,
   staging, settlement, or committed-set effects. No interruption event is
@@ -286,6 +286,11 @@ Neither may silently override a narrower implemented owner contract.
   interruption and greater-epoch retry remain a separate lifecycle action.
   This promotes `B-COMPAT-ADOPT-CRASH` as Linux native node 98, so all five
   adoption rows are executable and nonskippable in the retained Linux gate.
+  Candidate head `d961e9d9` passed all 23 PR checks. Harness Quality run
+  `33701887340`, Linux job `100482733307`, and retained artifact `9873812228`
+  executed all 98 Linux manifest nodes plus three authority/recovery guard
+  tests with zero skips, failures, or errors; artifact upload digest
+  `1822656d9150bd1b2ff602906ae229922bcc04527bec6a6f41f3edfb34934d98`.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)
