@@ -116,7 +116,6 @@ _CREATE_SUSPENDED = 0x00000004
 _CREATE_NO_WINDOW = 0x08000000
 _PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES = 0x00020009
 _JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
-_JOB_OBJECT_LIMIT_ACTIVE_PROCESS = 0x00000008
 _JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION = 0x00000400
 _JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
 _SE_FILE_OBJECT = 1
@@ -465,6 +464,7 @@ class PackageWindowsLegacyRuntimeActivationOwner:
                         replay_process,
                         expected_sid=marker.profile_sid,
                         job=job,
+                        restored_root=self._restored_path_from_marker(marker),
                         current_b_root=self._current_b_root,
                     )
                     self._open_bound_payload(request, materialization)
@@ -516,6 +516,7 @@ class PackageWindowsLegacyRuntimeActivationOwner:
                     process,
                     expected_sid=sid_string,
                     job=job,
+                    restored_root=self._restored_path(request),
                     current_b_root=self._current_b_root,
                 )
                 _await_ready(
@@ -556,6 +557,7 @@ class PackageWindowsLegacyRuntimeActivationOwner:
                     process,
                     expected_sid=sid_string,
                     job=job,
+                    restored_root=self._restored_path(request),
                     current_b_root=self._current_b_root,
                 )
                 restore_root.assert_visible()
@@ -618,6 +620,7 @@ class PackageWindowsLegacyRuntimeActivationOwner:
                         process,
                         expected_sid=marker.profile_sid,
                         job=job,
+                        restored_root=self._restored_path_from_marker(marker),
                         current_b_root=self._current_b_root,
                     )
                     _terminate_job(job, process, self._termination_grace)
@@ -1140,11 +1143,9 @@ def _create_or_open_job(name: str) -> int:
         raise ctypes.WinError(ctypes.get_last_error())
     limits = _JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
     limits.BasicLimitInformation.LimitFlags = (
-        _JOB_OBJECT_LIMIT_ACTIVE_PROCESS
-        | _JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION
+        _JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION
         | _JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
     )
-    limits.BasicLimitInformation.ActiveProcessLimit = 1
     if not _kernel32().SetInformationJobObject(
         handle,
         _JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
@@ -1252,6 +1253,7 @@ def _assert_isolated_process(
     *,
     expected_sid: str,
     job: int,
+    restored_root: Path,
     current_b_root: Path,
 ) -> None:
     if not _process_active(process):
@@ -1290,6 +1292,18 @@ def _assert_isolated_process(
         try:
             if not _advapi32().ImpersonateLoggedOnUser(duplicate):
                 raise ctypes.WinError(ctypes.get_last_error())
+            restored = _kernel32().CreateFileW(
+                str(restored_root),
+                _GENERIC_READ,
+                _FILE_SHARE_ALL,
+                None,
+                _OPEN_EXISTING,
+                _FILE_FLAG_BACKUP_SEMANTICS,
+                None,
+            )
+            if restored == _INVALID_HANDLE_VALUE:
+                raise ctypes.WinError(ctypes.get_last_error())
+            _close_handle(int(restored))
             handle = _kernel32().CreateFileW(
                 str(current_b_root),
                 _FILE_READ_ATTRIBUTES,
