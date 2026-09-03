@@ -2078,6 +2078,23 @@ and one durable staging refusal after a direct-publish attempt. The adapter is
 exported only from the internal Harness Package facade; it is not part of the
 Plugin author SDK and does not expose the dark owner kernel.
 
+PLC9B4c5, PLC9B4d, and PLC9B5 were accepted on 2026-09-03 against candidate
+head `fb0832d6` after all 23 PR checks passed. Harness Quality run
+`33709473590`, Linux job `100505687540`, and retained
+`plc9b-linux-native-pytest-report` artifact ID `9876413745` with upload digest
+`9421c302fdc608ae3ae9b90fedd6803fd2359b6280572221d74c7f98f9588423`
+executed all 119 applicable Linux manifest nodes plus three authority/recovery
+guards, 122 tests total, with zero skips, failures, or errors. Windows Shell
+Compatibility run `33709473605`, job `100505687757`, and retained
+`windows-shell-pytest-reports` artifact ID `9876434660` with upload digest
+`29555877945e00bfe76beffc8068e3a978b3ca27eff9f33632a680669cc2ffdc`
+executed 34 native component tests and all 15 Windows manifest nodes, including
+`B-COMPAT-OFFLINE-RESTORE-WINDOWS`, with zero skips, failures, or errors.
+Local `make check-harness` also passed Ruff, mypy over 654 source files, and
+4,008 tests with 38 expected platform skips; the focused PLC9B Product,
+adversarial, and architecture suites passed 184 and 174 tests after their
+respective changes.
+
 ## First Principles
 
 1. Untrusted bytes are data, never a pathname, command, module, or build plan.

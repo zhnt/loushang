@@ -308,6 +308,11 @@ Neither may silently override a narrower implemented owner contract.
   share one transaction Port; direct materialization and publication bypasses
   are durably refused. Its seven cross-platform nodes complete the 127-row
   PLC9B adversarial manifest without adding an author-SDK surface.
+  Final candidate `fb0832d6` passed all 23 PR checks. Retained Linux run
+  `33709473590`/artifact `9876413745` executed 119 manifest nodes plus three
+  guards; Windows run `33709473605`/artifact `9876434660` executed 34 native
+  component tests and all 15 Windows manifest nodes. All retained PLC9B XML
+  reports recorded zero skips, failures, and errors.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)

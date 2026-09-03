@@ -2280,6 +2280,10 @@ def test_plc9b5_product_router_is_capability_poor_and_internal() -> None:
         assert exported not in author_sdk
     assert "## PLC9B5 Accepted Product Routing And Bypass Closure" in contract
     assert "from 112 to 119 nodes" in contract
+    normalized = " ".join(contract.split())
+    assert "Harness Quality run `33709473590`" in normalized
+    assert "122 tests total" in normalized
+    assert "all 23 PR checks passed" in normalized
 
 
 def test_plc9b2a_acquisition_is_unbound_bounded_and_pathless() -> None:
@@ -5110,6 +5114,9 @@ def test_plc9b4c5_windows_restore_is_rooted_isolated_and_promoted() -> None:
     assert "handle-relative atomic no-replace rename" in normalized
     assert "zero-capability AppContainer" in normalized
     assert "kill-on-close Job Object" in normalized
+    assert "Windows Shell Compatibility run `33709473605`" in normalized
+    assert "all 15 Windows manifest nodes" in normalized
+    assert "artifact ID `9876434660`" in normalized
     assert "PLC9B4c5 accepted code adds a dark Windows" in inventory
     assert "PLC9B4c5 accepted code adds the dark Windows" in index
 

@@ -355,6 +355,11 @@
   publication attempts are durably refused without peer capability. Seven
   platform-neutral route rows make every PLC9B adversarial manifest row
   implemented while keeping the adapter out of the author SDK.
+  Final candidate `fb0832d6` passed all 23 PR checks. Retained Linux run
+  `33709473590`/artifact `9876413745` executed 119 manifest nodes plus three
+  guards, while Windows run `33709473605`/artifact `9876434660` executed 34
+  native component tests and all 15 Windows manifest nodes. Every retained
+  PLC9B report recorded zero skips, failures, and errors.
 
 This inventory distinguishes accepted reusable owners, Product adapters,
 parallel compatibility paths, and missing target boundaries. “Migrate” or
