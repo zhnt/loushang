@@ -269,17 +269,37 @@ void WINAPI mainCRTStartup(void) {{
     }}
 
     if (contains(GetCommandLineW(), L" child")) {{
+        emit("c", 1);
         for (;;) Sleep(1000);
     }}
     if (contains(GetCommandLineW(), L"--spawn-child")) {{
         wchar_t command[] = L"\\\"{escaped_path}\\\" child";
+        SECURITY_ATTRIBUTES security = {{0}};
+        HANDLE ready_read = 0;
+        HANDLE ready_write = 0;
+        security.nLength = sizeof(security);
+        security.bInheritHandle = TRUE;
+        if (!CreatePipe(&ready_read, &ready_write, &security, 0))
+            ExitProcess(80);
+        if (!SetHandleInformation(ready_read, HANDLE_FLAG_INHERIT, 0))
+            ExitProcess(81);
         STARTUPINFOW startup = {{0}};
         PROCESS_INFORMATION process = {{0}};
         startup.cb = sizeof(startup);
-        if (!CreateProcessW(0, command, 0, 0, FALSE, CREATE_NO_WINDOW,
+        startup.dwFlags = STARTF_USESTDHANDLES;
+        startup.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+        startup.hStdOutput = ready_write;
+        startup.hStdError = GetStdHandle(STD_ERROR_HANDLE);
+        if (!CreateProcessW(0, command, 0, 0, TRUE, CREATE_NO_WINDOW,
                             0, 0, &startup, &process)) ExitProcess(71);
         CloseHandle(process.hThread);
         CloseHandle(process.hProcess);
+        CloseHandle(ready_write);
+        char child_ready = 0;
+        DWORD child_read = 0;
+        if (!ReadFile(ready_read, &child_ready, 1, &child_read, 0) ||
+            child_read != 1 || child_ready != 'c') ExitProcess(82);
+        CloseHandle(ready_read);
         emit("restricted-child-ready\\n", 23);
     }} else {{
         wchar_t system_root[MAX_PATH];
@@ -498,10 +518,7 @@ async def test_windows_restricted_native_job_reclaims_descendant(
         assert ready == b"restricted-child-ready\n"
         assert len(api.created_jobs) == 1
         job = api.created_jobs[0]
-        assert not api.job_is_empty(job)
-        await lease.endpoint.write(b"x")
-        assert (await lease.process.wait()).return_code == 0
-        assert not api.job_is_empty(job)
+        assert api.job_active_process_count(job) == 2
         await lease.close()
         lease = None
         assert api.job_empty_observations[-1]

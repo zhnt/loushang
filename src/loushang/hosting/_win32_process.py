@@ -684,7 +684,7 @@ class _CtypesWin32Api:
             return None
         return int(return_code.value)
 
-    def job_is_empty(self, handle: int) -> bool:
+    def job_active_process_count(self, handle: int) -> int:
         accounting = _JOBOBJECT_BASIC_ACCOUNTING_INFORMATION()
         if not self._QueryInformationJobObject(
             handle,
@@ -694,7 +694,10 @@ class _CtypesWin32Api:
             None,
         ):
             self._raise_last_error("QueryInformationJobObject")
-        return accounting.ActiveProcesses == 0
+        return int(accounting.ActiveProcesses)
+
+    def job_is_empty(self, handle: int) -> bool:
+        return self.job_active_process_count(handle) == 0
 
     def terminate_job(self, handle: int, exit_code: int) -> None:
         if not self._TerminateJobObject(handle, exit_code):
