@@ -3,7 +3,9 @@
 [Architecture](../README.md) · [Drafts](README.md) ·
 [Product And Platform Host Glossary](../../glossary/loushang-product.md) ·
 [AppService Hosted Boundary](appservice-embedded-tui-hosted-boundary-plan.md) ·
-[Hosting Support Boundary](../hosting/key-designs/hosted-application-support-boundary.md)
+[Hosting Support Boundary](../hosting/key-designs/hosted-application-support-boundary.md) ·
+[A0 Component Discovery](apphost-component-discovery-a0.md) ·
+[A0 Contract Baseline](apphost-contract-baseline-a0.md)
 
 ## Status
 
@@ -28,8 +30,11 @@
 - `loushang.harness.host` supplies Product-neutral single-Product stdio,
   line-input, mode, action, task-drain, and lifecycle mechanics. It is not the
   logical Platform Host and owns no Product catalog or deployment topology.
+- `loushang.hosting` implements Product-neutral process and child-session
+  mechanics through H4; the Harness-owned H5 Worker adapter consumes that
+  contract behind an explicit default-dark selector.
 - There is no `loushang.apphost`, `loushang.appserver`, or
-  `loushang.hosting` source package.
+  `loushang.appservice` source package.
 
 ### Proposed target
 
@@ -42,8 +47,9 @@ Host" or a second Product registry.
 
 Acceptance would introduce AppHost contracts, an admitted Product catalog and
 router, scoped Product-runtime lifecycle, deployment-profile composition, and
-outer launch/service adapters. It would not itself introduce AppServer,
-Hosting, a daemon, or a GUI; those remain separately triggered dependencies.
+outer launch/service adapters. It would not itself introduce AppServer, extend
+or activate Hosting, start a daemon, or add a GUI; those remain separately
+triggered dependencies.
 
 This proposed placement does not reserve concrete public symbols. The names
 below identify responsibilities that require component discovery before code
@@ -213,19 +219,37 @@ Every newly written durable Session therefore has a small, generic, versioned
   incompatible authority; and
 - no Product payload, credentials, mutable runtime state, or default Product.
 
-A lightweight AppHost header reader validates only this envelope, resolves the
-explicit Product descriptor/factory, and then transfers the opaque Product
-locator to that Product's canonical transcript/continuity owner. The Session
-catalog and resume summary project `product_id` from the same envelope. AppHost
-owns the cross-Product envelope schema and read contract, not a second Session
-store: the Product-selected canonical conversation/continuity owner persists
-the envelope atomically with creation/publication of its durable Session.
+A caller-injected, Product-neutral Session identity/catalog port reads and
+validates only this envelope, including for explicitly selected
+current-directory and user-global discovery scopes. AppHost consumes that
+bounded projection, resolves the explicit Product descriptor/factory, and then
+transfers the opaque Product locator to that Product's canonical
+transcript/continuity owner. The Session catalog and resume summary project
+`product_id` from the same envelope. AppHost owns the cross-Product envelope
+schema and required-port contract, not a filesystem reader or second Session
+store: the canonical conversation/continuity owner persists the envelope
+atomically with creation/publication of its durable Session, and the
+Session-catalog owner projects it before routing.
 `ConversationHeader` and Product runtime-profile metadata are Current evidence,
 not yet a sufficient cross-Product routing contract: opaque metadata may omit
 or rename Product identity. Legacy Coding Sessions therefore enter through an
 explicit compatibility importer/migration that writes the new envelope, or
 resume fails with typed `ProductIdentityRequired`. No missing or unknown
 identity silently selects a default Product.
+
+AppHost never derives cwd, user home, or `$LOUSHANG_HOME`. Trusted composition
+selects normalized discovery scopes and injects the port. The port preserves
+source-scope identity, deduplicates only an exact stable Session identity, and
+reports conflicting envelopes as an ambiguity rather than choosing by search
+order. Resume reopens the exact projected store/provider reference; listing a
+legacy root does not make it a writable peer authority.
+
+The envelope routes only to an already admitted Product registration. It is
+not Product trust, continuity authority, or proof that an opaque locator is
+safe. The selected canonical Product/continuity owner revalidates its locator
+and authority identity before opening state; invalid, truncated, conflicting,
+or changed discovery projections never become resumable merely because
+AppHost can parse their `product_id`.
 
 ## Runtime And Launcher Split
 
@@ -471,3 +495,9 @@ Before this placement becomes accepted:
    Host/Presentation Profile Plugin to the canonical glossary/alias governance.
 
 Until implementation begins, `src/loushang/apphost` remains absent.
+
+The A0 component-discovery and Contract Model baselines satisfy only the
+design-input part of gate 1. They do not accept the placement, reserve final
+Python symbols, or waive the common-parent, sibling, glossary, two-Product,
+resume, launcher, and import gates above. The cross-scope sequence is tracked
+by the [Hosted Product Runtime V1 plan](hosted-product-runtime-v1-plan.md).

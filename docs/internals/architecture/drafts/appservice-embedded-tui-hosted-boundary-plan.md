@@ -4,6 +4,7 @@
 [Future Architecture v3](future-loushang-architecture-v3.md) ·
 [Application Service Refactor](application-service-refactor.md) ·
 [AppHost Top-Level Placement](apphost-top-level-placement.md) ·
+[AppHost A0 Contract Baseline](apphost-contract-baseline-a0.md) ·
 [Hosting Support Boundary](../hosting/key-designs/hosted-application-support-boundary.md)
 
 ## Status
@@ -236,14 +237,15 @@ itself.
 
 AppService may define the structural ports it consumes. A
 `ProductSessionResolver` is an injected narrow adapter over AppHost's already
-admitted Product catalog/router. Before Product-specific parsing, AppHost reads
-the generic versioned Session Identity Envelope defined by the parent placement
-and obtains its required `product_id` and opaque locator. Resolution returns a
-new scoped Product Runtime binding for each new/open/resume Session; a
-single-Product deployment limits allowed Product IDs but does not share one
-mutable Runtime handle among Sessions. Missing legacy identity requires an
-explicit compatibility migration or typed `ProductIdentityRequired`, never a
-default fallback. The resolver does not own
+admitted Product catalog/router. Before Product-specific parsing, AppHost
+consumes the generic versioned Session Identity Envelope from the
+caller-injected identity/catalog port defined by the parent placement and A0
+baseline; it never derives cwd/home roots or reads Session files directly.
+Resolution returns a new scoped Product Runtime binding for each
+new/open/resume Session; a single-Product deployment limits allowed Product IDs
+but does not share one mutable Runtime handle among Sessions. Missing legacy
+identity requires an explicit compatibility migration or typed
+`ProductIdentityRequired`, never a default fallback. The resolver does not own
 Product registration, Plugin discovery, OEM selection, provider resolution,
 or trust policy. Hosted Product integration modules implement the injected
 Session, Work, projection, and optional Channel ports and may call Product and
