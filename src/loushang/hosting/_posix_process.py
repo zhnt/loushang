@@ -7,6 +7,7 @@ import os
 import signal
 import subprocess
 from collections.abc import Callable
+from typing import cast
 
 from ._process_backend import _ProcessInheritance, _ProcessTransport
 from .contracts import (
@@ -19,6 +20,8 @@ from .errors import HostingError, HostingFailureCategory
 
 _TREE_POLL_SECONDS = 0.01
 _FAILED_ATTACHMENT_SETTLEMENT_SECONDS = 1.0
+_SIGTERM = cast(signal.Signals, getattr(signal, "SIGTERM", 15))
+_SIGKILL = cast(signal.Signals, getattr(signal, "SIGKILL", 9))
 
 
 class _PosixProcess:
@@ -77,14 +80,14 @@ class _PosixProcess:
 
     def group_exists(self) -> bool:
         try:
-            os.killpg(self._process_group_id, 0)
+            _kill_process_group(self._process_group_id, 0)
         except ProcessLookupError:
             return False
         return True
 
     def signal_group(self, group_signal: signal.Signals) -> None:
         try:
-            os.killpg(self._process_group_id, group_signal)
+            _kill_process_group(self._process_group_id, group_signal)
         except ProcessLookupError:
             return
 
@@ -223,17 +226,17 @@ class _PosixProcessBackend:
         await _require_posix_process(process).wait_group()
 
     async def terminate_tree(self, process: _ProcessTransport) -> None:
-        _require_posix_process(process).signal_group(signal.SIGTERM)
+        _require_posix_process(process).signal_group(_SIGTERM)
 
     async def kill_tree(self, process: _ProcessTransport) -> None:
-        _require_posix_process(process).signal_group(signal.SIGKILL)
+        _require_posix_process(process).signal_group(_SIGKILL)
 
     async def close_process_handles(self, process: _ProcessTransport) -> None:
         owned = _require_posix_process(process)
         failures: list[BaseException] = []
         try:
             if owned.group_exists():
-                owned.signal_group(signal.SIGKILL)
+                owned.signal_group(_SIGKILL)
         except BaseException as exc:
             failures.append(exc)
         try:
@@ -249,7 +252,7 @@ class _PosixProcessBackend:
     async def _reclaim_failed_attachment(self, process: _PosixProcess) -> None:
         failures: list[BaseException] = []
         try:
-            process.signal_group(signal.SIGKILL)
+            process.signal_group(_SIGKILL)
         except BaseException as exc:
             failures.append(exc)
         try:
@@ -276,6 +279,19 @@ def _require_posix_process(process: _ProcessTransport) -> _PosixProcess:
     if not isinstance(process, _PosixProcess):
         raise TypeError("POSIX backend requires its own process transport")
     return process
+
+
+def _kill_process_group(
+    process_group_id: int,
+    group_signal: int | signal.Signals,
+) -> None:
+    killpg = getattr(os, "killpg", None)
+    if not callable(killpg):
+        raise HostingError(
+            HostingFailureCategory.PLATFORM_UNSUPPORTED,
+            "POSIX process-group signaling is unavailable",
+        )
+    killpg(process_group_id, group_signal)
 
 
 def _claim_endpoint(

@@ -408,7 +408,7 @@ async def test_failed_start_retains_cleanup_debt_until_host_close_retries() -> N
 
     assert backend.close_handles_calls == 2
     assert not host._reservations
-    assert preparation.close_calls == 2
+    assert preparation.close_calls == 1
 
 
 @_async_test

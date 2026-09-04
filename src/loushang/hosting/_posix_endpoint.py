@@ -82,11 +82,17 @@ class _PosixEndpointBackend:
     backend_id = "posix-socketpair-v1"
 
     def __init__(self) -> None:
-        if os.name != "posix" or not callable(getattr(socket, "socketpair", None)):
+        address_family = getattr(socket, "AF_UNIX", None)
+        if (
+            os.name != "posix"
+            or not callable(getattr(socket, "socketpair", None))
+            or not isinstance(address_family, int)
+        ):
             raise HostingError(
                 HostingFailureCategory.PLATFORM_UNSUPPORTED,
                 "POSIX socketpair endpoints are unavailable",
             )
+        self._address_family = address_family
 
     async def create_pair(
         self,
@@ -95,7 +101,7 @@ class _PosixEndpointBackend:
     ) -> _PlatformEndpointPair:
         try:
             host_endpoint, child_endpoint = socket.socketpair(
-                socket.AF_UNIX, socket.SOCK_STREAM
+                self._address_family, socket.SOCK_STREAM
             )
         except OSError as exc:
             raise HostingError(

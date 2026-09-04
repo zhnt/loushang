@@ -118,7 +118,7 @@ def test_h2b_platform_sources_encode_atomic_ownership_mechanics() -> None:
     for statement in (
         "start_new_session=True",
         "close_fds=True",
-        "os.killpg",
+        'getattr(os, "killpg", None)',
     ):
         assert statement in posix
     for statement in (

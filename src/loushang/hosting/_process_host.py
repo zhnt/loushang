@@ -873,6 +873,7 @@ class _ProcessHost:
         )
         try:
             if reservation.process is not None:
+                failure_count = len(failures)
                 await _reclaim_unpublished(
                     self._backend,
                     reservation.process,
@@ -880,13 +881,18 @@ class _ProcessHost:
                     self._timeouts,
                     failures,
                 )
+                if len(failures) == failure_count:
+                    reservation.process = None
             if reservation.preparation is not None:
+                failure_count = len(failures)
                 await _attempt(
                     failures,
                     _CleanupPhase.PREPARATION,
                     HostingFailureCategory.CLEANUP_FAILED,
                     reservation.preparation.close(),
                 )
+                if len(failures) == failure_count:
+                    reservation.preparation = None
         finally:
             if failures:
                 reservation.cleanup_error = _CleanupError(tuple(failures))

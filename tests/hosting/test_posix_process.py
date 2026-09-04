@@ -318,6 +318,6 @@ def test_posix_backend_has_no_root_only_signal_fallback() -> None:
     )
     assert "process.terminate(" not in source
     assert "os.kill(" not in source
-    assert "os.killpg(" in source
+    assert 'getattr(os, "killpg", None)' in source
     assert "start_new_session=True" in source
     assert "close_fds=True" in source
