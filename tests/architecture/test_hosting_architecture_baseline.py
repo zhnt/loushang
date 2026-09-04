@@ -25,6 +25,9 @@ HOSTING_DOCUMENTS = (
     HOSTING_ROOT / "component-model.md",
     HOSTING_ROOT / "contract-model-h0.md",
     HOSTING_ROOT / "process-lifetime-host-h1.md",
+    HOSTING_ROOT / "process-platform-h2.md",
+    HOSTING_ROOT / "inherited-peer-endpoint-h3.md",
+    HOSTING_ROOT / "atomic-child-session-h4.md",
     HOSTING_ROOT / "traceability.md",
     HOSTING_ROOT / "validation/component-discovery.md",
     HOSTED_APPLICATION_BOUNDARY,
@@ -134,6 +137,15 @@ def test_hosting_design_package_is_complete_and_h0_is_accepted() -> None:
         HOSTING_ROOT / "process-lifetime-host-h1.md": (
             "normative — implemented H1 internal runtime specification"
         ),
+        HOSTING_ROOT / "process-platform-h2.md": (
+            "normative — accepted H2 process-platform specification"
+        ),
+        HOSTING_ROOT / "inherited-peer-endpoint-h3.md": (
+            "normative — accepted H3 endpoint specification"
+        ),
+        HOSTING_ROOT / "atomic-child-session-h4.md": (
+            "normative — accepted H4 child-session specification"
+        ),
         HOSTING_ROOT / "traceability.md": ("normative — accepted design traceability"),
         HOSTING_PLACEMENT: "normative — accepted cross-scope Hosting placement decision",
     }
@@ -151,6 +163,9 @@ def test_hosting_design_package_is_complete_and_h0_is_accepted() -> None:
                     in {
                         HOSTING_ROOT / "contract-model-h0.md",
                         HOSTING_ROOT / "process-lifetime-host-h1.md",
+                        HOSTING_ROOT / "process-platform-h2.md",
+                        HOSTING_ROOT / "inherited-peer-endpoint-h3.md",
+                        HOSTING_ROOT / "atomic-child-session-h4.md",
                     }
                     else "partial"
                 ),
@@ -264,7 +279,7 @@ def test_hosting_component_set_and_dependency_direction_are_explicit() -> None:
         assert component_id in overview
 
     assert (
-        "loushang.harness -> loushang.hosting     # accepted Target; not yet Current"
+        "loushang.harness -> loushang.hosting     # Current dark H2c dependency"
         in overview
     )
     assert "loushang.hosting -> loushang.harness     # forbidden" in overview
@@ -577,7 +592,7 @@ def test_hosting_traceability_covers_every_requirement_exactly_once() -> None:
             "`HOST-FR-002`",
             "`HOST-CMP-PROCESS`",
             "Process Lifetime Host; failure interaction",
-            "H1 fake lifecycle matrix; H2 real process-tree conformance",
+            "H1 fake lifecycle matrix and H2 real process-tree conformance",
         ),
         (
             "`HOST-FR-003`",
@@ -588,8 +603,8 @@ def test_hosting_traceability_covers_every_requirement_exactly_once() -> None:
         (
             "`HOST-FR-004`",
             "`HOST-CMP-SESSION`",
-            "Child Session Host; rollback interaction",
-            "fault injection at every acquisition/publication boundary",
+            "Child Session Host; H4 atomic transaction",
+            "H4 failure matrix at every acquisition/publication boundary",
         ),
         (
             "`HOST-FR-005`",
@@ -601,19 +616,19 @@ def test_hosting_traceability_covers_every_requirement_exactly_once() -> None:
             "`HOST-FR-006`",
             "`HOST-CMP-PLATFORM`",
             "explicit platform boundary",
-            "exact backend selection and unsupported-platform tests",
+            "H2 exact backend selection, atomic ownership, and unsupported-platform tests",
         ),
         (
             "`HOST-QR-001`",
             "Process, Endpoint, Session",
             "lifecycle invariants",
-            "H1 process close/cancellation tests; H3-H4 endpoint/session cases remain",
+            "H1/H3 owner tests plus H4 joint close, cancellation, and cleanup-debt cases",
         ),
         (
             "`HOST-QR-002`",
-            "Process, Endpoint",
+            "Process, Endpoint, Session",
             "requirements and component interfaces",
-            "H1 process capacity/write/tail/shutdown bounds; H3 endpoint buffers remain",
+            "H1/H3 resource bounds plus H4 aggregate capacity and factory-bound validation",
         ),
         (
             "`HOST-QR-003`",
@@ -649,7 +664,7 @@ def test_hosting_traceability_covers_every_requirement_exactly_once() -> None:
         "HOST-FR-005": "HOST-CMP-CONTRACT",
         "HOST-FR-006": "HOST-CMP-PLATFORM",
         "HOST-QR-001": "Process, Endpoint, Session",
-        "HOST-QR-002": "Process, Endpoint",
+        "HOST-QR-002": "Process, Endpoint, Session",
         "HOST-QR-003": "Session, Platform Adapter",
         "HOST-QR-004": "scope/composition root",
         "HOST-QR-005": "all components",

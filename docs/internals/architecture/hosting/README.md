@@ -28,8 +28,17 @@ immutable launch/session requests, raw results, stable mechanism failures,
 bounded observations, and required/provided port protocols. H1 adds a private,
 fake-backed Process Lifetime Host with capacity reservation, preparation
 ownership, bounded stdio, exit convergence, cancellation-safe cleanup, and
-typed failure aggregation. It performs no real OS process creation and has no
-current consumer.
+typed failure aggregation. H2 adds fail-closed POSIX process-group and Windows
+Job Object adapters plus the restrained `create_process_host` composition
+entrypoint. A dark Harness compatibility adapter covers the representable
+Current contract while refusing sealed-descriptor launches; no production
+consumer has switched owners. H3 adds the private bounded Inherited Peer
+Endpoint Host, POSIX socketpair and Windows anonymous-pipe backends, and
+single-use transfer into the exact H2 spawn allowlist. It publishes no new
+public endpoint factory. H4 adds the atomic Child Session Host and restrained
+`create_child_session_host` composition entrypoint: one compatible backend
+set, one correlated aggregate lease, and process-first joint cleanup. The
+Current Harness Worker route remains unchanged and default-dark.
 
 Current process mechanics remain implemented inside Harness, principally by:
 
@@ -46,9 +55,10 @@ remain authoritative for the implemented Harness behavior.
 ## Target
 
 The accepted Target implements `loushang.hosting` inside the existing
-`loushang` distribution. H0 establishes the contract package and H1 proves the
-process owner against private fakes; later slices let
-Harness consume Hosting through narrow owner adapters. Hosting does not import
+`loushang` distribution. H0 establishes the contract package, H1-H3 implement
+the constituent resource owners and exact platform adapters, and H4 composes
+their atomic child-session lifetime. A later activation slice may let Harness
+consume that port through a narrow owner adapter. Hosting does not import
 Harness and does not acquire Harness authority merely because it performs the
 final OS operation.
 
@@ -60,12 +70,13 @@ Product composition
        -> loushang.hosting process and child-session ports
             -> local operating system
 
-loushang.harness -> loushang.hosting     # accepted Target; not yet Current
+loushang.harness -> loushang.hosting     # Current dark H2c dependency
 loushang.hosting -> loushang.harness     # forbidden
 ```
 
-Moving the code, publishing a separate distribution, and activating a native
-Worker route are distinct decisions. This proposal makes none of them Current.
+Establishing the dark compatibility dependency, switching a production owner,
+publishing a separate distribution, and activating a native Worker route are
+distinct decisions. Only the first is Current after H2c.
 
 ## Owns
 
@@ -183,24 +194,39 @@ model.
 5. [Component Model](component-model.md);
 6. [H0 Contract Model](contract-model-h0.md);
 7. [H1 Process Lifetime Host](process-lifetime-host-h1.md);
-8. [Hosted Application Support Boundary](key-designs/hosted-application-support-boundary.md);
-9. [ARD-002: Hosting Top-Level Placement](../decisions/ARD-002-hosting-top-level-placement.md);
-10. [Traceability](traceability.md);
-11. current source, tests, and generated package facts.
+8. [H2 Process Platform And Harness Compatibility](process-platform-h2.md);
+9. [H3 Inherited Peer Endpoint](inherited-peer-endpoint-h3.md);
+10. [H4 Atomic Child Session](atomic-child-session-h4.md);
+11. [Hosted Application Support Boundary](key-designs/hosted-application-support-boundary.md);
+12. [ARD-002: Hosting Top-Level Placement](../decisions/ARD-002-hosting-top-level-placement.md);
+13. [Traceability](traceability.md);
+14. current source, tests, and generated package facts.
 
 ## Current-To-Target Gaps
 
-- `partial`: `HOST-CMP-CONTRACT` is implemented by H0 and the platform-neutral
-  lifetime core of `HOST-CMP-PROCESS` is implemented privately by H1; exact
-  POSIX/Windows adapters and the other three resource/platform components
-  remain missing.
+- `implemented`: all five v1 components are implemented through H4, including
+  aggregate capacity, atomic publication/rollback, correlated observations,
+  and the public child-session composition entrypoint.
 - `deviated`: reusable process mechanics currently reside under Harness rather
   than the accepted neutral owner; their Current
   Harness contracts remain valid until migration.
-- `missing`: POSIX and Windows inherited peer-endpoint feasibility evidence.
-- `missing`: compatibility facades and a behavior-preserving migration plan.
+- `implemented`: POSIX socketpair and Windows anonymous-pipe inherited endpoint
+  adapters, single-use transfer, deterministic lifecycle evidence, and native
+  three-platform conformance suites. Local POSIX evidence is green; the
+  combined Windows CI result is pending until this branch is pushed.
+- `implemented`: a default-dark Harness compatibility facade for the
+  representable request subset, including explicit sealed-FD refusal.
 - `implemented`: H0 standard-library-only/no-authority public-surface gates and
   the H1 fake lifecycle, limit, cancellation, fault, and observation gates.
+- `implemented`: H2 exact platform capability, POSIX/Windows process backends,
+  fail-closed selection, native conformance inventory, and dark compatibility
+  boundary.
+- `implemented`: H3 bounded endpoint owner, exact child-side stdio transfer,
+  peer closure, cancellation ownership, and no-listener/no-discovery boundary.
+- `implemented`: H4 atomic process-plus-endpoint transactions, joint lifetime,
+  cleanup-debt fencing, compatible platform-set selection, and local POSIX
+  native round-trip evidence. The combined Windows CI result remains pending
+  until this branch is pushed.
 - `missing`: a reviewed Product/native Worker activation route; PLC9C5 remains
   separate from Hosting extraction.
 - `missing`: daemon/service-instance lifecycle remains a trigger-gated future

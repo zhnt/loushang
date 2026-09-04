@@ -61,6 +61,7 @@ graph TD
     PKG_HARNESS --> PKG_AGENT
     PKG_HARNESS --> PKG_AI
     PKG_HARNESS --> PKG_FOUNDATION
+    PKG_HARNESS --> PKG_HOSTING
     PKG_HARNESSTUI --> PKG_AGENT
     PKG_HARNESSTUI --> PKG_FOUNDATION
     PKG_HARNESSTUI --> PKG_HARNESS
@@ -86,7 +87,7 @@ graph TD
 | `loushang.channel` | `loushang.foundation`, `loushang.harness`, `loushang.harnesswork` |
 | `loushang.coding` | `loushang.agent`, `loushang.ai`, `loushang.channel`, `loushang.foundation`, `loushang.harness`, `loushang.harnesstui`, `loushang.harnesswork`, `loushang.method`, `loushang.plugin`, `loushang.tui` |
 | `loushang.foundation` | None |
-| `loushang.harness` | `loushang.agent`, `loushang.ai`, `loushang.foundation` |
+| `loushang.harness` | `loushang.agent`, `loushang.ai`, `loushang.foundation`, `loushang.hosting` |
 | `loushang.harnesstui` | `loushang.agent`, `loushang.foundation`, `loushang.harness`, `loushang.tui` |
 | `loushang.harnesswork` | `loushang.agent`, `loushang.ai`, `loushang.foundation`, `loushang.harness` |
 | `loushang.hosting` | None |

@@ -32,16 +32,19 @@ def test_h1_backend_is_private_and_carries_no_raw_process_identity() -> None:
     backend = BACKEND.read_text(encoding="utf-8")
     tree = ast.parse(backend)
 
-    assert "_process_backend" not in root
-    assert "_process_host" not in root
+    assert "from ._process_backend import" not in root
+    assert "from ._process_host import" not in root
     assert "_ProcessBackend" not in root
     assert "_ProcessHost" not in root
     assert _class_methods(BACKEND, "_ProcessBackend") == {
         "backend_id",
         "spawn",
+        "tree_exited",
+        "wait_tree",
         "terminate_tree",
         "kill_tree",
         "close_process_handles",
+        "close_backend",
     }
     assert _class_methods(BACKEND, "_ProcessTransport") == {
         "return_code",
@@ -83,7 +86,11 @@ def test_h1_has_no_real_spawn_primitive_or_upward_dependency() -> None:
 def test_h1_preserves_current_harness_process_owner() -> None:
     assert HARNESS_PROCESS.is_dir()
     for path in HARNESS_PROCESS.glob("*.py"):
+        if path.name == "hosting_compat.py":
+            continue
         assert "loushang.hosting" not in path.read_text(encoding="utf-8")
+    current_owner = (HARNESS_PROCESS / "host.py").read_text(encoding="utf-8")
+    assert "class ProcessHost:" in current_owner
 
 
 def test_h1_specification_records_private_fake_backed_delivery_boundary() -> None:
@@ -107,6 +114,7 @@ def test_h1_lifecycle_matrix_names_required_adversarial_cases() -> None:
     for case in (
         "natural_exit_releases_capacity_after_owned_cleanup",
         "spawn_failure_and_early_exit_rollback_without_leaks",
+        "natural_root_exit_reclaims_lingering_owned_tree_before_capacity",
         "terminate_uses_grace_then_kill_and_all_waiters_share_exit",
         "close_aggregates_faults_but_attempts_every_reachable_cleanup",
         "start_cancellation_after_attachment_is_shielded_until_reclaimed",

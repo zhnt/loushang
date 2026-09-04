@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import sys
 from collections import deque
 from collections.abc import Awaitable, Callable
 from functools import wraps
+from pathlib import Path
 from typing import TypeVar
 
 import pytest
@@ -20,7 +22,7 @@ from loushang.hosting import (
     ProcessStdoutMode,
     ProcessStreamSpec,
 )
-from loushang.hosting._process_backend import _ProcessTransport
+from loushang.hosting._process_backend import _ProcessInheritance, _ProcessTransport
 from loushang.hosting._process_host import (
     _CleanupError,
     _CleanupPhase,
@@ -49,8 +51,8 @@ def _request(
     stderr: ProcessStderrMode = ProcessStderrMode.CAPTURE_TAIL,
 ) -> ProcessLaunchRequest:
     return ProcessLaunchRequest(
-        argv=("/opt/fake/worker", "--attached"),
-        cwd="/srv/workspace",
+        argv=(sys.executable, "--attached"),
+        cwd=str(Path.cwd().resolve()),
         effective_environment=(("PATH", "/usr/bin"),),
         streams=ProcessStreamSpec(stdin=stdin, stdout=stdout, stderr=stderr),
     )
@@ -120,8 +122,10 @@ class _FakeProcess:
         self._stderr = deque((*stderr, b""))
         self._return_code = return_code
         self._exited = asyncio.Event()
+        self._tree_exited = asyncio.Event()
         if return_code is not None:
             self._exited.set()
+            self._tree_exited.set()
         self.stdin_writes: list[bytes] = []
         self.close_stdin_calls = 0
         self.wait_calls = 0
@@ -154,10 +158,15 @@ class _FakeProcess:
         assert self._return_code is not None
         return self._return_code
 
-    def exit(self, return_code: int) -> None:
+    def exit(self, return_code: int, *, tree: bool = True) -> None:
         if self._return_code is None:
             self._return_code = return_code
             self._exited.set()
+        if tree:
+            self._tree_exited.set()
+
+    def settle_tree(self) -> None:
+        self._tree_exited.set()
 
 
 class _FakeBackend:
@@ -177,19 +186,23 @@ class _FakeBackend:
         self.terminate_error: BaseException | None = None
         self.kill_error: BaseException | None = None
         self.handles_error: BaseException | None = None
+        self.tree_exited_error: BaseException | None = None
         self.close_handles_started = asyncio.Event()
         self.release_close_handles = asyncio.Event()
         self.release_close_handles.set()
         self.terminate_calls = 0
         self.kill_calls = 0
         self.close_handles_calls = 0
+        self.close_backend_calls = 0
 
     async def spawn(
         self,
         request: ProcessLaunchRequest,
         *,
         on_spawn: Callable[[_ProcessTransport], None],
+        inheritance: _ProcessInheritance | None = None,
     ) -> _FakeProcess:
+        assert inheritance is None
         self.spawn_requests.append(request)
         self.events.append("spawn")
         if self.spawn_error is not None:
@@ -211,6 +224,16 @@ class _FakeBackend:
         if self.terminate_error is not None:
             raise self.terminate_error
 
+    def tree_exited(self, process: _ProcessTransport) -> bool:
+        if self.tree_exited_error is not None:
+            raise self.tree_exited_error
+        assert isinstance(process, _FakeProcess)
+        return process._tree_exited.is_set()
+
+    async def wait_tree(self, process: _ProcessTransport) -> None:
+        assert isinstance(process, _FakeProcess)
+        await process._tree_exited.wait()
+
     async def kill_tree(self, process: _ProcessTransport) -> None:
         self.kill_calls += 1
         self.events.append("kill")
@@ -227,6 +250,9 @@ class _FakeBackend:
         await self.release_close_handles.wait()
         if self.handles_error is not None:
             raise self.handles_error
+
+    async def close_backend(self) -> None:
+        self.close_backend_calls += 1
 
 
 class _Observations:
@@ -261,6 +287,14 @@ async def _settle_finalizer() -> None:
     # cleanup awaits before returning capacity to the host.
     for _ in range(6):
         await asyncio.sleep(0)
+
+
+async def _wait_until(predicate: Callable[[], bool]) -> None:
+    for _ in range(100):
+        if predicate():
+            return
+        await asyncio.sleep(0)
+    raise AssertionError("condition did not settle")
 
 
 @_async_test
@@ -340,12 +374,76 @@ async def test_spawn_failure_and_early_exit_rollback_without_leaks() -> None:
     with pytest.raises(HostingError) as early_failure:
         await early_host.start(_request(), _FakePreparationPort(early_preparation))
     assert early_failure.value.category is HostingFailureCategory.CHILD_EXITED_EARLY
-    assert early_backend.terminate_calls == 1
+    assert early_backend.terminate_calls == 0
     assert early_backend.kill_calls == 0
     assert early_backend.close_handles_calls == 1
     assert early_preparation.close_calls == 1
     await spawn_host.close()
     await early_host.close()
+
+
+@_async_test
+async def test_failed_start_retains_cleanup_debt_until_host_close_retries() -> None:
+    process = _FakeProcess(return_code=2)
+    backend = _FakeBackend((process,))
+    backend.handles_error = OSError("transient handle cleanup")
+    preparation = _FakePreparationLease(_request())
+    host = _ProcessHost(backend)
+
+    with pytest.raises(HostingError) as failure:
+        await host.start(_request(), _FakePreparationPort(preparation))
+
+    assert failure.value.category is HostingFailureCategory.CHILD_EXITED_EARLY
+    assert isinstance(failure.value.__cause__, _CleanupError)
+    assert host._state == "faulted"
+    assert len(host._reservations) == 1
+    with pytest.raises(HostingError) as faulted:
+        await host.start(
+            _request(), _FakePreparationPort(_FakePreparationLease(_request()))
+        )
+    assert faulted.value.category is HostingFailureCategory.HOST_CLOSED
+
+    backend.handles_error = None
+    await host.close()
+
+    assert backend.close_handles_calls == 2
+    assert not host._reservations
+    assert preparation.close_calls == 2
+
+
+@_async_test
+async def test_natural_root_exit_reclaims_lingering_owned_tree_before_capacity() -> None:
+    first = _FakeProcess()
+    second = _FakeProcess()
+    backend = _FakeBackend((first, second))
+    backend.terminate_exits = False
+    first_preparation = _FakePreparationLease(_request())
+    host = _ProcessHost(
+        backend,
+        limits=_ProcessHostLimits(max_processes=1),
+        timeouts=_ForceTimeouts(),
+    )
+    lease = await host.start(
+        _request(), _FakePreparationPort(first_preparation)
+    )
+
+    first.exit(0, tree=False)
+    assert (await lease.wait()).return_code == 0
+    with pytest.raises(HostingError) as capacity:
+        await host.start(
+            _request(), _FakePreparationPort(_FakePreparationLease(_request()))
+        )
+    assert capacity.value.category is HostingFailureCategory.CAPACITY_EXHAUSTED
+    await _wait_until(lambda: first_preparation.close_calls == 1)
+    assert backend.terminate_calls == 1
+    assert backend.kill_calls == 1
+
+    backend.terminate_exits = True
+    second_lease = await host.start(
+        _request(), _FakePreparationPort(_FakePreparationLease(_request()))
+    )
+    await second_lease.close()
+    await host.close()
 
 
 @_async_test
@@ -419,6 +517,46 @@ async def test_close_aggregates_faults_but_attempts_every_reachable_cleanup() ->
     assert backend.kill_calls == 1
     assert backend.close_handles_calls == 1
     assert preparation.close_calls == 1
+
+
+@_async_test
+async def test_tree_query_failure_still_reclaims_handles_and_preparation() -> None:
+    process = _FakeProcess()
+    backend = _FakeBackend((process,))
+    backend.tree_exited_error = OSError("tree query fault")
+    preparation = _FakePreparationLease(_request())
+    host = _ProcessHost(backend)
+    lease = await host.start(_request(), _FakePreparationPort(preparation))
+
+    with pytest.raises(HostingError) as caught:
+        await lease.close()
+
+    assert caught.value.category is HostingFailureCategory.CLEANUP_FAILED
+    assert backend.terminate_calls == 1
+    assert backend.close_handles_calls == 1
+    assert preparation.close_calls == 1
+    await host.close()
+
+
+@_async_test
+async def test_force_settlement_timeout_is_bounded_and_releases_ownership() -> None:
+    process = _FakeProcess()
+    backend = _FakeBackend((process,))
+    backend.terminate_exits = False
+    backend.kill_exits = False
+    preparation = _FakePreparationLease(_request())
+    host = _ProcessHost(backend, timeouts=_ForceTimeouts(count=2))
+    lease = await host.start(_request(), _FakePreparationPort(preparation))
+    process.exit(0, tree=False)
+
+    with pytest.raises(HostingError) as caught:
+        await lease.close()
+
+    assert caught.value.category is HostingFailureCategory.CLEANUP_FAILED
+    assert backend.kill_calls == 1
+    assert backend.close_handles_calls == 1
+    assert preparation.close_calls == 1
+    await host.close()
     # The lease close is the owner of this already-settled aggregate. The host
     # does not retain an unbounded historical error journal after releasing it.
     await host.close()

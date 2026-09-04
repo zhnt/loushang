@@ -71,6 +71,10 @@ OS cannot represent; they may not silently weaken it.
   later Process Lifetime Host publishes the process.
 - `ChildSessionHostingPort.start` will return one `ChildSessionLease` containing
   one process lease and one host byte endpoint, or return neither.
+- H0 keeps `ChildSessionRequest` construction compatible with any valid
+  process request. The H4 Child Session Host rejects unsupported stream
+  topology before reserving capacity or acquiring resources; its v1 endpoint
+  requires `stdin=CLOSED` and `stdout=DISCARD`, while stderr remains explicit.
 - lease protocols expose lifecycle operations but no ownership transfer,
   detach, PID, raw handle, backend selection, or reconnect surface.
 

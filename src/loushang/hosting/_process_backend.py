@@ -30,6 +30,19 @@ class _ProcessTransport(Protocol):
     async def wait(self) -> int: ...
 
 
+class _ProcessInheritance(Protocol):
+    """Private single-use H3 resource passed only by Child Session Host."""
+
+    @property
+    def backend_id(self) -> str: ...
+
+    def claim(self, *, backend_id: str) -> tuple[int, ...]: ...
+
+    def mark_transferred(self) -> None: ...
+
+    async def close(self) -> None: ...
+
+
 class _ProcessBackend(Protocol):
     """Private exact-platform process operations selected by composition."""
 
@@ -41,6 +54,7 @@ class _ProcessBackend(Protocol):
         request: ProcessLaunchRequest,
         *,
         on_spawn: Callable[[_ProcessTransport], None],
+        inheritance: _ProcessInheritance | None = None,
     ) -> _ProcessTransport:
         """Create one process and attach ownership before cancellation can land.
 
@@ -50,11 +64,18 @@ class _ProcessBackend(Protocol):
         or returning without attachment is a backend contract violation.
         """
 
+    def tree_exited(self, process: _ProcessTransport) -> bool: ...
+
+    async def wait_tree(self, process: _ProcessTransport) -> None: ...
+
     async def terminate_tree(self, process: _ProcessTransport) -> None: ...
 
     async def kill_tree(self, process: _ProcessTransport) -> None: ...
 
     async def close_process_handles(self, process: _ProcessTransport) -> None: ...
+
+    async def close_backend(self) -> None:
+        """Release backend-owned executor or platform support resources."""
 
 
 __all__: list[str] = []

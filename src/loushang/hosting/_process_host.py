@@ -13,7 +13,11 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TypeVar, cast
 
-from ._process_backend import _ProcessBackend, _ProcessTransport
+from ._process_backend import (
+    _ProcessBackend,
+    _ProcessInheritance,
+    _ProcessTransport,
+)
 from .contracts import (
     HostingComponent,
     HostingLifecycleTransition,
@@ -78,6 +82,7 @@ class _CleanupPhase(str, Enum):
     REAP = "reap"
     STDERR = "stderr"
     PROCESS_HANDLES = "process_handles"
+    BACKEND = "backend"
     PREPARATION = "preparation"
     REGISTRATION = "registration"
 
@@ -108,6 +113,8 @@ class _Reservation:
     reservation_id: int
     owner_id: str
     owner: asyncio.Task[object]
+    settled: asyncio.Event
+    session_id: str | None = None
     preparation: LaunchPreparationLease | None = None
     process: _ProcessTransport | None = None
     cleanup_error: _CleanupError | None = None
@@ -180,8 +187,10 @@ class _HostedProcess(ProcessLease):
         self._termination_task: asyncio.Task[ProcessExit] | None = None
         self._close_task: asyncio.Task[None] | None = None
         self._stderr_task: asyncio.Task[None] | None = None
+        self._tree_task: asyncio.Task[None] | None = None
         self._finalizer_task: asyncio.Task[None] | None = None
         self._finalization_error: _CleanupError | None = None
+        self._process_handles_attempted = False
 
     @property
     def lease_id(self) -> str:
@@ -195,6 +204,10 @@ class _HostedProcess(ProcessLease):
                 self._drain_stderr(),
                 name=f"hosting-process-{self._lease_id}-stderr",
             )
+        self._tree_task = asyncio.create_task(
+            self._backend.wait_tree(self._process),
+            name=f"hosting-process-{self._lease_id}-tree",
+        )
         self._finalizer_task = asyncio.create_task(
             self._finalize(),
             name=f"hosting-process-{self._lease_id}-finalizer",
@@ -340,13 +353,31 @@ class _HostedProcess(ProcessLease):
                     self._exit.set_result(ProcessExit(return_code))
                 self._observe(HostingLifecycleTransition.EXITED, None)
 
+            try:
+                tree_exited = self._backend.tree_exited(self._process)
+            except BaseException:
+                # An unknown state is never treated as successful settlement.
+                # _terminate_owned records the query failure while continuing
+                # every reachable reclamation step.
+                tree_exited = False
+            if not tree_exited:
+                try:
+                    await self._ensure_termination()
+                except _CleanupError as exc:
+                    failures.extend(exc.failures)
+                except BaseException as exc:
+                    failures.append(
+                        _failure(
+                            _CleanupPhase.TERMINATE,
+                            HostingFailureCategory.TERMINATION_FAILED,
+                            exc,
+                        )
+                    )
+            else:
+                await self._finish_tree_wait(failures)
+
             await self._finish_stderr(failures)
-            await _attempt(
-                failures,
-                _CleanupPhase.PROCESS_HANDLES,
-                HostingFailureCategory.CLEANUP_FAILED,
-                self._backend.close_process_handles(self._process),
-            )
+            await self._finish_process_handles(failures)
             await _attempt(
                 failures,
                 _CleanupPhase.PREPARATION,
@@ -392,31 +423,106 @@ class _HostedProcess(ProcessLease):
             )
 
     async def _terminate_owned(self) -> ProcessExit:
-        if self._exit.done():
+        failures: list[_CleanupFailure] = []
+        try:
+            tree_exited = self._backend.tree_exited(self._process)
+        except BaseException as exc:
+            tree_exited = False
+            failures.append(
+                _failure(
+                    _CleanupPhase.REAP,
+                    HostingFailureCategory.TERMINATION_FAILED,
+                    exc,
+                )
+            )
+        if tree_exited:
+            settled_failures: list[_CleanupFailure] = []
+            await self._finish_tree_wait(settled_failures)
+            failures.extend(settled_failures)
+            if failures:
+                raise _CleanupError(tuple(failures)) from failures[0].cause
             return await asyncio.shield(self._exit)
 
-        failures: list[_CleanupFailure] = []
-        await _attempt(
-            failures,
-            _CleanupPhase.STDIN,
-            HostingFailureCategory.CLEANUP_FAILED,
-            self.close_stdin(),
-        )
+        failure_count = len(failures)
         await _attempt(
             failures,
             _CleanupPhase.TERMINATE,
             HostingFailureCategory.TERMINATION_FAILED,
             self._backend.terminate_tree(self._process),
         )
+        # Tree termination must not queue behind a blocked stdin writer.
+        # Closing stdin is still attempted before the grace wait, but it can
+        # now converge because the child-side reader is being reclaimed.
+        if len(failures) == failure_count:
+            await _attempt(
+                failures,
+                _CleanupPhase.STDIN,
+                HostingFailureCategory.CLEANUP_FAILED,
+                self.close_stdin(),
+            )
+        else:
+            try:
+                await asyncio.wait_for(
+                    self.close_stdin(),
+                    self._limits.termination_grace_seconds,
+                )
+            except BaseException as exc:
+                failures.append(
+                    _failure(
+                        _CleanupPhase.STDIN,
+                        HostingFailureCategory.CLEANUP_FAILED,
+                        exc,
+                    )
+                )
 
-        timed_out = False
+        force_kill = False
         try:
             await self._timeouts.wait(
-                asyncio.shield(self._exit),
+                asyncio.shield(self._require_tree_task()),
                 self._limits.termination_grace_seconds,
             )
         except TimeoutError:
-            timed_out = True
+            force_kill = True
+        except BaseException as exc:
+            force_kill = True
+            failures.append(
+                _failure(
+                    _CleanupPhase.REAP,
+                    HostingFailureCategory.TERMINATION_FAILED,
+                    exc,
+                )
+            )
+
+        if force_kill:
+            await _attempt(
+                failures,
+                _CleanupPhase.KILL,
+                HostingFailureCategory.TERMINATION_FAILED,
+                self._backend.kill_tree(self._process),
+            )
+            await self._finish_forced_tree_wait(failures)
+
+        if failures:
+            raise _CleanupError(tuple(failures)) from failures[0].cause
+        return await asyncio.shield(self._exit)
+
+    async def _ensure_termination(self) -> ProcessExit:
+        async with self._lifecycle_lock:
+            task = self._termination_task
+            if task is None:
+                self._closing = True
+                task = asyncio.create_task(
+                    self._terminate_owned(),
+                    name=f"hosting-process-{self._lease_id}-terminate",
+                )
+                self._termination_task = task
+        return await asyncio.shield(task)
+
+    async def _finish_tree_wait(
+        self, failures: list[_CleanupFailure]
+    ) -> None:
+        try:
+            await asyncio.shield(self._require_tree_task())
         except BaseException as exc:
             failures.append(
                 _failure(
@@ -426,36 +532,58 @@ class _HostedProcess(ProcessLease):
                 )
             )
 
-        if timed_out:
-            await _attempt(
-                failures,
-                _CleanupPhase.KILL,
-                HostingFailureCategory.TERMINATION_FAILED,
-                self._backend.kill_tree(self._process),
+    async def _finish_forced_tree_wait(
+        self, failures: list[_CleanupFailure]
+    ) -> None:
+        existing = self._require_tree_task()
+        task = (
+            existing
+            if (
+                not existing.done()
+                or not existing.cancelled()
+                and existing.exception() is None
             )
-            try:
-                await asyncio.shield(self._exit)
-            except BaseException as exc:
-                failures.append(
-                    _failure(
-                        _CleanupPhase.REAP,
-                        HostingFailureCategory.TERMINATION_FAILED,
-                        exc,
-                    )
+            else asyncio.create_task(
+                self._backend.wait_tree(self._process),
+                name=f"hosting-process-{self._lease_id}-forced-tree",
+            )
+        )
+        try:
+            await self._timeouts.wait(
+                asyncio.shield(task), self._limits.termination_grace_seconds
+            )
+        except BaseException as exc:
+            failures.append(
+                _failure(
+                    _CleanupPhase.REAP,
+                    HostingFailureCategory.TERMINATION_FAILED,
+                    exc,
                 )
+            )
+        finally:
+            if not task.done():
+                task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+            if task is not existing and not existing.done():
+                existing.cancel()
+                await asyncio.gather(existing, return_exceptions=True)
 
-        if failures:
-            raise _CleanupError(tuple(failures)) from failures[0].cause
-        return await asyncio.shield(self._exit)
+    def _require_tree_task(self) -> asyncio.Task[None]:
+        if self._tree_task is None:
+            raise RuntimeError("hosted process tree waiter was not started")
+        return self._tree_task
 
     async def _close_owned(self) -> None:
         self._observe(HostingLifecycleTransition.CLEANING, None)
         failures: list[_CleanupFailure] = []
+        termination_failed = False
         try:
             await self.terminate()
         except _CleanupError as exc:
+            termination_failed = True
             failures.extend(exc.failures)
         except BaseException as exc:
+            termination_failed = True
             failures.append(
                 _failure(
                     _CleanupPhase.TERMINATE,
@@ -463,6 +591,13 @@ class _HostedProcess(ProcessLease):
                     exc,
                 )
             )
+
+        if termination_failed:
+            # A platform termination failure must not leave the finalizer
+            # waiting forever before it reaches the backend's kill-on-close
+            # safety path. Backends make this operation idempotent, so the
+            # finalizer can still run the normal phase afterwards.
+            await self._finish_process_handles(failures)
 
         finalizer = self._finalizer_task
         if finalizer is None:
@@ -488,6 +623,19 @@ class _HostedProcess(ProcessLease):
             failures.extend(self._finalization_error.failures)
         if failures:
             raise _CleanupError(tuple(failures)) from failures[0].cause
+
+    async def _finish_process_handles(
+        self, failures: list[_CleanupFailure]
+    ) -> None:
+        if self._process_handles_attempted:
+            return
+        self._process_handles_attempted = True
+        await _attempt(
+            failures,
+            _CleanupPhase.PROCESS_HANDLES,
+            HostingFailureCategory.CLEANUP_FAILED,
+            self._backend.close_process_handles(self._process),
+        )
 
 
 class _ProcessHost:
@@ -526,6 +674,21 @@ class _ProcessHost:
         request: ProcessLaunchRequest,
         preparation: LaunchPreparationPort,
     ) -> ProcessLease:
+        return await self._start_with_inheritance(
+            request,
+            preparation,
+            inheritance=None,
+            session_id=None,
+        )
+
+    async def _start_with_inheritance(
+        self,
+        request: ProcessLaunchRequest,
+        preparation: LaunchPreparationPort,
+        *,
+        inheritance: _ProcessInheritance | None,
+        session_id: str | None,
+    ) -> ProcessLease:
         if not isinstance(request, ProcessLaunchRequest):
             raise TypeError("process host requires ProcessLaunchRequest")
         owner = asyncio.current_task()
@@ -546,14 +709,28 @@ class _ProcessHost:
             reservation_id = self._next_id
             self._next_id += 1
             owner_id = f"process-{reservation_id}"
-            reservation = _Reservation(reservation_id, owner_id, owner)
+            reservation = _Reservation(
+                reservation_id,
+                owner_id,
+                owner,
+                asyncio.Event(),
+                session_id,
+            )
             self._reservations[reservation_id] = reservation
 
-        self._emit(owner_id, HostingLifecycleTransition.CAPACITY_RESERVED)
+        self._emit(
+            owner_id,
+            HostingLifecycleTransition.CAPACITY_RESERVED,
+            session_id=session_id,
+        )
         phase = "preparation"
         published = False
         try:
-            self._emit(owner_id, HostingLifecycleTransition.PREPARING)
+            self._emit(
+                owner_id,
+                HostingLifecycleTransition.PREPARING,
+                session_id=session_id,
+            )
             prepared = await preparation.prepare(request)
             if not isinstance(prepared, LaunchPreparationLease):
                 raise TypeError("preparation port returned an invalid lease")
@@ -564,10 +741,15 @@ class _ProcessHost:
             await prepared.verify_current()
 
             phase = "spawn"
-            self._emit(owner_id, HostingLifecycleTransition.SPAWNING)
+            self._emit(
+                owner_id,
+                HostingLifecycleTransition.SPAWNING,
+                session_id=session_id,
+            )
             process = await self._backend.spawn(
                 prepared_request,
                 on_spawn=reservation.attach_process,
+                inheritance=inheritance,
             )
             if reservation.process is None:
                 # Salvage the returned object so a broken backend cannot turn
@@ -585,7 +767,12 @@ class _ProcessHost:
                 transition: HostingLifecycleTransition,
                 failure: HostingFailureCategory | None = None,
             ) -> None:
-                self._emit(owner_id, transition, failure)
+                self._emit(
+                    owner_id,
+                    transition,
+                    failure,
+                    session_id=session_id,
+                )
 
             lease = _HostedProcess(
                 lease_id=owner_id,
@@ -611,7 +798,11 @@ class _ProcessHost:
                 self._leases.add(lease)
                 lease.begin()
                 published = True
-            self._emit(owner_id, HostingLifecycleTransition.PUBLISHED)
+            self._emit(
+                owner_id,
+                HostingLifecycleTransition.PUBLISHED,
+                session_id=session_id,
+            )
             return lease
         except BaseException as caught:
             primary = _start_failure(caught, phase)
@@ -620,6 +811,7 @@ class _ProcessHost:
                     owner_id,
                     HostingLifecycleTransition.FAILED,
                     primary.category,
+                    session_id=session_id,
                 )
             rollback = asyncio.create_task(
                 self._rollback(reservation),
@@ -650,6 +842,7 @@ class _ProcessHost:
                 async with self._lock:
                     if reservation.cleanup_error is None:
                         self._reservations.pop(reservation_id, None)
+                reservation.settled.set()
 
     async def close(self) -> None:
         caller = asyncio.current_task()
@@ -658,6 +851,7 @@ class _ProcessHost:
             if task is None:
                 if any(
                     reservation.owner is caller
+                    and not reservation.settled.is_set()
                     for reservation in self._reservations.values()
                 ):
                     raise RuntimeError(
@@ -672,7 +866,11 @@ class _ProcessHost:
 
     async def _rollback(self, reservation: _Reservation) -> None:
         failures: list[_CleanupFailure] = []
-        self._emit(reservation.owner_id, HostingLifecycleTransition.CLEANING)
+        self._emit(
+            reservation.owner_id,
+            HostingLifecycleTransition.CLEANING,
+            session_id=reservation.session_id,
+        )
         try:
             if reservation.process is not None:
                 await _reclaim_unpublished(
@@ -690,16 +888,26 @@ class _ProcessHost:
                     reservation.preparation.close(),
                 )
         finally:
-            async with self._lock:
-                self._reservations.pop(reservation.reservation_id, None)
             if failures:
                 reservation.cleanup_error = _CleanupError(tuple(failures))
+                async with self._lock:
+                    if self._state == "open":
+                        self._state = "faulted"
                 self._emit(
                     reservation.owner_id,
                     HostingLifecycleTransition.FAILED,
                     HostingFailureCategory.CLEANUP_FAILED,
+                    session_id=reservation.session_id,
                 )
-            self._emit(reservation.owner_id, HostingLifecycleTransition.CLOSED)
+            else:
+                reservation.cleanup_error = None
+                async with self._lock:
+                    self._reservations.pop(reservation.reservation_id, None)
+                self._emit(
+                    reservation.owner_id,
+                    HostingLifecycleTransition.CLOSED,
+                    session_id=reservation.session_id,
+                )
         if reservation.cleanup_error is not None:
             raise reservation.cleanup_error from reservation.cleanup_error.failures[0].cause
 
@@ -710,17 +918,32 @@ class _ProcessHost:
     async def _close_owned(self) -> None:
         async with self._lock:
             reservations = tuple(self._reservations.values())
-            owners = tuple(reservation.owner for reservation in reservations)
-        for owner in owners:
-            if owner is not asyncio.current_task():
-                owner.cancel()
-        if owners:
-            await asyncio.gather(*owners, return_exceptions=True)
+        for reservation in reservations:
+            if (
+                not reservation.settled.is_set()
+                and reservation.owner is not asyncio.current_task()
+            ):
+                reservation.owner.cancel()
+        if reservations:
+            await asyncio.gather(
+                *(reservation.settled.wait() for reservation in reservations)
+            )
 
         failures: list[_CleanupFailure] = []
         for reservation in reservations:
             if reservation.cleanup_error is not None:
-                failures.extend(reservation.cleanup_error.failures)
+                try:
+                    await self._rollback(reservation)
+                except _CleanupError as exc:
+                    failures.extend(exc.failures)
+                except BaseException as exc:
+                    failures.append(
+                        _failure(
+                            _CleanupPhase.REGISTRATION,
+                            HostingFailureCategory.CLEANUP_FAILED,
+                            exc,
+                        )
+                    )
 
         async with self._lock:
             leases = tuple(self._leases)
@@ -739,6 +962,12 @@ class _ProcessHost:
                             result,
                         )
                     )
+        await _attempt(
+            failures,
+            _CleanupPhase.BACKEND,
+            HostingFailureCategory.CLEANUP_FAILED,
+            self._backend.close_backend(),
+        )
         async with self._lock:
             self._state = "closed"
         if failures:
@@ -749,6 +978,8 @@ class _ProcessHost:
         owner_id: str,
         transition: HostingLifecycleTransition,
         failure: HostingFailureCategory | None = None,
+        *,
+        session_id: str | None = None,
     ) -> None:
         sink = self._observation_sink
         if sink is None:
@@ -757,6 +988,7 @@ class _ProcessHost:
             component=HostingComponent.PROCESS,
             transition=transition,
             owner_id=owner_id,
+            session_id=session_id,
             backend_id=self._backend_id,
             failure=failure,
         )
@@ -780,17 +1012,29 @@ async def _reclaim_unpublished(
         HostingFailureCategory.CLEANUP_FAILED,
         process.close_stdin(),
     )
-    await _attempt(
-        failures,
-        _CleanupPhase.TERMINATE,
-        HostingFailureCategory.TERMINATION_FAILED,
-        backend.terminate_tree(process),
-    )
-    exited = process.return_code is not None
-    if not exited:
+    try:
+        tree_exited = backend.tree_exited(process)
+    except BaseException as exc:
+        tree_exited = False
+        failures.append(
+            _failure(
+                _CleanupPhase.REAP,
+                HostingFailureCategory.TERMINATION_FAILED,
+                exc,
+            )
+        )
+    if not tree_exited:
+        await _attempt(
+            failures,
+            _CleanupPhase.TERMINATE,
+            HostingFailureCategory.TERMINATION_FAILED,
+            backend.terminate_tree(process),
+        )
         try:
-            await timeouts.wait(process.wait(), limits.termination_grace_seconds)
-            exited = True
+            await timeouts.wait(
+                backend.wait_tree(process), limits.termination_grace_seconds
+            )
+            tree_exited = True
         except TimeoutError:
             pass
         except BaseException as exc:
@@ -801,19 +1045,31 @@ async def _reclaim_unpublished(
                     exc,
                 )
             )
-    if not exited:
+    if not tree_exited:
         await _attempt(
             failures,
             _CleanupPhase.KILL,
             HostingFailureCategory.TERMINATION_FAILED,
             backend.kill_tree(process),
         )
-        await _attempt(
-            failures,
-            _CleanupPhase.REAP,
-            HostingFailureCategory.TERMINATION_FAILED,
-            process.wait(),
-        )
+        try:
+            await timeouts.wait(
+                backend.wait_tree(process), limits.termination_grace_seconds
+            )
+        except BaseException as exc:
+            failures.append(
+                _failure(
+                    _CleanupPhase.REAP,
+                    HostingFailureCategory.TERMINATION_FAILED,
+                    exc,
+                )
+            )
+    await _attempt(
+        failures,
+        _CleanupPhase.REAP,
+        HostingFailureCategory.TERMINATION_FAILED,
+        process.wait(),
+    )
     await _attempt(
         failures,
         _CleanupPhase.PROCESS_HANDLES,

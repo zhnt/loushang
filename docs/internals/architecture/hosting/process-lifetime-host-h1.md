@@ -60,7 +60,9 @@ until the owner task settles. Cleanup follows:
 terminate -> bounded grace -> kill -> reap -> close handles
 ```
 
-Closing stdin precedes termination. Failure in stdin close, terminate, kill,
+Tree termination is requested before stdin close so a blocked writer cannot
+fence the control path; stdin close still precedes the bounded grace wait.
+Failure in stdin close, terminate, kill,
 reap, stderr drain, handle close, or preparation close is recorded in a typed
 private aggregate and does not skip a later reachable step. A failure
 observation contains only the stable public category, never an exception
@@ -116,7 +118,7 @@ names separate POSIX and Windows evidence. H2 should be sliced in this order:
 4. add a narrow Harness compatibility adapter only after behavioral parity,
    leaving activation and old-owner removal to a later reviewed change.
 
-H3 endpoint feasibility may be investigated alongside H2 documentation, but
-must not share a platform capability claim until allowlist and peer-closure
-tests exist. H4 must wait for H3 and then prove atomic rollback at every
-process/endpoint/preparation acquisition and publication boundary.
+H3 endpoint feasibility could be investigated alongside H2 documentation, but
+could not share a platform capability claim until allowlist and peer-closure
+tests existed. H4 was required to wait for H3 and prove atomic rollback at
+every process/endpoint/preparation acquisition and publication boundary.
