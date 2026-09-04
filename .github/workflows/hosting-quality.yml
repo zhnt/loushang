@@ -11,8 +11,22 @@ permissions:
 
 jobs:
   hosting-quality:
-    name: hosting-quality
-    runs-on: ubuntu-latest
+    name: hosting-quality (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            backend: posix-process-group-v1
+            endpoint: posix-socketpair-v1
+          - os: macos-15
+            backend: posix-process-group-v1
+            endpoint: posix-socketpair-v1
+          - os: windows-2022
+            backend: windows-job-v1
+            endpoint: windows-anonymous-pipes-v1
     steps:
       - uses: actions/checkout@v4
 
@@ -25,5 +39,38 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --extra dev
 
-      - name: Hosting H0 quality gate
-        run: make check-hosting
+      - name: Lint Hosting H0-H4
+        run: >-
+          uv run --extra dev ruff check
+          src/loushang/hosting
+          src/loushang/harness/workspace/process/hosting_compat.py
+          tests/hosting
+          tests/harness/workspace/process/test_hosting_compat.py
+          tests/architecture/test_hosting_h0_contract.py
+          tests/architecture/test_hosting_h1_process_lifetime.py
+          tests/architecture/test_hosting_h2_platform_contract.py
+          tests/architecture/test_hosting_h3_endpoint.py
+          tests/architecture/test_hosting_h4_child_session.py
+          tests/architecture/test_hosting_architecture_baseline.py
+
+      - name: Typecheck Hosting H0-H4
+        run: >-
+          uv run --extra dev mypy --follow-imports=silent
+          src/loushang/hosting
+          src/loushang/harness/workspace/process/hosting_compat.py
+
+      - name: Test Hosting H0-H4 contract
+        env:
+          LOUSHANG_HOSTING_EXPECTED_BACKEND: ${{ matrix.backend }}
+          LOUSHANG_HOSTING_EXPECTED_ENDPOINT: ${{ matrix.endpoint }}
+        run: >-
+          uv run --extra dev python scripts/dev/run_pytest.py
+          tests/hosting
+          tests/harness/workspace/process/test_hosting_compat.py
+          tests/architecture/test_hosting_h0_contract.py
+          tests/architecture/test_hosting_h1_process_lifetime.py
+          tests/architecture/test_hosting_h2_platform_contract.py
+          tests/architecture/test_hosting_h3_endpoint.py
+          tests/architecture/test_hosting_h4_child_session.py
+          tests/architecture/test_hosting_architecture_baseline.py
+          -q

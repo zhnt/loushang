@@ -23,6 +23,7 @@ from .contracts import (
     ProcessStreamSpec,
 )
 from .errors import HostingError, HostingFailureCategory, InvalidHostingRequestError
+from .runtime import create_child_session_host, create_process_host
 
 __all__ = [
     "HOSTING_CONTRACT_VERSION",
@@ -48,4 +49,6 @@ __all__ = [
     "ProcessStdinMode",
     "ProcessStdoutMode",
     "ProcessStreamSpec",
+    "create_child_session_host",
+    "create_process_host",
 ]

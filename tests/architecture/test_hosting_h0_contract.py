@@ -5,10 +5,31 @@ import sys
 from pathlib import Path
 
 HOSTING_ROOT = Path("src/loushang/hosting")
-PUBLIC_MODULES = {
+H0_PUBLIC_MODULES = {
     HOSTING_ROOT / "__init__.py",
     HOSTING_ROOT / "contracts.py",
     HOSTING_ROOT / "errors.py",
+    HOSTING_ROOT / "runtime.py",
+}
+H1_PRIVATE_MODULES = {
+    HOSTING_ROOT / "_process_backend.py",
+    HOSTING_ROOT / "_process_host.py",
+}
+H2_PRIVATE_MODULES = {
+    HOSTING_ROOT / "_platform.py",
+    HOSTING_ROOT / "_posix_process.py",
+    HOSTING_ROOT / "_win32_process.py",
+    HOSTING_ROOT / "_windows_process.py",
+}
+H3_PRIVATE_MODULES = {
+    HOSTING_ROOT / "_endpoint_backend.py",
+    HOSTING_ROOT / "_endpoint_host.py",
+    HOSTING_ROOT / "_endpoint_platform.py",
+    HOSTING_ROOT / "_posix_endpoint.py",
+    HOSTING_ROOT / "_windows_endpoint.py",
+}
+H4_PRIVATE_MODULES = {
+    HOSTING_ROOT / "_child_session_host.py",
 }
 FORBIDDEN_PUBLIC_TERMS = {
     "Approval",
@@ -32,10 +53,17 @@ def _imports(path: Path) -> set[str]:
     return result
 
 
-def test_h0_package_is_standard_library_only_and_product_neutral() -> None:
-    assert {path for path in HOSTING_ROOT.rglob("*.py")} == PUBLIC_MODULES
+def test_hosting_package_is_standard_library_only_and_product_neutral() -> None:
+    modules = (
+        H0_PUBLIC_MODULES
+        | H1_PRIVATE_MODULES
+        | H2_PRIVATE_MODULES
+        | H3_PRIVATE_MODULES
+        | H4_PRIVATE_MODULES
+    )
+    assert {path for path in HOSTING_ROOT.rglob("*.py")} == modules
 
-    for path in PUBLIC_MODULES:
+    for path in modules:
         for imported in _imports(path):
             root = imported.partition(".")[0]
             assert root in sys.stdlib_module_names, (path, imported)
@@ -53,6 +81,8 @@ def test_h0_public_surface_exposes_no_platform_or_caller_authority_types() -> No
         "pid",
     ):
         assert forbidden not in public_surface
+
+    assert all(path.name not in public_surface for path in H1_PRIVATE_MODULES)
 
 
 def test_h0_observation_contract_has_no_arbitrary_payload_or_environment() -> None:

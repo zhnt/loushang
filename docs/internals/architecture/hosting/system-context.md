@@ -59,8 +59,10 @@ loushang.harness.sandbox               containment preparation and cleanup
 loushang.harness.worker                Worker launch identity/protocol/supervisor
 ```
 
-There is no native Worker endpoint binding or Hosting runtime owner. H0 adds
-only the `loushang.hosting` Contract Model package.
+There is no native Worker endpoint binding or real-platform Hosting owner. H0
+adds the `loushang.hosting` Contract Model package; H1 adds only the private,
+fake-backed Process Lifetime Host core. Current Harness consumers remain on
+their existing owner.
 
 ### Accepted target placement
 
