@@ -71,14 +71,17 @@ H1 deliberately proves no OS process-tree behavior. That delta remains H2.
 | exact process-platform contract | `implemented` | H2a platform manifest and fail-closed architecture gate remain green |
 | POSIX process-tree adapter | `implemented` | real group/session termination, kill, root/tree settlement, and descriptor-close conformance remain green |
 | POSIX inherited endpoint | `implemented` | real socketpair/stdin-stdout round trip and host-descriptor leak evidence remain green |
-| Windows inherited endpoint | `partial` | fake lifecycle/allowlist tests are green; native Windows round trip must pass non-skipped after push |
+| Windows inherited endpoint | `implemented` | fake lifecycle/allowlist tests and native Windows round trip remain green |
 | Windows process spawn path | `implemented` | native Windows CI keeps atomic Job Object and strict handle-list evidence non-skipped |
 | atomic Child Session Host | `implemented` | H4 transaction order, failure/cancellation matrix, joint lifetime, observation correlation, and native factory round trip remain green |
 | Harness mechanics migration | `partial` | H2c dark adapter parity remains green; sealed-descriptor cases stay on Current owner until a later contract is accepted |
+| default-dark Harness Worker adapter | `implemented` | H5 aggregate mapping, Supervisor session integration, selection, no-fallback, diagnostics, and rollback gates remain green |
+| Hosting-consumable managed preparation | `missing` | accept a separately reviewed opaque capability without raw handles or mutable-path substitution |
 | Product/native Worker path absent | `missing` | separate PLC9C5 activation review and gates |
 
 The mechanism baseline is implemented through H4: contracts, process owner,
 endpoint owner, exact platform sets, atomic child sessions, and the dark
-Harness compatibility slice. Overall migration remains partial because no
-production Worker owner has switched to Hosting and native Windows H3/H4
-evidence awaits the combined CI run.
+Harness compatibility slice, and the H5 default-dark Worker aggregate adapter.
+Overall migration remains partial because no production Worker owner has
+switched to Hosting and the Current sealed-executable preparation cannot yet be
+consumed by Hosting.

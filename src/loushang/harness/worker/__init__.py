@@ -27,6 +27,10 @@ from .contracts import (
     WorkerLaunchIdentityV1,
     WorkerRuntimeBindingV1,
 )
+from .hosting_adapter import (
+    WORKER_HOSTING_ENDPOINT_READ_CHUNK_BYTES,
+    HostingManagedWorkerSessionAdapter,
+)
 from .journal import (
     WORKER_ATTEMPT_RECORD_VERSION,
     WorkerAttemptPhase,
@@ -39,6 +43,15 @@ from .launch import (
     ManagedWorkerLaunchPort,
     ManagedWorkerProcess,
 )
+from .owner_selection import (
+    WORKER_HOSTING_ACTIVATION_VERSION,
+    WORKER_HOSTING_SELECTION_VERSION,
+    WorkerHostingActivationError,
+    WorkerHostingActivationV1,
+    WorkerHostingSelectionV1,
+    WorkerSessionOwner,
+    WorkerSessionOwnerRouter,
+)
 from .protocol import (
     WORKER_PROTOCOL_MAX_FRAME_BYTES,
     WORKER_PROTOCOL_MAX_JSON_CONTAINERS,
@@ -50,6 +63,12 @@ from .protocol import (
     WorkerFramedTransport,
     WorkerProtocolError,
     WorkerProtocolMessage,
+)
+from .session import (
+    ManagedWorkerProcessControl,
+    ManagedWorkerSession,
+    ManagedWorkerSessionLaunchPort,
+    bind_current_worker_session_port,
 )
 from .supervisor import (
     WORKER_SUPERVISOR_LIMITS_VERSION,
@@ -78,6 +97,9 @@ __all__ = [
     "WORKER_LAUNCH_IDENTITY_VERSION",
     "WORKER_LAUNCH_REQUEST_VERSION",
     "WORKER_DIAGNOSTIC_READ_MAX_BYTES",
+    "WORKER_HOSTING_ACTIVATION_VERSION",
+    "WORKER_HOSTING_ENDPOINT_READ_CHUNK_BYTES",
+    "WORKER_HOSTING_SELECTION_VERSION",
     "WORKER_RUNTIME_BINDING_VERSION",
     "WORKER_ATTEMPT_RECORD_VERSION",
     "WORKER_PROTOCOL_MAX_FRAME_BYTES",
@@ -99,9 +121,17 @@ __all__ = [
     "CapabilityWorkerBindingV1",
     "CapabilityWorkerDescriptorV1",
     "bind_capability_query_worker_adapter",
+    "bind_current_worker_session_port",
+    "HostingManagedWorkerSessionAdapter",
     "ManagedWorkerLaunchPort",
     "ManagedWorkerLaunchRequestV1",
+    "ManagedWorkerProcessControl",
     "ManagedWorkerProcess",
+    "ManagedWorkerSession",
+    "ManagedWorkerSessionLaunchPort",
+    "WorkerHostingActivationError",
+    "WorkerHostingActivationV1",
+    "WorkerHostingSelectionV1",
     "WorkerBindingError",
     "WorkerAttemptPhase",
     "WorkerAttemptRecordV1",
@@ -114,6 +144,8 @@ __all__ = [
     "WorkerProtocolError",
     "WorkerProtocolMessage",
     "WorkerRemoteFailure",
+    "WorkerSessionOwner",
+    "WorkerSessionOwnerRouter",
     "WorkerSupervisor",
     "WorkerSupervisorError",
     "WorkerSupervisorJournal",
