@@ -144,6 +144,7 @@ HOSTING_TEST_PATHS := \
 	tests/architecture/test_hosting_h5_worker_adapter.py \
 	tests/architecture/test_hosting_h6_launch_preparation.py \
 	tests/architecture/test_hosting_h6_posix_native.py \
+	tests/architecture/test_hosting_h6_windows_native.py \
 	tests/architecture/test_hosted_product_runtime_v1_baseline.py \
 	tests/architecture/test_hosting_architecture_baseline.py
 

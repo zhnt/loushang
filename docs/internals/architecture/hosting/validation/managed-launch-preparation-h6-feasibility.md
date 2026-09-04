@@ -131,7 +131,8 @@ presence.
 ## Subsequent Native Gates
 
 - H6.2: implemented separately by the retained Linux/POSIX adversarial oracle.
-- H6.3: implement and retain the Windows adversarial oracle.
+- H6.3: implemented separately by the retained Windows AMD64 restricted-token
+  adversarial oracle.
 - H6.4: adapt the Harness preparation owner and prove Current/Hosting parity
   without changing the default owner or enabling Product activation.
 

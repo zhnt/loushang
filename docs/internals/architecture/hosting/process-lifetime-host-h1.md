@@ -52,9 +52,11 @@ Natural exit has one backend wait owner. It stores one immutable raw
 drains the bounded stderr tail when requested, closes backend-owned process
 handles, closes the preparation lease, and only then returns host capacity.
 
-Explicit close and terminate share one task per operation. Repeated or
-concurrent callers observe that task; a cancelled caller is delayed by shielding
-until the owner task settles. Cleanup follows:
+Explicit close and terminate share one task per in-flight operation. Concurrent
+callers observe that task; a cancelled caller is delayed by shielding until the
+owner task settles. A failed owner task is not cached as if cleanup had
+succeeded: the exact lease remains registered and a later close starts one new
+retry transaction for only the unsettled owners. Cleanup follows:
 
 ```text
 terminate -> bounded grace -> kill -> reap -> close handles
@@ -66,7 +68,12 @@ Failure in stdin close, terminate, kill,
 reap, stderr drain, handle close, or preparation close is recorded in a typed
 private aggregate and does not skip a later reachable step. A failure
 observation contains only the stable public category, never an exception
-message or backend payload.
+message or backend payload. Tree ownership has a separate settled latch and
+cannot be inferred from finalizer completion or successful handle closure.
+Process-handle and preparation cleanup are marked settled only after success;
+joined preparation is not released before tree settlement. The host does not
+close its backend or enter the closed state while a published lease or rollback
+reservation still owns such debt.
 
 ## Fixed Bounds
 

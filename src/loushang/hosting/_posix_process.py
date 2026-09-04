@@ -94,6 +94,12 @@ class _PosixProcess:
         except ProcessLookupError:
             self._group_settled = True
             return False
+        except PermissionError:
+            # Signal zero reports existence separately from permission.  A
+            # denied probe therefore proves that the group is still live; the
+            # subsequent real signal remains responsible for surfacing any
+            # inability to terminate it.
+            return True
         return True
 
     def signal_group(self, group_signal: signal.Signals) -> None:

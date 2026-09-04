@@ -14,6 +14,7 @@ import pytest
 from loushang.hosting import (
     HostingError,
     HostingFailureCategory,
+    HostingLifecycleTransition,
     HostingObservation,
     ProcessLaunchRequest,
     ProcessStderrMode,
@@ -24,7 +25,12 @@ from loushang.hosting import (
     create_process_host,
 )
 from loushang.hosting._posix_process import _PosixProcess, _PosixProcessBackend
-from loushang.hosting._process_host import _ProcessHost, _ProcessHostLimits
+from loushang.hosting._process_backend import _ProcessInheritance, _ProcessTransport
+from loushang.hosting._process_host import (
+    _HostedProcess,
+    _ProcessHost,
+    _ProcessHostLimits,
+)
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="POSIX process groups")
 _P = ParamSpec("_P")
@@ -67,6 +73,82 @@ class _Observations:
 
     def observe(self, observation: HostingObservation) -> None:
         self.items.append(observation)
+
+
+class _ControllableRawProcess:
+    def __init__(self) -> None:
+        self.pid = 431
+        self.returncode: int | None = None
+        self.stdin = None
+        self.stdout = None
+        self.stderr = None
+        self._transport = None
+
+
+class _AttachedPosixBackend:
+    backend_id = "posix-process-group-v1"
+
+    def __init__(self, process: _PosixProcess) -> None:
+        self._process = process
+        self._delegate = _PosixProcessBackend()
+        self.close_backend_calls = 0
+
+    async def spawn(
+        self,
+        request: ProcessLaunchRequest,
+        *,
+        on_spawn: Callable[[_ProcessTransport], None],
+        inheritance: _ProcessInheritance | None = None,
+    ) -> _PosixProcess:
+        del request
+        assert inheritance is None
+        on_spawn(self._process)
+        return self._process
+
+    def tree_exited(self, process: _ProcessTransport) -> bool:
+        return self._delegate.tree_exited(process)
+
+    async def wait_tree(self, process: _ProcessTransport) -> None:
+        await self._delegate.wait_tree(process)
+
+    async def terminate_tree(self, process: _ProcessTransport) -> None:
+        await self._delegate.terminate_tree(process)
+
+    async def kill_tree(self, process: _ProcessTransport) -> None:
+        await self._delegate.kill_tree(process)
+
+    async def close_process_handles(self, process: _ProcessTransport) -> None:
+        await self._delegate.close_process_handles(process)
+
+    async def close_backend(self) -> None:
+        self.close_backend_calls += 1
+
+
+class _DeniedPosixGroup:
+    def __init__(self, raw: _ControllableRawProcess) -> None:
+        self.raw = raw
+        self.live = True
+        self.denied = True
+        self.ignore_term = False
+        self.calls: list[int] = []
+
+    def killpg(self, process_group_id: int, group_signal: int) -> None:
+        assert process_group_id == self.raw.pid
+        self.calls.append(group_signal)
+        if not self.live:
+            raise ProcessLookupError
+        if self.denied:
+            raise PermissionError("process-group signaling is denied")
+        if group_signal != 0:
+            if group_signal == signal.SIGTERM and self.ignore_term:
+                return
+            self.live = False
+            if self.raw.returncode is None:
+                self.raw.returncode = -int(group_signal)
+
+    def getpgid(self, process_id: int) -> int:
+        assert process_id == self.raw.pid
+        raise ProcessLookupError
 
 
 def _request(
@@ -316,6 +398,133 @@ def test_posix_reaped_leader_pid_reuse_is_not_signalled(
 
     assert process.group_exists() is False
     process.signal_group(signal.SIGKILL)
+
+
+def test_posix_denied_existence_probe_keeps_group_live(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _LiveProcess:
+        pid = 431
+        returncode = None
+
+    process = _PosixProcess(_LiveProcess())  # type: ignore[arg-type]
+    signals: list[int] = []
+
+    def permission_sensitive_killpg(
+        process_group_id: int,
+        group_signal: int,
+    ) -> None:
+        assert process_group_id == 431
+        signals.append(group_signal)
+        if group_signal == 0:
+            raise PermissionError("existence is known but signaling is denied")
+
+    monkeypatch.setattr(_posix_process.os, "killpg", permission_sensitive_killpg)
+
+    process.signal_group(signal.SIGKILL)
+
+    assert signals == [0, signal.SIGKILL]
+
+
+@_async_test
+async def test_posix_pending_root_eperm_retains_owner_for_host_close_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    raw = _ControllableRawProcess()
+    group = _DeniedPosixGroup(raw)
+    monkeypatch.setattr(_posix_process.os, "killpg", group.killpg)
+    monkeypatch.setattr(_posix_process.os, "getpgid", group.getpgid)
+    process = _PosixProcess(raw)  # type: ignore[arg-type]
+    backend = _AttachedPosixBackend(process)
+    host = _ProcessHost(
+        backend,
+        limits=_ProcessHostLimits(termination_grace_seconds=0.03),
+    )
+    request = _request(tmp_path, "pass")
+    preparation = _PreparationLease(request)
+    lease = await host.start(request, _PreparationPort(preparation))
+
+    with pytest.raises(HostingError) as denied:
+        await asyncio.wait_for(host.close(), 0.5)
+
+    assert denied.value.category is HostingFailureCategory.CLEANUP_FAILED
+    assert host._state == "faulted"
+    assert lease in host._leases
+    assert raw.returncode is None
+    assert preparation.close_calls == 0
+    assert backend.close_backend_calls == 0
+    assert 0 in group.calls
+    assert signal.SIGTERM in group.calls
+    assert signal.SIGKILL in group.calls
+
+    kill_calls = group.calls.count(signal.SIGKILL)
+    group.denied = False
+    group.ignore_term = True
+    await asyncio.wait_for(host.close(), 0.5)
+
+    assert host._state == "closed"
+    assert lease not in host._leases
+    assert raw.returncode is not None
+    assert group.calls.count(signal.SIGKILL) == kill_calls + 1
+    assert preparation.close_calls == 1
+    assert backend.close_backend_calls == 1
+
+
+@_async_test
+async def test_posix_lingering_descendant_eperm_retains_owner_for_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    raw = _ControllableRawProcess()
+    group = _DeniedPosixGroup(raw)
+    monkeypatch.setattr(_posix_process.os, "killpg", group.killpg)
+    monkeypatch.setattr(_posix_process.os, "getpgid", group.getpgid)
+    process = _PosixProcess(raw)  # type: ignore[arg-type]
+    backend = _AttachedPosixBackend(process)
+    observations = _Observations()
+    host = _ProcessHost(
+        backend,
+        limits=_ProcessHostLimits(termination_grace_seconds=0.01),
+        observation_sink=observations,
+    )
+    request = _request(tmp_path, "pass")
+    preparation = _PreparationLease(request)
+    lease = await host.start(request, _PreparationPort(preparation))
+
+    raw.returncode = 0
+    assert (await lease.wait()).return_code == 0
+    assert isinstance(lease, _HostedProcess)
+    finalizer = lease._finalizer_task
+    assert finalizer is not None
+    await asyncio.wait_for(asyncio.shield(finalizer), 0.5)
+
+    assert lease._finalizer_finished is True
+    assert lease._tree_settled is False
+    assert lease in host._leases
+    assert preparation.close_calls == 0
+    assert backend.close_backend_calls == 0
+    assert HostingLifecycleTransition.CLOSED not in {
+        item.transition for item in observations.items
+    }
+
+    with pytest.raises(HostingError) as denied:
+        await asyncio.wait_for(host.close(), 0.5)
+
+    assert denied.value.category is HostingFailureCategory.CLEANUP_FAILED
+    assert host._state == "faulted"
+    assert lease in host._leases
+    assert group.live is True
+    assert backend.close_backend_calls == 0
+
+    group.denied = False
+    await asyncio.wait_for(host.close(), 0.5)
+
+    assert host._state == "closed"
+    assert lease not in host._leases
+    assert group.live is False
+    assert preparation.close_calls == 1
+    assert backend.close_backend_calls == 1
 
 
 def test_posix_backend_rejects_foreign_transport() -> None:

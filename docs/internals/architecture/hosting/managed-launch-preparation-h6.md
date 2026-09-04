@@ -7,7 +7,7 @@
 - Parent: `loushang`
 - Authority: normative accepted design
 - Design status: accepted
-- Implementation status: partial — H6.1 core and H6.2 Linux native profiles
+- Implementation status: partial — H6.1 core, H6.2 Linux, and H6.3 Windows native profiles
 - Activation status: forbidden; H5 remains default-dark
 - Owner: Loushang Hosting architecture
 
@@ -359,7 +359,7 @@ and tree-lifetime properties have native evidence.
 | H6.0 | this responsibility/contract baseline, Current inventory, and absence guards | architecture review accepts ownership; no runtime activation |
 | H6.1 | non-committing POSIX/Windows feasibility probes followed by a private fake-backed two-sided opaque preparation transaction | both probes support one core state machine; caller/Hosting ownership and the complete concurrency/fault matrix pass; no public activation |
 | H6.2 | implemented private Linux static-closure preparation profiles | required-containment and executable/cwd/descriptor adversarial oracle passes |
-| H6.3 | Windows native preparation backend | AppContainer/token, handle-list, Job, identity, and cleanup oracle passes |
+| H6.3 | implemented private Windows AMD64 restricted-token PE preparation | restricted token, handle-list, Job, identity, and cleanup oracle passes |
 | H6.4 | dark Harness preparation adapter and H5 parity matrix | Current and Hosting owners are independently conformant; default remains Current |
 
 H6.1 is implemented as a private, default-dark core. Its non-committing POSIX
@@ -374,6 +374,16 @@ profile digest, and retains a non-skippable Ubuntu adversarial oracle. See the
 [H6.2 POSIX native record](validation/managed-launch-preparation-h6-posix-native.md).
 This evidence does not make dynamic bubblewrap or an arbitrary Worker
 entrypoint conformant, and it adds no public composition route.
+
+H6.3 is implemented for one exact Windows AMD64 profile. It locks the admitted
+PE and cwd identities, creates the fixed restricted-token recipe and
+kill-on-close Job, retains the complete resolved local ancestor chain,
+restricts PE direct-import names to a fixed platform-name set, and retains a
+non-skippable Windows adversarial oracle. This direct-import mechanics profile
+does not claim a complete Windows loader closure. See the
+[H6.3 Windows native record](validation/managed-launch-preparation-h6-windows-native.md).
+This profile is deliberately narrower than Python or the Current Worker and
+adds no public composition route.
 
 The H6.1 probes perform no production spawn and reserve no public API. H6.2,
 H6.3, and the fake-backed part of H6.4 may be developed in parallel only after

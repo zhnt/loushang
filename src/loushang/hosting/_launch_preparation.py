@@ -537,6 +537,12 @@ class _ManagedSpawnEffect:
                 and self._attached is None
             )
 
+    def observes(self, process: _ProcessTransport) -> bool:
+        """Return whether the reservation gate has seen this exact owner."""
+
+        with self._lock:
+            return self._attached is process
+
 
 class _ManagedPreparationLease(LaunchPreparationLease, _ManagedProcessPreparation):
     """Joins caller semantics and Hosting native ownership without blending them."""
