@@ -119,6 +119,7 @@ def test_h2b_platform_sources_encode_atomic_ownership_mechanics() -> None:
         "start_new_session=True",
         "close_fds=True",
         'getattr(os, "killpg", None)',
+        "_root_identity_was_reused",
     ):
         assert statement in posix
     for statement in (

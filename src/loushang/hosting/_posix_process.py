@@ -33,6 +33,7 @@ class _PosixProcess:
         self._process_group_id = process_group_id
         self._stdin_closed = False
         self._handles_closed = False
+        self._group_settled = False
         self._close_lock = asyncio.Lock()
 
     @property
@@ -79,17 +80,44 @@ class _PosixProcess:
         return self._process.returncode
 
     def group_exists(self) -> bool:
+        if self._group_settled:
+            return False
+        if self._root_identity_was_reused():
+            self._group_settled = True
+            return False
         try:
             _kill_process_group(self._process_group_id, 0)
         except ProcessLookupError:
+            self._group_settled = True
             return False
         return True
 
     def signal_group(self, group_signal: signal.Signals) -> None:
+        if not self.group_exists():
+            return
         try:
             _kill_process_group(self._process_group_id, group_signal)
         except ProcessLookupError:
+            self._group_settled = True
             return
+
+    def _root_identity_was_reused(self) -> bool:
+        if self._process.returncode is None:
+            return False
+        getpgid = getattr(os, "getpgid", None)
+        if not callable(getpgid):
+            raise HostingError(
+                HostingFailureCategory.PLATFORM_UNSUPPORTED,
+                "POSIX process identity inspection is unavailable",
+            )
+        try:
+            getpgid(self._process_group_id)
+        except ProcessLookupError:
+            return False
+        # POSIX does not reuse this numeric PID while the original process
+        # group still exists. A live process at the reaped leader's PID proves
+        # that the original group has already settled; never signal the reuse.
+        return True
 
     async def wait_group(self) -> None:
         while self.group_exists():

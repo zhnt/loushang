@@ -23,7 +23,7 @@ from loushang.hosting import (
     _posix_process,
     create_process_host,
 )
-from loushang.hosting._posix_process import _PosixProcessBackend
+from loushang.hosting._posix_process import _PosixProcess, _PosixProcessBackend
 from loushang.hosting._process_host import _ProcessHost, _ProcessHostLimits
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="POSIX process groups")
@@ -295,6 +295,27 @@ async def test_posix_cancellation_after_os_creation_is_reclaimed(
     await host.close()
 
     assert preparation.close_calls == 1
+
+
+def test_posix_reaped_leader_pid_reuse_is_not_signalled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _ReapedProcess:
+        pid = 431
+        returncode = 0
+
+    process = _PosixProcess(_ReapedProcess())  # type: ignore[arg-type]
+    monkeypatch.setattr(_posix_process.os, "getpgid", lambda pid: pid)
+
+    def reject_signal(process_group_id: int, group_signal: int) -> None:
+        raise AssertionError(
+            f"reused group {process_group_id} received signal {group_signal}"
+        )
+
+    monkeypatch.setattr(_posix_process.os, "killpg", reject_signal)
+
+    assert process.group_exists() is False
+    process.signal_group(signal.SIGKILL)
 
 
 def test_posix_backend_rejects_foreign_transport() -> None:

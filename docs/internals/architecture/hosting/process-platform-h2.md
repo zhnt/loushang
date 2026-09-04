@@ -108,10 +108,14 @@ finish before cancellation is propagated.
 The root PID is retained only inside the backend transport as the process-group
 identifier. Signals use only `killpg`; `ProcessLookupError` means the requested
 group operation is already settled. Other errors are reported and never cause
-a root-only fallback. Root exit is observed from the child-watcher-updated
-return code rather than waiting for pipe EOF, because a descendant may retain a
-pipe writer. Tree-empty observation is bounded and fakeable; the asyncio
-process transport still performs root reaping.
+a root-only fallback. After the root is reaped, a successful lookup of a new
+process at the former leader PID proves numeric-identity reuse: POSIX forbids
+that PID reuse while the original process group still exists. The backend then
+marks the original group settled and never signals the replacement identity.
+Root exit is observed from the child-watcher-updated return code rather than
+waiting for pipe EOF, because a descendant may retain a pipe writer. Tree-empty
+observation is bounded and fakeable; the asyncio process transport still
+performs root reaping.
 
 ## Windows Job Object Algorithm
 
