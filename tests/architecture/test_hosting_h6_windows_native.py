@@ -48,7 +48,7 @@ def test_h6_3_windows_profile_is_private_exact_and_default_dark() -> None:
         assert name not in public
     for exact_identity in (
         '"windows-restricted-direct-import-pe-v1"',
-        '"restricted-token:disable-max-privilege+lua+disable-admin-v1"',
+        '"restricted-token:disable-max-privilege-v1"',
         'frozenset({"ADVAPI32.DLL", "KERNEL32.DLL"})',
         "_PE_AMD64_MACHINE",
         "_IMAGE_DIRECTORY_ENTRY_RESOURCE",
@@ -83,8 +83,8 @@ def test_h6_3_spawn_uses_one_restricted_effect_and_exact_owner_transfer() -> Non
     assert "self._api.spawn_restricted" in process
     assert "begin_effect=effect.begin_effect" in process
     assert "_CreateProcessAsUserW" in win32
-    assert "_CreateWellKnownSid" in win32
-    assert "_WIN_BUILTIN_ADMINISTRATORS_SID" in win32
+    assert "_DISABLE_MAX_PRIVILEGE" in win32
+    assert "_LUA_TOKEN" not in win32
     assert "_GetFileInformationByHandleEx" in win32
     assert "_FILE_ID_INFO" in win32
     assert "on_acquired(handle)" in win32

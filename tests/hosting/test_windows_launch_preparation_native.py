@@ -450,7 +450,7 @@ async def test_windows_restricted_native_locks_identity_and_runs_restricted(
                 "restricted fixture exited before ready: "
                 f"{_return_code(exit_result.return_code)}"
             )
-        assert ready == b"restricted\r\n"
+        assert ready == b"restricted\n"
         await lease.endpoint.write(b"x")
         assert (await lease.process.wait()).return_code == 0
     except BaseException:
@@ -495,7 +495,7 @@ async def test_windows_restricted_native_job_reclaims_descendant(
                 "restricted descendant fixture exited before ready: "
                 f"{_return_code(exit_result.return_code)}"
             )
-        assert ready == b"restricted-child-ready\r\n"
+        assert ready == b"restricted-child-ready\n"
         assert len(api.created_jobs) == 1
         job = api.created_jobs[0]
         assert not api.job_is_empty(job)
