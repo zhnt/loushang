@@ -416,8 +416,8 @@ class _CtypesWin32Api:
         request: ProcessLaunchRequest,
         endpoint_handles: tuple[int, int],
         *,
-        application_name: str,
-        cwd: str,
+        executable_handle: int,
+        cwd_handle: int,
         token: int,
         job: int,
         stderr_handle: int,
@@ -459,6 +459,17 @@ class _CtypesWin32Api:
             environment = ctypes.create_unicode_buffer(
                 _environment_block(request.effective_environment)
             )
+            # Resolve the retained identities inside the synchronous effect
+            # seam, immediately before CreateProcessAsUserW. This follows a
+            # legitimate pre-effect rename instead of re-resolving the
+            # caller's stale path string.
+            executable = self.locked_path_identity(executable_handle)
+            current_cwd = self.locked_path_identity(cwd_handle)
+            if executable.is_directory or not current_cwd.is_directory:
+                raise HostingError(
+                    HostingFailureCategory.PREPARATION_STALE,
+                    "Windows retained launch path kind changed",
+                )
         except BaseException as cause:
             if attributes is not None:
                 self._DeleteProcThreadAttributeList(attributes.pointer)
@@ -468,7 +479,7 @@ class _CtypesWin32Api:
             begin_effect()
             created = self._CreateProcessAsUserW(
                 token,
-                application_name,
+                executable.final_path,
                 command_line,
                 None,
                 None,
@@ -477,7 +488,7 @@ class _CtypesWin32Api:
                 | _CREATE_UNICODE_ENVIRONMENT
                 | _CREATE_NO_WINDOW,
                 ctypes.cast(environment, ctypes.c_void_p),
-                cwd,
+                current_cwd.final_path,
                 ctypes.byref(startup.StartupInfo),
                 ctypes.byref(process_information),
             )

@@ -356,8 +356,8 @@ def test_windows_restricted_material_composes_exact_spawn_and_transfers_owners(
     assert len(api.spawn_calls) == 1
     _, endpoint_handles, kwargs = api.spawn_calls[0]
     assert endpoint_handles == (20, 21)
-    assert kwargs["application_name"] == r"\\?\C:\admitted\worker.exe"
-    assert kwargs["cwd"] == r"\\?\C:\admitted\cwd"
+    assert kwargs["executable_handle"] == 1
+    assert kwargs["cwd_handle"] == 2
     assert kwargs["token"] == 5
     assert kwargs["job"] == 6
     assert kwargs["stderr_handle"] == 7

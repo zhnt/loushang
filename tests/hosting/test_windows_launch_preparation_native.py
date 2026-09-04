@@ -242,6 +242,13 @@ void WINAPI mainCRTStartup(void) {{
         !IsTokenRestricted(token)) ExitProcess(70);
     CloseHandle(token);
 
+    if (contains(GetCommandLineW(), L"--expect-renamed-cwd")) {{
+        wchar_t cwd_path[1024];
+        DWORD length = GetCurrentDirectoryW(1024, cwd_path);
+        if (!length || length >= 1024 || !contains(cwd_path, L"cwd-renamed"))
+            ExitProcess(74);
+    }}
+
     if (contains(GetCommandLineW(), L" child")) {{
         for (;;) Sleep(1000);
     }}
@@ -374,7 +381,7 @@ async def test_windows_restricted_native_locks_identity_and_runs_restricted(
     cwd = admitted / "cwd"
     cwd.mkdir()
     api = _CtypesWin32Api()
-    spec = _spec(api, executable, cwd)
+    spec = _spec(api, executable, cwd, "--expect-renamed-cwd")
     preparation = _RestrictedPreparation(spec, pause_after_capture=True)
     host = _native_host(api)
     start = asyncio.create_task(
@@ -385,13 +392,20 @@ async def test_windows_restricted_native_locks_identity_and_runs_restricted(
     with pytest.raises(OSError):
         executable.write_bytes(b"replacement")
     with pytest.raises(OSError):
-        cwd.rename(tmp_path / "cwd-replaced")
-    with pytest.raises(OSError):
         admitted.rename(tmp_path / "admitted-replaced")
+    renamed_cwd = admitted / "cwd-renamed"
+    cwd.rename(renamed_cwd)
+    cwd.mkdir()
 
     preparation.release.set()
     lease = await start
-    assert await _read_line(lease.endpoint.read) == b"restricted\r\n"
+    ready = await _read_line(lease.endpoint.read)
+    if not ready:
+        exit_result = await lease.process.wait()
+        pytest.fail(
+            f"restricted fixture exited before ready: {exit_result.return_code}"
+        )
+    assert ready == b"restricted\r\n"
     await lease.endpoint.write(b"x")
     assert (await lease.process.wait()).return_code == 0
     await lease.close()
@@ -416,7 +430,13 @@ async def test_windows_restricted_native_job_reclaims_descendant(
         _RestrictedPreparation(spec),
     )
 
-    assert await _read_line(lease.endpoint.read) == b"restricted-child-ready\r\n"
+    ready = await _read_line(lease.endpoint.read)
+    if not ready:
+        exit_result = await lease.process.wait()
+        pytest.fail(
+            f"restricted descendant fixture exited before ready: {exit_result.return_code}"
+        )
+    assert ready == b"restricted-child-ready\r\n"
     assert len(api.created_jobs) == 1
     job = api.created_jobs[0]
     assert not api.job_is_empty(job)
