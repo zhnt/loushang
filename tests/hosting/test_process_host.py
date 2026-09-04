@@ -282,13 +282,6 @@ class _ForceTimeouts(_Timeouts):
         return await operation
 
 
-async def _settle_finalizer() -> None:
-    # A natural exit wakes the backend wait, then runs bounded stderr and two
-    # cleanup awaits before returning capacity to the host.
-    for _ in range(6):
-        await asyncio.sleep(0)
-
-
 async def _wait_until(predicate: Callable[[], bool]) -> None:
     for _ in range(100):
         if predicate():
@@ -317,7 +310,7 @@ async def test_natural_exit_releases_capacity_after_owned_cleanup() -> None:
 
     first.exit(7)
     assert (await lease.wait()).return_code == 7
-    await _settle_finalizer()
+    await _wait_until(lambda: not host._leases)
     assert lease.stderr_tail().content == b"cdef"
     assert lease.stderr_tail().truncated is True
     assert first_preparation.close_calls == 1
@@ -434,7 +427,8 @@ async def test_natural_root_exit_reclaims_lingering_owned_tree_before_capacity()
             _request(), _FakePreparationPort(_FakePreparationLease(_request()))
         )
     assert capacity.value.category is HostingFailureCategory.CAPACITY_EXHAUSTED
-    await _wait_until(lambda: first_preparation.close_calls == 1)
+    await _wait_until(lambda: not host._leases)
+    assert first_preparation.close_calls == 1
     assert backend.terminate_calls == 1
     assert backend.kill_calls == 1
 
@@ -512,11 +506,22 @@ async def test_close_aggregates_faults_but_attempts_every_reachable_cleanup() ->
         _CleanupPhase.TERMINATE,
         _CleanupPhase.KILL,
         _CleanupPhase.PROCESS_HANDLES,
-        _CleanupPhase.PREPARATION,
     }.issubset(phases)
     assert backend.kill_calls == 1
     assert backend.close_handles_calls == 1
     assert preparation.close_calls == 1
+    assert lease in host._leases
+
+    backend.terminate_exits = True
+    backend.terminate_error = None
+    backend.kill_error = None
+    backend.handles_error = None
+    preparation.close_error = None
+    await lease.close()
+    assert backend.close_handles_calls == 2
+    assert preparation.close_calls == 2
+    assert lease not in host._leases
+    await host.close()
 
 
 @_async_test

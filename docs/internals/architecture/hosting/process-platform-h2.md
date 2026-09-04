@@ -46,6 +46,10 @@ may be observed before residual descendants finish cleanup, but host capacity
 is not released until the bounded tree-settlement attempt and all
 preparation/handle cleanup have settled. A failed final observation is reported
 as cleanup failure and never described as proof that the owned tree is empty.
+If termination or final handle cleanup cannot reclaim a potentially live tree,
+close returns after its fixed waits but retains the Process Lease as cleanup
+debt. Host close does not tear down the backend or claim a closed state, and a
+later close retries the same owner after the platform condition changes.
 
 After force-kill, tree observation receives one final bounded interval. An
 observation failure or a kernel-retained orphan zombie is reported as cleanup
@@ -108,7 +112,10 @@ finish before cancellation is propagated.
 The root PID is retained only inside the backend transport as the process-group
 identifier. Signals use only `killpg`; `ProcessLookupError` means the requested
 group operation is already settled. Other errors are reported and never cause
-a root-only fallback. After the root is reaped, a successful lookup of a new
+a root-only fallback. In particular, `EPERM` from signal zero means the group
+still exists; `EPERM` from the real TERM/KILL leaves the lease registered and
+returns bounded cleanup debt rather than waiting indefinitely. After the root
+is reaped, a successful lookup of a new
 process at the former leader PID proves numeric-identity reuse: POSIX forbids
 that PID reuse while the original process group still exists. The backend then
 marks the original group settled and never signals the replacement identity.
@@ -135,9 +142,11 @@ requests cancellation of synchronous stream operations, and closes the Job
 Object so kill-on-close reclaims the tree. It then waits for stream and process
 wait operations for a fixed interval. A pipe or process handle is closed only
 after its corresponding operation settles; an unsettled handle remains owned
-for a later retry and is reported as cleanup failure. H2b must prove delayed
-cancellation, bounded settlement, and concurrent-spawn handle isolation on
-Windows CI.
+for a later retry and is reported as cleanup failure. A published Process Lease
+is removed only after every retained `CloseHandle` succeeds; host close can
+therefore retry a transient failure before shutting down the Win32 executor.
+H2b must prove delayed cancellation, bounded settlement, retryable handle
+closure, and concurrent-spawn handle isolation on Windows CI.
 
 ## H2c Harness Compatibility Boundary
 
