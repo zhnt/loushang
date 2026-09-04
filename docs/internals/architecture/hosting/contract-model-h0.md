@@ -108,16 +108,17 @@ consumer switches owner.
 - `tests/architecture/test_hosting_h0_contract.py` proves the package is
   standard-library-only and exports no caller-authority, raw-platform, or
   arbitrary-observation surface.
-- `tests/architecture/test_hosting_architecture_baseline.py` proves H0 advances
-  only Contract Model and placement while AppHost/AppServer and Hosting runtime
-  components remain absent.
+- `tests/architecture/test_hosting_architecture_baseline.py` keeps the H0
+  Contract Model, AppHost/AppServer boundary, and later-slice implementation
+  status mutually consistent.
 - `make check-hosting` and the Hosting Quality workflow run Ruff, mypy, H0
   contract tests, and Hosting architecture gates without coupling them to the
   Harness quality target.
 
-## Next Slices
+## Delivery Sequence
 
-1. H1: private backend seam plus fake-backed bounded Process Lifetime Host.
+1. H1: private backend seam plus fake-backed bounded Process Lifetime Host —
+   implemented by [the H1 specification](process-lifetime-host-h1.md).
 2. H2: exact POSIX/Windows process-tree conformance and Harness compatibility
    adapter.
 3. H3: inherited peer-endpoint feasibility and private endpoint owner.

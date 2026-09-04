@@ -186,9 +186,10 @@ meanings.
 
 ## Public Surface Restraint
 
-The H0 package exposes only Contract Model values and provided/required ports
-needed by trusted hosts. Later slices may add restrained composition
-entrypoints. Concrete backends, raw spawners, endpoint
+The H0 public package surface exposes only Contract Model values and
+provided/required ports. H1 keeps its process owner and backend seam private.
+Later slices may add restrained composition entrypoints needed by trusted
+hosts. Concrete backends, raw spawners, endpoint
 factories, inherited-handle values, reservation objects, and cleanup
 coordinators remain private.
 

@@ -25,8 +25,11 @@ failure semantics. Its placement is accepted by
 
 H0 implements the standard-library-only `loushang.hosting` Contract Model:
 immutable launch/session requests, raw results, stable mechanism failures,
-bounded observations, and required/provided port protocols. It performs no OS
-operations and has no current consumer.
+bounded observations, and required/provided port protocols. H1 adds a private,
+fake-backed Process Lifetime Host with capacity reservation, preparation
+ownership, bounded stdio, exit convergence, cancellation-safe cleanup, and
+typed failure aggregation. It performs no real OS process creation and has no
+current consumer.
 
 Current process mechanics remain implemented inside Harness, principally by:
 
@@ -43,7 +46,8 @@ remain authoritative for the implemented Harness behavior.
 ## Target
 
 The accepted Target implements `loushang.hosting` inside the existing
-`loushang` distribution. H0 establishes the contract package; later slices let
+`loushang` distribution. H0 establishes the contract package and H1 proves the
+process owner against private fakes; later slices let
 Harness consume Hosting through narrow owner adapters. Hosting does not import
 Harness and does not acquire Harness authority merely because it performs the
 final OS operation.
@@ -178,21 +182,25 @@ model.
 4. [Component Discovery](validation/component-discovery.md);
 5. [Component Model](component-model.md);
 6. [H0 Contract Model](contract-model-h0.md);
-7. [Hosted Application Support Boundary](key-designs/hosted-application-support-boundary.md);
-8. [ARD-002: Hosting Top-Level Placement](../decisions/ARD-002-hosting-top-level-placement.md);
-9. [Traceability](traceability.md);
-10. current source, tests, and generated package facts.
+7. [H1 Process Lifetime Host](process-lifetime-host-h1.md);
+8. [Hosted Application Support Boundary](key-designs/hosted-application-support-boundary.md);
+9. [ARD-002: Hosting Top-Level Placement](../decisions/ARD-002-hosting-top-level-placement.md);
+10. [Traceability](traceability.md);
+11. current source, tests, and generated package facts.
 
 ## Current-To-Target Gaps
 
-- `partial`: `loushang.hosting` and `HOST-CMP-CONTRACT` are implemented by H0;
-  the four resource/platform components remain missing.
+- `partial`: `HOST-CMP-CONTRACT` is implemented by H0 and the platform-neutral
+  lifetime core of `HOST-CMP-PROCESS` is implemented privately by H1; exact
+  POSIX/Windows adapters and the other three resource/platform components
+  remain missing.
 - `deviated`: reusable process mechanics currently reside under Harness rather
   than the accepted neutral owner; their Current
   Harness contracts remain valid until migration.
 - `missing`: POSIX and Windows inherited peer-endpoint feasibility evidence.
 - `missing`: compatibility facades and a behavior-preserving migration plan.
-- `implemented`: H0 standard-library-only and no-authority public-surface gates.
+- `implemented`: H0 standard-library-only/no-authority public-surface gates and
+  the H1 fake lifecycle, limit, cancellation, fault, and observation gates.
 - `missing`: a reviewed Product/native Worker activation route; PLC9C5 remains
   separate from Hosting extraction.
 - `missing`: daemon/service-instance lifecycle remains a trigger-gated future
@@ -201,8 +209,9 @@ model.
 ## Change Triggers And Evidence
 
 - H0 intentionally replaces the implementation-absence guard with contract and
-  dependency gates in `tests/architecture/test_hosting_h0_contract.py` and
-  `tests/architecture/test_hosting_architecture_baseline.py`.
+  dependency gates. H1 adds private runtime and unchanged-Harness-owner gates
+  in `tests/architecture/test_hosting_h1_process_lifetime.py`; the complete set
+  remains under `make check-hosting`.
 - Top-level placement acceptance is recorded by ARD-002 and reflected in the
   AOD, subsystem map, governance profile, generated facts, and cross-scope
   decision catalog.

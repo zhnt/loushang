@@ -24,6 +24,7 @@ HOSTING_DOCUMENTS = (
     HOSTING_ROOT / "system-context.md",
     HOSTING_ROOT / "component-model.md",
     HOSTING_ROOT / "contract-model-h0.md",
+    HOSTING_ROOT / "process-lifetime-host-h1.md",
     HOSTING_ROOT / "traceability.md",
     HOSTING_ROOT / "validation/component-discovery.md",
     HOSTED_APPLICATION_BOUNDARY,
@@ -130,6 +131,9 @@ def test_hosting_design_package_is_complete_and_h0_is_accepted() -> None:
         HOSTING_ROOT / "contract-model-h0.md": (
             "normative — accepted H0 public contract"
         ),
+        HOSTING_ROOT / "process-lifetime-host-h1.md": (
+            "normative — implemented H1 internal runtime specification"
+        ),
         HOSTING_ROOT / "traceability.md": ("normative — accepted design traceability"),
         HOSTING_PLACEMENT: "normative — accepted cross-scope Hosting placement decision",
     }
@@ -143,7 +147,11 @@ def test_hosting_design_package_is_complete_and_h0_is_accepted() -> None:
                 "Design status": "accepted",
                 "Implementation status": (
                     "implemented"
-                    if path == HOSTING_ROOT / "contract-model-h0.md"
+                    if path
+                    in {
+                        HOSTING_ROOT / "contract-model-h0.md",
+                        HOSTING_ROOT / "process-lifetime-host-h1.md",
+                    }
                     else "partial"
                 ),
             },
@@ -205,8 +213,8 @@ def test_hosting_design_package_is_complete_and_h0_is_accepted() -> None:
     )
 
     overview = _read(HOSTING_ROOT / "README.md")
-    assert "H0 implements the standard-library-only `loushang.hosting`" in _section(
-        overview, "Current"
+    assert "H1 adds a private, fake-backed Process Lifetime Host" in " ".join(
+        _section(overview, "Current").split()
     )
     assert "The accepted Target implements `loushang.hosting`" in _section(
         overview, "Target"
@@ -550,7 +558,7 @@ def test_hosting_traceability_covers_every_requirement_exactly_once() -> None:
             "Requirement",
             "Primary design owner",
             "Boundary/design evidence",
-            "Planned executable evidence",
+            "Executable evidence / remaining gate",
         ),
     )
     traced_ids = tuple(row[0].strip("`") for row in trace_rows)
@@ -569,7 +577,7 @@ def test_hosting_traceability_covers_every_requirement_exactly_once() -> None:
             "`HOST-FR-002`",
             "`HOST-CMP-PROCESS`",
             "Process Lifetime Host; failure interaction",
-            "fake spawn lifecycle matrix and real process-tree conformance",
+            "H1 fake lifecycle matrix; H2 real process-tree conformance",
         ),
         (
             "`HOST-FR-003`",
@@ -599,13 +607,13 @@ def test_hosting_traceability_covers_every_requirement_exactly_once() -> None:
             "`HOST-QR-001`",
             "Process, Endpoint, Session",
             "lifecycle invariants",
-            "repeated/concurrent close and cancellation tests",
+            "H1 process close/cancellation tests; H3-H4 endpoint/session cases remain",
         ),
         (
             "`HOST-QR-002`",
             "Process, Endpoint",
             "requirements and component interfaces",
-            "capacity/write/tail/buffer/shutdown bound tests",
+            "H1 process capacity/write/tail/shutdown bounds; H3 endpoint buffers remain",
         ),
         (
             "`HOST-QR-003`",
@@ -624,7 +632,7 @@ def test_hosting_traceability_covers_every_requirement_exactly_once() -> None:
             "`HOST-QR-005`",
             "all components",
             "discovery/refinement",
-            "fake-backed component contracts plus real conformance markers",
+            "H1 fake process/clock/failure seams; later real conformance remains",
         ),
         (
             "`HOST-QR-006`",

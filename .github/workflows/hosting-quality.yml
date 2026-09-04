@@ -25,5 +25,5 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --extra dev
 
-      - name: Hosting H0 quality gate
+      - name: Hosting H0-H1 quality gate
         run: make check-hosting
