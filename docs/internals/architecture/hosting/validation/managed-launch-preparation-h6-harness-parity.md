@@ -77,4 +77,6 @@ profile and PLC9C5 separately accepts activation.
 - no production module constructs an H6 native capture specification for a
   Worker;
 - the public Hosting export set is unchanged; and
+- Linux, macOS, and Windows Hosting workflows run the H5/H6.4 adapter and
+  architecture deletion gates; and
 - native profile eligibility and Product activation remain separate gates.

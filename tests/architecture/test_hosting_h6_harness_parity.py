@@ -12,6 +12,7 @@ WORKER_TESTS = Path("tests/harness/worker/test_hosting_adapter.py")
 CURRENT_LAUNCH_TESTS = Path("tests/harness/worker/test_launch.py")
 CURRENT_SUPERVISOR_TESTS = Path("tests/harness/worker/test_supervisor.py")
 SELECTION = Path("src/loushang/harness/worker/owner_selection.py")
+WORKFLOW = Path(".github/workflows/hosting-quality.yml")
 HOSTING_PUBLIC = (
     Path("src/loushang/hosting/__init__.py"),
     Path("src/loushang/hosting/contracts.py"),
@@ -23,16 +24,16 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def _resolve_import_from(path: Path, node: ast.ImportFrom) -> str | None:
+def _resolve_import_from(path: Path, node: ast.ImportFrom) -> set[str]:
     if node.module is None:
-        return None
-    if node.level == 0:
-        return node.module
-    package = list(path.with_suffix("").parts[1:-1])
-    retained = len(package) - (node.level - 1)
-    if retained < 0:
-        return node.module
-    return ".".join((*package[:retained], *node.module.split(".")))
+        return set()
+    module = node.module
+    if node.level != 0:
+        package = list(path.with_suffix("").parts[1:-1])
+        retained = len(package) - (node.level - 1)
+        if retained >= 0:
+            module = ".".join((*package[:retained], *node.module.split(".")))
+    return {module, *(f"{module}.{alias.name}" for alias in node.names)}
 
 
 def _imports(path: Path) -> set[str]:
@@ -41,9 +42,7 @@ def _imports(path: Path) -> set[str]:
         if isinstance(node, ast.Import):
             imports.update(alias.name for alias in node.names)
         elif isinstance(node, ast.ImportFrom):
-            imported = _resolve_import_from(path, node)
-            if imported is not None:
-                imports.add(imported)
+            imports.update(_resolve_import_from(path, node))
     return imports
 
 
@@ -77,11 +76,15 @@ def test_h6_4_bridge_is_nominal_narrow_and_does_not_select_a_profile() -> None:
 
 def test_h6_4_private_friend_import_is_confined_to_the_worker_adapter() -> None:
     private_module = "loushang.hosting._launch_preparation"
-    relative = ast.parse(
-        "from ...hosting._launch_preparation import _LaunchCapturePort"
-    ).body[0]
-    assert isinstance(relative, ast.ImportFrom)
-    assert _resolve_import_from(ADAPTER, relative) == private_module
+    probes = (
+        "from ...hosting._launch_preparation import _LaunchCapturePort",
+        "from loushang.hosting import _launch_preparation",
+        "from ...hosting import _launch_preparation",
+    )
+    for source in probes:
+        imported = ast.parse(source).body[0]
+        assert isinstance(imported, ast.ImportFrom)
+        assert private_module in _resolve_import_from(ADAPTER, imported)
     consumers = {
         path
         for path in Path("src/loushang").rglob("*.py")
@@ -151,3 +154,31 @@ def test_h6_4_parity_record_pins_current_owner_evidence() -> None:
         assert f"{path}::{test_name}" in record
         test = _test_functions(path)[test_name]
         assert any(isinstance(node, ast.Assert) for node in ast.walk(test))
+
+
+def test_h6_4_remote_hosting_gate_covers_adapter_and_deletion_guards() -> None:
+    workflow = _read(WORKFLOW)
+    lint = workflow.split("- name: Lint Hosting H0-H6", maxsplit=1)[1].split(
+        "- name: Typecheck Hosting H0-H6", maxsplit=1
+    )[0]
+    typecheck = workflow.split(
+        "- name: Typecheck Hosting H0-H6", maxsplit=1
+    )[1].split("- name: Create H6.2 native report directory", maxsplit=1)[0]
+    tests = workflow.split("- name: Test Hosting H0-H6 contract", maxsplit=1)[1]
+
+    for source in (
+        "src/loushang/harness/worker/__init__.py",
+        "src/loushang/harness/worker/hosting_adapter.py",
+        "src/loushang/harness/worker/owner_selection.py",
+        "src/loushang/harness/worker/session.py",
+        "src/loushang/harness/worker/supervisor.py",
+    ):
+        assert source in lint
+        assert source in typecheck
+    for test in (
+        "tests/harness/worker/test_hosting_adapter.py",
+        "tests/architecture/test_hosting_h5_worker_adapter.py",
+        "tests/architecture/test_hosting_h6_harness_parity.py",
+    ):
+        assert test in lint
+        assert test in tests
