@@ -17,11 +17,20 @@ from .journal import (
     WorkerAttemptRecordV1,
     WorkerSupervisorJournal,
 )
-from .launch import ManagedWorkerLaunchPort, ManagedWorkerProcess
+from .launch import ManagedWorkerLaunchPort
 from .protocol import (
     WorkerFramedTransport,
     WorkerProtocolError,
     WorkerProtocolMessage,
+)
+from .session import (
+    ManagedWorkerProcessControl,
+    ManagedWorkerSession,
+    ManagedWorkerSessionLaunchPort,
+    _close_unpublished_worker_session,
+    _is_managed_worker_process_control,
+    _launch_evidence,
+    bind_current_worker_session_port,
 )
 
 WORKER_SUPERVISOR_LIMITS_VERSION = 1
@@ -238,7 +247,8 @@ class WorkerSupervisor:
         self._state: WorkerSupervisorState = "created"
         self._failure_code: str | None = None
         self._record: WorkerAttemptRecordV1 | None = None
-        self._process: ManagedWorkerProcess | None = None
+        self._session: ManagedWorkerSession | None = None
+        self._process: ManagedWorkerProcessControl | None = None
         self._transport: WorkerFramedTransport | None = None
         self._reader_task: asyncio.Task[None] | None = None
         self._exit_task: asyncio.Task[None] | None = None
@@ -276,10 +286,34 @@ class WorkerSupervisor:
         correlation_id: str,
         signal: object | None = None,
     ) -> None:
-        if not isinstance(launch_request, ManagedWorkerLaunchRequestV1):
-            raise TypeError("Worker supervisor requires a typed launch request")
         if not callable(getattr(launch_port, "start", None)):
             raise TypeError("Worker supervisor requires a launch port")
+        if not isinstance(transport, WorkerFramedTransport):
+            raise TypeError("Worker supervisor requires a framed transport")
+        await self.start_session(
+            session_port=bind_current_worker_session_port(
+                launch_port,
+                transport,
+            ),
+            launch_request=launch_request,
+            correlation_id=correlation_id,
+            signal=signal,
+        )
+
+    async def start_session(
+        self,
+        *,
+        session_port: ManagedWorkerSessionLaunchPort,
+        launch_request: ManagedWorkerLaunchRequestV1,
+        correlation_id: str,
+        signal: object | None = None,
+    ) -> None:
+        """Start through one aggregate owner selected by trusted composition."""
+
+        if not isinstance(launch_request, ManagedWorkerLaunchRequestV1):
+            raise TypeError("Worker supervisor requires a typed launch request")
+        if not callable(getattr(session_port, "start", None)):
+            raise TypeError("Worker supervisor requires a session launch port")
         if launch_request.identity != self._identity:
             raise ValueError("Worker launch request identity changed at supervisor")
         if (
@@ -289,11 +323,13 @@ class WorkerSupervisor:
             raise ValueError(
                 "Worker supervisor protocol does not match the runtime binding"
             )
-        if not isinstance(transport, WorkerFramedTransport):
-            raise TypeError("Worker supervisor requires a framed transport")
         _require_protocol_identifier(
             correlation_id,
             name="Worker launch correlation id",
+        )
+        expected_evidence = _launch_evidence(
+            launch_request,
+            correlation_id=correlation_id,
         )
         async with self._lock:
             if self._state != "created":
@@ -306,13 +342,29 @@ class WorkerSupervisor:
                 max_attempts=self._limits.max_attempts,
             )
             self._transition_locked("launching")
-            self._transport = transport
         try:
-            process = await launch_port.start(
+            session = await session_port.start(
                 launch_request,
                 correlation_id=correlation_id,
                 signal=signal,
             )
+            if not isinstance(session, ManagedWorkerSession):
+                await _close_unpublished_worker_session(
+                    session,
+                    task_name="harness-invalid-worker-session-rollback",
+                )
+                raise TypeError("Worker session owner returned an invalid session")
+            # Retain unpublished aggregate ownership before inspecting any
+            # constituent. A contract violation below must still reclaim it.
+            self._session = session
+            if session.evidence != expected_evidence:
+                raise ValueError("Worker session launch evidence changed")
+            process = session.process
+            transport = session.transport
+            if not _is_managed_worker_process_control(process):
+                raise TypeError("Worker session returned an invalid process")
+            if not isinstance(transport, WorkerFramedTransport):
+                raise TypeError("Worker session returned an invalid transport")
         except asyncio.CancelledError:
             await self._terminal_failure("worker_launch_cancelled", fenced=False)
             raise
@@ -322,9 +374,10 @@ class WorkerSupervisor:
                 "Managed Worker launch failed",
                 code="worker_launch_failed",
             ) from exc
-        self._process = process
         try:
             async with self._lock:
+                self._process = process
+                self._transport = transport
                 self._transition_locked("handshaking")
         except Exception as exc:
             await self._terminal_failure(
@@ -510,6 +563,7 @@ class WorkerSupervisor:
             self._shutdown_waiter = waiter
             transport = self._require_transport_locked()
             process = self._require_process_locked()
+            session = self._require_session_locked()
         try:
             await transport.send(
                 WorkerProtocolMessage.create("shutdown", reason=reason),
@@ -540,7 +594,7 @@ class WorkerSupervisor:
                     "Worker process did not exit after shutdown",
                     code="worker_shutdown_exit_timeout",
                 ) from exc
-            await transport.close()
+            await session.close()
             async with self._lock:
                 if self._state == "draining":
                     self._transition_locked("stopped")
@@ -704,8 +758,7 @@ class WorkerSupervisor:
 
     async def _terminal_failure(self, code: str, *, fenced: bool) -> None:
         _require_failure_code(code)
-        process: ManagedWorkerProcess | None
-        transport: WorkerFramedTransport | None
+        session: ManagedWorkerSession | None
         async with self._lock:
             if self._state in {"stopped", "failed", "fenced"}:
                 return
@@ -737,17 +790,10 @@ class WorkerSupervisor:
                 self._shutdown_waiter.set_exception(error)
                 self._shutdown_waiter.exception()
             self._shutdown_waiter = None
-            process = self._process
-            transport = self._transport
-        if transport is not None:
+            session = self._session
+        if session is not None:
             with suppress(BaseException):
-                await transport.close()
-        if process is not None:
-            try:
-                await process.terminate()
-            except BaseException:
-                with suppress(BaseException):
-                    await process.close()
+                await session.terminate()
 
     def _validate_ready(self, message: WorkerProtocolMessage) -> None:
         expected = {
@@ -825,10 +871,15 @@ class WorkerSupervisor:
             raise RuntimeError("Worker transport is not bound")
         return self._transport
 
-    def _require_process_locked(self) -> ManagedWorkerProcess:
+    def _require_process_locked(self) -> ManagedWorkerProcessControl:
         if self._process is None:
             raise RuntimeError("Worker process is not bound")
         return self._process
+
+    def _require_session_locked(self) -> ManagedWorkerSession:
+        if self._session is None:
+            raise RuntimeError("Worker session is not bound")
+        return self._session
 
     def _error(self, message: str, *, code: str) -> WorkerSupervisorError:
         return WorkerSupervisorError(

@@ -38,7 +38,10 @@ single-use transfer into the exact H2 spawn allowlist. It publishes no new
 public endpoint factory. H4 adds the atomic Child Session Host and restrained
 `create_child_session_host` composition entrypoint: one compatible backend
 set, one correlated aggregate lease, and process-first joint cleanup. The
-Current Harness Worker route remains unchanged and default-dark.
+H5 adds a default-dark Harness Worker aggregate adapter, explicit typed owner
+selection, stable pathless diagnostics, and a future-attempt rollback latch.
+The Current Harness Worker route remains unchanged; required-containment
+sealed-descriptor transfer and Product/native activation remain separate gaps.
 
 Current process mechanics remain implemented inside Harness, principally by:
 
@@ -197,10 +200,11 @@ model.
 8. [H2 Process Platform And Harness Compatibility](process-platform-h2.md);
 9. [H3 Inherited Peer Endpoint](inherited-peer-endpoint-h3.md);
 10. [H4 Atomic Child Session](atomic-child-session-h4.md);
-11. [Hosted Application Support Boundary](key-designs/hosted-application-support-boundary.md);
-12. [ARD-002: Hosting Top-Level Placement](../decisions/ARD-002-hosting-top-level-placement.md);
-13. [Traceability](traceability.md);
-14. current source, tests, and generated package facts.
+11. [H5 Default-Dark Harness Worker Adapter](harness-worker-adapter-h5.md);
+12. [Hosted Application Support Boundary](key-designs/hosted-application-support-boundary.md);
+13. [ARD-002: Hosting Top-Level Placement](../decisions/ARD-002-hosting-top-level-placement.md);
+14. [Traceability](traceability.md);
+15. current source, tests, and generated package facts.
 
 ## Current-To-Target Gaps
 
@@ -227,8 +231,12 @@ model.
   cleanup-debt fencing, compatible platform-set selection, and local POSIX
   native round-trip evidence. The combined Windows CI result remains pending
   until this branch is pushed.
-- `missing`: a reviewed Product/native Worker activation route; PLC9C5 remains
-  separate from Hosting extraction.
+- `implemented`: the H5 default-dark aggregate Worker adapter, Supervisor
+  session entrypoint, explicit no-fallback selector, pathless diagnostics, and
+  future-attempt rollback latch.
+- `missing`: a Hosting-consumable opaque sealed-executable/containment
+  preparation capability and reviewed Product/native Worker activation route;
+  PLC9C5 remains separate from Hosting extraction.
 - `missing`: daemon/service-instance lifecycle remains a trigger-gated future
   candidate and is not part of the five-component v1 baseline.
 

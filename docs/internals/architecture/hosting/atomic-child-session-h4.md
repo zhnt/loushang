@@ -8,7 +8,7 @@
 - Authority: normative — accepted H4 child-session specification
 - Design status: accepted
 - Implementation status: implemented
-- Delivery status: platform-neutral and local POSIX evidence complete; native Windows evidence awaits the combined CI gate
+- Delivery status: platform-neutral and native Linux/macOS/Windows evidence complete
 - Owner: Loushang Hosting architecture
 - Public contract version: `loushang.hosting/v1`
 
