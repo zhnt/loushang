@@ -151,7 +151,7 @@ def test_h6_4_parity_record_pins_current_owner_evidence() -> None:
         ),
     )
     for path, test_name in current_evidence:
-        assert f"{path}::{test_name}" in record
+        assert f"{path.as_posix()}::{test_name}" in record
         test = _test_functions(path)[test_name]
         assert any(isinstance(node, ast.Assert) for node in ast.walk(test))
 
