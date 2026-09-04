@@ -24,8 +24,6 @@ from loushang.hosting._launch_preparation import (
 )
 from loushang.hosting._win32_process import (
     _SID_AND_ATTRIBUTES,
-    _TOKEN_GROUPS,
-    _TOKEN_USER,
     _CtypesWin32Api,
     _Win32CreateNotStarted,
     _Win32CreateSettledWithoutProcess,
@@ -62,8 +60,7 @@ def _spec() -> _WindowsRestrictedLaunchCaptureSpec:
             f"pe-amd64:sha256:{digest}",
             "executable:win32:7:101",
             "cwd:win32:7:202",
-            "restricted-token:disable-max-privilege+lua+write-restricted"
-            "+disable-admin+mirror-current-sids-v1",
+            "restricted-token:disable-max-privilege+lua+disable-admin-v1",
             "direct-imports:KERNEL32.DLL",
             "platform:windows-amd64-10.0.20348",
         ),
@@ -150,12 +147,6 @@ class _FakeWindowsLaunchApi:
         assert source_token == 4
         return self._allocate("restricted-token")
 
-    def token_is_restricted(self, token: int) -> bool:
-        if self.fail_stage == "verify":
-            self.fail_hits.append("verify")
-            return False
-        return token == 5
-
     def create_managed_job(self, *, on_acquired: object) -> int:
         handle = self._allocate("job")
         assert callable(on_acquired)
@@ -166,6 +157,9 @@ class _FakeWindowsLaunchApi:
         return handle
 
     def managed_job_is_kill_on_close(self, job: int) -> bool:
+        if self.fail_stage == "verify":
+            self.fail_hits.append("verify")
+            return False
         return job == 6
 
     def create_managed_stderr(self) -> int:
@@ -656,58 +650,6 @@ def test_win32_restricted_token_uses_the_exact_profile_flags() -> None:
     observed: list[tuple[int, int]] = []
     observed_sid_types: list[int] = []
     observed_sid_addresses: dict[int, int] = {}
-    user_sid_storage = ctypes.create_string_buffer(16)
-    group_sid_storages = [ctypes.create_string_buffer(16) for _ in range(3)]
-
-    def get_token_information(
-        token: int,
-        information_class: int,
-        target: object,
-        size: int,
-        required: object,
-    ) -> int:
-        assert token == 17
-        assert information_class in {1, 2}
-        required_size = (
-            ctypes.sizeof(_TOKEN_USER)
-            if information_class == 1
-            else _TOKEN_GROUPS.Groups.offset
-            + 3 * ctypes.sizeof(_SID_AND_ATTRIBUTES)
-        )
-        ctypes.cast(required, ctypes.POINTER(ctypes.c_uint32)).contents.value = (
-            required_size
-        )
-        if target is None:
-            assert size == 0
-            return 0
-        assert size == required_size
-        if information_class == 1:
-            token_user = ctypes.cast(
-                target,
-                ctypes.POINTER(_TOKEN_USER),
-            ).contents
-            token_user.User.Sid = ctypes.cast(user_sid_storage, ctypes.c_void_p)
-            token_user.User.Attributes = 0
-        else:
-            token_groups = ctypes.cast(
-                target,
-                ctypes.POINTER(_TOKEN_GROUPS),
-            ).contents
-            token_groups.GroupCount = 3
-            group_array = ctypes.cast(
-                ctypes.c_void_p(
-                    ctypes.addressof(token_groups) + _TOKEN_GROUPS.Groups.offset
-                ),
-                ctypes.POINTER(_SID_AND_ATTRIBUTES * 3),
-            ).contents
-            for group, storage in zip(
-                group_array,
-                group_sid_storages,
-                strict=True,
-            ):
-                group.Sid = ctypes.cast(storage, ctypes.c_void_p)
-                group.Attributes = 0
-        return 1
 
     def create_well_known_sid(
         sid_type: int,
@@ -738,35 +680,24 @@ def test_win32_restricted_token_uses_the_exact_profile_flags() -> None:
         assert disable_count == 1
         assert disable is not None
         assert (delete_count, delete) == (0, None)
-        assert restricted_count == 4
-        assert restricted is not None
+        assert (restricted_count, restricted) == (0, None)
         disabled_sids = ctypes.cast(
             disable,
             ctypes.POINTER(_SID_AND_ATTRIBUTES * 1),
         ).contents
-        restricting_sids = ctypes.cast(
-            restricted,
-            ctypes.POINTER(_SID_AND_ATTRIBUTES * 4),
-        ).contents
         assert [entry.Sid for entry in disabled_sids] == [
             observed_sid_addresses[26]
         ]
-        assert [entry.Sid for entry in restricting_sids] == [
-            ctypes.addressof(user_sid_storage),
-            *(ctypes.addressof(storage) for storage in group_sid_storages),
-        ]
         assert all(entry.Attributes == 0 for entry in disabled_sids)
-        assert all(entry.Attributes == 0 for entry in restricting_sids)
         observed.append((source, flags))
         ctypes.cast(target, ctypes.POINTER(ctypes.c_void_p)).contents.value = 91
         return 1
 
-    api._GetTokenInformation = get_token_information  # type: ignore[attr-defined]
     api._CreateWellKnownSid = create_well_known_sid  # type: ignore[attr-defined]
     api._CreateRestrictedToken = create_restricted_token  # type: ignore[attr-defined]
 
     assert api.create_restricted_token(17) == 91
-    assert observed == [(17, 0x00000001 | 0x00000004 | 0x00000008)]
+    assert observed == [(17, 0x00000001 | 0x00000004)]
     assert observed_sid_types == [26]
 
 

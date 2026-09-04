@@ -51,12 +51,8 @@ _TOKEN_DUPLICATE = 0x0002
 _TOKEN_QUERY = 0x0008
 _DISABLE_MAX_PRIVILEGE = 0x00000001
 _LUA_TOKEN = 0x00000004
-_WRITE_RESTRICTED = 0x00000008
 _WIN_BUILTIN_ADMINISTRATORS_SID = 26
 _SECURITY_MAX_SID_SIZE = 68
-_TOKEN_USER_INFORMATION_CLASS = 1
-_TOKEN_GROUPS_INFORMATION_CLASS = 2
-_MAX_TOKEN_GROUPS = 1024
 _FILE_SHARE_READ = 0x00000001
 _FILE_SHARE_WRITE = 0x00000002
 _FILE_READ_ATTRIBUTES = 0x00000080
@@ -81,17 +77,6 @@ class _SID_AND_ATTRIBUTES(ctypes.Structure):
     _fields_ = [
         ("Sid", ctypes.c_void_p),
         ("Attributes", wintypes.DWORD),
-    ]
-
-
-class _TOKEN_USER(ctypes.Structure):
-    _fields_ = [("User", _SID_AND_ATTRIBUTES)]
-
-
-class _TOKEN_GROUPS(ctypes.Structure):
-    _fields_ = [
-        ("GroupCount", wintypes.DWORD),
-        ("Groups", _SID_AND_ATTRIBUTES * 1),
     ]
 
 
@@ -366,68 +351,6 @@ class _CtypesWin32Api:
         return _handle_value(token)
 
     def create_restricted_token(self, source_token: int) -> int:
-        user_size = wintypes.DWORD()
-        self._GetTokenInformation(
-            source_token,
-            _TOKEN_USER_INFORMATION_CLASS,
-            None,
-            0,
-            ctypes.byref(user_size),
-        )
-        if user_size.value < ctypes.sizeof(_TOKEN_USER):
-            self._raise_last_error("GetTokenInformation(TokenUser size)")
-        user_storage = ctypes.create_string_buffer(user_size.value)
-        if not self._GetTokenInformation(
-            source_token,
-            _TOKEN_USER_INFORMATION_CLASS,
-            ctypes.byref(user_storage),
-            user_size.value,
-            ctypes.byref(user_size),
-        ):
-            self._raise_last_error("GetTokenInformation(TokenUser)")
-        user_sid = ctypes.cast(
-            ctypes.byref(user_storage),
-            ctypes.POINTER(_TOKEN_USER),
-        ).contents.User.Sid
-
-        groups_size = wintypes.DWORD()
-        self._GetTokenInformation(
-            source_token,
-            _TOKEN_GROUPS_INFORMATION_CLASS,
-            None,
-            0,
-            ctypes.byref(groups_size),
-        )
-        if groups_size.value < ctypes.sizeof(_TOKEN_GROUPS):
-            self._raise_last_error("GetTokenInformation(TokenGroups size)")
-        groups_storage = ctypes.create_string_buffer(groups_size.value)
-        if not self._GetTokenInformation(
-            source_token,
-            _TOKEN_GROUPS_INFORMATION_CLASS,
-            ctypes.byref(groups_storage),
-            groups_size.value,
-            ctypes.byref(groups_size),
-        ):
-            self._raise_last_error("GetTokenInformation(TokenGroups)")
-        token_groups = ctypes.cast(
-            ctypes.byref(groups_storage),
-            ctypes.POINTER(_TOKEN_GROUPS),
-        ).contents
-        group_count = int(token_groups.GroupCount)
-        available_group_count = (
-            groups_size.value - _TOKEN_GROUPS.Groups.offset
-        ) // ctypes.sizeof(_SID_AND_ATTRIBUTES)
-        if (
-            group_count < 1
-            or group_count > _MAX_TOKEN_GROUPS
-            or group_count > available_group_count
-        ):
-            raise OSError("Windows token group list is invalid")
-        group_array_type = _SID_AND_ATTRIBUTES * group_count
-        groups = ctypes.cast(
-            ctypes.byref(groups_storage, _TOKEN_GROUPS.Groups.offset),
-            ctypes.POINTER(group_array_type),
-        ).contents
         admin_storage = ctypes.create_string_buffer(_SECURITY_MAX_SID_SIZE)
         admin_size = wintypes.DWORD(ctypes.sizeof(admin_storage))
         if not self._CreateWellKnownSid(
@@ -446,17 +369,8 @@ class _CtypesWin32Api:
             )
         )
 
-        restricting_sid_count = group_count + 1
-        restricting_sid_type = _SID_AND_ATTRIBUTES * restricting_sid_count
-        restricting_sids = restricting_sid_type(
-            _SID_AND_ATTRIBUTES(Sid=user_sid, Attributes=0),
-            *(
-                _SID_AND_ATTRIBUTES(Sid=group.Sid, Attributes=0)
-                for group in groups
-            ),
-        )
         token = wintypes.HANDLE()
-        flags = _DISABLE_MAX_PRIVILEGE | _LUA_TOKEN | _WRITE_RESTRICTED
+        flags = _DISABLE_MAX_PRIVILEGE | _LUA_TOKEN
         if not self._CreateRestrictedToken(
             source_token,
             flags,
@@ -464,15 +378,12 @@ class _CtypesWin32Api:
             ctypes.byref(disabled_sids),
             0,
             None,
-            restricting_sid_count,
-            ctypes.byref(restricting_sids),
+            0,
+            None,
             ctypes.byref(token),
         ):
             self._raise_last_error("CreateRestrictedToken")
         return _handle_value(token)
-
-    def token_is_restricted(self, token: int) -> bool:
-        return bool(self._IsTokenRestricted(token))
 
     def create_managed_job(
         self,
@@ -1133,22 +1044,6 @@ class _CtypesWin32Api:
                 ctypes.c_void_p,
                 ctypes.POINTER(wintypes.DWORD),
             ],
-            wintypes.BOOL,
-        )
-        self._GetTokenInformation = _bind(
-            advapi32.GetTokenInformation,
-            [
-                wintypes.HANDLE,
-                ctypes.c_int,
-                ctypes.c_void_p,
-                wintypes.DWORD,
-                ctypes.POINTER(wintypes.DWORD),
-            ],
-            wintypes.BOOL,
-        )
-        self._IsTokenRestricted = _bind(
-            advapi32.IsTokenRestricted,
-            [wintypes.HANDLE],
             wintypes.BOOL,
         )
         self._CreateProcessAsUserW = _bind(

@@ -45,8 +45,7 @@ from .errors import HostingError, HostingFailureCategory
 
 _PROFILE_ID = "windows-restricted-direct-import-pe-v1"
 _RESTRICTION_ID = (
-    "restricted-token:disable-max-privilege+lua+write-restricted"
-    "+disable-admin+mirror-current-sids-v1"
+    "restricted-token:disable-max-privilege+lua+disable-admin-v1"
 )
 _DIRECT_PLATFORM_IMPORTS = frozenset({"ADVAPI32.DLL", "KERNEL32.DLL"})
 _MAX_EXECUTABLE_BYTES = 64 * 1024 * 1024
@@ -83,8 +82,6 @@ class _WindowsLaunchApi(Protocol):
     def open_process_token(self) -> int: ...
 
     def create_restricted_token(self, source_token: int) -> int: ...
-
-    def token_is_restricted(self, token: int) -> bool: ...
 
     def create_managed_job(
         self,
@@ -551,11 +548,6 @@ class _WindowsRestrictedLaunchMaterial:
             expected_digest=self._spec.executable_sha256,
             expected_imports=self._spec.platform_imports,
         )
-        if not self._api.token_is_restricted(self._restricted_token):
-            raise HostingError(
-                HostingFailureCategory.PREPARATION_STALE,
-                "Windows restricted token lost its restriction",
-            )
         if not self._api.managed_job_is_kill_on_close(self._job_handle):
             raise HostingError(
                 HostingFailureCategory.PREPARATION_STALE,

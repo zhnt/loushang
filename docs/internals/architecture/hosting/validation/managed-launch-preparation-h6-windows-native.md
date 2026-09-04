@@ -32,10 +32,8 @@ The captured execution closure contains:
 
 - the exact AMD64 PE SHA-256 and locked Win32 volume/128-bit file identity;
 - the locked cwd volume/128-bit file identity;
-- the fixed restricted-token recipe `DISABLE_MAX_PRIVILEGE | LUA_TOKEN |
-  WRITE_RESTRICTED`, explicit disabling of `WinBuiltinAdministratorsSid`, and
-  a loader-compatible restricting set mirroring the current-user SID and all
-  current token group SIDs;
+- the fixed restricted-token recipe `DISABLE_MAX_PRIVILEGE | LUA_TOKEN` plus
+  explicit deny-only treatment of `WinBuiltinAdministratorsSid`;
 - the exact direct-import set, currently limited to `KERNEL32.DLL` and
   `ADVAPI32.DLL`; and
 - the exact Windows AMD64 major/minor/build platform identity.
@@ -46,12 +44,14 @@ fixed direct-name set, and a digest or direct-import mismatch. The selected
 oracle uses no CRT or application DLL.
 
 The token recipe proves privilege removal, LUA filtering, and explicit
-administrator deny-only treatment. The mirrored SID list makes that restricted
-token observable through `IsTokenRestricted` without inventing a second ACL
-policy that breaks Windows initialization; it does not add an isolation claim.
-The profile does not claim an AppContainer, integrity boundary, or isolation
-from the same user; stronger product sandboxing remains caller policy outside
-this profile.
+administrator deny-only treatment. It deliberately supplies no restricting
+SID list: native evidence showed that such a list can prevent Windows process
+initialization even when it mirrors the source principals. Consequently
+`IsTokenRestricted` is false by its documented narrow definition; that API
+does not report restrictions created solely by disabled SIDs or removed
+privileges. The profile does not claim an AppContainer, integrity boundary, or
+isolation from the same user; stronger product sandboxing remains caller policy
+outside this profile.
 
 This is deliberately a **direct-import mechanics profile**, not a Windows
 loader-closure or DLL-identity claim. The OS build string is a platform
@@ -78,8 +78,8 @@ bind any stronger behavior to a separately accepted profile and evidence.
    verification requires the retained ancestor paths to equal the current
    leaf-derived ancestor set.
 3. Final verification rechecks both handle identities, the complete image
-   digest/import table, `IsTokenRestricted`, and Job kill-on-close immediately
-   before claim.
+   digest/import table, and Job kill-on-close immediately before claim. The
+   retained primary token is immutable after its exact creation recipe.
 4. The matched Process backend rejects endpoint/preparation handle aliasing.
    The only inherited values are the endpoint stdin/stdout and captured stderr
    NUL handle in `PROC_THREAD_ATTRIBUTE_HANDLE_LIST`; the pre-created Job is in
@@ -107,7 +107,8 @@ one endpoint-plus-preparation spawn that:
 - executable overwrite and ancestor rename are denied while capture is paused;
 - a completed cwd rename plus same-name replacement still launches with the
   retained cwd identity;
-- the child observes a restricted token and an empty caller environment;
+- the child observes at most `SeChangeNotifyPrivilege`, confirms that there is
+  no restricting SID list, and observes an empty caller environment;
 - the exact endpoint handle list carries the raw handshake;
 - a descendant created by the restricted root remains in the atomically
   assigned Job and the complete Job is empty before close returns; and

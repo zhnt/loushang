@@ -14,7 +14,6 @@ from typing import ParamSpec
 
 import pytest
 
-import loushang.hosting._win32_process as win32_process
 from loushang.hosting import (
     ChildSessionRequest,
     ProcessLaunchRequest,
@@ -199,8 +198,7 @@ def _spec(
             "executable:win32:"
             f"{executable_identity.volume_serial}:{executable_identity.file_id}",
             f"cwd:win32:{cwd_identity.volume_serial}:{cwd_identity.file_id}",
-            "restricted-token:disable-max-privilege+lua+write-restricted"
-            "+disable-admin+mirror-current-sids-v1",
+            "restricted-token:disable-max-privilege+lua+disable-admin-v1",
             f"direct-imports:{','.join(imports)}",
             f"platform:{platform_identity}",
         ),
@@ -244,8 +242,22 @@ void WINAPI mainCRTStartup(void) {{
         ExitProcess(0);
     }}
     HANDLE token = 0;
-    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token) ||
-        !IsTokenRestricted(token)) ExitProcess(70);
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token))
+        ExitProcess(70);
+    if (IsTokenRestricted(token)) ExitProcess(75);
+    BYTE privilege_storage[1024];
+    DWORD privilege_size = sizeof(privilege_storage);
+    if (!GetTokenInformation(token, TokenPrivileges, privilege_storage,
+                             privilege_size, &privilege_size)) ExitProcess(76);
+    TOKEN_PRIVILEGES *privileges = (TOKEN_PRIVILEGES *)privilege_storage;
+    if (privileges->PrivilegeCount > 1) ExitProcess(77);
+    if (privileges->PrivilegeCount == 1) {{
+        LUID change_notify;
+        if (!LookupPrivilegeValueW(0, SE_CHANGE_NOTIFY_NAME, &change_notify) ||
+            privileges->Privileges[0].Luid.LowPart != change_notify.LowPart ||
+            privileges->Privileges[0].Luid.HighPart != change_notify.HighPart)
+            ExitProcess(78);
+    }}
     CloseHandle(token);
 
     if (contains(GetCommandLineW(), L"--expect-renamed-cwd")) {{
@@ -363,58 +375,6 @@ void WINAPI mainCRTStartup(void) {{
 
 def _return_code(return_code: int) -> str:
     return f"{return_code} ({return_code & 0xFFFFFFFF:#010x})"
-
-
-@_async_test
-async def test_windows_restricted_native_recipe_diagnostics(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    executable = tmp_path / "restricted-recipe.exe"
-    _compile_fixture(executable)
-    cwd = tmp_path / "cwd"
-    cwd.mkdir()
-    variants = {
-        "admin+sid": (0, 0, 0),
-        "disable": (1, 0, 0),
-        "lua": (0, 4, 0),
-        "write": (0, 0, 8),
-        "disable+lua": (1, 4, 0),
-        "disable+write": (1, 0, 8),
-        "lua+write": (0, 4, 8),
-        "all": (1, 4, 8),
-    }
-    outcomes: dict[str, str] = {}
-    for name, flags in variants.items():
-        monkeypatch.setattr(win32_process, "_DISABLE_MAX_PRIVILEGE", flags[0])
-        monkeypatch.setattr(win32_process, "_LUA_TOKEN", flags[1])
-        monkeypatch.setattr(win32_process, "_WRITE_RESTRICTED", flags[2])
-        api = _CtypesWin32Api()
-        spec = _spec(api, executable, cwd)
-        host = _native_host(api)
-        lease = None
-        try:
-            lease = await host.start(
-                ChildSessionRequest(spec.request),
-                _RestrictedPreparation(spec),
-            )
-            ready = await _read_line(lease.endpoint.read)
-            if ready:
-                await lease.endpoint.write(b"x")
-                result = await lease.process.wait()
-                outcomes[name] = f"ready={ready!r}, exit={_return_code(result.return_code)}"
-            else:
-                result = await lease.process.wait()
-                outcomes[name] = f"exit={_return_code(result.return_code)}"
-        except BaseException as exc:
-            outcomes[name] = f"exception={type(exc).__name__}: {exc}"
-        finally:
-            if lease is not None:
-                with suppress(BaseException):
-                    await lease.close()
-            with suppress(BaseException):
-                await host.close()
-    pytest.fail(f"H6.3 restricted recipe diagnostics: {outcomes!r}")
 
 
 async def _read_line(read: Callable[[int], Awaitable[bytes]]) -> bytes:
