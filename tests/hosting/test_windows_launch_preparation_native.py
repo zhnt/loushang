@@ -7,6 +7,7 @@ import platform
 import shutil
 import subprocess
 from collections.abc import Awaitable, Callable
+from contextlib import suppress
 from functools import wraps
 from pathlib import Path
 from typing import ParamSpec
@@ -237,6 +238,10 @@ static void emit(const char *body, DWORD size) {{
 }}
 
 void WINAPI mainCRTStartup(void) {{
+    if (contains(GetCommandLineW(), L"--unrestricted-smoke")) {{
+        emit("unrestricted\n", 13);
+        ExitProcess(0);
+    }}
     HANDLE token = 0;
     if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token) ||
         !IsTokenRestricted(token)) ExitProcess(70);
@@ -337,6 +342,26 @@ void WINAPI mainCRTStartup(void) {{
     )
     if completed.returncode != 0:
         pytest.fail(f"H6.3 native fixture compilation failed: {completed.stdout}\n{completed.stderr}")
+    smoke = subprocess.run(
+        (str(path), "--unrestricted-smoke"),
+        cwd=path.parent,
+        env={},
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    if smoke.returncode != 0 or smoke.stdout != "unrestricted\n":
+        pytest.fail(
+            "H6.3 unrestricted empty-environment fixture smoke failed: "
+            f"{_return_code(smoke.returncode)}; stdout={smoke.stdout!r}; "
+            f"stderr={smoke.stderr!r}"
+        )
+
+
+def _return_code(return_code: int) -> str:
+    return f"{return_code} ({return_code & 0xFFFFFFFF:#010x})"
 
 
 async def _read_line(read: Callable[[int], Awaitable[bytes]]) -> bytes:
@@ -387,27 +412,41 @@ async def test_windows_restricted_native_locks_identity_and_runs_restricted(
     start = asyncio.create_task(
         host.start(ChildSessionRequest(spec.request), preparation)
     )
-    await _await_capture_or_start_failure(preparation, start)
+    lease = None
+    try:
+        await _await_capture_or_start_failure(preparation, start)
 
-    with pytest.raises(OSError):
-        executable.write_bytes(b"replacement")
-    with pytest.raises(OSError):
-        admitted.rename(tmp_path / "admitted-replaced")
-    renamed_cwd = admitted / "cwd-renamed"
-    cwd.rename(renamed_cwd)
-    cwd.mkdir()
+        with pytest.raises(OSError):
+            executable.write_bytes(b"replacement")
+        with pytest.raises(OSError):
+            admitted.rename(tmp_path / "admitted-replaced")
+        renamed_cwd = admitted / "cwd-renamed"
+        cwd.rename(renamed_cwd)
+        cwd.mkdir()
 
-    preparation.release.set()
-    lease = await start
-    ready = await _read_line(lease.endpoint.read)
-    if not ready:
-        exit_result = await lease.process.wait()
-        pytest.fail(
-            f"restricted fixture exited before ready: {exit_result.return_code}"
-        )
-    assert ready == b"restricted\r\n"
-    await lease.endpoint.write(b"x")
-    assert (await lease.process.wait()).return_code == 0
+        preparation.release.set()
+        lease = await start
+        ready = await _read_line(lease.endpoint.read)
+        if not ready:
+            exit_result = await lease.process.wait()
+            pytest.fail(
+                "restricted fixture exited before ready: "
+                f"{_return_code(exit_result.return_code)}"
+            )
+        assert ready == b"restricted\r\n"
+        await lease.endpoint.write(b"x")
+        assert (await lease.process.wait()).return_code == 0
+    except BaseException:
+        preparation.release.set()
+        if lease is None:
+            with suppress(BaseException):
+                lease = await start
+        if lease is not None:
+            with suppress(BaseException):
+                await lease.close()
+        with suppress(BaseException):
+            await host.close()
+        raise
     await lease.close()
     await host.close()
     assert preparation.lease.verify_calls == 1
@@ -425,24 +464,35 @@ async def test_windows_restricted_native_job_reclaims_descendant(
     api = _ObservedWin32Api()
     spec = _spec(api, executable, cwd, "--spawn-child")
     host = _native_host(api)
-    lease = await host.start(
-        ChildSessionRequest(spec.request),
-        _RestrictedPreparation(spec),
-    )
-
-    ready = await _read_line(lease.endpoint.read)
-    if not ready:
-        exit_result = await lease.process.wait()
-        pytest.fail(
-            f"restricted descendant fixture exited before ready: {exit_result.return_code}"
+    lease = None
+    try:
+        lease = await host.start(
+            ChildSessionRequest(spec.request),
+            _RestrictedPreparation(spec),
         )
-    assert ready == b"restricted-child-ready\r\n"
-    assert len(api.created_jobs) == 1
-    job = api.created_jobs[0]
-    assert not api.job_is_empty(job)
-    await lease.endpoint.write(b"x")
-    assert (await lease.process.wait()).return_code == 0
-    assert not api.job_is_empty(job)
-    await lease.close()
-    assert api.job_empty_observations[-1]
+
+        ready = await _read_line(lease.endpoint.read)
+        if not ready:
+            exit_result = await lease.process.wait()
+            pytest.fail(
+                "restricted descendant fixture exited before ready: "
+                f"{_return_code(exit_result.return_code)}"
+            )
+        assert ready == b"restricted-child-ready\r\n"
+        assert len(api.created_jobs) == 1
+        job = api.created_jobs[0]
+        assert not api.job_is_empty(job)
+        await lease.endpoint.write(b"x")
+        assert (await lease.process.wait()).return_code == 0
+        assert not api.job_is_empty(job)
+        await lease.close()
+        lease = None
+        assert api.job_empty_observations[-1]
+    except BaseException:
+        if lease is not None:
+            with suppress(BaseException):
+                await lease.close()
+        with suppress(BaseException):
+            await host.close()
+        raise
     await host.close()
