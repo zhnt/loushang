@@ -1402,7 +1402,17 @@ def _await_ready(path: Path, token: str, process: int, timeout: float) -> None:
             continue
         if len(payload) > _MAX_READY_BYTES:
             raise OSError("Windows legacy runtime readiness is oversized")
-        if payload.strip() != token.encode("ascii"):
+        normalized = payload.strip()
+        if not normalized:
+            exit_code = _process_exit_code(process)
+            if exit_code != _STILL_ACTIVE:
+                raise OSError(
+                    "Windows legacy runtime exited before readiness "
+                    f"with status 0x{exit_code:08x}"
+                )
+            time.sleep(0.025)
+            continue
+        if normalized != token.encode("ascii"):
             raise OSError("Windows legacy runtime readiness changed")
         exit_code = _process_exit_code(process)
         if exit_code != _STILL_ACTIVE:
