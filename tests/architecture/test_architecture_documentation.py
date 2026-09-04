@@ -32,6 +32,19 @@ INITIAL_GOVERNED_DOCUMENTS = (
     ARCHITECTURE_ROOT / "coding/arch/system-context.md",
     ARCHITECTURE_ROOT / "coding/arch/component-model.md",
     ARCHITECTURE_ROOT / "coding/arch/traceability.md",
+    ARCHITECTURE_ROOT / "hosting/README.md",
+    ARCHITECTURE_ROOT / "hosting/requirements.md",
+    ARCHITECTURE_ROOT / "hosting/system-context.md",
+    ARCHITECTURE_ROOT / "hosting/component-model.md",
+    ARCHITECTURE_ROOT / "hosting/traceability.md",
+    ARCHITECTURE_ROOT
+    / "hosting/key-designs/hosted-application-support-boundary.md",
+    ARCHITECTURE_ROOT / "drafts/apphost-top-level-placement.md",
+    ARCHITECTURE_ROOT / "drafts/application-service-refactor.md",
+    ARCHITECTURE_ROOT
+    / "drafts/appservice-embedded-tui-hosted-boundary-plan.md",
+    ARCHITECTURE_ROOT / "drafts/hosting-top-level-placement.md",
+    ARCHITECTURE_ROOT / "hosting/validation/component-discovery.md",
 )
 MARKDOWN_LINK = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")
 STATUS_VALUES = {

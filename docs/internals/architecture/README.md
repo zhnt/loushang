@@ -98,6 +98,17 @@ nested-scope catalog for a proposed canonical V2 target plus implemented
 incremental contracts. Its presence in the scope tree does not advance that
 target to accepted status.
 
+Proposed top-level placements are under design:
+
+- [Hosting](hosting/README.md), a Product-neutral local process, inherited
+  peer IPC, and joint child-session lifetime substrate. Its package and
+  placement remain Target-only until the proposed decision is accepted and the
+  implementation absence guard is intentionally revised.
+- [AppHost Top-Level Placement](drafts/apphost-top-level-placement.md), the
+  proposed physical owner of the existing cross-Product Platform Host role.
+  Product catalog/routing and deployment profiles remain Target-only; they do
+  not move into Harness, AppServer, Hosting, or a concrete Product.
+
 A nested scope is not automatically a top-level subsystem. The parent owns its
 placement, composition policy, and sibling relationships; the child owns its
 black-box contract and internal component model.

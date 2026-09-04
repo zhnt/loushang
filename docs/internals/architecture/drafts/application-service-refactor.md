@@ -2,14 +2,29 @@
 
 ## Status
 
-Proposed. This document defines a staged refactor, not an instruction to build
-a daemon, WebSocket transport, or new client protocol immediately.
+- ID: `APP-DP-SERVICE-REFACTOR`
+- Kind: delivery plan
+- Scope: AppServer / AppService
+- Parent: Loushang
+- Authority: normative target proposal
+- Design status: proposed
+- Implementation status: partial
+- Owner: Loushang application architecture
+
+This document defines a staged refactor, not an instruction to build a daemon,
+WebSocket transport, or new client protocol immediately. Phase 0 is Current
+and complete; AppHost, AppServer, AppService, and later phases are proposed and
+not started.
 
 The current delivery clarification is
 [AppService Hosted Boundary With An Embedded TUI](appservice-embedded-tui-hosted-boundary-plan.md):
 the default native TUI remains on the direct embedded path. References below
 to an embedded `AppClient` or Harnesstui migration are optional Product
 elections, not a prerequisite for AppService or the default local composition.
+Platform Host identity and Product catalog/routing ownership follow
+[AppHost Top-Level Placement](apphost-top-level-placement.md).
+OS process and daemon mechanisms follow the separate
+[Hosting Support Boundary](../hosting/key-designs/hosted-application-support-boundary.md).
 
 ## Decision
 
@@ -37,8 +52,13 @@ in-process message pump, or a second event bus.
 When at least one extraction trigger is real, Loushang may introduce a
 top-level `loushang.appserver` package. In that target architecture:
 
-- `AppService` is the single application boundary above Harness and injected
-  Work/Channel ports, while Product composition retains Method binding;
+- `AppHost` is the composition root that constructs AppService, injects it into
+  AppServer, and owns whole-process shutdown ordering;
+- `AppServer` owns the hosted server/connection runtime, listeners/connections,
+  authentication, framing, transport admission, and byte/frame delivery;
+- `AppService` is the transport-neutral application boundary over injected
+  Product Session, Work, and optional Channel ports, while Product composition
+  retains Method binding;
 - `AppClient` is the client-facing contract;
 - in-process, JSONL, and WebSocket connections are transport adapters over the
   same application protocol;
@@ -95,24 +115,52 @@ Once extracted, the target package is top-level because it coordinates several
 lower layers:
 
 ```text
-embedded Product composition root
-  -> Harnesstui prepared ports
-  -> Product Session binding -> Harness
+Coding UI composition -> Harnesstui -> TUI          # Current embedded profile
+Coding UI composition -> Coding Product -> Harness
 
-hosted Platform Host composition root
-  -> admitted Product Router / Factory
-  -> loushang.appserver.service
-       |-> injected Product Session port -> Harness
-       |-> injected Product Work port -> Work -> Harness
-       `-> injected Channel port -> Work / Harness
+Product Package integration
+  -> apphost Product contracts / Product public API / Harness public ports
+  -> optional appserver structural ports            # separate hosted module
 
-hosted clients, including an optional AppClient-backed Harnesstui profile
+apphost runtime/bootstrap -> appserver.server        # hosted profile only
+apphost launcher -> Hosting Process Host             # separate process only
+apphost daemon control -> hosting.service            # future accepted candidate
+appserver -X-> Hosting
+
+harnessgui / harnesswebui / other hosted clients
   -> appserver.client
   -> appserver.protocol
 
-appserver transports
+appserver.server
+  -> appserver.service
   -> appserver.protocol
+  -> appserver transports
+
+appserver.service
+  -> appserver-owned structural Product ports
+
+concrete Product adapter
+  -> appserver structural ports
+  -> Harness / Work / Channel public ports
+
+coding core -> Harness
+Harness -> Hosting                                  # elected mechanisms only
+
+Coding UI -X-> HarnessGUI / HarnessWebUI / AppServer / AppService
+Harnesstui -X-> Coding / HarnessGUI / HarnessWebUI / AppServer / AppService
+appserver.service -X-> Hosting / Coding / Harness / UI frameworks
+Hosting -X-> AppServer / AppService / Coding / Harness / UI frameworks
 ```
+
+HarnessGUI and HarnessWebUI depend on AppClient and the versioned App Contract,
+not on the AppServer implementation. CodingTUI is an independent embedded
+profile Plugin implemented by Coding UI over Product-neutral Harnesstui; it
+does not depend on either hosted GUI package. CodingApp may be a second
+installable profile Plugin without becoming a second Coding Product. The
+runtime hosted call chain flows from AppService through an injected port to the
+selected Product adapter, but the source dependency of that adapter points
+inward to the AppServer port contract and Harness APIs. Dependency inversion
+therefore keeps every Product core and AppService unaware of each other.
 
 Method selection, compilation, and `MethodPlan -> WorkPlanSpec` conversion
 remain a Product-binding responsibility. `WorkPlanSpec` is a target design
@@ -128,16 +176,35 @@ Package-level import rules:
 - `appserver.client` imports `appserver.protocol`, not service internals;
 - `appserver.transports` import protocol and transport mechanics, not Harness
   Session implementations;
-- `appserver.service` may adapt injected Harness, Work, and Channel ports;
+- `appserver.server` imports service, protocol, and elected transports and owns
+  connection admission;
+- `appserver.service` consumes its own structural Product Session, Work, and
+  optional Channel ports; it imports no Hosting, concrete Product, Harness,
+  Work implementation, or UI package;
+- AppServer and all its subpackages must not import any Hosting package;
+- AppHost owns Product contracts/catalog/routing and may import AppServer,
+  Hosting, and public Harness host/runtime contracts, but no concrete Product
+  internals;
 - Harness and Work never import AppServer; and
-- Harnesstui never imports `appserver.service`.
+- Coding UI never imports HarnessGUI, HarnessWebUI, `appserver.server`, or
+  `appserver.service`; and
+- Harnesstui never imports Coding, HarnessGUI, HarnessWebUI, AppServer, or
+  AppService.
 
-The Product composition root is the one deliberate Product-side importer: an
-allowlisted entrypoint such as Coding `ui.mode`, CLI bootstrap, or a future
-daemon bootstrap may import `appserver.service` to inject Product factories
-and ports. Product domain, Session implementation, tool, Policy, and
-presentation modules do not import AppServer. AppServer never imports a
-Product package.
+The top-level `loushang.apphost` is the one deliberate cross-Product Platform
+Host. It owns Product contracts, catalog, router, scoped Runtime lifecycle, and
+deployment-profile composition. Product Packages register descriptors,
+factories, and optional hosted integrations without AppHost importing their
+internals. `loushang.harnesswork` remains the canonical shared Product
+dependency rather than a Product by default; `loushang.work` is its forwarding
+compatibility facade. Product domain, Session implementation, tool, Policy, Coding UI,
+HarnessGUI, and HarnessWebUI modules do not import AppServer implementation.
+AppServer and AppHost never import concrete Product internals.
+
+This is distinct from the existing `loushang.harness.host`, which remains the
+lower-level Product-neutral line-input, stdio, mode, and host-runtime adapter
+layer. AppHost may consume those public contracts; Harness Host does not
+acquire AppServer, daemon, or deployment-composition responsibility.
 
 This placement preserves the existing `Harness <- Channel` direction rather
 than reintroducing `Harness -> Channel`.
@@ -152,6 +219,7 @@ src/loushang/appserver/
   protocol.py
   client.py
   service.py
+  server.py
   in_process.py
   transports/
     __init__.py
@@ -161,7 +229,15 @@ src/loushang/appserver/
 Subpackages such as `protocol/`, `service/`, or `client/` are created only when
 one of these files has multiple independently testable owners. WebSocket,
 authentication, SDK code generation, and daemon supervision are not empty
-placeholder modules.
+placeholder modules. AppServer never contains an adapter to any Hosting
+package.
+
+The separate `src/loushang/apphost/` package is introduced only with a named
+cross-Product Platform Host delivery. It owns Product contracts,
+catalog/routing, scoped Runtime lifecycle, and deployment-profile assembly,
+not an alternative App protocol or concrete Product adapter. Its component
+discovery and delivery are governed separately by
+[AppHost Top-Level Placement](apphost-top-level-placement.md).
 
 ## Responsibilities
 
@@ -207,6 +283,25 @@ Bash/selected-command execution and Session command dispatch remain their
 existing ports and are not added to `SessionOperationRuntime` merely to make
 the TUI call graph look uniform.
 
+### AppServer
+
+After extraction, `AppServer` owns the hosted server shell:
+
+- in-process, standard-I/O, local-listener, or remote connection profiles;
+- listener path and permissions, accept loops, connection identity, transport
+  authentication, framing, initialization, and resource admission;
+- per-connection request/response correlation, bounded byte/frame output,
+  transport backpressure, disconnect, and transport cleanup; and
+- reporting transport state and overload through a narrow port to the injected
+  AppService instance.
+
+It does not own Product Session or Work meaning, turn/Approval semantics,
+Product discovery, deployment topology, UI rendering, or OS process identity
+and supervision. It runs inside the target-process AppHost runtime, which
+constructs and semantically closes AppService. A separate AppHost launcher may
+use Hosting to start that complete executable, while an external supervisor may
+start it directly. AppServer never imports or calls any Hosting package.
+
 ### AppService
 
 After extraction, `AppService` owns application coordination only:
@@ -214,8 +309,8 @@ After extraction, `AppService` owns application coordination only:
 - a registry of service-owned live Session handles;
 - typed command dispatch onto injected Session and Work ports;
 - client-safe snapshots and read-model projection;
-- transport request/event correlation and routing of domain-owned interaction
-  IDs;
+- application operation tracking and routing of domain-owned interaction IDs
+  through an injected connection-output port;
 - connection subscriptions;
 - controller routing when several clients observe one Session;
 - idempotency admission for externally retried side effects; and
@@ -230,7 +325,23 @@ It does not own:
 - Method selection, compilation, projection, or Method-to-Work conversion;
 - transcript storage implementation;
 - terminal rendering or widget layout; or
-- JSONL, WebSocket, or operating-system daemon mechanics.
+- AppServer listeners, authentication, framing, transport request correlation,
+  JSONL, WebSocket, Hosting, or operating-system daemon mechanics.
+
+AppService owns one bounded logical delivery mailbox per attachment, including
+semantic priority, response reservation, safe delta coalescing, and the
+attachment-detach decision. AppServer owns the separate bounded byte/frame
+write buffer and reports overload/disconnect through a narrow port. The
+deployment bounds their combined capacity, and one ordered close sequence
+prevents duplicate cleanup ownership.
+
+A hosted profile may add an AppService-owned multi-Session coordination
+aggregate, such as a named mux space. That aggregate is application state, not
+a new AppHost, AppServer listener, Harness Capability, Product Runtime, or
+Hosting service. One AppService coordinator may own several such aggregates
+and several independently scoped Session bindings. Aggregate membership,
+attachment generations, and aggregate commands remain in AppService; AppHost
+and Hosting do not index or interpret aggregate names.
 
 ### AppClient
 
@@ -298,6 +409,11 @@ JSONL and a future WebSocket transport:
 They do not contain Session command handlers, Product capability discovery,
 approval policy, or read-model projection.
 
+These adapters are owned by AppServer, not Hosting. A local-listener adapter
+also owns its path, private permissions, accept loop, connection limits, and
+stale-listener cleanup. Hosting's inherited peer endpoint is reserved for an
+attached one-parent/one-child profile and is not a reconnectable listener.
+
 ### Channel
 
 Channel remains the boundary for `WorkOperation`, `WorkEvent`, and selected
@@ -351,6 +467,16 @@ revision        snapshot/read-model version
 
 Legacy RPC camelCase dictionaries and command names are compatibility inputs
 to an adapter; they do not define the new application protocol.
+
+Before `session/open` or resume invokes a Product-specific parser, AppHost reads
+the parent-defined generic versioned Session Identity Envelope. Its required
+`product_id`, continuity identity, and opaque locator select the admitted
+Product descriptor and factory; the resulting Product-specific owner then
+parses its own state. Each Session receives an independent scoped Product
+Runtime binding. A single-Product process only restricts the allowed ID; it does
+not create a process-global Session Runtime. Legacy Sessions without identity
+must pass an explicit compatibility importer/migration or fail with
+`ProductIdentityRequired`; a default Product is never inferred.
 
 ## Approval Interaction Boundary
 
@@ -465,6 +591,44 @@ Durable event storage is introduced only when Work recovery or an external
 client contract requires it. AppService must not create a second transcript or
 Work audit store.
 
+### Multi-Session Coordination Aggregates
+
+The first named-mux profile refines the Session snapshot contract without
+creating a cross-Session transaction. An aggregate attachment joins one
+serialized membership revision with one authoritative snapshot/cursor pair
+per visible Session. It publishes the initial client view only after every
+pair is valid, buffers each stream before exposure, and replays strictly after
+the corresponding cursor. There is no global cross-Session revision, cursor,
+event sequence, or claim that all snapshots represent one instant.
+
+An aggregate controller lease is an AppService coordination lease over the
+member set. It does not replace Session interaction ownership: AppService
+derives one generation-fenced presenter lease for each member Session. Attach
+publishes controller authority only after all required presenter leases are
+acquired, and rolls back the acquired set on failure. Adding a member while
+attached publishes neither that member nor its events until its Session
+binding, subscription, presenter lease, and snapshot/cursor pair are ready.
+Removing a member fences its aggregate event route and releases its presenter
+lease exactly once. Detach closes all derived leases, so each Session's
+existing Approval cleanup policy remains authoritative.
+
+Multi-stream delivery is bounded at two levels. AppService admits explicit
+limits for aggregate count, members per aggregate, total live Sessions,
+attachments, subscribed streams, and logical mailbox capacity; AppServer
+separately admits connections and byte/frame buffers. Fair scheduling or
+per-stream sub-budgets prevent one high-volume Session from starving another
+inside one aggregate attachment. Overload may detach that attachment and
+require a fresh snapshot, but cannot block another Session or aggregate.
+
+The first named-mux profile may constrain one connection to at most one active
+aggregate controller attachment while one AppHost endpoint serves several
+connections and aggregates. Aggregate create/member mutations use idempotency
+scopes that include principal, Product, operation, and the endpoint,
+aggregate, or member target as applicable. Aggregate close stops admission,
+fences attachments and member routes, attempts every independently owned
+Session release exactly once, and returns an aggregate result without hiding
+partial cleanup failure.
+
 ## Multi-Client Interaction
 
 Multiple observers are allowed. Exactly one connection is the current
@@ -513,6 +677,9 @@ remain inside Harnesstui and are not round-tripped through AppService.
 
 The default embedded Harnesstui profile continues to consume prepared ports and
 existing Session operations directly regardless of whether AppService exists.
+This CodingTUI composition is parallel to HarnessGUI and HarnessWebUI. It does
+not import either package, and installing or starting it does not require the
+hosted client/server stack.
 
 Before an elected Product binding cuts over to AppClient, the migration keeps a
 checked capability inventory. Every current Agent screen binding dependency is
@@ -639,7 +806,8 @@ client adapter.
 2. Implement `InProcessAppClient`.
 3. Run the same semantic scenarios against direct service and in-process
    client paths.
-4. Implement one ordered server-output path and deterministic disconnect.
+4. Implement one bounded AppService logical mailbox per attachment, an
+   injected connection-status port, and deterministic detach.
 5. Keep daemon, WebSocket, and durable replay out of scope.
 
 Exit criteria:
@@ -655,6 +823,13 @@ Exit criteria:
 
 Trigger: the Product elects to make the embedded AppClient path its
 authoritative Harnesstui binding. A remote transport is not required yet.
+
+This elects an AppClient-backed profile contribution through the canonical
+Product/OEM Plugin lifecycle. Manifest/trust/enablement/activation-generation
+owners admit it before import; AppHost consumes only the admitted immutable
+factory and owns the selected instance. This does not create another Plugin
+manager, turn Harnesstui into Coding, make CodingTUI depend on CodingApp, or
+create a second Product identity.
 
 1. Complete the checked Harnesstui capability inventory.
 2. Extend the typed protocol only for existing server-backed capabilities
@@ -686,25 +861,45 @@ boundary.
 2. Add the minimum transport authentication required by that deployment.
 3. Run embedded-versus-remote semantic parity and Harnesstui playback suites.
 4. Define bounded output and slow-client disconnect behavior.
+5. When a separate process is required, add an AppHost launcher that passes
+   only serializable launch material to Hosting Process Host and starts the
+   complete AppHost executable; direct foreground invocation uses no Hosting.
 
 Exit criteria:
 
 - changing connection type does not change user-visible conversation order;
-- bounded queues and slow clients have defined behavior; and
-- remote clients cannot receive raw domain objects or secrets.
+- bounded queues and slow clients have defined behavior;
+- remote clients cannot receive raw domain objects or secrets;
+- AppService imports neither Hosting nor the concrete Product implementation;
+- AppServer byte-buffer overload reports into the single AppService detach
+  path without a second close decision; and
+- no in-memory Product factory, adapter, or service object crosses process
+  launch.
 
 #### 4B — Daemon Ownership
 
-Trigger: sessions must outlive one CLI/client process.
+Trigger: sessions must outlive one CLI/client process. This trigger first
+requires a supervisor-ownership decision; it does not by itself justify
+`hosting.service`.
 
-1. Add daemon lifecycle around AppService.
-2. Define which Session state is persisted and what daemon restart restores.
-3. Add idempotency admission for externally retried side effects.
-4. Start reconnect with a fresh snapshot; add event replay only if required.
+1. Prefer an external systemd, launchd, Windows SCM, container, or deployment
+   supervisor when it is already authoritative.
+2. Only when a library-managed cross-platform lifecycle API is required, add
+   an AppHost daemon-control adapter over the separately accepted Hosting
+   Service Instance Controller.
+3. Define which Session state is persisted and what daemon restart restores.
+4. Add idempotency admission for externally retried side effects.
+5. Start reconnect with a fresh snapshot; add event replay only if required.
 
 Exit criteria:
 
 - daemon restart and Session/durable-run ownership are explicit;
+- AppHost is the only possible caller of `hosting.service`; AppServer owns the
+  listener and AppService owns live hosted Session coordination;
+- the service-instance record is separate from the target process's one
+  application-run `RuntimeScope`/`RunLease`; every Session has distinct
+  transcript/Blob authority and a scoped Product binding but no implied
+  per-Session application lease, and none can delete durable truth;
 - an external retry cannot duplicate an admitted side effect; and
 - disconnect cannot strand a blocking interaction.
 
@@ -746,8 +941,15 @@ Required suites:
   tests while `RemoteUiContext` remains active;
 - snapshot plus ordered-event convergence;
 - Harnesstui playback for streaming, approval, `/agents`, surfaces, resize,
-  abort turn, composite stop, and resume; and
-- import-boundary tests for every arrow in the target graph.
+  abort turn, composite stop, and resume;
+- import-boundary tests for every arrow in the target graph, including
+  Coding UI independence from HarnessGUI/HarnessWebUI, Harnesstui neutrality,
+  AppService independence from Hosting, and AppServer denial of every Hosting
+  package;
+- at least two unrelated fake Product Package integrations through AppHost;
+- persisted `product_id` resume routing with no default fallback; and
+- launcher tests proving that only serializable launch material crosses a
+  process boundary.
 
 In-process tests must not pass only because they bypass ordering or lifecycle
 rules that the remote transport enforces.
@@ -766,6 +968,14 @@ This refactor does not:
   client exists;
 - move Policy/Approval into the transport;
 - make every local TUI action a service round trip;
+- make CodingTUI depend on HarnessGUI, HarnessWebUI, AppServer, or AppService;
+- treat CodingTUI and CodingApp profile Plugins as distinct Products without
+  distinct Product Kernels and identities;
+- make HarnessGUI or HarnessWebUI import Coding internals or the AppServer
+  implementation instead of AppClient/App Contract;
+- put AppServer listeners, connection admission, or hosted Session semantics
+  in Hosting;
+- make AppServer supervise its process or call any Hosting package;
 - promise exactly-once execution across process crashes; or
 - introduce a general multi-user permission system.
 
