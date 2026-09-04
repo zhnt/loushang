@@ -50,4 +50,3 @@ Standalone drafts:
 - [Application Model And Artifact Compiler](application-model-and-artifact-compiler.md)
 - [Pluggable Transcript Compaction Strategies](pluggable-transcript-compaction-strategies.md)
 - [Project-Declared Configuration And Pluggable Conversation Persistence](project-declared-configuration-and-pluggable-conversation-persistence.md)
-- [Hosting Top-Level Placement And Scope](hosting-top-level-placement.md)

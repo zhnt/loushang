@@ -4,9 +4,9 @@
 
 - Scope: `hosting`
 - Parent: `loushang`
-- Authority: normative — proposed final component model
-- Design status: proposed
-- Implementation status: not-started
+- Authority: normative — accepted component model
+- Design status: accepted
+- Implementation status: partial
 - Owner: Loushang Hosting architecture
 
 ## Component Map
@@ -72,8 +72,10 @@ Windows adapters are mutually independent.
 
 ## Component Interfaces
 
-Interface names below describe architectural roles, not frozen Python names.
-Exact fields belong in a later specification.
+H0 fixes the public Contract Model names and fields in
+[Hosting H0 Contract Model](contract-model-h0.md). Names for the four
+unimplemented resource/platform components remain architectural roles rather
+than reserved Python symbols.
 
 ### Contract Model
 
@@ -184,8 +186,9 @@ meanings.
 
 ## Public Surface Restraint
 
-The initial package should expose only Contract Model values and composition
-entrypoints needed by trusted hosts. Concrete backends, raw spawners, endpoint
+The H0 package exposes only Contract Model values and provided/required ports
+needed by trusted hosts. Later slices may add restrained composition
+entrypoints. Concrete backends, raw spawners, endpoint
 factories, inherited-handle values, reservation objects, and cleanup
 coordinators remain private.
 

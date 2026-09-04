@@ -10,6 +10,9 @@ HOSTED_APPLICATION_BOUNDARY = (
     HOSTING_ROOT / "key-designs/hosted-application-support-boundary.md"
 )
 APPHOST_PLACEMENT = ARCHITECTURE_ROOT / "drafts/apphost-top-level-placement.md"
+HOSTING_PLACEMENT = (
+    ARCHITECTURE_ROOT / "decisions/ARD-002-hosting-top-level-placement.md"
+)
 APPSERVICE_BOUNDARY = (
     ARCHITECTURE_ROOT / "drafts/appservice-embedded-tui-hosted-boundary-plan.md"
 )
@@ -20,10 +23,11 @@ HOSTING_DOCUMENTS = (
     HOSTING_ROOT / "requirements.md",
     HOSTING_ROOT / "system-context.md",
     HOSTING_ROOT / "component-model.md",
+    HOSTING_ROOT / "contract-model-h0.md",
     HOSTING_ROOT / "traceability.md",
     HOSTING_ROOT / "validation/component-discovery.md",
     HOSTED_APPLICATION_BOUNDARY,
-    ARCHITECTURE_ROOT / "drafts/hosting-top-level-placement.md",
+    HOSTING_PLACEMENT,
 )
 
 CURRENT_HARNESS_SEAMS = (
@@ -112,24 +116,22 @@ def _numbered_steps(text: str, heading: str) -> tuple[str, ...]:
     return tuple(" ".join(match.group(2).split()) for match in matches)
 
 
-def test_hosting_design_package_is_complete_and_proposed() -> None:
+def test_hosting_design_package_is_complete_and_h0_is_accepted() -> None:
     for path in HOSTING_DOCUMENTS:
         assert path.is_file(), path.relative_to(REPOSITORY_ROOT)
 
     expected_authority = {
-        HOSTING_ROOT / "README.md": "normative — proposed top-level Architecture Scope",
-        HOSTING_ROOT / "requirements.md": "normative — proposed requirements",
+        HOSTING_ROOT / "README.md": "normative — accepted top-level Architecture Scope",
+        HOSTING_ROOT / "requirements.md": "normative — accepted requirements",
         HOSTING_ROOT / "system-context.md": (
-            "normative — proposed black-box context and boundary"
+            "normative — accepted black-box context and boundary"
         ),
-        HOSTING_ROOT / "component-model.md": (
-            "normative — proposed final component model"
+        HOSTING_ROOT / "component-model.md": ("normative — accepted component model"),
+        HOSTING_ROOT / "contract-model-h0.md": (
+            "normative — accepted H0 public contract"
         ),
-        HOSTING_ROOT / "traceability.md": ("normative — proposed design traceability"),
-        HOSTED_APPLICATION_BOUNDARY: "normative proposed design",
-        ARCHITECTURE_ROOT / "drafts/hosting-top-level-placement.md": (
-            "normative — proposed cross-scope placement decision candidate"
-        ),
+        HOSTING_ROOT / "traceability.md": ("normative — accepted design traceability"),
+        HOSTING_PLACEMENT: "normative — accepted cross-scope Hosting placement decision",
     }
     for path, authority in expected_authority.items():
         _assert_mapping_contains(
@@ -138,10 +140,25 @@ def test_hosting_design_package_is_complete_and_proposed() -> None:
                 "Scope": "hosting",
                 "Parent": "loushang",
                 "Authority": authority,
-                "Design status": "proposed",
-                "Implementation status": "not-started",
+                "Design status": "accepted",
+                "Implementation status": (
+                    "implemented"
+                    if path == HOSTING_ROOT / "contract-model-h0.md"
+                    else "partial"
+                ),
             },
         )
+
+    _assert_mapping_contains(
+        _status_fields(HOSTED_APPLICATION_BOUNDARY),
+        {
+            "Scope": "hosting",
+            "Parent": "loushang",
+            "Authority": "normative proposed design",
+            "Design status": "proposed",
+            "Implementation status": "not-started",
+        },
+    )
 
     _assert_mapping_contains(
         _status_fields(HOSTING_ROOT / "validation/component-discovery.md"),
@@ -188,10 +205,10 @@ def test_hosting_design_package_is_complete_and_proposed() -> None:
     )
 
     overview = _read(HOSTING_ROOT / "README.md")
-    assert "There is no `src/loushang/hosting` package." in _section(
+    assert "H0 implements the standard-library-only `loushang.hosting`" in _section(
         overview, "Current"
     )
-    assert "The proposed Target introduces `loushang.hosting`" in _section(
+    assert "The accepted Target implements `loushang.hosting`" in _section(
         overview, "Target"
     )
     assert "## Current-To-Target Gaps" in overview
@@ -201,23 +218,21 @@ def test_hosting_design_package_is_complete_and_proposed() -> None:
         assert f"### {heading}" in _section(apphost, "Current, Target, And Delta")
 
 
-def test_hosting_parent_catalog_labels_the_scope_as_proposed() -> None:
+def test_hosting_parent_catalog_promotes_hosting_but_not_apphost() -> None:
     catalog = _read(ARCHITECTURE_ROOT / "README.md")
+    scope_tree = _section(catalog, "Architecture Scope Tree")
 
-    proposed = _section(catalog, "Architecture Scope Tree").split(
-        "Proposed top-level placements are under design:\n", maxsplit=1
-    )[1]
-    assert (
-        "- [Hosting](hosting/README.md), a Product-neutral local process, "
-        "inherited\n  peer IPC, and joint child-session lifetime substrate."
-    ) in proposed
+    accepted, proposed = scope_tree.split(
+        "Proposed top-level placements under design:\n", maxsplit=1
+    )
+    assert "- [Hosting](hosting/README.md)" in accepted
+    assert "[Hosting](hosting/README.md)" not in proposed
     assert (
         "- [AppHost Top-Level Placement]"
         "(drafts/apphost-top-level-placement.md), the\n"
         "  proposed physical owner of the existing cross-Product Platform "
         "Host role."
     ) in proposed
-    assert proposed.index("[Hosting]") < proposed.index("[AppHost Top-Level Placement]")
 
 
 def test_hosting_component_set_and_dependency_direction_are_explicit() -> None:
@@ -240,7 +255,10 @@ def test_hosting_component_set_and_dependency_direction_are_explicit() -> None:
     for component_id in COMPONENT_IDS:
         assert component_id in overview
 
-    assert "loushang.harness -> loushang.hosting     # proposed" in overview
+    assert (
+        "loushang.harness -> loushang.hosting     # accepted Target; not yet Current"
+        in overview
+    )
     assert "loushang.hosting -> loushang.harness     # forbidden" in overview
     authority_rows = dict(
         _table_rows(
@@ -463,9 +481,7 @@ def test_hosted_application_responsibilities_and_dependencies_are_separated() ->
     assert "There is no global cross-Session revision" in refactor
     assert "per-stream sub-budgets" in refactor
     assert "### Multi-Session Coordination Aggregate" in appservice_boundary
-    assert "There is no global cross-Session instant or cursor" in (
-        appservice_boundary
-    )
+    assert "There is no global cross-Session instant or cursor" in (appservice_boundary)
     assert "one connection to at most one active aggregate" in appservice_boundary
     assert "attempts every distinct Session binding release exactly once" in (
         appservice_boundary
@@ -546,8 +562,8 @@ def test_hosting_traceability_covers_every_requirement_exactly_once() -> None:
         (
             "`HOST-FR-001`",
             "`HOST-CMP-CONTRACT`",
-            "requirements; Contract Model interface",
-            "request validation and no-ambient-environment contract tests",
+            "requirements; H0 Contract Model",
+            "H0 request validation and no-ambient-environment contract tests",
         ),
         (
             "`HOST-FR-002`",
@@ -570,8 +586,8 @@ def test_hosting_traceability_covers_every_requirement_exactly_once() -> None:
         (
             "`HOST-FR-005`",
             "`HOST-CMP-CONTRACT`",
-            "authority table; observation boundary",
-            "redaction and no-security-claim schema tests",
+            "authority table; H0 observation boundary",
+            "H0 closed-schema, bounded-ID, and no-security-claim tests",
         ),
         (
             "`HOST-FR-006`",
@@ -600,9 +616,9 @@ def test_hosting_traceability_covers_every_requirement_exactly_once() -> None:
         (
             "`HOST-QR-004`",
             "scope/composition root",
-            "[Hosting Top-Level Placement]"
-            "(../drafts/hosting-top-level-placement.md) and dependency view",
-            "top-level and internal import architecture gates",
+            "[ARD-002: Hosting Top-Level Placement]"
+            "(../decisions/ARD-002-hosting-top-level-placement.md) and dependency view",
+            "H0 top-level standard-library-only and public-surface gates",
         ),
         (
             "`HOST-QR-005`",
@@ -633,8 +649,8 @@ def test_hosting_traceability_covers_every_requirement_exactly_once() -> None:
     }
     qr004 = next(row for row in trace_rows if row[0] == "`HOST-QR-004`")
     assert (
-        "[Hosting Top-Level Placement](../drafts/hosting-top-level-placement.md)"
-        in (qr004[2])
+        "[ARD-002: Hosting Top-Level Placement]"
+        "(../decisions/ARD-002-hosting-top-level-placement.md)" in (qr004[2])
     )
 
 
@@ -653,12 +669,14 @@ def test_hosting_discovery_is_grounded_in_current_harness_facts() -> None:
         assert current_owner in discovery
 
 
-def test_proposed_runtime_packages_remain_default_dark_until_review() -> None:
-    for package in ("hosting", "apphost", "appserver"):
+def test_h0_adds_only_hosting_contracts_and_keeps_future_packages_dark() -> None:
+    assert (REPOSITORY_ROOT / "src/loushang/hosting").is_dir()
+    for package in ("apphost", "appserver"):
         assert not (REPOSITORY_ROOT / f"src/loushang/{package}").exists()
 
     overview = _read(HOSTING_ROOT / "README.md")
-    decision = _read(ARCHITECTURE_ROOT / "drafts/hosting-top-level-placement.md")
-    assert "Implementation status: not-started" in overview
-    assert "This decision candidate is proposed, not accepted." in decision
+    decision = _read(HOSTING_PLACEMENT)
+    assert "Implementation status: partial" in overview
+    assert "This decision is accepted for phased implementation." in decision
+    assert "H0 updates the Loushang AOD" in decision
     assert "extraction alone cannot remove PLC9C default-dark" in decision

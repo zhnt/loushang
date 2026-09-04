@@ -4,27 +4,31 @@
 
 - Scope: `hosting`
 - Parent: `loushang`
-- Authority: normative — proposed top-level Architecture Scope
-- Design status: proposed
-- Implementation status: not-started
+- Authority: normative — accepted top-level Architecture Scope
+- Design status: accepted
+- Implementation status: partial
 - Owner: Loushang Hosting architecture
 
 ## Scope
 
-Hosting is the proposed Product-neutral substrate for owning bounded local
+Hosting is the Product-neutral substrate for owning bounded local
 child execution. It creates and owns local processes, inherited peer byte
 endpoints,
 and the atomic lifetime that joins them into one child session.
 
 Hosting is a scope rather than a synonym for a package directory because it
 owns OS-facing lifecycle, identity, resource, portability, cancellation, and
-failure semantics. The placement is not yet decided; it is proposed in the
-[Hosting Top-Level Placement Draft](../drafts/hosting-top-level-placement.md).
+failure semantics. Its placement is accepted by
+[ARD-002: Hosting Top-Level Placement](../decisions/ARD-002-hosting-top-level-placement.md).
 
 ## Current
 
-There is no `src/loushang/hosting` package. Current process mechanics are
-implemented inside Harness, principally by:
+H0 implements the standard-library-only `loushang.hosting` Contract Model:
+immutable launch/session requests, raw results, stable mechanism failures,
+bounded observations, and required/provided port protocols. It performs no OS
+operations and has no current consumer.
+
+Current process mechanics remain implemented inside Harness, principally by:
 
 - `src/loushang/harness/workspace/process/`;
 - `src/loushang/harness/tools/process_hosting.py`;
@@ -38,10 +42,11 @@ remain authoritative for the implemented Harness behavior.
 
 ## Target
 
-The proposed Target introduces `loushang.hosting` inside the existing
-`loushang` distribution. Harness consumes Hosting through narrow owner
-adapters. Hosting does not import Harness and does not acquire Harness
-authority merely because it performs the final OS operation.
+The accepted Target implements `loushang.hosting` inside the existing
+`loushang` distribution. H0 establishes the contract package; later slices let
+Harness consume Hosting through narrow owner adapters. Hosting does not import
+Harness and does not acquire Harness authority merely because it performs the
+final OS operation.
 
 Target dependency direction:
 
@@ -51,7 +56,7 @@ Product composition
        -> loushang.hosting process and child-session ports
             -> local operating system
 
-loushang.harness -> loushang.hosting     # proposed
+loushang.harness -> loushang.hosting     # accepted Target; not yet Current
 loushang.hosting -> loushang.harness     # forbidden
 ```
 
@@ -172,20 +177,22 @@ model.
 3. [System Context](system-context.md);
 4. [Component Discovery](validation/component-discovery.md);
 5. [Component Model](component-model.md);
-6. [Hosted Application Support Boundary](key-designs/hosted-application-support-boundary.md);
-7. [Hosting Top-Level Placement Draft](../drafts/hosting-top-level-placement.md);
-8. [Traceability](traceability.md);
-9. current Harness source, tests, and generated package facts.
+6. [H0 Contract Model](contract-model-h0.md);
+7. [Hosted Application Support Boundary](key-designs/hosted-application-support-boundary.md);
+8. [ARD-002: Hosting Top-Level Placement](../decisions/ARD-002-hosting-top-level-placement.md);
+9. [Traceability](traceability.md);
+10. current source, tests, and generated package facts.
 
 ## Current-To-Target Gaps
 
-- `missing`: the `loushang.hosting` package and every proposed component.
-- `deviated`: if this Target is accepted, reusable process mechanics currently
-  reside under Harness rather than the proposed neutral owner; their Current
+- `partial`: `loushang.hosting` and `HOST-CMP-CONTRACT` are implemented by H0;
+  the four resource/platform components remain missing.
+- `deviated`: reusable process mechanics currently reside under Harness rather
+  than the accepted neutral owner; their Current
   Harness contracts remain valid until migration.
 - `missing`: POSIX and Windows inherited peer-endpoint feasibility evidence.
 - `missing`: compatibility facades and a behavior-preserving migration plan.
-- `missing`: architecture import gates for the implemented package direction.
+- `implemented`: H0 standard-library-only and no-authority public-surface gates.
 - `missing`: a reviewed Product/native Worker activation route; PLC9C5 remains
   separate from Hosting extraction.
 - `missing`: daemon/service-instance lifecycle remains a trigger-gated future
@@ -193,10 +200,12 @@ model.
 
 ## Change Triggers And Evidence
 
-- Any implementation start must intentionally revise the not-started guard in
+- H0 intentionally replaces the implementation-absence guard with contract and
+  dependency gates in `tests/architecture/test_hosting_h0_contract.py` and
   `tests/architecture/test_hosting_architecture_baseline.py`.
-- Any top-level placement acceptance must update the AOD, subsystem map,
-  governance profile, generated facts, and cross-scope decision catalog.
+- Top-level placement acceptance is recorded by ARD-002 and reflected in the
+  AOD, subsystem map, governance profile, generated facts, and cross-scope
+  decision catalog.
 - Any public contract requires specification and contract tests before it is
   called stable.
 - Source migration must retain the Harness behavior and default-dark Worker

@@ -35,6 +35,7 @@
 
 - `loushang.foundation`
 - `loushang.ontology`
+- `loushang.hosting`（H0 contract model；OS resource owners 尚未落地）
 
 `loushang.resource` 是指向 Harness resource ownership 的小型兼容 package，
 不是新的顶层 Architecture Scope。`loushang.runtime`、`loushang.protocol` 和
@@ -117,6 +118,21 @@ runtime 仍只从 FactStore 物化；目标架构允许后续 mapped source inpu
 `ontology.core`、直接对象 mutation 与兼容 facade 已退出源码和公共面。
 它尚不包含 OWL/SHACL、Action/Decision runtime、SDK 生成、分布式 serving 或行业领域包。详见
 [Loushang Ontology Architecture](./ontology/README.md)。
+
+### loushang-hosting
+
+产品无关的本地 child execution 机制 Scope。H0 已实现标准库-only 的不可变
+launch/session request、稳定 failure taxonomy、bounded observation 以及
+preparation/process/endpoint/child-session ports；它尚不创建任何 OS process 或
+endpoint，也没有当前 runtime consumer。
+
+接受的目标依赖方向是 `Harness -> Hosting -> local OS`。Hosting 不依赖 Harness、
+Product、Plugin、Worker、AppHost 或 AppServer，也不拥有 Policy、Approval、
+Authorization、Sandbox、协议、领域发布、日志保留或 durable Session 状态。
+后续 process、platform、endpoint 与 child-session slices 必须分别提供生命周期和
+平台证据，Harness 只通过显式 compatibility adapter 迁移。详见
+[Loushang Hosting Architecture](./hosting/README.md) 和
+[ARD-002: Hosting Top-Level Placement](./decisions/ARD-002-hosting-top-level-placement.md)。
 
 ### loushang-ai
 
@@ -484,10 +500,14 @@ operation/event 边界，不是 Product runtime 的统一入口。Product 本身
 顶层规则是：
 
 - Foundation 不依赖 AI、Agent、Harness、Work、Channel、Ontology 或 Product；
+- Hosting H0 只依赖 Python 标准库；目标 resource owners 同样不得依赖 Harness、
+  AppHost、AppServer、Plugin、Worker 或 Product；
 - AI 只消费 product-neutral foundations，不依赖 Agent 或上层运行时；
 - Agent 可以依赖 AI，但不依赖 Harness、Work、Method、TUI 或 Product；
 - Harness 可以通过受控 profile 依赖 Agent/AI contract，但不依赖 Product、
   HarnessWork、Method、Channel、HarnessTUI 或 TUI；
+- Harness 可以在兼容迁移通过后依赖 Hosting 的稳定公共 contract；Hosting 不得
+  反向依赖 Harness；
 - HarnessWork 位于 Harness 之上，不把 Work ownership 反向注入 Harness；
 - HarnessTUI 可以依赖 Harness 与 TUI，但不依赖 Coding；
 - Product 位于 composition root，可以依赖其选择的稳定公共 contract；

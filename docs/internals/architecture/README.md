@@ -77,6 +77,7 @@ The top-level scopes are:
 - [TUI](tui/README.md)
 - [Work compatibility/integration](work/README.md)
 - [Ontology](ontology/README.md)
+- [Hosting](hosting/README.md)
 - Foundation, represented in the AOD and subsystem map because it is a small
   product-neutral base rather than a large independent architecture package
 
@@ -98,12 +99,8 @@ nested-scope catalog for a proposed canonical V2 target plus implemented
 incremental contracts. Its presence in the scope tree does not advance that
 target to accepted status.
 
-Proposed top-level placements are under design:
+Proposed top-level placements under design:
 
-- [Hosting](hosting/README.md), a Product-neutral local process, inherited
-  peer IPC, and joint child-session lifetime substrate. Its package and
-  placement remain Target-only until the proposed decision is accepted and the
-  implementation absence guard is intentionally revised.
 - [AppHost Top-Level Placement](drafts/apphost-top-level-placement.md), the
   proposed physical owner of the existing cross-Product Platform Host role.
   Product catalog/routing and deployment profiles remain Target-only; they do
@@ -159,6 +156,9 @@ drift guards.
   demonstrates requirements-to-design-to-test traceability.
 - [Coding LSP](coding/lsp/README.md) demonstrates a nested Product Capability
   architecture package.
+- [Hosting H0 Contract Model](hosting/contract-model-h0.md) demonstrates an
+  accepted top-level mechanism scope entering implementation through a pure
+  contract slice before resource-owner migration.
 
 ## Draft, Validation, Reference, And History
 

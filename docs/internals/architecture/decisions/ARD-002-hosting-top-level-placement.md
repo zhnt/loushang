@@ -1,14 +1,15 @@
-# Proposed Hosting Top-Level Placement And Scope
+# ARD-002: Hosting Top-Level Placement And Scope
 
 ## Status
 
 - Scope: `hosting`
 - Parent: `loushang`
-- Authority: normative — proposed cross-scope placement decision candidate
-- Design status: proposed
-- Implementation status: not-started
+- Authority: normative — accepted cross-scope Hosting placement decision
+- Design status: accepted
+- Implementation status: partial
 - Owner: Loushang architecture and Hosting architecture
 - Date: 2026-09-04
+- Accepted: 2026-09-04 after five-view baseline review and H0 entry review
 
 ## Context
 
@@ -30,9 +31,9 @@ The decision must separate three questions:
 2. What Python import package carries it?
 3. When, if ever, should it become a separately distributed project?
 
-## Proposed Decision
+## Decision
 
-### 1. Propose `hosting` as a top-level Architecture Scope
+### 1. Establish `hosting` as a top-level Architecture Scope
 
 Hosting owns bounded local process, inherited peer endpoint, and joint child-session
 lifetime. It is a sibling consumed initially by Harness:
@@ -63,9 +64,8 @@ used:
 
 ### 3. Keep one distribution initially
 
-The first implementation, if accepted, adds a top-level import package to the
-existing `loushang` distribution. It does not publish `loushang-hosting` as a
-separate distribution.
+H0 adds a top-level import package to the existing `loushang` distribution. It
+does not publish `loushang-hosting` as a separate distribution.
 
 Distribution extraction requires a second real independent consumer, a stable
 public specification, dependency/versioning evidence, and a separate packaging
@@ -141,19 +141,24 @@ budget, compatibility surface, and packaging cost are justified.
   locations for Current versus Target.
 - an early public surface could freeze platform details, so concrete backends
   and raw handles must remain private.
-- only Harness currently consumes the mechanics; the proposed scope must earn
-  its boundary through lifecycle/conformance evidence rather than speculative
-  reuse.
+- only Harness currently consumes the mechanics; the accepted scope must keep
+  earning its boundary through lifecycle/conformance evidence rather than
+  speculative reuse.
 - Hosting cannot enforce Harness policy by itself. Security claims remain valid
   only at the Harness composition boundary and must have their own gates.
 
 ## Acceptance And Supersession
 
-This decision candidate is proposed, not accepted. Acceptance requires
-three-view review
-covering architecture/ownership, security/lifecycle, and migration/test
-feasibility. Once accepted, it updates the Loushang AOD, subsystem map,
-governance scope tree, dependency gates, and gap ledger.
+This decision is accepted for phased implementation. The architecture baseline
+received independent architecture/ownership, security/lifecycle,
+resources/sessions, process-lifecycle, and documentation/test review before H0.
+H0 updates the Loushang AOD, subsystem map, governance scope tree, dependency
+gates, and gap ledger while implementing only the standard-library contract
+model.
+
+Acceptance does not claim that Process Lifetime Host, Inherited Peer Endpoint
+Host, Child Session Host, platform adapters, AppHost, or AppServer are
+implemented. Those remain explicit later slices.
 
 No existing accepted Harness decision is superseded by this proposal. The
 Harness Process Hosting and PLC9C documents continue to govern Current behavior

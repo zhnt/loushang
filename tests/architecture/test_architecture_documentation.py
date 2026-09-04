@@ -36,14 +36,13 @@ INITIAL_GOVERNED_DOCUMENTS = (
     ARCHITECTURE_ROOT / "hosting/requirements.md",
     ARCHITECTURE_ROOT / "hosting/system-context.md",
     ARCHITECTURE_ROOT / "hosting/component-model.md",
+    ARCHITECTURE_ROOT / "hosting/contract-model-h0.md",
     ARCHITECTURE_ROOT / "hosting/traceability.md",
-    ARCHITECTURE_ROOT
-    / "hosting/key-designs/hosted-application-support-boundary.md",
+    ARCHITECTURE_ROOT / "hosting/key-designs/hosted-application-support-boundary.md",
     ARCHITECTURE_ROOT / "drafts/apphost-top-level-placement.md",
     ARCHITECTURE_ROOT / "drafts/application-service-refactor.md",
-    ARCHITECTURE_ROOT
-    / "drafts/appservice-embedded-tui-hosted-boundary-plan.md",
-    ARCHITECTURE_ROOT / "drafts/hosting-top-level-placement.md",
+    ARCHITECTURE_ROOT / "drafts/appservice-embedded-tui-hosted-boundary-plan.md",
+    ARCHITECTURE_ROOT / "decisions/ARD-002-hosting-top-level-placement.md",
     ARCHITECTURE_ROOT / "hosting/validation/component-discovery.md",
 )
 MARKDOWN_LINK = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")
@@ -86,7 +85,9 @@ def test_initial_governed_documents_declare_authority_and_status() -> None:
         text = path.read_text(encoding="utf-8")
         for field, values in STATUS_VALUES.items():
             allowed = "|".join(re.escape(value) for value in values)
-            if not re.search(rf"^- {re.escape(field)}: ({allowed})(?:\s|$)", text, re.M):
+            if not re.search(
+                rf"^- {re.escape(field)}: ({allowed})(?:\s|$)", text, re.M
+            ):
                 missing.append(
                     f"{_display(path)}: {field} must start with one of {values}"
                 )
@@ -94,9 +95,7 @@ def test_initial_governed_documents_declare_authority_and_status() -> None:
     assert missing == []
 
 
-def test_initial_governed_document_links_are_repository_relative_and_valid() -> (
-    None
-):
+def test_initial_governed_document_links_are_repository_relative_and_valid() -> None:
     errors: list[str] = []
     for path in INITIAL_GOVERNED_DOCUMENTS:
         text = path.read_text(encoding="utf-8")
