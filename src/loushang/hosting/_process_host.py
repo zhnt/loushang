@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import math
 from collections.abc import Awaitable, Callable
+from contextlib import suppress
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import TypeVar, cast
@@ -309,9 +310,10 @@ class _HostedProcess(ProcessLease):
             elif self._released:
                 return
             else:
+                retrying = task is not None
                 self._closing = True
                 task = asyncio.create_task(
-                    self._close_owned(),
+                    self._close_owned(retrying=retrying),
                     name=f"hosting-process-{self._lease_id}-close",
                 )
                 self._close_task = task
@@ -621,11 +623,13 @@ class _HostedProcess(ProcessLease):
                 self._tree_task = task
             return task
 
-    async def _close_owned(self) -> None:
+    async def _close_owned(self, *, retrying: bool) -> None:
         self._observe(HostingLifecycleTransition.CLEANING, None)
         failures: list[_CleanupFailure] = []
-        finalizer_was_finished = self._finalizer_finished
         await self._reset_failed_cleanup_tasks()
+        if retrying:
+            await self._settle_prior_termination_for_retry()
+        finalizer_was_finished = self._finalizer_finished
         if finalizer_was_finished:
             # Root observation already ran, but a failed finalizer is not
             # proof that the complete tree settled.  Retry bounded tree
@@ -704,8 +708,23 @@ class _HostedProcess(ProcessLease):
                         exc,
                     )
                 )
+        if retrying:
+            # The previous close may have returned while the finalizer was
+            # still consuming the same failed cleanup tasks.  After joining
+            # it, retry any owner that remained unsettled in that transaction.
+            await self._finish_process_handles(failures)
+            if self._tree_settled:
+                await self._finish_preparation(failures)
         if self._finalization_error is not None:
-            failures.extend(self._finalization_error.failures)
+            if (
+                retrying
+                and self._tree_settled
+                and self._process_handles_closed
+                and self._preparation_closed
+            ):
+                self._finalization_error = None
+            else:
+                failures.extend(self._finalization_error.failures)
 
         await self._finish_registration(failures)
         self._record_unsettled_tree(failures)
@@ -839,6 +858,17 @@ class _HostedProcess(ProcessLease):
                 task = cast(asyncio.Task[object] | None, getattr(self, attribute))
                 if task is not None and _task_failed(task):
                     setattr(self, attribute, None)
+
+    async def _settle_prior_termination_for_retry(self) -> None:
+        async with self._lifecycle_lock:
+            task = self._termination_task
+        if task is None:
+            return
+        with suppress(BaseException):
+            await asyncio.shield(task)
+        async with self._lifecycle_lock:
+            if self._termination_task is task and _task_failed(task):
+                self._termination_task = None
 
 
 class _ProcessHost:

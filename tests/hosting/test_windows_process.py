@@ -374,7 +374,7 @@ async def test_windows_cancelled_read_remains_owned_until_close(tmp_path: Path) 
 
 
 @_async_test
-async def test_windows_kill_on_job_close_bounds_termination_api_failure(
+async def test_windows_termination_failure_retains_job_until_retry(
     tmp_path: Path,
 ) -> None:
     api = _FakeWin32Api()
@@ -390,6 +390,8 @@ async def test_windows_kill_on_job_close_bounds_termination_api_failure(
     )
     request = _request(tmp_path, "pass")
     lease = await host.start(request, _PreparationPort(_PreparationLease(request)))
+    api.return_code = 0
+    api.process_exited.set()
     stdout = asyncio.create_task(lease.read_stdout(16))
     write = asyncio.create_task(lease.write_stdin(b"payload"))
     assert await asyncio.to_thread(api.all_blocking_lanes_entered.wait, 1.0)
@@ -399,12 +401,17 @@ async def test_windows_kill_on_job_close_bounds_termination_api_failure(
     assert failure.value.category is HostingFailureCategory.CLEANUP_FAILED
     await asyncio.gather(stdout, write, return_exceptions=True)
 
-    assert set(api.closed) == {11, 12, 13, 14, 15}
+    assert set(api.closed) == {11, 13, 14, 15}
+    assert 12 not in api.closed
     assert host._state == "faulted"
+    assert lease in host._leases
+    assert api.empty is False
 
     api.fail_termination = False
     await host.close()
     assert host._state == "closed"
+    assert lease not in host._leases
+    assert set(api.closed) == {11, 12, 13, 14, 15}
 
 
 @_async_test

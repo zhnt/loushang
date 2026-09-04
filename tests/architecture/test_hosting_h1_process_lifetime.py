@@ -128,6 +128,7 @@ def test_h1_lifecycle_matrix_names_required_adversarial_cases() -> None:
         "posix_pending_root_eperm_retains_owner_for_host_close_retry",
         "posix_lingering_descendant_eperm_retains_owner_for_retry",
         "windows_published_process_retries_failed_close_handle",
+        "windows_termination_failure_retains_job_until_retry",
         "start_cancellation_after_attachment_is_shielded_until_reclaimed",
         "cancellation_during_failed_start_rollback_takes_precedence",
         "host_close_fences_and_cancels_pending_start_before_returning",

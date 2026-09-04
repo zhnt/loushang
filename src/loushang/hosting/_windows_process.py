@@ -82,6 +82,7 @@ class _WindowsProcess:
         self._executor = executor
         self._process_handle: int | None = handles.process
         self._job_handle: int | None = handles.job
+        self._job_tree_settled = False
         self._stdin_write = handles.stdin_write
         self._stdout_read = handles.stdout_read
         self._stderr_read = handles.stderr_read
@@ -201,8 +202,11 @@ class _WindowsProcess:
 
     def job_is_empty(self) -> bool:
         if self._job_handle is None:
-            return True
-        return self._api.job_is_empty(self._job_handle)
+            return self._job_tree_settled
+        empty = self._api.job_is_empty(self._job_handle)
+        if empty:
+            self._job_tree_settled = True
+        return empty
 
     def terminate_job(self, exit_code: int) -> None:
         if self._job_handle is None:
@@ -228,7 +232,19 @@ class _WindowsProcess:
             self._closed_event.set()
             self._cancel_active_io(("stdin", "stdout", "stderr"))
             errors: list[Exception] = []
-            self._close_handle_attribute("_job_handle", errors)
+            try:
+                job_tree_settled = self.job_is_empty()
+            except Exception as exc:
+                job_tree_settled = False
+                errors.append(exc)
+            if job_tree_settled:
+                self._close_handle_attribute("_job_handle", errors)
+            elif self._job_handle is not None:
+                errors.append(
+                    RuntimeError(
+                        "Windows Job remains owned until its tree is observed empty"
+                    )
+                )
             operations = {
                 operation
                 for operation in (

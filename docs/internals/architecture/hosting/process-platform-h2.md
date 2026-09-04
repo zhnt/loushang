@@ -139,15 +139,19 @@ successful creation. Failure at any intermediate step closes the attribute
 list, pipes, process/thread handles, and Job Object; kill-on-close reclaims a
 successfully attached child. Blocking Win32 pipe/wait calls run through a
 bounded executor-facing transport. Process cleanup first fences new I/O,
-requests cancellation of synchronous stream operations, and closes the Job
-Object so kill-on-close reclaims the tree. It then waits for stream and process
-wait operations for a fixed interval. A pipe or process handle is closed only
-after its corresponding operation settles; an unsettled handle remains owned
-for a later retry and is reported as cleanup failure. A published Process Lease
-is removed only after every retained `CloseHandle` succeeds; host close can
+requests cancellation of synchronous stream operations, and requests Job
+termination. The published Job handle remains owned until an ActiveProcesses
+query observes the Job empty; closing the last Job handle is never reinterpreted
+as that observation. It then waits for stream and process wait operations for a
+fixed interval. A pipe or process handle is closed only after its corresponding
+operation settles; an unsettled handle remains owned for a later retry and is
+reported as cleanup failure. A published Process Lease is removed only after
+tree-empty proof and every retained `CloseHandle` succeeds; host close can
 therefore retry a transient failure before shutting down the Win32 executor.
-H2b must prove delayed cancellation, bounded settlement, retryable handle
-closure, and concurrent-spawn handle isolation on Windows CI.
+Kill-on-close remains a fail-safe for pre-publication native construction and
+attachment rollback, whose owner is retained separately if cleanup itself
+fails. H2b must prove delayed cancellation, bounded settlement, retryable
+handle closure, and concurrent-spawn handle isolation on Windows CI.
 
 ## H2c Harness Compatibility Boundary
 

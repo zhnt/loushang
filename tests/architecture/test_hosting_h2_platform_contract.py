@@ -146,6 +146,7 @@ def test_h2b_requires_retryable_platform_cleanup_debt_evidence() -> None:
         "test_posix_pending_root_eperm_retains_owner_for_host_close_retry",
         "test_posix_lingering_descendant_eperm_retains_owner_for_retry",
         "test_windows_published_process_retries_failed_close_handle",
+        "test_windows_termination_failure_retains_job_until_retry",
     ):
         assert case in tests
 
