@@ -33,8 +33,9 @@ The captured execution closure contains:
 - the exact AMD64 PE SHA-256 and locked Win32 volume/128-bit file identity;
 - the locked cwd volume/128-bit file identity;
 - the fixed restricted-token recipe `DISABLE_MAX_PRIVILEGE | LUA_TOKEN |
-  WRITE_RESTRICTED` plus explicit disabling of the
-  `WinBuiltinAdministratorsSid` group;
+  WRITE_RESTRICTED`, explicit disabling of `WinBuiltinAdministratorsSid`, and
+  a loader-compatible restricting set containing the current-user,
+  `WinWorldSid`, and `WinBuiltinUsersSid` SIDs;
 - the exact direct-import set, currently limited to `KERNEL32.DLL` and
   `ADVAPI32.DLL`; and
 - the exact Windows AMD64 major/minor/build platform identity.
@@ -43,6 +44,12 @@ The PE verifier rejects non-AMD64 images, truncated or overlapping metadata,
 resources/embedded manifests, delayed imports, CLR images, imports outside the
 fixed direct-name set, and a digest or direct-import mismatch. The selected
 oracle uses no CRT or application DLL.
+
+The token recipe proves privilege removal, LUA filtering, write restriction,
+and a real restricted-SID access check. The loader-compatible restricting set
+does not claim an AppContainer, integrity boundary, or isolation from the
+same user; stronger product sandboxing remains caller policy outside this
+profile.
 
 This is deliberately a **direct-import mechanics profile**, not a Windows
 loader-closure or DLL-identity claim. The OS build string is a platform

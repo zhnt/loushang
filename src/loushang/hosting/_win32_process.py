@@ -52,8 +52,11 @@ _TOKEN_QUERY = 0x0008
 _DISABLE_MAX_PRIVILEGE = 0x00000001
 _LUA_TOKEN = 0x00000004
 _WRITE_RESTRICTED = 0x00000008
+_WIN_WORLD_SID = 1
 _WIN_BUILTIN_ADMINISTRATORS_SID = 26
+_WIN_BUILTIN_USERS_SID = 27
 _SECURITY_MAX_SID_SIZE = 68
+_TOKEN_USER_INFORMATION_CLASS = 1
 _FILE_SHARE_READ = 0x00000001
 _FILE_SHARE_WRITE = 0x00000002
 _FILE_READ_ATTRIBUTES = 0x00000080
@@ -79,6 +82,10 @@ class _SID_AND_ATTRIBUTES(ctypes.Structure):
         ("Sid", ctypes.c_void_p),
         ("Attributes", wintypes.DWORD),
     ]
+
+
+class _TOKEN_USER(ctypes.Structure):
+    _fields_ = [("User", _SID_AND_ATTRIBUTES)]
 
 
 class _STARTUPINFOW(ctypes.Structure):
@@ -352,22 +359,76 @@ class _CtypesWin32Api:
         return _handle_value(token)
 
     def create_restricted_token(self, source_token: int) -> int:
-        sid_storage = ctypes.create_string_buffer(_SECURITY_MAX_SID_SIZE)
-        sid_size = wintypes.DWORD(ctypes.sizeof(sid_storage))
+        user_size = wintypes.DWORD()
+        self._GetTokenInformation(
+            source_token,
+            _TOKEN_USER_INFORMATION_CLASS,
+            None,
+            0,
+            ctypes.byref(user_size),
+        )
+        if user_size.value < ctypes.sizeof(_TOKEN_USER):
+            self._raise_last_error("GetTokenInformation(TokenUser size)")
+        user_storage = ctypes.create_string_buffer(user_size.value)
+        if not self._GetTokenInformation(
+            source_token,
+            _TOKEN_USER_INFORMATION_CLASS,
+            ctypes.byref(user_storage),
+            user_size.value,
+            ctypes.byref(user_size),
+        ):
+            self._raise_last_error("GetTokenInformation(TokenUser)")
+        user_sid = ctypes.cast(
+            ctypes.byref(user_storage),
+            ctypes.POINTER(_TOKEN_USER),
+        ).contents.User.Sid
+
+        admin_storage = ctypes.create_string_buffer(_SECURITY_MAX_SID_SIZE)
+        admin_size = wintypes.DWORD(ctypes.sizeof(admin_storage))
         if not self._CreateWellKnownSid(
             _WIN_BUILTIN_ADMINISTRATORS_SID,
             None,
-            ctypes.byref(sid_storage),
-            ctypes.byref(sid_size),
+            ctypes.byref(admin_storage),
+            ctypes.byref(admin_size),
         ):
             self._raise_last_error(
                 "CreateWellKnownSid(WinBuiltinAdministratorsSid)"
             )
         disabled_sids = (_SID_AND_ATTRIBUTES * 1)(
             _SID_AND_ATTRIBUTES(
-                Sid=ctypes.cast(sid_storage, ctypes.c_void_p),
+                Sid=ctypes.cast(admin_storage, ctypes.c_void_p),
                 Attributes=0,
             )
+        )
+
+        world_storage = ctypes.create_string_buffer(_SECURITY_MAX_SID_SIZE)
+        world_size = wintypes.DWORD(ctypes.sizeof(world_storage))
+        if not self._CreateWellKnownSid(
+            _WIN_WORLD_SID,
+            None,
+            ctypes.byref(world_storage),
+            ctypes.byref(world_size),
+        ):
+            self._raise_last_error("CreateWellKnownSid(WinWorldSid)")
+        users_storage = ctypes.create_string_buffer(_SECURITY_MAX_SID_SIZE)
+        users_size = wintypes.DWORD(ctypes.sizeof(users_storage))
+        if not self._CreateWellKnownSid(
+            _WIN_BUILTIN_USERS_SID,
+            None,
+            ctypes.byref(users_storage),
+            ctypes.byref(users_size),
+        ):
+            self._raise_last_error("CreateWellKnownSid(WinBuiltinUsersSid)")
+        restricting_sids = (_SID_AND_ATTRIBUTES * 3)(
+            _SID_AND_ATTRIBUTES(Sid=user_sid, Attributes=0),
+            _SID_AND_ATTRIBUTES(
+                Sid=ctypes.cast(world_storage, ctypes.c_void_p),
+                Attributes=0,
+            ),
+            _SID_AND_ATTRIBUTES(
+                Sid=ctypes.cast(users_storage, ctypes.c_void_p),
+                Attributes=0,
+            ),
         )
         token = wintypes.HANDLE()
         flags = _DISABLE_MAX_PRIVILEGE | _LUA_TOKEN | _WRITE_RESTRICTED
@@ -378,8 +439,8 @@ class _CtypesWin32Api:
             ctypes.byref(disabled_sids),
             0,
             None,
-            0,
-            None,
+            3,
+            ctypes.byref(restricting_sids),
             ctypes.byref(token),
         ):
             self._raise_last_error("CreateRestrictedToken")
@@ -1045,6 +1106,17 @@ class _CtypesWin32Api:
                 ctypes.c_int,
                 ctypes.c_void_p,
                 ctypes.c_void_p,
+                ctypes.POINTER(wintypes.DWORD),
+            ],
+            wintypes.BOOL,
+        )
+        self._GetTokenInformation = _bind(
+            advapi32.GetTokenInformation,
+            [
+                wintypes.HANDLE,
+                ctypes.c_int,
+                ctypes.c_void_p,
+                wintypes.DWORD,
                 ctypes.POINTER(wintypes.DWORD),
             ],
             wintypes.BOOL,
