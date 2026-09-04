@@ -49,7 +49,7 @@ def test_h6_3_windows_profile_is_private_exact_and_default_dark() -> None:
     for exact_identity in (
         '"windows-restricted-direct-import-pe-v1"',
         '"restricted-token:disable-max-privilege+lua+write-restricted"',
-        '"+disable-admin+restrict-user-world-users-v1"',
+        '"+disable-admin+restrict-user-logon-world-users-v1"',
         'frozenset({"ADVAPI32.DLL", "KERNEL32.DLL"})',
         "_PE_AMD64_MACHINE",
         "_IMAGE_DIRECTORY_ENTRY_RESOURCE",
@@ -86,6 +86,7 @@ def test_h6_3_spawn_uses_one_restricted_effect_and_exact_owner_transfer() -> Non
     assert "_CreateProcessAsUserW" in win32
     assert "_CreateWellKnownSid" in win32
     assert "_GetTokenInformation" in win32
+    assert "_SE_GROUP_LOGON_ID" in win32
     assert "_WIN_BUILTIN_ADMINISTRATORS_SID" in win32
     assert "_WIN_WORLD_SID" in win32
     assert "_WIN_BUILTIN_USERS_SID" in win32

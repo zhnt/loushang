@@ -34,7 +34,7 @@ The captured execution closure contains:
 - the locked cwd volume/128-bit file identity;
 - the fixed restricted-token recipe `DISABLE_MAX_PRIVILEGE | LUA_TOKEN |
   WRITE_RESTRICTED`, explicit disabling of `WinBuiltinAdministratorsSid`, and
-  a loader-compatible restricting set containing the current-user,
+  a loader-compatible restricting set containing the current-user, logon,
   `WinWorldSid`, and `WinBuiltinUsersSid` SIDs;
 - the exact direct-import set, currently limited to `KERNEL32.DLL` and
   `ADVAPI32.DLL`; and

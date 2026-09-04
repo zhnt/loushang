@@ -23,6 +23,8 @@ from loushang.hosting._launch_preparation import (
     _ManagedSpawnSettledWithoutProcess,
 )
 from loushang.hosting._win32_process import (
+    _SID_AND_ATTRIBUTES,
+    _TOKEN_GROUPS,
     _TOKEN_USER,
     _CtypesWin32Api,
     _Win32CreateNotStarted,
@@ -61,7 +63,7 @@ def _spec() -> _WindowsRestrictedLaunchCaptureSpec:
             "executable:win32:7:101",
             "cwd:win32:7:202",
             "restricted-token:disable-max-privilege+lua+write-restricted"
-            "+disable-admin+restrict-user-world-users-v1",
+            "+disable-admin+restrict-user-logon-world-users-v1",
             "direct-imports:KERNEL32.DLL",
             "platform:windows-amd64-10.0.20348",
         ),
@@ -653,7 +655,9 @@ def test_win32_restricted_token_uses_the_exact_profile_flags() -> None:
     api = object.__new__(_CtypesWin32Api)
     observed: list[tuple[int, int]] = []
     observed_sid_types: list[int] = []
+    observed_sid_addresses: dict[int, int] = {}
     user_sid_storage = ctypes.create_string_buffer(16)
+    logon_sid_storage = ctypes.create_string_buffer(16)
 
     def get_token_information(
         token: int,
@@ -663,8 +667,12 @@ def test_win32_restricted_token_uses_the_exact_profile_flags() -> None:
         required: object,
     ) -> int:
         assert token == 17
-        assert information_class == 1
-        required_size = ctypes.sizeof(ctypes.c_void_p) * 2
+        assert information_class in {1, 2}
+        required_size = (
+            ctypes.sizeof(_TOKEN_USER)
+            if information_class == 1
+            else ctypes.sizeof(_TOKEN_GROUPS)
+        )
         ctypes.cast(required, ctypes.POINTER(ctypes.c_uint32)).contents.value = (
             required_size
         )
@@ -672,12 +680,24 @@ def test_win32_restricted_token_uses_the_exact_profile_flags() -> None:
             assert size == 0
             return 0
         assert size == required_size
-        token_user = ctypes.cast(
-            target,
-            ctypes.POINTER(_TOKEN_USER),
-        ).contents
-        token_user.User.Sid = ctypes.cast(user_sid_storage, ctypes.c_void_p)
-        token_user.User.Attributes = 0
+        if information_class == 1:
+            token_user = ctypes.cast(
+                target,
+                ctypes.POINTER(_TOKEN_USER),
+            ).contents
+            token_user.User.Sid = ctypes.cast(user_sid_storage, ctypes.c_void_p)
+            token_user.User.Attributes = 0
+        else:
+            token_groups = ctypes.cast(
+                target,
+                ctypes.POINTER(_TOKEN_GROUPS),
+            ).contents
+            token_groups.GroupCount = 1
+            token_groups.Groups[0].Sid = ctypes.cast(
+                logon_sid_storage,
+                ctypes.c_void_p,
+            )
+            token_groups.Groups[0].Attributes = 0xC0000000
         return 1
 
     def create_well_known_sid(
@@ -690,6 +710,9 @@ def test_win32_restricted_token_uses_the_exact_profile_flags() -> None:
         assert target is not None
         assert size is not None
         observed_sid_types.append(sid_type)
+        address = ctypes.cast(target, ctypes.c_void_p).value
+        assert address is not None
+        observed_sid_addresses[sid_type] = address
         return 1
 
     def create_restricted_token(
@@ -706,8 +729,25 @@ def test_win32_restricted_token_uses_the_exact_profile_flags() -> None:
         assert disable_count == 1
         assert disable is not None
         assert (delete_count, delete) == (0, None)
-        assert restricted_count == 3
+        assert restricted_count == 4
         assert restricted is not None
+        disabled_sids = ctypes.cast(
+            disable,
+            ctypes.POINTER(_SID_AND_ATTRIBUTES * 1),
+        ).contents
+        restricting_sids = ctypes.cast(
+            restricted,
+            ctypes.POINTER(_SID_AND_ATTRIBUTES * 4),
+        ).contents
+        assert [entry.Sid for entry in disabled_sids] == [
+            observed_sid_addresses[26]
+        ]
+        assert [entry.Sid for entry in restricting_sids] == [
+            ctypes.addressof(user_sid_storage),
+            ctypes.addressof(logon_sid_storage),
+            observed_sid_addresses[1],
+            observed_sid_addresses[27],
+        ]
         observed.append((source, flags))
         ctypes.cast(target, ctypes.POINTER(ctypes.c_void_p)).contents.value = 91
         return 1

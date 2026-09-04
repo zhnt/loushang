@@ -57,6 +57,9 @@ _WIN_BUILTIN_ADMINISTRATORS_SID = 26
 _WIN_BUILTIN_USERS_SID = 27
 _SECURITY_MAX_SID_SIZE = 68
 _TOKEN_USER_INFORMATION_CLASS = 1
+_TOKEN_GROUPS_INFORMATION_CLASS = 2
+_SE_GROUP_LOGON_ID = 0xC0000000
+_MAX_TOKEN_GROUPS = 1024
 _FILE_SHARE_READ = 0x00000001
 _FILE_SHARE_WRITE = 0x00000002
 _FILE_READ_ATTRIBUTES = 0x00000080
@@ -86,6 +89,13 @@ class _SID_AND_ATTRIBUTES(ctypes.Structure):
 
 class _TOKEN_USER(ctypes.Structure):
     _fields_ = [("User", _SID_AND_ATTRIBUTES)]
+
+
+class _TOKEN_GROUPS(ctypes.Structure):
+    _fields_ = [
+        ("GroupCount", wintypes.DWORD),
+        ("Groups", _SID_AND_ATTRIBUTES * 1),
+    ]
 
 
 class _STARTUPINFOW(ctypes.Structure):
@@ -383,6 +393,52 @@ class _CtypesWin32Api:
             ctypes.POINTER(_TOKEN_USER),
         ).contents.User.Sid
 
+        groups_size = wintypes.DWORD()
+        self._GetTokenInformation(
+            source_token,
+            _TOKEN_GROUPS_INFORMATION_CLASS,
+            None,
+            0,
+            ctypes.byref(groups_size),
+        )
+        if groups_size.value < ctypes.sizeof(_TOKEN_GROUPS):
+            self._raise_last_error("GetTokenInformation(TokenGroups size)")
+        groups_storage = ctypes.create_string_buffer(groups_size.value)
+        if not self._GetTokenInformation(
+            source_token,
+            _TOKEN_GROUPS_INFORMATION_CLASS,
+            ctypes.byref(groups_storage),
+            groups_size.value,
+            ctypes.byref(groups_size),
+        ):
+            self._raise_last_error("GetTokenInformation(TokenGroups)")
+        token_groups = ctypes.cast(
+            ctypes.byref(groups_storage),
+            ctypes.POINTER(_TOKEN_GROUPS),
+        ).contents
+        group_count = int(token_groups.GroupCount)
+        available_group_count = (
+            groups_size.value - _TOKEN_GROUPS.Groups.offset
+        ) // ctypes.sizeof(_SID_AND_ATTRIBUTES)
+        if (
+            group_count < 1
+            or group_count > _MAX_TOKEN_GROUPS
+            or group_count > available_group_count
+        ):
+            raise OSError("Windows token group list is invalid")
+        group_array_type = _SID_AND_ATTRIBUTES * group_count
+        groups = ctypes.cast(
+            ctypes.byref(groups_storage, _TOKEN_GROUPS.Groups.offset),
+            ctypes.POINTER(group_array_type),
+        ).contents
+        logon_sids = [
+            group.Sid
+            for group in groups
+            if group.Attributes & _SE_GROUP_LOGON_ID == _SE_GROUP_LOGON_ID
+        ]
+        if len(logon_sids) != 1:
+            raise OSError("Windows token must contain exactly one logon SID")
+
         admin_storage = ctypes.create_string_buffer(_SECURITY_MAX_SID_SIZE)
         admin_size = wintypes.DWORD(ctypes.sizeof(admin_storage))
         if not self._CreateWellKnownSid(
@@ -419,8 +475,9 @@ class _CtypesWin32Api:
             ctypes.byref(users_size),
         ):
             self._raise_last_error("CreateWellKnownSid(WinBuiltinUsersSid)")
-        restricting_sids = (_SID_AND_ATTRIBUTES * 3)(
+        restricting_sids = (_SID_AND_ATTRIBUTES * 4)(
             _SID_AND_ATTRIBUTES(Sid=user_sid, Attributes=0),
+            _SID_AND_ATTRIBUTES(Sid=logon_sids[0], Attributes=0),
             _SID_AND_ATTRIBUTES(
                 Sid=ctypes.cast(world_storage, ctypes.c_void_p),
                 Attributes=0,
@@ -439,7 +496,7 @@ class _CtypesWin32Api:
             ctypes.byref(disabled_sids),
             0,
             None,
-            3,
+            4,
             ctypes.byref(restricting_sids),
             ctypes.byref(token),
         ):
