@@ -23,7 +23,6 @@ from loushang.hosting._launch_preparation import (
     _ManagedSpawnSettledWithoutProcess,
 )
 from loushang.hosting._win32_process import (
-    _SID_AND_ATTRIBUTES,
     _CtypesWin32Api,
     _Win32CreateNotStarted,
     _Win32CreateSettledWithoutProcess,
@@ -60,7 +59,7 @@ def _spec() -> _WindowsRestrictedLaunchCaptureSpec:
             f"pe-amd64:sha256:{digest}",
             "executable:win32:7:101",
             "cwd:win32:7:202",
-            "restricted-token:disable-max-privilege+lua+disable-admin-v1",
+            "restricted-token:disable-max-privilege-v1",
             r"environment:SystemRoot=C:\Windows",
             "direct-imports:KERNEL32.DLL",
             "platform:windows-amd64-10.0.20348",
@@ -649,23 +648,6 @@ def test_windows_restricted_spec_rejects_open_environment_and_imports() -> None:
 def test_win32_restricted_token_uses_the_exact_profile_flags() -> None:
     api = object.__new__(_CtypesWin32Api)
     observed: list[tuple[int, int]] = []
-    observed_sid_types: list[int] = []
-    observed_sid_addresses: dict[int, int] = {}
-
-    def create_well_known_sid(
-        sid_type: int,
-        domain: object,
-        target: object,
-        size: object,
-    ) -> int:
-        assert domain is None
-        assert target is not None
-        assert size is not None
-        observed_sid_types.append(sid_type)
-        address = ctypes.cast(target, ctypes.c_void_p).value
-        assert address is not None
-        observed_sid_addresses[sid_type] = address
-        return 1
 
     def create_restricted_token(
         source: int,
@@ -678,28 +660,17 @@ def test_win32_restricted_token_uses_the_exact_profile_flags() -> None:
         restricted: object,
         target: object,
     ) -> int:
-        assert disable_count == 1
-        assert disable is not None
+        assert (disable_count, disable) == (0, None)
         assert (delete_count, delete) == (0, None)
         assert (restricted_count, restricted) == (0, None)
-        disabled_sids = ctypes.cast(
-            disable,
-            ctypes.POINTER(_SID_AND_ATTRIBUTES * 1),
-        ).contents
-        assert [entry.Sid for entry in disabled_sids] == [
-            observed_sid_addresses[26]
-        ]
-        assert all(entry.Attributes == 0 for entry in disabled_sids)
         observed.append((source, flags))
         ctypes.cast(target, ctypes.POINTER(ctypes.c_void_p)).contents.value = 91
         return 1
 
-    api._CreateWellKnownSid = create_well_known_sid  # type: ignore[attr-defined]
     api._CreateRestrictedToken = create_restricted_token  # type: ignore[attr-defined]
 
     assert api.create_restricted_token(17) == 91
-    assert observed == [(17, 0x00000001 | 0x00000004)]
-    assert observed_sid_types == [26]
+    assert observed == [(17, 0x00000001)]
 
 
 def test_windows_pe_parser_accepts_exact_amd64_direct_import_profile(

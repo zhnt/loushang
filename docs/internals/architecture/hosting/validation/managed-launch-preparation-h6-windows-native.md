@@ -32,8 +32,7 @@ The captured execution closure contains:
 
 - the exact AMD64 PE SHA-256 and locked Win32 volume/128-bit file identity;
 - the locked cwd volume/128-bit file identity;
-- the fixed restricted-token recipe `DISABLE_MAX_PRIVILEGE | LUA_TOKEN` plus
-  explicit deny-only treatment of `WinBuiltinAdministratorsSid`;
+- the fixed restricted-token recipe `DISABLE_MAX_PRIVILEGE`;
 - one exact, request-bound absolute `SystemRoot` bootstrap environment value;
 - the exact direct-import set, currently limited to `KERNEL32.DLL` and
   `ADVAPI32.DLL`; and
@@ -44,15 +43,15 @@ resources/embedded manifests, delayed imports, CLR images, imports outside the
 fixed direct-name set, and a digest or direct-import mismatch. The selected
 oracle uses no CRT or application DLL.
 
-The token recipe proves privilege removal, LUA filtering, and explicit
-administrator deny-only treatment. It deliberately supplies no restricting
-SID list: native evidence showed that such a list can prevent Windows process
-initialization even when it mirrors the source principals. Consequently
-`IsTokenRestricted` is false by its documented narrow definition; that API
-does not report restrictions created solely by disabled SIDs or removed
-privileges. The profile does not claim an AppContainer, integrity boundary, or
-isolation from the same user; stronger product sandboxing remains caller policy
-outside this profile.
+The token recipe proves privilege removal. It deliberately supplies no
+disabled or restricting SID list: native evidence showed that the evaluated
+SID-filtering recipes can prevent Windows process initialization on the
+retained runner even when their restricting list mirrors the source
+principals. Consequently `IsTokenRestricted` is false by its documented narrow
+definition; that API does not report restrictions created solely by removed
+privileges. The profile does not claim LUA filtering, administrator deny-only
+treatment, an AppContainer, an integrity boundary, or isolation from the same
+user; stronger product sandboxing remains caller policy outside this profile.
 
 This is deliberately a **direct-import mechanics profile**, not a Windows
 loader-closure or DLL-identity claim. The OS build string is a platform

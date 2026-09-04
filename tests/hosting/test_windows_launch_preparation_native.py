@@ -198,7 +198,7 @@ def _spec(
             "executable:win32:"
             f"{executable_identity.volume_serial}:{executable_identity.file_id}",
             f"cwd:win32:{cwd_identity.volume_serial}:{cwd_identity.file_id}",
-            "restricted-token:disable-max-privilege+lua+disable-admin-v1",
+            "restricted-token:disable-max-privilege-v1",
             f'environment:SystemRoot={os.environ["SystemRoot"]}',
             f"direct-imports:{','.join(imports)}",
             f"platform:{platform_identity}",

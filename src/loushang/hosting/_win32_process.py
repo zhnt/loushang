@@ -50,9 +50,6 @@ _TOKEN_ASSIGN_PRIMARY = 0x0001
 _TOKEN_DUPLICATE = 0x0002
 _TOKEN_QUERY = 0x0008
 _DISABLE_MAX_PRIVILEGE = 0x00000001
-_LUA_TOKEN = 0x00000004
-_WIN_BUILTIN_ADMINISTRATORS_SID = 26
-_SECURITY_MAX_SID_SIZE = 68
 _FILE_SHARE_READ = 0x00000001
 _FILE_SHARE_WRITE = 0x00000002
 _FILE_READ_ATTRIBUTES = 0x00000080
@@ -70,13 +67,6 @@ class _SECURITY_ATTRIBUTES(ctypes.Structure):
         ("nLength", wintypes.DWORD),
         ("lpSecurityDescriptor", ctypes.c_void_p),
         ("bInheritHandle", wintypes.BOOL),
-    ]
-
-
-class _SID_AND_ATTRIBUTES(ctypes.Structure):
-    _fields_ = [
-        ("Sid", ctypes.c_void_p),
-        ("Attributes", wintypes.DWORD),
     ]
 
 
@@ -351,31 +341,12 @@ class _CtypesWin32Api:
         return _handle_value(token)
 
     def create_restricted_token(self, source_token: int) -> int:
-        admin_storage = ctypes.create_string_buffer(_SECURITY_MAX_SID_SIZE)
-        admin_size = wintypes.DWORD(ctypes.sizeof(admin_storage))
-        if not self._CreateWellKnownSid(
-            _WIN_BUILTIN_ADMINISTRATORS_SID,
-            None,
-            ctypes.byref(admin_storage),
-            ctypes.byref(admin_size),
-        ):
-            self._raise_last_error(
-                "CreateWellKnownSid(WinBuiltinAdministratorsSid)"
-            )
-        disabled_sids = (_SID_AND_ATTRIBUTES * 1)(
-            _SID_AND_ATTRIBUTES(
-                Sid=ctypes.cast(admin_storage, ctypes.c_void_p),
-                Attributes=0,
-            )
-        )
-
         token = wintypes.HANDLE()
-        flags = _DISABLE_MAX_PRIVILEGE | _LUA_TOKEN
         if not self._CreateRestrictedToken(
             source_token,
-            flags,
-            1,
-            ctypes.byref(disabled_sids),
+            _DISABLE_MAX_PRIVILEGE,
+            0,
+            None,
             0,
             None,
             0,
@@ -1033,16 +1004,6 @@ class _CtypesWin32Api:
                 wintypes.DWORD,
                 ctypes.c_void_p,
                 ctypes.POINTER(wintypes.HANDLE),
-            ],
-            wintypes.BOOL,
-        )
-        self._CreateWellKnownSid = _bind(
-            advapi32.CreateWellKnownSid,
-            [
-                ctypes.c_int,
-                ctypes.c_void_p,
-                ctypes.c_void_p,
-                ctypes.POINTER(wintypes.DWORD),
             ],
             wintypes.BOOL,
         )
