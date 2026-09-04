@@ -60,6 +60,7 @@ _FILE_FLAG_OPEN_REPARSE_POINT = 0x00200000
 _FILE_ATTRIBUTE_DIRECTORY = 0x00000010
 _FILE_ATTRIBUTE_REPARSE_POINT = 0x00000400
 _FILE_NAME_NORMALIZED = 0x0
+_FILE_ID_INFO_CLASS = 18
 _MAX_FINAL_PATH_CHARS = 32768
 
 
@@ -122,6 +123,17 @@ class _BY_HANDLE_FILE_INFORMATION(ctypes.Structure):
         ("nNumberOfLinks", wintypes.DWORD),
         ("nFileIndexHigh", wintypes.DWORD),
         ("nFileIndexLow", wintypes.DWORD),
+    ]
+
+
+class _FILE_ID_128(ctypes.Structure):
+    _fields_ = [("Identifier", wintypes.BYTE * 16)]
+
+
+class _FILE_ID_INFO(ctypes.Structure):
+    _fields_ = [
+        ("VolumeSerialNumber", ctypes.c_ulonglong),
+        ("FileId", _FILE_ID_128),
     ]
 
 
@@ -257,16 +269,42 @@ class _CtypesWin32Api:
         version = sys.getwindowsversion()  # type: ignore[attr-defined]
         return f"windows-amd64-{version.major}.{version.minor}.{version.build}"
 
-    def open_locked_file(self, path: str) -> int:
-        return self._open_locked_path(path, directory=False)
+    def open_locked_file(
+        self,
+        path: str,
+        *,
+        on_acquired: Callable[[int], None],
+    ) -> int:
+        return self._open_locked_path(
+            path,
+            directory=False,
+            on_acquired=on_acquired,
+        )
 
-    def open_locked_directory(self, path: str) -> int:
-        return self._open_locked_path(path, directory=True)
+    def open_locked_directory(
+        self,
+        path: str,
+        *,
+        on_acquired: Callable[[int], None],
+    ) -> int:
+        return self._open_locked_path(
+            path,
+            directory=True,
+            on_acquired=on_acquired,
+        )
 
     def locked_path_identity(self, handle: int) -> _Win32LockedPathIdentity:
         information = _BY_HANDLE_FILE_INFORMATION()
         if not self._GetFileInformationByHandle(handle, ctypes.byref(information)):
             self._raise_last_error("GetFileInformationByHandle")
+        file_id = _FILE_ID_INFO()
+        if not self._GetFileInformationByHandleEx(
+            handle,
+            _FILE_ID_INFO_CLASS,
+            ctypes.byref(file_id),
+            ctypes.sizeof(file_id),
+        ):
+            self._raise_last_error("GetFileInformationByHandleEx(FileIdInfo)")
         attributes = int(information.dwFileAttributes)
         if attributes & _FILE_ATTRIBUTE_REPARSE_POINT:
             raise HostingError(
@@ -285,9 +323,8 @@ class _CtypesWin32Api:
         if length >= len(buffer):
             raise OSError("Windows final path exceeds its retained bound")
         return _Win32LockedPathIdentity(
-            volume_serial=int(information.dwVolumeSerialNumber),
-            file_id=(int(information.nFileIndexHigh) << 32)
-            | int(information.nFileIndexLow),
+            volume_serial=int(file_id.VolumeSerialNumber),
+            file_id=int.from_bytes(bytes(file_id.FileId.Identifier), "little"),
             size=(int(information.nFileSizeHigh) << 32)
             | int(information.nFileSizeLow),
             final_path=buffer.value,
@@ -325,8 +362,12 @@ class _CtypesWin32Api:
     def token_is_restricted(self, token: int) -> bool:
         return bool(self._IsTokenRestricted(token))
 
-    def create_managed_job(self) -> int:
-        return self._create_job()
+    def create_managed_job(
+        self,
+        *,
+        on_acquired: Callable[[int], None],
+    ) -> int:
+        return self._create_job(on_acquired=on_acquired)
 
     def managed_job_is_kill_on_close(self, job: int) -> bool:
         limits = _JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
@@ -440,7 +481,13 @@ class _CtypesWin32Api:
         finally:
             self._DeleteProcThreadAttributeList(attributes.pointer)
 
-    def _open_locked_path(self, path: str, *, directory: bool) -> int:
+    def _open_locked_path(
+        self,
+        path: str,
+        *,
+        directory: bool,
+        on_acquired: Callable[[int], None],
+    ) -> int:
         flags = _FILE_FLAG_OPEN_REPARSE_POINT
         share = _FILE_SHARE_READ
         if directory:
@@ -458,17 +505,16 @@ class _CtypesWin32Api:
         handle = _handle_value(raw_handle)
         if handle == _INVALID_HANDLE_VALUE:
             self._raise_last_error("CreateFileW(locked path)")
-        try:
-            identity = self.locked_path_identity(handle)
-            if identity.is_directory is not directory:
-                raise HostingError(
-                    HostingFailureCategory.PREPARATION_FAILED,
-                    "Windows managed launch path kind is invalid",
-                )
-        except BaseException:
-            with suppress(OSError):
-                self.close_handle(handle)
-            raise
+        # Transfer ownership before any operation that can fail.  The caller's
+        # attached material, not this helper's stack, is now the retryable
+        # cleanup authority for the raw handle.
+        on_acquired(handle)
+        identity = self.locked_path_identity(handle)
+        if identity.is_directory is not directory:
+            raise HostingError(
+                HostingFailureCategory.PREPARATION_FAILED,
+                "Windows managed launch path kind is invalid",
+            )
         return handle
 
     def spawn(
@@ -679,11 +725,17 @@ class _CtypesWin32Api:
         finally:
             self.close_handle(thread)
 
-    def _create_job(self) -> int:
+    def _create_job(
+        self,
+        *,
+        on_acquired: Callable[[int], None] | None = None,
+    ) -> int:
         raw_job = self._CreateJobObjectW(None, None)
         if not raw_job:
             self._raise_last_error("CreateJobObjectW")
         job = _handle_value(raw_job)
+        if on_acquired is not None:
+            on_acquired(job)
         limits = _JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
         limits.BasicLimitInformation.LimitFlags = _JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
         if not self._SetInformationJobObject(
@@ -693,8 +745,9 @@ class _CtypesWin32Api:
             ctypes.sizeof(limits),
         ):
             error = _last_error()
-            with suppress(OSError):
-                self.close_handle(job)
+            if on_acquired is None:
+                with suppress(OSError):
+                    self.close_handle(job)
             self._raise_error(error, "SetInformationJobObject")
         return job
 
@@ -878,6 +931,11 @@ class _CtypesWin32Api:
         self._GetFileInformationByHandle = _bind(
             kernel32.GetFileInformationByHandle,
             [wintypes.HANDLE, ctypes.POINTER(_BY_HANDLE_FILE_INFORMATION)],
+            wintypes.BOOL,
+        )
+        self._GetFileInformationByHandleEx = _bind(
+            kernel32.GetFileInformationByHandleEx,
+            [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD],
             wintypes.BOOL,
         )
         self._GetFinalPathNameByHandleW = _bind(

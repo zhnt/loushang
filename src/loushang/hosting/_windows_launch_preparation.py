@@ -1,11 +1,12 @@
 """Private H6.3 Windows restricted-token launch preparation.
 
 The profile is deliberately narrow: one locked AMD64 PE image whose declared
-imports are a fixed platform-image allowlist, one locked cwd identity, a
-Hosting-created restricted primary token, one kill-on-close Job Object, and
-one non-inherited parent copy of the child's stderr NUL handle.  The material
-is attached before acquisition so every partial native owner remains reachable
-through the Child Session reservation.
+direct imports are a fixed platform-name allowlist, locked path ancestors for
+the image and cwd, a Hosting-created restricted primary token, one kill-on-close
+Job Object, and one non-inherited parent copy of the child's stderr NUL handle.
+This is a direct-import mechanics profile, not a proof of the complete Windows
+loader closure.  The material is attached before acquisition so every partial
+native owner remains reachable through the Child Session reservation.
 """
 
 from __future__ import annotations
@@ -42,13 +43,15 @@ from .contracts import (
 )
 from .errors import HostingError, HostingFailureCategory
 
-_PROFILE_ID = "windows-restricted-known-dll-pe-v1"
+_PROFILE_ID = "windows-restricted-direct-import-pe-v1"
 _RESTRICTION_ID = "restricted-token:disable-max-privilege+lua+write-restricted-v1"
-_KNOWN_PLATFORM_IMPORTS = frozenset({"ADVAPI32.DLL", "KERNEL32.DLL"})
+_DIRECT_PLATFORM_IMPORTS = frozenset({"ADVAPI32.DLL", "KERNEL32.DLL"})
 _MAX_EXECUTABLE_BYTES = 64 * 1024 * 1024
+_MAX_ANCESTOR_DIRECTORIES = 48
 _PE_AMD64_MACHINE = 0x8664
 _PE32_PLUS_MAGIC = 0x20B
 _IMAGE_DIRECTORY_ENTRY_IMPORT = 1
+_IMAGE_DIRECTORY_ENTRY_RESOURCE = 2
 _IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT = 13
 _IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR = 14
 _MAX_IMPORTS = 256
@@ -58,9 +61,19 @@ _MAX_IMPORT_NAME_BYTES = 260
 class _WindowsLaunchApi(Protocol):
     def platform_identity(self) -> str: ...
 
-    def open_locked_file(self, path: str) -> int: ...
+    def open_locked_file(
+        self,
+        path: str,
+        *,
+        on_acquired: Callable[[int], None],
+    ) -> int: ...
 
-    def open_locked_directory(self, path: str) -> int: ...
+    def open_locked_directory(
+        self,
+        path: str,
+        *,
+        on_acquired: Callable[[int], None],
+    ) -> int: ...
 
     def locked_path_identity(self, handle: int) -> _Win32LockedPathIdentity: ...
 
@@ -70,7 +83,11 @@ class _WindowsLaunchApi(Protocol):
 
     def token_is_restricted(self, token: int) -> bool: ...
 
-    def create_managed_job(self) -> int: ...
+    def create_managed_job(
+        self,
+        *,
+        on_acquired: Callable[[int], None],
+    ) -> int: ...
 
     def managed_job_is_kill_on_close(self, job: int) -> bool: ...
 
@@ -81,7 +98,7 @@ class _WindowsLaunchApi(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class _WindowsRestrictedLaunchCaptureSpec(_LaunchCaptureSpec):
-    """One caller-admitted Windows AMD64 platform-image closure."""
+    """One caller-admitted Windows AMD64 direct-import profile."""
 
     executable_sha256: str
     executable_volume_serial: int
@@ -96,13 +113,13 @@ class _WindowsRestrictedLaunchCaptureSpec(_LaunchCaptureSpec):
         if self.profile_id != _PROFILE_ID:
             raise ValueError("Windows restricted launch profile_id is unsupported")
         _require_sha256(self.executable_sha256)
-        for name, value in (
-            ("executable volume", self.executable_volume_serial),
-            ("executable file", self.executable_file_id),
-            ("cwd volume", self.cwd_volume_serial),
-            ("cwd file", self.cwd_file_id),
+        for name, value, bits in (
+            ("executable volume", self.executable_volume_serial, 64),
+            ("executable file", self.executable_file_id, 128),
+            ("cwd volume", self.cwd_volume_serial, 64),
+            ("cwd file", self.cwd_file_id, 128),
         ):
-            if type(value) is not int or value < 0:
+            if type(value) is not int or value < 0 or value >= 1 << bits:
                 raise ValueError(f"Windows restricted {name} identity is invalid")
         if self.executable_file_id == 0 or self.cwd_file_id == 0:
             raise ValueError("Windows restricted path identity is invalid")
@@ -130,7 +147,7 @@ class _WindowsRestrictedLaunchCaptureSpec(_LaunchCaptureSpec):
         if (
             not normalized_imports
             or normalized_imports != self.platform_imports
-            or not set(normalized_imports) <= _KNOWN_PLATFORM_IMPORTS
+            or not set(normalized_imports) <= _DIRECT_PLATFORM_IMPORTS
         ):
             raise ValueError("Windows restricted platform imports are not closed")
         expected_closure = (
@@ -139,7 +156,7 @@ class _WindowsRestrictedLaunchCaptureSpec(_LaunchCaptureSpec):
             f"{self.executable_volume_serial}:{self.executable_file_id}",
             f"cwd:win32:{self.cwd_volume_serial}:{self.cwd_file_id}",
             _RESTRICTION_ID,
-            f"known-dlls:{','.join(normalized_imports)}",
+            f"direct-imports:{','.join(normalized_imports)}",
             f"platform:{self.platform_identity}",
         )
         if self.execution_closure != expected_closure:
@@ -224,6 +241,8 @@ class _WindowsRestrictedLaunchMaterial:
         self._restricted_token = -1
         self._job_handle = -1
         self._stderr_handle = -1
+        self._ancestor_handles: list[int] = []
+        self._ancestor_identities: list[_Win32LockedPathIdentity] = []
         self._executable_identity: _Win32LockedPathIdentity | None = None
         self._cwd_identity: _Win32LockedPathIdentity | None = None
         self._state = "capturing"
@@ -251,7 +270,10 @@ class _WindowsRestrictedLaunchMaterial:
 
     @property
     def inherited_slot_count(self) -> int:
-        return 5
+        # Admission happens when the empty material is attached, before any
+        # native acquisition. Reserve the complete worst-case profile bound;
+        # the count must never grow after admission.
+        return 5 + _MAX_ANCESTOR_DIRECTORIES
 
     @property
     def executable_path(self) -> str:
@@ -269,18 +291,27 @@ class _WindowsRestrictedLaunchMaterial:
 
     def _capture(self) -> None:
         try:
-            self._executable_handle = self._api.open_locked_file(
-                self._spec.request.argv[0]
+            self._api.open_locked_file(
+                self._spec.request.argv[0],
+                on_acquired=lambda handle: self._adopt_handle(
+                    "_executable_handle", handle
+                ),
             )
-            self._cwd_handle = self._api.open_locked_directory(
-                self._spec.request.cwd
+            executable = self._api.locked_path_identity(self._executable_handle)
+            self._api.open_locked_directory(
+                self._spec.request.cwd,
+                on_acquired=lambda handle: self._adopt_handle("_cwd_handle", handle),
             )
+            cwd = self._api.locked_path_identity(self._cwd_handle)
+            self._capture_ancestor_chain(executable.final_path, cwd.final_path)
             self._source_token = self._api.open_process_token()
             self._restricted_token = self._api.create_restricted_token(
                 self._source_token
             )
             self._close_attribute("_source_token")
-            self._job_handle = self._api.create_managed_job()
+            self._api.create_managed_job(
+                on_acquired=lambda handle: self._adopt_handle("_job_handle", handle)
+            )
             self._stderr_handle = self._api.create_managed_stderr()
             self._verify_owned()
         except BaseException:
@@ -381,6 +412,13 @@ class _WindowsRestrictedLaunchMaterial:
                 self._close_attribute(attribute)
             except BaseException as error:
                 failures.append(error)
+        for handle in tuple(reversed(self._ancestor_handles)):
+            try:
+                self._api.close_handle(handle)
+            except BaseException as error:
+                failures.append(error)
+            else:
+                self._ancestor_handles.remove(handle)
         with self._lock:
             remaining = any(
                 getattr(self, attribute) > 0
@@ -392,7 +430,7 @@ class _WindowsRestrictedLaunchMaterial:
                     "_cwd_handle",
                     "_executable_handle",
                 )
-            )
+            ) or bool(self._ancestor_handles)
             self._state = "close-failed" if remaining else "closed"
         if failures:
             raise BaseExceptionGroup(
@@ -409,6 +447,44 @@ class _WindowsRestrictedLaunchMaterial:
         with self._lock:
             if getattr(self, attribute) == handle:
                 setattr(self, attribute, -1)
+
+    def _adopt_handle(self, attribute: str, handle: int) -> None:
+        if type(handle) is not int or handle <= 0:
+            raise HostingError(
+                HostingFailureCategory.PREPARATION_FAILED,
+                "Windows launch helper returned an invalid native owner",
+            )
+        with self._lock:
+            if getattr(self, attribute) > 0:
+                raise RuntimeError("Windows launch native owner attached twice")
+            setattr(self, attribute, handle)
+
+    def _adopt_ancestor(self, handle: int) -> None:
+        if type(handle) is not int or handle <= 0:
+            raise HostingError(
+                HostingFailureCategory.PREPARATION_FAILED,
+                "Windows ancestor helper returned an invalid native owner",
+            )
+        self._ancestor_handles.append(handle)
+
+    def _capture_ancestor_chain(self, *final_paths: str) -> None:
+        paths: dict[str, str] = {}
+        for final_path in final_paths:
+            for ancestor in _ancestor_directory_paths(final_path):
+                paths.setdefault(ntpath.normcase(ancestor), ancestor)
+        if len(paths) > _MAX_ANCESTOR_DIRECTORIES:
+            raise HostingError(
+                HostingFailureCategory.CAPACITY_EXHAUSTED,
+                "Windows managed launch ancestor chain exceeds its bound",
+            )
+        for ancestor in paths.values():
+            self._api.open_locked_directory(
+                ancestor,
+                on_acquired=self._adopt_ancestor,
+            )
+            self._ancestor_identities.append(
+                self._api.locked_path_identity(self._ancestor_handles[-1])
+            )
 
     def _verify_owned(self) -> None:
         executable = self._api.locked_path_identity(self._executable_handle)
@@ -437,8 +513,38 @@ class _WindowsRestrictedLaunchMaterial:
                 HostingFailureCategory.PREPARATION_STALE,
                 "Windows cwd identity changed",
             )
+        if len(self._ancestor_handles) != len(self._ancestor_identities):
+            raise HostingError(
+                HostingFailureCategory.PREPARATION_STALE,
+                "Windows ancestor ownership is incomplete",
+            )
+        for handle, expected in zip(
+            self._ancestor_handles,
+            self._ancestor_identities,
+            strict=True,
+        ):
+            current = self._api.locked_path_identity(handle)
+            if not current.is_directory or current != expected:
+                raise HostingError(
+                    HostingFailureCategory.PREPARATION_STALE,
+                    "Windows ancestor identity changed",
+                )
+        expected_ancestor_paths = {
+            ntpath.normcase(path)
+            for final_path in (executable.final_path, cwd.final_path)
+            for path in _ancestor_directory_paths(final_path)
+        }
+        retained_ancestor_paths = {
+            ntpath.normcase(identity.final_path)
+            for identity in self._ancestor_identities
+        }
+        if retained_ancestor_paths != expected_ancestor_paths:
+            raise HostingError(
+                HostingFailureCategory.PREPARATION_STALE,
+                "Windows retained ancestor chain no longer closes the launch paths",
+            )
         _verify_pe_image(
-            Path(self._spec.request.argv[0]),
+            Path(executable.final_path),
             expected_digest=self._spec.executable_sha256,
             expected_imports=self._spec.platform_imports,
         )
@@ -500,6 +606,7 @@ def _verify_pe_image(
             "Windows PE image has no import closure",
         )
     for directory in (
+        _IMAGE_DIRECTORY_ENTRY_RESOURCE,
         _IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT,
         _IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR,
     ):
@@ -513,7 +620,7 @@ def _verify_pe_image(
             if rva != 0 or size != 0:
                 raise HostingError(
                     HostingFailureCategory.PREPARATION_FAILED,
-                    "Windows restricted profile rejects delayed or managed loading",
+                    "Windows direct-import profile rejects resources, delayed loading, or managed loading",
                 )
     import_rva, import_size = struct.unpack_from("<II", body, optional + 120)
     if import_rva == 0 or import_size < 20:
@@ -524,7 +631,8 @@ def _verify_pe_image(
     sections = _pe_sections(body, optional + optional_size, section_count)
     import_offset = _rva_offset(body, import_rva, optional, sections)
     imports: set[str] = set()
-    for index in range(_MAX_IMPORTS):
+    descriptor_count = min(_MAX_IMPORTS, import_size // 20)
+    for index in range(descriptor_count):
         descriptor = import_offset + index * 20
         if descriptor > len(body) - 20:
             raise HostingError(
@@ -540,13 +648,41 @@ def _verify_pe_image(
     else:
         raise HostingError(
             HostingFailureCategory.PREPARATION_FAILED,
-            "Windows PE import count exceeds its bound",
+            "Windows PE import table has no in-range terminator",
         )
     if tuple(sorted(imports)) != expected_imports:
         raise HostingError(
             HostingFailureCategory.PREPARATION_FAILED,
             "Windows PE platform-image import closure changed",
         )
+
+
+def _ancestor_directory_paths(final_path: str) -> tuple[str, ...]:
+    normalized = ntpath.normpath(final_path)
+    drive, tail = ntpath.splitdrive(normalized)
+    if not drive or not tail.startswith("\\") or drive.upper().startswith("\\\\?\\UNC\\"):
+        raise HostingError(
+            HostingFailureCategory.PREPARATION_FAILED,
+            "Windows managed launch requires a local absolute volume path",
+        )
+    root = f"{drive}\\"
+    current = ntpath.dirname(normalized)
+    ancestors: list[str] = []
+    while current and ntpath.normcase(current) != ntpath.normcase(root):
+        ancestors.append(current)
+        parent = ntpath.dirname(current)
+        if parent == current:
+            raise HostingError(
+                HostingFailureCategory.PREPARATION_FAILED,
+                "Windows managed launch ancestor chain is malformed",
+            )
+        current = parent
+    if not current:
+        raise HostingError(
+            HostingFailureCategory.PREPARATION_FAILED,
+            "Windows managed launch ancestor chain has no volume root",
+        )
+    return tuple(ancestors)
 
 
 def _pe_sections(
@@ -571,8 +707,25 @@ def _pe_sections(
                 HostingFailureCategory.PREPARATION_FAILED,
                 "Windows PE section range is invalid",
             )
+        for existing_virtual, existing_size, existing_raw, existing_raw_size in sections:
+            if _ranges_overlap(
+                virtual_address,
+                max(virtual_size, raw_size),
+                existing_virtual,
+                max(existing_size, existing_raw_size),
+            ) or _ranges_overlap(raw_offset, raw_size, existing_raw, existing_raw_size):
+                raise HostingError(
+                    HostingFailureCategory.PREPARATION_FAILED,
+                    "Windows PE section ranges overlap",
+                )
         sections.append((virtual_address, virtual_size, raw_offset, raw_size))
     return tuple(sections)
+
+
+def _ranges_overlap(left: int, left_size: int, right: int, right_size: int) -> bool:
+    if left_size == 0 or right_size == 0:
+        return False
+    return left < right + right_size and right < left + left_size
 
 
 def _rva_offset(

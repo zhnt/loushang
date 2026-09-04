@@ -377,8 +377,10 @@ entrypoint conformant, and it adds no public composition route.
 
 H6.3 is implemented for one exact Windows AMD64 profile. It locks the admitted
 PE and cwd identities, creates the fixed restricted-token recipe and
-kill-on-close Job, restricts direct imports to a fixed platform KnownDLL set,
-and retains a non-skippable Windows adversarial oracle. See the
+kill-on-close Job, retains the complete resolved local ancestor chain,
+restricts PE direct-import names to a fixed platform-name set, and retains a
+non-skippable Windows adversarial oracle. This direct-import mechanics profile
+does not claim a complete Windows loader closure. See the
 [H6.3 Windows native record](validation/managed-launch-preparation-h6-windows-native.md).
 This profile is deliberately narrower than Python or the Current Worker and
 adds no public composition route.

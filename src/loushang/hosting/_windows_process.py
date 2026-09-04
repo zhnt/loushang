@@ -364,6 +364,7 @@ class _WindowsProcessBackend:
             thread_name_prefix="loushang-hosting-win32",
         )
         self._closed = False
+        self._orphan_processes: list[_WindowsProcess] = []
 
     async def spawn(
         self,
@@ -409,6 +410,7 @@ class _WindowsProcessBackend:
             try:
                 await self._reclaim_failed_attachment(process)
             except BaseException as cleanup:
+                self._orphan_processes.append(process)
                 primary.add_note(f"Windows spawn attachment cleanup also failed: {cleanup}")
                 raise primary from cleanup
             raise
@@ -525,9 +527,26 @@ class _WindowsProcessBackend:
                 raise
 
         process = _WindowsProcess(self._api, self._executor, handles)
-        on_spawn(process)
-        inheritance.mark_transferred()
         material._mark_transferred()
+        attached = False
+        try:
+            # The process owns Job/stderr before publication.  Publish the
+            # provisional owner before the endpoint transfer can fail so the
+            # outer reservation remains the retryable cleanup authority.
+            on_spawn(process)
+            attached = True
+            inheritance.mark_transferred()
+        except BaseException as primary:
+            if not attached and not effect.observes(process):
+                try:
+                    await self._reclaim_failed_attachment(process)
+                except BaseException as cleanup:
+                    self._orphan_processes.append(process)
+                    primary.add_note(
+                        f"Windows prepared attachment cleanup also failed: {cleanup}"
+                    )
+                    raise primary from cleanup
+            raise
         if cancellation is not None:
             raise cancellation
         return process
@@ -599,6 +618,20 @@ class _WindowsProcessBackend:
         if self._closed:
             return
         self._closed = True
+        failures: list[BaseException] = []
+        for process in tuple(self._orphan_processes):
+            try:
+                await self._reclaim_failed_attachment(process)
+            except BaseException as exc:
+                failures.append(exc)
+            else:
+                self._orphan_processes.remove(process)
+        if failures:
+            self._closed = False
+            raise BaseExceptionGroup(
+                "Windows backend orphan cleanup failed",
+                failures,
+            )
         self._executor.shutdown(wait=False, cancel_futures=True)
 
     def _abort_construction(self) -> None:

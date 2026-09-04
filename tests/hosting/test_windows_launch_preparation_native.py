@@ -103,6 +103,29 @@ class _RestrictedPreparation(_ManagedLaunchPreparationPort):
                 await self.lease.close()
 
 
+class _ObservedWin32Api(_CtypesWin32Api):
+    def __init__(self) -> None:
+        super().__init__()
+        self.created_jobs: list[int] = []
+        self.job_empty_observations: list[bool] = []
+
+    def create_managed_job(
+        self,
+        *,
+        on_acquired: Callable[[int], None],
+    ) -> int:
+        def observe(handle: int) -> None:
+            self.created_jobs.append(handle)
+            on_acquired(handle)
+
+        return super().create_managed_job(on_acquired=observe)
+
+    def job_is_empty(self, handle: int) -> bool:
+        empty = super().job_is_empty(handle)
+        self.job_empty_observations.append(empty)
+        return empty
+
+
 def _native_host(api: _CtypesWin32Api) -> _ChildSessionHost:
     return _ChildSessionHost(
         _ProcessHost(
@@ -118,7 +141,7 @@ def _native_host(api: _CtypesWin32Api) -> _ChildSessionHost:
         ),
         max_sessions=1,
         launch_capture_backend=_WindowsRestrictedLaunchCaptureBackend(api=api),
-        max_capture_slots=5,
+        max_capture_slots=64,
     )
 
 
@@ -128,12 +151,22 @@ def _spec(
     cwd: Path,
     *arguments: str,
 ) -> _WindowsRestrictedLaunchCaptureSpec:
-    executable_handle = api.open_locked_file(str(executable.resolve()))
+    executable_handles: list[int] = []
+    api.open_locked_file(
+        str(executable.resolve()),
+        on_acquired=executable_handles.append,
+    )
+    executable_handle = executable_handles[0]
     try:
         executable_identity = api.locked_path_identity(executable_handle)
     finally:
         api.close_handle(executable_handle)
-    cwd_handle = api.open_locked_directory(str(cwd.resolve()))
+    cwd_handles: list[int] = []
+    api.open_locked_directory(
+        str(cwd.resolve()),
+        on_acquired=cwd_handles.append,
+    )
+    cwd_handle = cwd_handles[0]
     try:
         cwd_identity = api.locked_path_identity(cwd_handle)
     finally:
@@ -153,14 +186,14 @@ def _spec(
     imports = ("ADVAPI32.DLL", "KERNEL32.DLL")
     return _WindowsRestrictedLaunchCaptureSpec(
         request=request,
-        profile_id="windows-restricted-known-dll-pe-v1",
+        profile_id="windows-restricted-direct-import-pe-v1",
         execution_closure=(
             f"pe-amd64:sha256:{digest}",
             "executable:win32:"
             f"{executable_identity.volume_serial}:{executable_identity.file_id}",
             f"cwd:win32:{cwd_identity.volume_serial}:{cwd_identity.file_id}",
             "restricted-token:disable-max-privilege+lua+write-restricted-v1",
-            f"known-dlls:{','.join(imports)}",
+            f"direct-imports:{','.join(imports)}",
             f"platform:{platform_identity}",
         ),
         executable_sha256=digest,
@@ -232,20 +265,21 @@ void WINAPI mainCRTStartup(void) {{
         encoding="utf-8",
     )
     arguments = (
-            compiler or "cl",
-            "/nologo",
-            "/O2",
-            "/GS-",
-            f"/Fe:{path}",
-            str(source),
-            "/link",
-            "/NODEFAULTLIB",
+        compiler or "cl",
+        "/nologo",
+        "/O2",
+        "/GS-",
+        f"/Fe:{path}",
+        str(source),
+        "/link",
+        "/NODEFAULTLIB",
             "/ENTRY:mainCRTStartup",
             "/SUBSYSTEM:CONSOLE",
+            "/MANIFEST:NO",
             "kernel32.lib",
-            "advapi32.lib",
-        )
-    command: tuple[str, ...] | str = arguments
+        "advapi32.lib",
+    )
+    command: tuple[str, ...] = arguments
     if compiler is None:
         vswhere = Path(
             os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
@@ -270,12 +304,17 @@ void WINAPI mainCRTStartup(void) {{
         vcvars = Path(installation) / "VC/Auxiliary/Build/vcvars64.bat"
         if located.returncode != 0 or not installation or not vcvars.is_file():
             pytest.fail("H6.3 native gate requires the MSVC compiler")
-        command = (
-            f'call "{vcvars}" >nul && '
-            f"{subprocess.list2cmdline(list(arguments))}"
+        build_script = path.with_suffix(".build.cmd")
+        build_script.write_text(
+            "@echo off\n"
+            f'call "{vcvars}" >nul\n'
+            "if errorlevel 1 exit /b %errorlevel%\n"
+            f"{subprocess.list2cmdline(list(arguments))}\n",
+            encoding="utf-8",
         )
+        command = ("cmd", "/d", "/c", str(build_script))
     completed = subprocess.run(
-        command if isinstance(command, tuple) else ("cmd", "/d", "/s", "/c", command),
+        command,
         cwd=path.parent,
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
@@ -303,9 +342,11 @@ async def _read_line(read: Callable[[int], Awaitable[bytes]]) -> bytes:
 async def test_windows_restricted_native_locks_identity_and_runs_restricted(
     tmp_path: Path,
 ) -> None:
-    executable = tmp_path / "restricted-fixture.exe"
+    admitted = tmp_path / "admitted"
+    admitted.mkdir()
+    executable = admitted / "restricted-fixture.exe"
     _compile_fixture(executable)
-    cwd = tmp_path / "cwd"
+    cwd = admitted / "cwd"
     cwd.mkdir()
     api = _CtypesWin32Api()
     spec = _spec(api, executable, cwd)
@@ -320,6 +361,8 @@ async def test_windows_restricted_native_locks_identity_and_runs_restricted(
         executable.write_bytes(b"replacement")
     with pytest.raises(OSError):
         cwd.rename(tmp_path / "cwd-replaced")
+    with pytest.raises(OSError):
+        admitted.rename(tmp_path / "admitted-replaced")
 
     preparation.release.set()
     lease = await start
@@ -340,7 +383,7 @@ async def test_windows_restricted_native_job_reclaims_descendant(
     _compile_fixture(executable)
     cwd = tmp_path / "cwd"
     cwd.mkdir()
-    api = _CtypesWin32Api()
+    api = _ObservedWin32Api()
     spec = _spec(api, executable, cwd, "--spawn-child")
     host = _native_host(api)
     lease = await host.start(
@@ -349,5 +392,12 @@ async def test_windows_restricted_native_job_reclaims_descendant(
     )
 
     assert await _read_line(lease.endpoint.read) == b"restricted-child-ready\r\n"
+    assert len(api.created_jobs) == 1
+    job = api.created_jobs[0]
+    assert not api.job_is_empty(job)
+    await lease.endpoint.write(b"x")
+    assert (await lease.process.wait()).return_code == 0
+    assert not api.job_is_empty(job)
     await lease.close()
+    assert api.job_empty_observations[-1]
     await host.close()

@@ -47,10 +47,11 @@ def test_h6_3_windows_profile_is_private_exact_and_default_dark() -> None:
         assert name in native
         assert name not in public
     for exact_identity in (
-        '"windows-restricted-known-dll-pe-v1"',
+        '"windows-restricted-direct-import-pe-v1"',
         '"restricted-token:disable-max-privilege+lua+write-restricted-v1"',
         'frozenset({"ADVAPI32.DLL", "KERNEL32.DLL"})',
         "_PE_AMD64_MACHINE",
+        "_IMAGE_DIRECTORY_ENTRY_RESOURCE",
         "_IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT",
         "_IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR",
     ):
@@ -82,6 +83,9 @@ def test_h6_3_spawn_uses_one_restricted_effect_and_exact_owner_transfer() -> Non
     assert "self._api.spawn_restricted" in process
     assert "begin_effect=effect.begin_effect" in process
     assert "_CreateProcessAsUserW" in win32
+    assert "_GetFileInformationByHandleEx" in win32
+    assert "_FILE_ID_INFO" in win32
+    assert "on_acquired(handle)" in win32
     assert win32.index("begin_effect()") < win32.index("self._CreateProcessAsUserW(")
     assert "_PROC_THREAD_ATTRIBUTE_HANDLE_LIST" in win32
     assert "_PROC_THREAD_ATTRIBUTE_JOB_LIST" in win32
@@ -93,12 +97,17 @@ def test_h6_3_spawn_uses_one_restricted_effect_and_exact_owner_transfer() -> Non
 def test_h6_3_windows_native_oracle_and_report_are_retained() -> None:
     unit_names = _function_names(UNIT_TESTS)
     for name in (
-        "test_windows_restricted_capture_attaches_before_partial_acquisition_failure",
+        "test_windows_restricted_capture_attaches_before_every_acquisition_failure",
         "test_windows_restricted_material_composes_exact_spawn_and_transfers_owners",
         "test_windows_restricted_create_failure_has_exact_settled_receipt",
+        "test_windows_restricted_setup_failure_has_pre_effect_receipt",
+        "test_windows_restricted_post_gate_failure_remains_fenced",
+        "test_windows_restricted_post_create_owner_is_reclaimable",
         "test_windows_restricted_handle_collision_fails_before_effect",
         "test_windows_restricted_close_retries_retained_handle",
-        "test_windows_pe_parser_accepts_exact_amd64_known_dll_closure",
+        "test_windows_restricted_verify_rejects_rebound_ancestor_relation",
+        "test_win32_restricted_token_uses_the_exact_profile_flags",
+        "test_windows_pe_parser_accepts_exact_amd64_direct_import_profile",
         "test_windows_pe_parser_rejects_open_or_wrong_closure",
     ):
         assert name in unit_names
