@@ -76,7 +76,7 @@ H1 deliberately proves no OS process-tree behavior. That delta remains H2.
 | atomic Child Session Host | `implemented` | H4 transaction order, failure/cancellation matrix, joint lifetime, observation correlation, and native factory round trip remain green |
 | Harness mechanics migration | `partial` | H2c dark adapter parity remains green; sealed-descriptor cases stay on Current owner until a later contract is accepted |
 | default-dark Harness Worker adapter | `implemented` | H5 aggregate mapping, Supervisor session integration, selection, no-fallback, diagnostics, and rollback gates remain green |
-| Hosting-consumable managed preparation | `partial` | H6.1 private fake-backed ownership and feasibility gates are implemented; H6.2/H6.3 native evidence and H6.4 Harness parity remain |
+| Hosting-consumable managed preparation | `partial` | H6.1 ownership and H6.2 private Linux x86_64 static-closure native evidence are implemented; H6.3 Windows evidence and H6.4 Harness parity remain |
 | Product/native Worker path absent | `missing` | separate PLC9C5 activation review and gates |
 
 The mechanism baseline is implemented through H4: contracts, process owner,

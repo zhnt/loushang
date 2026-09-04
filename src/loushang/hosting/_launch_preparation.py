@@ -460,6 +460,15 @@ class _ManagedSpawnNotCreated(Exception):
         self._receipt = receipt
 
 
+class _ManagedSpawnSettledWithoutProcess(Exception):
+    """Authority receipt for an attempted effect known to own no process."""
+
+    def __init__(self, cause: BaseException, receipt: object) -> None:
+        super().__init__("managed launch attempt settled without a process")
+        self.cause = cause
+        self._receipt = receipt
+
+
 class _ManagedSpawnEffect:
     """One authority-owned witness around the native process-creation effect."""
 
@@ -497,11 +506,34 @@ class _ManagedSpawnEffect:
 
         return _ManagedSpawnNotCreated(cause, self._receipt)
 
+    def settled_without_process(
+        self, cause: BaseException
+    ) -> _ManagedSpawnSettledWithoutProcess:
+        """Settle one begun native attempt that proved it owns no process."""
+
+        with self._lock:
+            if self._state != "started" or self._attached is not None:
+                raise RuntimeError(
+                    "managed process attempt cannot settle without a process"
+                )
+            self._state = "settled-without-process"
+            return _ManagedSpawnSettledWithoutProcess(cause, self._receipt)
+
     def accepts(self, failure: _ManagedSpawnNotCreated) -> bool:
         with self._lock:
             return (
                 failure._receipt is self._receipt
                 and self._state == "ready"
+                and self._attached is None
+            )
+
+    def accepts_settled(
+        self, failure: _ManagedSpawnSettledWithoutProcess
+    ) -> bool:
+        with self._lock:
+            return (
+                failure._receipt is self._receipt
+                and self._state == "settled-without-process"
                 and self._attached is None
             )
 
@@ -659,6 +691,10 @@ class _ManagedPreparationLease(LaunchPreparationLease, _ManagedProcessPreparatio
             return process
         except _ManagedSpawnNotCreated as failure:
             if effect.accepts(failure):
+                outcome = "not-created"
+            raise failure.cause from failure
+        except _ManagedSpawnSettledWithoutProcess as failure:
+            if effect.accepts_settled(failure):
                 outcome = "not-created"
             raise failure.cause from failure
         finally:
