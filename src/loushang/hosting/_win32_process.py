@@ -52,7 +52,7 @@ _TOKEN_QUERY = 0x0008
 _DISABLE_MAX_PRIVILEGE = 0x00000001
 _LUA_TOKEN = 0x00000004
 _WRITE_RESTRICTED = 0x00000008
-_WIN_RESTRICTED_CODE_SID = 18
+_WIN_BUILTIN_ADMINISTRATORS_SID = 26
 _SECURITY_MAX_SID_SIZE = 68
 _FILE_SHARE_READ = 0x00000001
 _FILE_SHARE_WRITE = 0x00000002
@@ -355,13 +355,15 @@ class _CtypesWin32Api:
         sid_storage = ctypes.create_string_buffer(_SECURITY_MAX_SID_SIZE)
         sid_size = wintypes.DWORD(ctypes.sizeof(sid_storage))
         if not self._CreateWellKnownSid(
-            _WIN_RESTRICTED_CODE_SID,
+            _WIN_BUILTIN_ADMINISTRATORS_SID,
             None,
             ctypes.byref(sid_storage),
             ctypes.byref(sid_size),
         ):
-            self._raise_last_error("CreateWellKnownSid(WinRestrictedCodeSid)")
-        restricting_sids = (_SID_AND_ATTRIBUTES * 1)(
+            self._raise_last_error(
+                "CreateWellKnownSid(WinBuiltinAdministratorsSid)"
+            )
+        disabled_sids = (_SID_AND_ATTRIBUTES * 1)(
             _SID_AND_ATTRIBUTES(
                 Sid=ctypes.cast(sid_storage, ctypes.c_void_p),
                 Attributes=0,
@@ -372,12 +374,12 @@ class _CtypesWin32Api:
         if not self._CreateRestrictedToken(
             source_token,
             flags,
-            0,
-            None,
-            0,
-            None,
             1,
-            ctypes.byref(restricting_sids),
+            ctypes.byref(disabled_sids),
+            0,
+            None,
+            0,
+            None,
             ctypes.byref(token),
         ):
             self._raise_last_error("CreateRestrictedToken")

@@ -198,7 +198,7 @@ def _spec(
             f"{executable_identity.volume_serial}:{executable_identity.file_id}",
             f"cwd:win32:{cwd_identity.volume_serial}:{cwd_identity.file_id}",
             "restricted-token:disable-max-privilege+lua+write-restricted"
-            "+restricted-code-sid-v1",
+            "+disable-administrators-sid-v1",
             f"direct-imports:{','.join(imports)}",
             f"platform:{platform_identity}",
         ),

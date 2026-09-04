@@ -33,7 +33,8 @@ The captured execution closure contains:
 - the exact AMD64 PE SHA-256 and locked Win32 volume/128-bit file identity;
 - the locked cwd volume/128-bit file identity;
 - the fixed restricted-token recipe `DISABLE_MAX_PRIVILEGE | LUA_TOKEN |
-  WRITE_RESTRICTED` plus one `WinRestrictedCodeSid` restricting SID;
+  WRITE_RESTRICTED` plus explicit disabling of the
+  `WinBuiltinAdministratorsSid` group;
 - the exact direct-import set, currently limited to `KERNEL32.DLL` and
   `ADVAPI32.DLL`; and
 - the exact Windows AMD64 major/minor/build platform identity.

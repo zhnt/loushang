@@ -60,7 +60,7 @@ def _spec() -> _WindowsRestrictedLaunchCaptureSpec:
             "executable:win32:7:101",
             "cwd:win32:7:202",
             "restricted-token:disable-max-privilege+lua+write-restricted"
-            "+restricted-code-sid-v1",
+            "+disable-administrators-sid-v1",
             "direct-imports:KERNEL32.DLL",
             "platform:windows-amd64-10.0.20348",
         ),
@@ -676,9 +676,10 @@ def test_win32_restricted_token_uses_the_exact_profile_flags() -> None:
         restricted: object,
         target: object,
     ) -> int:
-        assert (disable_count, disable, delete_count, delete) == (0, None, 0, None)
-        assert restricted_count == 1
-        assert restricted is not None
+        assert disable_count == 1
+        assert disable is not None
+        assert (delete_count, delete) == (0, None)
+        assert (restricted_count, restricted) == (0, None)
         observed.append((source, flags))
         ctypes.cast(target, ctypes.POINTER(ctypes.c_void_p)).contents.value = 91
         return 1
@@ -688,7 +689,7 @@ def test_win32_restricted_token_uses_the_exact_profile_flags() -> None:
 
     assert api.create_restricted_token(17) == 91
     assert observed == [(17, 0x00000001 | 0x00000004 | 0x00000008)]
-    assert observed_sid_types == [18]
+    assert observed_sid_types == [26]
 
 
 def test_windows_pe_parser_accepts_exact_amd64_direct_import_profile(
