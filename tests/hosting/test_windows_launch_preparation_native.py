@@ -239,7 +239,7 @@ static void emit(const char *body, DWORD size) {{
 
 void WINAPI mainCRTStartup(void) {{
     if (contains(GetCommandLineW(), L"--unrestricted-smoke")) {{
-        emit("unrestricted\n", 13);
+        emit("unrestricted\\n", 13);
         ExitProcess(0);
     }}
     HANDLE token = 0;
