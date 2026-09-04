@@ -318,6 +318,32 @@ def test_posix_reaped_leader_pid_reuse_is_not_signalled(
     process.signal_group(signal.SIGKILL)
 
 
+def test_posix_denied_existence_probe_keeps_group_live(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _LiveProcess:
+        pid = 431
+        returncode = None
+
+    process = _PosixProcess(_LiveProcess())  # type: ignore[arg-type]
+    signals: list[int] = []
+
+    def permission_sensitive_killpg(
+        process_group_id: int,
+        group_signal: int,
+    ) -> None:
+        assert process_group_id == 431
+        signals.append(group_signal)
+        if group_signal == 0:
+            raise PermissionError("existence is known but signaling is denied")
+
+    monkeypatch.setattr(_posix_process.os, "killpg", permission_sensitive_killpg)
+
+    process.signal_group(signal.SIGKILL)
+
+    assert signals == [0, signal.SIGKILL]
+
+
 def test_posix_backend_rejects_foreign_transport() -> None:
     backend = _PosixProcessBackend()
     with pytest.raises(TypeError, match="own process transport"):
