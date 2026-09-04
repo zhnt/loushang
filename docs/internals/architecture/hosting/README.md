@@ -42,6 +42,8 @@ H5 adds a default-dark Harness Worker aggregate adapter, explicit typed owner
 selection, stable pathless diagnostics, and a future-attempt rollback latch.
 The Current Harness Worker route remains unchanged; required-containment
 sealed-descriptor transfer and Product/native activation remain separate gaps.
+H6.0 now records a proposed opaque managed-preparation contract and native
+proof plan. It changes no runtime owner or public API and leaves H5 dark.
 
 Current process mechanics remain implemented inside Harness, principally by:
 
@@ -201,10 +203,12 @@ model.
 9. [H3 Inherited Peer Endpoint](inherited-peer-endpoint-h3.md);
 10. [H4 Atomic Child Session](atomic-child-session-h4.md);
 11. [H5 Default-Dark Harness Worker Adapter](harness-worker-adapter-h5.md);
-12. [Hosted Application Support Boundary](key-designs/hosted-application-support-boundary.md);
-13. [ARD-002: Hosting Top-Level Placement](../decisions/ARD-002-hosting-top-level-placement.md);
-14. [Traceability](traceability.md);
-15. current source, tests, and generated package facts.
+12. [H6 Proposed Managed Launch Preparation](managed-launch-preparation-h6.md);
+13. [Hosted Product Runtime V1 Current Inventory](validation/hosted-product-runtime-v1-inventory.md);
+14. [Hosted Application Support Boundary](key-designs/hosted-application-support-boundary.md);
+15. [ARD-002: Hosting Top-Level Placement](../decisions/ARD-002-hosting-top-level-placement.md);
+16. [Traceability](traceability.md);
+17. current source, tests, and generated package facts.
 
 ## Current-To-Target Gaps
 
@@ -216,8 +220,8 @@ model.
   Harness contracts remain valid until migration.
 - `implemented`: POSIX socketpair and Windows anonymous-pipe inherited endpoint
   adapters, single-use transfer, deterministic lifecycle evidence, and native
-  three-platform conformance suites. Local POSIX evidence is green; the
-  combined Windows CI result is pending until this branch is pushed.
+  three-platform conformance suites. Local POSIX and retained Windows native
+  evidence are green.
 - `implemented`: a default-dark Harness compatibility facade for the
   representable request subset, including explicit sealed-FD refusal.
 - `implemented`: H0 standard-library-only/no-authority public-surface gates and
@@ -229,14 +233,16 @@ model.
   peer closure, cancellation ownership, and no-listener/no-discovery boundary.
 - `implemented`: H4 atomic process-plus-endpoint transactions, joint lifetime,
   cleanup-debt fencing, compatible platform-set selection, and local POSIX
-  native round-trip evidence. The combined Windows CI result remains pending
-  until this branch is pushed.
+  native round-trip evidence. Retained Windows native round-trip evidence is
+  also green.
 - `implemented`: the H5 default-dark aggregate Worker adapter, Supervisor
   session entrypoint, explicit no-fallback selector, pathless diagnostics, and
   future-attempt rollback latch.
-- `missing`: a Hosting-consumable opaque sealed-executable/containment
-  preparation capability and reviewed Product/native Worker activation route;
-  PLC9C5 remains separate from Hosting extraction.
+- `proposed`: H6 specifies a Hosting-consumable opaque managed-preparation
+  capability and exact Linux/Windows proof obligations; no implementation or
+  public contract exists yet.
+- `missing`: a reviewed Product/native Worker activation route; PLC9C5 remains
+  separate from Hosting extraction and H6 does not pre-approve it.
 - `missing`: daemon/service-instance lifecycle remains a trigger-gated future
   candidate and is not part of the five-component v1 baseline.
 

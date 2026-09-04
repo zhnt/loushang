@@ -4,6 +4,7 @@
 [Future Architecture v3](future-loushang-architecture-v3.md) ·
 [Application Service Refactor](application-service-refactor.md) ·
 [AppHost Top-Level Placement](apphost-top-level-placement.md) ·
+[AppHost A0 Contract Baseline](apphost-contract-baseline-a0.md) ·
 [Hosting Support Boundary](../hosting/key-designs/hosted-application-support-boundary.md)
 
 ## Status
@@ -50,9 +51,10 @@ Plugin lifecycle, or provider-composition boundaries.
   Harnesstui and Product-owned adapters;
 - `SessionFacade`, `SessionOperationRuntime`, and the legacy JSONL RPC host
   provide current typed Session and transitional remote-host boundaries; and
-- there is no `loushang.apphost`, `loushang.appserver`, or
-  `loushang.hosting` package, App Contract, `AppClient`, `AppService`, hosted
-  live Session router, or reconnect protocol.
+- `loushang.hosting` implements Product-neutral process and child-session
+  mechanics, while there is no `loushang.apphost`, `loushang.appserver`, App
+  Contract, `AppClient`, `AppService`, hosted live Session router, or reconnect
+  protocol. Hosting existence does not imply an App protocol or daemon.
 
 The Current claims above are bounded by the evidence listed in the status
 block. The source and tests remain authoritative if this draft drifts.
@@ -236,14 +238,15 @@ itself.
 
 AppService may define the structural ports it consumes. A
 `ProductSessionResolver` is an injected narrow adapter over AppHost's already
-admitted Product catalog/router. Before Product-specific parsing, AppHost reads
-the generic versioned Session Identity Envelope defined by the parent placement
-and obtains its required `product_id` and opaque locator. Resolution returns a
-new scoped Product Runtime binding for each new/open/resume Session; a
-single-Product deployment limits allowed Product IDs but does not share one
-mutable Runtime handle among Sessions. Missing legacy identity requires an
-explicit compatibility migration or typed `ProductIdentityRequired`, never a
-default fallback. The resolver does not own
+admitted Product catalog/router. Before Product-specific parsing, AppHost
+consumes the generic versioned Session Identity Envelope from the
+caller-injected identity/catalog port defined by the parent placement and A0
+baseline; it never derives cwd/home roots or reads Session files directly.
+Resolution returns a new scoped Product Runtime binding for each
+new/open/resume Session; a single-Product deployment limits allowed Product IDs
+but does not share one mutable Runtime handle among Sessions. Missing legacy
+identity requires an explicit compatibility migration or typed
+`ProductIdentityRequired`, never a default fallback. The resolver does not own
 Product registration, Plugin discovery, OEM selection, provider resolution,
 or trust policy. Hosted Product integration modules implement the injected
 Session, Work, projection, and optional Channel ports and may call Product and
@@ -589,9 +592,12 @@ does not stall unrelated Sessions or aggregates.
 Aggregate create and member mutations extend the idempotency target domain
 with the endpoint, aggregate, or member identity as applicable. Aggregate
 close first stops member admission, fences attachments and member routes, then
-attempts every distinct Session binding release exactly once and reports an
-aggregate result. One failure does not skip reachable releases or claim false
-cleanup success.
+attempts every aggregate-owned membership, subscription, presenter, and
+attachment lease release exactly once and reports an aggregate result. It
+never directly closes the canonical AppHost Session runtime binding; explicit
+`session/close` or process shutdown fences new attachment and the live-binding
+owner closes only after all references drain. One failure does not skip
+reachable releases or claim false cleanup success.
 
 ## Concurrency, Ordering, And Backpressure
 
