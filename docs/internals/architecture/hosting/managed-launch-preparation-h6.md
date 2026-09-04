@@ -5,9 +5,9 @@
 - ID: `HOST-H6`
 - Scope: `hosting`
 - Parent: `loushang`
-- Authority: normative proposed design
-- Design status: proposed
-- Implementation status: not-started
+- Authority: normative accepted design
+- Design status: accepted
+- Implementation status: partial — H6.1 private fake-backed core
 - Activation status: forbidden; H5 remains default-dark
 - Owner: Loushang Hosting architecture
 
@@ -148,6 +148,13 @@ their meaning:
 - the Hosting half owns native resource acquisition, private spawn binding,
   one-use consumption, and native cleanup.
 
+Until `prepare_managed` returns a result, any caller semantic candidate remains
+caller-owned. A managed preparation adapter that raises or is cancelled after
+capture must close that candidate through its own cancellation-safe owner
+operation; Hosting simultaneously rolls back every native material already
+attached to the reservation. Once the result returns and its binding is
+consumed, the joined preparation lease owns both cleanup paths.
+
 H6.1 must select and prove one common composition protocol. Candidate shapes
 include typed opaque binding slots or private double-dispatch into the selected
 backend. String placeholder substitution, duck-typed raw-handle carriers, and
@@ -194,7 +201,10 @@ ambiguous spawn/transfer -------------------------------> FENCED
   section containing the unique inheritance-manifest claim, sole OS process
   creation effect, and synchronous process attachment callback. Caller
   cancellation is observed only after its outcome is known and cleanup is
-  owned. An unknowable outcome becomes `FENCED`, never a retry authority.
+  owned. The attempt mints the only valid `not-created` receipt; the matched
+  backend crosses its effect gate immediately before OS creation, and any
+  receipt observed after that gate or an attachment witness is invalid. An
+  unknowable outcome becomes `FENCED`, never a retry authority.
 - A close racing with capture/verify/claim waits for that owner operation. It
   must not close a descriptor or handle whose transfer outcome is unresolved.
   Repeated close joins one idempotent cleanup operation.
@@ -211,11 +221,16 @@ Resource classes have explicit successful release points:
 
 No successful path leaves native material owned only by a callback-local
 variable. A capture acquisition failure that cannot close all attached
-material faults and retains the reservation as cleanup debt.
+material faults and retains the reservation as cleanup debt. A joined native
+plus caller preparation is likewise attached to the Child Session reservation
+before endpoint acquisition and remains there until Process Host accepts it.
+Lower Process/Endpoint cleanup debt is retained by exact session and source;
+an unrelated `CLEANUP_FAILED` exception is never treated as proof that a lower
+owner still holds resources.
 
-## Proposed Contract Properties
+## Accepted Contract Properties
 
-The future exact schema must express only the minimum neutral constraints that
+The private H6.1 schema expresses only the minimum neutral constraints that
 Hosting can enforce mechanically:
 
 - normalized expected launch-request fingerprint;
@@ -249,10 +264,10 @@ platform-specific private representation may be richer, but remains behind the
 selected Hosting backend.
 
 The existing caller-provided `LaunchPreparationPort` remains the semantic
-fence. H6 may extend its result through a new versioned opaque capability or a
-separate required port, but must preserve H0--H5 compatibility. Field-level API
-selection is deferred until the POSIX and Windows feasibility spikes prove one
-common ownership protocol.
+fence. H6.1 adds a separate private managed-preparation port and reservation
+capture capability while preserving H0--H5 compatibility. Native H6.2/H6.3
+profile data remains private behind matched backend double-dispatch; promotion
+of any author-facing field is a separate versioned contract decision.
 
 ## Successful Interaction
 
@@ -339,6 +354,11 @@ and tree-lifetime properties have native evidence.
 | H6.2 | Linux native preparation backend | required-containment and executable/cwd/descriptor adversarial oracle passes |
 | H6.3 | Windows native preparation backend | AppContainer/token, handle-list, Job, identity, and cleanup oracle passes |
 | H6.4 | dark Harness preparation adapter and H5 parity matrix | Current and Hosting owners are independently conformant; default remains Current |
+
+H6.1 is implemented as a private, default-dark core. Its non-committing POSIX
+and Windows mapping probes and fake-backed lifecycle evidence are retained in
+[H6.1 Managed Launch Preparation Feasibility Record](validation/managed-launch-preparation-h6-feasibility.md).
+No H6.2/H6.3 native adapter or H6.4 Harness adapter is implied by that result.
 
 The H6.1 probes perform no production spawn and reserve no public API. H6.2,
 H6.3, and the fake-backed part of H6.4 may be developed in parallel only after

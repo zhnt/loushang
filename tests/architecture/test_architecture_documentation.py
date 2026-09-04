@@ -39,6 +39,8 @@ INITIAL_GOVERNED_DOCUMENTS = (
     ARCHITECTURE_ROOT / "hosting/contract-model-h0.md",
     ARCHITECTURE_ROOT / "hosting/traceability.md",
     ARCHITECTURE_ROOT / "hosting/managed-launch-preparation-h6.md",
+    ARCHITECTURE_ROOT
+    / "hosting/validation/managed-launch-preparation-h6-feasibility.md",
     ARCHITECTURE_ROOT / "hosting/validation/hosted-product-runtime-v1-inventory.md",
     ARCHITECTURE_ROOT / "hosting/key-designs/hosted-application-support-boundary.md",
     ARCHITECTURE_ROOT / "drafts/apphost-top-level-placement.md",
