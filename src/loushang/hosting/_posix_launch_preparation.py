@@ -553,9 +553,8 @@ def _capture_static_elf(path: str, *, expected_digest: str) -> int:
                 HostingFailureCategory.PREPARATION_FAILED,
                 "POSIX static executable changed during capture",
             )
-        os.fchmod(destination, 0o500)
-        assert fcntl is not None
-        fcntl.fcntl(destination, _F_ADD_SEALS, _required_seals())
+        _fchmod(destination, 0o500)
+        _fcntl_call(destination, _F_ADD_SEALS, _required_seals())
         _verify_static_elf(destination, size=copied)
         destination_stat = os.fstat(destination)
         _verify_static_descriptor(
@@ -615,8 +614,7 @@ def _verify_static_descriptor(
             HostingFailureCategory.PREPARATION_STALE,
             "POSIX sealed executable identity changed",
         )
-    assert fcntl is not None
-    if fcntl.fcntl(descriptor, _F_GET_SEALS) & _required_seals() != _required_seals():
+    if _fcntl_call(descriptor, _F_GET_SEALS) & _required_seals() != _required_seals():
         raise HostingError(
             HostingFailureCategory.PREPARATION_STALE,
             "POSIX executable memfd is no longer sealed",
@@ -645,7 +643,7 @@ def _verify_cwd_descriptor(
 
 
 def _verify_static_elf(descriptor: int, *, size: int) -> None:
-    header = os.pread(descriptor, min(size, 64), 0)
+    header = _pread(descriptor, min(size, 64), 0)
     if len(header) < 58 or header[:4] != b"\x7fELF":
         raise HostingError(
             HostingFailureCategory.PREPARATION_FAILED,
@@ -679,7 +677,7 @@ def _verify_static_elf(descriptor: int, *, size: int) -> None:
             HostingFailureCategory.PREPARATION_FAILED,
             "POSIX ELF program-header table is out of bounds",
         )
-    table = os.pread(descriptor, table_size, program_offset)
+    table = _pread(descriptor, table_size, program_offset)
     if len(table) != table_size:
         raise HostingError(
             HostingFailureCategory.PREPARATION_FAILED,
@@ -700,7 +698,7 @@ def _descriptor_digest(descriptor: int, size: int) -> str:
     digest = hashlib.sha256()
     offset = 0
     while offset < size:
-        chunk = os.pread(descriptor, min(_COPY_CHUNK_BYTES, size - offset), offset)
+        chunk = _pread(descriptor, min(_COPY_CHUNK_BYTES, size - offset), offset)
         if not chunk:
             break
         digest.update(chunk)
@@ -754,9 +752,8 @@ def _ensure_preparation_descriptor(descriptor: int) -> int:
                     f"POSIX descriptor normalization cleanup also failed: {cleanup}"
                 )
             raise
-    assert fcntl is not None
     try:
-        duplicate = fcntl.fcntl(
+        duplicate = _fcntl_call(
             descriptor,
             getattr(fcntl, "F_DUPFD_CLOEXEC", 1030),
             3,
@@ -778,6 +775,46 @@ def _ensure_preparation_descriptor(descriptor: int) -> int:
             role="duplicate descriptor",
         )
         raise
+
+
+def _fchmod(descriptor: int, mode: int) -> None:
+    operation = getattr(os, "fchmod", None)
+    if not callable(operation):
+        raise HostingError(
+            HostingFailureCategory.PLATFORM_UNSUPPORTED,
+            "POSIX static launch preparation requires fchmod",
+        )
+    operation(descriptor, mode)
+
+
+def _pread(descriptor: int, size: int, offset: int) -> bytes:
+    operation = getattr(os, "pread", None)
+    if not callable(operation):
+        raise HostingError(
+            HostingFailureCategory.PLATFORM_UNSUPPORTED,
+            "POSIX static launch preparation requires pread",
+        )
+    body = operation(descriptor, size, offset)
+    if not isinstance(body, bytes):
+        raise TypeError("POSIX pread returned non-bytes data")
+    return body
+
+
+def _fcntl_call(descriptor: int, command: int, argument: int | None = None) -> int:
+    operation = getattr(fcntl, "fcntl", None)
+    if not callable(operation):
+        raise HostingError(
+            HostingFailureCategory.PLATFORM_UNSUPPORTED,
+            "POSIX static launch preparation requires fcntl",
+        )
+    result = (
+        operation(descriptor, command)
+        if argument is None
+        else operation(descriptor, command, argument)
+    )
+    if not isinstance(result, int):
+        raise TypeError("POSIX fcntl returned a non-integer result")
+    return result
 
 
 def _require_sha256(value: object, *, name: str) -> None:
