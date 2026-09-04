@@ -38,6 +38,7 @@ CURRENT_SOURCE_SEAMS = (
     HOSTING_SOURCE / "_child_session_host.py",
     HOSTING_SOURCE / "_launch_preparation.py",
     HOSTING_SOURCE / "_posix_launch_preparation.py",
+    HOSTING_SOURCE / "_windows_launch_preparation.py",
     HOSTING_SOURCE / "_posix_process.py",
     HOSTING_SOURCE / "_windows_process.py",
     HOSTING_SOURCE / "_win32_process.py",
@@ -132,7 +133,7 @@ def test_baseline_documents_are_status_honest_and_indexed() -> None:
             "Authority": "normative accepted design",
             "Design status": "accepted",
             "Implementation status": (
-                "partial — H6.1 core and H6.2 Linux native profiles"
+                "partial — H6.1 core, H6.2 Linux, and H6.3 Windows native profiles"
             ),
             "Activation status": "forbidden; H5 remains default-dark",
         },

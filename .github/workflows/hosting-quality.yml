@@ -53,6 +53,7 @@ jobs:
           tests/architecture/test_hosting_h4_child_session.py
           tests/architecture/test_hosting_h6_launch_preparation.py
           tests/architecture/test_hosting_h6_posix_native.py
+          tests/architecture/test_hosting_h6_windows_native.py
           tests/architecture/test_hosted_product_runtime_v1_baseline.py
           tests/architecture/test_hosting_architecture_baseline.py
 
@@ -91,6 +92,35 @@ jobs:
           path: .artifacts/h6-posix-native.xml
           if-no-files-found: error
 
+      - name: Create H6.3 native report directory
+        if: matrix.os == 'windows-2022'
+        run: uv run python -c "from pathlib import Path; Path('.artifacts').mkdir(exist_ok=True)"
+
+      - name: H6.3 Windows native adversarial gate
+        if: matrix.os == 'windows-2022'
+        env:
+          PYTEST_ADDOPTS: >-
+            -o faulthandler_timeout=60
+            --junitxml=.artifacts/h6-windows-native.xml
+        run: >-
+          uv run --extra dev python scripts/dev/run_pytest.py
+          tests/hosting/test_windows_launch_preparation_native.py
+          -q
+
+      - name: Reject empty, skipped, or failing H6.3 native report
+        if: matrix.os == 'windows-2022'
+        run: >-
+          uv run python scripts/dev/verify_pytest_xml.py
+          .artifacts/h6-windows-native.xml
+
+      - name: Upload H6.3 Windows native report
+        if: always() && matrix.os == 'windows-2022'
+        uses: actions/upload-artifact@v4
+        with:
+          name: h6-windows-native-pytest-report
+          path: .artifacts/h6-windows-native.xml
+          if-no-files-found: error
+
       - name: Test Hosting H0-H6 contract
         env:
           LOUSHANG_HOSTING_EXPECTED_BACKEND: ${{ matrix.backend }}
@@ -106,6 +136,7 @@ jobs:
           tests/architecture/test_hosting_h4_child_session.py
           tests/architecture/test_hosting_h6_launch_preparation.py
           tests/architecture/test_hosting_h6_posix_native.py
+          tests/architecture/test_hosting_h6_windows_native.py
           tests/architecture/test_hosted_product_runtime_v1_baseline.py
           tests/architecture/test_hosting_architecture_baseline.py
           -q

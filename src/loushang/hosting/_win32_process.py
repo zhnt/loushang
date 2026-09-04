@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import ctypes
 import os
+import platform
 import subprocess
 import sys
+from collections.abc import Callable
 from contextlib import suppress
 from ctypes import wintypes
 from dataclasses import dataclass
@@ -44,6 +46,21 @@ _ERROR_OPERATION_ABORTED = 995
 _ERROR_NOT_FOUND = 1168
 _INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
 _THREAD_TERMINATE = 0x0001
+_TOKEN_ASSIGN_PRIMARY = 0x0001
+_TOKEN_DUPLICATE = 0x0002
+_TOKEN_QUERY = 0x0008
+_DISABLE_MAX_PRIVILEGE = 0x00000001
+_LUA_TOKEN = 0x00000004
+_WRITE_RESTRICTED = 0x00000008
+_FILE_SHARE_READ = 0x00000001
+_FILE_SHARE_WRITE = 0x00000002
+_FILE_READ_ATTRIBUTES = 0x00000080
+_FILE_FLAG_BACKUP_SEMANTICS = 0x02000000
+_FILE_FLAG_OPEN_REPARSE_POINT = 0x00200000
+_FILE_ATTRIBUTE_DIRECTORY = 0x00000010
+_FILE_ATTRIBUTE_REPARSE_POINT = 0x00000400
+_FILE_NAME_NORMALIZED = 0x0
+_MAX_FINAL_PATH_CHARS = 32768
 
 
 class _SECURITY_ATTRIBUTES(ctypes.Structure):
@@ -90,6 +107,21 @@ class _PROCESS_INFORMATION(ctypes.Structure):
         ("hThread", wintypes.HANDLE),
         ("dwProcessId", wintypes.DWORD),
         ("dwThreadId", wintypes.DWORD),
+    ]
+
+
+class _BY_HANDLE_FILE_INFORMATION(ctypes.Structure):
+    _fields_ = [
+        ("dwFileAttributes", wintypes.DWORD),
+        ("ftCreationTime", wintypes.FILETIME),
+        ("ftLastAccessTime", wintypes.FILETIME),
+        ("ftLastWriteTime", wintypes.FILETIME),
+        ("dwVolumeSerialNumber", wintypes.DWORD),
+        ("nFileSizeHigh", wintypes.DWORD),
+        ("nFileSizeLow", wintypes.DWORD),
+        ("nNumberOfLinks", wintypes.DWORD),
+        ("nFileIndexHigh", wintypes.DWORD),
+        ("nFileIndexLow", wintypes.DWORD),
     ]
 
 
@@ -149,6 +181,32 @@ class _Win32SpawnHandles:
     stdin_write: int | None
     stdout_read: int | None
     stderr_read: int | None
+    cleanup_handles: tuple[int, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class _Win32LockedPathIdentity:
+    volume_serial: int
+    file_id: int
+    size: int
+    final_path: str
+    is_directory: bool
+
+
+class _Win32CreateNotStarted(Exception):
+    """Expected setup failure before the unique CreateProcess effect."""
+
+    def __init__(self, cause: BaseException) -> None:
+        super().__init__("Win32 process creation did not start")
+        self.cause = cause
+
+
+class _Win32CreateSettledWithoutProcess(Exception):
+    """CreateProcessAsUserW returned false and created no process owner."""
+
+    def __init__(self, cause: OSError) -> None:
+        super().__init__("Win32 process creation settled without a process")
+        self.cause = cause
 
 
 @dataclass(frozen=True, slots=True)
@@ -172,7 +230,7 @@ class _CtypesWin32Api:
             raise HostingError(
                 HostingFailureCategory.PLATFORM_UNSUPPORTED,
                 "atomic Job Object process creation requires Windows 10 or later",
-            )
+        )
         loader = getattr(ctypes, "WinDLL", None)
         if loader is None:
             raise HostingError(
@@ -181,12 +239,237 @@ class _CtypesWin32Api:
             )
         try:
             self._kernel32 = loader("kernel32", use_last_error=True)
+            self._advapi32 = loader("advapi32", use_last_error=True)
             self._bind_functions()
         except (AttributeError, OSError) as exc:
             raise HostingError(
                 HostingFailureCategory.PLATFORM_UNSUPPORTED,
                 "required atomic Win32 process APIs are unavailable",
             ) from exc
+
+    def platform_identity(self) -> str:
+        machine = platform.machine().lower()
+        if machine not in {"amd64", "x86_64"}:
+            raise HostingError(
+                HostingFailureCategory.PLATFORM_UNSUPPORTED,
+                "Windows managed launch requires AMD64",
+            )
+        version = sys.getwindowsversion()  # type: ignore[attr-defined]
+        return f"windows-amd64-{version.major}.{version.minor}.{version.build}"
+
+    def open_locked_file(self, path: str) -> int:
+        return self._open_locked_path(path, directory=False)
+
+    def open_locked_directory(self, path: str) -> int:
+        return self._open_locked_path(path, directory=True)
+
+    def locked_path_identity(self, handle: int) -> _Win32LockedPathIdentity:
+        information = _BY_HANDLE_FILE_INFORMATION()
+        if not self._GetFileInformationByHandle(handle, ctypes.byref(information)):
+            self._raise_last_error("GetFileInformationByHandle")
+        attributes = int(information.dwFileAttributes)
+        if attributes & _FILE_ATTRIBUTE_REPARSE_POINT:
+            raise HostingError(
+                HostingFailureCategory.PREPARATION_FAILED,
+                "Windows managed launch rejects reparse-point paths",
+            )
+        buffer = ctypes.create_unicode_buffer(_MAX_FINAL_PATH_CHARS)
+        length = self._GetFinalPathNameByHandleW(
+            handle,
+            buffer,
+            len(buffer),
+            _FILE_NAME_NORMALIZED,
+        )
+        if length == 0:
+            self._raise_last_error("GetFinalPathNameByHandleW")
+        if length >= len(buffer):
+            raise OSError("Windows final path exceeds its retained bound")
+        return _Win32LockedPathIdentity(
+            volume_serial=int(information.dwVolumeSerialNumber),
+            file_id=(int(information.nFileIndexHigh) << 32)
+            | int(information.nFileIndexLow),
+            size=(int(information.nFileSizeHigh) << 32)
+            | int(information.nFileSizeLow),
+            final_path=buffer.value,
+            is_directory=bool(attributes & _FILE_ATTRIBUTE_DIRECTORY),
+        )
+
+    def open_process_token(self) -> int:
+        token = wintypes.HANDLE()
+        access = _TOKEN_ASSIGN_PRIMARY | _TOKEN_DUPLICATE | _TOKEN_QUERY
+        if not self._OpenProcessToken(
+            self._GetCurrentProcess(),
+            access,
+            ctypes.byref(token),
+        ):
+            self._raise_last_error("OpenProcessToken")
+        return _handle_value(token)
+
+    def create_restricted_token(self, source_token: int) -> int:
+        token = wintypes.HANDLE()
+        flags = _DISABLE_MAX_PRIVILEGE | _LUA_TOKEN | _WRITE_RESTRICTED
+        if not self._CreateRestrictedToken(
+            source_token,
+            flags,
+            0,
+            None,
+            0,
+            None,
+            0,
+            None,
+            ctypes.byref(token),
+        ):
+            self._raise_last_error("CreateRestrictedToken")
+        return _handle_value(token)
+
+    def token_is_restricted(self, token: int) -> bool:
+        return bool(self._IsTokenRestricted(token))
+
+    def create_managed_job(self) -> int:
+        return self._create_job()
+
+    def managed_job_is_kill_on_close(self, job: int) -> bool:
+        limits = _JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
+        if not self._QueryInformationJobObject(
+            job,
+            _JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
+            ctypes.byref(limits),
+            ctypes.sizeof(limits),
+            None,
+        ):
+            self._raise_last_error("QueryInformationJobObject")
+        return bool(
+            limits.BasicLimitInformation.LimitFlags
+            & _JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+        )
+
+    def create_managed_stderr(self) -> int:
+        return self._null_handle(read=False)
+
+    def spawn_restricted(
+        self,
+        request: ProcessLaunchRequest,
+        endpoint_handles: tuple[int, int],
+        *,
+        application_name: str,
+        cwd: str,
+        token: int,
+        job: int,
+        stderr_handle: int,
+        begin_effect: Callable[[], None],
+    ) -> _Win32SpawnHandles:
+        child_stdin, child_stdout = endpoint_handles
+        native_handles = (child_stdin, child_stdout, stderr_handle, token, job)
+        if any(type(handle) is not int or handle <= 0 for handle in native_handles):
+            raise _Win32CreateNotStarted(
+                HostingError(
+                    HostingFailureCategory.ENDPOINT_TRANSFER_FAILED,
+                    "Windows managed launch received invalid native handles",
+                )
+            )
+        if len(set(native_handles)) != len(native_handles):
+            raise _Win32CreateNotStarted(
+                HostingError(
+                    HostingFailureCategory.ENDPOINT_TRANSFER_FAILED,
+                    "Windows endpoint and preparation handles collide",
+                )
+            )
+        attributes: _Win32AttributeList | None = None
+        try:
+            attributes = self._attribute_list(
+                job,
+                (child_stdin, child_stdout, stderr_handle),
+            )
+            startup = _STARTUPINFOEXW()
+            startup.StartupInfo.cb = ctypes.sizeof(startup)
+            startup.StartupInfo.dwFlags = _STARTF_USESTDHANDLES
+            startup.StartupInfo.hStdInput = child_stdin
+            startup.StartupInfo.hStdOutput = child_stdout
+            startup.StartupInfo.hStdError = stderr_handle
+            startup.lpAttributeList = attributes.pointer
+            process_information = _PROCESS_INFORMATION()
+            command_line = ctypes.create_unicode_buffer(
+                subprocess.list2cmdline(request.argv)
+            )
+            environment = ctypes.create_unicode_buffer(
+                _environment_block(request.effective_environment)
+            )
+        except BaseException as cause:
+            if attributes is not None:
+                self._DeleteProcThreadAttributeList(attributes.pointer)
+            raise _Win32CreateNotStarted(cause) from cause
+
+        try:
+            begin_effect()
+            created = self._CreateProcessAsUserW(
+                token,
+                application_name,
+                command_line,
+                None,
+                None,
+                True,
+                _EXTENDED_STARTUPINFO_PRESENT
+                | _CREATE_UNICODE_ENVIRONMENT
+                | _CREATE_NO_WINDOW,
+                ctypes.cast(environment, ctypes.c_void_p),
+                cwd,
+                ctypes.byref(startup.StartupInfo),
+                ctypes.byref(process_information),
+            )
+            if not created:
+                try:
+                    self._raise_last_error("CreateProcessAsUserW")
+                except OSError as cause:
+                    raise _Win32CreateSettledWithoutProcess(cause) from cause
+                raise AssertionError("CreateProcessAsUserW error was not raised")
+            process_handle = _handle_value(process_information.hProcess)
+            thread_handle = _handle_value(process_information.hThread)
+            if process_handle <= 0 or thread_handle <= 0:
+                raise RuntimeError("CreateProcessAsUserW returned invalid handles")
+            # Every post-create handle is returned to one process owner.  No
+            # cleanup call can turn a known created process into an ambiguous
+            # exception before synchronous attachment.
+            return _Win32SpawnHandles(
+                process=process_handle,
+                job=job,
+                stdin_write=None,
+                stdout_read=None,
+                stderr_read=None,
+                cleanup_handles=(thread_handle, stderr_handle),
+            )
+        finally:
+            self._DeleteProcThreadAttributeList(attributes.pointer)
+
+    def _open_locked_path(self, path: str, *, directory: bool) -> int:
+        flags = _FILE_FLAG_OPEN_REPARSE_POINT
+        share = _FILE_SHARE_READ
+        if directory:
+            flags |= _FILE_FLAG_BACKUP_SEMANTICS
+            share |= _FILE_SHARE_WRITE
+        raw_handle = self._CreateFileW(
+            path,
+            _FILE_READ_ATTRIBUTES | (0 if directory else _GENERIC_READ),
+            share,
+            None,
+            _OPEN_EXISTING,
+            flags,
+            None,
+        )
+        handle = _handle_value(raw_handle)
+        if handle == _INVALID_HANDLE_VALUE:
+            self._raise_last_error("CreateFileW(locked path)")
+        try:
+            identity = self.locked_path_identity(handle)
+            if identity.is_directory is not directory:
+                raise HostingError(
+                    HostingFailureCategory.PREPARATION_FAILED,
+                    "Windows managed launch path kind is invalid",
+                )
+        except BaseException:
+            with suppress(OSError):
+                self.close_handle(handle)
+            raise
+        return handle
 
     def spawn(
         self,
@@ -537,6 +820,12 @@ class _CtypesWin32Api:
 
     def _bind_functions(self) -> None:
         kernel32: Any = self._kernel32
+        advapi32: Any = self._advapi32
+        self._GetCurrentProcess = _bind(
+            kernel32.GetCurrentProcess,
+            [],
+            wintypes.HANDLE,
+        )
         self._CreateJobObjectW = _bind(
             kernel32.CreateJobObjectW,
             [ctypes.POINTER(_SECURITY_ATTRIBUTES), wintypes.LPCWSTR],
@@ -586,6 +875,16 @@ class _CtypesWin32Api:
             ],
             wintypes.HANDLE,
         )
+        self._GetFileInformationByHandle = _bind(
+            kernel32.GetFileInformationByHandle,
+            [wintypes.HANDLE, ctypes.POINTER(_BY_HANDLE_FILE_INFORMATION)],
+            wintypes.BOOL,
+        )
+        self._GetFinalPathNameByHandleW = _bind(
+            kernel32.GetFinalPathNameByHandleW,
+            [wintypes.HANDLE, wintypes.LPWSTR, wintypes.DWORD, wintypes.DWORD],
+            wintypes.DWORD,
+        )
         self._InitializeProcThreadAttributeList = _bind(
             kernel32.InitializeProcThreadAttributeList,
             [ctypes.c_void_p, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p],
@@ -612,6 +911,48 @@ class _CtypesWin32Api:
         self._CreateProcessW = _bind(
             kernel32.CreateProcessW,
             [
+                wintypes.LPCWSTR,
+                wintypes.LPWSTR,
+                ctypes.c_void_p,
+                ctypes.c_void_p,
+                wintypes.BOOL,
+                wintypes.DWORD,
+                ctypes.c_void_p,
+                wintypes.LPCWSTR,
+                ctypes.POINTER(_STARTUPINFOW),
+                ctypes.POINTER(_PROCESS_INFORMATION),
+            ],
+            wintypes.BOOL,
+        )
+        self._OpenProcessToken = _bind(
+            advapi32.OpenProcessToken,
+            [wintypes.HANDLE, wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE)],
+            wintypes.BOOL,
+        )
+        self._CreateRestrictedToken = _bind(
+            advapi32.CreateRestrictedToken,
+            [
+                wintypes.HANDLE,
+                wintypes.DWORD,
+                wintypes.DWORD,
+                ctypes.c_void_p,
+                wintypes.DWORD,
+                ctypes.c_void_p,
+                wintypes.DWORD,
+                ctypes.c_void_p,
+                ctypes.POINTER(wintypes.HANDLE),
+            ],
+            wintypes.BOOL,
+        )
+        self._IsTokenRestricted = _bind(
+            advapi32.IsTokenRestricted,
+            [wintypes.HANDLE],
+            wintypes.BOOL,
+        )
+        self._CreateProcessAsUserW = _bind(
+            advapi32.CreateProcessAsUserW,
+            [
+                wintypes.HANDLE,
                 wintypes.LPCWSTR,
                 wintypes.LPWSTR,
                 ctypes.c_void_p,
