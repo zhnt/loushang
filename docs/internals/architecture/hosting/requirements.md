@@ -4,9 +4,9 @@
 
 - Scope: `hosting`
 - Parent: `loushang`
-- Authority: normative — proposed requirements
-- Design status: proposed
-- Implementation status: not-started
+- Authority: normative — accepted requirements
+- Design status: accepted
+- Implementation status: partial
 - Owner: Loushang Hosting architecture
 
 ## Functional Requirements
@@ -134,9 +134,9 @@ interface alone is not conformance evidence.
 - global log, trace, session, cache, image, clipboard, or temporary-root owner;
 - separate `loushang-hosting` distribution before independent demand exists.
 
-## Design Acceptance Criteria
+## Implementation Entry Criteria
 
-The design can enter implementation planning only when:
+The design entered H0 implementation after:
 
 1. the top-level placement and dependency direction receive cross-scope review;
 2. every requirement maps to one primary component and a planned gate;
@@ -146,3 +146,8 @@ The design can enter implementation planning only when:
 6. the compatibility and rollback boundary preserves Current Harness behavior;
 7. the implementation-absence guard is replaced by slice-specific gates rather
    than simply deleted.
+
+H0 satisfies criteria 1, 2, 3, 4, 6, and 7 through ARD-002, the accepted
+component model, the compatibility boundary, and executable contract/import
+gates. Criterion 5 remains a required entry gate for the endpoint/platform
+slices and is intentionally not claimed by H0.

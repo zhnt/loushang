@@ -34,6 +34,7 @@ graph TD
     PKG_HARNESS["loushang.harness"]
     PKG_HARNESSTUI["loushang.harnesstui"]
     PKG_HARNESSWORK["loushang.harnesswork"]
+    PKG_HOSTING["loushang.hosting"]
     PKG_METHOD["loushang.method"]
     PKG_ONTOLOGY["loushang.ontology"]
     PKG_PLUGIN["loushang.plugin"]
@@ -88,6 +89,7 @@ graph TD
 | `loushang.harness` | `loushang.agent`, `loushang.ai`, `loushang.foundation` |
 | `loushang.harnesstui` | `loushang.agent`, `loushang.foundation`, `loushang.harness`, `loushang.tui` |
 | `loushang.harnesswork` | `loushang.agent`, `loushang.ai`, `loushang.foundation`, `loushang.harness` |
+| `loushang.hosting` | None |
 | `loushang.method` | `loushang.harness` |
 | `loushang.ontology` | `loushang.foundation` |
 | `loushang.plugin` | `loushang.harness` |

@@ -4,9 +4,9 @@
 
 - Scope: `hosting`
 - Parent: `loushang`
-- Authority: normative — proposed black-box context and boundary
-- Design status: proposed
-- Implementation status: not-started
+- Authority: normative — accepted black-box context and boundary
+- Design status: accepted
+- Implementation status: partial
 - Owner: Loushang Hosting architecture
 
 ## Logical Context
@@ -27,8 +27,9 @@ flowchart LR
     APPHOST -->|complete foreground AppHost executable| HOSTING
 ```
 
-All edges in this diagram are proposed Target relationships. Hosting sees an
-exact request and a preparation lease. It does not see user intent, Plugin
+All edges in this diagram are accepted Target relationships; none is a Current
+consumer edge in H0. Hosting sees an exact request and a preparation lease. It
+does not see user intent, Plugin
 selection, policy rules, approval UI, Worker frames, or domain publication.
 
 ## Logical Actors And Sources Of Variation
@@ -58,9 +59,10 @@ loushang.harness.sandbox               containment preparation and cleanup
 loushang.harness.worker                Worker launch identity/protocol/supervisor
 ```
 
-There is no native Worker endpoint binding and no `loushang.hosting` package.
+There is no native Worker endpoint binding or Hosting runtime owner. H0 adds
+only the `loushang.hosting` Contract Model package.
 
-### Proposed target placement
+### Accepted target placement
 
 ```text
 same installed loushang distribution
