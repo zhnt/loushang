@@ -1,0 +1,664 @@
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+ARCHITECTURE_ROOT = REPOSITORY_ROOT / "docs/internals/architecture"
+HOSTING_ROOT = ARCHITECTURE_ROOT / "hosting"
+HOSTED_APPLICATION_BOUNDARY = (
+    HOSTING_ROOT / "key-designs/hosted-application-support-boundary.md"
+)
+APPHOST_PLACEMENT = ARCHITECTURE_ROOT / "drafts/apphost-top-level-placement.md"
+APPSERVICE_BOUNDARY = (
+    ARCHITECTURE_ROOT / "drafts/appservice-embedded-tui-hosted-boundary-plan.md"
+)
+APPSERVICE_REFACTOR = ARCHITECTURE_ROOT / "drafts/application-service-refactor.md"
+
+HOSTING_DOCUMENTS = (
+    HOSTING_ROOT / "README.md",
+    HOSTING_ROOT / "requirements.md",
+    HOSTING_ROOT / "system-context.md",
+    HOSTING_ROOT / "component-model.md",
+    HOSTING_ROOT / "traceability.md",
+    HOSTING_ROOT / "validation/component-discovery.md",
+    HOSTED_APPLICATION_BOUNDARY,
+    ARCHITECTURE_ROOT / "drafts/hosting-top-level-placement.md",
+)
+
+CURRENT_HARNESS_SEAMS = (
+    "src/loushang/harness/workspace/process/types.py",
+    "src/loushang/harness/workspace/process/local.py",
+    "src/loushang/harness/workspace/process/host.py",
+    "src/loushang/harness/tools/process_hosting.py",
+    "src/loushang/harness/sandbox/process.py",
+    "src/loushang/harness/worker/contracts.py",
+    "src/loushang/harness/worker/protocol.py",
+    "src/loushang/harness/worker/supervisor.py",
+    "src/loushang/harness/worker/journal.py",
+)
+
+COMPONENT_IDS = (
+    "HOST-CMP-CONTRACT",
+    "HOST-CMP-PROCESS",
+    "HOST-CMP-ENDPOINT",
+    "HOST-CMP-SESSION",
+    "HOST-CMP-PLATFORM",
+)
+
+
+def _read(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
+
+
+def _section(text: str, heading: str) -> str:
+    marker = f"## {heading}\n"
+    assert marker in text
+    body = text.split(marker, maxsplit=1)[1]
+    return body.split("\n## ", maxsplit=1)[0]
+
+
+def _status_fields(path: Path) -> dict[str, str]:
+    fields: dict[str, str] = {}
+    started = False
+    for line in _section(_read(path), "Status").splitlines():
+        if not started:
+            if not line.startswith("- "):
+                continue
+            started = True
+        elif not line:
+            break
+        if not line.startswith("- "):
+            continue
+        assert ":" in line, f"malformed Status field in {path}: {line!r}"
+        name, value = line[2:].split(":", maxsplit=1)
+        assert name not in fields, f"duplicate Status field {name!r} in {path}"
+        normalized = value.strip()
+        if normalized.startswith("`") and normalized.endswith("`"):
+            normalized = normalized[1:-1]
+        fields[name] = normalized
+    return fields
+
+
+def _table_rows(text: str, headers: tuple[str, ...]) -> tuple[tuple[str, ...], ...]:
+    lines = text.splitlines()
+    expected_header = "| " + " | ".join(headers) + " |"
+    start = lines.index(expected_header)
+    separator = tuple(cell.strip() for cell in lines[start + 1].strip("|").split("|"))
+    assert len(separator) == len(headers)
+    assert all(re.fullmatch(r":?-{3,}:?", cell) for cell in separator)
+
+    rows: list[tuple[str, ...]] = []
+    for line in lines[start + 2 :]:
+        if not line.startswith("|"):
+            break
+        cells = tuple(cell.strip() for cell in line.strip("|").split("|"))
+        assert len(cells) == len(headers), line
+        rows.append(cells)
+    return tuple(rows)
+
+
+def _assert_mapping_contains(actual: dict[str, str], expected: dict[str, str]) -> None:
+    for key, value in expected.items():
+        assert actual.get(key) == value
+
+
+def _numbered_steps(text: str, heading: str) -> tuple[str, ...]:
+    section = _section(text, heading)
+    matches = tuple(re.finditer(r"(?ms)^(\d+)\. (.*?)(?=^\d+\. |\n\n)", section))
+    assert tuple(int(match.group(1)) for match in matches) == tuple(
+        range(1, len(matches) + 1)
+    )
+    return tuple(" ".join(match.group(2).split()) for match in matches)
+
+
+def test_hosting_design_package_is_complete_and_proposed() -> None:
+    for path in HOSTING_DOCUMENTS:
+        assert path.is_file(), path.relative_to(REPOSITORY_ROOT)
+
+    expected_authority = {
+        HOSTING_ROOT / "README.md": "normative — proposed top-level Architecture Scope",
+        HOSTING_ROOT / "requirements.md": "normative — proposed requirements",
+        HOSTING_ROOT / "system-context.md": (
+            "normative — proposed black-box context and boundary"
+        ),
+        HOSTING_ROOT / "component-model.md": (
+            "normative — proposed final component model"
+        ),
+        HOSTING_ROOT / "traceability.md": ("normative — proposed design traceability"),
+        HOSTED_APPLICATION_BOUNDARY: "normative proposed design",
+        ARCHITECTURE_ROOT / "drafts/hosting-top-level-placement.md": (
+            "normative — proposed cross-scope placement decision candidate"
+        ),
+    }
+    for path, authority in expected_authority.items():
+        _assert_mapping_contains(
+            _status_fields(path),
+            {
+                "Scope": "hosting",
+                "Parent": "loushang",
+                "Authority": authority,
+                "Design status": "proposed",
+                "Implementation status": "not-started",
+            },
+        )
+
+    _assert_mapping_contains(
+        _status_fields(HOSTING_ROOT / "validation/component-discovery.md"),
+        {
+            "Scope": "hosting",
+            "Parent": "loushang",
+            "Authority": "descriptive — design validation input",
+            "Design status": "not-applicable",
+            "Implementation status": "not-applicable",
+        },
+    )
+    _assert_mapping_contains(
+        _status_fields(APPHOST_PLACEMENT),
+        {
+            "ID": "APPHOST-DP-TOP-LEVEL",
+            "Scope": "Loushang",
+            "Parent": "none",
+            "Authority": "normative target proposal",
+            "Design status": "proposed",
+            "Implementation status": "not-started",
+        },
+    )
+    _assert_mapping_contains(
+        _status_fields(APPSERVICE_BOUNDARY),
+        {
+            "ID": "APP-DP-HOSTED-BOUNDARY",
+            "Scope": "AppService / application host",
+            "Parent": "Loushang",
+            "Authority": "normative target proposal",
+            "Design status": "proposed",
+            "Implementation status": "not-started",
+        },
+    )
+    _assert_mapping_contains(
+        _status_fields(APPSERVICE_REFACTOR),
+        {
+            "ID": "APP-DP-SERVICE-REFACTOR",
+            "Scope": "AppServer / AppService",
+            "Parent": "Loushang",
+            "Authority": "normative target proposal",
+            "Design status": "proposed",
+            "Implementation status": "partial",
+        },
+    )
+
+    overview = _read(HOSTING_ROOT / "README.md")
+    assert "There is no `src/loushang/hosting` package." in _section(
+        overview, "Current"
+    )
+    assert "The proposed Target introduces `loushang.hosting`" in _section(
+        overview, "Target"
+    )
+    assert "## Current-To-Target Gaps" in overview
+
+    apphost = _read(APPHOST_PLACEMENT)
+    for heading in ("Current", "Proposed target", "Explicit delta"):
+        assert f"### {heading}" in _section(apphost, "Current, Target, And Delta")
+
+
+def test_hosting_parent_catalog_labels_the_scope_as_proposed() -> None:
+    catalog = _read(ARCHITECTURE_ROOT / "README.md")
+
+    proposed = _section(catalog, "Architecture Scope Tree").split(
+        "Proposed top-level placements are under design:\n", maxsplit=1
+    )[1]
+    assert (
+        "- [Hosting](hosting/README.md), a Product-neutral local process, "
+        "inherited\n  peer IPC, and joint child-session lifetime substrate."
+    ) in proposed
+    assert (
+        "- [AppHost Top-Level Placement]"
+        "(drafts/apphost-top-level-placement.md), the\n"
+        "  proposed physical owner of the existing cross-Product Platform "
+        "Host role."
+    ) in proposed
+    assert proposed.index("[Hosting]") < proposed.index("[AppHost Top-Level Placement]")
+
+
+def test_hosting_component_set_and_dependency_direction_are_explicit() -> None:
+    overview = _read(HOSTING_ROOT / "README.md")
+    component_model = _read(HOSTING_ROOT / "component-model.md")
+    boundary = _read(HOSTING_ROOT / "system-context.md")
+
+    component_rows = _table_rows(
+        _section(component_model, "Component Map"),
+        ("ID", "Component", "Owns", "Does not own"),
+    )
+    assert {row[0].strip("`"): row[1] for row in component_rows} == {
+        "HOST-CMP-CONTRACT": "Hosting Contract Model",
+        "HOST-CMP-PROCESS": "Process Lifetime Host",
+        "HOST-CMP-ENDPOINT": "Inherited Peer Endpoint Host",
+        "HOST-CMP-SESSION": "Child Session Host",
+        "HOST-CMP-PLATFORM": "Platform Adapter Set",
+    }
+    assert set(COMPONENT_IDS) == {row[0].strip("`") for row in component_rows}
+    for component_id in COMPONENT_IDS:
+        assert component_id in overview
+
+    assert "loushang.harness -> loushang.hosting     # proposed" in overview
+    assert "loushang.hosting -> loushang.harness     # forbidden" in overview
+    authority_rows = dict(
+        _table_rows(
+            _section(boundary, "Authority And Trust Boundary"),
+            ("Fact or decision", "Sole owner"),
+        )
+    )
+    assert authority_rows["action allowed/approved/authorized"] == (
+        "Harness Policy, Approval, Authorization"
+    )
+    assert authority_rows["containment required and active"] == (
+        "Harness Sandbox owner"
+    )
+    assert authority_rows["exact OS process created/exited/reclaimed"] == (
+        "Hosting Process Lifetime Host"
+    )
+    assert (
+        "### Child Session Hosting Port" in boundary
+        and "| Worker handshaken/healthy/fenced | Harness Worker protocol/supervisor |"
+        in boundary
+    )
+
+
+def test_hosted_application_responsibilities_and_dependencies_are_separated() -> None:
+    hosting_boundary = _read(HOSTED_APPLICATION_BOUNDARY)
+    apphost_placement = _read(APPHOST_PLACEMENT)
+    appservice_boundary = _read(APPSERVICE_BOUNDARY)
+    refactor = _read(APPSERVICE_REFACTOR)
+
+    assert (
+        "This Hosting child design specifies only Hosting's black-box "
+        "relationship" in hosting_boundary
+    )
+    assert (
+        "AppServer, AppService, Product packages, and UI packages are not Hosting\nconsumers."
+        in hosting_boundary
+    )
+    assert "AppServer -X-> Hosting" in apphost_placement
+    assert "Product identity and delivery profile are orthogonal" in apphost_placement
+    assert "### Multi-Aggregate Hosted Cardinality" in apphost_placement
+    assert (
+        "Aggregate count never creates another\nAppHost, AppServer listener, "
+        "application `RunLease`, or process-level\n`RuntimeResourceOwner`"
+        in apphost_placement
+    )
+    assert (
+        "AppHost does not import an aggregate type, index its selector names"
+        in apphost_placement
+    )
+    assert (
+        "`loushang.harnesswork` is the canonical shared durable\n"
+        "Work subsystem" in apphost_placement
+    )
+    assert (
+        "`loushang.work` is only its forwarding\ncompatibility facade"
+        in apphost_placement
+    )
+    assert "**Session Identity Envelope**" in apphost_placement
+    assert "ProductIdentityRequired" in apphost_placement
+    assert "external supervisor\n  -> complete foreground AppHost executable" in (
+        apphost_placement
+    )
+    assert "  -/-> Hosting library" in apphost_placement
+    assert "controller process\n  AppHost launcher" in apphost_placement
+    assert "immutable executable + argv/env/profile/state references" in (
+        apphost_placement
+    )
+    assert "target process\n  AppHost runtime/bootstrap" in apphost_placement
+    assert "exposes one process-level\nreadiness and stop boundary" in (
+        apphost_placement
+    )
+    shutdown_steps = _numbered_steps(apphost_placement, "Graceful Shutdown Protocol")
+    assert shutdown_steps == (
+        "mark the process `stopping`; reject new bootstrap, Product resolution, "
+        "and profile activation;",
+        "tell AppServer to stop accepting connections and reject new request "
+        "admission;",
+        "tell AppServer to stop reading new frames and freeze/report connection "
+        "state; it does not drain writers yet and does not decide logical detach;",
+        "tell AppService to reject new Sessions, perform the sole logical detach, "
+        "settle or interrupt admitted work by explicit Product policy, clean up "
+        "interactions, close logical attachments, and request release through each "
+        "Session-scoped Product binding's sole idempotent close port;",
+        "ensure AppHost releases all remaining Product Runtime handles and "
+        "admitted presentation-profile leases;",
+        "drain-or-abort AppServer writers within the remaining deadline, then close "
+        "transports, listener, and connection records;",
+        "close the process's one `RuntimeResourceOwner`; that owner alone revokes "
+        "projections, drains admitted operations, and closes its ArtifactStore and "
+        "`RunLease` as one transaction; and",
+        "publish `stopped` readiness and let the foreground process exit.",
+    )
+    assert "A phase failure is recorded but\ndoes not skip later cleanup phases" in (
+        apphost_placement
+    )
+    assert "One monotonic deadline bounds\nthe sequence" in apphost_placement
+    assert "kill the owned process tree" in apphost_placement
+    assert "A direct foreground AppHost force-closes its remaining local\nhandles" in (
+        apphost_placement
+    )
+    assert "$LOUSHANG_HOME/data/sessions` authority" in apphost_placement
+    assert "$LOUSHANG_HOME/data/session-assets/<session-id>`" in apphost_placement
+    assert (
+        "Each process resolves or receives exactly one admitted, immutable\n"
+        "`PlatformPaths` at its outer composition root" in apphost_placement
+    )
+    assert (
+        "only normalized, serialized, policy-admitted overrides,\n"
+        "profile identifiers, and state references cross between them"
+        in apphost_placement
+    )
+    assert "retains\n  at most one `RuntimeResourceOwner`" in apphost_placement
+    assert "does not imply another application `RunLease`" in apphost_placement
+    assert (
+        "compatibility discovery/import inputs, never peer writable authorities"
+        in apphost_placement
+    )
+    for owner_row in (
+        "| unsubmitted image/prompt draft | active client/input-router draft owner |",
+        "| submitted image bytes | Harness Session Blob authority |",
+        "| logs, traces, diagnostics | producing observability service |",
+        "| AppServer listener and transport scratch | AppServer transport |",
+        "| service-instance record | future Hosting Service Instance Controller |",
+    ):
+        assert owner_row in apphost_placement
+
+    responsibility_rows = {
+        row[0]: (row[1], row[2])
+        for row in _table_rows(
+            _section(apphost_placement, "Cross-Scope Dependency And Responsibility"),
+            ("Scope", "Owns", "Explicitly does not own"),
+        )
+    }
+    assert set(responsibility_rows) == {
+        "AppHost",
+        "AppServer",
+        "AppService",
+        "Product outer integration",
+        "Hosting",
+        "presentation profile",
+    }
+    assert "AppService construction" in responsibility_rows["AppServer"][1]
+    assert "logical attachment/mailbox/detach" in responsibility_rows["AppService"][0]
+
+    resource_rows = {
+        row[0]: (row[1], row[2])
+        for row in _table_rows(
+            _section(apphost_placement, "Machine-Resource Composition"),
+            ("Resource concern", "Lifecycle owner", "Placement/composition rule"),
+        )
+    }
+    assert resource_rows == {
+        "platform roots and run-lease primitive": (
+            "Foundation",
+            "pure `PlatformPaths` plus Product-neutral `RuntimeScope`/`RunLease`; "
+            "no Product or storage semantics",
+        ),
+        "shared configuration and Resource discovery": (
+            "Harness configuration/resources",
+            "project `.loushang` is reviewable declaration; private generated state "
+            "is user-global; Product admits policy and content",
+        ),
+        "application-run artifacts and machine inventory": (
+            "Harness `RuntimeResourceOwner`",
+            "one effectful owner per application process; it alone owns the "
+            "ArtifactStore/RunLease transaction and revocable projections",
+        ),
+        "durable Session transcripts": (
+            "Harness conversation/transcript owner selected by Product",
+            "canonical writable default is `$LOUSHANG_HOME/data/sessions`; "
+            "compatibility roots are discovery/import inputs only",
+        ),
+        "durable Session Blob objects": (
+            "Harness Session Blob authority",
+            "canonical writable layout is "
+            "`$LOUSHANG_HOME/data/session-assets/<session-id>` with immutable "
+            "objects and manifest",
+        ),
+        "clipboard/image capture or upload": (
+            "active presentation-client adapter",
+            "Native TUI is Current; GUI/WebUI own browser/OS selection without "
+            "transferring storage to AppHost/AppServer/Hosting",
+        ),
+        "unsubmitted image/prompt draft": (
+            "active client/input-router draft owner",
+            "bounded private client/run-local draft, removed on submit/cancel/disposal",
+        ),
+        "submitted image bytes": (
+            "Harness Session Blob authority",
+            "validate and promote before a pathless durable reference enters the "
+            "transcript",
+        ),
+        "logs, traces, diagnostics": (
+            "producing observability service",
+            "bounded-retention state subdirectory; not Session content and not "
+            "Hosting policy",
+        ),
+        "AppServer listener and transport scratch": (
+            "AppServer transport",
+            "listener under runtime root, atomic scratch under temporary root, one "
+            "transport cleanup owner",
+        ),
+        "AppService live registry and snapshots": (
+            "AppService",
+            "live application state; durable recovery remains an explicit "
+            "Product/store operation",
+        ),
+        "service-instance record": (
+            "future Hosting Service Instance Controller",
+            "narrow injected state subdirectory containing mechanism facts only; "
+            "retire removes it only after the exact process tree is confirmed "
+            "reaped, and cleanup failure leaves conservative residue",
+        ),
+    }
+    assert "AppService -X-> Hosting" in appservice_boundary
+    assert "Coding UI -X-> HarnessGUI / HarnessWebUI" in appservice_boundary
+    assert "Harnesstui -X-> Coding" in appservice_boundary
+    assert "appserver.service -X-> Hosting" in refactor
+    assert "### Multi-Session Coordination Aggregates" in refactor
+    assert "There is no global cross-Session revision" in refactor
+    assert "per-stream sub-budgets" in refactor
+    assert "### Multi-Session Coordination Aggregate" in appservice_boundary
+    assert "There is no global cross-Session instant or cursor" in (
+        appservice_boundary
+    )
+    assert "one connection to at most one active aggregate" in appservice_boundary
+    assert "attempts every distinct Session binding release exactly once" in (
+        appservice_boundary
+    )
+    assert (
+        "application aggregate identity, membership, attachment/controller state"
+        in hosting_boundary
+    )
+    assert (
+        "Running one or many application coordination aggregates does not change"
+        in hosting_boundary
+    )
+    assert (
+        "AppServer and all its subpackages must not import any Hosting package"
+        in refactor
+    )
+    assert (
+        "AppHost is the\ncomposition root: it constructs AppService, injects it "
+        "into AppServer" in appservice_boundary
+    )
+
+
+def test_rejected_boundary_phrases_do_not_reappear() -> None:
+    documents = tuple(
+        _read(path)
+        for path in (
+            HOSTED_APPLICATION_BOUNDARY,
+            APPHOST_PLACEMENT,
+            APPSERVICE_BOUNDARY,
+            APPSERVICE_REFACTOR,
+        )
+    )
+
+    rejected_claims = (
+        "AppServer daemon adapter",
+        "daemon-owned hosted Session",
+        "Coding / Work / PPT / Design",
+        "CodingTUI / Harnesstui",
+        "foreground AppServer can use Hosting",
+        "foreground AppServer process hosting",
+        "AppHost launcher OR external supervisor",
+        "AppServer -/-> hosting.service",
+        "appserver -X-> hosting.service",
+        "AppServer denial of `hosting.service`",
+        "construction and orderly close of one AppService",
+        "AppServer | Hosted server/connection runtime that constructs AppService",
+        "connection.py      # attachment",
+        "each Harness application/Session run",
+        "Every hosted application/Session run",
+        "kill the exact process",
+        "durable Session transcript and blobs |",
+    )
+    for text in documents:
+        for claim in rejected_claims:
+            assert claim not in text
+
+
+def test_hosting_traceability_covers_every_requirement_exactly_once() -> None:
+    requirements = _read(HOSTING_ROOT / "requirements.md")
+    requirement_ids = tuple(
+        re.findall(r"^### (HOST-(?:FR|QR)-\d{3}) — ", requirements, re.M)
+    )
+    trace_rows = _table_rows(
+        _section(_read(HOSTING_ROOT / "traceability.md"), "Requirement Traceability"),
+        (
+            "Requirement",
+            "Primary design owner",
+            "Boundary/design evidence",
+            "Planned executable evidence",
+        ),
+    )
+    traced_ids = tuple(row[0].strip("`") for row in trace_rows)
+    primary_owners = {row[0].strip("`"): row[1].strip("`") for row in trace_rows}
+
+    assert len(requirement_ids) == len(set(requirement_ids)) == 12
+    assert traced_ids == requirement_ids
+    assert trace_rows == (
+        (
+            "`HOST-FR-001`",
+            "`HOST-CMP-CONTRACT`",
+            "requirements; Contract Model interface",
+            "request validation and no-ambient-environment contract tests",
+        ),
+        (
+            "`HOST-FR-002`",
+            "`HOST-CMP-PROCESS`",
+            "Process Lifetime Host; failure interaction",
+            "fake spawn lifecycle matrix and real process-tree conformance",
+        ),
+        (
+            "`HOST-FR-003`",
+            "`HOST-CMP-ENDPOINT`",
+            "Inherited Peer Endpoint Host; physical context",
+            "POSIX/Windows handle allowlist, peer closure, and leak tests",
+        ),
+        (
+            "`HOST-FR-004`",
+            "`HOST-CMP-SESSION`",
+            "Child Session Host; rollback interaction",
+            "fault injection at every acquisition/publication boundary",
+        ),
+        (
+            "`HOST-FR-005`",
+            "`HOST-CMP-CONTRACT`",
+            "authority table; observation boundary",
+            "redaction and no-security-claim schema tests",
+        ),
+        (
+            "`HOST-FR-006`",
+            "`HOST-CMP-PLATFORM`",
+            "explicit platform boundary",
+            "exact backend selection and unsupported-platform tests",
+        ),
+        (
+            "`HOST-QR-001`",
+            "Process, Endpoint, Session",
+            "lifecycle invariants",
+            "repeated/concurrent close and cancellation tests",
+        ),
+        (
+            "`HOST-QR-002`",
+            "Process, Endpoint",
+            "requirements and component interfaces",
+            "capacity/write/tail/buffer/shutdown bound tests",
+        ),
+        (
+            "`HOST-QR-003`",
+            "Session, Platform Adapter",
+            "trust boundary",
+            "inherited-handle and effective-environment adversarial tests",
+        ),
+        (
+            "`HOST-QR-004`",
+            "scope/composition root",
+            "[Hosting Top-Level Placement]"
+            "(../drafts/hosting-top-level-placement.md) and dependency view",
+            "top-level and internal import architecture gates",
+        ),
+        (
+            "`HOST-QR-005`",
+            "all components",
+            "discovery/refinement",
+            "fake-backed component contracts plus real conformance markers",
+        ),
+        (
+            "`HOST-QR-006`",
+            "`HOST-CMP-PLATFORM`",
+            "open validation questions",
+            "separate POSIX and Windows conformance manifests",
+        ),
+    )
+    assert primary_owners == {
+        "HOST-FR-001": "HOST-CMP-CONTRACT",
+        "HOST-FR-002": "HOST-CMP-PROCESS",
+        "HOST-FR-003": "HOST-CMP-ENDPOINT",
+        "HOST-FR-004": "HOST-CMP-SESSION",
+        "HOST-FR-005": "HOST-CMP-CONTRACT",
+        "HOST-FR-006": "HOST-CMP-PLATFORM",
+        "HOST-QR-001": "Process, Endpoint, Session",
+        "HOST-QR-002": "Process, Endpoint",
+        "HOST-QR-003": "Session, Platform Adapter",
+        "HOST-QR-004": "scope/composition root",
+        "HOST-QR-005": "all components",
+        "HOST-QR-006": "HOST-CMP-PLATFORM",
+    }
+    qr004 = next(row for row in trace_rows if row[0] == "`HOST-QR-004`")
+    assert (
+        "[Hosting Top-Level Placement](../drafts/hosting-top-level-placement.md)"
+        in (qr004[2])
+    )
+
+
+def test_hosting_discovery_is_grounded_in_current_harness_facts() -> None:
+    discovery = _read(HOSTING_ROOT / "validation/component-discovery.md")
+
+    for relative_path in CURRENT_HARNESS_SEAMS:
+        assert (REPOSITORY_ROOT / relative_path).is_file(), relative_path
+
+    for current_owner in (
+        "harness.workspace.process",
+        "harness.tools.process_hosting",
+        "harness.sandbox.process",
+        "harness.worker",
+    ):
+        assert current_owner in discovery
+
+
+def test_proposed_runtime_packages_remain_default_dark_until_review() -> None:
+    for package in ("hosting", "apphost", "appserver"):
+        assert not (REPOSITORY_ROOT / f"src/loushang/{package}").exists()
+
+    overview = _read(HOSTING_ROOT / "README.md")
+    decision = _read(ARCHITECTURE_ROOT / "drafts/hosting-top-level-placement.md")
+    assert "Implementation status: not-started" in overview
+    assert "This decision candidate is proposed, not accepted." in decision
+    assert "extraction alone cannot remove PLC9C default-dark" in decision

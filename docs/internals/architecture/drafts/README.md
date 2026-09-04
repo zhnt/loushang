@@ -36,6 +36,7 @@ Standalone drafts:
 - [Loushang Future Target Architecture v3](future-loushang-architecture-v3.md)
 - [Application Service Refactor](application-service-refactor.md)
 - [AppService Hosted Boundary With An Embedded TUI](appservice-embedded-tui-hosted-boundary-plan.md)
+- [AppHost Top-Level Placement](apphost-top-level-placement.md)
 - [Loushang Runtime Architecture](loushang-runtime-architecture.md)
 - [Loushang Work / Method / Channel / Harness Architecture](loushang-work-method-channel-harness-architecture.md)
 - [Method / Ontology Action Driven Multi-Agent Collaboration Requirements](method-ontology-action-multi-agent-collaboration-requirements.md)
@@ -49,3 +50,4 @@ Standalone drafts:
 - [Application Model And Artifact Compiler](application-model-and-artifact-compiler.md)
 - [Pluggable Transcript Compaction Strategies](pluggable-transcript-compaction-strategies.md)
 - [Project-Declared Configuration And Pluggable Conversation Persistence](project-declared-configuration-and-pluggable-conversation-persistence.md)
+- [Hosting Top-Level Placement And Scope](hosting-top-level-placement.md)
