@@ -9,9 +9,14 @@ from loushang.harness.resources.plugins.authority import (
 from loushang.harness.resources.plugins.declarations import (
     PLUGIN_CONTRIBUTION_INDEX_VERSION,
     PLUGIN_DECLARATION_IR_VERSION,
+    PLUGIN_LOCAL_WORKER_CONFIGURATION_VERSION,
+    PLUGIN_LOCAL_WORKER_CONTRIBUTION_INDEX_VERSION,
+    PLUGIN_LOCAL_WORKER_DECLARATION_DOCUMENT_VERSION,
+    PLUGIN_LOCAL_WORKER_DECLARATION_IR_VERSION,
     PluginContributionIndex,
     PluginContributionReservation,
     PluginDeclaration,
+    PluginLocalWorkerConfiguration,
 )
 from loushang.harness.resources.plugins.dependencies import (
     PLUGIN_DEPENDENCY_LOCK_FORMAT,
@@ -137,6 +142,10 @@ __all__ = [
     "InstalledPlugin",
     "PLUGIN_CONTRIBUTION_INDEX_VERSION",
     "PLUGIN_DECLARATION_IR_VERSION",
+    "PLUGIN_LOCAL_WORKER_CONFIGURATION_VERSION",
+    "PLUGIN_LOCAL_WORKER_CONTRIBUTION_INDEX_VERSION",
+    "PLUGIN_LOCAL_WORKER_DECLARATION_DOCUMENT_VERSION",
+    "PLUGIN_LOCAL_WORKER_DECLARATION_IR_VERSION",
     "PLUGIN_DECLARATION_EVIDENCE_VERSION",
     "PLUGIN_DEPENDENCY_LOCK_FORMAT",
     "PLUGIN_EFFECTIVE_CONFIGURATION_SET_VERSION",
@@ -203,6 +212,7 @@ __all__ = [
     "PluginSelectionPlanV2",
     "PluginSelectionResolver",
     "PluginSourceTrustSnapshotV1",
+    "PluginLocalWorkerConfiguration",
     "ResolvedPluginPackage",
     "VerifiedPluginRevision",
     "VerifiedRevisionHandle",

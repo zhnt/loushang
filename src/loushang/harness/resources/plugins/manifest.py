@@ -438,25 +438,29 @@ def _contribution_index(
             path=manifest_path,
         ) from exc
     for reservation in index.items:
-        logical_path = Path(*reservation.declaration_source.relative_path.parts)
-        candidate = root / logical_path
-        try:
-            resolved = candidate.resolve(strict=True)
-            resolved.relative_to(root)
-        except (OSError, RuntimeError, ValueError) as exc:
-            raise PluginManifestError(
-                "Plugin contribution entrypoint must stay inside the package: "
-                f"{candidate}",
-                code="invalid_plugin_contribution_entrypoint",
-                path=candidate,
-            ) from exc
-        if not resolved.is_file() or _path_uses_symlink(root, logical_path):
-            raise PluginManifestError(
-                "Plugin contribution entrypoint must be a contained regular file: "
-                f"{candidate}",
-                code="invalid_plugin_contribution_entrypoint",
-                path=candidate,
-            )
+        relative_paths = [Path(reservation.declaration_source.relative_path)]
+        if reservation.worker_configuration is not None:
+            relative_paths.append(Path(reservation.worker_configuration.entrypoint))
+        for declared_path in relative_paths:
+            logical_path = Path(*declared_path.parts)
+            candidate = root / logical_path
+            try:
+                resolved = candidate.resolve(strict=True)
+                resolved.relative_to(root)
+            except (OSError, RuntimeError, ValueError) as exc:
+                raise PluginManifestError(
+                    "Plugin contribution entrypoint must stay inside the package: "
+                    f"{candidate}",
+                    code="invalid_plugin_contribution_entrypoint",
+                    path=candidate,
+                ) from exc
+            if not resolved.is_file() or _path_uses_symlink(root, logical_path):
+                raise PluginManifestError(
+                    "Plugin contribution entrypoint must be a contained regular file: "
+                    f"{candidate}",
+                    code="invalid_plugin_contribution_entrypoint",
+                    path=candidate,
+                )
     return index
 
 

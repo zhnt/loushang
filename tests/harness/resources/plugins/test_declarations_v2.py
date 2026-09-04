@@ -148,7 +148,7 @@ def test_declaration_and_document_versions_fail_their_own_codes() -> None:
 
     with pytest.raises(PluginDeclarationCodecError) as caught:
         PluginDeclarationDocument.from_dict(
-            {"declarations": [], "documentVersion": 2}
+            {"declarations": [], "documentVersion": 3}
         )
     assert caught.value.code == "unsupported_plugin_declaration_document_version"
 

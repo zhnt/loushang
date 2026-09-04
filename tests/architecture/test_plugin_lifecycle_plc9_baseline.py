@@ -705,7 +705,7 @@ def test_plc9_baseline_and_inventory_are_indexed_without_runtime_claims() -> Non
     assert "PLC9.0 authorizes no remote-service declaration or client" in baseline
     assert "grants no new runtime authority" in inventory
     assert "common management query snapshot/projector" in inventory
-    assert "versioned `local_worker` execution-topology IR" in inventory
+    assert "Plugin `local_worker` declaration" in inventory
 
 
 def test_plc9_inventory_names_existing_owner_and_peer_source_sites() -> None:
@@ -1194,7 +1194,7 @@ def test_plc9_freezes_package_safety_gap_and_reusable_primitives() -> None:
     assert "Binding/history forgetting" in inventory
 
 
-def test_plc9_does_not_pretend_worker_or_remote_topologies_exist() -> None:
+def test_plc9_tracks_implemented_local_worker_without_claiming_remote_topology() -> None:
     declarations = _source(DECLARATIONS)
     author_sdk = "\n".join(
         _source(path) for path in sorted(AUTHOR_SDK_ROOT.rglob("*.py"))
@@ -1214,8 +1214,9 @@ def test_plc9_does_not_pretend_worker_or_remote_topologies_exist() -> None:
     assert _literal_members(DECLARATIONS, "PluginContributionExecutionModel") == (
         "data_only",
         "in_process",
+        "local_worker",
     )
-    assert "local_worker" not in declarations
+    assert "local_worker" in declarations
     assert "remote_service" not in declarations
     plugin_contract_sources = "\n".join(
         _source(path)
@@ -1225,7 +1226,7 @@ def test_plc9_does_not_pretend_worker_or_remote_topologies_exist() -> None:
         )
         for path in sorted(root.rglob("*.py"))
     )
-    assert "local_worker" not in plugin_contract_sources
+    assert "local_worker" in plugin_contract_sources
     assert "remote_service" not in plugin_contract_sources
     for forbidden_export in (
         "PluginManagementService",
@@ -1268,7 +1269,7 @@ def test_plc9_does_not_pretend_worker_or_remote_topologies_exist() -> None:
     baseline = _source(BASELINE)
     assert "It is not a new" in baseline
     assert "`PluginDeclarationSourceKind`" in baseline
-    assert "future narrow, owner-only `ManagedWorkerLaunchPort`" in baseline
+    assert "narrow, owner-only `ManagedWorkerLaunchPort`" in baseline
     assert "forbidden for Worker admission" in baseline
 
 

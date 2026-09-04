@@ -346,8 +346,12 @@ Every contribution has one discriminated kind, schema version, exact owner,
 execution model, configuration reference, and source evidence. The currently
 implemented kinds are `resource_item`, `tool_pack`, `command_pack`,
 `capability_provider`, and the owner-scoped `continuity_provider`; the
-currently implemented execution models are `data_only` and verified
-`in_process`. `continuity_provider` is not a generic component SDK: its owner
+currently implemented execution models are `data_only`, verified `in_process`,
+and the additive internal `local_worker` declaration topology. `local_worker`
+is default-dark through PLC9C4: its owner-only launch, injected bounded
+protocol/supervisor, and read-only Capability adapter do not constitute Product
+activation or generation publication. `continuity_provider` is not a generic
+component SDK: its owner
 is exactly `harness.continuity`, and it enters the private process Continuity
 generation rather than a Runtime Profile slot or Session Graph.
 
@@ -491,7 +495,7 @@ does not follow a coarse label such as "destructive Plugin".
 | `none` | Resources and static declarations | no code execution | typed parser and exact owner | Implemented as `data_only` |
 | `in_process` | Narrow low-latency first-party/OEM Providers | separately established host-equivalent trust; process containment is impossible | verified Definition evaluator and Component Host | Partially implemented |
 | `one_shot` | Bounded scripts, formatters, generators, command helpers | exact action authorization; required containment for untrusted code | authorized Exec/Tool path | Generic substrate exists; managed Skill facade pending |
-| `local_worker` | Long-lived, stateful, streaming, native, dependency-conflicting, or third-party Providers | every non-host-equivalent executable requires proven non-downgradable containment plus narrow IPC | exact owner host over authorized Process Host | Target; not yet a Plugin declaration kind |
+| `local_worker` | Long-lived, stateful, streaming, native, dependency-conflicting, or third-party Providers | every non-host-equivalent executable requires proven non-downgradable containment plus narrow IPC | exact owner host over authorized Process Host | Internal declaration/launch/supervisor/read-only adapter implemented; Product/native activation pending PLC9C5 |
 | `remote_service` | managed connectors or externally hosted Providers | authenticated narrow protocol, egress policy, tenant isolation, and remote trust evidence | exact domain owner over a Host-owned client binding | Target; protocol-specific |
 
 ### Supervised Worker model

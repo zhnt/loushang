@@ -257,16 +257,16 @@ Neither alone constitutes the complete acquisition/materialization owner.
 
 ## Local Worker Boundary
 
-PLC9C may add `local_worker` only as a new version of the contribution
-execution-topology IR after its wire codec, compatibility fixture, security
-classification, and negative tests are accepted. It is not a new
+PLC9C1 adds `local_worker` only as a new version of the contribution
+execution-topology IR with its wire codec, compatibility fixture, security
+classification, and negative tests. It is not a new
 `PluginDeclarationSourceKind`: a document may declare a Worker topology, while
 declaration acquisition and contribution execution remain independent axes.
 The declaration expresses intent and protocol identity; it does not grant
 process, filesystem, network, credential, publication, or Sandbox authority.
 
 The exact domain Component Host owns semantic IPC and any contribution it
-publishes. It consumes a future narrow, owner-only `ManagedWorkerLaunchPort`
+publishes. PLC9C2 provides a narrow, owner-only `ManagedWorkerLaunchPort`
 minted by the Process/Sandbox composition root after required-containment
 availability is established. That port is not the current generic
 `AuthorizedProcessLauncher` returned by
@@ -372,8 +372,8 @@ tests reject:
 - a management read model persisted as another effective-state authority;
 - an authoring SDK export of management, Process Host, Sandbox, Approval,
   registry, or owner-authority objects;
-- `local_worker` or `remote_service` appearing in the current declaration codec
-  before their versioned contract is accepted;
+- `local_worker` appearing outside its accepted additive index-v3/IR-v3/
+  document-v2 contract, or `remote_service` appearing in any declaration codec;
 - direct `uv`/`pip install` being described as the safe Plugin package owner;
 - a Source adapter selecting quarantine/publication paths or binding a runtime;
 - a Worker spawn that can proceed after required containment is unavailable or
