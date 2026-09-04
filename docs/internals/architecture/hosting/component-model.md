@@ -73,9 +73,9 @@ Windows adapters are mutually independent.
 ## Component Interfaces
 
 H0 fixes the public Contract Model names and fields in
-[Hosting H0 Contract Model](contract-model-h0.md). Names for the four
-unimplemented resource/platform components remain architectural roles rather
-than reserved Python symbols.
+[Hosting H0 Contract Model](contract-model-h0.md). H1-H4 implement the four
+resource/platform roles behind private concrete types and restrained public
+composition entrypoints.
 
 ### Contract Model
 
@@ -136,10 +136,12 @@ loading surface.
 ```text
 trusted Harness adapter
   -> Child Session Host: start(exact request, preparation port)
+  -> Child Session Host: reserve aggregate capacity
+  -> Process Lifetime Host: reserve process capacity
   -> preparation port: prepare
   -> Inherited Peer Endpoint Host: create host/child pair
   -> preparation lease: verify_current at final safe point
-  -> Process Lifetime Host: reserve and spawn with child-handle allowlist
+  -> Process Lifetime Host: spawn with child-handle allowlist
   -> Platform Adapter: create process and attach owner
   -> Inherited Peer Endpoint Host: consume/close parent's child-side copy
   -> Child Session Host: publish process lease + host endpoint + observations
@@ -186,11 +188,11 @@ meanings.
 
 ## Public Surface Restraint
 
-The H0 package exposes only Contract Model values and provided/required ports
-needed by trusted hosts. Later slices may add restrained composition
-entrypoints. Concrete backends, raw spawners, endpoint
-factories, inherited-handle values, reservation objects, and cleanup
-coordinators remain private.
+The public package surface exposes Contract Model values, provided/required
+ports, and the restrained process-only and child-session composition
+entrypoints. Concrete hosts, backends, raw spawners, endpoint factories,
+inherited-handle values, reservation objects, and cleanup coordinators remain
+private.
 
 Python import visibility is not a hostile-code security boundary. Structural
 gates prevent accidental cross-scope dependency and author-SDK exposure;

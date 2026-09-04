@@ -112,7 +112,6 @@ def test_child_session_request_accepts_only_the_hosting_process_contract() -> No
     with pytest.raises(InvalidHostingRequestError, match="ProcessLaunchRequest"):
         ChildSessionRequest(process=object())  # type: ignore[arg-type]
 
-
 def test_exit_and_stderr_tail_are_raw_immutable_mechanism_facts() -> None:
     exit_result = ProcessExit(return_code=-9)
     tail = ProcessStderrTail(content=b"bounded", truncated=True)

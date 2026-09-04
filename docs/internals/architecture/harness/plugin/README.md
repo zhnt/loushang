@@ -322,7 +322,10 @@ Neither may silently override a narrower implemented owner contract.
   owner-only Process/Sandbox launch capability, bounded protocol/supervisor,
   durable attempt journal, and default-dark read-only Capability adapter. C5
   Product/native activation, author-SDK runtime owners, generation publication,
-  and `remote_service` remain absent.
+  and `remote_service` remain absent. The separate
+  [HOST-H5 default-dark adapter](../../hosting/harness-worker-adapter-h5.md)
+  supplies an atomic Hosting session seam and rollback selector but explicitly
+  retains the sealed-descriptor preparation gap, so it does not advance C5.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)
