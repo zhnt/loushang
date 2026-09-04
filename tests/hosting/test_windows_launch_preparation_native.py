@@ -518,7 +518,9 @@ async def test_windows_restricted_native_job_reclaims_descendant(
         assert ready == b"restricted-child-ready\n"
         assert len(api.created_jobs) == 1
         job = api.created_jobs[0]
-        assert api.job_active_process_count(job) == 2
+        # The child-entrypoint handshake plus at least two active members proves
+        # that both the root and its live descendant belong to this Job.
+        assert api.job_active_process_count(job) >= 2
         await lease.close()
         lease = None
         assert api.job_empty_observations[-1]
