@@ -76,7 +76,7 @@ H1 deliberately proves no OS process-tree behavior. That delta remains H2.
 | atomic Child Session Host | `implemented` | H4 transaction order, failure/cancellation matrix, joint lifetime, observation correlation, and native factory round trip remain green |
 | Harness mechanics migration | `partial` | H2c dark adapter parity remains green; sealed-descriptor cases stay on Current owner until a later contract is accepted |
 | default-dark Harness Worker adapter | `implemented` | H5 aggregate mapping, Supervisor session integration, selection, no-fallback, diagnostics, and rollback gates remain green |
-| Hosting-consumable managed preparation | `proposed` | review the H6.0 two-sided responsibility/proof baseline; H6.1 must accept a fake-backed opaque capability without raw handles or mutable-path substitution |
+| Hosting-consumable managed preparation | `partial` | H6.1 private fake-backed ownership and feasibility gates are implemented; H6.2/H6.3 native evidence and H6.4 Harness parity remain |
 | Product/native Worker path absent | `missing` | separate PLC9C5 activation review and gates |
 
 The mechanism baseline is implemented through H4: contracts, process owner,
@@ -84,7 +84,8 @@ endpoint owner, exact platform sets, atomic child sessions, and the dark
 Harness compatibility slice, and the H5 default-dark Worker aggregate adapter.
 Overall migration remains partial because no production Worker owner has
 switched to Hosting and the Current sealed-executable preparation cannot yet be
-consumed by Hosting. The proposed
-[H6 Managed Launch Preparation](managed-launch-preparation-h6.md) and
+consumed by Hosting. The accepted, partially implemented
+[H6 Managed Launch Preparation](managed-launch-preparation-h6.md), its
+[H6.1 feasibility record](validation/managed-launch-preparation-h6-feasibility.md), and the
 [source-backed Current inventory](validation/hosted-product-runtime-v1-inventory.md)
 define the next closure gates without changing those Current facts.

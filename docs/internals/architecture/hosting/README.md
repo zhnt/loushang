@@ -42,8 +42,11 @@ H5 adds a default-dark Harness Worker aggregate adapter, explicit typed owner
 selection, stable pathless diagnostics, and a future-attempt rollback latch.
 The Current Harness Worker route remains unchanged; required-containment
 sealed-descriptor transfer and Product/native activation remain separate gaps.
-H6.0 now records a proposed opaque managed-preparation contract and native
-proof plan. It changes no runtime owner or public API and leaves H5 dark.
+H6.0 records the accepted opaque managed-preparation contract. H6.1 now
+implements its private fake-backed ownership core and records non-committing
+POSIX/Windows feasibility mappings; native H6.2/H6.3 proof and the H6.4 Harness
+adapter remain open. It changes no runtime owner or public API and leaves H5
+dark.
 
 Current process mechanics remain implemented inside Harness, principally by:
 
@@ -203,12 +206,13 @@ model.
 9. [H3 Inherited Peer Endpoint](inherited-peer-endpoint-h3.md);
 10. [H4 Atomic Child Session](atomic-child-session-h4.md);
 11. [H5 Default-Dark Harness Worker Adapter](harness-worker-adapter-h5.md);
-12. [H6 Proposed Managed Launch Preparation](managed-launch-preparation-h6.md);
-13. [Hosted Product Runtime V1 Current Inventory](validation/hosted-product-runtime-v1-inventory.md);
-14. [Hosted Application Support Boundary](key-designs/hosted-application-support-boundary.md);
-15. [ARD-002: Hosting Top-Level Placement](../decisions/ARD-002-hosting-top-level-placement.md);
-16. [Traceability](traceability.md);
-17. current source, tests, and generated package facts.
+12. [H6 Managed Launch Preparation](managed-launch-preparation-h6.md);
+13. [H6.1 Managed Launch Preparation Feasibility Record](validation/managed-launch-preparation-h6-feasibility.md);
+14. [Hosted Product Runtime V1 Current Inventory](validation/hosted-product-runtime-v1-inventory.md);
+15. [Hosted Application Support Boundary](key-designs/hosted-application-support-boundary.md);
+16. [ARD-002: Hosting Top-Level Placement](../decisions/ARD-002-hosting-top-level-placement.md);
+17. [Traceability](traceability.md);
+18. current source, tests, and generated package facts.
 
 ## Current-To-Target Gaps
 
@@ -238,9 +242,9 @@ model.
 - `implemented`: the H5 default-dark aggregate Worker adapter, Supervisor
   session entrypoint, explicit no-fallback selector, pathless diagnostics, and
   future-attempt rollback latch.
-- `proposed`: H6 specifies a Hosting-consumable opaque managed-preparation
-  capability and exact Linux/Windows proof obligations; no implementation or
-  public contract exists yet.
+- `partial`: H6.1 implements a private, fake-backed opaque managed-preparation
+  transaction and freezes its cross-platform ownership protocol; no public
+  contract, native H6.2/H6.3 adapter, Harness H6.4 adapter, or activation exists.
 - `missing`: a reviewed Product/native Worker activation route; PLC9C5 remains
   separate from Hosting extraction and H6 does not pre-approve it.
 - `missing`: daemon/service-instance lifecycle remains a trigger-gated future

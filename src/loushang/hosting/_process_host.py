@@ -14,6 +14,7 @@ from enum import Enum
 from typing import TypeVar, cast
 
 from ._process_backend import (
+    _ManagedProcessPreparation,
     _ProcessBackend,
     _ProcessInheritance,
     _ProcessTransport,
@@ -117,6 +118,7 @@ class _Reservation:
     session_id: str | None = None
     preparation: LaunchPreparationLease | None = None
     process: _ProcessTransport | None = None
+    orphan_processes: list[_ProcessTransport] = field(default_factory=list)
     cleanup_error: _CleanupError | None = None
 
     def attach_preparation(self, preparation: LaunchPreparationLease) -> None:
@@ -128,6 +130,13 @@ class _Reservation:
         if self.process is not None and self.process is not process:
             raise RuntimeError("process reservation already owns a process")
         self.process = process
+
+    def attach_orphan_process(self, process: _ProcessTransport) -> None:
+        if self.process is process or any(
+            owned is process for owned in self.orphan_processes
+        ):
+            return
+        self.orphan_processes.append(process)
 
 
 class _BoundedByteTail:
@@ -681,6 +690,13 @@ class _ProcessHost:
             session_id=None,
         )
 
+    def _has_cleanup_debt(self, session_id: str) -> bool:
+        return any(
+            reservation.session_id == session_id
+            and reservation.cleanup_error is not None
+            for reservation in self._reservations.values()
+        )
+
     async def _start_with_inheritance(
         self,
         request: ProcessLaunchRequest,
@@ -746,11 +762,20 @@ class _ProcessHost:
                 HostingLifecycleTransition.SPAWNING,
                 session_id=session_id,
             )
-            process = await self._backend.spawn(
-                prepared_request,
-                on_spawn=reservation.attach_process,
-                inheritance=inheritance,
-            )
+            if isinstance(prepared, _ManagedProcessPreparation):
+                process = await prepared.spawn_prepared(
+                    self._backend,
+                    prepared_request,
+                    on_spawn=reservation.attach_process,
+                    on_orphan_spawn=reservation.attach_orphan_process,
+                    inheritance=inheritance,
+                )
+            else:
+                process = await self._backend.spawn(
+                    prepared_request,
+                    on_spawn=reservation.attach_process,
+                    inheritance=inheritance,
+                )
             if reservation.process is None:
                 # Salvage the returned object so a broken backend cannot turn
                 # its own missing callback into an unowned process leak.
@@ -872,6 +897,19 @@ class _ProcessHost:
             session_id=reservation.session_id,
         )
         try:
+            remaining_orphans: list[_ProcessTransport] = []
+            for orphan in reservation.orphan_processes:
+                failure_count = len(failures)
+                await _reclaim_unpublished(
+                    self._backend,
+                    orphan,
+                    self._limits,
+                    self._timeouts,
+                    failures,
+                )
+                if len(failures) != failure_count:
+                    remaining_orphans.append(orphan)
+            reservation.orphan_processes = remaining_orphans
             if reservation.process is not None:
                 failure_count = len(failures)
                 await _reclaim_unpublished(

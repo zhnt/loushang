@@ -36,6 +36,7 @@ CURRENT_SOURCE_SEAMS = (
     HOSTING_SOURCE / "_process_backend.py",
     HOSTING_SOURCE / "_process_host.py",
     HOSTING_SOURCE / "_child_session_host.py",
+    HOSTING_SOURCE / "_launch_preparation.py",
     HOSTING_SOURCE / "_posix_process.py",
     HOSTING_SOURCE / "_windows_process.py",
     HOSTING_SOURCE / "_win32_process.py",
@@ -127,9 +128,9 @@ def test_baseline_documents_are_status_honest_and_indexed() -> None:
             "ID": "HOST-H6",
             "Scope": "hosting",
             "Parent": "loushang",
-            "Authority": "normative proposed design",
-            "Design status": "proposed",
-            "Implementation status": "not-started",
+            "Authority": "normative accepted design",
+            "Design status": "accepted",
+            "Implementation status": "partial — H6.1 private fake-backed core",
             "Activation status": "forbidden; H5 remains default-dark",
         },
         INVENTORY: {
@@ -186,7 +187,7 @@ def test_h6_keeps_authority_outside_and_native_material_opaque() -> None:
     h6 = _read(H6)
     normalized_h6 = " ".join(h6.split())
     responsibility = _section(h6, "Responsibility Boundary")
-    contract = _section(h6, "Proposed Contract Properties")
+    contract = _section(h6, "Accepted Contract Properties")
 
     for statement in (
         "Meaning stays with the caller; mechanism stays with Hosting",

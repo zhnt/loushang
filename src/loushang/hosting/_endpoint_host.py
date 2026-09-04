@@ -231,6 +231,13 @@ class _InheritedEndpointHost:
         self._leases: set[_InheritedEndpointLease] = set()
         self._close_task: asyncio.Task[None] | None = None
 
+    def _has_cleanup_debt(self, session_id: str) -> bool:
+        return any(
+            reservation.session_id == session_id
+            and reservation.cleanup_error is not None
+            for reservation in self._reservations.values()
+        )
+
     async def create(self, *, session_id: str | None = None) -> _InheritedEndpointLease:
         owner = asyncio.current_task()
         if owner is None:
