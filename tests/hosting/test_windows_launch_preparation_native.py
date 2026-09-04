@@ -42,6 +42,7 @@ pytestmark = pytest.mark.skipif(
     reason="Windows AMD64 restricted-token launch preparation",
 )
 _P = ParamSpec("_P")
+_NATIVE_TEST_TIMEOUT_SECONDS = 45.0
 
 
 def _async_test(
@@ -49,7 +50,11 @@ def _async_test(
 ) -> Callable[_P, None]:
     @wraps(function)
     def run(*args: _P.args, **kwargs: _P.kwargs) -> None:
-        asyncio.run(function(*args, **kwargs))
+        async def bounded() -> None:
+            async with asyncio.timeout(_NATIVE_TEST_TIMEOUT_SECONDS):
+                await function(*args, **kwargs)
+
+        asyncio.run(bounded())
 
     return run
 
@@ -338,6 +343,25 @@ async def _read_line(read: Callable[[int], Awaitable[bytes]]) -> bytes:
     return b"".join(chunks)
 
 
+async def _await_capture_or_start_failure(
+    preparation: _RestrictedPreparation,
+    start: asyncio.Task[object],
+) -> None:
+    capture = asyncio.create_task(
+        preparation.captured.wait(),
+        name="h6-windows-native-capture-observer",
+    )
+    done, _ = await asyncio.wait(
+        (capture, start),
+        return_when=asyncio.FIRST_COMPLETED,
+    )
+    if start in done:
+        capture.cancel()
+        await start
+        raise AssertionError("Windows native start returned before capture pause")
+    await capture
+
+
 @_async_test
 async def test_windows_restricted_native_locks_identity_and_runs_restricted(
     tmp_path: Path,
@@ -355,7 +379,7 @@ async def test_windows_restricted_native_locks_identity_and_runs_restricted(
     start = asyncio.create_task(
         host.start(ChildSessionRequest(spec.request), preparation)
     )
-    await preparation.captured.wait()
+    await _await_capture_or_start_failure(preparation, start)
 
     with pytest.raises(OSError):
         executable.write_bytes(b"replacement")
