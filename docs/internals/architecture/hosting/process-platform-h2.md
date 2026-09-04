@@ -53,9 +53,10 @@ later close retries the same owner after the platform condition changes.
 
 After force-kill, tree observation receives one final bounded interval. An
 observation failure or a kernel-retained orphan zombie is reported as cleanup
-failure, the waiter is cancelled, and all remaining handles/preparation are
-still closed. Hosting never waits forever for an unsignalable zombie; such a
-PID has no executing code and is not reported as successful tree-empty proof.
+failure and the waiter is cancelled. Hosting never waits forever for an
+unsignalable zombie, but it also does not convert timeout or handle closure into
+tree-empty proof: the lease and joined preparation remain owned until a later
+bounded retry obtains that proof.
 
 An owned tree means membership in the Hosting-created process group or Job
 Object. Hosting is not a hostile-code security boundary: a POSIX child that is

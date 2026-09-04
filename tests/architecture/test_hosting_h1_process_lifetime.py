@@ -110,13 +110,24 @@ def test_h1_specification_records_private_fake_backed_delivery_boundary() -> Non
 
 
 def test_h1_lifecycle_matrix_names_required_adversarial_cases() -> None:
-    tests = Path("tests/hosting/test_process_host.py").read_text(encoding="utf-8")
+    tests = "\n".join(
+        Path(path).read_text(encoding="utf-8")
+        for path in (
+            "tests/hosting/test_process_host.py",
+            "tests/hosting/test_posix_process.py",
+            "tests/hosting/test_windows_process.py",
+        )
+    )
     for case in (
         "natural_exit_releases_capacity_after_owned_cleanup",
         "spawn_failure_and_early_exit_rollback_without_leaks",
         "natural_root_exit_reclaims_lingering_owned_tree_before_capacity",
         "terminate_uses_grace_then_kill_and_all_waiters_share_exit",
         "close_aggregates_faults_but_attempts_every_reachable_cleanup",
+        "force_settlement_timeout_retains_owner_until_tree_retry",
+        "posix_pending_root_eperm_retains_owner_for_host_close_retry",
+        "posix_lingering_descendant_eperm_retains_owner_for_retry",
+        "windows_published_process_retries_failed_close_handle",
         "start_cancellation_after_attachment_is_shielded_until_reclaimed",
         "cancellation_during_failed_start_rollback_takes_precedence",
         "host_close_fences_and_cancels_pending_start_before_returning",

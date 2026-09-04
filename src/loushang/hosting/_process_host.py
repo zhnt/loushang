@@ -200,6 +200,7 @@ class _HostedProcess(ProcessLease):
         self._finalizer_task: asyncio.Task[None] | None = None
         self._finalization_error: _CleanupError | None = None
         self._finalizer_finished = False
+        self._tree_settled = False
         self._process_handles_task: asyncio.Task[None] | None = None
         self._process_handles_closed = False
         self._preparation_task: asyncio.Task[None] | None = None
@@ -393,11 +394,13 @@ class _HostedProcess(ProcessLease):
                         )
                     )
             else:
+                self._tree_settled = True
                 await self._finish_tree_wait(failures)
 
             await self._finish_stderr(failures)
             await self._finish_process_handles(failures)
-            await self._finish_preparation(failures)
+            if self._tree_settled:
+                await self._finish_preparation(failures)
         finally:
             self._closing = True
             self._finalizer_finished = True
@@ -461,6 +464,7 @@ class _HostedProcess(ProcessLease):
                 )
             )
         if tree_exited:
+            self._tree_settled = True
             settled_failures: list[_CleanupFailure] = []
             await self._finish_tree_wait(settled_failures)
             failures.extend(settled_failures)
@@ -507,6 +511,7 @@ class _HostedProcess(ProcessLease):
                 asyncio.shield(tree_task),
                 self._limits.termination_grace_seconds,
             )
+            self._tree_settled = True
         except TimeoutError:
             force_kill = True
         except BaseException as exc:
@@ -557,6 +562,8 @@ class _HostedProcess(ProcessLease):
                     exc,
                 )
             )
+        else:
+            self._tree_settled = True
 
     async def _finish_forced_tree_wait(
         self, failures: list[_CleanupFailure]
@@ -588,6 +595,8 @@ class _HostedProcess(ProcessLease):
                     exc,
                 )
             )
+        else:
+            self._tree_settled = True
         finally:
             if not task.done():
                 task.cancel()
@@ -618,15 +627,29 @@ class _HostedProcess(ProcessLease):
         finalizer_was_finished = self._finalizer_finished
         await self._reset_failed_cleanup_tasks()
         if finalizer_was_finished:
-            # Root observation and tree reclamation already ran.  Only the
-            # exact owners retained by the failed finalizer may be retried;
-            # re-running termination would create a second signaling attempt
-            # against an already-finalized process identity.
+            # Root observation already ran, but a failed finalizer is not
+            # proof that the complete tree settled.  Retry bounded tree
+            # reclamation before releasing process/preparation owners.
+            if not self._tree_settled:
+                try:
+                    await self.terminate()
+                except _CleanupError as exc:
+                    failures.extend(exc.failures)
+                except BaseException as exc:
+                    failures.append(
+                        _failure(
+                            _CleanupPhase.TERMINATE,
+                            HostingFailureCategory.TERMINATION_FAILED,
+                            exc,
+                        )
+                    )
             await self._finish_process_handles(failures)
-            await self._finish_preparation(failures)
-            if not failures:
+            if self._tree_settled:
+                await self._finish_preparation(failures)
+            if not failures and self._tree_settled:
                 self._finalization_error = None
             await self._finish_registration(failures)
+            self._record_unsettled_tree(failures)
             if failures:
                 raise _CleanupError(tuple(failures)) from failures[0].cause
             return
@@ -685,6 +708,7 @@ class _HostedProcess(ProcessLease):
             failures.extend(self._finalization_error.failures)
 
         await self._finish_registration(failures)
+        self._record_unsettled_tree(failures)
         if failures:
             raise _CleanupError(tuple(failures)) from failures[0].cause
 
@@ -714,6 +738,17 @@ class _HostedProcess(ProcessLease):
         else:
             async with self._lifecycle_lock:
                 self._process_handles_closed = True
+            if not self._tree_settled:
+                try:
+                    self._tree_settled = self._backend.tree_exited(self._process)
+                except BaseException as exc:
+                    failures.append(
+                        _failure(
+                            _CleanupPhase.REAP,
+                            HostingFailureCategory.TERMINATION_FAILED,
+                            exc,
+                        )
+                    )
 
     async def _finish_preparation(
         self, failures: list[_CleanupFailure]
@@ -750,6 +785,7 @@ class _HostedProcess(ProcessLease):
                 return
             if (
                 not self._finalizer_finished
+                or not self._tree_settled
                 or not self._process_handles_closed
                 or not self._preparation_closed
             ):
@@ -779,6 +815,19 @@ class _HostedProcess(ProcessLease):
 
     async def _release_registration(self) -> None:
         await self._on_finalized(self)
+
+    def _record_unsettled_tree(
+        self, failures: list[_CleanupFailure]
+    ) -> None:
+        if self._released or self._tree_settled or failures:
+            return
+        failures.append(
+            _failure(
+                _CleanupPhase.REAP,
+                HostingFailureCategory.TERMINATION_FAILED,
+                TimeoutError("hosted process tree remains unsettled"),
+            )
+        )
 
     async def _reset_failed_cleanup_tasks(self) -> None:
         async with self._lifecycle_lock:

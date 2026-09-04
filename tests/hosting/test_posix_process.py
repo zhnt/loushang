@@ -14,6 +14,7 @@ import pytest
 from loushang.hosting import (
     HostingError,
     HostingFailureCategory,
+    HostingLifecycleTransition,
     HostingObservation,
     ProcessLaunchRequest,
     ProcessStderrMode,
@@ -25,7 +26,11 @@ from loushang.hosting import (
 )
 from loushang.hosting._posix_process import _PosixProcess, _PosixProcessBackend
 from loushang.hosting._process_backend import _ProcessInheritance, _ProcessTransport
-from loushang.hosting._process_host import _ProcessHost, _ProcessHostLimits
+from loushang.hosting._process_host import (
+    _HostedProcess,
+    _ProcessHost,
+    _ProcessHostLimits,
+)
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="POSIX process groups")
 _P = ParamSpec("_P")
@@ -124,6 +129,7 @@ class _DeniedPosixGroup:
         self.raw = raw
         self.live = True
         self.denied = True
+        self.ignore_term = False
         self.calls: list[int] = []
 
     def killpg(self, process_group_id: int, group_signal: int) -> None:
@@ -134,6 +140,8 @@ class _DeniedPosixGroup:
         if self.denied:
             raise PermissionError("process-group signaling is denied")
         if group_signal != 0:
+            if group_signal == signal.SIGTERM and self.ignore_term:
+                return
             self.live = False
             if self.raw.returncode is None:
                 self.raw.returncode = -int(group_signal)
@@ -431,7 +439,7 @@ async def test_posix_pending_root_eperm_retains_owner_for_host_close_retry(
     backend = _AttachedPosixBackend(process)
     host = _ProcessHost(
         backend,
-        limits=_ProcessHostLimits(termination_grace_seconds=0.01),
+        limits=_ProcessHostLimits(termination_grace_seconds=0.03),
     )
     request = _request(tmp_path, "pass")
     preparation = _PreparationLease(request)
@@ -450,12 +458,15 @@ async def test_posix_pending_root_eperm_retains_owner_for_host_close_retry(
     assert signal.SIGTERM in group.calls
     assert signal.SIGKILL in group.calls
 
+    kill_calls = group.calls.count(signal.SIGKILL)
     group.denied = False
+    group.ignore_term = True
     await asyncio.wait_for(host.close(), 0.5)
 
     assert host._state == "closed"
     assert lease not in host._leases
     assert raw.returncode is not None
+    assert group.calls.count(signal.SIGKILL) == kill_calls + 1
     assert preparation.close_calls == 1
     assert backend.close_backend_calls == 1
 
@@ -471,9 +482,11 @@ async def test_posix_lingering_descendant_eperm_retains_owner_for_retry(
     monkeypatch.setattr(_posix_process.os, "getpgid", group.getpgid)
     process = _PosixProcess(raw)  # type: ignore[arg-type]
     backend = _AttachedPosixBackend(process)
+    observations = _Observations()
     host = _ProcessHost(
         backend,
         limits=_ProcessHostLimits(termination_grace_seconds=0.01),
+        observation_sink=observations,
     )
     request = _request(tmp_path, "pass")
     preparation = _PreparationLease(request)
@@ -481,6 +494,20 @@ async def test_posix_lingering_descendant_eperm_retains_owner_for_retry(
 
     raw.returncode = 0
     assert (await lease.wait()).return_code == 0
+    assert isinstance(lease, _HostedProcess)
+    finalizer = lease._finalizer_task
+    assert finalizer is not None
+    await asyncio.wait_for(asyncio.shield(finalizer), 0.5)
+
+    assert lease._finalizer_finished is True
+    assert lease._tree_settled is False
+    assert lease in host._leases
+    assert preparation.close_calls == 0
+    assert backend.close_backend_calls == 0
+    assert HostingLifecycleTransition.CLOSED not in {
+        item.transition for item in observations.items
+    }
+
     with pytest.raises(HostingError) as denied:
         await asyncio.wait_for(host.close(), 0.5)
 

@@ -68,10 +68,12 @@ Failure in stdin close, terminate, kill,
 reap, stderr drain, handle close, or preparation close is recorded in a typed
 private aggregate and does not skip a later reachable step. A failure
 observation contains only the stable public category, never an exception
-message or backend payload. Process-handle and preparation cleanup are marked
-settled only after success. The host does not close its backend or enter the
-closed state while a published lease or rollback reservation still owns such
-debt.
+message or backend payload. Tree ownership has a separate settled latch and
+cannot be inferred from finalizer completion or successful handle closure.
+Process-handle and preparation cleanup are marked settled only after success;
+joined preparation is not released before tree settlement. The host does not
+close its backend or enter the closed state while a published lease or rollback
+reservation still owns such debt.
 
 ## Fixed Bounds
 

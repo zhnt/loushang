@@ -89,6 +89,7 @@ class _FakeWin32Api:
         self._io_lock = threading.Lock()
         self.fail_termination = False
         self.close_failures: dict[int, int] = {}
+        self.spawn_cleanup_handles: tuple[int, ...] = ()
         self.cancel_releases_io = True
         self.job_close_releases_io = True
         self.job_closed = threading.Event()
@@ -103,6 +104,7 @@ class _FakeWin32Api:
             stdin_write=13,
             stdout_read=14,
             stderr_read=15,
+            cleanup_handles=self.spawn_cleanup_handles,
         )
 
     def read_pipe(self, handle: int, max_bytes: int) -> bytes:
@@ -208,12 +210,19 @@ async def test_windows_backend_fake_owns_tree_streams_and_handles(
     assert preparation.close_calls == 1
 
 
+@pytest.mark.parametrize(
+    ("failed_handle", "cleanup_handles"),
+    ((12, ()), (16, (16,))),
+)
 @_async_test
 async def test_windows_published_process_retries_failed_close_handle(
     tmp_path: Path,
+    failed_handle: int,
+    cleanup_handles: tuple[int, ...],
 ) -> None:
     api = _FakeWin32Api()
-    api.close_failures[12] = 1
+    api.spawn_cleanup_handles = cleanup_handles
+    api.close_failures[failed_handle] = 1
     backend = _WindowsProcessBackend(api=api)
     host = _ProcessHost(
         backend,
@@ -229,14 +238,15 @@ async def test_windows_published_process_retries_failed_close_handle(
     assert first_close.value.category is HostingFailureCategory.CLEANUP_FAILED
     assert host._state == "faulted"
     assert lease in host._leases
-    assert 12 not in api.closed
+    assert failed_handle not in api.closed
     assert preparation.close_calls == 1
 
     await host.close()
 
     assert host._state == "closed"
     assert lease not in host._leases
-    assert set(api.closed) == {11, 12, 13, 14, 15}
+    expected_handles = {11, 12, 13, 14, 15, *cleanup_handles}
+    assert set(api.closed) == expected_handles
     assert len(api.closed) == len(set(api.closed))
     assert preparation.close_calls == 1
 

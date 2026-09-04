@@ -544,7 +544,7 @@ async def test_tree_query_failure_still_reclaims_handles_and_preparation() -> No
 
 
 @_async_test
-async def test_force_settlement_timeout_is_bounded_and_releases_ownership() -> None:
+async def test_force_settlement_timeout_retains_owner_until_tree_retry() -> None:
     process = _FakeProcess()
     backend = _FakeBackend((process,))
     backend.terminate_exits = False
@@ -560,10 +560,16 @@ async def test_force_settlement_timeout_is_bounded_and_releases_ownership() -> N
     assert caught.value.category is HostingFailureCategory.CLEANUP_FAILED
     assert backend.kill_calls == 1
     assert backend.close_handles_calls == 1
+    assert preparation.close_calls == 0
+    assert lease in host._leases
+
+    backend.terminate_exits = True
+    await lease.close()
+
+    assert backend.close_handles_calls == 1
     assert preparation.close_calls == 1
+    assert lease not in host._leases
     await host.close()
-    # The lease close is the owner of this already-settled aggregate. The host
-    # does not retain an unbounded historical error journal after releasing it.
     await host.close()
 
 
