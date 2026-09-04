@@ -34,8 +34,8 @@ The captured execution closure contains:
 - the locked cwd volume/128-bit file identity;
 - the fixed restricted-token recipe `DISABLE_MAX_PRIVILEGE | LUA_TOKEN |
   WRITE_RESTRICTED`, explicit disabling of `WinBuiltinAdministratorsSid`, and
-  a loader-compatible restricting set containing the current-user, logon,
-  `WinWorldSid`, and `WinBuiltinUsersSid` SIDs;
+  a loader-compatible restricting set mirroring the current-user SID and all
+  current token group SIDs;
 - the exact direct-import set, currently limited to `KERNEL32.DLL` and
   `ADVAPI32.DLL`; and
 - the exact Windows AMD64 major/minor/build platform identity.
@@ -45,11 +45,13 @@ resources/embedded manifests, delayed imports, CLR images, imports outside the
 fixed direct-name set, and a digest or direct-import mismatch. The selected
 oracle uses no CRT or application DLL.
 
-The token recipe proves privilege removal, LUA filtering, write restriction,
-and a real restricted-SID access check. The loader-compatible restricting set
-does not claim an AppContainer, integrity boundary, or isolation from the
-same user; stronger product sandboxing remains caller policy outside this
-profile.
+The token recipe proves privilege removal, LUA filtering, and explicit
+administrator deny-only treatment. The mirrored SID list makes that restricted
+token observable through `IsTokenRestricted` without inventing a second ACL
+policy that breaks Windows initialization; it does not add an isolation claim.
+The profile does not claim an AppContainer, integrity boundary, or isolation
+from the same user; stronger product sandboxing remains caller policy outside
+this profile.
 
 This is deliberately a **direct-import mechanics profile**, not a Windows
 loader-closure or DLL-identity claim. The OS build string is a platform

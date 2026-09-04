@@ -52,13 +52,10 @@ _TOKEN_QUERY = 0x0008
 _DISABLE_MAX_PRIVILEGE = 0x00000001
 _LUA_TOKEN = 0x00000004
 _WRITE_RESTRICTED = 0x00000008
-_WIN_WORLD_SID = 1
 _WIN_BUILTIN_ADMINISTRATORS_SID = 26
-_WIN_BUILTIN_USERS_SID = 27
 _SECURITY_MAX_SID_SIZE = 68
 _TOKEN_USER_INFORMATION_CLASS = 1
 _TOKEN_GROUPS_INFORMATION_CLASS = 2
-_SE_GROUP_LOGON_ID = 0xC0000000
 _MAX_TOKEN_GROUPS = 1024
 _FILE_SHARE_READ = 0x00000001
 _FILE_SHARE_WRITE = 0x00000002
@@ -431,14 +428,6 @@ class _CtypesWin32Api:
             ctypes.byref(groups_storage, _TOKEN_GROUPS.Groups.offset),
             ctypes.POINTER(group_array_type),
         ).contents
-        logon_sids = [
-            group.Sid
-            for group in groups
-            if group.Attributes & _SE_GROUP_LOGON_ID == _SE_GROUP_LOGON_ID
-        ]
-        if len(logon_sids) != 1:
-            raise OSError("Windows token must contain exactly one logon SID")
-
         admin_storage = ctypes.create_string_buffer(_SECURITY_MAX_SID_SIZE)
         admin_size = wintypes.DWORD(ctypes.sizeof(admin_storage))
         if not self._CreateWellKnownSid(
@@ -457,34 +446,13 @@ class _CtypesWin32Api:
             )
         )
 
-        world_storage = ctypes.create_string_buffer(_SECURITY_MAX_SID_SIZE)
-        world_size = wintypes.DWORD(ctypes.sizeof(world_storage))
-        if not self._CreateWellKnownSid(
-            _WIN_WORLD_SID,
-            None,
-            ctypes.byref(world_storage),
-            ctypes.byref(world_size),
-        ):
-            self._raise_last_error("CreateWellKnownSid(WinWorldSid)")
-        users_storage = ctypes.create_string_buffer(_SECURITY_MAX_SID_SIZE)
-        users_size = wintypes.DWORD(ctypes.sizeof(users_storage))
-        if not self._CreateWellKnownSid(
-            _WIN_BUILTIN_USERS_SID,
-            None,
-            ctypes.byref(users_storage),
-            ctypes.byref(users_size),
-        ):
-            self._raise_last_error("CreateWellKnownSid(WinBuiltinUsersSid)")
-        restricting_sids = (_SID_AND_ATTRIBUTES * 4)(
+        restricting_sid_count = group_count + 1
+        restricting_sid_type = _SID_AND_ATTRIBUTES * restricting_sid_count
+        restricting_sids = restricting_sid_type(
             _SID_AND_ATTRIBUTES(Sid=user_sid, Attributes=0),
-            _SID_AND_ATTRIBUTES(Sid=logon_sids[0], Attributes=0),
-            _SID_AND_ATTRIBUTES(
-                Sid=ctypes.cast(world_storage, ctypes.c_void_p),
-                Attributes=0,
-            ),
-            _SID_AND_ATTRIBUTES(
-                Sid=ctypes.cast(users_storage, ctypes.c_void_p),
-                Attributes=0,
+            *(
+                _SID_AND_ATTRIBUTES(Sid=group.Sid, Attributes=0)
+                for group in groups
             ),
         )
         token = wintypes.HANDLE()
@@ -496,7 +464,7 @@ class _CtypesWin32Api:
             ctypes.byref(disabled_sids),
             0,
             None,
-            4,
+            restricting_sid_count,
             ctypes.byref(restricting_sids),
             ctypes.byref(token),
         ):

@@ -63,7 +63,7 @@ def _spec() -> _WindowsRestrictedLaunchCaptureSpec:
             "executable:win32:7:101",
             "cwd:win32:7:202",
             "restricted-token:disable-max-privilege+lua+write-restricted"
-            "+disable-admin+restrict-user-logon-world-users-v1",
+            "+disable-admin+mirror-current-sids-v1",
             "direct-imports:KERNEL32.DLL",
             "platform:windows-amd64-10.0.20348",
         ),
@@ -657,7 +657,7 @@ def test_win32_restricted_token_uses_the_exact_profile_flags() -> None:
     observed_sid_types: list[int] = []
     observed_sid_addresses: dict[int, int] = {}
     user_sid_storage = ctypes.create_string_buffer(16)
-    logon_sid_storage = ctypes.create_string_buffer(16)
+    group_sid_storages = [ctypes.create_string_buffer(16) for _ in range(3)]
 
     def get_token_information(
         token: int,
@@ -671,7 +671,8 @@ def test_win32_restricted_token_uses_the_exact_profile_flags() -> None:
         required_size = (
             ctypes.sizeof(_TOKEN_USER)
             if information_class == 1
-            else ctypes.sizeof(_TOKEN_GROUPS)
+            else _TOKEN_GROUPS.Groups.offset
+            + 3 * ctypes.sizeof(_SID_AND_ATTRIBUTES)
         )
         ctypes.cast(required, ctypes.POINTER(ctypes.c_uint32)).contents.value = (
             required_size
@@ -692,12 +693,20 @@ def test_win32_restricted_token_uses_the_exact_profile_flags() -> None:
                 target,
                 ctypes.POINTER(_TOKEN_GROUPS),
             ).contents
-            token_groups.GroupCount = 1
-            token_groups.Groups[0].Sid = ctypes.cast(
-                logon_sid_storage,
-                ctypes.c_void_p,
-            )
-            token_groups.Groups[0].Attributes = 0xC0000000
+            token_groups.GroupCount = 3
+            group_array = ctypes.cast(
+                ctypes.c_void_p(
+                    ctypes.addressof(token_groups) + _TOKEN_GROUPS.Groups.offset
+                ),
+                ctypes.POINTER(_SID_AND_ATTRIBUTES * 3),
+            ).contents
+            for group, storage in zip(
+                group_array,
+                group_sid_storages,
+                strict=True,
+            ):
+                group.Sid = ctypes.cast(storage, ctypes.c_void_p)
+                group.Attributes = 0
         return 1
 
     def create_well_known_sid(
@@ -744,10 +753,10 @@ def test_win32_restricted_token_uses_the_exact_profile_flags() -> None:
         ]
         assert [entry.Sid for entry in restricting_sids] == [
             ctypes.addressof(user_sid_storage),
-            ctypes.addressof(logon_sid_storage),
-            observed_sid_addresses[1],
-            observed_sid_addresses[27],
+            *(ctypes.addressof(storage) for storage in group_sid_storages),
         ]
+        assert all(entry.Attributes == 0 for entry in disabled_sids)
+        assert all(entry.Attributes == 0 for entry in restricting_sids)
         observed.append((source, flags))
         ctypes.cast(target, ctypes.POINTER(ctypes.c_void_p)).contents.value = 91
         return 1
@@ -758,7 +767,7 @@ def test_win32_restricted_token_uses_the_exact_profile_flags() -> None:
 
     assert api.create_restricted_token(17) == 91
     assert observed == [(17, 0x00000001 | 0x00000004 | 0x00000008)]
-    assert observed_sid_types == [26, 1, 27]
+    assert observed_sid_types == [26]
 
 
 def test_windows_pe_parser_accepts_exact_amd64_direct_import_profile(
