@@ -91,7 +91,7 @@ not evidence of those packages or runtime routes.
 | opaque request-bound native preparation | Hosting Contract/Platform components | implemented privately in H6.1; fake ownership, concurrency/fault, and no-raw-handle gates are retained |
 | exact Linux executable/cwd/containment transfer | Hosting platform adapter with caller-owned requirements | implemented for the private static-closure profiles; H6.2 retained native adversarial oracle remains green |
 | exact Windows executable/cwd/containment transfer | Hosting platform adapter with caller-owned requirements | implemented for one private restricted-token/direct-import PE mechanics profile; the non-skippable H6.3 native adversarial oracle must remain green |
-| Harness-to-Hosting managed preparation parity | Harness Sandbox/Worker adapter over Hosting | H6.4 independent Current/Hosting parity; still default-dark |
+| Harness-to-Hosting managed preparation parity | Harness Sandbox/Worker adapter over Hosting | H6.4 fake-backed public/managed semantic and cleanup parity; native Worker compatibility remains absent and default stays Current |
 | Product catalog, no-default routing, scoped runtime lifetime | proposed AppHost | A0 contracts and two-unrelated-fake-Product conformance |
 | Session pre-routing identity | proposed AppHost schema plus canonical Session persistence/catalog owner | atomic envelope creation/resume/migration tests before Product parsing |
 | AppHost cwd/user-global Session projection | adapter over the existing Harness Session discovery/catalog owner | explicit-scope listing, stable source identity, exact alias/conflict behavior, Product envelope, and no-direct-filesystem tests |

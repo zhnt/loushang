@@ -9,6 +9,8 @@ RECORD = Path(
 )
 ADAPTER = Path("src/loushang/harness/worker/hosting_adapter.py")
 WORKER_TESTS = Path("tests/harness/worker/test_hosting_adapter.py")
+CURRENT_LAUNCH_TESTS = Path("tests/harness/worker/test_launch.py")
+CURRENT_SUPERVISOR_TESTS = Path("tests/harness/worker/test_supervisor.py")
 SELECTION = Path("src/loushang/harness/worker/owner_selection.py")
 HOSTING_PUBLIC = (
     Path("src/loushang/hosting/__init__.py"),
@@ -21,13 +23,27 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def _resolve_import_from(path: Path, node: ast.ImportFrom) -> str | None:
+    if node.module is None:
+        return None
+    if node.level == 0:
+        return node.module
+    package = list(path.with_suffix("").parts[1:-1])
+    retained = len(package) - (node.level - 1)
+    if retained < 0:
+        return node.module
+    return ".".join((*package[:retained], *node.module.split(".")))
+
+
 def _imports(path: Path) -> set[str]:
     imports: set[str] = set()
     for node in ast.walk(ast.parse(_read(path), filename=str(path))):
         if isinstance(node, ast.Import):
             imports.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module is not None:
-            imports.add(node.module)
+        elif isinstance(node, ast.ImportFrom):
+            imported = _resolve_import_from(path, node)
+            if imported is not None:
+                imports.add(imported)
     return imports
 
 
@@ -61,6 +77,11 @@ def test_h6_4_bridge_is_nominal_narrow_and_does_not_select_a_profile() -> None:
 
 def test_h6_4_private_friend_import_is_confined_to_the_worker_adapter() -> None:
     private_module = "loushang.hosting._launch_preparation"
+    relative = ast.parse(
+        "from ...hosting._launch_preparation import _LaunchCapturePort"
+    ).body[0]
+    assert isinstance(relative, ast.ImportFrom)
+    assert _resolve_import_from(ADAPTER, relative) == private_module
     consumers = {
         path
         for path in Path("src/loushang").rglob("*.py")
@@ -70,21 +91,26 @@ def test_h6_4_private_friend_import_is_confined_to_the_worker_adapter() -> None:
     assert consumers == {ADAPTER}
 
 
+def _test_functions(path: Path) -> dict[str, ast.FunctionDef | ast.AsyncFunctionDef]:
+    return {
+        node.name: node
+        for node in ast.parse(_read(path), filename=str(path)).body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+
+
 def test_h6_4_managed_parity_matrix_is_executable_and_default_dark() -> None:
     record = _read(RECORD)
     normalized_record = " ".join(record.split())
-    worker_tests = _read(WORKER_TESTS)
-    tree = ast.parse(worker_tests, filename=str(WORKER_TESTS))
-    tests = {
-        node.name: node
-        for node in tree.body
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-    }
+    tests = _test_functions(WORKER_TESTS)
     required = (
         "test_hosting_adapter_maps_worker_and_publishes_atomic_session",
         "test_hosting_adapter_rechecks_abort_at_final_pre_spawn_fence",
         "test_hosting_adapter_preserves_managed_capture_and_worker_semantic_fence",
         "test_hosting_adapter_managed_capture_cancellation_retains_delegate_cleanup",
+        "test_hosting_adapter_managed_preparation_runs_through_real_child_session",
+        "test_hosting_adapter_managed_final_fence_failure_reclaims_real_child_session",
+        "test_hosting_adapter_managed_capture_cancellation_reclaims_real_reservation",
         "test_owner_router_defaults_current_and_never_falls_back",
         "test_supervisor_can_handshake_through_hosting_aggregate",
     )
@@ -99,3 +125,29 @@ def test_h6_4_managed_parity_matrix_is_executable_and_default_dark() -> None:
     assert "Current remains the default Worker owner" in normalized_record
     assert "not a claim that the Current Python Worker" in normalized_record
     assert "no Product composition supplies a Worker profile" in normalized_record
+
+
+def test_h6_4_parity_record_pins_current_owner_evidence() -> None:
+    record = _read(RECORD)
+    current_evidence = (
+        (
+            CURRENT_LAUNCH_TESTS,
+            "test_owner_only_worker_port_seals_identity_and_returns_redacted_evidence",
+        ),
+        (
+            CURRENT_SUPERVISOR_TESTS,
+            "test_supervisor_handshake_query_heartbeat_and_ordered_shutdown",
+        ),
+        (
+            CURRENT_SUPERVISOR_TESTS,
+            "test_launch_cancellation_is_not_collapsed_into_launch_failure",
+        ),
+        (
+            CURRENT_SUPERVISOR_TESTS,
+            "test_healthy_journal_failure_fences_and_cleans_owned_resources",
+        ),
+    )
+    for path, test_name in current_evidence:
+        assert f"{path}::{test_name}" in record
+        test = _test_functions(path)[test_name]
+        assert any(isinstance(node, ast.Assert) for node in ast.walk(test))
