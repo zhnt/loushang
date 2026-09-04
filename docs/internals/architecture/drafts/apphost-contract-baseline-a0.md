@@ -31,9 +31,11 @@ contract:
    identity, and supported profile identifiers. A separate catalog
    registration pairs it with an already admitted factory capability; the
    descriptor contains no import path and AppHost performs no discovery.
-2. **Product factory** — creates one scoped Product Runtime handle from an
-   explicit Session context and opaque Product locator; it does not expose a
-   global runtime singleton.
+2. **Product factory and resume validator** — the Product-owned validator
+   consumes a revision-pinned routing candidate and returns an opaque opened
+   Product candidate; only then may the factory create one scoped Product
+   Runtime handle. Neither exposes a global runtime singleton or asks AppHost
+   to parse Product state.
 3. **Scoped Product Runtime handle** — stable Product/Session identity plus one
    idempotent close port and an opaque Product-owned binding consumed only by a
    separately registered profile adapter. It is not a generic capability bag,
@@ -46,10 +48,13 @@ contract:
    one idempotent release operation.
 
 The **Session identity/catalog required port** lists bounded identity
-projections and opens one envelope from explicitly selected discovery scopes.
-Its implementation owns root selection, filesystem/store access,
-compatibility-root discovery, deduplication, and stable reopen. AppHost neither
-derives paths nor reads Session files.
+projections and opens one request-bound, revision-pinned candidate lease from
+explicitly selected discovery scopes. The lease retains the exact opened
+source/provider reference without exposing a path or Store handle, supports one
+final `verify/claim`, and closes idempotently. Its implementation owns root
+selection, filesystem/store access, compatibility-root discovery,
+deduplication, and stable reopen. AppHost neither derives paths nor reads
+Session files.
 
 The first adapter should project the existing Harness `SessionDiscoverySource`,
 `SessionLocator`, `SessionDiscoveryMetadata`, bounded catalog, and
@@ -59,9 +64,16 @@ index, rescan roots independently, or make the standard-library-only AppHost
 Contract Model import Harness implementation modules.
 
 Descriptors and registrations are process-local immutable values assembled by
-trusted composition. They contain no credentials, Store handles, raw
-descriptors, Python objects intended for another process, or open-ended
-metadata used to bypass versioning.
+trusted composition. Each registration carries an owner-minted, immutable
+Product/OEM admission-generation lease. The live-binding registry linearizes
+route selection before any generation is pinned: an existing binding is
+validated and acquired only through its retained generation, while an absent
+binding pins the current catalog generation before single-flight construction.
+Catalog replacement atomically stops new pins on the old generation and drains
+existing Session pins before Plugin retirement or final content deletion.
+Registrations contain no credentials, Store handles, raw descriptors, Python
+objects intended for another process, or open-ended metadata used to bypass
+versioning.
 
 ## Required Behavioral Invariants
 
@@ -71,13 +83,28 @@ metadata used to bypass versioning.
   a Product-specific transcript parser or runtime factory is invoked.
 - An envelope selects only among already admitted Product registrations. It is
   bounded routing input, not Product trust, continuity authority, or proof that
-  its locator is safe; the selected canonical Product/continuity owner must
-  revalidate the opaque locator and authority identity before opening state.
+  its locator is safe. The selected Product resume validator consumes the
+  pinned candidate, revalidates locator and continuity authority, and returns
+  an opened Product candidate bound to the same revision before the factory is
+  called. A changed or stale candidate is closed and never reaches the factory.
 - The catalog is an immutable generation frozen before serving work. Duplicate
   Product/profile identities and late mutation are rejected; replacement
-  creates a new generation, and existing Session leases never retarget.
-- Each Session receives an independent scoped Product Runtime handle. Catalog
-  membership never creates a global mutable Product runtime.
+  creates a new generation, closes old-generation admission to new routes, and
+  existing Session leases retain their exact admission/content pin without
+  retargeting until final release.
+- A canonical live-binding registry owns exactly one scoped Product Runtime per
+  `(product_id, continuity identity, Session identity)` key. First acquisition
+  is single-flight; concurrent attach joins the same result. For an existing
+  key, validation and attachment use only the binding's retained Product
+  validator and admission/content-generation pin. For an absent key, the
+  registry reserves construction and pins the current generation atomically.
+  If an old binding is fenced against new attachment, a new generation cannot
+  reuse or replace it under the same key; the route returns a typed generation
+  transition conflict until the old binding drains or an explicit Product
+  migration succeeds. The registry, not an AppService aggregate, is the sole
+  runtime owner and closes it only after explicit Session close/process
+  shutdown fences admission and all binding leases drain. Catalog membership
+  never creates a global Product runtime.
 - The canonical Session persistence owner writes the Session Identity Envelope
   atomically with Session creation/publication and exposes it through the
   injected identity/catalog port. AppHost consumes the projection but does not
@@ -102,7 +129,15 @@ metadata used to bypass versioning.
   evidence as one another.
 - AppService aggregate or named-mux count creates no additional AppHost,
   catalog generation, Product Runtime for an already bound Session,
-  application `RunLease`, or process resource owner.
+  application `RunLease`, or process resource owner. AppService owns only
+  membership, subscription, presenter, and attachment leases; detach or stale
+  detach cannot directly close the underlying AppHost runtime binding.
+- Legacy Coding and external Codex/Claude-style Session formats have no implied
+  Product. Migration requires an explicit selected `product_id` and a
+  Product-owned importer admitted by the same generation. The importer reads a
+  pinned compatibility candidate, copies first into the canonical Session
+  owner, atomically publishes the new envelope, and leaves the source read-only.
+  Failure or cancellation removes no source and publishes no partial envelope.
 
 ## Core Interaction: Create Or Resume
 
@@ -112,9 +147,13 @@ trusted process composition
   -> freeze one immutable catalog generation
 client/profile request
   -> state explicit product_id for create; or request an exact envelope projection
-  -> Session identity/catalog port: list/open selected cwd/user-global scope
-  -> Product Catalog And Router: resolve explicit product_id
-  -> selected Product Factory: create scoped Product Runtime handle
+  -> Session identity/catalog port: list/open pinned selected cwd/user-global candidate
+  -> canonical live-binding registry: linearize existing-key or absent-key route
+  -> existing key: retain its generation and validator, or reject its retirement fence
+  -> absent key: reserve construction and pin the current admitted catalog generation
+  -> branch-selected Product resume validator: validate and open exact Product candidate
+  -> candidate lease: final verify/claim immediately before factory effect
+  -> canonical live-binding registry: publish one created binding or acquire the existing binding
   -> Deployment Profile Composer: bind the elected profile
   -> publish profile/session lease only after both owners are usable
 ```
@@ -122,6 +161,21 @@ client/profile request
 Failure after runtime creation but before profile publication closes the
 profile candidate, then the Product Runtime handle. Cancellation waits for
 owned cleanup before propagating. No failed candidate is cached as a default.
+The routing candidate, Product candidate, and admission-generation pin are
+closed on every path; a published Session binding retains only the exact pins
+needed to prevent premature retirement.
+
+### Explicit Legacy Import
+
+A compatibility candidate without a generic envelope is listable only as
+`migration_required`, never resumable. The caller selects `product_id`; AppHost
+routes to that Product's admitted importer without inspecting the legacy
+payload. The importer validates its own format and continuity identity against
+the pinned read-only candidate, asks the canonical Session persistence owner to
+copy content and atomically commit the new envelope, then returns the new
+canonical candidate. Coding JSONL and Codex/Claude-shaped fixtures exercise the
+same AppHost contract through Product-specific adapters. AppHost contains no
+format switch, filename heuristic, or default Coding branch.
 
 ## Hosted And Launched Edges
 
@@ -139,16 +193,27 @@ objects, or Product activation receipts.
 ## Shutdown Ownership
 
 The future process-level runtime joins repeated stop requests on one bounded,
-idempotent operation:
+idempotent operation. Trusted composition supplies a finite deadline for each
+phase and an overall deadline; timeout records a typed phase failure and
+continues with every reachable later cleanup action:
 
-1. reject new Product/profile/runtime admission;
+1. atomically fence the active catalog generation, new routes, and new
+   live-binding/attachment pins;
 2. ask the elected server/profile adapter to stop accepting new work;
 3. ask AppService, when present, to perform the sole logical detach and settle
    admitted work;
 4. close every distinct profile lease and scoped Product Runtime handle exactly
-   once;
-5. close the one process `RuntimeResourceOwner`; and
-6. report bounded independent phase failures after all reachable cleanup.
+   once, then wait for dependent attachment/runtime pins to drain;
+5. close the catalog generation and each base Product/OEM admission lease once;
+6. close the one process `RuntimeResourceOwner` only after all dependent
+   runtime, profile, catalog, and admission leases settled; and
+7. report bounded independent phase failures after all reachable cleanup.
+
+A timeout or cleanup failure makes a dependent later owner unreachable: it is
+recorded as typed cleanup debt and retained rather than closed out of order.
+In particular, AppHost never closes `RuntimeResourceOwner` beneath a live
+Product runtime or catalog lease. An external supervisor may then terminate the
+process, but AppHost does not synthesize successful retirement or release.
 
 An external supervisor or Hosting launcher may force-terminate after its own
 deadline, but that proves only process facts. It cannot synthesize successful
@@ -160,8 +225,8 @@ Session detach, durable persistence, or Product retirement.
 | --- | --- | --- |
 | A0.0 | placement refinement, component discovery, contract baseline, Current inventory, and absence guard | common-parent and neighboring-owner design review; no source package |
 | A0.1 | standard-library-only private Contract Model package | exact validation, frozen catalog input, no optional-profile imports, no composition |
-| A0.2 | catalog/router plus injected Session identity/catalog port over fakes | two unrelated fake Products; cwd/user-global listing, no-default resume, duplicate, and incompatibility matrix pass |
-| A0.3 | scoped runtime lifecycle and embedded profile composition | multi-Session ownership, cancellation, partial-construction, and shutdown matrix pass |
+| A0.2 | catalog/router, admission-generation pins, injected Session identity/catalog port, and explicit Product-owned importer over fakes | two unrelated fake Products; cwd/user-global listing; no-default resume/migration; legacy Coding and Codex/Claude fixture; duplicate, revision-swap, retirement, and incompatibility matrix pass |
+| A0.3 | canonical live-binding registry, scoped runtime lifecycle, and embedded profile composition | single-flight multi-attach/multi-mux ownership, detach/cancel/stale-detach, partial-construction, deadline, and shutdown matrix pass |
 | A0.4 | optional hosted binder against accepted structural AppServer ports | core stays AppServer-free; transport and semantic owners remain separate |
 | A0.5 | optional serialized launcher adapter | no Python object crosses process; readiness/stop/timeout evidence remains typed |
 
@@ -180,9 +245,13 @@ independent optional slices; neither is an entry criterion for embedded use.
 | `A0-SESSION-DISCOVERY` | explicit cwd/user-global scopes preserve source identity; exact duplicates dedupe and conflicts fail ambiguous |
 | `A0-SESSION-SCOPE` | each Session owns one independently closed Product Runtime handle |
 | `A0-CATALOG-GENERATION` | immutable catalog replacement never retargets an existing Session lease |
+| `A0-ADMISSION-PIN` | replace/disable/retire/shutdown races stop new routes; existing-key attach uses only its retained generation; base leases close once after all pins drain |
+| `A0-RESUME-PIN` | request-bound opened candidates reject list/open replacement and locator/provider revision changes before factory effect |
+| `A0-MIGRATION` | explicit Product-owned copy-first import handles Coding and Codex/Claude fixtures without default selection or source mutation |
+| `A0-MULTI-ATTACH` | concurrent named-mux/session attachments single-flight one canonical runtime and detach only their own leases |
 | `A0-PROFILE-ORTHOGONAL` | one Product works with two profiles and two Products work with one profile |
 | `A0-IMPORTS` | core excludes AppServer, Hosting, concrete Products, and UI frameworks; reverse edges are forbidden |
-| `A0-ROLLBACK` | every acquisition/cancellation/shutdown boundary has deterministic cleanup evidence |
+| `A0-ROLLBACK` | every acquisition/cancellation/shutdown boundary has deterministic cleanup evidence; dependency debt prevents out-of-order resource-owner close |
 | `A0-SERIALIZED-LAUNCH` | launcher boundary contains values/references only, never factories or live handles |
 
 ## Acceptance Fence

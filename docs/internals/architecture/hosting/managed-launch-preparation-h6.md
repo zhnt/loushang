@@ -46,7 +46,9 @@ preparation adapter still materializes the exact containment wrapper/plan.
 Through a narrow Hosting capture capability injected into that trusted
 adapter, the selected Contract and Platform components acquire the native
 executable/cwd/binding resources without exposing their values. The adapter
-returns the rewritten exact request plus an opaque one-use preparation lease.
+attaches each acquired resource to the receiving reservation before capture
+returns, then returns the rewritten exact request plus an opaque one-use
+preparation lease.
 Process or Child Session Host performs final verification and atomically
 consumes that lease at spawn.
 
@@ -100,6 +102,13 @@ PLC9C5 absence guard is removed by H6 design or dark implementation alone.
     transaction. The capability has the same backend identity and fixed
     resource limits, expires with that transaction, and cannot preallocate an
     unbounded pool beside host capacity.
+11. **Acquisition attaches before cancellation can land.** A capture backend
+    synchronously attaches every acquired native resource to the receiving
+    reservation before its first post-acquisition cancellation point. The
+    caller receives only an opaque binding token; it never temporarily owns the
+    executable, cwd, token, profile, or inheritance material. If the caller
+    raises or is cancelled after capture but before returning its preparation
+    lease, the reservation already has everything required for rollback.
 
 ## Responsibility Boundary
 
@@ -142,8 +151,14 @@ their meaning:
 H6.1 must select and prove one common composition protocol. Candidate shapes
 include typed opaque binding slots or private double-dispatch into the selected
 backend. String placeholder substitution, duck-typed raw-handle carriers, and
-backend option dictionaries are forbidden. Until that protocol is accepted,
-H6.0 reserves no public fields or symbols.
+backend option dictionaries are forbidden. H6.1 begins with non-committing
+POSIX and Windows feasibility probes. Those probes validate that one private
+core can represent attachment, verification, claim, transfer, and close on both
+platform families; they are inputs to, not implementations of, H6.2 or H6.3.
+Only after both probes succeed does the fake-backed H6.1 freeze the common core.
+H6.2 and H6.3 may add reviewed platform-private profile data without changing
+that ownership state machine or public H0--H5 contracts. H6.0 reserves no
+public fields or symbols.
 
 The capture capability is a leaf resource operation. It must not reserve
 Process/Child Session capacity, call either host recursively, select a backend
@@ -155,6 +170,48 @@ Opaque here is an API and ownership property, not a hostile same-process Python
 security boundary. Only trusted composition and its preparation adapter receive
 the object; an untrusted Plugin or Worker process never does. Sandbox/process
 isolation remains the security boundary for untrusted code.
+
+## Opaque Capture State And Resource Transfer
+
+Each capture authority and captured material has one serialized owner
+operation. The normative state machine is:
+
+```text
+MINTED -> CAPTURING -> CAPTURED -> VERIFYING -> VERIFIED
+                                            -> CLAIMED -> ATTACHED -> CLOSED
+any pre-ATTACHED failure -------------------------------> CLOSED
+ambiguous spawn/transfer -------------------------------> FENCED
+```
+
+- `MINTED` is bound to one reservation, attempt, and backend. Capture is legal
+  once; a second or concurrent call fails before acquisition.
+- The backend invokes the reservation attachment callback synchronously while
+  `CAPTURING`, before returning material or reaching a cancellation point.
+- Verification and claim are one-use operations bound to the complete prepared
+  request. Concurrent verify, claim, replay, retarget, or close joins or loses
+  against the single owner operation; it never performs a second native action.
+- `CLAIMED` through process attachment is an uninterruptible backend critical
+  section containing the unique inheritance-manifest claim, sole OS process
+  creation effect, and synchronous process attachment callback. Caller
+  cancellation is observed only after its outcome is known and cleanup is
+  owned. An unknowable outcome becomes `FENCED`, never a retry authority.
+- A close racing with capture/verify/claim waits for that owner operation. It
+  must not close a descriptor or handle whose transfer outcome is unresolved.
+  Repeated close joins one idempotent cleanup operation.
+
+Resource classes have explicit successful release points:
+
+| Resource class | Parent-side owner before spawn | Successful handoff/release |
+| --- | --- | --- |
+| executable, cwd, launcher/interpreter and loader identity references | reservation-scoped captured material | close parent copies only after the backend confirms the OS consumed or duplicated the exact reference |
+| child-inherited descriptors/handles | one combined inheritance manifest | transfer only the exact allowlist; close parent child-side copies immediately after confirmed attachment |
+| token, AppContainer/profile, namespace, Job, or equivalent process-lifetime containment resource | captured material, then attached Process Lease | retain until the complete process tree exits and platform cleanup settles |
+| caller semantic preparation lease | caller preparation owner, then Process Lease | close after attached process finalization; close during rollback if publication never occurs |
+| opaque binding token | caller-visible but non-owning | expires when the reservation leaves `CAPTURED` or the transaction closes |
+
+No successful path leaves native material owned only by a callback-local
+variable. A capture acquisition failure that cannot close all attached
+material faults and retains the reservation as cleanup debt.
 
 ## Proposed Contract Properties
 
@@ -168,12 +225,22 @@ Hosting can enforce mechanically:
   implication;
 - a closed execution-closure profile covering the containment launcher,
   payload, and any interpreter/loader identities required by that profile;
+- a closed loader/search policy covering environment keys, search roots, and
+  dependency content identities that can affect executed code;
 - an exact required native preparation profile selected by trusted
   composition, not by environment fallback;
 - the finite inherited-resource intent already admitted by the endpoint and
   stream contract;
 - bounded attempt/correlation identities suitable for observations; and
 - an idempotent close path for every resource acquired before spawn.
+
+Every profile must either bind each dynamic dependency to a content identity or
+bind it to an immutable, explicitly admitted platform-image trust root. It
+normalizes or rejects loader-affecting environment such as `LD_*`, `DYLD_*`,
+DLL search controls, `PATH`, `PYTHONPATH`, and language/runtime preload paths.
+Scripts or dynamically linked programs whose effective closure cannot be
+proved fail closed rather than silently reducing "execution closure" to the
+top-level executable.
 
 The contract must not carry Product IDs, Plugin declarations, Approval records,
 credentials, arbitrary environment discovery, raw containment commands, raw
@@ -241,6 +308,9 @@ reuse, endpoint/preparation descriptor collision, cancellation, exec failure,
 early exit, and cleanup-fault cases. If the payload is a script or dynamically
 loaded program, the accepted profile must additionally bind or explicitly
 admit its interpreter/loader chain; sealing payload bytes alone is not enough.
+Loader-affecting environment, dependency search roots, and admitted dynamic
+dependency or platform-image identities are part of the adversarial oracle;
+library replacement and search-order substitution must fail closed.
 
 ### Windows
 
@@ -248,7 +318,8 @@ Native evidence must prove immutable executable/cwd identity or document an
 equally strong accepted mechanism, strict `PROC_THREAD_ATTRIBUTE_HANDLE_LIST`
 inheritance, required AppContainer/restricted-token properties where selected,
 atomic Job Object ownership, executable image/interpreter and DLL-search
-assumptions for the selected profile, and deterministic handle cleanup. Handle
+policy plus dependency/platform-image identities for the selected profile, and
+deterministic handle cleanup. Handle
 alias/collision and AppContainer-token creation must be exercised with the
 same endpoint-plus-preparation spawn. A POSIX test, fake Win32 adapter, or Job
 Object result alone cannot promote this gate.
@@ -264,15 +335,24 @@ and tree-lifetime properties have native evidence.
 | Slice | Delivery | Exit gate |
 | --- | --- | --- |
 | H6.0 | this responsibility/contract baseline, Current inventory, and absence guards | architecture review accepts ownership; no runtime activation |
-| H6.1 | private fake-backed two-sided opaque preparation transaction | caller/Hosting ownership, replay/retarget/cancellation/fault matrix passes; no public activation |
+| H6.1 | non-committing POSIX/Windows feasibility probes followed by a private fake-backed two-sided opaque preparation transaction | both probes support one core state machine; caller/Hosting ownership and the complete concurrency/fault matrix pass; no public activation |
 | H6.2 | Linux native preparation backend | required-containment and executable/cwd/descriptor adversarial oracle passes |
 | H6.3 | Windows native preparation backend | AppContainer/token, handle-list, Job, identity, and cleanup oracle passes |
 | H6.4 | dark Harness preparation adapter and H5 parity matrix | Current and Hosting owners are independently conformant; default remains Current |
 
-H6.2, H6.3, and the fake-backed part of H6.4 may be developed in parallel after
+The H6.1 probes perform no production spawn and reserve no public API. H6.2,
+H6.3, and the fake-backed part of H6.4 may be developed in parallel only after
 H6.1 freezes the common ownership protocol. Each native parity claim still
 depends on its matching H6.2/H6.3 evidence. H6.4 may not erase the Current
 implementation or enable a Product route.
+
+The H6.1 matrix includes concurrent double-capture/double-consume,
+verify-versus-close, claim-versus-close, capture followed by callback failure or
+cancellation, endpoint/preparation slot collision, retarget/cross-host replay,
+quota exhaustion, forbidden recursive capacity acquisition, final-fence
+cancellation, ambiguous spawn, cleanup failure, and host-close races. Exact
+state, attachment count, native close count, retained cleanup debt, and absence
+of publication are asserted for every case.
 
 ## Conformance Inventory
 
@@ -281,10 +361,13 @@ implementation or enable a Product route.
 | `H6-BOUND` | preparation is bound to one complete request, specification, backend, and attempt |
 | `H6-OPAQUE` | public surfaces expose no raw descriptor, handle, spawner, process, or mutable-path escape |
 | `H6-ONE-SHOT` | success, failure, cancellation, replay, and cross-host transfer consume or close exactly once |
+| `H6-STATE` | capture, verify, claim, attach, close, and host-close races linearize through one owner operation |
 | `H6-CAPACITY` | capture authority exists only inside one reserved transaction and obeys fixed resource limits |
+| `H6-ATTACH` | each acquired resource attaches to the reservation before post-acquisition cancellation can land |
 | `H6-FINAL-FENCE` | final identity/native-property verification is adjacent to the only spawn effect |
 | `H6-INHERITANCE` | endpoint and preparation resources form one exact collision-free allowlist |
 | `H6-EXEC-CLOSURE` | the selected profile proves its launcher, payload, interpreter/loader execution chain |
+| `H6-LOAD-CLOSURE` | loader environment, search policy, and dependency content/platform-image identity cannot be substituted |
 | `H6-CLEANUP` | every acquisition and publication fault settles all reachable owners |
 | `H6-POSIX-NATIVE` | retained Linux adversarial preparation/containment report passes without fallback |
 | `H6-WINDOWS-NATIVE` | retained Windows adversarial preparation/containment report passes without fallback |

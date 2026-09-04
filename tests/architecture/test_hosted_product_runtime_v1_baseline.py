@@ -4,6 +4,11 @@ import ast
 import re
 from pathlib import Path
 
+from loushang.foundation.platform_paths import PlatformPaths
+from loushang.harness.machine_resources.control_plane import (
+    resolve_machine_resource_layout,
+)
+
 HOSTING_ROOT = Path("docs/internals/architecture/hosting")
 DRAFT_ROOT = Path("docs/internals/architecture/drafts")
 PLUGIN_ROOT = Path("docs/internals/architecture/harness/plugin")
@@ -27,6 +32,7 @@ CURRENT_SOURCE_SEAMS = (
     HOSTING_SOURCE / "__init__.py",
     HOSTING_SOURCE / "contracts.py",
     HOSTING_SOURCE / "errors.py",
+    HOSTING_SOURCE / "runtime.py",
     HOSTING_SOURCE / "_process_backend.py",
     HOSTING_SOURCE / "_process_host.py",
     HOSTING_SOURCE / "_child_session_host.py",
@@ -111,6 +117,10 @@ def _table_first_column(text: str) -> tuple[str, ...]:
     return tuple(values)
 
 
+def _documented_source_paths(text: str) -> set[str]:
+    return set(re.findall(r"`(src/loushang/[^`]+\.py)`", text))
+
+
 def test_baseline_documents_are_status_honest_and_indexed() -> None:
     expected = {
         H6: {
@@ -192,8 +202,11 @@ def test_h6_keeps_authority_outside_and_native_material_opaque() -> None:
         "One spawn has one inheritance manifest",
         "Identity covers the execution closure",
         "Capture is reservation-scoped and bounded",
+        "Acquisition attaches before cancellation can land",
         "must not reserve Process/Child Session capacity",
         "Opaque here is an API and ownership property",
+        "MINTED -> CAPTURING -> CAPTURED -> VERIFYING -> VERIFIED",
+        "The H6.1 matrix includes concurrent double-capture/double-consume",
     ):
         assert statement in normalized_h6
     for owner in (
@@ -229,10 +242,13 @@ def test_h6_keeps_authority_outside_and_native_material_opaque() -> None:
         "H6-BOUND",
         "H6-OPAQUE",
         "H6-ONE-SHOT",
+        "H6-STATE",
         "H6-CAPACITY",
+        "H6-ATTACH",
         "H6-FINAL-FENCE",
         "H6-INHERITANCE",
         "H6-EXEC-CLOSURE",
+        "H6-LOAD-CLOSURE",
         "H6-CLEANUP",
         "H6-POSIX-NATIVE",
         "H6-WINDOWS-NATIVE",
@@ -250,7 +266,7 @@ def test_apphost_discovery_maps_five_cohesive_components() -> None:
         re.findall(
             r"`AH-F(\d{2})`", _section(discovery, "Candidate Function Inventory")
         )
-    ) == tuple(f"{number:02d}" for number in range(1, 16))
+    ) == tuple(f"{number:02d}" for number in range(1, 20))
     for component in (
         "AppHost Contract Model",
         "Product Catalog And Router",
@@ -291,13 +307,14 @@ def test_apphost_a0_requires_explicit_identity_and_scoped_lifetimes() -> None:
         "Unknown, disabled, incompatible, or ambiguous Product identity fails",
         "An envelope selects only among already admitted Product registrations",
         "The catalog is an immutable generation",
-        "Each Session receives an independent scoped Product Runtime handle",
+        "A canonical live-binding registry owns exactly one scoped Product Runtime",
         "Trusted composition explicitly selects current-directory",
         "Listing and envelope reads have fixed candidate, byte, and schema bounds",
         "Product identity and presentation/deployment profile are orthogonal",
         "AppHost core imports neither AppServer nor Hosting",
         "Python factories and runtime handles never cross a process boundary",
         "AppService aggregate or named-mux count creates no additional AppHost",
+        "Legacy Coding and external Codex/Claude-style Session formats",
     ):
         assert invariant in " ".join(
             _section(baseline, "Required Behavioral Invariants").split()
@@ -328,12 +345,35 @@ def test_apphost_a0_requires_explicit_identity_and_scoped_lifetimes() -> None:
     ):
         assert reuse_contract in contract_boundary
 
+    assert _table_first_column(
+        _section(baseline, "Planned Conformance Inventory")
+    ) == (
+        "A0-CATALOG",
+        "A0-TWO-PRODUCTS",
+        "A0-NO-DEFAULT",
+        "A0-IDENTITY-NO-AUTHORITY",
+        "A0-SESSION-DISCOVERY",
+        "A0-SESSION-SCOPE",
+        "A0-CATALOG-GENERATION",
+        "A0-ADMISSION-PIN",
+        "A0-RESUME-PIN",
+        "A0-MIGRATION",
+        "A0-MULTI-ATTACH",
+        "A0-PROFILE-ORTHOGONAL",
+        "A0-IMPORTS",
+        "A0-ROLLBACK",
+        "A0-SERIALIZED-LAUNCH",
+    )
+
 
 def test_current_inventory_matches_source_and_retained_absences() -> None:
     inventory = _read(INVENTORY)
     for path in CURRENT_SOURCE_SEAMS:
         assert path.is_file(), path
         assert f"`{path.as_posix()}`" in inventory
+    assert _documented_source_paths(inventory) == {
+        path.as_posix() for path in CURRENT_SOURCE_SEAMS
+    }
 
     assert HOSTING_SOURCE.is_dir()
     assert not APPHOST_SOURCE.exists()
@@ -360,9 +400,26 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
     hosting_imports = {
         imported for path in HOSTING_SOURCE.rglob("*.py") for imported in _imports(path)
     }
-    assert not any(
-        imported.startswith("loushang.harness") for imported in hosting_imports
+    forbidden_hosting_prefixes = (
+        "loushang.harness",
+        "loushang.coding",
+        "loushang.apphost",
+        "loushang.appserver",
+        "loushang.appservice",
     )
+    assert not any(
+        imported.startswith(forbidden_hosting_prefixes)
+        for imported in hosting_imports
+    )
+
+    reverse_apphost_consumers = {
+        path
+        for path in Path("src/loushang").rglob("*.py")
+        if any(
+            imported.startswith("loushang.apphost") for imported in _imports(path)
+        )
+    }
+    assert reverse_apphost_consumers == set()
     for statement in (
         "H5 default owner is Current",
         "PLC9C5 Product activation and platform absence guards remain unchanged",
@@ -372,12 +429,45 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         assert statement in _section(inventory, "Retained Fences")
 
 
+def test_current_session_discovery_roots_preserve_exact_modes(tmp_path: Path) -> None:
+    platform_home = tmp_path / "user" / ".loushang"
+    paths = PlatformPaths(
+        home=platform_home,
+        data=platform_home / "data",
+        state=platform_home / "state",
+        cache=platform_home / "cache",
+        runtime=tmp_path / "runtime",
+        temporary=tmp_path / "temporary",
+    )
+    cwd = tmp_path / "project"
+    layout = resolve_machine_resource_layout(platform_paths=paths, cwd=cwd)
+    sessions = {
+        resource.resource_id: resource
+        for resource in layout.resources
+        if resource.resource_id.startswith("sessions.")
+    }
+
+    assert (sessions["sessions.global"].path, sessions["sessions.global"].mode) == (
+        platform_home / "data" / "sessions",
+        "canonical",
+    )
+    assert (
+        sessions["sessions.cwd_compatibility"].path,
+        sessions["sessions.cwd_compatibility"].mode,
+    ) == (cwd / ".loushang" / "sessions", "compatibility")
+    assert (
+        sessions["sessions.home_compatibility"].path,
+        sessions["sessions.home_compatibility"].mode,
+    ) == (platform_home / "sessions", "compatibility")
+
+
 def test_delivery_plan_has_parallel_streams_and_one_activation_join() -> None:
     plan = _read(DELIVERY_PLAN)
     normalized = " ".join(plan.split())
     gates = _table_first_column(_section(plan, "Workstreams And Dependency Gates"))
     assert gates == (
-        "G0",
+        "G0H",
+        "G0A",
         "G1",
         "G2L",
         "G2W",
@@ -391,6 +481,7 @@ def test_delivery_plan_has_parallel_streams_and_one_activation_join() -> None:
     )
     assert "G2L, G2W, and G3 should proceed in parallel after G1" in normalized
     assert "G4--G6 may proceed in parallel with G1--G3" in normalized
+    assert "G0H and G0A are independently accepted gates" in normalized
     assert "G7 is the first Hosting/Harness activation join" in normalized
     assert "G8 is the first join between the AppHost and Worker rails" in normalized
     workstreams = _section(plan, "Workstreams And Dependency Gates")
@@ -400,6 +491,33 @@ def test_delivery_plan_has_parallel_streams_and_one_activation_join() -> None:
     assert "| G8 | AppHost + Product/Harness" in workstreams
     assert "no environment variable, platform auto-detection, or missing" in normalized
     assert "never retry the other owner within one launch attempt" in normalized
+
+
+def test_current_worker_route_has_no_outside_composition_or_fallback() -> None:
+    activation_names = {
+        "HostingManagedWorkerSessionAdapter",
+        "WorkerHostingActivationV1",
+        "WorkerSessionOwnerRouter",
+    }
+    consumers = {
+        path
+        for path in Path("src/loushang").rglob("*.py")
+        if not path.is_relative_to(WORKER_SOURCE)
+        and any(name in _read(path) for name in activation_names)
+    }
+    assert consumers == set()
+
+    selection = _read(WORKER_SOURCE / "owner_selection.py")
+    assert 'owner: WorkerSessionOwner = "current"' in selection
+    router_start = selection.split("    async def start(", maxsplit=1)[1].split(
+        "    def _selection_locked", maxsplit=1
+    )[0]
+    assert router_start.count("return await port.start(") == 1
+    assert "except" not in router_start
+    assert "_current.start" not in router_start
+    assert "_hosting.start" not in router_start
+    assert "os.environ" not in selection
+    assert "getenv" not in selection
 
 
 def test_plc9c5_and_h5_activation_fences_are_unchanged() -> None:

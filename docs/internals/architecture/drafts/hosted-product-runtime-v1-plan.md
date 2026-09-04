@@ -63,19 +63,23 @@ Product selection, authority, protocol health, or generation publication.
 
 | Gate | Owning scope | Delivery | Depends on | Exit condition |
 | --- | --- | --- | --- | --- |
-| G0 | common parent | H6.0 + AppHost A0.0 design, inventory, and guards | H5 and PLC9C1--C4 Current facts | multi-owner design review; zero runtime activation |
-| G1 | Hosting | H6.1 fake opaque preparation ownership protocol | G0 | one-use/request-bound/fault/cancellation matrix; no public raw handles |
+| G0H | common parent / Hosting | H6.0 design, inventory, feasibility questions, and guards | H5 and PLC9C1--C4 Current facts | Hosting plus neighboring-owner design review; zero runtime activation |
+| G0A | common parent / AppHost | AppHost A0.0 placement, contracts, inventory, and guards | current Product and Session-discovery facts | AppHost plus sibling-owner design review; zero source-package/runtime activation |
+| G1 | Hosting | H6.1 non-committing POSIX/Windows probes plus fake opaque preparation ownership protocol | G0H | both platform families support the core; one-use/request-bound/concurrency/fault/cancellation matrix; no public raw handles |
 | G2L | Hosting | H6.2 Linux native backend | G1 | retained native executable/cwd/containment/inheritance/tree oracle |
 | G2W | Hosting | H6.3 Windows native backend | G1 | retained native identity/AppContainer-or-token/handle-list/Job oracle |
 | G3 | Harness consumer | H6.4 dark managed preparation adapter over fakes | G1 | common Current/Hosting contract and rollback matrix; default still Current |
-| G4 | proposed AppHost | A0.1 Contract Model | G0 plus parent acceptance prerequisites | standard-library-only contract/import/validation gates |
-| G5 | proposed AppHost | A0.2 catalog/router and Session identity/catalog port | G4 | two unrelated fake Products; cwd/user-global discovery and no-default/ambiguity matrix pass |
-| G6 | proposed AppHost | A0.3 scoped lifecycle and embedded profile | G5 | multi-Session construction, cancellation, close, and shutdown matrix |
+| G4 | proposed AppHost | A0.1 Contract Model | G0A plus parent acceptance prerequisites | standard-library-only contract/import/validation gates |
+| G5 | proposed AppHost | A0.2 catalog/router, admission pins, Session candidate port, and explicit Product importer | G4 | two unrelated fake Products; cwd/user-global discovery; no-default/ambiguity/revision swap; Coding and Codex/Claude migration matrix pass |
+| G6 | proposed AppHost | A0.3 canonical live-binding lifecycle and embedded profile | G5 | multi-Session and multi-mux single-flight attach/detach/cancellation/deadline/shutdown matrix |
 | G7 | Product/Harness | PLC9C5 narrow canary over an accepted existing Product route | G2L + G2W + G3 | Linux/Windows cross-entrypoint native evidence, recovery, rollback, no fallback |
 | G8 | AppHost + Product/Harness | Product-neutral end-to-end join | G6 + G7 | AppHost-scoped Product uses the exact Worker activation receipt; unrelated fake Product stays Worker-free |
 | G9 | common parent | v1 closure | G8 | owner deletion decision, docs/ARD promotion, clean dependency graph, operational drill |
 
-G2L, G2W, and G3 should proceed in parallel after G1; each native parity claim
+G0H and G0A are independently accepted gates even when reviewed or delivered
+in one documentation change. A failed AppHost placement review cannot block
+H6, and an H6 platform question cannot block AppHost core. G2L, G2W, and G3
+should proceed in parallel after G1; each native parity claim
 still depends on its matching G2 evidence. G4--G6 may proceed in parallel with
 G1--G3 because AppHost core has no Hosting dependency. G7 is the first
 Hosting/Harness activation join and the only gate in this plan allowed to
@@ -138,6 +142,9 @@ Before G7, executable architecture tests must continue to prove:
   and never falls back within an attempt;
 - no non-Worker production module composes the H5 adapter; and
 - the PLC9C5 guard is revised only in the G7 Product/native activation change.
+- inventory source paths equal the executable expected set, and the G9 deletion
+  change includes a reverse import/composition scan proving no Current owner
+  consumer remains.
 
 ## Non-Goals
 
@@ -158,6 +165,11 @@ V1 closure requires one linked evidence bundle containing:
 - deterministic contract/lifecycle/fault suites;
 - retained native Linux and Windows reports with no required skips;
 - two-unrelated-fake-Product routing/lifecycle evidence;
+- explicit legacy Coding and external Codex/Claude-format migration evidence
+  through Product-owned adapters, with source immutability and atomic envelope
+  publication;
+- catalog retirement pins plus concurrent multi-mux Session attach/detach
+  evidence;
 - the PLC9C5 canary and cross-entrypoint conformance report;
 - rollback and crash-recovery drill results; and
 - a final Current-to-Target inventory proving which compatibility owner remains

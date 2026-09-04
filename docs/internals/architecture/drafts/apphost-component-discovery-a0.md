@@ -28,8 +28,12 @@ scope or source-code inventory.
   catalog without importing either concrete package from AppHost;
 - create, resume, and close several independently scoped Product Runtime
   bindings;
+- concurrently attach two named-mux/profile consumers to one canonical Session
+  without creating or closing the Product Runtime twice;
 - reject a missing, unknown, or incompatible persisted `product_id` without a
   default Product;
+- explicitly import legacy Coding or external Codex/Claude-shaped Sessions
+  through a Product-owned copy-first adapter without mutating the source;
 - select one admitted presentation/deployment profile independently from
   Product identity;
 - bind an optional hosted profile to AppServer structural Product ports;
@@ -95,6 +99,10 @@ scope or source-code inventory.
 | `AH-F13` | map target readiness/stop to an optional outer launcher/controller | listener implementation |
 | `AH-F14` | expose bounded Product/profile/runtime lifecycle observations | log/trace retention owner |
 | `AH-F15` | prove Product neutrality with unrelated fake Product Packages | production Product registry |
+| `AH-F16` | pin one admitted Product/OEM content generation across routing and Session lifetime | mutable catalog entry |
+| `AH-F17` | validate and claim a revision-pinned resume candidate before the Product factory effect | AppHost Product parser |
+| `AH-F18` | coordinate an explicit Product-owned copy-first compatibility import | default Product or in-place migration |
+| `AH-F19` | single-flight and lease one canonical live Product Runtime binding across profile/mux attachments | aggregate-owned runtime |
 
 ## Candidate Components
 
@@ -118,8 +126,8 @@ scope or source-code inventory.
 | Function | Primary owner | Collaborators | Explicit non-owners |
 | --- | --- | --- | --- |
 | `AH-F01`, `AH-F05`, `AH-F14` | AppHost Contract Model | injected Session identity/catalog port, Product integration | filesystem/store implementation, Product kernel, log store |
-| `AH-F02`--`AH-F04`, `AH-F06` | Product Catalog And Router | Contract Model, Product admission | AppServer, default resolver, transcript store |
-| `AH-F07`, `AH-F08` | Scoped Runtime Lifecycle | Product Factory, profile leases | AppService, Hosting, Product internals |
+| `AH-F02`--`AH-F04`, `AH-F06`, `AH-F16`--`AH-F18` | Product Catalog And Router | Contract Model, Product admission, Product resume/import adapters | AppServer, default resolver, transcript store |
+| `AH-F07`, `AH-F08`, `AH-F19` | Scoped Runtime Lifecycle | Product Factory, profile and attachment leases | AppService aggregate, Hosting, Product internals |
 | `AH-F09`--`AH-F11` | Deployment Profile Composer | Runtime Lifecycle, optional hosted binder | UI renderer, AppServer internals |
 | `AH-F12`, `AH-F13` | Outer Launcher Adapters | Profile Composer, optional Hosting | AppHost core catalog, AppServer, AppService |
 | `AH-F15` | component conformance tests | fake Product and profile packages | production registry |
@@ -181,6 +189,10 @@ profile dependencies.
    `apphost.hosted` binder is implemented?
 5. Which serialized readiness/stop contract is shared by a Hosting launcher
    and an external supervisor without moving service semantics into Hosting?
+6. Which Product/OEM admission-generation lease can pin live factory code while
+   replacement stops new routes and retirement waits for existing Sessions?
+7. Which request-bound Session candidate and Product validator contracts close
+   the list/open/factory race without exposing paths or Store handles?
 
 These questions gate field-level API and implementation acceptance. They do
 not justify creating `src/loushang/apphost` during A0.0.

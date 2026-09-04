@@ -174,6 +174,18 @@ Product-internal module. AppHost core therefore need not import AppServer,
 Harness never returns AppServer types, the embedded profile does not import
 AppServer, and AppServer never imports a Product package.
 
+Every registration retains an owner-minted admission/content-generation lease.
+The live registry linearizes selection first: an existing Session binding uses
+only its retained generation and Product validator, while an absent key pins
+the current generation before single-flight construction. Replacing or
+disabling a catalog generation atomically rejects new pins on the old
+generation while already admitted Session bindings drain under their exact
+pin. A fenced old binding cannot be reused through a new generation under the
+same key; the route returns a typed transition conflict until drain or explicit
+Product migration. Plugin retirement and final deletion wait for the last pin;
+AppHost does not convert catalog replacement into permission to unload live
+Product code.
+
 Product Factory is an outer composition contract, not another Session or
 Package runtime. Its implementation composes or delegates to the established
 `ProductSessionRuntime`, `AgentTranscriptSessionFactory`, and
@@ -183,10 +195,12 @@ disposal lifecycle.
 
 The process-level AppHost catalog contains descriptors and factory
 registrations, never one mutable Product Runtime singleton. Every new/open/
-resume Session resolves an explicit `product_id` and creates an independent
-scoped Product Runtime binding. A first delivery may allow only one Product ID
-in an AppServer process, but that constrains allowed identities, not the number
-or lifetime of Session Runtime handles. Multi-Product admission may remain
+resume Session resolves an explicit `product_id`. A canonical live-binding
+registry single-flights creation and owns exactly one scoped Product Runtime for
+each `(product_id, continuity identity, Session identity)` key; unrelated
+Sessions remain independent. A first delivery may allow only one Product ID in
+an AppServer process, but that constrains allowed identities, not the number or
+lifetime of Session Runtime handles. Multi-Product admission may remain
 deferred without changing this per-Session cardinality.
 
 ### Multi-Aggregate Hosted Cardinality
@@ -200,12 +214,16 @@ AppHost, AppServer listener, application `RunLease`, or process-level
 
 AppHost does not import an aggregate type, index its selector names, arbitrate
 membership, combine Session cursors, or acquire controller authority. Those
-semantics stay inside AppService and its typed App Contract. AppHost retains
-the scoped Product Runtime handles returned through that boundary and closes
-AppService once during the process shutdown protocol; AppService then fences
-all aggregate admission and attempts each distinct Session release exactly
-once. Process readiness means that the AppServer/AppService admission boundary
-is ready, not that any particular aggregate exists or is healthy.
+semantics stay inside AppService and its typed App Contract. The AppHost live
+registry is the sole owner of scoped Product Runtime bindings; AppService holds
+reference-counted Session attachment leases plus aggregate-specific membership,
+subscription, and presenter leases. Aggregate detach releases only those
+leases. Explicit Session close or process shutdown fences new attachment and
+closes the runtime only after all references drain. Concurrent attach is
+single-flight; cancellation and stale detach cannot double-create or close a
+binding still used by another mux. Process readiness means that the
+AppServer/AppService admission boundary is ready, not that any particular
+aggregate exists or is healthy.
 
 ## Pre-Routing Session Identity
 
@@ -221,35 +239,44 @@ Every newly written durable Session therefore has a small, generic, versioned
 
 A caller-injected, Product-neutral Session identity/catalog port reads and
 validates only this envelope, including for explicitly selected
-current-directory and user-global discovery scopes. AppHost consumes that
-bounded projection, resolves the explicit Product descriptor/factory, and then
-transfers the opaque Product locator to that Product's canonical
-transcript/continuity owner. The Session catalog and resume summary project
-`product_id` from the same envelope. AppHost owns the cross-Product envelope
-schema and required-port contract, not a filesystem reader or second Session
-store: the canonical conversation/continuity owner persists the envelope
-atomically with creation/publication of its durable Session, and the
-Session-catalog owner projects it before routing.
+current-directory and user-global discovery scopes. Opening returns a
+request-bound, revision-pinned candidate lease over the exact source/provider,
+not a path or reopenable locator. AppHost resolves and pins the explicit Product
+registration, then invokes that Product's resume validator. The validator opens
+and revalidates continuity through the pinned candidate and returns an opaque
+Product candidate; the factory sees it only after the routing lease's final
+verify/claim. The Session catalog and resume summary project `product_id` from
+the same envelope. AppHost owns the cross-Product envelope schema and
+required-port contract, not a filesystem reader or second Session store: the
+canonical conversation/continuity owner persists the envelope atomically with
+creation/publication of its durable Session, and the Session-catalog owner
+projects it before routing.
 `ConversationHeader` and Product runtime-profile metadata are Current evidence,
 not yet a sufficient cross-Product routing contract: opaque metadata may omit
-or rename Product identity. Legacy Coding Sessions therefore enter through an
-explicit compatibility importer/migration that writes the new envelope, or
-resume fails with typed `ProductIdentityRequired`. No missing or unknown
-identity silently selects a default Product.
+or rename Product identity. Legacy Coding Sessions and external
+Codex/Claude-shaped candidates therefore enter only through an explicitly
+selected Product-owned compatibility importer, or resume fails with typed
+`ProductIdentityRequired`. The importer consumes a pinned read-only
+compatibility candidate, validates its own format, copies first into the
+canonical Session owner, and atomically publishes the new envelope. Failure or
+cancellation never mutates the source or publishes a partial destination.
+AppHost contains no legacy-format parser or default Coding branch.
 
 AppHost never derives cwd, user home, or `$LOUSHANG_HOME`. Trusted composition
 selects normalized discovery scopes and injects the port. The port preserves
 source-scope identity, deduplicates only an exact stable Session identity, and
 reports conflicting envelopes as an ambiguity rather than choosing by search
-order. Resume reopens the exact projected store/provider reference; listing a
-legacy root does not make it a writable peer authority.
+order. Resume opens a request-bound, revision-pinned candidate through the
+port; listing a legacy root does not make it a writable peer authority.
 
 The envelope routes only to an already admitted Product registration. It is
 not Product trust, continuity authority, or proof that an opaque locator is
-safe. The selected canonical Product/continuity owner revalidates its locator
-and authority identity before opening state; invalid, truncated, conflicting,
-or changed discovery projections never become resumable merely because
-AppHost can parse their `product_id`.
+safe. The selected canonical Product/continuity owner revalidates its pinned
+candidate and authority identity before returning an opened Product candidate;
+the routing lease is verified and claimed immediately before the factory
+effect. Invalid, truncated, conflicting, replaced, or changed discovery
+projections never reach a Product factory merely because AppHost can parse
+their `product_id`.
 
 ## Runtime And Launcher Split
 
@@ -345,8 +372,9 @@ Harness -X-> AppHost / AppServer / concrete Product
 AppHost owns one bounded, idempotent state machine for direct foreground,
 externally supervised, and library-managed profiles:
 
-1. mark the process `stopping`; reject new bootstrap, Product resolution, and
-   profile activation;
+1. mark the process `stopping`; atomically fence the active catalog generation,
+   new bootstrap, Product resolution, live-binding attachment, and profile
+   activation;
 2. tell AppServer to stop accepting connections and reject new request
    admission;
 3. tell AppServer to stop reading new frames and freeze/report connection state;
@@ -357,18 +385,25 @@ externally supervised, and library-managed profiles:
    and request release through each Session-scoped Product binding's sole
    idempotent close port;
 5. ensure AppHost releases all remaining Product Runtime handles and admitted
-   presentation-profile leases;
-6. drain-or-abort AppServer writers within the remaining deadline, then close
+   presentation-profile leases, then wait for dependent attachment/runtime pins
+   to drain;
+6. close the catalog generation and every base Product/OEM admission lease
+   exactly once;
+7. drain-or-abort AppServer writers within the remaining deadline, then close
    transports, listener, and connection records;
-7. close the process's one `RuntimeResourceOwner`; that owner alone revokes
-   projections, drains admitted operations, and closes its ArtifactStore and
-   `RunLease` as one transaction; and
-8. publish `stopped` readiness and let the foreground process exit.
+8. close the process's one `RuntimeResourceOwner` only when all dependent
+   runtime, profile, catalog, and admission leases settled; that owner alone
+   revokes projections, drains admitted operations, and closes its
+   ArtifactStore and `RunLease` as one transaction; and
+9. publish `stopped` readiness and let the foreground process exit.
 
 Repeated stop requests join the same operation. A phase failure is recorded but
-does not skip later cleanup phases; shutdown returns an aggregate typed result
-after all reachable owners have been attempted. One monotonic deadline bounds
-the sequence. On expiry, a controller-side Hosting owner or external supervisor
+does not skip later cleanup phases that remain reachable without violating the
+dependency order; shutdown returns an aggregate typed result after all such
+owners have been attempted. A timed-out or failed dependency is retained as
+typed cleanup debt, and AppHost never closes `RuntimeResourceOwner` underneath
+a live runtime, catalog, or admission lease. One monotonic deadline bounds the
+sequence. On expiry, a controller-side Hosting owner or external supervisor
 may terminate, wait its configured grace period, kill the owned process tree,
 and reap it. A direct foreground AppHost force-closes its remaining local
 handles and exits nonzero; an external supervisor or operator remains the hard
