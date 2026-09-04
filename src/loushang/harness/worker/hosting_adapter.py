@@ -21,6 +21,11 @@ from loushang.hosting import (
     ProcessStdoutMode,
     ProcessStreamSpec,
 )
+from loushang.hosting._launch_preparation import (
+    _LaunchCapturePort,
+    _ManagedLaunchPreparationPort,
+    _ManagedLaunchPreparationResult,
+)
 
 from .contracts import (
     ManagedWorkerLaunchRequestV1,
@@ -86,7 +91,7 @@ class HostingManagedWorkerSessionAdapter(ManagedWorkerSessionLaunchPort):
         request.runtime.verify()
         _raise_if_aborted(signal)
         process_request = _map_worker_request(request)
-        preparation = _WorkerLaunchPreparationPort(
+        preparation = _worker_launch_preparation_port(
             expected=process_request,
             worker_request=request,
             delegate=self._preparation,
@@ -146,12 +151,18 @@ class _WorkerLaunchPreparationPort:
     async def prepare(
         self, request: ProcessLaunchRequest
     ) -> LaunchPreparationLease:
+        self._require_expected(request)
+        prepared = await self._delegate.prepare(request)
+        return self._wrap(prepared)
+
+    def _require_expected(self, request: ProcessLaunchRequest) -> None:
         if request != self._expected:
             raise WorkerBindingError(
                 "Worker Hosting material changed before preparation",
                 code="worker_hosting_request_changed",
             )
-        prepared = await self._delegate.prepare(request)
+
+    def _wrap(self, prepared: object) -> LaunchPreparationLease:
         if not isinstance(prepared, LaunchPreparationLease):
             raise TypeError("Worker Hosting preparation returned an invalid lease")
         return _WorkerLaunchPreparationLease(
@@ -159,6 +170,65 @@ class _WorkerLaunchPreparationPort:
             worker_request=self._worker_request,
             signal=self._signal,
         )
+
+
+class _ManagedWorkerLaunchPreparationPort(
+    _WorkerLaunchPreparationPort,
+    _ManagedLaunchPreparationPort,
+):
+    """Preserve Hosting's nominal managed seam while adding Worker meaning."""
+
+    def __init__(
+        self,
+        *,
+        expected: ProcessLaunchRequest,
+        worker_request: ManagedWorkerLaunchRequestV1,
+        delegate: LaunchPreparationPort,
+        signal: object | None,
+    ) -> None:
+        super().__init__(
+            expected=expected,
+            worker_request=worker_request,
+            delegate=delegate,
+            signal=signal,
+        )
+        self._managed_delegate = cast(_ManagedLaunchPreparationPort, delegate)
+
+    async def prepare_managed(
+        self,
+        request: ProcessLaunchRequest,
+        capture: _LaunchCapturePort,
+    ) -> _ManagedLaunchPreparationResult:
+        self._require_expected(request)
+        result = await self._managed_delegate.prepare_managed(request, capture)
+        if not isinstance(result, _ManagedLaunchPreparationResult):
+            raise TypeError(
+                "Worker Hosting managed preparation returned an invalid result"
+            )
+        return _ManagedLaunchPreparationResult(
+            lease=self._wrap(result.lease),
+            binding=result.binding,
+        )
+
+
+def _worker_launch_preparation_port(
+    *,
+    expected: ProcessLaunchRequest,
+    worker_request: ManagedWorkerLaunchRequestV1,
+    delegate: LaunchPreparationPort,
+    signal: object | None,
+) -> _WorkerLaunchPreparationPort:
+    preparation_type = (
+        _ManagedWorkerLaunchPreparationPort
+        if isinstance(delegate, _ManagedLaunchPreparationPort)
+        else _WorkerLaunchPreparationPort
+    )
+    return preparation_type(
+        expected=expected,
+        worker_request=worker_request,
+        delegate=delegate,
+        signal=signal,
+    )
 
 
 class _WorkerLaunchPreparationLease:

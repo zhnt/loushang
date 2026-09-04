@@ -36,6 +36,13 @@ from loushang.hosting import (
 from loushang.hosting import (
     ProcessLaunchRequest as HostingProcessLaunchRequest,
 )
+from loushang.hosting._launch_preparation import (
+    _LaunchCapturePort,
+    _LaunchCaptureSpec,
+    _ManagedLaunchPreparationPort,
+    _ManagedLaunchPreparationResult,
+    _OpaqueLaunchBinding,
+)
 
 
 def _runtime(tmp_path: Path) -> WorkerRuntimeBindingV1:
@@ -114,6 +121,66 @@ class _PreparationPort:
         self.requests.append(request)
         self.lease = _PreparationLease(request, on_verify=self._on_verify)
         return self.lease
+
+
+class _ManagedPreparationPort(_ManagedLaunchPreparationPort):
+    def __init__(self, *, on_verify=None, pause_after_capture: bool = False) -> None:
+        self._on_verify = on_verify
+        self.public_calls = 0
+        self.managed_calls = 0
+        self.specs: list[_LaunchCaptureSpec] = []
+        self.lease: _PreparationLease | None = None
+        self.captured = asyncio.Event()
+        self.release = asyncio.Event()
+        if not pause_after_capture:
+            self.release.set()
+
+    async def prepare(
+        self, request: HostingProcessLaunchRequest
+    ) -> _PreparationLease:
+        del request
+        self.public_calls += 1
+        raise AssertionError("managed Worker preparation must preserve the private seam")
+
+    async def prepare_managed(
+        self,
+        request: HostingProcessLaunchRequest,
+        capture: _LaunchCapturePort,
+    ) -> _ManagedLaunchPreparationResult:
+        self.managed_calls += 1
+        lease = _PreparationLease(request, on_verify=self._on_verify)
+        self.lease = lease
+        returned = False
+        try:
+            spec = _LaunchCaptureSpec(
+                request=request,
+                profile_id="harness-worker-parity-fake-v1",
+                execution_closure=("worker:harness-parity-fake-v1",),
+            )
+            self.specs.append(spec)
+            binding = await capture.capture(spec)
+            self.captured.set()
+            await self.release.wait()
+            result = _ManagedLaunchPreparationResult(lease=lease, binding=binding)
+            returned = True
+            return result
+        finally:
+            if not returned:
+                cleanup = asyncio.create_task(
+                    lease.close(),
+                    name="harness-worker-managed-preparation-rollback",
+                )
+                await asyncio.shield(cleanup)
+
+
+class _CapturePort:
+    def __init__(self) -> None:
+        self.specs: list[_LaunchCaptureSpec] = []
+        self._nonce = object()
+
+    async def capture(self, spec: _LaunchCaptureSpec) -> _OpaqueLaunchBinding:
+        self.specs.append(spec)
+        return _OpaqueLaunchBinding(self, self._nonce)
 
 
 class _Endpoint:
@@ -254,6 +321,30 @@ class _ChildPort:
             await self.lease.close()
 
 
+class _ManagedChildPort(_ChildPort):
+    def __init__(self, incoming: bytes = b"") -> None:
+        super().__init__(incoming)
+        self.capture = _CapturePort()
+
+    async def start(self, request: ChildSessionRequest, preparation) -> _ChildLease:
+        self.requests.append(request)
+        assert isinstance(preparation, _ManagedLaunchPreparationPort)
+        result = await preparation.prepare_managed(request.process, self.capture)
+        prepared = result.lease
+        try:
+            await prepared.verify_current()
+        except BaseException:
+            await prepared.close()
+            raise
+        self.lease = _ChildLease(
+            endpoint=_Endpoint(self.incoming, self.events),
+            process=_HostingProcess(self.events),
+            preparation=prepared,  # type: ignore[arg-type]
+            events=self.events,
+        )
+        return self.lease
+
+
 def _ready(identity: WorkerLaunchIdentityV1) -> WorkerProtocolMessage:
     return WorkerProtocolMessage.create(
         "ready",
@@ -323,6 +414,70 @@ def test_hosting_adapter_maps_worker_and_publishes_atomic_session(
         ]
         assert preparation.lease is not None
         assert preparation.lease.verified == 1
+        assert preparation.lease.closed == 1
+
+    asyncio.run(scenario())
+
+
+def test_hosting_adapter_preserves_managed_capture_and_worker_semantic_fence(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        validations = 0
+
+        def validate_current() -> None:
+            nonlocal validations
+            validations += 1
+
+        request = _request(tmp_path, validate_current=validate_current)
+        preparation = _ManagedPreparationPort()
+        child = _ManagedChildPort()
+        adapter = HostingManagedWorkerSessionAdapter(
+            hosting=child,  # type: ignore[arg-type]
+            preparation=preparation,
+        )
+
+        session = await adapter.start(request, correlation_id="managed-parity")
+
+        assert validations == 2
+        assert preparation.public_calls == 0
+        assert preparation.managed_calls == 1
+        assert child.capture.specs == preparation.specs
+        assert child.capture.specs[0].request == child.requests[0].process
+        assert child.capture.specs[0].profile_id == (
+            "harness-worker-parity-fake-v1"
+        )
+        assert session.evidence.request_fingerprint == request.fingerprint
+        await session.close()
+        assert preparation.lease is not None
+        assert preparation.lease.verified == 1
+        assert preparation.lease.closed == 1
+
+    asyncio.run(scenario())
+
+
+def test_hosting_adapter_managed_capture_cancellation_retains_delegate_cleanup(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        request = _request(tmp_path, validate_current=lambda: None)
+        preparation = _ManagedPreparationPort(pause_after_capture=True)
+        adapter = HostingManagedWorkerSessionAdapter(
+            hosting=_ManagedChildPort(),  # type: ignore[arg-type]
+            preparation=preparation,
+        )
+
+        start = asyncio.create_task(
+            adapter.start(request, correlation_id="managed-cancel")
+        )
+        await preparation.captured.wait()
+        start.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await start
+
+        assert preparation.public_calls == 0
+        assert preparation.managed_calls == 1
+        assert preparation.lease is not None
         assert preparation.lease.closed == 1
 
     asyncio.run(scenario())

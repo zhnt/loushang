@@ -133,7 +133,7 @@ def test_baseline_documents_are_status_honest_and_indexed() -> None:
             "Authority": "normative accepted design",
             "Design status": "accepted",
             "Implementation status": (
-                "partial — H6.1 core, H6.2 Linux, and H6.3 Windows native profiles"
+                "implemented — H6.1 through H6.4 remain default-dark"
             ),
             "Activation status": "forbidden; H5 remains default-dark",
         },
@@ -175,6 +175,12 @@ def test_baseline_documents_are_status_honest_and_indexed() -> None:
     draft_index = _read(DRAFT_ROOT / "README.md")
     plugin_index = _read(PLUGIN_ROOT / "README.md")
     assert hosting_index.count("(managed-launch-preparation-h6.md)") == 1
+    assert (
+        hosting_index.count(
+            "(validation/managed-launch-preparation-h6-harness-parity.md)"
+        )
+        == 1
+    )
     assert (
         hosting_index.count("(validation/hosted-product-runtime-v1-inventory.md)") == 1
     )
@@ -257,6 +263,7 @@ def test_h6_keeps_authority_outside_and_native_material_opaque() -> None:
         "H6-CLEANUP",
         "H6-POSIX-NATIVE",
         "H6-WINDOWS-NATIVE",
+        "H6-HARNESS-PARITY",
         "H6-NO-AUTHORITY",
         "H6-DARK",
     )
