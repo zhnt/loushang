@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import ctypes
 import hashlib
+import os
 import struct
 from pathlib import Path
 
@@ -38,9 +39,13 @@ from loushang.hosting._windows_process import _WindowsProcessBackend
 
 
 def _request() -> ProcessLaunchRequest:
+    executable = (
+        r"C:\admitted\worker.exe" if os.name == "nt" else "/admitted/worker.exe"
+    )
+    cwd = r"C:\admitted\cwd" if os.name == "nt" else "/admitted/cwd"
     return ProcessLaunchRequest(
-        argv=("/admitted/worker.exe",),
-        cwd="/admitted/cwd",
+        argv=(executable,),
+        cwd=cwd,
         effective_environment=(("SystemRoot", r"C:\Windows"),),
         streams=ProcessStreamSpec(
             stdin=ProcessStdinMode.CLOSED,
