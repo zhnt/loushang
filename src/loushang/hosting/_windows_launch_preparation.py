@@ -44,7 +44,10 @@ from .contracts import (
 from .errors import HostingError, HostingFailureCategory
 
 _PROFILE_ID = "windows-restricted-direct-import-pe-v1"
-_RESTRICTION_ID = "restricted-token:disable-max-privilege+lua+write-restricted-v1"
+_RESTRICTION_ID = (
+    "restricted-token:disable-max-privilege+lua+write-restricted"
+    "+restricted-code-sid-v1"
+)
 _DIRECT_PLATFORM_IMPORTS = frozenset({"ADVAPI32.DLL", "KERNEL32.DLL"})
 _MAX_EXECUTABLE_BYTES = 64 * 1024 * 1024
 _MAX_ANCESTOR_DIRECTORIES = 48
