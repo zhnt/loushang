@@ -274,8 +274,10 @@ def test_windows_appcontainer_activation_is_exclusive_replayable_and_reversible(
         "/q",
         "/c",
         (
-            "> %LOUSHANG_LEGACY_RUNTIME_READY_PATH% "
+            '> "%LOUSHANG_LEGACY_RUNTIME_READY_PATH%.tmp" '
             "echo %LOUSHANG_LEGACY_RUNTIME_READY_TOKEN% && "
+            'move /y "%LOUSHANG_LEGACY_RUNTIME_READY_PATH%.tmp" '
+            '"%LOUSHANG_LEGACY_RUNTIME_READY_PATH%" >nul && '
             "for /L %i in (1,1,2147483647) do ver >nul 2>&1"
         ),
     )
