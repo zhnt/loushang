@@ -7,7 +7,7 @@
 - Parent: `loushang`
 - Authority: normative accepted design
 - Design status: accepted
-- Implementation status: partial — H6.1 private fake-backed core
+- Implementation status: partial — H6.1 core and H6.2 Linux native profiles
 - Activation status: forbidden; H5 remains default-dark
 - Owner: Loushang Hosting architecture
 
@@ -201,10 +201,13 @@ ambiguous spawn/transfer -------------------------------> FENCED
   section containing the unique inheritance-manifest claim, sole OS process
   creation effect, and synchronous process attachment callback. Caller
   cancellation is observed only after its outcome is known and cleanup is
-  owned. The attempt mints the only valid `not-created` receipt; the matched
-  backend crosses its effect gate immediately before OS creation, and any
-  receipt observed after that gate or an attachment witness is invalid. An
-  unknowable outcome becomes `FENCED`, never a retry authority.
+  owned. The attempt mints the only valid pre-effect `not-created` receipt; the
+  matched backend crosses its effect gate immediately before OS creation. A
+  trusted native backend may then mint a distinct settled-without-process
+  receipt only when the operating-system attempt conclusively returned with no
+  owned process. Neither receipt is valid after an attachment witness. An
+  unreceipted or unknowable post-effect outcome becomes `FENCED`, never a retry
+  authority.
 - A close racing with capture/verify/claim waits for that owner operation. It
   must not close a descriptor or handle whose transfer outcome is unresolved.
   Repeated close joins one idempotent cleanup operation.
@@ -326,6 +329,10 @@ admit its interpreter/loader chain; sealing payload bytes alone is not enough.
 Loader-affecting environment, dependency search roots, and admitted dynamic
 dependency or platform-image identities are part of the adversarial oracle;
 library replacement and search-order substitution must fail closed.
+Absence of startup `PT_INTERP`/`PT_DYNAMIC` closes only the kernel startup
+loader chain; runtime executable mapping, `dlopen`, subsequent exec, and
+process-group escape remain part of caller-owned profile evidence bound to the
+exact captured launcher/payload identities.
 
 ### Windows
 
@@ -351,7 +358,7 @@ and tree-lifetime properties have native evidence.
 | --- | --- | --- |
 | H6.0 | this responsibility/contract baseline, Current inventory, and absence guards | architecture review accepts ownership; no runtime activation |
 | H6.1 | non-committing POSIX/Windows feasibility probes followed by a private fake-backed two-sided opaque preparation transaction | both probes support one core state machine; caller/Hosting ownership and the complete concurrency/fault matrix pass; no public activation |
-| H6.2 | Linux native preparation backend | required-containment and executable/cwd/descriptor adversarial oracle passes |
+| H6.2 | implemented private Linux static-closure preparation profiles | required-containment and executable/cwd/descriptor adversarial oracle passes |
 | H6.3 | Windows native preparation backend | AppContainer/token, handle-list, Job, identity, and cleanup oracle passes |
 | H6.4 | dark Harness preparation adapter and H5 parity matrix | Current and Hosting owners are independently conformant; default remains Current |
 
@@ -359,6 +366,14 @@ H6.1 is implemented as a private, default-dark core. Its non-committing POSIX
 and Windows mapping probes and fake-backed lifecycle evidence are retained in
 [H6.1 Managed Launch Preparation Feasibility Record](validation/managed-launch-preparation-h6-feasibility.md).
 No H6.2/H6.3 native adapter or H6.4 Harness adapter is implied by that result.
+
+H6.2 is implemented for two exact Linux x86_64 profiles. The release profile pins a
+caller-admitted static containment launcher and static payload, rejects every
+dynamic loader/interpreter chain, binds an empty loader environment and exact
+profile digest, and retains a non-skippable Ubuntu adversarial oracle. See the
+[H6.2 POSIX native record](validation/managed-launch-preparation-h6-posix-native.md).
+This evidence does not make dynamic bubblewrap or an arbitrary Worker
+entrypoint conformant, and it adds no public composition route.
 
 The H6.1 probes perform no production spawn and reserve no public API. H6.2,
 H6.3, and the fake-backed part of H6.4 may be developed in parallel only after

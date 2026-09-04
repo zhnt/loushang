@@ -7,8 +7,9 @@ import os
 import signal
 import subprocess
 from collections.abc import Callable
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
+from ._launch_preparation import _ManagedSpawnEffect
 from ._process_backend import _ProcessInheritance, _ProcessTransport
 from .contracts import (
     ProcessLaunchRequest,
@@ -17,6 +18,9 @@ from .contracts import (
     ProcessStdoutMode,
 )
 from .errors import HostingError, HostingFailureCategory
+
+if TYPE_CHECKING:
+    from ._posix_launch_preparation import _PosixStaticLaunchMaterial
 
 _TREE_POLL_SECONDS = 0.01
 _FAILED_ATTACHMENT_SETTLEMENT_SECONDS = 1.0
@@ -211,6 +215,11 @@ class _PosixProcessBackend:
         self,
         request: ProcessLaunchRequest,
         endpoint_descriptors: tuple[int, int] | None = None,
+        *,
+        argv: tuple[str, ...] | None = None,
+        executable: str | None = None,
+        cwd: str | None = None,
+        pass_fds: tuple[int, ...] = (),
     ) -> _PosixProcess:
         if endpoint_descriptors is None:
             stdin: int = (
@@ -225,12 +234,19 @@ class _PosixProcessBackend:
             )
         else:
             stdin, stdout = endpoint_descriptors
+        # The high-level asyncio operation spans native creation and transport /
+        # child-watcher setup.  An exception from it cannot certify which stage
+        # failed, so this backend deliberately does not mint a
+        # settled-without-process receipt.  Once the effect gate is crossed,
+        # every such failure remains fenced.
         process = await asyncio.create_subprocess_exec(
-            *request.argv,
-            cwd=request.cwd,
+            *(request.argv if argv is None else argv),
+            executable=executable,
+            cwd=request.cwd if cwd is None else cwd,
             env=dict(request.effective_environment),
             start_new_session=True,
             close_fds=True,
+            pass_fds=pass_fds,
             stdin=stdin,
             stdout=stdout,
             stderr=(
@@ -246,6 +262,110 @@ class _PosixProcessBackend:
             process.kill()
             await process.wait()
             raise
+
+    async def _spawn_static_prepared(
+        self,
+        material: "_PosixStaticLaunchMaterial",
+        request: ProcessLaunchRequest,
+        *,
+        effect: _ManagedSpawnEffect,
+        on_spawn: Callable[[_ProcessTransport], None],
+        inheritance: _ProcessInheritance | None,
+    ) -> _PosixProcess:
+        from ._posix_launch_preparation import _PosixStaticLaunchMaterial
+
+        if type(material) is not _PosixStaticLaunchMaterial:
+            raise effect.not_created(
+                HostingError(
+                    HostingFailureCategory.PREPARATION_FAILED,
+                    "POSIX process backend requires static launch material",
+                )
+            )
+        if request != material.request:
+            raise effect.not_created(
+                HostingError(
+                    HostingFailureCategory.PREPARATION_FAILED,
+                    "POSIX static launch request changed before spawn",
+                )
+            )
+        if inheritance is None:
+            raise effect.not_created(
+                HostingError(
+                    HostingFailureCategory.ENDPOINT_TRANSFER_FAILED,
+                    "POSIX static child launch requires endpoint inheritance",
+                )
+            )
+        if (
+            request.streams.stdin is not ProcessStdinMode.CLOSED
+            or request.streams.stdout is not ProcessStdoutMode.DISCARD
+        ):
+            raise effect.not_created(
+                HostingError(
+                    HostingFailureCategory.ENDPOINT_TRANSFER_FAILED,
+                    "POSIX static inherited endpoint reserves stdin and stdout",
+                )
+            )
+        endpoint_descriptors = _claim_endpoint(inheritance, self.backend_id)
+        assert endpoint_descriptors is not None
+        (
+            executable_descriptor,
+            cwd_descriptor,
+            launcher_descriptor,
+        ) = material._claim_descriptors()
+        preparation_descriptors = tuple(
+            descriptor
+            for descriptor in (
+                executable_descriptor,
+                cwd_descriptor,
+                launcher_descriptor,
+            )
+            if descriptor is not None
+        )
+        if (
+            len(set(preparation_descriptors)) != len(preparation_descriptors)
+            or set(endpoint_descriptors) & set(preparation_descriptors)
+            or any(
+                descriptor < 3
+                for descriptor in (*endpoint_descriptors, *preparation_descriptors)
+            )
+        ):
+            raise effect.not_created(
+                HostingError(
+                    HostingFailureCategory.ENDPOINT_TRANSFER_FAILED,
+                    "POSIX endpoint and preparation descriptors collide",
+                )
+            )
+        inherited_descriptors = tuple(
+            dict.fromkeys((*endpoint_descriptors, *preparation_descriptors))
+        )
+        argv = (
+            request.argv
+            if launcher_descriptor is None
+            else material._contained_invocation(
+                executable_descriptor=executable_descriptor,
+                cwd_descriptor=cwd_descriptor,
+                launcher_descriptor=launcher_descriptor,
+            )
+        )
+        spawn_descriptor = (
+            executable_descriptor
+            if launcher_descriptor is None
+            else launcher_descriptor
+        )
+        executable = f"/proc/self/fd/{spawn_descriptor}"
+        effect.begin_effect()
+        process = await self._spawn_once(
+            request,
+            endpoint_descriptors,
+            argv=argv,
+            executable=executable,
+            cwd=f"/proc/self/fd/{cwd_descriptor}",
+            pass_fds=inherited_descriptors,
+        )
+        on_spawn(process)
+        inheritance.mark_transferred()
+        material._mark_transferred()
+        return process
 
     def tree_exited(self, process: _ProcessTransport) -> bool:
         return not _require_posix_process(process).group_exists()

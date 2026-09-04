@@ -8,7 +8,7 @@
 - Authority: descriptive — source-backed Current inventory
 - Design status: not-applicable
 - Implementation status: not-applicable
-- Delivery parent: `82df045d`
+- Delivery parent: `a9c3e9f4`
 - Effect: none; this record grants no runtime or activation authority
 - Owner: Loushang architecture
 
@@ -29,11 +29,13 @@ this inventory as implemented facts.
 | Inherited Peer Endpoint Host | `src/loushang/hosting/_endpoint_host.py`, `src/loushang/hosting/_endpoint_backend.py`, `src/loushang/hosting/_posix_endpoint.py`, and `src/loushang/hosting/_windows_endpoint.py` | bounded anonymous endpoint pair, strict child-side inheritance, raw byte transport, and cleanup |
 | Child Session Host | `src/loushang/hosting/_child_session_host.py` | atomic endpoint-plus-process acquisition/publication and joint close |
 | private H6.1 launch preparation | `src/loushang/hosting/_launch_preparation.py` | request/profile/closure plus unforgeable attempt binding, opaque capture, final verification, matched-backend spawn, explicit fencing, and ordered cleanup; fake-backed and default-dark only |
+| private H6.2 Linux x86_64 preparation | `src/loushang/hosting/_posix_launch_preparation.py` and `src/loushang/hosting/_posix_process.py` | sealed static launcher/payload, retained cwd, closed invocation/profile identity, exact endpoint-plus-preparation descriptor manifest, and conservative post-effect fencing; private and default-dark |
 | restrained composition | `src/loushang/hosting/runtime.py` | `create_process_host` and `create_child_session_host`; no public backend/plugin registry |
 
-The stable public owners are implemented through H5; H6.1 adds only a private
-fake-backed transaction core. They expose no native executable/cwd/containment
-material in the public request, preparation lease, or factory.
+The stable public owners are implemented through H5; H6.1 and H6.2 add only a
+private transaction core and Linux native profiles. They expose no native
+executable/cwd/containment material in the public request, preparation lease,
+or factory.
 
 ## Current Harness Preparation And Worker Owners
 
@@ -58,7 +60,7 @@ material in the public request, preparation lease, or factory.
 | --- | --- | --- | --- |
 | executable/cwd | Harness private request retains native descriptors plus identity | Hosting `ProcessLaunchRequest` contains absolute strings | `hosting_compat` fails closed rather than substitute mutable paths |
 | containment | Harness `ProcessContainmentPlan` may rewrite the exact process request and owns semantic evidence | Hosting preparation lease exposes only `request`, `verify_current`, and `close` | lifecycle can be delegated, but native spawn material cannot be consumed |
-| inherited resources | Harness Current path extracts private launch descriptors | H6.1 can combine endpoint and opaque preparation inheritance internally | the fake-backed protocol exists, but no Harness or native adapter supplies material |
+| inherited resources | Harness Current path extracts private launch descriptors | H6.1 combines endpoint and opaque preparation inheritance internally; H6.2 supplies exact Linux static-profile material | no Harness adapter currently supplies the private H6.2 profile |
 | Windows required containment | PLC9B includes a purpose-specific AppContainer/Job implementation for legacy restore | Hosting owns generic Job/endpoint mechanics | no accepted managed Worker preparation adapter or parity claim |
 | Product activation | PLC9C1--C4 provide declaration, launch, supervisor, and one dark domain adapter | H5 provides an explicit dark Hosting owner | no Product composition selects and publishes the native path |
 
@@ -85,7 +87,7 @@ not evidence of those packages or runtime routes.
 | Gap | Target owner | Closure gate |
 | --- | --- | --- |
 | opaque request-bound native preparation | Hosting Contract/Platform components | implemented privately in H6.1; fake ownership, concurrency/fault, and no-raw-handle gates are retained |
-| exact Linux executable/cwd/containment transfer | Hosting platform adapter with caller-owned requirements | H6.2 retained native adversarial oracle |
+| exact Linux executable/cwd/containment transfer | Hosting platform adapter with caller-owned requirements | implemented for the private static-closure profiles; H6.2 retained native adversarial oracle remains green |
 | exact Windows executable/cwd/containment transfer | Hosting platform adapter with caller-owned requirements | H6.3 retained native adversarial oracle |
 | Harness-to-Hosting managed preparation parity | Harness Sandbox/Worker adapter over Hosting | H6.4 independent Current/Hosting parity; still default-dark |
 | Product catalog, no-default routing, scoped runtime lifetime | proposed AppHost | A0 contracts and two-unrelated-fake-Product conformance |

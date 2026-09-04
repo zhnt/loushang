@@ -53,6 +53,7 @@ def test_h6_1_core_is_private_default_dark_and_authority_free() -> None:
         "_ReservationLaunchCapture",
         "_ManagedSpawnEffect",
         "_ManagedSpawnNotCreated",
+        "_ManagedSpawnSettledWithoutProcess",
     ):
         assert private_name in core
         assert private_name not in public
@@ -139,6 +140,7 @@ def test_h6_1_transaction_attaches_then_uses_matched_backend_double_dispatch() -
     assert "class _ManagedLaunchPreparationPort(ABC)" in core
     assert "effect.begin_effect()" in _read(RUNTIME_TESTS)
     assert "if effect.accepts(failure):" in core
+    assert "if effect.accepts_settled(failure):" in core
     assert "on_orphan_spawn(process)" in core
     assert "await self._material.spawn(" in core
     assert "isinstance(prepared, _ManagedProcessPreparation)" in process_host

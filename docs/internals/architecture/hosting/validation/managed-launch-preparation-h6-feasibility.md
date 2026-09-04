@@ -8,7 +8,7 @@
 - Authority: descriptive — implementation validation record
 - Design status: not-applicable
 - Implementation status: implemented
-- Native activation: none; H6.2 and H6.3 remain required
+- Native activation: none; this H6.1 record grants no native conformance
 - Runtime posture: private and default-dark; Current remains the default owner
 - Delivery parent: `82df045d`
 - Owner: Loushang Hosting maintainers
@@ -128,9 +128,9 @@ and H6.3 native evidence.
 surface, dependency direction, source inventory, dark composition, and matrix
 presence.
 
-## Remaining Native Gates
+## Subsequent Native Gates
 
-- H6.2: implement and retain the Linux/POSIX adversarial oracle.
+- H6.2: implemented separately by the retained Linux/POSIX adversarial oracle.
 - H6.3: implement and retain the Windows adversarial oracle.
 - H6.4: adapt the Harness preparation owner and prove Current/Hosting parity
   without changing the default owner or enabling Product activation.
