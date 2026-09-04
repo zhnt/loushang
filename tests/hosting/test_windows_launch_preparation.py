@@ -42,7 +42,7 @@ def _request() -> ProcessLaunchRequest:
     return ProcessLaunchRequest(
         argv=("/admitted/worker.exe",),
         cwd="/admitted/cwd",
-        effective_environment=(),
+        effective_environment=(("SystemRoot", r"C:\Windows"),),
         streams=ProcessStreamSpec(
             stdin=ProcessStdinMode.CLOSED,
             stdout=ProcessStdoutMode.DISCARD,
@@ -61,6 +61,7 @@ def _spec() -> _WindowsRestrictedLaunchCaptureSpec:
             "executable:win32:7:101",
             "cwd:win32:7:202",
             "restricted-token:disable-max-privilege+lua+disable-admin-v1",
+            r"environment:SystemRoot=C:\Windows",
             "direct-imports:KERNEL32.DLL",
             "platform:windows-amd64-10.0.20348",
         ),
@@ -612,7 +613,7 @@ def test_windows_restricted_verify_rejects_rebound_ancestor_relation(
 
 def test_windows_restricted_spec_rejects_open_environment_and_imports() -> None:
     original = _spec()
-    with pytest.raises(ValueError, match="empty environment"):
+    with pytest.raises(ValueError, match="absolute SystemRoot"):
         _WindowsRestrictedLaunchCaptureSpec(
             request=ProcessLaunchRequest(
                 argv=original.request.argv,

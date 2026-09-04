@@ -34,6 +34,7 @@ The captured execution closure contains:
 - the locked cwd volume/128-bit file identity;
 - the fixed restricted-token recipe `DISABLE_MAX_PRIVILEGE | LUA_TOKEN` plus
   explicit deny-only treatment of `WinBuiltinAdministratorsSid`;
+- one exact, request-bound absolute `SystemRoot` bootstrap environment value;
 - the exact direct-import set, currently limited to `KERNEL32.DLL` and
   `ADVAPI32.DLL`; and
 - the exact Windows AMD64 major/minor/build platform identity.
@@ -108,7 +109,8 @@ one endpoint-plus-preparation spawn that:
 - a completed cwd rename plus same-name replacement still launches with the
   retained cwd identity;
 - the child observes at most `SeChangeNotifyPrivilege`, confirms that there is
-  no restricting SID list, and observes an empty caller environment;
+  no restricting SID list, and observes only the required `SystemRoot`
+  bootstrap rather than caller `PATH`;
 - the exact endpoint handle list carries the raw handshake;
 - a descendant created by the restricted root remains in the atomically
   assigned Job and the complete Job is empty before close returns; and

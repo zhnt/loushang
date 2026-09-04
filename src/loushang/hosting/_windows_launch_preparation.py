@@ -133,8 +133,15 @@ class _WindowsRestrictedLaunchCaptureSpec(_LaunchCaptureSpec):
             self.request.cwd
         ):
             raise ValueError("Windows restricted launch paths must be absolute")
-        if self.request.effective_environment:
-            raise ValueError("Windows restricted launch requires an empty environment")
+        if (
+            len(self.request.effective_environment) != 1
+            or self.request.effective_environment[0][0] != "SystemRoot"
+            or not ntpath.isabs(self.request.effective_environment[0][1])
+        ):
+            raise ValueError(
+                "Windows restricted launch requires one absolute SystemRoot"
+            )
+        system_root = self.request.effective_environment[0][1]
         if (
             self.request.streams.stdin is not ProcessStdinMode.CLOSED
             or self.request.streams.stdout is not ProcessStdoutMode.DISCARD
@@ -156,6 +163,7 @@ class _WindowsRestrictedLaunchCaptureSpec(_LaunchCaptureSpec):
             f"{self.executable_volume_serial}:{self.executable_file_id}",
             f"cwd:win32:{self.cwd_volume_serial}:{self.cwd_file_id}",
             _RESTRICTION_ID,
+            f"environment:SystemRoot={system_root}",
             f"direct-imports:{','.join(normalized_imports)}",
             f"platform:{self.platform_identity}",
         )

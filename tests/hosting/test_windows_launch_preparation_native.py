@@ -181,7 +181,7 @@ def _spec(
     request = ProcessLaunchRequest(
         argv=(str(executable.resolve()), *arguments),
         cwd=str(cwd.resolve()),
-        effective_environment=(),
+        effective_environment=(("SystemRoot", os.environ["SystemRoot"]),),
         streams=ProcessStreamSpec(
             stdin=ProcessStdinMode.CLOSED,
             stdout=ProcessStdoutMode.DISCARD,
@@ -199,6 +199,7 @@ def _spec(
             f"{executable_identity.volume_serial}:{executable_identity.file_id}",
             f"cwd:win32:{cwd_identity.volume_serial}:{cwd_identity.file_id}",
             "restricted-token:disable-max-privilege+lua+disable-admin-v1",
+            f'environment:SystemRoot={os.environ["SystemRoot"]}',
             f"direct-imports:{','.join(imports)}",
             f"platform:{platform_identity}",
         ),
@@ -281,9 +282,12 @@ void WINAPI mainCRTStartup(void) {{
         CloseHandle(process.hProcess);
         emit("restricted-child-ready\\n", 23);
     }} else {{
-        LPWCH environment = GetEnvironmentStringsW();
-        if (!environment || *environment != L'\\0') ExitProcess(72);
-        FreeEnvironmentStringsW(environment);
+        wchar_t system_root[1024];
+        DWORD root_length = GetEnvironmentVariableW(
+            L"SystemRoot", system_root, 1024);
+        if (!root_length || root_length >= 1024) ExitProcess(72);
+        if (GetEnvironmentVariableW(L"PATH", system_root, 1024))
+            ExitProcess(79);
         emit("restricted\\n", 11);
     }}
     char release = 0;
