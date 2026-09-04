@@ -7,7 +7,7 @@
 - Parent: `loushang`
 - Authority: normative accepted design
 - Design status: accepted
-- Implementation status: partial — H6.1 core, H6.2 Linux, and H6.3 Windows native profiles
+- Implementation status: implemented — H6.1 through H6.4 remain default-dark
 - Activation status: forbidden; H5 remains default-dark
 - Owner: Loushang Hosting architecture
 
@@ -28,8 +28,10 @@ sealed-descriptor implementation is a cross-platform contract.
 ### Current
 
 - H1--H4 own process, endpoint, and atomic child-session mechanics.
-- H5 supplies a default-dark Harness Worker adapter over the public
-  `LaunchPreparationPort`, but its mapped request contains only strings.
+- H5 supplies a default-dark Harness Worker adapter, and H6.4 preserves an
+  injected private managed-preparation seam while adding only Worker semantic
+  verification. No production composition supplies an eligible native Worker
+  profile.
 - Harness privately captures a Linux executable and cwd with retained file
   descriptors and passes them through a private Process Host request subtype.
 - `hosting_compat` refuses that request because Hosting v1 has no safe way to
@@ -360,12 +362,12 @@ and tree-lifetime properties have native evidence.
 | H6.1 | non-committing POSIX/Windows feasibility probes followed by a private fake-backed two-sided opaque preparation transaction | both probes support one core state machine; caller/Hosting ownership and the complete concurrency/fault matrix pass; no public activation |
 | H6.2 | implemented private Linux static-closure preparation profiles | required-containment and executable/cwd/descriptor adversarial oracle passes |
 | H6.3 | implemented private Windows AMD64 restricted-token PE preparation | restricted token, handle-list, Job, identity, and cleanup oracle passes |
-| H6.4 | dark Harness preparation adapter and H5 parity matrix | Current and Hosting owners are independently conformant; default remains Current |
+| H6.4 | implemented dark Harness managed-preparation bridge and H5 semantic parity matrix | public and managed preparation paths retain the same Worker fences; default remains Current and native Worker compatibility is not claimed |
 
 H6.1 is implemented as a private, default-dark core. Its non-committing POSIX
 and Windows mapping probes and fake-backed lifecycle evidence are retained in
 [H6.1 Managed Launch Preparation Feasibility Record](validation/managed-launch-preparation-h6-feasibility.md).
-No H6.2/H6.3 native adapter or H6.4 Harness adapter is implied by that result.
+No H6.2/H6.3 native adapter or H6.4 Harness adapter was implied by that result.
 
 H6.2 is implemented for two exact Linux x86_64 profiles. The release profile pins a
 caller-admitted static containment launcher and static payload, rejects every
@@ -384,6 +386,16 @@ does not claim a complete Windows loader closure. See the
 [H6.3 Windows native record](validation/managed-launch-preparation-h6-windows-native.md).
 This profile is deliberately narrower than Python or the Current Worker and
 adds no public composition route.
+
+H6.4 is implemented as a private friend adapter in the Harness Worker scope.
+It preserves an injected nominal managed-preparation port, delegates the
+reservation capture without interpreting its opaque binding, and decorates
+only the caller semantic lease with the existing Worker final fence. Ordinary
+public preparation remains on the H5 path. Its fake-backed parity matrix,
+ownership proof, and explicit native-compatibility limits are retained in the
+[H6.4 Harness parity record](validation/managed-launch-preparation-h6-harness-parity.md).
+It adds no native profile supplier, Product composition, owner fallback, or
+activation route.
 
 The H6.1 probes perform no production spawn and reserve no public API. H6.2,
 H6.3, and the fake-backed part of H6.4 may be developed in parallel only after
@@ -416,7 +428,8 @@ of publication are asserted for every case.
 | `H6-CLEANUP` | every acquisition and publication fault settles all reachable owners |
 | `H6-POSIX-NATIVE` | retained Linux adversarial preparation/containment report passes without fallback |
 | `H6-WINDOWS-NATIVE` | retained Windows adversarial preparation/containment report passes without fallback |
-| `H6-NO-AUTHORITY` | imports, vocabulary, and observations contain no Harness/Product security meaning |
+| `H6-HARNESS-PARITY` | the private bridge preserves managed capture and the existing Worker semantic fence without claiming native Worker compatibility |
+| `H6-NO-AUTHORITY` | Hosting imports, vocabulary, and observations contain no Harness/Product security meaning |
 | `H6-DARK` | non-Worker production modules do not compose the path and owner default remains Current |
 
 ## Activation Fence

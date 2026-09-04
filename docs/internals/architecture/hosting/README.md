@@ -48,8 +48,9 @@ feasibility mappings. H6.2 adds the first private Linux x86_64 native profiles: 
 direct static-ELF mechanics oracle and a release profile that pins a static
 caller-admitted containment launcher beside its payload. H6.3 adds one exact
 Windows AMD64 PE/restricted-token/Job profile with retained native evidence.
-The H6.4 Harness adapter remains open. No runtime owner or public API changes,
-and H5 remains dark.
+H6.4 adds the private Harness Worker managed-preparation bridge and a
+fake-backed H5 semantic parity matrix. It supplies no native Worker profile,
+changes no runtime owner or public API, and H5 remains dark.
 
 Current process mechanics remain implemented inside Harness, principally by:
 
@@ -213,11 +214,12 @@ model.
 13. [H6.1 Managed Launch Preparation Feasibility Record](validation/managed-launch-preparation-h6-feasibility.md);
 14. [H6.2 POSIX Native Managed Launch Preparation Record](validation/managed-launch-preparation-h6-posix-native.md);
 15. [H6.3 Windows Native Managed Launch Preparation Record](validation/managed-launch-preparation-h6-windows-native.md);
-16. [Hosted Product Runtime V1 Current Inventory](validation/hosted-product-runtime-v1-inventory.md);
-17. [Hosted Application Support Boundary](key-designs/hosted-application-support-boundary.md);
-18. [ARD-002: Hosting Top-Level Placement](../decisions/ARD-002-hosting-top-level-placement.md);
-19. [Traceability](traceability.md);
-20. current source, tests, and generated package facts.
+16. [H6.4 Harness Managed-Preparation Parity Record](validation/managed-launch-preparation-h6-harness-parity.md);
+17. [Hosted Product Runtime V1 Current Inventory](validation/hosted-product-runtime-v1-inventory.md);
+18. [Hosted Application Support Boundary](key-designs/hosted-application-support-boundary.md);
+19. [ARD-002: Hosting Top-Level Placement](../decisions/ARD-002-hosting-top-level-placement.md);
+20. [Traceability](traceability.md);
+21. current source, tests, and generated package facts.
 
 ## Current-To-Target Gaps
 
@@ -247,10 +249,11 @@ model.
 - `implemented`: the H5 default-dark aggregate Worker adapter, Supervisor
   session entrypoint, explicit no-fallback selector, pathless diagnostics, and
   future-attempt rollback latch.
-- `partial`: H6.1 implements the private opaque ownership protocol, H6.2
-  implements private Linux x86_64 static-closure profiles, and H6.3 implements
-  one private Windows AMD64 restricted-PE profile with retained native
-  evidence. No public contract, Harness H6.4 adapter, or activation exists.
+- `implemented`: H6.1 implements the private opaque ownership protocol, H6.2
+  implements private Linux x86_64 static-closure profiles, H6.3 implements one
+  private Windows AMD64 restricted-PE profile, and H6.4 preserves that private
+  seam through the Harness Worker semantic adapter. No public contract, native
+  Worker profile supplier, or activation exists.
 - `missing`: a reviewed Product/native Worker activation route; PLC9C5 remains
   separate from Hosting extraction and H6 does not pre-approve it.
 - `missing`: daemon/service-instance lifecycle remains a trigger-gated future

@@ -33,10 +33,11 @@ this inventory as implemented facts.
 | private H6.3 Windows AMD64 preparation | `src/loushang/hosting/_windows_launch_preparation.py`, `src/loushang/hosting/_windows_process.py`, and `src/loushang/hosting/_win32_process.py` | locked PE/cwd/ancestor identity, fixed restricted token, atomic Job, strict handle list, bounded direct-import mechanics, and exact native settlement; private and default-dark; no full Windows loader-closure claim |
 | restrained composition | `src/loushang/hosting/runtime.py` | `create_process_host` and `create_child_session_host`; no public backend/plugin registry |
 
-The stable public owners are implemented through H5; H6.1 through H6.3 add only
-a private transaction core and exact Linux/Windows native profiles. They expose no native
-executable/cwd/containment material in the public request, preparation lease,
-or factory.
+The stable public owners are implemented through H5; H6.1 through H6.3 add a
+private transaction core and exact Linux/Windows native profiles, and H6.4
+preserves that private seam through the Harness Worker adapter. They expose no
+native executable/cwd/containment material in the public request, preparation
+lease, or factory.
 
 ## Current Harness Preparation And Worker Owners
 
@@ -48,7 +49,7 @@ or factory.
 | containment planner | `src/loushang/harness/sandbox/process.py`, `src/loushang/harness/sandbox/runtime.py`, and `src/loushang/harness/sandbox/backends/linux.py` | Sandbox-owner-bound required-containment plan and Linux hosted-process plan |
 | Current Process Host | `src/loushang/harness/workspace/process/host.py` and `src/loushang/harness/workspace/process/local.py` | consumes the private contained request and owns current process lifetime |
 | Hosting compatibility refusal | `src/loushang/harness/workspace/process/hosting_compat.py` | maps representable requests but explicitly rejects inherited sealed-executable/bound-cwd descriptors |
-| H5 Worker adapter | `src/loushang/harness/worker/hosting_adapter.py` | maps one exact Worker request to `ChildSessionRequest` and rechecks caller evidence; cannot manufacture native preparation material |
+| H5/H6.4 Worker adapter | `src/loushang/harness/worker/hosting_adapter.py` | maps one exact Worker request to `ChildSessionRequest`, rechecks caller evidence, and preserves an injected nominal managed-preparation port; cannot manufacture native preparation material or select a profile |
 | H5 owner selector | `src/loushang/harness/worker/owner_selection.py` | explicit typed Current/Hosting route with default `owner="current"`, no environment activation, no same-attempt fallback |
 | Worker protocol/lifecycle | `src/loushang/harness/worker/protocol.py`, `src/loushang/harness/worker/supervisor.py`, `src/loushang/harness/worker/journal.py`, and `src/loushang/harness/worker/session.py` | framing, handshake, correlation, heartbeat, restart/fencing, aggregate session, and durable attempt evidence |
 | first domain adapter | `src/loushang/harness/worker/capability_query.py` | explicitly enabled read-only Capability query adapter; no Product activation or generation publication route |
@@ -60,9 +61,9 @@ or factory.
 | Boundary | Producer shape | Consumer shape | Current result |
 | --- | --- | --- | --- |
 | executable/cwd | Harness private request retains native descriptors plus identity | Hosting `ProcessLaunchRequest` contains absolute strings | `hosting_compat` fails closed rather than substitute mutable paths |
-| containment | Harness `ProcessContainmentPlan` may rewrite the exact process request and owns semantic evidence | Hosting preparation lease exposes only `request`, `verify_current`, and `close` | lifecycle can be delegated, but native spawn material cannot be consumed |
-| inherited resources | Harness Current path extracts private launch descriptors | H6.1 combines endpoint and opaque preparation inheritance internally; H6.2/H6.3 supply exact platform-private material | no Harness adapter currently supplies either native profile |
-| Windows required containment | PLC9B includes a purpose-specific AppContainer/Job implementation for legacy restore | Hosting H6.3 owns one narrower restricted-token/locked-PE profile | no managed Worker adapter, AppContainer equivalence, or parity claim |
+| containment | Harness `ProcessContainmentPlan` may rewrite the exact process request and owns semantic evidence | Hosting's public preparation lease exposes only `request`, `verify_current`, and `close`; H6 adds a private managed capture | H6.4 preserves an injected caller/native bridge, but the Current Worker plan has no eligible H6 profile adapter |
+| inherited resources | Harness Current path extracts private launch descriptors | H6.1 combines endpoint and opaque preparation inheritance internally; H6.2/H6.3 supply exact platform-private material | H6.4 can preserve an injected managed port, but no composition currently supplies either native profile for a Worker |
+| Windows required containment | PLC9B includes a purpose-specific AppContainer/Job implementation for legacy restore | Hosting H6.3 owns one narrower restricted-token/locked-PE profile | the managed semantic bridge exists, but no AppContainer equivalence, eligible Worker profile supplier, or native parity claim exists |
 | Product activation | PLC9C1--C4 provide declaration, launch, supervisor, and one dark domain adapter | H5 provides an explicit dark Hosting owner | no Product composition selects and publishes the native path |
 
 ## AppHost And Hosted Application Absences
@@ -90,7 +91,7 @@ not evidence of those packages or runtime routes.
 | opaque request-bound native preparation | Hosting Contract/Platform components | implemented privately in H6.1; fake ownership, concurrency/fault, and no-raw-handle gates are retained |
 | exact Linux executable/cwd/containment transfer | Hosting platform adapter with caller-owned requirements | implemented for the private static-closure profiles; H6.2 retained native adversarial oracle remains green |
 | exact Windows executable/cwd/containment transfer | Hosting platform adapter with caller-owned requirements | implemented for one private restricted-token/direct-import PE mechanics profile; the non-skippable H6.3 native adversarial oracle must remain green |
-| Harness-to-Hosting managed preparation parity | Harness Sandbox/Worker adapter over Hosting | H6.4 independent Current/Hosting parity; still default-dark |
+| Harness-to-Hosting managed preparation parity | Harness Sandbox/Worker adapter over Hosting | H6.4 fake-backed public/managed semantic and cleanup parity; native Worker compatibility remains absent and default stays Current |
 | Product catalog, no-default routing, scoped runtime lifetime | proposed AppHost | A0 contracts and two-unrelated-fake-Product conformance |
 | Session pre-routing identity | proposed AppHost schema plus canonical Session persistence/catalog owner | atomic envelope creation/resume/migration tests before Product parsing |
 | AppHost cwd/user-global Session projection | adapter over the existing Harness Session discovery/catalog owner | explicit-scope listing, stable source identity, exact alias/conflict behavior, Product envelope, and no-direct-filesystem tests |

@@ -44,14 +44,22 @@ jobs:
           uv run --extra dev ruff check
           src/loushang/hosting
           src/loushang/harness/workspace/process/hosting_compat.py
+          src/loushang/harness/worker/__init__.py
+          src/loushang/harness/worker/hosting_adapter.py
+          src/loushang/harness/worker/owner_selection.py
+          src/loushang/harness/worker/session.py
+          src/loushang/harness/worker/supervisor.py
           tests/hosting
           tests/harness/workspace/process/test_hosting_compat.py
+          tests/harness/worker/test_hosting_adapter.py
           tests/architecture/test_hosting_h0_contract.py
           tests/architecture/test_hosting_h1_process_lifetime.py
           tests/architecture/test_hosting_h2_platform_contract.py
           tests/architecture/test_hosting_h3_endpoint.py
           tests/architecture/test_hosting_h4_child_session.py
+          tests/architecture/test_hosting_h5_worker_adapter.py
           tests/architecture/test_hosting_h6_launch_preparation.py
+          tests/architecture/test_hosting_h6_harness_parity.py
           tests/architecture/test_hosting_h6_posix_native.py
           tests/architecture/test_hosting_h6_windows_native.py
           tests/architecture/test_hosted_product_runtime_v1_baseline.py
@@ -62,6 +70,11 @@ jobs:
           uv run --extra dev mypy --follow-imports=silent
           src/loushang/hosting
           src/loushang/harness/workspace/process/hosting_compat.py
+          src/loushang/harness/worker/__init__.py
+          src/loushang/harness/worker/hosting_adapter.py
+          src/loushang/harness/worker/owner_selection.py
+          src/loushang/harness/worker/session.py
+          src/loushang/harness/worker/supervisor.py
 
       - name: Create H6.2 native report directory
         if: matrix.os == 'ubuntu-24.04'
@@ -129,12 +142,15 @@ jobs:
           uv run --extra dev python scripts/dev/run_pytest.py
           tests/hosting
           tests/harness/workspace/process/test_hosting_compat.py
+          tests/harness/worker/test_hosting_adapter.py
           tests/architecture/test_hosting_h0_contract.py
           tests/architecture/test_hosting_h1_process_lifetime.py
           tests/architecture/test_hosting_h2_platform_contract.py
           tests/architecture/test_hosting_h3_endpoint.py
           tests/architecture/test_hosting_h4_child_session.py
+          tests/architecture/test_hosting_h5_worker_adapter.py
           tests/architecture/test_hosting_h6_launch_preparation.py
+          tests/architecture/test_hosting_h6_harness_parity.py
           tests/architecture/test_hosting_h6_posix_native.py
           tests/architecture/test_hosting_h6_windows_native.py
           tests/architecture/test_hosted_product_runtime_v1_baseline.py
