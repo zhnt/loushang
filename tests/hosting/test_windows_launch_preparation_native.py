@@ -254,7 +254,7 @@ void WINAPI mainCRTStartup(void) {{
     if (privileges->PrivilegeCount > 1) ExitProcess(77);
     if (privileges->PrivilegeCount == 1) {{
         LUID change_notify;
-        if (!LookupPrivilegeValueW(0, SE_CHANGE_NOTIFY_NAME, &change_notify) ||
+        if (!LookupPrivilegeValueW(0, L"SeChangeNotifyPrivilege", &change_notify) ||
             privileges->Privileges[0].Luid.LowPart != change_notify.LowPart ||
             privileges->Privileges[0].Luid.HighPart != change_notify.HighPart)
             ExitProcess(78);
@@ -282,11 +282,11 @@ void WINAPI mainCRTStartup(void) {{
         CloseHandle(process.hProcess);
         emit("restricted-child-ready\\n", 23);
     }} else {{
-        wchar_t system_root[1024];
+        wchar_t system_root[MAX_PATH];
         DWORD root_length = GetEnvironmentVariableW(
-            L"SystemRoot", system_root, 1024);
-        if (!root_length || root_length >= 1024) ExitProcess(72);
-        if (GetEnvironmentVariableW(L"PATH", system_root, 1024))
+            L"SystemRoot", system_root, MAX_PATH);
+        if (!root_length || root_length >= MAX_PATH) ExitProcess(72);
+        if (GetEnvironmentVariableW(L"PATH", system_root, MAX_PATH))
             ExitProcess(79);
         emit("restricted\\n", 11);
     }}
