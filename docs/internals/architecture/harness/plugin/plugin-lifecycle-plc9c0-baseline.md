@@ -1,28 +1,34 @@
-# Plugin Lifecycle PLC9C.0 Local Worker Baseline
+# Plugin Lifecycle PLC9C Local Worker Boundary
 
 ## Status And Authority
 
-- Slice: PLC9C.0 design, threat-model, owner-inventory, and architecture-guard
-  baseline.
-- Source baseline: `d2003671` on `lane/harness`.
-- Delivery branch: `harness/plugin-plc9c0-baseline`.
-- Status: accepted on 2026-09-03 after independent architecture,
-  security/lifecycle, and Product/test review reported no unresolved P0/P1.
-- Runtime effect: none. PLC9C.0 adds no declaration tag, author SDK type,
-  Worker protocol, launch port, process, containment grant, domain
-  contribution, or remote-service client.
+- Slice: PLC9C.0 baseline plus PLC9C1--PLC9C4 internal Worker mechanism.
+- Implementation base: `90f6a9de` on `main` / `lane/harness`.
+- Delivery branch: `harness/plugin-plc9c-worker-containment`.
+- Status: reviewed implementation candidate. Architecture,
+  security/lifecycle, and Product/test perspectives accepted C1--C4 after
+  closing version coupling, protocol bounds, transport ownership, durable
+  failure cleanup, shutdown classification, and authority-revocation findings.
+- Local evidence: `make check-harness` passed with Ruff, mypy over 673 source
+  files, and 4,268 tests passed with 38 expected platform skips.
+- Default runtime effect: none. PLC9C1--PLC9C4 add an inert versioned
+  `local_worker` declaration, an owner-only launch capability, a bounded
+  protocol/supervisor, and one explicitly enabled read-only Capability query
+  adapter. The adapter is disabled by policy unless its composition root passes
+  `enabled=True`. No Product activation route, native IPC binding, author-SDK
+  runtime owner, generation publisher, or remote-service client is added.
 
 This baseline refines the
 [PLC9.0 Local Worker Boundary](plugin-lifecycle-plc9-baseline.md#local-worker-boundary)
 against the current source-backed
 [PLC9 inventory](plugin-lifecycle-plc9-inventory.md#execution-and-containment-seams).
 Current source and executable tests remain authoritative for implemented
-behavior. Later PLC9C slices must revise this document and inventory in the
-same change that introduces a boundary.
+behavior. PLC9C5 must revise this document and inventory in the same change
+that introduces Product activation or native IPC/platform evidence.
 
 ## First-Principles Decisions
 
-1. **Execution topology is not acquisition.** `local_worker` is a future
+1. **Execution topology is not acquisition.** `local_worker` is a versioned
    contribution execution model. It is not a declaration source kind, Package
    source, install mechanism, or remote-service alias.
 2. **Declaration is inert intent.** A decoded Worker declaration can name a
@@ -36,7 +42,7 @@ same change that introduces a boundary.
    final identity checks must succeed before the OS spawner is called. Degraded
    or best-effort containment never admits a Worker.
 4. **Mechanism and domain meaning stay separate.** Process Host owns bounded
-   reservation, child lifetime, and I/O. Sandbox owns containment. A future
+   reservation, child lifetime, and I/O. Sandbox owns containment. The
    product-neutral Worker transport/supervisor owns framing, session protocol,
    heartbeat, correlation, and process shutdown. The exact domain Worker
    adapter and existing domain owners retain semantic admission, Host-side
@@ -53,13 +59,16 @@ same change that introduces a boundary.
    and requires a separate threat model covering identity, authentication,
    egress, tenancy, residency, revocation, and failure semantics.
 
-## Frozen Current Facts
+## Implemented Facts And Retained Absences
 
-At source baseline `d2003671`:
+At the PLC9C1--PLC9C4 candidate:
 
 - `PluginDeclarationSourceKind` is exactly `document | in_process`;
-- `PluginContributionExecutionModel` is exactly `data_only | in_process`;
-- declaration IR v2 and document v1 reject an unknown execution model;
+- `PluginContributionExecutionModel` is exactly
+  `data_only | in_process | local_worker`; legacy contribution index v2,
+  declaration IR v2, and document v1 retain their exact prior meaning, while
+  index v3, IR v3, and document v2 are reserved for a document-sourced,
+  explicitly versioned local Worker topology;
 - `loushang.plugin` exports no Process Host, Sandbox, management, Worker, or
   remote-service owner;
 - `ScopeBoundProcessLauncher.start()` is the generic authorized launch path and
@@ -67,8 +76,10 @@ At source baseline `d2003671`:
 - `ScopeBoundProcessLauncher._start_managed()` is private substrate guarded by
   a Process-owner-minted launcher, mandatory Approval, and `required`
   containment;
-- `SandboxExecutionRuntime.bind_process_launcher()` is the Process/Sandbox
-  composition root for the existing generic launcher;
+- `SandboxExecutionRuntime.bind_process_launcher()` remains the Process/Sandbox
+  composition root for the generic launcher, while
+  `bind_managed_worker_launch_port()` mints a separate capability over the same
+  privately owned Process Host and required-containment planner;
 - managed Skill actions prove that the private managed substrate can be
   composed without making it a Worker contract;
 - `CapabilityComponentHost` and `CapabilityOwnerComponentHost` prepare
@@ -77,8 +88,15 @@ At source baseline `d2003671`:
   `CapabilityOwnerComponentBinder`, alongside exact Resource and Continuity
   owners such as `PreparedResourceOwnerGeneration` and
   `PluginContinuityProvider`; a Worker transport cannot replace them; and
-- no `local_worker` IR, `ManagedWorkerLaunchPort`, Worker handshake, supervisor,
-  or domain Worker envelope exists.
+- `WorkerRuntimeBindingV1` seals the contained executable/cwd identity before
+  `ManagedWorkerLaunchPort` enters the existing private managed Process path;
+- the bounded canonical-JSON frame protocol and `WorkerSupervisor` own exact
+  handshake identity, direction/state validation, correlation, heartbeat,
+  cancellation tombstones, shutdown, crash fencing, durable attempt epochs,
+  and restart budgets; and
+- `CapabilityQueryWorkerAdapter` admits only one exact read-only Capability
+  allowlist, revalidates authority before and after every result, publishes
+  nothing, and is disabled by policy by default.
 
 The existence of Process Host, a Sandbox backend, or the managed Skill path is
 not evidence that a Plugin Worker is admitted.
@@ -110,10 +128,12 @@ PLC9C must defend against:
 - crash, cancellation, or host restart being reported as successful domain
   retirement, cleanup, or publication rollback.
 
-PLC9C.0 does not select an IPC transport or serialization library. Later
-protocol work must preserve bounded framing, explicit version negotiation,
-host-generated correlation/nonces, ordered shutdown, and a testable distinction
-between transport, protocol, domain, containment, and process failures.
+PLC9C3 selects a bounded canonical-JSON frame protocol over an injected,
+already-owned byte transport. Native IPC activation remains in PLC9C5; C1--C4
+therefore make no Linux/Windows handle-inheritance claim. Explicit version
+negotiation, host-generated correlation/nonces, ordered shutdown, and the
+distinction between transport, protocol, domain, containment, and process
+failures are executable contracts now.
 
 ## Target Ownership And Dependency Direction
 
@@ -131,8 +151,8 @@ Worker <-> bounded transport/session protocol <-> Worker supervisor
                                                      -> domain owners
 ```
 
-The Process/Sandbox composition root may mint the future
-`ManagedWorkerLaunchPort` only after it binds an exact required-containment
+The Process/Sandbox composition root mints `ManagedWorkerLaunchPort` only after
+it binds an exact required-containment
 planner and Process-owner launch authority. The port accepts an already
 domain-bound Worker launch request; it does not accept arbitrary Tool requests
 or expose the generic launcher.
@@ -167,7 +187,7 @@ Harness runtime owners.
 
 ## Lifecycle And Failure Separation
 
-Later PLC9C runtime work must keep at least these facts distinct:
+PLC9C runtime work keeps at least these facts distinct:
 
 | Fact | Sole owner | Required evidence |
 | --- | --- | --- |
@@ -306,7 +326,7 @@ a native containment, handle inheritance, termination-tree, or crash-recovery
 row. Every platform decision occurs before the OS spawner and emits a stable,
 bounded unsupported-platform or containment-unavailable reason.
 
-| Environment | PLC9C.0 disposition |
+| Environment | PLC9C1--PLC9C4 disposition |
 | --- | --- |
 | native Linux | eligible only after retained native required-containment, inheritance, process-tree termination, and crash-fencing evidence |
 | native Windows | eligible only after the corresponding retained native Job/AppContainer or accepted peer evidence |
@@ -317,12 +337,14 @@ bounded unsupported-platform or containment-unavailable reason.
 
 ## Frozen Forbidden Routes
 
-Until a later accepted PLC9C slice intentionally revises these guards:
+Until PLC9C5 intentionally revises these guards:
 
-- `local_worker`, `remote_service`, and a Worker configuration object remain
-  absent from the current declaration codec and author SDK;
-- no module may define or export `ManagedWorkerLaunchPort` or a Plugin Worker
-  supervisor as implemented runtime;
+- `local_worker` and its Worker configuration exist only in the additive
+  internal index-v3/IR-v3/document-v2 codec; `remote_service` remains absent,
+  and the author SDK exports neither topology nor runtime owner objects;
+- `ManagedWorkerLaunchPort` may be minted only by
+  `SandboxExecutionRuntime.bind_managed_worker_launch_port()` and is not a
+  generic process-launch surface;
 - no Worker/domain module may construct or call raw `ProcessHost`,
   `LocalSandboxService`, `HostedProcessContainmentPlanner`, private managed
   request builders, or generic `ScopeBoundProcessLauncher.start()`;
@@ -334,22 +356,24 @@ Until a later accepted PLC9C slice intentionally revises these guards:
 - `remote_service` may not be introduced as a union arm or compatibility alias
   of `local_worker`.
 
-## PLC9C.0 Exit Gate
+## PLC9C1--PLC9C4 Exit Gate
 
-PLC9C.0 is complete only when:
+PLC9C1--PLC9C4 are complete only when:
 
 - this document is indexed by the active Plugin architecture catalog;
-- the source-backed inventory names the declaration, Process Host, generic and
-  private managed launch, Sandbox composition, binding-preparation hosts,
-  generation owners, and missing Worker/protocol/supervisor/domain-adapter
-  seams;
-- architecture tests freeze current codec values, owner boundaries, author-SDK
-  exclusion, and target absence without pretending target code exists;
+- the source-backed inventory names the versioned declaration, Process Host,
+  generic and private managed launch, Worker launch capability, Sandbox
+  composition, protocol/supervisor, read-only domain adapter, retained
+  generation owners, and missing Product/native activation seams;
+- architecture tests freeze codec compatibility, owner boundaries, default
+  dark state, author-SDK exclusion, and retained topology absences;
 - architecture, security/lifecycle, and Product/test reviewers independently
-  accept the corrected design with no unresolved P0/P1; and
-- the change contains no PLC9C runtime implementation.
+  accept the corrected implementation with no unresolved high/medium risks;
+- targeted and Harness gates pass without enabling a production route; and
+- the change contains no PLC9D cleanup/retention or PLC9E compatibility
+  deletion.
 
-Passing PLC9C.0 permits a separately reviewed PLC9C1 declaration change. It
-does not pre-approve an IR schema, IPC transport, serialization library, launch
-request, Sandbox backend, restart algorithm, public SDK surface, or remote
-topology.
+Passing PLC9C1--PLC9C4 permits a separately reviewed PLC9C5 Product/native
+activation change. It does not pre-approve an IPC platform binding, Sandbox
+backend, Product recovery policy, public SDK surface, generation publication,
+or remote topology.

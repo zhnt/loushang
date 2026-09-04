@@ -7,7 +7,10 @@ from dataclasses import dataclass
 from typing import Final
 
 from loushang.harness.resources.plugins.declarations import (
+    PLUGIN_CONTRIBUTION_INDEX_VERSION,
     PLUGIN_DECLARATION_IR_VERSION,
+    PLUGIN_LOCAL_WORKER_CONTRIBUTION_INDEX_VERSION,
+    PLUGIN_LOCAL_WORKER_DECLARATION_IR_VERSION,
     PluginContributionIndex,
 )
 
@@ -20,6 +23,7 @@ PLUGIN_ENGINE_FEATURES: Final = frozenset(
         "catalog-consumer-v1",
         "declaration-document-v1",
         "in-process-definition-v1",
+        "local-worker-v1",
         "managed-skill-action-v1",
         "resource-item-v1",
         "symbol-reference-v2",
@@ -122,9 +126,13 @@ def inspect_plugin_engine_contract(
                 message="Unsupported Plugin engine API version",
             )
         )
+    supported_declaration_versions = {
+        PLUGIN_DECLARATION_IR_VERSION,
+        PLUGIN_LOCAL_WORKER_DECLARATION_IR_VERSION,
+    }
     if (
         type(declaration_version) is not int
-        or declaration_version != PLUGIN_DECLARATION_IR_VERSION
+        or declaration_version not in supported_declaration_versions
     ):
         diagnostics.append(
             PluginEngineDiagnostic(
@@ -159,6 +167,21 @@ def inspect_plugin_engine_contract(
                 )
             )
     if contribution_index is not None:
+        expected_declaration_version = (
+            PLUGIN_DECLARATION_IR_VERSION
+            if contribution_index.version == PLUGIN_CONTRIBUTION_INDEX_VERSION
+            else PLUGIN_LOCAL_WORKER_DECLARATION_IR_VERSION
+        )
+        if declaration_version != expected_declaration_version:
+            diagnostics.append(
+                PluginEngineDiagnostic(
+                    code="plugin_engine_declaration_index_version_mismatch",
+                    message=(
+                        "Plugin declaration IR version does not match its "
+                        "contribution index version"
+                    ),
+                )
+            )
         for item in contribution_index.items:
             if MANAGED_SKILL_ACTION_CONFIGURATION_KEY not in item.configuration:
                 continue
@@ -198,7 +221,9 @@ def inspect_plugin_engine_contract(
         PluginEngineContract(
             manifest_version=PLUGIN_MANIFEST_VERSION,
             api_version=PLUGIN_ENGINE_API_VERSION,
-            declaration_ir_version=PLUGIN_DECLARATION_IR_VERSION,
+            declaration_ir_version=(
+                declaration_version if type(declaration_version) is int else -1
+            ),
             required_features=features,
         )
         if not diagnostics
@@ -224,6 +249,12 @@ def required_plugin_engine_features(
             features.add("declaration-document-v1")
         elif item.declaration_source.kind == "in_process":
             features.add("in-process-definition-v1")
+        if item.contribution_execution_model == "local_worker":
+            if item.index_version != PLUGIN_LOCAL_WORKER_CONTRIBUTION_INDEX_VERSION:
+                raise ValueError(
+                    "Plugin local Worker contribution has an invalid index"
+                )
+            features.add("local-worker-v1")
     return frozenset(features)
 
 

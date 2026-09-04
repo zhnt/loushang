@@ -317,11 +317,12 @@ Neither may silently override a narrower implemented owner contract.
   guards; Windows run `33709473605`/artifact `9876434660` executed 34 native
   component tests and all 15 Windows manifest nodes. All retained PLC9B XML
   reports recorded zero skips, failures, and errors.
-- [PLC9C.0 Local Worker Baseline](plugin-lifecycle-plc9c0-baseline.md)
-  freezes the design-only `local_worker` threat model, exact Process/Sandbox/
-  domain-owner boundaries, current-source inventory, additive delivery order,
-  and absence guards. It adds no Worker declaration, launch port, protocol,
-  process, author-SDK export, or `remote_service` topology.
+- [PLC9C Local Worker Boundary](plugin-lifecycle-plc9c0-baseline.md) freezes the
+  threat model and implements C1--C4's additive `local_worker` declaration,
+  owner-only Process/Sandbox launch capability, bounded protocol/supervisor,
+  durable attempt journal, and default-dark read-only Capability adapter. C5
+  Product/native activation, author-SDK runtime owners, generation publication,
+  and `remote_service` remain absent.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)

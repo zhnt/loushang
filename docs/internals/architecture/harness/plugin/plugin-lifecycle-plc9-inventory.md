@@ -360,12 +360,14 @@
   guards, while Windows run `33709473605`/artifact `9876434660` executed 34
   native component tests and all 15 Windows manifest nodes. Every retained
   PLC9B report recorded zero skips, failures, and errors.
-- PLC9C.0 refinement:
-  [Local Worker Baseline](plugin-lifecycle-plc9c0-baseline.md) freezes the
-  design-only threat model and the current declaration, generic/private launch,
-  Process Host, Sandbox, binding-preparation, generation-owner, and missing
-  Worker seams at source baseline `d2003671`. It adds no execution-model tag,
-  protocol, launch port, process, author-SDK export, or remote-service topology.
+- PLC9C1--PLC9C4 implementation candidate:
+  [Local Worker Boundary](plugin-lifecycle-plc9c0-baseline.md) retains the
+  accepted threat model and implements the additive declaration topology,
+  owner-only launch capability, bounded protocol/supervisor, durable attempt
+  journal, and one default-dark read-only Capability query adapter from base
+  `90f6a9de`. It adds no Product activation/native IPC binding, author-SDK
+  runtime owner, generation publication/retirement authority, PLC9D cleanup,
+  PLC9E deletion, or remote-service topology.
 
 This inventory distinguishes accepted reusable owners, Product adapters,
 parallel compatibility paths, and missing target boundaries. “Migrate” or
@@ -802,28 +804,30 @@ capability in a new scope cannot pass silently.
 | Current seam | Exact source owner or symbol | Current fact | PLC9 disposition and gate |
 | --- | --- | --- | --- |
 | Declaration source union | `src/loushang/harness/resources/plugins/declarations.py::PluginDeclarationSourceKind` | Exactly `document` or `in_process`; this describes how the inert declaration is acquired | Retain as an independent axis; a document may declare Worker execution, so PLC9 does not invent a Worker source kind |
-| Contribution execution model | `src/loushang/harness/resources/plugins/declarations.py::PluginContributionExecutionModel` | Exactly `data_only` or `in_process`; this is the current execution-topology axis | Add `local_worker` only through a new versioned IR/codec and compatibility fixtures; `remote_service` remains separately deferred |
+| Contribution execution model | `src/loushang/harness/resources/plugins/declarations.py::PluginContributionExecutionModel`, `PluginLocalWorkerConfiguration`, `PluginContributionIndex`, and `PluginDeclarationDocument`; `src/loushang/harness/resources/plugins/selection.py::PluginSelectionResolver._finalize` | Exactly `data_only`, `in_process`, or `local_worker`; legacy index v2/IR v2/document v1 retain exact meaning, while v3/v3/v2 carry an explicit versioned Worker configuration and reject downgrade/partial records; final selection rejoins the IR version/topology/configuration to its indexed reservation | Retain as the inert execution-topology axis; `remote_service` remains separately deferred and decoding/selection mint no runtime authority |
 | Author SDK | `src/loushang/plugin/__init__.py` | Exposes declarative authoring/validation and the narrow Provider runtime ABI; no management, Worker, Process Host, or Sandbox owner objects | Preserve the authority firewall; any future Worker authoring surface is data-only and versioned |
 | Raw process owner | `src/loushang/harness/workspace/process/host.py::ProcessHost` | Owns bounded child count, I/O limits, process lifetime, termination, and an optional containment-planner hook | Reuse only behind the authorized launcher; raw construction/start is not Worker admission |
 | Generic authorized process launcher | `src/loushang/harness/tools/process_hosting.py::ScopeBoundProcessLauncher.start` | Runs Policy/Approval/Authorization and permits the configured best-effort or required containment mode; it rejects private managed requests | Retain for general process Tools, but explicitly forbid this generic public method for managed Worker admission |
 | Private managed-process substrate | `src/loushang/harness/tools/process_hosting.py::_managed_process_launch_request`, `src/loushang/harness/tools/process_hosting.py::ScopeBoundProcessLauncher._start_managed`, and `src/loushang/harness/tools/process_hosting.py::ScopeBoundProcessLauncher._verify_managed_start_authority` | Existing private mechanics require an owner-minted request/launcher, mandatory Approval, required containment, and verification of a Sandbox-owner-bound plan | Reuse behind a new owner-only `ManagedWorkerLaunchPort`; neither the private symbols nor the generic launcher become a Worker-facing API |
 | Existing managed caller precedent | `src/loushang/harness/tools/skill_actions.py::execute_managed_skill_action` | Managed Skill actions privately construct the sealed request and call the managed start path after verifying authority | Retain as proof of the current owner-only chain, not as a Worker port or declaration contract |
 | Long-lived containment planner | `src/loushang/harness/sandbox/process.py::HostedProcessContainmentPlanner` | Plans/tracks hosted-process containment; required mode fails closed and verifies Sandbox-owned managed plans | Retain as the Worker containment owner; degraded/best-effort plans never satisfy managed Worker admission |
-| Process/Sandbox composition root | `src/loushang/harness/sandbox/runtime.py::SandboxExecutionRuntime.bind_process_launcher` | Mints the current generic launcher over its owned Process Host and containment planner and privately binds managed-owner authority when available; its return type alone does not prove Worker-grade admission | PLC9C adds the separate owner-only managed Worker port at this owner composition boundary; Worker hosts do not construct Process Host/Sandbox directly |
+| Process/Sandbox composition root | `src/loushang/harness/sandbox/runtime.py::SandboxExecutionRuntime.bind_process_launcher` and `bind_managed_worker_launch_port` | Mints distinct generic and Worker-only capabilities over its owned Process Host and containment planner; the Worker path privately binds managed-owner authority and mandatory required containment | Retain as the only Worker launch-capability minting root; Worker hosts do not construct Process Host/Sandbox directly |
 | Exec-scope Sandbox service | `src/loushang/harness/sandbox/service.py::LocalSandboxService` | Owns selected backend Exec scopes and fail-closed behavior when containment is required | Retain for Exec; do not misidentify it as the complete hosted-Worker chain |
 | Capability binding preparation hosts | `src/loushang/harness/capabilities/component_host.py::CapabilityComponentHost` and `src/loushang/harness/capabilities/owner_component_host.py::CapabilityOwnerComponentHost` | Prepare exact Capability and owner-component bindings; neither host publishes an owner generation | Retain as exact domain admission/preparation seams; a Worker adapter may delegate here but cannot treat preparation as publication |
 | Capability generation owner | `src/loushang/harness/capabilities/component_runtime.py::CapabilityOwnerComponentRuntime` and `src/loushang/harness/capabilities/component_runtime.py::CapabilityOwnerComponentBinder` | Own current/retired owner-component generations and the atomic publication window after all selected bindings construct | Retain as the Capability publication/retirement owner; neither a Worker transport nor Plugin management may replace it |
 | Resource owner generation | `src/loushang/harness/resource_catalog/generation.py::PreparedResourceOwnerGeneration` | Owns prepared Resource/Skill Catalog generation publication/rollback/retirement | Retain; Worker-derived Resource facts still publish through this owner path |
 | Continuity domain host | `src/loushang/harness/continuity/plugin_provider.py::PluginContinuityProvider` | Owns Continuity provider generation calls, mutation preparation, and domain deletion candidates | Retain; a Worker transport cannot become the Continuity owner |
-| Owner-only Worker launch port | absent at PLC9C.0 | No current public or private type is a `ManagedWorkerLaunchPort`; managed Skill execution is only a precedent over private Process substrate | PLC9C2 introduces a narrow port only at the Process/Sandbox composition root after required containment is bound |
-| Product-neutral Worker transport and supervisor | absent at PLC9C.0 | No handshake, heartbeat, bounded framing, correlation, cancellation tombstone, ordered shutdown, crash fence, exclusive supervisor epoch, or restart-budget owner exists | PLC9C3 adds mechanism only; it owns no semantic action, contribution publication, rollback, or retirement |
-| Exact domain Worker adapter | absent at PLC9C.0 | No Worker envelope binds protocol messages to one Plugin revision, contribution, Product/scope, owner generation, and Host-side domain action | PLC9C4 adds one low-authority read-only adapter; existing exact domain owners retain semantic admission, publication, rollback, and retirement |
-| Remote-service topology | absent at PLC9C.0 | No service identity, authentication, egress, tenant, residency, or remote revocation contract exists | Defer to a separate threat model; never add it as a `local_worker` compatibility arm |
+| Worker runtime identity and launch port | `src/loushang/harness/worker/contracts.py::{WorkerRuntimeBindingV1,WorkerLaunchIdentityV1,ManagedWorkerLaunchRequestV1,WorkerLaunchEvidenceV1}` and `src/loushang/harness/worker/launch.py::ManagedWorkerLaunchPort` | Captures contained regular executable/cwd identity and content digests, revalidates before spawn, exposes no arbitrary command/environment, and returns pathless launch evidence over the existing private managed Process substrate | Retain behind the Process/Sandbox composition root; native IPC/platform activation remains PLC9C5 |
+| Product-neutral Worker protocol and supervisor | `src/loushang/harness/worker/protocol.py`, `src/loushang/harness/worker/supervisor.py`, and `src/loushang/harness/worker/journal.py` | Exact bounded canonical-JSON frames over an injected byte transport; owns handshake, direction/state validation, correlation/tombstones, heartbeat, shutdown, process-exit fencing, and durable contiguous attempt epoch/restart budget | Retain as mechanism only; it owns no semantic action, contribution publication, rollback, or retirement |
+| Exact read-only Capability Worker adapter | `src/loushang/harness/worker/capability_query.py::{CapabilityQueryWorkerAdapter,bind_capability_query_worker_adapter}` | Binds one Plugin/contribution/Product/scope/owner generation to a sorted Capability allowlist, rechecks authority around every response, returns typed descriptors, and fences invalid/stale output; construction is disabled by policy unless explicitly enabled | Retain as the C4 low-authority canary; it has no publish, retire, mutation, credential, or arbitrary execution capability |
+| Product/native Worker activation | absent through PLC9C4 | No production Product route connects a child to the injected byte transport, publishes a generation, or claims Linux/Windows native handle/containment conformance | PLC9C5 must add exact platform evidence and Product rollback/recovery without weakening default-dark behavior |
+| Remote-service topology | absent through PLC9C4 | No service identity, authentication, egress, tenant, residency, or remote revocation contract exists | Defer to a separate threat model; never add it as a `local_worker` compatibility arm |
 
-There is no implemented Plugin `local_worker` declaration or supervised Worker
-envelope on this baseline. There is also no accepted `remote_service`
-declaration/client topology. Process Host and Sandbox substrate existence does
-not imply either feature is implemented.
+The internal Plugin `local_worker` declaration and supervised mechanism exist
+through PLC9C4, but no production Product/native activation route exists. There
+is also no accepted `remote_service` declaration/client topology. Process Host
+and Sandbox substrate existence alone still proves neither Worker admission nor
+domain publication.
 
 ## Cleanup, Data, And Compatibility Seams
 
@@ -869,9 +873,8 @@ PLC9A1 contract:
 - UI/management-SDK transport bindings and their conformance fixtures; CLI and
   the existing Package RPC surface are bound through A2;
 - complete bounded byte/archive/wheel materialization transaction;
-- versioned `local_worker` execution-topology IR, handshake, semantic protocol, and
-  supervised domain-host envelope;
-- owner-only managed Worker launch port minted by Process/Sandbox composition;
+- Product/native Worker activation, IPC handle binding, platform conformance,
+  domain generation publication, and recovery/rollback composition;
 - `remote_service` topology contract and client;
 - executable artifact-GC owner/receipt;
 - generic Plugin-private data deletion command/receipt; and

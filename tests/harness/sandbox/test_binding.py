@@ -8,7 +8,10 @@ from pathlib import Path
 
 import pytest
 
-from loushang.harness.authorization import EffectiveExecutionProfile
+from loushang.harness.authorization import (
+    EffectiveExecutionProfile,
+    ExecutionAuthorizationError,
+)
 from loushang.harness.environment import HostEnvironment, LocalHostEnvironmentProbe
 from loushang.harness.sandbox import (
     SandboxBackendRegistration,
@@ -214,6 +217,17 @@ def test_disabled_runtime_binds_one_owned_local_process_launcher(
         assert (await handle.wait()).return_code != 0
 
     asyncio.run(scenario())
+
+
+def test_default_runtime_cannot_mint_a_managed_worker_launch_port() -> None:
+    runtime = bind_sandbox_execution_runtime(base_exec_service=ExecService())
+
+    with pytest.raises(ExecutionAuthorizationError, match="Process-owner-minted"):
+        runtime.bind_managed_worker_launch_port(
+            ProcessExecutionScope(require_approval=True)
+        )
+
+    asyncio.run(runtime.close())
 
 
 def test_hosted_process_required_fails_and_best_effort_degrades_before_spawn(

@@ -12,7 +12,12 @@ from typing import Literal, Protocol, cast
 
 from loushang.harness.resources.plugins._strict_json import StrictPluginJsonCodec
 from loushang.harness.resources.plugins.declarations import (
+    PLUGIN_CONTRIBUTION_INDEX_VERSION,
     PLUGIN_DECLARATION_DOCUMENT_VERSION,
+    PLUGIN_DECLARATION_IR_VERSION,
+    PLUGIN_LOCAL_WORKER_CONTRIBUTION_INDEX_VERSION,
+    PLUGIN_LOCAL_WORKER_DECLARATION_DOCUMENT_VERSION,
+    PLUGIN_LOCAL_WORKER_DECLARATION_IR_VERSION,
     PluginContributionReservation,
     PluginDeclaration,
     PluginDeclarationCodecError,
@@ -1364,11 +1369,16 @@ class PluginDocumentDecodedEvidence:
         ):
             _require_sha256(value, name=name)
         _require_hex(self.preflight_use_id, length=48, name="preflight use id")
-        _require_exact_version(
-            self.document_schema_version,
-            supported=PLUGIN_DECLARATION_DOCUMENT_VERSION,
-            name="Plugin declaration document",
-        )
+        if (
+            isinstance(self.document_schema_version, bool)
+            or not isinstance(self.document_schema_version, int)
+            or self.document_schema_version
+            not in {
+                PLUGIN_DECLARATION_DOCUMENT_VERSION,
+                PLUGIN_LOCAL_WORKER_DECLARATION_DOCUMENT_VERSION,
+            }
+        ):
+            raise ValueError("Unsupported Plugin declaration document version")
         _require_exact_version(
             self.evidence_version,
             supported=PLUGIN_DECLARATION_EVIDENCE_VERSION,
@@ -2309,6 +2319,25 @@ class PluginSelectionResolver:
             for ref, reservation in expected_reservations.items():
                 declaration = declarations_by_ref[ref]
                 contribution = reservation.contribution
+                expected_ir_version = (
+                    PLUGIN_DECLARATION_IR_VERSION
+                    if contribution.index_version
+                    == PLUGIN_CONTRIBUTION_INDEX_VERSION
+                    else PLUGIN_LOCAL_WORKER_DECLARATION_IR_VERSION
+                )
+                topology_mismatch = (
+                    declaration.ir_version != expected_ir_version
+                    or (
+                        contribution.index_version
+                        == PLUGIN_LOCAL_WORKER_CONTRIBUTION_INDEX_VERSION
+                        and (
+                            declaration.contribution_execution_model
+                            != contribution.contribution_execution_model
+                            or declaration.worker_configuration
+                            != contribution.worker_configuration
+                        )
+                    )
+                )
                 if (
                     declaration.kind != contribution.kind
                     or declaration.owner != contribution.owner
@@ -2318,6 +2347,7 @@ class PluginSelectionResolver:
                     != contribution.source_descriptor_fingerprint
                     or declaration.source_kind
                     != contribution.declaration_source.kind
+                    or topology_mismatch
                 ):
                     raise PluginSelectionError(
                         "Plugin declaration changed its inert reservation: "

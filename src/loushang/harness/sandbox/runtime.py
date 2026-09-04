@@ -13,6 +13,10 @@ from loushang.harness.tools.process_hosting import (
     ScopeBoundProcessLauncher,
     _bind_process_owner_launcher,
 )
+from loushang.harness.worker.launch import (
+    ManagedWorkerLaunchPort,
+    _bind_managed_worker_launch_port,
+)
 from loushang.harness.workspace.exec import (
     ExecRequest,
     ExecService,
@@ -40,6 +44,7 @@ class SandboxExecutionRuntime:
     _process_containment: HostedProcessContainmentPlanner
     _closed: bool = False
     _process_launcher: ScopeBoundProcessLauncher | None = None
+    _worker_launcher: ManagedWorkerLaunchPort | None = None
     _close_task: asyncio.Task[None] | None = None
 
     def status(self) -> SandboxStatus:
@@ -69,6 +74,31 @@ class SandboxExecutionRuntime:
         )
         self._process_launcher = launcher
         return launcher
+
+    def bind_managed_worker_launch_port(
+        self,
+        scope: ProcessExecutionScope,
+    ) -> ManagedWorkerLaunchPort:
+        """Mint one Worker-only port over the owned Process/Sandbox boundary."""
+
+        if self._closed or self._close_task is not None:
+            raise RuntimeError("sandbox execution runtime is closing")
+        if self._worker_launcher is not None:
+            raise RuntimeError("managed Worker launch port is already bound")
+        launcher = _bind_process_owner_launcher(
+            scope=scope,
+            host=self._process_host,
+            containment=self._process_containment,
+            managed_owner_authority=(
+                self._process_containment._claim_managed_process_owner_authority()
+            ),
+            managed_plan_verifier=(
+                self._process_containment._verify_managed_process_plan
+            ),
+        )
+        port = _bind_managed_worker_launch_port(launcher)
+        self._worker_launcher = port
+        return port
 
     async def close(self) -> None:
         task = self._close_task

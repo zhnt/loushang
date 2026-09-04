@@ -9,6 +9,9 @@ import pytest
 from loushang.harness.resources.plugins.declarations import (
     PLUGIN_DECLARATION_DOCUMENT_VERSION,
     PLUGIN_DECLARATION_IR_VERSION,
+    PLUGIN_LOCAL_WORKER_CONTRIBUTION_INDEX_VERSION,
+    PLUGIN_LOCAL_WORKER_DECLARATION_DOCUMENT_VERSION,
+    PLUGIN_LOCAL_WORKER_DECLARATION_IR_VERSION,
     PluginContributionExecutionModel,
     PluginContributionReservation,
     PluginDeclarationCodecError,
@@ -33,6 +36,11 @@ AUTHOR_SDK = Path("src/loushang/plugin/__init__.py")
 AUTHOR_SDK_ROOT = Path("src/loushang/plugin")
 PLUGIN_MANAGEMENT_ROOT = Path("src/loushang/harness/plugin_management")
 HARNESS_ROOT = Path("src/loushang/harness")
+WORKER_ROOT = HARNESS_ROOT / "worker"
+WORKER_LAUNCH = WORKER_ROOT / "launch.py"
+WORKER_PROTOCOL = WORKER_ROOT / "protocol.py"
+WORKER_SUPERVISOR = WORKER_ROOT / "supervisor.py"
+CAPABILITY_WORKER_ADAPTER = WORKER_ROOT / "capability_query.py"
 
 
 def _source(path: Path) -> str:
@@ -140,7 +148,7 @@ def test_plc9c0_baseline_is_indexed_and_names_the_complete_boundary() -> None:
     index = _source(INDEX)
 
     assert index.count("(plugin-lifecycle-plc9c0-baseline.md)") == 1
-    assert "Source baseline: `d2003671`" in baseline
+    assert "Implementation base: `90f6a9de`" in baseline
     for owner in (
         "PluginContributionExecutionModel",
         "ScopeBoundProcessLauncher.start",
@@ -169,9 +177,13 @@ def test_plc9c0_baseline_is_indexed_and_names_the_complete_boundary() -> None:
 def test_plc9c0_freezes_the_current_inert_declaration_codec() -> None:
     assert PLUGIN_DECLARATION_IR_VERSION == 2
     assert PLUGIN_DECLARATION_DOCUMENT_VERSION == 1
+    assert PLUGIN_LOCAL_WORKER_CONTRIBUTION_INDEX_VERSION == 3
+    assert PLUGIN_LOCAL_WORKER_DECLARATION_IR_VERSION == 3
+    assert PLUGIN_LOCAL_WORKER_DECLARATION_DOCUMENT_VERSION == 2
     assert set(get_args(PluginContributionExecutionModel)) == {
         "data_only",
         "in_process",
+        "local_worker",
     }
     assert set(get_args(PluginDeclarationSourceKind)) == {"document", "in_process"}
 
@@ -193,7 +205,7 @@ def test_plc9c0_freezes_the_current_inert_declaration_codec() -> None:
         assert caught.value.code == "unsupported_plugin_contribution_execution_model"
 
     declarations = _source(DECLARATIONS)
-    assert "local_worker" not in declarations
+    assert "local_worker" in declarations
     assert "remote_service" not in declarations
     assert "subprocess" not in _imports(DECLARATIONS)
     assert "loushang.harness.workspace.process" not in _imports(DECLARATIONS)
@@ -215,6 +227,11 @@ def test_plc9c0_keeps_generic_and_private_managed_launch_paths_distinct() -> Non
         SANDBOX_RUNTIME,
         "SandboxExecutionRuntime.bind_process_launcher",
     )
+    worker_composition = _function_source(
+        SANDBOX_RUNTIME,
+        "SandboxExecutionRuntime.bind_managed_worker_launch_port",
+    )
+    worker_start = _function_source(WORKER_LAUNCH, "_ManagedWorkerLaunchPort.start")
     skill = _function_source(SKILL_ACTIONS, "execute_managed_skill_action")
 
     assert "managed process requests require the owner-only start path" in generic
@@ -233,27 +250,64 @@ def test_plc9c0_keeps_generic_and_private_managed_launch_paths_distinct() -> Non
     assert "_bind_process_owner_launcher(" in composition
     assert "_claim_managed_process_owner_authority()" in composition
     assert "_verify_managed_process_plan" in composition
+    assert worker_composition.index("_bind_process_owner_launcher(") < (
+        worker_composition.index("_bind_managed_worker_launch_port(launcher)")
+    )
+    assert "_claim_managed_process_owner_authority()" in worker_composition
+    assert "_verify_managed_process_plan" in worker_composition
+    assert worker_start.count("request.validate_current()") == 2
+    assert "_capture_sealed_process_executable(" in worker_start
+    assert "_capture_bound_process_directory(" in worker_start
+    assert "effective_environment=()" in worker_start
+    assert "self._launcher._start_managed(" in worker_start
+    assert "self._launcher.start(" not in worker_start
     assert "_managed_process_launch_request(" in skill
     assert "launcher._start_managed(" in skill
 
 
-def test_plc9c0_target_worker_runtime_remains_absent() -> None:
+def test_plc9c1_through_c4_runtime_is_present_but_default_dark() -> None:
     harness_paths = tuple(HARNESS_ROOT.rglob("*.py"))
     source = "\n".join(_source(path) for path in harness_paths)
 
-    for absent in ("local_worker", "remote_service"):
-        assert absent not in source
+    assert "local_worker" in source
+    assert "remote_service" not in source
     runtime_names = {
         name for path in harness_paths for name in _bound_runtime_names(path)
     }
-    assert runtime_names.isdisjoint(
-        {
-            "ManagedWorkerLaunchPort",
-            "WorkerSupervisor",
-            "WorkerProtocol",
-            "WorkerHandshake",
-        }
+    assert {
+        "ManagedWorkerLaunchPort",
+        "WorkerSupervisor",
+        "WorkerProtocolMessage",
+        "CapabilityQueryWorkerAdapter",
+    }.issubset(runtime_names)
+    adapter_binding = _function_source(
+        CAPABILITY_WORKER_ADAPTER,
+        "bind_capability_query_worker_adapter",
     )
+    assert "enabled: bool = False" in adapter_binding
+    assert "worker_disabled_by_policy" in adapter_binding
+    worker_imports = {
+        imported for path in WORKER_ROOT.rglob("*.py") for imported in _imports(path)
+    }
+    assert not any(
+        imported.startswith(
+            (
+                "loushang.harness.plugin_management",
+                "loushang.harness.capabilities.component_runtime",
+            )
+        )
+        for imported in worker_imports
+    )
+    worker_consumers = {
+        path
+        for path in harness_paths
+        if not path.is_relative_to(WORKER_ROOT)
+        and any(
+            imported.startswith("loushang.harness.worker")
+            for imported in _imports(path)
+        )
+    }
+    assert worker_consumers == {SANDBOX_RUNTIME}
 
 
 def test_plc9c0_preserves_the_author_sdk_authority_firewall() -> None:
@@ -341,14 +395,15 @@ def test_plc9c0_import_guard_resolves_relative_authority_edges() -> None:
     )
 
 
-def test_plc9c0_does_not_claim_a_protocol_or_remote_topology() -> None:
+def test_plc9c1_through_c4_claim_only_the_bounded_local_protocol() -> None:
     baseline = _source(BASELINE)
 
-    assert "does not select an IPC transport or serialization library" in baseline
+    assert "bounded canonical-JSON frame protocol" in baseline
+    assert "Native IPC activation remains in PLC9C5" in baseline
     assert "`remote_service` remains absent" in baseline
     assert "separate threat model" in baseline
-    assert "Runtime effect: none" in baseline
-    assert "adds no declaration tag" in baseline
+    assert "Default runtime effect: none" in baseline
+    assert "disabled by policy" in baseline
 
 
 def test_plc9c0_freezes_protocol_recovery_and_product_failure_gates() -> None:
