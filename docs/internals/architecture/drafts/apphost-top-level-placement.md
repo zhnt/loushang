@@ -62,7 +62,7 @@ loushang.apphost
   -> admitted Product catalog / router / scoped runtime lifecycle
   -> Harness public host and runtime mechanisms
   -> AppServer only in a hosted server profile
-  -> Hosting only in an outer launcher or daemon-control profile
+  -> accepted Hosting contracts only in an outer launcher or daemon-control profile
 
 loushang.harness.host
   -> lower-level single-Product host mechanics

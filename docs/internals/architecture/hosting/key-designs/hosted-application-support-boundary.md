@@ -170,4 +170,4 @@ decision govern cross-scope placement. At Hosting's black-box edge:
 - whether the first AppServer transport is standard I/O, a local listener, or
   another accepted connection profile;
 - whether `hosting.service` is justified by a real daemon requirement; and
-- concrete public API names, which this proposed design does not reserve.
+- concrete service/runtime API names beyond the accepted H0 contracts.

@@ -89,6 +89,7 @@ presentation, domain language, and composition.
 | `loushang.channel` | Work/runtime-view boundary values and narrow JSONL framing/delivery adapters |
 | `loushang.coding` | Coding Product semantics, LSP/Arch capabilities, prompts, product tools, CLI and final UI composition |
 | `loushang.ontology` | versioned semantic schema, immutable facts/provenance, projections and typed queries |
+| `loushang.hosting` | H0 immutable local-launch, failure, observation, lease and port contracts; no OS resource owner or current consumer yet |
 
 `loushang.resource` remains a small compatibility surface over Harness resource
 ownership and appears in the generated physical graph while Python source
@@ -112,6 +113,7 @@ flowchart TD
     METHOD["Method"]
     CHANNEL["Channel"]
     ONTOLOGY["Ontology"]
+    HOSTING["Hosting H0 contracts"]
     FOUNDATION["Foundation"]
 
     CODING -->|composes| HARNESS
@@ -126,6 +128,10 @@ flowchart TD
     CHANNEL -->|work/runtime contracts| HWORK
     ONTOLOGY -->|strict values| FOUNDATION
 ```
+
+Hosting currently has no runtime consumer edge: H0 is a standard-library-only
+contract package. The accepted Target edge is `Harness -> Hosting -> local OS`
+once later process/platform slices and a compatibility migration are proven.
 
 Direct and transitive Python imports differ from this semantic view. Consult
 the generated Current graph before making a physical dependency claim.
@@ -160,6 +166,9 @@ Accepted Target directions include:
   become a mandatory bus for every Session interaction;
 - Ontology evolves through versioned facts, immutable projections and typed
   queries without becoming a universal facade over Product or Work state;
+- Hosting owns Product-neutral local process, inherited peer endpoint, and
+  atomic child-session mechanisms while Harness retains Policy, Approval,
+  Sandbox, Worker protocol, and domain publication authority;
 - AI, Agent, TUI and other reusable scopes preserve narrow public contracts and
   independent evolution.
 
@@ -184,6 +193,7 @@ The most important current gaps are:
 | Ontology source-backed write-back, reconciliation, decisions and production source connectors | ontology-owned Action planning and Fact commits are implemented; Product-hosted source mutation remains unimplemented |
 | multiple real Products validating shared abstractions | Coding remains the only installed Product entrypoint |
 | physical installation optionality | subsystems remain in one Python distribution |
+| Hosting runtime and Harness adoption | H0 contracts are implemented; process, endpoint, child-session and platform owners plus compatibility migration remain missing |
 
 Detailed gaps belong to the owning scope rather than expanding this AOD.
 Cross-system deltas are indexed in the
