@@ -300,7 +300,7 @@ void WINAPI mainCRTStartup(void) {
                     ? 0
                     : (0xC5505E00 | (connect_error & 0xff)));
     }
-    if (sid_ack != 's') ExitProcess(110);
+    if (sid_ack != 's' && sid_ack != 'd') ExitProcess(110);
     PSID all_packages = 0;
     if (!ConvertStringSidToSidW(L"S-1-15-2-1", &all_packages)) ExitProcess(77);
     if (!GetTokenInformation(token, TokenGroups, groups_storage,
@@ -426,19 +426,32 @@ void WINAPI mainCRTStartup(void) {
     if (GetHandleInformation(extra, &handle_flags)) ExitProcess(100);
 
     static wchar_t descendant_command[MAX_PATH + 32];
-    lstrcpyW(descendant_command, L"\"");
-    lstrcatW(descendant_command, module);
-    lstrcatW(descendant_command, L"\" --descendant");
-    STARTUPINFOW startup;
-    PROCESS_INFORMATION child;
-    SecureZeroMemory(&startup, sizeof(startup));
-    SecureZeroMemory(&child, sizeof(child));
-    startup.cb = sizeof(startup);
-    if (!CreateProcessW(module, descendant_command, 0, 0, FALSE,
-                        CREATE_NO_WINDOW, 0, 0,
-                        &startup, &child)) ExitProcess(105);
-    CloseHandle(child.hThread);
-    CloseHandle(child.hProcess);
+    if (sid_ack == 'd') {
+        lstrcpyW(descendant_command, L"\"");
+        lstrcatW(descendant_command, module);
+        lstrcatW(descendant_command, L"\" --descendant");
+        STARTUPINFOW startup;
+        PROCESS_INFORMATION child;
+        SecureZeroMemory(&startup, sizeof(startup));
+        SecureZeroMemory(&child, sizeof(child));
+        startup.cb = sizeof(startup);
+        if (!CreateProcessW(module, descendant_command, 0, 0, FALSE,
+                            CREATE_NO_WINDOW, 0, 0,
+                            &startup, &child)) {
+            DWORD create_error = GetLastError();
+            ExitProcess(create_error == ERROR_ACCESS_DENIED
+                        ? 0
+                        : (0xC5505F00 | (create_error & 0xff)));
+        }
+        CloseHandle(child.hThread);
+        CloseHandle(child.hProcess);
+        emit("TREE-SPAWNED\n", 13);
+        char tree_release = 0;
+        DWORD tree_read = 0;
+        if (!ReadFile(GetStdHandle(STD_INPUT_HANDLE), &tree_release, 1,
+                      &tree_read, 0) || tree_read != 1) ExitProcess(105);
+        ExitProcess(0);
+    }
 
     emit("LPAC-PASS\n", 10);
     char release = 0;
@@ -741,10 +754,8 @@ async def _collect_native_evidence(
         )
     await pair.transport.write(b"x")
     assert await process.wait() == 0
-    assert not process_backend.tree_exited(process)
-    await process_backend.terminate_tree(process)
     await process_backend.wait_tree(process)
-    job_tree_cleanup = process_backend.tree_exited(process)
+    assert process_backend.tree_exited(process)
     await process_backend.close_process_handles(process)
     cleanup.process = None
     await pair.close()
@@ -796,6 +807,56 @@ async def _collect_native_evidence(
     await network_endpoint_backend.close_backend()
     cleanup.endpoint_backend = None
     await network_process_backend.close_backend()
+    cleanup.process_backend = None
+
+    tree_material = await _WindowsLpacLaunchCaptureBackend(api=api).capture(
+        capture,
+        attempt_id=provision.attempt_id,
+        attempt_token=object(),
+        on_capture=lambda value: setattr(cleanup, "material", value),
+    )
+    await tree_material.verify_current(capture.request)
+    tree_endpoint_backend = _WindowsEndpointBackend(max_endpoints=1, api=api)
+    cleanup.endpoint_backend = tree_endpoint_backend
+    tree_pair = await tree_endpoint_backend.create_pair(
+        on_create=lambda value: setattr(cleanup, "pair", value)
+    )
+    tree_process_backend = _WindowsProcessBackend(max_processes=1, api=api)
+    cleanup.process_backend = tree_process_backend
+    tree_process = await tree_material.spawn(
+        tree_process_backend,
+        capture.request,
+        effect=_ManagedSpawnEffect(),
+        on_spawn=lambda value: setattr(cleanup, "process", value),
+        inheritance=tree_pair.inheritance,
+    )
+    await tree_material.close()
+    cleanup.material = None
+    tree_sid_line = await _read_line(tree_pair.transport.read)
+    if tree_sid_line != expected_sid_line:
+        raise AssertionError("LPAC tree child Package SID did not match its profile")
+    await tree_pair.transport.write(b"d")
+    tree_line = await _read_line(tree_pair.transport.read)
+    if tree_line == b"TREE-SPAWNED\n":
+        if tree_process_backend.tree_exited(tree_process):
+            raise AssertionError("LPAC descendant escaped its atomic Job")
+        await tree_process_backend.terminate_tree(tree_process)
+        await tree_process_backend.wait_tree(tree_process)
+    else:
+        tree_return = (await tree_process.wait()) & 0xFFFFFFFF
+        if tree_return not in {0, 0xC0000008}:
+            raise AssertionError(
+                f"LPAC descendant denial probe failed: {tree_return:#010x}"
+            )
+        await tree_process_backend.wait_tree(tree_process)
+    job_tree_cleanup = tree_process_backend.tree_exited(tree_process)
+    await tree_process_backend.close_process_handles(tree_process)
+    cleanup.process = None
+    await tree_pair.close()
+    cleanup.pair = None
+    await tree_endpoint_backend.close_backend()
+    cleanup.endpoint_backend = None
+    await tree_process_backend.close_backend()
     cleanup.process_backend = None
 
     listener.close()

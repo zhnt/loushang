@@ -202,8 +202,9 @@ proves from inside that child:
   the main oracle accepts only failed network initialization or failed connect,
   and any successful connect fails the report;
 - only the exact endpoint and stderr handles are inherited; and
-- a descendant remains in the atomically assigned Job and the complete tree
-  is gone before settlement.
+- descendant creation is denied, or—if the platform permits it—the descendant
+  remains in the atomically assigned Job; either way the complete tree is gone
+  before settlement.
 
 The report also injects profile/SID/DACL/runtime/private-state/platform/handle
 substitution, cancellation at every acquisition and both sides of the process

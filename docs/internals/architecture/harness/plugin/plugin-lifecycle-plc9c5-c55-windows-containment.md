@@ -67,8 +67,8 @@ The accepted claim is deliberately concrete:
 - it has no network capability and cannot reach a network sentinel;
 - it cannot open an unrelated same-user filesystem sentinel or obtain
   mutation/VM/handle-duplication rights to a same-user process sentinel; and
-- its complete descendant tree is owned by the exact kill-on-close Job before
-  the initial thread can execute.
+- descendant creation is denied or its complete descendant tree is owned by
+  the exact kill-on-close Job before the initial thread can execute.
 
 The native oracle must test those negative authorities from inside the child.
 Source inspection, token flags alone, parent-side ACL inspection, successful
