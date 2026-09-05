@@ -199,18 +199,21 @@ proves from inside that child:
   be opened with mutation, VM, or handle-duplication rights;
 - a parent-created loopback listener is reachable by an unrestricted control
   process but unreachable by a separate bounded zero-capability LPAC probe;
-  the main oracle accepts only failed network initialization or failed connect,
-  and any successful connect fails the report;
+  the probe emits a bounded stage transcript before WinSock initialization,
+  socket creation, and connect, and any successful connect fails the report;
 - only the exact endpoint and stderr handles are inherited; and
 - descendant creation is denied, or—if the platform permits it—the descendant
   remains in the atomically assigned Job; either way the complete tree is gone
   before settlement.
 
-Negative handle and platform probes accept either the documented access-denied
-return or an exact fail-fast status when Windows terminates the purpose-built
-probe at that sole outstanding operation. The bounded categorical transcript
-must prove every preceding stage; an earlier, different, or ambiguous
-termination fails the report.
+The network probe accepts only `WSAEACCES` at the exact attempted stage or
+`WSASYSCALLFAILURE` during `WSAStartup`; the latter is WinSock's generic result
+when an underlying provider/catalog system call cannot complete and still
+proves that the zero-capability child did not obtain a usable network stack.
+Negative handle and platform probes may also accept exact
+`STATUS_INVALID_HANDLE` fail-fast termination when the bounded categorical
+transcript proves the purpose-built probe had reached that sole outstanding
+operation. An earlier, different, or ambiguous termination fails the report.
 
 The report also injects profile/SID/DACL/runtime/private-state/platform/handle
 substitution, cancellation at every acquisition and both sides of the process

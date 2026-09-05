@@ -272,23 +272,35 @@ void WINAPI mainCRTStartup(void) {
         if (!value_after(command, L"--port=", port_text, 64)) ExitProcess(101);
         unsigned short probe_port = (unsigned short)number(port_text);
         WSADATA probe_data;
+        emit("E:NETWORK-STARTUP\n", 18);
         int startup_result = WSAStartup(MAKEWORD(2, 2), &probe_data);
-        if (startup_result == WSAEACCES) ExitProcess(0);
+        if (startup_result == WSAEACCES) {
+            emit("D:WSAEACCES\n", 12);
+            ExitProcess(0);
+        }
+        if (startup_result == WSASYSCALLFAILURE) {
+            emit("D:WSASYSCALLFAILURE\n", 20);
+            ExitProcess(0);
+        }
         if (startup_result != 0)
             ExitProcess(0xC5505C00 | (startup_result & 0xff));
+        emit("E:NETWORK-SOCKET\n", 17);
         SOCKET probe_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         if (probe_socket == INVALID_SOCKET) {
             int socket_error = WSAGetLastError();
             WSACleanup();
-            ExitProcess(socket_error == WSAEACCES
-                        ? 0
-                        : (0xC5505D00 | (socket_error & 0xff)));
+            if (socket_error == WSAEACCES) {
+                emit("D:WSAEACCES\n", 12);
+                ExitProcess(0);
+            }
+            ExitProcess(0xC5505D00 | (socket_error & 0xff));
         }
         struct sockaddr_in probe_address;
         SecureZeroMemory(&probe_address, sizeof(probe_address));
         probe_address.sin_family = AF_INET;
         probe_address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
         probe_address.sin_port = htons(probe_port);
+        emit("E:NETWORK-CONNECT\n", 18);
         int connected = connect(
             probe_socket, (const struct sockaddr *)&probe_address,
             sizeof(probe_address));
@@ -296,9 +308,11 @@ void WINAPI mainCRTStartup(void) {
         closesocket(probe_socket);
         WSACleanup();
         if (connected == 0) ExitProcess(104);
-        ExitProcess(connect_error == WSAEACCES
-                    ? 0
-                    : (0xC5505E00 | (connect_error & 0xff)));
+        if (connect_error == WSAEACCES) {
+            emit("D:WSAEACCES\n", 12);
+            ExitProcess(0);
+        }
+        ExitProcess(0xC5505E00 | (connect_error & 0xff));
     }
     if (sid_ack != 's' && sid_ack != 'd') ExitProcess(110);
     PSID all_packages = 0;
@@ -427,14 +441,9 @@ void WINAPI mainCRTStartup(void) {
     if (GetLastError() != ERROR_ACCESS_DENIED) ExitProcess(98);
     emit("E:PROCESS\n", 10);
 
-    if (!value_after(command, L"--extra-handle=", number_text, 64)) ExitProcess(99);
-    HANDLE extra = (HANDLE)(ULONG_PTR)number(number_text);
-    DWORD handle_flags = 0;
-    if (GetHandleInformation(extra, &handle_flags)) ExitProcess(100);
-    emit("E:HANDLES\n", 10);
-
     static wchar_t descendant_command[MAX_PATH + 32];
     if (sid_ack == 'd') {
+        emit("E:DESCENDANT\n", 13);
         lstrcpyW(descendant_command, L"\"");
         lstrcatW(descendant_command, module);
         lstrcatW(descendant_command, L"\" --descendant");
@@ -447,9 +456,11 @@ void WINAPI mainCRTStartup(void) {
                             CREATE_NO_WINDOW, 0, 0,
                             &startup, &child)) {
             DWORD create_error = GetLastError();
-            ExitProcess(create_error == ERROR_ACCESS_DENIED
-                        ? 0
-                        : (0xC5505F00 | (create_error & 0xff)));
+            if (create_error == ERROR_ACCESS_DENIED) {
+                emit("D:ACCESS-DENIED\n", 16);
+                ExitProcess(0);
+            }
+            ExitProcess(0xC5505F00 | (create_error & 0xff));
         }
         CloseHandle(child.hThread);
         CloseHandle(child.hProcess);
@@ -460,6 +471,12 @@ void WINAPI mainCRTStartup(void) {
                       &tree_read, 0) || tree_read != 1) ExitProcess(105);
         ExitProcess(0);
     }
+
+    if (!value_after(command, L"--extra-handle=", number_text, 64)) ExitProcess(99);
+    HANDLE extra = (HANDLE)(ULONG_PTR)number(number_text);
+    DWORD handle_flags = 0;
+    if (GetHandleInformation(extra, &handle_flags)) ExitProcess(100);
+    emit("E:HANDLES\n", 10);
 
     emit("LPAC-PASS\n", 10);
     char release = 0;
@@ -582,6 +599,16 @@ async def _read_until(
         body = b"".join(chunks)
         if marker in body:
             return body
+    return b"".join(chunks)
+
+
+async def _read_to_eof(read) -> bytes:  # type: ignore[no-untyped-def]
+    chunks: list[bytes] = []
+    for _ in range(32):
+        chunk = await read(256)
+        if not chunk:
+            break
+        chunks.append(chunk)
     return b"".join(chunks)
 
 
@@ -844,9 +871,30 @@ async def _collect_native_evidence(
         raise AssertionError("LPAC network child Package SID did not match its profile")
     await network_pair.transport.write(b"n")
     network_return = (await network_process.wait()) & 0xFFFFFFFF
-    if network_return not in {0, 0xC0000008}:
+    network_transcript = await _read_to_eof(network_pair.transport.read)
+    network_startup = b"E:NETWORK-STARTUP\n"
+    network_socket = network_startup + b"E:NETWORK-SOCKET\n"
+    network_connect = network_socket + b"E:NETWORK-CONNECT\n"
+    explicit_network_denials = {
+        network_startup + b"D:WSAEACCES\n",
+        network_startup + b"D:WSASYSCALLFAILURE\n",
+        network_socket + b"D:WSAEACCES\n",
+        network_connect + b"D:WSAEACCES\n",
+    }
+    fail_fast_network_stages = {
+        network_startup,
+        network_socket,
+        network_connect,
+    }
+    network_deny = (
+        network_return == 0 and network_transcript in explicit_network_denials
+    ) or (
+        network_return == 0xC0000008 and network_transcript in fail_fast_network_stages
+    )
+    if not network_deny:
         raise AssertionError(
-            f"LPAC network denial probe failed: {network_return:#010x}"
+            f"LPAC network denial probe failed: {network_return:#010x}; "
+            f"stdout={network_transcript!r}"
         )
     await network_process_backend.wait_tree(network_process)
     await network_process_backend.close_process_handles(network_process)
@@ -885,19 +933,35 @@ async def _collect_native_evidence(
     if tree_sid_line != expected_sid_line:
         raise AssertionError("LPAC tree child Package SID did not match its profile")
     await tree_pair.transport.write(b"d")
-    tree_line = await _read_line(tree_pair.transport.read)
-    if tree_line == b"TREE-SPAWNED\n":
+    tree_transcript = await _read_until(tree_pair.transport.read, b"TREE-SPAWNED\n")
+    descendant_stage = b"E:DESCENDANT\n"
+    if tree_transcript == descendant_stage + b"TREE-SPAWNED\n":
         if tree_process_backend.tree_exited(tree_process):
             raise AssertionError("LPAC descendant escaped its atomic Job")
         await tree_process_backend.terminate_tree(tree_process)
         await tree_process_backend.wait_tree(tree_process)
-    else:
+    elif tree_transcript == descendant_stage + b"D:ACCESS-DENIED\n":
         tree_return = (await tree_process.wait()) & 0xFFFFFFFF
-        if tree_return not in {0, 0xC0000008}:
+        if tree_return != 0:
             raise AssertionError(
-                f"LPAC descendant denial probe failed: {tree_return:#010x}"
+                f"LPAC descendant denial probe failed: {tree_return:#010x}; "
+                f"stdout={tree_transcript!r}"
             )
         await tree_process_backend.wait_tree(tree_process)
+    elif tree_transcript == descendant_stage:
+        tree_return = (await tree_process.wait()) & 0xFFFFFFFF
+        if tree_return != 0xC0000008:
+            raise AssertionError(
+                f"LPAC descendant denial probe failed: {tree_return:#010x}; "
+                f"stdout={tree_transcript!r}"
+            )
+        await tree_process_backend.wait_tree(tree_process)
+    else:
+        tree_return = (await tree_process.wait()) & 0xFFFFFFFF
+        raise AssertionError(
+            f"LPAC descendant denial probe failed: {tree_return:#010x}; "
+            f"stdout={tree_transcript!r}"
+        )
     job_tree_cleanup = tree_process_backend.tree_exited(tree_process)
     await tree_process_backend.close_process_handles(tree_process)
     cleanup.process = None
@@ -955,7 +1019,7 @@ async def _collect_native_evidence(
         registry_deny=True,
         unrelated_fs_deny=True,
         process_mutation_deny=True,
-        network_deny=True,
+        network_deny=network_deny,
         exec_cwd_identity=True,
         dacl_substitution=dacl_substitution,
         profile_substitution=profile_substitution,
