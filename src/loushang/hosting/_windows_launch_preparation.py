@@ -36,8 +36,6 @@ from ._process_backend import (
 )
 from ._win32_process import (
     _FILE_TRAVERSE_READ,
-    _GENERIC_EXECUTE,
-    _GENERIC_READ,
     _SUB_CONTAINERS_AND_OBJECTS_INHERIT,
     _CtypesWin32Api,
     _Win32LockedPathIdentity,
@@ -72,7 +70,10 @@ _MAX_LPAC_RUNTIME_ENTRIES = 64
 _MAX_LPAC_RUNTIME_BYTES = 64 * 1024 * 1024
 _MAX_LPAC_ATTEMPT_ID = 96
 _LPAC_PROFILE_PREFIX = "Loushang.Lpac."
-_LPAC_RUNTIME_ACCESS = _GENERIC_READ | _GENERIC_EXECUTE
+# File-object-specific expansion of GENERIC_READ | GENERIC_EXECUTE. Generic
+# inheritable rights make SetEntriesInAcl split one grant into an effective ACE
+# plus an INHERIT_ONLY ACE, so use the stable native mask we can verify exactly.
+_LPAC_RUNTIME_ACCESS = 0x001200A9
 _LPAC_ROOT_ACE_FLAGS = _SUB_CONTAINERS_AND_OBJECTS_INHERIT
 _LPAC_WITNESS_STATES = frozenset(
     {

@@ -425,6 +425,9 @@ def test_windows_lpac_provision_cleanup_is_exact_and_replayable(
     )
     assert witness.state == "GRANTS_APPLIED"
     assert api.scratch_ready
+    root_target, root_permissions, root_inherit = _lpac_grant_targets(spec)[-1]
+    assert (root_permissions, root_inherit) == (0x001200A9, True)
+    assert api.access[root_target] == ((0x001200A9, 3),)
     witness = owner.verify(spec, witness)
     assert witness.state == "VERIFIED"
     witness = owner.revoke_grants(
