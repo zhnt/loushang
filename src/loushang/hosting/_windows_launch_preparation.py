@@ -61,6 +61,8 @@ _MAX_IMPORT_NAME_BYTES = 260
 class _WindowsLaunchApi(Protocol):
     def platform_identity(self) -> str: ...
 
+    def canonical_system_root(self) -> str: ...
+
     def open_locked_file(
         self,
         path: str,
@@ -146,7 +148,7 @@ class _WindowsRestrictedLaunchCaptureSpec(_LaunchCaptureSpec):
             or self.request.streams.stderr is not ProcessStderrMode.DISCARD
         ):
             raise ValueError(
-                "Windows restricted launch requires inherited stdin/stdout and discarded stderr"
+                "Windows restricted launch requires closed stdin and discarded output"
             )
         normalized_imports = tuple(sorted(set(self.platform_imports)))
         if (
@@ -167,6 +169,137 @@ class _WindowsRestrictedLaunchCaptureSpec(_LaunchCaptureSpec):
         )
         if self.execution_closure != expected_closure:
             raise ValueError("Windows restricted execution closure is inconsistent")
+
+
+def _build_windows_restricted_launch_capture_spec(
+    request: ProcessLaunchRequest,
+    *,
+    executable_sha256: str,
+    _api: _WindowsLaunchApi | None = None,
+) -> _WindowsRestrictedLaunchCaptureSpec:
+    """Build one opaque trusted-payload spec from OS-owned Windows facts.
+
+    The identities captured here are admission snapshots, not process authority.
+    The capture backend reacquires and retains the native owners before spawn.
+    """
+
+    if request.effective_environment:
+        raise HostingError(
+            HostingFailureCategory.PREPARATION_REJECTED,
+            "Windows restricted profile rejects caller environment",
+        )
+    if (
+        request.streams.stdin is not ProcessStdinMode.CLOSED
+        or request.streams.stdout is not ProcessStdoutMode.DISCARD
+        or request.streams.stderr is not ProcessStderrMode.DISCARD
+    ):
+        raise HostingError(
+            HostingFailureCategory.PREPARATION_REJECTED,
+            "Windows restricted profile requires closed stdin and discarded output",
+        )
+    try:
+        _require_sha256(executable_sha256)
+    except ValueError as error:
+        raise HostingError(
+            HostingFailureCategory.PREPARATION_REJECTED,
+            "Windows restricted profile executable digest is invalid",
+        ) from error
+    try:
+        api = _api or _CtypesWin32Api()
+        system_root = _canonical_system_root(api.canonical_system_root())
+        platform_identity = api.platform_identity()
+        executable = _snapshot_locked_identity(
+            api,
+            request.argv[0],
+            directory=False,
+        )
+        cwd = _snapshot_locked_identity(api, request.cwd, directory=True)
+        if executable.is_directory or not cwd.is_directory:
+            raise ValueError("locked path kind is invalid")
+        if executable.size < 1 or executable.size > _MAX_EXECUTABLE_BYTES:
+            raise ValueError("locked executable bound is invalid")
+        trusted_request = ProcessLaunchRequest(
+            argv=request.argv,
+            cwd=request.cwd,
+            effective_environment=(("SystemRoot", system_root),),
+            streams=request.streams,
+        )
+        imports = tuple(sorted(_DIRECT_PLATFORM_IMPORTS))
+        execution_closure = (
+            f"pe-amd64:sha256:{executable_sha256}",
+            f"executable:win32:{executable.volume_serial}:{executable.file_id}",
+            f"cwd:win32:{cwd.volume_serial}:{cwd.file_id}",
+            _RESTRICTION_ID,
+            f"environment:SystemRoot={system_root}",
+            f"direct-imports:{','.join(imports)}",
+            f"platform:{platform_identity}",
+        )
+        return _WindowsRestrictedLaunchCaptureSpec(
+            request=trusted_request,
+            profile_id=_PROFILE_ID,
+            execution_closure=execution_closure,
+            executable_sha256=executable_sha256,
+            executable_volume_serial=executable.volume_serial,
+            executable_file_id=executable.file_id,
+            cwd_volume_serial=cwd.volume_serial,
+            cwd_file_id=cwd.file_id,
+            platform_identity=platform_identity,
+            platform_imports=imports,
+        )
+    except HostingError as error:
+        if error.category is HostingFailureCategory.PLATFORM_UNSUPPORTED:
+            raise
+        raise HostingError(
+            HostingFailureCategory.PREPARATION_FAILED,
+            "Windows restricted profile construction failed",
+        ) from error
+    except Exception as error:
+        raise HostingError(
+            HostingFailureCategory.PREPARATION_FAILED,
+            "Windows restricted profile construction failed",
+        ) from error
+
+
+def _canonical_system_root(value: object) -> str:
+    if not isinstance(value, str) or not value or "\0" in value:
+        raise ValueError("Windows directory is invalid")
+    normalized = ntpath.normpath(value)
+    drive, tail = ntpath.splitdrive(normalized)
+    if (
+        normalized != value
+        or len(drive) != 2
+        or drive[1:] != ":"
+        or not tail.startswith("\\")
+        or not ntpath.isabs(normalized)
+    ):
+        raise ValueError("Windows directory is not canonical")
+    return normalized
+
+
+def _snapshot_locked_identity(
+    api: _WindowsLaunchApi,
+    path: str,
+    *,
+    directory: bool,
+) -> _Win32LockedPathIdentity:
+    handles: list[int] = []
+
+    def adopt(handle: int) -> None:
+        if type(handle) is not int or handle <= 0 or handles:
+            raise ValueError("Windows profile builder received an invalid owner")
+        handles.append(handle)
+
+    try:
+        if directory:
+            api.open_locked_directory(path, on_acquired=adopt)
+        else:
+            api.open_locked_file(path, on_acquired=adopt)
+        if len(handles) != 1:
+            raise ValueError("Windows profile builder did not receive one owner")
+        return api.locked_path_identity(handles[0])
+    finally:
+        for handle in tuple(reversed(handles)):
+            api.close_handle(handle)
 
 
 class _WindowsRestrictedLaunchCaptureBackend:

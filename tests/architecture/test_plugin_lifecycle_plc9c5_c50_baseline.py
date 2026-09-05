@@ -545,10 +545,10 @@ def test_c50_status_is_honest_and_documents_are_indexed_once() -> None:
         "Parent": "PLC9C",
         "Authority": "normative accepted design",
         "Design status": "accepted",
-        "Implementation status": (
-            "implemented through C5.2 — C5.0 design/guards, C5.1 "
-            "receipt/lifecycle, and the C5.2 Linux native profile binding; "
-            "C5.3--C5.4 not-started"
+            "Implementation status": (
+                "implemented through C5.3 — C5.0 design/guards, C5.1 "
+                "receipt/lifecycle, C5.2 Linux native profile binding, and C5.3 "
+                "Windows mechanics/rejection; C5.4 not-started"
         ),
         "Activation status": "closed; every production route remains default-dark",
         "Observation base": "cb01f723",
@@ -595,8 +595,9 @@ def test_c50_current_inventory_source_set_is_exact_and_present() -> None:
         "C5-CUR-SESSION-DISCOVERY",
         "C5-CUR-WORKER-PUBLIC",
         "C5-C51-RECEIPT-LIFECYCLE",
-        "C5-C52-LINUX-NATIVE",
-        "C5-CUR-WORKER-IDENTITY",
+            "C5-C52-LINUX-NATIVE",
+            "C5-C53-WINDOWS-MECHANICS",
+            "C5-CUR-WORKER-IDENTITY",
         "C5-CUR-CURRENT-LAUNCH",
         "C5-CUR-WORKER-SESSION",
         "C5-CUR-DOMAIN-CANARY",
@@ -689,9 +690,9 @@ def test_c50_freezes_dependency_and_native_shape_decisions() -> None:
     for mismatch in (
         "static launcher digest",
         "containment-profile digest",
-        "generic `st_dev/st_ino` fields",
-        "one absolute `SystemRoot` environment entry",
-        "ambient `os.environ[\"SystemRoot\"]`",
+            "snapshots locked volume/file identities",
+            "canonical `SystemRoot` through `GetWindowsDirectoryW`",
+            "ambient poisoning is closed",
         "discarded stderr",
         "restricted-token/Job/direct-import mechanics",
         "selector currently accepts WSL",

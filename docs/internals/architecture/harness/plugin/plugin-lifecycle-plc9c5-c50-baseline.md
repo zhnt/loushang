@@ -8,9 +8,9 @@
 - Parent: `PLC9C`
 - Authority: normative accepted design
 - Design status: accepted
-- Implementation status: implemented through C5.2 — C5.0 design/guards, C5.1
-  receipt/lifecycle, and the C5.2 Linux native profile binding; C5.3--C5.4
-  not-started
+- Implementation status: implemented through C5.3 — C5.0 design/guards, C5.1
+  receipt/lifecycle, C5.2 Linux native profile binding, and C5.3 Windows
+  mechanics/rejection; C5.4 not-started
 - Activation status: closed; every production route remains default-dark
 - Observation base: `cb01f723`
 - Owner: Harness Worker architecture with Product, Hosting, and domain-owner
@@ -20,9 +20,10 @@
 
 C5.0 fixes the design, Current inventory, dependency direction, rollout
 matrix, and executable absence/deletion guards for PLC9C5. C5.1 adds the
-receipt/lifecycle contract and C5.2 adds only the default-dark Linux native
-profile capability. Neither authorizes a Product composition to request the
-Hosting owner.
+receipt/lifecycle contract, C5.2 adds only the default-dark Linux native
+profile capability, and C5.3 retains the Windows mechanics while proving that
+they are not accepted Product containment. None authorizes a production
+Product composition to request the Hosting owner.
 
 The first canary is one exact, read-only `capability_provider` contribution
 selected by the Coding Product. Coding is the first evidence Product, not the

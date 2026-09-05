@@ -464,9 +464,9 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
     retained_fences = " ".join(_section(inventory, "Retained Fences").split())
     for statement in (
         "H5 default owner is Current",
-        "PLC9C5 C5.0 design/inventory, C5.1 receipt/lifecycle, and the C5.2 Linux "
-        "profile capability are implemented",
-        "Product activation and unsupported platform guards remain unchanged",
+        "PLC9C5 C5.0 design/inventory, C5.1 receipt/lifecycle, C5.2 Linux profile, "
+        "and C5.3 Windows mechanics/rejection are implemented",
+        "Product activation and unsupported-platform guards remain unchanged",
         "AppHost A0.4 remains explicitly constructed and dark",
         "Hosting imports no Harness, Product, AppHost, AppServer, or AppService",
     ):

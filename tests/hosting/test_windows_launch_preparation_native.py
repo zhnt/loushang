@@ -33,6 +33,7 @@ from loushang.hosting._process_host import _ProcessHost, _ProcessHostLimits
 from loushang.hosting._win32_process import _CtypesWin32Api
 from loushang.hosting._windows_endpoint import _WindowsEndpointBackend
 from loushang.hosting._windows_launch_preparation import (
+    _build_windows_restricted_launch_capture_spec,
     _WindowsRestrictedLaunchCaptureBackend,
     _WindowsRestrictedLaunchCaptureSpec,
 )
@@ -157,59 +158,20 @@ def _spec(
     cwd: Path,
     *arguments: str,
 ) -> _WindowsRestrictedLaunchCaptureSpec:
-    executable_handles: list[int] = []
-    api.open_locked_file(
-        str(executable.resolve()),
-        on_acquired=executable_handles.append,
-    )
-    executable_handle = executable_handles[0]
-    try:
-        executable_identity = api.locked_path_identity(executable_handle)
-    finally:
-        api.close_handle(executable_handle)
-    cwd_handles: list[int] = []
-    api.open_locked_directory(
-        str(cwd.resolve()),
-        on_acquired=cwd_handles.append,
-    )
-    cwd_handle = cwd_handles[0]
-    try:
-        cwd_identity = api.locked_path_identity(cwd_handle)
-    finally:
-        api.close_handle(cwd_handle)
-    digest = hashlib.sha256(executable.read_bytes()).hexdigest()
     request = ProcessLaunchRequest(
         argv=(str(executable.resolve()), *arguments),
         cwd=str(cwd.resolve()),
-        effective_environment=(("SystemRoot", os.environ["SystemRoot"]),),
+        effective_environment=(),
         streams=ProcessStreamSpec(
             stdin=ProcessStdinMode.CLOSED,
             stdout=ProcessStdoutMode.DISCARD,
             stderr=ProcessStderrMode.DISCARD,
         ),
     )
-    platform_identity = api.platform_identity()
-    imports = ("ADVAPI32.DLL", "KERNEL32.DLL")
-    return _WindowsRestrictedLaunchCaptureSpec(
-        request=request,
-        profile_id="windows-restricted-direct-import-pe-v1",
-        execution_closure=(
-            f"pe-amd64:sha256:{digest}",
-            "executable:win32:"
-            f"{executable_identity.volume_serial}:{executable_identity.file_id}",
-            f"cwd:win32:{cwd_identity.volume_serial}:{cwd_identity.file_id}",
-            "restricted-token:disable-max-privilege-v1",
-            f'environment:SystemRoot={os.environ["SystemRoot"]}',
-            f"direct-imports:{','.join(imports)}",
-            f"platform:{platform_identity}",
-        ),
-        executable_sha256=digest,
-        executable_volume_serial=executable_identity.volume_serial,
-        executable_file_id=executable_identity.file_id,
-        cwd_volume_serial=cwd_identity.volume_serial,
-        cwd_file_id=cwd_identity.file_id,
-        platform_identity=platform_identity,
-        platform_imports=imports,
+    return _build_windows_restricted_launch_capture_spec(
+        request,
+        executable_sha256=hashlib.sha256(executable.read_bytes()).hexdigest(),
+        _api=api,
     )
 
 

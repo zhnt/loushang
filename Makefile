@@ -128,6 +128,7 @@ HARNESS_TEST_PATHS := \
 	tests/architecture/test_plugin_lifecycle_plc9c5_c50_baseline.py \
 	tests/architecture/test_plugin_lifecycle_plc9c5_c51_contract.py \
 	tests/architecture/test_plugin_lifecycle_plc9c5_c52_linux_native.py \
+	tests/architecture/test_plugin_lifecycle_plc9c5_c53_windows_mechanics.py \
 	tests/architecture/test_session_model_call_closure_contract.py
 HOSTING_SOURCES := \
 	src/loushang/hosting \
@@ -155,6 +156,7 @@ HOSTING_TEST_PATHS := \
 	tests/architecture/test_hosted_product_runtime_v1_baseline.py \
 	tests/architecture/test_plugin_lifecycle_plc9c5_c50_baseline.py \
 	tests/architecture/test_plugin_lifecycle_plc9c5_c52_linux_native.py \
+	tests/architecture/test_plugin_lifecycle_plc9c5_c53_windows_mechanics.py \
 	tests/architecture/test_hosting_architecture_baseline.py
 APPHOST_SOURCES := \
 	src/loushang/apphost \
@@ -169,7 +171,7 @@ APPHOST_TEST_PATHS := \
 .PHONY: test-sandbox test-host-runtime
 .PHONY: test-tui-input-playback
 .PHONY: check-ai-catalog check-ai-examples check-ai-imports check-ai-coverage
-.PHONY: check-harness lint-harness typecheck-harness test-harness check-plc9c5-c51-contract test-plc9c5-c51-contract check-plc9c5-c52-linux-native test-plc9c5-c52-linux-native
+.PHONY: check-harness lint-harness typecheck-harness test-harness check-plc9c5-c51-contract test-plc9c5-c51-contract check-plc9c5-c52-linux-native test-plc9c5-c52-linux-native check-plc9c5-c53-windows-mechanics test-plc9c5-c53-windows-mechanics
 .PHONY: check-hosting lint-hosting typecheck-hosting test-hosting
 .PHONY: check-apphost lint-apphost typecheck-apphost test-apphost
 .PHONY: check-architecture-docs
@@ -235,6 +237,14 @@ test-plc9c5-c52-linux-native:
 	uv --cache-dir .uv-cache run --extra dev python scripts/dev/verify_plc9c5_manifest.py docs/internals/architecture/harness/plugin/plugin-lifecycle-plc9c5-evidence-manifest.json PLC9C5-C5.2-LINUX-NATIVE .artifacts/plc9c5-c52-linux-native.xml
 
 check-plc9c5-c52-linux-native: test-plc9c5-c52-linux-native
+
+test-plc9c5-c53-windows-mechanics:
+	mkdir -p .artifacts
+	LOUSHANG_PLC9C5_C53_REPORT=1 uv --cache-dir .uv-cache run --extra dev $(PYTEST_RUNNER) tests/hosting/test_plc9c5_c53_windows_mechanics.py -q --junitxml=.artifacts/plc9c5-c53-windows-mechanics.xml
+	uv --cache-dir .uv-cache run --extra dev python scripts/dev/verify_pytest_xml.py .artifacts/plc9c5-c53-windows-mechanics.xml
+	uv --cache-dir .uv-cache run --extra dev python scripts/dev/verify_plc9c5_manifest.py docs/internals/architecture/harness/plugin/plugin-lifecycle-plc9c5-evidence-manifest.json PLC9C5-C5.3-WINDOWS-MECHANICS .artifacts/plc9c5-c53-windows-mechanics.xml
+
+check-plc9c5-c53-windows-mechanics: test-plc9c5-c53-windows-mechanics
 
 check-hosting: lint-hosting typecheck-hosting test-hosting
 

@@ -31,6 +31,7 @@ from loushang.hosting._win32_process import (
     _Win32SpawnHandles,
 )
 from loushang.hosting._windows_launch_preparation import (
+    _build_windows_restricted_launch_capture_spec,
     _verify_pe_image,
     _WindowsRestrictedLaunchCaptureBackend,
     _WindowsRestrictedLaunchCaptureSpec,
@@ -51,6 +52,24 @@ def _request() -> ProcessLaunchRequest:
             stdin=ProcessStdinMode.CLOSED,
             stdout=ProcessStdoutMode.DISCARD,
             stderr=ProcessStderrMode.DISCARD,
+        ),
+    )
+
+
+def _builder_request(
+    *,
+    environment: tuple[tuple[str, str], ...] = (),
+    stderr: ProcessStderrMode = ProcessStderrMode.DISCARD,
+) -> ProcessLaunchRequest:
+    original = _request()
+    return ProcessLaunchRequest(
+        argv=original.argv,
+        cwd=original.cwd,
+        effective_environment=environment,
+        streams=ProcessStreamSpec(
+            stdin=ProcessStdinMode.CLOSED,
+            stdout=ProcessStdoutMode.DISCARD,
+            stderr=stderr,
         ),
     )
 
@@ -91,9 +110,16 @@ class _FakeWindowsLaunchApi:
         self.fail_hits: list[str] = []
         self.fail_close_once: int | None = None
         self.rebind_leaf = False
+        self.executable_file_id = 101
+        self.system_root = r"C:\Windows"
+        self.system_root_calls = 0
 
     def platform_identity(self) -> str:
         return "windows-amd64-10.0.20348"
+
+    def canonical_system_root(self) -> str:
+        self.system_root_calls += 1
+        return self.system_root
 
     def open_locked_file(
         self,
@@ -133,7 +159,7 @@ class _FakeWindowsLaunchApi:
                 else r"\\?\C:\admitted\worker.exe"
             )
             return _Win32LockedPathIdentity(
-                7, 101, 4096, final_path, False
+                7, self.executable_file_id, 4096, final_path, False
             )
         if handle == 2:
             return _Win32LockedPathIdentity(
@@ -240,6 +266,163 @@ class _FakeWindowsLaunchApi:
         handle = self.next_handle
         self.next_handle += 1
         return handle
+
+
+def test_windows_restricted_builder_uses_only_os_owned_facts() -> None:
+    api = _FakeWindowsLaunchApi()
+
+    spec = _build_windows_restricted_launch_capture_spec(
+        _builder_request(),
+        executable_sha256="1" * 64,
+        _api=api,
+    )
+
+    assert spec.request.effective_environment == (("SystemRoot", r"C:\Windows"),)
+    assert spec.request.streams.stderr is ProcessStderrMode.DISCARD
+    assert spec.executable_volume_serial == 7
+    assert spec.executable_file_id == 101
+    assert spec.cwd_volume_serial == 7
+    assert spec.cwd_file_id == 202
+    assert spec.platform_imports == ("ADVAPI32.DLL", "KERNEL32.DLL")
+    assert api.system_root_calls == 1
+    assert api.closed == [1, 2]
+
+
+def test_win32_api_reads_and_normalizes_the_windows_directory() -> None:
+    api = object.__new__(_CtypesWin32Api)
+    observed_sizes: list[int] = []
+
+    def get_windows_directory(buffer: object, size: int) -> int:
+        observed_sizes.append(size)
+        buffer.value = r"C:\Windows\\System32\.."  # type: ignore[attr-defined]
+        return len(buffer.value)  # type: ignore[attr-defined]
+
+    api._GetWindowsDirectoryW = get_windows_directory  # type: ignore[attr-defined]
+
+    assert api.canonical_system_root() == r"C:\Windows"
+    assert observed_sizes == [32768]
+
+
+def test_windows_restricted_builder_ignores_ambient_system_root(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sentinel = r"Z:\poisoned-secret"
+    monkeypatch.setenv("SystemRoot", sentinel)
+    api = _FakeWindowsLaunchApi()
+
+    spec = _build_windows_restricted_launch_capture_spec(
+        _builder_request(),
+        executable_sha256="1" * 64,
+        _api=api,
+    )
+
+    serialized = repr(spec.execution_closure) + repr(spec.request)
+    assert spec.request.effective_environment == (("SystemRoot", r"C:\Windows"),)
+    assert sentinel not in serialized
+
+
+def test_windows_restricted_builder_rejects_caller_environment_before_acquisition(
+) -> None:
+    api = _FakeWindowsLaunchApi()
+
+    with pytest.raises(HostingError) as failure:
+        _build_windows_restricted_launch_capture_spec(
+            _builder_request(environment=(("SystemRoot", r"C:\Windows"),)),
+            executable_sha256="1" * 64,
+            _api=api,
+        )
+
+    assert failure.value.category is HostingFailureCategory.PREPARATION_REJECTED
+    assert api.system_root_calls == 0
+    assert api.next_handle == 1
+    assert api.closed == []
+
+
+def test_windows_restricted_builder_rejects_non_discarded_stderr() -> None:
+    api = _FakeWindowsLaunchApi()
+
+    with pytest.raises(HostingError) as failure:
+        _build_windows_restricted_launch_capture_spec(
+            _builder_request(stderr=ProcessStderrMode.PIPE),
+            executable_sha256="1" * 64,
+            _api=api,
+        )
+
+    assert failure.value.category is HostingFailureCategory.PREPARATION_REJECTED
+    assert api.system_root_calls == 0
+    assert api.next_handle == 1
+
+
+@pytest.mark.parametrize("system_root", (r"C:\Windows\..\Windows", r"\\host\share"))
+def test_windows_restricted_builder_rejects_noncanonical_system_root(
+    system_root: str,
+) -> None:
+    api = _FakeWindowsLaunchApi()
+    api.system_root = system_root
+
+    with pytest.raises(HostingError) as failure:
+        _build_windows_restricted_launch_capture_spec(
+            _builder_request(),
+            executable_sha256="1" * 64,
+            _api=api,
+        )
+
+    assert failure.value.category is HostingFailureCategory.PREPARATION_FAILED
+    assert api.next_handle == 1
+
+
+def test_windows_restricted_builder_redacts_native_failure_details() -> None:
+    sentinel = r"C:\secret\worker.exe?token=credential"
+    api = _FakeWindowsLaunchApi()
+
+    def fail() -> str:
+        raise OSError(sentinel)
+
+    api.canonical_system_root = fail  # type: ignore[method-assign]
+
+    with pytest.raises(HostingError) as failure:
+        _build_windows_restricted_launch_capture_spec(
+            _builder_request(),
+            executable_sha256="1" * 64,
+            _api=api,
+        )
+
+    assert failure.value.category is HostingFailureCategory.PREPARATION_FAILED
+    assert sentinel not in str(failure.value)
+
+
+def test_windows_restricted_builder_identity_substitution_fails_capture(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    builder_api = _FakeWindowsLaunchApi()
+    spec = _build_windows_restricted_launch_capture_spec(
+        _builder_request(),
+        executable_sha256="1" * 64,
+        _api=builder_api,
+    )
+    capture_api = _FakeWindowsLaunchApi()
+    capture_api.executable_file_id = 999
+    backend = _WindowsRestrictedLaunchCaptureBackend(api=capture_api)
+    attached: list[object] = []
+    monkeypatch.setattr(
+        "loushang.hosting._windows_launch_preparation._verify_pe_image",
+        lambda *args, **kwargs: None,
+    )
+
+    async def exercise() -> None:
+        with pytest.raises(HostingError) as failure:
+            await backend.capture(
+                spec,
+                attempt_id="windows-identity-substitution",
+                attempt_token=object(),
+                on_capture=attached.append,
+            )
+        assert failure.value.category is HostingFailureCategory.PREPARATION_STALE
+        assert len(attached) == 1
+        await attached[0].close()  # type: ignore[attr-defined]
+
+    asyncio.run(exercise())
+    assert set(capture_api.closed) == {1, 2, 3, 4, 5, 6, 7}
 
 
 class _Inheritance:
