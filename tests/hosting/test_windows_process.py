@@ -522,21 +522,45 @@ async def test_windows_native_parallel_spawns_exclude_ambient_handles(
 ) -> None:
     import msvcrt
 
+    names = ("sentinel-a", "sentinel-b")
     descriptors = [
-        os.open(tmp_path / name, os.O_CREAT | os.O_RDWR)
-        for name in ("sentinel-a", "sentinel-b")
+        os.open(tmp_path / name, os.O_CREAT | os.O_RDWR) for name in names
     ]
     handles = [msvcrt.get_osfhandle(descriptor) for descriptor in descriptors]
     for handle in handles:
         os.set_handle_inheritable(handle, True)
-    code = (
-        "import ctypes,sys; flags=ctypes.c_ulong(); "
-        "get=ctypes.windll.kernel32.GetHandleInformation; "
-        "print(''.join('1' if get(int(value),ctypes.byref(flags)) else '0' "
-        "for value in sys.argv[1:]))"
+    code = """
+import ctypes
+import sys
+
+get_path = ctypes.windll.kernel32.GetFinalPathNameByHandleW
+get_path.argtypes = (
+    ctypes.c_void_p,
+    ctypes.c_wchar_p,
+    ctypes.c_ulong,
+    ctypes.c_ulong,
+)
+get_path.restype = ctypes.c_ulong
+
+
+def is_same_file(value, expected_name):
+    buffer = ctypes.create_unicode_buffer(32768)
+    length = get_path(ctypes.c_void_p(int(value)), buffer, len(buffer), 0)
+    return bool(length) and buffer.value.casefold().endswith(
+        "\\\\" + expected_name.casefold()
+    )
+
+
+pairs = zip(sys.argv[1::2], sys.argv[2::2], strict=True)
+print("".join("1" if is_same_file(*pair) else "0" for pair in pairs))
+"""
+    arguments = tuple(
+        item
+        for handle, name in zip(handles, names, strict=True)
+        for item in (str(handle), name)
     )
     requests = [
-        _request(tmp_path, code, *(str(handle) for handle in handles))
+        _request(tmp_path, code, *arguments)
         for _ in range(2)
     ]
     host = create_process_host(max_processes=2)
