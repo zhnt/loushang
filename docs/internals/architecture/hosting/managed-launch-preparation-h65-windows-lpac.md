@@ -198,7 +198,9 @@ proves from inside that child:
 - an unrelated same-user file cannot be opened and a same-user process cannot
   be opened with mutation, VM, or handle-duplication rights;
 - a parent-created loopback listener is reachable by an unrestricted control
-  process but unreachable by the zero-capability child;
+  process but unreachable by a bounded zero-capability LPAC descendant probe;
+  the main oracle accepts only failed network initialization or failed connect,
+  and any successful connect fails the report;
 - only the exact endpoint and stderr handles are inherited; and
 - a descendant remains in the atomically assigned Job and the complete tree
   is gone before settlement.
