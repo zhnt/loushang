@@ -330,6 +330,14 @@ void WINAPI mainCRTStartup(void) {
     if (GetEnvironmentVariableW(L"PATH", actual_cwd, MAX_PATH) ||
         GetEnvironmentVariableW(L"LOUSHANG_SECRET_SENTINEL", actual_cwd, MAX_PATH))
         ExitProcess(88);
+    if (GetFileAttributesW(private_root) == INVALID_FILE_ATTRIBUTES) {
+        DWORD private_root_error = GetLastError();
+        ExitProcess(0xC5505700 | (private_root_error & 0xff));
+    }
+    if (GetFileAttributesW(temp_root) == INVALID_FILE_ATTRIBUTES) {
+        DWORD temp_root_error = GetLastError();
+        ExitProcess(0xC5505800 | (temp_root_error & 0xff));
+    }
     static wchar_t scratch[MAX_PATH];
     lstrcpyW(scratch, temp_root);
     lstrcatW(scratch, L"\\lpac-fs.bin");
