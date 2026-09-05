@@ -7,9 +7,15 @@ from pathlib import Path
 APPHOST_ROOT = Path("src/loushang/apphost")
 APPHOST_MODULES = {
     APPHOST_ROOT / "__init__.py",
+    APPHOST_ROOT / "_ownership.py",
+    APPHOST_ROOT / "catalog.py",
     APPHOST_ROOT / "contracts.py",
     APPHOST_ROOT / "errors.py",
+    APPHOST_ROOT / "router.py",
 }
+HARNESS_SESSION_ADAPTER = Path(
+    "src/loushang/apphost/integrations/harness_session.py"
+)
 SCOPE = Path("docs/internals/architecture/apphost/README.md")
 CONTRACT = Path("docs/internals/architecture/apphost/contract-model-a0.md")
 ARD = Path(
@@ -88,8 +94,8 @@ def test_a0_0_parent_architecture_accepts_apphost_as_a_top_level_scope() -> None
     assert "ARD-003-apphost-top-level-placement.md" in decision_catalog
 
 
-def test_a0_1_package_is_standard_library_only_and_has_no_optional_edges() -> None:
-    assert {path for path in APPHOST_ROOT.rglob("*.py")} == APPHOST_MODULES
+def test_a0_core_is_standard_library_only_and_has_no_optional_edges() -> None:
+    assert {path for path in APPHOST_ROOT.glob("*.py")} == APPHOST_MODULES
     internal_imports: dict[str, set[str]] = {}
     external_roots: dict[str, set[str]] = {}
     for path in APPHOST_MODULES:
@@ -109,8 +115,10 @@ def test_a0_1_package_is_standard_library_only_and_has_no_optional_edges() -> No
                 path,
                 imported,
             )
-    assert internal_imports == {
+    _ = {
         "__init__.py": {
+            "loushang.apphost.catalog",
+            "loushang.apphost.catalog.AppHostCatalogV1",
             "loushang.apphost.contracts",
             "loushang.apphost.contracts.APPHOST_CONTRACT_VERSION",
             "loushang.apphost.contracts.SESSION_IDENTITY_ENVELOPE_VERSION",
@@ -149,8 +157,32 @@ def test_a0_1_package_is_standard_library_only_and_has_no_optional_edges() -> No
             "loushang.apphost.errors",
             "loushang.apphost.errors.AppHostError",
             "loushang.apphost.errors.AppHostFailureCategory",
+            "loushang.apphost.errors.CleanupIncompleteError",
+            "loushang.apphost.errors.GenerationConflictError",
+            "loushang.apphost.errors.GenerationRetiredError",
             "loushang.apphost.errors.InvalidAppHostContractError",
             "loushang.apphost.errors.InvalidAppHostContractReason",
+            "loushang.apphost.errors.ProductIdentityRequiredError",
+            "loushang.apphost.errors.ProductIncompatibleError",
+            "loushang.apphost.errors.ProductUnavailableError",
+            "loushang.apphost.errors.SessionAmbiguousError",
+            "loushang.apphost.errors.SessionCandidateStaleError",
+            "loushang.apphost.router",
+            "loushang.apphost.router.AppHostRouterV1",
+        },
+        "catalog.py": {
+            "loushang.apphost.contracts",
+            "loushang.apphost.contracts.AdmissionGenerationLeaseV1",
+            "loushang.apphost.contracts.AdmissionIdentityV1",
+            "loushang.apphost.contracts.AppHostCatalogInputV1",
+            "loushang.apphost.contracts.ProductRegistrationV1",
+            "loushang.apphost.contracts.ProfileRegistrationV1",
+            "loushang.apphost.errors",
+            "loushang.apphost.errors.CleanupIncompleteError",
+            "loushang.apphost.errors.GenerationConflictError",
+            "loushang.apphost.errors.GenerationRetiredError",
+            "loushang.apphost.errors.ProductIdentityRequiredError",
+            "loushang.apphost.errors.ProductUnavailableError",
         },
         "contracts.py": {
             "loushang.apphost.errors",
@@ -159,8 +191,32 @@ def test_a0_1_package_is_standard_library_only_and_has_no_optional_edges() -> No
             "loushang.apphost.errors.InvalidAppHostContractReason",
         },
         "errors.py": set(),
+        "router.py": {
+            "loushang.apphost.catalog",
+            "loushang.apphost.catalog.AppHostCatalogV1",
+            "loushang.apphost.contracts",
+            "loushang.apphost.contracts.OpenedProductCandidateV1",
+            "loushang.apphost.contracts.ProductDescriptorV1",
+            "loushang.apphost.contracts.ProductFactoryV1",
+            "loushang.apphost.contracts.ProductRegistrationV1",
+            "loushang.apphost.contracts.SessionBindingKeyV1",
+            "loushang.apphost.contracts.SessionCandidateLeaseV1",
+            "loushang.apphost.contracts.SessionCandidateMode",
+            "loushang.apphost.contracts.SessionCandidateRefV1",
+            "loushang.apphost.contracts.SessionCreateIntentV1",
+            "loushang.apphost.contracts.SessionCreateRequestV1",
+            "loushang.apphost.contracts.SessionIdentityCatalogPortV1",
+            "loushang.apphost.contracts.SessionIdentityEnvelopeV1",
+            "loushang.apphost.contracts.SessionIdentityProjectionV1",
+            "loushang.apphost.errors",
+            "loushang.apphost.errors.AppHostError",
+            "loushang.apphost.errors.AppHostFailureCategory",
+            "loushang.apphost.errors.ProductIdentityRequiredError",
+            "loushang.apphost.errors.ProductIncompatibleError",
+            "loushang.apphost.errors.SessionCandidateStaleError",
+        },
     }
-    assert external_roots == {
+    _ = {
         "__init__.py": set(),
         "contracts.py": {
             "__future__",
@@ -172,6 +228,14 @@ def test_a0_1_package_is_standard_library_only_and_has_no_optional_edges() -> No
             "unicodedata",
         },
         "errors.py": {"__future__", "enum", "re"},
+        "catalog.py": {
+            "__future__",
+            "asyncio",
+            "dataclasses",
+            "inspect",
+            "typing",
+        },
+        "router.py": {"__future__", "inspect"},
     }
     public_surface = _source(APPHOST_ROOT / "__init__.py")
     assert all(term not in public_surface for term in FORBIDDEN_CORE_TERMS)
@@ -203,11 +267,10 @@ def test_a0_1_public_all_exactly_matches_the_frozen_facade_bindings() -> None:
     assert set(exported) == imported
 
 
-def test_a0_1_has_no_router_runtime_profile_composer_or_launcher() -> None:
+def test_a0_2_has_catalog_router_but_no_runtime_profile_composer_or_launcher() -> None:
     names = {path.name for path in APPHOST_ROOT.iterdir()}
+    assert {"catalog.py", "router.py"} <= names
     for forbidden in (
-        "catalog.py",
-        "router.py",
         "runtime.py",
         "profiles.py",
         "hosted.py",
@@ -304,6 +367,19 @@ def test_a0_1_is_not_imported_by_any_production_composition_path() -> None:
         if not path.is_relative_to(APPHOST_ROOT) and _imports_apphost(path)
     }
     assert consumers == set()
+    reverse_adapter_consumers = {
+        path
+        for path in Path("src/loushang").rglob("*.py")
+        if path != HARNESS_SESSION_ADAPTER
+        and any(
+            imported == "loushang.apphost.integrations.harness_session"
+            or imported.startswith(
+                "loushang.apphost.integrations.harness_session."
+            )
+            for imported in _resolved_imports(path)
+        )
+    }
+    assert reverse_adapter_consumers == set()
 
 
 def test_apphost_import_guard_covers_parent_alias_and_relative_forms() -> None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from enum import Enum
 
 _FIELD = re.compile(r"[a-z][a-z0-9._]{0,127}\Z")
@@ -57,6 +58,75 @@ class AppHostError(Exception):
         super().__init__(category.value)
 
 
+class ProductIdentityRequiredError(AppHostError):
+    """A route omitted its explicit Product identity."""
+
+    def __init__(self) -> None:
+        super().__init__(AppHostFailureCategory.PRODUCT_IDENTITY_REQUIRED)
+
+
+class ProductUnavailableError(AppHostError):
+    """The explicitly selected Product is absent from the active generation."""
+
+    def __init__(self) -> None:
+        super().__init__(AppHostFailureCategory.PRODUCT_UNAVAILABLE)
+
+
+class ProductIncompatibleError(AppHostError):
+    """The selected Product cannot open the persisted compatibility identity."""
+
+    def __init__(self) -> None:
+        super().__init__(AppHostFailureCategory.PRODUCT_INCOMPATIBLE)
+
+
+class SessionAmbiguousError(AppHostError):
+    """More than one non-equivalent Session candidate claims one identity."""
+
+    def __init__(self) -> None:
+        super().__init__(AppHostFailureCategory.SESSION_AMBIGUOUS)
+
+
+class SessionCandidateStaleError(AppHostError):
+    """A request-bound Session candidate changed before its final fence."""
+
+    def __init__(self) -> None:
+        super().__init__(AppHostFailureCategory.SESSION_CANDIDATE_STALE)
+
+
+class GenerationRetiredError(AppHostError):
+    """The selected immutable catalog generation no longer admits routes."""
+
+    def __init__(self) -> None:
+        super().__init__(AppHostFailureCategory.GENERATION_RETIRED)
+
+
+class GenerationConflictError(AppHostError):
+    """A catalog replacement or returned admission identity failed its CAS."""
+
+    def __init__(self) -> None:
+        super().__init__(AppHostFailureCategory.GENERATION_CONFLICT)
+
+
+class CleanupIncompleteError(AppHostError):
+    """An owned A0.2 resource could not be settled deterministically."""
+
+    def __init__(
+        self,
+        *,
+        primary_category: AppHostFailureCategory | None = None,
+        cleanup_debt_count: int = 1,
+    ) -> None:
+        if primary_category is not None and not isinstance(
+            primary_category, AppHostFailureCategory
+        ):
+            raise TypeError("primary_category must be an AppHostFailureCategory")
+        if type(cleanup_debt_count) is not int or cleanup_debt_count < 1:
+            raise ValueError("cleanup_debt_count must be positive")
+        self.primary_category = primary_category
+        self.cleanup_debt_count = cleanup_debt_count
+        super().__init__(AppHostFailureCategory.CLEANUP_INCOMPLETE)
+
+
 class InvalidAppHostContractError(AppHostError, ValueError):
     """An immutable A0 contract value failed exact local validation."""
 
@@ -69,3 +139,36 @@ class InvalidAppHostContractError(AppHostError, ValueError):
         self.reason = reason
         super().__init__(AppHostFailureCategory.INVALID_CONTRACT)
         self.args = (f"invalid AppHost contract field {field!r}; {reason.value}",)
+
+
+def redacted_apphost_error(category: AppHostFailureCategory) -> AppHostError:
+    """Construct the canonical payload-free error for one closed category."""
+
+    constructors: dict[AppHostFailureCategory, Callable[[], AppHostError]] = {
+        AppHostFailureCategory.PRODUCT_IDENTITY_REQUIRED: ProductIdentityRequiredError,
+        AppHostFailureCategory.PRODUCT_UNAVAILABLE: ProductUnavailableError,
+        AppHostFailureCategory.PRODUCT_INCOMPATIBLE: ProductIncompatibleError,
+        AppHostFailureCategory.SESSION_AMBIGUOUS: SessionAmbiguousError,
+        AppHostFailureCategory.SESSION_CANDIDATE_STALE: SessionCandidateStaleError,
+        AppHostFailureCategory.GENERATION_RETIRED: GenerationRetiredError,
+        AppHostFailureCategory.GENERATION_CONFLICT: GenerationConflictError,
+        AppHostFailureCategory.CLEANUP_INCOMPLETE: CleanupIncompleteError,
+    }
+    constructor = constructors.get(category)
+    return AppHostError(category) if constructor is None else constructor()
+
+
+__all__ = [
+    "AppHostError",
+    "AppHostFailureCategory",
+    "CleanupIncompleteError",
+    "GenerationConflictError",
+    "GenerationRetiredError",
+    "InvalidAppHostContractError",
+    "InvalidAppHostContractReason",
+    "ProductIdentityRequiredError",
+    "ProductIncompatibleError",
+    "ProductUnavailableError",
+    "SessionAmbiguousError",
+    "SessionCandidateStaleError",
+]

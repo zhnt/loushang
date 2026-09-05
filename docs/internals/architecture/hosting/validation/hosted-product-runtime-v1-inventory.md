@@ -54,6 +54,7 @@ lease, or factory.
 | Worker protocol/lifecycle | `src/loushang/harness/worker/protocol.py`, `src/loushang/harness/worker/supervisor.py`, `src/loushang/harness/worker/journal.py`, and `src/loushang/harness/worker/session.py` | framing, handshake, correlation, heartbeat, restart/fencing, aggregate session, and durable attempt evidence |
 | first domain adapter | `src/loushang/harness/worker/capability_query.py` | explicitly enabled read-only Capability query adapter; no Product activation or generation publication route |
 | Session discovery contracts | `src/loushang/harness/transcript/discovery.py` and `src/loushang/harness/transcript/session_catalog.py` | canonical/compatibility source identity, stable locator, bounded summaries, aliases/conflicts, and multi-source read model; no generic `product_id` envelope yet |
+| optional AppHost/Harness Session integration | `src/loushang/apphost/integrations/harness_session.py` | AppHost-owned optional projection of explicitly injected Harness source identities to path-free migration candidates; seals an unchanged single-descriptor snapshot up to 8 MiB, adopts rejected canonical returns into its own retryable cleanup lifecycle, bounds canonical delegation to eight concurrent calls and refuses new calls while debt remains, never retries a relinquished POSIX fd number after an ambiguous close, derives no roots or second index, remains uncomposed, and fails closed on Windows pending a native retained-handle backend |
 | Session discovery composition | `src/loushang/harness/transcript/directory.py`, `src/loushang/harness/machine_resources/control_plane.py`, and `src/loushang/coding/cli/__main__.py` | canonical global plus cwd/home compatibility sources are selected at composition; cwd is a query/filter and compatibility roots are not writable authorities |
 
 ## Observed Contract Mismatch
@@ -68,19 +69,17 @@ lease, or factory.
 
 ## AppHost And Hosted Application State
 
-AppHost A0.1 now supplies only immutable standard-library contracts and
-catalog-input validation. There is still:
+AppHost A0.2 now supplies immutable standard-library contracts, admitted
+catalog generations, and explicit prepared-candidate routing. There is still:
 
-- no AppHost catalog, router, live-binding registry, profile composer, or
-  production composition exists;
+- no AppHost live-binding registry, profile composer, or production
+  composition;
 - `src/loushang/appserver` is absent.
 - `src/loushang/appservice` is absent.
 - the generic Session Identity Envelope contract is not yet persisted or read
   before Product selection;
-- no production adapter implements the path-free AppHost port over the existing
-  Product-neutral Harness Session discovery read model together with a
-  pre-routing `product_id`;
-- no two-unrelated-Product conformance fixture exists; and
+- the optional AppHost-owned Harness integration exposes current JSONL only as explicit migration
+  candidates; no canonical envelope persistence owner is composed;
 - no production launcher sends a complete foreground AppHost executable to
   Hosting.
 
@@ -95,9 +94,9 @@ Target boundaries, not evidence of those absent runtime routes.
 | exact Linux executable/cwd/containment transfer | Hosting platform adapter with caller-owned requirements | implemented for the private static-closure profiles; H6.2 retained native adversarial oracle remains green |
 | exact Windows executable/cwd/containment transfer | Hosting platform adapter with caller-owned requirements | implemented for one private restricted-token/direct-import PE mechanics profile; the non-skippable H6.3 native adversarial oracle must remain green |
 | Harness-to-Hosting managed preparation parity | Harness Sandbox/Worker adapter over Hosting | H6.4 fake-backed public/managed semantic and cleanup parity; native Worker compatibility remains absent and default stays Current |
-| Product catalog, no-default routing, scoped runtime lifetime | AppHost | A0.1 contracts exist; A0.2/A0.3 require two-unrelated-fake-Product and lifecycle conformance |
-| Session pre-routing identity | AppHost schema plus canonical Session persistence/catalog owner | A0.1 envelope exists; atomic creation/resume/migration tests remain required before Product parsing |
-| AppHost cwd/user-global Session projection | adapter over the existing Harness Session discovery/catalog owner | explicit-scope listing, stable source identity, exact alias/conflict behavior, Product envelope, and no-direct-filesystem tests |
+| Product catalog, no-default routing, scoped runtime lifetime | AppHost | A0.2 exposes only the minimal prepared-route identity/close protocol; Catalog Product-pin acquisition is Router-private and A0.3 live lifecycle remains absent |
+| Session pre-routing identity | AppHost schema plus canonical Session persistence/catalog owner | A0.2 fake owner proves atomic creation/recovery; real canonical envelope persistence remains uncomposed |
+| AppHost cwd/user-global Session projection | AppHost-owned optional integration over the existing Harness Session discovery/catalog owner | A0.2 proves explicit source binding, stable source identity, alias/conflict, an unchanged bounded descriptor read sealed into immutable bytes, no token-to-path behavior, and Windows fail-closed semantics |
 | Product/native Worker activation | Product/Harness composition and domain owner | separately reviewed PLC9C5 canary, native gates, recovery, and rollback |
 | hosted App protocol and semantics | future AppServer/AppService scopes | separate accepted contracts; not implied by AppHost or Hosting work |
 
@@ -109,9 +108,10 @@ The inventory records, rather than relaxes, these Current fences:
   attempt;
 - sealed-descriptor cases remain rejected by Hosting compatibility;
 - PLC9C5 Product activation and platform absence guards remain unchanged;
-- AppHost remains an exact three-module A0.1 contract package with no
-  catalog/router/runtime/composition consumer; AppServer/AppService source
-  packages remain absent; and
+- AppHost remains an exact six-module A0.2 core package with no
+  runtime/profile/composition consumer; its optional Harness Session
+  integration remains outside the core facade and dark; AppServer/AppService
+  source packages remain absent; and
 - Hosting imports no Harness, Product, AppHost, AppServer, or AppService
   package.
 

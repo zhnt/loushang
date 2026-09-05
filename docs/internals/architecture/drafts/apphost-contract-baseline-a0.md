@@ -7,7 +7,7 @@
 - Parent: `Loushang`
 - Authority: historical — refined by the canonical A0 Contract Model
 - Design status: accepted and promoted
-- Implementation status: partial — A0.1 implemented; later slices not started
+- Implementation status: partial — A0.2 implemented; A0.3+ not started
 - Activation status: none; no AppHost runtime composition route
 - Owner: Loushang architecture
 
@@ -284,7 +284,7 @@ Session detach, durable persistence, or Product retirement.
 | --- | --- | --- |
 | A0.0 | placement refinement, component discovery, contract baseline, Current inventory, and absence guard | common-parent and neighboring-owner design review; no source package |
 | A0.1 | standard-library-only public Contract Model facade with runtime default-dark | exact validation, frozen catalog input, no optional-profile imports, no composition |
-| A0.2 | catalog/router, admission-generation pins, injected Session identity/catalog port, and explicit Product-owned importer over fakes | two unrelated fake Products; cwd/user-global listing; no-default resume/migration; legacy Coding and Codex/Claude fixture; duplicate, revision-swap, retirement, and incompatibility matrix pass |
+| A0.2 | catalog/router, admission-generation pins, injected Session identity/catalog port, minimal prepared-route protocol, Router-owned cleanup debt, and explicit Product-owned importer over fakes | two unrelated fake Products; cwd/user-global listing; no-default resume/migration; bounded immutable 8 MiB legacy snapshot; duplicate, revision-swap, retirement, incompatibility, and cleanup-retry matrix pass |
 | A0.3 | canonical live-binding registry, scoped runtime lifecycle, and embedded profile composition | single-flight multi-attach/multi-mux ownership, detach/cancel/stale-detach, partial-construction, deadline, and shutdown matrix pass |
 | A0.4 | optional hosted binder against accepted structural AppServer ports | core stays AppServer-free; transport and semantic owners remain separate |
 | A0.5 | optional serialized launcher adapter | no Python object crosses process; readiness/stop/timeout evidence remains typed |
@@ -316,6 +316,8 @@ independent optional slices; neither is an entry criterion for embedded use.
 
 ## Acceptance Fence
 
-ARD-003 accepts AppHost as a top-level scope. A0.1 adds contracts only;
+ARD-003 accepts AppHost as a top-level scope. A0.2 adds only the admitted
+catalog, prepared-candidate router, and uncomposed AppHost-owned optional
+Harness integration;
 Product-specific Current entrypoints remain authoritative until the later
 catalog, lifecycle, and profile slices pass their own acceptance gates.

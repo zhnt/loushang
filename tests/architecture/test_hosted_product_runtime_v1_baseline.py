@@ -66,6 +66,7 @@ CURRENT_SOURCE_SEAMS = (
     HARNESS_SOURCE / "transcript/discovery.py",
     HARNESS_SOURCE / "transcript/session_catalog.py",
     HARNESS_SOURCE / "transcript/directory.py",
+    APPHOST_SOURCE / "integrations/harness_session.py",
     HARNESS_SOURCE / "machine_resources/control_plane.py",
     Path("src/loushang/coding/cli/__main__.py"),
 )
@@ -157,7 +158,7 @@ def test_baseline_documents_are_status_honest_and_indexed() -> None:
             ),
             "Design status": "accepted and promoted",
             "Implementation status": (
-                "partial — A0.1 implemented; later slices not started"
+                "partial — A0.2 implemented; A0.3+ not started"
             ),
             "Activation status": "none; no AppHost runtime composition route",
         },
@@ -396,7 +397,16 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
     assert {
         path.relative_to(APPHOST_SOURCE).as_posix()
         for path in APPHOST_SOURCE.rglob("*.py")
-    } == {"__init__.py", "contracts.py", "errors.py"}
+    } == {
+        "__init__.py",
+        "_ownership.py",
+        "catalog.py",
+        "contracts.py",
+        "errors.py",
+        "integrations/__init__.py",
+        "integrations/harness_session.py",
+        "router.py",
+    }
     assert not APPSERVER_SOURCE.exists()
     assert not APPSERVICE_SOURCE.exists()
 
@@ -435,6 +445,7 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
     reverse_apphost_consumers = {
         path
         for path in Path("src/loushang").rglob("*.py")
+        if not path.is_relative_to(APPHOST_SOURCE)
         if any(
             imported.startswith("loushang.apphost") for imported in _imports(path)
         )
@@ -443,7 +454,7 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
     for statement in (
         "H5 default owner is Current",
         "PLC9C5 Product activation and platform absence guards remain unchanged",
-        "AppHost remains an exact three-module A0.1 contract package",
+        "AppHost remains an exact six-module A0.2 core package",
         "Hosting imports no Harness, Product, AppHost, AppServer, or AppService",
     ):
         assert statement in _section(inventory, "Retained Fences")

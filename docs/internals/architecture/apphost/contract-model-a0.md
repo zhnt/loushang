@@ -7,16 +7,16 @@
 - Parent: `loushang`
 - Authority: normative — accepted AppHost A0 contract specification
 - Design status: accepted
-- Implementation status: implemented — A0.1 values and ports only
+- Implementation status: implemented through A0.2 catalog/router preparation
 - Activation status: none
 - Owner: Loushang AppHost architecture
 
 ## Purpose
 
-A0.1 creates the smallest dependency-safe seam for later Product routing. It
-defines immutable values and structural ports, validates one immutable catalog
-input generation, and performs no discovery, import, routing, attachment,
-runtime construction, persistence, or process launch.
+A0.1 creates the smallest dependency-safe seam for later Product routing. A0.2
+admits immutable generations and routes exact Session candidates through those
+ports. It still performs no Product discovery, live-binding attachment, runtime
+construction, profile binding, persistence, or process launch.
 
 ## Contract Groups
 
@@ -96,6 +96,78 @@ acquire or close a pin.
 AppHost core imports neither AppServer nor Hosting. It also imports no Harness,
 AppService, UI, Plugin implementation, or concrete Product package; optional
 edges belong to later adapter slices.
+
+## A0.2 Catalog And Router
+
+`AppHostCatalogV1` owns one active immutable admitted generation. Admission
+acquires one independent pin for every Product and profile, reads each returned
+identity exactly once, and compares generation, subject kind, and subject ID
+with the frozen registration. Publication occurs only after all pins pass.
+Mismatch, source retirement, cancellation, or invalid cleanup capability
+publishes nothing; rollback attempts every acquired pin in reverse order. A
+cleanup failure is retained as closed `cleanup_incomplete` evidence with only a
+safe primary category and debt count, never an external exception chain.
+
+Replacement admits its new generation before an exact generation-ID CAS. A
+successful CAS routes new work only to the new immutable snapshot and retires
+the old catalog-owned pins. A private route lease owns a separate subject pin,
+so retirement cannot close, mutate, or retarget a prepared route. A
+catalog-owned base pin proves generation retention only; it never impersonates
+route drain.
+
+`AppHostRouterV1` requires an explicit Product for every operation. Resume
+pins the explicit selected Product, opens one exact path-free candidate, checks
+its envelope, executes final verify and claim, then invokes only the Product
+candidate validator. Create first performs the read-only idempotency
+lookup without acquiring a current pin. Only an absent record pins the Product
+and calls create-if-absent with the descriptor compatibility identity. Recovery
+pins the current Product only after the durable candidate is found. Explicit
+migration requires a migration-only candidate and an admitted Product-owned
+importer. No branch derives a Product, imports a Product module, or invokes a
+Product/profile factory.
+
+Success returns one independently owned implementation of the public minimal
+`PreparedProductRouteV1` protocol. It retains the opened candidate, claimed
+candidate, request lease, and exact route pin, but exposes only frozen
+descriptor/generation/binding identity plus close. A0.2
+hands out no factory or Product execution capability. Close settles those
+owners in reverse acquisition order. Failure and cancellation register every
+actually acquired unpublished owner in a Router-owned pending-cleanup registry
+before settlement; failed items remain retryable through
+`settle_pending_cleanup` and Router close, while successful items never repeat.
+
+The AppHost-owned optional `HarnessAppHostSessionAdapterV1` integration is
+outside AppHost core. Outer
+composition explicitly binds existing `SessionDiscoverySource` identities to
+AppHost scopes; the adapter asks the existing directory owner for its bounded,
+deduplicated projection, retains the exact no-follow revision under a private
+lease, and exposes current JSONL candidates only as `migration_required`. It
+does not derive cwd/home roots, rescan a directory, create an index, or interpret
+candidate tokens as paths. A migration candidate is accepted only after a full
+pre/post stat-stable read from the same no-follow descriptor, bounded by the
+AppHost-owned `HARNESS_SESSION_SNAPSHOT_MAX_BYTES_V1` constant (8 MiB). Claim
+hands the Product sealed bytes, never a mutable descriptor or path; oversize or
+read-time mutation fails closed. Canonical create/recovery is an optional
+injected owner and remains absent by default. Every returned canonical owner is
+bound to a static close descriptor and registered in the adapter's private
+pending-cleanup registry before its projection or remaining callbacks are
+validated. A rejected return therefore remains retryable even when its first
+close fails or is cancelled, without requiring the Router to receive it. The
+adapter's close fences new calls, joins in-flight validation, and settles that
+registry; concurrent settlement joins the same attempt and retries only
+unsettled owners. Canonical delegation is absent unless explicitly injected and
+is capped by `HARNESS_SESSION_MAX_ACTIVE_CANONICAL_OPS_V1` at eight concurrent
+provider calls. Every later provider call first drains existing unpublished
+cleanup debt; if debt remains, the call fails before entering the provider.
+Since every returned raw is still adopted before validation, the concurrent
+permit bound also bounds registry strong references. The adapter itself has no
+production consumer.
+
+On POSIX, descriptor close has an inherently ambiguous error boundary: the
+kernel may have released the descriptor even when `close(2)` reports failure.
+The private descriptor owner atomically relinquishes its integer before the
+syscall. It records the failed attempt but never retries that integer, avoiding
+accidental close of a subsequently reused descriptor number.
 
 ## Immutable Catalog Input
 
@@ -180,3 +252,25 @@ A0.1 is complete when:
 6. no production composition path imports or instantiates AppHost.
 
 These gates keep every existing runtime path unchanged and default-dark.
+
+## A0.2 Exit Gate
+
+A0.2 is complete when:
+
+1. AppHost core remains standard-library-only and imports no Harness, Hosting,
+   AppServer, AppService, UI, Plugin implementation, or concrete Product;
+2. two unrelated fake Products pass explicit resume, idempotent create, and
+   copy-first migration without a default branch or factory invocation;
+3. catalog admission, exact pin identity, reverse rollback, CAS replacement,
+   revision swap, retirement, and compatibility failure matrices pass;
+4. the optional Harness integration projects explicitly injected cwd, legacy
+   user-global, and canonical user-global sources through the existing owner,
+   sealing at most 8 MiB after full pre/post descriptor-stat equality; claimed
+   reads remain immutable and Windows stays fail-closed until a reviewed
+   native retained-handle backend exists; rejected canonical returns remain in
+   the adapter-owned cleanup registry across failure and cancellation, and
+   adapter close fences and joins in-flight calls; canonical provider calls are
+   capped at eight and cannot continue while earlier cleanup debt remains;
+5. no live registry, profile composer, launcher, Product activation, native
+   profile, or production composition consumer exists; and
+6. A0.1 and neighboring Hosting architecture gates remain green.

@@ -1,10 +1,10 @@
-"""Product-neutral AppHost A0 contracts.
+"""Product-neutral AppHost A0 catalog and routing facade.
 
-A0.1 intentionally exposes values and structural ports only. It contains no
-catalog, router, live runtime owner, profile composer, launcher, or Product
-activation path.
+A0.2 adds an explicit admitted catalog and candidate router. It still contains
+no live runtime owner, profile composer, launcher, or Product activation path.
 """
 
+from .catalog import AppHostCatalogV1
 from .contracts import (
     APPHOST_CONTRACT_VERSION,
     SESSION_IDENTITY_ENVELOPE_VERSION,
@@ -19,6 +19,7 @@ from .contracts import (
     AppHostObservationV1,
     ClaimedSessionCandidateV1,
     OpenedProductCandidateV1,
+    PreparedProductRouteV1,
     ProductCandidateValidatorV1,
     ProductCompatibilityImporterV1,
     ProductDescriptorV1,
@@ -44,9 +45,18 @@ from .contracts import (
 from .errors import (
     AppHostError,
     AppHostFailureCategory,
+    CleanupIncompleteError,
+    GenerationConflictError,
+    GenerationRetiredError,
     InvalidAppHostContractError,
     InvalidAppHostContractReason,
+    ProductIdentityRequiredError,
+    ProductIncompatibleError,
+    ProductUnavailableError,
+    SessionAmbiguousError,
+    SessionCandidateStaleError,
 )
+from .router import AppHostRouterV1
 
 __all__ = [
     "APPHOST_CONTRACT_VERSION",
@@ -54,6 +64,7 @@ __all__ = [
     "AdmissionIdentityV1",
     "AdmissionGenerationLeaseV1",
     "AdmissionGenerationSourceV1",
+    "AppHostCatalogV1",
     "AppHostAdmissionSubjectKind",
     "AppHostCatalogInputV1",
     "AppHostComponent",
@@ -62,22 +73,32 @@ __all__ = [
     "AppHostLifecycleTransition",
     "AppHostObservationSinkV1",
     "AppHostObservationV1",
+    "AppHostRouterV1",
     "ClaimedSessionCandidateV1",
+    "CleanupIncompleteError",
+    "GenerationConflictError",
+    "GenerationRetiredError",
     "InvalidAppHostContractError",
     "InvalidAppHostContractReason",
     "OpenedProductCandidateV1",
+    "PreparedProductRouteV1",
     "ProductCandidateValidatorV1",
     "ProductCompatibilityImporterV1",
     "ProductDescriptorV1",
     "ProductFactoryV1",
+    "ProductIdentityRequiredError",
+    "ProductIncompatibleError",
     "ProductProfileBindingV1",
     "ProductRegistrationV1",
+    "ProductUnavailableError",
     "ProfileDescriptorV1",
     "ProfileFactoryV1",
     "ProfileLeaseV1",
     "ProfileRegistrationV1",
     "ScopedProductRuntimeV1",
     "SessionBindingKeyV1",
+    "SessionAmbiguousError",
+    "SessionCandidateStaleError",
     "SessionCandidateLeaseV1",
     "SessionCandidateMode",
     "SessionCandidateRefV1",
