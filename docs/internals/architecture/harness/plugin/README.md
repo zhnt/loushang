@@ -336,6 +336,11 @@ Neither may silently override a narrower implemented owner contract.
   receipt/lifecycle, Linux native, Windows mechanics/rejection, and Linux
   Product-convergence slices. C5.0 itself is design/guards only: every runtime
   route remains default-dark and Product activation remains absent.
+- [PLC9C5 C5.1 Product Worker Receipt And Lifecycle Contract](plugin-lifecycle-plc9c5-c51-contract.md)
+  implements the authority-free policy/receipt join, synchronous serialized
+  freshness gate, deterministic publication/retirement lifecycle, durable
+  settlement/debt, and restart latch. It retains default Current and adds no
+  native bridge or production Product composition.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)

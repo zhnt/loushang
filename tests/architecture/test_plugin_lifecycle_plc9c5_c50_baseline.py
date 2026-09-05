@@ -84,6 +84,7 @@ EXPECTED_CURRENT_SOURCE_PATHS = {
     "src/loushang/harness/worker/launch.py",
     "src/loushang/harness/worker/owner_selection.py",
     "src/loushang/harness/worker/protocol.py",
+    "src/loushang/harness/worker/product_activation.py",
     "src/loushang/harness/worker/session.py",
     "src/loushang/harness/worker/supervisor.py",
     "src/loushang/hosting/_child_session_host.py",
@@ -175,11 +176,17 @@ CURRENT_WORKER_PUBLIC_EXPORTS = {
     "WorkerSupervisorStatusV1",
 }
 
+C51_WORKER_PUBLIC_EXPORTS = {
+    "ProductWorkerActivationAuthorityPort",
+    "ProductWorkerActivationPolicyV1",
+    "ProductWorkerActivationReceiptV1",
+}
+
 EXPECTED_FUTURE_REPORTS = (
     (
         "PLC9C5-C5.1-CONTRACT",
         ".artifacts/plc9c5-c51-contract.xml",
-        20,
+        65,
         (
             "C51-CURRENT-REQUIREDNESS",
             "C51-INVALID-RECEIPT",
@@ -188,10 +195,10 @@ EXPECTED_FUTURE_REPORTS = (
             "C51-POLICY-CLOSURE-CODEC",
             "C51-PREACQUIRE-FRESHNESS",
             "C51-PREPUBLISH-ATOMIC-CAS",
-            "C51-KILLSWITCH-PUBLISH-RACE",
+            "C51-KILLSWITCH-PUBLISH-BLOCKED",
             "C51-RECEIPT-ATTEMPT-CLOSURE",
             "C51-EXACT-RETIRE-CAS",
-            "C51-KILLSWITCH-ADMISSION-RACE",
+            "C51-KILLSWITCH-ADMISSION-BLOCKED",
             "C51-RESTART-LATCH",
             "C51-CLEANUP-SETTLED",
             "C51-CLEANUP-DEBT",
@@ -201,6 +208,51 @@ EXPECTED_FUTURE_REPORTS = (
             "C51-OPTIONAL-DEGRADED",
             "C51-PUBLICATION-FENCE",
             "C51-SENTINEL-REDACTION",
+            "C51-MONOTONIC-SETTLEMENT",
+            "C51-DURABLE-POLICY-BUDGET",
+            "C51-CAPACITY-PREWRITE",
+            "C51-KILLSWITCH-DURABLE-RETRY",
+            "C51-GATE-RELEASE-IMMEDIATE",
+            "C51-NOEFFECT-NORMAL",
+            "C51-NOEFFECT-EXCEPTION",
+            "C51-NOEFFECT-EXPLICIT",
+            "C51-EFFECT-EXCEPTION",
+            "C51-COMMIT-BEFORE-RETURN",
+            "C51-DUAL-COORDINATOR-CAS",
+            "C51-PUBLISH-THEN-KILL-RACE",
+            "C51-KILL-THEN-PUBLISH-RACE",
+            "C51-DYNAMIC-PORT-REENTRY",
+            "C51-PORT-FAULTS",
+            "C51-COUNTERFEIT-EVIDENCE",
+            "C51-REGISTERED-RECOVERY",
+            "C51-GATE-RELEASE-PREFAULT",
+            "C51-GATE-RELEASE-POSTFAULT",
+            "C51-CROSS-THREAD-AUTHORITY-REENTRY",
+            "C51-CROSS-THREAD-STORE-REENTRY",
+            "C51-CROSS-THREAD-EVIDENCE-REENTRY",
+            "C51-RELEASE-DEBT-PUBLISH",
+            "C51-RELEASE-DEBT-ADMISSION-VALIDATION",
+            "C51-RELEASE-DEBT-ADMISSION-CAS",
+            "C51-RELEASE-DEBT-DRAIN-JOIN",
+            "C51-SHARED-AUTHORITY-DOMAIN",
+            "C51-SHARED-STORE-DOMAIN",
+            "C51-SHARED-EVIDENCE-DOMAIN",
+            "C51-DISJOINT-OWNER-PARALLEL",
+            "C51-SHARED-RELEASE-DEBT-DRAIN",
+            "C51-CROSS-OWNER-CALLBACK-FENCE",
+            "C51-SHARED-DOMAIN-WRAPPERS",
+            "C51-DOMAIN-TOKEN-WEAKREF",
+            "C51-ENTER-AMBIGUITY-CLEANUP",
+            "C51-EXIT-CALLBACK-DRAIN-REENTRY",
+            "C51-RETIRE-RELEASE-PREFAULT",
+            "C51-RETIRE-RELEASE-POSTFAULT",
+            "C51-LATCH-RELEASE-PREFAULT",
+            "C51-LATCH-RELEASE-POSTFAULT",
+            "C51-HELD-GATE-NO-EARLY-RELEASE",
+            "C51-RESERVED-GATE-NO-DRAIN",
+            "C51-RELEASING-RETRY-FAILFAST",
+            "C51-RELEASE-FAULT-RETRY-TAKEOVER",
+            "C51-SHARED-EXIT-CALLBACK-RETRY-REJECT",
         ),
     ),
     (
@@ -492,8 +544,8 @@ def test_c50_status_is_honest_and_documents_are_indexed_once() -> None:
         "Authority": "normative accepted design",
         "Design status": "accepted",
         "Implementation status": (
-            "implemented — C5.0 documentation/guards only; C5.1--C5.4 "
-            "not-started"
+            "implemented — C5.0 design/guards and C5.1 receipt/lifecycle "
+            "contracts; C5.2--C5.4 not-started"
         ),
         "Activation status": "closed; every production route remains default-dark",
         "Observation base": "cb01f723",
@@ -539,6 +591,7 @@ def test_c50_current_inventory_source_set_is_exact_and_present() -> None:
         "C5-CUR-SESSION-PROFILE",
         "C5-CUR-SESSION-DISCOVERY",
         "C5-CUR-WORKER-PUBLIC",
+        "C5-C51-RECEIPT-LIFECYCLE",
         "C5-CUR-WORKER-IDENTITY",
         "C5-CUR-CURRENT-LAUNCH",
         "C5-CUR-WORKER-SESSION",
@@ -639,9 +692,9 @@ def test_c50_freezes_dependency_and_native_shape_decisions() -> None:
         "restricted-token/Job/direct-import mechanics",
         "selector currently accepts WSL",
         "current profile is explicitly rejected for Product required containment",
-        "no cleanup settlement/debt contract",
-        "no Product activation gate or complete active-attempt registry",
-        "no Product-level rollback coordinator exists",
+        "no native tree witness or production recovery route exists",
+        "no production activation gate is composed",
+        "ordered production rollback remains absent",
     ):
         assert mismatch in inventory
 
@@ -655,12 +708,18 @@ def test_c50_freezes_dependency_and_native_shape_decisions() -> None:
     assert _drill_ledger_rows(future_evidence) == EXPECTED_DRILL_LEDGER
 
 
-def test_c50_runtime_contract_and_product_composition_remain_absent() -> None:
+def test_c50_guard_transitions_only_the_c51_contracts() -> None:
     production_sources = tuple(SOURCE_ROOT.rglob("*.py"))
     source = "\n".join(_read(path) for path in production_sources)
-    assert RESERVED_TRANSITION_TOKENS.isdisjoint(source.split())
-    for token in RESERVED_TRANSITION_TOKENS:
+    retained_absences = {
+        "ProductWorkerNativeProfilePort",
+        "bind_coding_product_worker_canary",
+    }
+    for token in retained_absences:
         assert token not in source
+    c51_source = _read(WORKER_ROOT / "product_activation.py")
+    for token in RESERVED_TRANSITION_TOKENS - retained_absences:
+        assert token in c51_source
 
     composition_names = {
         "HostingManagedWorkerSessionAdapter",
@@ -687,7 +746,7 @@ def test_c50_runtime_contract_and_product_composition_remain_absent() -> None:
     }
     assert worker_consumers == {SANDBOX_RUNTIME}
     assert _literal_string_collection(WORKER_PUBLIC, "__all__") == (
-        CURRENT_WORKER_PUBLIC_EXPORTS
+        CURRENT_WORKER_PUBLIC_EXPORTS | C51_WORKER_PUBLIC_EXPORTS
     )
     assert not NATIVE_PROFILE_BRIDGE.exists()
 

@@ -54,6 +54,33 @@ jobs:
           path: .artifacts/plc9b-linux-native.xml
           if-no-files-found: error
 
+      - name: PLC9C5 C5.1 receipt and lifecycle contract
+        env:
+          PYTEST_ADDOPTS: >-
+            -o faulthandler_timeout=60
+            --junitxml=.artifacts/plc9c5-c51-contract.xml
+        run: >-
+          uv run python scripts/dev/run_pytest.py
+          tests/harness/worker/test_product_activation.py
+          -q
+
+      - name: Reject skipped, failing, or incomplete PLC9C5 C5.1 evidence
+        run: |
+          uv run python scripts/dev/verify_pytest_xml.py \
+            .artifacts/plc9c5-c51-contract.xml
+          uv run python scripts/dev/verify_plc9c5_manifest.py \
+            docs/internals/architecture/harness/plugin/plugin-lifecycle-plc9c5-evidence-manifest.json \
+            PLC9C5-C5.1-CONTRACT \
+            .artifacts/plc9c5-c51-contract.xml
+
+      - name: Upload PLC9C5 C5.1 contract report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: plc9c5-c51-contract-pytest-report
+          path: .artifacts/plc9c5-c51-contract.xml
+          if-no-files-found: error
+
       - name: Harness quality gate
         run: make check-harness
 

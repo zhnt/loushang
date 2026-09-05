@@ -108,11 +108,13 @@ HARNESS_RUNTIME_SUPPORT_SOURCES := \
 	src/loushang/foundation/platform_paths.py \
 	src/loushang/foundation/runtime_scope.py \
 	scripts/dev/run_pytest.py \
+	scripts/dev/verify_plc9c5_manifest.py \
 	scripts/run_tui_native_tests.py \
 	scripts/run_tui_platform_tests.py
 HARNESS_TEST_PATHS := \
 	tests/harness \
 	tests/dev/test_run_pytest.py \
+	tests/dev/test_verify_plc9c5_manifest.py \
 	tests/foundation/test_runtime_scope.py \
 	tests/coding/test_agent_session_model_input.py \
 	tests/architecture/test_import_boundaries.py \
@@ -124,6 +126,7 @@ HARNESS_TEST_PATHS := \
 	tests/architecture/test_plugin_lifecycle_plc9b_contract.py \
 	tests/architecture/test_plugin_lifecycle_plc9c0_baseline.py \
 	tests/architecture/test_plugin_lifecycle_plc9c5_c50_baseline.py \
+	tests/architecture/test_plugin_lifecycle_plc9c5_c51_contract.py \
 	tests/architecture/test_session_model_call_closure_contract.py
 HOSTING_SOURCES := \
 	src/loushang/hosting \
@@ -155,7 +158,7 @@ HOSTING_TEST_PATHS := \
 .PHONY: test-sandbox test-host-runtime
 .PHONY: test-tui-input-playback
 .PHONY: check-ai-catalog check-ai-examples check-ai-imports check-ai-coverage
-.PHONY: check-harness lint-harness typecheck-harness test-harness
+.PHONY: check-harness lint-harness typecheck-harness test-harness check-plc9c5-c51-contract test-plc9c5-c51-contract
 .PHONY: check-hosting lint-hosting typecheck-hosting test-hosting
 .PHONY: check-architecture-docs
 .PHONY: check-harnesstui lint-harnesstui typecheck-harnesstui test-harnesstui
@@ -204,6 +207,14 @@ typecheck-harness:
 
 test-harness:
 	uv --cache-dir .uv-cache run --extra dev $(PYTEST_RUNNER) $(HARNESS_TEST_PATHS) -q
+
+test-plc9c5-c51-contract:
+	mkdir -p .artifacts
+	uv --cache-dir .uv-cache run --extra dev $(PYTEST_RUNNER) tests/harness/worker/test_product_activation.py -q --junitxml=.artifacts/plc9c5-c51-contract.xml
+	uv --cache-dir .uv-cache run --extra dev python scripts/dev/verify_pytest_xml.py .artifacts/plc9c5-c51-contract.xml
+	uv --cache-dir .uv-cache run --extra dev python scripts/dev/verify_plc9c5_manifest.py docs/internals/architecture/harness/plugin/plugin-lifecycle-plc9c5-evidence-manifest.json PLC9C5-C5.1-CONTRACT .artifacts/plc9c5-c51-contract.xml
+
+check-plc9c5-c51-contract: test-plc9c5-c51-contract
 
 check-hosting: lint-hosting typecheck-hosting test-hosting
 
