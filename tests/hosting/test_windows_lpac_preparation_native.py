@@ -319,9 +319,9 @@ void WINAPI mainCRTStartup(void) {
     CloseHandle(actual_cwd_handle);
     CloseHandle(expected_cwd_handle);
 
-    static wchar_t private_root[MAX_PATH];
+    static wchar_t local_app_data[MAX_PATH];
     static wchar_t temp_root[MAX_PATH];
-    if (!GetEnvironmentVariableW(L"LOCALAPPDATA", private_root, MAX_PATH) ||
+    if (!GetEnvironmentVariableW(L"LOCALAPPDATA", local_app_data, MAX_PATH) ||
         !GetEnvironmentVariableW(L"TEMP", temp_root, MAX_PATH) ||
         !GetEnvironmentVariableW(L"TMP", actual_cwd, MAX_PATH) ||
         lstrcmpiW(temp_root, actual_cwd) != 0) ExitProcess(87);
@@ -330,7 +330,7 @@ void WINAPI mainCRTStartup(void) {
     if (GetEnvironmentVariableW(L"PATH", actual_cwd, MAX_PATH) ||
         GetEnvironmentVariableW(L"LOUSHANG_SECRET_SENTINEL", actual_cwd, MAX_PATH))
         ExitProcess(88);
-    if (GetFileAttributesW(private_root) == INVALID_FILE_ATTRIBUTES) {
+    if (GetFileAttributesW(local_app_data) == INVALID_FILE_ATTRIBUTES) {
         DWORD private_root_error = GetLastError();
         ExitProcess(0xC5505700 | (private_root_error & 0xff));
     }
@@ -417,7 +417,7 @@ void WINAPI mainCRTStartup(void) {
     SecureZeroMemory(&child, sizeof(child));
     startup.cb = sizeof(startup);
     if (!CreateProcessW(module, descendant_command, 0, 0, FALSE,
-                        CREATE_NO_WINDOW, 0, private_root,
+                        CREATE_NO_WINDOW, 0, 0,
                         &startup, &child)) ExitProcess(105);
     CloseHandle(child.hThread);
     CloseHandle(child.hProcess);

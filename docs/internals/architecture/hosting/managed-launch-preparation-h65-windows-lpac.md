@@ -69,20 +69,16 @@ The H6.5 provisioner:
 The complete attempt-specific AppContainer profile is the only writable
 filesystem and registry authority. Hosting creates a fresh profile for every
 attempt; it never reuses a predecessor's private files or registry state.
-Because LPAC removes the ambient All Application Packages traversal path,
-Hosting grants the Package SID temporary non-inheriting traverse rights on the
-private root's ancestor chain. Windows remains the owner of the Package SID
-ACL on the profile root and `Temp`; Hosting records both directory identities
-in the private-state witness and never rewrites those platform-owned ACLs. The
-temporary ancestor grants are covered by the same provision witness,
-pre-spawn verification, and reverse cleanup as the immutable-runtime grants.
-On cleanup, Hosting performs rooted, no-follow, bounded removal of its exact
-`Temp` scratch subtree, rejecting reparse points, foreign hard links, streams,
-devices, depth, entry-count, and byte-count overflow. It does not recursively
-reinterpret or delete the platform-owned profile layout. With all native
-handles closed, `DeleteAppContainerProfile` is the sole owner that deletes the
-complete OS profile, remaining filesystem storage, and private registry state.
-Cleanup ambiguity or residue blocks a successor.
+Windows remains the owner of the Package SID ACL on the profile root and
+`Temp`; Hosting records both directory identities in the private-state witness
+and never rewrites those platform-owned ACLs. On cleanup, Hosting performs
+rooted, no-follow, bounded removal of its exact `Temp` scratch subtree,
+rejecting reparse points, foreign hard links, streams, devices, depth,
+entry-count, and byte-count overflow. It does not recursively reinterpret or
+delete the platform-owned profile layout. With all native handles closed,
+`DeleteAppContainerProfile` is the sole owner that deletes the complete OS
+profile, remaining filesystem storage, and private registry state. Cleanup
+ambiguity or residue blocks a successor.
 
 ## Provisioning State Machine
 
@@ -165,12 +161,15 @@ before OS creation receives the
 H6 pre-effect receipt; a conclusive false process-creation result receives the
 settled-without-process receipt; every ambiguous post-effect result is fenced.
 
-No inherited environment is permitted. A fixed environment block is built
-from explicit OS APIs and the provisioned profile location, with every value
-and key covered by the execution-closure fingerprint. `PATH`, proxy variables,
-credentials, user shell configuration, Python variables, loader controls, and
-caller-supplied values are absent. The native child oracle reports only
-boolean/categorical results and bounded fingerprints.
+No inherited environment is permitted. Hosting validates the OS-returned
+`<LocalAppData>\Packages\<profile>\AC` layout, derives the host
+`LocalAppData`, and seeds `LOCALAPPDATA`, `TEMP`, and `TMP` below that host root
+so `CreateProcessW` performs exactly one AppContainer redirection into the
+selected profile. `SystemRoot` comes from an explicit OS API. Every key and
+value is covered by the execution-closure fingerprint; `PATH`, proxy
+variables, credentials, user shell configuration, Python variables, loader
+controls, and caller-supplied values are absent. The native child oracle
+reports only boolean/categorical results and bounded fingerprints.
 
 ## Native Security Oracle
 

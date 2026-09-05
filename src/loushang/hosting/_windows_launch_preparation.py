@@ -1042,7 +1042,7 @@ class _WindowsLpacProvisioner:
             profile = self._derive_checked_profile(spec, witness)
             try:
                 self._verify_private_identity(witness, profile)
-                targets = _lpac_all_grant_targets(spec, profile.private_root)
+                targets = _lpac_grant_targets(spec)
                 existing = tuple(
                     (index, access)
                     for index, (path, _, _) in enumerate(targets)
@@ -1088,7 +1088,6 @@ class _WindowsLpacProvisioner:
                 _verify_lpac_grants(
                     self._api,
                     spec,
-                    profile.private_root,
                     profile.sid,
                     present=True,
                 )
@@ -1112,7 +1111,7 @@ class _WindowsLpacProvisioner:
         with self._lock:
             profile = self._derive_checked_profile(spec, witness)
             try:
-                targets = _lpac_all_grant_targets(spec, profile.private_root)
+                targets = _lpac_grant_targets(spec)
                 for path, permissions, inherit in targets:
                     matches = self._api.lpac_path_access(path, profile.sid)
                     expected = ((permissions, _LPAC_ROOT_ACE_FLAGS if inherit else 0),)
@@ -1128,7 +1127,6 @@ class _WindowsLpacProvisioner:
                 _verify_lpac_grants(
                     self._api,
                     spec,
-                    profile.private_root,
                     profile.sid,
                     present=False,
                 )
@@ -1417,38 +1415,14 @@ def _lpac_grant_targets(
     )
 
 
-def _lpac_private_grant_targets(
-    private_root: str,
-) -> tuple[tuple[str, int, bool], ...]:
-    root = _require_local_windows_path(private_root, "private root")
-    ancestors = tuple(reversed(_ancestor_directory_paths(root)))
-    return tuple((path, _FILE_TRAVERSE_READ, False) for path in ancestors)
-
-
-def _lpac_all_grant_targets(
-    spec: _WindowsLpacProvisionSpec,
-    private_root: str,
-) -> tuple[tuple[str, int, bool], ...]:
-    targets: dict[str, tuple[str, int, bool]] = {}
-    for target in _lpac_grant_targets(spec) + _lpac_private_grant_targets(private_root):
-        key = ntpath.normcase(target[0])
-        existing = targets.get(key)
-        if existing is not None and existing[1:] != target[1:]:
-            raise ValueError("Windows LPAC overlapping grants are inconsistent")
-        targets[key] = target
-    return tuple(targets.values())
-
-
 def _verify_lpac_grants(
     api: _WindowsLpacApi,
     spec: _WindowsLpacProvisionSpec,
-    private_root: str,
     sid: int,
     *,
     present: bool,
 ) -> None:
-    targets = _lpac_all_grant_targets(spec, private_root)
-    for path, permissions, inherit in targets:
+    for path, permissions, inherit in _lpac_grant_targets(spec):
         actual = api.lpac_path_access(path, sid)
         expected = (
             ((permissions, _LPAC_ROOT_ACE_FLAGS if inherit else 0),) if present else ()
@@ -1484,6 +1458,28 @@ def _private_state_fingerprint(api: _WindowsLpacApi, private_root: str) -> str:
     finally:
         for handle in reversed(handles):
             api.close_handle(handle)
+
+
+def _lpac_host_local_app_data(private_root: str) -> str:
+    """Recover the OS-owned host LocalAppData seed for one profile path.
+
+    CreateProcess redirects paths below this host root into the selected
+    AppContainer profile.  Seeding an already redirected ``...\\AC`` path
+    would redirect it a second time.
+    """
+
+    root = _require_local_windows_path(private_root, "private root")
+    profile_root = ntpath.dirname(root)
+    packages_root = ntpath.dirname(profile_root)
+    local_app_data = ntpath.dirname(packages_root)
+    if (
+        ntpath.basename(root).casefold() != "ac"
+        or not ntpath.basename(profile_root)
+        or ntpath.basename(packages_root).casefold() != "packages"
+        or ntpath.basename(local_app_data).casefold() != "local"
+    ):
+        raise ValueError("Windows LPAC private root has an unexpected OS layout")
+    return local_app_data
 
 
 def _lpac_profile_name(spec: _WindowsLpacProvisionSpec) -> str:
@@ -1535,7 +1531,6 @@ def _lpac_grant_digest(spec: _WindowsLpacProvisionSpec) -> str:
         (path.casefold(), permissions, inherit)
         for path, permissions, inherit in _lpac_grant_targets(spec)
     ]
-    payload.extend((("@profile-private-ancestors", _FILE_TRAVERSE_READ, False),))
     return hashlib.sha256(
         json.dumps(payload, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
@@ -1658,11 +1653,12 @@ def _build_windows_lpac_launch_capture_spec(
                 raise ValueError("Windows LPAC Package SID changed")
             system_root = _canonical_system_root(api.canonical_system_root())
             private_root = ntpath.normpath(profile.private_root)
-            scratch = ntpath.join(private_root, "Temp")
+            local_app_data = _lpac_host_local_app_data(private_root)
+            scratch = ntpath.join(local_app_data, "Temp")
             environment = tuple(
                 sorted(
                     (
-                        ("LOCALAPPDATA", private_root),
+                        ("LOCALAPPDATA", local_app_data),
                         ("SystemRoot", system_root),
                         ("TEMP", scratch),
                         ("TMP", scratch),
@@ -2040,7 +2036,6 @@ class _WindowsLpacLaunchMaterial:
         _verify_lpac_grants(
             self._api,
             provision,
-            profile.private_root,
             profile.sid,
             present=True,
         )

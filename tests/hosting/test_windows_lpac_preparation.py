@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import ctypes
+import ntpath
 import os
 from collections.abc import Callable
 from pathlib import Path
@@ -41,7 +42,7 @@ from loushang.hosting._windows_launch_preparation import (
     _build_windows_lpac_launch_capture_spec,
     _fingerprint,
     _lpac_grant_targets,
-    _lpac_private_grant_targets,
+    _lpac_host_local_app_data,
     _lpac_profile_name,
     _lpac_spec_fingerprint,
     _private_state_fingerprint,
@@ -54,6 +55,8 @@ from loushang.hosting._windows_launch_preparation import (
     _WindowsLpacRuntimeEntry,
 )
 from loushang.hosting._windows_process import _WindowsProcessBackend
+
+_PRIVATE_ROOT = r"C:\Users\runner\AppData\Local\Packages\Loushang.Lpac.Test\AC"
 
 
 def _request(
@@ -195,12 +198,12 @@ class _FakeWindowsLpacApi:
         return ("::$DATA",)
 
     def ensure_lpac_private_scratch(self, private_root: str) -> None:
-        assert private_root == r"C:\private\AC"
+        assert private_root == _PRIVATE_ROOT
         self._fail("private-scratch")
         self.scratch_ready = True
 
     def purge_lpac_private_state(self, private_root: str) -> None:
-        assert private_root == r"C:\private\AC"
+        assert private_root == _PRIVATE_ROOT
         self._fail("private-purge")
         self.purged = True
 
@@ -218,7 +221,7 @@ class _FakeWindowsLpacApi:
         *,
         on_acquired: Callable[[int], None],
     ) -> int:
-        if path == r"C:\private\AC" and not self.private_present:
+        if path == _PRIVATE_ROOT and not self.private_present:
             raise FileNotFoundError(path)
         return self._open(path, on_acquired)
 
@@ -234,11 +237,9 @@ class _FakeWindowsLpacApi:
             r"C:\admitted\runtime\worker.exe": _Win32LockedPathIdentity(
                 7, 101, 4096, r"C:\admitted\runtime\worker.exe", False
             ),
-            r"C:\private\AC": _Win32LockedPathIdentity(
-                8, 200, 0, r"C:\private\AC", True
-            ),
-            r"C:\private\AC\Temp": _Win32LockedPathIdentity(
-                8, 201, 0, r"C:\private\AC\Temp", True
+            _PRIVATE_ROOT: _Win32LockedPathIdentity(8, 200, 0, _PRIVATE_ROOT, True),
+            ntpath.join(_PRIVATE_ROOT, "Temp"): _Win32LockedPathIdentity(
+                8, 201, 0, ntpath.join(_PRIVATE_ROOT, "Temp"), True
             ),
         }
         return identities[path]
@@ -328,7 +329,7 @@ class _FakeWindowsLpacApi:
         return _Win32LpacProfile(
             sid=500,
             sid_text="S-1-15-2-12345",
-            private_root=r"C:\private\AC",
+            private_root=_PRIVATE_ROOT,
         )
 
     def _open(self, path: str, on_acquired: Callable[[int], None]) -> int:
@@ -432,9 +433,6 @@ def test_windows_lpac_provision_cleanup_is_exact_and_replayable(
     root_target, root_permissions, root_inherit = _lpac_grant_targets(spec)[-1]
     assert (root_permissions, root_inherit) == (0x001200A9, True)
     assert api.access[root_target] == ((0x001200A9, 3),)
-    private_ancestors = _lpac_private_grant_targets(r"C:\private\AC")
-    assert private_ancestors == ((r"C:\private", 0x001200A0, False),)
-    assert api.access[private_ancestors[0][0]] == ((0x001200A0, 0),)
     witness = owner.verify(spec, witness)
     assert witness.state == "VERIFIED"
     witness = owner.revoke_grants(
@@ -474,7 +472,7 @@ def test_windows_lpac_cleanup_witness_recovers_pre_receipt_crash() -> None:
     api.private_present = False
     recovered = owner.recover_cleanup_witness(spec)
     assert recovered.state == "DEBT"
-    assert r"C:\private" not in repr(recovered)
+    assert _PRIVATE_ROOT not in repr(recovered)
 
     revoked = owner.revoke_grants(spec, recovered, begin_effect=lambda: None)
     assert revoked.state == "GRANTS_REVOKED"
@@ -549,12 +547,16 @@ def test_windows_lpac_capture_uses_only_fixed_environment_and_exact_profile(
     spec = _capture_spec(monkeypatch, api, provision, witness)
     assert type(spec) is _WindowsLpacLaunchCaptureSpec
     assert dict(spec.request.effective_environment) == {
-        "LOCALAPPDATA": r"C:\private\AC",
+        "LOCALAPPDATA": r"C:\Users\runner\AppData\Local",
         "SystemRoot": r"C:\Windows",
-        "TEMP": r"C:\private\AC\Temp",
-        "TMP": r"C:\private\AC\Temp",
+        "TEMP": r"C:\Users\runner\AppData\Local\Temp",
+        "TMP": r"C:\Users\runner\AppData\Local\Temp",
     }
-    assert all("C:\\private" not in value for value in spec.execution_closure)
+    assert all(_PRIVATE_ROOT not in value for value in spec.execution_closure)
+    assert all(
+        r"C:\Users\runner\AppData\Local" not in value
+        for value in spec.execution_closure
+    )
     with pytest.raises(HostingError, match="does not match"):
         _build_windows_lpac_launch_capture_spec(
             _request(environment=(("SECRET", "sentinel"),)),
@@ -929,8 +931,19 @@ def test_windows_lpac_native_failures_redact_paths_and_sentinels(
 
 def test_private_state_fingerprint_is_pathless() -> None:
     api = _FakeWindowsLpacApi()
-    fingerprint = _private_state_fingerprint(api, r"C:\private\AC")
+    fingerprint = _private_state_fingerprint(api, _PRIVATE_ROOT)
     assert fingerprint == _fingerprint(
-        "8:200:c:\\private\\ac\0" "8:201:c:\\private\\ac\\temp"
+        "8:200:c:\\users\\runner\\appdata\\local\\packages\\"
+        "loushang.lpac.test\\ac\0"
+        "8:201:c:\\users\\runner\\appdata\\local\\packages\\"
+        "loushang.lpac.test\\ac\\temp"
     )
-    assert r"C:\private" not in fingerprint
+    assert _PRIVATE_ROOT not in fingerprint
+
+
+def test_lpac_host_local_app_data_requires_the_os_profile_layout() -> None:
+    assert _lpac_host_local_app_data(_PRIVATE_ROOT) == (
+        r"C:\Users\runner\AppData\Local"
+    )
+    with pytest.raises(ValueError, match="unexpected OS layout"):
+        _lpac_host_local_app_data(r"C:\caller\chosen\AC")
