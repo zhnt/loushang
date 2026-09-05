@@ -66,6 +66,10 @@ CURRENT_SOURCE_SEAMS = (
     HARNESS_SOURCE / "transcript/discovery.py",
     HARNESS_SOURCE / "transcript/session_catalog.py",
     HARNESS_SOURCE / "transcript/directory.py",
+    APPHOST_SOURCE / "integrations/harness_session.py",
+    APPHOST_SOURCE / "runtime.py",
+    APPHOST_SOURCE / "hosted.py",
+    APPSERVER_SOURCE / "ports.py",
     HARNESS_SOURCE / "machine_resources/control_plane.py",
     Path("src/loushang/coding/cli/__main__.py"),
 )
@@ -146,16 +150,22 @@ def test_baseline_documents_are_status_honest_and_indexed() -> None:
         },
         APPHOST_DISCOVERY: {
             "ID": "APPHOST-A0-DISCOVERY",
-            "Authority": "descriptive — design validation input",
+            "Authority": "descriptive — completed design validation evidence",
             "Design status": "not-applicable",
             "Implementation status": "not-applicable",
         },
         APPHOST_A0: {
             "ID": "APPHOST-A0",
-            "Authority": "normative target proposal",
-            "Design status": "proposed",
-            "Implementation status": "not-started",
-            "Activation status": "none; no AppHost source package or composition route",
+            "Authority": (
+                "historical — refined by the canonical A0 Contract Model"
+            ),
+            "Design status": "accepted and promoted",
+            "Implementation status": (
+                "implemented through A0.4; A0.5 not started"
+            ),
+            "Activation status": (
+                "default-dark; no production AppHost composition route"
+            ),
         },
         DELIVERY_PLAN: {
             "ID": "HOSTED-PRODUCT-RUNTIME-V1",
@@ -341,7 +351,7 @@ def test_apphost_a0_requires_explicit_identity_and_scoped_lifetimes() -> None:
     )
     assert "`loushang.hosting` implements Product-neutral process" in placement
     assert "mechanics through H4; the Harness-owned H5 Worker adapter" in placement
-    assert "There is no `loushang.apphost`, `loushang.appserver`, or" in placement
+    assert "At that time there was no `loushang.apphost`, `loushang.appserver`, or" in placement
     assert "`loushang.appservice` source package" in placement
     for discovery_root in (
         "current-directory and user-global discovery scopes",
@@ -369,6 +379,7 @@ def test_apphost_a0_requires_explicit_identity_and_scoped_lifetimes() -> None:
         "A0-CATALOG-GENERATION",
         "A0-ADMISSION-PIN",
         "A0-RESUME-PIN",
+        "A0-CREATE-IDEMPOTENCY",
         "A0-MIGRATION",
         "A0-MULTI-ATTACH",
         "A0-PROFILE-ORTHOGONAL",
@@ -388,8 +399,25 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
     }
 
     assert HOSTING_SOURCE.is_dir()
-    assert not APPHOST_SOURCE.exists()
-    assert not APPSERVER_SOURCE.exists()
+    assert {
+        path.relative_to(APPHOST_SOURCE).as_posix()
+        for path in APPHOST_SOURCE.rglob("*.py")
+    } == {
+        "__init__.py",
+        "_ownership.py",
+        "catalog.py",
+        "contracts.py",
+        "errors.py",
+        "integrations/__init__.py",
+        "integrations/harness_session.py",
+        "router.py",
+        "runtime.py",
+        "hosted.py",
+    }
+    assert {
+        path.relative_to(APPSERVER_SOURCE).as_posix()
+        for path in APPSERVER_SOURCE.rglob("*.py")
+    } == {"__init__.py", "ports.py"}
     assert not APPSERVICE_SOURCE.exists()
 
     compatibility = _read(HARNESS_SOURCE / "workspace/process/hosting_compat.py")
@@ -427,6 +455,7 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
     reverse_apphost_consumers = {
         path
         for path in Path("src/loushang").rglob("*.py")
+        if not path.is_relative_to(APPHOST_SOURCE)
         if any(
             imported.startswith("loushang.apphost") for imported in _imports(path)
         )
@@ -435,10 +464,10 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
     retained_fences = " ".join(_section(inventory, "Retained Fences").split())
     for statement in (
         "H5 default owner is Current",
-        "PLC9C5 C5.0 design/inventory may be indexed",
+        "PLC9C5 C5.0 design/inventory and C5.1 receipt/lifecycle are implemented",
         "Product activation, native profile consumption, and platform absence "
         "guards remain unchanged",
-        "AppHost/AppServer/AppService source packages remain absent",
+        "AppHost A0.4 remains explicitly constructed and dark",
         "Hosting imports no Harness, Product, AppHost, AppServer, or AppService",
     ):
         assert statement in retained_fences

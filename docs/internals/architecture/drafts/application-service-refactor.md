@@ -730,7 +730,9 @@ field aliases, response wording, and compatibility behavior.
 
 ### Phase 0 — Consolidate Existing In-Process Boundaries
 
-This phase may begin now and adds no AppServer package.
+This phase began before AppServer existed and introduced no AppServer package.
+The later AppHost A0.4 delivery adds only AppServer-owned structural Product
+port contracts; it does not change this phase or implement an AppServer runtime.
 
 Implementation status (2026-07-30): implemented. TUI and legacy RPC now use
 current-Session operation resolvers; turn-only abort and the TUI stop composite

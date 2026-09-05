@@ -30,12 +30,15 @@
 - `loushang.tui`
 - `loushang.harnesswork`
 - `loushang.work`（迁移期 compatibility/integration namespace）
+- `loushang.apphost`（A0.4 default-dark runtime 与可选 hosted binder）
+- `loushang.appserver`（A0.4 contract-only structural Product ports）
 
 当前已落地的支撑包包括：
 
 - `loushang.foundation`
 - `loushang.ontology`
-- `loushang.hosting`（H0 contract model；OS resource owners 尚未落地）
+- `loushang.hosting`（H0--H6.4 本地 process/endpoint/child-session 机制；
+  Harness consumer 保持 default-dark）
 
 `loushang.resource` 是指向 Harness resource ownership 的小型兼容 package，
 不是新的顶层 Architecture Scope。`loushang.runtime`、`loushang.protocol` 和
@@ -121,18 +124,38 @@ runtime 仍只从 FactStore 物化；目标架构允许后续 mapped source inpu
 
 ### loushang-hosting
 
-产品无关的本地 child execution 机制 Scope。H0 已实现标准库-only 的不可变
-launch/session request、稳定 failure taxonomy、bounded observation 以及
-preparation/process/endpoint/child-session ports；它尚不创建任何 OS process 或
-endpoint，也没有当前 runtime consumer。
+产品无关的本地 child execution 机制 Scope。H0--H6.4 已实现不可变
+launch/session contracts、Process/Endpoint/Child Session owners、Linux/Windows
+platform backends、opaque managed preparation，以及 Harness Worker 的窄适配。
+适配仍由显式 owner selector 控制，Current 是缺省值，没有 Product/native Worker
+激活或同一次 launch 的跨 owner fallback。
 
 接受的目标依赖方向是 `Harness -> Hosting -> local OS`。Hosting 不依赖 Harness、
 Product、Plugin、Worker、AppHost 或 AppServer，也不拥有 Policy、Approval、
 Authorization、Sandbox、协议、领域发布、日志保留或 durable Session 状态。
-后续 process、platform、endpoint 与 child-session slices 必须分别提供生命周期和
-平台证据，Harness 只通过显式 compatibility adapter 迁移。详见
+后续 Product/native 激活仍必须由 PLC9C5 提供独立的产品、恢复、跨入口和平台
+证据。详见
 [Loushang Hosting Architecture](./hosting/README.md) 和
 [ARD-002: Hosting Top-Level Placement](./decisions/ARD-002-hosting-top-level-placement.md)。
+
+### loushang-apphost
+
+跨 Product 的进程内 Platform Host Scope。AppHost 负责 admitted Product/profile
+catalog、显式 Product routing、每 Session 唯一的 scoped Product Runtime binding、
+delivery profile 选择，以及进程级 admission fence 和有序释放。
+
+A0.4 当前实现标准库-only core contracts、catalog/router、每 Session canonical
+live registry、embedded profile 生命周期，以及可选 hosted structural-port
+binder。它仍没有 launcher、AppService/AppServer runtime、具体 Product 注册或
+production composition；现有 Coding CLI/TUI 路径不依赖 AppHost。
+
+AppHost core 不依赖 Harness、Hosting、AppServer、AppService、UI framework 或
+具体 Product。可选 `apphost.hosted` 是唯一面向 AppServer contract-only
+structural ports 的外向边；未来 serialized launcher 单独拥有 Hosting 边，二者
+均不进入 core facade。Harness、Hosting、AppServer 和 AppService 不反向依赖
+AppHost。详见 [AppHost Architecture](./apphost/README.md)、
+[AppServer Structural Ports](./appserver/README.md) 和
+[ARD-003: AppHost Top-Level Placement](./decisions/ARD-003-apphost-top-level-placement.md)。
 
 ### loushang-ai
 

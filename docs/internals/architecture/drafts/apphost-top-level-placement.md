@@ -13,14 +13,18 @@
 - Kind: package-placement decision
 - Scope: Loushang
 - Parent: none
-- Authority: normative target proposal
-- Design status: proposed
-- Implementation status: not-started
+- Authority: historical — superseded by accepted ARD-003
+- Design status: superseded
+- Implementation status: not-applicable — see canonical AppHost scope
 - Owner: Loushang architecture
+
+This placement proposal was accepted and promoted to
+[ARD-003](../decisions/ARD-003-apphost-top-level-placement.md). The canonical
+current boundary and A0 status live in the [AppHost scope](../apphost/README.md).
 
 ## Current, Target, And Delta
 
-### Current
+### Current at the time of this superseded proposal
 
 - The [Product glossary](../../glossary/loushang-product.md) defines one
   logical Platform Host that owns process-level Product discovery, OEM
@@ -33,10 +37,12 @@
 - `loushang.hosting` implements Product-neutral process and child-session
   mechanics through H4; the Harness-owned H5 Worker adapter consumes that
   contract behind an explicit default-dark selector.
-- There is no `loushang.apphost`, `loushang.appserver`, or
-  `loushang.appservice` source package.
+- At that time there was no `loushang.apphost`, `loushang.appserver`, or
+  `loushang.appservice` source package. The canonical scope now records
+  AppHost A0.1--A0.4 and the AppServer contract-only slice as implemented;
+  AppService remains absent.
 
-### Proposed target
+### Accepted target
 
 The existing logical Platform Host receives one top-level physical owner:
 `loushang.apphost`. AppHost supports independently elected embedded, hosted,
@@ -242,10 +248,11 @@ validates only this envelope, including for explicitly selected
 current-directory and user-global discovery scopes. Opening returns a
 request-bound, revision-pinned candidate lease over the exact source/provider,
 not a path or reopenable locator. AppHost resolves and pins the explicit Product
-registration, then invokes that Product's resume validator. The validator opens
-and revalidates continuity through the pinned candidate and returns an opaque
-Product candidate; the factory sees it only after the routing lease's final
-verify/claim. The Session catalog and resume summary project `product_id` from
+registration and pins its admission generation, then asks the Session owner to
+open the selected candidate. The routing lease performs its final verify and
+claim before the selected Product candidate validator borrows the claimed
+candidate. The factory sees only the independently owned opened Product
+candidate returned by that validator. The Session catalog and resume summary project `product_id` from
 the same envelope. AppHost owns the cross-Product envelope schema and
 required-port contract, not a filesystem reader or second Session store: the
 canonical conversation/continuity owner persists the envelope atomically with
@@ -256,7 +263,7 @@ not yet a sufficient cross-Product routing contract: opaque metadata may omit
 or rename Product identity. Legacy Coding Sessions and external
 Codex/Claude-shaped candidates therefore enter only through an explicitly
 selected Product-owned compatibility importer, or resume fails with typed
-`ProductIdentityRequired`. The importer consumes a pinned read-only
+`ProductIdentityRequired`. The importer borrows a pinned read-only
 compatibility candidate, validates its own format, copies first into the
 canonical Session owner, and atomically publishes the new envelope. Failure or
 cancellation never mutates the source or publishes a partial destination.
@@ -387,8 +394,9 @@ externally supervised, and library-managed profiles:
 5. ensure AppHost releases all remaining Product Runtime handles and admitted
    presentation-profile leases, then wait for dependent attachment/runtime pins
    to drain;
-6. close the catalog generation and every base Product/OEM admission lease
-   exactly once;
+6. close the catalog generation and every catalog-owned Product/OEM admission
+   pin exactly once; borrowed registration sources remain owned by outer
+   composition;
 7. drain-or-abort AppServer writers within the remaining deadline, then close
    transports, listener, and connection records;
 8. close the process's one `RuntimeResourceOwner` only when all dependent
@@ -500,13 +508,13 @@ under one Platform Host contract.
 
 ### Top-level `loushang.apphost`
 
-Proposed. It realizes the existing Platform Host role and may depend inward on
+Accepted by ARD-003. It realizes the existing Platform Host role and may depend inward on
 Harness, AppServer, and Hosting without making any of them depend outward on a
 Product or UI.
 
 ## Acceptance And Implementation Gates
 
-Before this placement becomes accepted:
+The accepted decision retains these implementation gates:
 
 1. AppHost component discovery must validate the contract/catalog/router,
    runtime/lifecycle, profile-composition, and launcher boundaries.
@@ -529,7 +537,8 @@ Before this placement becomes accepted:
    owner review, and add AppHost, Session Identity Envelope, and
    Host/Presentation Profile Plugin to the canonical glossary/alias governance.
 
-Until implementation begins, `src/loushang/apphost` remains absent.
+Until each implementation slice passes its own gate, later AppHost runtime
+components remain absent.
 
 The A0 component-discovery and Contract Model baselines satisfy only the
 design-input part of gate 1. They do not accept the placement, reserve final

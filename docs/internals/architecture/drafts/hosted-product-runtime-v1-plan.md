@@ -28,7 +28,9 @@ remote execution, or live process adoption.
 - **Current source:** Hosting H0--H6.4 exists default-dark, including the
   Harness-managed semantic bridge but no eligible native Worker profile
   supplier; Harness retains sealed executable/cwd and required-containment
-  launch; PLC9C1--C4 exist; AppHost/AppServer/AppService packages do not.
+  launch; PLC9C1--C5 exist; AppHost A0.3 live binding and the optional A0.4
+  hosted binder exist uncomposed; AppServer contains contracts only and
+  AppService remains absent.
 - **Proposed Target:** H6 supplies opaque native preparation; AppHost supplies
   explicit Product routing and scoped runtime lifetime; Product/Harness
   composition alone activates one reviewed Worker canary.
@@ -70,10 +72,10 @@ Product selection, authority, protocol health, or generation publication.
 | G2L | Hosting | H6.2 Linux native backend | G1 | retained native executable/cwd/containment/inheritance/tree oracle |
 | G2W | Hosting | H6.3 Windows native backend | G1 | retained native identity/AppContainer-or-token/handle-list/Job oracle |
 | G3 | Harness consumer | implemented H6.4 dark managed preparation adapter over fakes and the real private Child Session seam | G1 | Current/public/managed semantic and rollback matrix; default still Current; no native Worker compatibility claim |
-| G4 | proposed AppHost | A0.1 Contract Model | G0A plus parent acceptance prerequisites | standard-library-only contract/import/validation gates |
-| G5 | proposed AppHost | A0.2 catalog/router, admission pins, Session candidate port, and explicit Product importer | G4 | two unrelated fake Products; cwd/user-global discovery; no-default/ambiguity/revision swap; Coding and Codex/Claude migration matrix pass |
-| G6 | proposed AppHost | A0.3 canonical live-binding lifecycle and embedded profile | G5 | multi-Session and multi-mux single-flight attach/detach/cancellation/deadline/shutdown matrix |
-| G7 | Product/Harness | PLC9C5 narrow canary over an accepted existing Product route; C5.0 design/guards, C5.1 receipt/lifecycle, C5.2 Linux, C5.3 Windows mechanics/rejection, and C5.4 Linux Product convergence; Windows activation needs a later separately accepted containment profile | G2L + G2W + G3 | Linux Product/native evidence plus Windows fail-closed evidence land first; G7 closes only after separate Windows required-containment, cross-entrypoint, recovery, rollback, and no-fallback evidence |
+| G4 | AppHost | implemented A0.1 Contract Model | accepted A0.0 / ARD-003 | standard-library-only contract/import/validation gates; no runtime composition |
+| G5 | AppHost | implemented A0.2 catalog/router, admission pins, optional AppHost-owned Harness Session integration, and explicit Product importer | G4 | two unrelated fake Products; minimal public prepared-route surface; Router-owned cleanup debt; cwd/user-global discovery; 8 MiB immutable snapshot bound; Windows fail-closed gate; no production consumer |
+| G6 | AppHost | implemented A0.3 canonical live-binding lifecycle and embedded profile plus A0.4 optional contract-only hosted binder | G5 | multi-Session and multi-profile single-flight attach/detach/cancellation/deadline/shutdown matrix; exact AppServer port identity; no listener, transport, protocol, service runtime, or production consumer |
+| G7 | Product/Harness | PLC9C5 narrow canary over an accepted existing Product route; C5.0 design/guards and C5.1 receipt/lifecycle are implemented, while C5.2 Linux, C5.3 Windows mechanics/rejection, and C5.4 Linux Product convergence remain; Windows activation needs a later separately accepted containment profile | G2L + G2W + G3 | Linux Product/native evidence plus Windows fail-closed evidence land first; G7 closes only after separate Windows required-containment, cross-entrypoint, recovery, rollback, and no-fallback evidence |
 | G8 | AppHost + Product/Harness | Product-neutral end-to-end join | G6 + G7 | AppHost-scoped Product uses the exact Worker activation receipt; unrelated fake Product stays Worker-free |
 | G9 | common parent | v1 closure | G8 | owner deletion decision, docs/ARD promotion, clean dependency graph, operational drill |
 
@@ -87,9 +89,10 @@ Hosting/Harness activation join and the only gate in this plan allowed to
 revise the PLC9C5 activation absence. G8 is the first join between the AppHost
 and Worker rails.
 
-Optional AppHost hosted/launcher slices A0.4/A0.5 start only after their own
-AppServer or serialized-launch contracts are accepted. They are not on the G7
-or G8 critical path.
+The optional A0.4 hosted binder is now accepted with only AppServer-owned
+structural Product-port contracts. A0.5 still requires its own serialized-launch
+contract. Neither slice activates a production route or changes the G7/G8
+critical path.
 
 ## Merge And Activation Discipline
 
@@ -143,10 +146,11 @@ restart. Live adoption remains a later separately reviewed threat model.
 
 Before G7, executable architecture tests must continue to prove:
 
-- `src/loushang/apphost` is absent during A0.0 and appears only with accepted
-  A0.1 placement/contract changes;
-- AppHost core, once present, has no AppServer, Hosting, concrete Product, or UI
-  imports;
+- AppHost core contains only the accepted A0.1--A0.3 contracts, catalog/router,
+  and live-binding owner; optional A0.4 hosted wiring remains outside its facade;
+- AppHost core has no AppServer, Hosting, concrete Product, or UI imports;
+- `apphost.hosted` is the sole AppServer importer and AppServer remains
+  contract-only with no reverse AppHost dependency;
 - Harness, AppServer, AppService, and Hosting never import AppHost;
 - Hosting has no Harness/Product security vocabulary or dependency;
 - H5 owner selection defaults to `"current"`, performs no environment lookup,
@@ -162,7 +166,7 @@ Before G7, executable architecture tests must continue to prove:
 
 ## Non-Goals
 
-- accepting AppServer/AppService packages or implementing a hosted protocol;
+- implementing an AppServer runtime, AppService package, or hosted protocol;
 - daemon/service-instance management, discovery, or surviving-process adoption;
 - remote Worker/service topology;
 - Product UI implementation, clipboard/image storage, logs, traces, Session

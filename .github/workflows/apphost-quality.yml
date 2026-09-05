@@ -1,0 +1,79 @@
+name: AppHost Quality
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  apphost-quality:
+    name: apphost-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --locked --extra dev
+
+      - name: Lint AppHost A0.4
+        run: >-
+          uv run --extra dev ruff check
+          src/loushang/apphost
+          src/loushang/appserver
+          tests/apphost
+          tests/architecture/test_apphost_a0_contract.py
+          tests/architecture/test_apphost_a02_architecture.py
+          tests/architecture/test_apphost_a03_a04_architecture.py
+
+      - name: Typecheck AppHost A0.4
+        run: >-
+          uv run --extra dev mypy --follow-imports=silent
+          src/loushang/apphost
+          src/loushang/appserver
+
+      - name: Test AppHost A0.4
+        run: >-
+          uv run --extra dev python scripts/dev/run_pytest.py
+          tests/apphost
+          tests/architecture/test_apphost_a0_contract.py
+          tests/architecture/test_apphost_a02_architecture.py
+          tests/architecture/test_apphost_a03_a04_architecture.py
+          -q
+
+  apphost-windows-native-gate:
+    name: apphost-windows-native-gate
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@v5
+      - name: Install dependencies
+        run: uv sync --locked --extra dev
+      - name: Prove unsupported native pinning fails closed
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force .artifacts | Out-Null
+          uv run --extra dev python scripts/dev/run_pytest.py tests/apphost/test_harness_session_integration.py -k windows_native_backend_is_explicitly_fail_closed --junitxml=.artifacts/apphost-harness-windows.xml -q
+      - name: Verify native gate JUnit
+        run: uv run --extra dev python scripts/dev/verify_pytest_xml.py .artifacts/apphost-harness-windows.xml
+      - name: Upload native gate JUnit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: apphost-harness-windows-junit
+          path: .artifacts/apphost-harness-windows.xml
+          if-no-files-found: error

@@ -28,6 +28,8 @@ not drawn.
 graph TD
     PKG_AGENT["loushang.agent"]
     PKG_AI["loushang.ai"]
+    PKG_APPHOST["loushang.apphost"]
+    PKG_APPSERVER["loushang.appserver"]
     PKG_CHANNEL["loushang.channel"]
     PKG_CODING["loushang.coding"]
     PKG_FOUNDATION["loushang.foundation"]
@@ -45,6 +47,8 @@ graph TD
     PKG_AGENT --> PKG_AI
     PKG_AGENT --> PKG_FOUNDATION
     PKG_AI --> PKG_FOUNDATION
+    PKG_APPHOST --> PKG_APPSERVER
+    PKG_APPHOST --> PKG_HARNESS
     PKG_CHANNEL --> PKG_FOUNDATION
     PKG_CHANNEL --> PKG_HARNESS
     PKG_CHANNEL --> PKG_HARNESSWORK
@@ -84,6 +88,8 @@ graph TD
 | --- | --- |
 | `loushang.agent` | `loushang.ai`, `loushang.foundation` |
 | `loushang.ai` | `loushang.foundation` |
+| `loushang.apphost` | `loushang.appserver`, `loushang.harness` |
+| `loushang.appserver` | None |
 | `loushang.channel` | `loushang.foundation`, `loushang.harness`, `loushang.harnesswork` |
 | `loushang.coding` | `loushang.agent`, `loushang.ai`, `loushang.channel`, `loushang.foundation`, `loushang.harness`, `loushang.harnesstui`, `loushang.harnesswork`, `loushang.method`, `loushang.plugin`, `loushang.tui` |
 | `loushang.foundation` | None |
