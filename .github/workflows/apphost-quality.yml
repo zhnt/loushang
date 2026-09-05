@@ -26,25 +26,29 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --extra dev
 
-      - name: Lint AppHost A0.2
+      - name: Lint AppHost A0.4
         run: >-
           uv run --extra dev ruff check
           src/loushang/apphost
+          src/loushang/appserver
           tests/apphost
           tests/architecture/test_apphost_a0_contract.py
           tests/architecture/test_apphost_a02_architecture.py
+          tests/architecture/test_apphost_a03_a04_architecture.py
 
-      - name: Typecheck AppHost A0.2
+      - name: Typecheck AppHost A0.4
         run: >-
           uv run --extra dev mypy --follow-imports=silent
           src/loushang/apphost
+          src/loushang/appserver
 
-      - name: Test AppHost A0.2
+      - name: Test AppHost A0.4
         run: >-
           uv run --extra dev python scripts/dev/run_pytest.py
           tests/apphost
           tests/architecture/test_apphost_a0_contract.py
           tests/architecture/test_apphost_a02_architecture.py
+          tests/architecture/test_apphost_a03_a04_architecture.py
           -q
 
   apphost-windows-native-gate:

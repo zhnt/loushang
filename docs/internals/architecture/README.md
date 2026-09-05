@@ -79,6 +79,7 @@ The top-level scopes are:
 - [Ontology](ontology/README.md)
 - [Hosting](hosting/README.md)
 - [AppHost](apphost/README.md)
+- [AppServer structural ports](appserver/README.md)
 - Foundation, represented in the AOD and subsystem map because it is a small
   product-neutral base rather than a large independent architecture package
 
@@ -102,9 +103,11 @@ target to accepted status.
 
 The accepted [AppHost Top-Level Placement](decisions/ARD-003-apphost-top-level-placement.md)
 gives the existing cross-Product Platform Host role one physical owner.
-AppHost A0.1 contains contracts only; catalog/routing, live bindings, and
-deployment profiles remain explicit later slices and do not move into Harness,
-AppServer, Hosting, or a concrete Product.
+AppHost A0.4 contains catalog/routing, canonical live bindings, embedded
+profile lifecycle, and an optional hosted binder over AppServer-owned
+contract-only structural ports. It remains default-dark and does not move
+Product semantics, AppService, server runtime, or Hosting mechanics into
+AppHost.
 
 A nested scope is not automatically a top-level subsystem. The parent owns its
 placement, composition policy, and sibling relationships; the child owns its

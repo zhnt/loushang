@@ -46,6 +46,9 @@ class InvalidAppHostContractReason(str, Enum):
     IMMUTABLE_TUPLE_REQUIRED = "immutable_tuple_required"
     ITEM_COUNT_INVALID = "item_count_invalid"
     DUPLICATE_ITEM = "duplicate_item"
+    BOOLEAN_REQUIRED = "boolean_required"
+    TIMEOUT_INVALID = "timeout_invalid"
+    COMPLETION_MISMATCH = "completion_mismatch"
 
 
 class AppHostError(Exception):
@@ -108,7 +111,7 @@ class GenerationConflictError(AppHostError):
 
 
 class CleanupIncompleteError(AppHostError):
-    """An owned A0.2 resource could not be settled deterministically."""
+    """An AppHost-owned resource could not be settled deterministically."""
 
     def __init__(
         self,

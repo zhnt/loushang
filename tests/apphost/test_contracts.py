@@ -16,6 +16,9 @@ from loushang.apphost import (
     AppHostFailureCategory,
     AppHostLifecycleTransition,
     AppHostObservationV1,
+    AppHostShutdownBudgetV1,
+    AppHostShutdownPhase,
+    AppHostShutdownReportV1,
     InvalidAppHostContractError,
     InvalidAppHostContractReason,
     ProductDescriptorV1,
@@ -748,3 +751,35 @@ def test_failure_text_and_invalid_reason_are_bounded_and_closed() -> None:
     assert error.reason is InvalidAppHostContractReason.STABLE_ID_REQUIRED
     base = AppHostError(AppHostFailureCategory.RUNTIME_UNAVAILABLE)
     assert str(base) == "runtime_unavailable"
+
+
+def test_shutdown_budget_and_report_are_finite_closed_values() -> None:
+    budget = AppHostShutdownBudgetV1(10.0, 2.0)
+    assert budget.overall_timeout_seconds == 10.0
+    report = AppHostShutdownReportV1(True, (), ())
+    assert report.completed is True
+
+    for overall, phase in (
+        (float("nan"), 1.0),
+        (1.0, float("inf")),
+        (0.0, 0.001),
+        (1.0, 2.0),
+    ):
+        with pytest.raises(InvalidAppHostContractError) as error:
+            AppHostShutdownBudgetV1(overall, phase)
+        assert error.value.reason is InvalidAppHostContractReason.TIMEOUT_INVALID
+
+    with pytest.raises(InvalidAppHostContractError) as error:
+        AppHostShutdownReportV1(
+            True,
+            (AppHostShutdownPhase.BINDINGS,),
+            (),
+        )
+    assert error.value.reason is InvalidAppHostContractReason.COMPLETION_MISMATCH
+    with pytest.raises(InvalidAppHostContractError) as error:
+        AppHostShutdownReportV1(
+            False,
+            (AppHostShutdownPhase.BINDINGS,),
+            (AppHostShutdownPhase.BINDINGS,),
+        )
+    assert error.value.reason is InvalidAppHostContractReason.DUPLICATE_ITEM

@@ -30,7 +30,8 @@
 - `loushang.tui`
 - `loushang.harnesswork`
 - `loushang.work`（迁移期 compatibility/integration namespace）
-- `loushang.apphost`（A0.1 Contract Model；尚无运行时装配）
+- `loushang.apphost`（A0.4 default-dark runtime 与可选 hosted binder）
+- `loushang.appserver`（A0.4 contract-only structural Product ports）
 
 当前已落地的支撑包包括：
 
@@ -143,16 +144,17 @@ Authorization、Sandbox、协议、领域发布、日志保留或 durable Sessio
 catalog、显式 Product routing、每 Session 唯一的 scoped Product Runtime binding、
 delivery profile 选择，以及进程级 admission fence 和有序释放。
 
-A0.1 当前只实现标准库-only 的 immutable contract values、required/provided
-ports 和 catalog input validation；没有 catalog/router、live registry、profile
-composer、launcher 或 production composition。现有 Coding CLI/TUI 路径不依赖
-AppHost，所有运行路径保持不变。
+A0.4 当前实现标准库-only core contracts、catalog/router、每 Session canonical
+live registry、embedded profile 生命周期，以及可选 hosted structural-port
+binder。它仍没有 launcher、AppService/AppServer runtime、具体 Product 注册或
+production composition；现有 Coding CLI/TUI 路径不依赖 AppHost。
 
 AppHost core 不依赖 Harness、Hosting、AppServer、AppService、UI framework 或
-具体 Product。未来 embedded profile 可以依赖公开 Harness/Product contracts；
-可选 hosted binder 和 serialized launcher 分别拥有面向 AppServer 和 Hosting 的
-外向边，但不得把这些依赖引入 core。Harness、Hosting、AppServer 和 AppService
-不反向依赖 AppHost。详见 [AppHost Architecture](./apphost/README.md) 和
+具体 Product。可选 `apphost.hosted` 是唯一面向 AppServer contract-only
+structural ports 的外向边；未来 serialized launcher 单独拥有 Hosting 边，二者
+均不进入 core facade。Harness、Hosting、AppServer 和 AppService 不反向依赖
+AppHost。详见 [AppHost Architecture](./apphost/README.md)、
+[AppServer Structural Ports](./appserver/README.md) 和
 [ARD-003: AppHost Top-Level Placement](./decisions/ARD-003-apphost-top-level-placement.md)。
 
 ### loushang-ai

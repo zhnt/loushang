@@ -693,7 +693,7 @@ def test_hosting_discovery_is_grounded_in_current_harness_facts() -> None:
         assert current_owner in discovery
 
 
-def test_hosting_and_apphost_contracts_keep_future_runtime_packages_dark() -> None:
+def test_hosting_apphost_and_appserver_runtime_edges_remain_dark() -> None:
     assert (REPOSITORY_ROOT / "src/loushang/hosting").is_dir()
     apphost = REPOSITORY_ROOT / "src/loushang/apphost"
     assert {
@@ -707,8 +707,13 @@ def test_hosting_and_apphost_contracts_keep_future_runtime_packages_dark() -> No
         "integrations/__init__.py",
         "integrations/harness_session.py",
         "router.py",
+        "runtime.py",
+        "hosted.py",
     }
-    assert not (REPOSITORY_ROOT / "src/loushang/appserver").exists()
+    appserver = REPOSITORY_ROOT / "src/loushang/appserver"
+    assert {
+        path.relative_to(appserver).as_posix() for path in appserver.rglob("*.py")
+    } == {"__init__.py", "ports.py"}
 
     overview = _read(HOSTING_ROOT / "README.md")
     decision = _read(HOSTING_PLACEMENT)

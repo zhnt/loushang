@@ -1,7 +1,7 @@
-"""Product-neutral AppHost A0 catalog and routing facade.
+"""Product-neutral AppHost A0 core facade.
 
-A0.2 adds an explicit admitted catalog and candidate router. It still contains
-no live runtime owner, profile composer, launcher, or Product activation path.
+A0.3 adds the canonical process-local live binding owner and embedded profile
+composition. Optional hosted and launcher edges remain outside this facade.
 """
 
 from .catalog import AppHostCatalogV1
@@ -17,6 +17,10 @@ from .contracts import (
     AppHostLifecycleTransition,
     AppHostObservationSinkV1,
     AppHostObservationV1,
+    AppHostSessionLeaseV1,
+    AppHostShutdownBudgetV1,
+    AppHostShutdownPhase,
+    AppHostShutdownReportV1,
     ClaimedSessionCandidateV1,
     OpenedProductCandidateV1,
     PreparedProductRouteV1,
@@ -57,6 +61,7 @@ from .errors import (
     SessionCandidateStaleError,
 )
 from .router import AppHostRouterV1
+from .runtime import AppHostRuntimeV1
 
 __all__ = [
     "APPHOST_CONTRACT_VERSION",
@@ -74,6 +79,11 @@ __all__ = [
     "AppHostObservationSinkV1",
     "AppHostObservationV1",
     "AppHostRouterV1",
+    "AppHostRuntimeV1",
+    "AppHostSessionLeaseV1",
+    "AppHostShutdownBudgetV1",
+    "AppHostShutdownPhase",
+    "AppHostShutdownReportV1",
     "ClaimedSessionCandidateV1",
     "CleanupIncompleteError",
     "GenerationConflictError",

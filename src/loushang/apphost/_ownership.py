@@ -104,6 +104,55 @@ class CloseGroup:
         return complete
 
 
+class DependentCloseChain:
+    """Retryable reverse-order settlement that preserves dependencies.
+
+    Unlike :class:`CloseGroup`, a failed closer fences every earlier owner in
+    the acquisition chain.  A retry resumes at the same dependent owner and
+    reaches its prerequisites only after it has settled.
+    """
+
+    __slots__ = ("_closers", "_complete", "_lock", "_task")
+
+    def __init__(self, closers: Iterable[RetryableCloser]) -> None:
+        self._closers = list(closers)
+        self._complete = not self._closers
+        self._lock = asyncio.Lock()
+        self._task: asyncio.Task[bool] | None = None
+
+    @property
+    def complete(self) -> bool:
+        return self._complete
+
+    @property
+    def debt_count(self) -> int:
+        return sum(closer.debt_count for closer in self._closers)
+
+    async def settle(self) -> bool:
+        async with self._lock:
+            if self._complete:
+                return True
+            if self._task is None or self._task.done():
+                self._task = asyncio.create_task(self._run_once())
+            task = self._task
+        return await asyncio.shield(task)
+
+    async def close(self) -> None:
+        if not await self.settle():
+            raise CleanupIncompleteError(
+                cleanup_debt_count=max(1, self.debt_count)
+            ) from None
+
+    async def _run_once(self) -> bool:
+        for closer in reversed(self._closers):
+            if closer.complete:
+                continue
+            if not await closer.settle():
+                return False
+        self._complete = True
+        return True
+
+
 class AcquisitionStack:
     """Record actual acquisition order and transfer it to one close group."""
 
