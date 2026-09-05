@@ -164,6 +164,7 @@ def _compile_fixture(build_root: Path, executable: Path) -> None:
 #include <ws2tcpip.h>
 #include <windows.h>
 #include <sddl.h>
+#include <userenv.h>
 
 static int contains(const wchar_t *text, const wchar_t *needle) {
     for (; *text; ++text) {
@@ -352,15 +353,15 @@ void WINAPI mainCRTStartup(void) {
         ExitProcess(90);
     CloseHandle(scratch_file);
 
-    HKEY key = 0;
-    LSTATUS registry_result = RegOpenKeyExW(
-        HKEY_CURRENT_USER, L"Software", 0, KEY_READ, &key);
-    if (registry_result == ERROR_SUCCESS) {
-        RegCloseKey(key);
+    HKEY profile_key = 0;
+    HRESULT registry_result = GetAppContainerRegistryLocation(
+        KEY_READ, &profile_key);
+    if (SUCCEEDED(registry_result)) {
+        RegCloseKey(profile_key);
         ExitProcess(91);
     }
-    if (registry_result != ERROR_ACCESS_DENIED)
-        ExitProcess(0xC5505B00 | (registry_result & 0xff));
+    if (HRESULT_CODE(registry_result) != ERROR_ACCESS_DENIED)
+        ExitProcess(0xC5505B00 | (HRESULT_CODE(registry_result) & 0xff));
 
     static wchar_t sentinel[MAX_PATH];
     if (!value_after(command, L"--sentinel=", sentinel, MAX_PATH)) ExitProcess(93);
@@ -451,6 +452,7 @@ void WINAPI mainCRTStartup(void) {
         "/MANIFEST:NO",
         "kernel32.lib",
         "advapi32.lib",
+        "userenv.lib",
         "ws2_32.lib",
     )
     command: tuple[str, ...] = arguments
@@ -607,6 +609,7 @@ async def _collect_native_evidence(
         platform_imports=(
             "ADVAPI32.DLL",
             "KERNEL32.DLL",
+            "USERENV.DLL",
             "WS2_32.DLL",
         ),
         attempt_id=f"native-{uuid.uuid4().hex}",

@@ -175,12 +175,14 @@ variables, credentials, user shell configuration, Python variables, loader
 controls, and caller-supplied values are absent. The native child oracle
 reports only boolean/categorical results and bounded fingerprints.
 
-The LPAC environment contains no registry capability. The no-CRT oracle proves
-that even ambient `HKCU\\Software` cannot be opened for read. This is a
-deliberate consequence of the zero-capability profile, not a scratch-storage
-failure. A future Product runtime that requires `registryRead` is a different,
-strictly wider profile and must receive a separately reviewed policy id,
-closure, native oracle, and activation decision.
+The LPAC environment contains no registry capability. Through
+`GetAppContainerRegistryLocation(KEY_READ)`, the no-CRT oracle proves that the
+current profile's registry root cannot even be opened for read. It does not
+touch the ambient `HKEY_CURRENT_USER` predefined handle, which is not a valid
+LPAC probe. This denial is a deliberate consequence of the zero-capability
+profile, not a scratch-storage failure. A future Product runtime that requires
+`registryRead` is a different, strictly wider profile and must receive a
+separately reviewed policy id, closure, native oracle, and activation decision.
 
 ## Native Security Oracle
 
