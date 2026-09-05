@@ -296,8 +296,28 @@ void WINAPI mainCRTStartup(void) {
     static wchar_t actual_cwd[MAX_PATH];
     if (!value_after(command, L"--cwd=", expected_cwd, MAX_PATH)) ExitProcess(85);
     DWORD cwd_length = GetCurrentDirectoryW(MAX_PATH, actual_cwd);
-    if (!cwd_length || cwd_length >= MAX_PATH ||
-        lstrcmpiW(expected_cwd, actual_cwd) != 0) ExitProcess(86);
+    if (!cwd_length || cwd_length >= MAX_PATH) ExitProcess(86);
+    HANDLE expected_cwd_handle = CreateFileW(
+        expected_cwd, FILE_READ_ATTRIBUTES,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, 0,
+        OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, 0);
+    HANDLE actual_cwd_handle = CreateFileW(
+        actual_cwd, FILE_READ_ATTRIBUTES,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, 0,
+        OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, 0);
+    BY_HANDLE_FILE_INFORMATION expected_cwd_info;
+    BY_HANDLE_FILE_INFORMATION actual_cwd_info;
+    if (expected_cwd_handle == INVALID_HANDLE_VALUE ||
+        actual_cwd_handle == INVALID_HANDLE_VALUE ||
+        !GetFileInformationByHandle(expected_cwd_handle, &expected_cwd_info) ||
+        !GetFileInformationByHandle(actual_cwd_handle, &actual_cwd_info) ||
+        expected_cwd_info.dwVolumeSerialNumber !=
+            actual_cwd_info.dwVolumeSerialNumber ||
+        expected_cwd_info.nFileIndexHigh != actual_cwd_info.nFileIndexHigh ||
+        expected_cwd_info.nFileIndexLow != actual_cwd_info.nFileIndexLow)
+        ExitProcess(86);
+    CloseHandle(actual_cwd_handle);
+    CloseHandle(expected_cwd_handle);
 
     static wchar_t private_root[MAX_PATH];
     static wchar_t temp_root[MAX_PATH];
@@ -593,7 +613,7 @@ async def _collect_native_evidence(
     foreign_profile_reject = False
     try:
         owner.create_profile(provision, begin_effect=lambda: None)
-    except HostingError:
+    except _WindowsLpacProfileCollision:
         foreign_profile_reject = True
 
     witness = owner.apply_grants(provision, witness, begin_effect=lambda: None)
