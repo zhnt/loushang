@@ -10,7 +10,9 @@ from pathlib import Path
 
 import pytest
 
+import loushang.coding._product_worker_canary as canary_module
 from loushang.coding._product_worker_canary import (
+    CODING_PRODUCT_WORKER_WINDOWS_NATIVE_PROFILE_ID,
     CodingProductWorkerCanaryError,
     bind_coding_product_worker_canary,
     coding_product_worker_session_fingerprint,
@@ -33,6 +35,9 @@ from loushang.harness.worker import (
     WorkerProtocolMessage,
     WorkerRuntimeBindingV1,
     WorkerSupervisor,
+)
+from loushang.harness.worker._native_profile_bridge import (
+    _WindowsLpacProductWorkerProfilePlan,
 )
 from loushang.harness.worker.journal import WorkerSupervisorJournal
 from loushang.harness.workspace.process import ProcessStderrTail
@@ -129,6 +134,10 @@ class _EvidenceAuthority:
     authority_fingerprint = _EVIDENCE_AUTHORITY_FINGERPRINT
 
     def verify_tree_settlement(self, **facts: object) -> bool:
+        del facts
+        return True
+
+    def verify_native_containment_settlement(self, **facts: object) -> bool:
         del facts
         return True
 
@@ -326,10 +335,12 @@ class _Domain:
 class _Cleanup:
     def __init__(self, events: list[str]) -> None:
         self.events = events
+        self.settlements: list[dict[str, object]] = []
 
     async def settle(self, **facts) -> None:
         assert facts["protocol_terminal"] is True
         assert facts["domain_retired"] is True
+        self.settlements.append(dict(facts))
         self.events.append("R5-SETTLE-OR-DEBT")
 
 
@@ -787,3 +798,102 @@ def test_plc9c5_c54_linux_product_case(case_id: str, tmp_path: Path) -> None:
 
     else:
         raise AssertionError(f"Unhandled PLC9C5 C5.4 case {case_id}")
+
+
+class _FakeWindowsNativeProfile:
+    def __init__(
+        self,
+        *,
+        receipt: ProductWorkerActivationReceiptV1,
+        request: ManagedWorkerLaunchRequestV1,
+    ) -> None:
+        self.receipt_fingerprint = receipt.fingerprint
+        self.worker_request_fingerprint = request.fingerprint
+        self.native_profile_id = CODING_PRODUCT_WORKER_WINDOWS_NATIVE_PROFILE_ID
+        self.native_profile_catalog_revision = (
+            receipt.policy.native_profile_catalog_revision
+        )
+        self.realized_native_policy_closure_fingerprint = (
+            receipt.policy.expected_native_policy_closure_fingerprint
+        )
+        self.execution_closure_fingerprint = _DIGEST_A
+        self.cleanup_contract_version = 2
+        self.settlement_witness = object()
+
+    async def capture_native(self, request, *, capture):
+        return await capture(request)
+
+    async def verify_current(self) -> None:
+        return None
+
+    def native_containment_settlement_witness(self) -> object:
+        return self.settlement_witness
+
+    async def close(self) -> None:
+        return None
+
+
+def test_windows_product_dispatch_admits_cleanup_v2_without_linux_arguments(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = _Context(tmp_path)
+    policy = _policy(
+        context.discovery,
+        profile_id=CODING_PRODUCT_WORKER_WINDOWS_NATIVE_PROFILE_ID,
+    )
+    receipt = ProductWorkerActivationReceiptV1(
+        policy=policy,
+        issue_sequence=1,
+        issue_nonce="windows-product-receipt",
+    )
+    plan = _WindowsLpacProductWorkerProfilePlan(
+        worker_request_fingerprint=context.request.fingerprint,
+        native_profile_catalog_revision=policy.native_profile_catalog_revision,
+        containment_launcher_sha256=_LAUNCHER_DIGEST,
+        containment_profile_sha256=_CONTAINMENT_PROFILE_DIGEST,
+        expected_native_policy_closure_fingerprint=(
+            policy.expected_native_policy_closure_fingerprint
+        ),
+        operation_nonce=_DIGEST_A,
+        lifecycle_fingerprint=_DIGEST_B,
+    )
+    profile = _FakeWindowsNativeProfile(receipt=receipt, request=context.request)
+    observed: list[dict[str, object]] = []
+
+    def bind_windows(**facts: object) -> _FakeWindowsNativeProfile:
+        observed.append(facts)
+        return profile
+
+    monkeypatch.setattr(
+        canary_module,
+        "_bind_windows_lpac_contained_product_worker_profile",
+        bind_windows,
+    )
+    activation_store = _ActivationStateStore()
+    native_store = _ActivationStateStore()
+    canary = context.bind(
+        policy=policy,
+        receipt=receipt,
+        activation_state_store=activation_store,
+        containment_launcher_path=None,
+        windows_lpac_plan=plan,
+        windows_platform_imports=("KERNEL32.DLL",),
+        native_provisioning_state_store=native_store,
+    )
+
+    asyncio.run(canary.start(correlation_id="windows-product-start"))
+    assert (
+        activation_store.load()["attempts"][  # type: ignore[index]
+            f"{receipt.fingerprint}:{_ATTEMPT}:3"
+        ]["cleanupContractVersion"]
+        == 2
+    )
+    asyncio.run(canary.rollback())
+
+    assert len(observed) == 1
+    assert observed[0]["plan"] is plan
+    assert context.cleanup.settlements[-1]["native_containment_witness"] is (
+        profile.settlement_witness
+    )
+    assert context.current.calls == 0
