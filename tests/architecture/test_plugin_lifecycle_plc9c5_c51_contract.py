@@ -517,6 +517,8 @@ def test_c51_required_manifest_and_test_ids_are_exact() -> None:
         "PLC9C5-C5.2-LINUX-NATIVE",
         "PLC9C5-C5.3-WINDOWS-MECHANICS",
         "PLC9C5-C5.4-LINUX-PRODUCT",
+        "PLC9C5-C5.5B-WINDOWS-LPAC-NATIVE",
+        "PLC9C5-C5.5C-WINDOWS-PRODUCT",
     }
     c51 = reports["PLC9C5-C5.1-CONTRACT"]
     assert c51 == {
@@ -530,6 +532,8 @@ def test_c51_required_manifest_and_test_ids_are_exact() -> None:
         reports["PLC9C5-C5.3-WINDOWS-MECHANICS"]["status"] == "implemented"
     )
     assert reports["PLC9C5-C5.4-LINUX-PRODUCT"]["status"] == "implemented"
+    assert reports["PLC9C5-C5.5B-WINDOWS-LPAC-NATIVE"]["status"] == "planned"
+    assert reports["PLC9C5-C5.5C-WINDOWS-PRODUCT"]["status"] == "planned"
     assert _literal_collection(CONTRACT_TEST, "PLC9C5_C51_CASES") == set(C51_CASES)
     assert _literal_collection(
         CONTRACT_TEST,

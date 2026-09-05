@@ -131,6 +131,8 @@ HARNESS_TEST_PATHS := \
 	tests/architecture/test_plugin_lifecycle_plc9c5_c52_linux_native.py \
 	tests/architecture/test_plugin_lifecycle_plc9c5_c53_windows_mechanics.py \
 	tests/architecture/test_plugin_lifecycle_plc9c5_c54_linux_product.py \
+	tests/architecture/test_plugin_lifecycle_plc9c5_c55_windows_containment.py \
+	tests/architecture/test_hosting_h65_windows_lpac_design.py \
 	tests/architecture/test_session_model_call_closure_contract.py
 HOSTING_SOURCES := \
 	src/loushang/hosting \
@@ -159,6 +161,7 @@ HOSTING_TEST_PATHS := \
 	tests/architecture/test_plugin_lifecycle_plc9c5_c50_baseline.py \
 	tests/architecture/test_plugin_lifecycle_plc9c5_c52_linux_native.py \
 	tests/architecture/test_plugin_lifecycle_plc9c5_c53_windows_mechanics.py \
+	tests/architecture/test_hosting_h65_windows_lpac_design.py \
 	tests/architecture/test_hosting_architecture_baseline.py
 APPHOST_SOURCES := \
 	src/loushang/apphost \
@@ -255,6 +258,9 @@ test-plc9c5-c54-linux-product:
 	uv --cache-dir .uv-cache run --extra dev python scripts/dev/verify_plc9c5_manifest.py docs/internals/architecture/harness/plugin/plugin-lifecycle-plc9c5-evidence-manifest.json PLC9C5-C5.4-LINUX-PRODUCT .artifacts/plc9c5-c54-linux-product.xml
 
 check-plc9c5-c54-linux-product: test-plc9c5-c54-linux-product
+
+check-plc9c5-c55-windows-containment-design:
+	uv --cache-dir .uv-cache run --extra dev $(PYTEST_RUNNER) tests/architecture/test_plugin_lifecycle_plc9c5_c55_windows_containment.py tests/architecture/test_hosting_h65_windows_lpac_design.py -q
 
 check-hosting: lint-hosting typecheck-hosting test-hosting
 

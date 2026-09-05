@@ -8,14 +8,15 @@
 - Authority: descriptive — source-backed Current inventory
 - Design status: not-applicable
 - Implementation status: not-applicable
-- Observation base: C5.4 implementation candidate based on `94b98d3d`
+- Observation base: merged C5.4 baseline `2c1f528a`
 - Effect: none; this inventory grants no runtime or activation authority
 - Owner: Harness Worker architecture
 
 ## Reading Rule
 
 This inventory records Current facts at the observation base and the exact
-C5.1--C5.4 transitions. Source and executable tests remain higher authority. A
+C5.1--C5.4 transitions plus the accepted C5.5a design delta. Source and
+executable tests remain higher authority. A
 source row records the narrow seam needed to reason about C5; it does not
 transfer authority to Product or Plugin management.
 
@@ -100,10 +101,12 @@ not added until their owning guard transition lands.
 | Coding Product composition | Coding Product root | C5.4 only | implemented exact allowlist route plus negative no-side-effect tests |
 | Session/entrypoint convergence | Coding Product construction and Session identity owners | C5.4 | implemented canonical/cwd/home, alias/conflict/tamper, and shared receipt report |
 | recovery/rollback drill | Product/domain, Worker supervisor, Process/Hosting owners each settle their own state | C5.4 | implemented latch-first R1--R7 and complete V1--V6 evidence validation |
+| Windows required containment | Product/Package/Sandbox durable coordinator, sole Harness friend bridge, and Hosting native owners at their respective boundaries | C5.5a design; C5.5b native; C5.5c Product | accepted design for a zero-capability per-attempt LPAC, dedicated immutable runtime closure, cleanup V2, exact native/Product reports, and retained no-fallback/default-Current fences |
 
 The C5.1 contract/fake, C5.2 Linux native, C5.3 Windows mechanics/rejection, and
 C5.4 Linux Product reports are all retained. G7 remains open because Windows
-required containment has not been accepted.
+required containment has not been implemented or accepted for activation. The
+accepted C5.5a design baseline grants no activation authority.
 
 ## Retained Deletion Fences
 

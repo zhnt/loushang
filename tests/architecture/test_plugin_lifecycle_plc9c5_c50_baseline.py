@@ -331,6 +331,72 @@ EXPECTED_FUTURE_REPORTS = (
             "C54-SENTINEL-REDACTION",
         ),
     ),
+    (
+        "PLC9C5-C5.5B-WINDOWS-LPAC-NATIVE",
+        ".artifacts/plc9c5-c55b-windows-lpac-native.xml",
+        24,
+        (
+            "C55B-PROFILE-CREATE",
+            "C55B-CLEANUP-REPLAY",
+            "C55B-FOREIGN-PROFILE-REJECT",
+            "C55B-PROFILE-SID",
+            "C55B-ZERO-CAPABILITIES",
+            "C55B-LPAC-OPTOUT",
+            "C55B-RUNTIME-RX",
+            "C55B-RUNTIME-WRITE-DENY",
+            "C55B-PRIVATE-FS-SCRATCH",
+            "C55B-PRIVATE-REGISTRY-SCRATCH",
+            "C55B-UNRELATED-FS-DENY",
+            "C55B-PROCESS-MUTATION-DENY",
+            "C55B-NETWORK-DENY",
+            "C55B-EXEC-CWD-IDENTITY",
+            "C55B-DACL-SUBSTITUTION",
+            "C55B-PROFILE-SUBSTITUTION",
+            "C55B-NO-AMBIENT-ENV",
+            "C55B-HANDLE-LIST",
+            "C55B-HANDLE-ALIAS-REJECT",
+            "C55B-CANCEL-PRE-POST-EFFECT",
+            "C55B-TOKEN-VERIFY-BEFORE-RESUME",
+            "C55B-JOB-TREE-CLEANUP",
+            "C55B-CONTAINMENT-CLEANUP-DEBT",
+            "C55B-SENTINEL-REDACTION",
+        ),
+    ),
+    (
+        "PLC9C5-C5.5C-WINDOWS-PRODUCT",
+        ".artifacts/plc9c5-c55c-windows-product.xml",
+        28,
+        (
+            "C55C-PRODUCT-SELECTED",
+            "C55C-PRODUCT-MISSING",
+            "C55C-PRODUCT-WRONG",
+            "C55C-PRODUCT-DISABLED",
+            "C55C-SESSION-CANONICAL",
+            "C55C-SESSION-CWD",
+            "C55C-SESSION-HOME",
+            "C55C-SESSION-TAMPERED",
+            "C55C-SESSION-ALIAS",
+            "C55C-SESSION-CONFLICT",
+            "C55C-SESSION-CHANGED",
+            "C55C-REQUIRED-SUCCESS",
+            "C55C-REQUIRED-FAILURE",
+            "C55C-OPTIONAL-SUCCESS",
+            "C55C-OPTIONAL-DEGRADED",
+            "C55C-POLICY-CLOSURE-FRESHNESS",
+            "C55C-PROVISIONING-FRESHNESS",
+            "C55C-HANDSHAKE-HEALTH-PUBLICATION",
+            "C55C-WINDOWS-AMD64-ACCEPT",
+            "C55C-UNSUPPORTED-WINDOWS-NON-AMD64",
+            "C55C-UNSUPPORTED-WSL",
+            "C55C-UNSUPPORTED-MACOS",
+            "C55C-ORDERED-ROLLBACK",
+            "C55C-RECOVERY-MATRIX",
+            "C55C-NATIVE-CONTAINMENT-SETTLEMENT",
+            "C55C-SHARED-ENTRYPOINT-RECEIPT",
+            "C55C-NO-FALLBACK",
+            "C55C-SENTINEL-REDACTION",
+        ),
+    ),
 )
 
 EXPECTED_DRILL_LEDGER = (
@@ -550,7 +616,8 @@ def test_c50_status_is_honest_and_documents_are_indexed_once() -> None:
         "Implementation status": (
             "implemented through C5.4 — C5.0 design/guards, C5.1 "
             "receipt/lifecycle, C5.2 Linux native profile binding, C5.3 Windows "
-            "mechanics/rejection, and the C5.4 Linux Coding Product canary"
+            "mechanics/rejection, and the C5.4 Linux Coding Product canary; C5.5a "
+            "is an accepted design-only Windows containment gate"
         ),
         "Activation status": (
             "explicit Linux Coding canary accepted; default remains Current and "
@@ -634,7 +701,16 @@ def test_c50_reproduces_the_complete_parent_g7_matrix() -> None:
     )
     assert tuple(
         row[0] for row in _table_rows(_section(_read(BASELINE), "Delivery Slices"))
-    ) == ("C5.0", "C5.1", "C5.2", "C5.3", "C5.4")
+    ) == (
+        "C5.0",
+        "C5.1",
+        "C5.2",
+        "C5.3",
+        "C5.4",
+        "C5.5a",
+        "C5.5b",
+        "C5.5c",
+    )
     required_evidence = {
         "Product route": ("C5.1", "C5.4", "Coding Product composition"),
         "Session route": ("C5.4", "stable locator", "AppHost"),
@@ -644,6 +720,7 @@ def test_c50_reproduces_the_complete_parent_g7_matrix() -> None:
             "Linux native report",
             "C5.3",
             "Windows mechanics",
+            "C5.5b/C5.5c",
             "G7 stays open",
         ),
         "preparation": ("C5.2/C5.3", "adversarial native", "C5.4"),
@@ -686,7 +763,7 @@ def test_c50_freezes_dependency_and_native_shape_decisions() -> None:
         "no same-attempt fallback",
         "generic pre-routing AppHost behavior remains G5/G8",
         "The first Product canary is therefore Linux-only",
-        "G7 stays open until a separate Windows required-containment profile",
+        "G7 stays open until both are implemented and accepted",
         "GetWindowsDirectoryW",
         "Ambient `SystemRoot` poisoning is ignored",
         "caller-supplied environment/SystemRoot is rejected",

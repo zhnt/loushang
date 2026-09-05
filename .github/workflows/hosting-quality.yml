@@ -68,6 +68,8 @@ jobs:
           tests/architecture/test_plugin_lifecycle_plc9c5_c50_baseline.py
           tests/architecture/test_plugin_lifecycle_plc9c5_c52_linux_native.py
           tests/architecture/test_plugin_lifecycle_plc9c5_c53_windows_mechanics.py
+          tests/architecture/test_plugin_lifecycle_plc9c5_c55_windows_containment.py
+          tests/architecture/test_hosting_h65_windows_lpac_design.py
           tests/architecture/test_hosting_architecture_baseline.py
 
       - name: Typecheck Hosting H0-H6
@@ -189,5 +191,7 @@ jobs:
           tests/architecture/test_plugin_lifecycle_plc9c5_c50_baseline.py
           tests/architecture/test_plugin_lifecycle_plc9c5_c52_linux_native.py
           tests/architecture/test_plugin_lifecycle_plc9c5_c53_windows_mechanics.py
+          tests/architecture/test_plugin_lifecycle_plc9c5_c55_windows_containment.py
+          tests/architecture/test_hosting_h65_windows_lpac_design.py
           tests/architecture/test_hosting_architecture_baseline.py
           -q
