@@ -821,7 +821,7 @@ capability in a new scope cannot pass silently.
 | Default-dark Hosting Worker seam | `src/loushang/harness/worker/session.py`, `src/loushang/harness/worker/hosting_adapter.py`, `src/loushang/harness/worker/owner_selection.py`, and `src/loushang/harness/worker/supervisor.py::WorkerSupervisor.start_session` | HOST-H5 adds an atomic process-plus-transport session shape, exact Worker-to-Hosting mapping, explicit Current/Hosting selection, pathless diagnostics, no-fallback routing, and future-attempt rollback; no non-Worker production module composes it | Retain as migration evidence only; the existing Sandbox sealed-descriptor preparation is not Hosting-consumable, so this is not PLC9C5 Product/native activation |
 | Product-neutral Worker protocol and supervisor | `src/loushang/harness/worker/protocol.py`, `src/loushang/harness/worker/supervisor.py`, and `src/loushang/harness/worker/journal.py` | Exact bounded canonical-JSON frames over an injected byte transport; owns handshake, direction/state validation, correlation/tombstones, heartbeat, shutdown, process-exit fencing, and durable contiguous attempt epoch/restart budget | Retain as mechanism only; it owns no semantic action, contribution publication, rollback, or retirement |
 | Exact read-only Capability Worker adapter | `src/loushang/harness/worker/capability_query.py::{CapabilityQueryWorkerAdapter,bind_capability_query_worker_adapter}` | Binds one Plugin/contribution/Product/scope/owner generation to a sorted Capability allowlist, rechecks authority around every response, returns typed descriptors, and fences invalid/stale output; construction is disabled by policy unless explicitly enabled | Retain as the C4 low-authority canary; it has no publish, retire, mutation, credential, or arbitrary execution capability |
-| Product/native Worker activation | absent through PLC9C4 | No production Product route connects a child to the injected byte transport, publishes a generation, or claims Linux/Windows native handle/containment conformance | PLC9C5 must add exact platform evidence and Product rollback/recovery without weakening default-dark behavior |
+| Product/native Worker activation | absent through PLC9C4 and PLC9C5 C5.0 | No production Product route connects a child to the injected byte transport, publishes a generation, or claims Linux/Windows native handle/containment conformance; the accepted C5.0 baseline adds only design, exact inventory, and guards | C5.1--C5.4 add receipt/lifecycle, Linux native, Windows mechanics/rejection, then exact Linux Product convergence evidence without weakening default-dark behavior; Windows Product activation remains closed pending a separate accepted required-containment profile; see the [C5.0 baseline](plugin-lifecycle-plc9c5-c50-baseline.md) and [inventory](plugin-lifecycle-plc9c5-c50-inventory.md) |
 | Remote-service topology | absent through PLC9C4 | No service identity, authentication, egress, tenant, residency, or remote revocation contract exists | Defer to a separate threat model; never add it as a `local_worker` compatibility arm |
 
 The internal Plugin `local_worker` declaration and supervised mechanism exist
@@ -875,7 +875,8 @@ PLC9A1 contract:
   the existing Package RPC surface are bound through A2;
 - complete bounded byte/archive/wheel materialization transaction;
 - Product/native Worker activation, IPC handle binding, platform conformance,
-  domain generation publication, and recovery/rollback composition;
+  domain generation publication, and recovery/rollback composition; C5.0
+  documents and guards these absences but implements none of them;
 - `remote_service` topology contract and client;
 - executable artifact-GC owner/receipt;
 - generic Plugin-private data deletion command/receipt; and

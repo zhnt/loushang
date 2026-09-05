@@ -329,7 +329,13 @@ Neither may silently override a narrower implemented owner contract.
   The proposed [HOST-H6 managed preparation contract](../../hosting/managed-launch-preparation-h6.md)
   and [Hosted Product Runtime V1 plan](../../drafts/hosted-product-runtime-v1-plan.md)
   define the next mechanical and cross-scope gates; neither changes the C5
-  activation fence.
+  activation fence. The accepted
+  [PLC9C5 C5.0 Product/Native Worker Activation Baseline](plugin-lifecycle-plc9c5-c50-baseline.md)
+  and its source-backed
+  [Current inventory](plugin-lifecycle-plc9c5-c50-inventory.md) split C5 into
+  receipt/lifecycle, Linux native, Windows mechanics/rejection, and Linux
+  Product-convergence slices. C5.0 itself is design/guards only: every runtime
+  route remains default-dark and Product activation remains absent.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)
@@ -367,6 +373,7 @@ public SDK shape cannot be inferred from them.
 - [PLC1A Baseline](plugin-lifecycle-plc1a-baseline.md)
 - [PLC9.0 Baseline](plugin-lifecycle-plc9-baseline.md)
 - [PLC9.0 Owner And Peer Inventory](plugin-lifecycle-plc9-inventory.md)
+- [PLC9C5 C5.0 Current Product/Native Worker Inventory](plugin-lifecycle-plc9c5-c50-inventory.md)
 - [Resource Catalog RCP0 Baseline](resource-catalog-rcp0-baseline.md)
 
 Baselines freeze source and authority facts required by later contracts. Review

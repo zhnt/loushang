@@ -73,7 +73,7 @@ Product selection, authority, protocol health, or generation publication.
 | G4 | proposed AppHost | A0.1 Contract Model | G0A plus parent acceptance prerequisites | standard-library-only contract/import/validation gates |
 | G5 | proposed AppHost | A0.2 catalog/router, admission pins, Session candidate port, and explicit Product importer | G4 | two unrelated fake Products; cwd/user-global discovery; no-default/ambiguity/revision swap; Coding and Codex/Claude migration matrix pass |
 | G6 | proposed AppHost | A0.3 canonical live-binding lifecycle and embedded profile | G5 | multi-Session and multi-mux single-flight attach/detach/cancellation/deadline/shutdown matrix |
-| G7 | Product/Harness | PLC9C5 narrow canary over an accepted existing Product route | G2L + G2W + G3 | Linux/Windows cross-entrypoint native evidence, recovery, rollback, no fallback |
+| G7 | Product/Harness | PLC9C5 narrow canary over an accepted existing Product route; C5.0 design/guards, C5.1 receipt/lifecycle, C5.2 Linux, C5.3 Windows mechanics/rejection, and C5.4 Linux Product convergence; Windows activation needs a later separately accepted containment profile | G2L + G2W + G3 | Linux Product/native evidence plus Windows fail-closed evidence land first; G7 closes only after separate Windows required-containment, cross-entrypoint, recovery, rollback, and no-fallback evidence |
 | G8 | AppHost + Product/Harness | Product-neutral end-to-end join | G6 + G7 | AppHost-scoped Product uses the exact Worker activation receipt; unrelated fake Product stays Worker-free |
 | G9 | common parent | v1 closure | G8 | owner deletion decision, docs/ARD promotion, clean dependency graph, operational drill |
 
@@ -98,7 +98,8 @@ or G8 critical path.
 2. Require deterministic fake lifecycle tests before native platform or
    Product composition.
 3. Retain Linux and Windows evidence separately; neither substitutes for the
-   other and a rerun cannot erase a deterministic defect.
+   other and a rerun cannot erase a deterministic defect. H6.3's Windows
+   restricted mechanics are not Product required-containment evidence.
 4. Keep Current and Hosting owners independently runnable through G8 rollback
    drills, but never retry the other owner within one launch attempt.
 5. Activate only an explicit Product/contribution allowlist with a versioned
@@ -126,6 +127,15 @@ The first PLC9C5 canary must cover at least:
 | rollback | future attempts return to Current owner; in-flight owner is sticky; no same-attempt fallback |
 | entrypoint | every Current canary-capable CLI/TUI/Product composition path shares the exact activation receipt; hosted paths join only after A0.4 is separately accepted |
 
+The accepted
+[PLC9C5 C5.0 baseline](../harness/plugin/plugin-lifecycle-plc9c5-c50-baseline.md)
+and [Current inventory](../harness/plugin/plugin-lifecycle-plc9c5-c50-inventory.md)
+assign every row to C5.1--C5.4 or to the explicit post-C5.4 Windows gate and
+freeze the Linux/Windows shape deltas. C5.0 does not satisfy G7 and changes no
+runtime activation guard. C5.4 may land the first Linux-only canary, but G7
+and therefore G8 remain open until Windows has a separately security-reviewed
+required-containment profile; unsupported Windows attempts fail closed.
+
 The first production route fences and terminates a surviving old Worker before
 restart. Live adoption remains a later separately reviewed threat model.
 
@@ -142,7 +152,10 @@ Before G7, executable architecture tests must continue to prove:
 - H5 owner selection defaults to `"current"`, performs no environment lookup,
   and never falls back within an attempt;
 - no non-Worker production module composes the H5 adapter; and
-- the PLC9C5 guard is revised only in the G7 Product/native activation change.
+- the PLC9C5 production-composition guard is revised only by C5.4 after the
+  C5.1 receipt, C5.2 Linux, and C5.3 Windows mechanics/rejection evidence
+  exists; C5.4 revises only the Linux canary absence and cannot close G7;
+  C5.0 removes no runtime guard; and
 - inventory source paths equal the executable expected set, and the G9 deletion
   change includes a reverse import/composition scan proving no Current owner
   consumer remains.
