@@ -553,6 +553,7 @@ class CodingProductWorkerCanary:
         code: str,
     ) -> CodingProductWorkerCanaryStatusV1:
         policy = cast(ProductWorkerActivationPolicyV1, self._policy)
+        native_profile = cast(ProductWorkerNativeProfilePort, self._native_profile)
         readiness: CodingWorkerCanaryReadiness = (
             "unavailable" if policy.effective_required else "degraded"
         )
@@ -562,6 +563,7 @@ class CodingProductWorkerCanary:
             else "coding_worker_optional_degraded"
         )
         domain = cast(CodingProductWorkerCanaryDomainPort, self._domain)
+        await native_profile.close()
         await domain.settle_readiness(
             required=policy.effective_required,
             ready=False,

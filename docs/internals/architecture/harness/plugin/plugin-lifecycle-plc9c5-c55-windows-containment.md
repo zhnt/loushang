@@ -189,6 +189,11 @@ it does not add a parallel process host.
    sole Harness bridge to invoke H6.5 create/verify/cleanup mechanics. The
    coordinator CASes `reserved`, native-effect, active, cleaning, settled, or
    debt state and never calls Hosting directly.
+   Planning and binding may validate or read this store but cannot write it.
+   A fresh `reserved` CAS occurs only after the C5.1 admission has committed
+   its effect edge and immediately before the first native capture; an
+   ambiguous reservation result is cleanup-only. Explicit close before capture
+   commits only the exact `reserved -> settled` no-native-effect terminal.
 2. The H6.5 provisioner creates a fresh deterministic attempt LPAC profile
    with zero capabilities and an exact Package SID, applies the exact grant,
    and rejects any pre-existing state except cleanup-only recovery backed by

@@ -732,6 +732,20 @@ def test_windows_lpac_profile_joins_plan_provision_capture_and_cleanup(
     assert "S-1-" not in serialized
 
 
+def test_windows_lpac_binding_is_noncommitting_until_capture_or_close(
+    tmp_path: Path,
+) -> None:
+    profile, _, _, _, store, provisioner, _, _ = _windows_profile_context(tmp_path)
+
+    assert store.document is None
+    assert provisioner.events == []
+
+    asyncio.run(profile.close())
+
+    assert store.document["phase"] == "settled"
+    assert provisioner.events == []
+
+
 def test_windows_lpac_resumed_attempt_is_cleanup_only(tmp_path: Path) -> None:
     (
         first,
@@ -801,6 +815,32 @@ def test_windows_lpac_journal_accepts_exact_commit_after_result_loss(
 
     asyncio.run(exercise())
     assert store.document["phase"] == "settled"
+
+
+def test_windows_lpac_reservation_result_loss_requires_cleanup_before_retry(
+    tmp_path: Path,
+) -> None:
+    profile, _, request, _, store, provisioner, _, _ = _windows_profile_context(
+        tmp_path
+    )
+    store.commit_then_raise_at_revision = 0
+
+    with pytest.raises(WorkerBindingError) as rejected:
+        asyncio.run(
+            profile.capture_native(
+                _process_request(request.runtime),
+                capture=lambda spec: _return(spec),
+            )
+        )
+
+    assert rejected.value.code == "worker_native_profile_cleanup_required"
+    assert provisioner.events == []
+    assert store.document["phase"] == "reserved"
+
+    asyncio.run(profile.close())
+
+    assert store.document["phase"] == "settled"
+    assert provisioner.events == []
 
 
 def test_windows_lpac_journal_rejects_store_callback_reentry(tmp_path: Path) -> None:

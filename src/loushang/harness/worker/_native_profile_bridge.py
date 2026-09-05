@@ -538,6 +538,19 @@ class _WindowsLpacProvisioningJournal:
                 "witness": None,
             }
             self._document = _validate_windows_journal(initial, self._identity)
+            self._persisted = False
+            self.resumed = False
+        else:
+            self._document = _validate_windows_journal(loaded, self._identity)
+            self._persisted = True
+            self.resumed = True
+
+    def reserve(self) -> None:
+        """Commit the no-native-effect fence immediately before first capture."""
+
+        with self._lock:
+            if self._persisted:
+                return
             try:
                 initialized = self._call_store(
                     self._compare_and_swap,
@@ -549,35 +562,33 @@ class _WindowsLpacProvisioningJournal:
                 if loaded is None:
                     raise
                 self._document = _validate_windows_journal(loaded, self._identity)
+                self._persisted = True
                 self.resumed = True
-            else:
-                if initialized is True:
-                    self.resumed = False
-                else:
-                    loaded = self._call_store(self._load)
-                    if loaded is None:
-                        raise WorkerBindingError(
-                            "Worker native provisioning reservation raced",
-                            code="worker_native_provisioning_store_raced",
-                        )
-                    self._document = _validate_windows_journal(
-                        loaded,
-                        self._identity,
-                    )
-                    self.resumed = True
-        else:
+                return
+            if initialized is True:
+                self._persisted = True
+                return
+            loaded = self._call_store(self._load)
+            if loaded is None:
+                raise WorkerBindingError(
+                    "Worker native provisioning reservation raced",
+                    code="worker_native_provisioning_store_raced",
+                )
             self._document = _validate_windows_journal(loaded, self._identity)
+            self._persisted = True
             self.resumed = True
 
     @property
     def phase(self) -> str:
         with self._lock:
-            return cast(str, self._reload()["phase"])
+            current = self._reload() if self._persisted else self._document
+            return cast(str, current["phase"])
 
     @property
     def witness_document(self) -> Mapping[str, object] | None:
         with self._lock:
-            value = self._reload()["witness"]
+            current = self._reload() if self._persisted else self._document
+            value = current["witness"]
             return cast(Mapping[str, object] | None, _json_copy(value))
 
     def advance(
@@ -590,6 +601,11 @@ class _WindowsLpacProvisioningJournal:
         if phase not in _WINDOWS_JOURNAL_PHASES:
             raise ValueError("Worker native provisioning phase is unsupported")
         with self._lock:
+            if not self._persisted:
+                raise WorkerBindingError(
+                    "Worker native provisioning reservation is absent",
+                    code="worker_native_provisioning_state_missing",
+                )
             current = self._reload()
             witness_document = (
                 None if witness is None else _windows_witness_document(witness)
@@ -757,7 +773,13 @@ class _WindowsLpacContainedProductWorkerProfile(ProductWorkerNativeProfilePort):
             raise TypeError("Worker native profile requires a capture capability")
         _require_process_request(request, worker_request=self._worker_request)
         with self._lock:
-            if self._state != "ready" or self._journal.resumed:
+            if self._state != "ready":
+                raise WorkerBindingError(
+                    "Worker native profile is not a fresh attempt",
+                    code="worker_native_profile_cleanup_required",
+                )
+            self._journal.reserve()
+            if self._journal.resumed:
                 raise WorkerBindingError(
                     "Worker native profile is not a fresh attempt",
                     code="worker_native_profile_cleanup_required",
@@ -936,6 +958,7 @@ class _WindowsLpacContainedProductWorkerProfile(ProductWorkerNativeProfilePort):
             return
 
     def _close_native(self) -> None:
+        self._journal.reserve()
         phase = self._journal.phase
         if phase == "settled":
             return

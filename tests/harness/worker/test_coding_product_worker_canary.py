@@ -819,6 +819,7 @@ class _FakeWindowsNativeProfile:
         self.execution_closure_fingerprint = _DIGEST_A
         self.cleanup_contract_version = 2
         self.settlement_witness = object()
+        self.closed = False
 
     async def capture_native(self, request, *, capture):
         return await capture(request)
@@ -830,7 +831,38 @@ class _FakeWindowsNativeProfile:
         return self.settlement_witness
 
     async def close(self) -> None:
-        return None
+        self.closed = True
+
+
+def test_product_closes_bound_native_profile_when_start_decision_rejects(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = _Context(tmp_path)
+    profile = _FakeWindowsNativeProfile(
+        receipt=context.receipt,
+        request=context.request,
+    )
+    monkeypatch.setattr(
+        canary_module,
+        "_bind_posix_static_contained_product_worker_profile",
+        lambda **facts: profile,
+    )
+    canary = context.bind()
+    monkeypatch.setattr(
+        canary._coordinator,
+        "evaluate",
+        lambda policy, receipt: {"reason": "stale-receipt"},
+    )
+
+    with pytest.raises(CodingProductWorkerCanaryError) as rejected:
+        asyncio.run(canary.start(correlation_id="stale-decision"))
+
+    assert rejected.value.code == "coding_worker_required_unavailable"
+    assert profile.closed
+    assert context.domain.ready_states == [
+        (True, False, "coding_worker_stale-receipt"),
+    ]
 
 
 def test_windows_product_dispatch_admits_cleanup_v2_without_linux_arguments(
