@@ -166,8 +166,6 @@ def _compile_fixture(build_root: Path, executable: Path) -> None:
 #include <sddl.h>
 #include <userenv.h>
 
-#define LOUSHANG_STATUS_INVALID_HANDLE 0xC0000008UL
-
 static int contains(const wchar_t *text, const wchar_t *needle) {
     for (; *text; ++text) {
         const wchar_t *left = text;
@@ -223,32 +221,6 @@ void WINAPI mainCRTStartup(void) {
     if (contains(command, L"--descendant")) {
         for (;;) Sleep(1000);
     }
-    if (contains(command, L"--network-probe")) {
-        static wchar_t port_text[64];
-        if (!value_after(command, L"--port=", port_text, 64)) ExitProcess(101);
-        unsigned short probe_port = (unsigned short)number(port_text);
-        WSADATA probe_data;
-        int startup_result = WSAStartup(MAKEWORD(2, 2), &probe_data);
-        if (startup_result == WSAEACCES) ExitProcess(0);
-        if (startup_result != 0)
-            ExitProcess(0xC5505C00 | (startup_result & 0xff));
-        SOCKET probe_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-        if (probe_socket == INVALID_SOCKET) {
-            WSACleanup();
-            ExitProcess(0);
-        }
-        struct sockaddr_in probe_address;
-        SecureZeroMemory(&probe_address, sizeof(probe_address));
-        probe_address.sin_family = AF_INET;
-        probe_address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-        probe_address.sin_port = htons(probe_port);
-        int connected = connect(
-            probe_socket, (const struct sockaddr *)&probe_address,
-            sizeof(probe_address));
-        closesocket(probe_socket);
-        WSACleanup();
-        ExitProcess(connected == 0 ? 104 : 0);
-    }
 
     HANDLE token = 0;
     DWORD returned = 0;
@@ -295,6 +267,40 @@ void WINAPI mainCRTStartup(void) {
     DWORD sid_ack_read = 0;
     if (!ReadFile(GetStdHandle(STD_INPUT_HANDLE), &sid_ack, 1,
                   &sid_ack_read, 0) || sid_ack_read != 1) ExitProcess(110);
+    if (sid_ack == 'n') {
+        static wchar_t port_text[64];
+        if (!value_after(command, L"--port=", port_text, 64)) ExitProcess(101);
+        unsigned short probe_port = (unsigned short)number(port_text);
+        WSADATA probe_data;
+        int startup_result = WSAStartup(MAKEWORD(2, 2), &probe_data);
+        if (startup_result == WSAEACCES) ExitProcess(0);
+        if (startup_result != 0)
+            ExitProcess(0xC5505C00 | (startup_result & 0xff));
+        SOCKET probe_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        if (probe_socket == INVALID_SOCKET) {
+            int socket_error = WSAGetLastError();
+            WSACleanup();
+            ExitProcess(socket_error == WSAEACCES
+                        ? 0
+                        : (0xC5505D00 | (socket_error & 0xff)));
+        }
+        struct sockaddr_in probe_address;
+        SecureZeroMemory(&probe_address, sizeof(probe_address));
+        probe_address.sin_family = AF_INET;
+        probe_address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        probe_address.sin_port = htons(probe_port);
+        int connected = connect(
+            probe_socket, (const struct sockaddr *)&probe_address,
+            sizeof(probe_address));
+        int connect_error = connected == 0 ? 0 : WSAGetLastError();
+        closesocket(probe_socket);
+        WSACleanup();
+        if (connected == 0) ExitProcess(104);
+        ExitProcess(connect_error == WSAEACCES
+                    ? 0
+                    : (0xC5505E00 | (connect_error & 0xff)));
+    }
+    if (sid_ack != 's') ExitProcess(110);
     PSID all_packages = 0;
     if (!ConvertStringSidToSidW(L"S-1-15-2-1", &all_packages)) ExitProcess(77);
     if (!GetTokenInformation(token, TokenGroups, groups_storage,
@@ -418,41 +424,6 @@ void WINAPI mainCRTStartup(void) {
     HANDLE extra = (HANDLE)(ULONG_PTR)number(number_text);
     DWORD handle_flags = 0;
     if (GetHandleInformation(extra, &handle_flags)) ExitProcess(100);
-
-    if (!value_after(command, L"--port=", number_text, 64)) ExitProcess(101);
-    static wchar_t network_command[MAX_PATH + 96];
-    lstrcpyW(network_command, L"\"");
-    lstrcatW(network_command, module);
-    lstrcatW(network_command, L"\" --network-probe --port=");
-    lstrcatW(network_command, number_text);
-    STARTUPINFOW network_startup;
-    PROCESS_INFORMATION network_child;
-    SecureZeroMemory(&network_startup, sizeof(network_startup));
-    SecureZeroMemory(&network_child, sizeof(network_child));
-    network_startup.cb = sizeof(network_startup);
-    if (!CreateProcessW(module, network_command, 0, 0, FALSE,
-                        CREATE_NO_WINDOW, 0, 0,
-                        &network_startup, &network_child)) ExitProcess(102);
-    CloseHandle(network_child.hThread);
-    DWORD network_wait = WaitForSingleObject(network_child.hProcess, 5000);
-    if (network_wait != WAIT_OBJECT_0) {
-        TerminateProcess(network_child.hProcess, 103);
-        CloseHandle(network_child.hProcess);
-        ExitProcess(103);
-    }
-    DWORD network_exit = 0;
-    if (!GetExitCodeProcess(network_child.hProcess, &network_exit)) {
-        CloseHandle(network_child.hProcess);
-        ExitProcess(103);
-    }
-    CloseHandle(network_child.hProcess);
-    if (network_exit == 104) ExitProcess(104);
-    /* Server 2022 may terminate inside WSAStartup before returning WSAEACCES
-       when the LPAC lacks registryRead. The isolated probe performs no other
-       effect before that call, so only this exact status is an accepted deny. */
-    if (network_exit != 0 &&
-        network_exit != LOUSHANG_STATUS_INVALID_HANDLE)
-        ExitProcess(0xC5505C00 | (network_exit & 0xff));
 
     static wchar_t descendant_command[MAX_PATH + 32];
     lstrcpyW(descendant_command, L"\"");
@@ -782,6 +753,51 @@ async def _collect_native_evidence(
     cleanup.endpoint_backend = None
     await process_backend.close_backend()
     cleanup.process_backend = None
+
+    # A second process under the same exact LPAC policy isolates Windows'
+    # possible in-WSAStartup termination from the main lifecycle oracle.
+    network_material = await _WindowsLpacLaunchCaptureBackend(api=api).capture(
+        capture,
+        attempt_id=provision.attempt_id,
+        attempt_token=object(),
+        on_capture=lambda value: setattr(cleanup, "material", value),
+    )
+    await network_material.verify_current(capture.request)
+    network_endpoint_backend = _WindowsEndpointBackend(max_endpoints=1, api=api)
+    cleanup.endpoint_backend = network_endpoint_backend
+    network_pair = await network_endpoint_backend.create_pair(
+        on_create=lambda value: setattr(cleanup, "pair", value)
+    )
+    network_process_backend = _WindowsProcessBackend(max_processes=1, api=api)
+    cleanup.process_backend = network_process_backend
+    network_process = await network_material.spawn(
+        network_process_backend,
+        capture.request,
+        effect=_ManagedSpawnEffect(),
+        on_spawn=lambda value: setattr(cleanup, "process", value),
+        inheritance=network_pair.inheritance,
+    )
+    await network_material.close()
+    cleanup.material = None
+    network_sid_line = await _read_line(network_pair.transport.read)
+    if network_sid_line != expected_sid_line:
+        raise AssertionError("LPAC network child Package SID did not match its profile")
+    await network_pair.transport.write(b"n")
+    network_return = (await network_process.wait()) & 0xFFFFFFFF
+    if network_return not in {0, 0xC0000008}:
+        raise AssertionError(
+            f"LPAC network denial probe failed: {network_return:#010x}"
+        )
+    await network_process_backend.wait_tree(network_process)
+    await network_process_backend.close_process_handles(network_process)
+    cleanup.process = None
+    await network_pair.close()
+    cleanup.pair = None
+    await network_endpoint_backend.close_backend()
+    cleanup.endpoint_backend = None
+    await network_process_backend.close_backend()
+    cleanup.process_backend = None
+
     listener.close()
     cleanup.listener = None
     api.close_handle(extra_child)
