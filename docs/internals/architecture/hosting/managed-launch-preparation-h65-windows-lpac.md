@@ -7,8 +7,9 @@
 - Parent: `HOST-H6`
 - Authority: normative accepted design
 - Design status: accepted
-- Implementation status: not implemented
-- Native activation: none
+- Implementation status: implemented candidate through H6.5b native mechanics;
+  H6.5c Product composition is not implemented
+- Native activation: mandatory Windows AMD64 evidence gate only; no Product consumer
 - Runtime posture: default-dark
 - Owner: Loushang Hosting architecture
 
@@ -65,13 +66,23 @@ The H6.5 provisioner:
   beyond the exact closure, or any pre-existing broader grant; and
 - rechecks the grant and locked identities immediately before every spawn.
 
-The complete attempt-specific AppContainer profile is the only writable
-filesystem and registry authority. Hosting creates a fresh profile for every
-attempt; it never reuses a predecessor's private files or registry state. On
-cleanup, Hosting performs rooted, no-follow, bounded filesystem removal that
-rejects reparse points, foreign hard links, streams, devices, depth,
-entry-count, and byte-count overflow, then deletes the OS profile and its
-private registry state. Cleanup ambiguity or residue blocks a successor.
+The attempt-specific AppContainer profile filesystem is the only writable
+authority. The zero-capability LPAC receives no registry authority; in
+particular, it is not granted the `registryRead` capability. Hosting creates a
+fresh profile for every attempt and never reuses a predecessor's private files
+or OS-owned profile state.
+Windows remains the owner of the Package SID ACL on the profile root and
+`Temp`; Hosting records both directory identities in the private-state witness
+and never rewrites those platform-owned ACLs. After the Job tree is settled,
+Hosting performs bounded, no-follow validation and removal of the exact `Temp`
+scratch subtree, rejecting reparse points, foreign hard links, streams,
+devices, depth, entry-count, and byte-count overflow. Concurrent hostile
+same-user processes are outside the stated threat model. Hosting does not
+recursively reinterpret or delete the platform-owned profile layout. With all
+native handles closed,
+`DeleteAppContainerProfile` is the sole owner that deletes the complete OS
+profile, remaining filesystem storage, and private registry state. Cleanup
+ambiguity or residue blocks a successor.
 
 ## Provisioning State Machine
 
@@ -100,15 +111,24 @@ fingerprints, grant digest, and platform identity. An exception after a native
 call begins is treated as possibly effectful. The caller records `DEBT`; it
 does not retry create, grant, revoke, or delete as though no effect occurred.
 
-Recovery reconciles a `RESERVED`, `PROFILE_CREATED`, `GRANTS_APPLIED`,
-`CLEANING`, or `DEBT` record against OS state through a read-only exact verify
-operation. A profile that exists without the matching durable reservation, an
-unexpected SID, a widened or partial DACL, a changed closure identity, or an
-unknown private state is foreign/ambiguous and cannot be adopted for launch.
-It may be reconciled only toward cleanup. Cleanup is allowed only through the
-exact cleaning attempt record and only after the
-caller proves that no admitted attempt can still run. Repeated exact cleanup
-is idempotent; unrelated profiles and grants are never touched.
+Windows exposes deterministic Package SID derivation, but no public read-only
+API that proves whether an arbitrary profile moniker is registered. Recovery
+therefore never fabricates such a query. A `RESERVED`, `PROFILE_CREATED`,
+`GRANTS_APPLIED`, `CLEANING`, or `DEBT` record can reconstruct a pathless
+cleanup-only witness from its durable attempt id, high-entropy operation nonce,
+lifecycle fingerprint, deterministic moniker, and derived SID. That witness
+cannot authorize launch or grant creation. It permits only exact Package-SID
+DACL revocation and bounded profile/private-state deletion; absent grants and
+an absent profile are successful cleanup replay. A profile observed during
+ordinary creation as already existing, an unexpected SID, a widened or partial
+DACL, a changed closure identity, or an unknown private state is
+foreign/ambiguous and cannot be adopted for launch. A conclusive
+`ERROR_ALREADY_EXISTS` creation collision created no attempt-owned native
+effect and must never mint a cleanup witness or delete that foreign profile.
+Cleanup is allowed only
+through the exact cleaning attempt record and only after the caller proves that
+no admitted attempt can still run. Repeated exact cleanup is idempotent;
+unrelated profiles and grants are never touched.
 
 This caller-owned journal prevents a crash between `CreateAppContainerProfile`
 and receipt publication from silently converting an unknown profile into
@@ -145,12 +165,24 @@ before OS creation receives the
 H6 pre-effect receipt; a conclusive false process-creation result receives the
 settled-without-process receipt; every ambiguous post-effect result is fenced.
 
-No inherited environment is permitted. A fixed environment block is built
-from explicit OS APIs and the provisioned profile location, with every value
-and key covered by the execution-closure fingerprint. `PATH`, proxy variables,
-credentials, user shell configuration, Python variables, loader controls, and
-caller-supplied values are absent. The native child oracle reports only
-boolean/categorical results and bounded fingerprints.
+No inherited environment is permitted. Hosting validates the OS-returned
+`<LocalAppData>\Packages\<profile>\AC` layout, derives the host
+`LocalAppData`, and seeds `LOCALAPPDATA`, `TEMP`, and `TMP` below that host root
+so `CreateProcessW` performs exactly one AppContainer redirection into the
+selected profile. `SystemRoot` comes from an explicit OS API. Every key and
+value is covered by the execution-closure fingerprint; `PATH`, proxy
+variables, credentials, user shell configuration, Python variables, loader
+controls, and caller-supplied values are absent. The native child oracle
+reports only boolean/categorical results and bounded fingerprints.
+
+The LPAC environment contains no registry capability. Through
+`GetAppContainerRegistryLocation(KEY_READ)`, the no-CRT oracle proves that the
+current profile's registry root cannot even be opened for read. It does not
+touch the ambient `HKEY_CURRENT_USER` predefined handle, which is not a valid
+LPAC probe. This denial is a deliberate consequence of the zero-capability
+profile, not a scratch-storage failure. A future Product runtime that requires
+`registryRead` is a different, strictly wider profile and must receive a
+separately reviewed policy id, closure, native oracle, and activation decision.
 
 ## Native Security Oracle
 
@@ -161,15 +193,32 @@ proves from inside that child:
   Packages opt-out are effective;
 - the exact runtime closure is readable/executable but not writable or
   deletable;
-- profile-private filesystem and registry scratch are writable and cannot
-  escape through reparse, link, stream, or path traversal;
+- profile-private filesystem scratch is writable and cannot escape through
+  reparse, link, stream, or path traversal, while registry access is denied;
 - an unrelated same-user file cannot be opened and a same-user process cannot
   be opened with mutation, VM, or handle-duplication rights;
 - a parent-created loopback listener is reachable by an unrestricted control
-  process but unreachable by the zero-capability child;
+  process but unreachable by a separate bounded zero-capability LPAC probe;
+  the probe emits a bounded stage transcript before WinSock initialization,
+  socket creation, and connect, and any successful connect fails the report;
 - only the exact endpoint and stderr handles are inherited; and
-- a descendant remains in the atomically assigned Job and the complete tree
-  is gone before settlement.
+- descendant creation is denied, or—if the platform permits it—the descendant
+  remains in the atomically assigned Job; either way the complete tree is gone
+  before settlement.
+
+The main, network, and descendant probes each own a fresh attempt-specific
+profile and exactly one root process. Every probe settles its Job, grants,
+scratch, and profile before the next profile is created; evidence-only process
+separation never weakens the one-profile/one-attempt/one-root rule.
+
+The network probe accepts only `WSAEACCES` at the exact attempted stage or
+`WSASYSCALLFAILURE` during `WSAStartup`; the latter is WinSock's generic result
+when an underlying provider/catalog system call cannot complete and still
+proves that the zero-capability child did not obtain a usable network stack.
+Negative handle and platform probes may also accept exact
+`STATUS_INVALID_HANDLE` fail-fast termination when the bounded categorical
+transcript proves the purpose-built probe had reached that sole outstanding
+operation. An earlier, different, or ambiguous termination fails the report.
 
 The report also injects profile/SID/DACL/runtime/private-state/platform/handle
 substitution, cancellation at every acquisition and both sides of the process
@@ -213,15 +262,18 @@ or use its report as H6.5 evidence.
   Worker protocol, readiness, fallback, or domain publication; and
 - Current-owner deletion or default activation.
 
-## H6.5 Design Exit Gate
+## H6.5b Native Exit Gate
 
-The design is accepted only with the C5.5 ownership/receipt design, exact
-Current inventory, five-view review, and executable guards proving all H6.5
-runtime symbols and consumers remain absent. Acceptance changes no production
-source or activation default.
+H6.5b is accepted only when the C5.5 ownership/receipt design, exact Current
+inventory, reviewed Hosting-private runtime symbols, deterministic mechanics
+tests, and mandatory Windows AMD64 native report agree. Executable guards prove
+that no Harness or Product consumer exists and that Current remains the
+production default.
 
 The paired five-view C5.5a review accepted this boundary after separating
 Hosting ownership, replacing persistent deployment profiles with exact
 attempt-owned profiles, and making the parent attribute manifest—not child
-self-report—the launch authority. No unresolved high or medium design issue
-remains; H6.5b native feasibility and implementation evidence are still open.
+self-report—the launch authority. H6.5b implements that candidate without
+granting activation authority; H6.5c Product integration and its separate
+evidence report remain open. No unresolved high or medium design issue remains
+in the H6.5b native boundary.

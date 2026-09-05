@@ -158,7 +158,7 @@
         "C55B-RUNTIME-RX",
         "C55B-RUNTIME-WRITE-DENY",
         "C55B-PRIVATE-FS-SCRATCH",
-        "C55B-PRIVATE-REGISTRY-SCRATCH",
+        "C55B-REGISTRY-DENY",
         "C55B-UNRELATED-FS-DENY",
         "C55B-PROCESS-MUTATION-DENY",
         "C55B-NETWORK-DENY",
@@ -174,7 +174,7 @@
         "C55B-CONTAINMENT-CLEANUP-DEBT",
         "C55B-SENTINEL-REDACTION"
       ],
-      "status": "planned"
+      "status": "implemented"
     },
     "PLC9C5-C5.5C-WINDOWS-PRODUCT": {
       "junitPath": ".artifacts/plc9c5-c55c-windows-product.xml",

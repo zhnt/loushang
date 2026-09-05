@@ -9,8 +9,7 @@ DOCUMENT = Path(
     "plugin-lifecycle-plc9c5-c55-windows-containment.md"
 )
 BASELINE = Path(
-    "docs/internals/architecture/harness/plugin/"
-    "plugin-lifecycle-plc9c5-c50-baseline.md"
+    "docs/internals/architecture/harness/plugin/plugin-lifecycle-plc9c5-c50-baseline.md"
 )
 INVENTORY = Path(
     "docs/internals/architecture/harness/plugin/"
@@ -29,6 +28,7 @@ LEGACY_APPCONTAINER = (
     SOURCE_ROOT / "harness" / "sandbox" / "package_windows_legacy_runtime.py"
 )
 MAKEFILE = Path("Makefile")
+HOSTING_WORKFLOW = Path(".github/workflows/hosting-quality.yml")
 MANIFEST = Path(
     "docs/internals/architecture/harness/plugin/"
     "plugin-lifecycle-plc9c5-evidence-manifest.json"
@@ -45,7 +45,7 @@ _C55B_CASES = {
     "C55B-RUNTIME-RX",
     "C55B-RUNTIME-WRITE-DENY",
     "C55B-PRIVATE-FS-SCRATCH",
-    "C55B-PRIVATE-REGISTRY-SCRATCH",
+    "C55B-REGISTRY-DENY",
     "C55B-UNRELATED-FS-DENY",
     "C55B-PROCESS-MUTATION-DENY",
     "C55B-NETWORK-DENY",
@@ -116,7 +116,7 @@ def test_c55a_status_index_and_parent_plan_are_honest() -> None:
         "ID: `PLC9C5-C5.5-WINDOWS-CONTAINMENT`",
         "Authority: normative accepted design",
         "Design status: accepted",
-        "Implementation status: not implemented",
+        "Implementation status: implemented candidate through C5.5b native mechanics; C5.5c Product composition is not implemented",
         "Activation status: closed",
         "Production default: Current",
         "C5.5 closes G7 only after both the Windows native containment report",
@@ -124,15 +124,15 @@ def test_c55a_status_index_and_parent_plan_are_honest() -> None:
         "It does not delete Current",
     ):
         assert token in document
-    assert _read(INDEX).count(
-        "(plugin-lifecycle-plc9c5-c55-windows-containment.md)"
-    ) == 1
+    assert (
+        _read(INDEX).count("(plugin-lifecycle-plc9c5-c55-windows-containment.md)") == 1
+    )
     for slice_id in ("C5.5a", "C5.5b", "C5.5c"):
         assert slice_id in document
         assert slice_id in baseline
         assert slice_id in delivery
-    assert "merged C5.4 baseline `2c1f528a`" in inventory
-    assert "accepted C5.5a design baseline grants no activation authority" in inventory
+    assert "merged C5.5a design baseline `68151253`" in inventory
+    assert "implemented C5.5b candidate grants no activation authority" in inventory
 
 
 def test_c55a_freezes_the_threat_model_and_resource_lifetimes() -> None:
@@ -172,18 +172,25 @@ def test_c55a_keeps_sole_writers_and_dependency_direction_explicit() -> None:
         assert token in document
 
 
-def test_c55a_keeps_runtime_closed_until_native_and_product_reports_exist() -> None:
-    # C5.5a is documentation/guards only. The planned profile and all private
-    # AppContainer process symbols remain absent from current Hosting/bridge.
+def test_c55b_keeps_runtime_private_until_product_report_exists() -> None:
+    # C5.5b adds only Hosting-private mechanics. Harness and Product remain
+    # unable to construct or select the candidate profile.
     production = "\n".join(
         _read(path) for path in SOURCE_ROOT.rglob("*.py") if path != LEGACY_APPCONTAINER
     )
-    assert _PLANNED_PROFILE not in production
+    assert _PLANNED_PROFILE in production
     bridge = _read(BRIDGE)
     assert "_WindowsLpac" not in bridge
     assert "_build_windows_lpac" not in bridge
     assert "loushang.hosting._windows_launch_preparation" not in _imports(BRIDGE)
-    assert "_WindowsLpac" not in _read(WINDOWS_PREPARATION)
+    assert "_WindowsLpacProvisioner" in _read(WINDOWS_PREPARATION)
+    outside_hosting = "\n".join(
+        _read(path)
+        for path in SOURCE_ROOT.rglob("*.py")
+        if HOSTING_ROOT not in path.parents and path != LEGACY_APPCONTAINER
+    )
+    assert _PLANNED_PROFILE not in outside_hosting
+    assert "_WindowsLpacProvisioner" not in outside_hosting
     assert "windows-restricted-direct-import-pe-v1" in production
 
 
@@ -194,7 +201,7 @@ def test_c55a_requires_in_child_native_authority_and_lifecycle_evidence() -> Non
         "Source inspection, token flags alone",
         "profile create, cleanup-only exact replay, foreign pre-existing profile rejection",
         "zero capabilities, exact Package SID, LPAC opt-out",
-        "runtime write denial, profile-private filesystem/registry scratch-only write",
+        "runtime write denial, profile-private filesystem scratch-only write, registry denial",
         "network denial plus a local network sentinel",
         "exact endpoint/stderr handle list",
         "cancellation before and after effect",
@@ -206,7 +213,7 @@ def test_c55a_requires_in_child_native_authority_and_lifecycle_evidence() -> Non
         assert token in document
 
 
-def test_c55a_freezes_planned_native_and_product_report_manifests() -> None:
+def test_c55b_implements_native_and_keeps_product_report_planned() -> None:
     reports = json.loads(_read(MANIFEST))["reports"]
     native = reports["PLC9C5-C5.5B-WINDOWS-LPAC-NATIVE"]
     product = reports["PLC9C5-C5.5C-WINDOWS-PRODUCT"]
@@ -214,7 +221,7 @@ def test_c55a_freezes_planned_native_and_product_report_manifests() -> None:
         "junitPath": ".artifacts/plc9c5-c55b-windows-lpac-native.xml",
         "minimumTests": 24,
         "requiredCaseIds": list(native["requiredCaseIds"]),
-        "status": "planned",
+        "status": "implemented",
     }
     assert set(native["requiredCaseIds"]) == _C55B_CASES
     assert len(native["requiredCaseIds"]) == len(_C55B_CASES)
@@ -230,8 +237,19 @@ def test_c55a_freezes_planned_native_and_product_report_manifests() -> None:
 
 def test_c55a_has_a_focused_local_architecture_gate() -> None:
     makefile = _read(MAKEFILE)
+    workflow = _read(HOSTING_WORKFLOW)
     assert "check-plc9c5-c55-windows-containment-design" in makefile
+    assert "check-plc9c5-c55b-windows-lpac-native" in makefile
+    for token in (
+        "LOUSHANG_PLC9C5_C55B_REPORT",
+        "tests/hosting/test_plc9c5_c55b_windows_lpac_native.py",
+        ".artifacts/plc9c5-c55b-windows-lpac-native.xml",
+        "PLC9C5-C5.5B-WINDOWS-LPAC-NATIVE",
+        "verify_pytest_xml.py",
+        "verify_plc9c5_manifest.py",
+    ):
+        assert token in makefile
+        assert token in workflow
     assert (
-        "tests/architecture/"
-        "test_plugin_lifecycle_plc9c5_c55_windows_containment.py"
+        "tests/architecture/test_plugin_lifecycle_plc9c5_c55_windows_containment.py"
     ) in makefile
