@@ -143,7 +143,7 @@
         "C54-SHARED-ENTRYPOINT-RECEIPT",
         "C54-SENTINEL-REDACTION"
       ],
-      "status": "planned"
+      "status": "implemented"
     }
   }
 }
