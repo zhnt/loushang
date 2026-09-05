@@ -74,6 +74,10 @@ _LPAC_PROFILE_PREFIX = "Loushang.Lpac."
 # inheritable rights make SetEntriesInAcl split one grant into an effective ACE
 # plus an INHERIT_ONLY ACE, so use the stable native mask we can verify exactly.
 _LPAC_RUNTIME_ACCESS = 0x001200A9
+# Read/write/delete within the attempt-private scratch tree, without ownership
+# or DACL mutation rights.  The Package SID also receives a separate
+# non-inheriting traverse grant on the platform-owned private root.
+_LPAC_PRIVATE_SCRATCH_ACCESS = 0x001301FF
 _LPAC_ROOT_ACE_FLAGS = _SUB_CONTAINERS_AND_OBJECTS_INHERIT
 _LPAC_WITNESS_STATES = frozenset(
     {
@@ -1042,14 +1046,16 @@ class _WindowsLpacProvisioner:
             profile = self._derive_checked_profile(spec, witness)
             try:
                 self._verify_private_identity(witness, profile)
-                targets = _lpac_grant_targets(spec)
+                targets = _lpac_grant_targets(spec) + _lpac_private_grant_targets(
+                    profile.private_root
+                )
                 if any(
                     self._api.lpac_path_access(path, profile.sid)
                     for path, _, _ in targets
                 ):
                     raise HostingError(
                         HostingFailureCategory.PREPARATION_STALE,
-                        "Windows LPAC runtime already has Package SID authority",
+                        "Windows LPAC grant target already has Package SID authority",
                     )
                 begin_effect()
                 self._api.ensure_lpac_private_scratch(profile.private_root)
@@ -1082,7 +1088,13 @@ class _WindowsLpacProvisioner:
             try:
                 self._verify_private_identity(witness, profile)
                 _verify_lpac_runtime(self._api, spec)
-                _verify_lpac_grants(self._api, spec, profile.sid, present=True)
+                _verify_lpac_grants(
+                    self._api,
+                    spec,
+                    profile.private_root,
+                    profile.sid,
+                    present=True,
+                )
                 return self._witness(spec, profile, state="VERIFIED")
             finally:
                 self._api.free_sid(profile.sid)
@@ -1103,7 +1115,9 @@ class _WindowsLpacProvisioner:
         with self._lock:
             profile = self._derive_checked_profile(spec, witness)
             try:
-                targets = _lpac_grant_targets(spec)
+                targets = _lpac_grant_targets(spec) + _lpac_private_grant_targets(
+                    profile.private_root
+                )
                 for path, permissions, inherit in targets:
                     matches = self._api.lpac_path_access(path, profile.sid)
                     expected = ((permissions, _LPAC_ROOT_ACE_FLAGS if inherit else 0),)
@@ -1116,7 +1130,13 @@ class _WindowsLpacProvisioner:
                 for path, _, _ in reversed(targets):
                     if self._api.lpac_path_access(path, profile.sid):
                         self._api.revoke_lpac_path(path, profile.sid)
-                _verify_lpac_grants(self._api, spec, profile.sid, present=False)
+                _verify_lpac_grants(
+                    self._api,
+                    spec,
+                    profile.private_root,
+                    profile.sid,
+                    present=False,
+                )
                 # Preserve the durable identity witness. Recovery may begin
                 # after profile creation but before Hosting returned the
                 # profile-root identity to Product; cleanup does not need to
@@ -1402,14 +1422,26 @@ def _lpac_grant_targets(
     )
 
 
+def _lpac_private_grant_targets(
+    private_root: str,
+) -> tuple[tuple[str, int, bool], ...]:
+    root = _require_local_windows_path(private_root, "private root")
+    return (
+        (root, _FILE_TRAVERSE_READ, False),
+        (ntpath.join(root, "Temp"), _LPAC_PRIVATE_SCRATCH_ACCESS, True),
+    )
+
+
 def _verify_lpac_grants(
     api: _WindowsLpacApi,
     spec: _WindowsLpacProvisionSpec,
+    private_root: str,
     sid: int,
     *,
     present: bool,
 ) -> None:
-    for path, permissions, inherit in _lpac_grant_targets(spec):
+    targets = _lpac_grant_targets(spec) + _lpac_private_grant_targets(private_root)
+    for path, permissions, inherit in targets:
         actual = api.lpac_path_access(path, sid)
         expected = (
             ((permissions, _LPAC_ROOT_ACE_FLAGS if inherit else 0),) if present else ()
@@ -1417,7 +1449,7 @@ def _verify_lpac_grants(
         if actual != expected:
             raise HostingError(
                 HostingFailureCategory.PREPARATION_STALE,
-                "Windows LPAC runtime grant changed "
+                "Windows LPAC grant changed "
                 f"(expected={expected!r}, observed={actual!r})",
             )
 
@@ -1489,6 +1521,12 @@ def _lpac_grant_digest(spec: _WindowsLpacProvisionSpec) -> str:
         (path.casefold(), permissions, inherit)
         for path, permissions, inherit in _lpac_grant_targets(spec)
     ]
+    payload.extend(
+        (
+            ("@profile-private-root", _FILE_TRAVERSE_READ, False),
+            ("@profile-private-temp", _LPAC_PRIVATE_SCRATCH_ACCESS, True),
+        )
+    )
     return hashlib.sha256(
         json.dumps(payload, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
@@ -1990,7 +2028,13 @@ class _WindowsLpacLaunchMaterial:
                 HostingFailureCategory.PREPARATION_STALE,
                 "Windows LPAC profile identity changed",
             )
-        _verify_lpac_grants(self._api, provision, profile.sid, present=True)
+        _verify_lpac_grants(
+            self._api,
+            provision,
+            profile.private_root,
+            profile.sid,
+            present=True,
+        )
         if not self._api.managed_job_is_kill_on_close(self._job_handle):
             raise HostingError(
                 HostingFailureCategory.PREPARATION_STALE,

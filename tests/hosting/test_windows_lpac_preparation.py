@@ -41,6 +41,7 @@ from loushang.hosting._windows_launch_preparation import (
     _build_windows_lpac_launch_capture_spec,
     _fingerprint,
     _lpac_grant_targets,
+    _lpac_private_grant_targets,
     _lpac_profile_name,
     _lpac_spec_fingerprint,
     _private_state_fingerprint,
@@ -428,6 +429,11 @@ def test_windows_lpac_provision_cleanup_is_exact_and_replayable(
     root_target, root_permissions, root_inherit = _lpac_grant_targets(spec)[-1]
     assert (root_permissions, root_inherit) == (0x001200A9, True)
     assert api.access[root_target] == ((0x001200A9, 3),)
+    private_root, private_temp = _lpac_private_grant_targets(r"C:\private\AC")
+    assert private_root == (r"C:\private\AC", 0x001200A0, False)
+    assert private_temp == (r"C:\private\AC\Temp", 0x001301FF, True)
+    assert api.access[private_root[0]] == ((private_root[1], 0),)
+    assert api.access[private_temp[0]] == ((private_temp[1], 3),)
     witness = owner.verify(spec, witness)
     assert witness.state == "VERIFIED"
     witness = owner.revoke_grants(
@@ -436,6 +442,7 @@ def test_windows_lpac_provision_cleanup_is_exact_and_replayable(
         begin_effect=lambda: effects.append("revoke"),
     )
     assert witness.state == "GRANTS_REVOKED"
+    assert all(not matches for matches in api.access.values())
     witness = owner.delete_profile(
         spec,
         witness,

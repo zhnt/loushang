@@ -68,14 +68,19 @@ The H6.5 provisioner:
 
 The complete attempt-specific AppContainer profile is the only writable
 filesystem and registry authority. Hosting creates a fresh profile for every
-attempt; it never reuses a predecessor's private files or registry state. On
-cleanup, Hosting performs rooted, no-follow, bounded removal of its exact
-`Temp` scratch subtree, rejecting reparse points, foreign hard links, streams,
-devices, depth, entry-count, and byte-count overflow. It does not recursively
-reinterpret or delete the platform-owned profile layout. With all native
-handles closed, `DeleteAppContainerProfile` is the sole owner that deletes the
-complete OS profile, remaining filesystem storage, and private registry state.
-Cleanup ambiguity or residue blocks a successor.
+attempt; it never reuses a predecessor's private files or registry state. The
+Package SID receives only non-inheriting traverse rights on the platform-owned
+private root and read/write/delete-child rights inherited within its exact
+`Temp` subtree; ownership and DACL mutation remain absent. Those two grants are
+covered by the same provision witness, pre-spawn verification, and reverse
+cleanup as the immutable-runtime grants. On cleanup, Hosting performs rooted,
+no-follow, bounded removal of the `Temp` subtree, rejecting reparse points,
+foreign hard links, streams, devices, depth, entry-count, and byte-count
+overflow. It does not recursively reinterpret or delete the platform-owned
+profile layout. With all native handles closed, `DeleteAppContainerProfile` is
+the sole owner that deletes the complete OS profile, remaining filesystem
+storage, and private registry state. Cleanup ambiguity or residue blocks a
+successor.
 
 ## Provisioning State Machine
 
