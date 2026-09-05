@@ -2,7 +2,8 @@
 
 ## Status And Authority
 
-- Slice: PLC9C.0 baseline plus PLC9C1--PLC9C4 internal Worker mechanism.
+- Slice: PLC9C.0 baseline plus PLC9C1--PLC9C4 internal Worker mechanism and
+  accepted PLC9C5 C5.0 design/guard baseline.
 - Implementation base: `90f6a9de` on `main` / `lane/harness`.
 - Delivery branch: `harness/plugin-plc9c-worker-containment`.
 - Status: reviewed implementation candidate. Architecture,
@@ -23,8 +24,12 @@ This baseline refines the
 against the current source-backed
 [PLC9 inventory](plugin-lifecycle-plc9-inventory.md#execution-and-containment-seams).
 Current source and executable tests remain authoritative for implemented
-behavior. PLC9C5 must revise this document and inventory in the same change
-that introduces Product activation or native IPC/platform evidence.
+behavior. PLC9C5 C5.0 may revise this document and inventory only to index its
+target design and strengthen absence/deletion guards; it does not revise the
+Product activation or native IPC/platform absence. A later C5 slice must
+revise each exact guard in the same change as the corresponding implementation
+and replacement evidence.
+
 The proposed [HOST-H6 managed preparation design](../../hosting/managed-launch-preparation-h6.md)
 and [Hosted Product Runtime V1 plan](../../drafts/hosted-product-runtime-v1-plan.md)
 are prerequisites and coordination inputs only; they do not revise this
@@ -276,7 +281,16 @@ does not silently become optional.
 | PLC9C2 | owner-only `ManagedWorkerLaunchPort` minted by Process/Sandbox composition | Process Host owns the capacity reservation; required containment and final owner/identity evidence pass before the OS spawner; generic/raw bypasses fail |
 | PLC9C3 | product-neutral bounded transport/session protocol and supervisor | framing, nonce, heartbeat, correlation, limits, cancellation, shutdown, crash fencing, exclusive supervisor epoch, and restart budget have independent evidence |
 | PLC9C4 | one read-only, low-authority domain adapter and vertical slice | semantic actions remain Host-side; no publication before handshake/domain admission; stale/crashed Worker cannot publish or retire a generation |
-| PLC9C5 | Product activation, recovery, native platform evidence, and rollback | Linux/Windows required-containment gates and cross-entrypoint conformance pass without fallback |
+| PLC9C5 | Product activation, recovery, native platform evidence, and rollback, split by the C5.0 baseline below | Linux canary lands first; Windows remains fail closed until a separate required-containment gate and cross-entrypoint conformance pass without fallback |
+
+The accepted
+[PLC9C5 C5.0 baseline](plugin-lifecycle-plc9c5-c50-baseline.md) and
+[source-backed Current inventory](plugin-lifecycle-plc9c5-c50-inventory.md)
+refine that final row into C5.0 design/guards, C5.1 receipt/lifecycle contracts,
+C5.2 Linux native evidence, C5.3 Windows mechanics/rejection evidence, and C5.4
+exact Linux Coding Product convergence. C5.0 adds no runtime symbol or
+activation route. C5.4 does not close the parent G7 Windows
+required-containment row.
 
 PLC9C1 must not reinterpret declaration IR v2 or document v1. It introduces an
 additive versioned shape with explicit compatibility behavior. PLC9C2 must not
@@ -293,7 +307,8 @@ Guard revisions are intentionally incremental:
 | PLC9C2 | only `ManagedWorkerLaunchPort` absence and its Process/Sandbox composition inventory | protocol/supervisor, domain adapter/publication, author runtime owners, and `remote_service` remain absent |
 | PLC9C3 | only protocol/supervisor absence after bounded state-machine evidence lands | domain publication/retirement, author runtime owners, and `remote_service` remain closed |
 | PLC9C4 | only the selected domain-adapter absence after its conformance evidence lands | other domains, mutation/deletion authority, public runtime owners, and `remote_service` remain closed |
-| PLC9C5 | Product activation absence for the accepted vertical slice | unsupported platforms, undeclared fallbacks, other domains, and `remote_service` remain fail-closed |
+| PLC9C5 C5.0 | no activation guard is removed; add exact C5 Current inventory, mismatch, slice, and deletion guards | Product activation, native-profile consumers, unsupported platforms, undeclared fallbacks, other domains, and `remote_service` remain fail-closed |
+| PLC9C5 C5.1--C5.4 | revise only the receipt/lifecycle contracts, the single private Linux bridge, Windows mechanics/rejection evidence, then the exact Linux Product-composition guard named by the C5.0 transition ledger | default Current, explicit allowlist, no same-attempt fallback, Windows Product activation, unsupported platforms, other domains, author runtime owners, and `remote_service` remain fail-closed |
 
 The guard-transition ledger is append-only at the slice boundary:
 
@@ -304,7 +319,8 @@ The guard-transition ledger is append-only at the slice boundary:
 | PLC9C1 -> PLC9C2 | remove only the launch-port absence token after Process/Sandbox owner-composition tests pass |
 | PLC9C2 -> PLC9C3 | remove only named supervisor/protocol absence tokens after bounded state-machine, crash-fence, and restart-budget tests pass |
 | PLC9C3 -> PLC9C4 | remove only the selected domain-adapter absence token after exact semantic-admission and generation-owner conformance passes |
-| PLC9C4 -> PLC9C5 | remove only the accepted Product-activation/platform absence guard; every unlisted environment and undeclared fallback remains closed |
+| PLC9C4 -> PLC9C5 C5.0 | remove no runtime guard; index the design/inventory and freeze exact Current mismatches and retained owners |
+| C5.0 -> C5.1--C5.4 | follow the C5.0 append-only transition ledger: receipt/lifecycle, one exact private Linux profile bridge, Windows mechanics/rejection, then exact Linux Coding Product composition; Windows Product activation, every unlisted environment, and every undeclared fallback remain closed |
 
 Computed imports, reflection, aliases, and callable laundering do not bypass a
 retained guard. Static tests cover direct and relative imports; review and
@@ -341,7 +357,8 @@ bounded unsupported-platform or containment-unavailable reason.
 
 ## Frozen Forbidden Routes
 
-Until PLC9C5 intentionally revises these guards:
+Until the owning PLC9C5 C5.1--C5.4 slice intentionally revises each exact
+guard with replacement evidence:
 
 - `local_worker` and its Worker configuration exist only in the additive
   internal index-v3/IR-v3/document-v2 codec; `remote_service` remains absent,
@@ -380,4 +397,5 @@ PLC9C1--PLC9C4 are complete only when:
 Passing PLC9C1--PLC9C4 permits a separately reviewed PLC9C5 Product/native
 activation change. It does not pre-approve an IPC platform binding, Sandbox
 backend, Product recovery policy, public SDK surface, generation publication,
-or remote topology.
+or remote topology. Accepting C5.0 permits only the first C5.1 contract slice;
+it keeps every production path default-dark.

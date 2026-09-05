@@ -432,13 +432,16 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         )
     }
     assert reverse_apphost_consumers == set()
+    retained_fences = " ".join(_section(inventory, "Retained Fences").split())
     for statement in (
         "H5 default owner is Current",
-        "PLC9C5 Product activation and platform absence guards remain unchanged",
+        "PLC9C5 C5.0 design/inventory may be indexed",
+        "Product activation, native profile consumption, and platform absence "
+        "guards remain unchanged",
         "AppHost/AppServer/AppService source packages remain absent",
         "Hosting imports no Harness, Product, AppHost, AppServer, or AppService",
     ):
-        assert statement in _section(inventory, "Retained Fences")
+        assert statement in retained_fences
 
 
 def test_current_session_discovery_roots_preserve_exact_modes(tmp_path: Path) -> None:
@@ -537,11 +540,14 @@ def test_plc9c5_and_h5_activation_fences_are_unchanged() -> None:
     h6 = _read(H6)
     plan = _read(DELIVERY_PLAN)
     normalized_plc9c = " ".join(plc9c.split())
-    assert "Until PLC9C5 intentionally revises these guards:" in plc9c
     assert (
-        "PLC9C4 -> PLC9C5 | remove only the accepted Product-activation/platform "
-        "absence guard"
+        "Until the owning PLC9C5 C5.1--C5.4 slice intentionally revises each exact"
+        in normalized_plc9c
+    )
+    assert (
+        "PLC9C4 -> PLC9C5 C5.0 | remove no runtime guard"
     ) in normalized_plc9c
+    assert "C5.0 removes no runtime guard" in " ".join(plan.split())
     assert "they do not revise this activation guard" in normalized_plc9c
     assert "the PLC9C5 Product-activation/platform absence guard remains intact" in h6
     assert "zero runtime activation" in plan

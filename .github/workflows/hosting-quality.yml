@@ -63,6 +63,7 @@ jobs:
           tests/architecture/test_hosting_h6_posix_native.py
           tests/architecture/test_hosting_h6_windows_native.py
           tests/architecture/test_hosted_product_runtime_v1_baseline.py
+          tests/architecture/test_plugin_lifecycle_plc9c5_c50_baseline.py
           tests/architecture/test_hosting_architecture_baseline.py
 
       - name: Typecheck Hosting H0-H6
@@ -154,5 +155,6 @@ jobs:
           tests/architecture/test_hosting_h6_posix_native.py
           tests/architecture/test_hosting_h6_windows_native.py
           tests/architecture/test_hosted_product_runtime_v1_baseline.py
+          tests/architecture/test_plugin_lifecycle_plc9c5_c50_baseline.py
           tests/architecture/test_hosting_architecture_baseline.py
           -q

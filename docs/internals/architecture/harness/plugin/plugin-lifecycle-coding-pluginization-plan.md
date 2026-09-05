@@ -57,6 +57,14 @@
   source inventory, and architecture guards were accepted on
   `harness/plugin-plc9-baseline` after architecture, correctness/security, and
   Product/test review on 2026-08-31; they grant no runtime authority.
+  PLC9C1--PLC9C4 now implement the inert local-Worker declaration, owner-only
+  launch, bounded supervisor, and default-dark read-only Capability adapter.
+  The accepted
+  [PLC9C5 C5.0 baseline](plugin-lifecycle-plc9c5-c50-baseline.md) and
+  [Current inventory](plugin-lifecycle-plc9c5-c50-inventory.md) plan
+  receipt/lifecycle, Linux native, Windows mechanics/rejection, and final Linux
+  Coding Product-convergence slices while retaining every production
+  activation guard.
 - Scope: one delivery order for the common Plugin lifecycle, ordinary
   Definition / Provider / Consumer authoring primitives, `coding.lsp`,
   `coding.base`, `coding.arch`, management control, pre-LSP internal Resource/

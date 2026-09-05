@@ -105,7 +105,8 @@ The inventory records, rather than relaxes, these Current fences:
 - H5 default owner is Current and a selected owner never falls back during an
   attempt;
 - sealed-descriptor cases remain rejected by Hosting compatibility;
-- PLC9C5 Product activation and platform absence guards remain unchanged;
+- PLC9C5 C5.0 design/inventory may be indexed, but Product activation, native
+  profile consumption, and platform absence guards remain unchanged;
 - AppHost/AppServer/AppService source packages remain absent; and
 - Hosting imports no Harness, Product, AppHost, AppServer, or AppService
   package.
