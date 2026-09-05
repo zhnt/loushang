@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import ctypes
 import hashlib
 import os
 import platform
@@ -9,6 +10,7 @@ import socket
 import subprocess
 import uuid
 from contextlib import suppress
+from ctypes import wintypes
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -229,8 +231,12 @@ void WINAPI mainCRTStartup(void) {
     if (!GetTokenInformation(token, TokenIsAppContainer, &flag,
                              sizeof(flag), &returned) || !flag) ExitProcess(71);
     flag = 0;
-    if (!GetTokenInformation(token, TokenIsLessPrivilegedAppContainer, &flag,
-                             sizeof(flag), &returned) || !flag) ExitProcess(72);
+    if (GetTokenInformation(token, TokenIsLessPrivilegedAppContainer, &flag,
+                            sizeof(flag), &returned)) {
+        if (!flag) ExitProcess(72);
+    } else if (GetLastError() != ERROR_INVALID_PARAMETER) {
+        ExitProcess(72);
+    }
     if (!GetTokenInformation(token, TokenCapabilities, capabilities_storage,
                              sizeof(capabilities_storage), &returned)) ExitProcess(73);
     if (((TOKEN_GROUPS *)capabilities_storage)->GroupCount != 0) ExitProcess(74);
@@ -332,6 +338,14 @@ void WINAPI mainCRTStartup(void) {
                                  OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
     if (foreign != INVALID_HANDLE_VALUE) ExitProcess(94);
     if (!denied_error(GetLastError())) ExitProcess(95);
+
+    static wchar_t aap_sentinel[MAX_PATH];
+    if (!value_after(command, L"--aap-sentinel=", aap_sentinel, MAX_PATH))
+        ExitProcess(111);
+    HANDLE ambient = CreateFileW(aap_sentinel, GENERIC_READ, FILE_SHARE_READ, 0,
+                                 OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+    if (ambient != INVALID_HANDLE_VALUE) ExitProcess(112);
+    if (!denied_error(GetLastError())) ExitProcess(113);
 
     static wchar_t number_text[64];
     if (!value_after(command, L"--parent=", number_text, 64)) ExitProcess(96);
@@ -509,6 +523,28 @@ async def _collect_native_evidence(
 
     api = _ObservedNativeLpacApi()
     cleanup.api = api
+    aap_sentinel = root / "all-application-packages-only.txt"
+    aap_sentinel.write_text("AAP_ONLY_SENTINEL", encoding="utf-8")
+    aap_sid = (ctypes.c_ubyte * 68)()
+    aap_sid_size = wintypes.DWORD(ctypes.sizeof(aap_sid))
+    if not api._CreateWellKnownSid(
+        84,
+        None,
+        ctypes.byref(aap_sid),
+        ctypes.byref(aap_sid_size),
+    ):
+        pytest.fail("H6.5 native gate could not create the AAP well-known SID")
+    api.grant_lpac_path(
+        str(aap_sentinel.resolve()),
+        ctypes.addressof(aap_sid),
+        permissions=0x80000000,
+        inherit=False,
+    )
+    if not api.lpac_path_access(
+        str(aap_sentinel.resolve()),
+        ctypes.addressof(aap_sid),
+    ):
+        pytest.fail("H6.5 native gate did not establish its AAP-only sentinel")
     extra_child, extra_parent = api.create_pipe(child_reads=True)
     cleanup.extra_handles = (extra_child, extra_parent)
     request = ProcessLaunchRequest(
@@ -516,6 +552,7 @@ async def _collect_native_evidence(
             str(executable.resolve()),
             f"--cwd={cwd.resolve()}",
             f"--sentinel={sentinel.resolve()}",
+            f"--aap-sentinel={aap_sentinel.resolve()}",
             f"--parent={os.getpid()}",
             f"--extra-handle={extra_child}",
             f"--port={port}",

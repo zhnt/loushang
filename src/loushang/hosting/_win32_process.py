@@ -59,6 +59,10 @@ _THREAD_TERMINATE = 0x0001
 _TOKEN_ASSIGN_PRIMARY = 0x0001
 _TOKEN_DUPLICATE = 0x0002
 _TOKEN_QUERY = 0x0008
+_SECURITY_IMPERSONATION = 2
+_CTMF_INCLUDE_APPCONTAINER = 0x00000001
+_WIN_BUILTIN_ANY_PACKAGE_SID = 84
+_SECURITY_MAX_SID_SIZE = 68
 _DISABLE_MAX_PRIVILEGE = 0x00000001
 _FILE_SHARE_READ = 0x00000001
 _FILE_SHARE_WRITE = 0x00000002
@@ -73,7 +77,6 @@ _MAX_FINAL_PATH_CHARS = 32768
 _TOKEN_IS_APP_CONTAINER = 29
 _TOKEN_CAPABILITIES = 30
 _TOKEN_APP_CONTAINER_SID = 31
-_TOKEN_IS_LESS_PRIVILEGED_APP_CONTAINER = 46
 _SE_FILE_OBJECT = 1
 _DACL_SECURITY_INFORMATION = 0x00000004
 _GRANT_ACCESS = 1
@@ -1089,19 +1092,18 @@ class _CtypesWin32Api:
         if not in_job.value:
             raise OSError("Windows LPAC process is not in its admitted Job")
         token = wintypes.HANDLE()
-        if not self._OpenProcessToken(process, _TOKEN_QUERY, ctypes.byref(token)):
+        if not self._OpenProcessToken(
+            process,
+            _TOKEN_QUERY | _TOKEN_DUPLICATE,
+            ctypes.byref(token),
+        ):
             self._raise_last_error("OpenProcessToken(LPAC)")
         token_value = _handle_value(token)
         try:
             is_app_container = bool(
                 self._token_dword(token_value, _TOKEN_IS_APP_CONTAINER)
             )
-            is_lpac = bool(
-                self._token_dword(
-                    token_value,
-                    _TOKEN_IS_LESS_PRIVILEGED_APP_CONTAINER,
-                )
-            )
+            is_lpac = self._token_is_lpac(token_value)
             capabilities = self._token_buffer(token_value, _TOKEN_CAPABILITIES)
             capability_count = int(
                 ctypes.cast(capabilities, ctypes.POINTER(wintypes.DWORD)).contents.value
@@ -1127,6 +1129,47 @@ class _CtypesWin32Api:
             )
         finally:
             self.close_handle(token_value)
+
+    def _token_is_lpac(self, token: int) -> bool:
+        """Prove that the AppContainer token cannot use the ambient AAP SID.
+
+        Server 2022 can reject TokenIsLessPrivilegedAppContainer even though
+        it accepts the process-creation opt-out policy.  MembershipEx performs
+        the underlying access semantics directly: a regular AppContainer can
+        match ALL APPLICATION PACKAGES, while an LPAC must not.
+        """
+
+        impersonation = wintypes.HANDLE()
+        if not self._DuplicateToken(
+            token,
+            _SECURITY_IMPERSONATION,
+            ctypes.byref(impersonation),
+        ):
+            self._raise_last_error("DuplicateToken(LPAC verification)")
+        impersonation_value = _handle_value(impersonation)
+        if impersonation_value <= 0:
+            raise OSError("DuplicateToken(LPAC verification) returned no token")
+        try:
+            sid_storage = (ctypes.c_ubyte * _SECURITY_MAX_SID_SIZE)()
+            sid_size = wintypes.DWORD(ctypes.sizeof(sid_storage))
+            if not self._CreateWellKnownSid(
+                _WIN_BUILTIN_ANY_PACKAGE_SID,
+                None,
+                ctypes.byref(sid_storage),
+                ctypes.byref(sid_size),
+            ):
+                self._raise_last_error("CreateWellKnownSid(AAP)")
+            is_member = wintypes.BOOL()
+            if not self._CheckTokenMembershipEx(
+                impersonation_value,
+                ctypes.byref(sid_storage),
+                _CTMF_INCLUDE_APPCONTAINER,
+                ctypes.byref(is_member),
+            ):
+                self._raise_last_error("CheckTokenMembershipEx(AAP)")
+            return not bool(is_member.value)
+        finally:
+            self.close_handle(impersonation_value)
 
     def _settle_rejected_lpac_process(
         self,
@@ -1871,6 +1914,31 @@ class _CtypesWin32Api:
         self._OpenProcessToken = _bind(
             advapi32.OpenProcessToken,
             [wintypes.HANDLE, wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE)],
+            wintypes.BOOL,
+        )
+        self._DuplicateToken = _bind(
+            advapi32.DuplicateToken,
+            [wintypes.HANDLE, ctypes.c_int, ctypes.POINTER(wintypes.HANDLE)],
+            wintypes.BOOL,
+        )
+        self._CreateWellKnownSid = _bind(
+            advapi32.CreateWellKnownSid,
+            [
+                ctypes.c_int,
+                ctypes.c_void_p,
+                ctypes.c_void_p,
+                ctypes.POINTER(wintypes.DWORD),
+            ],
+            wintypes.BOOL,
+        )
+        self._CheckTokenMembershipEx = _bind(
+            kernel32.CheckTokenMembershipEx,
+            [
+                wintypes.HANDLE,
+                ctypes.c_void_p,
+                wintypes.DWORD,
+                ctypes.POINTER(wintypes.BOOL),
+            ],
             wintypes.BOOL,
         )
         self._CreateRestrictedToken = _bind(

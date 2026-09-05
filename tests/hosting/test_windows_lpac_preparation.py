@@ -724,6 +724,45 @@ class _RawLpacApi(_CtypesWin32Api):
         self.closed.extend((thread, process))
 
 
+@pytest.mark.parametrize(("aap_member", "expected_lpac"), [(0, True), (1, False)])
+def test_win32_lpac_identity_uses_aap_access_semantics(
+    aap_member: int,
+    expected_lpac: bool,
+) -> None:
+    api = _RawLpacApi()
+
+    def duplicate(token: int, level: int, output: object) -> int:
+        assert (token, level) == (50, 2)
+        output._obj.value = 91  # type: ignore[attr-defined]
+        return 1
+
+    def create_sid(
+        sid_type: int,
+        domain: object,
+        sid: object,
+        size: object,
+    ) -> int:
+        assert sid_type == 84 and domain is None
+        assert sid is not None and size._obj.value == 68  # type: ignore[attr-defined]
+        return 1
+
+    def check_membership(
+        token: int,
+        sid: object,
+        flags: int,
+        output: object,
+    ) -> int:
+        assert token == 91 and sid is not None and flags == 1
+        output._obj.value = aap_member  # type: ignore[attr-defined]
+        return 1
+
+    api._DuplicateToken = duplicate  # type: ignore[method-assign]
+    api._CreateWellKnownSid = create_sid  # type: ignore[method-assign]
+    api._CheckTokenMembershipEx = check_membership  # type: ignore[method-assign]
+    assert api._token_is_lpac(50) is expected_lpac
+    assert api.closed == [91]
+
+
 class _AttributeListApi(_CtypesWin32Api):
     def __init__(self) -> None:
         self.initialize_counts: list[int] = []
