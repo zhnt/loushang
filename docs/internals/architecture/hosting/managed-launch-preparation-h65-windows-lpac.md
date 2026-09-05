@@ -206,6 +206,12 @@ proves from inside that child:
   remains in the atomically assigned Job; either way the complete tree is gone
   before settlement.
 
+Negative handle and platform probes accept either the documented access-denied
+return or an exact fail-fast status when Windows terminates the purpose-built
+probe at that sole outstanding operation. The bounded categorical transcript
+must prove every preceding stage; an earlier, different, or ambiguous
+termination fails the report.
+
 The report also injects profile/SID/DACL/runtime/private-state/platform/handle
 substitution, cancellation at every acquisition and both sides of the process
 effect, early exit, failed token verification, failed resume, containment-

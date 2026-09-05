@@ -781,14 +781,28 @@ async def _collect_native_evidence(
         b"E:HANDLES\n"
         b"LPAC-PASS\n"
     )
-    if transcript != expected_transcript:
-        return_code = await process.wait()
+    handle_denial_transcript = expected_transcript.removesuffix(
+        b"E:HANDLES\nLPAC-PASS\n"
+    )
+    if transcript == expected_transcript:
+        await pair.transport.write(b"x")
+        assert await process.wait() == 0
+    elif transcript == handle_denial_transcript:
+        # Server 2022 fail-fasts with STATUS_INVALID_HANDLE when an LPAC asks
+        # about a non-inherited numeric handle instead of returning the normal
+        # ERROR_INVALID_HANDLE result. The exact prior transcript proves this
+        # was the sole outstanding operation.
+        return_code = (await process.wait()) & 0xFFFFFFFF
+        if return_code != 0xC0000008:
+            raise AssertionError(
+                f"LPAC handle denial probe failed: {return_code:#010x}"
+            )
+    else:
+        return_code = (await process.wait()) & 0xFFFFFFFF
         raise AssertionError(
-            f"LPAC fixture failed before readiness: {return_code & 0xFFFFFFFF:#010x}; "
+            f"LPAC fixture failed before readiness: {return_code:#010x}; "
             f"stdout={transcript!r}"
         )
-    await pair.transport.write(b"x")
-    assert await process.wait() == 0
     await process_backend.wait_tree(process)
     assert process_backend.tree_exited(process)
     await process_backend.close_process_handles(process)
