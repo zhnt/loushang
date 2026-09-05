@@ -11,9 +11,10 @@
 - Parent: `loushang`
 - Authority: normative — accepted AppHost scope boundary
 - Design status: accepted
-- Implementation status: partial — A0.1 Contract Model only
-- Activation status: none; no catalog, router, live registry, profile composer,
-  launcher, or Product composition route
+- Implementation status: partial — A0.2 catalog/router and optional dark
+  Harness Session integration
+- Activation status: none; no live registry, profile composer, launcher, or
+  Product composition route
 - Owner: Loushang AppHost architecture
 
 ## Scope
@@ -38,9 +39,26 @@ A0.1 supplies immutable standard-library contracts and exact validation for:
 - immutable catalog input generations; and
 - bounded failures and observations.
 
-There is no runtime owner or composition entrypoint. Existing Product-specific
-CLI/TUI paths remain authoritative. Creating contract values has no filesystem,
-network, process, Plugin, Product, Harness, Hosting, or AppServer effect.
+A0.2 adds:
+
+- an atomic owner over immutable admitted generations, with one exact
+  catalog-owned pin per Product/profile and an independent exact pin per route;
+- compare-and-swap generation replacement and retirement fencing that never
+  retargets an already returned route;
+- explicit create, resume, and Product-owned migration routing through the
+  injected Session identity owner; and
+- one AppHost-owned optional Harness integration that projects only explicitly
+  bound existing discovery sources and delegates canonical creation to an
+  injected owner.
+
+The router returns the public minimal `PreparedProductRouteV1` surface,
+containing only immutable descriptor/generation/binding facts and close
+ownership. It exposes neither a factory nor an opened Product capability. The
+Catalog's Product-pin acquisition remains a private Router friend seam, so a
+caller cannot bypass routing. There is no runtime owner or
+composition entrypoint. Existing Product-specific CLI/TUI paths remain
+authoritative. No production module imports or instantiates the catalog,
+router, or Harness adapter.
 
 ## Target
 
@@ -80,12 +98,13 @@ The accepted target adds, by separately reviewed slices:
 Product package integration -> AppHost contracts
 AppHost core -> Python standard library
 
-future AppHost catalog/runtime -> AppHost contracts + injected Product ports
+AppHost catalog/router -> AppHost contracts + injected Product ports
 future embedded profile -> AppHost contracts + public Harness/Product contracts
 future hosted binder -> AppHost contracts + AppServer structural ports
 future launcher -> AppHost serialized values + Hosting contracts
 
-Harness / Hosting / AppServer / AppService -/-> AppHost
+AppHost optional Harness integration -> public Harness owner + AppHost contracts
+Hosting / AppServer / AppService -/-> AppHost
 AppHost core -/-> Harness / Hosting / AppServer / AppService / concrete Product
 ```
 
@@ -120,9 +139,34 @@ after Product/OEM admission, never through a derived module name.
 9. Cleanup evidence is owner-specific: Product detach, AppServer drain,
    Hosting process exit, and durable Session persistence cannot synthesize one
    another.
-10. A0.1 performs validation only and has no ambient or runtime effects.
-11. PLC9C5 Product/native Worker activation remains default-dark and outside
+10. A0.1 performs validation only. A0.2 may invoke only admission, Session
+    candidate, Product validator, importer, and cleanup ports; it never invokes
+    a Product factory or profile factory.
+11. The optional Harness integration receives exact source bindings from outer
+    composition.
+    It never derives a path from cwd/home scope, treats a candidate token as a
+    path, or creates a second Session index.
+12. PLC9C5 Product/native Worker activation remains default-dark and outside
     AppHost A0.
+13. The optional Harness integration seals at most 8 MiB from one no-follow
+    descriptor. It accepts only an unchanged pre/post full stat snapshot and
+    claimed reads use immutable bytes rather than the descriptor or path.
+14. Failed unpublished Router cleanup remains Router-owned and retryable;
+    `settle_pending_cleanup` and Router close join it without exposing owners.
+15. The optional Harness integration independently fences its own calls and
+    adopts every raw canonical candidate before projection validation. Rejected
+    returns remain adapter-owned until `settle_pending_cleanup` or adapter close
+    joins their successful settlement; the Router need never observe the raw
+    return.
+16. A POSIX descriptor owner relinquishes its descriptor number before calling
+    `close(2)`. A post-effect or otherwise ambiguous close error is recorded as
+    cleanup evidence, but that integer is never retried because the kernel may
+    already have released and reused it.
+17. Canonical delegation is default-dark and bounded to eight concurrent
+    provider calls. Before starting another call, the adapter drains prior
+    unpublished cleanup debt; unresolved debt rejects the call before the
+    provider runs. Together, the fence and limit bound retained malformed raw
+    owners without weakening adopt-before-validation.
 
 ## Delivery Sequence
 
@@ -130,7 +174,7 @@ after Product/OEM admission, never through a derived module name.
 | --- | --- | --- |
 | A0.0 | accepted placement, scope, component boundary, glossary, and parent architecture gates | accepted |
 | A0.1 | standard-library Contract Model and immutable catalog-input validation | implemented, uncomposed |
-| A0.2 | catalog/router, exact admission-pin verification, idempotent Session create/candidate adapter, and explicit importer over fakes | not started |
+| A0.2 | catalog/router, exact admission-pin verification, idempotent Session create/candidate adapter, and explicit importer over fakes | implemented, uncomposed |
 | A0.3 | canonical live-binding registry, scoped runtime lifecycle, and embedded profile | not started |
 | A0.4 | optional hosted binder | deferred pending AppServer contracts |
 | A0.5 | optional serialized launcher | deferred pending its own boundary review |
@@ -141,9 +185,16 @@ after Product/OEM admission, never through a derived module name.
 - `tests/architecture/test_apphost_a0_contract.py` proves package shape,
   standard-library-only imports, parent adoption, and absence of runtime or
   optional dependency edges;
+- `tests/architecture/test_apphost_a02_architecture.py` proves lookup-first
+  create, no factory effect, the one-way optional Harness integration, and absence of
+  production consumers;
+- `tests/apphost/test_catalog.py`, `tests/apphost/test_router.py`, and
+  `tests/apphost/test_harness_session_integration.py` prove the A0.2
+  admission, replacement, candidate, scope, migration, race, and rollback
+  matrix;
 - `make check-apphost` runs the focused lint, typecheck, and contract suite;
 - `make check-architecture-docs` validates parent documentation integrity.
 
-Passing these gates proves only A0.1. A0.2 must not remove the no-router and
-no-composition guards until its two-unrelated-Product and revision-race matrix
-passes.
+Passing these gates proves A0.2 preparation only. It grants no live binding,
+runtime/profile composition, default Product, hosted route, or Product/native
+Worker activation.

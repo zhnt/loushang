@@ -698,7 +698,16 @@ def test_hosting_and_apphost_contracts_keep_future_runtime_packages_dark() -> No
     apphost = REPOSITORY_ROOT / "src/loushang/apphost"
     assert {
         path.relative_to(apphost).as_posix() for path in apphost.rglob("*.py")
-    } == {"__init__.py", "contracts.py", "errors.py"}
+    } == {
+        "__init__.py",
+        "_ownership.py",
+        "catalog.py",
+        "contracts.py",
+        "errors.py",
+        "integrations/__init__.py",
+        "integrations/harness_session.py",
+        "router.py",
+    }
     assert not (REPOSITORY_ROOT / "src/loushang/appserver").exists()
 
     overview = _read(HOSTING_ROOT / "README.md")

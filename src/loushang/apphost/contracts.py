@@ -230,6 +230,22 @@ class ProfileDescriptorV1:
 
 
 @runtime_checkable
+class PreparedProductRouteV1(Protocol):
+    """Read-only prepared identity plus independently owned cleanup."""
+
+    @property
+    def descriptor(self) -> ProductDescriptorV1: ...
+
+    @property
+    def generation_id(self) -> str: ...
+
+    @property
+    def binding_key(self) -> SessionBindingKeyV1: ...
+
+    async def close(self) -> None: ...
+
+
+@runtime_checkable
 class AdmissionGenerationLeaseV1(Protocol):
     """Independently owned, idempotently closed subject-bound admission pin."""
 
