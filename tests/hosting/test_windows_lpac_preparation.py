@@ -626,8 +626,14 @@ def test_windows_lpac_material_composes_exact_spawn_and_transfers_owners(
 
 
 class _RawLpacApi(_CtypesWin32Api):
-    def __init__(self, *, reject_token: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        reject_token: bool = False,
+        previous_suspend_count: int = 1,
+    ) -> None:
         self.reject_token = reject_token
+        self.previous_suspend_count = previous_suspend_count
         self.deleted = 0
         self.effects = 0
         self.resumed = 0
@@ -699,7 +705,7 @@ class _RawLpacApi(_CtypesWin32Api):
     def _resume(self, thread: int) -> int:
         assert thread == 51
         self.resumed += 1
-        return 1
+        return self.previous_suspend_count
 
     def _delete(self, pointer: ctypes.c_void_p) -> None:
         self.deleted += 1
@@ -817,6 +823,24 @@ def test_win32_lpac_spawn_rejects_wrong_token_without_resume() -> None:
             begin_effect=lambda: setattr(api, "effects", api.effects + 1),
         )
     assert api.effects == 1 and api.resumed == 0 and api.terminated == 1
+    assert api.closed == [51, 50]
+
+
+def test_win32_lpac_spawn_rejects_unexpected_suspend_state() -> None:
+    api = _RawLpacApi(previous_suspend_count=0)
+    with pytest.raises(_Win32CreateSettledWithoutProcess):
+        api.spawn_lpac(
+            _request(environment=(("SystemRoot", r"C:\Windows"),)),
+            (10, 11),
+            executable_handle=30,
+            cwd_handle=31,
+            package_sid=500,
+            expected_sid_text="S-1-15-2-12345",
+            job=40,
+            stderr_handle=41,
+            begin_effect=lambda: setattr(api, "effects", api.effects + 1),
+        )
+    assert api.effects == 1 and api.resumed == 1 and api.terminated == 1
     assert api.closed == [51, 50]
 
 

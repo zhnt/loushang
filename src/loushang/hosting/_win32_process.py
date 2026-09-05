@@ -1046,8 +1046,13 @@ class _CtypesWin32Api:
                         HostingFailureCategory.PREPARATION_FAILED,
                         "Windows child token did not match the admitted LPAC profile",
                     )
-                if int(self._ResumeThread(thread)) == 0xFFFFFFFF:
+                previous_suspend_count = int(self._ResumeThread(thread))
+                if previous_suspend_count == 0xFFFFFFFF:
                     self._raise_last_error("ResumeThread(LPAC)")
+                if previous_suspend_count != 1:
+                    raise OSError(
+                        "Windows LPAC initial thread had an unexpected suspend count"
+                    )
             except BaseException as cause:
                 self._settle_rejected_lpac_process(
                     process=process,

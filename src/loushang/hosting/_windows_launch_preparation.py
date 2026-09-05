@@ -1416,7 +1416,8 @@ def _verify_lpac_grants(
         if actual != expected:
             raise HostingError(
                 HostingFailureCategory.PREPARATION_STALE,
-                "Windows LPAC runtime grant changed",
+                "Windows LPAC runtime grant changed "
+                f"(expected={expected!r}, observed={actual!r})",
             )
 
 

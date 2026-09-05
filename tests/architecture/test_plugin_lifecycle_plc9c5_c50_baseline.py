@@ -617,11 +617,11 @@ def test_c50_status_is_honest_and_documents_are_indexed_once() -> None:
         "Authority": "normative accepted design",
         "Design status": "accepted",
         "Implementation status": (
-            "implemented through C5.5b — C5.0 design/guards, C5.1 "
+            "implemented through C5.4 — C5.0 design/guards, C5.1 "
             "receipt/lifecycle, C5.2 Linux native profile binding, C5.3 Windows "
             "mechanics/rejection, and the C5.4 Linux Coding Product canary; "
-            "C5.5a design and the C5.5b Windows LPAC native candidate; C5.5c Product "
-            "composition remains unimplemented"
+            "additionally, C5.5a design and the C5.5b Windows LPAC native candidate "
+            "are implemented; C5.5c Product composition remains unimplemented"
         ),
         "Activation status": (
             "explicit Linux Coding canary accepted; default remains Current and "

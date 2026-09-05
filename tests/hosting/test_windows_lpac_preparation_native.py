@@ -236,8 +236,30 @@ void WINAPI mainCRTStartup(void) {
     if (((TOKEN_GROUPS *)capabilities_storage)->GroupCount != 0) ExitProcess(74);
     if (!GetTokenInformation(token, TokenAppContainerSid, app_storage,
                              sizeof(app_storage), &returned)) ExitProcess(75);
-    if (!((TOKEN_APPCONTAINER_INFORMATION *)app_storage)->TokenAppContainer)
+    PSID token_package_sid =
+        ((TOKEN_APPCONTAINER_INFORMATION *)app_storage)->TokenAppContainer;
+    if (!token_package_sid)
         ExitProcess(76);
+    LPWSTR token_sid_text = 0;
+    if (!ConvertSidToStringSidW(token_package_sid, &token_sid_text)) ExitProcess(108);
+    static char sid_line[256];
+    DWORD sid_used = 0;
+    sid_line[sid_used++] = 'S';
+    sid_line[sid_used++] = 'I';
+    sid_line[sid_used++] = 'D';
+    sid_line[sid_used++] = ':';
+    for (DWORD index = 0; token_sid_text[index] && sid_used + 2 < sizeof(sid_line);
+         ++index) {
+        if (token_sid_text[index] > 0x7f) ExitProcess(109);
+        sid_line[sid_used++] = (char)token_sid_text[index];
+    }
+    sid_line[sid_used++] = '\n';
+    LocalFree(token_sid_text);
+    emit(sid_line, sid_used);
+    char sid_ack = 0;
+    DWORD sid_ack_read = 0;
+    if (!ReadFile(GetStdHandle(STD_INPUT_HANDLE), &sid_ack, 1,
+                  &sid_ack_read, 0) || sid_ack_read != 1) ExitProcess(110);
     PSID all_packages = 0;
     if (!ConvertStringSidToSidW(L"S-1-15-2-1", &all_packages)) ExitProcess(77);
     if (!GetTokenInformation(token, TokenGroups, groups_storage,
@@ -541,6 +563,7 @@ async def _collect_native_evidence(
     # Native code deliberately recomputes the private moniker from the durable
     # intent rather than accepting one from a Product-facing caller.
     derived = api.derive_lpac_profile(_lpac_profile_name(provision))
+    expected_sid_line = f"SID:{derived.sid_text}\n".encode("ascii")
     try:
         root_target, root_permissions, _ = _lpac_grant_targets(provision)[-1]
         api.grant_lpac_path(
@@ -613,6 +636,10 @@ async def _collect_native_evidence(
     )
     await material.close()
     cleanup.material = None
+    sid_line = await _read_line(pair.transport.read)
+    if sid_line != expected_sid_line:
+        raise AssertionError("LPAC child Package SID did not match its profile")
+    await pair.transport.write(b"s")
     line = await _read_line(pair.transport.read)
     if line != b"LPAC-PASS\n":
         return_code = await process.wait()
