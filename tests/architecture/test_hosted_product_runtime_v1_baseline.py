@@ -91,11 +91,17 @@ def _section(text: str, heading: str) -> str:
 
 def _status_fields(path: Path) -> dict[str, str]:
     fields: dict[str, str] = {}
+    current_name: str | None = None
     for line in _section(_read(path), "Status").splitlines():
-        if not line.startswith("- "):
+        if line.startswith("- "):
+            name, value = line[2:].split(":", maxsplit=1)
+            fields[name] = value.strip()
+            current_name = name
             continue
-        name, value = line[2:].split(":", maxsplit=1)
-        normalized = value.strip()
+        if current_name is not None and line.startswith("  "):
+            fields[current_name] = f"{fields[current_name]} {line.strip()}"
+    for name, value in fields.items():
+        normalized = value
         if normalized.startswith("`") and normalized.endswith("`"):
             normalized = normalized[1:-1]
         fields[name] = normalized
@@ -141,8 +147,8 @@ def test_baseline_documents_are_status_honest_and_indexed() -> None:
             "Design status": "accepted",
             "Implementation status": (
                 "implemented — H6.1 through H6.4 remain default-dark; "
-                "H6.5b Windows LPAC native mechanics are an implemented "
-                "default-dark candidate with no Product consumer"
+                "H6.5b Windows LPAC native mechanics retain one C5.5c Harness "
+                "friend consumer and no direct Product consumer"
             ),
             "Activation status": "forbidden; H5 remains default-dark",
         },

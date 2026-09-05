@@ -16,10 +16,13 @@ from loushang.harness.worker import (
 from loushang.harness.worker.product_activation import (
     ProductWorkerActivationCoordinator,
     WorkerCleanupDebtV1,
+    WorkerCleanupDebtV2,
     WorkerCleanupSettlementV1,
+    WorkerCleanupSettlementV2,
     _ActivationReason,
     _ActivationRejected,
     _CleanupDebtReason,
+    _CleanupDebtReasonV2,
     _MemoryActivationStateStore,
     _transition_attempt,
 )
@@ -153,6 +156,7 @@ class _CleanupEvidenceOwner:
     def __init__(self, receipt: ProductWorkerActivationReceiptV1) -> None:
         self.receipt = receipt
         self.tree_witness = object()
+        self.native_containment_witness = object()
         self.changed_boot_witness = object()
         self.registered_witness = object()
 
@@ -170,6 +174,29 @@ class _CleanupEvidenceOwner:
     ) -> bool:
         return (
             witness is self.tree_witness
+            and receipt_fingerprint == self.receipt.fingerprint
+            and attempt_id == _ATTEMPT_A
+            and owner_generation == 1
+            and host_identity == "host-1"
+            and boot_identity == "boot-1"
+            and evidence_authority_id == self.authority_id
+            and evidence_authority_fingerprint == self.authority_fingerprint
+        )
+
+    def verify_native_containment_settlement(
+        self,
+        *,
+        receipt_fingerprint: str,
+        attempt_id: str,
+        owner_generation: int,
+        host_identity: str,
+        boot_identity: str,
+        witness: object,
+        evidence_authority_id: str,
+        evidence_authority_fingerprint: str,
+    ) -> bool:
+        return (
+            witness is self.native_containment_witness
             and receipt_fingerprint == self.receipt.fingerprint
             and attempt_id == _ATTEMPT_A
             and owner_generation == 1
@@ -293,9 +320,7 @@ def _coordinator(
         ProductWorkerActivationCoordinator(
             authority=authority,
             evidence_authority=authority.evidence_authority,
-            trusted_evidence_authority_id=(
-                authority.evidence_authority.authority_id
-            ),
+            trusted_evidence_authority_id=(authority.evidence_authority.authority_id),
             trusted_evidence_authority_fingerprint=(
                 authority.evidence_authority.authority_fingerprint
             ),
@@ -315,6 +340,7 @@ def _begin(
     *,
     attempt_id: str = _ATTEMPT_A,
     owner_generation: int = 1,
+    cleanup_contract_version: int = 1,
 ) -> None:
     with coordinator.admission(
         policy=receipt.policy,
@@ -323,6 +349,7 @@ def _begin(
         owner_generation=owner_generation,
         host_identity="host-1",
         boot_identity="boot-1",
+        cleanup_contract_version=cleanup_contract_version,
     ) as admission:
         admission.begin_effect()
 
@@ -533,11 +560,14 @@ def test_plc9c5_c51_contract_case(case_id: str) -> None:
             witness=evidence.tree_witness,
         )
         assert status["reason"] == "cleanup_settled"
-        assert coordinator.claim_restart(
-            receipt=receipt,
-            attempt_id=_ATTEMPT_A,
-            owner_generation=1,
-        )["reason"] == "restart_ready"
+        assert (
+            coordinator.claim_restart(
+                receipt=receipt,
+                attempt_id=_ATTEMPT_A,
+                owner_generation=1,
+            )["reason"]
+            == "restart_ready"
+        )
 
     elif case_id == "C51-CLEANUP-DEBT":
         coordinator, authority = _coordinator(receipt=receipt)
@@ -706,6 +736,7 @@ class _RegistrationRaceStore(_MemoryActivationStateStore):
         self.registration_entered = threading.Event()
         self.registration_release = threading.Event()
         self.race_registration = False
+
 
 class _RegistrationRaceStoreView(_MemoryActivationStateStore):
     """Independent callback owner over a shared, lock-only CAS document."""
@@ -1091,10 +1122,13 @@ def test_c51_monotonic_settlement_and_trusted_evidence_are_fail_closed(
         settlement,
         witness=evidence.tree_witness,
     )
-    assert coordinator.record_cleanup_settlement(
-        settlement,
-        witness=object(),
-    ) == first
+    assert (
+        coordinator.record_cleanup_settlement(
+            settlement,
+            witness=object(),
+        )
+        == first
+    )
     coordinator.record_protocol_terminal(
         receipt=receipt,
         attempt_id=_ATTEMPT_A,
@@ -1359,11 +1393,10 @@ def test_c51_publish_then_kill_is_serialized(_case_id: str) -> None:
     publish_thread = threading.Thread(
         target=lambda: published.append(_publish(coordinator, receipt)),
     )
+
     def latch_during_callback() -> None:
         try:
-            latched.append(
-                latch_coordinator.latch_kill_switch(expected_generation=7)
-            )
+            latched.append(latch_coordinator.latch_kill_switch(expected_generation=7))
         except _ActivationRejected as error:
             latch_failures.append(error.reason)
 
@@ -1378,6 +1411,7 @@ def test_c51_publish_then_kill_is_serialized(_case_id: str) -> None:
     assert not publish_thread.is_alive() and not latch_thread.is_alive()
     assert published and latched == []
     assert latch_failures == [_ActivationReason.REENTRANT_CALL]
+
 
 @pytest.mark.parametrize("_case_id", ("C51-KILL-THEN-PUBLISH-RACE",))
 def test_c51_kill_then_publish_is_serialized(_case_id: str) -> None:
@@ -1568,13 +1602,16 @@ def test_c51_registered_orphan_recovery_is_exact_idempotent_and_frees_cap(
         current_boot_identity="boot-2",
         witness=authority.evidence_authority.registered_witness,
     )
-    assert restarted.recover_registered_no_effect(
-        receipt=receipt,
-        attempt_id=_ATTEMPT_A,
-        owner_generation=1,
-        current_boot_identity="boot-2",
-        witness=object(),
-    ) == settled
+    assert (
+        restarted.recover_registered_no_effect(
+            receipt=receipt,
+            attempt_id=_ATTEMPT_A,
+            owner_generation=1,
+            current_boot_identity="boot-2",
+            witness=object(),
+        )
+        == settled
+    )
     _begin(restarted, receipt, attempt_id=_ATTEMPT_B, owner_generation=2)
     assert restarted.active_attempts()[0]["attemptId"] == _ATTEMPT_B
     assert len(restarted.snapshot()["attempts"]) == 1  # type: ignore[arg-type]
@@ -2000,7 +2037,7 @@ def test_c51_domain_tokens_are_weak_and_unweakrefable_tokens_are_rejected(
         _authority_domain_token=token,
     )
     assert token_id in activation_module._CALLBACK_DOMAINS
-    assert coordinator.snapshot()["stateVersion"] == 1
+    assert coordinator.snapshot()["stateVersion"] == 2
     del token
     gc.collect()
     assert token_id in activation_module._CALLBACK_DOMAINS
@@ -2263,17 +2300,13 @@ def test_c51_reserved_preenter_gate_is_not_drained_by_peer(
     assert authority.first_enter_called.wait(timeout=2)
     domain = first._authority.callback_domain
     with domain.release_condition:
-        assert [item.phase for item in domain.pending_releases.values()] == [
-            "reserved"
-        ]
+        assert [item.phase for item in domain.pending_releases.values()] == ["reserved"]
     second.retry_pending_releases()
     assert authority.exit_ordinals == []
     _begin(second, receipt, attempt_id=_ATTEMPT_B, owner_generation=2)
     assert authority.exit_ordinals == [2]
     with domain.release_condition:
-        assert [item.phase for item in domain.pending_releases.values()] == [
-            "reserved"
-        ]
+        assert [item.phase for item in domain.pending_releases.values()] == ["reserved"]
     authority.allow_first_enter.set()
     first_thread.join(timeout=2)
     assert not first_thread.is_alive()
@@ -2348,9 +2381,7 @@ def test_c51_foreign_retry_fails_fast_while_releasing_then_retries(
     second_thread.start()
     assert second_done.wait(timeout=0.5)
     with first._authority.callback_domain.release_condition:
-        pending = next(
-            iter(first._authority.callback_domain.pending_releases.values())
-        )
+        pending = next(iter(first._authority.callback_domain.pending_releases.values()))
         assert pending.phase == "releasing"
     authority.allow_release.set()
     first_thread.join(timeout=2)
@@ -2368,3 +2399,164 @@ def test_c51_foreign_retry_fails_fast_while_releasing_then_retries(
     assert _pending_release_count(first) == 0
     assert authority.in_gate is False
     _begin(second, receipt, attempt_id=_ATTEMPT_B, owner_generation=2)
+
+
+def test_cleanup_v2_requires_independent_tree_and_native_evidence() -> None:
+    receipt = _receipt()
+    coordinator, authority = _coordinator(receipt=receipt)
+    _begin(coordinator, receipt, cleanup_contract_version=2)
+    _retire_and_terminal(coordinator, receipt)
+    settlement = WorkerCleanupSettlementV2(
+        receipt_fingerprint=receipt.fingerprint,
+        attempt_id=_ATTEMPT_A,
+        owner_generation=1,
+        host_identity="host-1",
+        boot_identity="boot-1",
+        protocol_terminal=True,
+        domain_retired=True,
+        tree_settled=True,
+        native_containment_settled=True,
+    )
+    evidence = authority.evidence_authority
+
+    with pytest.raises(_ActivationRejected) as missing:
+        coordinator.record_cleanup_settlement(
+            settlement,
+            witness=evidence.tree_witness,
+        )
+    assert missing.value.reason is _ActivationReason.CLEANUP_DEBT
+    with pytest.raises(_ActivationRejected) as legacy:
+        coordinator.record_cleanup_settlement(
+            WorkerCleanupSettlementV1(
+                receipt_fingerprint=receipt.fingerprint,
+                attempt_id=_ATTEMPT_A,
+                owner_generation=1,
+                host_identity="host-1",
+                boot_identity="boot-1",
+                protocol_terminal=True,
+                domain_retired=True,
+                tree_settled=True,
+            ),
+            witness=evidence.tree_witness,
+        )
+    assert legacy.value.reason is _ActivationReason.INVALID_RECEIPT
+
+    status = coordinator.record_cleanup_settlement(
+        settlement,
+        witness=evidence.tree_witness,
+        native_containment_witness=evidence.native_containment_witness,
+    )
+    assert status["reason"] == "cleanup_settled"
+    attempt = next(iter(coordinator.snapshot()["attempts"].values()))
+    assert attempt["cleanupContractVersion"] == 2
+    assert attempt["cleanupSettlement"]["nativeContainmentSettled"] is True
+
+
+@pytest.mark.parametrize(
+    ("tree_unknown", "native_unknown", "reason"),
+    (
+        (True, False, _CleanupDebtReasonV2.PROCESS_TREE_UNKNOWN),
+        (False, True, _CleanupDebtReasonV2.NATIVE_CONTAINMENT_UNKNOWN),
+        (True, True, _CleanupDebtReasonV2.TREE_AND_NATIVE_CONTAINMENT_UNKNOWN),
+    ),
+)
+def test_cleanup_v2_debt_distinguishes_unsettled_edges(
+    tree_unknown: bool,
+    native_unknown: bool,
+    reason: _CleanupDebtReasonV2,
+) -> None:
+    receipt = _receipt()
+    debt = WorkerCleanupDebtV2(
+        receipt_fingerprint=receipt.fingerprint,
+        attempt_id=_ATTEMPT_A,
+        owner_generation=1,
+        host_identity="host-1",
+        boot_identity="boot-1",
+        process_tree_unknown=tree_unknown,
+        native_containment_unknown=native_unknown,
+        reason=reason,
+    )
+    assert WorkerCleanupDebtV2.from_dict(debt.to_dict()) == debt
+
+
+def test_cleanup_v2_changed_boot_still_requires_native_settlement() -> None:
+    receipt = _receipt()
+    coordinator, authority = _coordinator(receipt=receipt)
+    _begin(coordinator, receipt, cleanup_contract_version=2)
+    _retire_and_terminal(coordinator, receipt)
+    coordinator.record_cleanup_debt(
+        WorkerCleanupDebtV2(
+            receipt_fingerprint=receipt.fingerprint,
+            attempt_id=_ATTEMPT_A,
+            owner_generation=1,
+            host_identity="host-1",
+            boot_identity="boot-1",
+            process_tree_unknown=True,
+            native_containment_unknown=True,
+            reason=_CleanupDebtReasonV2.TREE_AND_NATIVE_CONTAINMENT_UNKNOWN,
+        )
+    )
+    evidence = authority.evidence_authority
+    with pytest.raises(_ActivationRejected) as missing:
+        coordinator.settle_changed_boot_absence(
+            receipt=receipt,
+            attempt_id=_ATTEMPT_A,
+            owner_generation=1,
+            current_boot_identity="boot-2",
+            witness=evidence.changed_boot_witness,
+        )
+    assert missing.value.reason is _ActivationReason.CLEANUP_DEBT
+
+    status = coordinator.settle_changed_boot_absence(
+        receipt=receipt,
+        attempt_id=_ATTEMPT_A,
+        owner_generation=1,
+        current_boot_identity="boot-2",
+        witness=evidence.changed_boot_witness,
+        native_containment_witness=evidence.native_containment_witness,
+    )
+    assert status["reason"] == "cleanup_settled"
+    attempt = next(iter(coordinator.snapshot()["attempts"].values()))
+    assert attempt["cleanupSettlement"]["settlementVersion"] == 2
+
+
+def test_activation_state_v1_migrates_losslessly_to_cleanup_contract_v1() -> None:
+    receipt = _receipt()
+    store = _MemoryActivationStateStore()
+    coordinator, authority = _coordinator(receipt=receipt, store=store)
+    _begin(coordinator, receipt)
+    legacy = json.loads(json.dumps(coordinator.snapshot()))
+    legacy["stateVersion"] = 1
+    for attempt in legacy["attempts"].values():
+        del attempt["cleanupContractVersion"]
+    store._document = legacy
+
+    migrated = ProductWorkerActivationCoordinator(
+        authority=authority,
+        evidence_authority=authority.evidence_authority,
+        trusted_evidence_authority_id=_EVIDENCE_AUTHORITY_ID,
+        trusted_evidence_authority_fingerprint=_EVIDENCE_AUTHORITY_FINGERPRINT,
+        state_store=store,
+    ).snapshot()
+    assert migrated["stateVersion"] == 2
+    attempt = next(iter(migrated["attempts"].values()))
+    assert attempt["cleanupContractVersion"] == 1
+
+
+def test_cleanup_v2_no_effect_settles_without_native_side_effect_evidence() -> None:
+    receipt = _receipt()
+    coordinator, _ = _coordinator(receipt=receipt)
+    with coordinator.admission(
+        policy=receipt.policy,
+        receipt=receipt,
+        attempt_id=_ATTEMPT_A,
+        owner_generation=1,
+        host_identity="host-1",
+        boot_identity="boot-1",
+        cleanup_contract_version=2,
+    ):
+        pass
+    attempt = next(iter(coordinator.snapshot()["attempts"].values()))
+    assert attempt["phase"] == "settled"
+    assert attempt["cleanupSettlement"]["settlementVersion"] == 2
+    assert attempt["cleanupSettlement"]["nativeContainmentSettled"] is True

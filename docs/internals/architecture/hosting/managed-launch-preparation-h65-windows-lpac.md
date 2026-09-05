@@ -7,9 +7,10 @@
 - Parent: `HOST-H6`
 - Authority: normative accepted design
 - Design status: accepted
-- Implementation status: implemented candidate through H6.5b native mechanics;
-  H6.5c Product composition is not implemented
-- Native activation: mandatory Windows AMD64 evidence gate only; no Product consumer
+- Implementation status: native mechanics implemented through H6.5b; paired
+  C5.5c Product composition is implemented through the sole Harness friend
+- Native activation: mandatory Windows AMD64 native and Product evidence gates;
+  no direct Product consumer
 - Runtime posture: default-dark
 - Owner: Loushang Hosting architecture
 
@@ -242,7 +243,7 @@ The implementation may extend only:
 A separate file may be introduced only if the H6.5 implementation review shows
 that provisioning and attempt ownership cannot remain cohesive in the current
 module; it must still be Hosting-private. Hosting imports no Harness module.
-H6.5b itself adds no Harness consumer. The later C5.5c transition allows only
+H6.5b itself added no Harness consumer. The C5.5c transition allows only
 the existing `src/loushang/harness/worker/_native_profile_bridge.py` to lazily
 import the exact reviewed private H6.5 symbols.
 
@@ -262,18 +263,19 @@ or use its report as H6.5 evidence.
   Worker protocol, readiness, fallback, or domain publication; and
 - Current-owner deletion or default activation.
 
-## H6.5b Native Exit Gate
+## H6.5 Retained Native Exit Gate
 
 H6.5b is accepted only when the C5.5 ownership/receipt design, exact Current
 inventory, reviewed Hosting-private runtime symbols, deterministic mechanics
 tests, and mandatory Windows AMD64 native report agree. Executable guards prove
-that no Harness or Product consumer exists and that Current remains the
-production default.
+that no Harness or Product consumer existed in H6.5b and that Current remains
+the production default. C5.5c retains this native report before running its
+separate Product report and permits only the named friend consumer.
 
 The paired five-view C5.5a review accepted this boundary after separating
 Hosting ownership, replacing persistent deployment profiles with exact
 attempt-owned profiles, and making the parent attribute manifest—not child
 self-report—the launch authority. H6.5b implements that candidate without
-granting activation authority; H6.5c Product integration and its separate
-evidence report remain open. No unresolved high or medium design issue remains
-in the H6.5b native boundary.
+granting activation authority; C5.5c joins it to one explicit Product receipt
+without moving policy into Hosting. No unresolved high or medium design issue
+remains in the H6.5 native boundary.

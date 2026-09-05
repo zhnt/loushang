@@ -7,9 +7,10 @@
 - Parent: `PLC9C5-C5.0`
 - Authority: normative accepted design
 - Design status: accepted
-- Implementation status: implemented candidate through C5.5b native mechanics;
-  C5.5c Product composition is not implemented
-- Activation status: closed; the C5.3 restricted-token profile remains rejected
+- Implementation status: implemented through C5.5c; native mechanics, cleanup
+  V2, the sole Harness friend dispatch, and Coding Product composition are retained
+- Activation status: exact Windows AMD64 Coding canary accepted; the C5.3
+  restricted-token profile and every unlisted route remain rejected
 - Production default: Current
 - Owner: Harness Worker architecture with Hosting, Product, Package, and
   security-owner review
@@ -32,7 +33,8 @@ and binds the exact provisioned containment receipt. Every omitted, stale,
 foreign, unprovisioned, unsupported, or degraded input fails before spawn.
 
 C5.5 closes G7 only after both the Windows native containment report and the
-Windows Coding Product report are retained with no required skip. It does not
+Windows Coding Product report are retained with no required skip; both reports
+are now mandatory gates. It does not
 join AppHost; that remains G8. It does not delete Current, the C5.3 mechanics
 profile, or any rollback owner; that remains G9.
 
@@ -187,6 +189,11 @@ it does not add a parallel process host.
    sole Harness bridge to invoke H6.5 create/verify/cleanup mechanics. The
    coordinator CASes `reserved`, native-effect, active, cleaning, settled, or
    debt state and never calls Hosting directly.
+   Planning and binding may validate or read this store but cannot write it.
+   A fresh `reserved` CAS occurs only after the C5.1 admission has committed
+   its effect edge and immediately before the first native capture; an
+   ambiguous reservation result is cleanup-only. Explicit close before capture
+   commits only the exact `reserved -> settled` no-native-effect terminal.
 2. The H6.5 provisioner creates a fresh deterministic attempt LPAC profile
    with zero capabilities and an exact Package SID, applies the exact grant,
    and rejects any pre-existing state except cleanup-only recovery backed by
@@ -233,10 +240,11 @@ closure.
 | C5.5b | Hosting-private LPAC provisioner, capture material, Process backend extension, native oracle, and mandatory Windows report | token/SID/capability/LPAC, grants, private state, environment, handle list, Job tree, cancellation, crash, containment cleanup, and redaction cases pass on Windows with no skip | default-dark; no Harness or Product consumer |
 | C5.5c | cleanup V2 migration, exact same-file Harness friend dispatch, and Coding Product Windows composition with retained Product report | receipt/provisioning/closure freshness, required/optional, Session/entrypoint, native-containment recovery, rollback, publication, unsupported-host, and no-fallback rows pass | explicit Windows canary only; Current remains default; G7 closes |
 
-C5.5b cannot add a public author SDK, production composition, or platform
-auto-selection. C5.5c cannot begin until the retained native report proves the
-actual LPAC security claim. A fake profile, token flag mock, or PLC9B report
-cannot substitute for that gate.
+C5.5b did not add a public author SDK, production composition, or platform
+auto-selection. C5.5c began only after the retained native report proved the
+actual LPAC security claim, and CI continues to run that native report before
+the Product report. A fake profile, token flag mock, or PLC9B report cannot
+substitute for the native gate.
 
 ## Required Evidence Matrix
 
@@ -278,7 +286,7 @@ C5.5c may revise only these absences:
 
 - the sole `_native_profile_bridge.py` Windows-private import absence;
 - the exact Coding canary's Windows-profile rejection; and
-- the parent G7-open status after both new reports pass.
+- the parent G7-open status, but only after both new reports pass.
 
 Every other fence remains:
 

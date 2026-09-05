@@ -194,6 +194,32 @@ jobs:
           path: .artifacts/plc9c5-c55b-windows-lpac-native.xml
           if-no-files-found: error
 
+      - name: PLC9C5 C5.5c Windows Product composition gate
+        if: matrix.os == 'windows-2022'
+        env:
+          LOUSHANG_PLC9C5_C55C_REPORT: "1"
+          PYTEST_ADDOPTS: >-
+            -o faulthandler_timeout=60
+            --junitxml=.artifacts/plc9c5-c55c-windows-product.xml
+        run: >-
+          uv run --extra dev python scripts/dev/run_pytest.py
+          tests/harness/worker/test_coding_product_worker_windows_canary.py
+          -q
+
+      - name: Reject skipped, failing, or incomplete PLC9C5 C5.5c evidence
+        if: matrix.os == 'windows-2022'
+        run: |
+          uv run python scripts/dev/verify_pytest_xml.py .artifacts/plc9c5-c55c-windows-product.xml
+          uv run python scripts/dev/verify_plc9c5_manifest.py docs/internals/architecture/harness/plugin/plugin-lifecycle-plc9c5-evidence-manifest.json PLC9C5-C5.5C-WINDOWS-PRODUCT .artifacts/plc9c5-c55c-windows-product.xml
+
+      - name: Upload PLC9C5 C5.5c Windows Product report
+        if: always() && matrix.os == 'windows-2022'
+        uses: actions/upload-artifact@v4
+        with:
+          name: plc9c5-c55c-windows-product-pytest-report
+          path: .artifacts/plc9c5-c55c-windows-product.xml
+          if-no-files-found: error
+
       - name: Test Hosting H0-H6 contract
         env:
           LOUSHANG_HOSTING_EXPECTED_BACKEND: ${{ matrix.backend }}

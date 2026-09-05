@@ -7,7 +7,9 @@
 - Parent: `loushang`
 - Authority: normative accepted design
 - Design status: accepted
-- Implementation status: implemented — H6.1 through H6.4 remain default-dark; H6.5b Windows LPAC native mechanics are an implemented default-dark candidate with no Product consumer
+- Implementation status: implemented — H6.1 through H6.4 remain default-dark;
+  H6.5b Windows LPAC native mechanics retain one C5.5c Harness friend consumer
+  and no direct Product consumer
 - Activation status: forbidden; H5 remains default-dark
 - Owner: Loushang Hosting architecture
 

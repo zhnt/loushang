@@ -1,4 +1,4 @@
-"""Explicit Linux-only Coding Product composition for a local Plugin Worker.
+"""Explicit Coding Product composition for one contained local Plugin Worker.
 
 The Product owns selection and readiness.  Harness owns Worker lifecycle and
 native-profile capabilities, while Hosting owns every process, endpoint, and
@@ -37,6 +37,8 @@ from loushang.harness.worker import (
 )
 from loushang.harness.worker._native_profile_bridge import (
     _bind_posix_static_contained_product_worker_profile,
+    _bind_windows_lpac_contained_product_worker_profile,
+    _WindowsLpacProductWorkerProfilePlan,
 )
 from loushang.harness.worker.product_activation import (
     ProductWorkerActivationCoordinator,
@@ -45,6 +47,11 @@ from loushang.harness.worker.product_activation import (
 CODING_PRODUCT_WORKER_CANARY_VERSION = 1
 CODING_PRODUCT_WORKER_CANARY_ENTRYPOINTS = ("cli", "product", "tui")
 CODING_PRODUCT_WORKER_NATIVE_PROFILE_ID = "posix-static-contained-elf-v1"
+CODING_PRODUCT_WORKER_WINDOWS_NATIVE_PROFILE_ID = "windows-lpac-contained-pe-v1"
+CODING_PRODUCT_WORKER_NATIVE_PROFILE_IDS = (
+    CODING_PRODUCT_WORKER_NATIVE_PROFILE_ID,
+    CODING_PRODUCT_WORKER_WINDOWS_NATIVE_PROFILE_ID,
+)
 
 CodingWorkerCanaryReadiness = Literal[
     "current",
@@ -187,6 +194,7 @@ class CodingProductWorkerCleanupPort(Protocol):
         request: ManagedWorkerLaunchRequestV1,
         protocol_terminal: bool,
         domain_retired: bool,
+        native_containment_witness: object | None = None,
     ) -> None: ...
 
 
@@ -311,6 +319,10 @@ class CodingProductWorkerCanary:
                         owner_generation=request.identity.owner_generation,
                         host_identity=cast(str, self._host_identity),
                         boot_identity=cast(str, self._boot_identity),
+                        cleanup_contract_version=cast(
+                            ProductWorkerNativeProfilePort,
+                            self._native_profile,
+                        ).cleanup_contract_version,
                     ),
                 )
                 with lease:
@@ -439,6 +451,7 @@ class CodingProductWorkerCanary:
                 request=request,
                 protocol_terminal=True,
                 domain_retired=True,
+                **self._native_cleanup_witness_arguments(),
             )
             await domain.settle_readiness(
                 required=policy.effective_required,
@@ -514,7 +527,25 @@ class CodingProductWorkerCanary:
                 request=request,
                 protocol_terminal=True,
                 domain_retired=True,
+                **self._native_cleanup_witness_arguments(),
             )
+
+    def _native_cleanup_witness_arguments(self) -> dict[str, object]:
+        native_profile = cast(ProductWorkerNativeProfilePort, self._native_profile)
+        if native_profile.cleanup_contract_version == 1:
+            return {}
+        if native_profile.cleanup_contract_version != 2:
+            raise CodingProductWorkerCanaryError(
+                "Coding Worker cleanup contract is unsupported",
+                code="coding_worker_cleanup_contract_unsupported",
+            )
+        native_witness = native_profile.native_containment_settlement_witness()
+        if native_witness is None:
+            raise CodingProductWorkerCanaryError(
+                "Coding Worker native containment is unsettled",
+                code="coding_worker_native_containment_unsettled",
+            )
+        return {"native_containment_witness": native_witness}
 
     async def _settle_closed_decision(
         self,
@@ -522,6 +553,7 @@ class CodingProductWorkerCanary:
         code: str,
     ) -> CodingProductWorkerCanaryStatusV1:
         policy = cast(ProductWorkerActivationPolicyV1, self._policy)
+        native_profile = cast(ProductWorkerNativeProfilePort, self._native_profile)
         readiness: CodingWorkerCanaryReadiness = (
             "unavailable" if policy.effective_required else "degraded"
         )
@@ -531,6 +563,7 @@ class CodingProductWorkerCanary:
             else "coding_worker_optional_degraded"
         )
         domain = cast(CodingProductWorkerCanaryDomainPort, self._domain)
+        await native_profile.close()
         await domain.settle_readiness(
             required=policy.effective_required,
             ready=False,
@@ -611,6 +644,9 @@ def bind_coding_product_worker_canary(
     containment_launcher_path: str | None = None,
     containment_launcher_sha256: str | None = None,
     containment_profile_sha256: str | None = None,
+    windows_lpac_plan: _WindowsLpacProductWorkerProfilePlan | None = None,
+    windows_platform_imports: tuple[str, ...] | None = None,
+    native_provisioning_state_store: object | None = None,
     capability_binding: CapabilityWorkerBindingV1 | None = None,
     capability_authority_reader: Callable[[], CapabilityWorkerAuthorityV1]
     | None = None,
@@ -620,7 +656,7 @@ def bind_coding_product_worker_canary(
     host_identity: str | None = None,
     boot_identity: str | None = None,
 ) -> CodingProductWorkerCanary:
-    """Bind the sole Linux Coding Product canary; omission remains Current."""
+    """Bind the sole explicit Coding Product canary; omission remains Current."""
 
     if policy is None:
         if receipt is not None:
@@ -694,6 +730,9 @@ def bind_coding_product_worker_canary(
         containment_launcher_path=containment_launcher_path,
         containment_launcher_sha256=containment_launcher_sha256,
         containment_profile_sha256=containment_profile_sha256,
+        windows_lpac_plan=windows_lpac_plan,
+        windows_platform_imports=windows_platform_imports,
+        native_provisioning_state_store=native_provisioning_state_store,
         capability_binding=capability_binding,
         capability_authority_reader=capability_authority_reader,
         domain=domain,
@@ -708,18 +747,30 @@ def bind_coding_product_worker_canary(
     assert trusted_evidence_authority_id is not None
     assert trusted_evidence_authority_fingerprint is not None
     assert activation_state_store is not None
-    assert containment_launcher_path is not None
     assert containment_launcher_sha256 is not None
     assert containment_profile_sha256 is not None
     try:
-        native_profile = _bind_posix_static_contained_product_worker_profile(
-            receipt=receipt,
-            worker_request=worker_request,
-            native_profile_catalog_revision=policy.native_profile_catalog_revision,
-            launcher_path=containment_launcher_path,
-            launcher_sha256=containment_launcher_sha256,
-            containment_profile_sha256=containment_profile_sha256,
-        )
+        if policy.native_profile_id == CODING_PRODUCT_WORKER_NATIVE_PROFILE_ID:
+            assert containment_launcher_path is not None
+            native_profile = _bind_posix_static_contained_product_worker_profile(
+                receipt=receipt,
+                worker_request=worker_request,
+                native_profile_catalog_revision=policy.native_profile_catalog_revision,
+                launcher_path=containment_launcher_path,
+                launcher_sha256=containment_launcher_sha256,
+                containment_profile_sha256=containment_profile_sha256,
+            )
+        else:
+            assert windows_lpac_plan is not None
+            assert windows_platform_imports is not None
+            assert native_provisioning_state_store is not None
+            native_profile = _bind_windows_lpac_contained_product_worker_profile(
+                receipt=receipt,
+                worker_request=worker_request,
+                plan=windows_lpac_plan,
+                platform_imports=windows_platform_imports,
+                provisioning_state_store=native_provisioning_state_store,  # type: ignore[arg-type]
+            )
     except WorkerBindingError as exc:
         raise CodingProductWorkerCanaryError(
             "Coding Worker native profile was rejected",
@@ -890,6 +941,9 @@ def _validate_selected_components(
     containment_launcher_path: str | None,
     containment_launcher_sha256: str | None,
     containment_profile_sha256: str | None,
+    windows_lpac_plan: _WindowsLpacProductWorkerProfilePlan | None,
+    windows_platform_imports: tuple[str, ...] | None,
+    native_provisioning_state_store: object | None,
     capability_binding: CapabilityWorkerBindingV1 | None,
     capability_authority_reader: Callable[[], CapabilityWorkerAuthorityV1] | None,
     domain: CodingProductWorkerCanaryDomainPort | None,
@@ -898,7 +952,7 @@ def _validate_selected_components(
     host_identity: str | None,
     boot_identity: str | None,
 ) -> None:
-    if policy.native_profile_id != CODING_PRODUCT_WORKER_NATIVE_PROFILE_ID:
+    if policy.native_profile_id not in CODING_PRODUCT_WORKER_NATIVE_PROFILE_IDS:
         _raise("coding_worker_native_profile_unsupported")
     _require_opaque(host_identity, name="host identity")
     _require_opaque(boot_identity, name="boot identity")
@@ -917,6 +971,13 @@ def _validate_selected_components(
             "verify_tree_settlement",
             "verify_changed_boot_absence",
             "verify_registered_lease_expired",
+        )
+    ):
+        _raise("coding_worker_composition_incomplete")
+    if (
+        policy.native_profile_id == CODING_PRODUCT_WORKER_WINDOWS_NATIVE_PROFILE_ID
+        and not callable(
+            getattr(evidence_authority, "verify_native_containment_settlement", None)
         )
     ):
         _raise("coding_worker_composition_incomplete")
@@ -943,8 +1004,6 @@ def _validate_selected_components(
         _raise("coding_worker_supervisor_identity_mismatch")
     if not callable(getattr(current_owner, "start", None)) or hosting is None:
         _raise("coding_worker_composition_incomplete")
-    if not isinstance(containment_launcher_path, str) or not containment_launcher_path:
-        _raise("coding_worker_composition_incomplete")
     _require_sha256(
         containment_launcher_sha256,
         name="containment launcher digest",
@@ -953,6 +1012,40 @@ def _validate_selected_components(
         containment_profile_sha256,
         name="containment profile digest",
     )
+    if policy.native_profile_id == CODING_PRODUCT_WORKER_NATIVE_PROFILE_ID:
+        if (
+            not isinstance(containment_launcher_path, str)
+            or not containment_launcher_path
+            or windows_lpac_plan is not None
+            or windows_platform_imports is not None
+            or native_provisioning_state_store is not None
+        ):
+            _raise("coding_worker_composition_incomplete")
+    elif (
+        containment_launcher_path is not None
+        or type(windows_lpac_plan) is not _WindowsLpacProductWorkerProfilePlan
+        or not isinstance(windows_platform_imports, tuple)
+        or not windows_platform_imports
+        or any(
+            not isinstance(name, str) or not name for name in windows_platform_imports
+        )
+        or native_provisioning_state_store is None
+        or any(
+            not callable(getattr(native_provisioning_state_store, name, None))
+            for name in ("load", "compare_and_swap")
+        )
+        or native_provisioning_state_store is activation_state_store
+    ):
+        _raise("coding_worker_composition_incomplete")
+    if (
+        policy.native_profile_id == CODING_PRODUCT_WORKER_WINDOWS_NATIVE_PROFILE_ID
+        and cast(
+            _WindowsLpacProductWorkerProfilePlan,
+            windows_lpac_plan,
+        ).containment_profile_sha256
+        != containment_profile_sha256
+    ):
+        _raise("coding_worker_native_provisioning_fingerprint_mismatch")
     if not isinstance(capability_binding, CapabilityWorkerBindingV1) or not callable(
         capability_authority_reader
     ):
@@ -1062,6 +1155,8 @@ __all__ = [
     "CODING_PRODUCT_WORKER_CANARY_ENTRYPOINTS",
     "CODING_PRODUCT_WORKER_CANARY_VERSION",
     "CODING_PRODUCT_WORKER_NATIVE_PROFILE_ID",
+    "CODING_PRODUCT_WORKER_NATIVE_PROFILE_IDS",
+    "CODING_PRODUCT_WORKER_WINDOWS_NATIVE_PROFILE_ID",
     "CodingProductWorkerCanary",
     "CodingProductWorkerCanaryDomainPort",
     "CodingProductWorkerCanaryError",
