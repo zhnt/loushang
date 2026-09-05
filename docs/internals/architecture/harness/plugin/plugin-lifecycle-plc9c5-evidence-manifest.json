@@ -144,6 +144,72 @@
         "C54-SENTINEL-REDACTION"
       ],
       "status": "implemented"
+    },
+    "PLC9C5-C5.5B-WINDOWS-LPAC-NATIVE": {
+      "junitPath": ".artifacts/plc9c5-c55b-windows-lpac-native.xml",
+      "minimumTests": 24,
+      "requiredCaseIds": [
+        "C55B-PROFILE-CREATE",
+        "C55B-CLEANUP-REPLAY",
+        "C55B-FOREIGN-PROFILE-REJECT",
+        "C55B-PROFILE-SID",
+        "C55B-ZERO-CAPABILITIES",
+        "C55B-LPAC-OPTOUT",
+        "C55B-RUNTIME-RX",
+        "C55B-RUNTIME-WRITE-DENY",
+        "C55B-PRIVATE-FS-SCRATCH",
+        "C55B-PRIVATE-REGISTRY-SCRATCH",
+        "C55B-UNRELATED-FS-DENY",
+        "C55B-PROCESS-MUTATION-DENY",
+        "C55B-NETWORK-DENY",
+        "C55B-EXEC-CWD-IDENTITY",
+        "C55B-DACL-SUBSTITUTION",
+        "C55B-PROFILE-SUBSTITUTION",
+        "C55B-NO-AMBIENT-ENV",
+        "C55B-HANDLE-LIST",
+        "C55B-HANDLE-ALIAS-REJECT",
+        "C55B-CANCEL-PRE-POST-EFFECT",
+        "C55B-TOKEN-VERIFY-BEFORE-RESUME",
+        "C55B-JOB-TREE-CLEANUP",
+        "C55B-CONTAINMENT-CLEANUP-DEBT",
+        "C55B-SENTINEL-REDACTION"
+      ],
+      "status": "planned"
+    },
+    "PLC9C5-C5.5C-WINDOWS-PRODUCT": {
+      "junitPath": ".artifacts/plc9c5-c55c-windows-product.xml",
+      "minimumTests": 28,
+      "requiredCaseIds": [
+        "C55C-PRODUCT-SELECTED",
+        "C55C-PRODUCT-MISSING",
+        "C55C-PRODUCT-WRONG",
+        "C55C-PRODUCT-DISABLED",
+        "C55C-SESSION-CANONICAL",
+        "C55C-SESSION-CWD",
+        "C55C-SESSION-HOME",
+        "C55C-SESSION-TAMPERED",
+        "C55C-SESSION-ALIAS",
+        "C55C-SESSION-CONFLICT",
+        "C55C-SESSION-CHANGED",
+        "C55C-REQUIRED-SUCCESS",
+        "C55C-REQUIRED-FAILURE",
+        "C55C-OPTIONAL-SUCCESS",
+        "C55C-OPTIONAL-DEGRADED",
+        "C55C-POLICY-CLOSURE-FRESHNESS",
+        "C55C-PROVISIONING-FRESHNESS",
+        "C55C-HANDSHAKE-HEALTH-PUBLICATION",
+        "C55C-WINDOWS-AMD64-ACCEPT",
+        "C55C-UNSUPPORTED-WINDOWS-NON-AMD64",
+        "C55C-UNSUPPORTED-WSL",
+        "C55C-UNSUPPORTED-MACOS",
+        "C55C-ORDERED-ROLLBACK",
+        "C55C-RECOVERY-MATRIX",
+        "C55C-NATIVE-CONTAINMENT-SETTLEMENT",
+        "C55C-SHARED-ENTRYPOINT-RECEIPT",
+        "C55C-NO-FALLBACK",
+        "C55C-SENTINEL-REDACTION"
+      ],
+      "status": "planned"
     }
   }
 }

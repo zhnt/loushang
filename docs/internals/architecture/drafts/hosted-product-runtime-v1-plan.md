@@ -25,12 +25,13 @@ remote execution, or live process adoption.
 
 ## Source, Target, And Delta
 
-- **Current source:** Hosting H0--H6.4 exists default-dark, including the
-  Harness-managed semantic bridge but no eligible native Worker profile
-  supplier; Harness retains sealed executable/cwd and required-containment
-  launch; PLC9C1--C5 exist; AppHost A0.3 live binding and the optional A0.4
-  hosted binder exist uncomposed; AppServer contains contracts only and
-  AppService remains absent.
+- **Current source:** Hosting H0--H6.4 exists default-dark; PLC9C5 C5.1--C5.4
+  provide the receipt/lifecycle aggregate, Linux native binding, retained
+  Windows mechanics/rejection, and one explicit Linux Coding Product canary.
+  The accepted design-only C5.5a baseline defines the separate Windows LPAC containment
+  gate but grants no runtime activation. AppHost A0.3 live binding and the
+  optional A0.4 hosted binder remain uncomposed; AppServer contains contracts
+  only and AppService remains absent.
 - **Proposed Target:** H6 supplies opaque native preparation; AppHost supplies
   explicit Product routing and scoped runtime lifetime; Product/Harness
   composition alone activates one reviewed Worker canary.
@@ -75,7 +76,7 @@ Product selection, authority, protocol health, or generation publication.
 | G4 | AppHost | implemented A0.1 Contract Model | accepted A0.0 / ARD-003 | standard-library-only contract/import/validation gates; no runtime composition |
 | G5 | AppHost | implemented A0.2 catalog/router, admission pins, optional AppHost-owned Harness Session integration, and explicit Product importer | G4 | two unrelated fake Products; minimal public prepared-route surface; Router-owned cleanup debt; cwd/user-global discovery; 8 MiB immutable snapshot bound; Windows fail-closed gate; no production consumer |
 | G6 | AppHost | implemented A0.3 canonical live-binding lifecycle and embedded profile plus A0.4 optional contract-only hosted binder | G5 | multi-Session and multi-profile single-flight attach/detach/cancellation/deadline/shutdown matrix; exact AppServer port identity; no listener, transport, protocol, service runtime, or production consumer |
-| G7 | Product/Harness | PLC9C5 narrow canary over an accepted existing Product route; C5.0 design/guards, C5.1 receipt/lifecycle, C5.2 Linux native binding, and C5.3 Windows mechanics/rejection are implemented, while C5.4 Linux Product convergence remains; Windows activation needs a later separately accepted containment profile | G2L + G2W + G3 | Linux Product/native evidence plus Windows fail-closed evidence land first; G7 closes only after separate Windows required-containment, cross-entrypoint, recovery, rollback, and no-fallback evidence |
+| G7 | Product/Harness | PLC9C5 C5.0--C5.4 implement the receipt/lifecycle aggregate, Linux native binding, retained Windows mechanics/rejection, and the explicit Linux Coding Product canary; C5.5a, C5.5b, and C5.5c separately design, implement, and compose Windows LPAC required containment | G2L + G2W + G3 | Linux Product/native evidence plus Windows fail-closed evidence land first; G7 closes only after C5.5 native and Product reports prove Windows required containment, cross-entrypoint, recovery, rollback, and no-fallback behavior |
 | G8 | AppHost + Product/Harness | Product-neutral end-to-end join | G6 + G7 | AppHost-scoped Product uses the exact Worker activation receipt; unrelated fake Product stays Worker-free |
 | G9 | common parent | v1 closure | G8 | owner deletion decision, docs/ARD promotion, clean dependency graph, operational drill |
 
@@ -138,6 +139,10 @@ freeze the Linux/Windows shape deltas. C5.0 does not satisfy G7 and changes no
 runtime activation guard. C5.4 may land the first Linux-only canary, but G7
 and therefore G8 remain open until Windows has a separately security-reviewed
 required-containment profile; unsupported Windows attempts fail closed.
+The accepted design-only
+[C5.5 Windows baseline](../harness/plugin/plugin-lifecycle-plc9c5-c55-windows-containment.md)
+names that gate as C5.5a, C5.5b, and C5.5c and keeps C5.5a
+documentation-only.
 
 The first production route fences and terminates a surviving old Worker before
 restart. Live adoption remains a later separately reviewed threat model.

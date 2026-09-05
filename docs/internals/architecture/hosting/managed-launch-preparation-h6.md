@@ -7,7 +7,7 @@
 - Parent: `loushang`
 - Authority: normative accepted design
 - Design status: accepted
-- Implementation status: implemented — H6.1 through H6.4 remain default-dark
+- Implementation status: implemented — H6.1 through H6.4 remain default-dark; H6.5 Windows LPAC design is accepted but not implemented
 - Activation status: forbidden; H5 remains default-dark
 - Owner: Loushang Hosting architecture
 
@@ -363,6 +363,8 @@ and tree-lifetime properties have native evidence.
 | H6.2 | implemented private Linux static-closure preparation profiles | required-containment and executable/cwd/descriptor adversarial oracle passes |
 | H6.3 | implemented private Windows AMD64 restricted-token PE preparation | restricted token, handle-list, Job, identity, and cleanup oracle passes |
 | H6.4 | implemented dark Harness managed-preparation bridge and H5 semantic parity matrix | public and managed preparation paths retain the same Worker fences; default remains Current and native Worker compatibility is not claimed |
+| H6.5a | accepted Windows LPAC threat/mechanics design and absence guards | five-view review accepts Hosting/Product ownership and no runtime symbol exists |
+| H6.5b | private Windows AMD64 zero-capability LPAC provisioning and native preparation | required native SID/capability/grant/scratch/Job/handle/cleanup report passes with no skip; no Product consumer |
 
 H6.1 is implemented as a private, default-dark core. Its non-committing POSIX
 and Windows mapping probes and fake-backed lifecycle evidence are retained in

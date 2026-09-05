@@ -12,7 +12,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import cast
 
-_CASE_ID = re.compile(r"C5[1-4]-[A-Z0-9-]+")
+_CASE_ID = re.compile(r"C5(?:[1-4]|5[BC])-[A-Z0-9-]+")
 _REPORT_FIELDS = {"junitPath", "minimumTests", "requiredCaseIds", "status"}
 
 

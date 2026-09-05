@@ -138,6 +138,48 @@ def test_verify_plc9c5_manifest_rejects_planned_report(
         verify_manifest_report(manifest, "PLC9C5-C5.1-CONTRACT", report)
 
 
+def test_verify_plc9c5_manifest_accepts_c55_subslice_case_ids(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    manifest = Path("manifest.json")
+    report = Path(".artifacts/plc9c5-c55b-windows-lpac-native.xml")
+    manifest.write_text(
+        json.dumps(
+            {
+                "manifestVersion": 1,
+                "reports": {
+                    "PLC9C5-C5.5B-WINDOWS-LPAC-NATIVE": {
+                        "junitPath": report.as_posix(),
+                        "minimumTests": 2,
+                        "requiredCaseIds": [
+                            "C55B-PROFILE-CREATE",
+                            "C55B-ZERO-CAPABILITIES",
+                        ],
+                        "status": "implemented",
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    report.parent.mkdir(parents=True)
+    report.write_text(
+        '<testsuite errors="0" failures="0" skipped="0" tests="2">'
+        '<testcase name="test[C55B-PROFILE-CREATE]" />'
+        '<testcase name="test[C55B-ZERO-CAPABILITIES]" />'
+        "</testsuite>",
+        encoding="utf-8",
+    )
+
+    assert verify_manifest_report(
+        manifest,
+        "PLC9C5-C5.5B-WINDOWS-LPAC-NATIVE",
+        report,
+    ) == "tests=2, skipped=0, failures=0, errors=0"
+
+
 @pytest.mark.parametrize(
     ("report_xml", "message"),
     (

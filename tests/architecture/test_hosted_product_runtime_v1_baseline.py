@@ -140,7 +140,8 @@ def test_baseline_documents_are_status_honest_and_indexed() -> None:
             "Authority": "normative accepted design",
             "Design status": "accepted",
             "Implementation status": (
-                "implemented — H6.1 through H6.4 remain default-dark"
+                "implemented — H6.1 through H6.4 remain default-dark; "
+                "H6.5 Windows LPAC design is accepted but not implemented"
             ),
             "Activation status": "forbidden; H5 remains default-dark",
         },
@@ -261,6 +262,8 @@ def test_h6_keeps_authority_outside_and_native_material_opaque() -> None:
         "H6.2",
         "H6.3",
         "H6.4",
+        "H6.5a",
+        "H6.5b",
     )
     assert _table_first_column(_section(h6, "Conformance Inventory")) == (
         "H6-BOUND",

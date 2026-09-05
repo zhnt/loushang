@@ -354,6 +354,10 @@ Neither may silently override a narrower implemented owner contract.
   Hosting capabilities, joins stable Session and shared-entrypoint evidence,
   and closes ordered rollback/recovery and publication evidence. Current stays
   default and G7 remains open on Windows.
+- [PLC9C5 C5.5 Windows Required-Containment Baseline](plugin-lifecycle-plc9c5-c55-windows-containment.md)
+  freezes the LPAC threat model, immutable-material-versus-attempt lifetime,
+  sole-writer boundaries, native/Product evidence matrices, and the C5.5a--c
+  rollout. C5.5a is design-only; Windows activation remains closed.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)
