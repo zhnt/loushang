@@ -1167,6 +1167,8 @@ class _WindowsLpacProvisioner:
             {"PROFILE_CREATED", "GRANTS_REVOKED", "PROFILE_DELETED", "DEBT"},
         )
         _require_effect_callback(begin_effect)
+        if witness.state == "PROFILE_DELETED":
+            return witness
         with self._lock:
             profile = self._derive_checked_profile(spec, witness)
             try:

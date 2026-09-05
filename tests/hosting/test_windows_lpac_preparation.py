@@ -452,14 +452,14 @@ def test_windows_lpac_provision_cleanup_is_exact_and_replayable(
     assert api.purged and not api.profile_exists
     settled = owner.settle(spec, witness)
     assert settled.state == "SETTLED"
-    api.delete_missing = True
+    api.fail_stage = "profile-derive"
     replay = owner.delete_profile(
         spec,
         witness,
         begin_effect=lambda: effects.append("delete-replay"),
     )
     assert replay.state == "PROFILE_DELETED"
-    assert effects == ["create", "grant", "revoke", "delete", "delete-replay"]
+    assert effects == ["create", "grant", "revoke", "delete"]
 
 
 def test_windows_lpac_cleanup_witness_recovers_pre_receipt_crash() -> None:
