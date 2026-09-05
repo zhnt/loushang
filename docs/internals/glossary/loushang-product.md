@@ -82,6 +82,19 @@ Product routing, shared process or tenant services, and runtime disposal.
 A Platform Host may expose a CLI, TUI, RPC, web, embedded, or other channel. It
 does not supply Coding, PPT, Research, or other domain semantics.
 
+### AppHost
+
+The accepted top-level physical owner of the logical Platform Host role.
+`loushang.apphost` owns admitted cross-Product catalog/routing, canonical
+per-Session Product Runtime bindings, deployment-profile selection, and
+process-level release ordering. "Platform Host" remains the logical role;
+"AppHost" names its Loushang Architecture Scope and package.
+
+AppHost core does not own Product semantics, Harness mechanisms, AppServer
+transport, AppService coordination, Hosting process lifetime, or presentation.
+Optional hosted and launcher adapters compose those sibling contracts without
+merging their owners.
+
 ### Platform CLI
 
 The neutral `loushang` command entry point. It resolves an explicitly selected
@@ -190,6 +203,30 @@ request, workspace, or persisted session.
 When restoring a session, the persisted `product_id` is authoritative unless an
 explicit migration is performed. Routing must not silently reinterpret one
 Product's session as another Product.
+
+### Session Identity Envelope
+
+A small generic, versioned routing header committed atomically by the canonical
+Session persistence owner. It contains an explicit `product_id`, continuity
+and Session identity, and bounded opaque provider/locator discriminators. It
+contains no Product payload, credential, mutable runtime state, path, or trust
+decision.
+
+AppHost consumes the envelope through an injected, revision-pinned Session
+identity/catalog port before Product-specific parsing. Legacy candidates
+without an envelope require explicit Product-owned import and are never assigned
+a default Product by AppHost.
+
+### Host/Presentation Profile Plugin
+
+A canonical manifest-backed Plugin contribution for one admitted delivery form,
+such as embedded TUI, desktop application, WebUI, or remote client. Product
+identity and delivery profile are orthogonal: CodingTUI and CodingApp profiles
+may share the same Coding Product and scoped Product Runtime.
+
+This is not another Plugin kind, Product registry, AppHost instance, or runtime
+owner. Existing Product/OEM Plugin admission owns source trust and generation
+lifetime; AppHost receives only an admitted immutable descriptor and factory.
 
 ### Product Runtime Plan
 

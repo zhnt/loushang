@@ -28,7 +28,8 @@ remote execution, or live process adoption.
 - **Current source:** Hosting H0--H6.4 exists default-dark, including the
   Harness-managed semantic bridge but no eligible native Worker profile
   supplier; Harness retains sealed executable/cwd and required-containment
-  launch; PLC9C1--C4 exist; AppHost/AppServer/AppService packages do not.
+  launch; PLC9C1--C4 exist; AppHost A0.1 contracts exist uncomposed;
+  AppServer/AppService packages do not.
 - **Proposed Target:** H6 supplies opaque native preparation; AppHost supplies
   explicit Product routing and scoped runtime lifetime; Product/Harness
   composition alone activates one reviewed Worker canary.
@@ -70,7 +71,7 @@ Product selection, authority, protocol health, or generation publication.
 | G2L | Hosting | H6.2 Linux native backend | G1 | retained native executable/cwd/containment/inheritance/tree oracle |
 | G2W | Hosting | H6.3 Windows native backend | G1 | retained native identity/AppContainer-or-token/handle-list/Job oracle |
 | G3 | Harness consumer | implemented H6.4 dark managed preparation adapter over fakes and the real private Child Session seam | G1 | Current/public/managed semantic and rollback matrix; default still Current; no native Worker compatibility claim |
-| G4 | proposed AppHost | A0.1 Contract Model | G0A plus parent acceptance prerequisites | standard-library-only contract/import/validation gates |
+| G4 | AppHost | implemented A0.1 Contract Model | accepted A0.0 / ARD-003 | standard-library-only contract/import/validation gates; no runtime composition |
 | G5 | proposed AppHost | A0.2 catalog/router, admission pins, Session candidate port, and explicit Product importer | G4 | two unrelated fake Products; cwd/user-global discovery; no-default/ambiguity/revision swap; Coding and Codex/Claude migration matrix pass |
 | G6 | proposed AppHost | A0.3 canonical live-binding lifecycle and embedded profile | G5 | multi-Session and multi-mux single-flight attach/detach/cancellation/deadline/shutdown matrix |
 | G7 | Product/Harness | PLC9C5 narrow canary over an accepted existing Product route | G2L + G2W + G3 | Linux/Windows cross-entrypoint native evidence, recovery, rollback, no fallback |

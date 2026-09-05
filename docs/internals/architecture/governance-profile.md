@@ -57,6 +57,7 @@ Loushang
   -> Channel
   -> Ontology
   -> Hosting
+  -> AppHost
 ```
 
 This tree records architectural ownership, not necessarily Python distribution

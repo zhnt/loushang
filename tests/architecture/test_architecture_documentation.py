@@ -47,6 +47,8 @@ INITIAL_GOVERNED_DOCUMENTS = (
     / "hosting/validation/managed-launch-preparation-h6-windows-native.md",
     ARCHITECTURE_ROOT / "hosting/validation/hosted-product-runtime-v1-inventory.md",
     ARCHITECTURE_ROOT / "hosting/key-designs/hosted-application-support-boundary.md",
+    ARCHITECTURE_ROOT / "apphost/README.md",
+    ARCHITECTURE_ROOT / "apphost/contract-model-a0.md",
     ARCHITECTURE_ROOT / "drafts/apphost-top-level-placement.md",
     ARCHITECTURE_ROOT / "drafts/apphost-component-discovery-a0.md",
     ARCHITECTURE_ROOT / "drafts/apphost-contract-baseline-a0.md",

@@ -78,6 +78,7 @@ The top-level scopes are:
 - [Work compatibility/integration](work/README.md)
 - [Ontology](ontology/README.md)
 - [Hosting](hosting/README.md)
+- [AppHost](apphost/README.md)
 - Foundation, represented in the AOD and subsystem map because it is a small
   product-neutral base rather than a large independent architecture package
 
@@ -99,12 +100,11 @@ nested-scope catalog for a proposed canonical V2 target plus implemented
 incremental contracts. Its presence in the scope tree does not advance that
 target to accepted status.
 
-Proposed top-level placements under design:
-
-- [AppHost Top-Level Placement](drafts/apphost-top-level-placement.md), the
-  proposed physical owner of the existing cross-Product Platform Host role.
-  Product catalog/routing and deployment profiles remain Target-only; they do
-  not move into Harness, AppServer, Hosting, or a concrete Product.
+The accepted [AppHost Top-Level Placement](decisions/ARD-003-apphost-top-level-placement.md)
+gives the existing cross-Product Platform Host role one physical owner.
+AppHost A0.1 contains contracts only; catalog/routing, live bindings, and
+deployment profiles remain explicit later slices and do not move into Harness,
+AppServer, Hosting, or a concrete Product.
 
 A nested scope is not automatically a top-level subsystem. The parent owns its
 placement, composition policy, and sibling relationships; the child owns its
@@ -159,6 +159,9 @@ drift guards.
 - [Hosting H0 Contract Model](hosting/contract-model-h0.md) demonstrates an
   accepted top-level mechanism scope entering implementation through a pure
   contract slice before resource-owner migration.
+- [AppHost A0 Contract Model](apphost/contract-model-a0.md) demonstrates a
+  cross-Product composition scope entering implementation through immutable,
+  standard-library-only values and required ports before routing or activation.
 
 ## Draft, Validation, Reference, And History
 
