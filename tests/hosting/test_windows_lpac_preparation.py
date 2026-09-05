@@ -21,18 +21,24 @@ from loushang.hosting import (
 )
 from loushang.hosting._launch_preparation import _ManagedSpawnEffect
 from loushang.hosting._win32_process import (
+    _ACCESS_ALLOWED_CALLBACK_OBJECT_ACE_TYPE,
+    _ACCESS_ALLOWED_COMPOUND_ACE_TYPE,
     _CREATE_SUSPENDED,
     _EXTENDED_STARTUPINFO_PRESENT,
+    _LPAC_REJECT_SETTLEMENT_MILLISECONDS,
     _PROC_THREAD_ATTRIBUTE_ALL_APPLICATION_PACKAGES_POLICY,
     _PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
     _PROC_THREAD_ATTRIBUTE_JOB_LIST,
     _PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES,
     _PROCESS_CREATION_ALL_APPLICATION_PACKAGES_OPT_OUT,
     _PROCESS_INFORMATION,
+    _WAIT_TIMEOUT,
+    _access_ace_sid_address,
     _CtypesWin32Api,
     _Win32AttributeList,
     _Win32CreateSettledWithoutProcess,
     _Win32LockedPathIdentity,
+    _Win32LpacIdentity,
     _Win32LpacProfile,
     _Win32LpacTokenIdentity,
     _Win32ProfileAlreadyExists,
@@ -157,7 +163,24 @@ class _FakeWindowsLpacApi:
     def derive_lpac_profile(self, profile_name: str) -> _Win32LpacProfile:
         assert profile_name.startswith("Loushang.Lpac.")
         self._fail("profile-derive")
-        return self._profile()
+        identity = self.derive_lpac_identity(profile_name)
+        return _Win32LpacProfile(
+            sid=identity.sid,
+            sid_text=identity.sid_text,
+            private_root=self.lpac_private_root(identity.sid_text),
+        )
+
+    def derive_lpac_identity(self, profile_name: str) -> _Win32LpacIdentity:
+        assert profile_name.startswith("Loushang.Lpac.")
+        self._fail("profile-identity")
+        return _Win32LpacIdentity(sid=500, sid_text="S-1-15-2-12345")
+
+    def lpac_private_root(self, sid_text: str) -> str:
+        assert sid_text == "S-1-15-2-12345"
+        self._fail("profile-root")
+        if self.delete_missing or not self.profile_exists:
+            raise _Win32ProfileNotFound(sid_text)
+        return _PRIVATE_ROOT
 
     def delete_lpac_profile(self, profile_name: str) -> None:
         assert profile_name.startswith("Loushang.Lpac.")
@@ -479,6 +502,36 @@ def test_windows_lpac_cleanup_witness_recovers_pre_receipt_crash() -> None:
     assert revoked.state == "GRANTS_REVOKED"
     deleted = owner.delete_profile(spec, revoked, begin_effect=lambda: None)
     assert owner.settle(spec, deleted).state == "SETTLED"
+
+
+def test_windows_lpac_cleanup_recovery_settles_an_already_absent_profile() -> None:
+    effects: list[str] = []
+    api = _FakeWindowsLpacApi()
+    owner = _WindowsLpacProvisioner(api=api)
+    spec = _provision_spec()
+
+    recovered = owner.recover_cleanup_witness(spec)
+    assert recovered.state == "DEBT"
+    revoked = owner.revoke_grants(
+        spec,
+        recovered,
+        begin_effect=lambda: effects.append("revoke"),
+    )
+    assert revoked.state == "GRANTS_REVOKED"
+    replayed = owner.revoke_grants(
+        spec,
+        revoked,
+        begin_effect=lambda: effects.append("revoke-replay"),
+    )
+    assert replayed == revoked
+    deleted = owner.delete_profile(
+        spec,
+        replayed,
+        begin_effect=lambda: effects.append("delete"),
+    )
+    assert owner.settle(spec, deleted).state == "SETTLED"
+    assert not api.purged
+    assert effects == ["revoke", "delete"]
 
 
 def test_windows_lpac_foreign_profile_is_never_adopted() -> None:
@@ -955,6 +1008,32 @@ def test_win32_lpac_spawn_rejects_unexpected_suspend_state() -> None:
     assert api.closed == [51, 50]
 
 
+def test_win32_lpac_rejected_process_drain_is_bounded_and_closes_handles() -> None:
+    class RejectedCleanupApi(_CtypesWin32Api):
+        def __init__(self) -> None:
+            self.waits: list[tuple[int, int]] = []
+            self.closed: list[int] = []
+            self._WaitForSingleObject = self._wait
+
+        def terminate_job(self, handle: int, exit_code: int) -> None:
+            assert (handle, exit_code) == (40, 0xE0000006)
+
+        def close_handle(self, handle: int) -> None:
+            self.closed.append(handle)
+
+        def _wait(self, process: int, milliseconds: int) -> int:
+            self.waits.append((process, milliseconds))
+            return _WAIT_TIMEOUT
+
+    api = RejectedCleanupApi()
+    with pytest.raises(BaseExceptionGroup) as failure:
+        api._settle_rejected_lpac_process(process=50, thread=51, job=40)
+
+    assert any(isinstance(error, TimeoutError) for error in failure.value.exceptions)
+    assert api.waits == [(50, _LPAC_REJECT_SETTLEMENT_MILLISECONDS)]
+    assert api.closed == [51, 50]
+
+
 def test_win32_lpac_handle_alias_fails_before_effect() -> None:
     api = _RawLpacApi()
     effects: list[str] = []
@@ -972,6 +1051,50 @@ def test_win32_lpac_handle_alias_fails_before_effect() -> None:
         )
     assert "collide" in str(failure.value.cause)
     assert effects == []
+
+
+def test_win32_lpac_object_ace_parser_locates_dynamic_trustee_sid() -> None:
+    body = bytearray(64)
+    body[0] = _ACCESS_ALLOWED_CALLBACK_OBJECT_ACE_TYPE
+    body[1] = 3
+    body[2:4] = (64).to_bytes(2, "little")
+    body[8:12] = (3).to_bytes(4, "little")
+    sid_offset = 12 + 16 + 16
+    body[sid_offset] = 1
+    body[sid_offset + 1] = 1
+    storage = ctypes.create_string_buffer(bytes(body))
+    address = ctypes.addressof(storage)
+
+    assert (
+        _access_ace_sid_address(
+            address,
+            _ACCESS_ALLOWED_CALLBACK_OBJECT_ACE_TYPE,
+            len(body),
+        )
+        == address + sid_offset
+    )
+
+
+def test_win32_lpac_object_ace_parser_rejects_truncated_trustee_sid() -> None:
+    body = bytearray(20)
+    body[0] = _ACCESS_ALLOWED_CALLBACK_OBJECT_ACE_TYPE
+    body[2:4] = (20).to_bytes(2, "little")
+    body[8:12] = (0).to_bytes(4, "little")
+    body[12] = 1
+    body[13] = 8
+    storage = ctypes.create_string_buffer(bytes(body))
+
+    with pytest.raises(OSError, match="truncated trustee SID"):
+        _access_ace_sid_address(
+            ctypes.addressof(storage),
+            _ACCESS_ALLOWED_CALLBACK_OBJECT_ACE_TYPE,
+            len(body),
+        )
+
+
+def test_win32_lpac_ace_parser_rejects_ambiguous_compound_access() -> None:
+    with pytest.raises(OSError, match="unsupported compound ACE"):
+        _access_ace_sid_address(1, _ACCESS_ALLOWED_COMPOUND_ACE_TYPE, 64)
 
 
 def test_windows_lpac_native_failures_redact_paths_and_sentinels(

@@ -963,7 +963,25 @@ async def _collect_native_evidence(
     api.purge_lpac_private_state = original_purge  # type: ignore[method-assign]
     deleted = owner.delete_profile(provision, witness, begin_effect=lambda: None)
     replay = owner.delete_profile(provision, deleted, begin_effect=lambda: None)
-    cleanup_replay = owner.settle(provision, replay).state == "SETTLED"
+    replay_settled = owner.settle(provision, replay).state == "SETTLED"
+    # Reconstruct cleanup authority after the profile is already absent. This
+    # proves deterministic SID derivation does not depend on the OS-owned
+    # private path and that exact absent-grant/profile replay is successful.
+    absent = owner.recover_cleanup_witness(provision)
+    absent_revoked = owner.revoke_grants(
+        provision,
+        absent,
+        begin_effect=lambda: None,
+    )
+    absent_deleted = owner.delete_profile(
+        provision,
+        absent_revoked,
+        begin_effect=lambda: None,
+    )
+    cleanup_replay = (
+        replay_settled
+        and owner.settle(provision, absent_deleted).state == "SETTLED"
+    )
     cleanup.profile_effect_started = False
     cleanup.owner = None
     cleanup.provision = None

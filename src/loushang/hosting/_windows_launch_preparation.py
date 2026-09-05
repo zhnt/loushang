@@ -40,6 +40,7 @@ from ._win32_process import (
     _SUB_CONTAINERS_AND_OBJECTS_INHERIT,
     _CtypesWin32Api,
     _Win32LockedPathIdentity,
+    _Win32LpacIdentity,
     _Win32LpacProfile,
     _Win32ProfileAlreadyExists,
     _Win32ProfileNotFound,
@@ -142,6 +143,10 @@ class _WindowsLpacApi(_WindowsLaunchApi, Protocol):
     ) -> _Win32LpacProfile: ...
 
     def derive_lpac_profile(self, profile_name: str) -> _Win32LpacProfile: ...
+
+    def derive_lpac_identity(self, profile_name: str) -> _Win32LpacIdentity: ...
+
+    def lpac_private_root(self, sid_text: str) -> str: ...
 
     def delete_lpac_profile(self, profile_name: str) -> None: ...
 
@@ -1108,15 +1113,24 @@ class _WindowsLpacProvisioner:
         self._validate_witness(
             spec,
             witness,
-            {"GRANTS_APPLIED", "VERIFIED", "ACTIVE", "CLEANING", "DEBT"},
+            {
+                "GRANTS_APPLIED",
+                "VERIFIED",
+                "ACTIVE",
+                "CLEANING",
+                "GRANTS_REVOKED",
+                "DEBT",
+            },
         )
         _require_effect_callback(begin_effect)
+        if witness.state == "GRANTS_REVOKED":
+            return witness
         with self._lock:
-            profile = self._derive_checked_profile(spec, witness)
+            identity = self._derive_checked_identity(spec, witness)
             try:
                 targets = _lpac_grant_targets(spec)
                 for path, permissions, inherit in targets:
-                    matches = self._api.lpac_path_access(path, profile.sid)
+                    matches = self._api.lpac_path_access(path, identity.sid)
                     expected = (
                         (
                             _ACCESS_ALLOWED_ACE_TYPE,
@@ -1131,12 +1145,12 @@ class _WindowsLpacProvisioner:
                         )
                 begin_effect()
                 for path, _, _ in reversed(targets):
-                    if self._api.lpac_path_access(path, profile.sid):
-                        self._api.revoke_lpac_path(path, profile.sid)
+                    if self._api.lpac_path_access(path, identity.sid):
+                        self._api.revoke_lpac_path(path, identity.sid)
                 _verify_lpac_grants(
                     self._api,
                     spec,
-                    profile.sid,
+                    identity.sid,
                     present=False,
                 )
                 # Preserve the durable identity witness. Recovery may begin
@@ -1152,7 +1166,7 @@ class _WindowsLpacProvisioner:
                     "Windows LPAC grant cleanup remains unsettled",
                 ) from error
             finally:
-                self._api.free_sid(profile.sid)
+                self._api.free_sid(identity.sid)
 
     def delete_profile(
         self,
@@ -1170,10 +1184,15 @@ class _WindowsLpacProvisioner:
         if witness.state == "PROFILE_DELETED":
             return witness
         with self._lock:
-            profile = self._derive_checked_profile(spec, witness)
+            identity = self._derive_checked_identity(spec, witness)
             try:
+                try:
+                    private_root = self._api.lpac_private_root(identity.sid_text)
+                except _Win32ProfileNotFound:
+                    private_root = None
                 begin_effect()
-                self._api.purge_lpac_private_state(profile.private_root)
+                if private_root is not None:
+                    self._api.purge_lpac_private_state(private_root)
                 with suppress(_Win32ProfileNotFound):
                     self._api.delete_lpac_profile(_lpac_profile_name(spec))
                 return _replace_lpac_witness_state(witness, "PROFILE_DELETED")
@@ -1185,7 +1204,7 @@ class _WindowsLpacProvisioner:
                     "Windows LPAC profile cleanup remains unsettled",
                 ) from error
             finally:
-                self._api.free_sid(profile.sid)
+                self._api.free_sid(identity.sid)
 
     def settle(
         self,
@@ -1217,7 +1236,7 @@ class _WindowsLpacProvisioner:
 
         self._validate_spec(spec)
         with self._lock:
-            profile = self._api.derive_lpac_profile(_lpac_profile_name(spec))
+            identity = self._api.derive_lpac_identity(_lpac_profile_name(spec))
             try:
                 return _WindowsLpacProvisionWitness(
                     state="DEBT",
@@ -1225,15 +1244,16 @@ class _WindowsLpacProvisioner:
                     operation_nonce=spec.operation_nonce,
                     spec_fingerprint=_lpac_spec_fingerprint(spec),
                     profile_fingerprint=_lpac_profile_fingerprint(spec),
-                    sid_fingerprint=_fingerprint(profile.sid_text),
+                    sid_fingerprint=_fingerprint(identity.sid_text),
                     private_state_fingerprint=_fingerprint(
-                        f"cleanup-only:{ntpath.normcase(profile.private_root)}"
+                        "cleanup-only:"
+                        f"{_lpac_profile_fingerprint(spec)}:{identity.sid_text}"
                     ),
                     grant_digest=_lpac_grant_digest(spec),
                     platform_identity=spec.platform_identity,
                 )
             finally:
-                self._api.free_sid(profile.sid)
+                self._api.free_sid(identity.sid)
 
     def _validate_spec(self, spec: _WindowsLpacProvisionSpec) -> None:
         if type(spec) is not _WindowsLpacProvisionSpec:
@@ -1281,6 +1301,20 @@ class _WindowsLpacProvisioner:
             )
         return profile
 
+    def _derive_checked_identity(
+        self,
+        spec: _WindowsLpacProvisionSpec,
+        witness: _WindowsLpacProvisionWitness,
+    ) -> _Win32LpacIdentity:
+        identity = self._api.derive_lpac_identity(_lpac_profile_name(spec))
+        if _fingerprint(identity.sid_text) != witness.sid_fingerprint:
+            self._api.free_sid(identity.sid)
+            raise HostingError(
+                HostingFailureCategory.PREPARATION_STALE,
+                "Windows LPAC Package SID changed",
+            )
+        return identity
+
     def _verify_private_identity(
         self,
         witness: _WindowsLpacProvisionWitness,
@@ -1323,25 +1357,30 @@ def _snapshot_lpac_runtime(
     runtime_root: str,
 ) -> tuple[_WindowsLpacRuntimeEntry, ...]:
     _require_local_windows_path(runtime_root, "runtime root")
-    root = Path(runtime_root).resolve(strict=True)
-    paths = [root]
-    paths.extend(
-        sorted(
-            root.rglob("*"),
-            key=lambda path: str(path.relative_to(root)).casefold(),
-        )
-    )
-    if len(paths) > _MAX_LPAC_RUNTIME_ENTRIES:
-        raise ValueError("Windows LPAC runtime closure exceeds its entry bound")
-    entries: list[_WindowsLpacRuntimeEntry] = []
-    total_bytes = 0
-    for path in paths:
+    root = Path(runtime_root)
+    pending = [root]
+    paths: list[tuple[Path, os.stat_result]] = []
+    while pending:
+        path = pending.pop()
         information = path.lstat()
         if (
             path.is_symlink()
             or int(getattr(information, "st_file_attributes", 0)) & 0x00000400
         ):
             raise ValueError("Windows LPAC runtime closure contains a reparse point")
+        paths.append((path, information))
+        if len(paths) > _MAX_LPAC_RUNTIME_ENTRIES:
+            raise ValueError("Windows LPAC runtime closure exceeds its entry bound")
+        if stat.S_ISDIR(information.st_mode):
+            with os.scandir(path) as iterator:
+                children = sorted(
+                    (Path(entry.path) for entry in iterator),
+                    key=lambda child: child.name.casefold(),
+                )
+            pending.extend(reversed(children))
+    entries: list[_WindowsLpacRuntimeEntry] = []
+    total_bytes = 0
+    for path, information in paths:
         if stat.S_ISDIR(information.st_mode):
             directory = True
         elif stat.S_ISREG(information.st_mode):

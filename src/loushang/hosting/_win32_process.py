@@ -44,6 +44,7 @@ _GENERIC_WRITE = 0x40000000
 _OPEN_EXISTING = 3
 _FILE_ATTRIBUTE_NORMAL = 0x00000080
 _WAIT_OBJECT_0 = 0
+_WAIT_TIMEOUT = 0x00000102
 _WAIT_FAILED = 0xFFFFFFFF
 _INFINITE = 0xFFFFFFFF
 _STILL_ACTIVE = 259
@@ -86,6 +87,15 @@ _TRUSTEE_IS_UNKNOWN = 0
 _SUB_CONTAINERS_AND_OBJECTS_INHERIT = 0x3
 _ACCESS_ALLOWED_ACE_TYPE = 0
 _ACCESS_DENIED_ACE_TYPE = 1
+_ACCESS_ALLOWED_COMPOUND_ACE_TYPE = 4
+_ACCESS_ALLOWED_OBJECT_ACE_TYPE = 5
+_ACCESS_DENIED_OBJECT_ACE_TYPE = 6
+_ACCESS_ALLOWED_CALLBACK_ACE_TYPE = 9
+_ACCESS_DENIED_CALLBACK_ACE_TYPE = 10
+_ACCESS_ALLOWED_CALLBACK_OBJECT_ACE_TYPE = 11
+_ACCESS_DENIED_CALLBACK_OBJECT_ACE_TYPE = 12
+_ACE_OBJECT_TYPE_PRESENT = 0x00000001
+_ACE_INHERITED_OBJECT_TYPE_PRESENT = 0x00000002
 _ACL_SIZE_INFORMATION_CLASS = 2
 _FILE_TRAVERSE_READ = 0x001200A0
 _GENERIC_EXECUTE = 0x20000000
@@ -97,6 +107,7 @@ _FILE_ATTRIBUTE_REPARSE_POINT_STAT = 0x00000400
 _MAX_LPAC_PRIVATE_ENTRIES = 4096
 _MAX_LPAC_PRIVATE_BYTES = 128 * 1024 * 1024
 _MAX_LPAC_PRIVATE_DEPTH = 32
+_LPAC_REJECT_SETTLEMENT_MILLISECONDS = 5000
 
 
 class _SECURITY_ATTRIBUTES(ctypes.Structure):
@@ -302,6 +313,12 @@ class _Win32LockedPathIdentity:
     final_path: str
     is_directory: bool
     link_count: int = 1
+
+
+@dataclass(frozen=True, slots=True)
+class _Win32LpacIdentity:
+    sid: int
+    sid_text: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -555,7 +572,9 @@ class _CtypesWin32Api:
             self.free_sid(sid_value)
             raise
 
-    def derive_lpac_profile(self, profile_name: str) -> _Win32LpacProfile:
+    def derive_lpac_identity(self, profile_name: str) -> _Win32LpacIdentity:
+        """Derive the deterministic Package SID without querying profile state."""
+
         sid = ctypes.c_void_p()
         result = int(
             self._DeriveAppContainerSidFromAppContainerName(
@@ -572,14 +591,24 @@ class _CtypesWin32Api:
         if sid_value <= 0:
             raise OSError("AppContainer SID derivation returned no Package SID")
         try:
-            sid_text = self.sid_text(sid_value)
-            return _Win32LpacProfile(
+            return _Win32LpacIdentity(
                 sid=sid_value,
-                sid_text=sid_text,
-                private_root=self.lpac_private_root(sid_text),
+                sid_text=self.sid_text(sid_value),
             )
         except BaseException:
             self.free_sid(sid_value)
+            raise
+
+    def derive_lpac_profile(self, profile_name: str) -> _Win32LpacProfile:
+        identity = self.derive_lpac_identity(profile_name)
+        try:
+            return _Win32LpacProfile(
+                sid=identity.sid,
+                sid_text=identity.sid_text,
+                private_root=self.lpac_private_root(identity.sid_text),
+            )
+        except BaseException:
+            self.free_sid(identity.sid)
             raise
 
     def delete_lpac_profile(self, profile_name: str) -> None:
@@ -614,6 +643,11 @@ class _CtypesWin32Api:
         pointer = wintypes.LPWSTR()
         result = int(self._GetAppContainerFolderPath(sid_text, ctypes.byref(pointer)))
         if result != 0:
+            if _hresult_code(result) in {
+                _ERROR_FILE_NOT_FOUND,
+                _ERROR_PATH_NOT_FOUND,
+            }:
+                raise _Win32ProfileNotFound(sid_text)
             self._raise_hresult(result, "GetAppContainerFolderPath")
         try:
             value = pointer.value
@@ -692,16 +726,17 @@ class _CtypesWin32Api:
                     ctypes.POINTER(_ACE_HEADER),
                 ).contents
                 ace_type = int(header.AceType)
-                if ace_type not in {
-                    _ACCESS_ALLOWED_ACE_TYPE,
-                    _ACCESS_DENIED_ACE_TYPE,
-                }:
+                ace_sid = _access_ace_sid_address(
+                    int(raw_ace.value),
+                    ace_type,
+                    int(header.AceSize),
+                )
+                if ace_sid is None:
                     continue
                 ace = ctypes.cast(
                     raw_ace,
                     ctypes.POINTER(_ACCESS_ALLOWED_ACE),
                 ).contents
-                ace_sid = int(raw_ace.value) + _ACCESS_ALLOWED_ACE.SidStart.offset
                 if self._EqualSid(ace_sid, sid):
                     matches.append((ace_type, int(ace.Mask), int(ace.Header.AceFlags)))
             return tuple(matches)
@@ -1187,16 +1222,29 @@ class _CtypesWin32Api:
         job: int,
     ) -> None:
         failures: list[BaseException] = []
+        terminated = False
         try:
             self.terminate_job(job, 0xE0000006)
         except BaseException as error:
             failures.append(error)
-        try:
-            result = int(self._WaitForSingleObject(process, _INFINITE))
-            if result != _WAIT_OBJECT_0:
-                raise OSError("Windows rejected LPAC process did not drain")
-        except BaseException as error:
-            failures.append(error)
+        else:
+            terminated = True
+        if terminated:
+            try:
+                result = int(
+                    self._WaitForSingleObject(
+                        process,
+                        _LPAC_REJECT_SETTLEMENT_MILLISECONDS,
+                    )
+                )
+                if result == _WAIT_FAILED:
+                    self._raise_last_error("WaitForSingleObject(rejected LPAC)")
+                if result == _WAIT_TIMEOUT:
+                    raise TimeoutError("Windows rejected LPAC process did not drain")
+                if result != _WAIT_OBJECT_0:
+                    raise OSError("Windows rejected LPAC process wait was invalid")
+            except BaseException as error:
+                failures.append(error)
         for handle in (thread, process):
             try:
                 self.close_handle(handle)
@@ -2170,6 +2218,58 @@ def _last_error() -> int:
 
 def _hresult_code(result: int) -> int:
     return int(result) & 0xFFFF
+
+
+def _access_ace_sid_address(
+    raw_ace: int,
+    ace_type: int,
+    ace_size: int,
+) -> int | None:
+    """Locate trustees in supported access ACEs and reject ambiguous shapes."""
+
+    basic = {
+        _ACCESS_ALLOWED_ACE_TYPE,
+        _ACCESS_DENIED_ACE_TYPE,
+        _ACCESS_ALLOWED_CALLBACK_ACE_TYPE,
+        _ACCESS_DENIED_CALLBACK_ACE_TYPE,
+    }
+    object_types = {
+        _ACCESS_ALLOWED_OBJECT_ACE_TYPE,
+        _ACCESS_DENIED_OBJECT_ACE_TYPE,
+        _ACCESS_ALLOWED_CALLBACK_OBJECT_ACE_TYPE,
+        _ACCESS_DENIED_CALLBACK_OBJECT_ACE_TYPE,
+    }
+    if ace_type in basic:
+        sid_offset = _ACCESS_ALLOWED_ACE.SidStart.offset
+    elif ace_type == _ACCESS_ALLOWED_COMPOUND_ACE_TYPE:
+        # This obsolete two-principal shape cannot be compared as one exact
+        # Package-SID trustee, so a dedicated runtime carrying one is unsafe.
+        raise OSError("Windows DACL contains an unsupported compound ACE")
+    elif ace_type in object_types:
+        if raw_ace <= 0 or ace_size < 12:
+            raise OSError("Windows DACL contains a malformed object ACE")
+        object_flags = ctypes.c_uint32.from_address(raw_ace + 8).value
+        if object_flags & ~(
+            _ACE_OBJECT_TYPE_PRESENT | _ACE_INHERITED_OBJECT_TYPE_PRESENT
+        ):
+            raise OSError("Windows DACL object ACE has unknown flags")
+        sid_offset = 12
+        if object_flags & _ACE_OBJECT_TYPE_PRESENT:
+            sid_offset += 16
+        if object_flags & _ACE_INHERITED_OBJECT_TYPE_PRESENT:
+            sid_offset += 16
+    else:
+        return None
+    # A SID is an 8-byte header followed by N 32-bit sub-authorities. Validate
+    # its complete extent before EqualSid is allowed to inspect OS-owned ACL
+    # memory; callback application data, when present, follows that extent.
+    if raw_ace <= 0 or sid_offset + 8 > ace_size:
+        raise OSError("Windows DACL contains a malformed access ACE")
+    sub_authority_count = ctypes.c_ubyte.from_address(raw_ace + sid_offset + 1).value
+    sid_size = 8 + 4 * int(sub_authority_count)
+    if sid_offset + sid_size > ace_size:
+        raise OSError("Windows DACL contains a truncated trustee SID")
+    return raw_ace + sid_offset
 
 
 def _stat_is_reparse(value: os.stat_result) -> bool:

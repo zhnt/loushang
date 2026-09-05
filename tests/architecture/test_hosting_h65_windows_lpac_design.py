@@ -218,6 +218,13 @@ def test_h65b_implements_exact_atomic_launch_and_cleanup_only_recovery() -> None
     assert "def recover_cleanup_witness(" in provisioner
     assert 'state="DEBT"' in provisioner
     assert "only creates a DEBT witness accepted by exact revoke/delete" in provisioner
+    recovery = _method_source(
+        WINDOWS_PREPARATION,
+        "_WindowsLpacProvisioner",
+        "recover_cleanup_witness",
+    )
+    assert "derive_lpac_identity(" in recovery
+    assert "derive_lpac_profile(" not in recovery
     process = _read(WINDOWS_PROCESS)
     assert "def _spawn_lpac_prepared(" in process
     assert "spawn_lpac(" in process
