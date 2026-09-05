@@ -56,6 +56,7 @@ below if the catalog has not yet been refreshed.
 | --- | --- | --- | --- |
 | [ARD-001: Agent Loop Ownership And Extension Shape](ARD-001-agent-loop-ownership-and-extension-shape.md) | Accepted | Agent, Harness and Product adapters | Agent owns the fixed loop skeleton; Harness and Products extend it through explicit injected ports rather than replacing the loop. |
 | [ARD-002: Hosting Top-Level Placement And Scope](ARD-002-hosting-top-level-placement.md) | Accepted | Hosting, Harness and trusted host composition | Hosting owns Product-neutral local process, inherited peer endpoint, and atomic child-session mechanisms; caller scopes retain admission, security, protocol, and domain authority. |
+| [ARD-003: AppHost Top-Level Placement And Contract Boundary](ARD-003-apphost-top-level-placement.md) | Accepted | AppHost, Product packages, Harness, and optional hosted/launcher siblings | AppHost owns explicit cross-Product routing and scoped Product Runtime bindings; core remains independent of concrete Products, AppServer, Hosting, and UI frameworks. |
 
 ## Reading And Change Rule
 

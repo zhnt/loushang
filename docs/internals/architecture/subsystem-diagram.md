@@ -34,6 +34,8 @@ flowchart TD
     CHANNEL["loushang.channel\nboundary values and delivery"]
     ONTOLOGY["loushang.ontology\nsemantic facts and projections"]
     FOUNDATION["loushang.foundation\nstrict values and observability"]
+    HOSTING["loushang.hosting\ndefault-dark local child mechanism"]
+    APPHOST["loushang.apphost\nA0.1 contracts only"]
 
     CODING -->|composes| HARNESS
     HARNESS -->|executes one prepared run through| AGENT
@@ -49,6 +51,7 @@ flowchart TD
     CHANNEL -->|carries accepted Work/runtime views from| HWORK
 
     ONTOLOGY -->|uses strict values from| FOUNDATION
+    HARNESS -->|explicit default-dark Worker adapter| HOSTING
 ```
 
 The diagram intentionally omits many direct physical imports and Foundation
@@ -64,6 +67,8 @@ flowchart TD
     AI["AI"]
     AGENT["Agent"]
     TUI["TUI"]
+    HOSTING["Hosting"]
+    APPHOST["AppHost"]
     OTHER["Channel / Method / HarnessWork / Ontology / ..."]
 
     LSP["coding.lsp"]
@@ -75,6 +80,8 @@ flowchart TD
     LOUSHANG --> AI
     LOUSHANG --> AGENT
     LOUSHANG --> TUI
+    LOUSHANG --> HOSTING
+    LOUSHANG --> APPHOST
     LOUSHANG --> OTHER
 
     CODING --> LSP
@@ -94,6 +101,8 @@ HarnessTUI -> Harness + TUI
 HarnessWork -> Harness
 Work compatibility -> HarnessWork
 Ontology -> Foundation
+Harness -> Hosting
+AppHost A0.1 -> Python standard library only
 ```
 
 This is a descriptive projection of policy, not its normative source or an
@@ -103,3 +112,8 @@ exhaustive allowlist. Exact forbidden and exception edges are executable under
 Future Product scopes such as Design, Research, PPT, or Cowork remain peers of
 Coding when accepted and implemented. They are not children of Agent, Work, or
 Method merely because they consume those capabilities.
+
+The accepted Target allows future AppHost runtime/profile components to depend
+on AppHost contracts and injected Product ports. Optional hosted and launcher
+adapters may depend on AppServer and Hosting respectively; those optional
+edges are not AppHost core dependencies and are not implemented by A0.1.

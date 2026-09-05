@@ -62,6 +62,7 @@ Extension        → 向已准入运行时扩展面贡献行为
 | --- | --- | --- |
 | Platform | 平台 | 可发现、注册并承载一个或多个 Product 的 Loushang 系统；平台本身不是领域 Product。 |
 | Platform Host | 平台宿主 | 进程级组合根，负责 Product 发现、OEM 选择、Product 路由、共享服务和运行时释放。 |
+| AppHost | AppHost／应用宿主 | Platform Host 逻辑角色在 Loushang 中已接受的顶层物理 owner；负责显式跨 Product 路由、每 Session 的 Product Runtime binding 和 delivery profile 选择。 |
 | Platform CLI | 平台 CLI | 中立的 `loushang` 命令入口，根据显式参数或配置选择 OEM 与 Product。 |
 | OEM CLI | OEM CLI／OEM 品牌命令 | 如 `acme` 的 OEM 品牌入口；调用共享平台启动机制，不复制 Product 启动逻辑。 |
 | Default OEM | 缺省 OEM | 启动请求未指定 OEM 时使用的 OEM Profile。 |
@@ -82,6 +83,8 @@ Extension        → 向已准入运行时扩展面贡献行为
 | Product Factory | Product 工厂 | 根据已准入的平台、OEM、工作区、Channel 和 Session 上下文创建 Product Runtime。 |
 | Product Registry | Product 注册表 | 当前 Platform Host 已准入 Product Descriptor 的确定性目录。 |
 | Product Router | Product 路由器 | 为启动、请求、工作区或持久化 Session 选择已注册 Product 的机制。 |
+| Session Identity Envelope | Session 身份信封 | 由 canonical Session owner 原子写入的通用、版本化、无路径路由头；包含显式 `product_id`、continuity/Session identity 和不透明 locator discriminator。 |
+| Host/Presentation Profile Plugin | 宿主／呈现配置插件 | manifest-backed 的 delivery profile 贡献，如 embedded TUI、桌面、WebUI；它与 Product identity 正交，不拥有 Product Runtime。 |
 | Product Runtime Plan | Product 运行时计划 | Product 声明的能力槽、默认选择、可覆盖来源和配置；不包含 live object 或凭证。 |
 | Resolved Runtime Profile | 已解析运行时配置 | 将 Product、OEM、Extension 和 Session 层确定性合成后的能力选择。 |
 | Product Runtime | Product 运行时 | Product Factory 创建的一个活跃、已绑定执行实例。 |

@@ -5,19 +5,19 @@
 - ID: `APPHOST-A0-DISCOVERY`
 - Scope: `AppHost`
 - Parent: `Loushang`
-- Authority: descriptive — design validation input
+- Authority: descriptive — completed design validation evidence
 - Design status: not-applicable
 - Implementation status: not-applicable
 - Owner: Loushang architecture
 
 ## Purpose
 
-This record applies the Loushang component-identification method before an
-AppHost package or public API exists. It validates the proposed top-level
+This record applied the Loushang component-identification method before an
+AppHost package or public API existed. It validated the proposed top-level
 placement with candidate functions, candidate components, an explicit
 function mapping, and `split / merge / keep` decisions. It is evidence for the
-[AppHost placement proposal](apphost-top-level-placement.md), not an accepted
-scope or source-code inventory.
+[AppHost placement proposal](apphost-top-level-placement.md). ARD-003 now owns
+the accepted placement and the canonical AppHost scope owns current status.
 
 ## Discovery Inputs
 
@@ -42,18 +42,19 @@ scope or source-code inventory.
 - stop admission, drain AppServer/AppService, release Product runtimes, and
   close the process resource owner exactly once.
 
-### Current facts
+### Facts at A0.0 discovery
 
 - Product-specific entrypoints currently compose their own runtime and
   presentation concerns.
 - `loushang.harness.host` owns reusable single-Product CLI/stdio lifecycle
   mechanics but no Product catalog, router, or deployment topology.
-- `loushang.hosting` owns Product-neutral attached process and child-session
-  mechanics through H4; its Harness-owned H5 Worker consumer remains
-  default-dark.
-- AppHost, AppServer, and the proposed AppService boundary have architecture
-  drafts but no corresponding `src/loushang/apphost`, `appserver`, or
-  `appservice` package.
+- `loushang.hosting` owns Product-neutral process, endpoint, child-session, and
+  managed-preparation mechanics through H6.4; its Harness Worker consumer
+  remains default-dark.
+- At discovery time AppHost, AppServer, and the proposed AppService boundary
+  had architecture drafts but no corresponding source packages. AppHost A0.1
+  now exists as a contract-only package; AppServer and AppService remain
+  absent.
 - Existing conversation/runtime metadata is useful migration evidence, but is
   not yet the generic Session Identity Envelope required before Product
   routing.
@@ -189,10 +190,12 @@ profile dependencies.
    `apphost.hosted` binder is implemented?
 5. Which serialized readiness/stop contract is shared by a Hosting launcher
    and an external supervisor without moving service semantics into Hosting?
-6. Which Product/OEM admission-generation lease can pin live factory code while
-   replacement stops new routes and retirement waits for existing Sessions?
+6. Which subject-bound Product/OEM admission source can mint independent
+   catalog-owned pins while replacement stops new routes and retirement waits
+   for existing Sessions?
 7. Which request-bound Session candidate and Product validator contracts close
    the list/open/factory race without exposing paths or Store handles?
 
-These questions gate field-level API and implementation acceptance. They do
-not justify creating `src/loushang/apphost` during A0.0.
+These questions gated field-level API and implementation acceptance. A0.1
+answers the core contract questions; hosted and launcher adapter questions
+remain deferred to their separately accepted slices.

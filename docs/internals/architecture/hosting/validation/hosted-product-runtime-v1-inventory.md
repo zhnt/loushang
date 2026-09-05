@@ -66,23 +66,26 @@ lease, or factory.
 | Windows required containment | PLC9B includes a purpose-specific AppContainer/Job implementation for legacy restore | Hosting H6.3 owns one narrower restricted-token/locked-PE profile | the managed semantic bridge exists, but no AppContainer equivalence, eligible Worker profile supplier, or native parity claim exists |
 | Product activation | PLC9C1--C4 provide declaration, launch, supervisor, and one dark domain adapter | H5 provides an explicit dark Hosting owner | no Product composition selects and publishes the native path |
 
-## AppHost And Hosted Application Absences
+## AppHost And Hosted Application State
 
-- `src/loushang/apphost` is absent.
+AppHost A0.1 now supplies only immutable standard-library contracts and
+catalog-input validation. There is still:
+
+- no AppHost catalog, router, live-binding registry, profile composer, or
+  production composition exists;
 - `src/loushang/appserver` is absent.
 - `src/loushang/appservice` is absent.
-- no immutable cross-Product catalog/router or scoped Product Runtime handle
-  contract exists;
-- no generic Session Identity Envelope is persisted and read before Product
-  selection;
-- no path-free AppHost port projects the existing Product-neutral Harness
-  Session discovery read model together with a pre-routing `product_id`;
+- the generic Session Identity Envelope contract is not yet persisted or read
+  before Product selection;
+- no production adapter implements the path-free AppHost port over the existing
+  Product-neutral Harness Session discovery read model together with a
+  pre-routing `product_id`;
 - no two-unrelated-Product conformance fixture exists; and
 - no production launcher sends a complete foreground AppHost executable to
   Hosting.
 
-The AppHost, AppServer, and AppService architecture drafts are Target inputs,
-not evidence of those packages or runtime routes.
+The accepted AppHost architecture and the AppServer/AppService drafts describe
+Target boundaries, not evidence of those absent runtime routes.
 
 ## Current-To-Target Delta
 
@@ -92,8 +95,8 @@ not evidence of those packages or runtime routes.
 | exact Linux executable/cwd/containment transfer | Hosting platform adapter with caller-owned requirements | implemented for the private static-closure profiles; H6.2 retained native adversarial oracle remains green |
 | exact Windows executable/cwd/containment transfer | Hosting platform adapter with caller-owned requirements | implemented for one private restricted-token/direct-import PE mechanics profile; the non-skippable H6.3 native adversarial oracle must remain green |
 | Harness-to-Hosting managed preparation parity | Harness Sandbox/Worker adapter over Hosting | H6.4 fake-backed public/managed semantic and cleanup parity; native Worker compatibility remains absent and default stays Current |
-| Product catalog, no-default routing, scoped runtime lifetime | proposed AppHost | A0 contracts and two-unrelated-fake-Product conformance |
-| Session pre-routing identity | proposed AppHost schema plus canonical Session persistence/catalog owner | atomic envelope creation/resume/migration tests before Product parsing |
+| Product catalog, no-default routing, scoped runtime lifetime | AppHost | A0.1 contracts exist; A0.2/A0.3 require two-unrelated-fake-Product and lifecycle conformance |
+| Session pre-routing identity | AppHost schema plus canonical Session persistence/catalog owner | A0.1 envelope exists; atomic creation/resume/migration tests remain required before Product parsing |
 | AppHost cwd/user-global Session projection | adapter over the existing Harness Session discovery/catalog owner | explicit-scope listing, stable source identity, exact alias/conflict behavior, Product envelope, and no-direct-filesystem tests |
 | Product/native Worker activation | Product/Harness composition and domain owner | separately reviewed PLC9C5 canary, native gates, recovery, and rollback |
 | hosted App protocol and semantics | future AppServer/AppService scopes | separate accepted contracts; not implied by AppHost or Hosting work |
@@ -106,7 +109,9 @@ The inventory records, rather than relaxes, these Current fences:
   attempt;
 - sealed-descriptor cases remain rejected by Hosting compatibility;
 - PLC9C5 Product activation and platform absence guards remain unchanged;
-- AppHost/AppServer/AppService source packages remain absent; and
+- AppHost remains an exact three-module A0.1 contract package with no
+  catalog/router/runtime/composition consumer; AppServer/AppService source
+  packages remain absent; and
 - Hosting imports no Harness, Product, AppHost, AppServer, or AppService
   package.
 

@@ -146,16 +146,20 @@ def test_baseline_documents_are_status_honest_and_indexed() -> None:
         },
         APPHOST_DISCOVERY: {
             "ID": "APPHOST-A0-DISCOVERY",
-            "Authority": "descriptive — design validation input",
+            "Authority": "descriptive — completed design validation evidence",
             "Design status": "not-applicable",
             "Implementation status": "not-applicable",
         },
         APPHOST_A0: {
             "ID": "APPHOST-A0",
-            "Authority": "normative target proposal",
-            "Design status": "proposed",
-            "Implementation status": "not-started",
-            "Activation status": "none; no AppHost source package or composition route",
+            "Authority": (
+                "historical — refined by the canonical A0 Contract Model"
+            ),
+            "Design status": "accepted and promoted",
+            "Implementation status": (
+                "partial — A0.1 implemented; later slices not started"
+            ),
+            "Activation status": "none; no AppHost runtime composition route",
         },
         DELIVERY_PLAN: {
             "ID": "HOSTED-PRODUCT-RUNTIME-V1",
@@ -369,6 +373,7 @@ def test_apphost_a0_requires_explicit_identity_and_scoped_lifetimes() -> None:
         "A0-CATALOG-GENERATION",
         "A0-ADMISSION-PIN",
         "A0-RESUME-PIN",
+        "A0-CREATE-IDEMPOTENCY",
         "A0-MIGRATION",
         "A0-MULTI-ATTACH",
         "A0-PROFILE-ORTHOGONAL",
@@ -388,7 +393,10 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
     }
 
     assert HOSTING_SOURCE.is_dir()
-    assert not APPHOST_SOURCE.exists()
+    assert {
+        path.relative_to(APPHOST_SOURCE).as_posix()
+        for path in APPHOST_SOURCE.rglob("*.py")
+    } == {"__init__.py", "contracts.py", "errors.py"}
     assert not APPSERVER_SOURCE.exists()
     assert not APPSERVICE_SOURCE.exists()
 
@@ -435,7 +443,7 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
     for statement in (
         "H5 default owner is Current",
         "PLC9C5 Product activation and platform absence guards remain unchanged",
-        "AppHost/AppServer/AppService source packages remain absent",
+        "AppHost remains an exact three-module A0.1 contract package",
         "Hosting imports no Harness, Product, AppHost, AppServer, or AppService",
     ):
         assert statement in _section(inventory, "Retained Fences")

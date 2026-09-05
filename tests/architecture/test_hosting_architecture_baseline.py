@@ -199,9 +199,9 @@ def test_hosting_design_package_is_complete_and_h0_is_accepted() -> None:
             "ID": "APPHOST-DP-TOP-LEVEL",
             "Scope": "Loushang",
             "Parent": "none",
-            "Authority": "normative target proposal",
-            "Design status": "proposed",
-            "Implementation status": "not-started",
+            "Authority": "historical — superseded by accepted ARD-003",
+            "Design status": "superseded",
+            "Implementation status": "not-applicable — see canonical AppHost scope",
         },
     )
     _assert_mapping_contains(
@@ -237,25 +237,17 @@ def test_hosting_design_package_is_complete_and_h0_is_accepted() -> None:
     assert "## Current-To-Target Gaps" in overview
 
     apphost = _read(APPHOST_PLACEMENT)
-    for heading in ("Current", "Proposed target", "Explicit delta"):
+    for heading in ("Current", "Accepted target", "Explicit delta"):
         assert f"### {heading}" in _section(apphost, "Current, Target, And Delta")
 
 
-def test_hosting_parent_catalog_promotes_hosting_but_not_apphost() -> None:
+def test_hosting_parent_catalog_promotes_hosting_and_apphost() -> None:
     catalog = _read(ARCHITECTURE_ROOT / "README.md")
     scope_tree = _section(catalog, "Architecture Scope Tree")
 
-    accepted, proposed = scope_tree.split(
-        "Proposed top-level placements under design:\n", maxsplit=1
-    )
-    assert "- [Hosting](hosting/README.md)" in accepted
-    assert "[Hosting](hosting/README.md)" not in proposed
-    assert (
-        "- [AppHost Top-Level Placement]"
-        "(drafts/apphost-top-level-placement.md), the\n"
-        "  proposed physical owner of the existing cross-Product Platform "
-        "Host role."
-    ) in proposed
+    assert "- [Hosting](hosting/README.md)" in scope_tree
+    assert "- [AppHost](apphost/README.md)" in scope_tree
+    assert "Proposed top-level placements under design" not in scope_tree
 
 
 def test_hosting_component_set_and_dependency_direction_are_explicit() -> None:
@@ -369,8 +361,9 @@ def test_hosted_application_responsibilities_and_dependencies_are_separated() ->
         "ensure AppHost releases all remaining Product Runtime handles and admitted "
         "presentation-profile leases, then wait for dependent attachment/runtime "
         "pins to drain;",
-        "close the catalog generation and every base Product/OEM admission lease "
-        "exactly once;",
+        "close the catalog generation and every catalog-owned Product/OEM "
+        "admission pin exactly once; borrowed registration sources remain owned "
+        "by outer composition;",
         "drain-or-abort AppServer writers within the remaining deadline, then close "
         "transports, listener, and connection records;",
         "close the process's one `RuntimeResourceOwner` only when all dependent "
@@ -700,10 +693,13 @@ def test_hosting_discovery_is_grounded_in_current_harness_facts() -> None:
         assert current_owner in discovery
 
 
-def test_h0_adds_only_hosting_contracts_and_keeps_future_packages_dark() -> None:
+def test_hosting_and_apphost_contracts_keep_future_runtime_packages_dark() -> None:
     assert (REPOSITORY_ROOT / "src/loushang/hosting").is_dir()
-    for package in ("apphost", "appserver"):
-        assert not (REPOSITORY_ROOT / f"src/loushang/{package}").exists()
+    apphost = REPOSITORY_ROOT / "src/loushang/apphost"
+    assert {
+        path.relative_to(apphost).as_posix() for path in apphost.rglob("*.py")
+    } == {"__init__.py", "contracts.py", "errors.py"}
+    assert not (REPOSITORY_ROOT / "src/loushang/appserver").exists()
 
     overview = _read(HOSTING_ROOT / "README.md")
     decision = _read(HOSTING_PLACEMENT)
