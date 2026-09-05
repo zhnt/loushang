@@ -438,3 +438,31 @@ def test_c52_profile_port_joins_existing_managed_h6_seam(tmp_path: Path) -> None
         await result.lease.close()
 
     asyncio.run(exercise())
+
+
+def test_windows_mechanics_profile_is_rejected_for_product_required_containment(
+    tmp_path: Path,
+) -> None:
+    _, receipt, worker_request, _ = _bound_profile(tmp_path)
+    windows_profile = "windows-restricted-direct-import-pe-v1"
+    windows_policy = replace(
+        receipt.policy,
+        native_profile_id=windows_profile,
+        allowed_native_profile_ids=(windows_profile,),
+    )
+    windows_receipt = replace(receipt, policy=windows_policy)
+
+    with pytest.raises(WorkerBindingError) as failure:
+        _bind_posix_static_contained_product_worker_profile(
+            receipt=windows_receipt,
+            worker_request=worker_request,
+            native_profile_catalog_revision=(
+                windows_policy.native_profile_catalog_revision
+            ),
+            launcher_path=tmp_path / "containment-launcher",
+            launcher_sha256="1" * 64,
+            containment_profile_sha256="2" * 64,
+            _platform_probe=lambda: ("Windows", "AMD64", "10", "build"),
+        )
+
+    assert failure.value.code == "worker_native_profile_unsupported"

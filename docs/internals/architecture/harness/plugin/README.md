@@ -345,6 +345,10 @@ Neither may silently override a narrower implemented owner contract.
   adds the single request-bound POSIX contained-profile friend, exact
   policy/execution closure evidence, non-WSL Linux x86_64 rejection gate, and
   retained native report. It remains default-dark and has no Product consumer.
+- [PLC9C5 C5.3 Windows Mechanics And Product Rejection](plugin-lifecycle-plc9c5-c53-windows-mechanics.md)
+  adds one Hosting-private OS-sourced trusted-payload builder, retains the
+  restricted-token/Job/handle-list mechanics report, and proves explicit
+  Product required-containment rejection. Windows activation remains closed.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)

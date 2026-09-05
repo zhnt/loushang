@@ -244,9 +244,10 @@ def test_c51_contract_and_inventory_are_honest_and_indexed() -> None:
     ):
         assert token in contract
     assert index.count("(plugin-lifecycle-plc9c5-c51-contract.md)") == 1
-    assert "C5.2 Linux native profile binding; C5.3--C5.4 not-started" in (
+    assert "C5.2 Linux native profile binding, and C5.3 Windows" in (
         " ".join(baseline.split())
     )
+    assert "mechanics/rejection; C5.4 not-started" in " ".join(baseline.split())
     for token in (
         "C5-C51-RECEIPT-LIFECYCLE",
         "C5-C52-LINUX-NATIVE",
@@ -522,13 +523,10 @@ def test_c51_required_manifest_and_test_ids_are_exact() -> None:
         "status": "implemented",
     }
     assert reports["PLC9C5-C5.2-LINUX-NATIVE"]["status"] == "implemented"
-    assert all(
-        reports[key]["status"] == "planned"
-        for key in (
-            "PLC9C5-C5.3-WINDOWS-MECHANICS",
-            "PLC9C5-C5.4-LINUX-PRODUCT",
-        )
+    assert (
+        reports["PLC9C5-C5.3-WINDOWS-MECHANICS"]["status"] == "implemented"
     )
+    assert reports["PLC9C5-C5.4-LINUX-PRODUCT"]["status"] == "planned"
     assert _literal_collection(CONTRACT_TEST, "PLC9C5_C51_CASES") == set(C51_CASES)
     assert _literal_collection(
         CONTRACT_TEST,

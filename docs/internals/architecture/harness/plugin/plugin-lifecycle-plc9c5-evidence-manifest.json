@@ -111,7 +111,7 @@
         "C53-RESTART-UNCERTAINTY",
         "C53-SENTINEL-REDACTION"
       ],
-      "status": "planned"
+      "status": "implemented"
     },
     "PLC9C5-C5.4-LINUX-PRODUCT": {
       "junitPath": ".artifacts/plc9c5-c54-linux-product.xml",

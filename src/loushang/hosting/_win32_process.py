@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ctypes
+import ntpath
 import os
 import platform
 import subprocess
@@ -266,6 +267,28 @@ class _CtypesWin32Api:
             )
         version = sys.getwindowsversion()  # type: ignore[attr-defined]
         return f"windows-amd64-{version.major}.{version.minor}.{version.build}"
+
+    def canonical_system_root(self) -> str:
+        """Return the OS-owned Windows directory without consulting ambient env."""
+
+        buffer = ctypes.create_unicode_buffer(_MAX_FINAL_PATH_CHARS)
+        length = self._GetWindowsDirectoryW(buffer, len(buffer))
+        if length == 0:
+            self._raise_last_error("GetWindowsDirectoryW")
+        if length >= len(buffer):
+            raise OSError("Windows directory exceeds its retained bound")
+        value = ntpath.normpath(buffer.value)
+        drive, tail = ntpath.splitdrive(value)
+        if (
+            not value
+            or "\0" in value
+            or len(drive) != 2
+            or drive[1:] != ":"
+            or not tail.startswith("\\")
+            or not ntpath.isabs(value)
+        ):
+            raise OSError("Windows directory is not a canonical local path")
+        return value
 
     def open_locked_file(
         self,
@@ -886,6 +909,11 @@ class _CtypesWin32Api:
             kernel32.GetCurrentProcess,
             [],
             wintypes.HANDLE,
+        )
+        self._GetWindowsDirectoryW = _bind(
+            kernel32.GetWindowsDirectoryW,
+            [wintypes.LPWSTR, wintypes.UINT],
+            wintypes.UINT,
         )
         self._CreateJobObjectW = _bind(
             kernel32.CreateJobObjectW,

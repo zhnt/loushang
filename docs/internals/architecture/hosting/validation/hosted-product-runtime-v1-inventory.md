@@ -30,7 +30,7 @@ this inventory as implemented facts.
 | Child Session Host | `src/loushang/hosting/_child_session_host.py` | atomic endpoint-plus-process acquisition/publication and joint close |
 | private H6.1 launch preparation | `src/loushang/hosting/_launch_preparation.py` | request/profile/closure plus unforgeable attempt binding, opaque capture, final verification, matched-backend spawn, explicit fencing, and ordered cleanup; fake-backed and default-dark only |
 | private H6.2 Linux x86_64 preparation | `src/loushang/hosting/_posix_launch_preparation.py` and `src/loushang/hosting/_posix_process.py` | sealed static launcher/payload, retained cwd, closed invocation/profile identity, exact endpoint-plus-preparation descriptor manifest, and conservative post-effect fencing; private and default-dark |
-| private H6.3 Windows AMD64 preparation | `src/loushang/hosting/_windows_launch_preparation.py`, `src/loushang/hosting/_windows_process.py`, and `src/loushang/hosting/_win32_process.py` | locked PE/cwd/ancestor identity, fixed restricted token, atomic Job, strict handle list, bounded direct-import mechanics, and exact native settlement; private and default-dark; no full Windows loader-closure claim |
+| private H6.3/C5.3 Windows AMD64 preparation | `src/loushang/hosting/_windows_launch_preparation.py`, `src/loushang/hosting/_windows_process.py`, and `src/loushang/hosting/_win32_process.py` | Hosting-private OS-sourced trusted-payload builder, locked PE/cwd/ancestor identity, fixed restricted token, atomic Job, strict handle list, bounded direct-import mechanics, and exact native settlement; private and default-dark; explicitly rejected as Product required containment |
 | restrained composition | `src/loushang/hosting/runtime.py` | `create_process_host` and `create_child_session_host`; no public backend/plugin registry |
 
 The stable public owners are implemented through H5; H6.1 through H6.3 add a
@@ -112,9 +112,9 @@ The inventory records, rather than relaxes, these Current fences:
 - H5 default owner is Current and a selected owner never falls back during an
   attempt;
 - sealed-descriptor cases remain rejected by Hosting compatibility;
-- PLC9C5 C5.0 design/inventory, C5.1 receipt/lifecycle, and the C5.2 Linux
-  profile capability are implemented, but Product activation and unsupported
-  platform guards remain unchanged;
+- PLC9C5 C5.0 design/inventory, C5.1 receipt/lifecycle, C5.2 Linux profile,
+  and C5.3 Windows mechanics/rejection are implemented, but Product activation
+  and unsupported-platform guards remain unchanged;
 - AppHost A0.4 remains explicitly constructed and dark: its core runtime owns
   live bindings, while optional Harness Session and AppServer port adapters stay
   outside the core facade; AppServer contains contracts only, AppService remains

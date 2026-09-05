@@ -112,7 +112,8 @@ def test_c52_status_inventory_and_index_are_honest() -> None:
         "Same-boot uncertainty remains durable cleanup debt",
     ):
         assert token in document
-    assert "implemented through C5.2" in baseline
+    assert "implemented through C5.3" in baseline
+    assert "C5.2 Linux native profile binding" in baseline
     assert "C5-C52-LINUX-NATIVE" in inventory
     assert "no Product, Coding, AppHost, CLI, presenter, or Session composition" in document
     assert index.count("(plugin-lifecycle-plc9c5-c52-linux-native.md)") == 1
