@@ -197,6 +197,14 @@ def test_h65b_implements_exact_atomic_launch_and_cleanup_only_recovery() -> None
     assert "_CREATE_SUSPENDED" in raw_spawn
     assert raw_spawn.index("lpac_process_identity") < raw_spawn.index("_ResumeThread")
 
+    raw_purge = _method_source(
+        WINDOWS_RAW,
+        "_CtypesWin32Api",
+        "purge_lpac_private_state",
+    )
+    assert "os.stat(path, follow_symlinks=False)" in raw_purge
+    assert "entry.stat(" not in raw_purge
+
     provisioner = _read(WINDOWS_PREPARATION)
     assert "def recover_cleanup_witness(" in provisioner
     assert 'state="DEBT"' in provisioner

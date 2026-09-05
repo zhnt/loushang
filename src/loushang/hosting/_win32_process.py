@@ -779,7 +779,10 @@ class _CtypesWin32Api:
             with os.scandir(directory) as iterator:
                 for entry in iterator:
                     path = Path(entry.path)
-                    information = entry.stat(follow_symlinks=False)
+                    # CPython 3.11's Windows DirEntry cache reports st_nlink
+                    # as zero. A real os.stat call is required before using
+                    # the link count as a containment decision.
+                    information = os.stat(path, follow_symlinks=False)
                     if entry.is_symlink() or _stat_is_reparse(information):
                         raise OSError("AppContainer private state contains a link")
                     entries.append((path, information, depth + 1))
