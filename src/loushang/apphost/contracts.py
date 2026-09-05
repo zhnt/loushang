@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+import math
 import re
 import unicodedata
 from dataclasses import dataclass, field
@@ -70,6 +71,15 @@ class AppHostLifecycleTransition(str, Enum):
     DRAINING = "draining"
     CLOSED = "closed"
     FAILED = "failed"
+
+
+class AppHostShutdownPhase(str, Enum):
+    """Closed process-local phases owned by the A0.3 runtime."""
+
+    ADMISSION = "admission"
+    BINDINGS = "bindings"
+    ROUTER = "router"
+    CATALOG = "catalog"
 
 
 @dataclass(frozen=True, slots=True)
@@ -361,7 +371,7 @@ class ProductCandidateValidatorV1(Protocol):
 
 @runtime_checkable
 class ScopedProductRuntimeV1(Protocol):
-    """Owned per-Session Product Runtime handle for a future live registry.
+    """Owned per-Session Product Runtime handle for the A0.3 live registry.
 
     The returned profile binding is deliberately non-owning and cannot close
     this runtime.  ``close`` is idempotent and is reserved to the registry.
@@ -412,12 +422,99 @@ class ProductCompatibilityImporterV1(Protocol):
 
 @runtime_checkable
 class ProfileLeaseV1(Protocol):
-    """Independent attachment with idempotent close and no runtime ownership."""
+    """Independent profile attachment with a non-owning consumer view."""
 
     @property
     def profile_id(self) -> str: ...
 
+    @property
+    def profile_binding(self) -> object: ...
+
     async def close(self) -> None: ...
+
+
+@runtime_checkable
+class AppHostSessionLeaseV1(Protocol):
+    """One independently owned attachment to a canonical live binding.
+
+    ``profile_binding`` is borrowed and has no Product Runtime close authority.
+    Closing this lease settles only its exact profile attachment.  The live
+    registry remains the sole owner of the scoped Product Runtime.
+    """
+
+    @property
+    def descriptor(self) -> ProductDescriptorV1: ...
+
+    @property
+    def generation_id(self) -> str: ...
+
+    @property
+    def binding_key(self) -> SessionBindingKeyV1: ...
+
+    @property
+    def profile_id(self) -> str: ...
+
+    @property
+    def profile_binding(self) -> object: ...
+
+    async def close(self) -> None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class AppHostShutdownBudgetV1:
+    """Finite monotonic budget selected by trusted outer composition."""
+
+    overall_timeout_seconds: float
+    phase_timeout_seconds: float
+    contract_version: str = APPHOST_CONTRACT_VERSION
+
+    def __post_init__(self) -> None:
+        _contract_version("contract_version", self.contract_version, APPHOST_CONTRACT_VERSION)
+        _finite_timeout("overall_timeout_seconds", self.overall_timeout_seconds)
+        _finite_timeout("phase_timeout_seconds", self.phase_timeout_seconds)
+        if self.phase_timeout_seconds > self.overall_timeout_seconds:
+            raise InvalidAppHostContractError(
+                "phase_timeout_seconds",
+                InvalidAppHostContractReason.TIMEOUT_INVALID,
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class AppHostShutdownReportV1:
+    """Bounded phase facts; it never promotes one owner's evidence to another."""
+
+    completed: bool
+    timed_out_phases: tuple[AppHostShutdownPhase, ...]
+    failed_phases: tuple[AppHostShutdownPhase, ...]
+    contract_version: str = APPHOST_CONTRACT_VERSION
+
+    def __post_init__(self) -> None:
+        _contract_version("contract_version", self.contract_version, APPHOST_CONTRACT_VERSION)
+        if type(self.completed) is not bool:
+            raise InvalidAppHostContractError(
+                "completed",
+                InvalidAppHostContractReason.BOOLEAN_REQUIRED,
+            )
+        timed_out = _enum_tuple(
+            "timed_out_phases",
+            self.timed_out_phases,
+            AppHostShutdownPhase,
+        )
+        failed = _enum_tuple(
+            "failed_phases",
+            self.failed_phases,
+            AppHostShutdownPhase,
+        )
+        if set(timed_out).intersection(failed):
+            raise InvalidAppHostContractError(
+                "failed_phases",
+                InvalidAppHostContractReason.DUPLICATE_ITEM,
+            )
+        if self.completed != (not timed_out and not failed):
+            raise InvalidAppHostContractError(
+                "completed",
+                InvalidAppHostContractReason.COMPLETION_MISMATCH,
+            )
 
 
 @runtime_checkable
@@ -630,6 +727,46 @@ def _opaque_token(field_name: str, value: object) -> None:
 def _optional_opaque_token(field_name: str, value: object) -> None:
     if value is not None:
         _opaque_token(field_name, value)
+
+
+def _finite_timeout(field_name: str, value: object) -> None:
+    if type(value) not in {int, float}:
+        raise InvalidAppHostContractError(
+            field_name,
+            InvalidAppHostContractReason.TIMEOUT_INVALID,
+        )
+    assert isinstance(value, (int, float))
+    timeout = float(value)
+    if not math.isfinite(timeout) or not 0.001 <= timeout <= 300.0:
+        raise InvalidAppHostContractError(
+            field_name,
+            InvalidAppHostContractReason.TIMEOUT_INVALID,
+        )
+
+
+def _enum_tuple(
+    field_name: str,
+    value: object,
+    expected: type[Enum],
+) -> tuple[Enum, ...]:
+    if not isinstance(value, tuple):
+        raise InvalidAppHostContractError(
+            field_name,
+            InvalidAppHostContractReason.IMMUTABLE_TUPLE_REQUIRED,
+        )
+    if len(value) > len(expected):
+        raise InvalidAppHostContractError(
+            field_name,
+            InvalidAppHostContractReason.ITEM_COUNT_INVALID,
+        )
+    for item in value:
+        _enum(field_name, item, expected)
+    if len(value) != len(set(value)):
+        raise InvalidAppHostContractError(
+            field_name,
+            InvalidAppHostContractReason.DUPLICATE_ITEM,
+        )
+    return value
 
 
 def _enum(field_name: str, value: object, expected: type[Enum]) -> None:

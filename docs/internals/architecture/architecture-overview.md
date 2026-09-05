@@ -91,7 +91,8 @@ presentation, domain language, and composition.
 | `loushang.coding` | Coding Product semantics, LSP/Arch capabilities, prompts, product tools, CLI and final UI composition |
 | `loushang.ontology` | versioned semantic schema, immutable facts/provenance, projections and typed queries |
 | `loushang.hosting` | H0--H6.4 Product-neutral process, endpoint, child-session, and private managed-preparation mechanisms with Linux/Windows evidence; Harness consumption remains default-dark |
-| `loushang.apphost` | A0.1 immutable Product/profile/Session-routing contracts and catalog-input validation; no router, runtime owner, profile composer, or production composition yet |
+| `loushang.apphost` | A0.4 Product catalog/router, canonical live-binding runtime, embedded profile lifecycle, and optional hosted structural-port binder; default-dark with no production composition |
+| `loushang.appserver` | A0.4 contract-only generic structural Product port bundle; no protocol, service, listener, connection, or transport runtime |
 
 `loushang.resource` remains a small compatibility surface over Harness resource
 ownership and appears in the generated physical graph while Python source
@@ -116,7 +117,8 @@ flowchart TD
     CHANNEL["Channel"]
     ONTOLOGY["Ontology"]
     HOSTING["Hosting H0-H6.4\ndefault-dark local mechanism"]
-    APPHOST["AppHost A0.1\ncontracts only"]
+    APPHOST["AppHost A0.4\ndefault-dark runtime mechanics"]
+    APPSERVER["AppServer A0.4\nstructural ports only"]
     FOUNDATION["Foundation"]
 
     CODING -->|composes| HARNESS
@@ -131,11 +133,13 @@ flowchart TD
     CHANNEL -->|work/runtime contracts| HWORK
     ONTOLOGY -->|strict values| FOUNDATION
     HARNESS -->|explicit default-dark Worker adapter| HOSTING
+    APPHOST -.->|optional hosted binder only| APPSERVER
 ```
 
 Hosting has one private Harness Worker consumer seam, but Current remains the
-default and no Product/native Worker profile activates it. AppHost A0.1 is
-intentionally uncomposed, so the diagram contains no runtime edge to AppHost.
+default and no Product/native Worker profile activates it. AppHost A0.4 is
+also intentionally uncomposed; the dotted AppServer edge is an optional
+in-process wiring dependency, not a production runtime route.
 
 Direct and transitive Python imports differ from this semantic view. Consult
 the generated Current graph before making a physical dependency claim.
@@ -201,7 +205,7 @@ The most important current gaps are:
 | multiple real Products validating shared abstractions | Coding remains the only installed Product entrypoint |
 | physical installation optionality | subsystems remain in one Python distribution |
 | Hosting runtime and Harness adoption | H0--H6.4 mechanisms and a default-dark Harness adapter are implemented with native Linux/Windows evidence; Product/native Worker activation remains PLC9C5 work |
-| cross-Product AppHost | A0.1 contracts and immutable catalog input are implemented but uncomposed; next are A0.2 catalog/router and pinned Session candidates, A0.3 live bindings/embedded profile, then separately accepted hosted/launcher edges |
+| cross-Product AppHost | A0.4 catalog/routing, live bindings, embedded profiles, and optional hosted structural wiring are implemented but uncomposed; the next separate slice is the serialized launcher and later real Product/AppService composition |
 
 Detailed gaps belong to the owning scope rather than expanding this AOD.
 Cross-system deltas are indexed in the

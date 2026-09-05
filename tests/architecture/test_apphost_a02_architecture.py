@@ -11,7 +11,9 @@ CORE = {
     APPHOST / "contracts.py",
     APPHOST / "errors.py",
     APPHOST / "router.py",
+    APPHOST / "runtime.py",
 }
+OPTIONAL = {APPHOST / "hosted.py"}
 ADAPTER = APPHOST / "integrations/harness_session.py"
 SCOPE = Path("docs/internals/architecture/apphost/README.md")
 CONTRACT = Path("docs/internals/architecture/apphost/contract-model-a0.md")
@@ -45,7 +47,7 @@ def _imports(path: Path) -> set[str]:
 
 
 def test_a0_2_core_is_small_stdlib_only_and_optional_integration_is_separate() -> None:
-    assert {path for path in APPHOST.glob("*.py")} == CORE
+    assert {path for path in APPHOST.glob("*.py")} == CORE | OPTIONAL
     core = "\n".join(_source(path) for path in CORE)
     for forbidden in (
         "loushang.harness",
@@ -62,7 +64,9 @@ def test_a0_2_core_is_small_stdlib_only_and_optional_integration_is_separate() -
         "subprocess",
     ):
         assert forbidden not in core
-    assert "integrations" not in _source(APPHOST / "__init__.py")
+    facade_imports = _imports(APPHOST / "__init__.py")
+    assert not any(item.startswith("loushang.apphost.integrations") for item in facade_imports)
+    assert "loushang.apphost.hosted" not in facade_imports
     assert any(
         item == "loushang.harness" or item.startswith("loushang.harness.")
         for item in _imports(ADAPTER)
@@ -87,9 +91,10 @@ def test_a0_2_router_is_lookup_first_and_hands_out_no_execution_capability() -> 
     )
     assert "_PreparedProductRoute" in source
     assert "PreparedProductRouteV1" in source
-    assert "factory" not in source
-    assert "create_runtime" not in source
-    assert "bind_profile" not in source
+    public_create_source = ast.get_source_segment(source, create)
+    assert public_create_source is not None
+    assert "create_runtime" not in public_create_source
+    assert "bind_profile" not in public_create_source
     assert "default_product" not in source
     facade = _source(APPHOST / "__init__.py")
     assert '"PreparedProductRouteV1"' in facade
@@ -130,8 +135,16 @@ def test_a0_2_catalog_uses_static_exact_pins_and_persistent_retirement() -> None
     ):
         assert proof in source
     assert "self._entry.factory" not in source
-    assert "create_runtime" not in source
-    assert "bind_profile" not in source
+    tree = ast.parse(source, filename=str(APPHOST / "catalog.py"))
+    legacy_acquire = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "_acquire_product"
+    )
+    legacy_source = ast.get_source_segment(source, legacy_acquire)
+    assert legacy_source is not None
+    assert "create_runtime" not in legacy_source
+    assert "bind_profile" not in legacy_source
 
 
 def test_optional_adapter_is_dark_and_has_no_production_consumer() -> None:
@@ -269,14 +282,16 @@ def test_windows_native_fail_closed_workflow_is_verified_and_retained() -> None:
         assert proof in source
 
 
-def test_a0_2_docs_accept_preparation_but_keep_activation_dark() -> None:
+def test_a0_2_docs_remain_recorded_inside_the_default_dark_a0_4_scope() -> None:
     scope = _source(SCOPE)
     contract = _source(CONTRACT)
-    assert "A0.2 catalog/router" in scope
+    assert "A0.2 adds:" in scope
     assert "A0.2 Catalog And Router" in contract
     assert "read-only idempotency" in contract
-    assert "no live registry, profile composer, launcher, Product activation" in contract
+    assert "A0.3 Live Binding And Embedded Profile" in contract
+    assert "A0.4 Hosted Binder" in contract
     assert "registered in the adapter's private" in contract
     assert "never retries that integer" in contract
     assert "capped by `HARNESS_SESSION_MAX_ACTIVE_CANONICAL_OPS_V1`" in contract
-    assert "No production module imports or instantiates" in scope
+    assert "No production" in scope
+    assert "module imports or instantiates" in scope

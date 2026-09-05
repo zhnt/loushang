@@ -7,16 +7,18 @@
 - Parent: `loushang`
 - Authority: normative — accepted AppHost A0 contract specification
 - Design status: accepted
-- Implementation status: implemented through A0.2 catalog/router preparation
-- Activation status: none
+- Implementation status: implemented through A0.4 hosted binding
+- Activation status: default-dark; no concrete Product or server composition
 - Owner: Loushang AppHost architecture
 
 ## Purpose
 
 A0.1 creates the smallest dependency-safe seam for later Product routing. A0.2
-admits immutable generations and routes exact Session candidates through those
-ports. It still performs no Product discovery, live-binding attachment, runtime
-construction, profile binding, persistence, or process launch.
+admits immutable generations and routes exact Session candidates. A0.3 owns
+canonical live runtime bindings and embedded profile attachments. A0.4 maps an
+explicit hosted profile to AppServer-owned structural ports. None performs
+Product discovery, persistence, process launch, server protocol, or production
+composition.
 
 ## Contract Groups
 
@@ -169,6 +171,81 @@ The private descriptor owner atomically relinquishes its integer before the
 syscall. It records the failed attempt but never retries that integer, avoiding
 accidental close of a subsequently reused descriptor number.
 
+## A0.3 Live Binding And Embedded Profile
+
+`AppHostRuntimeV1` owns one `AppHostRouterV1`, one canonical live-binding
+registry, and the supplied catalog. Public create/resume attachment calls first
+enter a runtime admission fence. Resume opens the exact request-bound candidate
+and derives the complete key before current catalog acquisition. Create keeps
+its A0.2 lookup-first rule: a recovered durable candidate derives its key
+without current admission, while an absent idempotency record acquires a
+provisional current runtime bundle before create-if-absent.
+
+The registry linearizes each binding key once. The first caller installs an
+owner task and constructs one scoped Product Runtime; concurrent callers shield
+and join that task. A waiter then validates its own final candidate through the
+binding's retained validator. A recovered create caller releases any
+provisional current bundle before using the existing binding. Failed
+construction is removed rather than cached, and cancellation cannot abandon a
+published attachment: the owner operation finishes, closes that exact
+attachment, and re-raises cancellation.
+
+An absent-key build retains a full-generation runtime bundle containing a
+separate exact Product pin and a separate exact pin for every supported profile
+factory. This is distinct from the catalog's base pins. Catalog replacement may
+retire those base pins, but an existing binding can still validate and attach
+only through its immutable retained Product/profile callbacks. It never consults
+or falls forward to the new generation.
+
+The Product factory borrows a frozen opened-candidate view. Its returned runtime
+must expose the exact binding key, one non-owning `ProductProfileBindingV1`, and
+an idempotent native-async close descriptor. A selected profile factory borrows
+only that frozen view. Its returned lease must state the exact profile ID,
+provide a non-owning `profile_binding`, and close idempotently. The public
+`AppHostSessionLeaseV1` exposes only descriptor/generation/key/profile identity,
+the borrowed profile binding, and close; it cannot close the Product Runtime.
+
+Every attachment has a monotonic private token. Close and stale repeat-close
+release only that exact attachment. Profile detach never closes a live Runtime;
+only explicit Session close or process shutdown fences attachment admission,
+waits already admitted validation/profile work, closes all profile leases, then
+closes the scoped Product Runtime. The full-generation bundle is released only
+after runtime close succeeds. An unresolved dependent close fences prerequisite
+release and remains retryable.
+
+`AppHostShutdownBudgetV1` supplies finite overall and per-phase monotonic
+deadlines. Concurrent shutdown callers join one operation. The phases fence and
+drain runtime admission, close bindings, close Router cleanup, then close the
+catalog only when every dependency has settled. A timed-out phase remains
+owned by its task; a later shutdown retries or rejoins it. The bounded
+`AppHostShutdownReportV1` records closed phase identifiers only. It never treats
+process, transport, Session persistence, or Product evidence as interchangeable.
+
+Product, profile, Session, and cleanup callbacks execute without AppHost owner
+locks held. A context-propagated runtime callback-domain fence rejects recursive
+attach, Session close, pending-cleanup, or process-close calls on the same
+runtime before they can wait on themselves.
+
+## A0.4 Hosted Binder
+
+`loushang.appserver.ports` owns the immutable generic
+`AppServerProductPortsV1` wiring bundle and its authority-free Session identity.
+This is a contract-only AppServer slice: it contains no protocol, AppService,
+listener, connection, authentication, framing, transport, or daemon runtime.
+The generic Session, Work, projection, and optional interaction type parameters
+preserve the concrete structural types selected by a later AppService contract;
+the bundle is not a `dict`, `Any`, generic command, or lifecycle owner.
+
+The optional `loushang.apphost.hosted` module is the sole AppServer consumer.
+`AppHostHostedBinderV1` borrows an `AppHostRuntimeV1` and selects one explicit
+hosted profile ID. That profile's outer integration factory maps the Product
+runtime view into `AppServerProductPortsV1`. The binder checks exact
+Product/continuity/Session identity, returns an owned hosted attachment, and
+otherwise closes the attachment before returning a closed
+`profile_unavailable` failure. It never invokes the structural ports, parses an
+App protocol, constructs AppService, or owns transport state. Neither AppHost's
+core facade nor AppServer imports this optional edge.
+
 ## Immutable Catalog Input
 
 `AppHostCatalogInputV1` accepts one bounded tuple of Product registrations and
@@ -274,3 +351,35 @@ A0.2 is complete when:
 5. no live registry, profile composer, launcher, Product activation, native
    profile, or production composition consumer exists; and
 6. A0.1 and neighboring Hosting architecture gates remain green.
+
+## A0.3 Exit Gate
+
+A0.3 is complete when:
+
+1. concurrent create/resume callers for one key construct exactly one Runtime,
+   while unrelated keys and Products remain independent;
+2. existing-key validation and profile binding use only the retained generation
+   across catalog replacement;
+3. multi-profile and multi-mux attachments close independently, and stale or
+   cancelled detach cannot close a successor or the underlying Runtime;
+4. failed validation, partial construction, malformed returns, cancellation,
+   explicit Session close, and shutdown retain and retry every owned cleanup in
+   dependency order;
+5. finite shutdown deadlines report typed phase facts, leave timed-out tasks
+   owned, continue every dependency-safe phase, and converge on retry; and
+6. AppHost core remains standard-library-only and has no production consumer,
+   concrete Product, AppServer, Hosting, UI, or implicit default route.
+
+## A0.4 Exit Gate
+
+A0.4 is complete when:
+
+1. AppServer owns only the contract-only typed structural Product port bundle;
+2. `apphost.hosted` is the sole AppServer consumer and the core facade stays
+   AppServer-free;
+3. exact identity maps through the hosted profile while foreign or malformed
+   bindings are closed and rejected;
+4. hosted detach owns only its AppHost attachment and cannot synthesize Product
+   Runtime, AppService, listener, transport, or process closure; and
+5. no AppServer runtime, concrete Product adapter, launcher, Product/native
+   Worker activation, or production composition route is introduced.

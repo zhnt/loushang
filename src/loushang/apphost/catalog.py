@@ -21,8 +21,12 @@ from .contracts import (
     ClaimedSessionCandidateV1,
     OpenedProductCandidateV1,
     ProductDescriptorV1,
+    ProductProfileBindingV1,
     ProductRegistrationV1,
+    ProfileDescriptorV1,
+    ProfileLeaseV1,
     ProfileRegistrationV1,
+    ScopedProductRuntimeV1,
     SessionCandidateRefV1,
     SessionIdentityEnvelopeV1,
 )
@@ -46,6 +50,8 @@ ValidateCandidate = Callable[
 ImportCandidate = Callable[
     [ClaimedSessionCandidateV1], Awaitable[SessionCandidateRefV1]
 ]
+CreateRuntime = Callable[[OpenedProductCandidateV1], Awaitable[ScopedProductRuntimeV1]]
+BindProfile = Callable[[ProductProfileBindingV1], Awaitable[ProfileLeaseV1]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,6 +59,7 @@ class _ProductEntry:
     descriptor: ProductDescriptorV1
     identity: AdmissionIdentityV1
     acquire_pin: AcquirePin
+    create_runtime: CreateRuntime
     validate_candidate: ValidateCandidate
     import_candidate: ImportCandidate | None
 
@@ -73,6 +80,10 @@ class _ProductEntry:
                 AcquirePin,
                 bind_native_async(registration.admission_source, "acquire_pin"),
             ),
+            create_runtime=cast(
+                CreateRuntime,
+                bind_native_async(registration.factory, "create_runtime"),
+            ),
             validate_candidate=cast(
                 ValidateCandidate,
                 bind_native_async(
@@ -86,16 +97,23 @@ class _ProductEntry:
 
 @dataclass(frozen=True, slots=True)
 class _ProfileEntry:
+    descriptor: ProfileDescriptorV1
     identity: AdmissionIdentityV1
     acquire_pin: AcquirePin
+    bind_profile: BindProfile
 
     @classmethod
     def bind(cls, registration: ProfileRegistrationV1) -> _ProfileEntry:
         return cls(
+            descriptor=registration.descriptor,
             identity=registration.admission_identity,
             acquire_pin=cast(
                 AcquirePin,
                 bind_native_async(registration.admission_source, "acquire_pin"),
+            ),
+            bind_profile=cast(
+                BindProfile,
+                bind_native_async(registration.factory, "bind_profile"),
             ),
         )
 
@@ -179,6 +197,94 @@ class _ProductCatalogLease:
         await self._pin.close()
 
 
+class _RuntimeCatalogLease:
+    """Private full-generation capability retained by one live binding."""
+
+    __slots__ = ("_group", "_product", "_profiles")
+
+    def __init__(
+        self,
+        product: _ProductEntry,
+        profiles: tuple[_ProfileEntry, ...],
+        group: CloseGroup,
+    ) -> None:
+        self._product = product
+        self._profiles = profiles
+        self._group = group
+
+    @property
+    def descriptor(self) -> ProductDescriptorV1:
+        return self._product.descriptor
+
+    @property
+    def generation_id(self) -> str:
+        return self._product.identity.generation_id
+
+    async def validate(
+        self,
+        candidate: ClaimedSessionCandidateV1,
+        envelope: SessionIdentityEnvelopeV1,
+    ) -> OpenedProductCandidateV1:
+        try:
+            return await self._product.validate_candidate(candidate, envelope)
+        except asyncio.CancelledError:
+            raise
+        except AppHostError:
+            raise ProductIncompatibleError() from None
+        except BaseException:
+            raise ProductIncompatibleError() from None
+
+    async def create(
+        self,
+        candidate: OpenedProductCandidateV1,
+    ) -> ScopedProductRuntimeV1:
+        try:
+            return await self._product.create_runtime(candidate)
+        except asyncio.CancelledError:
+            raise
+        except AppHostError:
+            raise redacted_apphost_error(
+                AppHostFailureCategory.RUNTIME_UNAVAILABLE
+            ) from None
+        except BaseException:
+            raise redacted_apphost_error(
+                AppHostFailureCategory.RUNTIME_UNAVAILABLE
+            ) from None
+
+    async def bind_profile(
+        self,
+        profile_id: str,
+        runtime: ProductProfileBindingV1,
+    ) -> ProfileLeaseV1:
+        if profile_id not in self._product.descriptor.supported_profile_ids:
+            raise redacted_apphost_error(
+                AppHostFailureCategory.PROFILE_UNAVAILABLE
+            )
+        profile = next(
+            (item for item in self._profiles if item.descriptor.profile_id == profile_id),
+            None,
+        )
+        if profile is None:
+            raise redacted_apphost_error(
+                AppHostFailureCategory.PROFILE_UNAVAILABLE
+            )
+        try:
+            return await profile.bind_profile(runtime)
+        except asyncio.CancelledError:
+            raise
+        except AppHostError:
+            raise redacted_apphost_error(
+                AppHostFailureCategory.PROFILE_UNAVAILABLE
+            ) from None
+        except BaseException:
+            raise redacted_apphost_error(
+                AppHostFailureCategory.PROFILE_UNAVAILABLE
+            ) from None
+
+    async def close(self) -> None:
+        await self._group.close()
+
+
 @dataclass(frozen=True, slots=True)
 class _ProductReservation:
     generation: _CatalogGeneration
@@ -207,6 +313,70 @@ class _ProductReservation:
                 raise CleanupIncompleteError() from None
             raise GenerationRetiredError()
         return _ProductCatalogLease(self.entry, pin)
+
+    async def acquire_runtime(self) -> _RuntimeCatalogLease:
+        profiles = tuple(
+            profile
+            for profile_id in self.entry.descriptor.supported_profile_ids
+            for profile in self.generation.profiles
+            if profile.descriptor.profile_id == profile_id
+        )
+        requests = (
+            (self.entry.acquire_pin, self.entry.identity),
+            *((profile.acquire_pin, profile.identity) for profile in profiles),
+        )
+        acquired: list[_OwnedAdmissionPin] = []
+
+        async def acquire_one(
+            callback: AcquirePin,
+            identity: AdmissionIdentityV1,
+        ) -> _OwnedAdmissionPin:
+            pin = await _acquire_exact_pin(callback, identity)
+            acquired.append(pin)
+            return pin
+
+        tasks = tuple(
+            asyncio.create_task(acquire_one(callback, identity))
+            for callback, identity in requests
+        )
+        try:
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+        except asyncio.CancelledError:
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            finish = asyncio.create_task(self.generation.finish_reservation())
+            await asyncio.shield(finish)
+            if not await CloseGroup(pin.closer for pin in acquired).settle():
+                raise CleanupIncompleteError() from None
+            raise
+        finish = asyncio.create_task(self.generation.finish_reservation())
+        try:
+            accepting = await asyncio.shield(finish)
+        except asyncio.CancelledError:
+            await asyncio.shield(finish)
+            if not await CloseGroup(pin.closer for pin in acquired).settle():
+                raise CleanupIncompleteError() from None
+            raise
+        failures = tuple(
+            result for result in results if not isinstance(result, _OwnedAdmissionPin)
+        )
+        if failures or not accepting:
+            if not await CloseGroup(pin.closer for pin in acquired).settle():
+                raise CleanupIncompleteError() from None
+            if any(isinstance(error, asyncio.CancelledError) for error in failures):
+                raise asyncio.CancelledError
+            if not accepting:
+                raise GenerationRetiredError()
+            first = failures[0]
+            if isinstance(first, AppHostError):
+                raise first from None
+            raise GenerationConflictError() from None
+        return _RuntimeCatalogLease(
+            self.entry,
+            profiles,
+            CloseGroup(pin.closer for pin in acquired),
+        )
 
 
 class _CatalogGeneration:
@@ -365,6 +535,18 @@ class AppHostCatalogV1:
                 raise GenerationRetiredError()
             reservation = await self._active.reserve_product(product_id)
         return await reservation.acquire()
+
+    async def _acquire_runtime_product(
+        self, product_id: str
+    ) -> _RuntimeCatalogLease:
+        """Friend seam for the A0.3 live registry; retains Product and profiles."""
+        if not isinstance(product_id, str) or not product_id:
+            raise ProductIdentityRequiredError()
+        async with self._lock:
+            if self._closed:
+                raise GenerationRetiredError()
+            reservation = await self._active.reserve_product(product_id)
+        return await reservation.acquire_runtime()
 
     async def replace(
         self,

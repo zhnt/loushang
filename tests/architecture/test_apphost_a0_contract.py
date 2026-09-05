@@ -12,7 +12,9 @@ APPHOST_MODULES = {
     APPHOST_ROOT / "contracts.py",
     APPHOST_ROOT / "errors.py",
     APPHOST_ROOT / "router.py",
+    APPHOST_ROOT / "runtime.py",
 }
+APPHOST_OPTIONAL_MODULES = {APPHOST_ROOT / "hosted.py"}
 HARNESS_SESSION_ADAPTER = Path(
     "src/loushang/apphost/integrations/harness_session.py"
 )
@@ -95,7 +97,9 @@ def test_a0_0_parent_architecture_accepts_apphost_as_a_top_level_scope() -> None
 
 
 def test_a0_core_is_standard_library_only_and_has_no_optional_edges() -> None:
-    assert {path for path in APPHOST_ROOT.glob("*.py")} == APPHOST_MODULES
+    assert {path for path in APPHOST_ROOT.glob("*.py")} == (
+        APPHOST_MODULES | APPHOST_OPTIONAL_MODULES
+    )
     internal_imports: dict[str, set[str]] = {}
     external_roots: dict[str, set[str]] = {}
     for path in APPHOST_MODULES:
@@ -267,15 +271,10 @@ def test_a0_1_public_all_exactly_matches_the_frozen_facade_bindings() -> None:
     assert set(exported) == imported
 
 
-def test_a0_2_has_catalog_router_but_no_runtime_profile_composer_or_launcher() -> None:
+def test_a0_slices_add_runtime_and_hosted_but_no_launcher() -> None:
     names = {path.name for path in APPHOST_ROOT.iterdir()}
-    assert {"catalog.py", "router.py"} <= names
-    for forbidden in (
-        "runtime.py",
-        "profiles.py",
-        "hosted.py",
-        "launcher.py",
-    ):
+    assert {"catalog.py", "router.py", "runtime.py", "hosted.py"} <= names
+    for forbidden in ("profiles.py", "launcher.py"):
         assert forbidden not in names
 
     all_core_source = "\n".join(_source(path) for path in sorted(APPHOST_MODULES))

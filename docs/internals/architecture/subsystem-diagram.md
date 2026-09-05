@@ -35,11 +35,13 @@ flowchart TD
     ONTOLOGY["loushang.ontology\nsemantic facts and projections"]
     FOUNDATION["loushang.foundation\nstrict values and observability"]
     HOSTING["loushang.hosting\ndefault-dark local child mechanism"]
-    APPHOST["loushang.apphost\nA0.1 contracts only"]
+    APPHOST["loushang.apphost\nA0.4 default-dark runtime"]
+    APPSERVER["loushang.appserver\nstructural ports only"]
 
     CODING -->|composes| HARNESS
     HARNESS -->|executes one prepared run through| AGENT
     AGENT -->|streams through| AI
+    APPHOST -.->|optional hosted wiring| APPSERVER
 
     CODING -->|binds conversation UI| HTUI
     HTUI -->|uses terminal primitives| TUI

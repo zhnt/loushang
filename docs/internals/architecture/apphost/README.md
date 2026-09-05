@@ -11,10 +11,10 @@
 - Parent: `loushang`
 - Authority: normative — accepted AppHost scope boundary
 - Design status: accepted
-- Implementation status: partial — A0.2 catalog/router and optional dark
-  Harness Session integration
-- Activation status: none; no live registry, profile composer, launcher, or
-  Product composition route
+- Implementation status: implemented through A0.4 — A0.3 live-binding/runtime
+  lifecycle and A0.4 optional hosted binder are present
+- Activation status: default-dark; no launcher, concrete Product registration,
+  AppService/AppServer runtime, or production composition route
 - Owner: Loushang AppHost architecture
 
 ## Scope
@@ -55,10 +55,32 @@ The router returns the public minimal `PreparedProductRouteV1` surface,
 containing only immutable descriptor/generation/binding facts and close
 ownership. It exposes neither a factory nor an opened Product capability. The
 Catalog's Product-pin acquisition remains a private Router friend seam, so a
-caller cannot bypass routing. There is no runtime owner or
-composition entrypoint. Existing Product-specific CLI/TUI paths remain
-authoritative. No production module imports or instantiates the catalog,
-router, or Harness adapter.
+caller cannot bypass routing.
+
+A0.3 adds:
+
+- `AppHostRuntimeV1`, the sole process-local owner of a canonical live Product
+  Runtime per `(product_id, continuity_id, session_id)`;
+- private pre-runtime Router seams that derive or recover the complete binding
+  key before current-generation admission when the identity already exists;
+- a full-generation runtime bundle pin retaining the selected Product
+  validator/factory and every supported profile factory for the binding's
+  lifetime;
+- single-flight construction, independent profile attachment leases, exact
+  Session fencing, stale-detach safety, cancellation compensation, retryable
+  dependency-ordered cleanup, and bounded monotonic shutdown phases; and
+- callback-domain re-entry rejection before an owner wait can deadlock.
+
+A0.4 adds one optional `apphost.hosted` binder. A hosted profile factory maps
+the runtime's non-owning Product view into the contract-only
+`AppServerProductPortsV1` bundle owned by `loushang.appserver.ports`. The binder
+checks exact Session identity and returns an owned hosted attachment, but never
+invokes Session/Work/projection/interaction ports or constructs AppService,
+protocol, listener, connection, or transport state.
+
+Existing Product-specific CLI/TUI paths remain authoritative. No production
+module imports or instantiates the catalog, router, runtime, hosted binder, or
+Harness adapter.
 
 ## Target
 
@@ -99,8 +121,8 @@ Product package integration -> AppHost contracts
 AppHost core -> Python standard library
 
 AppHost catalog/router -> AppHost contracts + injected Product ports
-future embedded profile -> AppHost contracts + public Harness/Product contracts
-future hosted binder -> AppHost contracts + AppServer structural ports
+A0.3 embedded profile -> AppHost contracts + injected Product/profile ports
+A0.4 hosted binder -> AppHost contracts + AppServer structural port bundle
 future launcher -> AppHost serialized values + Hosting contracts
 
 AppHost optional Harness integration -> public Harness owner + AppHost contracts
@@ -132,7 +154,7 @@ after Product/OEM admission, never through a derived module name.
 5. Catalog generations are immutable. Replacement fences new pins while old
    Session bindings retain their exact admission/content generation.
 6. Product identity and delivery profile are orthogonal.
-7. Exactly one future live binding owns a Product Runtime for one
+7. Exactly one live binding owns a Product Runtime for one
    `(product_id, continuity_id, session_id)` key; profile/mux attachments are
    leases over a non-owning profile view, not runtime owners.
 8. Python factories and live handles never cross a process boundary.
@@ -141,7 +163,8 @@ after Product/OEM admission, never through a derived module name.
    another.
 10. A0.1 performs validation only. A0.2 may invoke only admission, Session
     candidate, Product validator, importer, and cleanup ports; it never invokes
-    a Product factory or profile factory.
+    a Product factory or profile factory. Only A0.3's private runtime path may
+    invoke them.
 11. The optional Harness integration receives exact source bindings from outer
     composition.
     It never derives a path from cwd/home scope, treats a candidate token as a
@@ -167,6 +190,15 @@ after Product/OEM admission, never through a derived module name.
     unpublished cleanup debt; unresolved debt rejects the call before the
     provider runs. Together, the fence and limit bound retained malformed raw
     owners without weakening adopt-before-validation.
+18. An existing live key validates and attaches only through its retained
+    generation bundle. Catalog replacement cannot redirect it to a new
+    validator, runtime factory, or profile factory.
+19. Runtime close precedes release of its Product/profile generation bundle.
+    An unresolved dependent closer fences every prerequisite owner; retry
+    resumes at the exact debt rather than synthesizing release.
+20. A0.4 carries AppServer-owned typed structural ports but does not call them.
+    Port behavior, logical detach, protocol, listener, and transport ownership
+    remain outside AppHost.
 
 ## Delivery Sequence
 
@@ -175,8 +207,8 @@ after Product/OEM admission, never through a derived module name.
 | A0.0 | accepted placement, scope, component boundary, glossary, and parent architecture gates | accepted |
 | A0.1 | standard-library Contract Model and immutable catalog-input validation | implemented, uncomposed |
 | A0.2 | catalog/router, exact admission-pin verification, idempotent Session create/candidate adapter, and explicit importer over fakes | implemented, uncomposed |
-| A0.3 | canonical live-binding registry, scoped runtime lifecycle, and embedded profile | not started |
-| A0.4 | optional hosted binder | deferred pending AppServer contracts |
+| A0.3 | canonical live-binding registry, scoped runtime lifecycle, and embedded profile | implemented, uncomposed |
+| A0.4 | optional hosted binder over the contract-only AppServer structural port bundle | implemented, uncomposed |
 | A0.5 | optional serialized launcher | deferred pending its own boundary review |
 
 ## Evidence
@@ -192,9 +224,16 @@ after Product/OEM admission, never through a derived module name.
   `tests/apphost/test_harness_session_integration.py` prove the A0.2
   admission, replacement, candidate, scope, migration, race, and rollback
   matrix;
+- `tests/apphost/test_runtime.py` proves single-flight multi-attach, retained
+  generation validation/profile binding, cancellation, construction rollback,
+  stale detach, dependency-ordered close, shutdown deadline/retry, re-entry,
+  and hosted identity mapping;
+- `tests/architecture/test_apphost_a03_a04_architecture.py` proves that the
+  runtime stays in the standard-library-only core, the hosted edge is the sole
+  AppServer consumer, and the AppServer slice remains contract-only;
 - `make check-apphost` runs the focused lint, typecheck, and contract suite;
 - `make check-architecture-docs` validates parent documentation integrity.
 
-Passing these gates proves A0.2 preparation only. It grants no live binding,
-runtime/profile composition, default Product, hosted route, or Product/native
-Worker activation.
+Passing these gates proves A0.4 mechanics over injected fakes. It grants no
+default Product, production hosted route, AppService/AppServer runtime,
+launcher, or Product/native Worker activation.

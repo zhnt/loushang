@@ -7,8 +7,8 @@
 - Parent: `Loushang`
 - Authority: historical — refined by the canonical A0 Contract Model
 - Design status: accepted and promoted
-- Implementation status: partial — A0.2 implemented; A0.3+ not started
-- Activation status: none; no AppHost runtime composition route
+- Implementation status: implemented through A0.4; A0.5 not started
+- Activation status: default-dark; no production AppHost composition route
 - Owner: Loushang architecture
 
 ## Purpose

@@ -52,9 +52,9 @@ the accepted placement and the canonical AppHost scope owns current status.
   managed-preparation mechanics through H6.4; its Harness Worker consumer
   remains default-dark.
 - At discovery time AppHost, AppServer, and the proposed AppService boundary
-  had architecture drafts but no corresponding source packages. AppHost A0.1
-  now exists as a contract-only package; AppServer and AppService remain
-  absent.
+  had architecture drafts but no corresponding source packages. The canonical
+  scopes now record AppHost A0.1--A0.4 and an AppServer contract-only slice as
+  implemented; AppService remains absent.
 - Existing conversation/runtime metadata is useful migration evidence, but is
   not yet the generic Session Identity Envelope required before Product
   routing.

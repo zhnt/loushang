@@ -52,9 +52,12 @@ Plugin lifecycle, or provider-composition boundaries.
 - `SessionFacade`, `SessionOperationRuntime`, and the legacy JSONL RPC host
   provide current typed Session and transitional remote-host boundaries; and
 - `loushang.hosting` implements Product-neutral process and child-session
-  mechanics, while there is no `loushang.apphost`, `loushang.appserver`, App
-  Contract, `AppClient`, `AppService`, hosted live Session router, or reconnect
-  protocol. Hosting existence does not imply an App protocol or daemon.
+  mechanics; AppHost A0.3 owns an uncomposed process-local live Session binding
+  registry, and A0.4 supplies an optional binder to AppServer-owned structural
+  Product-port contracts. There is still no AppServer listener/transport
+  runtime, App Contract, `AppClient`, `AppService`, remotely addressable live
+  Session router, or reconnect protocol. Neither Hosting nor A0.4 implies an
+  App protocol or daemon.
 
 The Current claims above are bounded by the evidence listed in the status
 block. The source and tests remain authoritative if this draft drifts.

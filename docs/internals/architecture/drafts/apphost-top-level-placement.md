@@ -24,7 +24,7 @@ current boundary and A0 status live in the [AppHost scope](../apphost/README.md)
 
 ## Current, Target, And Delta
 
-### Current
+### Current at the time of this superseded proposal
 
 - The [Product glossary](../../glossary/loushang-product.md) defines one
   logical Platform Host that owns process-level Product discovery, OEM
@@ -37,8 +37,10 @@ current boundary and A0 status live in the [AppHost scope](../apphost/README.md)
 - `loushang.hosting` implements Product-neutral process and child-session
   mechanics through H4; the Harness-owned H5 Worker adapter consumes that
   contract behind an explicit default-dark selector.
-- There is no `loushang.apphost`, `loushang.appserver`, or
-  `loushang.appservice` source package.
+- At that time there was no `loushang.apphost`, `loushang.appserver`, or
+  `loushang.appservice` source package. The canonical scope now records
+  AppHost A0.1--A0.4 and the AppServer contract-only slice as implemented;
+  AppService remains absent.
 
 ### Accepted target
 

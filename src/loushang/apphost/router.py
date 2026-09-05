@@ -13,7 +13,11 @@ from ._ownership import (
     bind_native_async,
     read_static_property,
 )
-from .catalog import AppHostCatalogV1, _ProductCatalogLease
+from .catalog import (
+    AppHostCatalogV1,
+    _ProductCatalogLease,
+    _RuntimeCatalogLease,
+)
 from .contracts import (
     PreparedProductRouteV1,
     ProductDescriptorV1,
@@ -87,7 +91,7 @@ class _BoundClaimed:
 
 
 class _BoundOpened:
-    __slots__ = ("binding_key", "closer", "raw")
+    __slots__ = ("binding_key", "closer", "opaque_binding", "raw")
 
     def __init__(self, raw: object) -> None:
         self.raw = raw
@@ -95,8 +99,7 @@ class _BoundOpened:
             binding_key = read_static_property(raw, "binding_key")
             if type(binding_key) is not SessionBindingKeyV1:
                 raise TypeError
-            # Validate but do not expose the opaque Product capability.
-            read_static_property(raw, "opaque_binding")
+            self.opaque_binding = read_static_property(raw, "opaque_binding")
             self.binding_key = binding_key
             self.closer = RetryableCloser.bind(raw)
         except BaseException:
@@ -123,6 +126,166 @@ class _ClaimedSnapshot:
     async def close(self) -> None:
         # Borrowers cannot settle the owner's handle.
         raise CleanupIncompleteError()
+
+
+class _OpenedSnapshot:
+    """Immutable borrowed view supplied to the admitted Product factory."""
+
+    __slots__ = ("_binding_key", "_opaque_binding")
+
+    def __init__(self, value: _BoundOpened) -> None:
+        self._binding_key = value.binding_key
+        self._opaque_binding = value.opaque_binding
+
+    @property
+    def binding_key(self) -> SessionBindingKeyV1:
+        return self._binding_key
+
+    @property
+    def opaque_binding(self) -> object:
+        return self._opaque_binding
+
+    async def close(self) -> None:
+        raise CleanupIncompleteError()
+
+
+class _RuntimeOpenedRoute:
+    """Private factory borrow plus caller-owned ephemeral candidate chain."""
+
+    __slots__ = ("_cleanup", "_group", "candidate")
+
+    def __init__(
+        self,
+        candidate: _OpenedSnapshot,
+        group: CloseGroup,
+        cleanup: _CleanupRegistry,
+    ) -> None:
+        self.candidate = candidate
+        self._group = group
+        self._cleanup = cleanup
+
+    async def close(self) -> None:
+        await self._cleanup.settle_owned(self._group)
+
+
+class _RuntimeCandidateRoute:
+    """Private request-bound candidate handed from Router to the live registry."""
+
+    __slots__ = (
+        "_candidate",
+        "_catalog",
+        "_close_group",
+        "_cleanup",
+        "_envelope",
+        "_opened",
+        "_product_id",
+        "_provisional",
+        "binding_key",
+    )
+
+    def __init__(
+        self,
+        *,
+        catalog: AppHostCatalogV1,
+        cleanup: _CleanupRegistry,
+        candidate: _BoundCandidate,
+        envelope: SessionIdentityEnvelopeV1,
+        product_id: str,
+        provisional: _RuntimeCatalogLease | None,
+    ) -> None:
+        self._catalog = catalog
+        self._cleanup = cleanup
+        self._candidate: _BoundCandidate | None = candidate
+        self._envelope = envelope
+        self._product_id = product_id
+        self._provisional = provisional
+        self._opened = False
+        self._close_group: CloseGroup | None = None
+        self.binding_key = SessionBindingKeyV1(
+            product_id=envelope.product_id,
+            continuity_id=envelope.continuity_id,
+            session_id=envelope.session_id,
+        )
+
+    async def acquire_current(self) -> _RuntimeCatalogLease:
+        provisional = self._provisional
+        if provisional is not None:
+            self._provisional = None
+            admission = provisional
+        else:
+            admission = await self._catalog._acquire_runtime_product(self._product_id)
+        if (
+            admission.descriptor.product_id != self._product_id
+            or admission.descriptor.compatibility_id
+            != self._envelope.product_compatibility_id
+        ):
+            await self._cleanup.settle_owned(
+                CloseGroup((RetryableCloser.bind(admission),)),
+                primary=ProductIncompatibleError(),
+            )
+            raise ProductIncompatibleError()
+        return admission
+
+    async def discard_current(self) -> None:
+        provisional = self._provisional
+        if provisional is None:
+            return
+        self._provisional = None
+        await self._cleanup.settle_owned(
+            CloseGroup((RetryableCloser.bind(provisional),))
+        )
+
+    async def open_with(
+        self,
+        admission: _RuntimeCatalogLease,
+    ) -> _RuntimeOpenedRoute:
+        if self._opened or self._candidate is None:
+            raise SessionCandidateStaleError()
+        if (
+            admission.descriptor.product_id != self._product_id
+            or admission.descriptor.compatibility_id
+            != self._envelope.product_compatibility_id
+        ):
+            raise ProductIncompatibleError()
+        self._opened = True
+        candidate = self._candidate
+        self._candidate = None
+        stack = AcquisitionStack()
+        stack.push_closer(candidate.closer)
+        try:
+            await _call_candidate(candidate.verify)
+            claimed = await _claim(candidate, self._cleanup)
+            stack.push_closer(claimed.closer)
+            raw_opened = await admission.validate(
+                _ClaimedSnapshot(claimed),
+                self._envelope,
+            )
+            opened = await _bind_opened_or_settle(raw_opened, self._cleanup)
+            stack.push_closer(opened.closer)
+            if opened.binding_key != self.binding_key:
+                raise ProductIncompatibleError()
+            return _RuntimeOpenedRoute(
+                _OpenedSnapshot(opened),
+                stack.transfer(),
+                self._cleanup,
+            )
+        except BaseException as error:
+            await self._cleanup.settle_owned(stack.transfer(), primary=error)
+            raise
+
+    async def close(self) -> None:
+        if self._close_group is None:
+            closers: list[RetryableCloser] = []
+            provisional = self._provisional
+            self._provisional = None
+            if provisional is not None:
+                closers.append(RetryableCloser.bind(provisional))
+            candidate = self._candidate
+            self._candidate = None
+            if candidate is not None:
+                closers.append(candidate.closer)
+            self._close_group = CloseGroup(closers)
+        await self._cleanup.settle_owned(self._close_group)
 
 
 class _PreparedProductRoute:
@@ -471,6 +634,120 @@ class AppHostRouterV1:
         else:
             await self._cleanup.settle_owned(stack.transfer())
             return imported
+
+    async def _prepare_runtime_resume_candidate(
+        self,
+        *,
+        product_id: str,
+        reference: SessionCandidateRefV1,
+    ) -> _RuntimeCandidateRoute:
+        """Friend seam for A0.3; derives the key before current admission."""
+        await self._begin_operation()
+        try:
+            _require_product_id(product_id)
+            candidate = await _open_candidate(
+                self._sessions,
+                reference,
+                self._cleanup,
+            )
+            try:
+                envelope = _canonical_envelope(candidate)
+                if envelope.product_id != product_id:
+                    raise ProductIncompatibleError()
+                return _RuntimeCandidateRoute(
+                    catalog=self._catalog,
+                    cleanup=self._cleanup,
+                    candidate=candidate,
+                    envelope=envelope,
+                    product_id=product_id,
+                    provisional=None,
+                )
+            except BaseException as error:
+                await self._cleanup.settle_owned(
+                    CloseGroup((candidate.closer,)),
+                    primary=error,
+                )
+                raise
+        finally:
+            self._finish_operation_now()
+
+    async def _prepare_runtime_create_candidate(
+        self,
+        request: SessionCreateRequestV1,
+    ) -> _RuntimeCandidateRoute:
+        """Friend seam preserving create lookup-before-current linearization."""
+        await self._begin_operation()
+        try:
+            if not isinstance(request, SessionCreateRequestV1):
+                raise TypeError("request must be SessionCreateRequestV1")
+            _require_product_id(request.product_id)
+            found = await _call_session(
+                self._sessions.find,
+                AppHostFailureCategory.SESSION_CANDIDATE_STALE,
+                request,
+            )
+            if found is not None:
+                lookup = await _bind_candidate_or_settle(found, self._cleanup)
+                reference = lookup.projection.reference
+                await self._cleanup.settle_owned(CloseGroup((lookup.closer,)))
+                candidate = await _open_candidate(
+                    self._sessions,
+                    reference,
+                    self._cleanup,
+                )
+                provisional = None
+            else:
+                provisional = await self._catalog._acquire_runtime_product(
+                    request.product_id
+                )
+                try:
+                    raw = await _call_session(
+                        self._sessions.create,
+                        AppHostFailureCategory.SESSION_CANDIDATE_STALE,
+                        SessionCreateIntentV1(
+                            request=request,
+                            product_compatibility_id=(
+                                provisional.descriptor.compatibility_id
+                            ),
+                        ),
+                    )
+                    candidate = await _bind_candidate_or_settle(raw, self._cleanup)
+                except BaseException as error:
+                    await self._cleanup.settle_owned(
+                        CloseGroup((RetryableCloser.bind(provisional),)),
+                        primary=error,
+                    )
+                    raise
+            try:
+                envelope = _canonical_envelope(candidate)
+                if envelope.product_id != request.product_id:
+                    raise ProductIncompatibleError()
+                if (
+                    provisional is not None
+                    and provisional.descriptor.compatibility_id
+                    != envelope.product_compatibility_id
+                ):
+                    raise ProductIncompatibleError()
+                return _RuntimeCandidateRoute(
+                    catalog=self._catalog,
+                    cleanup=self._cleanup,
+                    candidate=candidate,
+                    envelope=envelope,
+                    product_id=request.product_id,
+                    provisional=provisional,
+                )
+            except BaseException as error:
+                closers: list[RetryableCloser] = []
+                if provisional is not None:
+                    closers.append(RetryableCloser.bind(provisional))
+                closers.append(candidate.closer)
+                await self._cleanup.settle_owned(
+                    CloseGroup(closers),
+                    primary=error,
+                )
+                raise
+        finally:
+            self._finish_operation_now()
 
 
 async def _prepare(
