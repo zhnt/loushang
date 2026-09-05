@@ -9,8 +9,7 @@ DOCUMENT = Path(
     "plugin-lifecycle-plc9c5-c55-windows-containment.md"
 )
 BASELINE = Path(
-    "docs/internals/architecture/harness/plugin/"
-    "plugin-lifecycle-plc9c5-c50-baseline.md"
+    "docs/internals/architecture/harness/plugin/plugin-lifecycle-plc9c5-c50-baseline.md"
 )
 INVENTORY = Path(
     "docs/internals/architecture/harness/plugin/"
@@ -46,7 +45,7 @@ _C55B_CASES = {
     "C55B-RUNTIME-RX",
     "C55B-RUNTIME-WRITE-DENY",
     "C55B-PRIVATE-FS-SCRATCH",
-    "C55B-PRIVATE-REGISTRY-SCRATCH",
+    "C55B-REGISTRY-DENY",
     "C55B-UNRELATED-FS-DENY",
     "C55B-PROCESS-MUTATION-DENY",
     "C55B-NETWORK-DENY",
@@ -125,9 +124,9 @@ def test_c55a_status_index_and_parent_plan_are_honest() -> None:
         "It does not delete Current",
     ):
         assert token in document
-    assert _read(INDEX).count(
-        "(plugin-lifecycle-plc9c5-c55-windows-containment.md)"
-    ) == 1
+    assert (
+        _read(INDEX).count("(plugin-lifecycle-plc9c5-c55-windows-containment.md)") == 1
+    )
     for slice_id in ("C5.5a", "C5.5b", "C5.5c"):
         assert slice_id in document
         assert slice_id in baseline
@@ -202,7 +201,7 @@ def test_c55a_requires_in_child_native_authority_and_lifecycle_evidence() -> Non
         "Source inspection, token flags alone",
         "profile create, cleanup-only exact replay, foreign pre-existing profile rejection",
         "zero capabilities, exact Package SID, LPAC opt-out",
-        "runtime write denial, profile-private filesystem/registry scratch-only write",
+        "runtime write denial, profile-private filesystem scratch-only write, registry denial",
         "network denial plus a local network sentinel",
         "exact endpoint/stderr handle list",
         "cancellation before and after effect",
@@ -252,6 +251,5 @@ def test_c55a_has_a_focused_local_architecture_gate() -> None:
         assert token in makefile
         assert token in workflow
     assert (
-        "tests/architecture/"
-        "test_plugin_lifecycle_plc9c5_c55_windows_containment.py"
+        "tests/architecture/test_plugin_lifecycle_plc9c5_c55_windows_containment.py"
     ) in makefile

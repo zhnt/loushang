@@ -25,7 +25,7 @@ to support an AppContainer API.
 The target profile is `windows-lpac-contained-pe-v1`: a zero-capability
 Less-Privileged AppContainer (LPAC), one immutable AMD64 Worker revision, one
 fresh attempt-specific profile and Package SID, one exact read/execute grant
-set, a fresh profile-private filesystem/registry scratch authority, an exact
+set, fresh profile-private filesystem scratch, no registry authority, an exact
 inherited-handle list, and an atomically assigned kill-on-close Job.
 The profile is eligible only when an explicit Product receipt selects Hosting
 and binds the exact provisioned containment receipt. Every omitted, stale,
@@ -59,9 +59,9 @@ The accepted claim is deliberately concrete:
 - it can read and execute only the exact dedicated immutable Worker runtime
   closure grant plus Windows platform resources necessarily reachable by the
   accepted LPAC platform profile;
-- it can write only its attempt-specific profile-private filesystem and
-  registry storage, all of which is untrusted scratch and is removed before a
-  successor attempt;
+- it can write only its attempt-specific profile-private filesystem scratch,
+  which is untrusted and removed before a successor attempt; it has no
+  registry authority;
 - it receives only the Worker endpoint handles and the deliberately discarded
   stderr handle;
 - it has no network capability and cannot reach a network sentinel;
@@ -82,7 +82,7 @@ lifetimes must not be collapsed into one best-effort cleanup callback.
 | Resource | Identity and lifetime | Sole owner | Required settlement |
 | --- | --- | --- | --- |
 | dedicated immutable Worker runtime closure | Product/Plugin revision lifetime; no AppContainer grant while idle | Package/Sandbox materialization owner | exact content/root identities remain immutable; retirement stays separate from an attempt |
-| LPAC profile, Package SID, DACL grant, and private filesystem/registry scratch | deterministic opaque profile key bound to receipt, attempt, native catalog, and machine user; one attempt only | Product/Package/Sandbox durable coordinator through one Hosting-private provisioner | create new or exact cleanup-only reconciliation; after tree settlement revoke the exact grant, delete the complete profile/private state, and record retryable containment debt on uncertainty |
+| LPAC profile, Package SID, DACL grant, private filesystem scratch, and OS-owned profile state | deterministic opaque profile key bound to receipt, attempt, native catalog, and machine user; one attempt only | Product/Package/Sandbox durable coordinator through one Hosting-private provisioner | create new or exact cleanup-only reconciliation; after tree settlement revoke the exact grant, delete the complete profile/private state, and record retryable containment debt on uncertainty |
 | executable/cwd locks, SID memory, security-capability attributes, endpoint handles, stderr handle, and Job | one receipt/request/attempt | Hosting capture material, then Process/Child Session lease | attach before cancellation, transfer atomically, and settle or record C5.1 process cleanup debt |
 | Worker protocol and domain generation | one receipt/request/attempt | Harness Worker and exact Capability owner | health before publication; exact-generation revoke/drain and retirement |
 
@@ -148,7 +148,7 @@ authority-free. Its canonical fingerprint binds at least:
    fingerprints;
 6. exact grant-manifest digest (`read+execute` package root, no write grant);
 7. zero capability count and LPAC All Application Packages opt-out;
-8. attempt-private filesystem/registry profile identity and cleanup generation;
+8. attempt-private filesystem/profile identity and cleanup generation;
 9. accepted Windows AMD64 platform identity; and
 10. provisioner authority identity, attempt generation, and cleanup generation.
 
@@ -247,7 +247,7 @@ The C5.5b native report must include exact cases for:
 - zero capabilities, exact Package SID, LPAC opt-out, and no ambient All
   Application Packages reachability;
 - exact runtime-closure read/execute, runtime write denial, profile-private
-  filesystem/registry scratch-only write, and
+  filesystem scratch-only write, registry denial, and
   unrelated same-user root denial;
 - network denial plus a local network sentinel that proves the test actually
   attempted egress;
@@ -320,9 +320,9 @@ runtime implementation:
 1. Hosting mechanics now have their own H6.5 design rather than being defined
    only by a Product lifecycle document.
 2. A persistent per-deployment profile was rejected because its private
-   filesystem/registry state could poison a successor. The accepted design
-   uses one profile/SID/grant per attempt and blocks restart on incomplete
-   cleanup.
+   filesystem and OS-owned profile state could poison a successor. The
+   accepted design uses one profile/SID/grant per attempt and blocks restart
+   on incomplete cleanup.
 3. Pre-resume child verification of inherited handles was rejected as an
    impossible authorization dependency. The parent-side attribute manifest is
    authoritative; the in-child handle probe is retained only as native
@@ -347,11 +347,13 @@ The platform assumptions are grounded in Microsoft's Win32 documentation:
 
 - [Launch an AppContainer](https://learn.microsoft.com/en-us/windows/win32/secauthz/implementing-an-appcontainer)
   defines the Package SID/capability model, LPAC opt-out attribute, profile
-  creation, and `SECURITY_CAPABILITIES` process attribute;
+  creation, `SECURITY_CAPABILITIES` process attribute, and LPAC requirement
+  for an explicit `registryRead` capability before registry access;
 - [AppContainer isolation](https://learn.microsoft.com/en-us/windows/win32/secauthz/appcontainer-isolation)
   defines the file, network, process, window, device, and credential isolation
   claim; and
 - [CreateAppContainerProfile](https://learn.microsoft.com/en-us/windows/win32/api/userenv/nf-userenv-createappcontainerprofile)
   confirms the per-user persistent profile and its private filesystem/registry
-  storage, which is why C5.5 treats the complete profile as attempt-owned and
-  requires explicit deletion before a successor attempt.
+  storage. The zero-capability LPAC is deliberately granted no access to the
+  registry portion; C5.5 nevertheless treats the complete profile as
+  attempt-owned and requires explicit deletion before a successor attempt.

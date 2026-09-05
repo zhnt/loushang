@@ -85,6 +85,7 @@ _TRUSTEE_IS_SID = 0
 _TRUSTEE_IS_UNKNOWN = 0
 _SUB_CONTAINERS_AND_OBJECTS_INHERIT = 0x3
 _ACCESS_ALLOWED_ACE_TYPE = 0
+_ACCESS_DENIED_ACE_TYPE = 1
 _ACL_SIZE_INFORMATION_CLASS = 2
 _FILE_TRAVERSE_READ = 0x001200A0
 _GENERIC_EXECUTE = 0x20000000
@@ -651,7 +652,7 @@ class _CtypesWin32Api:
         self,
         path: str,
         sid: int,
-    ) -> tuple[tuple[int, int], ...]:
+    ) -> tuple[tuple[int, int, int], ...]:
         security_descriptor = ctypes.c_void_p()
         acl = ctypes.c_void_p()
         result = int(
@@ -679,7 +680,7 @@ class _CtypesWin32Api:
                 _ACL_SIZE_INFORMATION_CLASS,
             ):
                 self._raise_last_error("GetAclInformation")
-            matches: list[tuple[int, int]] = []
+            matches: list[tuple[int, int, int]] = []
             for index in range(int(information.AceCount)):
                 raw_ace = ctypes.c_void_p()
                 if not self._GetAce(acl, index, ctypes.byref(raw_ace)):
@@ -690,7 +691,11 @@ class _CtypesWin32Api:
                     raw_ace,
                     ctypes.POINTER(_ACE_HEADER),
                 ).contents
-                if int(header.AceType) != _ACCESS_ALLOWED_ACE_TYPE:
+                ace_type = int(header.AceType)
+                if ace_type not in {
+                    _ACCESS_ALLOWED_ACE_TYPE,
+                    _ACCESS_DENIED_ACE_TYPE,
+                }:
                     continue
                 ace = ctypes.cast(
                     raw_ace,
@@ -698,7 +703,7 @@ class _CtypesWin32Api:
                 ).contents
                 ace_sid = int(raw_ace.value) + _ACCESS_ALLOWED_ACE.SidStart.offset
                 if self._EqualSid(ace_sid, sid):
-                    matches.append((int(ace.Mask), int(ace.Header.AceFlags)))
+                    matches.append((ace_type, int(ace.Mask), int(ace.Header.AceFlags)))
             return tuple(matches)
         finally:
             if security_descriptor.value:

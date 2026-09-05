@@ -36,7 +36,7 @@ PLC9C5_C55B_CASES = (
     "C55B-RUNTIME-RX",
     "C55B-RUNTIME-WRITE-DENY",
     "C55B-PRIVATE-FS-SCRATCH",
-    "C55B-PRIVATE-REGISTRY-SCRATCH",
+    "C55B-REGISTRY-DENY",
     "C55B-UNRELATED-FS-DENY",
     "C55B-PROCESS-MUTATION-DENY",
     "C55B-NETWORK-DENY",
@@ -63,7 +63,7 @@ _FIELD_BY_CASE = {
     "C55B-RUNTIME-RX": "runtime_rx",
     "C55B-RUNTIME-WRITE-DENY": "runtime_write_deny",
     "C55B-PRIVATE-FS-SCRATCH": "private_fs_scratch",
-    "C55B-PRIVATE-REGISTRY-SCRATCH": "private_registry_scratch",
+    "C55B-REGISTRY-DENY": "registry_deny",
     "C55B-UNRELATED-FS-DENY": "unrelated_fs_deny",
     "C55B-PROCESS-MUTATION-DENY": "process_mutation_deny",
     "C55B-NETWORK-DENY": "network_deny",
@@ -96,6 +96,9 @@ def test_plc9c5_c55b_windows_lpac_native_case(
         session_evidence.test_managed_launch_final_fence_cancellation_prevents_spawn()
         process_evidence.test_windows_spawn_cancellation_waits_for_attachment_and_reclamation(
             tmp_path
+        )
+        deterministic_evidence.test_windows_lpac_spawn_cancellation_attaches_before_propagation(
+            monkeypatch
         )
     elif case_id == "C55B-SENTINEL-REDACTION":
         deterministic_evidence.test_windows_lpac_native_failures_redact_paths_and_sentinels(

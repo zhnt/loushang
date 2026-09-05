@@ -66,16 +66,20 @@ The H6.5 provisioner:
   beyond the exact closure, or any pre-existing broader grant; and
 - rechecks the grant and locked identities immediately before every spawn.
 
-The complete attempt-specific AppContainer profile is the only writable
-filesystem and registry authority. Hosting creates a fresh profile for every
-attempt; it never reuses a predecessor's private files or registry state.
+The attempt-specific AppContainer profile filesystem is the only writable
+authority. The zero-capability LPAC receives no registry authority; in
+particular, it is not granted the `registryRead` capability. Hosting creates a
+fresh profile for every attempt and never reuses a predecessor's private files
+or OS-owned profile state.
 Windows remains the owner of the Package SID ACL on the profile root and
 `Temp`; Hosting records both directory identities in the private-state witness
-and never rewrites those platform-owned ACLs. On cleanup, Hosting performs
-rooted, no-follow, bounded removal of its exact `Temp` scratch subtree,
-rejecting reparse points, foreign hard links, streams, devices, depth,
-entry-count, and byte-count overflow. It does not recursively reinterpret or
-delete the platform-owned profile layout. With all native handles closed,
+and never rewrites those platform-owned ACLs. After the Job tree is settled,
+Hosting performs bounded, no-follow validation and removal of the exact `Temp`
+scratch subtree, rejecting reparse points, foreign hard links, streams,
+devices, depth, entry-count, and byte-count overflow. Concurrent hostile
+same-user processes are outside the stated threat model. Hosting does not
+recursively reinterpret or delete the platform-owned profile layout. With all
+native handles closed,
 `DeleteAppContainerProfile` is the sole owner that deletes the complete OS
 profile, remaining filesystem storage, and private registry state. Cleanup
 ambiguity or residue blocks a successor.
@@ -171,11 +175,12 @@ variables, credentials, user shell configuration, Python variables, loader
 controls, and caller-supplied values are absent. The native child oracle
 reports only boolean/categorical results and bounded fingerprints.
 
-Private registry scratch is opened through
-`GetAppContainerRegistryLocation`; it never treats ambient `HKCU` as the
-profile store. The API returns only the current AppContainer profile's private
-registry root, and the no-CRT oracle creates its bounded scratch key below that
-handle.
+The LPAC environment contains no registry capability. The no-CRT oracle proves
+that even ambient `HKCU\\Software` cannot be opened for read. This is a
+deliberate consequence of the zero-capability profile, not a scratch-storage
+failure. A future Product runtime that requires `registryRead` is a different,
+strictly wider profile and must receive a separately reviewed policy id,
+closure, native oracle, and activation decision.
 
 ## Native Security Oracle
 
@@ -186,8 +191,8 @@ proves from inside that child:
   Packages opt-out are effective;
 - the exact runtime closure is readable/executable but not writable or
   deletable;
-- profile-private filesystem and registry scratch are writable and cannot
-  escape through reparse, link, stream, or path traversal;
+- profile-private filesystem scratch is writable and cannot escape through
+  reparse, link, stream, or path traversal, while registry access is denied;
 - an unrelated same-user file cannot be opened and a same-user process cannot
   be opened with mutation, VM, or handle-duplication rights;
 - a parent-created loopback listener is reachable by an unrestricted control

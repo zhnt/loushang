@@ -35,6 +35,7 @@ from ._process_backend import (
     _ProcessTransport,
 )
 from ._win32_process import (
+    _ACCESS_ALLOWED_ACE_TYPE,
     _FILE_TRAVERSE_READ,
     _SUB_CONTAINERS_AND_OBJECTS_INHERIT,
     _CtypesWin32Api,
@@ -65,9 +66,7 @@ _IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR = 14
 _MAX_IMPORTS = 256
 _MAX_IMPORT_NAME_BYTES = 260
 _LPAC_PROFILE_ID = "windows-lpac-contained-pe-v1"
-_LPAC_PLATFORM_IMPORTS = frozenset(
-    {"ADVAPI32.DLL", "KERNEL32.DLL", "USERENV.DLL", "WS2_32.DLL"}
-)
+_LPAC_PLATFORM_IMPORTS = frozenset({"ADVAPI32.DLL", "KERNEL32.DLL", "WS2_32.DLL"})
 _MAX_LPAC_RUNTIME_ENTRIES = 64
 _MAX_LPAC_RUNTIME_BYTES = 64 * 1024 * 1024
 _MAX_LPAC_ATTEMPT_ID = 96
@@ -161,7 +160,7 @@ class _WindowsLpacApi(_WindowsLaunchApi, Protocol):
         self,
         path: str,
         sid: int,
-    ) -> tuple[tuple[int, int], ...]: ...
+    ) -> tuple[tuple[int, int, int], ...]: ...
 
     def file_stream_names(self, path: str) -> tuple[str, ...]: ...
 
@@ -1116,7 +1115,13 @@ class _WindowsLpacProvisioner:
                 targets = _lpac_grant_targets(spec)
                 for path, permissions, inherit in targets:
                     matches = self._api.lpac_path_access(path, profile.sid)
-                    expected = ((permissions, _LPAC_ROOT_ACE_FLAGS if inherit else 0),)
+                    expected = (
+                        (
+                            _ACCESS_ALLOWED_ACE_TYPE,
+                            permissions,
+                            _LPAC_ROOT_ACE_FLAGS if inherit else 0,
+                        ),
+                    )
                     if matches not in {(), expected}:
                         raise HostingError(
                             HostingFailureCategory.PREPARATION_STALE,
@@ -1427,7 +1432,15 @@ def _verify_lpac_grants(
     for path, permissions, inherit in _lpac_grant_targets(spec):
         actual = api.lpac_path_access(path, sid)
         expected = (
-            ((permissions, _LPAC_ROOT_ACE_FLAGS if inherit else 0),) if present else ()
+            (
+                (
+                    _ACCESS_ALLOWED_ACE_TYPE,
+                    permissions,
+                    _LPAC_ROOT_ACE_FLAGS if inherit else 0,
+                ),
+            )
+            if present
+            else ()
         )
         if actual != expected:
             raise HostingError(

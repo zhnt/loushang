@@ -4,6 +4,7 @@ import asyncio
 import ctypes
 import ntpath
 import os
+import threading
 from collections.abc import Callable
 from pathlib import Path
 
@@ -129,7 +130,7 @@ class _FakeWindowsLpacApi:
         self.scratch_ready = False
         self.purged = False
         self.fail_stage: str | None = None
-        self.access: dict[str, tuple[tuple[int, int], ...]] = {}
+        self.access: dict[str, tuple[tuple[int, int, int], ...]] = {}
         self.spawn_calls: list[dict[str, object]] = []
         self.job_empty = False
 
@@ -179,7 +180,7 @@ class _FakeWindowsLpacApi:
     ) -> None:
         assert sid == 500
         self._fail("grant")
-        self.access[path] = ((permissions, 3 if inherit else 0),)
+        self.access[path] = ((0, permissions, 3 if inherit else 0),)
 
     def revoke_lpac_path(self, path: str, sid: int) -> None:
         assert sid == 500
@@ -190,7 +191,7 @@ class _FakeWindowsLpacApi:
         self,
         path: str,
         sid: int,
-    ) -> tuple[tuple[int, int], ...]:
+    ) -> tuple[tuple[int, int, int], ...]:
         assert sid == 500
         return self.access.get(path, ())
 
@@ -432,7 +433,7 @@ def test_windows_lpac_provision_cleanup_is_exact_and_replayable(
     assert api.scratch_ready
     root_target, root_permissions, root_inherit = _lpac_grant_targets(spec)[-1]
     assert (root_permissions, root_inherit) == (0x001200A9, True)
-    assert api.access[root_target] == ((0x001200A9, 3),)
+    assert api.access[root_target] == ((0, 0x001200A9, 3),)
     witness = owner.verify(spec, witness)
     assert witness.state == "VERIFIED"
     witness = owner.revoke_grants(
@@ -530,12 +531,20 @@ def test_windows_lpac_witness_and_dacl_substitution_fail_before_effect(
             begin_effect=lambda: effects.append("grant-witness"),
         )
     root = _lpac_grant_targets(spec)[-1][0]
-    api.access[root] = ((0xFFFFFFFF, 3),)
+    api.access[root] = ((0, 0xFFFFFFFF, 3),)
     with pytest.raises(HostingError, match="safely reconciled"):
         owner.revoke_grants(
             spec,
             witness,
             begin_effect=lambda: effects.append("dacl"),
+        )
+    assert effects == []
+    api.access[root] = ((1, 0x001200A9, 3),)
+    with pytest.raises(HostingError, match="safely reconciled"):
+        owner.revoke_grants(
+            spec,
+            witness,
+            begin_effect=lambda: effects.append("deny-ace"),
         )
     assert effects == []
 
@@ -634,6 +643,56 @@ def test_windows_lpac_material_composes_exact_spawn_and_transfers_owners(
         await material.close()
         process.terminate_job(0xE0000006)
         await process.close_handles()
+
+    asyncio.run(run())
+
+
+def test_windows_lpac_spawn_cancellation_attaches_before_propagation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def run() -> None:
+        api, _, provision, witness = _provisioned(monkeypatch)
+        entered = threading.Event()
+        release = threading.Event()
+        original_spawn = api.spawn_lpac
+
+        def blocked_spawn(*args: object, **kwargs: object) -> _Win32SpawnHandles:
+            entered.set()
+            if not release.wait(5.0):
+                raise TimeoutError("LPAC spawn cancellation fixture did not release")
+            return original_spawn(*args, **kwargs)
+
+        api.spawn_lpac = blocked_spawn  # type: ignore[method-assign]
+        spec = _capture_spec(monkeypatch, api, provision, witness)
+        material = await _WindowsLpacLaunchCaptureBackend(api=api).capture(
+            spec,
+            attempt_id="attempt-cancel",
+            attempt_token=object(),
+            on_capture=lambda _: None,
+        )
+        await material.verify_current(spec.request)
+        backend = _WindowsProcessBackend(max_processes=1, api=api)
+        endpoint = _Endpoint()
+        attached: list[object] = []
+        start = asyncio.create_task(
+            material.spawn(
+                backend,
+                spec.request,
+                effect=_ManagedSpawnEffect(),
+                on_spawn=attached.append,
+                inheritance=endpoint,
+            )
+        )
+        assert await asyncio.to_thread(entered.wait, 5.0)
+        start.cancel()
+        release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await start
+        assert len(attached) == 1
+        assert endpoint.transferred
+        await backend.close_process_handles(attached[0])  # type: ignore[arg-type]
+        await material.close()
+        await backend.close_backend()
 
     asyncio.run(run())
 
