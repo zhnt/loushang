@@ -816,13 +816,21 @@ class _FakeWindowsNativeProfile:
         self.realized_native_policy_closure_fingerprint = (
             receipt.policy.expected_native_policy_closure_fingerprint
         )
-        self.execution_closure_fingerprint = _DIGEST_A
         self.cleanup_contract_version = 2
         self.settlement_witness = object()
         self.closed = False
+        self.captured = False
+
+    @property
+    def execution_closure_fingerprint(self) -> str:
+        if not self.captured:
+            raise AssertionError("execution closure was read before native capture")
+        return _DIGEST_A
 
     async def capture_native(self, request, *, capture):
-        return await capture(request)
+        result = await capture(request)
+        self.captured = True
+        return result
 
     async def verify_current(self) -> None:
         return None

@@ -53,8 +53,9 @@ def test_h6_4_bridge_is_nominal_narrow_and_does_not_select_a_profile() -> None:
     for statement in (
         "class _ManagedWorkerLaunchPreparationPort(",
         "_ManagedLaunchPreparationPort,",
-        "(_ManagedLaunchPreparationPort, ProductWorkerNativeProfilePort)",
-        "await self._managed_delegate.prepare_managed(request, capture)",
+        "def _is_product_worker_native_profile(",
+        "or _is_product_worker_native_profile(delegate)",
+        ").prepare_managed(request, capture)",
         "await self._managed_delegate.capture_native(",
         "lease=self._wrap(result.lease)",
         "binding=result.binding",
@@ -65,6 +66,7 @@ def test_h6_4_bridge_is_nominal_narrow_and_does_not_select_a_profile() -> None:
         "_PosixStaticLaunchCaptureSpec",
         "_WindowsRestrictedLaunchCaptureSpec",
         "profile_id=",
+        "isinstance(self._managed_delegate, ProductWorkerNativeProfilePort)",
     ):
         assert forbidden not in adapter
     for private_name in (
