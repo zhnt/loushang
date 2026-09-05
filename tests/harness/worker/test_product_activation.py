@@ -320,9 +320,7 @@ def _coordinator(
         ProductWorkerActivationCoordinator(
             authority=authority,
             evidence_authority=authority.evidence_authority,
-            trusted_evidence_authority_id=(
-                authority.evidence_authority.authority_id
-            ),
+            trusted_evidence_authority_id=(authority.evidence_authority.authority_id),
             trusted_evidence_authority_fingerprint=(
                 authority.evidence_authority.authority_fingerprint
             ),
@@ -562,11 +560,14 @@ def test_plc9c5_c51_contract_case(case_id: str) -> None:
             witness=evidence.tree_witness,
         )
         assert status["reason"] == "cleanup_settled"
-        assert coordinator.claim_restart(
-            receipt=receipt,
-            attempt_id=_ATTEMPT_A,
-            owner_generation=1,
-        )["reason"] == "restart_ready"
+        assert (
+            coordinator.claim_restart(
+                receipt=receipt,
+                attempt_id=_ATTEMPT_A,
+                owner_generation=1,
+            )["reason"]
+            == "restart_ready"
+        )
 
     elif case_id == "C51-CLEANUP-DEBT":
         coordinator, authority = _coordinator(receipt=receipt)
@@ -735,6 +736,7 @@ class _RegistrationRaceStore(_MemoryActivationStateStore):
         self.registration_entered = threading.Event()
         self.registration_release = threading.Event()
         self.race_registration = False
+
 
 class _RegistrationRaceStoreView(_MemoryActivationStateStore):
     """Independent callback owner over a shared, lock-only CAS document."""
@@ -1120,10 +1122,13 @@ def test_c51_monotonic_settlement_and_trusted_evidence_are_fail_closed(
         settlement,
         witness=evidence.tree_witness,
     )
-    assert coordinator.record_cleanup_settlement(
-        settlement,
-        witness=object(),
-    ) == first
+    assert (
+        coordinator.record_cleanup_settlement(
+            settlement,
+            witness=object(),
+        )
+        == first
+    )
     coordinator.record_protocol_terminal(
         receipt=receipt,
         attempt_id=_ATTEMPT_A,
@@ -1388,11 +1393,10 @@ def test_c51_publish_then_kill_is_serialized(_case_id: str) -> None:
     publish_thread = threading.Thread(
         target=lambda: published.append(_publish(coordinator, receipt)),
     )
+
     def latch_during_callback() -> None:
         try:
-            latched.append(
-                latch_coordinator.latch_kill_switch(expected_generation=7)
-            )
+            latched.append(latch_coordinator.latch_kill_switch(expected_generation=7))
         except _ActivationRejected as error:
             latch_failures.append(error.reason)
 
@@ -1407,6 +1411,7 @@ def test_c51_publish_then_kill_is_serialized(_case_id: str) -> None:
     assert not publish_thread.is_alive() and not latch_thread.is_alive()
     assert published and latched == []
     assert latch_failures == [_ActivationReason.REENTRANT_CALL]
+
 
 @pytest.mark.parametrize("_case_id", ("C51-KILL-THEN-PUBLISH-RACE",))
 def test_c51_kill_then_publish_is_serialized(_case_id: str) -> None:
@@ -1597,13 +1602,16 @@ def test_c51_registered_orphan_recovery_is_exact_idempotent_and_frees_cap(
         current_boot_identity="boot-2",
         witness=authority.evidence_authority.registered_witness,
     )
-    assert restarted.recover_registered_no_effect(
-        receipt=receipt,
-        attempt_id=_ATTEMPT_A,
-        owner_generation=1,
-        current_boot_identity="boot-2",
-        witness=object(),
-    ) == settled
+    assert (
+        restarted.recover_registered_no_effect(
+            receipt=receipt,
+            attempt_id=_ATTEMPT_A,
+            owner_generation=1,
+            current_boot_identity="boot-2",
+            witness=object(),
+        )
+        == settled
+    )
     _begin(restarted, receipt, attempt_id=_ATTEMPT_B, owner_generation=2)
     assert restarted.active_attempts()[0]["attemptId"] == _ATTEMPT_B
     assert len(restarted.snapshot()["attempts"]) == 1  # type: ignore[arg-type]
@@ -2292,17 +2300,13 @@ def test_c51_reserved_preenter_gate_is_not_drained_by_peer(
     assert authority.first_enter_called.wait(timeout=2)
     domain = first._authority.callback_domain
     with domain.release_condition:
-        assert [item.phase for item in domain.pending_releases.values()] == [
-            "reserved"
-        ]
+        assert [item.phase for item in domain.pending_releases.values()] == ["reserved"]
     second.retry_pending_releases()
     assert authority.exit_ordinals == []
     _begin(second, receipt, attempt_id=_ATTEMPT_B, owner_generation=2)
     assert authority.exit_ordinals == [2]
     with domain.release_condition:
-        assert [item.phase for item in domain.pending_releases.values()] == [
-            "reserved"
-        ]
+        assert [item.phase for item in domain.pending_releases.values()] == ["reserved"]
     authority.allow_first_enter.set()
     first_thread.join(timeout=2)
     assert not first_thread.is_alive()
@@ -2377,9 +2381,7 @@ def test_c51_foreign_retry_fails_fast_while_releasing_then_retries(
     second_thread.start()
     assert second_done.wait(timeout=0.5)
     with first._authority.callback_domain.release_condition:
-        pending = next(
-            iter(first._authority.callback_domain.pending_releases.values())
-        )
+        pending = next(iter(first._authority.callback_domain.pending_releases.values()))
         assert pending.phase == "releasing"
     authority.allow_release.set()
     first_thread.join(timeout=2)

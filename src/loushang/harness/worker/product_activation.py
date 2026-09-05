@@ -274,9 +274,7 @@ class ProductWorkerActivationPolicyV1:
             "selectedLocatorRevision": self.selected_locator_revision,
             "sessionId": self.session_id,
             "sessionRoute": self.session_route,
-            "workerConfigurationFingerprint": (
-                self.worker_configuration_fingerprint
-            ),
+            "workerConfigurationFingerprint": (self.worker_configuration_fingerprint),
         }
 
     @classmethod
@@ -351,7 +349,9 @@ class ProductWorkerActivationReceiptV1:
         if not isinstance(self.policy, ProductWorkerActivationPolicyV1):
             raise TypeError("Worker activation receipt requires typed policy")
         if not self.policy.enabled or self.policy.requested_owner != "hosting":
-            raise ValueError("A Worker activation receipt requires enabled Hosting policy")
+            raise ValueError(
+                "A Worker activation receipt requires enabled Hosting policy"
+            )
         _require_positive_integer(self.issue_sequence, name="receipt issue sequence")
         _require_opaque(self.issue_nonce, name="receipt issue nonce")
         if self.receipt_version != PRODUCT_WORKER_ACTIVATION_RECEIPT_VERSION:
@@ -729,7 +729,9 @@ def _callback_domain_for(token: object) -> _ExternalCallbackDomain:
     try:
         candidate = weakref.ref(token)
     except TypeError as error:
-        raise TypeError("Worker activation domain token must be weak-referenceable") from error
+        raise TypeError(
+            "Worker activation domain token must be weak-referenceable"
+        ) from error
     identity = id(token)
     with _CALLBACK_DOMAINS_LOCK:
         existing = _CALLBACK_DOMAINS.get(identity)
@@ -989,8 +991,7 @@ class ProductWorkerActivationCoordinator:
             name="trusted cleanup evidence authority fingerprint",
         )
         if (
-            self._evidence_authority.authority_id
-            != trusted_evidence_authority_id
+            self._evidence_authority.authority_id != trusted_evidence_authority_id
             or self._evidence_authority.authority_fingerprint
             != trusted_evidence_authority_fingerprint
         ):
@@ -1050,7 +1051,9 @@ class ProductWorkerActivationCoordinator:
         else:
             self._state = _validate_state(loaded)
         if self._state["restartBudget"] != restart_budget:
-            raise ValueError("Worker activation restart budget differs from durable state")
+            raise ValueError(
+                "Worker activation restart budget differs from durable state"
+            )
         self._require_evidence_binding_locked()
 
     def _require_not_reentrant(self) -> None:
@@ -1232,7 +1235,6 @@ class ProductWorkerActivationCoordinator:
                 return
             for release_id in release_ids:
                 self._drain_release_due(release_id)
-
 
     @contextmanager
     def _serialized_gate(self) -> Iterator[None]:
@@ -1709,7 +1711,9 @@ class ProductWorkerActivationCoordinator:
                 required=bool(attempt["required"]),
             )
 
-    def latch_kill_switch(self, *, expected_generation: int) -> tuple[Mapping[str, object], ...]:
+    def latch_kill_switch(
+        self, *, expected_generation: int
+    ) -> tuple[Mapping[str, object], ...]:
         """Durably close, idempotently stale authority, then enumerate active keys."""
 
         _require_nonnegative_integer(expected_generation, name="kill-switch generation")
@@ -1891,7 +1895,10 @@ class ProductWorkerActivationCoordinator:
             observed = self._state.get("attempts")
             if isinstance(observed, dict):
                 current = observed.get(key.encoded)
-                if isinstance(current, dict) and current.get("phase") == "effect_started":
+                if (
+                    isinstance(current, dict)
+                    and current.get("phase") == "effect_started"
+                ):
                     lease._completed = True
                     self._release_admission(lease, None, None, None)
             raise
@@ -2000,9 +2007,7 @@ class ProductWorkerActivationCoordinator:
             "receipt_fingerprint": key.receipt_fingerprint,
             "witness": witness,
             "evidence_authority_id": attempt["evidenceAuthorityId"],
-            "evidence_authority_fingerprint": attempt[
-                "evidenceAuthorityFingerprint"
-            ],
+            "evidence_authority_fingerprint": attempt["evidenceAuthorityFingerprint"],
         }
         if current_boot_identity is not None:
             arguments["current_boot_identity"] = current_boot_identity
@@ -2020,12 +2025,13 @@ class ProductWorkerActivationCoordinator:
         for encoded_key in attempts:
             attempt = _mapping(attempts, encoded_key)
             if (
-                attempt["evidenceAuthorityId"]
-                != self._evidence_authority.authority_id
+                attempt["evidenceAuthorityId"] != self._evidence_authority.authority_id
                 or attempt["evidenceAuthorityFingerprint"]
                 != self._evidence_authority.authority_fingerprint
             ):
-                raise ValueError("Worker cleanup evidence authority differs from durable state")
+                raise ValueError(
+                    "Worker cleanup evidence authority differs from durable state"
+                )
 
     def _attempt_locked(
         self,
@@ -2043,7 +2049,10 @@ class ProductWorkerActivationCoordinator:
             != self._evidence_authority.authority_fingerprint
         ):
             raise _ActivationRejected(_ActivationReason.INVALID_RECEIPT)
-        if receipt is not None and attempt["policyFingerprint"] != receipt.policy.fingerprint:
+        if (
+            receipt is not None
+            and attempt["policyFingerprint"] != receipt.policy.fingerprint
+        ):
             raise _ActivationRejected(_ActivationReason.INVALID_RECEIPT)
         return attempt
 
@@ -2353,7 +2362,9 @@ def _migrate_activation_state(value: object) -> dict[str, object]:
             settlement is not None
             and settlement.settlement_version != WORKER_CLEANUP_SETTLEMENT_VERSION
         ) or (debt is not None and debt.debt_version != WORKER_CLEANUP_DEBT_VERSION):
-            raise ValueError("Worker activation V1 state contains a newer cleanup record")
+            raise ValueError(
+                "Worker activation V1 state contains a newer cleanup record"
+            )
         attempt["cleanupContractVersion"] = WORKER_CLEANUP_SETTLEMENT_VERSION
     migrated["stateVersion"] = PRODUCT_WORKER_ACTIVATION_STATE_VERSION
     return migrated
@@ -2393,7 +2404,9 @@ def _validate_state(value: object) -> dict[str, object]:
     document = _migrate_activation_state(value)
     if _integer(document, "stateVersion") != PRODUCT_WORKER_ACTIVATION_STATE_VERSION:
         raise ValueError("Unsupported Product Worker activation state version")
-    _require_positive_integer(_integer(document, "stateRevision"), name="state revision")
+    _require_positive_integer(
+        _integer(document, "stateRevision"), name="state revision"
+    )
     _require_nonnegative_integer(
         _integer(document, "killSwitchGeneration"),
         name="kill-switch generation",
@@ -2504,12 +2517,17 @@ def _validate_state(value: object) -> dict[str, object]:
         if phase != "settled" and settlement is not None:
             raise ValueError("Worker cleanup settlement has inconsistent attempt phase")
         if phase in {"retired", "settled"} and attempt["domainRetired"] is not True:
-            raise ValueError("Retired Worker activation attempt lacks domain retirement")
+            raise ValueError(
+                "Retired Worker activation attempt lacks domain retirement"
+            )
         if phase == "settled" and attempt["protocolTerminal"] is not True:
-            raise ValueError("Settled Worker activation attempt lacks protocol terminal")
-        if phase in {"registered", "effect_started", "published"} and attempt[
-            "domainRetired"
-        ] is True:
+            raise ValueError(
+                "Settled Worker activation attempt lacks protocol terminal"
+            )
+        if (
+            phase in {"registered", "effect_started", "published"}
+            and attempt["domainRetired"] is True
+        ):
             raise ValueError("Live Worker activation attempt claims domain retirement")
     publications = _mapping(document, "publications")
     publication_targets: set[str] = set()
