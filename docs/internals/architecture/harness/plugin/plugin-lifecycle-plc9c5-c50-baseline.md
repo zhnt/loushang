@@ -8,8 +8,8 @@
 - Parent: `PLC9C`
 - Authority: normative accepted design
 - Design status: accepted
-- Implementation status: implemented — C5.0 documentation/guards only;
-  C5.1--C5.4 not-started
+- Implementation status: implemented — C5.0 design/guards and C5.1
+  receipt/lifecycle contracts; C5.2--C5.4 not-started
 - Activation status: closed; every production route remains default-dark
 - Observation base: `cb01f723`
 - Owner: Harness Worker architecture with Product, Hosting, and domain-owner
@@ -139,19 +139,20 @@ Product-neutral, and Product packages depend only on public Harness
 records/ports.
 
 `src/loushang/harness/worker/__init__.py` is the Worker public API owner. C5.1
-may add only `ProductWorkerActivationPolicyV1`,
+adds only `ProductWorkerActivationPolicyV1`,
 `ProductWorkerActivationReceiptV1`,
-`ProductWorkerActivationAuthorityPort`, and
-`ProductWorkerActivationCoordinator` to that public surface. C5.2 may add only
-`ProductWorkerNativeProfilePort`. Private bridge/profile types, Product
-adapters, Hosting specifications, native material, and platform handles must
-never be exported there.
+and `ProductWorkerActivationAuthorityPort` to that public surface. The C5.1
+`ProductWorkerActivationCoordinator` remains internal until a stable typed
+outcome/error and durable-owner seam exists. C5.2 may add only
+`ProductWorkerNativeProfilePort`. Private coordinator/store/lease/record,
+bridge/profile types, Product adapters, Hosting specifications, native
+material, and platform handles must never be exported there.
 
 ## Activation Receipt Contract For C5.1
 
-C5.1 may introduce an authority-free schema and validator with these exact
-semantic fields; spelling and serialization are fixed only by the C5.1
-contract change:
+C5.1 introduces an authority-free schema and validator with these exact
+semantic fields. Spelling and serialization are fixed by the
+[C5.1 contract](plugin-lifecycle-plc9c5-c51-contract.md):
 
 | Receipt fact | Required binding |
 | --- | --- |
@@ -210,11 +211,15 @@ through process-effect registration.
 
 C5.1 also introduces a Product-neutral durable cleanup settlement/debt
 contract keyed by receipt fingerprint, attempt id, owner generation, host
-identity, and boot identity. A protocol terminal record is not cleanup
-settlement. On coordinator restart, an unknown same-boot tree is durable debt
-and blocks restart; a trusted changed-boot witness may prove the old local OS
-tree absent. Platform-specific crash settlement evidence is an exit gate of
-C5.2/C5.3, not something deferred to Product composition.
+identity, boot identity, and a construction-pinned evidence-authority identity
+and fingerprint. Record APIs accept only opaque witnesses and cannot replace
+that authority per call. A protocol terminal record is not cleanup settlement.
+On coordinator restart, an unknown same-boot tree is durable debt and blocks
+restart; a trusted changed-boot witness may prove the old local OS tree absent.
+An uncertain committed `registered` record is settled on the same boot when
+possible or through exact changed-boot lease-expiry recovery; it can never be
+promoted to effect. Platform-specific crash settlement evidence is an exit gate
+of C5.2/C5.3, not something deferred to Product composition.
 
 The guard ledger reserves these transition tokens so later slices revise an
 exact absence instead of inventing a neighboring contract:
@@ -224,7 +229,7 @@ exact absence instead of inventing a neighboring contract:
 | `ProductWorkerActivationPolicyV1` | C5.1 | authority-free explicit Product policy input |
 | `ProductWorkerActivationReceiptV1` | C5.1 | validated pathless decision join |
 | `ProductWorkerActivationAuthorityPort` | C5.1 | separate Product-owned current-evidence fence |
-| `ProductWorkerActivationCoordinator` | C5.1 | Product-neutral aggregate over injected owners; no Product selection |
+| `ProductWorkerActivationCoordinator` | C5.1 internal | Product-neutral deterministic aggregate over injected owners; no public facade or Product selection |
 | `WorkerCleanupSettlementV1` | C5.1 | durable exact-attempt tree-settlement witness |
 | `WorkerCleanupDebtV1` | C5.1 | durable unknown/unsettled tree fence |
 | `ProductWorkerNativeProfilePort` | C5.2 | confined native-profile binding port implemented per accepted platform |
@@ -315,7 +320,9 @@ Even then, default owner selection remains Current.
 
 ## Future Evidence Manifest And Drill Ledger
 
-Later slices replace each named absence with a required, uploaded JUnit report.
+The [executable evidence manifest](plugin-lifecycle-plc9c5-evidence-manifest.json)
+tracks these reports. Later slices replace each named absence with a required,
+uploaded JUnit report.
 `scripts/dev/verify_pytest_xml.py` must observe a nonempty report with zero
 skips, failures, and errors. A C5 manifest verifier added with C5.1 must also
 enforce the minimum count and exact case ids below; every case is a required
@@ -323,7 +330,7 @@ row, never an optional test hidden behind a skip.
 
 | Report id | JUnit path | Minimum tests | Exact required case ids |
 | --- | --- | --- | --- |
-| `PLC9C5-C5.1-CONTRACT` | `.artifacts/plc9c5-c51-contract.xml` | 20 | `C51-CURRENT-REQUIREDNESS`, `C51-INVALID-RECEIPT`, `C51-STALE-RECEIPT`, `C51-FOREIGN-RECEIPT`, `C51-POLICY-CLOSURE-CODEC`, `C51-PREACQUIRE-FRESHNESS`, `C51-PREPUBLISH-ATOMIC-CAS`, `C51-KILLSWITCH-PUBLISH-RACE`, `C51-RECEIPT-ATTEMPT-CLOSURE`, `C51-EXACT-RETIRE-CAS`, `C51-KILLSWITCH-ADMISSION-RACE`, `C51-RESTART-LATCH`, `C51-CLEANUP-SETTLED`, `C51-CLEANUP-DEBT`, `C51-STICKY-OWNER`, `C51-NO-FALLBACK`, `C51-REQUIRED-SUCCESS`, `C51-OPTIONAL-DEGRADED`, `C51-PUBLICATION-FENCE`, `C51-SENTINEL-REDACTION` |
+| `PLC9C5-C5.1-CONTRACT` | `.artifacts/plc9c5-c51-contract.xml` | 65 | `C51-CURRENT-REQUIREDNESS`, `C51-INVALID-RECEIPT`, `C51-STALE-RECEIPT`, `C51-FOREIGN-RECEIPT`, `C51-POLICY-CLOSURE-CODEC`, `C51-PREACQUIRE-FRESHNESS`, `C51-PREPUBLISH-ATOMIC-CAS`, `C51-KILLSWITCH-PUBLISH-BLOCKED`, `C51-RECEIPT-ATTEMPT-CLOSURE`, `C51-EXACT-RETIRE-CAS`, `C51-KILLSWITCH-ADMISSION-BLOCKED`, `C51-RESTART-LATCH`, `C51-CLEANUP-SETTLED`, `C51-CLEANUP-DEBT`, `C51-STICKY-OWNER`, `C51-NO-FALLBACK`, `C51-REQUIRED-SUCCESS`, `C51-OPTIONAL-DEGRADED`, `C51-PUBLICATION-FENCE`, `C51-SENTINEL-REDACTION`, `C51-MONOTONIC-SETTLEMENT`, `C51-DURABLE-POLICY-BUDGET`, `C51-CAPACITY-PREWRITE`, `C51-KILLSWITCH-DURABLE-RETRY`, `C51-GATE-RELEASE-IMMEDIATE`, `C51-NOEFFECT-NORMAL`, `C51-NOEFFECT-EXCEPTION`, `C51-NOEFFECT-EXPLICIT`, `C51-EFFECT-EXCEPTION`, `C51-COMMIT-BEFORE-RETURN`, `C51-DUAL-COORDINATOR-CAS`, `C51-PUBLISH-THEN-KILL-RACE`, `C51-KILL-THEN-PUBLISH-RACE`, `C51-DYNAMIC-PORT-REENTRY`, `C51-PORT-FAULTS`, `C51-COUNTERFEIT-EVIDENCE`, `C51-REGISTERED-RECOVERY`, `C51-GATE-RELEASE-PREFAULT`, `C51-GATE-RELEASE-POSTFAULT`, `C51-CROSS-THREAD-AUTHORITY-REENTRY`, `C51-CROSS-THREAD-STORE-REENTRY`, `C51-CROSS-THREAD-EVIDENCE-REENTRY`, `C51-RELEASE-DEBT-PUBLISH`, `C51-RELEASE-DEBT-ADMISSION-VALIDATION`, `C51-RELEASE-DEBT-ADMISSION-CAS`, `C51-RELEASE-DEBT-DRAIN-JOIN`, `C51-SHARED-AUTHORITY-DOMAIN`, `C51-SHARED-STORE-DOMAIN`, `C51-SHARED-EVIDENCE-DOMAIN`, `C51-DISJOINT-OWNER-PARALLEL`, `C51-SHARED-RELEASE-DEBT-DRAIN`, `C51-CROSS-OWNER-CALLBACK-FENCE`, `C51-SHARED-DOMAIN-WRAPPERS`, `C51-DOMAIN-TOKEN-WEAKREF`, `C51-ENTER-AMBIGUITY-CLEANUP`, `C51-EXIT-CALLBACK-DRAIN-REENTRY`, `C51-RETIRE-RELEASE-PREFAULT`, `C51-RETIRE-RELEASE-POSTFAULT`, `C51-LATCH-RELEASE-PREFAULT`, `C51-LATCH-RELEASE-POSTFAULT`, `C51-HELD-GATE-NO-EARLY-RELEASE`, `C51-RESERVED-GATE-NO-DRAIN`, `C51-RELEASING-RETRY-FAILFAST`, `C51-RELEASE-FAULT-RETRY-TAKEOVER`, `C51-SHARED-EXIT-CALLBACK-RETRY-REJECT` |
 | `PLC9C5-C5.2-LINUX-NATIVE` | `.artifacts/plc9c5-c52-linux-native.xml` | 14 | `C52-EXACT-CLOSURE`, `C52-CATALOG-MISMATCH`, `C52-POLICY-CLOSURE-MISMATCH`, `C52-EXEC-CLOSURE-MISMATCH`, `C52-WSL-MICROSOFT-REJECT`, `C52-UNKNOWN-CLASSIFIER-REJECT`, `C52-NON-X86-REJECT`, `C52-FD-SUBSTITUTION`, `C52-CANCEL-PRE-EFFECT`, `C52-CANCEL-POST-EFFECT`, `C52-DESCENDANT-CLEANUP`, `C52-SAMEBOOT-DEBT`, `C52-CHANGEDBOOT-ABSENCE`, `C52-SENTINEL-REDACTION` |
 | `PLC9C5-C5.3-WINDOWS-MECHANICS` | `.artifacts/plc9c5-c53-windows-mechanics.xml` | 12 | `C53-REQUIRED-CONTAINMENT-REJECT`, `C53-LOCKED-IDENTITY-SUBSTITUTION`, `C53-TRUSTED-SYSTEMROOT`, `C53-AMBIENT-SYSTEMROOT-POISONING`, `C53-CALLER-ENVIRONMENT-REJECT`, `C53-DISCARDED-STDERR`, `C53-RESTRICTED-TOKEN`, `C53-JOB-TREE-CLEANUP`, `C53-HANDLE-SUBSTITUTION`, `C53-CANCEL-PRE-POST-EFFECT`, `C53-RESTART-UNCERTAINTY`, `C53-SENTINEL-REDACTION` |
 | `PLC9C5-C5.4-LINUX-PRODUCT` | `.artifacts/plc9c5-c54-linux-product.xml` | 25 | `C54-PRODUCT-SELECTED`, `C54-PRODUCT-MISSING`, `C54-PRODUCT-WRONG`, `C54-PRODUCT-DISABLED`, `C54-SESSION-CANONICAL`, `C54-SESSION-CWD`, `C54-SESSION-HOME`, `C54-SESSION-TAMPERED`, `C54-SESSION-ALIAS`, `C54-SESSION-CONFLICT`, `C54-SESSION-CHANGED`, `C54-REQUIRED-SUCCESS`, `C54-REQUIRED-FAILURE`, `C54-OPTIONAL-SUCCESS`, `C54-OPTIONAL-DEGRADED`, `C54-CLOSURE-FRESHNESS`, `C54-HANDSHAKE-HEALTH-PUBLICATION`, `C54-UNSUPPORTED-WINDOWS`, `C54-UNSUPPORTED-WSL`, `C54-UNSUPPORTED-NON-X86`, `C54-UNSUPPORTED-MACOS`, `C54-ORDERED-ROLLBACK`, `C54-RECOVERY-MATRIX`, `C54-SHARED-ENTRYPOINT-RECEIPT`, `C54-SENTINEL-REDACTION` |
@@ -372,7 +379,7 @@ opaque fingerprints.
 | Transition | Guard intentionally revised | Guards retained |
 | --- | --- | --- |
 | PLC9C4 -> C5.0 | index this design/inventory and freeze Current source/mismatch facts | every runtime symbol, private-profile import, Product composition, default Current, no-fallback, author-SDK, unsupported-platform, and `remote_service` absence |
-| C5.0 -> C5.1 | only the named receipt/policy/coordinator/cleanup contracts and the four named Worker public exports | native profile imports outside Hosting, production Product composition, default Current, unsupported platforms, other domains, remote topology; all other Worker public exports remain exact |
+| C5.0 -> C5.1 | only the named receipt/policy/internal-coordinator/cleanup contracts and the three named Worker public exports | native profile imports outside Hosting, production Product composition, default Current, unsupported platforms, other domains, remote topology; all other Worker public exports remain exact |
 | C5.1 -> C5.2 | create only `src/loushang/harness/worker/_native_profile_bridge.py`, add only `ProductWorkerNativeProfilePort` publicly, and admit its two exact POSIX private imports plus retained Linux report | Windows private imports, a second friend module, raw platform APIs, production Product composition, default Current, WSL/unknown classifiers, other domains, remote topology |
 | C5.2 -> C5.3 | only one Hosting-private trusted-payload builder using `GetWindowsDirectoryW` plus retained Windows mechanics/rejection evidence; no Harness consumer or Windows private friend import is added | production Product composition, Windows required-containment activation, ambient/caller environment trust, default Current, unsupported platforms, other domains, remote topology |
 | C5.3 -> C5.4 | only the exact Linux Coding Product canary composition and named Product report absence | default Current, explicit allowlist, no same-attempt fallback, Windows/unsupported platforms, other domains, author-SDK runtime owners, remote topology |

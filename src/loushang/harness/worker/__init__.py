@@ -52,6 +52,11 @@ from .owner_selection import (
     WorkerSessionOwner,
     WorkerSessionOwnerRouter,
 )
+from .product_activation import (
+    ProductWorkerActivationAuthorityPort,
+    ProductWorkerActivationPolicyV1,
+    ProductWorkerActivationReceiptV1,
+)
 from .protocol import (
     WORKER_PROTOCOL_MAX_FRAME_BYTES,
     WORKER_PROTOCOL_MAX_JSON_CONTAINERS,
@@ -129,6 +134,9 @@ __all__ = [
     "ManagedWorkerProcess",
     "ManagedWorkerSession",
     "ManagedWorkerSessionLaunchPort",
+    "ProductWorkerActivationAuthorityPort",
+    "ProductWorkerActivationPolicyV1",
+    "ProductWorkerActivationReceiptV1",
     "WorkerHostingActivationError",
     "WorkerHostingActivationV1",
     "WorkerHostingSelectionV1",
