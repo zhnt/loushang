@@ -127,11 +127,13 @@ HARNESS_TEST_PATHS := \
 	tests/architecture/test_plugin_lifecycle_plc9c0_baseline.py \
 	tests/architecture/test_plugin_lifecycle_plc9c5_c50_baseline.py \
 	tests/architecture/test_plugin_lifecycle_plc9c5_c51_contract.py \
+	tests/architecture/test_plugin_lifecycle_plc9c5_c52_linux_native.py \
 	tests/architecture/test_session_model_call_closure_contract.py
 HOSTING_SOURCES := \
 	src/loushang/hosting \
 	src/loushang/harness/workspace/process/hosting_compat.py \
 	src/loushang/harness/worker/__init__.py \
+	src/loushang/harness/worker/_native_profile_bridge.py \
 	src/loushang/harness/worker/hosting_adapter.py \
 	src/loushang/harness/worker/owner_selection.py \
 	src/loushang/harness/worker/session.py \
@@ -152,6 +154,7 @@ HOSTING_TEST_PATHS := \
 	tests/architecture/test_hosting_h6_windows_native.py \
 	tests/architecture/test_hosted_product_runtime_v1_baseline.py \
 	tests/architecture/test_plugin_lifecycle_plc9c5_c50_baseline.py \
+	tests/architecture/test_plugin_lifecycle_plc9c5_c52_linux_native.py \
 	tests/architecture/test_hosting_architecture_baseline.py
 APPHOST_SOURCES := \
 	src/loushang/apphost \
@@ -166,7 +169,7 @@ APPHOST_TEST_PATHS := \
 .PHONY: test-sandbox test-host-runtime
 .PHONY: test-tui-input-playback
 .PHONY: check-ai-catalog check-ai-examples check-ai-imports check-ai-coverage
-.PHONY: check-harness lint-harness typecheck-harness test-harness check-plc9c5-c51-contract test-plc9c5-c51-contract
+.PHONY: check-harness lint-harness typecheck-harness test-harness check-plc9c5-c51-contract test-plc9c5-c51-contract check-plc9c5-c52-linux-native test-plc9c5-c52-linux-native
 .PHONY: check-hosting lint-hosting typecheck-hosting test-hosting
 .PHONY: check-apphost lint-apphost typecheck-apphost test-apphost
 .PHONY: check-architecture-docs
@@ -224,6 +227,14 @@ test-plc9c5-c51-contract:
 	uv --cache-dir .uv-cache run --extra dev python scripts/dev/verify_plc9c5_manifest.py docs/internals/architecture/harness/plugin/plugin-lifecycle-plc9c5-evidence-manifest.json PLC9C5-C5.1-CONTRACT .artifacts/plc9c5-c51-contract.xml
 
 check-plc9c5-c51-contract: test-plc9c5-c51-contract
+
+test-plc9c5-c52-linux-native:
+	mkdir -p .artifacts
+	uv --cache-dir .uv-cache run --extra dev $(PYTEST_RUNNER) tests/harness/worker/test_native_profile_bridge.py -q --junitxml=.artifacts/plc9c5-c52-linux-native.xml
+	uv --cache-dir .uv-cache run --extra dev python scripts/dev/verify_pytest_xml.py .artifacts/plc9c5-c52-linux-native.xml
+	uv --cache-dir .uv-cache run --extra dev python scripts/dev/verify_plc9c5_manifest.py docs/internals/architecture/harness/plugin/plugin-lifecycle-plc9c5-evidence-manifest.json PLC9C5-C5.2-LINUX-NATIVE .artifacts/plc9c5-c52-linux-native.xml
+
+check-plc9c5-c52-linux-native: test-plc9c5-c52-linux-native
 
 check-hosting: lint-hosting typecheck-hosting test-hosting
 

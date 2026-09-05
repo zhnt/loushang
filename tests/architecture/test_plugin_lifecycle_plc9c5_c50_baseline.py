@@ -80,6 +80,7 @@ EXPECTED_CURRENT_SOURCE_PATHS = {
     "src/loushang/harness/worker/__init__.py",
     "src/loushang/harness/worker/contracts.py",
     "src/loushang/harness/worker/hosting_adapter.py",
+    "src/loushang/harness/worker/_native_profile_bridge.py",
     "src/loushang/harness/worker/journal.py",
     "src/loushang/harness/worker/launch.py",
     "src/loushang/harness/worker/owner_selection.py",
@@ -181,6 +182,7 @@ C51_WORKER_PUBLIC_EXPORTS = {
     "ProductWorkerActivationPolicyV1",
     "ProductWorkerActivationReceiptV1",
 }
+C52_WORKER_PUBLIC_EXPORTS = {"ProductWorkerNativeProfilePort"}
 
 EXPECTED_FUTURE_REPORTS = (
     (
@@ -544,8 +546,9 @@ def test_c50_status_is_honest_and_documents_are_indexed_once() -> None:
         "Authority": "normative accepted design",
         "Design status": "accepted",
         "Implementation status": (
-            "implemented — C5.0 design/guards and C5.1 receipt/lifecycle "
-            "contracts; C5.2--C5.4 not-started"
+            "implemented through C5.2 — C5.0 design/guards, C5.1 "
+            "receipt/lifecycle, and the C5.2 Linux native profile binding; "
+            "C5.3--C5.4 not-started"
         ),
         "Activation status": "closed; every production route remains default-dark",
         "Observation base": "cb01f723",
@@ -592,6 +595,7 @@ def test_c50_current_inventory_source_set_is_exact_and_present() -> None:
         "C5-CUR-SESSION-DISCOVERY",
         "C5-CUR-WORKER-PUBLIC",
         "C5-C51-RECEIPT-LIFECYCLE",
+        "C5-C52-LINUX-NATIVE",
         "C5-CUR-WORKER-IDENTITY",
         "C5-CUR-CURRENT-LAUNCH",
         "C5-CUR-WORKER-SESSION",
@@ -692,7 +696,7 @@ def test_c50_freezes_dependency_and_native_shape_decisions() -> None:
         "restricted-token/Job/direct-import mechanics",
         "selector currently accepts WSL",
         "current profile is explicitly rejected for Product required containment",
-        "no native tree witness or production recovery route exists",
+        "no production recovery route exists",
         "no production activation gate is composed",
         "ordered production rollback remains absent",
     ):
@@ -708,18 +712,16 @@ def test_c50_freezes_dependency_and_native_shape_decisions() -> None:
     assert _drill_ledger_rows(future_evidence) == EXPECTED_DRILL_LEDGER
 
 
-def test_c50_guard_transitions_only_the_c51_contracts() -> None:
+def test_c50_guard_transitions_are_exact_through_c52() -> None:
     production_sources = tuple(SOURCE_ROOT.rglob("*.py"))
     source = "\n".join(_read(path) for path in production_sources)
-    retained_absences = {
-        "ProductWorkerNativeProfilePort",
-        "bind_coding_product_worker_canary",
-    }
+    retained_absences = {"bind_coding_product_worker_canary"}
     for token in retained_absences:
         assert token not in source
     c51_source = _read(WORKER_ROOT / "product_activation.py")
-    for token in RESERVED_TRANSITION_TOKENS - retained_absences:
+    for token in RESERVED_TRANSITION_TOKENS - retained_absences - C52_WORKER_PUBLIC_EXPORTS:
         assert token in c51_source
+    assert "ProductWorkerNativeProfilePort" in _read(NATIVE_PROFILE_BRIDGE)
 
     composition_names = {
         "HostingManagedWorkerSessionAdapter",
@@ -746,9 +748,11 @@ def test_c50_guard_transitions_only_the_c51_contracts() -> None:
     }
     assert worker_consumers == {SANDBOX_RUNTIME}
     assert _literal_string_collection(WORKER_PUBLIC, "__all__") == (
-        CURRENT_WORKER_PUBLIC_EXPORTS | C51_WORKER_PUBLIC_EXPORTS
+        CURRENT_WORKER_PUBLIC_EXPORTS
+        | C51_WORKER_PUBLIC_EXPORTS
+        | C52_WORKER_PUBLIC_EXPORTS
     )
-    assert not NATIVE_PROFILE_BRIDGE.exists()
+    assert NATIVE_PROFILE_BRIDGE.is_file()
 
 
 def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
@@ -762,7 +766,7 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
         if not path.is_relative_to(HOSTING_ROOT)
         and _imports(path) & profile_modules
     }
-    assert profile_consumers == set()
+    assert profile_consumers == {NATIVE_PROFILE_BRIDGE}
 
     private_preparation = "loushang.hosting._launch_preparation"
     preparation_consumers = {
