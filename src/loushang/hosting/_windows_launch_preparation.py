@@ -74,10 +74,6 @@ _LPAC_PROFILE_PREFIX = "Loushang.Lpac."
 # inheritable rights make SetEntriesInAcl split one grant into an effective ACE
 # plus an INHERIT_ONLY ACE, so use the stable native mask we can verify exactly.
 _LPAC_RUNTIME_ACCESS = 0x001200A9
-# Read/write/delete within the attempt-private scratch tree, without ownership
-# or DACL mutation rights.  The Package SID also receives a separate
-# non-inheriting traverse grant on the platform-owned private root.
-_LPAC_PRIVATE_SCRATCH_ACCESS = 0x001301FF
 _LPAC_ROOT_ACE_FLAGS = _SUB_CONTAINERS_AND_OBJECTS_INHERIT
 _LPAC_WITNESS_STATES = frozenset(
     {
@@ -1046,9 +1042,7 @@ class _WindowsLpacProvisioner:
             profile = self._derive_checked_profile(spec, witness)
             try:
                 self._verify_private_identity(witness, profile)
-                targets = _lpac_grant_targets(spec) + _lpac_private_grant_targets(
-                    profile.private_root
-                )
+                targets = _lpac_all_grant_targets(spec, profile.private_root)
                 existing = tuple(
                     (index, access)
                     for index, (path, _, _) in enumerate(targets)
@@ -1118,9 +1112,7 @@ class _WindowsLpacProvisioner:
         with self._lock:
             profile = self._derive_checked_profile(spec, witness)
             try:
-                targets = _lpac_grant_targets(spec) + _lpac_private_grant_targets(
-                    profile.private_root
-                )
+                targets = _lpac_all_grant_targets(spec, profile.private_root)
                 for path, permissions, inherit in targets:
                     matches = self._api.lpac_path_access(path, profile.sid)
                     expected = ((permissions, _LPAC_ROOT_ACE_FLAGS if inherit else 0),)
@@ -1429,10 +1421,22 @@ def _lpac_private_grant_targets(
     private_root: str,
 ) -> tuple[tuple[str, int, bool], ...]:
     root = _require_local_windows_path(private_root, "private root")
-    return (
-        (root, _FILE_TRAVERSE_READ, False),
-        (ntpath.join(root, "Temp"), _LPAC_PRIVATE_SCRATCH_ACCESS, True),
-    )
+    ancestors = tuple(reversed(_ancestor_directory_paths(root)))
+    return tuple((path, _FILE_TRAVERSE_READ, False) for path in ancestors)
+
+
+def _lpac_all_grant_targets(
+    spec: _WindowsLpacProvisionSpec,
+    private_root: str,
+) -> tuple[tuple[str, int, bool], ...]:
+    targets: dict[str, tuple[str, int, bool]] = {}
+    for target in _lpac_grant_targets(spec) + _lpac_private_grant_targets(private_root):
+        key = ntpath.normcase(target[0])
+        existing = targets.get(key)
+        if existing is not None and existing[1:] != target[1:]:
+            raise ValueError("Windows LPAC overlapping grants are inconsistent")
+        targets[key] = target
+    return tuple(targets.values())
 
 
 def _verify_lpac_grants(
@@ -1443,7 +1447,7 @@ def _verify_lpac_grants(
     *,
     present: bool,
 ) -> None:
-    targets = _lpac_grant_targets(spec) + _lpac_private_grant_targets(private_root)
+    targets = _lpac_all_grant_targets(spec, private_root)
     for path, permissions, inherit in targets:
         actual = api.lpac_path_access(path, sid)
         expected = (
@@ -1461,14 +1465,21 @@ def _private_state_fingerprint(api: _WindowsLpacApi, private_root: str) -> str:
     handles: list[int] = []
     try:
         api.open_locked_directory(private_root, on_acquired=handles.append)
-        if len(handles) != 1:
+        api.open_locked_directory(
+            ntpath.join(private_root, "Temp"),
+            on_acquired=handles.append,
+        )
+        if len(handles) != 2:
             raise RuntimeError("Windows LPAC private owner attachment failed")
-        identity = api.locked_path_identity(handles[0])
-        if not identity.is_directory:
-            raise ValueError("Windows LPAC private root is not a directory")
+        root_identity = api.locked_path_identity(handles[0])
+        temp_identity = api.locked_path_identity(handles[1])
+        if not root_identity.is_directory or not temp_identity.is_directory:
+            raise ValueError("Windows LPAC private state is not a directory")
         return _fingerprint(
-            f"{identity.volume_serial}:{identity.file_id}:"
-            f"{ntpath.normcase(identity.final_path)}"
+            f"{root_identity.volume_serial}:{root_identity.file_id}:"
+            f"{ntpath.normcase(root_identity.final_path)}\0"
+            f"{temp_identity.volume_serial}:{temp_identity.file_id}:"
+            f"{ntpath.normcase(temp_identity.final_path)}"
         )
     finally:
         for handle in reversed(handles):
@@ -1524,12 +1535,7 @@ def _lpac_grant_digest(spec: _WindowsLpacProvisionSpec) -> str:
         (path.casefold(), permissions, inherit)
         for path, permissions, inherit in _lpac_grant_targets(spec)
     ]
-    payload.extend(
-        (
-            ("@profile-private-root", _FILE_TRAVERSE_READ, False),
-            ("@profile-private-temp", _LPAC_PRIVATE_SCRATCH_ACCESS, True),
-        )
-    )
+    payload.extend((("@profile-private-ancestors", _FILE_TRAVERSE_READ, False),))
     return hashlib.sha256(
         json.dumps(payload, separators=(",", ":")).encode("utf-8")
     ).hexdigest()

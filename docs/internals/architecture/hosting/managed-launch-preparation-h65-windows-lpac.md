@@ -68,19 +68,21 @@ The H6.5 provisioner:
 
 The complete attempt-specific AppContainer profile is the only writable
 filesystem and registry authority. Hosting creates a fresh profile for every
-attempt; it never reuses a predecessor's private files or registry state. The
-Package SID receives only non-inheriting traverse rights on the platform-owned
-private root and read/write/delete-child rights inherited within its exact
-`Temp` subtree; ownership and DACL mutation remain absent. Those two grants are
-covered by the same provision witness, pre-spawn verification, and reverse
-cleanup as the immutable-runtime grants. On cleanup, Hosting performs rooted,
-no-follow, bounded removal of its exact `Temp` scratch subtree, rejecting
-reparse points, foreign hard links, streams, devices, depth, entry-count, and
-byte-count overflow. It does not recursively reinterpret or delete the
-platform-owned profile layout. With all native handles closed,
-`DeleteAppContainerProfile` is the sole owner that deletes the complete OS
-profile, remaining filesystem storage, and private registry state. Cleanup
-ambiguity or residue blocks a successor.
+attempt; it never reuses a predecessor's private files or registry state.
+Because LPAC removes the ambient All Application Packages traversal path,
+Hosting grants the Package SID temporary non-inheriting traverse rights on the
+private root's ancestor chain. Windows remains the owner of the Package SID
+ACL on the profile root and `Temp`; Hosting records both directory identities
+in the private-state witness and never rewrites those platform-owned ACLs. The
+temporary ancestor grants are covered by the same provision witness,
+pre-spawn verification, and reverse cleanup as the immutable-runtime grants.
+On cleanup, Hosting performs rooted, no-follow, bounded removal of its exact
+`Temp` scratch subtree, rejecting reparse points, foreign hard links, streams,
+devices, depth, entry-count, and byte-count overflow. It does not recursively
+reinterpret or delete the platform-owned profile layout. With all native
+handles closed, `DeleteAppContainerProfile` is the sole owner that deletes the
+complete OS profile, remaining filesystem storage, and private registry state.
+Cleanup ambiguity or residue blocks a successor.
 
 ## Provisioning State Machine
 

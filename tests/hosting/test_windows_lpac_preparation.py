@@ -237,6 +237,9 @@ class _FakeWindowsLpacApi:
             r"C:\private\AC": _Win32LockedPathIdentity(
                 8, 200, 0, r"C:\private\AC", True
             ),
+            r"C:\private\AC\Temp": _Win32LockedPathIdentity(
+                8, 201, 0, r"C:\private\AC\Temp", True
+            ),
         }
         return identities[path]
 
@@ -429,11 +432,9 @@ def test_windows_lpac_provision_cleanup_is_exact_and_replayable(
     root_target, root_permissions, root_inherit = _lpac_grant_targets(spec)[-1]
     assert (root_permissions, root_inherit) == (0x001200A9, True)
     assert api.access[root_target] == ((0x001200A9, 3),)
-    private_root, private_temp = _lpac_private_grant_targets(r"C:\private\AC")
-    assert private_root == (r"C:\private\AC", 0x001200A0, False)
-    assert private_temp == (r"C:\private\AC\Temp", 0x001301FF, True)
-    assert api.access[private_root[0]] == ((private_root[1], 0),)
-    assert api.access[private_temp[0]] == ((private_temp[1], 3),)
+    private_ancestors = _lpac_private_grant_targets(r"C:\private\AC")
+    assert private_ancestors == ((r"C:\private", 0x001200A0, False),)
+    assert api.access[private_ancestors[0][0]] == ((0x001200A0, 0),)
     witness = owner.verify(spec, witness)
     assert witness.state == "VERIFIED"
     witness = owner.revoke_grants(
@@ -929,5 +930,7 @@ def test_windows_lpac_native_failures_redact_paths_and_sentinels(
 def test_private_state_fingerprint_is_pathless() -> None:
     api = _FakeWindowsLpacApi()
     fingerprint = _private_state_fingerprint(api, r"C:\private\AC")
-    assert fingerprint == _fingerprint(r"8:200:c:\private\ac")
+    assert fingerprint == _fingerprint(
+        "8:200:c:\\private\\ac\0" "8:201:c:\\private\\ac\\temp"
+    )
     assert r"C:\private" not in fingerprint
