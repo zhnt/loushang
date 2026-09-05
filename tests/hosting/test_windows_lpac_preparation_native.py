@@ -34,8 +34,10 @@ from loushang.hosting._windows_launch_preparation import (
     _lpac_grant_targets,
     _lpac_profile_name,
     _WindowsLpacLaunchCaptureBackend,
+    _WindowsLpacLaunchCaptureSpec,
     _WindowsLpacProfileCollision,
     _WindowsLpacProvisioner,
+    _WindowsLpacProvisionSpec,
     _WindowsLpacProvisionWitness,
 )
 from loushang.hosting._windows_process import _WindowsProcessBackend
@@ -46,6 +48,12 @@ pytestmark = pytest.mark.skipif(
 )
 
 _NATIVE_TIMEOUT_SECONDS = 60.0
+_NATIVE_PLATFORM_IMPORTS = (
+    "ADVAPI32.DLL",
+    "KERNEL32.DLL",
+    "USERENV.DLL",
+    "WS2_32.DLL",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,6 +82,15 @@ class _WindowsLpacNativeEvidence:
     job_tree_cleanup: bool
     containment_cleanup_debt: bool
     sentinel_redaction: bool
+
+
+@dataclass(frozen=True, slots=True)
+class _NativeProvisionedAttempt:
+    owner: _WindowsLpacProvisioner
+    provision: _WindowsLpacProvisionSpec
+    witness: _WindowsLpacProvisionWitness
+    capture: _WindowsLpacLaunchCaptureSpec
+    expected_sid_line: bytes
 
 
 @dataclass(slots=True)
@@ -476,6 +493,7 @@ void WINAPI mainCRTStartup(void) {
     HANDLE extra = (HANDLE)(ULONG_PTR)number(number_text);
     DWORD handle_flags = 0;
     if (GetHandleInformation(extra, &handle_flags)) ExitProcess(100);
+    if (GetLastError() != ERROR_INVALID_HANDLE) ExitProcess(114);
     emit("E:HANDLES\n", 10);
 
     emit("LPAC-PASS\n", 10);
@@ -612,6 +630,91 @@ async def _read_to_eof(read) -> bytes:  # type: ignore[no-untyped-def]
     return b"".join(chunks)
 
 
+def _native_provision_spec(
+    api: _ObservedNativeLpacApi,
+    request: ProcessLaunchRequest,
+    runtime_root: Path,
+    *,
+    label: str,
+) -> _WindowsLpacProvisionSpec:
+    return _build_windows_lpac_provision_spec(
+        request,
+        runtime_root=str(runtime_root.resolve()),
+        platform_imports=_NATIVE_PLATFORM_IMPORTS,
+        attempt_id=f"native-{label}-{uuid.uuid4().hex}",
+        operation_nonce=hashlib.sha256(uuid.uuid4().bytes).hexdigest(),
+        lifecycle_fingerprint=hashlib.sha256(
+            b"plc9c5-c55b-native-lifecycle"
+        ).hexdigest(),
+        _api=api,
+    )
+
+
+def _provision_native_probe_attempt(
+    api: _ObservedNativeLpacApi,
+    request: ProcessLaunchRequest,
+    runtime_root: Path,
+    cleanup: _NativeCleanupState,
+    *,
+    label: str,
+) -> _NativeProvisionedAttempt:
+    provision = _native_provision_spec(api, request, runtime_root, label=label)
+    owner = _WindowsLpacProvisioner(api=api)
+    cleanup.owner = owner
+    cleanup.provision = provision
+
+    def begin_profile_effect() -> None:
+        cleanup.profile_effect_started = True
+
+    try:
+        witness = owner.create_profile(provision, begin_effect=begin_profile_effect)
+    except _WindowsLpacProfileCollision:
+        cleanup.profile_effect_started = False
+        raise
+    witness = owner.apply_grants(provision, witness, begin_effect=lambda: None)
+    witness = owner.verify(provision, witness)
+    profile = api.derive_lpac_profile(_lpac_profile_name(provision))
+    try:
+        expected_sid_line = f"SID:{profile.sid_text}\n".encode("ascii")
+    finally:
+        api.free_sid(profile.sid)
+    capture = _build_windows_lpac_launch_capture_spec(
+        request,
+        provision=provision,
+        witness=witness,
+        _api=api,
+    )
+    return _NativeProvisionedAttempt(
+        owner=owner,
+        provision=provision,
+        witness=witness,
+        capture=capture,
+        expected_sid_line=expected_sid_line,
+    )
+
+
+def _settle_native_probe_attempt(
+    attempt: _NativeProvisionedAttempt,
+    cleanup: _NativeCleanupState,
+) -> None:
+    revoked = attempt.owner.revoke_grants(
+        attempt.provision,
+        attempt.witness,
+        begin_effect=lambda: None,
+    )
+    deleted = attempt.owner.delete_profile(
+        attempt.provision,
+        revoked,
+        begin_effect=lambda: None,
+    )
+    settled = attempt.owner.settle(attempt.provision, deleted)
+    if settled.state != "SETTLED":
+        raise AssertionError("LPAC probe containment did not settle")
+    cleanup.profile_effect_started = False
+    cleanup.owner = None
+    cleanup.provision = None
+
+
 async def _collect_native_evidence(
     root: Path,
     cleanup: _NativeCleanupState,
@@ -679,21 +782,11 @@ async def _collect_native_evidence(
             stderr=ProcessStderrMode.DISCARD,
         ),
     )
-    nonce = hashlib.sha256(uuid.uuid4().bytes).hexdigest()
-    lifecycle = hashlib.sha256(b"plc9c5-c55b-native-lifecycle").hexdigest()
-    provision = _build_windows_lpac_provision_spec(
+    provision = _native_provision_spec(
+        api,
         request,
-        runtime_root=str(runtime_root.resolve()),
-        platform_imports=(
-            "ADVAPI32.DLL",
-            "KERNEL32.DLL",
-            "USERENV.DLL",
-            "WS2_32.DLL",
-        ),
-        attempt_id=f"native-{uuid.uuid4().hex}",
-        operation_nonce=nonce,
-        lifecycle_fingerprint=lifecycle,
-        _api=api,
+        runtime_root,
+        label="main",
     )
     owner = _WindowsLpacProvisioner(api=api)
     cleanup.owner = owner
@@ -790,10 +883,12 @@ async def _collect_native_evidence(
         on_spawn=lambda value: setattr(cleanup, "process", value),
         inheritance=pair.inheritance,
     )
+    token_verify_before_resume = api.resume_after_verify
     await material.close()
     cleanup.material = None
     sid_line = await _read_line(pair.transport.read)
-    if sid_line != expected_sid_line:
+    profile_sid = sid_line == expected_sid_line
+    if not profile_sid:
         raise AssertionError("LPAC child Package SID did not match its profile")
     await pair.transport.write(b"s")
     transcript = await _read_until(pair.transport.read, b"LPAC-PASS\n")
@@ -811,9 +906,11 @@ async def _collect_native_evidence(
     handle_denial_transcript = expected_transcript.removesuffix(
         b"E:HANDLES\nLPAC-PASS\n"
     )
+    handle_denial_proven = False
     if transcript == expected_transcript:
         await pair.transport.write(b"x")
         assert await process.wait() == 0
+        handle_denial_proven = True
     elif transcript == handle_denial_transcript:
         # Server 2022 fail-fasts with STATUS_INVALID_HANDLE when an LPAC asks
         # about a non-inherited numeric handle instead of returning the normal
@@ -824,6 +921,7 @@ async def _collect_native_evidence(
             raise AssertionError(
                 f"LPAC handle denial probe failed: {return_code:#010x}"
             )
+        handle_denial_proven = True
     else:
         return_code = (await process.wait()) & 0xFFFFFFFF
         raise AssertionError(
@@ -840,16 +938,52 @@ async def _collect_native_evidence(
     cleanup.endpoint_backend = None
     await process_backend.close_backend()
     cleanup.process_backend = None
+    main_stages = frozenset(transcript.splitlines())
 
-    # A second process under the same exact LPAC policy isolates Windows'
-    # possible in-WSAStartup termination from the main lifecycle oracle.
+    witness = owner.revoke_grants(provision, witness, begin_effect=lambda: None)
+    original_purge = api.purge_lpac_private_state
+    injected = True
+
+    def fail_purge_once(private_root: str) -> None:
+        nonlocal injected
+        if injected:
+            injected = False
+            raise OSError("private cleanup sentinel")
+        original_purge(private_root)
+
+    api.purge_lpac_private_state = fail_purge_once  # type: ignore[method-assign]
+    try:
+        owner.delete_profile(provision, witness, begin_effect=lambda: None)
+    except HostingError as error:
+        containment_cleanup_debt = "sentinel" not in str(error) and str(
+            sentinel
+        ) not in str(error)
+    else:
+        containment_cleanup_debt = False
+    api.purge_lpac_private_state = original_purge  # type: ignore[method-assign]
+    deleted = owner.delete_profile(provision, witness, begin_effect=lambda: None)
+    replay = owner.delete_profile(provision, deleted, begin_effect=lambda: None)
+    cleanup_replay = owner.settle(provision, replay).state == "SETTLED"
+    cleanup.profile_effect_started = False
+    cleanup.owner = None
+    cleanup.provision = None
+
+    # A fresh attempt/profile isolates Windows' possible in-WSAStartup
+    # termination from the main lifecycle oracle.
+    network_attempt = _provision_native_probe_attempt(
+        api,
+        request,
+        runtime_root,
+        cleanup,
+        label="network",
+    )
     network_material = await _WindowsLpacLaunchCaptureBackend(api=api).capture(
-        capture,
-        attempt_id=provision.attempt_id,
+        network_attempt.capture,
+        attempt_id=network_attempt.provision.attempt_id,
         attempt_token=object(),
         on_capture=lambda value: setattr(cleanup, "material", value),
     )
-    await network_material.verify_current(capture.request)
+    await network_material.verify_current(network_attempt.capture.request)
     network_endpoint_backend = _WindowsEndpointBackend(max_endpoints=1, api=api)
     cleanup.endpoint_backend = network_endpoint_backend
     network_pair = await network_endpoint_backend.create_pair(
@@ -859,7 +993,7 @@ async def _collect_native_evidence(
     cleanup.process_backend = network_process_backend
     network_process = await network_material.spawn(
         network_process_backend,
-        capture.request,
+        network_attempt.capture.request,
         effect=_ManagedSpawnEffect(),
         on_spawn=lambda value: setattr(cleanup, "process", value),
         inheritance=network_pair.inheritance,
@@ -867,7 +1001,7 @@ async def _collect_native_evidence(
     await network_material.close()
     cleanup.material = None
     network_sid_line = await _read_line(network_pair.transport.read)
-    if network_sid_line != expected_sid_line:
+    if network_sid_line != network_attempt.expected_sid_line:
         raise AssertionError("LPAC network child Package SID did not match its profile")
     await network_pair.transport.write(b"n")
     network_return = (await network_process.wait()) & 0xFFFFFFFF
@@ -905,14 +1039,22 @@ async def _collect_native_evidence(
     cleanup.endpoint_backend = None
     await network_process_backend.close_backend()
     cleanup.process_backend = None
+    _settle_native_probe_attempt(network_attempt, cleanup)
 
+    tree_attempt = _provision_native_probe_attempt(
+        api,
+        request,
+        runtime_root,
+        cleanup,
+        label="descendant",
+    )
     tree_material = await _WindowsLpacLaunchCaptureBackend(api=api).capture(
-        capture,
-        attempt_id=provision.attempt_id,
+        tree_attempt.capture,
+        attempt_id=tree_attempt.provision.attempt_id,
         attempt_token=object(),
         on_capture=lambda value: setattr(cleanup, "material", value),
     )
-    await tree_material.verify_current(capture.request)
+    await tree_material.verify_current(tree_attempt.capture.request)
     tree_endpoint_backend = _WindowsEndpointBackend(max_endpoints=1, api=api)
     cleanup.endpoint_backend = tree_endpoint_backend
     tree_pair = await tree_endpoint_backend.create_pair(
@@ -922,7 +1064,7 @@ async def _collect_native_evidence(
     cleanup.process_backend = tree_process_backend
     tree_process = await tree_material.spawn(
         tree_process_backend,
-        capture.request,
+        tree_attempt.capture.request,
         effect=_ManagedSpawnEffect(),
         on_spawn=lambda value: setattr(cleanup, "process", value),
         inheritance=tree_pair.inheritance,
@@ -930,7 +1072,7 @@ async def _collect_native_evidence(
     await tree_material.close()
     cleanup.material = None
     tree_sid_line = await _read_line(tree_pair.transport.read)
-    if tree_sid_line != expected_sid_line:
+    if tree_sid_line != tree_attempt.expected_sid_line:
         raise AssertionError("LPAC tree child Package SID did not match its profile")
     await tree_pair.transport.write(b"d")
     tree_transcript = await _read_until(tree_pair.transport.read, b"TREE-SPAWNED\n")
@@ -971,6 +1113,7 @@ async def _collect_native_evidence(
     cleanup.endpoint_backend = None
     await tree_process_backend.close_backend()
     cleanup.process_backend = None
+    _settle_native_probe_attempt(tree_attempt, cleanup)
 
     listener.close()
     cleanup.listener = None
@@ -978,56 +1121,30 @@ async def _collect_native_evidence(
     api.close_handle(extra_parent)
     cleanup.extra_handles = ()
 
-    witness = owner.revoke_grants(provision, witness, begin_effect=lambda: None)
-    original_purge = api.purge_lpac_private_state
-    injected = True
-
-    def fail_purge_once(private_root: str) -> None:
-        nonlocal injected
-        if injected:
-            injected = False
-            raise OSError("private cleanup sentinel")
-        original_purge(private_root)
-
-    api.purge_lpac_private_state = fail_purge_once  # type: ignore[method-assign]
-    try:
-        owner.delete_profile(provision, witness, begin_effect=lambda: None)
-    except HostingError as error:
-        containment_cleanup_debt = "sentinel" not in str(error) and str(
-            sentinel
-        ) not in str(error)
-    else:
-        containment_cleanup_debt = False
-    api.purge_lpac_private_state = original_purge  # type: ignore[method-assign]
-    deleted = owner.delete_profile(provision, witness, begin_effect=lambda: None)
-    replay = owner.delete_profile(provision, deleted, begin_effect=lambda: None)
-    cleanup_replay = owner.settle(provision, replay).state == "SETTLED"
-    cleanup.profile_effect_started = False
-
     # The child exits only after all in-child assertions pass. Each report row
     # below projects one independently named claim from that native oracle.
     return _WindowsLpacNativeEvidence(
         profile_create=profile_created,
         cleanup_replay=cleanup_replay,
         foreign_profile_reject=foreign_profile_reject,
-        profile_sid=api.token_verified,
-        zero_capabilities=True,
-        lpac_optout=True,
-        runtime_rx=True,
-        runtime_write_deny=True,
-        private_fs_scratch=True,
-        registry_deny=True,
-        unrelated_fs_deny=True,
-        process_mutation_deny=True,
+        profile_sid=profile_sid,
+        zero_capabilities=profile_sid,
+        lpac_optout=b"E:AAP" in main_stages,
+        runtime_rx=b"E:RUNTIME" in main_stages,
+        runtime_write_deny=b"E:RUNTIME" in main_stages,
+        private_fs_scratch=b"E:SCRATCH" in main_stages,
+        registry_deny=b"E:REGISTRY" in main_stages,
+        unrelated_fs_deny=b"E:FILESYSTEM" in main_stages,
+        process_mutation_deny=b"E:PROCESS" in main_stages,
         network_deny=network_deny,
-        exec_cwd_identity=True,
+        exec_cwd_identity=b"E:RUNTIME" in main_stages,
         dacl_substitution=dacl_substitution,
         profile_substitution=profile_substitution,
-        no_ambient_env=True,
-        handle_list=True,
-        handle_alias_reject=True,
+        no_ambient_env=b"E:SCRATCH" in main_stages,
+        handle_list=handle_denial_proven,
+        handle_alias_reject=handle_denial_proven,
         cancel_pre_post_effect=True,
-        token_verify_before_resume=api.resume_after_verify,
+        token_verify_before_resume=token_verify_before_resume,
         job_tree_cleanup=job_tree_cleanup,
         containment_cleanup_debt=containment_cleanup_debt,
         sentinel_redaction=True,

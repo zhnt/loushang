@@ -18,6 +18,7 @@ LEGACY = Path("src/loushang/harness/sandbox/package_windows_legacy_runtime.py")
 WINDOWS_PREPARATION = HOSTING_ROOT / "_windows_launch_preparation.py"
 WINDOWS_RAW = HOSTING_ROOT / "_win32_process.py"
 WINDOWS_PROCESS = HOSTING_ROOT / "_windows_process.py"
+WINDOWS_NATIVE = Path("tests/hosting/test_windows_lpac_preparation_native.py")
 
 _PROFILE = "windows-lpac-contained-pe-v1"
 
@@ -145,9 +146,17 @@ def test_h65_design_requires_real_in_child_negative_authority_evidence() -> None
         "same-user process cannot be opened with mutation, VM, or handle-duplication rights",
         "parent-created loopback listener is reachable by an unrestricted control process",
         "complete tree is gone before settlement",
+        "one-profile/one-attempt/one-root rule",
         "fails the required CI job rather than skipping it",
     ):
         assert token in document
+
+    native = _read(WINDOWS_NATIVE)
+    for label in ('label="main"', 'label="network"', 'label="descendant"'):
+        assert native.count(label) == 1
+    assert native.count("attempt_id=provision.attempt_id") == 1
+    assert "attempt_id=network_attempt.provision.attempt_id" in native
+    assert "attempt_id=tree_attempt.provision.attempt_id" in native
 
 
 def test_h65b_runtime_symbols_are_hosting_private_without_cross_package_dependency() -> (

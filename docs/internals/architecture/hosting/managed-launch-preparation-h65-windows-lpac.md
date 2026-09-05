@@ -206,6 +206,11 @@ proves from inside that child:
   remains in the atomically assigned Job; either way the complete tree is gone
   before settlement.
 
+The main, network, and descendant probes each own a fresh attempt-specific
+profile and exactly one root process. Every probe settles its Job, grants,
+scratch, and profile before the next profile is created; evidence-only process
+separation never weakens the one-profile/one-attempt/one-root rule.
+
 The network probe accepts only `WSAEACCES` at the exact attempted stage or
 `WSASYSCALLFAILURE` during `WSAStartup`; the latter is WinSock's generic result
 when an underlying provider/catalog system call cannot complete and still
