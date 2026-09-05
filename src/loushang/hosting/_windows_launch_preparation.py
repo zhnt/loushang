@@ -1049,13 +1049,16 @@ class _WindowsLpacProvisioner:
                 targets = _lpac_grant_targets(spec) + _lpac_private_grant_targets(
                     profile.private_root
                 )
-                if any(
-                    self._api.lpac_path_access(path, profile.sid)
-                    for path, _, _ in targets
-                ):
+                existing = tuple(
+                    (index, access)
+                    for index, (path, _, _) in enumerate(targets)
+                    if (access := self._api.lpac_path_access(path, profile.sid))
+                )
+                if existing:
                     raise HostingError(
                         HostingFailureCategory.PREPARATION_STALE,
-                        "Windows LPAC grant target already has Package SID authority",
+                        "Windows LPAC grant target already has Package SID authority "
+                        f"(anonymous-targets={existing!r})",
                     )
                 begin_effect()
                 self._api.ensure_lpac_private_scratch(profile.private_root)
