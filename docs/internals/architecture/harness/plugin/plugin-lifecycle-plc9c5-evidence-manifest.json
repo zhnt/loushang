@@ -92,7 +92,7 @@
         "C52-CHANGEDBOOT-ABSENCE",
         "C52-SENTINEL-REDACTION"
       ],
-      "status": "planned"
+      "status": "implemented"
     },
     "PLC9C5-C5.3-WINDOWS-MECHANICS": {
       "junitPath": ".artifacts/plc9c5-c53-windows-mechanics.xml",

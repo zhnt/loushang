@@ -341,6 +341,10 @@ Neither may silently override a narrower implemented owner contract.
   freshness gate, deterministic publication/retirement lifecycle, durable
   settlement/debt, and restart latch. It retains default Current and adds no
   native bridge or production Product composition.
+- [PLC9C5 C5.2 Linux Native Profile Binding](plugin-lifecycle-plc9c5-c52-linux-native.md)
+  adds the single request-bound POSIX contained-profile friend, exact
+  policy/execution closure evidence, non-WSL Linux x86_64 rejection gate, and
+  retained native report. It remains default-dark and has no Product consumer.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)

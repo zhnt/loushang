@@ -45,6 +45,7 @@ jobs:
           src/loushang/hosting
           src/loushang/harness/workspace/process/hosting_compat.py
           src/loushang/harness/worker/__init__.py
+          src/loushang/harness/worker/_native_profile_bridge.py
           src/loushang/harness/worker/hosting_adapter.py
           src/loushang/harness/worker/owner_selection.py
           src/loushang/harness/worker/session.py
@@ -52,6 +53,7 @@ jobs:
           tests/hosting
           tests/harness/workspace/process/test_hosting_compat.py
           tests/harness/worker/test_hosting_adapter.py
+          tests/harness/worker/test_native_profile_bridge.py
           tests/architecture/test_hosting_h0_contract.py
           tests/architecture/test_hosting_h1_process_lifetime.py
           tests/architecture/test_hosting_h2_platform_contract.py
@@ -64,6 +66,7 @@ jobs:
           tests/architecture/test_hosting_h6_windows_native.py
           tests/architecture/test_hosted_product_runtime_v1_baseline.py
           tests/architecture/test_plugin_lifecycle_plc9c5_c50_baseline.py
+          tests/architecture/test_plugin_lifecycle_plc9c5_c52_linux_native.py
           tests/architecture/test_hosting_architecture_baseline.py
 
       - name: Typecheck Hosting H0-H6
@@ -72,6 +75,7 @@ jobs:
           src/loushang/hosting
           src/loushang/harness/workspace/process/hosting_compat.py
           src/loushang/harness/worker/__init__.py
+          src/loushang/harness/worker/_native_profile_bridge.py
           src/loushang/harness/worker/hosting_adapter.py
           src/loushang/harness/worker/owner_selection.py
           src/loushang/harness/worker/session.py
@@ -156,5 +160,6 @@ jobs:
           tests/architecture/test_hosting_h6_windows_native.py
           tests/architecture/test_hosted_product_runtime_v1_baseline.py
           tests/architecture/test_plugin_lifecycle_plc9c5_c50_baseline.py
+          tests/architecture/test_plugin_lifecycle_plc9c5_c52_linux_native.py
           tests/architecture/test_hosting_architecture_baseline.py
           -q

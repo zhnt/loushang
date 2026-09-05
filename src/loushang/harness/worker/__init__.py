@@ -1,5 +1,6 @@
 """Product-neutral local Worker containment contracts."""
 
+from ._native_profile_bridge import ProductWorkerNativeProfilePort
 from .capability_query import (
     CAPABILITY_WORKER_ADMISSION_VERSION,
     CAPABILITY_WORKER_AUTHORITY_VERSION,
@@ -137,6 +138,7 @@ __all__ = [
     "ProductWorkerActivationAuthorityPort",
     "ProductWorkerActivationPolicyV1",
     "ProductWorkerActivationReceiptV1",
+    "ProductWorkerNativeProfilePort",
     "WorkerHostingActivationError",
     "WorkerHostingActivationV1",
     "WorkerHostingSelectionV1",

@@ -65,7 +65,7 @@ lease, or factory.
 | Boundary | Producer shape | Consumer shape | Current result |
 | --- | --- | --- | --- |
 | executable/cwd | Harness private request retains native descriptors plus identity | Hosting `ProcessLaunchRequest` contains absolute strings | `hosting_compat` fails closed rather than substitute mutable paths |
-| containment | Harness `ProcessContainmentPlan` may rewrite the exact process request and owns semantic evidence | Hosting's public preparation lease exposes only `request`, `verify_current`, and `close`; H6 adds a private managed capture | H6.4 preserves an injected caller/native bridge, but the Current Worker plan has no eligible H6 profile adapter |
+| containment | Harness `ProcessContainmentPlan` may rewrite the exact process request and owns semantic evidence | Hosting's public preparation lease exposes only `request`, `verify_current`, and `close`; H6 adds a private managed capture | C5.2 supplies one default-dark Linux contained-profile adapter through the H6.4 seam; no Product composition selects it |
 | inherited resources | Harness Current path extracts private launch descriptors | H6.1 combines endpoint and opaque preparation inheritance internally; H6.2/H6.3 supply exact platform-private material | H6.4 can preserve an injected managed port, but no composition currently supplies either native profile for a Worker |
 | Windows required containment | PLC9B includes a purpose-specific AppContainer/Job implementation for legacy restore | Hosting H6.3 owns one narrower restricted-token/locked-PE profile | the managed semantic bridge exists, but no AppContainer equivalence, eligible Worker profile supplier, or native parity claim exists |
 | Product activation | PLC9C1--C4 provide declaration, launch, supervisor, and one dark domain adapter | H5 provides an explicit dark Hosting owner | no Product composition selects and publishes the native path |
@@ -112,9 +112,9 @@ The inventory records, rather than relaxes, these Current fences:
 - H5 default owner is Current and a selected owner never falls back during an
   attempt;
 - sealed-descriptor cases remain rejected by Hosting compatibility;
-- PLC9C5 C5.0 design/inventory and C5.1 receipt/lifecycle are implemented, but
-  Product activation, native profile consumption, and platform absence guards
-  remain unchanged;
+- PLC9C5 C5.0 design/inventory, C5.1 receipt/lifecycle, and the C5.2 Linux
+  profile capability are implemented, but Product activation and unsupported
+  platform guards remain unchanged;
 - AppHost A0.4 remains explicitly constructed and dark: its core runtime owns
   live bindings, while optional Harness Session and AppServer port adapters stay
   outside the core facade; AppServer contains contracts only, AppService remains

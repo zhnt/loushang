@@ -8,8 +8,9 @@
 - Parent: `PLC9C`
 - Authority: normative accepted design
 - Design status: accepted
-- Implementation status: implemented — C5.0 design/guards and C5.1
-  receipt/lifecycle contracts; C5.2--C5.4 not-started
+- Implementation status: implemented through C5.2 — C5.0 design/guards, C5.1
+  receipt/lifecycle, and the C5.2 Linux native profile binding; C5.3--C5.4
+  not-started
 - Activation status: closed; every production route remains default-dark
 - Observation base: `cb01f723`
 - Owner: Harness Worker architecture with Product, Hosting, and domain-owner
@@ -18,10 +19,9 @@
 ## Purpose And Acceptance Boundary
 
 C5.0 fixes the design, Current inventory, dependency direction, rollout
-matrix, and executable absence/deletion guards for PLC9C5. It adds no runtime
-contract, native profile supplier, Product composition, configuration key, or
-activation side effect. Accepting this document authorizes only C5.1 design
-contract implementation; it does not authorize a Product to request the
+matrix, and executable absence/deletion guards for PLC9C5. C5.1 adds the
+receipt/lifecycle contract and C5.2 adds only the default-dark Linux native
+profile capability. Neither authorizes a Product composition to request the
 Hosting owner.
 
 The first canary is one exact, read-only `capability_provider` contribution
@@ -125,9 +125,10 @@ authorities.
 
 The only new private cross-package edge contemplated by C5 is
 `src/loushang/harness/worker/_native_profile_bridge.py`. That one private
-Harness Worker module owns Linux dispatch and is the sole possible owner of
-any later accepted Windows dispatch, loads platform code explicitly and
-lazily, and exposes only `ProductWorkerNativeProfilePort` to the coordinator.
+Harness Worker module owns the implemented Linux dispatch and is the sole
+possible owner of any later accepted Windows dispatch, loads platform code
+explicitly and lazily, and exposes only `ProductWorkerNativeProfilePort` to
+the coordinator.
 It may import exactly
 `_PosixStaticContainedLaunchCaptureSpec` and
 `_PosixStaticLaunchCaptureBackend` for the accepted Linux path. The existing
@@ -143,7 +144,7 @@ adds only `ProductWorkerActivationPolicyV1`,
 `ProductWorkerActivationReceiptV1`,
 and `ProductWorkerActivationAuthorityPort` to that public surface. The C5.1
 `ProductWorkerActivationCoordinator` remains internal until a stable typed
-outcome/error and durable-owner seam exists. C5.2 may add only
+outcome/error and durable-owner seam exists. C5.2 adds only
 `ProductWorkerNativeProfilePort`. Private coordinator/store/lease/record,
 bridge/profile types, Product adapters, Hosting specifications, native
 material, and platform handles must never be exported there.
@@ -243,7 +244,7 @@ Current Worker shape.
 
 | Platform/profile | Already proven | Blocking C5 delta | Owning slice |
 | --- | --- | --- | --- |
-| Linux x86_64, excluding WSL, `posix-static-contained-elf-v1` | H6.2 seals one static launcher and payload, retains cwd, transfers only the exact endpoint/preparation descriptors, and owns process-group cleanup; its selector does **not** distinguish WSL today | Product policy must admit the exact payload/launcher/containment-profile closure; the selected Worker executable must be a supported static ELF; the unique bridge must classify WSL/unknown Linux before H6 selection, with Microsoft-kernel fixtures rejected fail closed; same-boot crash uncertainty remains durable cleanup debt | C5.1 contract then C5.2 Linux native canary |
+| Linux x86_64, excluding WSL, `posix-static-contained-elf-v1` | H6.2 seals one static launcher and payload, retains cwd, transfers only the exact endpoint/preparation descriptors, and owns process-group cleanup | implemented in C5.2: Product policy admits the exact payload/launcher/containment-profile closure; the unique bridge rejects WSL/unknown/non-x86 before H6 selection; same-boot crash uncertainty remains durable cleanup debt | C5.2 Linux native report implemented; no Product composition |
 | Windows AMD64 `windows-restricted-direct-import-pe-v1` | H6.3 locks PE/cwd/ancestors, creates a restricted token and kill-on-close Job, constrains the handle list, and proves direct-import mechanics | **Not accepted as Product required containment.** It is a trusted-payload mechanics profile only. A Hosting-private opaque builder must obtain locked file identities and query `GetWindowsDirectoryW` for a canonical absolute `SystemRoot`; it never reads `os.environ`. Ambient `SystemRoot` poisoning is ignored, while any caller-supplied environment/SystemRoot is rejected before acquisition. Harness/Product never receives raw handles or environment. The builder preserves H6.3 discarded stderr and cannot reuse H6.4's piped-stderr mapping. Windows Product canary remains closed until a separate security-reviewed containment profile is accepted | C5.3 retained mechanics/fail-closed gate; no Product activation |
 | macOS, WSL, unknown Linux classifier result, non-x86_64 Linux, non-AMD64 Windows, every unlisted environment | no accepted PLC9C5 Product native profile | remain unsupported with a stable fail-closed result; no best-effort/current same-attempt downgrade | retained through C5.4 |
 
@@ -392,21 +393,20 @@ deletion requires G9 evidence that every supported consumer has converged and
 rollback no longer needs the Current path. A new implementation is not proof
 that the old owner is unused.
 
-## C5.0 Executable Guards
+## Per-Slice Executable Guards
 
-While C5.0 is the active baseline, architecture tests must prove:
+While C5.2 is the active implementation edge, architecture tests must prove:
 
 - the baseline and inventory are indexed once and reproduce every G7 matrix
   dimension and required case from the parent plan;
 - every Current inventory source exists and the documented source set is exact;
-- no source defines the C5.1 receipt/coordinator/profile-binding target symbols;
+- only the named C5.1 receipt/coordinator contracts and C5.2 profile port exist;
 - no non-Worker production module composes the H5 owner selector, H6 adapter,
   or C4 Capability adapter; Sandbox remains the sole non-Worker importer of
   the existing Worker launch capability;
-- H6 private POSIX/Windows profile specifications are imported only within
-  Hosting; the H6.4 private preparation friend edge remains confined to the
-  existing Worker adapter; the future platform-profile friend is absent and
-  reserved to exactly `_native_profile_bridge.py`;
+- the sole `_native_profile_bridge.py` friend imports exactly the two accepted
+  private POSIX profile symbols and no Windows/raw platform API; the H6.4
+  private preparation edge remains confined to the existing Worker adapter;
 - Coding Product and presenter modules import no Harness Worker or Hosting
   implementation;
 - owner selection still defaults to Current, performs no environment lookup,
