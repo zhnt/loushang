@@ -19,6 +19,8 @@ WINDOWS_PREPARATION = HOSTING_ROOT / "_windows_launch_preparation.py"
 WINDOWS_RAW = HOSTING_ROOT / "_win32_process.py"
 WINDOWS_PROCESS = HOSTING_ROOT / "_windows_process.py"
 WINDOWS_NATIVE = Path("tests/hosting/test_windows_lpac_preparation_native.py")
+BRIDGE = Path("src/loushang/harness/worker/_native_profile_bridge.py")
+CODING_CANARY = Path("src/loushang/coding/_product_worker_canary.py")
 
 _PROFILE = "windows-lpac-contained-pe-v1"
 
@@ -57,8 +59,8 @@ def test_h65_design_status_and_product_boundary_are_honest() -> None:
         "ID: `HOST-H6.5-WINDOWS-LPAC`",
         "Authority: normative accepted design",
         "Design status: accepted",
-        "Implementation status: implemented candidate through H6.5b native mechanics; H6.5c Product composition is not implemented",
-        "Native activation: mandatory Windows AMD64 evidence gate only; no Product consumer",
+        "Implementation status: native mechanics implemented through H6.5b; paired C5.5c Product composition is implemented through the sole Harness friend",
+        "Native activation: mandatory Windows AMD64 native and Product evidence gates; no direct Product consumer",
         "Runtime posture: default-dark",
         "does not know Product, Plugin, Worker, Sandbox policy",
         "distinct `windows-lpac-contained-pe-v1` profile",
@@ -68,8 +70,8 @@ def test_h65_design_status_and_product_boundary_are_honest() -> None:
     assert _read(INDEX).count("(managed-launch-preparation-h65-windows-lpac.md)") == 1
     h6 = " ".join(_read(H6).split())
     assert (
-        "H6.5b Windows LPAC native mechanics are an implemented default-dark "
-        "candidate with no Product consumer"
+        "H6.5b Windows LPAC native mechanics retain one C5.5c Harness friend "
+        "consumer and no direct Product consumer"
     ) in h6
     assert "H6.5a" in h6 and "H6.5b" in h6
     assert "No unresolved high or medium design issue remains" in document
@@ -159,21 +161,29 @@ def test_h65_design_requires_real_in_child_negative_authority_evidence() -> None
     assert "attempt_id=tree_attempt.provision.attempt_id" in native
 
 
-def test_h65b_runtime_symbols_are_hosting_private_without_cross_package_dependency() -> (
-    None
-):
+def test_h65c_runtime_symbols_have_one_friend_without_reverse_dependency() -> None:
     production_without_legacy = "\n".join(
         _read(path) for path in SOURCE_ROOT.rglob("*.py") if path != LEGACY
     )
     assert _PROFILE in production_without_legacy
     assert "_WindowsLpacProvisioner" in production_without_legacy
-    outside_hosting = "\n".join(
-        _read(path)
+    private_consumers = {
+        path
         for path in SOURCE_ROOT.rglob("*.py")
-        if HOSTING_ROOT not in path.parents and path != LEGACY
-    )
-    assert _PROFILE not in outside_hosting
-    assert "_WindowsLpacProvisioner" not in outside_hosting
+        if HOSTING_ROOT not in path.parents
+        and path != LEGACY
+        and "_WindowsLpacProvisioner" in _read(path)
+    }
+    assert private_consumers == {BRIDGE}
+    profile_consumers = {
+        path
+        for path in SOURCE_ROOT.rglob("*.py")
+        if HOSTING_ROOT not in path.parents
+        and path != LEGACY
+        and _PROFILE in _read(path)
+    }
+    assert profile_consumers == {BRIDGE, CODING_CANARY}
+    assert "_WindowsLpacProvisioner" not in _read(CODING_CANARY)
     hosting_imports = {
         imported for path in HOSTING_ROOT.rglob("*.py") for imported in _imports(path)
     }

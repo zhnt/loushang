@@ -130,7 +130,7 @@ def test_c54_status_inventory_manifest_and_index_are_honest() -> None:
         "zero skips, failures, and errors",
     ):
         assert token in document
-    assert "implemented through C5.4" in baseline
+    assert "implemented through C5.5c" in baseline
     assert "C5-C54-LINUX-PRODUCT" in inventory
     assert _read(INDEX).count("(plugin-lifecycle-plc9c5-c54-linux-product.md)") == 1
     assert report["status"] == "implemented"

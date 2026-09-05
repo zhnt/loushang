@@ -209,7 +209,7 @@
         "C55C-NO-FALLBACK",
         "C55C-SENTINEL-REDACTION"
       ],
-      "status": "planned"
+      "status": "implemented"
     }
   }
 }

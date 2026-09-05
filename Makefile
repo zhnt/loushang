@@ -259,6 +259,14 @@ test-plc9c5-c55b-windows-lpac-native:
 
 check-plc9c5-c55b-windows-lpac-native: test-plc9c5-c55b-windows-lpac-native
 
+test-plc9c5-c55c-windows-product:
+	mkdir -p .artifacts
+	LOUSHANG_PLC9C5_C55C_REPORT=1 uv --cache-dir .uv-cache run --extra dev $(PYTEST_RUNNER) tests/harness/worker/test_coding_product_worker_windows_canary.py -q --junitxml=.artifacts/plc9c5-c55c-windows-product.xml
+	uv --cache-dir .uv-cache run --extra dev python scripts/dev/verify_pytest_xml.py .artifacts/plc9c5-c55c-windows-product.xml
+	uv --cache-dir .uv-cache run --extra dev python scripts/dev/verify_plc9c5_manifest.py docs/internals/architecture/harness/plugin/plugin-lifecycle-plc9c5-evidence-manifest.json PLC9C5-C5.5C-WINDOWS-PRODUCT .artifacts/plc9c5-c55c-windows-product.xml
+
+check-plc9c5-c55c-windows-product: test-plc9c5-c55c-windows-product
+
 test-plc9c5-c54-linux-product:
 	mkdir -p .artifacts
 	uv --cache-dir .uv-cache run --extra dev $(PYTEST_RUNNER) tests/harness/worker/test_coding_product_worker_canary.py -q --junitxml=.artifacts/plc9c5-c54-linux-product.xml

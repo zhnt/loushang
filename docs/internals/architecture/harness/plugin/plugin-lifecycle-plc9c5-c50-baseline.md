@@ -8,13 +8,12 @@
 - Parent: `PLC9C`
 - Authority: normative accepted design
 - Design status: accepted
-- Implementation status: implemented through C5.4 — C5.0 design/guards,
+- Implementation status: implemented through C5.5c — C5.0 design/guards,
   C5.1 receipt/lifecycle, C5.2 Linux native profile binding, C5.3 Windows
-  mechanics/rejection, and the C5.4 Linux Coding Product canary; additionally,
-  C5.5a design and the C5.5b Windows LPAC native candidate are implemented;
-  C5.5c Product composition remains unimplemented
-- Activation status: explicit Linux Coding canary accepted; default remains
-  Current and Windows/every unlisted platform remain closed
+  mechanics/rejection, C5.4 Linux Coding Product canary, C5.5a design, C5.5b
+  Windows LPAC native containment, and C5.5c Windows Coding Product composition
+- Activation status: explicit Linux and Windows AMD64 Coding canaries accepted;
+  default remains Current and every unlisted platform/profile remains closed
 - Observation base: merged C5.5a design baseline `68151253`
 - Owner: Harness Worker architecture with Product, Hosting, and domain-owner
   review
@@ -131,16 +130,12 @@ authorities.
 
 The only new private cross-package edge contemplated by C5 is
 `src/loushang/harness/worker/_native_profile_bridge.py`. That one private
-Harness Worker module owns the implemented Linux dispatch and is the sole
-possible owner of any later accepted Windows dispatch, loads platform code
+Harness Worker module owns the implemented Linux and Windows dispatch, loads platform code
 explicitly and lazily, and exposes only `ProductWorkerNativeProfilePort` to
 the coordinator.
-It may import exactly
-`_PosixStaticContainedLaunchCaptureSpec` and
-`_PosixStaticLaunchCaptureBackend` for the accepted Linux path. The existing
-Windows private names remain forbidden until a later transition names the
-exact symbols it needs; `_win32_process` and raw platform APIs are never legal
-imports. No second friend module and no import from the public
+It may import exactly the accepted private POSIX capture symbols and the C5.5b
+LPAC provision/capture symbols named by the C5.5c guard. `_win32_process` and
+raw platform APIs are never legal imports. No second friend module and no import from the public
 `hosting_adapter.py` are permitted. Public Hosting contracts remain
 Product-neutral, and Product packages depend only on public Harness
 records/ports.
@@ -251,19 +246,17 @@ Current Worker shape.
 | Platform/profile | Already proven | Blocking C5 delta | Owning slice |
 | --- | --- | --- | --- |
 | Linux x86_64, excluding WSL, `posix-static-contained-elf-v1` | H6.2 seals one static launcher and payload, retains cwd, transfers only the exact endpoint/preparation descriptors, and owns process-group cleanup | implemented in C5.2: Product policy admits the exact payload/launcher/containment-profile closure; the unique bridge rejects WSL/unknown/non-x86 before H6 selection; same-boot crash uncertainty remains durable cleanup debt | C5.2 Linux native report retained; consumed only by the exact C5.4 Coding Product root |
-| Windows AMD64 `windows-restricted-direct-import-pe-v1` | H6.3 locks PE/cwd/ancestors, creates a restricted token and kill-on-close Job, constrains the handle list, and proves direct-import mechanics | **Not accepted as Product required containment.** It is a trusted-payload mechanics profile only. A Hosting-private opaque builder must obtain locked file identities and query `GetWindowsDirectoryW` for a canonical absolute `SystemRoot`; it never reads `os.environ`. Ambient `SystemRoot` poisoning is ignored, while any caller-supplied environment/SystemRoot is rejected before acquisition. Harness/Product never receives raw handles or environment. The builder preserves H6.3 discarded stderr and cannot reuse H6.4's piped-stderr mapping. Windows Product canary remains closed until a separate security-reviewed containment profile is accepted | C5.3 retained mechanics/fail-closed gate; no Product activation |
-| macOS, WSL, unknown Linux classifier result, non-x86_64 Linux, non-AMD64 Windows, every unlisted environment | no accepted PLC9C5 Product native profile | remain unsupported with a stable fail-closed result; no best-effort/current same-attempt downgrade | retained through C5.4 |
+| Windows AMD64 `windows-restricted-direct-import-pe-v1` | H6.3 locks PE/cwd/ancestors, creates a restricted token and kill-on-close Job, constrains the handle list, and proves direct-import mechanics | **Not accepted as Product required containment.** It is a trusted-payload mechanics profile only. A Hosting-private opaque builder obtains locked file identities and canonical `SystemRoot`; Ambient `SystemRoot` poisoning is ignored and caller-supplied environment/SystemRoot is rejected. This profile stays permanently Product-ineligible; C5.5 accepts a separate LPAC profile rather than relabeling it | C5.3 retained mechanics/fail-closed gate; no Product activation |
+| Windows AMD64 `windows-lpac-contained-pe-v1` | H6.5 proves a fresh zero-capability LPAC profile, exact Package SID/grant/private state, opt-out, closed environment, exact handle list, atomic Job ownership, and native cleanup | C5.5c's sole friend bridge binds the pathless provisioning plan to the exact receipt/request and cleanup V2 requires both tree and native-containment settlement | C5.5b native and C5.5c Product reports retained; consumed only by the explicit Coding Product root |
+| macOS, WSL, unknown Linux classifier result, non-x86_64 Linux, non-AMD64 Windows, every unlisted environment | no accepted PLC9C5 Product native profile | remain unsupported with a stable fail-closed result; no best-effort/current same-attempt downgrade | retained through C5.5c |
 
 Platform observation may choose among the receipt's already allowed native
 profiles only after the receipt explicitly requests Hosting. It may reject an
 unsupported host, but it cannot cause Hosting selection.
 
-The first Product canary is therefore Linux-only. The parent G7 Windows
-required-containment row remains deliberately open: current H6.3 evidence
-cannot satisfy it, and C5.3 must prove both that its mechanics are retained and
-that Product required-containment policy rejects that profile. A future slice
-may reopen Windows only with a separately accepted profile and exact guard
-transition; C5.0 does not pre-authorize an AppContainer or claim equivalence.
+The first Product canary was Linux-only. C5.5c closes the parent G7 Windows
+required-containment row with the separately accepted LPAC profile; H6.3's
+restricted-token profile remains rejected and cannot satisfy that policy.
 
 ## G7 Acceptance Coverage
 
@@ -276,7 +269,7 @@ by testing only its platform.
 | Product route | explicit selected Product, missing Product, wrong Product, disabled contribution | C5.1 receipt validation; C5.4 real Coding Product composition |
 | Session route | canonical and cwd/home compatibility projections, tampered/unknown Product envelope, alias, conflict, and changed locator | C5.4 selects a stable locator and validates Coding's persisted Product profile before issuing a receipt; generic pre-routing AppHost behavior remains G5/G8 |
 | contribution policy | required success/failure and optional success/degraded failure | C5.1 deterministic aggregate contract; C5.4 Product readiness conformance |
-| native platform | Linux required containment and Windows required containment; unsupported hosts fail closed | C5.2 retained Linux native report; C5.3 retained Windows mechanics and required-containment rejection report; C5.4 unsupported-host conformance; C5.5b/C5.5c plan separate Windows native/Product reports; G7 stays open until both are implemented and accepted |
+| native platform | Linux required containment and Windows required containment; unsupported hosts fail closed | C5.2 retained Linux native report; C5.3 retained Windows mechanics and required-containment rejection report; C5.4 unsupported-host conformance; C5.5b/C5.5c retain separate Windows native/Product reports and close G7 together |
 | preparation | executable/cwd replacement, stale authority, handle/fd substitution, unsupported profile | C5.2/C5.3 adversarial native tests plus C5.4 receipt-freshness tests |
 | lifecycle | cancellation at each acquisition, early exit, handshake failure, heartbeat loss, clean stop, forced kill | C5.2/C5.3 platform ownership tests and C5.4 aggregate lifecycle tests |
 | recovery | prior attempt absent, confirmed reaped, uncertain tree, restart-budget exhaustion, host restart | C5.1 durable settlement/debt contract; C5.2/C5.3 platform crash evidence; C5.4 Product recovery drill; adoption remains forbidden |

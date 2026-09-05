@@ -23,6 +23,8 @@ SOURCE_ROOT = Path("src/loushang")
 HOSTING_ROOT = SOURCE_ROOT / "hosting"
 WORKER_ROOT = SOURCE_ROOT / "harness" / "worker"
 BRIDGE = WORKER_ROOT / "_native_profile_bridge.py"
+PRODUCT_ACTIVATION = WORKER_ROOT / "product_activation.py"
+CODING_CANARY = SOURCE_ROOT / "coding" / "_product_worker_canary.py"
 WINDOWS_PREPARATION = HOSTING_ROOT / "_windows_launch_preparation.py"
 LEGACY_APPCONTAINER = (
     SOURCE_ROOT / "harness" / "sandbox" / "package_windows_legacy_runtime.py"
@@ -32,6 +34,9 @@ HOSTING_WORKFLOW = Path(".github/workflows/hosting-quality.yml")
 MANIFEST = Path(
     "docs/internals/architecture/harness/plugin/"
     "plugin-lifecycle-plc9c5-evidence-manifest.json"
+)
+PRODUCT_REPORT = Path(
+    "tests/harness/worker/test_coding_product_worker_windows_canary.py"
 )
 
 _PLANNED_PROFILE = "windows-lpac-contained-pe-v1"
@@ -107,7 +112,23 @@ def _imports(path: Path) -> set[str]:
     return result
 
 
-def test_c55a_status_index_and_parent_plan_are_honest() -> None:
+def _literal_collection(path: Path, name: str) -> tuple[str, ...]:
+    tree = ast.parse(_read(path), filename=str(path))
+    for node in tree.body:
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+            continue
+        targets = node.targets if isinstance(node, ast.Assign) else (node.target,)
+        if any(
+            isinstance(target, ast.Name) and target.id == name for target in targets
+        ):
+            assert node.value is not None
+            value = ast.literal_eval(node.value)
+            assert isinstance(value, (tuple, list))
+            return tuple(value)
+    raise AssertionError(f"{name} is absent from {path}")
+
+
+def test_c55c_status_index_and_parent_plan_are_honest() -> None:
     document = " ".join(_read(DOCUMENT).split())
     baseline = " ".join(_read(BASELINE).split())
     inventory = " ".join(_read(INVENTORY).split())
@@ -116,8 +137,8 @@ def test_c55a_status_index_and_parent_plan_are_honest() -> None:
         "ID: `PLC9C5-C5.5-WINDOWS-CONTAINMENT`",
         "Authority: normative accepted design",
         "Design status: accepted",
-        "Implementation status: implemented candidate through C5.5b native mechanics; C5.5c Product composition is not implemented",
-        "Activation status: closed",
+        "Implementation status: implemented through C5.5c",
+        "Activation status: exact Windows AMD64 Coding canary accepted",
         "Production default: Current",
         "C5.5 closes G7 only after both the Windows native containment report",
         "It does not join AppHost; that remains G8",
@@ -132,7 +153,7 @@ def test_c55a_status_index_and_parent_plan_are_honest() -> None:
         assert slice_id in baseline
         assert slice_id in delivery
     assert "merged C5.5a design baseline `68151253`" in inventory
-    assert "implemented C5.5b candidate grants no activation authority" in inventory
+    assert "G7 is closed by their combined evidence" in inventory
 
 
 def test_c55a_freezes_the_threat_model_and_resource_lifetimes() -> None:
@@ -172,25 +193,36 @@ def test_c55a_keeps_sole_writers_and_dependency_direction_explicit() -> None:
         assert token in document
 
 
-def test_c55b_keeps_runtime_private_until_product_report_exists() -> None:
-    # C5.5b adds only Hosting-private mechanics. Harness and Product remain
-    # unable to construct or select the candidate profile.
+def test_c55c_has_one_friend_bridge_and_one_product_dispatch() -> None:
     production = "\n".join(
         _read(path) for path in SOURCE_ROOT.rglob("*.py") if path != LEGACY_APPCONTAINER
     )
     assert _PLANNED_PROFILE in production
     bridge = _read(BRIDGE)
-    assert "_WindowsLpac" not in bridge
-    assert "_build_windows_lpac" not in bridge
-    assert "loushang.hosting._windows_launch_preparation" not in _imports(BRIDGE)
+    assert "_WindowsLpacProvisioner" in bridge
+    assert "_build_windows_lpac_launch_capture_spec" in bridge
+    assert "loushang.hosting._windows_launch_preparation" in _imports(BRIDGE)
     assert "_WindowsLpacProvisioner" in _read(WINDOWS_PREPARATION)
-    outside_hosting = "\n".join(
-        _read(path)
+    private_consumers = {
+        path
         for path in SOURCE_ROOT.rglob("*.py")
-        if HOSTING_ROOT not in path.parents and path != LEGACY_APPCONTAINER
-    )
-    assert _PLANNED_PROFILE not in outside_hosting
-    assert "_WindowsLpacProvisioner" not in outside_hosting
+        if HOSTING_ROOT not in path.parents
+        and path != LEGACY_APPCONTAINER
+        and "_WindowsLpacProvisioner" in _read(path)
+    }
+    assert private_consumers == {BRIDGE}
+    profile_consumers = {
+        path
+        for path in SOURCE_ROOT.rglob("*.py")
+        if HOSTING_ROOT not in path.parents
+        and path != LEGACY_APPCONTAINER
+        and _PLANNED_PROFILE in _read(path)
+    }
+    assert profile_consumers == {BRIDGE, CODING_CANARY}
+    coding = _read(CODING_CANARY)
+    assert "_bind_windows_lpac_contained_product_worker_profile" in coding
+    assert "loushang.hosting" not in "\n".join(sorted(_imports(CODING_CANARY)))
+    assert "_WindowsLpacProvisioner" not in coding
     assert "windows-restricted-direct-import-pe-v1" in production
 
 
@@ -213,7 +245,32 @@ def test_c55a_requires_in_child_native_authority_and_lifecycle_evidence() -> Non
         assert token in document
 
 
-def test_c55b_implements_native_and_keeps_product_report_planned() -> None:
+def test_c55c_versions_cleanup_and_closes_only_after_native_settlement() -> None:
+    activation = _read(PRODUCT_ACTIVATION)
+    canary = _read(CODING_CANARY)
+    bridge = _read(BRIDGE)
+    for token in (
+        "class WorkerCleanupSettlementV2",
+        "native_containment_settled",
+        "class WorkerCleanupDebtV2",
+        "native_containment_unknown",
+        'method_name="verify_native_containment_settlement"',
+        '"cleanupContractVersion"',
+    ):
+        assert token in activation
+    for token in (
+        "cleanup_contract_version",
+        "native_containment_settlement_witness",
+        "_native_cleanup_witness_arguments",
+        "_bind_windows_lpac_contained_product_worker_profile",
+    ):
+        assert token in canary
+    assert 'phase="settled"' in bridge
+    assert "worker_native_containment_unsettled" in bridge
+    assert "windows-restricted-direct-import-pe-v1" not in canary
+
+
+def test_c55c_implements_native_and_product_reports() -> None:
     reports = json.loads(_read(MANIFEST))["reports"]
     native = reports["PLC9C5-C5.5B-WINDOWS-LPAC-NATIVE"]
     product = reports["PLC9C5-C5.5C-WINDOWS-PRODUCT"]
@@ -229,17 +286,18 @@ def test_c55b_implements_native_and_keeps_product_report_planned() -> None:
         "junitPath": ".artifacts/plc9c5-c55c-windows-product.xml",
         "minimumTests": 28,
         "requiredCaseIds": list(product["requiredCaseIds"]),
-        "status": "planned",
+        "status": "implemented",
     }
     assert set(product["requiredCaseIds"]) == _C55C_CASES
     assert len(product["requiredCaseIds"]) == len(_C55C_CASES)
 
 
-def test_c55a_has_a_focused_local_architecture_gate() -> None:
+def test_c55c_has_focused_local_and_remote_gates() -> None:
     makefile = _read(MAKEFILE)
     workflow = _read(HOSTING_WORKFLOW)
     assert "check-plc9c5-c55-windows-containment-design" in makefile
     assert "check-plc9c5-c55b-windows-lpac-native" in makefile
+    assert "check-plc9c5-c55c-windows-product" in makefile
     for token in (
         "LOUSHANG_PLC9C5_C55B_REPORT",
         "tests/hosting/test_plc9c5_c55b_windows_lpac_native.py",
@@ -250,6 +308,20 @@ def test_c55a_has_a_focused_local_architecture_gate() -> None:
     ):
         assert token in makefile
         assert token in workflow
+    for token in (
+        "LOUSHANG_PLC9C5_C55C_REPORT",
+        "tests/harness/worker/test_coding_product_worker_windows_canary.py",
+        ".artifacts/plc9c5-c55c-windows-product.xml",
+        "PLC9C5-C5.5C-WINDOWS-PRODUCT",
+    ):
+        assert token in makefile
+        assert token in workflow
+    assert set(_literal_collection(PRODUCT_REPORT, "PLC9C5_C55C_CASES")) == (
+        _C55C_CASES
+    )
+    assert workflow.index("PLC9C5 C5.5b Windows LPAC native containment gate") < (
+        workflow.index("PLC9C5 C5.5c Windows Product composition gate")
+    )
     assert (
         "tests/architecture/test_plugin_lifecycle_plc9c5_c55_windows_containment.py"
     ) in makefile

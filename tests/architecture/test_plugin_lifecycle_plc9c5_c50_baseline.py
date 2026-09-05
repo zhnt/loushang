@@ -617,15 +617,15 @@ def test_c50_status_is_honest_and_documents_are_indexed_once() -> None:
         "Authority": "normative accepted design",
         "Design status": "accepted",
         "Implementation status": (
-            "implemented through C5.4 — C5.0 design/guards, C5.1 "
+            "implemented through C5.5c — C5.0 design/guards, C5.1 "
             "receipt/lifecycle, C5.2 Linux native profile binding, C5.3 Windows "
-            "mechanics/rejection, and the C5.4 Linux Coding Product canary; "
-            "additionally, C5.5a design and the C5.5b Windows LPAC native candidate "
-            "are implemented; C5.5c Product composition remains unimplemented"
+            "mechanics/rejection, C5.4 Linux Coding Product canary, C5.5a design, "
+            "C5.5b Windows LPAC native containment, and C5.5c Windows Coding Product "
+            "composition"
         ),
         "Activation status": (
-            "explicit Linux Coding canary accepted; default remains Current and "
-            "Windows/every unlisted platform remain closed"
+            "explicit Linux and Windows AMD64 Coding canaries accepted; default "
+            "remains Current and every unlisted platform/profile remains closed"
         ),
         "Observation base": "merged C5.5a design baseline `68151253",
         "Owner": (
@@ -673,6 +673,7 @@ def test_c50_current_inventory_source_set_is_exact_and_present() -> None:
         "C5-C52-LINUX-NATIVE",
         "C5-C53-WINDOWS-MECHANICS",
         "C5-C54-LINUX-PRODUCT",
+        "C5-C55C-WINDOWS-PRODUCT",
         "C5-CUR-WORKER-IDENTITY",
         "C5-CUR-CURRENT-LAUNCH",
         "C5-CUR-WORKER-SESSION",
@@ -726,7 +727,7 @@ def test_c50_reproduces_the_complete_parent_g7_matrix() -> None:
             "C5.3",
             "Windows mechanics",
             "C5.5b/C5.5c",
-            "G7 stays open",
+            "close G7 together",
         ),
         "preparation": ("C5.2/C5.3", "adversarial native", "C5.4"),
         "lifecycle": ("C5.2/C5.3", "platform ownership", "C5.4"),
@@ -767,8 +768,8 @@ def test_c50_freezes_dependency_and_native_shape_decisions() -> None:
         "the prior receipt becomes stale",
         "no same-attempt fallback",
         "generic pre-routing AppHost behavior remains G5/G8",
-        "The first Product canary is therefore Linux-only",
-        "G7 stays open until both are implemented and accepted",
+        "The first Product canary was Linux-only",
+        "C5.5c closes the parent G7 Windows required-containment row",
         "GetWindowsDirectoryW",
         "Ambient `SystemRoot` poisoning is ignored",
         "caller-supplied environment/SystemRoot is rejected",
@@ -778,13 +779,12 @@ def test_c50_freezes_dependency_and_native_shape_decisions() -> None:
     for mismatch in (
         "static launcher digest",
         "containment-profile digest",
-        "snapshots locked volume/file identities",
-        "canonical `SystemRoot` through `GetWindowsDirectoryW`",
-        "ambient poisoning is closed",
-        "discarded stderr",
-        "restricted-token/Job/direct-import mechanics",
+        "snapshots exact runtime/grant/profile identities",
+        "canonical bootstrap values through OS APIs",
+        "semantic lease verifies the Hosting-built request before effect",
+        "LPAC/zero-capability/opt-out/grant/Job mechanics",
         "selector currently accepts WSL",
-        "current profile is explicitly rejected for Product required containment",
+        "H6.3 restricted-token profile remains rejected",
         "full V1--V6 vector",
         "production canary latches first",
         "R1--R7 is executable",
