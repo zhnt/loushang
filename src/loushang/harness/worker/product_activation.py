@@ -23,9 +23,11 @@ from typing import Literal, Protocol, Self, cast
 
 PRODUCT_WORKER_ACTIVATION_POLICY_VERSION = 1
 PRODUCT_WORKER_ACTIVATION_RECEIPT_VERSION = 1
-PRODUCT_WORKER_ACTIVATION_STATE_VERSION = 1
+PRODUCT_WORKER_ACTIVATION_STATE_VERSION = 2
 WORKER_CLEANUP_SETTLEMENT_VERSION = 1
 WORKER_CLEANUP_DEBT_VERSION = 1
+WORKER_CLEANUP_SETTLEMENT_V2_VERSION = 2
+WORKER_CLEANUP_DEBT_V2_VERSION = 2
 
 _IDENTIFIER = re.compile(r"[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?")
 _OPAQUE = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9._:@+-]*[A-Za-z0-9])?")
@@ -66,6 +68,12 @@ class _ActivationReason(str, Enum):
 class _CleanupDebtReason(str, Enum):
     SAME_BOOT_UNKNOWN_TREE = "same_boot_unknown_tree"
     SETTLEMENT_INCOMPLETE = "settlement_incomplete"
+
+
+class _CleanupDebtReasonV2(str, Enum):
+    PROCESS_TREE_UNKNOWN = "process_tree_unknown"
+    NATIVE_CONTAINMENT_UNKNOWN = "native_containment_unknown"
+    TREE_AND_NATIVE_CONTAINMENT_UNKNOWN = "tree_and_native_containment_unknown"
 
 
 class _ActivationRejected(RuntimeError):
@@ -473,6 +481,82 @@ class WorkerCleanupSettlementV1:
 
 
 @dataclass(frozen=True, slots=True)
+class WorkerCleanupSettlementV2:
+    """Durable proof that process and persistent containment both settled."""
+
+    receipt_fingerprint: str
+    attempt_id: str
+    owner_generation: int
+    host_identity: str
+    boot_identity: str
+    protocol_terminal: bool
+    domain_retired: bool
+    tree_settled: bool
+    native_containment_settled: bool
+    settlement_version: int = WORKER_CLEANUP_SETTLEMENT_V2_VERSION
+
+    def __post_init__(self) -> None:
+        _require_sha256(self.receipt_fingerprint, name="receipt fingerprint")
+        _require_attempt_id(self.attempt_id)
+        _require_positive_integer(self.owner_generation, name="owner generation")
+        _require_opaque(self.host_identity, name="host identity")
+        _require_opaque(self.boot_identity, name="boot identity")
+        for name, value in (
+            ("protocol terminal", self.protocol_terminal),
+            ("domain retired", self.domain_retired),
+            ("tree settled", self.tree_settled),
+            ("native containment settled", self.native_containment_settled),
+        ):
+            _require_bool(value, name=name)
+        if not (
+            self.protocol_terminal
+            and self.domain_retired
+            and self.tree_settled
+            and self.native_containment_settled
+        ):
+            raise ValueError("Cleanup V2 settlement requires all exact-attempt edges")
+        if self.settlement_version != WORKER_CLEANUP_SETTLEMENT_V2_VERSION:
+            raise ValueError("Unsupported Worker cleanup V2 settlement version")
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "attemptId": self.attempt_id,
+            "bootIdentity": self.boot_identity,
+            "domainRetired": self.domain_retired,
+            "hostIdentity": self.host_identity,
+            "nativeContainmentSettled": self.native_containment_settled,
+            "ownerGeneration": self.owner_generation,
+            "protocolTerminal": self.protocol_terminal,
+            "receiptFingerprint": self.receipt_fingerprint,
+            "settlementVersion": self.settlement_version,
+            "treeSettled": self.tree_settled,
+        }
+
+    @classmethod
+    def from_dict(cls, value: object) -> Self:
+        document = _strict_document(
+            value,
+            _SETTLEMENT_V2_FIELDS,
+            name="cleanup V2 settlement",
+        )
+        return cls(
+            receipt_fingerprint=_string(document, "receiptFingerprint"),
+            attempt_id=_string(document, "attemptId"),
+            owner_generation=_integer(document, "ownerGeneration"),
+            host_identity=_string(document, "hostIdentity"),
+            boot_identity=_string(document, "bootIdentity"),
+            protocol_terminal=_bool(document, "protocolTerminal"),
+            domain_retired=_bool(document, "domainRetired"),
+            tree_settled=_bool(document, "treeSettled"),
+            native_containment_settled=_bool(
+                document,
+                "nativeContainmentSettled",
+            ),
+            settlement_version=_integer(document, "settlementVersion"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class WorkerCleanupDebtV1:
     """Durable, pathless fence for an exact attempt with unknown tree state."""
 
@@ -519,6 +603,83 @@ class WorkerCleanupDebtV1:
             owner_generation=_integer(document, "ownerGeneration"),
             host_identity=_string(document, "hostIdentity"),
             boot_identity=_string(document, "bootIdentity"),
+            reason=reason,
+            debt_version=_integer(document, "debtVersion"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class WorkerCleanupDebtV2:
+    """Durable fence identifying which native exit edge remains unknown."""
+
+    receipt_fingerprint: str
+    attempt_id: str
+    owner_generation: int
+    host_identity: str
+    boot_identity: str
+    process_tree_unknown: bool
+    native_containment_unknown: bool
+    reason: _CleanupDebtReasonV2
+    debt_version: int = WORKER_CLEANUP_DEBT_V2_VERSION
+
+    def __post_init__(self) -> None:
+        _require_sha256(self.receipt_fingerprint, name="receipt fingerprint")
+        _require_attempt_id(self.attempt_id)
+        _require_positive_integer(self.owner_generation, name="owner generation")
+        _require_opaque(self.host_identity, name="host identity")
+        _require_opaque(self.boot_identity, name="boot identity")
+        _require_bool(self.process_tree_unknown, name="process tree unknown")
+        _require_bool(
+            self.native_containment_unknown,
+            name="native containment unknown",
+        )
+        if not isinstance(self.reason, _CleanupDebtReasonV2):
+            raise TypeError("Worker cleanup V2 debt requires a closed reason")
+        expected_reason = {
+            (True, False): _CleanupDebtReasonV2.PROCESS_TREE_UNKNOWN,
+            (False, True): _CleanupDebtReasonV2.NATIVE_CONTAINMENT_UNKNOWN,
+            (True, True): _CleanupDebtReasonV2.TREE_AND_NATIVE_CONTAINMENT_UNKNOWN,
+        }.get((self.process_tree_unknown, self.native_containment_unknown))
+        if self.reason is not expected_reason:
+            raise ValueError("Worker cleanup V2 debt edge state is inconsistent")
+        if self.debt_version != WORKER_CLEANUP_DEBT_V2_VERSION:
+            raise ValueError("Unsupported Worker cleanup V2 debt version")
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "attemptId": self.attempt_id,
+            "bootIdentity": self.boot_identity,
+            "debtVersion": self.debt_version,
+            "hostIdentity": self.host_identity,
+            "nativeContainmentUnknown": self.native_containment_unknown,
+            "ownerGeneration": self.owner_generation,
+            "processTreeUnknown": self.process_tree_unknown,
+            "reason": self.reason.value,
+            "receiptFingerprint": self.receipt_fingerprint,
+        }
+
+    @classmethod
+    def from_dict(cls, value: object) -> Self:
+        document = _strict_document(
+            value,
+            _DEBT_V2_FIELDS,
+            name="cleanup V2 debt",
+        )
+        try:
+            reason = _CleanupDebtReasonV2(_string(document, "reason"))
+        except ValueError as error:
+            raise ValueError("Unsupported Worker cleanup V2 debt reason") from error
+        return cls(
+            receipt_fingerprint=_string(document, "receiptFingerprint"),
+            attempt_id=_string(document, "attemptId"),
+            owner_generation=_integer(document, "ownerGeneration"),
+            host_identity=_string(document, "hostIdentity"),
+            boot_identity=_string(document, "bootIdentity"),
+            process_tree_unknown=_bool(document, "processTreeUnknown"),
+            native_containment_unknown=_bool(
+                document,
+                "nativeContainmentUnknown",
+            ),
             reason=reason,
             debt_version=_integer(document, "debtVersion"),
         )
@@ -614,6 +775,7 @@ class _EvidenceAuthorityBinding:
     authority_id: str
     authority_fingerprint: str
     verify_tree_settlement: Callable[..., object]
+    verify_native_containment_settlement: Callable[..., object] | None
     verify_changed_boot_absence: Callable[..., object]
     verify_registered_lease_expired: Callable[..., object]
 
@@ -652,6 +814,10 @@ def _bind_evidence_authority(
         authority_id=authority_id,
         authority_fingerprint=authority_fingerprint,
         verify_tree_settlement=_bind_static_method(value, "verify_tree_settlement"),
+        verify_native_containment_settlement=_bind_optional_static_method(
+            value,
+            "verify_native_containment_settlement",
+        ),
         verify_changed_boot_absence=_bind_static_method(
             value,
             "verify_changed_boot_absence",
@@ -691,6 +857,19 @@ def _bind_static_method(value: object, name: str) -> Callable[..., object]:
     if not callable(bound):  # pragma: no cover - defensive descriptor closure
         raise TypeError(f"Worker activation port method {name} is not callable")
     return cast(Callable[..., object], bound)
+
+
+def _bind_optional_static_method(
+    value: object,
+    name: str,
+) -> Callable[..., object] | None:
+    descriptor = inspect.getattr_static(type(value), name, None)
+    visible = inspect.getattr_static(value, name, None)
+    instance_values = inspect.getattr_static(value, "__dict__", None)
+    shadowed = isinstance(instance_values, dict) and name in instance_values
+    if descriptor is None and visible is None and not shadowed:
+        return None
+    return _bind_static_method(value, name)
 
 
 class _MemoryActivationStateStore:
@@ -1108,6 +1287,7 @@ class ProductWorkerActivationCoordinator:
         owner_generation: int,
         host_identity: str,
         boot_identity: str,
+        cleanup_contract_version: int = WORKER_CLEANUP_SETTLEMENT_VERSION,
     ) -> _AttemptAdmissionLease:
         """Acquire the freshness lease spanning registration and first effect."""
 
@@ -1120,6 +1300,7 @@ class ProductWorkerActivationCoordinator:
             owner_generation=owner_generation,
             host_identity=host_identity,
             boot_identity=boot_identity,
+            cleanup_contract_version=cleanup_contract_version,
         )
 
     def publish(
@@ -1255,12 +1436,16 @@ class ProductWorkerActivationCoordinator:
 
     def record_cleanup_settlement(
         self,
-        settlement: WorkerCleanupSettlementV1,
+        settlement: WorkerCleanupSettlementV1 | WorkerCleanupSettlementV2,
         *,
         witness: object,
+        native_containment_witness: object | None = None,
     ) -> Mapping[str, object]:
         self._require_not_reentrant()
-        if not isinstance(settlement, WorkerCleanupSettlementV1):
+        if type(settlement) not in {
+            WorkerCleanupSettlementV1,
+            WorkerCleanupSettlementV2,
+        }:
             raise TypeError("Worker cleanup settlement must be typed")
         key = _AttemptKey(
             settlement.receipt_fingerprint,
@@ -1275,6 +1460,12 @@ class ProductWorkerActivationCoordinator:
                 settlement.host_identity,
                 settlement.boot_identity,
             )
+            cleanup_contract_version = _integer(
+                attempt,
+                "cleanupContractVersion",
+            )
+            if settlement.settlement_version != cleanup_contract_version:
+                raise _ActivationRejected(_ActivationReason.INVALID_RECEIPT)
             if attempt["phase"] == "settled":
                 if attempt["cleanupSettlement"] != settlement.to_dict():
                     raise _ActivationRejected(_ActivationReason.INVALID_RECEIPT)
@@ -1283,6 +1474,11 @@ class ProductWorkerActivationCoordinator:
                     key,
                     required=bool(attempt["required"]),
                 )
+            if cleanup_contract_version == WORKER_CLEANUP_SETTLEMENT_V2_VERSION:
+                if native_containment_witness is None:
+                    raise _ActivationRejected(_ActivationReason.CLEANUP_DEBT)
+            elif native_containment_witness is not None:
+                raise TypeError("Cleanup V1 cannot carry native containment evidence")
             if not attempt["protocolTerminal"] or not attempt["domainRetired"]:
                 raise _ActivationRejected(_ActivationReason.PUBLICATION_FENCED)
             self._verify_cleanup_witness(
@@ -1291,6 +1487,13 @@ class ProductWorkerActivationCoordinator:
                 key=key,
                 attempt=attempt,
             )
+            if cleanup_contract_version == WORKER_CLEANUP_SETTLEMENT_V2_VERSION:
+                self._verify_cleanup_witness(
+                    method_name="verify_native_containment_settlement",
+                    witness=native_containment_witness,
+                    key=key,
+                    attempt=attempt,
+                )
             new_state = _json_clone(self._state)
             new_attempt = _mapping(_mapping(new_state, "attempts"), key.encoded)
             new_attempt["cleanupSettlement"] = settlement.to_dict()
@@ -1305,10 +1508,10 @@ class ProductWorkerActivationCoordinator:
 
     def record_cleanup_debt(
         self,
-        debt: WorkerCleanupDebtV1,
+        debt: WorkerCleanupDebtV1 | WorkerCleanupDebtV2,
     ) -> Mapping[str, object]:
         self._require_not_reentrant()
-        if not isinstance(debt, WorkerCleanupDebtV1):
+        if type(debt) not in {WorkerCleanupDebtV1, WorkerCleanupDebtV2}:
             raise TypeError("Worker cleanup debt must be typed")
         key = _AttemptKey(
             debt.receipt_fingerprint,
@@ -1319,6 +1522,8 @@ class ProductWorkerActivationCoordinator:
             self._reload_locked()
             attempt = self._attempt_locked(key)
             _require_cleanup_identity(attempt, debt.host_identity, debt.boot_identity)
+            if debt.debt_version != _integer(attempt, "cleanupContractVersion"):
+                raise _ActivationRejected(_ActivationReason.INVALID_RECEIPT)
             if attempt["phase"] == "settled":
                 raise _ActivationRejected(_ActivationReason.CLEANUP_SETTLED)
             if attempt["cleanupDebt"] is not None:
@@ -1354,6 +1559,7 @@ class ProductWorkerActivationCoordinator:
         owner_generation: int,
         current_boot_identity: str,
         witness: object,
+        native_containment_witness: object | None = None,
     ) -> Mapping[str, object]:
         """Turn debt into settlement only for a trusted different boot identity."""
 
@@ -1369,6 +1575,15 @@ class ProductWorkerActivationCoordinator:
                 raise _ActivationRejected(_ActivationReason.CLEANUP_DEBT)
             if not attempt["protocolTerminal"] or not attempt["domainRetired"]:
                 raise _ActivationRejected(_ActivationReason.PUBLICATION_FENCED)
+            cleanup_contract_version = _integer(
+                attempt,
+                "cleanupContractVersion",
+            )
+            if cleanup_contract_version == WORKER_CLEANUP_SETTLEMENT_V2_VERSION:
+                if native_containment_witness is None:
+                    raise _ActivationRejected(_ActivationReason.CLEANUP_DEBT)
+            elif native_containment_witness is not None:
+                raise TypeError("Cleanup V1 cannot carry native containment evidence")
             self._verify_cleanup_witness(
                 method_name="verify_changed_boot_absence",
                 witness=witness,
@@ -1376,16 +1591,37 @@ class ProductWorkerActivationCoordinator:
                 attempt=attempt,
                 current_boot_identity=current_boot_identity,
             )
-            settlement = WorkerCleanupSettlementV1(
-                receipt_fingerprint=key.receipt_fingerprint,
-                attempt_id=key.attempt_id,
-                owner_generation=key.owner_generation,
-                host_identity=cast(str, attempt["hostIdentity"]),
-                boot_identity=cast(str, attempt["bootIdentity"]),
-                protocol_terminal=True,
-                domain_retired=True,
-                tree_settled=True,
-            )
+            if cleanup_contract_version == WORKER_CLEANUP_SETTLEMENT_V2_VERSION:
+                self._verify_cleanup_witness(
+                    method_name="verify_native_containment_settlement",
+                    witness=native_containment_witness,
+                    key=key,
+                    attempt=attempt,
+                )
+                settlement: WorkerCleanupSettlementV1 | WorkerCleanupSettlementV2 = (
+                    WorkerCleanupSettlementV2(
+                        receipt_fingerprint=key.receipt_fingerprint,
+                        attempt_id=key.attempt_id,
+                        owner_generation=key.owner_generation,
+                        host_identity=cast(str, attempt["hostIdentity"]),
+                        boot_identity=cast(str, attempt["bootIdentity"]),
+                        protocol_terminal=True,
+                        domain_retired=True,
+                        tree_settled=True,
+                        native_containment_settled=True,
+                    )
+                )
+            else:
+                settlement = WorkerCleanupSettlementV1(
+                    receipt_fingerprint=key.receipt_fingerprint,
+                    attempt_id=key.attempt_id,
+                    owner_generation=key.owner_generation,
+                    host_identity=cast(str, attempt["hostIdentity"]),
+                    boot_identity=cast(str, attempt["bootIdentity"]),
+                    protocol_terminal=True,
+                    domain_retired=True,
+                    tree_settled=True,
+                )
             new_state = _json_clone(self._state)
             new_attempt = _mapping(_mapping(new_state, "attempts"), key.encoded)
             new_attempt["cleanupDebt"] = None
@@ -1568,6 +1804,7 @@ class ProductWorkerActivationCoordinator:
             _mapping(new_state, "attempts")[key.encoded] = {
                 "attemptId": key.attempt_id,
                 "bootIdentity": lease.boot_identity,
+                "cleanupContractVersion": lease.cleanup_contract_version,
                 "cleanupDebt": None,
                 "cleanupSettlement": None,
                 "domainRetired": False,
@@ -1681,16 +1918,34 @@ class ProductWorkerActivationCoordinator:
         attempt = self._attempt_locked(key)
         if attempt["phase"] != "registered":
             raise _ActivationRejected(_ActivationReason.PUBLICATION_FENCED)
-        settlement = WorkerCleanupSettlementV1(
-            receipt_fingerprint=key.receipt_fingerprint,
-            attempt_id=key.attempt_id,
-            owner_generation=key.owner_generation,
-            host_identity=cast(str, attempt["hostIdentity"]),
-            boot_identity=cast(str, attempt["bootIdentity"]),
-            protocol_terminal=True,
-            domain_retired=True,
-            tree_settled=True,
-        )
+        if (
+            _integer(attempt, "cleanupContractVersion")
+            == WORKER_CLEANUP_SETTLEMENT_V2_VERSION
+        ):
+            settlement: WorkerCleanupSettlementV1 | WorkerCleanupSettlementV2 = (
+                WorkerCleanupSettlementV2(
+                    receipt_fingerprint=key.receipt_fingerprint,
+                    attempt_id=key.attempt_id,
+                    owner_generation=key.owner_generation,
+                    host_identity=cast(str, attempt["hostIdentity"]),
+                    boot_identity=cast(str, attempt["bootIdentity"]),
+                    protocol_terminal=True,
+                    domain_retired=True,
+                    tree_settled=True,
+                    native_containment_settled=True,
+                )
+            )
+        else:
+            settlement = WorkerCleanupSettlementV1(
+                receipt_fingerprint=key.receipt_fingerprint,
+                attempt_id=key.attempt_id,
+                owner_generation=key.owner_generation,
+                host_identity=cast(str, attempt["hostIdentity"]),
+                boot_identity=cast(str, attempt["bootIdentity"]),
+                protocol_terminal=True,
+                domain_retired=True,
+                tree_settled=True,
+            )
         new_state = _json_clone(self._state)
         new_attempt = _mapping(_mapping(new_state, "attempts"), key.encoded)
         new_attempt["protocolTerminal"] = True
@@ -1730,8 +1985,13 @@ class ProductWorkerActivationCoordinator:
                 self._evidence_authority.verify_registered_lease_expired
             ),
             "verify_tree_settlement": self._evidence_authority.verify_tree_settlement,
+            "verify_native_containment_settlement": (
+                self._evidence_authority.verify_native_containment_settlement
+            ),
         }
         verifier = verifiers[method_name]
+        if verifier is None:
+            raise _ActivationRejected(_ActivationReason.CLEANUP_DEBT)
         arguments: dict[str, object] = {
             "attempt_id": key.attempt_id,
             "boot_identity": attempt["bootIdentity"],
@@ -1840,6 +2100,7 @@ class _AttemptAdmissionLease(AbstractContextManager["_AttemptAdmissionLease"]):
         owner_generation: int,
         host_identity: str,
         boot_identity: str,
+        cleanup_contract_version: int,
     ) -> None:
         if not isinstance(policy, ProductWorkerActivationPolicyV1):
             raise TypeError("Worker admission requires typed policy")
@@ -1849,6 +2110,7 @@ class _AttemptAdmissionLease(AbstractContextManager["_AttemptAdmissionLease"]):
         _require_positive_integer(owner_generation, name="owner generation")
         _require_opaque(host_identity, name="host identity")
         _require_opaque(boot_identity, name="boot identity")
+        _require_cleanup_contract_version(cleanup_contract_version)
         self.coordinator = coordinator
         self.policy = policy
         self.receipt = receipt
@@ -1856,6 +2118,7 @@ class _AttemptAdmissionLease(AbstractContextManager["_AttemptAdmissionLease"]):
         self.owner_generation = owner_generation
         self.host_identity = host_identity
         self.boot_identity = boot_identity
+        self.cleanup_contract_version = cleanup_contract_version
         self._key: _AttemptKey | None = None
         self._authority_release_id: int | None = None
         self._lock_held = False
@@ -1960,6 +2223,7 @@ _SETTLEMENT_FIELDS = frozenset(
         "treeSettled",
     }
 )
+_SETTLEMENT_V2_FIELDS = _SETTLEMENT_FIELDS | {"nativeContainmentSettled"}
 _DEBT_FIELDS = frozenset(
     {
         "attemptId",
@@ -1967,6 +2231,19 @@ _DEBT_FIELDS = frozenset(
         "debtVersion",
         "hostIdentity",
         "ownerGeneration",
+        "reason",
+        "receiptFingerprint",
+    }
+)
+_DEBT_V2_FIELDS = frozenset(
+    {
+        "attemptId",
+        "bootIdentity",
+        "debtVersion",
+        "hostIdentity",
+        "nativeContainmentUnknown",
+        "ownerGeneration",
+        "processTreeUnknown",
         "reason",
         "receiptFingerprint",
     }
@@ -1983,7 +2260,7 @@ _STATE_FIELDS = frozenset(
         "stateVersion",
     }
 )
-_ATTEMPT_FIELDS = frozenset(
+_ATTEMPT_V1_FIELDS = frozenset(
     {
         "attemptId",
         "bootIdentity",
@@ -2004,6 +2281,7 @@ _ATTEMPT_FIELDS = frozenset(
         "restartOrdinal",
     }
 )
+_ATTEMPT_FIELDS = _ATTEMPT_V1_FIELDS | {"cleanupContractVersion"}
 
 _ATTEMPT_TRANSITIONS = {
     "registered": frozenset({"effect_started", "settled"}),
@@ -2055,8 +2333,64 @@ def _initial_state(*, restart_budget: int) -> dict[str, object]:
     }
 
 
-def _validate_state(value: object) -> dict[str, object]:
+def _migrate_activation_state(value: object) -> dict[str, object]:
     document = _strict_document(value, _STATE_FIELDS, name="activation state")
+    version = _integer(document, "stateVersion")
+    if version == PRODUCT_WORKER_ACTIVATION_STATE_VERSION:
+        return document
+    if version != 1:
+        raise ValueError("Unsupported Product Worker activation state version")
+    migrated = _json_clone(document)
+    for raw_attempt in _mapping(migrated, "attempts").values():
+        attempt = _strict_document(
+            raw_attempt,
+            _ATTEMPT_V1_FIELDS,
+            name="activation attempt V1",
+        )
+        settlement = _cleanup_settlement_from_dict(attempt["cleanupSettlement"])
+        debt = _cleanup_debt_from_dict(attempt["cleanupDebt"])
+        if (
+            settlement is not None
+            and settlement.settlement_version != WORKER_CLEANUP_SETTLEMENT_VERSION
+        ) or (debt is not None and debt.debt_version != WORKER_CLEANUP_DEBT_VERSION):
+            raise ValueError("Worker activation V1 state contains a newer cleanup record")
+        attempt["cleanupContractVersion"] = WORKER_CLEANUP_SETTLEMENT_VERSION
+    migrated["stateVersion"] = PRODUCT_WORKER_ACTIVATION_STATE_VERSION
+    return migrated
+
+
+def _cleanup_settlement_from_dict(
+    value: object,
+) -> WorkerCleanupSettlementV1 | WorkerCleanupSettlementV2 | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise ValueError("Worker cleanup settlement must be an object")
+    version = _integer(value, "settlementVersion")
+    if version == WORKER_CLEANUP_SETTLEMENT_VERSION:
+        return WorkerCleanupSettlementV1.from_dict(value)
+    if version == WORKER_CLEANUP_SETTLEMENT_V2_VERSION:
+        return WorkerCleanupSettlementV2.from_dict(value)
+    raise ValueError("Unsupported Worker cleanup settlement version")
+
+
+def _cleanup_debt_from_dict(
+    value: object,
+) -> WorkerCleanupDebtV1 | WorkerCleanupDebtV2 | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise ValueError("Worker cleanup debt must be an object")
+    version = _integer(value, "debtVersion")
+    if version == WORKER_CLEANUP_DEBT_VERSION:
+        return WorkerCleanupDebtV1.from_dict(value)
+    if version == WORKER_CLEANUP_DEBT_V2_VERSION:
+        return WorkerCleanupDebtV2.from_dict(value)
+    raise ValueError("Unsupported Worker cleanup debt version")
+
+
+def _validate_state(value: object) -> dict[str, object]:
+    document = _migrate_activation_state(value)
     if _integer(document, "stateVersion") != PRODUCT_WORKER_ACTIVATION_STATE_VERSION:
         raise ValueError("Unsupported Product Worker activation state version")
     _require_positive_integer(_integer(document, "stateRevision"), name="state revision")
@@ -2087,6 +2421,8 @@ def _validate_state(value: object) -> dict[str, object]:
             _ATTEMPT_FIELDS,
             name="activation attempt",
         )
+        cleanup_contract_version = _integer(attempt, "cleanupContractVersion")
+        _require_cleanup_contract_version(cleanup_contract_version)
         receipt_fingerprint = _string(attempt, "receiptFingerprint")
         attempt_id = _string(attempt, "attemptId")
         owner_generation = _integer(attempt, "ownerGeneration")
@@ -2133,16 +2469,16 @@ def _validate_state(value: object) -> dict[str, object]:
             raise ValueError("Worker activation restart ordinal exceeds durable budget")
         settlement_value = attempt["cleanupSettlement"]
         debt_value = attempt["cleanupDebt"]
-        settlement = (
-            None
-            if settlement_value is None
-            else WorkerCleanupSettlementV1.from_dict(settlement_value)
-        )
-        debt = (
-            None if debt_value is None else WorkerCleanupDebtV1.from_dict(debt_value)
-        )
+        settlement = _cleanup_settlement_from_dict(settlement_value)
+        debt = _cleanup_debt_from_dict(debt_value)
         if settlement is not None and debt is not None:
             raise ValueError("Worker activation attempt cannot be settled and debt")
+        if settlement is not None and (
+            settlement.settlement_version != cleanup_contract_version
+        ):
+            raise ValueError("Worker cleanup settlement contract version mismatch")
+        if debt is not None and debt.debt_version != cleanup_contract_version:
+            raise ValueError("Worker cleanup debt contract version mismatch")
         if settlement is not None and (
             settlement.receipt_fingerprint != receipt_fingerprint
             or settlement.attempt_id != attempt_id
@@ -2379,6 +2715,14 @@ def _require_positive_integer(value: object, *, name: str) -> None:
 def _require_nonnegative_integer(value: object, *, name: str) -> None:
     if type(value) is not int or cast(int, value) < 0:
         raise ValueError(f"{name} must be a nonnegative integer")
+
+
+def _require_cleanup_contract_version(value: object) -> None:
+    if type(value) is not int or value not in {
+        WORKER_CLEANUP_SETTLEMENT_VERSION,
+        WORKER_CLEANUP_SETTLEMENT_V2_VERSION,
+    }:
+        raise ValueError("Worker cleanup contract version is unsupported")
 
 
 def _require_attempt_id(value: object) -> None:
