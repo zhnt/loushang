@@ -112,7 +112,7 @@ def test_c52_status_inventory_and_index_are_honest() -> None:
         "Same-boot uncertainty remains durable cleanup debt",
     ):
         assert token in document
-    assert "implemented through C5.4" in baseline
+    assert "implemented through C5.5c" in baseline
     assert "C5.2 Linux native profile binding" in baseline
     assert "C5-C52-LINUX-NATIVE" in inventory
     assert "no Product, Coding, AppHost, CLI, presenter, or Session composition" in document
@@ -157,12 +157,22 @@ def test_c52_private_imports_are_exact_lazy_and_one_way() -> None:
         "_PosixStaticContainedLaunchCaptureSpec",
         "_PosixStaticLaunchCaptureBackend",
     }
+    assert _imported_names(BRIDGE, private_windows) == {
+        "_WindowsLpacLaunchCaptureBackend",
+        "_WindowsLpacProfileCollision",
+        "_WindowsLpacProvisioner",
+        "_WindowsLpacProvisionWitness",
+        "_build_windows_lpac_launch_capture_spec",
+        "_build_windows_lpac_provision_spec",
+        "_lpac_spec_fingerprint",
+    }
     top_level_imports = {
         node.module
         for node in ast.parse(_read(BRIDGE), filename=str(BRIDGE)).body
         if isinstance(node, ast.ImportFrom) and node.module
     }
     assert private_posix not in top_level_imports
+    assert private_windows not in top_level_imports
     posix_consumers = {
         path
         for path in SOURCE_ROOT.rglob("*.py")
@@ -179,7 +189,7 @@ def test_c52_private_imports_are_exact_lazy_and_one_way() -> None:
         if not path.is_relative_to(HOSTING_ROOT) and private_managed in _imports(path)
     }
     assert posix_consumers == {BRIDGE}
-    assert windows_consumers == set()
+    assert windows_consumers == {BRIDGE}
     assert managed_consumers == {HOSTING_ADAPTER}
     imports = _imports(BRIDGE)
     assert not any(

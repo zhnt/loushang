@@ -248,7 +248,7 @@ def test_c51_contract_and_inventory_are_honest_and_indexed() -> None:
     assert "C5.2 Linux native profile binding, C5.3 Windows" in (
         " ".join(baseline.split())
     )
-    assert "mechanics/rejection, and the C5.4 Linux Coding Product canary" in (
+    assert "mechanics/rejection, C5.4 Linux Coding Product canary" in (
         " ".join(baseline.split())
     )
     for token in (
@@ -533,7 +533,7 @@ def test_c51_required_manifest_and_test_ids_are_exact() -> None:
     )
     assert reports["PLC9C5-C5.4-LINUX-PRODUCT"]["status"] == "implemented"
     assert reports["PLC9C5-C5.5B-WINDOWS-LPAC-NATIVE"]["status"] == "implemented"
-    assert reports["PLC9C5-C5.5C-WINDOWS-PRODUCT"]["status"] == "planned"
+    assert reports["PLC9C5-C5.5C-WINDOWS-PRODUCT"]["status"] == "implemented"
     assert _literal_collection(CONTRACT_TEST, "PLC9C5_C51_CASES") == set(C51_CASES)
     assert _literal_collection(
         CONTRACT_TEST,

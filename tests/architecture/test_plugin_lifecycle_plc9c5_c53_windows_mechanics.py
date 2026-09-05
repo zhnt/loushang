@@ -9,6 +9,7 @@ WIN32_API = Path("src/loushang/hosting/_win32_process.py")
 HOSTING_FACADE = Path("src/loushang/hosting/__init__.py")
 HOSTING_ROOT = Path("src/loushang/hosting")
 SOURCE_ROOT = Path("src/loushang")
+BRIDGE = Path("src/loushang/harness/worker/_native_profile_bridge.py")
 NATIVE_TEST = Path("tests/hosting/test_windows_launch_preparation_native.py")
 REPORT_TEST = Path("tests/hosting/test_plc9c5_c53_windows_mechanics.py")
 DOCUMENT = Path(
@@ -96,7 +97,7 @@ def test_c53_status_manifest_and_index_are_honest() -> None:
     assert "Implementation status: implemented" in document
     assert "Activation status: closed" in document
     assert "Production default: Current" in document
-    assert "implemented through C5.4" in baseline
+    assert "implemented through C5.5c" in baseline
     assert "C5-C53-WINDOWS-MECHANICS" in inventory
     assert _read(INDEX).count(
         "(plugin-lifecycle-plc9c5-c53-windows-mechanics.md)"
@@ -128,14 +129,17 @@ def test_c53_builder_is_private_os_sourced_and_environment_closed() -> None:
     )
 
 
-def test_c53_has_no_harness_or_product_windows_private_friend() -> None:
+def test_c53_restricted_profile_stays_unconsumed_by_the_lpac_friend() -> None:
     private_module = "loushang.hosting._windows_launch_preparation"
     consumers = {
         path
         for path in SOURCE_ROOT.rglob("*.py")
         if not path.is_relative_to(HOSTING_ROOT) and private_module in _imports(path)
     }
-    assert consumers == set()
+    assert consumers == {BRIDGE}
+    bridge = _read(BRIDGE)
+    assert "_build_windows_restricted_launch_capture_spec" not in bridge
+    assert "windows-restricted-direct-import-pe-v1" not in bridge
 
 
 def test_c53_required_report_is_windows_only_and_mandatory() -> None:
