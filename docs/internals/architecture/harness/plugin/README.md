@@ -326,6 +326,10 @@ Neither may silently override a narrower implemented owner contract.
   [HOST-H5 default-dark adapter](../../hosting/harness-worker-adapter-h5.md)
   supplies an atomic Hosting session seam and rollback selector but explicitly
   retains the sealed-descriptor preparation gap, so it does not advance C5.
+  The proposed [HOST-H6 managed preparation contract](../../hosting/managed-launch-preparation-h6.md)
+  and [Hosted Product Runtime V1 plan](../../drafts/hosted-product-runtime-v1-plan.md)
+  define the next mechanical and cross-scope gates; neither changes the C5
+  activation fence.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)

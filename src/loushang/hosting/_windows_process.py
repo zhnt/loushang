@@ -7,10 +7,17 @@ import os
 import threading
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from typing import Protocol, TypeVar, cast
 
+from ._launch_preparation import _ManagedSpawnEffect
 from ._process_backend import _ProcessInheritance, _ProcessTransport
-from ._win32_process import _CtypesWin32Api, _Win32SpawnHandles
+from ._win32_process import (
+    _CtypesWin32Api,
+    _Win32CreateNotStarted,
+    _Win32CreateSettledWithoutProcess,
+    _Win32SpawnHandles,
+)
 from .contracts import (
     ProcessLaunchRequest,
     ProcessStdinMode,
@@ -30,6 +37,19 @@ class _Win32Api(Protocol):
         self,
         request: ProcessLaunchRequest,
         endpoint_handles: tuple[int, int] | None = None,
+    ) -> _Win32SpawnHandles: ...
+
+    def spawn_restricted(
+        self,
+        request: ProcessLaunchRequest,
+        endpoint_handles: tuple[int, int],
+        *,
+        executable_handle: int,
+        cwd_handle: int,
+        token: int,
+        job: int,
+        stderr_handle: int,
+        begin_effect: Callable[[], None],
     ) -> _Win32SpawnHandles: ...
 
     def read_pipe(self, handle: int, max_bytes: int) -> bytes: ...
@@ -62,9 +82,11 @@ class _WindowsProcess:
         self._executor = executor
         self._process_handle: int | None = handles.process
         self._job_handle: int | None = handles.job
+        self._job_tree_settled = False
         self._stdin_write = handles.stdin_write
         self._stdout_read = handles.stdout_read
         self._stderr_read = handles.stderr_read
+        self._cleanup_handles = list(handles.cleanup_handles)
         self._stdin_closed = False
         self._handles_closed = False
         self._close_lock = asyncio.Lock()
@@ -180,8 +202,11 @@ class _WindowsProcess:
 
     def job_is_empty(self) -> bool:
         if self._job_handle is None:
-            return True
-        return self._api.job_is_empty(self._job_handle)
+            return self._job_tree_settled
+        empty = self._api.job_is_empty(self._job_handle)
+        if empty:
+            self._job_tree_settled = True
+        return empty
 
     def terminate_job(self, exit_code: int) -> None:
         if self._job_handle is None:
@@ -207,7 +232,19 @@ class _WindowsProcess:
             self._closed_event.set()
             self._cancel_active_io(("stdin", "stdout", "stderr"))
             errors: list[Exception] = []
-            self._close_handle_attribute("_job_handle", errors)
+            try:
+                job_tree_settled = self.job_is_empty()
+            except Exception as exc:
+                job_tree_settled = False
+                errors.append(exc)
+            if job_tree_settled:
+                self._close_handle_attribute("_job_handle", errors)
+            elif self._job_handle is not None:
+                errors.append(
+                    RuntimeError(
+                        "Windows Job remains owned until its tree is observed empty"
+                    )
+                )
             operations = {
                 operation
                 for operation in (
@@ -236,9 +273,16 @@ class _WindowsProcess:
                     self._close_handle_attribute(attribute, errors)
             if self._wait_operation not in pending:
                 self._close_handle_attribute("_process_handle", errors)
+            for handle in tuple(self._cleanup_handles):
+                try:
+                    self._api.close_handle(handle)
+                except Exception as exc:
+                    errors.append(exc)
+                else:
+                    self._cleanup_handles.remove(handle)
             if errors:
                 raise ExceptionGroup("Windows process handle cleanup failed", errors)
-            self._handles_closed = True
+            self._handles_closed = not self._cleanup_handles
 
     def _close_handle_attribute(
         self,
@@ -336,6 +380,7 @@ class _WindowsProcessBackend:
             thread_name_prefix="loushang-hosting-win32",
         )
         self._closed = False
+        self._orphan_processes: list[_WindowsProcess] = []
 
     async def spawn(
         self,
@@ -381,6 +426,7 @@ class _WindowsProcessBackend:
             try:
                 await self._reclaim_failed_attachment(process)
             except BaseException as cleanup:
+                self._orphan_processes.append(process)
                 primary.add_note(f"Windows spawn attachment cleanup also failed: {cleanup}")
                 raise primary from cleanup
             raise
@@ -399,6 +445,154 @@ class _WindowsProcessBackend:
             )
         return await asyncio.get_running_loop().run_in_executor(
             self._executor, self._api.spawn, request, endpoint_handles
+        )
+
+    async def _spawn_static_prepared(
+        self,
+        material: object,
+        request: ProcessLaunchRequest,
+        *,
+        effect: _ManagedSpawnEffect,
+        on_spawn: Callable[[_ProcessTransport], None],
+        inheritance: _ProcessInheritance | None,
+    ) -> _WindowsProcess:
+        from ._windows_launch_preparation import _WindowsRestrictedLaunchMaterial
+
+        try:
+            if type(material) is not _WindowsRestrictedLaunchMaterial:
+                raise HostingError(
+                    HostingFailureCategory.PREPARATION_FAILED,
+                    "Windows process backend requires restricted launch material",
+                )
+            if request != material.request:
+                raise HostingError(
+                    HostingFailureCategory.PREPARATION_FAILED,
+                    "Windows restricted launch request changed before spawn",
+                )
+            if inheritance is None:
+                raise HostingError(
+                    HostingFailureCategory.ENDPOINT_TRANSFER_FAILED,
+                    "Windows restricted launch requires endpoint inheritance",
+                )
+            if (
+                request.streams.stdin is not ProcessStdinMode.CLOSED
+                or request.streams.stdout is not ProcessStdoutMode.DISCARD
+            ):
+                raise HostingError(
+                    HostingFailureCategory.ENDPOINT_TRANSFER_FAILED,
+                    "Windows inherited endpoint reserves stdin and stdout",
+                )
+            endpoint_handles = _claim_endpoint(inheritance, self.backend_id)
+            assert endpoint_handles is not None
+            (
+                executable_handle,
+                cwd_handle,
+                token_handle,
+                job_handle,
+                stderr_handle,
+            ) = material._claim_handles()
+            preparation_handles = (
+                executable_handle,
+                cwd_handle,
+                token_handle,
+                job_handle,
+                stderr_handle,
+            )
+            if (
+                len(set(preparation_handles)) != len(preparation_handles)
+                or set(endpoint_handles) & set(preparation_handles)
+                or any(handle <= 0 for handle in (*endpoint_handles, *preparation_handles))
+            ):
+                raise HostingError(
+                    HostingFailureCategory.ENDPOINT_TRANSFER_FAILED,
+                    "Windows endpoint and preparation handles collide",
+                )
+        except BaseException as cause:
+            raise effect.not_created(cause) from cause
+
+        spawn_task = asyncio.create_task(
+            self._spawn_restricted_once(
+                request,
+                endpoint_handles,
+                executable_handle=executable_handle,
+                cwd_handle=cwd_handle,
+                token=token_handle,
+                job=job_handle,
+                stderr_handle=stderr_handle,
+                begin_effect=effect.begin_effect,
+            ),
+            name="hosting-windows-restricted-process-spawn",
+        )
+        cancellation: asyncio.CancelledError | None = None
+        while True:
+            try:
+                handles = await asyncio.shield(spawn_task)
+                break
+            except asyncio.CancelledError as exc:
+                if spawn_task.cancelled():
+                    raise
+                if cancellation is None:
+                    cancellation = exc
+            except _Win32CreateNotStarted as failure:
+                raise effect.not_created(failure.cause) from failure
+            except _Win32CreateSettledWithoutProcess as failure:
+                raise effect.settled_without_process(failure.cause) from failure
+            except BaseException as exc:
+                if cancellation is not None:
+                    raise cancellation from exc
+                raise
+
+        process = _WindowsProcess(self._api, self._executor, handles)
+        material._mark_transferred()
+        attached = False
+        try:
+            # The process owns Job/stderr before publication.  Publish the
+            # provisional owner before the endpoint transfer can fail so the
+            # outer reservation remains the retryable cleanup authority.
+            on_spawn(process)
+            attached = True
+            inheritance.mark_transferred()
+        except BaseException as primary:
+            if not attached and not effect.observes(process):
+                try:
+                    await self._reclaim_failed_attachment(process)
+                except BaseException as cleanup:
+                    self._orphan_processes.append(process)
+                    primary.add_note(
+                        f"Windows prepared attachment cleanup also failed: {cleanup}"
+                    )
+                    raise primary from cleanup
+            raise
+        if cancellation is not None:
+            raise cancellation
+        return process
+
+    async def _spawn_restricted_once(
+        self,
+        request: ProcessLaunchRequest,
+        endpoint_handles: tuple[int, int],
+        *,
+        executable_handle: int,
+        cwd_handle: int,
+        token: int,
+        job: int,
+        stderr_handle: int,
+        begin_effect: Callable[[], None],
+    ) -> _Win32SpawnHandles:
+        operation = partial(
+            self._api.spawn_restricted,
+            request,
+            endpoint_handles,
+            executable_handle=executable_handle,
+            cwd_handle=cwd_handle,
+            token=token,
+            job=job,
+            stderr_handle=stderr_handle,
+            begin_effect=begin_effect,
+        )
+        return await asyncio.get_running_loop().run_in_executor(
+            self._executor,
+            operation,
         )
 
     def tree_exited(self, process: _ProcessTransport) -> bool:
@@ -440,6 +634,20 @@ class _WindowsProcessBackend:
         if self._closed:
             return
         self._closed = True
+        failures: list[BaseException] = []
+        for process in tuple(self._orphan_processes):
+            try:
+                await self._reclaim_failed_attachment(process)
+            except BaseException as exc:
+                failures.append(exc)
+            else:
+                self._orphan_processes.remove(process)
+        if failures:
+            self._closed = False
+            raise BaseExceptionGroup(
+                "Windows backend orphan cleanup failed",
+                failures,
+            )
         self._executor.shutdown(wait=False, cancel_futures=True)
 
     def _abort_construction(self) -> None:

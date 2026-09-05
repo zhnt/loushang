@@ -36,6 +36,28 @@ from loushang.hosting import (
 from loushang.hosting import (
     ProcessLaunchRequest as HostingProcessLaunchRequest,
 )
+from loushang.hosting._child_session_host import _ChildSessionHost
+from loushang.hosting._endpoint_backend import (
+    _PlatformEndpointPair,
+    _SingleUseProcessInheritance,
+)
+from loushang.hosting._endpoint_host import _InheritedEndpointHost
+from loushang.hosting._launch_preparation import (
+    _LaunchCapturePort,
+    _LaunchCaptureSpec,
+    _ManagedLaunchPreparationPort,
+    _ManagedLaunchPreparationResult,
+    _ManagedSpawnEffect,
+    _OpaqueLaunchBinding,
+)
+from loushang.hosting._process_backend import (
+    _ProcessBackend as _ProcessBackendPort,
+)
+from loushang.hosting._process_backend import (
+    _ProcessInheritance,
+    _ProcessTransport,
+)
+from loushang.hosting._process_host import _ProcessHost, _ProcessHostLimits
 
 
 def _runtime(tmp_path: Path) -> WorkerRuntimeBindingV1:
@@ -114,6 +136,305 @@ class _PreparationPort:
         self.requests.append(request)
         self.lease = _PreparationLease(request, on_verify=self._on_verify)
         return self.lease
+
+
+class _ManagedPreparationPort(_ManagedLaunchPreparationPort):
+    def __init__(self, *, on_verify=None, pause_after_capture: bool = False) -> None:
+        self._on_verify = on_verify
+        self.public_calls = 0
+        self.managed_calls = 0
+        self.specs: list[_LaunchCaptureSpec] = []
+        self.lease: _PreparationLease | None = None
+        self.captured = asyncio.Event()
+        self.release = asyncio.Event()
+        if not pause_after_capture:
+            self.release.set()
+
+    async def prepare(
+        self, request: HostingProcessLaunchRequest
+    ) -> _PreparationLease:
+        del request
+        self.public_calls += 1
+        raise AssertionError("managed Worker preparation must preserve the private seam")
+
+    async def prepare_managed(
+        self,
+        request: HostingProcessLaunchRequest,
+        capture: _LaunchCapturePort,
+    ) -> _ManagedLaunchPreparationResult:
+        self.managed_calls += 1
+        lease = _PreparationLease(request, on_verify=self._on_verify)
+        self.lease = lease
+        returned = False
+        try:
+            spec = _LaunchCaptureSpec(
+                request=request,
+                profile_id="harness-worker-parity-fake-v1",
+                execution_closure=("worker:harness-parity-fake-v1",),
+            )
+            self.specs.append(spec)
+            binding = await capture.capture(spec)
+            self.captured.set()
+            await self.release.wait()
+            result = _ManagedLaunchPreparationResult(lease=lease, binding=binding)
+            returned = True
+            return result
+        finally:
+            if not returned:
+                cleanup = asyncio.create_task(
+                    lease.close(),
+                    name="harness-worker-managed-preparation-rollback",
+                )
+                await asyncio.shield(cleanup)
+
+
+class _CapturePort:
+    def __init__(self) -> None:
+        self.specs: list[_LaunchCaptureSpec] = []
+        self._nonce = object()
+
+    async def capture(self, spec: _LaunchCaptureSpec) -> _OpaqueLaunchBinding:
+        self.specs.append(spec)
+        return _OpaqueLaunchBinding(self, self._nonce)
+
+
+class _ManagedEndpointTransport:
+    def __init__(self) -> None:
+        self.close_calls = 0
+
+    async def read(self, max_bytes: int) -> bytes:
+        del max_bytes
+        return b""
+
+    async def write(self, data: bytes) -> None:
+        del data
+
+    async def close(self) -> None:
+        self.close_calls += 1
+
+
+class _ManagedEndpointBackend:
+    backend_id = "harness-managed-endpoint-fake-v1"
+
+    def __init__(self) -> None:
+        self.transports: list[_ManagedEndpointTransport] = []
+        self.child_close_calls = 0
+        self.close_calls = 0
+
+    async def create_pair(self, *, on_create) -> _PlatformEndpointPair:
+        transport = _ManagedEndpointTransport()
+        self.transports.append(transport)
+
+        def close_child() -> None:
+            self.child_close_calls += 1
+
+        pair = _PlatformEndpointPair(
+            transport=transport,
+            inheritance=_SingleUseProcessInheritance(
+                backend_id=_ManagedProcessBackend.backend_id,
+                values=(51, 52),
+                close_values=close_child,
+            ),
+        )
+        on_create(pair)
+        return pair
+
+    async def close_backend(self) -> None:
+        self.close_calls += 1
+
+
+class _ManagedProcessTransport:
+    def __init__(self) -> None:
+        self._return_code: int | None = None
+        self._exited = asyncio.Event()
+        self._tree_exited = asyncio.Event()
+
+    @property
+    def return_code(self) -> int | None:
+        return self._return_code
+
+    async def read_stdout(self, max_bytes: int) -> bytes:
+        del max_bytes
+        return b""
+
+    async def read_stderr(self, max_bytes: int) -> bytes:
+        del max_bytes
+        return b""
+
+    async def write_stdin(self, data: bytes) -> None:
+        del data
+
+    async def close_stdin(self) -> None:
+        return None
+
+    async def wait(self) -> int:
+        await self._exited.wait()
+        assert self._return_code is not None
+        return self._return_code
+
+    def exit(self, return_code: int) -> None:
+        self._return_code = return_code
+        self._exited.set()
+        self._tree_exited.set()
+
+
+class _ManagedCapturedMaterial:
+    backend_id = "harness-managed-process-fake-v1"
+
+    def __init__(
+        self,
+        *,
+        spec: _LaunchCaptureSpec,
+        attempt_id: str,
+        attempt_token: object,
+    ) -> None:
+        self.request = spec.request
+        self.profile_id = spec.profile_id
+        self.execution_closure = spec.execution_closure
+        self.attempt_id = attempt_id
+        self.attempt_token = attempt_token
+        self.verify_calls = 0
+        self.claim_calls = 0
+        self.transfer_calls = 0
+        self.close_calls = 0
+
+    @property
+    def inherited_slot_count(self) -> int:
+        return 1
+
+    async def verify_current(self, request: HostingProcessLaunchRequest) -> None:
+        assert request == self.request
+        self.verify_calls += 1
+
+    def claim_for_spawn(self, *, backend_id: str) -> tuple[int, ...]:
+        assert backend_id == self.backend_id
+        self.claim_calls += 1
+        return (61,)
+
+    def mark_transferred(self) -> None:
+        self.transfer_calls += 1
+
+    async def spawn(
+        self,
+        backend: _ProcessBackendPort,
+        request: HostingProcessLaunchRequest,
+        *,
+        effect: _ManagedSpawnEffect,
+        on_spawn,
+        inheritance: _ProcessInheritance | None,
+    ) -> _ProcessTransport:
+        assert isinstance(backend, _ManagedProcessBackend)
+        return await backend.spawn_managed(
+            request,
+            material=self,
+            effect=effect,
+            on_spawn=on_spawn,
+            inheritance=inheritance,
+        )
+
+    async def close(self) -> None:
+        self.close_calls += 1
+
+
+class _ManagedCaptureBackend:
+    backend_id = _ManagedCapturedMaterial.backend_id
+
+    def __init__(self) -> None:
+        self.materials: list[_ManagedCapturedMaterial] = []
+
+    async def capture(
+        self,
+        spec: _LaunchCaptureSpec,
+        *,
+        attempt_id: str,
+        attempt_token: object,
+        on_capture,
+    ) -> _ManagedCapturedMaterial:
+        material = _ManagedCapturedMaterial(
+            spec=spec,
+            attempt_id=attempt_id,
+            attempt_token=attempt_token,
+        )
+        self.materials.append(material)
+        on_capture(material)
+        return material
+
+
+class _ManagedProcessBackend:
+    backend_id = _ManagedCapturedMaterial.backend_id
+
+    def __init__(self) -> None:
+        self.processes: list[_ManagedProcessTransport] = []
+        self.close_handle_calls = 0
+        self.close_calls = 0
+
+    async def spawn(self, *args, **kwargs) -> _ManagedProcessTransport:
+        del args, kwargs
+        raise AssertionError("managed Harness preparation must use managed spawn")
+
+    async def spawn_managed(
+        self,
+        request: HostingProcessLaunchRequest,
+        *,
+        material: _ManagedCapturedMaterial,
+        effect: _ManagedSpawnEffect,
+        on_spawn,
+        inheritance: _ProcessInheritance | None,
+    ) -> _ManagedProcessTransport:
+        assert request == material.request
+        assert inheritance is not None
+        endpoint_slots = inheritance.claim(backend_id=self.backend_id)
+        preparation_slots = material.claim_for_spawn(backend_id=self.backend_id)
+        assert endpoint_slots == (51, 52)
+        assert preparation_slots == (61,)
+        assert not set(endpoint_slots) & set(preparation_slots)
+        effect.begin_effect()
+        process = _ManagedProcessTransport()
+        self.processes.append(process)
+        on_spawn(process)
+        inheritance.mark_transferred()
+        material.mark_transferred()
+        return process
+
+    def tree_exited(self, process: _ProcessTransport) -> bool:
+        assert isinstance(process, _ManagedProcessTransport)
+        return process._tree_exited.is_set()
+
+    async def wait_tree(self, process: _ProcessTransport) -> None:
+        assert isinstance(process, _ManagedProcessTransport)
+        await process._tree_exited.wait()
+
+    async def terminate_tree(self, process: _ProcessTransport) -> None:
+        assert isinstance(process, _ManagedProcessTransport)
+        process.exit(-15)
+
+    async def kill_tree(self, process: _ProcessTransport) -> None:
+        assert isinstance(process, _ManagedProcessTransport)
+        process.exit(-9)
+
+    async def close_process_handles(self, process: _ProcessTransport) -> None:
+        assert isinstance(process, _ManagedProcessTransport)
+        self.close_handle_calls += 1
+
+    async def close_backend(self) -> None:
+        self.close_calls += 1
+
+
+def _managed_child_session_host():
+    process_backend = _ManagedProcessBackend()
+    endpoint_backend = _ManagedEndpointBackend()
+    capture_backend = _ManagedCaptureBackend()
+    host = _ChildSessionHost(
+        _ProcessHost(
+            process_backend,
+            limits=_ProcessHostLimits(max_processes=1),
+        ),
+        _InheritedEndpointHost(endpoint_backend, max_endpoints=1),
+        max_sessions=1,
+        launch_capture_backend=capture_backend,
+        max_capture_slots=2,
+    )
+    return host, process_backend, endpoint_backend, capture_backend
 
 
 class _Endpoint:
@@ -254,6 +575,30 @@ class _ChildPort:
             await self.lease.close()
 
 
+class _ManagedChildPort(_ChildPort):
+    def __init__(self, incoming: bytes = b"") -> None:
+        super().__init__(incoming)
+        self.capture = _CapturePort()
+
+    async def start(self, request: ChildSessionRequest, preparation) -> _ChildLease:
+        self.requests.append(request)
+        assert isinstance(preparation, _ManagedLaunchPreparationPort)
+        result = await preparation.prepare_managed(request.process, self.capture)
+        prepared = result.lease
+        try:
+            await prepared.verify_current()
+        except BaseException:
+            await prepared.close()
+            raise
+        self.lease = _ChildLease(
+            endpoint=_Endpoint(self.incoming, self.events),
+            process=_HostingProcess(self.events),
+            preparation=prepared,  # type: ignore[arg-type]
+            events=self.events,
+        )
+        return self.lease
+
+
 def _ready(identity: WorkerLaunchIdentityV1) -> WorkerProtocolMessage:
     return WorkerProtocolMessage.create(
         "ready",
@@ -324,6 +669,210 @@ def test_hosting_adapter_maps_worker_and_publishes_atomic_session(
         assert preparation.lease is not None
         assert preparation.lease.verified == 1
         assert preparation.lease.closed == 1
+
+    asyncio.run(scenario())
+
+
+def test_hosting_adapter_preserves_managed_capture_and_worker_semantic_fence(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        validations = 0
+
+        def validate_current() -> None:
+            nonlocal validations
+            validations += 1
+
+        request = _request(tmp_path, validate_current=validate_current)
+        preparation = _ManagedPreparationPort()
+        child = _ManagedChildPort()
+        adapter = HostingManagedWorkerSessionAdapter(
+            hosting=child,  # type: ignore[arg-type]
+            preparation=preparation,
+        )
+
+        session = await adapter.start(request, correlation_id="managed-parity")
+
+        assert validations == 2
+        assert preparation.public_calls == 0
+        assert preparation.managed_calls == 1
+        assert child.capture.specs == preparation.specs
+        assert child.capture.specs[0].request == child.requests[0].process
+        assert child.capture.specs[0].profile_id == (
+            "harness-worker-parity-fake-v1"
+        )
+        assert session.evidence.request_fingerprint == request.fingerprint
+        await session.close()
+        assert preparation.lease is not None
+        assert preparation.lease.verified == 1
+        assert preparation.lease.closed == 1
+
+    asyncio.run(scenario())
+
+
+def test_hosting_adapter_managed_capture_cancellation_retains_delegate_cleanup(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        request = _request(tmp_path, validate_current=lambda: None)
+        preparation = _ManagedPreparationPort(pause_after_capture=True)
+        adapter = HostingManagedWorkerSessionAdapter(
+            hosting=_ManagedChildPort(),  # type: ignore[arg-type]
+            preparation=preparation,
+        )
+
+        start = asyncio.create_task(
+            adapter.start(request, correlation_id="managed-cancel")
+        )
+        await preparation.captured.wait()
+        start.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await start
+
+        assert preparation.public_calls == 0
+        assert preparation.managed_calls == 1
+        assert preparation.lease is not None
+        assert preparation.lease.closed == 1
+
+    asyncio.run(scenario())
+
+
+def test_hosting_adapter_managed_preparation_runs_through_real_child_session(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        validations = 0
+
+        def validate_current() -> None:
+            nonlocal validations
+            validations += 1
+
+        request = _request(tmp_path, validate_current=validate_current)
+        preparation = _ManagedPreparationPort()
+        host, process_backend, endpoint_backend, capture_backend = (
+            _managed_child_session_host()
+        )
+        adapter = HostingManagedWorkerSessionAdapter(
+            hosting=host,
+            preparation=preparation,
+        )
+
+        session = await adapter.start(request, correlation_id="managed-real-host")
+
+        assert validations == 2
+        assert preparation.public_calls == 0
+        assert preparation.managed_calls == 1
+        assert len(capture_backend.materials) == 1
+        material = capture_backend.materials[0]
+        assert material.request == preparation.specs[0].request
+        assert material.verify_calls == 1
+        assert material.claim_calls == 1
+        assert material.transfer_calls == 1
+        assert len(process_backend.processes) == 1
+        assert len(endpoint_backend.transports) == 1
+
+        await session.close()
+        assert preparation.lease is not None
+        assert preparation.lease.closed == 1
+        assert material.close_calls == 1
+        assert process_backend.close_handle_calls == 1
+        assert endpoint_backend.child_close_calls == 1
+        assert endpoint_backend.transports[0].close_calls == 1
+        await host.close()
+        assert process_backend.close_calls == 1
+        assert endpoint_backend.close_calls == 1
+
+    asyncio.run(scenario())
+
+
+def test_hosting_adapter_managed_final_fence_failure_reclaims_real_child_session(
+    tmp_path: Path,
+) -> None:
+    class _Signal:
+        aborted = False
+
+    async def scenario() -> None:
+        signal = _Signal()
+        request = _request(tmp_path, validate_current=lambda: None)
+        preparation = _ManagedPreparationPort(
+            on_verify=lambda: setattr(signal, "aborted", True)
+        )
+        host, process_backend, endpoint_backend, capture_backend = (
+            _managed_child_session_host()
+        )
+        adapter = HostingManagedWorkerSessionAdapter(
+            hosting=host,
+            preparation=preparation,
+        )
+
+        with pytest.raises(WorkerBindingError) as caught:
+            await adapter.start(
+                request,
+                correlation_id="managed-real-host-abort",
+                signal=signal,
+            )
+
+        assert caught.value.code == "worker_hosting_start_aborted"
+        assert preparation.public_calls == 0
+        assert preparation.managed_calls == 1
+        assert preparation.lease is not None
+        assert preparation.lease.verified == 1
+        assert preparation.lease.closed == 1
+        assert len(capture_backend.materials) == 1
+        material = capture_backend.materials[0]
+        assert material.verify_calls == 0
+        assert material.claim_calls == 0
+        assert material.transfer_calls == 0
+        assert material.close_calls == 1
+        assert process_backend.processes == []
+        assert process_backend.close_handle_calls == 0
+        assert endpoint_backend.child_close_calls == 1
+        assert len(endpoint_backend.transports) == 1
+        assert endpoint_backend.transports[0].close_calls == 1
+        await host.close()
+        assert process_backend.close_calls == 1
+        assert endpoint_backend.close_calls == 1
+
+    asyncio.run(scenario())
+
+
+def test_hosting_adapter_managed_capture_cancellation_reclaims_real_reservation(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        request = _request(tmp_path, validate_current=lambda: None)
+        preparation = _ManagedPreparationPort(pause_after_capture=True)
+        host, process_backend, endpoint_backend, capture_backend = (
+            _managed_child_session_host()
+        )
+        adapter = HostingManagedWorkerSessionAdapter(
+            hosting=host,
+            preparation=preparation,
+        )
+
+        start = asyncio.create_task(
+            adapter.start(request, correlation_id="managed-real-host-cancel")
+        )
+        await preparation.captured.wait()
+        start.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await start
+
+        assert preparation.public_calls == 0
+        assert preparation.managed_calls == 1
+        assert preparation.lease is not None
+        assert preparation.lease.closed == 1
+        assert len(capture_backend.materials) == 1
+        material = capture_backend.materials[0]
+        assert material.verify_calls == 0
+        assert material.claim_calls == 0
+        assert material.transfer_calls == 0
+        assert material.close_calls == 1
+        assert process_backend.processes == []
+        assert endpoint_backend.transports == []
+        await host.close()
+        assert process_backend.close_calls == 1
+        assert endpoint_backend.close_calls == 1
 
     asyncio.run(scenario())
 

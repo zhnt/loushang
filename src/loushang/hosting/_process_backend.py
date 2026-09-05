@@ -7,6 +7,7 @@ with deterministic fakes only.
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from collections.abc import Callable
 from typing import Protocol
 
@@ -76,6 +77,22 @@ class _ProcessBackend(Protocol):
 
     async def close_backend(self) -> None:
         """Release backend-owned executor or platform support resources."""
+
+
+class _ManagedProcessPreparation(ABC):
+    """Private H6 double-dispatch seam for one backend-owned spawn effect."""
+
+    @abstractmethod
+    async def spawn_prepared(
+        self,
+        backend: _ProcessBackend,
+        request: ProcessLaunchRequest,
+        *,
+        on_spawn: Callable[[_ProcessTransport], None],
+        on_orphan_spawn: Callable[[_ProcessTransport], None],
+        inheritance: _ProcessInheritance | None,
+    ) -> _ProcessTransport:
+        raise NotImplementedError
 
 
 __all__: list[str] = []

@@ -88,6 +88,8 @@ class _FakeWin32Api:
         self._io_count = 0
         self._io_lock = threading.Lock()
         self.fail_termination = False
+        self.close_failures: dict[int, int] = {}
+        self.spawn_cleanup_handles: tuple[int, ...] = ()
         self.cancel_releases_io = True
         self.job_close_releases_io = True
         self.job_closed = threading.Event()
@@ -102,6 +104,7 @@ class _FakeWin32Api:
             stdin_write=13,
             stdout_read=14,
             stderr_read=15,
+            cleanup_handles=self.spawn_cleanup_handles,
         )
 
     def read_pipe(self, handle: int, max_bytes: int) -> bytes:
@@ -136,6 +139,10 @@ class _FakeWin32Api:
         self.process_exited.set()
 
     def close_handle(self, handle: int) -> None:
+        failures = self.close_failures.get(handle, 0)
+        if failures:
+            self.close_failures[handle] = failures - 1
+            raise OSError(f"CloseHandle({handle}) failed")
         self.closed.append(handle)
         if handle == 12:
             self.job_closed.set()
@@ -200,6 +207,47 @@ async def test_windows_backend_fake_owns_tree_streams_and_handles(
     assert set(api.closed) == {11, 12, 13, 14, 15}
     assert len(api.closed) == len(set(api.closed))
     assert preparation.verify_calls == 1
+    assert preparation.close_calls == 1
+
+
+@pytest.mark.parametrize(
+    ("failed_handle", "cleanup_handles"),
+    ((12, ()), (16, (16,))),
+)
+@_async_test
+async def test_windows_published_process_retries_failed_close_handle(
+    tmp_path: Path,
+    failed_handle: int,
+    cleanup_handles: tuple[int, ...],
+) -> None:
+    api = _FakeWin32Api()
+    api.spawn_cleanup_handles = cleanup_handles
+    api.close_failures[failed_handle] = 1
+    backend = _WindowsProcessBackend(api=api)
+    host = _ProcessHost(
+        backend,
+        limits=_ProcessHostLimits(termination_grace_seconds=0.05),
+    )
+    request = _request(tmp_path, "pass")
+    preparation = _PreparationLease(request)
+    lease = await host.start(request, _PreparationPort(preparation))
+
+    with pytest.raises(HostingError) as first_close:
+        await host.close()
+
+    assert first_close.value.category is HostingFailureCategory.CLEANUP_FAILED
+    assert host._state == "faulted"
+    assert lease in host._leases
+    assert failed_handle not in api.closed
+    assert preparation.close_calls == 1
+
+    await host.close()
+
+    assert host._state == "closed"
+    assert lease not in host._leases
+    expected_handles = {11, 12, 13, 14, 15, *cleanup_handles}
+    assert set(api.closed) == expected_handles
+    assert len(api.closed) == len(set(api.closed))
     assert preparation.close_calls == 1
 
 
@@ -326,7 +374,7 @@ async def test_windows_cancelled_read_remains_owned_until_close(tmp_path: Path) 
 
 
 @_async_test
-async def test_windows_kill_on_job_close_bounds_termination_api_failure(
+async def test_windows_termination_failure_retains_job_until_retry(
     tmp_path: Path,
 ) -> None:
     api = _FakeWin32Api()
@@ -342,6 +390,8 @@ async def test_windows_kill_on_job_close_bounds_termination_api_failure(
     )
     request = _request(tmp_path, "pass")
     lease = await host.start(request, _PreparationPort(_PreparationLease(request)))
+    api.return_code = 0
+    api.process_exited.set()
     stdout = asyncio.create_task(lease.read_stdout(16))
     write = asyncio.create_task(lease.write_stdin(b"payload"))
     assert await asyncio.to_thread(api.all_blocking_lanes_entered.wait, 1.0)
@@ -351,6 +401,16 @@ async def test_windows_kill_on_job_close_bounds_termination_api_failure(
     assert failure.value.category is HostingFailureCategory.CLEANUP_FAILED
     await asyncio.gather(stdout, write, return_exceptions=True)
 
+    assert set(api.closed) == {11, 13, 14, 15}
+    assert 12 not in api.closed
+    assert host._state == "faulted"
+    assert lease in host._leases
+    assert api.empty is False
+
+    api.fail_termination = False
+    await host.close()
+    assert host._state == "closed"
+    assert lease not in host._leases
     assert set(api.closed) == {11, 12, 13, 14, 15}
 
 

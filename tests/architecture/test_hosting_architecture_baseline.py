@@ -355,7 +355,8 @@ def test_hosted_application_responsibilities_and_dependencies_are_separated() ->
     )
     shutdown_steps = _numbered_steps(apphost_placement, "Graceful Shutdown Protocol")
     assert shutdown_steps == (
-        "mark the process `stopping`; reject new bootstrap, Product resolution, "
+        "mark the process `stopping`; atomically fence the active catalog "
+        "generation, new bootstrap, Product resolution, live-binding attachment, "
         "and profile activation;",
         "tell AppServer to stop accepting connections and reject new request "
         "admission;",
@@ -365,19 +366,23 @@ def test_hosted_application_responsibilities_and_dependencies_are_separated() ->
         "settle or interrupt admitted work by explicit Product policy, clean up "
         "interactions, close logical attachments, and request release through each "
         "Session-scoped Product binding's sole idempotent close port;",
-        "ensure AppHost releases all remaining Product Runtime handles and "
-        "admitted presentation-profile leases;",
+        "ensure AppHost releases all remaining Product Runtime handles and admitted "
+        "presentation-profile leases, then wait for dependent attachment/runtime "
+        "pins to drain;",
+        "close the catalog generation and every base Product/OEM admission lease "
+        "exactly once;",
         "drain-or-abort AppServer writers within the remaining deadline, then close "
         "transports, listener, and connection records;",
-        "close the process's one `RuntimeResourceOwner`; that owner alone revokes "
-        "projections, drains admitted operations, and closes its ArtifactStore and "
-        "`RunLease` as one transaction; and",
+        "close the process's one `RuntimeResourceOwner` only when all dependent "
+        "runtime, profile, catalog, and admission leases settled; that owner alone "
+        "revokes projections, drains admitted operations, and closes its ArtifactStore "
+        "and `RunLease` as one transaction; and",
         "publish `stopped` readiness and let the foreground process exit.",
     )
     assert "A phase failure is recorded but\ndoes not skip later cleanup phases" in (
         apphost_placement
     )
-    assert "One monotonic deadline bounds\nthe sequence" in apphost_placement
+    assert "One monotonic deadline bounds the\nsequence" in apphost_placement
     assert "kill the owned process tree" in apphost_placement
     assert "A direct foreground AppHost force-closes its remaining local\nhandles" in (
         apphost_placement
@@ -506,7 +511,10 @@ def test_hosted_application_responsibilities_and_dependencies_are_separated() ->
     assert "### Multi-Session Coordination Aggregate" in appservice_boundary
     assert "There is no global cross-Session instant or cursor" in (appservice_boundary)
     assert "one connection to at most one active aggregate" in appservice_boundary
-    assert "attempts every distinct Session binding release exactly once" in (
+    assert "attempts every aggregate-owned membership, subscription, presenter" in (
+        appservice_boundary
+    )
+    assert "never directly closes the canonical AppHost Session runtime binding" in (
         appservice_boundary
     )
     assert (

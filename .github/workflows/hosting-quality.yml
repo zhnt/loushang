@@ -39,27 +39,102 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --extra dev
 
-      - name: Lint Hosting H0-H4
+      - name: Lint Hosting H0-H6
         run: >-
           uv run --extra dev ruff check
           src/loushang/hosting
           src/loushang/harness/workspace/process/hosting_compat.py
+          src/loushang/harness/worker/__init__.py
+          src/loushang/harness/worker/hosting_adapter.py
+          src/loushang/harness/worker/owner_selection.py
+          src/loushang/harness/worker/session.py
+          src/loushang/harness/worker/supervisor.py
           tests/hosting
           tests/harness/workspace/process/test_hosting_compat.py
+          tests/harness/worker/test_hosting_adapter.py
           tests/architecture/test_hosting_h0_contract.py
           tests/architecture/test_hosting_h1_process_lifetime.py
           tests/architecture/test_hosting_h2_platform_contract.py
           tests/architecture/test_hosting_h3_endpoint.py
           tests/architecture/test_hosting_h4_child_session.py
+          tests/architecture/test_hosting_h5_worker_adapter.py
+          tests/architecture/test_hosting_h6_launch_preparation.py
+          tests/architecture/test_hosting_h6_harness_parity.py
+          tests/architecture/test_hosting_h6_posix_native.py
+          tests/architecture/test_hosting_h6_windows_native.py
+          tests/architecture/test_hosted_product_runtime_v1_baseline.py
           tests/architecture/test_hosting_architecture_baseline.py
 
-      - name: Typecheck Hosting H0-H4
+      - name: Typecheck Hosting H0-H6
         run: >-
           uv run --extra dev mypy --follow-imports=silent
           src/loushang/hosting
           src/loushang/harness/workspace/process/hosting_compat.py
+          src/loushang/harness/worker/__init__.py
+          src/loushang/harness/worker/hosting_adapter.py
+          src/loushang/harness/worker/owner_selection.py
+          src/loushang/harness/worker/session.py
+          src/loushang/harness/worker/supervisor.py
 
-      - name: Test Hosting H0-H4 contract
+      - name: Create H6.2 native report directory
+        if: matrix.os == 'ubuntu-24.04'
+        run: uv run python -c "from pathlib import Path; Path('.artifacts').mkdir(exist_ok=True)"
+
+      - name: H6.2 Linux native adversarial gate
+        if: matrix.os == 'ubuntu-24.04'
+        env:
+          PYTEST_ADDOPTS: >-
+            -o faulthandler_timeout=60
+            --junitxml=.artifacts/h6-posix-native.xml
+        run: >-
+          uv run --extra dev python scripts/dev/run_pytest.py
+          tests/hosting/test_posix_launch_preparation.py
+          -q
+
+      - name: Reject empty, skipped, or failing H6.2 native report
+        if: matrix.os == 'ubuntu-24.04'
+        run: >-
+          uv run python scripts/dev/verify_pytest_xml.py
+          .artifacts/h6-posix-native.xml
+
+      - name: Upload H6.2 Linux native report
+        if: always() && matrix.os == 'ubuntu-24.04'
+        uses: actions/upload-artifact@v4
+        with:
+          name: h6-posix-native-pytest-report
+          path: .artifacts/h6-posix-native.xml
+          if-no-files-found: error
+
+      - name: Create H6.3 native report directory
+        if: matrix.os == 'windows-2022'
+        run: uv run python -c "from pathlib import Path; Path('.artifacts').mkdir(exist_ok=True)"
+
+      - name: H6.3 Windows native adversarial gate
+        if: matrix.os == 'windows-2022'
+        env:
+          PYTEST_ADDOPTS: >-
+            -o faulthandler_timeout=60
+            --junitxml=.artifacts/h6-windows-native.xml
+        run: >-
+          uv run --extra dev python scripts/dev/run_pytest.py
+          tests/hosting/test_windows_launch_preparation_native.py
+          -q
+
+      - name: Reject empty, skipped, or failing H6.3 native report
+        if: matrix.os == 'windows-2022'
+        run: >-
+          uv run python scripts/dev/verify_pytest_xml.py
+          .artifacts/h6-windows-native.xml
+
+      - name: Upload H6.3 Windows native report
+        if: always() && matrix.os == 'windows-2022'
+        uses: actions/upload-artifact@v4
+        with:
+          name: h6-windows-native-pytest-report
+          path: .artifacts/h6-windows-native.xml
+          if-no-files-found: error
+
+      - name: Test Hosting H0-H6 contract
         env:
           LOUSHANG_HOSTING_EXPECTED_BACKEND: ${{ matrix.backend }}
           LOUSHANG_HOSTING_EXPECTED_ENDPOINT: ${{ matrix.endpoint }}
@@ -67,10 +142,17 @@ jobs:
           uv run --extra dev python scripts/dev/run_pytest.py
           tests/hosting
           tests/harness/workspace/process/test_hosting_compat.py
+          tests/harness/worker/test_hosting_adapter.py
           tests/architecture/test_hosting_h0_contract.py
           tests/architecture/test_hosting_h1_process_lifetime.py
           tests/architecture/test_hosting_h2_platform_contract.py
           tests/architecture/test_hosting_h3_endpoint.py
           tests/architecture/test_hosting_h4_child_session.py
+          tests/architecture/test_hosting_h5_worker_adapter.py
+          tests/architecture/test_hosting_h6_launch_preparation.py
+          tests/architecture/test_hosting_h6_harness_parity.py
+          tests/architecture/test_hosting_h6_posix_native.py
+          tests/architecture/test_hosting_h6_windows_native.py
+          tests/architecture/test_hosted_product_runtime_v1_baseline.py
           tests/architecture/test_hosting_architecture_baseline.py
           -q

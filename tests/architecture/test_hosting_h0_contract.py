@@ -31,6 +31,11 @@ H3_PRIVATE_MODULES = {
 H4_PRIVATE_MODULES = {
     HOSTING_ROOT / "_child_session_host.py",
 }
+H6_PRIVATE_MODULES = {
+    HOSTING_ROOT / "_launch_preparation.py",
+    HOSTING_ROOT / "_posix_launch_preparation.py",
+    HOSTING_ROOT / "_windows_launch_preparation.py",
+}
 FORBIDDEN_PUBLIC_TERMS = {
     "Approval",
     "Authorization",
@@ -60,6 +65,7 @@ def test_hosting_package_is_standard_library_only_and_product_neutral() -> None:
         | H2_PRIVATE_MODULES
         | H3_PRIVATE_MODULES
         | H4_PRIVATE_MODULES
+        | H6_PRIVATE_MODULES
     )
     assert {path for path in HOSTING_ROOT.rglob("*.py")} == modules
 

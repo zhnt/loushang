@@ -25,6 +25,10 @@ against the current source-backed
 Current source and executable tests remain authoritative for implemented
 behavior. PLC9C5 must revise this document and inventory in the same change
 that introduces Product activation or native IPC/platform evidence.
+The proposed [HOST-H6 managed preparation design](../../hosting/managed-launch-preparation-h6.md)
+and [Hosted Product Runtime V1 plan](../../drafts/hosted-product-runtime-v1-plan.md)
+are prerequisites and coordination inputs only; they do not revise this
+activation guard.
 
 ## First-Principles Decisions
 

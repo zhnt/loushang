@@ -132,6 +132,25 @@ def test_h2b_platform_sources_encode_atomic_ownership_mechanics() -> None:
         assert statement in windows
 
 
+def test_h2b_requires_retryable_platform_cleanup_debt_evidence() -> None:
+    tests = "\n".join(
+        Path(path).read_text(encoding="utf-8")
+        for path in (
+            "tests/hosting/test_process_host.py",
+            "tests/hosting/test_posix_process.py",
+            "tests/hosting/test_windows_process.py",
+        )
+    )
+    for case in (
+        "test_force_settlement_timeout_retains_owner_until_tree_retry",
+        "test_posix_pending_root_eperm_retains_owner_for_host_close_retry",
+        "test_posix_lingering_descendant_eperm_retains_owner_for_retry",
+        "test_windows_published_process_retries_failed_close_handle",
+        "test_windows_termination_failure_retains_job_until_retry",
+    ):
+        assert case in tests
+
+
 def test_h2c_compatibility_adapter_is_dark_and_sealed_fd_fails_closed() -> None:
     harness_process = Path("src/loushang/harness/workspace/process")
     adapter = harness_process / "hosting_compat.py"

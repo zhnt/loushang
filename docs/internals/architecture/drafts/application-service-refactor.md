@@ -23,6 +23,8 @@ to an embedded `AppClient` or Harnesstui migration are optional Product
 elections, not a prerequisite for AppService or the default local composition.
 Platform Host identity and Product catalog/routing ownership follow
 [AppHost Top-Level Placement](apphost-top-level-placement.md).
+The refined Product, Session identity/catalog, and scoped-runtime contracts are
+in the [AppHost A0 Contract Baseline](apphost-contract-baseline-a0.md).
 OS process and daemon mechanisms follow the separate
 [Hosting Support Boundary](../hosting/key-designs/hosted-application-support-boundary.md).
 
@@ -468,14 +470,17 @@ revision        snapshot/read-model version
 Legacy RPC camelCase dictionaries and command names are compatibility inputs
 to an adapter; they do not define the new application protocol.
 
-Before `session/open` or resume invokes a Product-specific parser, AppHost reads
-the parent-defined generic versioned Session Identity Envelope. Its required
-`product_id`, continuity identity, and opaque locator select the admitted
-Product descriptor and factory; the resulting Product-specific owner then
-parses its own state. Each Session receives an independent scoped Product
-Runtime binding. A single-Product process only restricts the allowed ID; it does
-not create a process-global Session Runtime. Legacy Sessions without identity
-must pass an explicit compatibility importer/migration or fail with
+Before `session/open` or resume invokes a Product-specific parser, AppHost
+consumes the parent-defined generic versioned Session Identity Envelope from an
+injected Product-neutral identity/catalog port. That port adapts the existing
+bounded Harness discovery owner; AppHost never derives cwd/home roots or reads
+Session files directly. The envelope's required `product_id`, continuity
+identity, and opaque locator select the admitted Product descriptor and
+factory; the resulting Product-specific owner then parses its own state. Each
+Session receives an independent scoped Product Runtime binding. A
+single-Product process only restricts the allowed ID; it does not create a
+process-global Session Runtime. Legacy Sessions without identity must pass an
+explicit compatibility importer/migration or fail with
 `ProductIdentityRequired`; a default Product is never inferred.
 
 ## Approval Interaction Boundary

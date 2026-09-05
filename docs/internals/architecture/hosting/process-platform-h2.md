@@ -46,12 +46,17 @@ may be observed before residual descendants finish cleanup, but host capacity
 is not released until the bounded tree-settlement attempt and all
 preparation/handle cleanup have settled. A failed final observation is reported
 as cleanup failure and never described as proof that the owned tree is empty.
+If termination or final handle cleanup cannot reclaim a potentially live tree,
+close returns after its fixed waits but retains the Process Lease as cleanup
+debt. Host close does not tear down the backend or claim a closed state, and a
+later close retries the same owner after the platform condition changes.
 
 After force-kill, tree observation receives one final bounded interval. An
 observation failure or a kernel-retained orphan zombie is reported as cleanup
-failure, the waiter is cancelled, and all remaining handles/preparation are
-still closed. Hosting never waits forever for an unsignalable zombie; such a
-PID has no executing code and is not reported as successful tree-empty proof.
+failure and the waiter is cancelled. Hosting never waits forever for an
+unsignalable zombie, but it also does not convert timeout or handle closure into
+tree-empty proof: the lease and joined preparation remain owned until a later
+bounded retry obtains that proof.
 
 An owned tree means membership in the Hosting-created process group or Job
 Object. Hosting is not a hostile-code security boundary: a POSIX child that is
@@ -108,7 +113,10 @@ finish before cancellation is propagated.
 The root PID is retained only inside the backend transport as the process-group
 identifier. Signals use only `killpg`; `ProcessLookupError` means the requested
 group operation is already settled. Other errors are reported and never cause
-a root-only fallback. After the root is reaped, a successful lookup of a new
+a root-only fallback. In particular, `EPERM` from signal zero means the group
+still exists; `EPERM` from the real TERM/KILL leaves the lease registered and
+returns bounded cleanup debt rather than waiting indefinitely. After the root
+is reaped, a successful lookup of a new
 process at the former leader PID proves numeric-identity reuse: POSIX forbids
 that PID reuse while the original process group still exists. The backend then
 marks the original group settled and never signals the replacement identity.
@@ -131,13 +139,19 @@ successful creation. Failure at any intermediate step closes the attribute
 list, pipes, process/thread handles, and Job Object; kill-on-close reclaims a
 successfully attached child. Blocking Win32 pipe/wait calls run through a
 bounded executor-facing transport. Process cleanup first fences new I/O,
-requests cancellation of synchronous stream operations, and closes the Job
-Object so kill-on-close reclaims the tree. It then waits for stream and process
-wait operations for a fixed interval. A pipe or process handle is closed only
-after its corresponding operation settles; an unsettled handle remains owned
-for a later retry and is reported as cleanup failure. H2b must prove delayed
-cancellation, bounded settlement, and concurrent-spawn handle isolation on
-Windows CI.
+requests cancellation of synchronous stream operations, and requests Job
+termination. The published Job handle remains owned until an ActiveProcesses
+query observes the Job empty; closing the last Job handle is never reinterpreted
+as that observation. It then waits for stream and process wait operations for a
+fixed interval. A pipe or process handle is closed only after its corresponding
+operation settles; an unsettled handle remains owned for a later retry and is
+reported as cleanup failure. A published Process Lease is removed only after
+tree-empty proof and every retained `CloseHandle` succeeds; host close can
+therefore retry a transient failure before shutting down the Win32 executor.
+Kill-on-close remains a fail-safe for pre-publication native construction and
+attachment rollback, whose owner is retained separately if cleanup itself
+fails. H2b must prove delayed cancellation, bounded settlement, retryable
+handle closure, and concurrent-spawn handle isolation on Windows CI.
 
 ## H2c Harness Compatibility Boundary
 
