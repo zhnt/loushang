@@ -335,7 +335,10 @@ void WINAPI mainCRTStartup(void) {
     lstrcatW(scratch, L"\\lpac-fs.bin");
     HANDLE scratch_file = CreateFileW(scratch, GENERIC_WRITE | GENERIC_READ, 0, 0,
                                       CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
-    if (scratch_file == INVALID_HANDLE_VALUE) ExitProcess(89);
+    if (scratch_file == INVALID_HANDLE_VALUE) {
+        DWORD scratch_error = GetLastError();
+        ExitProcess(0xC5505900 | (scratch_error & 0xff));
+    }
     DWORD written = 0;
     if (!WriteFile(scratch_file, "x", 1, &written, 0) || written != 1)
         ExitProcess(90);
