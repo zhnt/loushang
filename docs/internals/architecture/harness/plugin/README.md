@@ -349,6 +349,11 @@ Neither may silently override a narrower implemented owner contract.
   adds one Hosting-private OS-sourced trusted-payload builder, retains the
   restricted-token/Job/handle-list mechanics report, and proves explicit
   Product required-containment rejection. Windows activation remains closed.
+- [PLC9C5 C5.4 Linux Coding Product Canary](plugin-lifecycle-plc9c5-c54-linux-product.md)
+  composes the one explicit Linux Coding canary over the retained Worker and
+  Hosting capabilities, joins stable Session and shared-entrypoint evidence,
+  and closes ordered rollback/recovery and publication evidence. Current stays
+  default and G7 remains open on Windows.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)

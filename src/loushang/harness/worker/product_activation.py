@@ -766,8 +766,9 @@ class ProductWorkerActivationCoordinator:
 
     The default state store is an inert deterministic fake.  A caller that
     needs restart durability injects one CAS store and gives the same store to
-    the reconstructed coordinator.  This slice intentionally has no production
-    composition root.
+    the reconstructed coordinator.  C5.1 introduced this owner without a
+    production root; the sole C5.4 Coding canary may now construct it from
+    explicitly injected durable authorities.
     """
 
     def __init__(

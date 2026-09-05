@@ -105,6 +105,7 @@ CODING_TUI_PRODUCT_TEST_PATHS := \
 	tests/coding/test_ui_session_view.py
 HARNESS_SOURCES := src/loushang/harness
 HARNESS_RUNTIME_SUPPORT_SOURCES := \
+	src/loushang/coding/_product_worker_canary.py \
 	src/loushang/foundation/platform_paths.py \
 	src/loushang/foundation/runtime_scope.py \
 	scripts/dev/run_pytest.py \
@@ -129,6 +130,7 @@ HARNESS_TEST_PATHS := \
 	tests/architecture/test_plugin_lifecycle_plc9c5_c51_contract.py \
 	tests/architecture/test_plugin_lifecycle_plc9c5_c52_linux_native.py \
 	tests/architecture/test_plugin_lifecycle_plc9c5_c53_windows_mechanics.py \
+	tests/architecture/test_plugin_lifecycle_plc9c5_c54_linux_product.py \
 	tests/architecture/test_session_model_call_closure_contract.py
 HOSTING_SOURCES := \
 	src/loushang/hosting \
@@ -245,6 +247,14 @@ test-plc9c5-c53-windows-mechanics:
 	uv --cache-dir .uv-cache run --extra dev python scripts/dev/verify_plc9c5_manifest.py docs/internals/architecture/harness/plugin/plugin-lifecycle-plc9c5-evidence-manifest.json PLC9C5-C5.3-WINDOWS-MECHANICS .artifacts/plc9c5-c53-windows-mechanics.xml
 
 check-plc9c5-c53-windows-mechanics: test-plc9c5-c53-windows-mechanics
+
+test-plc9c5-c54-linux-product:
+	mkdir -p .artifacts
+	uv --cache-dir .uv-cache run --extra dev $(PYTEST_RUNNER) tests/harness/worker/test_coding_product_worker_canary.py -q --junitxml=.artifacts/plc9c5-c54-linux-product.xml
+	uv --cache-dir .uv-cache run --extra dev python scripts/dev/verify_pytest_xml.py .artifacts/plc9c5-c54-linux-product.xml
+	uv --cache-dir .uv-cache run --extra dev python scripts/dev/verify_plc9c5_manifest.py docs/internals/architecture/harness/plugin/plugin-lifecycle-plc9c5-evidence-manifest.json PLC9C5-C5.4-LINUX-PRODUCT .artifacts/plc9c5-c54-linux-product.xml
+
+check-plc9c5-c54-linux-product: test-plc9c5-c54-linux-product
 
 check-hosting: lint-hosting typecheck-hosting test-hosting
 

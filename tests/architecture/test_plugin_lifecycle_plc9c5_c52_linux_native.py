@@ -112,7 +112,7 @@ def test_c52_status_inventory_and_index_are_honest() -> None:
         "Same-boot uncertainty remains durable cleanup debt",
     ):
         assert token in document
-    assert "implemented through C5.3" in baseline
+    assert "implemented through C5.4" in baseline
     assert "C5.2 Linux native profile binding" in baseline
     assert "C5-C52-LINUX-NATIVE" in inventory
     assert "no Product, Coding, AppHost, CLI, presenter, or Session composition" in document
@@ -190,14 +190,14 @@ def test_c52_private_imports_are_exact_lazy_and_one_way() -> None:
         assert forbidden not in bridge
 
 
-def test_c52_bridge_is_default_dark_and_adapter_remains_profile_blind() -> None:
+def test_c52_bridge_has_one_explicit_product_consumer_and_adapter_stays_blind() -> None:
     factory = "_bind_posix_static_contained_product_worker_profile"
     consumers = {
         path
         for path in SOURCE_ROOT.rglob("*.py")
         if path != BRIDGE and factory in _read(path)
     }
-    assert consumers == set()
+    assert consumers == {Path("src/loushang/coding/_product_worker_canary.py")}
     adapter = _read(HOSTING_ADAPTER)
     assert "ProductWorkerNativeProfilePort" in adapter
     for forbidden in (

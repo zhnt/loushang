@@ -96,7 +96,7 @@ def test_c53_status_manifest_and_index_are_honest() -> None:
     assert "Implementation status: implemented" in document
     assert "Activation status: closed" in document
     assert "Production default: Current" in document
-    assert "implemented through C5.3" in baseline
+    assert "implemented through C5.4" in baseline
     assert "C5-C53-WINDOWS-MECHANICS" in inventory
     assert _read(INDEX).count(
         "(plugin-lifecycle-plc9c5-c53-windows-mechanics.md)"

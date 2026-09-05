@@ -26,6 +26,7 @@ WORKER_ROOT = Path("src/loushang/harness/worker")
 WORKER_FACADE = WORKER_ROOT / "__init__.py"
 IMPLEMENTATION = WORKER_ROOT / "product_activation.py"
 NATIVE_BRIDGE = WORKER_ROOT / "_native_profile_bridge.py"
+CODING_CANARY = Path("src/loushang/coding/_product_worker_canary.py")
 CONTRACT_TEST = Path("tests/harness/worker/test_product_activation.py")
 VERIFIER = Path("scripts/dev/verify_plc9c5_manifest.py")
 VERIFIER_TEST = Path("tests/dev/test_verify_plc9c5_manifest.py")
@@ -244,16 +245,18 @@ def test_c51_contract_and_inventory_are_honest_and_indexed() -> None:
     ):
         assert token in contract
     assert index.count("(plugin-lifecycle-plc9c5-c51-contract.md)") == 1
-    assert "C5.2 Linux native profile binding, and C5.3 Windows" in (
+    assert "C5.2 Linux native profile binding, C5.3 Windows" in (
         " ".join(baseline.split())
     )
-    assert "mechanics/rejection; C5.4 not-started" in " ".join(baseline.split())
+    assert "mechanics/rejection, and the C5.4 Linux Coding Product canary" in (
+        " ".join(baseline.split())
+    )
     for token in (
         "C5-C51-RECEIPT-LIFECYCLE",
         "C5-C52-LINUX-NATIVE",
-        "retained Linux native report is implemented",
-        "no production activation gate is composed",
-        "no production recovery route exists",
+        "C5.2 Linux native",
+        "production canary latches first",
+        "full V1--V6 vector",
     ):
         assert token in inventory
 
@@ -526,7 +529,7 @@ def test_c51_required_manifest_and_test_ids_are_exact() -> None:
     assert (
         reports["PLC9C5-C5.3-WINDOWS-MECHANICS"]["status"] == "implemented"
     )
-    assert reports["PLC9C5-C5.4-LINUX-PRODUCT"]["status"] == "planned"
+    assert reports["PLC9C5-C5.4-LINUX-PRODUCT"]["status"] == "implemented"
     assert _literal_collection(CONTRACT_TEST, "PLC9C5_C51_CASES") == set(C51_CASES)
     assert _literal_collection(
         CONTRACT_TEST,
@@ -603,7 +606,7 @@ def test_c51_ci_makefile_and_manifest_verifier_are_required() -> None:
         assert behavior_test in verifier_tests
 
 
-def test_c51_has_no_production_consumer_or_native_side_effect() -> None:
+def test_c51_has_only_the_accepted_c54_consumer_and_no_native_side_effect() -> None:
     consumers: set[Path] = set()
     for path in SOURCE_ROOT.rglob("*.py"):
         if path in {IMPLEMENTATION, WORKER_FACADE}:
@@ -615,7 +618,7 @@ def test_c51_has_no_production_consumer_or_native_side_effect() -> None:
             or any(name in text for name in C51_IMPLEMENTATION_NAMES)
         ):
             consumers.add(path)
-    assert consumers == {NATIVE_BRIDGE}
+    assert consumers == {NATIVE_BRIDGE, CODING_CANARY}
     for path in WORKER_ROOT.rglob("*.py"):
         if path in {IMPLEMENTATION, WORKER_FACADE, NATIVE_BRIDGE}:
             continue

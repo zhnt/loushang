@@ -30,6 +30,7 @@ HARNESS_ROOT = SOURCE_ROOT / "harness"
 WORKER_ROOT = HARNESS_ROOT / "worker"
 SANDBOX_RUNTIME = HARNESS_ROOT / "sandbox/runtime.py"
 CODING_ROOT = SOURCE_ROOT / "coding"
+CODING_CANARY = CODING_ROOT / "_product_worker_canary.py"
 HOSTING_ROOT = SOURCE_ROOT / "hosting"
 APPHOST_ROOT = SOURCE_ROOT / "apphost"
 AUTHOR_ROOT = SOURCE_ROOT / "plugin"
@@ -57,6 +58,7 @@ MAKEFILE = Path("Makefile")
 
 EXPECTED_CURRENT_SOURCE_PATHS = {
     "src/loushang/coding/bootstrap.py",
+    "src/loushang/coding/_product_worker_canary.py",
     "src/loushang/coding/cli/__main__.py",
     "src/loushang/coding/session_manager.py",
     "src/loushang/harness/capabilities/component_host.py",
@@ -545,12 +547,15 @@ def test_c50_status_is_honest_and_documents_are_indexed_once() -> None:
         "Parent": "PLC9C",
         "Authority": "normative accepted design",
         "Design status": "accepted",
-            "Implementation status": (
-                "implemented through C5.3 — C5.0 design/guards, C5.1 "
-                "receipt/lifecycle, C5.2 Linux native profile binding, and C5.3 "
-                "Windows mechanics/rejection; C5.4 not-started"
+        "Implementation status": (
+            "implemented through C5.4 — C5.0 design/guards, C5.1 "
+            "receipt/lifecycle, C5.2 Linux native profile binding, C5.3 Windows "
+            "mechanics/rejection, and the C5.4 Linux Coding Product canary"
         ),
-        "Activation status": "closed; every production route remains default-dark",
+        "Activation status": (
+            "explicit Linux Coding canary accepted; default remains Current and "
+            "Windows/every unlisted platform remain closed"
+        ),
         "Observation base": "cb01f723",
         "Owner": (
             "Harness Worker architecture with Product, Hosting, and domain-owner "
@@ -595,9 +600,10 @@ def test_c50_current_inventory_source_set_is_exact_and_present() -> None:
         "C5-CUR-SESSION-DISCOVERY",
         "C5-CUR-WORKER-PUBLIC",
         "C5-C51-RECEIPT-LIFECYCLE",
-            "C5-C52-LINUX-NATIVE",
-            "C5-C53-WINDOWS-MECHANICS",
-            "C5-CUR-WORKER-IDENTITY",
+        "C5-C52-LINUX-NATIVE",
+        "C5-C53-WINDOWS-MECHANICS",
+        "C5-C54-LINUX-PRODUCT",
+        "C5-CUR-WORKER-IDENTITY",
         "C5-CUR-CURRENT-LAUNCH",
         "C5-CUR-WORKER-SESSION",
         "C5-CUR-DOMAIN-CANARY",
@@ -690,16 +696,16 @@ def test_c50_freezes_dependency_and_native_shape_decisions() -> None:
     for mismatch in (
         "static launcher digest",
         "containment-profile digest",
-            "snapshots locked volume/file identities",
-            "canonical `SystemRoot` through `GetWindowsDirectoryW`",
-            "ambient poisoning is closed",
+        "snapshots locked volume/file identities",
+        "canonical `SystemRoot` through `GetWindowsDirectoryW`",
+        "ambient poisoning is closed",
         "discarded stderr",
         "restricted-token/Job/direct-import mechanics",
         "selector currently accepts WSL",
         "current profile is explicitly rejected for Product required containment",
-        "no production recovery route exists",
-        "no production activation gate is composed",
-        "ordered production rollback remains absent",
+        "full V1--V6 vector",
+        "production canary latches first",
+        "R1--R7 is executable",
     ):
         assert mismatch in inventory
 
@@ -713,16 +719,19 @@ def test_c50_freezes_dependency_and_native_shape_decisions() -> None:
     assert _drill_ledger_rows(future_evidence) == EXPECTED_DRILL_LEDGER
 
 
-def test_c50_guard_transitions_are_exact_through_c52() -> None:
+def test_c50_guard_transitions_are_exact_through_c54() -> None:
     production_sources = tuple(SOURCE_ROOT.rglob("*.py"))
     source = "\n".join(_read(path) for path in production_sources)
-    retained_absences = {"bind_coding_product_worker_canary"}
-    for token in retained_absences:
-        assert token not in source
+    assert source.count("def bind_coding_product_worker_canary(") == 1
     c51_source = _read(WORKER_ROOT / "product_activation.py")
-    for token in RESERVED_TRANSITION_TOKENS - retained_absences - C52_WORKER_PUBLIC_EXPORTS:
+    for token in (
+        RESERVED_TRANSITION_TOKENS
+        - {"bind_coding_product_worker_canary"}
+        - C52_WORKER_PUBLIC_EXPORTS
+    ):
         assert token in c51_source
     assert "ProductWorkerNativeProfilePort" in _read(NATIVE_PROFILE_BRIDGE)
+    assert "def bind_coding_product_worker_canary(" in _read(CODING_CANARY)
 
     composition_names = {
         "HostingManagedWorkerSessionAdapter",
@@ -736,7 +745,7 @@ def test_c50_guard_transitions_are_exact_through_c52() -> None:
         if not path.is_relative_to(WORKER_ROOT)
         and any(name in _read(path) for name in composition_names)
     }
-    assert outside_worker == set()
+    assert outside_worker == {CODING_CANARY}
 
     worker_consumers = {
         path
@@ -782,19 +791,18 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
     assert "wsl" not in posix
     assert "microsoft" not in posix
 
-    forbidden_product_imports = (
-        "loushang.harness.worker",
-        "loushang.hosting",
-    )
-    for root in (CODING_ROOT, APPHOST_ROOT):
-        if not root.is_dir():
-            continue
-        imports = {
-            imported for path in root.rglob("*.py") for imported in _imports(path)
-        }
-        assert not any(
-            imported.startswith(forbidden_product_imports) for imported in imports
+    coding_worker_consumers = {
+        path
+        for path in CODING_ROOT.rglob("*.py")
+        if any(
+            imported.startswith("loushang.harness.worker")
+            for imported in _imports(path)
         )
+    }
+    assert coding_worker_consumers == {CODING_CANARY}
+    for path in (*CODING_ROOT.rglob("*.py"), *APPHOST_ROOT.rglob("*.py")):
+        imports = _imports(path)
+        assert not any(imported.startswith("loushang.hosting") for imported in imports)
 
 
 def test_c50_import_guard_resolves_relative_and_parent_alias_forms() -> None:

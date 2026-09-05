@@ -8,10 +8,11 @@
 - Parent: `PLC9C`
 - Authority: normative accepted design
 - Design status: accepted
-- Implementation status: implemented through C5.3 — C5.0 design/guards, C5.1
-  receipt/lifecycle, C5.2 Linux native profile binding, and C5.3 Windows
-  mechanics/rejection; C5.4 not-started
-- Activation status: closed; every production route remains default-dark
+- Implementation status: implemented through C5.4 — C5.0 design/guards, C5.1
+  receipt/lifecycle, C5.2 Linux native profile binding, C5.3 Windows
+  mechanics/rejection, and the C5.4 Linux Coding Product canary
+- Activation status: explicit Linux Coding canary accepted; default remains
+  Current and Windows/every unlisted platform remain closed
 - Observation base: `cb01f723`
 - Owner: Harness Worker architecture with Product, Hosting, and domain-owner
   review
@@ -19,11 +20,13 @@
 ## Purpose And Acceptance Boundary
 
 C5.0 fixes the design, Current inventory, dependency direction, rollout
-matrix, and executable absence/deletion guards for PLC9C5. C5.1 adds the
+matrix, and executable transition/deletion guards for PLC9C5. C5.1 adds the
 receipt/lifecycle contract, C5.2 adds only the default-dark Linux native
 profile capability, and C5.3 retains the Windows mechanics while proving that
-they are not accepted Product containment. None authorizes a production
-Product composition to request the Hosting owner.
+they are not accepted Product containment. C5.4 adds the sole explicit Coding
+Product composition that may request Hosting when an exact receipt, stable
+Session locator, Linux native-profile capability, and Capability owner all
+converge. Omission and every unmatched route retain Current.
 
 The first canary is one exact, read-only `capability_provider` contribution
 selected by the Coding Product. Coding is the first evidence Product, not the
@@ -245,7 +248,7 @@ Current Worker shape.
 
 | Platform/profile | Already proven | Blocking C5 delta | Owning slice |
 | --- | --- | --- | --- |
-| Linux x86_64, excluding WSL, `posix-static-contained-elf-v1` | H6.2 seals one static launcher and payload, retains cwd, transfers only the exact endpoint/preparation descriptors, and owns process-group cleanup | implemented in C5.2: Product policy admits the exact payload/launcher/containment-profile closure; the unique bridge rejects WSL/unknown/non-x86 before H6 selection; same-boot crash uncertainty remains durable cleanup debt | C5.2 Linux native report implemented; no Product composition |
+| Linux x86_64, excluding WSL, `posix-static-contained-elf-v1` | H6.2 seals one static launcher and payload, retains cwd, transfers only the exact endpoint/preparation descriptors, and owns process-group cleanup | implemented in C5.2: Product policy admits the exact payload/launcher/containment-profile closure; the unique bridge rejects WSL/unknown/non-x86 before H6 selection; same-boot crash uncertainty remains durable cleanup debt | C5.2 Linux native report retained; consumed only by the exact C5.4 Coding Product root |
 | Windows AMD64 `windows-restricted-direct-import-pe-v1` | H6.3 locks PE/cwd/ancestors, creates a restricted token and kill-on-close Job, constrains the handle list, and proves direct-import mechanics | **Not accepted as Product required containment.** It is a trusted-payload mechanics profile only. A Hosting-private opaque builder must obtain locked file identities and query `GetWindowsDirectoryW` for a canonical absolute `SystemRoot`; it never reads `os.environ`. Ambient `SystemRoot` poisoning is ignored, while any caller-supplied environment/SystemRoot is rejected before acquisition. Harness/Product never receives raw handles or environment. The builder preserves H6.3 discarded stderr and cannot reuse H6.4's piped-stderr mapping. Windows Product canary remains closed until a separate security-reviewed containment profile is accepted | C5.3 retained mechanics/fail-closed gate; no Product activation |
 | macOS, WSL, unknown Linux classifier result, non-x86_64 Linux, non-AMD64 Windows, every unlisted environment | no accepted PLC9C5 Product native profile | remain unsupported with a stable fail-closed result; no best-effort/current same-attempt downgrade | retained through C5.4 |
 
@@ -396,24 +399,26 @@ that the old owner is unused.
 
 ## Per-Slice Executable Guards
 
-While C5.2 is the active implementation edge, architecture tests must prove:
+With C5.4 delivered, architecture tests must prove:
 
 - the baseline and inventory are indexed once and reproduce every G7 matrix
   dimension and required case from the parent plan;
 - every Current inventory source exists and the documented source set is exact;
-- only the named C5.1 receipt/coordinator contracts and C5.2 profile port exist;
-- no non-Worker production module composes the H5 owner selector, H6 adapter,
-  or C4 Capability adapter; Sandbox remains the sole non-Worker importer of
-  the existing Worker launch capability;
+- only the named C5.1 receipt/coordinator contracts, C5.2 profile port, and
+  exact C5.4 Coding Product root exist;
+- only the C5.4 Coding root outside Worker composes the H5 owner selector, H6
+  adapter, or C4 Capability adapter; Sandbox remains the sole non-Worker
+  importer of the existing Worker launch capability;
 - the sole `_native_profile_bridge.py` friend imports exactly the two accepted
   private POSIX profile symbols and no Windows/raw platform API; the H6.4
   private preparation edge remains confined to the existing Worker adapter;
-- Coding Product and presenter modules import no Harness Worker or Hosting
-  implementation;
+- only the exact Coding canary imports the reviewed C5.1 coordinator and C5.2
+  friend binder; no Coding or presenter module imports Hosting;
 - owner selection still defaults to Current, performs no environment lookup,
   and contains one direct call with no cross-owner exception retry;
 - `remote_service`, author-SDK runtime owners, AppHost coupling, unsupported
-  platform fallback, and production activation remain absent; and
+  platform fallback, and every Product activation outside the exact Linux
+  Coding canary remain absent; and
 - the retained deletion symbols/files for Current launch, rollback, native
   preparation, Session identity validation, and domain authority still exist.
 

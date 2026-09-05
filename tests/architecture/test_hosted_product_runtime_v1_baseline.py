@@ -63,6 +63,8 @@ CURRENT_SOURCE_SEAMS = (
     WORKER_SOURCE / "journal.py",
     WORKER_SOURCE / "session.py",
     WORKER_SOURCE / "capability_query.py",
+    WORKER_SOURCE / "product_activation.py",
+    WORKER_SOURCE / "_native_profile_bridge.py",
     HARNESS_SOURCE / "transcript/discovery.py",
     HARNESS_SOURCE / "transcript/session_catalog.py",
     HARNESS_SOURCE / "transcript/directory.py",
@@ -72,6 +74,7 @@ CURRENT_SOURCE_SEAMS = (
     APPSERVER_SOURCE / "ports.py",
     HARNESS_SOURCE / "machine_resources/control_plane.py",
     Path("src/loushang/coding/cli/__main__.py"),
+    Path("src/loushang/coding/_product_worker_canary.py"),
 )
 
 
@@ -465,8 +468,9 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
     for statement in (
         "H5 default owner is Current",
         "PLC9C5 C5.0 design/inventory, C5.1 receipt/lifecycle, C5.2 Linux profile, "
-        "and C5.3 Windows mechanics/rejection are implemented",
-        "Product activation and unsupported-platform guards remain unchanged",
+        "C5.3 Windows mechanics/rejection, and C5.4 Linux Coding Product canary "
+        "are implemented",
+        "Windows Product activation and unsupported-platform guards remain closed",
         "AppHost A0.4 remains explicitly constructed and dark",
         "Hosting imports no Harness, Product, AppHost, AppServer, or AppService",
     ):
@@ -537,7 +541,7 @@ def test_delivery_plan_has_parallel_streams_and_one_activation_join() -> None:
     assert "never retry the other owner within one launch attempt" in normalized
 
 
-def test_current_worker_route_has_no_outside_composition_or_fallback() -> None:
+def test_current_worker_route_has_one_exact_composition_and_no_fallback() -> None:
     activation_names = {
         "HostingManagedWorkerSessionAdapter",
         "WorkerHostingActivationV1",
@@ -549,7 +553,7 @@ def test_current_worker_route_has_no_outside_composition_or_fallback() -> None:
         if not path.is_relative_to(WORKER_SOURCE)
         and any(name in _read(path) for name in activation_names)
     }
-    assert consumers == set()
+    assert consumers == {Path("src/loushang/coding/_product_worker_canary.py")}
 
     selection = _read(WORKER_SOURCE / "owner_selection.py")
     assert 'owner: WorkerSessionOwner = "current"' in selection
