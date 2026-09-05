@@ -5,16 +5,14 @@ import re
 from pathlib import Path
 
 BASELINE = Path(
-    "docs/internals/architecture/harness/plugin/"
-    "plugin-lifecycle-plc9c5-c50-baseline.md"
+    "docs/internals/architecture/harness/plugin/plugin-lifecycle-plc9c5-c50-baseline.md"
 )
 INVENTORY = Path(
     "docs/internals/architecture/harness/plugin/"
     "plugin-lifecycle-plc9c5-c50-inventory.md"
 )
 PLC9C = Path(
-    "docs/internals/architecture/harness/plugin/"
-    "plugin-lifecycle-plc9c0-baseline.md"
+    "docs/internals/architecture/harness/plugin/plugin-lifecycle-plc9c0-baseline.md"
 )
 PLUGIN_INDEX = Path("docs/internals/architecture/harness/plugin/README.md")
 DELIVERY_PLAN = Path(
@@ -43,12 +41,8 @@ WINDOWS_PROFILE = HOSTING_ROOT / "_windows_launch_preparation.py"
 WORKER_PUBLIC = WORKER_ROOT / "__init__.py"
 NATIVE_PROFILE_BRIDGE = WORKER_ROOT / "_native_profile_bridge.py"
 POSIX_NATIVE_TESTS = Path("tests/hosting/test_posix_launch_preparation.py")
-WINDOWS_NATIVE_TESTS = Path(
-    "tests/hosting/test_windows_launch_preparation_native.py"
-)
-POSIX_ARCHITECTURE_GUARD = Path(
-    "tests/architecture/test_hosting_h6_posix_native.py"
-)
+WINDOWS_NATIVE_TESTS = Path("tests/hosting/test_windows_launch_preparation_native.py")
+POSIX_ARCHITECTURE_GUARD = Path("tests/architecture/test_hosting_h6_posix_native.py")
 WINDOWS_ARCHITECTURE_GUARD = Path(
     "tests/architecture/test_hosting_h6_windows_native.py"
 )
@@ -400,7 +394,10 @@ EXPECTED_FUTURE_REPORTS = (
 )
 
 EXPECTED_DRILL_LEDGER = (
-    ("R1-LATCH-FUTURE", "atomically latch future Hosting admission closed and stale its generation"),
+    (
+        "R1-LATCH-FUTURE",
+        "atomically latch future Hosting admission closed and stale its generation",
+    ),
     ("R2-FENCE-ATTEMPTS", "fence every exact attempt in the complete active registry"),
     ("R3-REVOKE-DRAIN", "revoke and drain only each attempt's exact domain generation"),
     ("R4-TERMINATE-TREE", "terminate each exact owner's complete process tree"),
@@ -477,8 +474,10 @@ def _resolve_import_from(path: Path, node: ast.ImportFrom) -> set[str]:
         package = list(path.with_suffix("").parts[1:-1])
         retained = len(package) - (node.level - 1)
         assert retained >= 0
-        base = (*package[:retained], *module.split(".")) if module else tuple(
-            package[:retained]
+        base = (
+            (*package[:retained], *module.split("."))
+            if module
+            else tuple(package[:retained])
         )
         module = ".".join(base)
     result = {module} if module else set()
@@ -525,7 +524,9 @@ def _literal_string_collection(path: Path, name: str) -> set[str]:
         if not isinstance(node, (ast.Assign, ast.AnnAssign)):
             continue
         targets = node.targets if isinstance(node, ast.Assign) else (node.target,)
-        if not any(isinstance(target, ast.Name) and target.id == name for target in targets):
+        if not any(
+            isinstance(target, ast.Name) and target.id == name for target in targets
+        ):
             continue
         value = node.value
         assert value is not None
@@ -536,7 +537,9 @@ def _literal_string_collection(path: Path, name: str) -> set[str]:
     raise AssertionError(f"{name} not found in {path}")
 
 
-def _top_level_test_functions(path: Path) -> dict[str, ast.FunctionDef | ast.AsyncFunctionDef]:
+def _top_level_test_functions(
+    path: Path,
+) -> dict[str, ast.FunctionDef | ast.AsyncFunctionDef]:
     return {
         node.name: node
         for node in ast.parse(_read(path), filename=str(path)).body
@@ -545,9 +548,9 @@ def _top_level_test_functions(path: Path) -> dict[str, ast.FunctionDef | ast.Asy
     }
 
 
-def _future_report_rows(section: str) -> tuple[
-    tuple[str, str, int, tuple[str, ...]], ...
-]:
+def _future_report_rows(
+    section: str,
+) -> tuple[tuple[str, str, int, tuple[str, ...]], ...]:
     rows: list[tuple[str, str, int, tuple[str, ...]]] = []
     for line in section.splitlines():
         if not line.startswith("| `PLC9C5-"):
@@ -614,19 +617,19 @@ def test_c50_status_is_honest_and_documents_are_indexed_once() -> None:
         "Authority": "normative accepted design",
         "Design status": "accepted",
         "Implementation status": (
-            "implemented through C5.4 — C5.0 design/guards, C5.1 "
+            "implemented through C5.5b — C5.0 design/guards, C5.1 "
             "receipt/lifecycle, C5.2 Linux native profile binding, C5.3 Windows "
-            "mechanics/rejection, and the C5.4 Linux Coding Product canary; C5.5a "
-            "is an accepted design-only Windows containment gate"
+            "mechanics/rejection, and the C5.4 Linux Coding Product canary; "
+            "C5.5a design and the C5.5b Windows LPAC native candidate; C5.5c Product "
+            "composition remains unimplemented"
         ),
         "Activation status": (
             "explicit Linux Coding canary accepted; default remains Current and "
             "Windows/every unlisted platform remain closed"
         ),
-        "Observation base": "cb01f723",
+        "Observation base": "merged C5.5a design baseline `68151253",
         "Owner": (
-            "Harness Worker architecture with Product, Hosting, and domain-owner "
-            "review"
+            "Harness Worker architecture with Product, Hosting, and domain-owner review"
         ),
     }
     inventory_status = _status(INVENTORY)
@@ -683,7 +686,9 @@ def test_c50_current_inventory_source_set_is_exact_and_present() -> None:
 
 
 def test_c50_reproduces_the_complete_parent_g7_matrix() -> None:
-    parent_rows = _table_rows(_section(_read(DELIVERY_PLAN), "G7 Canary Acceptance Matrix"))
+    parent_rows = _table_rows(
+        _section(_read(DELIVERY_PLAN), "G7 Canary Acceptance Matrix")
+    )
     child_rows = _table_rows(_section(_read(BASELINE), "G7 Acceptance Coverage"))
     assert all(len(row) == 3 and row[2] for row in child_rows)
     assert tuple(row[:2] for row in child_rows) == parent_rows
@@ -850,8 +855,7 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
     profile_consumers = {
         path
         for path in SOURCE_ROOT.rglob("*.py")
-        if not path.is_relative_to(HOSTING_ROOT)
-        and _imports(path) & profile_modules
+        if not path.is_relative_to(HOSTING_ROOT) and _imports(path) & profile_modules
     }
     assert profile_consumers == {NATIVE_PROFILE_BRIDGE}
 
@@ -923,9 +927,7 @@ def test_c50_owner_selection_is_default_current_and_has_no_retry() -> None:
 def test_c50_deletion_fences_retain_exact_owners_and_oracles() -> None:
     expected_definitions = {
         WORKER_ROOT / "launch.py": {"ManagedWorkerLaunchPort"},
-        SANDBOX_RUNTIME: {
-            "SandboxExecutionRuntime.bind_managed_worker_launch_port"
-        },
+        SANDBOX_RUNTIME: {"SandboxExecutionRuntime.bind_managed_worker_launch_port"},
         OWNER_SELECTION: {
             "WorkerSessionOwnerRouter",
             "WorkerSessionOwnerRouter.rollback_to_current",
@@ -935,9 +937,7 @@ def test_c50_deletion_fences_retain_exact_owners_and_oracles() -> None:
             "WorkerSupervisor.start_session",
         },
         CAPABILITY_ADAPTER: {"bind_capability_query_worker_adapter"},
-        HARNESS_ROOT / "capabilities/component_host.py": {
-            "CapabilityComponentHost"
-        },
+        HARNESS_ROOT / "capabilities/component_host.py": {"CapabilityComponentHost"},
         HARNESS_ROOT / "capabilities/owner_component_host.py": {
             "CapabilityOwnerComponentHost"
         },
@@ -1008,13 +1008,14 @@ def test_c50_deletion_fences_retain_exact_owners_and_oracles() -> None:
     ):
         assert required in workflow
     makefile = _read(MAKEFILE)
-    assert makefile.count(
-        "tests/architecture/test_plugin_lifecycle_plc9c5_c50_baseline.py"
-    ) == 2
-
-    declarations = _read(
-        HARNESS_ROOT / "resources/plugins/declarations.py"
+    assert (
+        makefile.count(
+            "tests/architecture/test_plugin_lifecycle_plc9c5_c50_baseline.py"
+        )
+        == 2
     )
+
+    declarations = _read(HARNESS_ROOT / "resources/plugins/declarations.py")
     author = "\n".join(_read(path) for path in AUTHOR_ROOT.rglob("*.py"))
     assert "remote_service" not in declarations
     assert "remote_service" not in author

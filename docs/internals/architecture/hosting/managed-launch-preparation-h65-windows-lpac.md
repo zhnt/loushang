@@ -7,8 +7,9 @@
 - Parent: `HOST-H6`
 - Authority: normative accepted design
 - Design status: accepted
-- Implementation status: not implemented
-- Native activation: none
+- Implementation status: implemented candidate through H6.5b native mechanics;
+  H6.5c Product composition is not implemented
+- Native activation: mandatory Windows AMD64 evidence gate only; no Product consumer
 - Runtime posture: default-dark
 - Owner: Loushang Hosting architecture
 
@@ -68,10 +69,13 @@ The H6.5 provisioner:
 The complete attempt-specific AppContainer profile is the only writable
 filesystem and registry authority. Hosting creates a fresh profile for every
 attempt; it never reuses a predecessor's private files or registry state. On
-cleanup, Hosting performs rooted, no-follow, bounded filesystem removal that
-rejects reparse points, foreign hard links, streams, devices, depth,
-entry-count, and byte-count overflow, then deletes the OS profile and its
-private registry state. Cleanup ambiguity or residue blocks a successor.
+cleanup, Hosting performs rooted, no-follow, bounded removal of its exact
+`Temp` scratch subtree, rejecting reparse points, foreign hard links, streams,
+devices, depth, entry-count, and byte-count overflow. It does not recursively
+reinterpret or delete the platform-owned profile layout. With all native
+handles closed, `DeleteAppContainerProfile` is the sole owner that deletes the
+complete OS profile, remaining filesystem storage, and private registry state.
+Cleanup ambiguity or residue blocks a successor.
 
 ## Provisioning State Machine
 
@@ -100,15 +104,24 @@ fingerprints, grant digest, and platform identity. An exception after a native
 call begins is treated as possibly effectful. The caller records `DEBT`; it
 does not retry create, grant, revoke, or delete as though no effect occurred.
 
-Recovery reconciles a `RESERVED`, `PROFILE_CREATED`, `GRANTS_APPLIED`,
-`CLEANING`, or `DEBT` record against OS state through a read-only exact verify
-operation. A profile that exists without the matching durable reservation, an
-unexpected SID, a widened or partial DACL, a changed closure identity, or an
-unknown private state is foreign/ambiguous and cannot be adopted for launch.
-It may be reconciled only toward cleanup. Cleanup is allowed only through the
-exact cleaning attempt record and only after the
-caller proves that no admitted attempt can still run. Repeated exact cleanup
-is idempotent; unrelated profiles and grants are never touched.
+Windows exposes deterministic Package SID derivation, but no public read-only
+API that proves whether an arbitrary profile moniker is registered. Recovery
+therefore never fabricates such a query. A `RESERVED`, `PROFILE_CREATED`,
+`GRANTS_APPLIED`, `CLEANING`, or `DEBT` record can reconstruct a pathless
+cleanup-only witness from its durable attempt id, high-entropy operation nonce,
+lifecycle fingerprint, deterministic moniker, and derived SID. That witness
+cannot authorize launch or grant creation. It permits only exact Package-SID
+DACL revocation and bounded profile/private-state deletion; absent grants and
+an absent profile are successful cleanup replay. A profile observed during
+ordinary creation as already existing, an unexpected SID, a widened or partial
+DACL, a changed closure identity, or an unknown private state is
+foreign/ambiguous and cannot be adopted for launch. A conclusive
+`ERROR_ALREADY_EXISTS` creation collision created no attempt-owned native
+effect and must never mint a cleanup witness or delete that foreign profile.
+Cleanup is allowed only
+through the exact cleaning attempt record and only after the caller proves that
+no admitted attempt can still run. Repeated exact cleanup is idempotent;
+unrelated profiles and grants are never touched.
 
 This caller-owned journal prevents a crash between `CreateAppContainerProfile`
 and receipt publication from silently converting an unknown profile into
@@ -213,15 +226,18 @@ or use its report as H6.5 evidence.
   Worker protocol, readiness, fallback, or domain publication; and
 - Current-owner deletion or default activation.
 
-## H6.5 Design Exit Gate
+## H6.5b Native Exit Gate
 
-The design is accepted only with the C5.5 ownership/receipt design, exact
-Current inventory, five-view review, and executable guards proving all H6.5
-runtime symbols and consumers remain absent. Acceptance changes no production
-source or activation default.
+H6.5b is accepted only when the C5.5 ownership/receipt design, exact Current
+inventory, reviewed Hosting-private runtime symbols, deterministic mechanics
+tests, and mandatory Windows AMD64 native report agree. Executable guards prove
+that no Harness or Product consumer exists and that Current remains the
+production default.
 
 The paired five-view C5.5a review accepted this boundary after separating
 Hosting ownership, replacing persistent deployment profiles with exact
 attempt-owned profiles, and making the parent attribute manifest—not child
-self-report—the launch authority. No unresolved high or medium design issue
-remains; H6.5b native feasibility and implementation evidence are still open.
+self-report—the launch authority. H6.5b implements that candidate without
+granting activation authority; H6.5c Product integration and its separate
+evidence report remain open. No unresolved high or medium design issue remains
+in the H6.5b native boundary.

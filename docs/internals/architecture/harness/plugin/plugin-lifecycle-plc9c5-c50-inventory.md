@@ -8,14 +8,14 @@
 - Authority: descriptive — source-backed Current inventory
 - Design status: not-applicable
 - Implementation status: not-applicable
-- Observation base: merged C5.4 baseline `2c1f528a`
+- Observation base: merged C5.5a design baseline `68151253`
 - Effect: none; this inventory grants no runtime or activation authority
 - Owner: Harness Worker architecture
 
 ## Reading Rule
 
 This inventory records Current facts at the observation base and the exact
-C5.1--C5.4 transitions plus the accepted C5.5a design delta. Source and
+C5.1--C5.5b transitions. Source and
 executable tests remain higher authority. A
 source row records the narrow seam needed to reason about C5; it does not
 transfer authority to Product or Plugin management.
@@ -43,7 +43,7 @@ transfer authority to Product or Plugin management.
 | `C5-CUR-HOSTING-BRIDGE` | `src/loushang/harness/worker/hosting_adapter.py` and `src/loushang/harness/worker/owner_selection.py` | H6.4 preserves injected managed preparation; C5.2 admits the pathless native-profile port through the same adapter-owned private H6 seam; H5 selects Current by default and never falls back within an attempt | retain; `hosting_adapter.py` constructs no platform spec and the single private bridge owns Linux profile mapping |
 | `C5-CUR-H6-CORE` | `src/loushang/hosting/_launch_preparation.py` and `src/loushang/hosting/_child_session_host.py` | H6 owns request-bound one-use opaque preparation and atomic process/endpoint lifetime | consume through the confined friend seam only; no Product vocabulary or raw material crosses the boundary |
 | `C5-CUR-H6-LINUX` | `src/loushang/hosting/_posix_launch_preparation.py` and `src/loushang/hosting/_posix_process.py` | Linux x86_64 has private direct and contained static-ELF profiles with retained native evidence, but the selector currently accepts WSL when memfd/proc checks pass | C5.2 may use only the contained profile after Product closure admission and a separate non-WSL exact classifier succeeds |
-| `C5-CUR-H6-WINDOWS` | `src/loushang/hosting/_windows_launch_preparation.py`, `src/loushang/hosting/_windows_process.py`, and `src/loushang/hosting/_win32_process.py` | Windows AMD64 has one private restricted-token/direct-import profile, an OS-sourced trusted-payload builder, and Job/handle-list process mechanics; it is trusted-payload mechanics, not accepted Product required containment | C5.3 retained oracle and explicit Product rejection are implemented; Windows Product activation remains forbidden |
+| `C5-CUR-H6-WINDOWS` | `src/loushang/hosting/_windows_launch_preparation.py`, `src/loushang/hosting/_windows_process.py`, and `src/loushang/hosting/_win32_process.py` | Windows AMD64 retains the restricted-token/direct-import profile and adds the private C5.5b per-attempt zero-capability LPAC provision/capture/process candidate, exact four-attribute launch, token-before-resume verification, and cleanup-only crash witness | C5.5b native evidence is mandatory and default-dark; no Harness/Product consumer exists and Windows Product activation remains forbidden |
 
 The exact source set above is executable inventory. Proposed later C5 files are
 not added until their owning guard transition lands.
@@ -58,8 +58,9 @@ not added until their owning guard transition lands.
 - Coding's exact canary root imports the public Harness Worker facade, the C5.1
   coordinator, and the C5.2 friend binder, but no Hosting module; every other
   Coding source remains free of Worker/Hosting composition imports.
-- H6 private Windows profile specifications remain confined to Hosting. The
-  single C5.2 bridge lazily imports only the accepted POSIX contained spec and
+- H6 private Windows profile specifications, including the C5.5b LPAC
+  candidate, remain confined to Hosting. The single C5.2 bridge lazily imports
+  only the accepted POSIX contained spec and
   capture backend; the only non-Hosting private H6 preparation import remains
   the reviewed H6.4 Worker adapter.
 - `WorkerHostingActivationV1.owner` defaults to `"current"`; selection reads no
@@ -103,10 +104,10 @@ not added until their owning guard transition lands.
 | recovery/rollback drill | Product/domain, Worker supervisor, Process/Hosting owners each settle their own state | C5.4 | implemented latch-first R1--R7 and complete V1--V6 evidence validation |
 | Windows required containment | Product/Package/Sandbox durable coordinator, sole Harness friend bridge, and Hosting native owners at their respective boundaries | C5.5a design; C5.5b native; C5.5c Product | accepted design for a zero-capability per-attempt LPAC, dedicated immutable runtime closure, cleanup V2, exact native/Product reports, and retained no-fallback/default-Current fences |
 
-The C5.1 contract/fake, C5.2 Linux native, C5.3 Windows mechanics/rejection, and
-C5.4 Linux Product reports are all retained. G7 remains open because Windows
-required containment has not been implemented or accepted for activation. The
-accepted C5.5a design baseline grants no activation authority.
+The C5.1 contract/fake, C5.2 Linux native, C5.3 Windows mechanics/rejection,
+C5.4 Linux Product, and C5.5b Windows LPAC native reports are all retained. G7
+remains open because C5.5c has not composed or accepted Windows Product
+activation. The implemented C5.5b candidate grants no activation authority.
 
 ## Retained Deletion Fences
 

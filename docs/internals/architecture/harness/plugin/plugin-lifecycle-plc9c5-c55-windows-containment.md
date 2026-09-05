@@ -7,7 +7,8 @@
 - Parent: `PLC9C5-C5.0`
 - Authority: normative accepted design
 - Design status: accepted
-- Implementation status: not implemented
+- Implementation status: implemented candidate through C5.5b native mechanics;
+  C5.5c Product composition is not implemented
 - Activation status: closed; the C5.3 restricted-token profile remains rejected
 - Production default: Current
 - Owner: Harness Worker architecture with Hosting, Product, Package, and

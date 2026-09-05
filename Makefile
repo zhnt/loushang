@@ -176,7 +176,7 @@ APPHOST_TEST_PATHS := \
 .PHONY: test-sandbox test-host-runtime
 .PHONY: test-tui-input-playback
 .PHONY: check-ai-catalog check-ai-examples check-ai-imports check-ai-coverage
-.PHONY: check-harness lint-harness typecheck-harness test-harness check-plc9c5-c51-contract test-plc9c5-c51-contract check-plc9c5-c52-linux-native test-plc9c5-c52-linux-native check-plc9c5-c53-windows-mechanics test-plc9c5-c53-windows-mechanics
+.PHONY: check-harness lint-harness typecheck-harness test-harness check-plc9c5-c51-contract test-plc9c5-c51-contract check-plc9c5-c52-linux-native test-plc9c5-c52-linux-native check-plc9c5-c53-windows-mechanics test-plc9c5-c53-windows-mechanics check-plc9c5-c55b-windows-lpac-native test-plc9c5-c55b-windows-lpac-native
 .PHONY: check-hosting lint-hosting typecheck-hosting test-hosting
 .PHONY: check-apphost lint-apphost typecheck-apphost test-apphost
 .PHONY: check-architecture-docs
@@ -250,6 +250,14 @@ test-plc9c5-c53-windows-mechanics:
 	uv --cache-dir .uv-cache run --extra dev python scripts/dev/verify_plc9c5_manifest.py docs/internals/architecture/harness/plugin/plugin-lifecycle-plc9c5-evidence-manifest.json PLC9C5-C5.3-WINDOWS-MECHANICS .artifacts/plc9c5-c53-windows-mechanics.xml
 
 check-plc9c5-c53-windows-mechanics: test-plc9c5-c53-windows-mechanics
+
+test-plc9c5-c55b-windows-lpac-native:
+	mkdir -p .artifacts
+	LOUSHANG_PLC9C5_C55B_REPORT=1 uv --cache-dir .uv-cache run --extra dev $(PYTEST_RUNNER) tests/hosting/test_plc9c5_c55b_windows_lpac_native.py -q --junitxml=.artifacts/plc9c5-c55b-windows-lpac-native.xml
+	uv --cache-dir .uv-cache run --extra dev python scripts/dev/verify_pytest_xml.py .artifacts/plc9c5-c55b-windows-lpac-native.xml
+	uv --cache-dir .uv-cache run --extra dev python scripts/dev/verify_plc9c5_manifest.py docs/internals/architecture/harness/plugin/plugin-lifecycle-plc9c5-evidence-manifest.json PLC9C5-C5.5B-WINDOWS-LPAC-NATIVE .artifacts/plc9c5-c55b-windows-lpac-native.xml
+
+check-plc9c5-c55b-windows-lpac-native: test-plc9c5-c55b-windows-lpac-native
 
 test-plc9c5-c54-linux-product:
 	mkdir -p .artifacts

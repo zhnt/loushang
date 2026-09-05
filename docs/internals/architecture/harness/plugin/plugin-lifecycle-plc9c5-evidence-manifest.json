@@ -174,7 +174,7 @@
         "C55B-CONTAINMENT-CLEANUP-DEBT",
         "C55B-SENTINEL-REDACTION"
       ],
-      "status": "planned"
+      "status": "implemented"
     },
     "PLC9C5-C5.5C-WINDOWS-PRODUCT": {
       "junitPath": ".artifacts/plc9c5-c55c-windows-product.xml",

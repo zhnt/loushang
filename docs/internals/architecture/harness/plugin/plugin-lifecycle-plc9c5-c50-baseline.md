@@ -8,13 +8,14 @@
 - Parent: `PLC9C`
 - Authority: normative accepted design
 - Design status: accepted
-- Implementation status: implemented through C5.4 — C5.0 design/guards, C5.1
-  receipt/lifecycle, C5.2 Linux native profile binding, C5.3 Windows
-  mechanics/rejection, and the C5.4 Linux Coding Product canary; C5.5a is an
-  accepted design-only Windows containment gate
+- Implementation status: implemented through C5.5b — C5.0 design/guards,
+  C5.1 receipt/lifecycle, C5.2 Linux native profile binding, C5.3 Windows
+  mechanics/rejection, and the C5.4 Linux Coding Product canary; C5.5a design and the
+  C5.5b Windows LPAC native candidate; C5.5c Product composition remains
+  unimplemented
 - Activation status: explicit Linux Coding canary accepted; default remains
   Current and Windows/every unlisted platform remain closed
-- Observation base: `cb01f723`
+- Observation base: merged C5.5a design baseline `68151253`
 - Owner: Harness Worker architecture with Product, Hosting, and domain-owner
   review
 
