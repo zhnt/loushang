@@ -171,6 +171,12 @@ variables, credentials, user shell configuration, Python variables, loader
 controls, and caller-supplied values are absent. The native child oracle
 reports only boolean/categorical results and bounded fingerprints.
 
+Private registry scratch is opened through
+`GetAppContainerRegistryLocation`; it never treats ambient `HKCU` as the
+profile store. The API returns only the current AppContainer profile's private
+registry root, and the no-CRT oracle creates its bounded scratch key below that
+handle.
+
 ## Native Security Oracle
 
 The mandatory Windows AMD64 oracle launches a purpose-built no-CRT child and

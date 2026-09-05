@@ -164,6 +164,7 @@ def _compile_fixture(build_root: Path, executable: Path) -> None:
 #include <ws2tcpip.h>
 #include <windows.h>
 #include <sddl.h>
+#include <userenv.h>
 
 static int contains(const wchar_t *text, const wchar_t *needle) {
     for (; *text; ++text) {
@@ -352,9 +353,14 @@ void WINAPI mainCRTStartup(void) {
         ExitProcess(90);
     CloseHandle(scratch_file);
 
+    HKEY profile_key = 0;
+    HRESULT profile_key_result = GetAppContainerRegistryLocation(
+        KEY_CREATE_SUB_KEY | KEY_SET_VALUE | KEY_QUERY_VALUE, &profile_key);
+    if (FAILED(profile_key_result))
+        ExitProcess(0xC5505B00 | (HRESULT_CODE(profile_key_result) & 0xff));
     HKEY key = 0;
     DWORD disposition = 0;
-    if (RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\LoushangLpacProbe", 0, 0,
+    if (RegCreateKeyExW(profile_key, L"LoushangLpacProbe", 0, 0,
                         0, KEY_SET_VALUE | KEY_QUERY_VALUE, 0, &key,
                         &disposition) != ERROR_SUCCESS) ExitProcess(91);
     DWORD registry_value = 7;
@@ -362,6 +368,7 @@ void WINAPI mainCRTStartup(void) {
                        (const BYTE *)&registry_value,
                        sizeof(registry_value)) != ERROR_SUCCESS) ExitProcess(92);
     RegCloseKey(key);
+    RegCloseKey(profile_key);
 
     static wchar_t sentinel[MAX_PATH];
     if (!value_after(command, L"--sentinel=", sentinel, MAX_PATH)) ExitProcess(93);
@@ -448,6 +455,7 @@ void WINAPI mainCRTStartup(void) {
         "/MANIFEST:NO",
         "kernel32.lib",
         "advapi32.lib",
+        "userenv.lib",
         "ws2_32.lib",
     )
     command: tuple[str, ...] = arguments
@@ -601,7 +609,12 @@ async def _collect_native_evidence(
     provision = _build_windows_lpac_provision_spec(
         request,
         runtime_root=str(runtime_root.resolve()),
-        platform_imports=("ADVAPI32.DLL", "KERNEL32.DLL", "WS2_32.DLL"),
+        platform_imports=(
+            "ADVAPI32.DLL",
+            "KERNEL32.DLL",
+            "USERENV.DLL",
+            "WS2_32.DLL",
+        ),
         attempt_id=f"native-{uuid.uuid4().hex}",
         operation_nonce=nonce,
         lifecycle_fingerprint=lifecycle,
