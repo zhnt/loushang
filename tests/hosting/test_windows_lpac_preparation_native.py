@@ -934,7 +934,7 @@ async def _collect_native_evidence(
         raise AssertionError("LPAC tree child Package SID did not match its profile")
     await tree_pair.transport.write(b"d")
     tree_transcript = await _read_until(tree_pair.transport.read, b"TREE-SPAWNED\n")
-    descendant_stage = b"E:DESCENDANT\n"
+    descendant_stage = handle_denial_transcript + b"E:DESCENDANT\n"
     if tree_transcript == descendant_stage + b"TREE-SPAWNED\n":
         if tree_process_backend.tree_exited(tree_process):
             raise AssertionError("LPAC descendant escaped its atomic Job")
