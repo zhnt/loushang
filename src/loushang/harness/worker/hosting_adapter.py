@@ -28,7 +28,10 @@ from loushang.hosting._launch_preparation import (
     _ManagedLaunchPreparationResult,
 )
 
-from ._native_profile_bridge import ProductWorkerNativeProfilePort
+from ._native_profile_bridge import (
+    ProductWorkerNativeProfilePort,
+    _native_profile_prepared_request,
+)
 from .contracts import (
     ManagedWorkerLaunchRequestV1,
     WorkerBindingError,
@@ -153,9 +156,7 @@ class _WorkerLaunchPreparationPort:
         self._delegate = delegate
         self._signal = signal
 
-    async def prepare(
-        self, request: ProcessLaunchRequest
-    ) -> LaunchPreparationLease:
+    async def prepare(self, request: ProcessLaunchRequest) -> LaunchPreparationLease:
         self._require_expected(request)
         if isinstance(self._delegate, ProductWorkerNativeProfilePort):
             raise TypeError("Worker native profile requires managed capture")
@@ -224,6 +225,12 @@ class _ManagedWorkerLaunchPreparationPort(
                         capture.capture,
                     ),
                 )
+                semantic_lease.bind_prepared_request(
+                    _native_profile_prepared_request(
+                        self._managed_delegate,
+                        request,
+                    )
+                )
                 result = _ManagedLaunchPreparationResult(
                     lease=semantic_lease,
                     binding=binding,  # type: ignore[arg-type]
@@ -280,10 +287,19 @@ class _ProductWorkerNativePreparationLease:
     ) -> None:
         self._request = request
         self._delegate = delegate
+        self._prepared_bound = False
 
     @property
     def request(self) -> ProcessLaunchRequest:
         return self._request
+
+    def bind_prepared_request(self, request: ProcessLaunchRequest) -> None:
+        if not isinstance(request, ProcessLaunchRequest):
+            raise TypeError("Worker native prepared request is invalid")
+        if self._prepared_bound:
+            raise RuntimeError("Worker native prepared request was bound twice")
+        self._request = request
+        self._prepared_bound = True
 
     async def verify_current(self) -> None:
         await self._delegate.verify_current()
