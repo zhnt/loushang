@@ -311,9 +311,11 @@ void WINAPI mainCRTStartup(void) {
     }
     LocalFree(all_packages);
     CloseHandle(token);
+    emit("E:AAP\n", 6);
 
     BOOL in_job = FALSE;
     if (!IsProcessInJob(GetCurrentProcess(), 0, &in_job) || !in_job) ExitProcess(80);
+    emit("E:JOB\n", 6);
 
     static wchar_t module[MAX_PATH];
     DWORD module_length = GetModuleFileNameW(0, module, MAX_PATH);
@@ -353,6 +355,7 @@ void WINAPI mainCRTStartup(void) {
         ExitProcess(86);
     CloseHandle(actual_cwd_handle);
     CloseHandle(expected_cwd_handle);
+    emit("E:RUNTIME\n", 10);
 
     static wchar_t local_app_data[MAX_PATH];
     static wchar_t temp_root[MAX_PATH];
@@ -386,6 +389,7 @@ void WINAPI mainCRTStartup(void) {
     if (!WriteFile(scratch_file, "x", 1, &written, 0) || written != 1)
         ExitProcess(90);
     CloseHandle(scratch_file);
+    emit("E:SCRATCH\n", 10);
 
     HKEY profile_key = 0;
     HRESULT registry_result = GetAppContainerRegistryLocation(
@@ -396,6 +400,7 @@ void WINAPI mainCRTStartup(void) {
     }
     if (HRESULT_CODE(registry_result) != ERROR_ACCESS_DENIED)
         ExitProcess(0xC5505B00 | (HRESULT_CODE(registry_result) & 0xff));
+    emit("E:REGISTRY\n", 11);
 
     static wchar_t sentinel[MAX_PATH];
     if (!value_after(command, L"--sentinel=", sentinel, MAX_PATH)) ExitProcess(93);
@@ -411,6 +416,7 @@ void WINAPI mainCRTStartup(void) {
                                  OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
     if (ambient != INVALID_HANDLE_VALUE) ExitProcess(112);
     if (!denied_error(GetLastError())) ExitProcess(113);
+    emit("E:FILESYSTEM\n", 13);
 
     static wchar_t number_text[64];
     if (!value_after(command, L"--parent=", number_text, 64)) ExitProcess(96);
@@ -419,11 +425,13 @@ void WINAPI mainCRTStartup(void) {
                                 PROCESS_DUP_HANDLE, FALSE, parent_pid);
     if (parent) ExitProcess(97);
     if (GetLastError() != ERROR_ACCESS_DENIED) ExitProcess(98);
+    emit("E:PROCESS\n", 10);
 
     if (!value_after(command, L"--extra-handle=", number_text, 64)) ExitProcess(99);
     HANDLE extra = (HANDLE)(ULONG_PTR)number(number_text);
     DWORD handle_flags = 0;
     if (GetHandleInformation(extra, &handle_flags)) ExitProcess(100);
+    emit("E:HANDLES\n", 10);
 
     static wchar_t descendant_command[MAX_PATH + 32];
     if (sid_ack == 'd') {
@@ -558,6 +566,22 @@ async def _read_line(read) -> bytes:  # type: ignore[no-untyped-def]
         chunks.append(chunk)
         if b"\n" in chunk:
             break
+    return b"".join(chunks)
+
+
+async def _read_until(
+    read,  # type: ignore[no-untyped-def]
+    marker: bytes,
+) -> bytes:
+    chunks: list[bytes] = []
+    for _ in range(32):
+        chunk = await read(256)
+        if not chunk:
+            break
+        chunks.append(chunk)
+        body = b"".join(chunks)
+        if marker in body:
+            return body
     return b"".join(chunks)
 
 
@@ -745,12 +769,23 @@ async def _collect_native_evidence(
     if sid_line != expected_sid_line:
         raise AssertionError("LPAC child Package SID did not match its profile")
     await pair.transport.write(b"s")
-    line = await _read_line(pair.transport.read)
-    if line != b"LPAC-PASS\n":
+    transcript = await _read_until(pair.transport.read, b"LPAC-PASS\n")
+    expected_transcript = (
+        b"E:AAP\n"
+        b"E:JOB\n"
+        b"E:RUNTIME\n"
+        b"E:SCRATCH\n"
+        b"E:REGISTRY\n"
+        b"E:FILESYSTEM\n"
+        b"E:PROCESS\n"
+        b"E:HANDLES\n"
+        b"LPAC-PASS\n"
+    )
+    if transcript != expected_transcript:
         return_code = await process.wait()
         raise AssertionError(
             f"LPAC fixture failed before readiness: {return_code & 0xFFFFFFFF:#010x}; "
-            f"stdout={line!r}"
+            f"stdout={transcript!r}"
         )
     await pair.transport.write(b"x")
     assert await process.wait() == 0
