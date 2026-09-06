@@ -5,9 +5,9 @@
 - ID: `HOSTED-PRODUCT-RUNTIME-V1`
 - Scope: `Loushang` cross-scope delivery
 - Parent: none
-- Authority: normative target proposal
-- Design status: proposed
-- Implementation status: partial — implemented through G9.3; G9.4 remains
+- Authority: normative accepted delivery contract
+- Design status: accepted
+- Implementation status: implemented — G0H through G9 complete and G9 promoted
 - Production activation: closed
 - Owner: Loushang architecture
 
@@ -79,7 +79,7 @@ Product selection, authority, protocol health, or generation publication.
 | G6 | AppHost | implemented A0.3 canonical live-binding lifecycle and embedded profile plus A0.4 optional contract-only hosted binder | G5 | multi-Session and multi-profile single-flight attach/detach/cancellation/deadline/shutdown matrix; exact AppServer port identity; no listener, transport, protocol, service runtime, or production consumer |
 | G7 | Product/Harness | implemented PLC9C5 C5.0--C5.5c receipt/lifecycle, Linux native/Product, retained Windows restricted-mechanics rejection, and Windows LPAC native/Product containment | G2L + G2W + G3 | closed by the retained Linux reports plus separate zero-skip C5.5 native and Product reports proving Windows required containment, cross-entrypoint, recovery, rollback, and no-fallback behavior |
 | G8 | AppHost + Product/Harness | implemented G8.0--G8.3 default-dark Product-neutral end-to-end join | G6 + G7 | exact Worker receipt/recovery/normal-close join, unrelated Worker-free Product, multi-profile/Session, fault and retained cross-platform evidence |
-| G9 | common parent | implemented through G9.3; G9.4 remains | G8 | explicit Product composition and rollback/crash drill are implemented default-dark; the source-backed decision retains Current; lane-to-main promotion remains |
+| G9 | common parent | implemented through G9.4 and promoted to `main` | G8 | explicit Product composition and rollback/crash drill are implemented default-dark; the source-backed decision retains Current; the exact-head promotion record is retained |
 
 G0H and G0A are independently accepted gates even when reviewed or delivered
 in one documentation change. A failed AppHost placement review cannot block
@@ -96,7 +96,8 @@ deletion, and main promotion independent control points.
 G9.1--G9.2 now provide the sole explicit Coding composition facade and its
 cross-platform deterministic drill. G9.3 expands the source-backed entrypoint
 inventory and accepts `RETAIN`; existing bootstrap/CLI/TUI/SDK omission paths
-remain Current-only.
+remain Current-only. G9.4 promotes that capability to `main` on the exact
+reviewed lane head without changing activation.
 
 The optional A0.4 hosted binder is now accepted with only AppServer-owned
 structural Product-port contracts. A0.5 still requires its own serialized-launch

@@ -35,6 +35,9 @@ G9_ENTRYPOINTS = Path(
 CURRENT_DECISION = Path(
     "docs/internals/architecture/apphost/current-worker-owner-decision-g9.md"
 )
+PROMOTION_RECORD = Path(
+    "docs/internals/architecture/apphost/hosted-product-g9-promotion-record.md"
+)
 INSTALLED_CODING_ROOTS = (
     Path("src/loushang/coding/bootstrap.py"),
     Path("src/loushang/coding/cli/__main__.py"),
@@ -81,7 +84,7 @@ def _imports(path: Path) -> set[str]:
     return imported
 
 
-def test_g9_3_design_is_indexed_and_status_honest() -> None:
+def test_g9_4_design_is_indexed_and_status_honest() -> None:
     design = _read(G9)
     scope = _read(APPHOST_SCOPE)
     plan = _read(PLAN)
@@ -89,7 +92,7 @@ def test_g9_3_design_is_indexed_and_status_honest() -> None:
         "- ID: `HOSTED-PRODUCT-G9`",
         "- Authority: normative accepted design",
         "- Design status: accepted",
-        "- Implementation status: partial — G9.0--G9.3 implemented; G9.4 remains",
+        "- Implementation status: implemented — G9.0--G9.4 complete and promoted",
         "- Activation status: default-dark; omitted Worker owner remains Current",
     ):
         assert field in design
@@ -98,8 +101,17 @@ def test_g9_3_design_is_indexed_and_status_honest() -> None:
         "[G9.3 Current Owner Decision](current-worker-owner-decision-g9.md)"
         in scope
     )
-    assert "implemented through G9.3; G9.4 remains" in plan
-    assert "Passing G9.3 permits the separate G9.4 promotion" in design
+    assert "[G9 Promotion Record](hosted-product-g9-promotion-record.md)" in scope
+    assert (
+        "| G9.3 | entrypoint inventory and Current-owner RETAIN/DELETE decision | "
+        "implemented; `RETAIN` accepted |"
+    ) in scope
+    assert (
+        "| G9.4 | architecture reconciliation and lane-to-main promotion | "
+        "implemented; promoted default-dark |"
+    ) in scope
+    assert "implemented through G9.4 and promoted to `main`" in plan
+    assert "Passing G9.4 grants capability availability only" in design
 
 
 def test_g9_freezes_independent_control_points_and_owners() -> None:
@@ -231,6 +243,61 @@ def test_g9_main_promotion_does_not_grant_activation_or_deletion() -> None:
         "same immutable PR head",
     ):
         assert proof in normalized
+
+
+def test_g9_4_promotion_record_pins_exact_successful_head_and_controls() -> None:
+    assert PROMOTION_RECORD.is_file()
+    record = _read(PROMOTION_RECORD)
+    status = record.split("## Promotion Identity", maxsplit=1)[0]
+    for field in (
+        "- ID: `HOSTED-PRODUCT-G9-PROMOTION`",
+        "- Authority: descriptive — completed immutable promotion evidence",
+        "- Implementation status: implemented — promotion complete",
+        "- Promotion status: merged to `main`",
+        "- Activation status: default-dark; omitted Worker owner remains Current",
+        "- Effect: capability availability only",
+    ):
+        assert field in status
+
+    normalized = " ".join(record.split())
+    for identity in (
+        "[#556](https://github.com/zhnt/loushang/pull/556)",
+        "`07ad9a9984295449d9fc0db45c4a76d3e8bf8c34`",
+        "`445c0fb567163ed92b1163456133ff7545362de9`",
+        "head_sha=07ad9a9984295449d9fc0db45c4a76d3e8bf8c34",
+        "event `pull_request`",
+        "run attempt 1",
+        "conclusion `success`",
+    ):
+        assert identity in normalized
+
+    evidence = record.split("## Exact-Head Gate Evidence", maxsplit=1)[1].split(
+        "## Reconciled Result", maxsplit=1
+    )[0]
+    expected_runs = {
+        "Architecture Quality": "34039700017",
+        "AI Quality": "34039700020",
+        "Harness Quality": "34039700046",
+        "AppHost Quality": "34039700011",
+        "TUI Cross-platform Contracts": "34039700009",
+        "Harnesstui Quality": "34039700021",
+        "Host Runtime Quality": "34039700038",
+        "Hosting Quality": "34039700010",
+        "Windows Shell Compatibility": "34039700014",
+    }
+    for workflow, run_id in expected_runs.items():
+        assert f"`{workflow}` / `{run_id}`" in evidence
+    assert evidence.count("| `success` |") == len(expected_runs)
+
+    reconciled = record.split("## Reconciled Result", maxsplit=1)[1]
+    for retained_control in (
+        "no installed Coding CLI, TUI, SDK, AppServer, hosted, or mux entrypoint",
+        "omission remains Current",
+        "cannot fall back to Current in that attempt",
+        "G9.3 `RETAIN` decision",
+        "require later independent changes",
+    ):
+        assert retained_control in reconciled
 
 
 def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -> None:
@@ -423,7 +490,7 @@ def test_g9_2_keeps_current_as_omission_and_has_no_same_attempt_retry() -> None:
     assert "except" not in start_source
 
 
-def test_g9_3_retains_apphost_core_and_current_inventory_fences() -> None:
+def test_g9_4_retains_apphost_core_and_current_inventory_fences() -> None:
     for path in APPHOST.rglob("*.py"):
         imports = _imports(path)
         assert not any(
@@ -457,15 +524,15 @@ def test_g9_3_retains_apphost_core_and_current_inventory_fences() -> None:
     assert "omission remains Current" in inventory
     assert "G9.3 records the" in inventory
     assert "accepted `RETAIN` decision" in inventory
-    assert "G9.4 still owns" in inventory
+    assert "G9.4 promotes" in inventory
 
     aod = _read(AOD)
     ledger = _read(GAP_LEDGER)
     assert "G9.1--G9.2 implement the explicit composition and drill" in aod
     assert "G9.3 accepts a source-backed `RETAIN` decision" in aod
     assert "Current remains unchanged" in aod
-    assert "G9.0--G9.3 are implemented" in ledger
-    assert "all eight deletion conditions remain unmet" in ledger
+    assert "G8--G9.4 are implemented and promoted default-dark" in ledger
+    assert "all eight deletion conditions were unmet" in ledger
 
 
 def test_g9_2_evidence_manifest_and_platform_gates_are_exact() -> None:
