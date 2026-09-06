@@ -155,6 +155,9 @@ G9.0 已接受 V1 收口边界，G9.1--G9.2 已实现显式组合和运行级
 rollback/crash 演练，但不改变上述 Current。G9.3 已决定保留 Current；
 G9.4 已从不可变 lane head 独立晋升到 `main`。合并不推导激活，激活也不
 推导删除 Current；G9 能力仍为 default-dark。
+G10.0 已接受一个更窄的后续边界：只有精确的 installed canary 命令可经
+G9 composition 启动短生命周期 Hosting child；普通 Coding CLI/TUI/SDK、
+AppServer/AppService 与 named mux 不在该路由中，G9.3 `RETAIN` 继续有效。
 
 AppHost core 不依赖 Harness、Hosting、AppServer、AppService、UI framework 或
 具体 Product。可选 `apphost.hosted` 是唯一面向 AppServer contract-only

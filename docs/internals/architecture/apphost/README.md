@@ -7,6 +7,7 @@
 [G9 V1 Closure](hosted-product-v1-closure-g9.md) ·
 [G9.3 Current Owner Decision](current-worker-owner-decision-g9.md) ·
 [G9 Promotion Record](hosted-product-g9-promotion-record.md) ·
+[G10 Installed Explicit Canary](installed-explicit-canary-g10.md) ·
 [Hosted Product Runtime V1 Plan](../drafts/hosted-product-runtime-v1-plan.md)
 
 ## Status
@@ -16,7 +17,8 @@
 - Authority: normative — accepted AppHost scope boundary
 - Design status: accepted
 - Implementation status: partial — Hosted Product Runtime G0--G9 is implemented
-  and promoted default-dark; A0.5 remains not-started
+  and promoted default-dark; G10.0 is accepted while implementation and A0.5
+  remain not-started
 - Activation status: default-dark; the explicit composition is installed but no
   existing launcher, CLI, TUI, AppService, or AppServer route selects it
 - Owner: Loushang AppHost architecture
@@ -102,6 +104,13 @@ or route changes, and omission remains Current. The
 [G9 promotion record](hosted-product-g9-promotion-record.md) closes G9.4 on the
 exact reviewed lane head and records capability availability on `main` without
 activation.
+
+The accepted [G10 Installed Explicit Canary](installed-explicit-canary-g10.md)
+defines the first installed, exact-command path through the G9 composition and
+a real short-lived Hosting child. It remains a canary rather than a normal
+Coding session route. Its Product-owned durable enable/rollback control,
+bounded report, lazy CLI edge, and Linux/Windows evidence are not implemented
+at the G10.0 design baseline.
 
 ## Target
 
@@ -226,6 +235,9 @@ after Product/OEM admission, never through a derived module name.
 21. Main promotion, explicit route activation, omitted-owner change, and
     Current-owner deletion are separate decisions. None is inferred from
     another, and a valid G9 retention decision may keep Current.
+22. G10 may activate only through the exact installed canary command. Its
+    ephemeral identity cannot read or write user Sessions, and a successful
+    canary cannot authorize normal-session migration or Current deletion.
 
 ## Delivery Sequence
 
@@ -246,6 +258,8 @@ after Product/OEM admission, never through a derived module name.
 | G9.2 | rollback/crash drill and retained Linux/Windows evidence | implemented; Windows retained by CI |
 | G9.3 | entrypoint inventory and Current-owner RETAIN/DELETE decision | implemented; `RETAIN` accepted |
 | G9.4 | architecture reconciliation and lane-to-main promotion | implemented; promoted default-dark |
+| G10.0 | installed explicit canary boundary, durable control, evidence, and threat model | accepted; implementation not-started |
+| G10.1--G10.4 | Product control journal, native canary, lazy CLI route, retained cross-platform evidence, and promotion | not-started |
 
 ## Evidence
 
