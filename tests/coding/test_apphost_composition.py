@@ -512,7 +512,9 @@ def _run(coro: Any) -> Any:
     return asyncio.run(coro)
 
 
-@pytest.mark.parametrize("_case", ("G9-COMPOSE-EXPLICIT",), ids=("G9-COMPOSE-EXPLICIT",))
+@pytest.mark.parametrize(
+    "_case", ("G9-COMPOSE-EXPLICIT",), ids=("G9-COMPOSE-EXPLICIT",)
+)
 def test_g9_compose_requires_explicit_hosting_activation(_case: str) -> None:
     async def scenario() -> None:
         environment = await _environment()
@@ -544,7 +546,9 @@ class _OwnerPort:
         return cast(Any, object())
 
 
-@pytest.mark.parametrize("_case", ("G9-OMISSION-CURRENT",), ids=("G9-OMISSION-CURRENT",))
+@pytest.mark.parametrize(
+    "_case", ("G9-OMISSION-CURRENT",), ids=("G9-OMISSION-CURRENT",)
+)
 def test_g9_omitted_owner_remains_current(_case: str) -> None:
     async def scenario() -> None:
         current = _OwnerPort()
@@ -844,11 +848,15 @@ def test_g9_session_close_cannot_retire_another_session(_case: str) -> None:
         assert len(environment.attempts.attempts) == 2
         await first.close()
         await environment.composition.close_session(first.binding_key)
-        assert sum(attempt.close_calls for attempt in environment.attempts.attempts) == 1
+        assert (
+            sum(attempt.close_calls for attempt in environment.attempts.attempts) == 1
+        )
         assert second.binding_key.session_id == "session-2"
         await second.close()
         await environment.composition.rollback()
-        assert all(attempt.close_calls == 1 for attempt in environment.attempts.attempts)
+        assert all(
+            attempt.close_calls == 1 for attempt in environment.attempts.attempts
+        )
 
     _run(scenario())
 
@@ -956,12 +964,13 @@ def test_g9_restart_retains_durable_kill_switch_generation(_case: str) -> None:
 def test_g9_entrypoint_inventory_is_exact_and_source_backed(_case: str) -> None:
     inventory = json.loads(_INVENTORY.read_text(encoding="utf-8"))
     assert set(inventory) == {"inventoryVersion", "decision", "entries"}
-    assert inventory["inventoryVersion"] == 2
+    assert inventory["inventoryVersion"] == 3
     assert inventory["decision"] == "RETAIN"
     entries = {entry["entrypointId"]: entry for entry in inventory["entries"]}
     assert set(entries) == {
         "apphost.hosted",
         "appserver.package",
+        "coding.apphost.canary",
         "coding.apphost.composition",
         "coding.arch.module-cli",
         "coding.bootstrap",
@@ -974,22 +983,34 @@ def test_g9_entrypoint_inventory_is_exact_and_source_backed(_case: str) -> None:
     for entrypoint_id, row in entries.items():
         path = Path(row["source"])
         assert path.is_file()
-        if entrypoint_id == "coding.apphost.composition":
+        if entrypoint_id == "coding.apphost.canary":
+            assert row["disposition"] == "explicit-hosting-canary"
+            assert row["importsComposition"] is True
+            assert row["omissionOwner"] is None
+        elif entrypoint_id == "coding.apphost.composition":
             assert row["disposition"] == "explicit-hosting"
             assert row["importsComposition"] is True
             assert path == _COMPOSITION
         elif entrypoint_id in _CURRENT_ROOTS:
-            assert row["disposition"] == "current-only"
+            assert row["disposition"] == (
+                "current-default-explicit-canary"
+                if entrypoint_id == "coding.cli"
+                else "current-only"
+            )
             assert row["importsComposition"] is False
             assert row["omissionOwner"] == "current"
-        if path.suffix == ".py" and path != _COMPOSITION:
+        if (
+            path.suffix == ".py"
+            and entrypoint_id != "coding.apphost.canary"
+            and path != _COMPOSITION
+        ):
             assert "apphost_composition" not in path.read_text(encoding="utf-8")
 
     assert {
         entrypoint_id: (row["surface"], row["supportStatus"], row["disposition"])
         for entrypoint_id, row in entries.items()
         if entrypoint_id not in _CURRENT_ROOTS
-        and entrypoint_id != "coding.apphost.composition"
+        and entrypoint_id not in {"coding.apphost.canary", "coding.apphost.composition"}
     } == {
         "apphost.hosted": (
             "hosted",
@@ -1062,7 +1083,10 @@ def test_g9_composition_has_the_only_accepted_dependency_edge(_case: str) -> Non
         for prefix in forbidden
     )
     for path in Path("src/loushang").rglob("*.py"):
-        if path != _COMPOSITION:
+        if path not in {
+            _COMPOSITION,
+            Path("src/loushang/coding/apphost_canary.py"),
+        }:
             assert "apphost_composition" not in path.read_text(encoding="utf-8")
     for path in Path("src/loushang/apphost").rglob("*.py"):
         assert not any(

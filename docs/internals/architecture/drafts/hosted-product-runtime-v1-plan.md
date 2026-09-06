@@ -7,7 +7,7 @@
 - Parent: none
 - Authority: normative accepted delivery contract
 - Design status: accepted
-- Implementation status: implemented — G0H through G9 complete and G9 promoted
+- Implementation status: implemented — G0H through G10 complete
 - Production activation: closed
 - Owner: Loushang architecture
 
@@ -30,9 +30,10 @@ remote execution, or live process adoption.
   Windows native evidence, and the sole explicit Linux/Windows Coding Product
   canary. G7 is closed. AppHost A0.3 live binding, the optional A0.4 hosted
   binder, the Coding-owned G8 Product/Worker join, and the G9 explicit outer
-  composition are implemented. No installed Product entrypoint selects that
-  composition; AppServer contains contracts only, and AppService remains
-  absent.
+  composition and the exact G10 installed canary are implemented. Only that
+  short-lived, Product-controlled canary selects the composition; AppServer
+  contains contracts only, normal Product routes remain Current, and
+  AppService remains absent.
 - **Proposed Target:** H6 supplies opaque native preparation; AppHost supplies
   explicit Product routing and scoped runtime lifetime; Product/Harness
   composition alone activates one reviewed Worker canary.
@@ -80,6 +81,7 @@ Product selection, authority, protocol health, or generation publication.
 | G7 | Product/Harness | implemented PLC9C5 C5.0--C5.5c receipt/lifecycle, Linux native/Product, retained Windows restricted-mechanics rejection, and Windows LPAC native/Product containment | G2L + G2W + G3 | closed by the retained Linux reports plus separate zero-skip C5.5 native and Product reports proving Windows required containment, cross-entrypoint, recovery, rollback, and no-fallback behavior |
 | G8 | AppHost + Product/Harness | implemented G8.0--G8.3 default-dark Product-neutral end-to-end join | G6 + G7 | exact Worker receipt/recovery/normal-close join, unrelated Worker-free Product, multi-profile/Session, fault and retained cross-platform evidence |
 | G9 | common parent | implemented through G9.4 and promoted to `main` | G8 | explicit Product composition and rollback/crash drill are implemented default-dark; the source-backed decision retains Current; the exact-head promotion record is retained |
+| G10 | Coding/AppHost/Hosting installed canary | implemented exact default-dark canary with durable Product control and separate native Linux/Windows evidence | G9 | exact command is the sole activation edge; ephemeral identity, no fallback, bounded reporting, settled cleanup, inventory v3, and unchanged Current omission are enforced |
 
 G0H and G0A are independently accepted gates even when reviewed or delivered
 in one documentation change. A failed AppHost placement review cannot block
@@ -98,6 +100,9 @@ cross-platform deterministic drill. G9.3 expands the source-backed entrypoint
 inventory and accepts `RETAIN`; existing bootstrap/CLI/TUI/SDK omission paths
 remain Current-only. G9.4 promotes that capability to `main` on the exact
 reviewed lane head without changing activation.
+G10 adds one separately selected installed canary over that composition. It
+launches only a one-shot child through public Hosting, uses no user Session
+store, and leaves ordinary CLI/TUI/SDK omission on Current.
 
 The optional A0.4 hosted binder is now accepted with only AppServer-owned
 structural Product-port contracts. A0.5 still requires its own serialized-launch
@@ -161,7 +166,7 @@ restart. Live adoption remains a later separately reviewed threat model.
 
 ## Architecture And Test Guards
 
-Through G9.2, executable architecture tests must continue to prove:
+Through G10, executable architecture tests must continue to prove:
 
 - AppHost core contains only the accepted A0.1--A0.3 contracts, catalog/router,
   and live-binding owner; optional A0.4 hosted wiring remains outside its facade;
@@ -178,8 +183,9 @@ Through G9.2, executable architecture tests must continue to prove:
   exists; C5.4 revises only the Linux canary absence and cannot close G7;
   C5.0 removes no runtime guard; and
 - inventory source paths equal the executable expected set; the G9 composition
-  is the sole Product-owned edge to AppHost and is absent from Current-only
-  entrypoints; the 13-case manifest has separate Linux/Windows identities; and
+  remains the sole constructor and is absent from Current-only entrypoints;
+  G10 adds only its Product-owned explicit consumer and exact lazy CLI edge;
+  both 13-case manifests have separate Linux/Windows identities; and
   any later G9 deletion change includes the exact reverse import/composition and
   entrypoint evidence required by the accepted G9 closure.
 

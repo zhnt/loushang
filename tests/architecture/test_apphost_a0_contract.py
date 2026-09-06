@@ -15,9 +15,7 @@ APPHOST_MODULES = {
     APPHOST_ROOT / "runtime.py",
 }
 APPHOST_OPTIONAL_MODULES = {APPHOST_ROOT / "hosted.py"}
-HARNESS_SESSION_ADAPTER = Path(
-    "src/loushang/apphost/integrations/harness_session.py"
-)
+HARNESS_SESSION_ADAPTER = Path("src/loushang/apphost/integrations/harness_session.py")
 SCOPE = Path("docs/internals/architecture/apphost/README.md")
 CONTRACT = Path("docs/internals/architecture/apphost/contract-model-a0.md")
 ARD = Path(
@@ -75,8 +73,7 @@ def _resolved_imports(path: Path) -> set[str]:
 
 def _imports_apphost(path: Path) -> bool:
     return any(
-        imported == "loushang.apphost"
-        or imported.startswith("loushang.apphost.")
+        imported == "loushang.apphost" or imported.startswith("loushang.apphost.")
         for imported in _resolved_imports(path)
     )
 
@@ -297,9 +294,7 @@ def test_a0_1_create_and_profile_boundaries_preserve_owner_authority() -> None:
         _source(APPHOST_ROOT / "contracts.py"),
         filename=str(APPHOST_ROOT / "contracts.py"),
     )
-    classes = {
-        node.name: node for node in tree.body if isinstance(node, ast.ClassDef)
-    }
+    classes = {node.name: node for node in tree.body if isinstance(node, ast.ClassDef)}
     catalog_port = classes["SessionIdentityCatalogPortV1"]
     catalog_methods = {
         node.name
@@ -366,6 +361,7 @@ def test_a0_1_has_only_the_reviewed_default_dark_product_consumers() -> None:
         if not path.is_relative_to(APPHOST_ROOT) and _imports_apphost(path)
     }
     assert consumers == {
+        Path("src/loushang/coding/apphost_canary.py"),
         Path("src/loushang/coding/apphost_composition.py"),
         Path("src/loushang/coding/apphost_product.py"),
     }
@@ -375,9 +371,7 @@ def test_a0_1_has_only_the_reviewed_default_dark_product_consumers() -> None:
         if path != HARNESS_SESSION_ADAPTER
         and any(
             imported == "loushang.apphost.integrations.harness_session"
-            or imported.startswith(
-                "loushang.apphost.integrations.harness_session."
-            )
+            or imported.startswith("loushang.apphost.integrations.harness_session.")
             for imported in _resolved_imports(path)
         )
     }

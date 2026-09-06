@@ -1,8 +1,6 @@
 from pathlib import Path
 
-DESIGN = Path(
-    "docs/internals/architecture/apphost/installed-explicit-canary-g10.md"
-)
+DESIGN = Path("docs/internals/architecture/apphost/installed-explicit-canary-g10.md")
 APPHOST_SCOPE = Path("docs/internals/architecture/apphost/README.md")
 ARCHITECTURE = Path("docs/internals/architecture/README.md")
 AOD = Path("docs/internals/architecture/architecture-overview.md")
@@ -24,8 +22,8 @@ def test_g10_0_design_is_accepted_and_adopted_by_common_parent() -> None:
         "- ID: `HOSTED-PRODUCT-G10-EXPLICIT-CANARY`",
         "- Authority: normative accepted design",
         "- Design status: accepted",
-        "- Implementation status: not-started — G10.0 design baseline only",
-        "- Activation status: default-dark; no installed entrypoint selects Hosting yet",
+        "- Implementation status: implemented — G10.0--G10.4 complete",
+        "- Activation status: default-dark; explicit installed canary only",
     ):
         assert field in design
     for path in (APPHOST_SCOPE, ARCHITECTURE, AOD, SUBSYSTEM, GAP_LEDGER):
@@ -126,9 +124,11 @@ def test_g10_has_complete_delivery_evidence_and_three_view_review_contract() -> 
 
 
 def test_g10_threat_model_covers_activation_race_cleanup_and_claim_control() -> None:
-    threat_model = _read(DESIGN).split("## Threat Model", maxsplit=1)[1].split(
-        "## Three-View Review Contract", maxsplit=1
-    )[0]
+    threat_model = (
+        _read(DESIGN)
+        .split("## Threat Model", maxsplit=1)[1]
+        .split("## Three-View Review Contract", maxsplit=1)[0]
+    )
     for control in (
         "lazy exact-action dispatch",
         "one exclusive control lock spans final read through complete owner settlement",

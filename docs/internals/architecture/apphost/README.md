@@ -16,11 +16,10 @@
 - Parent: `loushang`
 - Authority: normative — accepted AppHost scope boundary
 - Design status: accepted
-- Implementation status: partial — Hosted Product Runtime G0--G9 is implemented
-  and promoted default-dark; G10.0 is accepted while implementation and A0.5
-  remain not-started
-- Activation status: default-dark; the explicit composition is installed but no
-  existing launcher, CLI, TUI, AppService, or AppServer route selects it
+- Implementation status: partial — Hosted Product Runtime G0--G10 is
+  implemented; A0.5 remains not-started
+- Activation status: default-dark; only the exact installed G10 canary selects
+  Hosting, while ordinary CLI, TUI, SDK, AppService, and AppServer routes do not
 - Owner: Loushang AppHost architecture
 
 ## Scope
@@ -105,12 +104,12 @@ or route changes, and omission remains Current. The
 exact reviewed lane head and records capability availability on `main` without
 activation.
 
-The accepted [G10 Installed Explicit Canary](installed-explicit-canary-g10.md)
-defines the first installed, exact-command path through the G9 composition and
+The implemented [G10 Installed Explicit Canary](installed-explicit-canary-g10.md)
+provides the first installed, exact-command path through the G9 composition and
 a real short-lived Hosting child. It remains a canary rather than a normal
 Coding session route. Its Product-owned durable enable/rollback control,
-bounded report, lazy CLI edge, and Linux/Windows evidence are not implemented
-at the G10.0 design baseline.
+bounded report, lazy CLI edge, source-backed inventory, and separate
+Linux/Windows evidence are retained by the AppHost quality gate.
 
 ## Target
 
@@ -258,8 +257,8 @@ after Product/OEM admission, never through a derived module name.
 | G9.2 | rollback/crash drill and retained Linux/Windows evidence | implemented; Windows retained by CI |
 | G9.3 | entrypoint inventory and Current-owner RETAIN/DELETE decision | implemented; `RETAIN` accepted |
 | G9.4 | architecture reconciliation and lane-to-main promotion | implemented; promoted default-dark |
-| G10.0 | installed explicit canary boundary, durable control, evidence, and threat model | accepted; implementation not-started |
-| G10.1--G10.4 | Product control journal, native canary, lazy CLI route, retained cross-platform evidence, and promotion | not-started |
+| G10.0 | installed explicit canary boundary, durable control, evidence, and threat model | accepted |
+| G10.1--G10.4 | Product control journal, native canary, lazy CLI route, retained cross-platform evidence, and promotion | implemented, explicit and default-dark |
 
 ## Evidence
 
@@ -296,11 +295,16 @@ after Product/OEM admission, never through a derived module name.
 - `current-worker-owner-decision-g9.md` and
   `hosted-product-g9-promotion-record.md` prove the G9.3 `RETAIN` decision and
   G9.4 exact-head default-dark promotion independently;
+- `tests/coding/test_apphost_canary*.py`, `tests/coding/test_cli_apphost.py`,
+  `tests/architecture/test_hosted_product_g10_explicit_canary.py`, and
+  `hosted-product-g10-evidence-manifest.json` prove exact lazy dispatch,
+  durable selection, ephemeral Session identity, native Hosting ownership,
+  bounded reporting, rollback, cancellation cleanup, and inventory v3 on
+  Linux and Windows;
 - `make check-apphost` runs the focused lint, typecheck, and contract suite;
 - `make check-architecture-docs` validates parent documentation integrity.
 
-Passing these gates proves A0.4 mechanics and the default-dark G8--G9 concrete
-Product composition, operational drill, retention decision, and capability
-promotion. It grants no default Product, production hosted route,
-AppService/AppServer runtime, launcher, activation, omitted-owner change, or
-Current deletion.
+Passing these gates proves A0.4 mechanics, the default-dark G8--G9 concrete
+Product composition, and the explicitly selected short-lived G10 canary. It
+grants no default Product, normal-session Hosting route, AppService/AppServer
+runtime, launcher, omitted-owner change, or Current deletion.

@@ -26,18 +26,28 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --extra dev
 
-      - name: Lint AppHost G8 and G9
+      - name: Lint AppHost G8 through G10
         run: >-
           uv run --extra dev ruff check
           src/loushang/apphost
           src/loushang/appserver
+          src/loushang/coding/_apphost_canary_child.py
+          src/loushang/coding/_apphost_canary_control.py
           src/loushang/coding/_product_worker_canary.py
+          src/loushang/coding/apphost_canary.py
           src/loushang/coding/apphost_composition.py
           src/loushang/coding/apphost_product.py
+          src/loushang/coding/cli/__main__.py
+          src/loushang/coding/cli/apphost.py
+          src/loushang/harness/machine_resources/control_plane.py
+          scripts/dev/run_g10_installed_canary.py
           scripts/dev/verify_evidence_manifest.py
           tests/apphost
           tests/coding/test_apphost_composition.py
+          tests/coding/test_apphost_canary.py
+          tests/coding/test_apphost_canary_control.py
           tests/coding/test_apphost_product.py
+          tests/coding/test_cli_apphost.py
           tests/dev/test_verify_evidence_manifest.py
           tests/harness/worker/test_coding_product_worker_canary.py
           tests/architecture/test_apphost_a0_contract.py
@@ -45,28 +55,41 @@ jobs:
           tests/architecture/test_apphost_a03_a04_architecture.py
           tests/architecture/test_hosted_product_runtime_g8_join.py
           tests/architecture/test_hosted_product_runtime_g9_closure.py
+          tests/architecture/test_hosted_product_runtime_v1_baseline.py
+          tests/architecture/test_hosted_product_g10_explicit_canary_design.py
+          tests/architecture/test_hosted_product_g10_explicit_canary.py
 
-      - name: Typecheck AppHost G8 and G9
+      - name: Typecheck AppHost G8 through G10
         run: >-
           uv run --extra dev mypy --follow-imports=silent
           src/loushang/apphost
           src/loushang/appserver
+          src/loushang/coding/_apphost_canary_child.py
+          src/loushang/coding/_apphost_canary_control.py
           src/loushang/coding/_product_worker_canary.py
+          src/loushang/coding/apphost_canary.py
           src/loushang/coding/apphost_composition.py
           src/loushang/coding/apphost_product.py
+          src/loushang/coding/cli/apphost.py
 
-      - name: Test AppHost G8 and G9
+      - name: Test AppHost G8 through G10
         run: >-
           uv run --extra dev python scripts/dev/run_pytest.py
           tests/apphost
+          tests/coding/test_apphost_canary.py
+          tests/coding/test_apphost_canary_control.py
           tests/coding/test_apphost_composition.py
           tests/coding/test_apphost_product.py
+          tests/coding/test_cli_apphost.py
           tests/dev/test_verify_evidence_manifest.py
           tests/architecture/test_apphost_a0_contract.py
           tests/architecture/test_apphost_a02_architecture.py
           tests/architecture/test_apphost_a03_a04_architecture.py
           tests/architecture/test_hosted_product_runtime_g8_join.py
           tests/architecture/test_hosted_product_runtime_g9_closure.py
+          tests/architecture/test_hosted_product_runtime_v1_baseline.py
+          tests/architecture/test_hosted_product_g10_explicit_canary_design.py
+          tests/architecture/test_hosted_product_g10_explicit_canary.py
           -q
 
       - name: Retain Hosted Product G8 evidence
@@ -96,6 +119,21 @@ jobs:
         with:
           name: hosted-product-g9-linux-junit
           path: .artifacts/hosted-product-g9-linux.xml
+          if-no-files-found: error
+
+      - name: Retain Hosted Product G10 Linux evidence
+        run: |
+          uv run --extra dev python scripts/dev/run_pytest.py tests/coding/test_apphost_canary_control.py tests/coding/test_apphost_canary.py tests/coding/test_cli_apphost.py tests/architecture/test_hosted_product_g10_explicit_canary.py -k G10 -q --junitxml=.artifacts/hosted-product-g10-linux.xml
+          uv run --extra dev python scripts/dev/verify_pytest_xml.py .artifacts/hosted-product-g10-linux.xml
+          uv run --extra dev python scripts/dev/verify_evidence_manifest.py docs/internals/architecture/apphost/hosted-product-g10-evidence-manifest.json HOSTED-PRODUCT-G10-LINUX .artifacts/hosted-product-g10-linux.xml
+          uv run --extra dev python scripts/dev/run_g10_installed_canary.py --expected-backend posix-process-group-v1
+
+      - name: Upload Hosted Product G10 Linux JUnit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hosted-product-g10-linux-junit
+          path: .artifacts/hosted-product-g10-linux.xml
           if-no-files-found: error
 
   apphost-windows-native-gate:
@@ -129,6 +167,13 @@ jobs:
           uv run --extra dev python scripts/dev/run_pytest.py tests/coding/test_apphost_composition.py --junitxml=.artifacts/hosted-product-g9-windows.xml -q
           uv run --extra dev python scripts/dev/verify_pytest_xml.py .artifacts/hosted-product-g9-windows.xml
           uv run --extra dev python scripts/dev/verify_evidence_manifest.py docs/internals/architecture/apphost/hosted-product-g9-evidence-manifest.json HOSTED-PRODUCT-G9-WINDOWS .artifacts/hosted-product-g9-windows.xml
+      - name: Prove G10 installed explicit canary on Windows
+        shell: pwsh
+        run: |
+          uv run --extra dev python scripts/dev/run_pytest.py tests/coding/test_apphost_canary_control.py tests/coding/test_apphost_canary.py tests/coding/test_cli_apphost.py tests/architecture/test_hosted_product_g10_explicit_canary.py -k G10 -q --junitxml=.artifacts/hosted-product-g10-windows.xml
+          uv run --extra dev python scripts/dev/verify_pytest_xml.py .artifacts/hosted-product-g10-windows.xml
+          uv run --extra dev python scripts/dev/verify_evidence_manifest.py docs/internals/architecture/apphost/hosted-product-g10-evidence-manifest.json HOSTED-PRODUCT-G10-WINDOWS .artifacts/hosted-product-g10-windows.xml
+          uv run --extra dev python scripts/dev/run_g10_installed_canary.py --expected-backend windows-job-v1
       - name: Upload native gate JUnit
         if: always()
         uses: actions/upload-artifact@v4
@@ -138,4 +183,5 @@ jobs:
             .artifacts/apphost-harness-windows.xml
             .artifacts/hosted-product-g8.xml
             .artifacts/hosted-product-g9-windows.xml
+            .artifacts/hosted-product-g10-windows.xml
           if-no-files-found: error

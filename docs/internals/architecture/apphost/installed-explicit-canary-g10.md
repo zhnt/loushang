@@ -12,8 +12,8 @@
 - Parent: `loushang`
 - Authority: normative accepted design
 - Design status: accepted
-- Implementation status: not-started — G10.0 design baseline only
-- Activation status: default-dark; no installed entrypoint selects Hosting yet
+- Implementation status: implemented — G10.0--G10.4 complete
+- Activation status: default-dark; explicit installed canary only
 - Owner: Loushang Coding Product architecture with AppHost common-parent governance
 
 ## Purpose
@@ -60,8 +60,8 @@ application authority it does not need.
 
 | Plane | Statement |
 | --- | --- |
-| Facts | G9.1 provides `loushang.coding.apphost_composition`; G9.2 proves its lifecycle with deterministic doubles; G9.3 retains Current; G9.4 promotes the default-dark capability. No installed route imports or invokes the composition, and no production AppHost-to-Hosting canary process exists. |
-| Current | `loushang` and `loushang-tui` enter the Current Coding bootstrap. `loushang.coding.__init__` exposes the Current SDK. AppServer remains contract-only; the hosted binder and named mux have no installed runtime. |
+| Facts | G9.1 provides `loushang.coding.apphost_composition`; G9.2 proves its lifecycle with deterministic doubles; G9.3 retains Current; G9.4 promotes the default-dark capability. At the G10.0 baseline no installed route imported or invoked the composition and no production AppHost-to-Hosting canary process existed. |
+| Current | Only the exact `loushang apphost canary` family can reach the G9 composition. Omitted/non-canary `loushang` use and all `loushang-tui`, bootstrap, and SDK paths remain Current. AppServer remains contract-only; the hosted binder and named mux have no installed runtime. |
 | Target | One `loushang apphost canary` command family can inspect Product-owned control state, explicitly run one ephemeral Hosting canary through the G9 composition, durably latch future attempts off, and explicitly re-enable them. All omitted and non-canary routes remain byte-for-byte Current in owner semantics. |
 | Delta | Add a lazy CLI adapter, Product-owned canary composition adapter, private one-shot child, durable Product control journal, bounded report, source-backed inventory v3, and retained Linux/Windows evidence. Do not change AppHost core, normal Coding bootstrap, AppServer/AppService, named mux, or the G9.3 `RETAIN` decision. |
 
@@ -168,7 +168,8 @@ Each strict record contains only:
 - a bounded opaque operation ID.
 
 Absence means `unconfigured` at virtual generation zero and rejects `run`.
-The first explicit `enable` appends enabled generation one. A corrupt,
+The first state-changing operation appends generation one; when that operation
+is `enable`, it appends enabled generation one. A corrupt,
 partial-invalid, missing-after-prior-use, aliased, non-private, or non-monotonic
 journal fails closed. Deleting a disabled journal therefore cannot re-enable
 the canary. History is never rewritten in place. The Product may distinguish
@@ -252,7 +253,7 @@ or credentials. Diagnostics may correlate by the opaque fingerprints only.
 
 ## Evidence Contract
 
-Implementation must add a versioned G10 evidence manifest and these exact
+The implementation retains a versioned G10 evidence manifest and these exact
 case IDs:
 
 | Case | Proof |
@@ -318,6 +319,29 @@ Design and implementation are reviewed independently from these views:
 
 High or medium findings block the next phase. Findings are fixed in the design
 or source of truth; a review note is not an implementation substitute.
+
+## Review History
+
+The G10.0 three-view design review closed without unresolved high or medium
+findings. It established absent control state as fail-closed, a fixed child
+environment allowlist, dependency-ordered owner settlement, and Product
+ownership of the canary control journal.
+
+The post-implementation three-view review also closed without unresolved high
+or medium findings after correcting four medium findings in their respective
+sources of truth:
+
+- architecture and authority: root-level `--cwd` was separated from the
+  action-level destination so parser defaults cannot replace the selected cwd;
+- lifecycle and safety: asynchronous admission now uses bounded non-blocking
+  journal-lock acquisition, final closed-state observations are validated, and
+  failures retain the selected generation; and
+- entrypoint and evidence: `G10-REAL-NATIVE-RUN` now executes the installed
+  `loushang` console script, with CRLF-compatible protocol validation and
+  retained native-backend proof; and
+- architecture compatibility: the PLC9 C5.0/C5.1/C5.4 closed consumer guards
+  now name the single new G10 Product adapter explicitly, preserving their
+  deny-by-default behavior for every other consumer.
 
 ## Exit Gate
 

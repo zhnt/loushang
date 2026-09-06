@@ -114,11 +114,13 @@ promotion independent decisions. G9.1--G9.2 implement the sole explicit Coding
 composition and rollback/crash drill; G9.3 accepts a source-backed `RETAIN`
 decision without changing the Current route. G9.4 independently promotes the
 capability to `main` while preserving default-dark activation.
-The accepted
-[G10 explicit-canary design](apphost/installed-explicit-canary-g10.md) defines
-one future installed Coding command that may traverse the G9 composition into
-a short-lived native Hosting child. It does not change normal CLI/TUI/SDK
-ownership, the G9.3 `RETAIN` decision, AppServer/AppService, or named mux.
+The implemented
+[G10 explicit canary](apphost/installed-explicit-canary-g10.md) adds one exact,
+default-dark installed Coding command that traverses the G9 composition into a
+short-lived native Hosting child. Product-owned durable control, bounded
+reports, and separate Linux/Windows evidence leave normal CLI/TUI/SDK
+ownership, the G9.3 `RETAIN` decision, AppServer/AppService, and named mux
+unchanged.
 
 A nested scope is not automatically a top-level subsystem. The parent owns its
 placement, composition policy, and sibling relationships; the child owns its
