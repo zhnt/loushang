@@ -1,29 +1,106 @@
 {
+  "decision": "RETAIN",
   "entries": [
     {
       "disposition": "explicit-hosting",
       "entrypointId": "coding.apphost.composition",
       "importsComposition": true,
-      "source": "src/loushang/coding/apphost_composition.py"
+      "omissionOwner": null,
+      "packagingBinding": null,
+      "source": "src/loushang/coding/apphost_composition.py",
+      "supportStatus": "explicit-library",
+      "surface": "composition"
     },
     {
       "disposition": "current-only",
       "entrypointId": "coding.bootstrap",
       "importsComposition": false,
-      "source": "src/loushang/coding/bootstrap.py"
+      "omissionOwner": "current",
+      "packagingBinding": null,
+      "source": "src/loushang/coding/bootstrap.py",
+      "supportStatus": "supported-library",
+      "surface": "bootstrap"
     },
     {
       "disposition": "current-only",
       "entrypointId": "coding.cli",
       "importsComposition": false,
-      "source": "src/loushang/coding/cli/__main__.py"
+      "omissionOwner": "current",
+      "packagingBinding": "project.scripts.loushang",
+      "source": "src/loushang/coding/cli/__main__.py",
+      "supportStatus": "installed",
+      "surface": "cli"
     },
     {
       "disposition": "current-only",
       "entrypointId": "coding.tui",
       "importsComposition": false,
-      "source": "src/loushang/coding/ui/cli.py"
+      "omissionOwner": "current",
+      "packagingBinding": "project.scripts.loushang-tui",
+      "source": "src/loushang/coding/ui/cli.py",
+      "supportStatus": "installed",
+      "surface": "tui"
+    },
+    {
+      "disposition": "current-only",
+      "entrypointId": "coding.sdk",
+      "importsComposition": false,
+      "omissionOwner": "current",
+      "packagingBinding": null,
+      "source": "src/loushang/coding/__init__.py",
+      "supportStatus": "supported-library",
+      "surface": "sdk"
+    },
+    {
+      "disposition": "non-product-tool",
+      "entrypointId": "coding.arch.module-cli",
+      "importsComposition": false,
+      "omissionOwner": null,
+      "packagingBinding": null,
+      "source": "src/loushang/coding/arch/__main__.py",
+      "supportStatus": "supported-module",
+      "surface": "cli"
+    },
+    {
+      "disposition": "non-product-tool",
+      "entrypointId": "plugin.cli",
+      "importsComposition": false,
+      "omissionOwner": null,
+      "packagingBinding": "project.scripts.loushang-plugin",
+      "source": "src/loushang/plugin/__main__.py",
+      "supportStatus": "installed",
+      "surface": "cli"
+    },
+    {
+      "disposition": "contract-only-no-entrypoint",
+      "entrypointId": "appserver.package",
+      "importsComposition": false,
+      "omissionOwner": null,
+      "packagingBinding": null,
+      "source": "src/loushang/appserver/__init__.py",
+      "supportStatus": "contract-only",
+      "surface": "appserver"
+    },
+    {
+      "disposition": "binder-only-no-entrypoint",
+      "entrypointId": "apphost.hosted",
+      "importsComposition": false,
+      "omissionOwner": null,
+      "packagingBinding": null,
+      "source": "src/loushang/apphost/hosted.py",
+      "supportStatus": "binder-only",
+      "surface": "hosted"
+    },
+    {
+      "disposition": "design-only-no-entrypoint",
+      "entrypointId": "harnesstui.named-mux",
+      "importsComposition": false,
+      "omissionOwner": null,
+      "packagingBinding": null,
+      "source": "docs/internals/architecture/drafts/harnesstui-named-mux-daemon-attach-design.md",
+      "supportStatus": "design-only",
+      "surface": "mux"
     }
   ],
-  "inventoryVersion": 1
+  "inventoryVersion": 2
 }

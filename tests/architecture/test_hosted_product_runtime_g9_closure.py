@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import json
+import tomllib
 from pathlib import Path
 
 G9 = Path("docs/internals/architecture/apphost/hosted-product-v1-closure-g9.md")
@@ -80,7 +81,7 @@ def _imports(path: Path) -> set[str]:
     return imported
 
 
-def test_g9_2_design_is_indexed_and_status_honest() -> None:
+def test_g9_3_design_is_indexed_and_status_honest() -> None:
     design = _read(G9)
     scope = _read(APPHOST_SCOPE)
     plan = _read(PLAN)
@@ -88,13 +89,17 @@ def test_g9_2_design_is_indexed_and_status_honest() -> None:
         "- ID: `HOSTED-PRODUCT-G9`",
         "- Authority: normative accepted design",
         "- Design status: accepted",
-        "- Implementation status: partial — G9.0--G9.2 implemented; G9.3--G9.4 remain",
+        "- Implementation status: partial — G9.0--G9.3 implemented; G9.4 remains",
         "- Activation status: default-dark; omitted Worker owner remains Current",
     ):
         assert field in design
     assert "[G9 V1 Closure](hosted-product-v1-closure-g9.md)" in scope
-    assert "implemented through G9.2; G9.3--G9.4 remain" in plan
-    assert "Passing G9.2 permits the separate G9.3 decision" in design
+    assert (
+        "[G9.3 Current Owner Decision](current-worker-owner-decision-g9.md)"
+        in scope
+    )
+    assert "implemented through G9.3; G9.4 remains" in plan
+    assert "Passing G9.3 permits the separate G9.4 promotion" in design
 
 
 def test_g9_freezes_independent_control_points_and_owners() -> None:
@@ -178,6 +183,34 @@ def test_g9_current_deletion_is_an_explicit_all_conditions_gate() -> None:
     assert len(numbered_conditions) == 8
 
 
+def test_g9_3_accepts_one_retain_decision_and_audits_every_condition() -> None:
+    assert CURRENT_DECISION.is_file()
+    decision = _read(CURRENT_DECISION)
+    status = decision.split("## Decision", maxsplit=1)[0]
+    assert status.count("- Conclusion: `RETAIN`") == 1
+    assert "Conclusion: `DELETE`" not in status
+    assert "The G9.3 conclusion is exactly `RETAIN`." in decision
+    assert "permits the separately controlled G9.4" in decision
+    assert "This record is not changed in place to `DELETE`." in decision
+
+    audit = decision.split("## Deletion Admission Audit", maxsplit=1)[1].split(
+        "## Consequences", maxsplit=1
+    )[0]
+    rows = [line for line in audit.splitlines() if line.startswith("| ")]
+    condition_rows = [line for line in rows if line.split("|")[1].strip().isdigit()]
+    assert [line.split("|")[1].strip() for line in condition_rows] == [
+        str(index) for index in range(1, 9)
+    ]
+    assert all("`NOT MET`" in line for line in condition_rows)
+    for retained_gap in (
+        "Coding bootstrap, installed CLI/TUI, and public SDK remain Current consumers",
+        "no replacement rollback strategy is accepted",
+        "generic Session identity envelope remains uncomposed",
+        "No deletion PR exists",
+    ):
+        assert retained_gap.casefold() in audit.casefold()
+
+
 def test_g9_main_promotion_does_not_grant_activation_or_deletion() -> None:
     promotion = _read(G9).split("## Main Promotion Plan", maxsplit=1)[1].split(
         "## Delivery Slices", maxsplit=1
@@ -200,34 +233,139 @@ def test_g9_main_promotion_does_not_grant_activation_or_deletion() -> None:
         assert proof in normalized
 
 
-def test_g9_2_installs_only_explicit_composition_and_retains_current_paths() -> None:
+def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -> None:
     assert TARGET_COMPOSITION.is_file()
     assert G9_EVIDENCE.is_file()
     assert G9_ENTRYPOINTS.is_file()
-    assert not CURRENT_DECISION.exists()
+    assert CURRENT_DECISION.is_file()
     for path in INSTALLED_CODING_ROOTS:
         source = _read(path)
         assert "apphost_composition" not in source
 
     inventory = json.loads(_read(G9_ENTRYPOINTS))
-    assert set(inventory) == {"inventoryVersion", "entries"}
-    assert inventory["inventoryVersion"] == 1
+    assert set(inventory) == {"inventoryVersion", "decision", "entries"}
+    assert inventory["inventoryVersion"] == 2
+    assert inventory["decision"] == "RETAIN"
     rows = {row["entrypointId"]: row for row in inventory["entries"]}
     assert set(rows) == {
         "coding.apphost.composition",
+        "apphost.hosted",
+        "appserver.package",
+        "coding.arch.module-cli",
         "coding.bootstrap",
         "coding.cli",
+        "coding.sdk",
         "coding.tui",
+        "harnesstui.named-mux",
+        "plugin.cli",
     }
-    assert rows["coding.apphost.composition"] == {
-        "disposition": "explicit-hosting",
-        "entrypointId": "coding.apphost.composition",
-        "importsComposition": True,
-        "source": TARGET_COMPOSITION.as_posix(),
-    }
-    for entrypoint_id in ("coding.bootstrap", "coding.cli", "coding.tui"):
+    assert rows["coding.apphost.composition"]["disposition"] == "explicit-hosting"
+    assert rows["coding.apphost.composition"]["importsComposition"] is True
+    assert rows["coding.apphost.composition"]["source"] == TARGET_COMPOSITION.as_posix()
+    assert rows["coding.apphost.composition"]["omissionOwner"] is None
+    for entrypoint_id in (
+        "coding.bootstrap",
+        "coding.cli",
+        "coding.sdk",
+        "coding.tui",
+    ):
         assert rows[entrypoint_id]["disposition"] == "current-only"
         assert rows[entrypoint_id]["importsComposition"] is False
+        assert rows[entrypoint_id]["omissionOwner"] == "current"
+
+    assert rows["appserver.package"]["disposition"] == (
+        "contract-only-no-entrypoint"
+    )
+    assert rows["apphost.hosted"]["disposition"] == "binder-only-no-entrypoint"
+    assert rows["harnesstui.named-mux"]["disposition"] == (
+        "design-only-no-entrypoint"
+    )
+    for entrypoint_id in ("coding.arch.module-cli", "plugin.cli"):
+        assert rows[entrypoint_id]["disposition"] == "non-product-tool"
+        assert rows[entrypoint_id]["omissionOwner"] is None
+
+    for row in rows.values():
+        assert set(row) == {
+            "disposition",
+            "entrypointId",
+            "importsComposition",
+            "omissionOwner",
+            "packagingBinding",
+            "source",
+            "supportStatus",
+            "surface",
+        }
+        assert Path(row["source"]).is_file()
+
+    assert {row["surface"] for row in rows.values()} == {
+        "appserver",
+        "bootstrap",
+        "cli",
+        "composition",
+        "hosted",
+        "mux",
+        "sdk",
+        "tui",
+    }
+    assert {
+        entrypoint_id: (row["surface"], row["supportStatus"])
+        for entrypoint_id, row in rows.items()
+    } == {
+        "apphost.hosted": ("hosted", "binder-only"),
+        "appserver.package": ("appserver", "contract-only"),
+        "coding.apphost.composition": ("composition", "explicit-library"),
+        "coding.arch.module-cli": ("cli", "supported-module"),
+        "coding.bootstrap": ("bootstrap", "supported-library"),
+        "coding.cli": ("cli", "installed"),
+        "coding.sdk": ("sdk", "supported-library"),
+        "coding.tui": ("tui", "installed"),
+        "harnesstui.named-mux": ("mux", "design-only"),
+        "plugin.cli": ("cli", "installed"),
+    }
+
+    project = tomllib.loads(_read(Path("pyproject.toml")))
+    scripts = project["project"]["scripts"]
+    assert scripts == {
+        "loushang": "loushang.coding.cli.__main__:main",
+        "loushang-plugin": "loushang.plugin.__main__:main",
+        "loushang-tui": "loushang.coding.ui.cli:main",
+    }
+    bindings = {
+        row["packagingBinding"]: row["entrypointId"]
+        for row in rows.values()
+        if row["packagingBinding"] is not None
+    }
+    assert bindings == {
+        "project.scripts.loushang": "coding.cli",
+        "project.scripts.loushang-plugin": "plugin.cli",
+        "project.scripts.loushang-tui": "coding.tui",
+    }
+
+    assert "loushang.coding.bootstrap" in _imports(
+        Path("src/loushang/coding/__init__.py")
+    )
+    assert "loushang.coding.bootstrap" in _imports(
+        Path("src/loushang/coding/cli/__main__.py")
+    )
+    assert "loushang.coding.cli.__main__" in _imports(
+        Path("src/loushang/coding/ui/cli.py")
+    )
+    assert {path.name for path in Path("src/loushang/appserver").glob("*.py")} == {
+        "__init__.py",
+        "ports.py",
+    }
+    assert not any(
+        "mux" in path.name.casefold()
+        for path in Path("src/loushang/harnesstui").rglob("*.py")
+    )
+    for entrypoint_id in ("appserver.package", "apphost.hosted"):
+        source = _read(Path(rows[entrypoint_id]["source"]))
+        module = ast.parse(source, filename=rows[entrypoint_id]["source"])
+        assert not any(
+            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == "main"
+            for node in module.body
+        )
 
     expected_imports = {
         "__future__",
@@ -285,7 +423,7 @@ def test_g9_2_keeps_current_as_omission_and_has_no_same_attempt_retry() -> None:
     assert "except" not in start_source
 
 
-def test_g9_2_retains_apphost_core_and_current_inventory_fences() -> None:
+def test_g9_3_retains_apphost_core_and_current_inventory_fences() -> None:
     for path in APPHOST.rglob("*.py"):
         imports = _imports(path)
         assert not any(
@@ -317,13 +455,17 @@ def test_g9_2_retains_apphost_core_and_current_inventory_fences() -> None:
     assert "explicit installed composition owner" in inventory
     assert "`src/loushang/coding/apphost_composition.py`" in inventory
     assert "omission remains Current" in inventory
-    assert "G9.3--G9.4 still own the retention decision and promotion" in inventory
+    assert "G9.3 records the" in inventory
+    assert "accepted `RETAIN` decision" in inventory
+    assert "G9.4 still owns" in inventory
 
     aod = _read(AOD)
     ledger = _read(GAP_LEDGER)
     assert "G9.1--G9.2 implement the explicit composition and drill" in aod
+    assert "G9.3 accepts a source-backed `RETAIN` decision" in aod
     assert "Current remains unchanged" in aod
-    assert "G9.0--G9.2 are implemented" in ledger
+    assert "G9.0--G9.3 are implemented" in ledger
+    assert "all eight deletion conditions remain unmet" in ledger
 
 
 def test_g9_2_evidence_manifest_and_platform_gates_are_exact() -> None:

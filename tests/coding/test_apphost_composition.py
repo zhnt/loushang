@@ -4,6 +4,7 @@ import ast
 import asyncio
 import json
 import threading
+import tomllib
 from collections.abc import Callable
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
@@ -65,6 +66,7 @@ _COMPOSITION = Path("src/loushang/coding/apphost_composition.py")
 _CURRENT_ROOTS = {
     "coding.bootstrap": Path("src/loushang/coding/bootstrap.py"),
     "coding.cli": Path("src/loushang/coding/cli/__main__.py"),
+    "coding.sdk": Path("src/loushang/coding/__init__.py"),
     "coding.tui": Path("src/loushang/coding/ui/cli.py"),
 }
 
@@ -953,22 +955,76 @@ def test_g9_restart_retains_durable_kill_switch_generation(_case: str) -> None:
 )
 def test_g9_entrypoint_inventory_is_exact_and_source_backed(_case: str) -> None:
     inventory = json.loads(_INVENTORY.read_text(encoding="utf-8"))
-    assert set(inventory) == {"inventoryVersion", "entries"}
-    assert inventory["inventoryVersion"] == 1
+    assert set(inventory) == {"inventoryVersion", "decision", "entries"}
+    assert inventory["inventoryVersion"] == 2
+    assert inventory["decision"] == "RETAIN"
     entries = {entry["entrypointId"]: entry for entry in inventory["entries"]}
-    assert set(entries) == {"coding.apphost.composition", *_CURRENT_ROOTS}
+    assert set(entries) == {
+        "apphost.hosted",
+        "appserver.package",
+        "coding.apphost.composition",
+        "coding.arch.module-cli",
+        "coding.bootstrap",
+        "coding.cli",
+        "coding.sdk",
+        "coding.tui",
+        "harnesstui.named-mux",
+        "plugin.cli",
+    }
     for entrypoint_id, row in entries.items():
         path = Path(row["source"])
         assert path.is_file()
-        imports_composition = "apphost_composition" in path.read_text(encoding="utf-8")
         if entrypoint_id == "coding.apphost.composition":
             assert row["disposition"] == "explicit-hosting"
             assert row["importsComposition"] is True
             assert path == _COMPOSITION
-        else:
+        elif entrypoint_id in _CURRENT_ROOTS:
             assert row["disposition"] == "current-only"
             assert row["importsComposition"] is False
-            assert not imports_composition
+            assert row["omissionOwner"] == "current"
+        if path.suffix == ".py" and path != _COMPOSITION:
+            assert "apphost_composition" not in path.read_text(encoding="utf-8")
+
+    assert {
+        entrypoint_id: (row["surface"], row["supportStatus"], row["disposition"])
+        for entrypoint_id, row in entries.items()
+        if entrypoint_id not in _CURRENT_ROOTS
+        and entrypoint_id != "coding.apphost.composition"
+    } == {
+        "apphost.hosted": (
+            "hosted",
+            "binder-only",
+            "binder-only-no-entrypoint",
+        ),
+        "appserver.package": (
+            "appserver",
+            "contract-only",
+            "contract-only-no-entrypoint",
+        ),
+        "coding.arch.module-cli": ("cli", "supported-module", "non-product-tool"),
+        "harnesstui.named-mux": (
+            "mux",
+            "design-only",
+            "design-only-no-entrypoint",
+        ),
+        "plugin.cli": ("cli", "installed", "non-product-tool"),
+    }
+
+    project = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+    assert project["project"]["scripts"] == {
+        "loushang": "loushang.coding.cli.__main__:main",
+        "loushang-plugin": "loushang.plugin.__main__:main",
+        "loushang-tui": "loushang.coding.ui.cli:main",
+    }
+    assert {
+        row["packagingBinding"]
+        for row in entries.values()
+        if row["packagingBinding"] is not None
+    } == {
+        "project.scripts.loushang",
+        "project.scripts.loushang-plugin",
+        "project.scripts.loushang-tui",
+    }
 
 
 def _imports(path: Path) -> set[str]:

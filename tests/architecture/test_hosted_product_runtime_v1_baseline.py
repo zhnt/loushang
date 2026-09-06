@@ -185,7 +185,7 @@ def test_baseline_documents_are_status_honest_and_indexed() -> None:
             "Authority": "normative target proposal",
             "Design status": "proposed",
             "Implementation status": (
-                "partial — implemented through G9.2; G9.3--G9.4 remain"
+                "partial — implemented through G9.3; G9.4 remains"
             ),
             "Production activation": "closed",
         },

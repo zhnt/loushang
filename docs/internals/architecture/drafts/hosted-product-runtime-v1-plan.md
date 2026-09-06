@@ -7,7 +7,7 @@
 - Parent: none
 - Authority: normative target proposal
 - Design status: proposed
-- Implementation status: partial — implemented through G9.2; G9.3--G9.4 remain
+- Implementation status: partial — implemented through G9.3; G9.4 remains
 - Production activation: closed
 - Owner: Loushang architecture
 
@@ -29,8 +29,9 @@ remote execution, or live process adoption.
   C5.1--C5.5c provide the receipt/lifecycle aggregate, retained Linux and
   Windows native evidence, and the sole explicit Linux/Windows Coding Product
   canary. G7 is closed. AppHost A0.3 live binding, the optional A0.4 hosted
-  binder, and the Coding-owned G8 Product/Worker join are implemented but
-  remain uncomposed; AppServer contains contracts only, and AppService remains
+  binder, the Coding-owned G8 Product/Worker join, and the G9 explicit outer
+  composition are implemented. No installed Product entrypoint selects that
+  composition; AppServer contains contracts only, and AppService remains
   absent.
 - **Proposed Target:** H6 supplies opaque native preparation; AppHost supplies
   explicit Product routing and scoped runtime lifetime; Product/Harness
@@ -78,7 +79,7 @@ Product selection, authority, protocol health, or generation publication.
 | G6 | AppHost | implemented A0.3 canonical live-binding lifecycle and embedded profile plus A0.4 optional contract-only hosted binder | G5 | multi-Session and multi-profile single-flight attach/detach/cancellation/deadline/shutdown matrix; exact AppServer port identity; no listener, transport, protocol, service runtime, or production consumer |
 | G7 | Product/Harness | implemented PLC9C5 C5.0--C5.5c receipt/lifecycle, Linux native/Product, retained Windows restricted-mechanics rejection, and Windows LPAC native/Product containment | G2L + G2W + G3 | closed by the retained Linux reports plus separate zero-skip C5.5 native and Product reports proving Windows required containment, cross-entrypoint, recovery, rollback, and no-fallback behavior |
 | G8 | AppHost + Product/Harness | implemented G8.0--G8.3 default-dark Product-neutral end-to-end join | G6 + G7 | exact Worker receipt/recovery/normal-close join, unrelated Worker-free Product, multi-profile/Session, fault and retained cross-platform evidence |
-| G9 | common parent | implemented through G9.2; G9.3--G9.4 remain | G8 | explicit Product composition and rollback/crash drill are implemented default-dark; source-backed Current-owner decision and lane-to-main promotion remain |
+| G9 | common parent | implemented through G9.3; G9.4 remains | G8 | explicit Product composition and rollback/crash drill are implemented default-dark; the source-backed decision retains Current; lane-to-main promotion remains |
 
 G0H and G0A are independently accepted gates even when reviewed or delivered
 in one documentation change. A failed AppHost placement review cannot block
@@ -93,7 +94,8 @@ accepted [G9 closure](../apphost/hosted-product-v1-closure-g9.md) makes
 production composition, route activation, omitted-owner policy, Current
 deletion, and main promotion independent control points.
 G9.1--G9.2 now provide the sole explicit Coding composition facade and its
-cross-platform deterministic drill; existing bootstrap/CLI/TUI omission paths
+cross-platform deterministic drill. G9.3 expands the source-backed entrypoint
+inventory and accepts `RETAIN`; existing bootstrap/CLI/TUI/SDK omission paths
 remain Current-only.
 
 The optional A0.4 hosted binder is now accepted with only AppServer-owned
