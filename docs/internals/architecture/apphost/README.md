@@ -4,6 +4,7 @@
 [ARD-003](../decisions/ARD-003-apphost-top-level-placement.md) ·
 [A0 Contract Model](contract-model-a0.md) ·
 [G8 Product/Worker Join](product-worker-join-g8.md) ·
+[G9 V1 Closure](hosted-product-v1-closure-g9.md) ·
 [Hosted Product Runtime V1 Plan](../drafts/hosted-product-runtime-v1-plan.md)
 
 ## Status
@@ -12,9 +13,8 @@
 - Parent: `loushang`
 - Authority: normative — accepted AppHost scope boundary
 - Design status: accepted
-- Implementation status: implemented through G8 — A0.3 live-binding/runtime,
-  A0.4 optional hosted binder, and the Coding-owned Product/Worker join are
-  present
+- Implementation status: partial — implemented through G8; G9.0 closure design
+  and guards are accepted while G9.1--G9.4 remain
 - Activation status: default-dark; no launcher, installed Product registration,
   AppService/AppServer runtime, or production composition route
 - Owner: Loushang AppHost architecture
@@ -89,6 +89,11 @@ concrete Product composition without changing AppHost core. The Coding-owned
 outer adapter implements the existing Product factory/runtime ports and retains
 all Worker authority inside Coding/Harness. Its explicit registration helper is
 uncomposed and grants no activation authority by itself.
+
+The accepted [G9 V1 Closure](hosted-product-v1-closure-g9.md) now separates the
+future installed composition, explicit activation, omitted-owner policy,
+Current deletion decision, and main promotion. G9.0 changes no Current source
+or route: the target composition module is absent and omission remains Current.
 
 ## Target
 
@@ -210,6 +215,9 @@ after Product/OEM admission, never through a derived module name.
 20. A0.4 carries AppServer-owned typed structural ports but does not call them.
     Port behavior, logical detach, protocol, listener, and transport ownership
     remain outside AppHost.
+21. Main promotion, explicit route activation, omitted-owner change, and
+    Current-owner deletion are separate decisions. None is inferred from
+    another, and a valid G9 retention decision may keep Current.
 
 ## Delivery Sequence
 
@@ -225,6 +233,11 @@ after Product/OEM admission, never through a derived module name.
 | G8.1 | Coding Product registration/factory, exact receipt join, and frozen profile projection | implemented, uncomposed |
 | G8.2 | concrete Coding canary normal-close lifecycle and Product compatibility | implemented, uncomposed |
 | G8.3 | multi-profile/Session, cancellation, retry, shutdown, and retained evidence gates | implemented, uncomposed |
+| G9.0 | production-composition, operational-drill, Current-deletion, and main-promotion closure contract | accepted; no source or activation change |
+| G9.1 | sole Product-owned installed composition with explicit opt-in | not started |
+| G9.2 | rollback/crash drill and retained Linux/Windows evidence | not started |
+| G9.3 | entrypoint inventory and Current-owner RETAIN/DELETE decision | not started |
+| G9.4 | architecture reconciliation and lane-to-main promotion | not started |
 
 ## Evidence
 
@@ -252,9 +265,13 @@ after Product/OEM admission, never through a derived module name.
   dependency matrix;
 - `hosted-product-g8-evidence-manifest.json` pins the zero-skip G8 case set;
   PLC9C5 separately retains Linux and Windows native/Product evidence;
+- `tests/architecture/test_hosted_product_runtime_g9_closure.py` proves the
+  G9.0 decision separation, default-dark source facts, deletion conditions,
+  drill matrix, and promotion gates;
 - `make check-apphost` runs the focused lint, typecheck, and contract suite;
 - `make check-architecture-docs` validates parent documentation integrity.
 
-Passing these gates proves A0.4 mechanics and the default-dark G8 concrete
-Product join. It grants no default Product, production hosted route,
-AppService/AppServer runtime, launcher, or Current-owner deletion.
+Passing these gates proves A0.4 mechanics, the default-dark G8 concrete Product
+join, and the G9.0 closure contract. It grants no default Product, production
+hosted route, AppService/AppServer runtime, launcher, Current-owner deletion,
+or main promotion.

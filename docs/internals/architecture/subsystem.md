@@ -151,6 +151,11 @@ AppHost public facade 和精确 Worker receipt，但未接入现有入口。系�
 launcher、AppService/AppServer runtime 或 production composition；现有 Coding
 CLI/TUI 路径不依赖 AppHost。
 
+G9.0 已接受 V1 收口边界，但不改变上述 Current：Product-owned 显式组合、
+运行级 rollback/crash 演练、Current owner 的 `RETAIN`/`DELETE` 决议，以及
+`lane/harness -> main` 晋升是四个独立控制点；合并不推导激活，激活也不推导
+删除 Current。
+
 AppHost core 不依赖 Harness、Hosting、AppServer、AppService、UI framework 或
 具体 Product。可选 `apphost.hosted` 是唯一面向 AppServer contract-only
 structural ports 的外向边；未来 serialized launcher 单独拥有 Hosting 边，二者

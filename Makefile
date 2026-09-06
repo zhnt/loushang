@@ -175,7 +175,8 @@ APPHOST_TEST_PATHS := \
 	tests/architecture/test_apphost_a0_contract.py \
 	tests/architecture/test_apphost_a02_architecture.py \
 	tests/architecture/test_apphost_a03_a04_architecture.py \
-	tests/architecture/test_hosted_product_runtime_g8_join.py
+	tests/architecture/test_hosted_product_runtime_g8_join.py \
+	tests/architecture/test_hosted_product_runtime_g9_closure.py
 APPHOST_LINT_SUPPORT := \
 	scripts/dev/verify_evidence_manifest.py \
 	tests/harness/worker/test_coding_product_worker_canary.py

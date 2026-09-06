@@ -7,7 +7,8 @@
 - Parent: none
 - Authority: normative target proposal
 - Design status: proposed
-- Implementation status: implemented through G8; G9 closure remains
+- Implementation status: partial — implemented through G8; G9.0 closure design
+  accepted and G9.1--G9.4 remain
 - Production activation: closed
 - Owner: Loushang architecture
 
@@ -78,7 +79,7 @@ Product selection, authority, protocol health, or generation publication.
 | G6 | AppHost | implemented A0.3 canonical live-binding lifecycle and embedded profile plus A0.4 optional contract-only hosted binder | G5 | multi-Session and multi-profile single-flight attach/detach/cancellation/deadline/shutdown matrix; exact AppServer port identity; no listener, transport, protocol, service runtime, or production consumer |
 | G7 | Product/Harness | implemented PLC9C5 C5.0--C5.5c receipt/lifecycle, Linux native/Product, retained Windows restricted-mechanics rejection, and Windows LPAC native/Product containment | G2L + G2W + G3 | closed by the retained Linux reports plus separate zero-skip C5.5 native and Product reports proving Windows required containment, cross-entrypoint, recovery, rollback, and no-fallback behavior |
 | G8 | AppHost + Product/Harness | implemented G8.0--G8.3 default-dark Product-neutral end-to-end join | G6 + G7 | exact Worker receipt/recovery/normal-close join, unrelated Worker-free Product, multi-profile/Session, fault and retained cross-platform evidence |
-| G9 | common parent | v1 closure | G8 | owner deletion decision, docs/ARD promotion, clean dependency graph, operational drill |
+| G9 | common parent | accepted G9.0 closure baseline; G9.1--G9.4 remain | G8 | explicit Product composition, rollback/crash drill, source-backed Current-owner decision, clean dependency graph, and lane-to-main promotion |
 
 G0H and G0A are independently accepted gates even when reviewed or delivered
 in one documentation change. A failed AppHost placement review cannot block
@@ -88,7 +89,10 @@ still depends on its matching G2 evidence. G4--G6 may proceed in parallel with
 G1--G3 because AppHost core has no Hosting dependency. G7 is the first
 Hosting/Harness activation join and the only gate in this plan allowed to
 revise the PLC9C5 activation absence. G8 now implements the first join between
-the AppHost and Worker rails without activating an installed route.
+the AppHost and Worker rails without activating an installed route. The
+accepted [G9 closure](../apphost/hosted-product-v1-closure-g9.md) makes
+production composition, route activation, omitted-owner policy, Current
+deletion, and main promotion independent control points.
 
 The optional A0.4 hosted binder is now accepted with only AppServer-owned
 structural Product-port contracts. A0.5 still requires its own serialized-launch
@@ -111,8 +115,12 @@ critical path.
    configuration chooses Hosting.
 6. Expand only after health, restart, required/optional contribution,
    cancellation, crash, cleanup-debt, and forced rollback cases pass.
-7. Remove the Current owner only in G9 after all supported entrypoints have
-   converged and retained evidence proves no remaining consumer.
+7. Record `RETAIN` or `DELETE` for Current in G9.3. Delete only in a dedicated
+   change after every exact condition in the accepted G9 closure passes; a
+   valid `RETAIN` decision does not block V1 promotion.
+8. Treat `lane/harness -> main` as capability availability only. Activation,
+   omitted-owner change, and compatibility deletion require independent
+   review and rollback authority.
 
 ## G7 Canary Acceptance Matrix
 
@@ -148,7 +156,7 @@ restart. Live adoption remains a later separately reviewed threat model.
 
 ## Architecture And Test Guards
 
-Through G8, executable architecture tests must continue to prove:
+Through G9.0, executable architecture tests must continue to prove:
 
 - AppHost core contains only the accepted A0.1--A0.3 contracts, catalog/router,
   and live-binding owner; optional A0.4 hosted wiring remains outside its facade;
@@ -164,9 +172,10 @@ Through G8, executable architecture tests must continue to prove:
   C5.1 receipt, C5.2 Linux, and C5.3 Windows mechanics/rejection evidence
   exists; C5.4 revises only the Linux canary absence and cannot close G7;
   C5.0 removes no runtime guard; and
-- inventory source paths equal the executable expected set, and the G9 deletion
-  change includes a reverse import/composition scan proving no Current owner
-  consumer remains.
+- inventory source paths equal the executable expected set; G9.0 adds no
+  production composition or evidence claim; and any later G9 deletion change
+  includes the exact reverse import/composition and entrypoint evidence required
+  by the accepted G9 closure.
 
 ## Non-Goals
 
@@ -196,3 +205,8 @@ V1 closure requires one linked evidence bundle containing:
 - rollback and crash-recovery drill results; and
 - a final Current-to-Target inventory proving which compatibility owner remains
   and why.
+
+The accepted
+[G9 V1 closure](../apphost/hosted-product-v1-closure-g9.md) defines the exact
+slice order, evidence case IDs, Current-owner admission conditions, and
+lane-to-main promotion controls for these final rows.

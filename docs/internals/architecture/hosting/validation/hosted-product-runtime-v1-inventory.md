@@ -124,6 +124,10 @@ The inventory records, rather than relaxes, these Current fences:
   optional Harness Session and AppServer port adapters stay outside the core
   facade; AppServer contains contracts only, AppService remains absent, and no
   installed entrypoint imports the G8 join; and
+- the accepted G9.0 closure design adds no production source or evidence claim:
+  `src/loushang/coding/apphost_composition.py` remains absent, omission remains
+  Current, and G9.1--G9.4 still own composition, drill, retention decision, and
+  promotion; and
 - Hosting imports no Harness, Product, AppHost, AppServer, or AppService
   package.
 

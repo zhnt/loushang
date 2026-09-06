@@ -207,7 +207,7 @@ The most important current gaps are:
 | multiple real Products validating shared abstractions | Coding remains the only installed Product entrypoint |
 | physical installation optionality | subsystems remain in one Python distribution |
 | Hosting runtime and Harness adoption | H0--H6.5b mechanisms, PLC9C5 Product/native Worker canaries, and retained Linux/Windows evidence are implemented; installed activation remains default-dark |
-| cross-Product AppHost | G8 joins A0.4 catalog/runtime mechanics to one Coding-owned exact-receipt Product adapter while remaining uncomposed; G9 must decide Current-owner retention, documentation promotion, and operational closure before any installed activation |
+| cross-Product AppHost | G8 joins A0.4 catalog/runtime mechanics to one Coding-owned exact-receipt Product adapter while remaining uncomposed; G9.0 accepts separate gates for explicit composition, rollback/crash evidence, a Current-owner RETAIN/DELETE decision, and lane-to-main promotion; Current remains unchanged |
 
 Detailed gaps belong to the owning scope rather than expanding this AOD.
 Cross-system deltas are indexed in the
