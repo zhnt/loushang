@@ -53,6 +53,8 @@ INITIAL_GOVERNED_DOCUMENTS = (
     ARCHITECTURE_ROOT / "hosting/key-designs/hosted-application-support-boundary.md",
     ARCHITECTURE_ROOT / "apphost/README.md",
     ARCHITECTURE_ROOT / "apphost/contract-model-a0.md",
+    ARCHITECTURE_ROOT / "apphost/product-worker-join-g8.md",
+    ARCHITECTURE_ROOT / "apphost/hosted-product-v1-closure-g9.md",
     ARCHITECTURE_ROOT / "appserver/README.md",
     ARCHITECTURE_ROOT / "drafts/apphost-top-level-placement.md",
     ARCHITECTURE_ROOT / "drafts/apphost-component-discovery-a0.md",

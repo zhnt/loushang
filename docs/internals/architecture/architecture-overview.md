@@ -91,7 +91,7 @@ presentation, domain language, and composition.
 | `loushang.coding` | Coding Product semantics, LSP/Arch capabilities, prompts, product tools, CLI and final UI composition |
 | `loushang.ontology` | versioned semantic schema, immutable facts/provenance, projections and typed queries |
 | `loushang.hosting` | H0--H6.4 Product-neutral process, endpoint, child-session, and private managed-preparation mechanisms with Linux/Windows evidence; Harness consumption remains default-dark |
-| `loushang.apphost` | A0.4 Product catalog/router, canonical live-binding runtime, embedded profile lifecycle, and optional hosted structural-port binder; default-dark with no production composition |
+| `loushang.apphost` | A0.4 Product catalog/router, canonical live-binding runtime, embedded profile lifecycle, and optional hosted structural-port binder; G9.1 adds one Product-owned explicit composition while default paths remain dark |
 | `loushang.appserver` | A0.4 contract-only generic structural Product port bundle; no protocol, service, listener, connection, or transport runtime |
 
 `loushang.resource` remains a small compatibility surface over Harness resource
@@ -117,7 +117,7 @@ flowchart TD
     CHANNEL["Channel"]
     ONTOLOGY["Ontology"]
     HOSTING["Hosting H0-H6.4\ndefault-dark local mechanism"]
-    APPHOST["AppHost A0.4\ndefault-dark runtime mechanics"]
+    APPHOST["AppHost G8\ndefault-dark Product runtime join"]
     APPSERVER["AppServer A0.4\nstructural ports only"]
     FOUNDATION["Foundation"]
 
@@ -133,13 +133,15 @@ flowchart TD
     CHANNEL -->|work/runtime contracts| HWORK
     ONTOLOGY -->|strict values| FOUNDATION
     HARNESS -->|explicit default-dark Worker adapter| HOSTING
+    CODING -->|default-dark Product integration| APPHOST
     APPHOST -.->|optional hosted binder only| APPSERVER
 ```
 
 Hosting has one private Harness Worker consumer seam, but Current remains the
-default and no Product/native Worker profile activates it. AppHost A0.4 is
-also intentionally uncomposed; the dotted AppServer edge is an optional
-in-process wiring dependency, not a production runtime route.
+default and no installed Product/native Worker profile activates it. AppHost
+G8 now has a Coding-owned Product integration over the exact Worker receipt,
+but it remains intentionally uncomposed. The dotted AppServer edge is an
+optional in-process wiring dependency, not a production runtime route.
 
 Direct and transitive Python imports differ from this semantic view. Consult
 the generated Current graph before making a physical dependency claim.
@@ -204,8 +206,8 @@ The most important current gaps are:
 | Ontology source-backed write-back, reconciliation, decisions and production source connectors | ontology-owned Action planning and Fact commits are implemented; Product-hosted source mutation remains unimplemented |
 | multiple real Products validating shared abstractions | Coding remains the only installed Product entrypoint |
 | physical installation optionality | subsystems remain in one Python distribution |
-| Hosting runtime and Harness adoption | H0--H6.4 mechanisms and a default-dark Harness adapter are implemented with native Linux/Windows evidence; Product/native Worker activation remains PLC9C5 work |
-| cross-Product AppHost | A0.4 catalog/routing, live bindings, embedded profiles, and optional hosted structural wiring are implemented but uncomposed; the next separate slice is the serialized launcher and later real Product/AppService composition |
+| Hosting runtime and Harness adoption | H0--H6.5b mechanisms, PLC9C5 Product/native Worker canaries, and retained Linux/Windows evidence are implemented; installed activation remains default-dark |
+| cross-Product AppHost | G8 joins A0.4 catalog/runtime mechanics to one Coding-owned exact-receipt Product adapter; G9.1--G9.2 implement the explicit composition and drill; G9.3 accepts a source-backed `RETAIN` decision; G9.4 remains the independent lane-to-main gate; Current remains unchanged |
 
 Detailed gaps belong to the owning scope rather than expanding this AOD.
 Cross-system deltas are indexed in the

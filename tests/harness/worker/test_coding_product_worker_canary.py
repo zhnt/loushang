@@ -873,6 +873,46 @@ def test_product_closes_bound_native_profile_when_start_decision_rejects(
     ]
 
 
+def test_product_normal_close_retires_exact_attempt_without_global_rollback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = _Context(tmp_path)
+    canary = context.bind()
+
+    async def graceful_shutdown(*, reason: str) -> None:
+        assert reason == "coding_product_session_close"
+        context.events.append("normal-shutdown")
+
+    async def scenario() -> None:
+        await canary.start(correlation_id="normal-close")
+        context.events.clear()
+        monkeypatch.setattr(context.supervisor, "shutdown", graceful_shutdown)
+        await canary.close()
+        await canary.close()
+        with pytest.raises(CodingProductWorkerCanaryError) as rejected:
+            await canary.rollback()
+        assert rejected.value.code == "coding_worker_closed"
+
+    asyncio.run(scenario())
+
+    assert context.events == [
+        "R2-FENCE-ATTEMPTS",
+        "R3-REVOKE-DRAIN",
+        "normal-shutdown",
+        "R5-SETTLE-OR-DEBT",
+    ]
+    assert context.current.calls == 0
+    assert context.domain.ready_states[-1] == (
+        True,
+        False,
+        "coding_worker_session_closed",
+    )
+    assert canary.status.code == "coding_worker_session_closed"
+
+    assert context.events.count("normal-shutdown") == 1
+
+
 def test_windows_product_dispatch_admits_cleanup_v2_without_linux_arguments(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

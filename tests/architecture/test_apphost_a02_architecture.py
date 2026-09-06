@@ -147,7 +147,7 @@ def test_a0_2_catalog_uses_static_exact_pins_and_persistent_retirement() -> None
     assert "bind_profile" not in legacy_source
 
 
-def test_optional_adapter_is_dark_and_has_no_production_consumer() -> None:
+def test_optional_adapter_is_dark_with_only_reviewed_g8_g9_facade_consumers() -> None:
     apphost_consumers = {
         path
         for path in Path("src/loushang").rglob("*.py")
@@ -157,7 +157,10 @@ def test_optional_adapter_is_dark_and_has_no_production_consumer() -> None:
             for item in _imports(path)
         )
     }
-    assert apphost_consumers == set()
+    assert apphost_consumers == {
+        Path("src/loushang/coding/apphost_composition.py"),
+        Path("src/loushang/coding/apphost_product.py")
+    }
     adapter_consumers = {
         path
         for path in Path("src/loushang").rglob("*.py")
@@ -293,5 +296,5 @@ def test_a0_2_docs_remain_recorded_inside_the_default_dark_a0_4_scope() -> None:
     assert "registered in the adapter's private" in contract
     assert "never retries that integer" in contract
     assert "capped by `HARNESS_SESSION_MAX_ACTIVE_CANONICAL_OPS_V1`" in contract
-    assert "No production" in scope
-    assert "module imports or instantiates" in scope
+    assert "The one installed explicit factory may" in scope
+    assert "only after an exact typed Hosting activation request" in scope

@@ -103,11 +103,17 @@ target to accepted status.
 
 The accepted [AppHost Top-Level Placement](decisions/ARD-003-apphost-top-level-placement.md)
 gives the existing cross-Product Platform Host role one physical owner.
-AppHost A0.4 contains catalog/routing, canonical live bindings, embedded
-profile lifecycle, and an optional hosted binder over AppServer-owned
-contract-only structural ports. It remains default-dark and does not move
-Product semantics, AppService, server runtime, or Hosting mechanics into
-AppHost.
+AppHost G8 contains A0.4 catalog/routing, canonical live bindings, embedded
+profile lifecycle, the optional hosted binder over AppServer-owned
+contract-only structural ports, and one Coding-owned exact-receipt Product
+integration. It remains default-dark and does not move Product semantics,
+AppService, server runtime, or Hosting mechanics into AppHost. The accepted
+[G9 closure](apphost/hosted-product-v1-closure-g9.md) makes installed
+composition, activation, omitted-owner policy, Current deletion, and main
+promotion independent decisions. G9.1--G9.2 implement the sole explicit Coding
+composition and rollback/crash drill; G9.3 accepts a source-backed `RETAIN`
+decision without changing the Current route. G9.4 remains the independent
+lane-to-main promotion gate.
 
 A nested scope is not automatically a top-level subsystem. The parent owns its
 placement, composition policy, and sibling relationships; the child owns its
