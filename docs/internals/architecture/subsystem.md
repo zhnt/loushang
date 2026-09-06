@@ -146,8 +146,10 @@ delivery profile 选择，以及进程级 admission fence 和有序释放。
 
 A0.4 当前实现标准库-only core contracts、catalog/router、每 Session canonical
 live registry、embedded profile 生命周期，以及可选 hosted structural-port
-binder。它仍没有 launcher、AppService/AppServer runtime、具体 Product 注册或
-production composition；现有 Coding CLI/TUI 路径不依赖 AppHost。
+binder。G8 增加 Coding-owned、default-dark 的 Product/Worker join；它使用
+AppHost public facade 和精确 Worker receipt，但未接入现有入口。系统仍没有
+launcher、AppService/AppServer runtime 或 production composition；现有 Coding
+CLI/TUI 路径不依赖 AppHost。
 
 AppHost core 不依赖 Harness、Hosting、AppServer、AppService、UI framework 或
 具体 Product。可选 `apphost.hosted` 是唯一面向 AppServer contract-only

@@ -61,7 +61,8 @@ lease, or factory.
 | optional AppHost/AppServer binder | `src/loushang/apphost/hosted.py` | validates one explicitly selected profile as an exact AppServer structural port bundle and preserves the canonical binding identity; owns no listener, protocol, transport, or service semantics |
 | AppServer Product ports | `src/loushang/appserver/ports.py` | immutable contract-only identity and Product-supplied Session/projection/work/interaction port bundle; no runtime, listener, protocol, or composition owner |
 | Session discovery composition | `src/loushang/harness/transcript/directory.py`, `src/loushang/harness/machine_resources/control_plane.py`, and `src/loushang/coding/cli/__main__.py` | canonical global plus cwd/home compatibility sources are selected at composition; cwd is a query/filter and compatibility roots are not writable authorities |
-| Linux Coding Product canary | `src/loushang/coding/_product_worker_canary.py` | sole explicit C5.4 Product root; joins Coding Product/Session evidence to the real lifecycle coordinator, Linux profile friend, Worker health, Capability publication, rollback, and recovery; omission remains Current and Windows/unlisted profiles remain closed |
+| Linux/Windows Coding Product canary | `src/loushang/coding/_product_worker_canary.py` | sole explicit C5.4/C5.5c Product root; joins Coding Product/Session evidence to the real lifecycle coordinator, exact native-profile friend, Worker health, Capability publication, normal close, rollback, and recovery; omission remains Current and unlisted profiles remain closed |
+| Coding/AppHost G8 Product join | `src/loushang/coding/apphost_product.py` | default-dark Product-owned adapter from AppHost's public factory/runtime contracts to one exact canary receipt and attempt; adopts before inspection, recovers before effect, shares one attempt per AppHost binding, exposes only frozen profile facts, and has no installed entrypoint consumer |
 
 ## Observed Contract Mismatch
 
@@ -69,16 +70,16 @@ lease, or factory.
 | --- | --- | --- | --- |
 | executable/cwd | Harness private request retains native descriptors plus identity | Hosting `ProcessLaunchRequest` contains absolute strings | `hosting_compat` fails closed rather than substitute mutable paths |
 | containment | Harness `ProcessContainmentPlan` may rewrite the exact process request and owns semantic evidence | Hosting's public preparation lease exposes only `request`, `verify_current`, and `close`; H6 adds a private managed capture | C5.2 supplies one default-dark Linux contained-profile adapter through the H6.4 seam; only the exact C5.4 Coding Product canary selects it |
-| inherited resources | Harness Current path extracts private launch descriptors | H6.1 combines endpoint and opaque preparation inheritance internally; H6.2/H6.3 supply exact platform-private material | H6.4 preserves the injected managed port; the sole C5.4 Coding root binds the Linux profile, while Windows Product binding remains absent |
-| Windows required containment | PLC9B includes a purpose-specific AppContainer/Job implementation for legacy restore | Hosting H6.3 owns one narrower restricted-token/locked-PE profile | the managed semantic bridge exists, but no AppContainer equivalence, eligible Worker profile supplier, or native parity claim exists |
-| Product activation | PLC9C1--C4 provide declaration, launch, supervisor, and one dark domain adapter; C5.1--C5.2 add exact lifecycle/native seams | H5 provides explicit Current/Hosting ownership | C5.4 adds one explicit Linux Coding canary; omission remains Current and all Windows/unlisted Product routes remain closed |
+| inherited resources | Harness Current path extracts private launch descriptors | H6.1 combines endpoint and opaque preparation inheritance internally; H6.2/H6.3 supply exact platform-private material | H6.4 preserves the injected managed port; the C5.4/C5.5c Coding root binds the exact Linux or Windows profile without exposing native material |
+| Windows required containment | PLC9B includes a purpose-specific AppContainer/Job implementation for legacy restore | Hosting H6.5b owns the accepted LPAC/Job/handle-list contained profile | C5.5b native and C5.5c Product zero-skip reports retain exact Windows required-containment evidence |
+| Product activation | PLC9C1--C4 provide declaration, launch, supervisor, and one dark domain adapter; C5.1--C5.5c add exact lifecycle/native/Product seams | H5 provides explicit Current/Hosting ownership | C5.4/C5.5c provide explicit Linux/Windows Coding canaries and G8 joins one exact attempt to AppHost; omission remains Current and the join has no installed consumer |
 
 ## AppHost And Hosted Application State
 
-AppHost A0.4 now supplies immutable standard-library contracts, admitted
-catalog generations, explicit candidate routing, one process-local live-binding
-registry, embedded profile attachments, and an optional contract-only AppServer
-port binder. There is still:
+AppHost G8 now supplies immutable standard-library contracts, admitted catalog
+generations, explicit candidate routing, one process-local live-binding
+registry, embedded profile attachments, an optional contract-only AppServer
+port binder, and one Coding-owned exact-receipt Product adapter. There is still:
 
 - no AppHost production composition or launcher;
 - no AppServer listener, transport, protocol, or application-service runtime;
@@ -91,8 +92,8 @@ port binder. There is still:
   Hosting.
 
 The accepted AppHost architecture now has executable A0.3/A0.4 lifecycle and
-wiring evidence. AppServer runtime and AppService remain Target boundaries,
-not implemented routes.
+G8 Product/Worker join evidence. AppServer runtime and AppService remain Target
+boundaries, not implemented routes.
 
 ## Current-To-Target Delta
 
@@ -101,11 +102,11 @@ not implemented routes.
 | opaque request-bound native preparation | Hosting Contract/Platform components | implemented privately in H6.1; fake ownership, concurrency/fault, and no-raw-handle gates are retained |
 | exact Linux executable/cwd/containment transfer | Hosting platform adapter with caller-owned requirements | implemented for the private static-closure profiles; H6.2 retained native adversarial oracle remains green |
 | exact Windows executable/cwd/containment transfer | Hosting platform adapter with caller-owned requirements | implemented for one private restricted-token/direct-import PE mechanics profile; the non-skippable H6.3 native adversarial oracle must remain green |
-| Harness-to-Hosting managed preparation parity | Harness Sandbox/Worker adapter over Hosting | H6.4 public/managed semantic and cleanup parity plus the exact C5.2 Linux native bridge are implemented; C5.4 is their sole Product consumer, Windows native Worker compatibility remains absent, and default stays Current |
-| Product catalog, no-default routing, scoped runtime lifetime | AppHost | implemented through A0.3: the Router-private admission seam feeds one canonical live binding, exact generation retention, per-profile attachments, and bounded retryable shutdown; production composition remains absent |
+| Harness-to-Hosting managed preparation parity | Harness Sandbox/Worker adapter over Hosting | H6.4 semantic/cleanup parity and the exact C5.2/C5.5b native bridges are implemented; C5.4/C5.5c are their Product consumers and default stays Current |
+| Product catalog, no-default routing, scoped runtime lifetime | AppHost | implemented through G8: one canonical live binding retains exact generation/profile ownership and the Coding-owned adapter joins an exact Worker attempt; production composition remains absent |
 | Session pre-routing identity | AppHost schema plus canonical Session persistence/catalog owner | A0.2 fake owner proves atomic creation/recovery; real canonical envelope persistence remains uncomposed |
 | AppHost cwd/user-global Session projection | AppHost-owned optional integration over the existing Harness Session discovery/catalog owner | A0.2 proves explicit source binding, stable source identity, alias/conflict, an unchanged bounded descriptor read sealed into immutable bytes, no token-to-path behavior, and Windows fail-closed semantics |
-| Product/native Worker activation | Product/Harness composition and domain owner | separately reviewed PLC9C5 canary, native gates, recovery, and rollback |
+| Product/native Worker activation | Product/Harness composition and domain owner | PLC9C5 Linux/Windows canaries plus G8 receipt/recovery/normal-close join are implemented and retained default-dark; G9 owns closure/retention decisions |
 | hosted App protocol and semantics | future AppServer/AppService scopes | A0.4 supplies only the optional exact port-bundle binder and contract package; listener, transport, protocol, service semantics, and production composition remain separate |
 
 ## Retained Fences
@@ -115,14 +116,14 @@ The inventory records, rather than relaxes, these Current fences:
 - H5 default owner is Current and a selected owner never falls back during an
   attempt;
 - sealed-descriptor cases remain rejected by Hosting compatibility;
-- PLC9C5 C5.0 design/inventory, C5.1 receipt/lifecycle, C5.2 Linux profile,
-  C5.3 Windows mechanics/rejection, and C5.4 Linux Coding Product canary are
-  implemented; Windows Product activation and unsupported-platform guards
-  remain closed;
-- AppHost A0.4 remains explicitly constructed and dark: its core runtime owns
-  live bindings, while optional Harness Session and AppServer port adapters stay
-  outside the core facade; AppServer contains contracts only, AppService remains
-  absent, and no production composition imports either optional adapter; and
+- PLC9C5 C5.0--C5.5c are implemented; Linux C5.4 and Windows C5.5b/c reports
+  separately retain native/Product evidence, Windows LPAC Product activation is
+  implemented and retained, and unsupported profiles remain closed;
+- AppHost G8 remains explicitly constructed and dark: its core runtime owns
+  live bindings, the Coding adapter is the sole concrete Product consumer, and
+  optional Harness Session and AppServer port adapters stay outside the core
+  facade; AppServer contains contracts only, AppService remains absent, and no
+  installed entrypoint imports the G8 join; and
 - Hosting imports no Harness, Product, AppHost, AppServer, or AppService
   package.
 

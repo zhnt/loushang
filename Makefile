@@ -165,12 +165,20 @@ HOSTING_TEST_PATHS := \
 	tests/architecture/test_hosting_architecture_baseline.py
 APPHOST_SOURCES := \
 	src/loushang/apphost \
-	src/loushang/appserver
+	src/loushang/appserver \
+	src/loushang/coding/_product_worker_canary.py \
+	src/loushang/coding/apphost_product.py
 APPHOST_TEST_PATHS := \
 	tests/apphost \
+	tests/coding/test_apphost_product.py \
+	tests/dev/test_verify_evidence_manifest.py \
 	tests/architecture/test_apphost_a0_contract.py \
 	tests/architecture/test_apphost_a02_architecture.py \
-	tests/architecture/test_apphost_a03_a04_architecture.py
+	tests/architecture/test_apphost_a03_a04_architecture.py \
+	tests/architecture/test_hosted_product_runtime_g8_join.py
+APPHOST_LINT_SUPPORT := \
+	scripts/dev/verify_evidence_manifest.py \
+	tests/harness/worker/test_coding_product_worker_canary.py
 
 .PHONY: bootstrap test test-ai check-ai test-tui test-tui-render-contract test-tui-terminal-platform test-tui-native test-tui-tmux lint-ai fmt-ai typecheck-ai typecheck-tui build-binary install-binary clean-binary vendor-ai-moonshot-anthropic-stream vendor-ai-moonshot-anthropic-complete vendor-ai-moonshot-anthropic-tools vendor-ai-moonshot-openai-stream vendor-ai-moonshot-openai-complete vendor-ai-moonshot-openai-tools vendor-ai-dashscope-openai-responses-stream vendor-ai-dashscope-openai-responses-tools example-ai-model-lookup example-ai-complete example-ai-stream example-ai-tools example-ai-typed-context example-ai-advanced-faux-stream example-ai-advanced-context-tools example-ai-advanced-tool-result-roundtrip example-ai-kimi-anthropic-stream example-ai-kimi-anthropic-complete example-ai-kimi-anthropic-tools example-ai-kimi-openai-stream example-ai-kimi-openai-complete example-ai-kimi-openai-tools example-ai-dashscope-openai-responses-stream example-ai-dashscope-openai-responses-tools example-ai-custom-base-url-openai-advanced example-ai-faux-stream example-ai-context-tools-minimal example-ai-tool-result-roundtrip
 .PHONY: test-sandbox test-host-runtime
@@ -178,7 +186,7 @@ APPHOST_TEST_PATHS := \
 .PHONY: check-ai-catalog check-ai-examples check-ai-imports check-ai-coverage
 .PHONY: check-harness lint-harness typecheck-harness test-harness check-plc9c5-c51-contract test-plc9c5-c51-contract check-plc9c5-c52-linux-native test-plc9c5-c52-linux-native check-plc9c5-c53-windows-mechanics test-plc9c5-c53-windows-mechanics check-plc9c5-c55b-windows-lpac-native test-plc9c5-c55b-windows-lpac-native
 .PHONY: check-hosting lint-hosting typecheck-hosting test-hosting
-.PHONY: check-apphost lint-apphost typecheck-apphost test-apphost
+.PHONY: check-apphost lint-apphost typecheck-apphost test-apphost test-hosted-product-g8-evidence
 .PHONY: check-architecture-docs
 .PHONY: check-harnesstui lint-harnesstui typecheck-harnesstui test-harnesstui
 .PHONY: lane-status
@@ -289,16 +297,22 @@ typecheck-hosting:
 test-hosting:
 	uv --cache-dir .uv-cache run --extra dev $(PYTEST_RUNNER) $(HOSTING_TEST_PATHS) -q
 
-check-apphost: lint-apphost typecheck-apphost test-apphost
+check-apphost: lint-apphost typecheck-apphost test-apphost test-hosted-product-g8-evidence
 
 lint-apphost:
-	uv --cache-dir .uv-cache run --extra dev ruff check $(APPHOST_SOURCES) $(APPHOST_TEST_PATHS)
+	uv --cache-dir .uv-cache run --extra dev ruff check $(APPHOST_SOURCES) $(APPHOST_TEST_PATHS) $(APPHOST_LINT_SUPPORT)
 
 typecheck-apphost:
 	uv --cache-dir .uv-cache run --extra dev mypy --follow-imports=silent $(APPHOST_SOURCES)
 
 test-apphost:
 	uv --cache-dir .uv-cache run --extra dev $(PYTEST_RUNNER) $(APPHOST_TEST_PATHS) -q
+
+test-hosted-product-g8-evidence:
+	mkdir -p .artifacts
+	uv --cache-dir .uv-cache run --extra dev $(PYTEST_RUNNER) tests/coding/test_apphost_product.py tests/harness/worker/test_coding_product_worker_canary.py::test_product_normal_close_retires_exact_attempt_without_global_rollback -q --junitxml=.artifacts/hosted-product-g8.xml
+	uv --cache-dir .uv-cache run --extra dev python scripts/dev/verify_pytest_xml.py .artifacts/hosted-product-g8.xml
+	uv --cache-dir .uv-cache run --extra dev python scripts/dev/verify_evidence_manifest.py docs/internals/architecture/apphost/hosted-product-g8-evidence-manifest.json HOSTED-PRODUCT-G8-JOIN .artifacts/hosted-product-g8.xml
 
 check-architecture-docs:
 	.venv/bin/ruff check scripts/architecture/render_current_package_dependencies.py tests/architecture/test_architecture_documentation.py

@@ -3,6 +3,7 @@
 [Architecture](../README.md) ·
 [ARD-003](../decisions/ARD-003-apphost-top-level-placement.md) ·
 [A0 Contract Model](contract-model-a0.md) ·
+[G8 Product/Worker Join](product-worker-join-g8.md) ·
 [Hosted Product Runtime V1 Plan](../drafts/hosted-product-runtime-v1-plan.md)
 
 ## Status
@@ -11,9 +12,10 @@
 - Parent: `loushang`
 - Authority: normative — accepted AppHost scope boundary
 - Design status: accepted
-- Implementation status: implemented through A0.4 — A0.3 live-binding/runtime
-  lifecycle and A0.4 optional hosted binder are present
-- Activation status: default-dark; no launcher, concrete Product registration,
+- Implementation status: implemented through G8 — A0.3 live-binding/runtime,
+  A0.4 optional hosted binder, and the Coding-owned Product/Worker join are
+  present
+- Activation status: default-dark; no launcher, installed Product registration,
   AppService/AppServer runtime, or production composition route
 - Owner: Loushang AppHost architecture
 
@@ -78,9 +80,15 @@ checks exact Session identity and returns an owned hosted attachment, but never
 invokes Session/Work/projection/interaction ports or constructs AppService,
 protocol, listener, connection, or transport state.
 
-Existing Product-specific CLI/TUI paths remain authoritative. No production
-module imports or instantiates the catalog, router, runtime, hosted binder, or
-Harness adapter.
+Existing Product-specific CLI/TUI paths remain authoritative. No installed
+entrypoint instantiates the catalog, router, runtime, hosted binder, Harness
+adapter, or G8 Product registration.
+
+The implemented [G8 Product/Worker Join](product-worker-join-g8.md) is the first
+concrete Product composition without changing AppHost core. The Coding-owned
+outer adapter implements the existing Product factory/runtime ports and retains
+all Worker authority inside Coding/Harness. Its explicit registration helper is
+uncomposed and grants no activation authority by itself.
 
 ## Target
 
@@ -119,6 +127,8 @@ The accepted target adds, by separately reviewed slices:
 ```text
 Product package integration -> AppHost contracts
 AppHost core -> Python standard library
+
+Coding G8 integration -> AppHost public facade + Coding/Harness Worker values
 
 AppHost catalog/router -> AppHost contracts + injected Product ports
 A0.3 embedded profile -> AppHost contracts + injected Product/profile ports
@@ -169,8 +179,9 @@ after Product/OEM admission, never through a derived module name.
     composition.
     It never derives a path from cwd/home scope, treats a candidate token as a
     path, or creates a second Session index.
-12. PLC9C5 Product/native Worker activation remains default-dark and outside
-    AppHost A0.
+12. The Coding-owned G8 adapter joins PLC9C5 Product/native Worker activation
+    to AppHost without moving Worker policy into AppHost; the route remains
+    default-dark.
 13. The optional Harness integration seals at most 8 MiB from one no-follow
     descriptor. It accepts only an unchanged pre/post full stat snapshot and
     claimed reads use immutable bytes rather than the descriptor or path.
@@ -210,6 +221,10 @@ after Product/OEM admission, never through a derived module name.
 | A0.3 | canonical live-binding registry, scoped runtime lifecycle, and embedded profile | implemented, uncomposed |
 | A0.4 | optional hosted binder over the contract-only AppServer structural port bundle | implemented, uncomposed |
 | A0.5 | optional serialized launcher | deferred pending its own boundary review |
+| G8.0 | cross-scope Product/Worker join boundary and executable guards | accepted |
+| G8.1 | Coding Product registration/factory, exact receipt join, and frozen profile projection | implemented, uncomposed |
+| G8.2 | concrete Coding canary normal-close lifecycle and Product compatibility | implemented, uncomposed |
+| G8.3 | multi-profile/Session, cancellation, retry, shutdown, and retained evidence gates | implemented, uncomposed |
 
 ## Evidence
 
@@ -231,9 +246,15 @@ after Product/OEM admission, never through a derived module name.
 - `tests/architecture/test_apphost_a03_a04_architecture.py` proves that the
   runtime stays in the standard-library-only core, the hosted edge is the sole
   AppServer consumer, and the AppServer slice remains contract-only;
+- `tests/coding/test_apphost_product.py` and
+  `tests/architecture/test_hosted_product_runtime_g8_join.py` prove the exact
+  G8 receipt, recovery, ownership, multi-profile/Session, fault, cleanup, and
+  dependency matrix;
+- `hosted-product-g8-evidence-manifest.json` pins the zero-skip G8 case set;
+  PLC9C5 separately retains Linux and Windows native/Product evidence;
 - `make check-apphost` runs the focused lint, typecheck, and contract suite;
 - `make check-architecture-docs` validates parent documentation integrity.
 
-Passing these gates proves A0.4 mechanics over injected fakes. It grants no
-default Product, production hosted route, AppService/AppServer runtime,
-launcher, or Product/native Worker activation.
+Passing these gates proves A0.4 mechanics and the default-dark G8 concrete
+Product join. It grants no default Product, production hosted route,
+AppService/AppServer runtime, launcher, or Current-owner deletion.

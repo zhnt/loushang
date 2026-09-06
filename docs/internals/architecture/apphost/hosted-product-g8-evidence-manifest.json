@@ -1,0 +1,27 @@
+{
+  "manifestVersion": 1,
+  "reports": {
+    "HOSTED-PRODUCT-G8-JOIN": {
+      "junitPath": ".artifacts/hosted-product-g8.xml",
+      "minimumTests": 18,
+      "requiredCaseIds": [
+        "G8-EXACT-RECEIPT",
+        "G8-RECEIPT-MISMATCH",
+        "G8-RECOVERY-FIRST",
+        "G8-REQUIRED-READY",
+        "G8-OPTIONAL-DEGRADED",
+        "G8-UNRELATED-WORKER-FREE",
+        "G8-MULTIPROFILE-SINGLE-FLIGHT",
+        "G8-MULTISESSION-ISOLATION",
+        "G8-DETACH-NONOWNING",
+        "G8-STALE-DETACH",
+        "G8-CANCEL-COMPENSATION",
+        "G8-START-FAIL-NO-FALLBACK",
+        "G8-CLOSE-DEBT-RETRY",
+        "G8-SHUTDOWN-ORDER",
+        "G8-CROSS-ENTRYPOINT"
+      ],
+      "status": "implemented"
+    }
+  }
+}

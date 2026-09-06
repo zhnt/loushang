@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 CANARY = Path("src/loushang/coding/_product_worker_canary.py")
+APPHOST_PRODUCT = Path("src/loushang/coding/apphost_product.py")
 CODING_ROOT = Path("src/loushang/coding")
 WORKER_ROOT = Path("src/loushang/harness/worker")
 HOSTING_ROOT = Path("src/loushang/hosting")
@@ -150,7 +151,7 @@ def test_c54_has_one_product_root_and_one_way_dependencies() -> None:
             for imported in _imports(path)
         )
     }
-    assert worker_consumers == {CANARY}
+    assert worker_consumers == {CANARY, APPHOST_PRODUCT}
     assert not any(
         imported.startswith("loushang.hosting") for imported in _imports(CANARY)
     )

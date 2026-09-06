@@ -359,13 +359,13 @@ def test_a0_1_create_and_profile_boundaries_preserve_owner_authority() -> None:
     assert "close" not in profile_members
 
 
-def test_a0_1_is_not_imported_by_any_production_composition_path() -> None:
+def test_a0_1_has_only_the_reviewed_default_dark_product_consumer() -> None:
     consumers = {
         path
         for path in Path("src/loushang").rglob("*.py")
         if not path.is_relative_to(APPHOST_ROOT) and _imports_apphost(path)
     }
-    assert consumers == set()
+    assert consumers == {Path("src/loushang/coding/apphost_product.py")}
     reverse_adapter_consumers = {
         path
         for path in Path("src/loushang").rglob("*.py")
