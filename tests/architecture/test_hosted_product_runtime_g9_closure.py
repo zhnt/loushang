@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import json
 from pathlib import Path
 
 G9 = Path("docs/internals/architecture/apphost/hosted-product-v1-closure-g9.md")
@@ -26,6 +27,9 @@ OWNER_SELECTION = Path("src/loushang/harness/worker/owner_selection.py")
 TARGET_COMPOSITION = Path("src/loushang/coding/apphost_composition.py")
 G9_EVIDENCE = Path(
     "docs/internals/architecture/apphost/hosted-product-g9-evidence-manifest.json"
+)
+G9_ENTRYPOINTS = Path(
+    "docs/internals/architecture/apphost/hosted-product-g9-entrypoint-inventory.json"
 )
 CURRENT_DECISION = Path(
     "docs/internals/architecture/apphost/current-worker-owner-decision-g9.md"
@@ -76,7 +80,7 @@ def _imports(path: Path) -> set[str]:
     return imported
 
 
-def test_g9_0_design_is_indexed_and_status_honest() -> None:
+def test_g9_2_design_is_indexed_and_status_honest() -> None:
     design = _read(G9)
     scope = _read(APPHOST_SCOPE)
     plan = _read(PLAN)
@@ -84,13 +88,13 @@ def test_g9_0_design_is_indexed_and_status_honest() -> None:
         "- ID: `HOSTED-PRODUCT-G9`",
         "- Authority: normative accepted design",
         "- Design status: accepted",
-        "- Implementation status: partial — G9.0 design and executable guards only",
+        "- Implementation status: partial — G9.0--G9.2 implemented; G9.3--G9.4 remain",
         "- Activation status: default-dark; omitted Worker owner remains Current",
     ):
         assert field in design
     assert "[G9 V1 Closure](hosted-product-v1-closure-g9.md)" in scope
-    assert "accepted G9.0 closure baseline; G9.1--G9.4 remain" in plan
-    assert "Passing G9.0 permits G9.1 implementation" in design
+    assert "implemented through G9.2; G9.3--G9.4 remain" in plan
+    assert "Passing G9.2 permits the separate G9.3 decision" in design
 
 
 def test_g9_freezes_independent_control_points_and_owners() -> None:
@@ -119,6 +123,7 @@ def test_g9_freezes_independent_control_points_and_owners() -> None:
 
 def test_g9_has_exact_delivery_and_operational_drill_matrix() -> None:
     design = _read(G9)
+    normalized = " ".join(design.split())
     for slice_id in ("G9.0", "G9.1", "G9.2", "G9.3", "G9.4"):
         assert f"| {slice_id} |" in design
     drill = design.split("### Required drill cases", maxsplit=1)[1].split(
@@ -133,10 +138,10 @@ def test_g9_has_exact_delivery_and_operational_drill_matrix() -> None:
     for proof in (
         "uses controlled process doubles where live native execution is unsafe",
         "retains Linux and Windows reports separately",
-        "future `hosted-product-g9-evidence-manifest.json`",
+        "`hosted-product-g9-evidence-manifest.json` pins the exact case set",
         "two zero-skip JUnit report identities",
     ):
-        assert proof in design
+        assert proof in normalized
 
     traceability = design.split("## Traceability", maxsplit=1)[1].split(
         "## Threat Model", maxsplit=1
@@ -195,17 +200,54 @@ def test_g9_main_promotion_does_not_grant_activation_or_deletion() -> None:
         assert proof in normalized
 
 
-def test_g9_0_keeps_composition_evidence_and_deletion_artifacts_absent() -> None:
-    assert not TARGET_COMPOSITION.exists()
-    assert not G9_EVIDENCE.exists()
+def test_g9_2_installs_only_explicit_composition_and_retains_current_paths() -> None:
+    assert TARGET_COMPOSITION.is_file()
+    assert G9_EVIDENCE.is_file()
+    assert G9_ENTRYPOINTS.is_file()
     assert not CURRENT_DECISION.exists()
     for path in INSTALLED_CODING_ROOTS:
         source = _read(path)
-        assert "apphost_product" not in source
         assert "apphost_composition" not in source
 
+    inventory = json.loads(_read(G9_ENTRYPOINTS))
+    assert set(inventory) == {"inventoryVersion", "entries"}
+    assert inventory["inventoryVersion"] == 1
+    rows = {row["entrypointId"]: row for row in inventory["entries"]}
+    assert set(rows) == {
+        "coding.apphost.composition",
+        "coding.bootstrap",
+        "coding.cli",
+        "coding.tui",
+    }
+    assert rows["coding.apphost.composition"] == {
+        "disposition": "explicit-hosting",
+        "entrypointId": "coding.apphost.composition",
+        "importsComposition": True,
+        "source": TARGET_COMPOSITION.as_posix(),
+    }
+    for entrypoint_id in ("coding.bootstrap", "coding.cli", "coding.tui"):
+        assert rows[entrypoint_id]["disposition"] == "current-only"
+        assert rows[entrypoint_id]["importsComposition"] is False
 
-def test_g9_0_keeps_current_as_omission_and_has_no_same_attempt_retry() -> None:
+    expected_imports = {
+        "__future__",
+        "asyncio",
+        "contextlib",
+        "dataclasses",
+        "inspect",
+        "loushang.apphost",
+        "loushang.coding.apphost_product",
+        "loushang.coding.product_plan",
+        "re",
+        "typing",
+    }
+    assert _imports(TARGET_COMPOSITION) == expected_imports
+    for path in Path("src/loushang").rglob("*.py"):
+        if path != TARGET_COMPOSITION:
+            assert "apphost_composition" not in _read(path)
+
+
+def test_g9_2_keeps_current_as_omission_and_has_no_same_attempt_retry() -> None:
     source = _read(OWNER_SELECTION)
     module = ast.parse(source, filename=str(OWNER_SELECTION))
     activation = next(
@@ -243,7 +285,7 @@ def test_g9_0_keeps_current_as_omission_and_has_no_same_attempt_retry() -> None:
     assert "except" not in start_source
 
 
-def test_g9_0_retains_apphost_core_and_current_inventory_fences() -> None:
+def test_g9_2_retains_apphost_core_and_current_inventory_fences() -> None:
     for path in APPHOST.rglob("*.py"):
         imports = _imports(path)
         assert not any(
@@ -272,19 +314,42 @@ def test_g9_0_retains_apphost_core_and_current_inventory_fences() -> None:
         }
         assert calls.isdisjoint({"getenv", "environ", "entry_points", "__import__"})
     inventory = _read(INVENTORY)
-    assert "has no installed entrypoint consumer" in inventory
-    assert "`src/loushang/coding/apphost_composition.py` remains absent" in inventory
+    assert "explicit installed composition owner" in inventory
+    assert "`src/loushang/coding/apphost_composition.py`" in inventory
     assert "omission remains Current" in inventory
-    assert "G9.1--G9.4 still own composition" in inventory
+    assert "G9.3--G9.4 still own the retention decision and promotion" in inventory
 
     aod = _read(AOD)
     ledger = _read(GAP_LEDGER)
-    assert "G9.0 accepts separate gates" in aod
+    assert "G9.1--G9.2 implement the explicit composition and drill" in aod
     assert "Current remains unchanged" in aod
-    assert "G9.0 accepts the closure gates but adds no production composition" in ledger
+    assert "G9.0--G9.2 are implemented" in ledger
+
+
+def test_g9_2_evidence_manifest_and_platform_gates_are_exact() -> None:
+    manifest = json.loads(_read(G9_EVIDENCE))
+    assert set(manifest) == {"manifestVersion", "reports"}
+    assert manifest["manifestVersion"] == 1
+    assert set(manifest["reports"]) == {
+        "HOSTED-PRODUCT-G9-LINUX",
+        "HOSTED-PRODUCT-G9-WINDOWS",
+    }
+    for report in manifest["reports"].values():
+        assert report["minimumTests"] == 13
+        assert set(report["requiredCaseIds"]) == G9_DRILL_CASES
+        assert report["status"] == "implemented"
+
+    makefile = _read(Path("Makefile"))
+    workflow = _read(Path(".github/workflows/apphost-quality.yml"))
+    assert "test-hosted-product-g9-linux-evidence" in makefile
+    assert "HOSTED-PRODUCT-G9-LINUX" in makefile
+    assert "HOSTED-PRODUCT-G9-LINUX" in workflow
+    assert "HOSTED-PRODUCT-G9-WINDOWS" in workflow
+    assert ".artifacts/hosted-product-g9-windows.xml" in workflow
 
 
 def test_g9_guard_is_part_of_the_apphost_quality_gate() -> None:
     makefile = _read(Path("Makefile"))
     assert "tests/architecture/test_hosted_product_runtime_g9_closure.py" in makefile
     assert "check-apphost: lint-apphost typecheck-apphost test-apphost" in makefile
+    assert "test-hosted-product-g9-linux-evidence" in makefile

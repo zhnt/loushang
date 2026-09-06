@@ -13,10 +13,9 @@
 - Parent: `loushang`
 - Authority: normative — accepted AppHost scope boundary
 - Design status: accepted
-- Implementation status: partial — implemented through G8; G9.0 closure design
-  and guards are accepted while G9.1--G9.4 remain
-- Activation status: default-dark; no launcher, installed Product registration,
-  AppService/AppServer runtime, or production composition route
+- Implementation status: partial — implemented through G9.2; G9.3--G9.4 remain
+- Activation status: default-dark; the explicit composition is installed but no
+  existing launcher, CLI, TUI, AppService, or AppServer route selects it
 - Owner: Loushang AppHost architecture
 
 ## Scope
@@ -80,9 +79,10 @@ checks exact Session identity and returns an owned hosted attachment, but never
 invokes Session/Work/projection/interaction ports or constructs AppService,
 protocol, listener, connection, or transport state.
 
-Existing Product-specific CLI/TUI paths remain authoritative. No installed
-entrypoint instantiates the catalog, router, runtime, hosted binder, Harness
-adapter, or G8 Product registration.
+Existing Product-specific bootstrap/CLI/TUI paths remain authoritative and do
+not import the G9 composition. The one installed explicit factory may
+instantiate the catalog, runtime, selected profiles, and G8 Product
+registration only after an exact typed Hosting activation request.
 
 The implemented [G8 Product/Worker Join](product-worker-join-g8.md) is the first
 concrete Product composition without changing AppHost core. The Coding-owned
@@ -90,10 +90,11 @@ outer adapter implements the existing Product factory/runtime ports and retains
 all Worker authority inside Coding/Harness. Its explicit registration helper is
 uncomposed and grants no activation authority by itself.
 
-The accepted [G9 V1 Closure](hosted-product-v1-closure-g9.md) now separates the
-future installed composition, explicit activation, omitted-owner policy,
-Current deletion decision, and main promotion. G9.0 changes no Current source
-or route: the target composition module is absent and omission remains Current.
+The accepted [G9 V1 Closure](hosted-product-v1-closure-g9.md) separates installed
+composition, explicit activation, omitted-owner policy, Current deletion
+decision, and main promotion. G9.1--G9.2 implement the first two capability
+rows and the rollback/crash drill without changing any Current source or route;
+omission remains Current.
 
 ## Target
 
@@ -234,8 +235,8 @@ after Product/OEM admission, never through a derived module name.
 | G8.2 | concrete Coding canary normal-close lifecycle and Product compatibility | implemented, uncomposed |
 | G8.3 | multi-profile/Session, cancellation, retry, shutdown, and retained evidence gates | implemented, uncomposed |
 | G9.0 | production-composition, operational-drill, Current-deletion, and main-promotion closure contract | accepted; no source or activation change |
-| G9.1 | sole Product-owned installed composition with explicit opt-in | not started |
-| G9.2 | rollback/crash drill and retained Linux/Windows evidence | not started |
+| G9.1 | sole Product-owned installed composition with explicit opt-in | implemented, default-dark |
+| G9.2 | rollback/crash drill and retained Linux/Windows evidence | implemented; Windows retained by CI |
 | G9.3 | entrypoint inventory and Current-owner RETAIN/DELETE decision | not started |
 | G9.4 | architecture reconciliation and lane-to-main promotion | not started |
 
@@ -265,13 +266,16 @@ after Product/OEM admission, never through a derived module name.
   dependency matrix;
 - `hosted-product-g8-evidence-manifest.json` pins the zero-skip G8 case set;
   PLC9C5 separately retains Linux and Windows native/Product evidence;
-- `tests/architecture/test_hosted_product_runtime_g9_closure.py` proves the
-  G9.0 decision separation, default-dark source facts, deletion conditions,
-  drill matrix, and promotion gates;
+- `tests/coding/test_apphost_composition.py`,
+  `tests/architecture/test_hosted_product_runtime_g9_closure.py`, the
+  source-backed `hosted-product-g9-entrypoint-inventory.json`, and
+  `hosted-product-g9-evidence-manifest.json` prove the G9.1--G9.2 explicit
+  composition, default-dark source facts, rollback/crash matrix, exact
+  dependency edge, and separate Linux/Windows report identities;
 - `make check-apphost` runs the focused lint, typecheck, and contract suite;
 - `make check-architecture-docs` validates parent documentation integrity.
 
 Passing these gates proves A0.4 mechanics, the default-dark G8 concrete Product
-join, and the G9.0 closure contract. It grants no default Product, production
-hosted route, AppService/AppServer runtime, launcher, Current-owner deletion,
-or main promotion.
+join, and the explicit G9.1--G9.2 composition and operational drill. It grants
+no default Product, production hosted route, AppService/AppServer runtime,
+launcher, Current-owner decision/deletion, or main promotion.

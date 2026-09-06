@@ -167,9 +167,11 @@ APPHOST_SOURCES := \
 	src/loushang/apphost \
 	src/loushang/appserver \
 	src/loushang/coding/_product_worker_canary.py \
+	src/loushang/coding/apphost_composition.py \
 	src/loushang/coding/apphost_product.py
 APPHOST_TEST_PATHS := \
 	tests/apphost \
+	tests/coding/test_apphost_composition.py \
 	tests/coding/test_apphost_product.py \
 	tests/dev/test_verify_evidence_manifest.py \
 	tests/architecture/test_apphost_a0_contract.py \
@@ -187,7 +189,7 @@ APPHOST_LINT_SUPPORT := \
 .PHONY: check-ai-catalog check-ai-examples check-ai-imports check-ai-coverage
 .PHONY: check-harness lint-harness typecheck-harness test-harness check-plc9c5-c51-contract test-plc9c5-c51-contract check-plc9c5-c52-linux-native test-plc9c5-c52-linux-native check-plc9c5-c53-windows-mechanics test-plc9c5-c53-windows-mechanics check-plc9c5-c55b-windows-lpac-native test-plc9c5-c55b-windows-lpac-native
 .PHONY: check-hosting lint-hosting typecheck-hosting test-hosting
-.PHONY: check-apphost lint-apphost typecheck-apphost test-apphost test-hosted-product-g8-evidence
+.PHONY: check-apphost lint-apphost typecheck-apphost test-apphost test-hosted-product-g8-evidence test-hosted-product-g9-linux-evidence
 .PHONY: check-architecture-docs
 .PHONY: check-harnesstui lint-harnesstui typecheck-harnesstui test-harnesstui
 .PHONY: lane-status
@@ -298,7 +300,7 @@ typecheck-hosting:
 test-hosting:
 	uv --cache-dir .uv-cache run --extra dev $(PYTEST_RUNNER) $(HOSTING_TEST_PATHS) -q
 
-check-apphost: lint-apphost typecheck-apphost test-apphost test-hosted-product-g8-evidence
+check-apphost: lint-apphost typecheck-apphost test-apphost test-hosted-product-g8-evidence test-hosted-product-g9-linux-evidence
 
 lint-apphost:
 	uv --cache-dir .uv-cache run --extra dev ruff check $(APPHOST_SOURCES) $(APPHOST_TEST_PATHS) $(APPHOST_LINT_SUPPORT)
@@ -314,6 +316,12 @@ test-hosted-product-g8-evidence:
 	uv --cache-dir .uv-cache run --extra dev $(PYTEST_RUNNER) tests/coding/test_apphost_product.py tests/harness/worker/test_coding_product_worker_canary.py::test_product_normal_close_retires_exact_attempt_without_global_rollback -q --junitxml=.artifacts/hosted-product-g8.xml
 	uv --cache-dir .uv-cache run --extra dev python scripts/dev/verify_pytest_xml.py .artifacts/hosted-product-g8.xml
 	uv --cache-dir .uv-cache run --extra dev python scripts/dev/verify_evidence_manifest.py docs/internals/architecture/apphost/hosted-product-g8-evidence-manifest.json HOSTED-PRODUCT-G8-JOIN .artifacts/hosted-product-g8.xml
+
+test-hosted-product-g9-linux-evidence:
+	mkdir -p .artifacts
+	uv --cache-dir .uv-cache run --extra dev $(PYTEST_RUNNER) tests/coding/test_apphost_composition.py -q --junitxml=.artifacts/hosted-product-g9-linux.xml
+	uv --cache-dir .uv-cache run --extra dev python scripts/dev/verify_pytest_xml.py .artifacts/hosted-product-g9-linux.xml
+	uv --cache-dir .uv-cache run --extra dev python scripts/dev/verify_evidence_manifest.py docs/internals/architecture/apphost/hosted-product-g9-evidence-manifest.json HOSTED-PRODUCT-G9-LINUX .artifacts/hosted-product-g9-linux.xml
 
 check-architecture-docs:
 	.venv/bin/ruff check scripts/architecture/render_current_package_dependencies.py tests/architecture/test_architecture_documentation.py

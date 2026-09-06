@@ -8,7 +8,7 @@
 - Parent: `HOSTED-PRODUCT-RUNTIME-V1`
 - Authority: normative accepted design
 - Design status: accepted
-- Implementation status: partial — G9.0 design and executable guards only
+- Implementation status: partial — G9.0--G9.2 implemented; G9.3--G9.4 remain
 - Activation status: default-dark; omitted Worker owner remains Current
 - Owner: Loushang architecture with AppHost, Product, Harness, and Hosting
   boundary review
@@ -39,10 +39,10 @@ transport, serialized launcher, live process adoption, or a second Product.
 
 | Plane | State |
 | --- | --- |
-| Facts | AppHost A0.1--A0.4 and G8 are implemented. `src/loushang/coding/apphost_product.py` is the sole concrete Product/Worker join, has no installed consumer, and no production composition root exists. |
+| Facts | AppHost A0.1--A0.4, G8, and G9.0--G9.2 are implemented. `src/loushang/coding/apphost_product.py` remains the sole concrete Product/Worker join; `src/loushang/coding/apphost_composition.py` is its sole explicit installed AppHost composition owner. |
 | Current | Existing Coding CLI/TUI composition remains authoritative. `WorkerHostingActivationV1()` and omitted activation select `owner="current"`; a selected launch never falls back to the other owner within the attempt. |
-| Target | One Product-owned installed composition may explicitly construct AppHost and the G8 join, then run a source-backed operational drill before lane promotion. Current is retained unless a separate accepted deletion record proves every admission condition. |
-| G9.0 delta | Add this accepted closure contract, Current inventory references, and executable architecture guards only. No source package, entrypoint, owner selection, activation, or native profile changes are permitted. |
+| Target | Record the separate Current-owner decision, reconcile the architecture, and promote the default-dark capability. Current is retained unless a separate accepted deletion record proves every admission condition. |
+| G9.1--G9.2 delta | Add the one Product-owned explicit composition facade, source-backed entrypoint inventory, retryable rollback settlement, exact offline drill, and separate Linux/Windows evidence identities. Existing bootstrap/CLI/TUI omission paths, owner selection, native profiles, and Current remain unchanged. |
 
 ## Closure Requirements
 
@@ -71,7 +71,7 @@ child retains its existing internal authority.
 
 ## Frozen Production Composition Boundary
 
-G9.1 may add exactly one Product-owned composition module at
+G9.1 adds exactly one Product-owned composition module at
 `src/loushang/coding/apphost_composition.py`. It is the only production module
 allowed to know both the AppHost public facade and the concrete Coding G8
 adapter. AppHost, Harness, Hosting, AppServer, AppService, and shared UI code
@@ -86,13 +86,14 @@ composition and performs, in dependency order:
 2. construct and retain `CodingAppHostProductFactoryV1`;
 3. build the Coding Product and selected profile registrations;
 4. admit one immutable `AppHostCatalogV1` generation; and
-5. construct and return one retained `AppHostRuntimeV1` plus the Product-owned
-   rollback and cleanup owner.
+5. retain one `AppHostRuntimeV1` privately and return only the Product-owned
+   admission, attachment, rollback, and cleanup facade.
 
 The registration helper remains data assembly, not the composition root. A
-CLI, TUI, hosted adapter, or named-mux profile may borrow the returned AppHost
-runtime or attachment lease, but cannot construct another Worker owner for the
-same canonical Session binding.
+future CLI, TUI, hosted adapter, or named-mux profile may borrow an attachment
+lease from the returned facade, but cannot access the raw AppHost runtime or
+construct another Worker owner for the same canonical Session binding. Existing
+Coding bootstrap/CLI/TUI entrypoints remain Current-only.
 
 The composition privately retains one Product Rollback Control responsibility
 cluster. It serializes an outer admission barrier, the durable Product kill
@@ -130,6 +131,10 @@ and reports completion only when both reports are complete.
 A timed-out or failed phase remains fenced and retryable. Process exit,
 profile detach, AppHost close, Product cleanup, catalog retirement, and durable
 Session persistence are distinct evidence; none may synthesize another.
+Normal close does not latch rollback by itself. If an explicit emergency
+rollback races with or follows normal close on the same composition, rollback
+dominates: it latches future attempts and then joins/retries the already-owned
+AppHost and Product cleanup rather than rejecting the operator request.
 
 ## Rollback And Crash-Recovery Drill
 
@@ -183,9 +188,23 @@ in the existing attempt is insufficient.
 | `G9-ENTRYPOINT-INVENTORY` | every supported explicit Product entrypoint either maps to the one composition or is recorded as Current-only |
 | `G9-DEPENDENCY-GRAPH` | generated and AST-backed scans contain only the accepted Product-to-AppHost composition edge |
 
-The future `hosted-product-g9-evidence-manifest.json` must pin the exact case
-set and two zero-skip JUnit report identities. G9.0 does not create that
-manifest or claim that the drill has run.
+`hosted-product-g9-evidence-manifest.json` pins the exact case set and two
+zero-skip JUnit report identities. The Linux report is produced by
+`test-hosted-product-g9-linux-evidence`; the AppHost Windows job independently
+produces the Windows identity from the same deterministic suite. The reports
+are build artifacts rather than committed generated output.
+
+### Implemented evidence
+
+- [entrypoint inventory](hosted-product-g9-entrypoint-inventory.json) records
+  the one explicit Hosting composition and the retained Current-only roots;
+- [G9 evidence manifest](hosted-product-g9-evidence-manifest.json) fixes both
+  platform report identities and all 13 case IDs;
+- [G8 evidence manifest](hosted-product-g8-evidence-manifest.json) remains the
+  exact Product/Worker join proof; and
+- [PLC9C5 evidence manifest](../harness/plugin/plugin-lifecycle-plc9c5-evidence-manifest.json)
+  remains the native lifecycle and containment proof rather than being copied
+  into G9.
 
 ## Current Owner Retention Or Deletion Gate
 
@@ -258,8 +277,8 @@ implied by this list.
 | Slice | Delivery | Exit condition |
 | --- | --- | --- |
 | G9.0 | this accepted closure contract, inventory/parent updates, threat model, and executable architecture guards | no production source or activation change; omission is still Current; no unresolved high/medium design finding |
-| G9.1 | sole Product-owned installed composition root and explicit opt-in entrypoint mapping | exact dependency allowlist, one process owner, uncomposed omission path, cross-entrypoint deterministic tests |
-| G9.2 | offline rollback/crash-recovery drill, evidence manifest, Linux/Windows reports, and retained C5/G8 links | every exact case passes without required skip; cleanup and stale-owner inventories are empty |
+| G9.1 | implemented sole Product-owned installed composition root and explicit opt-in entrypoint mapping | exact dependency allowlist, one process owner, uncomposed omission path, cross-entrypoint deterministic tests |
+| G9.2 | implemented offline rollback/crash-recovery drill, evidence manifest, Linux/Windows report identities, and retained C5/G8 links | every exact case passes without required skip; cleanup and stale-owner inventories are empty |
 | G9.3 | source-backed entrypoint inventory and accepted Current-owner `RETAIN`/`DELETE` record | every condition has evidence or is an explicit retained gap; deletion, if admitted, remains a dedicated change |
 | G9.4 | architecture reconciliation and `lane/harness -> main` promotion | exact-head remote gates pass; main contains capability without implicit activation |
 
@@ -291,35 +310,38 @@ Live adoption of a surviving process remains forbidden. A crash may recover by
 confirming the prior tree reaped or by fencing/terminating it; uncertain
 ownership fails closed.
 
-## G9.0 Architecture Guards
+## G9.2 Architecture Guards
 
 Executable tests must prove that:
 
-- this accepted baseline is indexed by the AppHost scope and common-parent
-  delivery plan;
-- the target production composition module is absent in G9.0;
-- existing installed Coding bootstrap/CLI/TUI paths do not import
-  `apphost_product` or the target composition module;
+- this accepted design and its G9.2 status are indexed by the AppHost scope and
+  common-parent delivery plan;
+- the exact target production composition module exists with only the accepted
+  AppHost-public and Coding Product adapter dependencies;
+- existing installed Coding bootstrap/CLI/TUI paths do not import the target
+  composition module;
 - `WorkerHostingActivationV1` still defaults to `"current"`, has no environment
   lookup, and `WorkerSessionOwnerRouter.start` contains no alternate-owner
   retry;
 - AppHost core retains no Coding, Harness Worker, Hosting, environment,
   platform-detection, or dynamic-import dependency;
-- the Current inventory continues to state that G8 has no installed consumer;
-  and
-- no G9 evidence manifest or Current-deletion record exists before its owning
-  implementation/evidence slice.
+- the source-backed entrypoint inventory identifies the explicit composition
+  and every retained Current-only path;
+- the G9 evidence manifest fixes exactly 13 cases and separate Linux/Windows
+  report identities; and
+- no G9.3 Current-owner decision exists yet.
 
-G9.1 must atomically replace only the relevant absence guards with an exact
-AST-backed composition/entrypoint allowlist. It may not relax AppHost core,
-Harness-to-AppHost, Hosting-to-Product, or same-attempt fallback fences.
+G9.3 and G9.4 replace only their own decision and promotion guards after their
+evidence exists. G9.2 does not relax AppHost core, Harness-to-AppHost,
+Hosting-to-Product, default-Current, or same-attempt fallback fences.
 
-## G9.0 Exit Gate
+## G9.2 Exit Gate
 
-G9.0 is complete when this design, parent scope/index, Current inventory delta,
-and architecture tests agree; targeted AppHost and architecture-documentation
-checks pass; and review finds no unresolved high/medium architecture,
-lifecycle, or delivery-evidence issue.
+G9.2 is complete when the explicit composition facade, entrypoint inventory,
+exact case manifest, Linux local evidence, Windows remote evidence, parent
+status updates, and architecture guards pass; and a three-view review has no
+unresolved high or medium finding.
 
-Passing G9.0 permits G9.1 implementation. It grants no production activation,
-no omitted-owner change, no Current deletion, and no merge to `main`.
+Passing G9.2 permits the separate G9.3 decision. It grants no production
+activation, omitted-owner change, Current deletion, live/native test waiver,
+or main promotion.

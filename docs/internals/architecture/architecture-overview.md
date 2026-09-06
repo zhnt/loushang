@@ -91,7 +91,7 @@ presentation, domain language, and composition.
 | `loushang.coding` | Coding Product semantics, LSP/Arch capabilities, prompts, product tools, CLI and final UI composition |
 | `loushang.ontology` | versioned semantic schema, immutable facts/provenance, projections and typed queries |
 | `loushang.hosting` | H0--H6.4 Product-neutral process, endpoint, child-session, and private managed-preparation mechanisms with Linux/Windows evidence; Harness consumption remains default-dark |
-| `loushang.apphost` | A0.4 Product catalog/router, canonical live-binding runtime, embedded profile lifecycle, and optional hosted structural-port binder; default-dark with no production composition |
+| `loushang.apphost` | A0.4 Product catalog/router, canonical live-binding runtime, embedded profile lifecycle, and optional hosted structural-port binder; G9.1 adds one Product-owned explicit composition while default paths remain dark |
 | `loushang.appserver` | A0.4 contract-only generic structural Product port bundle; no protocol, service, listener, connection, or transport runtime |
 
 `loushang.resource` remains a small compatibility surface over Harness resource
@@ -207,7 +207,7 @@ The most important current gaps are:
 | multiple real Products validating shared abstractions | Coding remains the only installed Product entrypoint |
 | physical installation optionality | subsystems remain in one Python distribution |
 | Hosting runtime and Harness adoption | H0--H6.5b mechanisms, PLC9C5 Product/native Worker canaries, and retained Linux/Windows evidence are implemented; installed activation remains default-dark |
-| cross-Product AppHost | G8 joins A0.4 catalog/runtime mechanics to one Coding-owned exact-receipt Product adapter while remaining uncomposed; G9.0 accepts separate gates for explicit composition, rollback/crash evidence, a Current-owner RETAIN/DELETE decision, and lane-to-main promotion; Current remains unchanged |
+| cross-Product AppHost | G8 joins A0.4 catalog/runtime mechanics to one Coding-owned exact-receipt Product adapter; G9.1--G9.2 implement the explicit composition and drill while G9.3--G9.4 retain separate Current-owner decision and lane-to-main gates; Current remains unchanged |
 
 Detailed gaps belong to the owning scope rather than expanding this AOD.
 Cross-system deltas are indexed in the
