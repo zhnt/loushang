@@ -7,7 +7,7 @@
 - Parent: `HOSTED-PRODUCT-RUNTIME-V1`
 - Authority: normative accepted design
 - Design status: accepted
-- Implementation status: not-started — G8.0 design accepted; G8.1 not started
+- Implementation status: implemented — G8.1--G8.3 complete
 - Activation status: default-dark; no installed entrypoint or default Product route
 - Owner: Loushang architecture with AppHost, Coding Product, Harness, and Hosting
   boundary review
@@ -107,6 +107,11 @@ entrypoint may import the concrete integration.
 10. **The route remains explicit and dark.** No existing CLI, TUI, SDK,
     AppServer, or hosted entrypoint imports or constructs the G8 registration.
     Production activation requires a later independently reviewed composition.
+11. **Cleanup debt has an explicit owner.** The registration helper accepts an
+    already constructed `CodingAppHostProductFactoryV1`; it never hides a new
+    factory inside a registration. The trusted outer composition retains that
+    factory through catalog retirement and closes it before releasing the
+    generation, so unpublished-attempt cleanup debt remains retryable.
 
 ## System Boundary
 
@@ -193,8 +198,10 @@ Worker through it.
 
 The Coding helper constructs one ordinary `ProductRegistrationV1` from an
 explicit generation id, admission source, Product candidate validator, exact
-supported profile ids, compatibility id, and Worker-attempt factory. It performs
-no discovery, admission, native selection, or activation by itself.
+supported profile ids, compatibility id, and an already constructed
+`CodingAppHostProductFactoryV1`. The trusted outer composition retains and
+closes that factory; the registration helper does not hide cleanup ownership.
+It performs no discovery, admission, native selection, or activation by itself.
 
 ## Lifecycle And Linearization
 
@@ -294,8 +301,12 @@ Executable tests must prove:
 
 ## G8 Exit Gate
 
-G8 closes only when G8.1--G8.3 are implemented, the complete retained matrix
-passes, Linux and Windows Worker evidence remains green, the dependency graph
-shows only the intended Coding-to-AppHost edge, and a review finds no unresolved
-high or medium issue. Passing G8 permits G9 planning; it grants no production
-default and no authority to delete Current.
+G8.1--G8.3 are implemented. The deterministic Product/AppHost report is pinned
+by
+[the G8 evidence manifest](hosted-product-g8-evidence-manifest.json), while the
+existing PLC9C5 manifest continues to own the separate C5.4 Linux and C5.5b/c
+Windows native/Product reports. The generated dependency graph and executable
+architecture guards admit only the intended Coding-to-AppHost edge.
+
+Passing G8 permits G9 planning; it grants no production default and no
+authority to delete Current.

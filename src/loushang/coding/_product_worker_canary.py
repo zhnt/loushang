@@ -256,6 +256,7 @@ class CodingProductWorkerCanary:
         self._status = status
         self._adapter: CapabilityQueryWorkerAdapter | None = None
         self._operation_lock = asyncio.Lock()
+        self._closed = False
 
     @property
     def status(self) -> CodingProductWorkerCanaryStatusV1:
@@ -286,6 +287,11 @@ class CodingProductWorkerCanary:
         """Start, handshake, admit, and publish exactly one Hosting attempt."""
 
         async with self._operation_lock:
+            if self._closed:
+                raise CodingProductWorkerCanaryError(
+                    "Coding Worker canary is closed",
+                    code="coding_worker_closed",
+                )
             if self._status.readiness == "ready":
                 return self._status
             if self._status.effective_owner != "hosting":
@@ -411,6 +417,11 @@ class CodingProductWorkerCanary:
         """Run the fixed latch-first rollback sequence without same-attempt fallback."""
 
         async with self._operation_lock:
+            if self._closed:
+                raise CodingProductWorkerCanaryError(
+                    "Coding Worker canary is closed",
+                    code="coding_worker_closed",
+                )
             self._require_selected_components()
             policy = cast(ProductWorkerActivationPolicyV1, self._policy)
             receipt = cast(ProductWorkerActivationReceiptV1, self._receipt)
@@ -470,6 +481,11 @@ class CodingProductWorkerCanary:
         """Require the complete ordered durable recovery matrix."""
 
         async with self._operation_lock:
+            if self._closed:
+                raise CodingProductWorkerCanaryError(
+                    "Coding Worker canary is closed",
+                    code="coding_worker_closed",
+                )
             self._require_selected_components()
             recovery = cast(CodingProductWorkerRecoveryPort, self._recovery)
             steps = await recovery.recover(
@@ -482,6 +498,87 @@ class CodingProductWorkerCanary:
                     code="coding_worker_recovery_incomplete",
                 )
             return steps
+
+    async def close(self) -> None:
+        """Settle this exact Product attempt without changing Product policy."""
+
+        async with self._operation_lock:
+            if self._closed:
+                return
+            if self._status.effective_owner != "hosting" or self._receipt is None:
+                self._closed = True
+                return
+            self._require_selected_components()
+            policy = cast(ProductWorkerActivationPolicyV1, self._policy)
+            native_profile = cast(ProductWorkerNativeProfilePort, self._native_profile)
+            if self._status.readiness == "ready":
+                await self._close_ready_attempt()
+            else:
+                # No live domain publication remains.  This covers recovery
+                # failure, a rejected pre-effect decision, and a start path
+                # that already reclaimed its partial effect.
+                await native_profile.close()
+            domain = cast(CodingProductWorkerCanaryDomainPort, self._domain)
+            code = "coding_worker_session_closed"
+            await domain.settle_readiness(
+                required=policy.effective_required,
+                ready=False,
+                code=code,
+            )
+            self._status = self._attempt_status(
+                code=code,
+                readiness=(
+                    "unavailable" if policy.effective_required else "degraded"
+                ),
+            )
+            self._closed = True
+
+    async def _close_ready_attempt(self) -> None:
+        receipt = cast(ProductWorkerActivationReceiptV1, self._receipt)
+        request = cast(ManagedWorkerLaunchRequestV1, self._request)
+        domain = cast(CodingProductWorkerCanaryDomainPort, self._domain)
+        coordinator = cast(ProductWorkerActivationCoordinator, self._coordinator)
+        supervisor = cast(WorkerSupervisor, self._supervisor)
+        native_profile = cast(ProductWorkerNativeProfilePort, self._native_profile)
+        cleanup = cast(CodingProductWorkerCleanupPort, self._cleanup)
+
+        await domain.fence_attempt(
+            receipt_fingerprint=receipt.fingerprint,
+            attempt_id=request.identity.attempt_id,
+            owner_generation=request.identity.owner_generation,
+        )
+        await domain.revoke_and_drain(
+            receipt_fingerprint=receipt.fingerprint,
+            attempt_id=request.identity.attempt_id,
+            owner_generation=request.identity.owner_generation,
+        )
+        coordinator.retire_exact(
+            receipt=receipt,
+            attempt_id=request.identity.attempt_id,
+            owner_generation=request.identity.owner_generation,
+        )
+        try:
+            await supervisor.shutdown(reason="coding_product_session_close")
+        except asyncio.CancelledError:
+            raise
+        except BaseException:
+            # WorkerSupervisor.shutdown fences on every protocol/transport
+            # failure.  Reassert the exact terminal state so settlement can
+            # proceed without turning normal Session close into rollback.
+            await supervisor.fence(code="coding_worker_session_close_fenced")
+        coordinator.record_protocol_terminal(
+            receipt=receipt,
+            attempt_id=request.identity.attempt_id,
+            owner_generation=request.identity.owner_generation,
+        )
+        await native_profile.close()
+        await cleanup.settle(
+            receipt=receipt,
+            request=request,
+            protocol_terminal=True,
+            domain_retired=True,
+            **self._native_cleanup_witness_arguments(),
+        )
 
     async def _reclaim_failed_attempt(
         self,

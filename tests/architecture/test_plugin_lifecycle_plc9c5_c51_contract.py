@@ -27,6 +27,7 @@ WORKER_FACADE = WORKER_ROOT / "__init__.py"
 IMPLEMENTATION = WORKER_ROOT / "product_activation.py"
 NATIVE_BRIDGE = WORKER_ROOT / "_native_profile_bridge.py"
 CODING_CANARY = Path("src/loushang/coding/_product_worker_canary.py")
+CODING_APPHOST_PRODUCT = Path("src/loushang/coding/apphost_product.py")
 CONTRACT_TEST = Path("tests/harness/worker/test_product_activation.py")
 VERIFIER = Path("scripts/dev/verify_plc9c5_manifest.py")
 VERIFIER_TEST = Path("tests/dev/test_verify_plc9c5_manifest.py")
@@ -610,7 +611,7 @@ def test_c51_ci_makefile_and_manifest_verifier_are_required() -> None:
         assert behavior_test in verifier_tests
 
 
-def test_c51_has_only_the_accepted_c54_consumer_and_no_native_side_effect() -> None:
+def test_c51_has_only_the_accepted_c54_and_g8_consumers() -> None:
     consumers: set[Path] = set()
     for path in SOURCE_ROOT.rglob("*.py"):
         if path in {IMPLEMENTATION, WORKER_FACADE}:
@@ -622,7 +623,7 @@ def test_c51_has_only_the_accepted_c54_consumer_and_no_native_side_effect() -> N
             or any(name in text for name in C51_IMPLEMENTATION_NAMES)
         ):
             consumers.add(path)
-    assert consumers == {NATIVE_BRIDGE, CODING_CANARY}
+    assert consumers == {NATIVE_BRIDGE, CODING_CANARY, CODING_APPHOST_PRODUCT}
     for path in WORKER_ROOT.rglob("*.py"):
         if path in {IMPLEMENTATION, WORKER_FACADE, NATIVE_BRIDGE}:
             continue

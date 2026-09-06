@@ -26,30 +26,57 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --extra dev
 
-      - name: Lint AppHost A0.4
+      - name: Lint AppHost G8
         run: >-
           uv run --extra dev ruff check
           src/loushang/apphost
           src/loushang/appserver
+          src/loushang/coding/_product_worker_canary.py
+          src/loushang/coding/apphost_product.py
+          scripts/dev/verify_evidence_manifest.py
           tests/apphost
+          tests/coding/test_apphost_product.py
+          tests/dev/test_verify_evidence_manifest.py
+          tests/harness/worker/test_coding_product_worker_canary.py
           tests/architecture/test_apphost_a0_contract.py
           tests/architecture/test_apphost_a02_architecture.py
           tests/architecture/test_apphost_a03_a04_architecture.py
+          tests/architecture/test_hosted_product_runtime_g8_join.py
 
-      - name: Typecheck AppHost A0.4
+      - name: Typecheck AppHost G8
         run: >-
           uv run --extra dev mypy --follow-imports=silent
           src/loushang/apphost
           src/loushang/appserver
+          src/loushang/coding/_product_worker_canary.py
+          src/loushang/coding/apphost_product.py
 
-      - name: Test AppHost A0.4
+      - name: Test AppHost G8
         run: >-
           uv run --extra dev python scripts/dev/run_pytest.py
           tests/apphost
+          tests/coding/test_apphost_product.py
+          tests/dev/test_verify_evidence_manifest.py
           tests/architecture/test_apphost_a0_contract.py
           tests/architecture/test_apphost_a02_architecture.py
           tests/architecture/test_apphost_a03_a04_architecture.py
+          tests/architecture/test_hosted_product_runtime_g8_join.py
           -q
+
+      - name: Retain Hosted Product G8 evidence
+        run: |
+          mkdir -p .artifacts
+          uv run --extra dev python scripts/dev/run_pytest.py tests/coding/test_apphost_product.py tests/harness/worker/test_coding_product_worker_canary.py::test_product_normal_close_retires_exact_attempt_without_global_rollback -q --junitxml=.artifacts/hosted-product-g8.xml
+          uv run --extra dev python scripts/dev/verify_pytest_xml.py .artifacts/hosted-product-g8.xml
+          uv run --extra dev python scripts/dev/verify_evidence_manifest.py docs/internals/architecture/apphost/hosted-product-g8-evidence-manifest.json HOSTED-PRODUCT-G8-JOIN .artifacts/hosted-product-g8.xml
+
+      - name: Upload Hosted Product G8 JUnit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hosted-product-g8-linux-junit
+          path: .artifacts/hosted-product-g8.xml
+          if-no-files-found: error
 
   apphost-windows-native-gate:
     name: apphost-windows-native-gate
@@ -70,10 +97,18 @@ jobs:
           uv run --extra dev python scripts/dev/run_pytest.py tests/apphost/test_harness_session_integration.py -k windows_native_backend_is_explicitly_fail_closed --junitxml=.artifacts/apphost-harness-windows.xml -q
       - name: Verify native gate JUnit
         run: uv run --extra dev python scripts/dev/verify_pytest_xml.py .artifacts/apphost-harness-windows.xml
+      - name: Prove G8 deterministic join on Windows
+        shell: pwsh
+        run: |
+          uv run --extra dev python scripts/dev/run_pytest.py tests/coding/test_apphost_product.py --junitxml=.artifacts/hosted-product-g8.xml -q
+          uv run --extra dev python scripts/dev/verify_pytest_xml.py .artifacts/hosted-product-g8.xml
+          uv run --extra dev python scripts/dev/verify_evidence_manifest.py docs/internals/architecture/apphost/hosted-product-g8-evidence-manifest.json HOSTED-PRODUCT-G8-JOIN .artifacts/hosted-product-g8.xml
       - name: Upload native gate JUnit
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: apphost-harness-windows-junit
-          path: .artifacts/apphost-harness-windows.xml
+          path: |
+            .artifacts/apphost-harness-windows.xml
+            .artifacts/hosted-product-g8.xml
           if-no-files-found: error

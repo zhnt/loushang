@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import json
 from pathlib import Path
 
 G8 = Path("docs/internals/architecture/apphost/product-worker-join-g8.md")
@@ -8,6 +9,31 @@ APPHOST_SCOPE = Path("docs/internals/architecture/apphost/README.md")
 PLAN = Path("docs/internals/architecture/drafts/hosted-product-runtime-v1-plan.md")
 APPHOST = Path("src/loushang/apphost")
 CODING_JOIN = Path("src/loushang/coding/apphost_product.py")
+EVIDENCE = Path(
+    "docs/internals/architecture/apphost/hosted-product-g8-evidence-manifest.json"
+)
+MAKEFILE = Path("Makefile")
+APPHOST_WORKFLOW = Path(".github/workflows/apphost-quality.yml")
+HARNESS_WORKFLOW = Path(".github/workflows/harness-quality.yml")
+HOSTING_WORKFLOW = Path(".github/workflows/hosting-quality.yml")
+
+G8_REPORT_CASES = {
+    "G8-EXACT-RECEIPT",
+    "G8-RECEIPT-MISMATCH",
+    "G8-RECOVERY-FIRST",
+    "G8-REQUIRED-READY",
+    "G8-OPTIONAL-DEGRADED",
+    "G8-UNRELATED-WORKER-FREE",
+    "G8-MULTIPROFILE-SINGLE-FLIGHT",
+    "G8-MULTISESSION-ISOLATION",
+    "G8-DETACH-NONOWNING",
+    "G8-STALE-DETACH",
+    "G8-CANCEL-COMPENSATION",
+    "G8-START-FAIL-NO-FALLBACK",
+    "G8-CLOSE-DEBT-RETRY",
+    "G8-SHUTDOWN-ORDER",
+    "G8-CROSS-ENTRYPOINT",
+}
 
 
 def _read(path: Path) -> str:
@@ -33,7 +59,7 @@ def _imports(path: Path) -> set[str]:
     return imported
 
 
-def test_g8_0_design_is_indexed_and_status_honest() -> None:
+def test_g8_design_is_indexed_and_status_honest() -> None:
     design = _read(G8)
     scope = _read(APPHOST_SCOPE)
     plan = _read(PLAN)
@@ -43,17 +69,17 @@ def test_g8_0_design_is_indexed_and_status_honest() -> None:
         "- ID: `HOSTED-PRODUCT-G8`",
         "- Authority: normative accepted design",
         "- Design status: accepted",
-        "- Implementation status: not-started — G8.0 design accepted; G8.1 not started",
+        "- Implementation status: implemented — G8.1--G8.3 complete",
         "- Activation status: default-dark; no installed entrypoint or default Product route",
     ):
         assert field in design
     assert "[G8 Product/Worker Join](product-worker-join-g8.md)" in scope
-    assert "accepted G8.0 design; G8.1--G8.3" in plan
+    assert "implemented G8.0--G8.3 default-dark" in plan
     assert "G7 is closed" in plan
     assert "Normal close is not rollback" in normalized
 
 
-def test_g8_0_freezes_dependency_and_activation_boundaries() -> None:
+def test_g8_freezes_dependency_and_activation_boundaries() -> None:
     design = _read(G8)
     normalized = " ".join(design.split())
     for proof in (
@@ -71,7 +97,7 @@ def test_g8_0_freezes_dependency_and_activation_boundaries() -> None:
     assert "Current owner deletion and G9 remain forbidden" in normalized
 
 
-def test_g8_0_has_exact_delivery_and_evidence_matrix() -> None:
+def test_g8_has_exact_delivery_and_evidence_matrix() -> None:
     design = _read(G8)
     for slice_id in ("G8.0", "G8.1", "G8.2", "G8.3"):
         assert f"| {slice_id} |" in design
@@ -97,8 +123,28 @@ def test_g8_0_has_exact_delivery_and_evidence_matrix() -> None:
         assert f"`{case_id}`" in design
 
 
-def test_g8_0_changes_no_production_source_or_entrypoint() -> None:
-    assert not CODING_JOIN.exists()
+def test_g8_concrete_join_preserves_dependency_and_activation_boundaries() -> None:
+    assert CODING_JOIN.is_file()
+    imports = _imports(CODING_JOIN)
+    assert "loushang.apphost" in imports
+    assert "loushang.harness.worker" in imports
+    assert not any(
+        name.startswith(
+            (
+                "loushang.appserver",
+                "loushang.appservice",
+                "loushang.hosting",
+                "loushang.harnesstui",
+                "loushang.harnessgui",
+                "loushang.harnesswebui",
+            )
+        )
+        for name in imports
+    )
+    assert not any(
+        name.startswith("loushang.apphost.")
+        for name in imports
+    )
     for path in APPHOST.rglob("*.py"):
         imports = _imports(path)
         assert "loushang.coding" not in imports
@@ -109,3 +155,93 @@ def test_g8_0_changes_no_production_source_or_entrypoint() -> None:
         Path("src/loushang/coding/ui/cli.py"),
     ):
         assert "apphost_product" not in _read(path)
+
+
+def test_g8_join_adopts_before_inspection_and_recovers_before_effect() -> None:
+    source = _read(CODING_JOIN)
+    assert source.index("owner = _WorkerAttemptOwner(raw)") < source.index(
+        "receipt = owner.receipt()"
+    )
+    assert source.index("await owner.recover()") < source.index(
+        "status = await owner.start("
+    )
+    assert "self._active: set[_WorkerAttemptOwner]" in source
+    assert "self._debt: set[_WorkerAttemptOwner]" in source
+    assert "await self.settle_pending_cleanup()" in source
+    assert "product_factory: CodingAppHostProductFactoryV1" in source
+    assert "attempt_factory: CodingAppHostWorkerAttemptFactoryV1" not in source[
+        source.index("def coding_apphost_product_registration(") :
+    ]
+
+
+def test_g8_profile_projection_is_frozen_pathless_and_noncontrolling() -> None:
+    module = ast.parse(_read(CODING_JOIN), filename=str(CODING_JOIN))
+    projection = next(
+        node
+        for node in module.body
+        if isinstance(node, ast.ClassDef)
+        and node.name == "CodingAppHostProductBindingV1"
+    )
+    fields = {
+        node.target.id
+        for node in projection.body
+        if isinstance(node, ast.AnnAssign)
+        and isinstance(node.target, ast.Name)
+    }
+    assert fields == {
+        "binding_key",
+        "receipt_fingerprint",
+        "attempt_id",
+        "owner_generation",
+        "required",
+        "requested_owner",
+        "effective_owner",
+        "readiness",
+        "status_code",
+        "join_version",
+    }
+    assert fields.isdisjoint(
+        {
+            "canary",
+            "supervisor",
+            "process",
+            "native_profile",
+            "receipt",
+            "rollback",
+            "close",
+            "path",
+        }
+    )
+
+
+def test_g8_zero_skip_manifest_and_cross_platform_gates_are_mandatory() -> None:
+    manifest = json.loads(_read(EVIDENCE))
+    assert set(manifest) == {"manifestVersion", "reports"}
+    assert manifest["manifestVersion"] == 1
+    report = manifest["reports"]["HOSTED-PRODUCT-G8-JOIN"]
+    assert set(report) == {
+        "junitPath",
+        "minimumTests",
+        "requiredCaseIds",
+        "status",
+    }
+    assert report["junitPath"] == ".artifacts/hosted-product-g8.xml"
+    assert report["minimumTests"] == 18
+    assert report["status"] == "implemented"
+    assert set(report["requiredCaseIds"]) == G8_REPORT_CASES
+    assert len(report["requiredCaseIds"]) == len(G8_REPORT_CASES)
+
+    makefile = _read(MAKEFILE)
+    apphost_workflow = _read(APPHOST_WORKFLOW)
+    for source in (makefile, apphost_workflow):
+        assert "tests/coding/test_apphost_product.py" in source
+        assert "hosted-product-g8.xml" in source
+        assert "verify_evidence_manifest.py" in source
+        assert "HOSTED-PRODUCT-G8-JOIN" in source
+    assert "runs-on: windows-2022" in apphost_workflow
+
+    harness_workflow = _read(HARNESS_WORKFLOW)
+    hosting_workflow = _read(HOSTING_WORKFLOW)
+    assert "PLC9C5-C5.4-LINUX-PRODUCT" in harness_workflow
+    assert "PLC9C5-C5.5B-WINDOWS-LPAC-NATIVE" in hosting_workflow
+    assert "PLC9C5-C5.5C-WINDOWS-PRODUCT" in hosting_workflow
