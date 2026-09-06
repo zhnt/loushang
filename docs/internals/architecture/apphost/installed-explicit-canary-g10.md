@@ -328,7 +328,7 @@ environment allowlist, dependency-ordered owner settlement, and Product
 ownership of the canary control journal.
 
 The post-implementation three-view review also closed without unresolved high
-or medium findings after correcting four medium findings in their respective
+or medium findings after correcting five medium findings in their respective
 sources of truth:
 
 - architecture and authority: root-level `--cwd` was separated from the
@@ -341,7 +341,11 @@ sources of truth:
   retained native-backend proof; and
 - architecture compatibility: the PLC9 C5.0/C5.1/C5.4 closed consumer guards
   now name the single new G10 Product adapter explicitly, preserving their
-  deny-by-default behavior for every other consumer.
+  deny-by-default behavior for every other consumer; and
+- package-budget compatibility: the pre-existing Coding Wave A core ceiling
+  remains unchanged, while the four source-backed G10 Product files have a
+  separate closed 1,800-line ceiling and the CLI integration seam remains in
+  the core budget.
 
 ## Exit Gate
 
