@@ -182,10 +182,10 @@ def test_baseline_documents_are_status_honest_and_indexed() -> None:
         },
         DELIVERY_PLAN: {
             "ID": "HOSTED-PRODUCT-RUNTIME-V1",
-            "Authority": "normative target proposal",
-            "Design status": "proposed",
+            "Authority": "normative accepted delivery contract",
+            "Design status": "accepted",
             "Implementation status": (
-                "partial — implemented through G9.3; G9.4 remains"
+                "implemented — G0H through G9 complete and G9 promoted"
             ),
             "Production activation": "closed",
         },

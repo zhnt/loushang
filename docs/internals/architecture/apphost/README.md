@@ -6,6 +6,7 @@
 [G8 Product/Worker Join](product-worker-join-g8.md) ·
 [G9 V1 Closure](hosted-product-v1-closure-g9.md) ·
 [G9.3 Current Owner Decision](current-worker-owner-decision-g9.md) ·
+[G9 Promotion Record](hosted-product-g9-promotion-record.md) ·
 [Hosted Product Runtime V1 Plan](../drafts/hosted-product-runtime-v1-plan.md)
 
 ## Status
@@ -14,7 +15,8 @@
 - Parent: `loushang`
 - Authority: normative — accepted AppHost scope boundary
 - Design status: accepted
-- Implementation status: partial — implemented through G9.3; G9.4 remains
+- Implementation status: partial — Hosted Product Runtime G0--G9 is implemented
+  and promoted default-dark; A0.5 remains not-started
 - Activation status: default-dark; the explicit composition is installed but no
   existing launcher, CLI, TUI, AppService, or AppServer route selects it
 - Owner: Loushang AppHost architecture
@@ -96,7 +98,10 @@ composition, explicit activation, omitted-owner policy, Current deletion
 decision, and main promotion. G9.1--G9.2 implement the explicit composition and
 rollback/crash drill; the accepted G9.3 decision retains Current after a
 source-backed entrypoint and eight-condition deletion audit. No Current source
-or route changes, and omission remains Current.
+or route changes, and omission remains Current. The
+[G9 promotion record](hosted-product-g9-promotion-record.md) closes G9.4 on the
+exact reviewed lane head and records capability availability on `main` without
+activation.
 
 ## Target
 
@@ -239,8 +244,8 @@ after Product/OEM admission, never through a derived module name.
 | G9.0 | production-composition, operational-drill, Current-deletion, and main-promotion closure contract | accepted; no source or activation change |
 | G9.1 | sole Product-owned installed composition with explicit opt-in | implemented, default-dark |
 | G9.2 | rollback/crash drill and retained Linux/Windows evidence | implemented; Windows retained by CI |
-| G9.3 | entrypoint inventory and Current-owner RETAIN/DELETE decision | not started |
-| G9.4 | architecture reconciliation and lane-to-main promotion | not started |
+| G9.3 | entrypoint inventory and Current-owner RETAIN/DELETE decision | implemented; `RETAIN` accepted |
+| G9.4 | architecture reconciliation and lane-to-main promotion | implemented; promoted default-dark |
 
 ## Evidence
 
@@ -274,10 +279,14 @@ after Product/OEM admission, never through a derived module name.
   `hosted-product-g9-evidence-manifest.json` prove the G9.1--G9.2 explicit
   composition, default-dark source facts, rollback/crash matrix, exact
   dependency edge, and separate Linux/Windows report identities;
+- `current-worker-owner-decision-g9.md` and
+  `hosted-product-g9-promotion-record.md` prove the G9.3 `RETAIN` decision and
+  G9.4 exact-head default-dark promotion independently;
 - `make check-apphost` runs the focused lint, typecheck, and contract suite;
 - `make check-architecture-docs` validates parent documentation integrity.
 
-Passing these gates proves A0.4 mechanics, the default-dark G8 concrete Product
-join, and the explicit G9.1--G9.2 composition and operational drill. It grants
-no default Product, production hosted route, AppService/AppServer runtime,
-launcher, Current-owner decision/deletion, or main promotion.
+Passing these gates proves A0.4 mechanics and the default-dark G8--G9 concrete
+Product composition, operational drill, retention decision, and capability
+promotion. It grants no default Product, production hosted route,
+AppService/AppServer runtime, launcher, activation, omitted-owner change, or
+Current deletion.
