@@ -3,6 +3,7 @@
 [Architecture](../README.md) ·
 [ARD-003](../decisions/ARD-003-apphost-top-level-placement.md) ·
 [A0 Contract Model](contract-model-a0.md) ·
+[G8 Product/Worker Join](product-worker-join-g8.md) ·
 [Hosted Product Runtime V1 Plan](../drafts/hosted-product-runtime-v1-plan.md)
 
 ## Status
@@ -81,6 +82,12 @@ protocol, listener, connection, or transport state.
 Existing Product-specific CLI/TUI paths remain authoritative. No production
 module imports or instantiates the catalog, router, runtime, hosted binder, or
 Harness adapter.
+
+The accepted [G8 Product/Worker Join](product-worker-join-g8.md) defines the
+first concrete Product composition without changing AppHost core: a
+Coding-owned outer adapter will implement the existing Product factory/runtime
+ports and retain all Worker authority inside Coding/Harness. G8.0 is design-only
+and grants no activation authority.
 
 ## Target
 
@@ -210,6 +217,7 @@ after Product/OEM admission, never through a derived module name.
 | A0.3 | canonical live-binding registry, scoped runtime lifecycle, and embedded profile | implemented, uncomposed |
 | A0.4 | optional hosted binder over the contract-only AppServer structural port bundle | implemented, uncomposed |
 | A0.5 | optional serialized launcher | deferred pending its own boundary review |
+| G8.0 | cross-scope Product/Worker join boundary and executable guards | accepted design; implementation not started |
 
 ## Evidence
 
