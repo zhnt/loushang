@@ -1,0 +1,45 @@
+{
+  "manifestVersion": 1,
+  "reports": {
+    "HOSTED-PRODUCT-G10-LINUX": {
+      "junitPath": ".artifacts/hosted-product-g10-linux.xml",
+      "minimumTests": 13,
+      "requiredCaseIds": [
+        "G10-OMISSION-CURRENT",
+        "G10-EXACT-COMMAND",
+        "G10-STATUS-NO-EFFECT",
+        "G10-REAL-NATIVE-RUN",
+        "G10-EPHEMERAL-NO-SESSION-IO",
+        "G10-ROLLBACK-BEFORE-RUN",
+        "G10-RUN-ROLLBACK-LINEARIZATION",
+        "G10-ENABLE-NEW-GENERATION",
+        "G10-NO-FALLBACK",
+        "G10-CANCEL-CLEANUP",
+        "G10-REPORT-REDACTION",
+        "G10-INVENTORY-V3",
+        "G10-DEPENDENCY-GRAPH"
+      ],
+      "status": "implemented"
+    },
+    "HOSTED-PRODUCT-G10-WINDOWS": {
+      "junitPath": ".artifacts/hosted-product-g10-windows.xml",
+      "minimumTests": 13,
+      "requiredCaseIds": [
+        "G10-OMISSION-CURRENT",
+        "G10-EXACT-COMMAND",
+        "G10-STATUS-NO-EFFECT",
+        "G10-REAL-NATIVE-RUN",
+        "G10-EPHEMERAL-NO-SESSION-IO",
+        "G10-ROLLBACK-BEFORE-RUN",
+        "G10-RUN-ROLLBACK-LINEARIZATION",
+        "G10-ENABLE-NEW-GENERATION",
+        "G10-NO-FALLBACK",
+        "G10-CANCEL-CLEANUP",
+        "G10-REPORT-REDACTION",
+        "G10-INVENTORY-V3",
+        "G10-DEPENDENCY-GRAPH"
+      ],
+      "status": "implemented"
+    }
+  }
+}

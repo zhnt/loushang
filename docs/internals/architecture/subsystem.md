@@ -148,13 +148,19 @@ A0.4 当前实现标准库-only core contracts、catalog/router、每 Session ca
 live registry、embedded profile 生命周期，以及可选 hosted structural-port
 binder。G8 增加 Coding-owned、default-dark 的 Product/Worker join；G9.1--G9.2
 增加唯一的显式 Product composition 与 rollback/crash 演练；G9.3 以源码入口
-清单接受 `RETAIN` 决议。现有 Coding bootstrap/CLI/TUI/SDK 路径仍不依赖
-AppHost composition；系统仍没有 launcher 或 AppService/AppServer runtime。
+清单接受 `RETAIN` 决议。G10 增加唯一的精确 installed canary 子命令，以
+Product-owned durable control 显式调用 composition 和短生命周期 Hosting
+child；普通 Coding CLI/TUI/SDK 路径仍不依赖 AppHost composition，系统仍
+没有 launcher 或 AppService/AppServer runtime。
 
 G9.0 已接受 V1 收口边界，G9.1--G9.2 已实现显式组合和运行级
 rollback/crash 演练，但不改变上述 Current。G9.3 已决定保留 Current；
 G9.4 已从不可变 lane head 独立晋升到 `main`。合并不推导激活，激活也不
 推导删除 Current；G9 能力仍为 default-dark。
+G10 已实现这个更窄的边界：只有精确的 installed canary 命令可经 G9
+composition 启动短生命周期 Hosting child，并保留 Linux/Windows 独立证据；
+普通 Coding CLI/TUI/SDK、AppServer/AppService 与 named mux 不在该路由中，
+G9.3 `RETAIN` 继续有效。
 
 AppHost core 不依赖 Harness、Hosting、AppServer、AppService、UI framework 或
 具体 Product。可选 `apphost.hosted` 是唯一面向 AppServer contract-only

@@ -166,20 +166,33 @@ HOSTING_TEST_PATHS := \
 APPHOST_SOURCES := \
 	src/loushang/apphost \
 	src/loushang/appserver \
+	src/loushang/coding/_apphost_canary_child.py \
+	src/loushang/coding/_apphost_canary_control.py \
 	src/loushang/coding/_product_worker_canary.py \
+	src/loushang/coding/apphost_canary.py \
 	src/loushang/coding/apphost_composition.py \
-	src/loushang/coding/apphost_product.py
+	src/loushang/coding/apphost_product.py \
+	src/loushang/coding/cli/apphost.py
 APPHOST_TEST_PATHS := \
 	tests/apphost \
+	tests/coding/test_apphost_canary.py \
+	tests/coding/test_apphost_canary_control.py \
 	tests/coding/test_apphost_composition.py \
 	tests/coding/test_apphost_product.py \
+	tests/coding/test_cli_apphost.py \
 	tests/dev/test_verify_evidence_manifest.py \
 	tests/architecture/test_apphost_a0_contract.py \
 	tests/architecture/test_apphost_a02_architecture.py \
 	tests/architecture/test_apphost_a03_a04_architecture.py \
 	tests/architecture/test_hosted_product_runtime_g8_join.py \
-	tests/architecture/test_hosted_product_runtime_g9_closure.py
+	tests/architecture/test_hosted_product_runtime_g9_closure.py \
+	tests/architecture/test_hosted_product_runtime_v1_baseline.py \
+	tests/architecture/test_hosted_product_g10_explicit_canary_design.py \
+	tests/architecture/test_hosted_product_g10_explicit_canary.py
 APPHOST_LINT_SUPPORT := \
+	src/loushang/coding/cli/__main__.py \
+	src/loushang/harness/machine_resources/control_plane.py \
+	scripts/dev/run_g10_installed_canary.py \
 	scripts/dev/verify_evidence_manifest.py \
 	tests/harness/worker/test_coding_product_worker_canary.py
 
@@ -189,7 +202,7 @@ APPHOST_LINT_SUPPORT := \
 .PHONY: check-ai-catalog check-ai-examples check-ai-imports check-ai-coverage
 .PHONY: check-harness lint-harness typecheck-harness test-harness check-plc9c5-c51-contract test-plc9c5-c51-contract check-plc9c5-c52-linux-native test-plc9c5-c52-linux-native check-plc9c5-c53-windows-mechanics test-plc9c5-c53-windows-mechanics check-plc9c5-c55b-windows-lpac-native test-plc9c5-c55b-windows-lpac-native
 .PHONY: check-hosting lint-hosting typecheck-hosting test-hosting
-.PHONY: check-apphost lint-apphost typecheck-apphost test-apphost test-hosted-product-g8-evidence test-hosted-product-g9-linux-evidence
+.PHONY: check-apphost lint-apphost typecheck-apphost test-apphost test-hosted-product-g8-evidence test-hosted-product-g9-linux-evidence test-hosted-product-g10-linux-evidence
 .PHONY: check-architecture-docs
 .PHONY: check-harnesstui lint-harnesstui typecheck-harnesstui test-harnesstui
 .PHONY: lane-status
@@ -300,7 +313,7 @@ typecheck-hosting:
 test-hosting:
 	uv --cache-dir .uv-cache run --extra dev $(PYTEST_RUNNER) $(HOSTING_TEST_PATHS) -q
 
-check-apphost: lint-apphost typecheck-apphost test-apphost test-hosted-product-g8-evidence test-hosted-product-g9-linux-evidence
+check-apphost: lint-apphost typecheck-apphost test-apphost test-hosted-product-g8-evidence test-hosted-product-g9-linux-evidence test-hosted-product-g10-linux-evidence
 
 lint-apphost:
 	uv --cache-dir .uv-cache run --extra dev ruff check $(APPHOST_SOURCES) $(APPHOST_TEST_PATHS) $(APPHOST_LINT_SUPPORT)
@@ -322,6 +335,13 @@ test-hosted-product-g9-linux-evidence:
 	uv --cache-dir .uv-cache run --extra dev $(PYTEST_RUNNER) tests/coding/test_apphost_composition.py -q --junitxml=.artifacts/hosted-product-g9-linux.xml
 	uv --cache-dir .uv-cache run --extra dev python scripts/dev/verify_pytest_xml.py .artifacts/hosted-product-g9-linux.xml
 	uv --cache-dir .uv-cache run --extra dev python scripts/dev/verify_evidence_manifest.py docs/internals/architecture/apphost/hosted-product-g9-evidence-manifest.json HOSTED-PRODUCT-G9-LINUX .artifacts/hosted-product-g9-linux.xml
+
+test-hosted-product-g10-linux-evidence:
+	mkdir -p .artifacts
+	uv --cache-dir .uv-cache run --extra dev $(PYTEST_RUNNER) tests/coding/test_apphost_canary_control.py tests/coding/test_apphost_canary.py tests/coding/test_cli_apphost.py tests/architecture/test_hosted_product_g10_explicit_canary.py -k G10 -q --junitxml=.artifacts/hosted-product-g10-linux.xml
+	uv --cache-dir .uv-cache run --extra dev python scripts/dev/verify_pytest_xml.py .artifacts/hosted-product-g10-linux.xml
+	uv --cache-dir .uv-cache run --extra dev python scripts/dev/verify_evidence_manifest.py docs/internals/architecture/apphost/hosted-product-g10-evidence-manifest.json HOSTED-PRODUCT-G10-LINUX .artifacts/hosted-product-g10-linux.xml
+	uv --cache-dir .uv-cache run --extra dev python scripts/dev/run_g10_installed_canary.py --expected-backend posix-process-group-v1
 
 check-architecture-docs:
 	.venv/bin/ruff check scripts/architecture/render_current_package_dependencies.py tests/architecture/test_architecture_documentation.py

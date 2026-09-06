@@ -40,9 +40,7 @@ def _imports(path: Path) -> set[str]:
             normalized = tuple(part for part in base if part)
             if normalized:
                 imports.add(".".join(normalized))
-            imports.update(
-                ".".join((*normalized, alias.name)) for alias in node.names
-            )
+            imports.update(".".join((*normalized, alias.name)) for alias in node.names)
     return imports
 
 
@@ -65,7 +63,9 @@ def test_a0_2_core_is_small_stdlib_only_and_optional_integration_is_separate() -
     ):
         assert forbidden not in core
     facade_imports = _imports(APPHOST / "__init__.py")
-    assert not any(item.startswith("loushang.apphost.integrations") for item in facade_imports)
+    assert not any(
+        item.startswith("loushang.apphost.integrations") for item in facade_imports
+    )
     assert "loushang.apphost.hosted" not in facade_imports
     assert any(
         item == "loushang.harness" or item.startswith("loushang.harness.")
@@ -86,9 +86,7 @@ def test_a0_2_router_is_lookup_first_and_hands_out_no_execution_capability() -> 
         for node in ast.walk(create)
         if isinstance(node, ast.Call)
     ]
-    assert calls.index("_call_session") < calls.index(
-        "self._catalog._acquire_product"
-    )
+    assert calls.index("_call_session") < calls.index("self._catalog._acquire_product")
     assert "_PreparedProductRoute" in source
     assert "PreparedProductRouteV1" in source
     public_create_source = ast.get_source_segment(source, create)
@@ -111,8 +109,7 @@ def test_a0_2_router_is_lookup_first_and_hands_out_no_execution_capability() -> 
     route = next(
         node
         for node in contracts.body
-        if isinstance(node, ast.ClassDef)
-        and node.name == "PreparedProductRouteV1"
+        if isinstance(node, ast.ClassDef) and node.name == "PreparedProductRouteV1"
     )
     members = {
         node.name
@@ -125,8 +122,8 @@ def test_a0_2_router_is_lookup_first_and_hands_out_no_execution_capability() -> 
 def test_a0_2_catalog_uses_static_exact_pins_and_persistent_retirement() -> None:
     source = _source(APPHOST / "catalog.py")
     for proof in (
-        "bind_native_async(registration.admission_source, \"acquire_pin\")",
-        "read_static_property(raw, \"identity\")",
+        'bind_native_async(registration.admission_source, "acquire_pin")',
+        'read_static_property(raw, "identity")',
         "type(identity) is not AdmissionIdentityV1",
         "expected_generation_id",
         "self._retiring",
@@ -147,7 +144,9 @@ def test_a0_2_catalog_uses_static_exact_pins_and_persistent_retirement() -> None
     assert "bind_profile" not in legacy_source
 
 
-def test_optional_adapter_is_dark_with_only_reviewed_g8_g9_facade_consumers() -> None:
+def test_optional_adapter_is_dark_with_only_reviewed_g8_g9_g10_facade_consumers() -> (
+    None
+):
     apphost_consumers = {
         path
         for path in Path("src/loushang").rglob("*.py")
@@ -158,8 +157,9 @@ def test_optional_adapter_is_dark_with_only_reviewed_g8_g9_facade_consumers() ->
         )
     }
     assert apphost_consumers == {
+        Path("src/loushang/coding/apphost_canary.py"),
         Path("src/loushang/coding/apphost_composition.py"),
-        Path("src/loushang/coding/apphost_product.py")
+        Path("src/loushang/coding/apphost_product.py"),
     }
     adapter_consumers = {
         path

@@ -97,10 +97,7 @@ def test_g9_4_design_is_indexed_and_status_honest() -> None:
     ):
         assert field in design
     assert "[G9 V1 Closure](hosted-product-v1-closure-g9.md)" in scope
-    assert (
-        "[G9.3 Current Owner Decision](current-worker-owner-decision-g9.md)"
-        in scope
-    )
+    assert "[G9.3 Current Owner Decision](current-worker-owner-decision-g9.md)" in scope
     assert "[G9 Promotion Record](hosted-product-g9-promotion-record.md)" in scope
     assert (
         "| G9.3 | entrypoint inventory and Current-owner RETAIN/DELETE decision | "
@@ -147,9 +144,7 @@ def test_g9_has_exact_delivery_and_operational_drill_matrix() -> None:
         "## Current Owner Retention Or Deletion Gate", maxsplit=1
     )[0]
     observed = {
-        line.split("`")[1]
-        for line in drill.splitlines()
-        if line.startswith("| `G9-")
+        line.split("`")[1] for line in drill.splitlines() if line.startswith("| `G9-")
     }
     assert observed == G9_DRILL_CASES
     for proof in (
@@ -175,9 +170,11 @@ def test_g9_has_exact_delivery_and_operational_drill_matrix() -> None:
 
 
 def test_g9_current_deletion_is_an_explicit_all_conditions_gate() -> None:
-    decision = _read(G9).split(
-        "## Current Owner Retention Or Deletion Gate", maxsplit=1
-    )[1].split("## Main Promotion Plan", maxsplit=1)[0]
+    decision = (
+        _read(G9)
+        .split("## Current Owner Retention Or Deletion Gate", maxsplit=1)[1]
+        .split("## Main Promotion Plan", maxsplit=1)[0]
+    )
     normalized = " ".join(decision.split())
     for proof in (
         "exactly one conclusion: `RETAIN` or `DELETE`",
@@ -224,9 +221,11 @@ def test_g9_3_accepts_one_retain_decision_and_audits_every_condition() -> None:
 
 
 def test_g9_main_promotion_does_not_grant_activation_or_deletion() -> None:
-    promotion = _read(G9).split("## Main Promotion Plan", maxsplit=1)[1].split(
-        "## Delivery Slices", maxsplit=1
-    )[0]
+    promotion = (
+        _read(G9)
+        .split("## Main Promotion Plan", maxsplit=1)[1]
+        .split("## Delivery Slices", maxsplit=1)[0]
+    )
     normalized = " ".join(promotion.split())
     for proof in (
         "G9 baseline on `lane/harness`",
@@ -311,11 +310,12 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
 
     inventory = json.loads(_read(G9_ENTRYPOINTS))
     assert set(inventory) == {"inventoryVersion", "decision", "entries"}
-    assert inventory["inventoryVersion"] == 2
+    assert inventory["inventoryVersion"] == 3
     assert inventory["decision"] == "RETAIN"
     rows = {row["entrypointId"]: row for row in inventory["entries"]}
     assert set(rows) == {
         "coding.apphost.composition",
+        "coding.apphost.canary",
         "apphost.hosted",
         "appserver.package",
         "coding.arch.module-cli",
@@ -330,23 +330,26 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
     assert rows["coding.apphost.composition"]["importsComposition"] is True
     assert rows["coding.apphost.composition"]["source"] == TARGET_COMPOSITION.as_posix()
     assert rows["coding.apphost.composition"]["omissionOwner"] is None
+    assert rows["coding.apphost.canary"]["disposition"] == ("explicit-hosting-canary")
+    assert rows["coding.apphost.canary"]["importsComposition"] is True
+    assert rows["coding.apphost.canary"]["omissionOwner"] is None
     for entrypoint_id in (
         "coding.bootstrap",
         "coding.cli",
         "coding.sdk",
         "coding.tui",
     ):
-        assert rows[entrypoint_id]["disposition"] == "current-only"
+        assert rows[entrypoint_id]["disposition"] == (
+            "current-default-explicit-canary"
+            if entrypoint_id == "coding.cli"
+            else "current-only"
+        )
         assert rows[entrypoint_id]["importsComposition"] is False
         assert rows[entrypoint_id]["omissionOwner"] == "current"
 
-    assert rows["appserver.package"]["disposition"] == (
-        "contract-only-no-entrypoint"
-    )
+    assert rows["appserver.package"]["disposition"] == ("contract-only-no-entrypoint")
     assert rows["apphost.hosted"]["disposition"] == "binder-only-no-entrypoint"
-    assert rows["harnesstui.named-mux"]["disposition"] == (
-        "design-only-no-entrypoint"
-    )
+    assert rows["harnesstui.named-mux"]["disposition"] == ("design-only-no-entrypoint")
     for entrypoint_id in ("coding.arch.module-cli", "plugin.cli"):
         assert rows[entrypoint_id]["disposition"] == "non-product-tool"
         assert rows[entrypoint_id]["omissionOwner"] is None
@@ -367,6 +370,7 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
     assert {row["surface"] for row in rows.values()} == {
         "appserver",
         "bootstrap",
+        "canary",
         "cli",
         "composition",
         "hosted",
@@ -380,6 +384,7 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
     } == {
         "apphost.hosted": ("hosted", "binder-only"),
         "appserver.package": ("appserver", "contract-only"),
+        "coding.apphost.canary": ("canary", "installed-subcommand"),
         "coding.apphost.composition": ("composition", "explicit-library"),
         "coding.arch.module-cli": ("cli", "supported-module"),
         "coding.bootstrap": ("bootstrap", "supported-library"),
@@ -448,7 +453,10 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
     }
     assert _imports(TARGET_COMPOSITION) == expected_imports
     for path in Path("src/loushang").rglob("*.py"):
-        if path != TARGET_COMPOSITION:
+        if path not in {
+            TARGET_COMPOSITION,
+            Path("src/loushang/coding/apphost_canary.py"),
+        }:
             assert "apphost_composition" not in _read(path)
 
 
@@ -458,8 +466,7 @@ def test_g9_2_keeps_current_as_omission_and_has_no_same_attempt_retry() -> None:
     activation = next(
         node
         for node in module.body
-        if isinstance(node, ast.ClassDef)
-        and node.name == "WorkerHostingActivationV1"
+        if isinstance(node, ast.ClassDef) and node.name == "WorkerHostingActivationV1"
     )
     owner_field = next(
         node
@@ -510,9 +517,7 @@ def test_g9_4_retains_apphost_core_and_current_inventory_fences() -> None:
             for prefix in ("os", "platform", "importlib")
         )
         calls = {
-            node.func.id
-            if isinstance(node.func, ast.Name)
-            else node.func.attr
+            node.func.id if isinstance(node.func, ast.Name) else node.func.attr
             for node in ast.walk(ast.parse(source, filename=str(path)))
             if isinstance(node, ast.Call)
             and isinstance(node.func, (ast.Name, ast.Attribute))
@@ -530,8 +535,8 @@ def test_g9_4_retains_apphost_core_and_current_inventory_fences() -> None:
     ledger = _read(GAP_LEDGER)
     assert "G9.1--G9.2 implement the explicit composition and drill" in aod
     assert "G9.3 accepts a source-backed `RETAIN` decision" in aod
-    assert "Current remains unchanged" in aod
-    assert "G8--G9.4 are implemented and promoted default-dark" in ledger
+    assert "without changing normal Current routes" in aod
+    assert "A0.1--A0.4 and G8--G10 are implemented" in ledger
     assert "all eight deletion conditions were unmet" in ledger
 
 

@@ -30,6 +30,7 @@ SANDBOX_RUNTIME = HARNESS_ROOT / "sandbox/runtime.py"
 CODING_ROOT = SOURCE_ROOT / "coding"
 CODING_CANARY = CODING_ROOT / "_product_worker_canary.py"
 CODING_APPHOST_PRODUCT = CODING_ROOT / "apphost_product.py"
+CODING_APPHOST_CANARY = CODING_ROOT / "apphost_canary.py"
 HOSTING_ROOT = SOURCE_ROOT / "hosting"
 APPHOST_ROOT = SOURCE_ROOT / "apphost"
 AUTHOR_ROOT = SOURCE_ROOT / "plugin"
@@ -881,10 +882,21 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
             for imported in _imports(path)
         )
     }
-    assert coding_worker_consumers == {CODING_CANARY, CODING_APPHOST_PRODUCT}
-    for path in (*CODING_ROOT.rglob("*.py"), *APPHOST_ROOT.rglob("*.py")):
-        imports = _imports(path)
-        assert not any(imported.startswith("loushang.hosting") for imported in imports)
+    assert coding_worker_consumers == {
+        CODING_CANARY,
+        CODING_APPHOST_PRODUCT,
+        CODING_APPHOST_CANARY,
+    }
+    hosting_consumers = {
+        path
+        for path in (*CODING_ROOT.rglob("*.py"), *APPHOST_ROOT.rglob("*.py"))
+        if any(imported.startswith("loushang.hosting") for imported in _imports(path))
+    }
+    assert hosting_consumers == {CODING_APPHOST_CANARY}
+    assert not any(
+        imported.startswith("loushang.hosting._")
+        for imported in _imports(CODING_APPHOST_CANARY)
+    )
 
 
 def test_c50_import_guard_resolves_relative_and_parent_alias_forms() -> None:

@@ -2,6 +2,16 @@
   "decision": "RETAIN",
   "entries": [
     {
+      "disposition": "explicit-hosting-canary",
+      "entrypointId": "coding.apphost.canary",
+      "importsComposition": true,
+      "omissionOwner": null,
+      "packagingBinding": "project.scripts.loushang",
+      "source": "src/loushang/coding/apphost_canary.py",
+      "supportStatus": "installed-subcommand",
+      "surface": "canary"
+    },
+    {
       "disposition": "explicit-hosting",
       "entrypointId": "coding.apphost.composition",
       "importsComposition": true,
@@ -22,7 +32,7 @@
       "surface": "bootstrap"
     },
     {
-      "disposition": "current-only",
+      "disposition": "current-default-explicit-canary",
       "entrypointId": "coding.cli",
       "importsComposition": false,
       "omissionOwner": "current",
@@ -102,5 +112,5 @@
       "surface": "mux"
     }
   ],
-  "inventoryVersion": 2
+  "inventoryVersion": 3
 }

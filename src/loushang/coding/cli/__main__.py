@@ -28,6 +28,10 @@ from loushang.coding.bootstrap import (
     create_agent_session_runtime,
     create_services,
 )
+from loushang.coding.cli.apphost import (
+    extract_apphost_argv,
+    run_coding_apphost_command,
+)
 from loushang.coding.cli.args import (
     CliArgs,
     ExtensionFlag,
@@ -373,11 +377,20 @@ async def run_cli(
     workspace_runner=run_coding_workspace_command,
     lsp_runner=run_coding_lsp_command,
     machine_resource_runner=run_machine_resource_command,
+    apphost_runner=run_coding_apphost_command,
 ) -> int:
     raw_argv = tuple(argv or ())
     resolved_stderr = stderr or sys.stderr
     if _reject_removed_legacy_resource_input(raw_argv, resolved_stderr):
         return 2
+    apphost_argv = extract_apphost_argv(raw_argv)
+    if apphost_argv is not None:
+        return await apphost_runner(
+            apphost_argv,
+            stdout=stdout or sys.stdout,
+            stderr=resolved_stderr,
+            cwd=cwd,
+        )
     machine_resource_argv = extract_machine_resource_argv(raw_argv)
     if machine_resource_argv is not None:
         return await machine_resource_runner(
