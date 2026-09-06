@@ -52,6 +52,20 @@ class _Win32Api(Protocol):
         begin_effect: Callable[[], None],
     ) -> _Win32SpawnHandles: ...
 
+    def spawn_lpac(
+        self,
+        request: ProcessLaunchRequest,
+        endpoint_handles: tuple[int, int],
+        *,
+        executable_handle: int,
+        cwd_handle: int,
+        package_sid: int,
+        expected_sid_text: str,
+        job: int,
+        stderr_handle: int,
+        begin_effect: Callable[[], None],
+    ) -> _Win32SpawnHandles: ...
+
     def read_pipe(self, handle: int, max_bytes: int) -> bytes: ...
 
     def write_pipe(self, handle: int, data: bytes) -> None: ...
@@ -161,15 +175,9 @@ class _WindowsProcess:
                     if previous.done() and self._stdin_operation is previous:
                         self._stdin_operation = None
             handle = self._stdin_write
-            if (
-                self._operations_fenced
-                or handle is None
-                or self._stdin_closed
-            ):
+            if self._operations_fenced or handle is None or self._stdin_closed:
                 raise BrokenPipeError("Windows process stdin is closed")
-            operation = self._blocking_task(
-                "stdin", self._api.write_pipe, handle, data
-            )
+            operation = self._blocking_task("stdin", self._api.write_pipe, handle, data)
             self._stdin_operation = operation
             try:
                 await asyncio.shield(operation)
@@ -257,9 +265,7 @@ class _WindowsProcess:
             }
             pending = operations
             if pending:
-                _, pending = await asyncio.wait(
-                    pending, timeout=_IO_SETTLEMENT_SECONDS
-                )
+                _, pending = await asyncio.wait(pending, timeout=_IO_SETTLEMENT_SECONDS)
                 if pending:
                     errors.append(
                         TimeoutError("Windows process I/O did not settle during close")
@@ -427,7 +433,9 @@ class _WindowsProcessBackend:
                 await self._reclaim_failed_attachment(process)
             except BaseException as cleanup:
                 self._orphan_processes.append(process)
-                primary.add_note(f"Windows spawn attachment cleanup also failed: {cleanup}")
+                primary.add_note(
+                    f"Windows spawn attachment cleanup also failed: {cleanup}"
+                )
                 raise primary from cleanup
             raise
         if cancellation is not None:
@@ -501,7 +509,9 @@ class _WindowsProcessBackend:
             if (
                 len(set(preparation_handles)) != len(preparation_handles)
                 or set(endpoint_handles) & set(preparation_handles)
-                or any(handle <= 0 for handle in (*endpoint_handles, *preparation_handles))
+                or any(
+                    handle <= 0 for handle in (*endpoint_handles, *preparation_handles)
+                )
             ):
                 raise HostingError(
                     HostingFailureCategory.ENDPOINT_TRANSFER_FAILED,
@@ -595,6 +605,148 @@ class _WindowsProcessBackend:
             operation,
         )
 
+    async def _spawn_lpac_prepared(
+        self,
+        material: object,
+        request: ProcessLaunchRequest,
+        *,
+        effect: _ManagedSpawnEffect,
+        on_spawn: Callable[[_ProcessTransport], None],
+        inheritance: _ProcessInheritance | None,
+    ) -> _WindowsProcess:
+        from ._windows_launch_preparation import _WindowsLpacLaunchMaterial
+
+        try:
+            if type(material) is not _WindowsLpacLaunchMaterial:
+                raise HostingError(
+                    HostingFailureCategory.PREPARATION_FAILED,
+                    "Windows process backend requires LPAC launch material",
+                )
+            if request != material.request:
+                raise HostingError(
+                    HostingFailureCategory.PREPARATION_FAILED,
+                    "Windows LPAC launch request changed before spawn",
+                )
+            if inheritance is None:
+                raise HostingError(
+                    HostingFailureCategory.ENDPOINT_TRANSFER_FAILED,
+                    "Windows LPAC launch requires endpoint inheritance",
+                )
+            endpoint_handles = _claim_endpoint(inheritance, self.backend_id)
+            assert endpoint_handles is not None
+            (
+                executable_handle,
+                cwd_handle,
+                package_sid,
+                expected_sid_text,
+                job_handle,
+                stderr_handle,
+            ) = material._claim_handles()
+            preparation_handles = (
+                executable_handle,
+                cwd_handle,
+                job_handle,
+                stderr_handle,
+            )
+            if (
+                len(set(preparation_handles)) != len(preparation_handles)
+                or set(endpoint_handles) & set(preparation_handles)
+                or any(
+                    handle <= 0 for handle in (*endpoint_handles, *preparation_handles)
+                )
+            ):
+                raise HostingError(
+                    HostingFailureCategory.ENDPOINT_TRANSFER_FAILED,
+                    "Windows LPAC endpoint and preparation handles collide",
+                )
+        except BaseException as cause:
+            raise effect.not_created(cause) from cause
+
+        spawn_task = asyncio.create_task(
+            self._spawn_lpac_once(
+                request,
+                endpoint_handles,
+                executable_handle=executable_handle,
+                cwd_handle=cwd_handle,
+                package_sid=package_sid,
+                expected_sid_text=expected_sid_text,
+                job=job_handle,
+                stderr_handle=stderr_handle,
+                begin_effect=effect.begin_effect,
+            ),
+            name="hosting-windows-lpac-process-spawn",
+        )
+        cancellation: asyncio.CancelledError | None = None
+        while True:
+            try:
+                handles = await asyncio.shield(spawn_task)
+                break
+            except asyncio.CancelledError as exc:
+                if spawn_task.cancelled():
+                    raise
+                if cancellation is None:
+                    cancellation = exc
+            except _Win32CreateNotStarted as failure:
+                raise effect.not_created(failure.cause) from failure
+            except _Win32CreateSettledWithoutProcess as failure:
+                raise effect.settled_without_process(failure.cause) from failure
+            except BaseException as exc:
+                if cancellation is not None:
+                    raise cancellation from exc
+                raise
+
+        process = _WindowsProcess(self._api, self._executor, handles)
+        material._mark_transferred()
+        attached = False
+        try:
+            on_spawn(process)
+            attached = True
+            inheritance.mark_transferred()
+        except BaseException as primary:
+            if not attached and not effect.observes(process):
+                try:
+                    await self._reclaim_failed_attachment(process)
+                except BaseException as cleanup:
+                    self._orphan_processes.append(process)
+                    primary.add_note(
+                        f"Windows LPAC attachment cleanup also failed: {cleanup}"
+                    )
+                    raise primary from cleanup
+            raise
+        if cancellation is not None:
+            raise cancellation
+        return process
+
+    async def _spawn_lpac_once(
+        self,
+        request: ProcessLaunchRequest,
+        endpoint_handles: tuple[int, int],
+        *,
+        executable_handle: int,
+        cwd_handle: int,
+        package_sid: int,
+        expected_sid_text: str,
+        job: int,
+        stderr_handle: int,
+        begin_effect: Callable[[], None],
+    ) -> _Win32SpawnHandles:
+        operation = partial(
+            self._api.spawn_lpac,
+            request,
+            endpoint_handles,
+            executable_handle=executable_handle,
+            cwd_handle=cwd_handle,
+            package_sid=package_sid,
+            expected_sid_text=expected_sid_text,
+            job=job,
+            stderr_handle=stderr_handle,
+            begin_effect=begin_effect,
+        )
+        return await asyncio.get_running_loop().run_in_executor(
+            self._executor,
+            operation,
+        )
+
     def tree_exited(self, process: _ProcessTransport) -> bool:
         return _require_windows_process(process).job_is_empty()
 
@@ -602,14 +754,10 @@ class _WindowsProcessBackend:
         await _require_windows_process(process).wait_job()
 
     async def terminate_tree(self, process: _ProcessTransport) -> None:
-        _require_windows_process(process).terminate_job(
-            _INITIAL_TERMINATION_EXIT_CODE
-        )
+        _require_windows_process(process).terminate_job(_INITIAL_TERMINATION_EXIT_CODE)
 
     async def kill_tree(self, process: _ProcessTransport) -> None:
-        _require_windows_process(process).terminate_job(
-            _FORCEFUL_TERMINATION_EXIT_CODE
-        )
+        _require_windows_process(process).terminate_job(_FORCEFUL_TERMINATION_EXIT_CODE)
 
     async def close_process_handles(self, process: _ProcessTransport) -> None:
         owned = _require_windows_process(process)
@@ -689,7 +837,9 @@ def _claim_endpoint(
     if inheritance is None:
         return None
     values = inheritance.claim(backend_id=backend_id)
-    if len(values) != 2 or any(type(value) is not int or value <= 0 for value in values):
+    if len(values) != 2 or any(
+        type(value) is not int or value <= 0 for value in values
+    ):
         raise HostingError(
             HostingFailureCategory.ENDPOINT_TRANSFER_FAILED,
             "Windows endpoint inheritance must contain stdin and stdout handles",

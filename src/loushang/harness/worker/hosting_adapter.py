@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TypeVar, cast
+from collections.abc import Awaitable, Callable
+from typing import TypeGuard, TypeVar, cast
 
 from loushang.harness.workspace.process import ProcessExit, ProcessStderrTail
 from loushang.hosting import (
@@ -27,6 +28,10 @@ from loushang.hosting._launch_preparation import (
     _ManagedLaunchPreparationResult,
 )
 
+from ._native_profile_bridge import (
+    ProductWorkerNativeProfilePort,
+    _native_profile_prepared_request,
+)
 from .contracts import (
     ManagedWorkerLaunchRequestV1,
     WorkerBindingError,
@@ -47,6 +52,22 @@ WORKER_HOSTING_ENDPOINT_READ_CHUNK_BYTES = 64 * 1024
 _T = TypeVar("_T")
 
 
+def _is_product_worker_native_profile(
+    value: object,
+) -> TypeGuard[ProductWorkerNativeProfilePort]:
+    """Recognize the effectful port without evaluating its stateful properties."""
+
+    return all(
+        callable(getattr(value, name, None))
+        for name in (
+            "capture_native",
+            "verify_current",
+            "native_containment_settlement_witness",
+            "close",
+        )
+    )
+
+
 class HostingManagedWorkerSessionAdapter(ManagedWorkerSessionLaunchPort):
     """Harness meaning adapter over an injected atomic Hosting capability.
 
@@ -59,12 +80,15 @@ class HostingManagedWorkerSessionAdapter(ManagedWorkerSessionLaunchPort):
         self,
         *,
         hosting: ChildSessionHostingPort,
-        preparation: LaunchPreparationPort,
+        preparation: LaunchPreparationPort | ProductWorkerNativeProfilePort,
         endpoint_read_chunk_bytes: int = WORKER_HOSTING_ENDPOINT_READ_CHUNK_BYTES,
     ) -> None:
         if not isinstance(hosting, ChildSessionHostingPort):
             raise TypeError("Worker Hosting adapter requires a child-session port")
-        if not isinstance(preparation, LaunchPreparationPort):
+        if not isinstance(
+            preparation,
+            LaunchPreparationPort,
+        ) and not _is_product_worker_native_profile(preparation):
             raise TypeError("Worker Hosting adapter requires a preparation port")
         if (
             type(endpoint_read_chunk_bytes) is not int
@@ -140,7 +164,7 @@ class _WorkerLaunchPreparationPort:
         *,
         expected: ProcessLaunchRequest,
         worker_request: ManagedWorkerLaunchRequestV1,
-        delegate: LaunchPreparationPort,
+        delegate: LaunchPreparationPort | ProductWorkerNativeProfilePort,
         signal: object | None,
     ) -> None:
         self._expected = expected
@@ -148,11 +172,11 @@ class _WorkerLaunchPreparationPort:
         self._delegate = delegate
         self._signal = signal
 
-    async def prepare(
-        self, request: ProcessLaunchRequest
-    ) -> LaunchPreparationLease:
+    async def prepare(self, request: ProcessLaunchRequest) -> LaunchPreparationLease:
         self._require_expected(request)
-        prepared = await self._delegate.prepare(request)
+        if _is_product_worker_native_profile(self._delegate):
+            raise TypeError("Worker native profile requires managed capture")
+        prepared = await cast(LaunchPreparationPort, self._delegate).prepare(request)
         return self._wrap(prepared)
 
     def _require_expected(self, request: ProcessLaunchRequest) -> None:
@@ -183,7 +207,7 @@ class _ManagedWorkerLaunchPreparationPort(
         *,
         expected: ProcessLaunchRequest,
         worker_request: ManagedWorkerLaunchRequestV1,
-        delegate: LaunchPreparationPort,
+        delegate: LaunchPreparationPort | ProductWorkerNativeProfilePort,
         signal: object | None,
     ) -> None:
         super().__init__(
@@ -192,7 +216,10 @@ class _ManagedWorkerLaunchPreparationPort(
             delegate=delegate,
             signal=signal,
         )
-        self._managed_delegate = cast(_ManagedLaunchPreparationPort, delegate)
+        self._managed_delegate = cast(
+            _ManagedLaunchPreparationPort | ProductWorkerNativeProfilePort,
+            delegate,
+        )
 
     async def prepare_managed(
         self,
@@ -200,7 +227,43 @@ class _ManagedWorkerLaunchPreparationPort(
         capture: _LaunchCapturePort,
     ) -> _ManagedLaunchPreparationResult:
         self._require_expected(request)
-        result = await self._managed_delegate.prepare_managed(request, capture)
+        if _is_product_worker_native_profile(self._managed_delegate):
+            semantic_lease = _ProductWorkerNativePreparationLease(
+                request=request,
+                delegate=self._managed_delegate,
+            )
+            returned = False
+            try:
+                binding = await self._managed_delegate.capture_native(
+                    request,
+                    capture=cast(
+                        Callable[[object], Awaitable[object]],
+                        capture.capture,
+                    ),
+                )
+                semantic_lease.bind_prepared_request(
+                    _native_profile_prepared_request(
+                        self._managed_delegate,
+                        request,
+                    )
+                )
+                result = _ManagedLaunchPreparationResult(
+                    lease=semantic_lease,
+                    binding=binding,  # type: ignore[arg-type]
+                )
+                returned = True
+            finally:
+                if not returned:
+                    cleanup = asyncio.create_task(
+                        semantic_lease.close(),
+                        name="harness-worker-native-profile-rollback",
+                    )
+                    await _await_owned(cleanup)
+        else:
+            result = await cast(
+                _ManagedLaunchPreparationPort,
+                self._managed_delegate,
+            ).prepare_managed(request, capture)
         if not isinstance(result, _ManagedLaunchPreparationResult):
             raise TypeError(
                 "Worker Hosting managed preparation returned an invalid result"
@@ -215,12 +278,13 @@ def _worker_launch_preparation_port(
     *,
     expected: ProcessLaunchRequest,
     worker_request: ManagedWorkerLaunchRequestV1,
-    delegate: LaunchPreparationPort,
+    delegate: LaunchPreparationPort | ProductWorkerNativeProfilePort,
     signal: object | None,
 ) -> _WorkerLaunchPreparationPort:
     preparation_type = (
         _ManagedWorkerLaunchPreparationPort
         if isinstance(delegate, _ManagedLaunchPreparationPort)
+        or _is_product_worker_native_profile(delegate)
         else _WorkerLaunchPreparationPort
     )
     return preparation_type(
@@ -229,6 +293,36 @@ def _worker_launch_preparation_port(
         delegate=delegate,
         signal=signal,
     )
+
+
+class _ProductWorkerNativePreparationLease:
+    def __init__(
+        self,
+        *,
+        request: ProcessLaunchRequest,
+        delegate: ProductWorkerNativeProfilePort,
+    ) -> None:
+        self._request = request
+        self._delegate = delegate
+        self._prepared_bound = False
+
+    @property
+    def request(self) -> ProcessLaunchRequest:
+        return self._request
+
+    def bind_prepared_request(self, request: ProcessLaunchRequest) -> None:
+        if not isinstance(request, ProcessLaunchRequest):
+            raise TypeError("Worker native prepared request is invalid")
+        if self._prepared_bound:
+            raise RuntimeError("Worker native prepared request was bound twice")
+        self._request = request
+        self._prepared_bound = True
+
+    async def verify_current(self) -> None:
+        await self._delegate.verify_current()
+
+    async def close(self) -> None:
+        await self._delegate.close()
 
 
 class _WorkerLaunchPreparationLease:

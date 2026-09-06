@@ -54,6 +54,87 @@ jobs:
           path: .artifacts/plc9b-linux-native.xml
           if-no-files-found: error
 
+      - name: PLC9C5 C5.1 receipt and lifecycle contract
+        env:
+          PYTEST_ADDOPTS: >-
+            -o faulthandler_timeout=60
+            --junitxml=.artifacts/plc9c5-c51-contract.xml
+        run: >-
+          uv run python scripts/dev/run_pytest.py
+          tests/harness/worker/test_product_activation.py
+          -q
+
+      - name: Reject skipped, failing, or incomplete PLC9C5 C5.1 evidence
+        run: |
+          uv run python scripts/dev/verify_pytest_xml.py \
+            .artifacts/plc9c5-c51-contract.xml
+          uv run python scripts/dev/verify_plc9c5_manifest.py \
+            docs/internals/architecture/harness/plugin/plugin-lifecycle-plc9c5-evidence-manifest.json \
+            PLC9C5-C5.1-CONTRACT \
+            .artifacts/plc9c5-c51-contract.xml
+
+      - name: Upload PLC9C5 C5.1 contract report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: plc9c5-c51-contract-pytest-report
+          path: .artifacts/plc9c5-c51-contract.xml
+          if-no-files-found: error
+
+      - name: PLC9C5 C5.2 Linux native profile binding
+        env:
+          PYTEST_ADDOPTS: >-
+            -o faulthandler_timeout=60
+            --junitxml=.artifacts/plc9c5-c52-linux-native.xml
+        run: >-
+          uv run python scripts/dev/run_pytest.py
+          tests/harness/worker/test_native_profile_bridge.py
+          -q
+
+      - name: Reject skipped, failing, or incomplete PLC9C5 C5.2 evidence
+        run: |
+          uv run python scripts/dev/verify_pytest_xml.py \
+            .artifacts/plc9c5-c52-linux-native.xml
+          uv run python scripts/dev/verify_plc9c5_manifest.py \
+            docs/internals/architecture/harness/plugin/plugin-lifecycle-plc9c5-evidence-manifest.json \
+            PLC9C5-C5.2-LINUX-NATIVE \
+            .artifacts/plc9c5-c52-linux-native.xml
+
+      - name: Upload PLC9C5 C5.2 Linux native report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: plc9c5-c52-linux-native-pytest-report
+          path: .artifacts/plc9c5-c52-linux-native.xml
+          if-no-files-found: error
+
+      - name: PLC9C5 C5.4 Linux Coding Product canary
+        env:
+          PYTEST_ADDOPTS: >-
+            -o faulthandler_timeout=60
+            --junitxml=.artifacts/plc9c5-c54-linux-product.xml
+        run: >-
+          uv run python scripts/dev/run_pytest.py
+          tests/harness/worker/test_coding_product_worker_canary.py
+          -q
+
+      - name: Reject skipped, failing, or incomplete PLC9C5 C5.4 evidence
+        run: |
+          uv run python scripts/dev/verify_pytest_xml.py \
+            .artifacts/plc9c5-c54-linux-product.xml
+          uv run python scripts/dev/verify_plc9c5_manifest.py \
+            docs/internals/architecture/harness/plugin/plugin-lifecycle-plc9c5-evidence-manifest.json \
+            PLC9C5-C5.4-LINUX-PRODUCT \
+            .artifacts/plc9c5-c54-linux-product.xml
+
+      - name: Upload PLC9C5 C5.4 Linux Product report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: plc9c5-c54-linux-product-pytest-report
+          path: .artifacts/plc9c5-c54-linux-product.xml
+          if-no-files-found: error
+
       - name: Harness quality gate
         run: make check-harness
 

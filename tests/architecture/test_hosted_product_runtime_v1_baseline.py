@@ -63,6 +63,8 @@ CURRENT_SOURCE_SEAMS = (
     WORKER_SOURCE / "journal.py",
     WORKER_SOURCE / "session.py",
     WORKER_SOURCE / "capability_query.py",
+    WORKER_SOURCE / "product_activation.py",
+    WORKER_SOURCE / "_native_profile_bridge.py",
     HARNESS_SOURCE / "transcript/discovery.py",
     HARNESS_SOURCE / "transcript/session_catalog.py",
     HARNESS_SOURCE / "transcript/directory.py",
@@ -72,6 +74,7 @@ CURRENT_SOURCE_SEAMS = (
     APPSERVER_SOURCE / "ports.py",
     HARNESS_SOURCE / "machine_resources/control_plane.py",
     Path("src/loushang/coding/cli/__main__.py"),
+    Path("src/loushang/coding/_product_worker_canary.py"),
 )
 
 
@@ -88,11 +91,17 @@ def _section(text: str, heading: str) -> str:
 
 def _status_fields(path: Path) -> dict[str, str]:
     fields: dict[str, str] = {}
+    current_name: str | None = None
     for line in _section(_read(path), "Status").splitlines():
-        if not line.startswith("- "):
+        if line.startswith("- "):
+            name, value = line[2:].split(":", maxsplit=1)
+            fields[name] = value.strip()
+            current_name = name
             continue
-        name, value = line[2:].split(":", maxsplit=1)
-        normalized = value.strip()
+        if current_name is not None and line.startswith("  "):
+            fields[current_name] = f"{fields[current_name]} {line.strip()}"
+    for name, value in fields.items():
+        normalized = value
         if normalized.startswith("`") and normalized.endswith("`"):
             normalized = normalized[1:-1]
         fields[name] = normalized
@@ -137,7 +146,9 @@ def test_baseline_documents_are_status_honest_and_indexed() -> None:
             "Authority": "normative accepted design",
             "Design status": "accepted",
             "Implementation status": (
-                "implemented — H6.1 through H6.4 remain default-dark"
+                "implemented — H6.1 through H6.4 remain default-dark; "
+                "H6.5b Windows LPAC native mechanics retain one C5.5c Harness "
+                "friend consumer and no direct Product consumer"
             ),
             "Activation status": "forbidden; H5 remains default-dark",
         },
@@ -258,6 +269,8 @@ def test_h6_keeps_authority_outside_and_native_material_opaque() -> None:
         "H6.2",
         "H6.3",
         "H6.4",
+        "H6.5a",
+        "H6.5b",
     )
     assert _table_first_column(_section(h6, "Conformance Inventory")) == (
         "H6-BOUND",
@@ -461,13 +474,17 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         )
     }
     assert reverse_apphost_consumers == set()
+    retained_fences = " ".join(_section(inventory, "Retained Fences").split())
     for statement in (
         "H5 default owner is Current",
-        "PLC9C5 Product activation and platform absence guards remain unchanged",
+        "PLC9C5 C5.0 design/inventory, C5.1 receipt/lifecycle, C5.2 Linux profile, "
+        "C5.3 Windows mechanics/rejection, and C5.4 Linux Coding Product canary "
+        "are implemented",
+        "Windows Product activation and unsupported-platform guards remain closed",
         "AppHost A0.4 remains explicitly constructed and dark",
         "Hosting imports no Harness, Product, AppHost, AppServer, or AppService",
     ):
-        assert statement in _section(inventory, "Retained Fences")
+        assert statement in retained_fences
 
 
 def test_current_session_discovery_roots_preserve_exact_modes(tmp_path: Path) -> None:
@@ -534,7 +551,7 @@ def test_delivery_plan_has_parallel_streams_and_one_activation_join() -> None:
     assert "never retry the other owner within one launch attempt" in normalized
 
 
-def test_current_worker_route_has_no_outside_composition_or_fallback() -> None:
+def test_current_worker_route_has_one_exact_composition_and_no_fallback() -> None:
     activation_names = {
         "HostingManagedWorkerSessionAdapter",
         "WorkerHostingActivationV1",
@@ -546,7 +563,7 @@ def test_current_worker_route_has_no_outside_composition_or_fallback() -> None:
         if not path.is_relative_to(WORKER_SOURCE)
         and any(name in _read(path) for name in activation_names)
     }
-    assert consumers == set()
+    assert consumers == {Path("src/loushang/coding/_product_worker_canary.py")}
 
     selection = _read(WORKER_SOURCE / "owner_selection.py")
     assert 'owner: WorkerSessionOwner = "current"' in selection
@@ -566,11 +583,14 @@ def test_plc9c5_and_h5_activation_fences_are_unchanged() -> None:
     h6 = _read(H6)
     plan = _read(DELIVERY_PLAN)
     normalized_plc9c = " ".join(plc9c.split())
-    assert "Until PLC9C5 intentionally revises these guards:" in plc9c
     assert (
-        "PLC9C4 -> PLC9C5 | remove only the accepted Product-activation/platform "
-        "absence guard"
+        "Until the owning PLC9C5 C5.1--C5.4 slice intentionally revises each exact"
+        in normalized_plc9c
+    )
+    assert (
+        "PLC9C4 -> PLC9C5 C5.0 | remove no runtime guard"
     ) in normalized_plc9c
+    assert "C5.0 removes no runtime guard" in " ".join(plan.split())
     assert "they do not revise this activation guard" in normalized_plc9c
     assert "the PLC9C5 Product-activation/platform absence guard remains intact" in h6
     assert "zero runtime activation" in plan

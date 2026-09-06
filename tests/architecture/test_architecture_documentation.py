@@ -46,6 +46,10 @@ INITIAL_GOVERNED_DOCUMENTS = (
     ARCHITECTURE_ROOT
     / "hosting/validation/managed-launch-preparation-h6-windows-native.md",
     ARCHITECTURE_ROOT / "hosting/validation/hosted-product-runtime-v1-inventory.md",
+    ARCHITECTURE_ROOT
+    / "harness/plugin/plugin-lifecycle-plc9c5-c50-baseline.md",
+    ARCHITECTURE_ROOT
+    / "harness/plugin/plugin-lifecycle-plc9c5-c50-inventory.md",
     ARCHITECTURE_ROOT / "hosting/key-designs/hosted-application-support-boundary.md",
     ARCHITECTURE_ROOT / "apphost/README.md",
     ARCHITECTURE_ROOT / "apphost/contract-model-a0.md",

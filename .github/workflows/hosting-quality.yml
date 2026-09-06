@@ -45,6 +45,7 @@ jobs:
           src/loushang/hosting
           src/loushang/harness/workspace/process/hosting_compat.py
           src/loushang/harness/worker/__init__.py
+          src/loushang/harness/worker/_native_profile_bridge.py
           src/loushang/harness/worker/hosting_adapter.py
           src/loushang/harness/worker/owner_selection.py
           src/loushang/harness/worker/session.py
@@ -52,6 +53,7 @@ jobs:
           tests/hosting
           tests/harness/workspace/process/test_hosting_compat.py
           tests/harness/worker/test_hosting_adapter.py
+          tests/harness/worker/test_native_profile_bridge.py
           tests/architecture/test_hosting_h0_contract.py
           tests/architecture/test_hosting_h1_process_lifetime.py
           tests/architecture/test_hosting_h2_platform_contract.py
@@ -63,6 +65,11 @@ jobs:
           tests/architecture/test_hosting_h6_posix_native.py
           tests/architecture/test_hosting_h6_windows_native.py
           tests/architecture/test_hosted_product_runtime_v1_baseline.py
+          tests/architecture/test_plugin_lifecycle_plc9c5_c50_baseline.py
+          tests/architecture/test_plugin_lifecycle_plc9c5_c52_linux_native.py
+          tests/architecture/test_plugin_lifecycle_plc9c5_c53_windows_mechanics.py
+          tests/architecture/test_plugin_lifecycle_plc9c5_c55_windows_containment.py
+          tests/architecture/test_hosting_h65_windows_lpac_design.py
           tests/architecture/test_hosting_architecture_baseline.py
 
       - name: Typecheck Hosting H0-H6
@@ -71,6 +78,7 @@ jobs:
           src/loushang/hosting
           src/loushang/harness/workspace/process/hosting_compat.py
           src/loushang/harness/worker/__init__.py
+          src/loushang/harness/worker/_native_profile_bridge.py
           src/loushang/harness/worker/hosting_adapter.py
           src/loushang/harness/worker/owner_selection.py
           src/loushang/harness/worker/session.py
@@ -134,6 +142,84 @@ jobs:
           path: .artifacts/h6-windows-native.xml
           if-no-files-found: error
 
+      - name: PLC9C5 C5.3 Windows mechanics and rejection gate
+        if: matrix.os == 'windows-2022'
+        env:
+          LOUSHANG_PLC9C5_C53_REPORT: "1"
+          PYTEST_ADDOPTS: >-
+            -o faulthandler_timeout=60
+            --junitxml=.artifacts/plc9c5-c53-windows-mechanics.xml
+        run: >-
+          uv run --extra dev python scripts/dev/run_pytest.py
+          tests/hosting/test_plc9c5_c53_windows_mechanics.py
+          -q
+
+      - name: Reject skipped, failing, or incomplete PLC9C5 C5.3 evidence
+        if: matrix.os == 'windows-2022'
+        run: |
+          uv run python scripts/dev/verify_pytest_xml.py .artifacts/plc9c5-c53-windows-mechanics.xml
+          uv run python scripts/dev/verify_plc9c5_manifest.py docs/internals/architecture/harness/plugin/plugin-lifecycle-plc9c5-evidence-manifest.json PLC9C5-C5.3-WINDOWS-MECHANICS .artifacts/plc9c5-c53-windows-mechanics.xml
+
+      - name: Upload PLC9C5 C5.3 Windows mechanics report
+        if: always() && matrix.os == 'windows-2022'
+        uses: actions/upload-artifact@v4
+        with:
+          name: plc9c5-c53-windows-mechanics-pytest-report
+          path: .artifacts/plc9c5-c53-windows-mechanics.xml
+          if-no-files-found: error
+
+      - name: PLC9C5 C5.5b Windows LPAC native containment gate
+        if: matrix.os == 'windows-2022'
+        env:
+          LOUSHANG_PLC9C5_C55B_REPORT: "1"
+          PYTEST_ADDOPTS: >-
+            -o faulthandler_timeout=60
+            --junitxml=.artifacts/plc9c5-c55b-windows-lpac-native.xml
+        run: >-
+          uv run --extra dev python scripts/dev/run_pytest.py
+          tests/hosting/test_plc9c5_c55b_windows_lpac_native.py
+          -q
+
+      - name: Reject skipped, failing, or incomplete PLC9C5 C5.5b evidence
+        if: matrix.os == 'windows-2022'
+        run: |
+          uv run python scripts/dev/verify_pytest_xml.py .artifacts/plc9c5-c55b-windows-lpac-native.xml
+          uv run python scripts/dev/verify_plc9c5_manifest.py docs/internals/architecture/harness/plugin/plugin-lifecycle-plc9c5-evidence-manifest.json PLC9C5-C5.5B-WINDOWS-LPAC-NATIVE .artifacts/plc9c5-c55b-windows-lpac-native.xml
+
+      - name: Upload PLC9C5 C5.5b Windows LPAC native report
+        if: always() && matrix.os == 'windows-2022'
+        uses: actions/upload-artifact@v4
+        with:
+          name: plc9c5-c55b-windows-lpac-native-pytest-report
+          path: .artifacts/plc9c5-c55b-windows-lpac-native.xml
+          if-no-files-found: error
+
+      - name: PLC9C5 C5.5c Windows Product composition gate
+        if: matrix.os == 'windows-2022'
+        env:
+          LOUSHANG_PLC9C5_C55C_REPORT: "1"
+          PYTEST_ADDOPTS: >-
+            -o faulthandler_timeout=60
+            --junitxml=.artifacts/plc9c5-c55c-windows-product.xml
+        run: >-
+          uv run --extra dev python scripts/dev/run_pytest.py
+          tests/harness/worker/test_coding_product_worker_windows_canary.py
+          -q
+
+      - name: Reject skipped, failing, or incomplete PLC9C5 C5.5c evidence
+        if: matrix.os == 'windows-2022'
+        run: |
+          uv run python scripts/dev/verify_pytest_xml.py .artifacts/plc9c5-c55c-windows-product.xml
+          uv run python scripts/dev/verify_plc9c5_manifest.py docs/internals/architecture/harness/plugin/plugin-lifecycle-plc9c5-evidence-manifest.json PLC9C5-C5.5C-WINDOWS-PRODUCT .artifacts/plc9c5-c55c-windows-product.xml
+
+      - name: Upload PLC9C5 C5.5c Windows Product report
+        if: always() && matrix.os == 'windows-2022'
+        uses: actions/upload-artifact@v4
+        with:
+          name: plc9c5-c55c-windows-product-pytest-report
+          path: .artifacts/plc9c5-c55c-windows-product.xml
+          if-no-files-found: error
+
       - name: Test Hosting H0-H6 contract
         env:
           LOUSHANG_HOSTING_EXPECTED_BACKEND: ${{ matrix.backend }}
@@ -154,5 +240,10 @@ jobs:
           tests/architecture/test_hosting_h6_posix_native.py
           tests/architecture/test_hosting_h6_windows_native.py
           tests/architecture/test_hosted_product_runtime_v1_baseline.py
+          tests/architecture/test_plugin_lifecycle_plc9c5_c50_baseline.py
+          tests/architecture/test_plugin_lifecycle_plc9c5_c52_linux_native.py
+          tests/architecture/test_plugin_lifecycle_plc9c5_c53_windows_mechanics.py
+          tests/architecture/test_plugin_lifecycle_plc9c5_c55_windows_containment.py
+          tests/architecture/test_hosting_h65_windows_lpac_design.py
           tests/architecture/test_hosting_architecture_baseline.py
           -q

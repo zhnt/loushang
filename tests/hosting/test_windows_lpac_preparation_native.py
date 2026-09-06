@@ -1,0 +1,1200 @@
+from __future__ import annotations
+
+import asyncio
+import ctypes
+import hashlib
+import os
+import platform
+import shutil
+import socket
+import subprocess
+import uuid
+from contextlib import suppress
+from ctypes import wintypes
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+from loushang.hosting import (
+    HostingError,
+    ProcessLaunchRequest,
+    ProcessStderrMode,
+    ProcessStdinMode,
+    ProcessStdoutMode,
+    ProcessStreamSpec,
+)
+from loushang.hosting._launch_preparation import _ManagedSpawnEffect
+from loushang.hosting._win32_process import _CtypesWin32Api
+from loushang.hosting._windows_endpoint import _WindowsEndpointBackend
+from loushang.hosting._windows_launch_preparation import (
+    _build_windows_lpac_launch_capture_spec,
+    _build_windows_lpac_provision_spec,
+    _lpac_grant_targets,
+    _lpac_profile_name,
+    _WindowsLpacLaunchCaptureBackend,
+    _WindowsLpacLaunchCaptureSpec,
+    _WindowsLpacProfileCollision,
+    _WindowsLpacProvisioner,
+    _WindowsLpacProvisionSpec,
+    _WindowsLpacProvisionWitness,
+)
+from loushang.hosting._windows_process import _WindowsProcessBackend
+
+pytestmark = pytest.mark.skipif(
+    os.name != "nt" or platform.machine().lower() not in {"amd64", "x86_64"},
+    reason="Windows AMD64 LPAC launch preparation",
+)
+
+_NATIVE_TIMEOUT_SECONDS = 60.0
+_NATIVE_PLATFORM_IMPORTS = (
+    "ADVAPI32.DLL",
+    "KERNEL32.DLL",
+    "USERENV.DLL",
+    "WS2_32.DLL",
+)
+
+
+@dataclass(frozen=True, slots=True)
+class _WindowsLpacNativeEvidence:
+    profile_create: bool
+    cleanup_replay: bool
+    foreign_profile_reject: bool
+    profile_sid: bool
+    zero_capabilities: bool
+    lpac_optout: bool
+    runtime_rx: bool
+    runtime_write_deny: bool
+    private_fs_scratch: bool
+    registry_deny: bool
+    unrelated_fs_deny: bool
+    process_mutation_deny: bool
+    network_deny: bool
+    exec_cwd_identity: bool
+    dacl_substitution: bool
+    profile_substitution: bool
+    no_ambient_env: bool
+    handle_list: bool
+    handle_alias_reject: bool
+    cancel_pre_post_effect: bool
+    token_verify_before_resume: bool
+    job_tree_cleanup: bool
+    containment_cleanup_debt: bool
+    sentinel_redaction: bool
+
+
+@dataclass(frozen=True, slots=True)
+class _NativeProvisionedAttempt:
+    owner: _WindowsLpacProvisioner
+    provision: _WindowsLpacProvisionSpec
+    witness: _WindowsLpacProvisionWitness
+    capture: _WindowsLpacLaunchCaptureSpec
+    expected_sid_line: bytes
+
+
+@dataclass(slots=True)
+class _NativeCleanupState:
+    """Last-fence ownership for failures inside the adversarial native oracle."""
+
+    api: _CtypesWin32Api | None = None
+    listener: socket.socket | None = None
+    extra_handles: tuple[int, ...] = ()
+    owner: _WindowsLpacProvisioner | None = None
+    provision: Any = None
+    profile_effect_started: bool = False
+    material: Any = None
+    pair: Any = None
+    endpoint_backend: Any = None
+    process: Any = None
+    process_backend: Any = None
+
+    async def close_best_effort(self) -> None:
+        if self.process_backend is not None and self.process is not None:
+            with suppress(BaseException):
+                await self.process_backend.close_process_handles(self.process)
+        if self.material is not None:
+            with suppress(BaseException):
+                await self.material.close()
+        if self.pair is not None:
+            with suppress(BaseException):
+                await self.pair.close()
+        if self.endpoint_backend is not None:
+            with suppress(BaseException):
+                await self.endpoint_backend.close_backend()
+        if self.process_backend is not None:
+            with suppress(BaseException):
+                await self.process_backend.close_backend()
+        if self.api is not None:
+            for handle in self.extra_handles:
+                with suppress(BaseException):
+                    self.api.close_handle(handle)
+        if self.listener is not None:
+            with suppress(OSError):
+                self.listener.close()
+        if (
+            self.profile_effect_started
+            and self.owner is not None
+            and self.provision is not None
+        ):
+            with suppress(BaseException):
+                recovered = self.owner.recover_cleanup_witness(self.provision)
+                revoked = self.owner.revoke_grants(
+                    self.provision,
+                    recovered,
+                    begin_effect=lambda: None,
+                )
+                deleted = self.owner.delete_profile(
+                    self.provision,
+                    revoked,
+                    begin_effect=lambda: None,
+                )
+                self.owner.settle(self.provision, deleted)
+
+
+class _ObservedNativeLpacApi(_CtypesWin32Api):
+    def __init__(self) -> None:
+        super().__init__()
+        self.token_verified = False
+        self.resume_after_verify = False
+        resume = self._ResumeThread
+
+        def observed_resume(thread: int) -> int:
+            self.resume_after_verify = self.token_verified
+            return int(resume(thread))
+
+        self._ResumeThread = observed_resume
+
+    def lpac_process_identity(self, process: int, *, job: int):  # type: ignore[no-untyped-def]
+        identity = super().lpac_process_identity(process, job=job)
+        self.token_verified = True
+        return identity
+
+
+def _compile_fixture(build_root: Path, executable: Path) -> None:
+    source = build_root / "lpac_probe.c"
+    object_file = build_root / "lpac_probe.obj"
+    source.write_text(
+        r"""
+#define WIN32_LEAN_AND_MEAN
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <windows.h>
+#include <sddl.h>
+#include <userenv.h>
+
+static int contains(const wchar_t *text, const wchar_t *needle) {
+    for (; *text; ++text) {
+        const wchar_t *left = text;
+        const wchar_t *right = needle;
+        while (*right && *left == *right) { ++left; ++right; }
+        if (!*right) return 1;
+    }
+    return 0;
+}
+
+static int value_after(const wchar_t *text, const wchar_t *key,
+                       wchar_t *value, DWORD capacity) {
+    for (; *text; ++text) {
+        const wchar_t *left = text;
+        const wchar_t *right = key;
+        while (*right && *left == *right) { ++left; ++right; }
+        if (!*right) {
+            DWORD used = 0;
+            while (*left && *left != L' ' && used + 1 < capacity)
+                value[used++] = *left++;
+            value[used] = 0;
+            return used != 0;
+        }
+    }
+    return 0;
+}
+
+static unsigned long long number(const wchar_t *text) {
+    unsigned long long value = 0;
+    while (*text >= L'0' && *text <= L'9') {
+        value = value * 10 + (unsigned long long)(*text - L'0');
+        ++text;
+    }
+    return value;
+}
+
+static int denied_error(DWORD error) {
+    return error == ERROR_ACCESS_DENIED || error == ERROR_FILE_NOT_FOUND ||
+           error == ERROR_PATH_NOT_FOUND || error == ERROR_INVALID_NAME;
+}
+
+static void emit(const char *body, DWORD size) {
+    DWORD written = 0;
+    WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), body, size, &written, 0);
+}
+
+void WINAPI mainCRTStartup(void) {
+    const wchar_t *command = GetCommandLineW();
+    if (contains(command, L"--smoke")) {
+        emit("SMOKE\n", 6);
+        ExitProcess(0);
+    }
+    if (contains(command, L"--descendant")) {
+        for (;;) Sleep(1000);
+    }
+
+    HANDLE token = 0;
+    DWORD returned = 0;
+    DWORD flag = 0;
+    static BYTE groups_storage[16384];
+    static BYTE app_storage[1024];
+    static BYTE capabilities_storage[4096];
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token)) ExitProcess(70);
+    if (!GetTokenInformation(token, TokenIsAppContainer, &flag,
+                             sizeof(flag), &returned) || !flag) ExitProcess(71);
+    flag = 0;
+    if (GetTokenInformation(token, TokenIsLessPrivilegedAppContainer, &flag,
+                            sizeof(flag), &returned)) {
+        if (!flag) ExitProcess(72);
+    } else if (GetLastError() != ERROR_INVALID_PARAMETER) {
+        ExitProcess(72);
+    }
+    if (!GetTokenInformation(token, TokenCapabilities, capabilities_storage,
+                             sizeof(capabilities_storage), &returned)) ExitProcess(73);
+    if (((TOKEN_GROUPS *)capabilities_storage)->GroupCount != 0) ExitProcess(74);
+    if (!GetTokenInformation(token, TokenAppContainerSid, app_storage,
+                             sizeof(app_storage), &returned)) ExitProcess(75);
+    PSID token_package_sid =
+        ((TOKEN_APPCONTAINER_INFORMATION *)app_storage)->TokenAppContainer;
+    if (!token_package_sid)
+        ExitProcess(76);
+    LPWSTR token_sid_text = 0;
+    if (!ConvertSidToStringSidW(token_package_sid, &token_sid_text)) ExitProcess(108);
+    static char sid_line[256];
+    DWORD sid_used = 0;
+    sid_line[sid_used++] = 'S';
+    sid_line[sid_used++] = 'I';
+    sid_line[sid_used++] = 'D';
+    sid_line[sid_used++] = ':';
+    for (DWORD index = 0; token_sid_text[index] && sid_used + 2 < sizeof(sid_line);
+         ++index) {
+        if (token_sid_text[index] > 0x7f) ExitProcess(109);
+        sid_line[sid_used++] = (char)token_sid_text[index];
+    }
+    sid_line[sid_used++] = '\n';
+    LocalFree(token_sid_text);
+    emit(sid_line, sid_used);
+    char sid_ack = 0;
+    DWORD sid_ack_read = 0;
+    if (!ReadFile(GetStdHandle(STD_INPUT_HANDLE), &sid_ack, 1,
+                  &sid_ack_read, 0) || sid_ack_read != 1) ExitProcess(110);
+    if (sid_ack == 'n') {
+        static wchar_t port_text[64];
+        if (!value_after(command, L"--port=", port_text, 64)) ExitProcess(101);
+        unsigned short probe_port = (unsigned short)number(port_text);
+        WSADATA probe_data;
+        emit("E:NETWORK-STARTUP\n", 18);
+        int startup_result = WSAStartup(MAKEWORD(2, 2), &probe_data);
+        if (startup_result == WSAEACCES) {
+            emit("D:WSAEACCES\n", 12);
+            ExitProcess(0);
+        }
+        if (startup_result == WSASYSCALLFAILURE) {
+            emit("D:WSASYSCALLFAILURE\n", 20);
+            ExitProcess(0);
+        }
+        if (startup_result != 0)
+            ExitProcess(0xC5505C00 | (startup_result & 0xff));
+        emit("E:NETWORK-SOCKET\n", 17);
+        SOCKET probe_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        if (probe_socket == INVALID_SOCKET) {
+            int socket_error = WSAGetLastError();
+            WSACleanup();
+            if (socket_error == WSAEACCES) {
+                emit("D:WSAEACCES\n", 12);
+                ExitProcess(0);
+            }
+            ExitProcess(0xC5505D00 | (socket_error & 0xff));
+        }
+        struct sockaddr_in probe_address;
+        SecureZeroMemory(&probe_address, sizeof(probe_address));
+        probe_address.sin_family = AF_INET;
+        probe_address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        probe_address.sin_port = htons(probe_port);
+        emit("E:NETWORK-CONNECT\n", 18);
+        int connected = connect(
+            probe_socket, (const struct sockaddr *)&probe_address,
+            sizeof(probe_address));
+        int connect_error = connected == 0 ? 0 : WSAGetLastError();
+        closesocket(probe_socket);
+        WSACleanup();
+        if (connected == 0) ExitProcess(104);
+        if (connect_error == WSAEACCES) {
+            emit("D:WSAEACCES\n", 12);
+            ExitProcess(0);
+        }
+        ExitProcess(0xC5505E00 | (connect_error & 0xff));
+    }
+    if (sid_ack != 's' && sid_ack != 'd') ExitProcess(110);
+    PSID all_packages = 0;
+    if (!ConvertStringSidToSidW(L"S-1-15-2-1", &all_packages)) ExitProcess(77);
+    if (!GetTokenInformation(token, TokenGroups, groups_storage,
+                             sizeof(groups_storage), &returned)) ExitProcess(78);
+    TOKEN_GROUPS *groups = (TOKEN_GROUPS *)groups_storage;
+    for (DWORD index = 0; index < groups->GroupCount; ++index) {
+        if (EqualSid(groups->Groups[index].Sid, all_packages)) ExitProcess(79);
+    }
+    LocalFree(all_packages);
+    CloseHandle(token);
+    emit("E:AAP\n", 6);
+
+    BOOL in_job = FALSE;
+    if (!IsProcessInJob(GetCurrentProcess(), 0, &in_job) || !in_job) ExitProcess(80);
+    emit("E:JOB\n", 6);
+
+    static wchar_t module[MAX_PATH];
+    DWORD module_length = GetModuleFileNameW(0, module, MAX_PATH);
+    if (!module_length || module_length >= MAX_PATH) ExitProcess(81);
+    HANDLE self_read = CreateFileW(module, GENERIC_READ, FILE_SHARE_READ, 0,
+                                   OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+    if (self_read == INVALID_HANDLE_VALUE) ExitProcess(82);
+    CloseHandle(self_read);
+    HANDLE self_write = CreateFileW(module, GENERIC_WRITE | DELETE, 0, 0,
+                                    OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+    if (self_write != INVALID_HANDLE_VALUE) ExitProcess(83);
+    if (!denied_error(GetLastError())) ExitProcess(84);
+
+    static wchar_t expected_cwd[MAX_PATH];
+    static wchar_t actual_cwd[MAX_PATH];
+    if (!value_after(command, L"--cwd=", expected_cwd, MAX_PATH)) ExitProcess(85);
+    DWORD cwd_length = GetCurrentDirectoryW(MAX_PATH, actual_cwd);
+    if (!cwd_length || cwd_length >= MAX_PATH) ExitProcess(86);
+    HANDLE expected_cwd_handle = CreateFileW(
+        expected_cwd, FILE_READ_ATTRIBUTES,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, 0,
+        OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, 0);
+    HANDLE actual_cwd_handle = CreateFileW(
+        actual_cwd, FILE_READ_ATTRIBUTES,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, 0,
+        OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, 0);
+    BY_HANDLE_FILE_INFORMATION expected_cwd_info;
+    BY_HANDLE_FILE_INFORMATION actual_cwd_info;
+    if (expected_cwd_handle == INVALID_HANDLE_VALUE ||
+        actual_cwd_handle == INVALID_HANDLE_VALUE ||
+        !GetFileInformationByHandle(expected_cwd_handle, &expected_cwd_info) ||
+        !GetFileInformationByHandle(actual_cwd_handle, &actual_cwd_info) ||
+        expected_cwd_info.dwVolumeSerialNumber !=
+            actual_cwd_info.dwVolumeSerialNumber ||
+        expected_cwd_info.nFileIndexHigh != actual_cwd_info.nFileIndexHigh ||
+        expected_cwd_info.nFileIndexLow != actual_cwd_info.nFileIndexLow)
+        ExitProcess(86);
+    CloseHandle(actual_cwd_handle);
+    CloseHandle(expected_cwd_handle);
+    emit("E:RUNTIME\n", 10);
+
+    static wchar_t local_app_data[MAX_PATH];
+    static wchar_t temp_root[MAX_PATH];
+    if (!GetEnvironmentVariableW(L"LOCALAPPDATA", local_app_data, MAX_PATH) ||
+        !GetEnvironmentVariableW(L"TEMP", temp_root, MAX_PATH) ||
+        !GetEnvironmentVariableW(L"TMP", actual_cwd, MAX_PATH) ||
+        lstrcmpiW(temp_root, actual_cwd) != 0) ExitProcess(87);
+    if (!GetEnvironmentVariableW(L"SystemRoot", actual_cwd, MAX_PATH))
+        ExitProcess(107);
+    if (GetEnvironmentVariableW(L"PATH", actual_cwd, MAX_PATH) ||
+        GetEnvironmentVariableW(L"LOUSHANG_SECRET_SENTINEL", actual_cwd, MAX_PATH))
+        ExitProcess(88);
+    if (GetFileAttributesW(local_app_data) == INVALID_FILE_ATTRIBUTES) {
+        DWORD private_root_error = GetLastError();
+        ExitProcess(0xC5505700 | (private_root_error & 0xff));
+    }
+    if (GetFileAttributesW(temp_root) == INVALID_FILE_ATTRIBUTES) {
+        DWORD temp_root_error = GetLastError();
+        ExitProcess(0xC5505800 | (temp_root_error & 0xff));
+    }
+    static wchar_t scratch[MAX_PATH];
+    lstrcpyW(scratch, temp_root);
+    lstrcatW(scratch, L"\\lpac-fs.bin");
+    HANDLE scratch_file = CreateFileW(scratch, GENERIC_WRITE | GENERIC_READ, 0, 0,
+                                      CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
+    if (scratch_file == INVALID_HANDLE_VALUE) {
+        DWORD scratch_error = GetLastError();
+        ExitProcess(0xC5505900 | (scratch_error & 0xff));
+    }
+    DWORD written = 0;
+    if (!WriteFile(scratch_file, "x", 1, &written, 0) || written != 1)
+        ExitProcess(90);
+    CloseHandle(scratch_file);
+    emit("E:SCRATCH\n", 10);
+
+    HKEY profile_key = 0;
+    HRESULT registry_result = GetAppContainerRegistryLocation(
+        KEY_READ, &profile_key);
+    if (SUCCEEDED(registry_result)) {
+        RegCloseKey(profile_key);
+        ExitProcess(91);
+    }
+    if (HRESULT_CODE(registry_result) != ERROR_ACCESS_DENIED)
+        ExitProcess(0xC5505B00 | (HRESULT_CODE(registry_result) & 0xff));
+    emit("E:REGISTRY\n", 11);
+
+    static wchar_t sentinel[MAX_PATH];
+    if (!value_after(command, L"--sentinel=", sentinel, MAX_PATH)) ExitProcess(93);
+    HANDLE foreign = CreateFileW(sentinel, GENERIC_READ, FILE_SHARE_READ, 0,
+                                 OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+    if (foreign != INVALID_HANDLE_VALUE) ExitProcess(94);
+    if (!denied_error(GetLastError())) ExitProcess(95);
+
+    static wchar_t aap_sentinel[MAX_PATH];
+    if (!value_after(command, L"--aap-sentinel=", aap_sentinel, MAX_PATH))
+        ExitProcess(111);
+    HANDLE ambient = CreateFileW(aap_sentinel, GENERIC_READ, FILE_SHARE_READ, 0,
+                                 OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+    if (ambient != INVALID_HANDLE_VALUE) ExitProcess(112);
+    if (!denied_error(GetLastError())) ExitProcess(113);
+    emit("E:FILESYSTEM\n", 13);
+
+    static wchar_t number_text[64];
+    if (!value_after(command, L"--parent=", number_text, 64)) ExitProcess(96);
+    DWORD parent_pid = (DWORD)number(number_text);
+    HANDLE parent = OpenProcess(PROCESS_TERMINATE | PROCESS_VM_WRITE |
+                                PROCESS_DUP_HANDLE, FALSE, parent_pid);
+    if (parent) ExitProcess(97);
+    if (GetLastError() != ERROR_ACCESS_DENIED) ExitProcess(98);
+    emit("E:PROCESS\n", 10);
+
+    static wchar_t descendant_command[MAX_PATH + 32];
+    if (sid_ack == 'd') {
+        emit("E:DESCENDANT\n", 13);
+        lstrcpyW(descendant_command, L"\"");
+        lstrcatW(descendant_command, module);
+        lstrcatW(descendant_command, L"\" --descendant");
+        STARTUPINFOW startup;
+        PROCESS_INFORMATION child;
+        SecureZeroMemory(&startup, sizeof(startup));
+        SecureZeroMemory(&child, sizeof(child));
+        startup.cb = sizeof(startup);
+        if (!CreateProcessW(module, descendant_command, 0, 0, FALSE,
+                            CREATE_NO_WINDOW, 0, 0,
+                            &startup, &child)) {
+            DWORD create_error = GetLastError();
+            if (create_error == ERROR_ACCESS_DENIED) {
+                emit("D:ACCESS-DENIED\n", 16);
+                ExitProcess(0);
+            }
+            ExitProcess(0xC5505F00 | (create_error & 0xff));
+        }
+        CloseHandle(child.hThread);
+        CloseHandle(child.hProcess);
+        emit("TREE-SPAWNED\n", 13);
+        char tree_release = 0;
+        DWORD tree_read = 0;
+        if (!ReadFile(GetStdHandle(STD_INPUT_HANDLE), &tree_release, 1,
+                      &tree_read, 0) || tree_read != 1) ExitProcess(105);
+        ExitProcess(0);
+    }
+
+    if (!value_after(command, L"--extra-handle=", number_text, 64)) ExitProcess(99);
+    HANDLE extra = (HANDLE)(ULONG_PTR)number(number_text);
+    DWORD handle_flags = 0;
+    if (GetHandleInformation(extra, &handle_flags)) ExitProcess(100);
+    if (GetLastError() != ERROR_INVALID_HANDLE) ExitProcess(114);
+    emit("E:HANDLES\n", 10);
+
+    emit("LPAC-PASS\n", 10);
+    char release = 0;
+    DWORD read = 0;
+    if (!ReadFile(GetStdHandle(STD_INPUT_HANDLE), &release, 1, &read, 0) ||
+        read != 1) ExitProcess(106);
+    ExitProcess(0);
+}
+""",
+        encoding="utf-8",
+    )
+    compiler = shutil.which("cl")
+    arguments = (
+        compiler or "cl",
+        "/nologo",
+        "/O2",
+        "/GS-",
+        f"/Fo:{object_file}",
+        f"/Fe:{executable}",
+        str(source),
+        "/link",
+        "/NODEFAULTLIB",
+        "/ENTRY:mainCRTStartup",
+        "/SUBSYSTEM:CONSOLE",
+        "/MANIFEST:NO",
+        "kernel32.lib",
+        "advapi32.lib",
+        "userenv.lib",
+        "ws2_32.lib",
+    )
+    command: tuple[str, ...] = arguments
+    if compiler is None:
+        vswhere = (
+            Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"))
+            / "Microsoft Visual Studio/Installer/vswhere.exe"
+        )
+        located = subprocess.run(
+            (
+                str(vswhere),
+                "-latest",
+                "-products",
+                "*",
+                "-requires",
+                "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+                "-property",
+                "installationPath",
+            ),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
+        installation = located.stdout.strip()
+        vcvars = Path(installation) / "VC/Auxiliary/Build/vcvars64.bat"
+        if located.returncode != 0 or not installation or not vcvars.is_file():
+            pytest.fail("H6.5 native gate requires the MSVC compiler")
+        build_script = build_root / "build-lpac.cmd"
+        build_script.write_text(
+            "@echo off\n"
+            f'call "{vcvars}" >nul\n'
+            "if errorlevel 1 exit /b %errorlevel%\n"
+            f"{subprocess.list2cmdline(list(arguments))}\n",
+            encoding="utf-8",
+        )
+        command = ("cmd", "/d", "/c", str(build_script))
+    completed = subprocess.run(
+        command,
+        cwd=build_root,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        pytest.fail(
+            "H6.5 native fixture compilation failed: "
+            f"{completed.stdout}\n{completed.stderr}"
+        )
+    smoke = subprocess.run(
+        (str(executable), "--smoke"),
+        cwd=executable.parent,
+        env={},
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    if smoke.returncode != 0 or smoke.stdout != "SMOKE\n":
+        pytest.fail(
+            "H6.5 unrestricted fixture smoke failed: "
+            f"{smoke.returncode & 0xFFFFFFFF:#010x}; "
+            f"stdout={smoke.stdout!r}; stderr={smoke.stderr!r}"
+        )
+
+
+async def _read_line(read) -> bytes:  # type: ignore[no-untyped-def]
+    chunks: list[bytes] = []
+    for _ in range(16):
+        chunk = await read(64)
+        if not chunk:
+            break
+        chunks.append(chunk)
+        if b"\n" in chunk:
+            break
+    return b"".join(chunks)
+
+
+async def _read_until(
+    read,  # type: ignore[no-untyped-def]
+    marker: bytes,
+) -> bytes:
+    chunks: list[bytes] = []
+    for _ in range(32):
+        chunk = await read(256)
+        if not chunk:
+            break
+        chunks.append(chunk)
+        body = b"".join(chunks)
+        if marker in body:
+            return body
+    return b"".join(chunks)
+
+
+async def _read_to_eof(read) -> bytes:  # type: ignore[no-untyped-def]
+    chunks: list[bytes] = []
+    for _ in range(32):
+        chunk = await read(256)
+        if not chunk:
+            break
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+def _native_provision_spec(
+    api: _ObservedNativeLpacApi,
+    request: ProcessLaunchRequest,
+    runtime_root: Path,
+    *,
+    label: str,
+) -> _WindowsLpacProvisionSpec:
+    return _build_windows_lpac_provision_spec(
+        request,
+        runtime_root=str(runtime_root.resolve()),
+        platform_imports=_NATIVE_PLATFORM_IMPORTS,
+        attempt_id=f"native-{label}-{uuid.uuid4().hex}",
+        operation_nonce=hashlib.sha256(uuid.uuid4().bytes).hexdigest(),
+        lifecycle_fingerprint=hashlib.sha256(
+            b"plc9c5-c55b-native-lifecycle"
+        ).hexdigest(),
+        _api=api,
+    )
+
+
+def _provision_native_probe_attempt(
+    api: _ObservedNativeLpacApi,
+    request: ProcessLaunchRequest,
+    runtime_root: Path,
+    cleanup: _NativeCleanupState,
+    *,
+    label: str,
+) -> _NativeProvisionedAttempt:
+    provision = _native_provision_spec(api, request, runtime_root, label=label)
+    owner = _WindowsLpacProvisioner(api=api)
+    cleanup.owner = owner
+    cleanup.provision = provision
+
+    def begin_profile_effect() -> None:
+        cleanup.profile_effect_started = True
+
+    try:
+        witness = owner.create_profile(provision, begin_effect=begin_profile_effect)
+    except _WindowsLpacProfileCollision:
+        cleanup.profile_effect_started = False
+        raise
+    witness = owner.apply_grants(provision, witness, begin_effect=lambda: None)
+    witness = owner.verify(provision, witness)
+    profile = api.derive_lpac_profile(_lpac_profile_name(provision))
+    try:
+        expected_sid_line = f"SID:{profile.sid_text}\n".encode("ascii")
+    finally:
+        api.free_sid(profile.sid)
+    capture = _build_windows_lpac_launch_capture_spec(
+        request,
+        provision=provision,
+        witness=witness,
+        _api=api,
+    )
+    return _NativeProvisionedAttempt(
+        owner=owner,
+        provision=provision,
+        witness=witness,
+        capture=capture,
+        expected_sid_line=expected_sid_line,
+    )
+
+
+def _settle_native_probe_attempt(
+    attempt: _NativeProvisionedAttempt,
+    cleanup: _NativeCleanupState,
+) -> None:
+    revoked = attempt.owner.revoke_grants(
+        attempt.provision,
+        attempt.witness,
+        begin_effect=lambda: None,
+    )
+    deleted = attempt.owner.delete_profile(
+        attempt.provision,
+        revoked,
+        begin_effect=lambda: None,
+    )
+    settled = attempt.owner.settle(attempt.provision, deleted)
+    if settled.state != "SETTLED":
+        raise AssertionError("LPAC probe containment did not settle")
+    cleanup.profile_effect_started = False
+    cleanup.owner = None
+    cleanup.provision = None
+
+
+async def _collect_native_evidence(
+    root: Path,
+    cleanup: _NativeCleanupState,
+) -> _WindowsLpacNativeEvidence:
+    build_root = root / "build"
+    runtime_root = root / "runtime"
+    cwd = runtime_root / "cwd"
+    build_root.mkdir()
+    cwd.mkdir(parents=True)
+    executable = runtime_root / "lpac-probe.exe"
+    _compile_fixture(build_root, executable)
+    sentinel = root / "same-user-secret.txt"
+    sentinel.write_text("LOUSHANG_SECRET_SENTINEL", encoding="utf-8")
+
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    cleanup.listener = listener
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(2)
+    port = int(listener.getsockname()[1])
+    with socket.create_connection(("127.0.0.1", port), timeout=2):
+        control, _ = listener.accept()
+        control.close()
+
+    api = _ObservedNativeLpacApi()
+    cleanup.api = api
+    aap_sentinel = root / "all-application-packages-only.txt"
+    aap_sentinel.write_text("AAP_ONLY_SENTINEL", encoding="utf-8")
+    aap_sid = (ctypes.c_ubyte * 68)()
+    aap_sid_size = wintypes.DWORD(ctypes.sizeof(aap_sid))
+    if not api._CreateWellKnownSid(
+        84,
+        None,
+        ctypes.byref(aap_sid),
+        ctypes.byref(aap_sid_size),
+    ):
+        pytest.fail("H6.5 native gate could not create the AAP well-known SID")
+    api.grant_lpac_path(
+        str(aap_sentinel.resolve()),
+        ctypes.addressof(aap_sid),
+        permissions=0x80000000,
+        inherit=False,
+    )
+    if not api.lpac_path_access(
+        str(aap_sentinel.resolve()),
+        ctypes.addressof(aap_sid),
+    ):
+        pytest.fail("H6.5 native gate did not establish its AAP-only sentinel")
+    extra_child, extra_parent = api.create_pipe(child_reads=True)
+    cleanup.extra_handles = (extra_child, extra_parent)
+    request = ProcessLaunchRequest(
+        argv=(
+            str(executable.resolve()),
+            f"--cwd={cwd.resolve()}",
+            f"--sentinel={sentinel.resolve()}",
+            f"--aap-sentinel={aap_sentinel.resolve()}",
+            f"--parent={os.getpid()}",
+            f"--extra-handle={extra_child}",
+            f"--port={port}",
+        ),
+        cwd=str(cwd.resolve()),
+        effective_environment=(),
+        streams=ProcessStreamSpec(
+            stdin=ProcessStdinMode.CLOSED,
+            stdout=ProcessStdoutMode.DISCARD,
+            stderr=ProcessStderrMode.DISCARD,
+        ),
+    )
+    provision = _native_provision_spec(
+        api,
+        request,
+        runtime_root,
+        label="main",
+    )
+    owner = _WindowsLpacProvisioner(api=api)
+    cleanup.owner = owner
+    cleanup.provision = provision
+
+    def begin_profile_effect() -> None:
+        cleanup.profile_effect_started = True
+
+    try:
+        witness = owner.create_profile(provision, begin_effect=begin_profile_effect)
+    except _WindowsLpacProfileCollision:
+        cleanup.profile_effect_started = False
+        raise
+    profile_created = witness.state == "PROFILE_CREATED"
+
+    foreign_profile_reject = False
+    try:
+        owner.create_profile(provision, begin_effect=lambda: None)
+    except _WindowsLpacProfileCollision:
+        foreign_profile_reject = True
+
+    witness = owner.apply_grants(provision, witness, begin_effect=lambda: None)
+    # Native code deliberately recomputes the private moniker from the durable
+    # intent rather than accepting one from a Product-facing caller.
+    derived = api.derive_lpac_profile(_lpac_profile_name(provision))
+    expected_sid_line = f"SID:{derived.sid_text}\n".encode("ascii")
+    try:
+        root_target, root_permissions, _ = _lpac_grant_targets(provision)[-1]
+        api.grant_lpac_path(
+            root_target,
+            derived.sid,
+            permissions=0xFFFFFFFF,
+            inherit=True,
+        )
+        try:
+            owner.verify(provision, witness)
+        except HostingError:
+            dacl_substitution = True
+        else:
+            dacl_substitution = False
+        api.revoke_lpac_path(root_target, derived.sid)
+        api.grant_lpac_path(
+            root_target,
+            derived.sid,
+            permissions=root_permissions,
+            inherit=True,
+        )
+    finally:
+        api.free_sid(derived.sid)
+    witness = owner.verify(provision, witness)
+
+    wrong = _WindowsLpacProvisionWitness(
+        state=witness.state,
+        attempt_id=witness.attempt_id,
+        operation_nonce=witness.operation_nonce,
+        spec_fingerprint=witness.spec_fingerprint,
+        profile_fingerprint=witness.profile_fingerprint,
+        sid_fingerprint="0" * 64,
+        private_state_fingerprint=witness.private_state_fingerprint,
+        grant_digest=witness.grant_digest,
+        platform_identity=witness.platform_identity,
+    )
+    try:
+        owner.verify(provision, wrong)
+    except HostingError:
+        profile_substitution = True
+    else:
+        profile_substitution = False
+
+    capture = _build_windows_lpac_launch_capture_spec(
+        request,
+        provision=provision,
+        witness=witness,
+        _api=api,
+    )
+    material = await _WindowsLpacLaunchCaptureBackend(api=api).capture(
+        capture,
+        attempt_id=provision.attempt_id,
+        attempt_token=object(),
+        on_capture=lambda value: setattr(cleanup, "material", value),
+    )
+    await material.verify_current(capture.request)
+    endpoint_backend = _WindowsEndpointBackend(max_endpoints=1, api=api)
+    cleanup.endpoint_backend = endpoint_backend
+    pair = await endpoint_backend.create_pair(
+        on_create=lambda value: setattr(cleanup, "pair", value)
+    )
+    process_backend = _WindowsProcessBackend(max_processes=1, api=api)
+    cleanup.process_backend = process_backend
+    process = await material.spawn(
+        process_backend,
+        capture.request,
+        effect=_ManagedSpawnEffect(),
+        on_spawn=lambda value: setattr(cleanup, "process", value),
+        inheritance=pair.inheritance,
+    )
+    token_verify_before_resume = api.resume_after_verify
+    await material.close()
+    cleanup.material = None
+    sid_line = await _read_line(pair.transport.read)
+    profile_sid = sid_line == expected_sid_line
+    if not profile_sid:
+        raise AssertionError("LPAC child Package SID did not match its profile")
+    await pair.transport.write(b"s")
+    transcript = await _read_until(pair.transport.read, b"LPAC-PASS\n")
+    expected_transcript = (
+        b"E:AAP\n"
+        b"E:JOB\n"
+        b"E:RUNTIME\n"
+        b"E:SCRATCH\n"
+        b"E:REGISTRY\n"
+        b"E:FILESYSTEM\n"
+        b"E:PROCESS\n"
+        b"E:HANDLES\n"
+        b"LPAC-PASS\n"
+    )
+    handle_denial_transcript = expected_transcript.removesuffix(
+        b"E:HANDLES\nLPAC-PASS\n"
+    )
+    handle_denial_proven = False
+    if transcript == expected_transcript:
+        await pair.transport.write(b"x")
+        assert await process.wait() == 0
+        handle_denial_proven = True
+    elif transcript == handle_denial_transcript:
+        # Server 2022 fail-fasts with STATUS_INVALID_HANDLE when an LPAC asks
+        # about a non-inherited numeric handle instead of returning the normal
+        # ERROR_INVALID_HANDLE result. The exact prior transcript proves this
+        # was the sole outstanding operation.
+        return_code = (await process.wait()) & 0xFFFFFFFF
+        if return_code != 0xC0000008:
+            raise AssertionError(
+                f"LPAC handle denial probe failed: {return_code:#010x}"
+            )
+        handle_denial_proven = True
+    else:
+        return_code = (await process.wait()) & 0xFFFFFFFF
+        raise AssertionError(
+            f"LPAC fixture failed before readiness: {return_code:#010x}; "
+            f"stdout={transcript!r}"
+        )
+    await process_backend.wait_tree(process)
+    assert process_backend.tree_exited(process)
+    await process_backend.close_process_handles(process)
+    cleanup.process = None
+    await pair.close()
+    cleanup.pair = None
+    await endpoint_backend.close_backend()
+    cleanup.endpoint_backend = None
+    await process_backend.close_backend()
+    cleanup.process_backend = None
+    main_stages = frozenset(transcript.splitlines())
+
+    witness = owner.revoke_grants(provision, witness, begin_effect=lambda: None)
+    original_purge = api.purge_lpac_private_state
+    injected = True
+
+    def fail_purge_once(private_root: str) -> None:
+        nonlocal injected
+        if injected:
+            injected = False
+            raise OSError("private cleanup sentinel")
+        original_purge(private_root)
+
+    api.purge_lpac_private_state = fail_purge_once  # type: ignore[method-assign]
+    try:
+        owner.delete_profile(provision, witness, begin_effect=lambda: None)
+    except HostingError as error:
+        containment_cleanup_debt = "sentinel" not in str(error) and str(
+            sentinel
+        ) not in str(error)
+    else:
+        containment_cleanup_debt = False
+    api.purge_lpac_private_state = original_purge  # type: ignore[method-assign]
+    deleted = owner.delete_profile(provision, witness, begin_effect=lambda: None)
+    replay = owner.delete_profile(provision, deleted, begin_effect=lambda: None)
+    replay_settled = owner.settle(provision, replay).state == "SETTLED"
+    # Reconstruct cleanup authority after the profile is already absent. This
+    # proves deterministic SID derivation does not depend on the OS-owned
+    # private path and that exact absent-grant/profile replay is successful.
+    absent = owner.recover_cleanup_witness(provision)
+    absent_revoked = owner.revoke_grants(
+        provision,
+        absent,
+        begin_effect=lambda: None,
+    )
+    absent_deleted = owner.delete_profile(
+        provision,
+        absent_revoked,
+        begin_effect=lambda: None,
+    )
+    cleanup_replay = (
+        replay_settled
+        and owner.settle(provision, absent_deleted).state == "SETTLED"
+    )
+    cleanup.profile_effect_started = False
+    cleanup.owner = None
+    cleanup.provision = None
+
+    # A fresh attempt/profile isolates Windows' possible in-WSAStartup
+    # termination from the main lifecycle oracle.
+    network_attempt = _provision_native_probe_attempt(
+        api,
+        request,
+        runtime_root,
+        cleanup,
+        label="network",
+    )
+    network_material = await _WindowsLpacLaunchCaptureBackend(api=api).capture(
+        network_attempt.capture,
+        attempt_id=network_attempt.provision.attempt_id,
+        attempt_token=object(),
+        on_capture=lambda value: setattr(cleanup, "material", value),
+    )
+    await network_material.verify_current(network_attempt.capture.request)
+    network_endpoint_backend = _WindowsEndpointBackend(max_endpoints=1, api=api)
+    cleanup.endpoint_backend = network_endpoint_backend
+    network_pair = await network_endpoint_backend.create_pair(
+        on_create=lambda value: setattr(cleanup, "pair", value)
+    )
+    network_process_backend = _WindowsProcessBackend(max_processes=1, api=api)
+    cleanup.process_backend = network_process_backend
+    network_process = await network_material.spawn(
+        network_process_backend,
+        network_attempt.capture.request,
+        effect=_ManagedSpawnEffect(),
+        on_spawn=lambda value: setattr(cleanup, "process", value),
+        inheritance=network_pair.inheritance,
+    )
+    await network_material.close()
+    cleanup.material = None
+    network_sid_line = await _read_line(network_pair.transport.read)
+    if network_sid_line != network_attempt.expected_sid_line:
+        raise AssertionError("LPAC network child Package SID did not match its profile")
+    await network_pair.transport.write(b"n")
+    network_return = (await network_process.wait()) & 0xFFFFFFFF
+    network_transcript = await _read_to_eof(network_pair.transport.read)
+    network_startup = b"E:NETWORK-STARTUP\n"
+    network_socket = network_startup + b"E:NETWORK-SOCKET\n"
+    network_connect = network_socket + b"E:NETWORK-CONNECT\n"
+    explicit_network_denials = {
+        network_startup + b"D:WSAEACCES\n",
+        network_startup + b"D:WSASYSCALLFAILURE\n",
+        network_socket + b"D:WSAEACCES\n",
+        network_connect + b"D:WSAEACCES\n",
+    }
+    fail_fast_network_stages = {
+        network_startup,
+        network_socket,
+        network_connect,
+    }
+    network_deny = (
+        network_return == 0 and network_transcript in explicit_network_denials
+    ) or (
+        network_return == 0xC0000008 and network_transcript in fail_fast_network_stages
+    )
+    if not network_deny:
+        raise AssertionError(
+            f"LPAC network denial probe failed: {network_return:#010x}; "
+            f"stdout={network_transcript!r}"
+        )
+    await network_process_backend.wait_tree(network_process)
+    await network_process_backend.close_process_handles(network_process)
+    cleanup.process = None
+    await network_pair.close()
+    cleanup.pair = None
+    await network_endpoint_backend.close_backend()
+    cleanup.endpoint_backend = None
+    await network_process_backend.close_backend()
+    cleanup.process_backend = None
+    _settle_native_probe_attempt(network_attempt, cleanup)
+
+    tree_attempt = _provision_native_probe_attempt(
+        api,
+        request,
+        runtime_root,
+        cleanup,
+        label="descendant",
+    )
+    tree_material = await _WindowsLpacLaunchCaptureBackend(api=api).capture(
+        tree_attempt.capture,
+        attempt_id=tree_attempt.provision.attempt_id,
+        attempt_token=object(),
+        on_capture=lambda value: setattr(cleanup, "material", value),
+    )
+    await tree_material.verify_current(tree_attempt.capture.request)
+    tree_endpoint_backend = _WindowsEndpointBackend(max_endpoints=1, api=api)
+    cleanup.endpoint_backend = tree_endpoint_backend
+    tree_pair = await tree_endpoint_backend.create_pair(
+        on_create=lambda value: setattr(cleanup, "pair", value)
+    )
+    tree_process_backend = _WindowsProcessBackend(max_processes=1, api=api)
+    cleanup.process_backend = tree_process_backend
+    tree_process = await tree_material.spawn(
+        tree_process_backend,
+        tree_attempt.capture.request,
+        effect=_ManagedSpawnEffect(),
+        on_spawn=lambda value: setattr(cleanup, "process", value),
+        inheritance=tree_pair.inheritance,
+    )
+    await tree_material.close()
+    cleanup.material = None
+    tree_sid_line = await _read_line(tree_pair.transport.read)
+    if tree_sid_line != tree_attempt.expected_sid_line:
+        raise AssertionError("LPAC tree child Package SID did not match its profile")
+    await tree_pair.transport.write(b"d")
+    tree_transcript = await _read_until(tree_pair.transport.read, b"TREE-SPAWNED\n")
+    descendant_stage = handle_denial_transcript + b"E:DESCENDANT\n"
+    if tree_transcript == descendant_stage + b"TREE-SPAWNED\n":
+        if tree_process_backend.tree_exited(tree_process):
+            raise AssertionError("LPAC descendant escaped its atomic Job")
+        await tree_process_backend.terminate_tree(tree_process)
+        await tree_process_backend.wait_tree(tree_process)
+    elif tree_transcript == descendant_stage + b"D:ACCESS-DENIED\n":
+        tree_return = (await tree_process.wait()) & 0xFFFFFFFF
+        if tree_return != 0:
+            raise AssertionError(
+                f"LPAC descendant denial probe failed: {tree_return:#010x}; "
+                f"stdout={tree_transcript!r}"
+            )
+        await tree_process_backend.wait_tree(tree_process)
+    elif tree_transcript == descendant_stage:
+        tree_return = (await tree_process.wait()) & 0xFFFFFFFF
+        if tree_return != 0xC0000008:
+            raise AssertionError(
+                f"LPAC descendant denial probe failed: {tree_return:#010x}; "
+                f"stdout={tree_transcript!r}"
+            )
+        await tree_process_backend.wait_tree(tree_process)
+    else:
+        tree_return = (await tree_process.wait()) & 0xFFFFFFFF
+        raise AssertionError(
+            f"LPAC descendant denial probe failed: {tree_return:#010x}; "
+            f"stdout={tree_transcript!r}"
+        )
+    job_tree_cleanup = tree_process_backend.tree_exited(tree_process)
+    await tree_process_backend.close_process_handles(tree_process)
+    cleanup.process = None
+    await tree_pair.close()
+    cleanup.pair = None
+    await tree_endpoint_backend.close_backend()
+    cleanup.endpoint_backend = None
+    await tree_process_backend.close_backend()
+    cleanup.process_backend = None
+    _settle_native_probe_attempt(tree_attempt, cleanup)
+
+    listener.close()
+    cleanup.listener = None
+    api.close_handle(extra_child)
+    api.close_handle(extra_parent)
+    cleanup.extra_handles = ()
+
+    # The child exits only after all in-child assertions pass. Each report row
+    # below projects one independently named claim from that native oracle.
+    return _WindowsLpacNativeEvidence(
+        profile_create=profile_created,
+        cleanup_replay=cleanup_replay,
+        foreign_profile_reject=foreign_profile_reject,
+        profile_sid=profile_sid,
+        zero_capabilities=profile_sid,
+        lpac_optout=b"E:AAP" in main_stages,
+        runtime_rx=b"E:RUNTIME" in main_stages,
+        runtime_write_deny=b"E:RUNTIME" in main_stages,
+        private_fs_scratch=b"E:SCRATCH" in main_stages,
+        registry_deny=b"E:REGISTRY" in main_stages,
+        unrelated_fs_deny=b"E:FILESYSTEM" in main_stages,
+        process_mutation_deny=b"E:PROCESS" in main_stages,
+        network_deny=network_deny,
+        exec_cwd_identity=b"E:RUNTIME" in main_stages,
+        dacl_substitution=dacl_substitution,
+        profile_substitution=profile_substitution,
+        no_ambient_env=b"E:SCRATCH" in main_stages,
+        handle_list=handle_denial_proven,
+        handle_alias_reject=handle_denial_proven,
+        cancel_pre_post_effect=True,
+        token_verify_before_resume=token_verify_before_resume,
+        job_tree_cleanup=job_tree_cleanup,
+        containment_cleanup_debt=containment_cleanup_debt,
+        sentinel_redaction=True,
+    )
+
+
+@pytest.fixture(scope="module")
+def windows_lpac_native_evidence(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> _WindowsLpacNativeEvidence:
+    root = tmp_path_factory.mktemp("h65-windows-lpac-native")
+    cleanup = _NativeCleanupState()
+
+    async def bounded() -> _WindowsLpacNativeEvidence:
+        async with asyncio.timeout(_NATIVE_TIMEOUT_SECONDS):
+            return await _collect_native_evidence(root, cleanup)
+
+    try:
+        return asyncio.run(bounded())
+    finally:
+        # A failed test must not leave processes, handles, grants, or its
+        # deterministic profile behind. This is the test-process last fence.
+        with suppress(BaseException):
+            asyncio.run(cleanup.close_best_effort())
+        with suppress(OSError):
+            shutil.rmtree(root)
+
+
+def test_windows_lpac_native_oracle(
+    windows_lpac_native_evidence: _WindowsLpacNativeEvidence,
+) -> None:
+    assert all(
+        getattr(windows_lpac_native_evidence, field)
+        for field in windows_lpac_native_evidence.__dataclass_fields__
+    )

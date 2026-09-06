@@ -1,5 +1,6 @@
 """Product-neutral local Worker containment contracts."""
 
+from ._native_profile_bridge import ProductWorkerNativeProfilePort
 from .capability_query import (
     CAPABILITY_WORKER_ADMISSION_VERSION,
     CAPABILITY_WORKER_AUTHORITY_VERSION,
@@ -51,6 +52,11 @@ from .owner_selection import (
     WorkerHostingSelectionV1,
     WorkerSessionOwner,
     WorkerSessionOwnerRouter,
+)
+from .product_activation import (
+    ProductWorkerActivationAuthorityPort,
+    ProductWorkerActivationPolicyV1,
+    ProductWorkerActivationReceiptV1,
 )
 from .protocol import (
     WORKER_PROTOCOL_MAX_FRAME_BYTES,
@@ -129,6 +135,10 @@ __all__ = [
     "ManagedWorkerProcess",
     "ManagedWorkerSession",
     "ManagedWorkerSessionLaunchPort",
+    "ProductWorkerActivationAuthorityPort",
+    "ProductWorkerActivationPolicyV1",
+    "ProductWorkerActivationReceiptV1",
+    "ProductWorkerNativeProfilePort",
     "WorkerHostingActivationError",
     "WorkerHostingActivationV1",
     "WorkerHostingSelectionV1",

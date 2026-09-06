@@ -329,7 +329,35 @@ Neither may silently override a narrower implemented owner contract.
   The proposed [HOST-H6 managed preparation contract](../../hosting/managed-launch-preparation-h6.md)
   and [Hosted Product Runtime V1 plan](../../drafts/hosted-product-runtime-v1-plan.md)
   define the next mechanical and cross-scope gates; neither changes the C5
-  activation fence.
+  activation fence. The accepted
+  [PLC9C5 C5.0 Product/Native Worker Activation Baseline](plugin-lifecycle-plc9c5-c50-baseline.md)
+  and its source-backed
+  [Current inventory](plugin-lifecycle-plc9c5-c50-inventory.md) split C5 into
+  receipt/lifecycle, Linux native, Windows mechanics/rejection, and Linux
+  Product-convergence slices. C5.0 itself is design/guards only: every runtime
+  route remains default-dark and Product activation remains absent.
+- [PLC9C5 C5.1 Product Worker Receipt And Lifecycle Contract](plugin-lifecycle-plc9c5-c51-contract.md)
+  implements the authority-free policy/receipt join, synchronous serialized
+  freshness gate, deterministic publication/retirement lifecycle, durable
+  settlement/debt, and restart latch. It retains default Current and adds no
+  native bridge or production Product composition.
+- [PLC9C5 C5.2 Linux Native Profile Binding](plugin-lifecycle-plc9c5-c52-linux-native.md)
+  adds the single request-bound POSIX contained-profile friend, exact
+  policy/execution closure evidence, non-WSL Linux x86_64 rejection gate, and
+  retained native report. It remains default-dark and has no Product consumer.
+- [PLC9C5 C5.3 Windows Mechanics And Product Rejection](plugin-lifecycle-plc9c5-c53-windows-mechanics.md)
+  adds one Hosting-private OS-sourced trusted-payload builder, retains the
+  restricted-token/Job/handle-list mechanics report, and proves explicit
+  Product required-containment rejection. Windows activation remains closed.
+- [PLC9C5 C5.4 Linux Coding Product Canary](plugin-lifecycle-plc9c5-c54-linux-product.md)
+  composes the one explicit Linux Coding canary over the retained Worker and
+  Hosting capabilities, joins stable Session and shared-entrypoint evidence,
+  and closes ordered rollback/recovery and publication evidence. Current stays
+  default and G7 remains open on Windows.
+- [PLC9C5 C5.5 Windows Required-Containment Baseline](plugin-lifecycle-plc9c5-c55-windows-containment.md)
+  freezes the LPAC threat model, immutable-material-versus-attempt lifetime,
+  sole-writer boundaries, native/Product evidence matrices, and the C5.5a--c
+  rollout. C5.5a is design-only; Windows activation remains closed.
 - [Plugin Authoring Guide](plugin-authoring-guide.md) documents the minimum
   stable Provider, Skill package, validation, and developer-conformance flows.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)
@@ -367,6 +395,7 @@ public SDK shape cannot be inferred from them.
 - [PLC1A Baseline](plugin-lifecycle-plc1a-baseline.md)
 - [PLC9.0 Baseline](plugin-lifecycle-plc9-baseline.md)
 - [PLC9.0 Owner And Peer Inventory](plugin-lifecycle-plc9-inventory.md)
+- [PLC9C5 C5.0 Current Product/Native Worker Inventory](plugin-lifecycle-plc9c5-c50-inventory.md)
 - [Resource Catalog RCP0 Baseline](resource-catalog-rcp0-baseline.md)
 
 Baselines freeze source and authority facts required by later contracts. Review

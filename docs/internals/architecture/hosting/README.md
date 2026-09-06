@@ -51,6 +51,10 @@ Windows AMD64 PE/restricted-token/Job profile with retained native evidence.
 H6.4 adds the private Harness Worker managed-preparation bridge and a
 fake-backed H5 semantic parity matrix. It supplies no native Worker profile,
 changes no runtime owner or public API, and H5 remains dark.
+The accepted design-only
+[H6.5 Windows LPAC design](managed-launch-preparation-h65-windows-lpac.md)
+separates Product-neutral LPAC provisioning from per-attempt native ownership;
+native implementation is absent and Windows Product activation remains closed.
 
 Current process mechanics remain implemented inside Harness, principally by:
 
