@@ -8,7 +8,7 @@
 - Parent: `HOSTED-PRODUCT-RUNTIME-V1`
 - Authority: normative accepted design
 - Design status: accepted
-- Implementation status: partial — G9.0--G9.3 implemented; G9.4 remains
+- Implementation status: implemented — G9.0--G9.4 complete and promoted
 - Activation status: default-dark; omitted Worker owner remains Current
 - Owner: Loushang architecture with AppHost, Product, Harness, and Hosting
   boundary review
@@ -39,9 +39,9 @@ transport, serialized launcher, live process adoption, or a second Product.
 
 | Plane | State |
 | --- | --- |
-| Facts | AppHost A0.1--A0.4, G8, and G9.0--G9.3 are implemented. `src/loushang/coding/apphost_product.py` remains the sole concrete Product/Worker join; `src/loushang/coding/apphost_composition.py` is its sole explicit installed AppHost composition owner; the accepted G9.3 decision retains Current. |
+| Facts | AppHost A0.1--A0.4, G8, and G9.0--G9.4 are implemented and available on `main`. `src/loushang/coding/apphost_product.py` remains the sole concrete Product/Worker join; `src/loushang/coding/apphost_composition.py` is its sole explicit installed AppHost composition owner; the accepted G9.3 decision retains Current. |
 | Current | Existing Coding CLI/TUI composition remains authoritative. `WorkerHostingActivationV1()` and omitted activation select `owner="current"`; a selected launch never falls back to the other owner within the attempt. |
-| Target | Reconcile the architecture and promote the default-dark capability. The accepted G9.3 `RETAIN` decision remains authoritative unless a separate successor deletion decision proves every admission condition. |
+| Target | Closed for G9: the default-dark capability is promoted and the accepted G9.3 `RETAIN` decision remains authoritative unless a separate successor deletion decision proves every admission condition. |
 | G9.1--G9.2 delta | Add the one Product-owned explicit composition facade, source-backed entrypoint inventory, retryable rollback settlement, exact offline drill, and separate Linux/Windows evidence identities. Existing bootstrap/CLI/TUI omission paths, owner selection, native profiles, and Current remain unchanged. |
 | G9.3 delta | Expand the source-backed inventory across every installed/supported CLI, TUI, SDK, AppServer, hosted, and mux disposition; record `RETAIN`; retain every unmet deletion condition as an explicit gap. |
 
@@ -284,7 +284,7 @@ implied by this list.
 | G9.1 | implemented sole Product-owned installed composition root and explicit opt-in entrypoint mapping | exact dependency allowlist, one process owner, uncomposed omission path, cross-entrypoint deterministic tests |
 | G9.2 | implemented offline rollback/crash-recovery drill, evidence manifest, Linux/Windows report identities, and retained C5/G8 links | every exact case passes without required skip; cleanup and stale-owner inventories are empty |
 | G9.3 | implemented source-backed entrypoint inventory and accepted Current-owner `RETAIN` record | every condition has evidence or is an explicit retained gap; deletion remains a dedicated successor decision and change |
-| G9.4 | architecture reconciliation and `lane/harness -> main` promotion | exact-head remote gates pass; main contains capability without implicit activation |
+| G9.4 | implemented architecture reconciliation and `lane/harness -> main` promotion | exact-head remote gates passed; main contains capability without implicit activation |
 
 ## Traceability
 
@@ -314,11 +314,11 @@ Live adoption of a surviving process remains forbidden. A crash may recover by
 confirming the prior tree reaped or by fencing/terminating it; uncertain
 ownership fails closed.
 
-## G9.3 Architecture Guards
+## G9.4 Architecture Guards
 
 Executable tests must prove that:
 
-- this accepted design and its G9.3 status are indexed by the AppHost scope and
+- this accepted design and its complete G9 status are indexed by the AppHost scope and
   common-parent delivery plan;
 - the exact target production composition module exists with only the accepted
   AppHost-public and Coding Product adapter dependencies;
@@ -336,18 +336,22 @@ Executable tests must prove that:
   report identities; and
 - the accepted decision contains exactly one `RETAIN` conclusion, evaluates all
   eight deletion conditions, and preserves the default-Current and no-fallback
-  fences.
+  fences; and
+- the immutable promotion record names PR #556, the exact lane head, the main
+  merge commit, and successful AppHost, Harness, Hosting, architecture, Linux,
+  and Windows workflow run identities.
 
-G9.4 replaces only its own promotion guards after exact-head evidence exists.
-G9.3 does not relax AppHost core, Harness-to-AppHost,
+G9.4 does not relax AppHost core, Harness-to-AppHost,
 Hosting-to-Product, default-Current, or same-attempt fallback fences.
 
-## G9.3 Exit Gate
+## G9.4 Exit Gate
 
-G9.3 is complete when the expanded entrypoint inventory, accepted `RETAIN`
-record, eight-condition audit, parent status updates, and architecture guards
-pass; and a three-view review has no unresolved high or medium finding.
+G9 is complete because the expanded entrypoint inventory, accepted `RETAIN`
+record, eight-condition audit, parent reconciliation, and architecture guards
+pass; the exact lane head passed every required Linux and Windows gate and is
+reachable from `main`; and the three-view review has no unresolved high or
+medium finding.
 
-Passing G9.3 permits the separate G9.4 promotion. It grants no production
+Passing G9.4 grants capability availability only. It grants no production
 activation, omitted-owner change, Current deletion, live/native test waiver,
-or implicit main promotion.
+AppServer/AppService authority, or mux implementation.

@@ -112,8 +112,8 @@ AppService, server runtime, or Hosting mechanics into AppHost. The accepted
 composition, activation, omitted-owner policy, Current deletion, and main
 promotion independent decisions. G9.1--G9.2 implement the sole explicit Coding
 composition and rollback/crash drill; G9.3 accepts a source-backed `RETAIN`
-decision without changing the Current route. G9.4 remains the independent
-lane-to-main promotion gate.
+decision without changing the Current route. G9.4 independently promotes the
+capability to `main` while preserving default-dark activation.
 
 A nested scope is not automatically a top-level subsystem. The parent owns its
 placement, composition policy, and sibling relationships; the child owns its

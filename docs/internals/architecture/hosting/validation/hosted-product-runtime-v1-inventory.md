@@ -105,7 +105,7 @@ boundaries, not implemented routes.
 | exact Linux executable/cwd/containment transfer | Hosting platform adapter with caller-owned requirements | implemented for the private static-closure profiles; H6.2 retained native adversarial oracle remains green |
 | exact Windows executable/cwd/containment transfer | Hosting platform adapter with caller-owned requirements | implemented for one private restricted-token/direct-import PE mechanics profile; the non-skippable H6.3 native adversarial oracle must remain green |
 | Harness-to-Hosting managed preparation parity | Harness Sandbox/Worker adapter over Hosting | H6.4 semantic/cleanup parity and the exact C5.2/C5.5b native bridges are implemented; C5.4/C5.5c are their Product consumers and default stays Current |
-| Product catalog, no-default routing, scoped runtime lifetime | AppHost | implemented through G9.3: one canonical live binding retains exact generation/profile ownership, the Coding-owned adapter joins an exact Worker attempt, the sole explicit composition retains the process owner, and the source-backed decision retains Current without changing omission semantics |
+| Product catalog, no-default routing, scoped runtime lifetime | AppHost | implemented and promoted through G9.4: one canonical live binding retains exact generation/profile ownership, the Coding-owned adapter joins an exact Worker attempt, the sole explicit composition retains the process owner, and the source-backed decision retains Current without changing omission semantics |
 | Session pre-routing identity | AppHost schema plus canonical Session persistence/catalog owner | A0.2 fake owner proves atomic creation/recovery; real canonical envelope persistence remains uncomposed |
 | AppHost cwd/user-global Session projection | AppHost-owned optional integration over the existing Harness Session discovery/catalog owner | A0.2 proves explicit source binding, stable source identity, alias/conflict, an unchanged bounded descriptor read sealed into immutable bytes, no token-to-path behavior, and Windows fail-closed semantics |
 | Product/native Worker activation | Product/Harness composition and domain owner | PLC9C5 Linux/Windows canaries plus G8 receipt/recovery/normal-close join are implemented and retained default-dark; G9 owns closure/retention decisions |
@@ -129,8 +129,8 @@ The inventory records, rather than relaxes, these Current fences:
   AppService remains absent; and
 - `src/loushang/coding/apphost_composition.py` and its 13-case Linux/Windows
   evidence implement G9.1--G9.2 without changing omission; G9.3 records the
-  accepted `RETAIN` decision and explicit unmet deletion gaps; G9.4 still owns
-  promotion; and
+  accepted `RETAIN` decision and explicit unmet deletion gaps; G9.4 promotes
+  the capability to `main` default-dark on the retained exact head; and
 - Hosting imports no Harness, Product, AppHost, AppServer, or AppService
   package.
 
