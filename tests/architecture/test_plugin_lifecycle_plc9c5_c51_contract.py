@@ -28,6 +28,7 @@ IMPLEMENTATION = WORKER_ROOT / "product_activation.py"
 NATIVE_BRIDGE = WORKER_ROOT / "_native_profile_bridge.py"
 CODING_CANARY = Path("src/loushang/coding/_product_worker_canary.py")
 CODING_APPHOST_PRODUCT = Path("src/loushang/coding/apphost_product.py")
+CODING_APPHOST_CANARY = Path("src/loushang/coding/apphost_canary.py")
 CONTRACT_TEST = Path("tests/harness/worker/test_product_activation.py")
 VERIFIER = Path("scripts/dev/verify_plc9c5_manifest.py")
 VERIFIER_TEST = Path("tests/dev/test_verify_plc9c5_manifest.py")
@@ -623,7 +624,12 @@ def test_c51_has_only_the_accepted_c54_and_g8_consumers() -> None:
             or any(name in text for name in C51_IMPLEMENTATION_NAMES)
         ):
             consumers.add(path)
-    assert consumers == {NATIVE_BRIDGE, CODING_CANARY, CODING_APPHOST_PRODUCT}
+    assert consumers == {
+        NATIVE_BRIDGE,
+        CODING_CANARY,
+        CODING_APPHOST_PRODUCT,
+        CODING_APPHOST_CANARY,
+    }
     for path in WORKER_ROOT.rglob("*.py"):
         if path in {IMPLEMENTATION, WORKER_FACADE, NATIVE_BRIDGE}:
             continue

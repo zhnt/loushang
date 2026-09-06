@@ -352,6 +352,16 @@ def resolve_machine_resource_layout(
             "Plugin lifecycle authority only; never generic cleanup",
         ),
         MachineResourcePath(
+            "coding.apphost_canary.control",
+            paths.state
+            / "products"
+            / "coding"
+            / "apphost-explicit-canary-control.jsonl",
+            "durable_machine_state",
+            "canonical",
+            "Coding Product canary control only; never generic cleanup",
+        ),
+        MachineResourcePath(
             "cache.global",
             paths.cache,
             "reproducible_cache",

@@ -75,6 +75,7 @@ CURRENT_SOURCE_SEAMS = (
     HARNESS_SOURCE / "machine_resources/control_plane.py",
     Path("src/loushang/coding/cli/__main__.py"),
     Path("src/loushang/coding/_product_worker_canary.py"),
+    Path("src/loushang/coding/apphost_canary.py"),
     Path("src/loushang/coding/apphost_composition.py"),
     Path("src/loushang/coding/apphost_product.py"),
 )
@@ -169,13 +170,9 @@ def test_baseline_documents_are_status_honest_and_indexed() -> None:
         },
         APPHOST_A0: {
             "ID": "APPHOST-A0",
-            "Authority": (
-                "historical — refined by the canonical A0 Contract Model"
-            ),
+            "Authority": ("historical — refined by the canonical A0 Contract Model"),
             "Design status": "accepted and promoted",
-            "Implementation status": (
-                "implemented through A0.4; A0.5 not started"
-            ),
+            "Implementation status": ("implemented through A0.4; A0.5 not started"),
             "Activation status": (
                 "default-dark; no production AppHost composition route"
             ),
@@ -184,9 +181,9 @@ def test_baseline_documents_are_status_honest_and_indexed() -> None:
             "ID": "HOSTED-PRODUCT-RUNTIME-V1",
             "Authority": "normative accepted delivery contract",
             "Design status": "accepted",
-            "Implementation status": (
-                "implemented — G0H through G9 complete and G9 promoted"
-            ),
+                "Implementation status": (
+                    "implemented — G0H through G10 complete"
+                ),
             "Production activation": "closed",
         },
     }
@@ -368,7 +365,10 @@ def test_apphost_a0_requires_explicit_identity_and_scoped_lifetimes() -> None:
     )
     assert "`loushang.hosting` implements Product-neutral process" in placement
     assert "mechanics through H4; the Harness-owned H5 Worker adapter" in placement
-    assert "At that time there was no `loushang.apphost`, `loushang.appserver`, or" in placement
+    assert (
+        "At that time there was no `loushang.apphost`, `loushang.appserver`, or"
+        in placement
+    )
     assert "`loushang.appservice` source package" in placement
     for discovery_root in (
         "current-directory and user-global discovery scopes",
@@ -384,9 +384,7 @@ def test_apphost_a0_requires_explicit_identity_and_scoped_lifetimes() -> None:
     ):
         assert reuse_contract in contract_boundary
 
-    assert _table_first_column(
-        _section(baseline, "Planned Conformance Inventory")
-    ) == (
+    assert _table_first_column(_section(baseline, "Planned Conformance Inventory")) == (
         "A0-CATALOG",
         "A0-TWO-PRODUCTS",
         "A0-NO-DEFAULT",
@@ -465,28 +463,26 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "loushang.appservice",
     )
     assert not any(
-        imported.startswith(forbidden_hosting_prefixes)
-        for imported in hosting_imports
+        imported.startswith(forbidden_hosting_prefixes) for imported in hosting_imports
     )
 
     reverse_apphost_consumers = {
         path
         for path in Path("src/loushang").rglob("*.py")
         if not path.is_relative_to(APPHOST_SOURCE)
-        if any(
-            imported.startswith("loushang.apphost") for imported in _imports(path)
-        )
+        if any(imported.startswith("loushang.apphost") for imported in _imports(path))
     }
     assert reverse_apphost_consumers == {
+        Path("src/loushang/coding/apphost_canary.py"),
         Path("src/loushang/coding/apphost_composition.py"),
-        Path("src/loushang/coding/apphost_product.py")
+        Path("src/loushang/coding/apphost_product.py"),
     }
     retained_fences = " ".join(_section(inventory, "Retained Fences").split())
     for statement in (
         "H5 default owner is Current",
         "PLC9C5 C5.0--C5.5c are implemented",
         "Windows LPAC Product activation is implemented and retained",
-            "AppHost G9 remains explicitly selected and dark",
+        "AppHost G9 remains explicitly selected and default-dark",
         "Hosting imports no Harness, Product, AppHost, AppServer, or AppService",
     ):
         assert statement in retained_fences
@@ -541,17 +537,22 @@ def test_delivery_plan_has_parallel_streams_and_one_activation_join() -> None:
         "G7",
         "G8",
         "G9",
+        "G10",
     )
     assert "G2L, G2W, and G3 should proceed in parallel after G1" in normalized
     assert "G4--G6 may proceed in parallel with G1--G3" in normalized
     assert "G0H and G0A are independently accepted gates" in normalized
     assert "G7 is the first Hosting/Harness activation join" in normalized
-    assert "G8 now implements the first join between the AppHost and Worker rails" in normalized
+    assert (
+        "G8 now implements the first join between the AppHost and Worker rails"
+        in normalized
+    )
     workstreams = _section(plan, "Workstreams And Dependency Gates")
     g7 = next(line for line in workstreams.splitlines() if line.startswith("| G7 |"))
     assert "G2L + G2W + G3" in g7
     assert "G5" not in g7 and "G6" not in g7 and "AppHost" not in g7
     assert "| G8 | AppHost + Product/Harness" in workstreams
+    assert "| G10 | Coding/AppHost/Hosting installed canary" in workstreams
     assert "no environment variable, platform auto-detection, or missing" in normalized
     assert "never retry the other owner within one launch attempt" in normalized
 
@@ -592,9 +593,7 @@ def test_plc9c5_and_h5_activation_fences_are_unchanged() -> None:
         "Until the owning PLC9C5 C5.1--C5.4 slice intentionally revises each exact"
         in normalized_plc9c
     )
-    assert (
-        "PLC9C4 -> PLC9C5 C5.0 | remove no runtime guard"
-    ) in normalized_plc9c
+    assert ("PLC9C4 -> PLC9C5 C5.0 | remove no runtime guard") in normalized_plc9c
     assert "C5.0 removes no runtime guard" in " ".join(plan.split())
     assert "they do not revise this activation guard" in normalized_plc9c
     assert "the PLC9C5 Product-activation/platform absence guard remains intact" in h6
