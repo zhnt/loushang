@@ -5,6 +5,7 @@
 [A0 Contract Model](contract-model-a0.md) ·
 [G8 Product/Worker Join](product-worker-join-g8.md) ·
 [G9 V1 Closure](hosted-product-v1-closure-g9.md) ·
+[G9.3 Current Owner Decision](current-worker-owner-decision-g9.md) ·
 [Hosted Product Runtime V1 Plan](../drafts/hosted-product-runtime-v1-plan.md)
 
 ## Status
@@ -13,7 +14,7 @@
 - Parent: `loushang`
 - Authority: normative — accepted AppHost scope boundary
 - Design status: accepted
-- Implementation status: partial — implemented through G9.2; G9.3--G9.4 remain
+- Implementation status: partial — implemented through G9.3; G9.4 remains
 - Activation status: default-dark; the explicit composition is installed but no
   existing launcher, CLI, TUI, AppService, or AppServer route selects it
 - Owner: Loushang AppHost architecture
@@ -92,9 +93,10 @@ uncomposed and grants no activation authority by itself.
 
 The accepted [G9 V1 Closure](hosted-product-v1-closure-g9.md) separates installed
 composition, explicit activation, omitted-owner policy, Current deletion
-decision, and main promotion. G9.1--G9.2 implement the first two capability
-rows and the rollback/crash drill without changing any Current source or route;
-omission remains Current.
+decision, and main promotion. G9.1--G9.2 implement the explicit composition and
+rollback/crash drill; the accepted G9.3 decision retains Current after a
+source-backed entrypoint and eight-condition deletion audit. No Current source
+or route changes, and omission remains Current.
 
 ## Target
 
