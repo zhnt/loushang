@@ -108,9 +108,10 @@ profile lifecycle, the optional hosted binder over AppServer-owned
 contract-only structural ports, and one Coding-owned exact-receipt Product
 integration. It remains default-dark and does not move Product semantics,
 AppService, server runtime, or Hosting mechanics into AppHost. The accepted
-[G9 closure](apphost/hosted-product-v1-closure-g9.md) now makes installed
+[G9 closure](apphost/hosted-product-v1-closure-g9.md) makes installed
 composition, activation, omitted-owner policy, Current deletion, and main
-promotion independent decisions; G9.0 changes no Current route.
+promotion independent decisions. G9.1--G9.2 implement the sole explicit Coding
+composition and rollback/crash drill without changing the Current route.
 
 A nested scope is not automatically a top-level subsystem. The parent owns its
 placement, composition policy, and sibling relationships; the child owns its

@@ -1,0 +1,45 @@
+{
+  "manifestVersion": 1,
+  "reports": {
+    "HOSTED-PRODUCT-G9-LINUX": {
+      "junitPath": ".artifacts/hosted-product-g9-linux.xml",
+      "minimumTests": 13,
+      "requiredCaseIds": [
+        "G9-COMPOSE-EXPLICIT",
+        "G9-OMISSION-CURRENT",
+        "G9-ROLLBACK-BEFORE-EFFECT",
+        "G9-ROLLBACK-INFLIGHT-STICKY",
+        "G9-ROLLBACK-NO-FALLBACK",
+        "G9-ROLLBACK-DRAIN-ORDER",
+        "G9-CRASH-RECOVERY",
+        "G9-CLEANUP-DEBT-RETRY",
+        "G9-MULTIPROFILE-SINGLE-FLIGHT",
+        "G9-MULTISESSION-ISOLATION",
+        "G9-RESTART-GENERATION",
+        "G9-ENTRYPOINT-INVENTORY",
+        "G9-DEPENDENCY-GRAPH"
+      ],
+      "status": "implemented"
+    },
+    "HOSTED-PRODUCT-G9-WINDOWS": {
+      "junitPath": ".artifacts/hosted-product-g9-windows.xml",
+      "minimumTests": 13,
+      "requiredCaseIds": [
+        "G9-COMPOSE-EXPLICIT",
+        "G9-OMISSION-CURRENT",
+        "G9-ROLLBACK-BEFORE-EFFECT",
+        "G9-ROLLBACK-INFLIGHT-STICKY",
+        "G9-ROLLBACK-NO-FALLBACK",
+        "G9-ROLLBACK-DRAIN-ORDER",
+        "G9-CRASH-RECOVERY",
+        "G9-CLEANUP-DEBT-RETRY",
+        "G9-MULTIPROFILE-SINGLE-FLIGHT",
+        "G9-MULTISESSION-ISOLATION",
+        "G9-RESTART-GENERATION",
+        "G9-ENTRYPOINT-INVENTORY",
+        "G9-DEPENDENCY-GRAPH"
+      ],
+      "status": "implemented"
+    }
+  }
+}

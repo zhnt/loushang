@@ -1,0 +1,29 @@
+{
+  "entries": [
+    {
+      "disposition": "explicit-hosting",
+      "entrypointId": "coding.apphost.composition",
+      "importsComposition": true,
+      "source": "src/loushang/coding/apphost_composition.py"
+    },
+    {
+      "disposition": "current-only",
+      "entrypointId": "coding.bootstrap",
+      "importsComposition": false,
+      "source": "src/loushang/coding/bootstrap.py"
+    },
+    {
+      "disposition": "current-only",
+      "entrypointId": "coding.cli",
+      "importsComposition": false,
+      "source": "src/loushang/coding/cli/__main__.py"
+    },
+    {
+      "disposition": "current-only",
+      "entrypointId": "coding.tui",
+      "importsComposition": false,
+      "source": "src/loushang/coding/ui/cli.py"
+    }
+  ],
+  "inventoryVersion": 1
+}

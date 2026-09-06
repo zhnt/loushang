@@ -75,6 +75,7 @@ CURRENT_SOURCE_SEAMS = (
     HARNESS_SOURCE / "machine_resources/control_plane.py",
     Path("src/loushang/coding/cli/__main__.py"),
     Path("src/loushang/coding/_product_worker_canary.py"),
+    Path("src/loushang/coding/apphost_composition.py"),
     Path("src/loushang/coding/apphost_product.py"),
 )
 
@@ -183,7 +184,9 @@ def test_baseline_documents_are_status_honest_and_indexed() -> None:
             "ID": "HOSTED-PRODUCT-RUNTIME-V1",
             "Authority": "normative target proposal",
             "Design status": "proposed",
-                "Implementation status": "implemented through G8; G9 closure remains",
+            "Implementation status": (
+                "partial — implemented through G9.2; G9.3--G9.4 remain"
+            ),
             "Production activation": "closed",
         },
     }
@@ -475,6 +478,7 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         )
     }
     assert reverse_apphost_consumers == {
+        Path("src/loushang/coding/apphost_composition.py"),
         Path("src/loushang/coding/apphost_product.py")
     }
     retained_fences = " ".join(_section(inventory, "Retained Fences").split())
@@ -482,7 +486,7 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "H5 default owner is Current",
         "PLC9C5 C5.0--C5.5c are implemented",
         "Windows LPAC Product activation is implemented and retained",
-        "AppHost G8 remains explicitly constructed and dark",
+            "AppHost G9 remains explicitly selected and dark",
         "Hosting imports no Harness, Product, AppHost, AppServer, or AppService",
     ):
         assert statement in retained_fences

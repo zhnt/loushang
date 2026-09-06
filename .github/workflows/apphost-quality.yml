@@ -26,15 +26,17 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --extra dev
 
-      - name: Lint AppHost G8
+      - name: Lint AppHost G8 and G9
         run: >-
           uv run --extra dev ruff check
           src/loushang/apphost
           src/loushang/appserver
           src/loushang/coding/_product_worker_canary.py
+          src/loushang/coding/apphost_composition.py
           src/loushang/coding/apphost_product.py
           scripts/dev/verify_evidence_manifest.py
           tests/apphost
+          tests/coding/test_apphost_composition.py
           tests/coding/test_apphost_product.py
           tests/dev/test_verify_evidence_manifest.py
           tests/harness/worker/test_coding_product_worker_canary.py
@@ -42,25 +44,29 @@ jobs:
           tests/architecture/test_apphost_a02_architecture.py
           tests/architecture/test_apphost_a03_a04_architecture.py
           tests/architecture/test_hosted_product_runtime_g8_join.py
+          tests/architecture/test_hosted_product_runtime_g9_closure.py
 
-      - name: Typecheck AppHost G8
+      - name: Typecheck AppHost G8 and G9
         run: >-
           uv run --extra dev mypy --follow-imports=silent
           src/loushang/apphost
           src/loushang/appserver
           src/loushang/coding/_product_worker_canary.py
+          src/loushang/coding/apphost_composition.py
           src/loushang/coding/apphost_product.py
 
-      - name: Test AppHost G8
+      - name: Test AppHost G8 and G9
         run: >-
           uv run --extra dev python scripts/dev/run_pytest.py
           tests/apphost
+          tests/coding/test_apphost_composition.py
           tests/coding/test_apphost_product.py
           tests/dev/test_verify_evidence_manifest.py
           tests/architecture/test_apphost_a0_contract.py
           tests/architecture/test_apphost_a02_architecture.py
           tests/architecture/test_apphost_a03_a04_architecture.py
           tests/architecture/test_hosted_product_runtime_g8_join.py
+          tests/architecture/test_hosted_product_runtime_g9_closure.py
           -q
 
       - name: Retain Hosted Product G8 evidence
@@ -76,6 +82,20 @@ jobs:
         with:
           name: hosted-product-g8-linux-junit
           path: .artifacts/hosted-product-g8.xml
+          if-no-files-found: error
+
+      - name: Retain Hosted Product G9 Linux evidence
+        run: |
+          uv run --extra dev python scripts/dev/run_pytest.py tests/coding/test_apphost_composition.py -q --junitxml=.artifacts/hosted-product-g9-linux.xml
+          uv run --extra dev python scripts/dev/verify_pytest_xml.py .artifacts/hosted-product-g9-linux.xml
+          uv run --extra dev python scripts/dev/verify_evidence_manifest.py docs/internals/architecture/apphost/hosted-product-g9-evidence-manifest.json HOSTED-PRODUCT-G9-LINUX .artifacts/hosted-product-g9-linux.xml
+
+      - name: Upload Hosted Product G9 Linux JUnit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hosted-product-g9-linux-junit
+          path: .artifacts/hosted-product-g9-linux.xml
           if-no-files-found: error
 
   apphost-windows-native-gate:
@@ -103,6 +123,12 @@ jobs:
           uv run --extra dev python scripts/dev/run_pytest.py tests/coding/test_apphost_product.py --junitxml=.artifacts/hosted-product-g8.xml -q
           uv run --extra dev python scripts/dev/verify_pytest_xml.py .artifacts/hosted-product-g8.xml
           uv run --extra dev python scripts/dev/verify_evidence_manifest.py docs/internals/architecture/apphost/hosted-product-g8-evidence-manifest.json HOSTED-PRODUCT-G8-JOIN .artifacts/hosted-product-g8.xml
+      - name: Prove G9 composition and rollback drill on Windows
+        shell: pwsh
+        run: |
+          uv run --extra dev python scripts/dev/run_pytest.py tests/coding/test_apphost_composition.py --junitxml=.artifacts/hosted-product-g9-windows.xml -q
+          uv run --extra dev python scripts/dev/verify_pytest_xml.py .artifacts/hosted-product-g9-windows.xml
+          uv run --extra dev python scripts/dev/verify_evidence_manifest.py docs/internals/architecture/apphost/hosted-product-g9-evidence-manifest.json HOSTED-PRODUCT-G9-WINDOWS .artifacts/hosted-product-g9-windows.xml
       - name: Upload native gate JUnit
         if: always()
         uses: actions/upload-artifact@v4
@@ -111,4 +137,5 @@ jobs:
           path: |
             .artifacts/apphost-harness-windows.xml
             .artifacts/hosted-product-g8.xml
+            .artifacts/hosted-product-g9-windows.xml
           if-no-files-found: error

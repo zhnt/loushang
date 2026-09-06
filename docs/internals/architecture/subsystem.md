@@ -146,15 +146,15 @@ delivery profile 选择，以及进程级 admission fence 和有序释放。
 
 A0.4 当前实现标准库-only core contracts、catalog/router、每 Session canonical
 live registry、embedded profile 生命周期，以及可选 hosted structural-port
-binder。G8 增加 Coding-owned、default-dark 的 Product/Worker join；它使用
-AppHost public facade 和精确 Worker receipt，但未接入现有入口。系统仍没有
-launcher、AppService/AppServer runtime 或 production composition；现有 Coding
-CLI/TUI 路径不依赖 AppHost。
+binder。G8 增加 Coding-owned、default-dark 的 Product/Worker join；G9.1--G9.2
+增加唯一的显式 Product composition 与 rollback/crash 演练。现有 Coding
+bootstrap/CLI/TUI 路径仍不依赖 AppHost；系统仍没有 launcher 或
+AppService/AppServer runtime。
 
-G9.0 已接受 V1 收口边界，但不改变上述 Current：Product-owned 显式组合、
-运行级 rollback/crash 演练、Current owner 的 `RETAIN`/`DELETE` 决议，以及
-`lane/harness -> main` 晋升是四个独立控制点；合并不推导激活，激活也不推导
-删除 Current。
+G9.0 已接受 V1 收口边界，G9.1--G9.2 已实现显式组合和运行级
+rollback/crash 演练，但不改变上述 Current。Current owner 的
+`RETAIN`/`DELETE` 决议与 `lane/harness -> main` 晋升仍是两个后续独立控制点；
+合并不推导激活，激活也不推导删除 Current。
 
 AppHost core 不依赖 Harness、Hosting、AppServer、AppService、UI framework 或
 具体 Product。可选 `apphost.hosted` 是唯一面向 AppServer contract-only

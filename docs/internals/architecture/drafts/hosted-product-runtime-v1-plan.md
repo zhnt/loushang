@@ -7,8 +7,7 @@
 - Parent: none
 - Authority: normative target proposal
 - Design status: proposed
-- Implementation status: partial — implemented through G8; G9.0 closure design
-  accepted and G9.1--G9.4 remain
+- Implementation status: partial — implemented through G9.2; G9.3--G9.4 remain
 - Production activation: closed
 - Owner: Loushang architecture
 
@@ -79,7 +78,7 @@ Product selection, authority, protocol health, or generation publication.
 | G6 | AppHost | implemented A0.3 canonical live-binding lifecycle and embedded profile plus A0.4 optional contract-only hosted binder | G5 | multi-Session and multi-profile single-flight attach/detach/cancellation/deadline/shutdown matrix; exact AppServer port identity; no listener, transport, protocol, service runtime, or production consumer |
 | G7 | Product/Harness | implemented PLC9C5 C5.0--C5.5c receipt/lifecycle, Linux native/Product, retained Windows restricted-mechanics rejection, and Windows LPAC native/Product containment | G2L + G2W + G3 | closed by the retained Linux reports plus separate zero-skip C5.5 native and Product reports proving Windows required containment, cross-entrypoint, recovery, rollback, and no-fallback behavior |
 | G8 | AppHost + Product/Harness | implemented G8.0--G8.3 default-dark Product-neutral end-to-end join | G6 + G7 | exact Worker receipt/recovery/normal-close join, unrelated Worker-free Product, multi-profile/Session, fault and retained cross-platform evidence |
-| G9 | common parent | accepted G9.0 closure baseline; G9.1--G9.4 remain | G8 | explicit Product composition, rollback/crash drill, source-backed Current-owner decision, clean dependency graph, and lane-to-main promotion |
+| G9 | common parent | implemented through G9.2; G9.3--G9.4 remain | G8 | explicit Product composition and rollback/crash drill are implemented default-dark; source-backed Current-owner decision and lane-to-main promotion remain |
 
 G0H and G0A are independently accepted gates even when reviewed or delivered
 in one documentation change. A failed AppHost placement review cannot block
@@ -93,6 +92,9 @@ the AppHost and Worker rails without activating an installed route. The
 accepted [G9 closure](../apphost/hosted-product-v1-closure-g9.md) makes
 production composition, route activation, omitted-owner policy, Current
 deletion, and main promotion independent control points.
+G9.1--G9.2 now provide the sole explicit Coding composition facade and its
+cross-platform deterministic drill; existing bootstrap/CLI/TUI omission paths
+remain Current-only.
 
 The optional A0.4 hosted binder is now accepted with only AppServer-owned
 structural Product-port contracts. A0.5 still requires its own serialized-launch
@@ -156,7 +158,7 @@ restart. Live adoption remains a later separately reviewed threat model.
 
 ## Architecture And Test Guards
 
-Through G9.0, executable architecture tests must continue to prove:
+Through G9.2, executable architecture tests must continue to prove:
 
 - AppHost core contains only the accepted A0.1--A0.3 contracts, catalog/router,
   and live-binding owner; optional A0.4 hosted wiring remains outside its facade;
@@ -172,10 +174,11 @@ Through G9.0, executable architecture tests must continue to prove:
   C5.1 receipt, C5.2 Linux, and C5.3 Windows mechanics/rejection evidence
   exists; C5.4 revises only the Linux canary absence and cannot close G7;
   C5.0 removes no runtime guard; and
-- inventory source paths equal the executable expected set; G9.0 adds no
-  production composition or evidence claim; and any later G9 deletion change
-  includes the exact reverse import/composition and entrypoint evidence required
-  by the accepted G9 closure.
+- inventory source paths equal the executable expected set; the G9 composition
+  is the sole Product-owned edge to AppHost and is absent from Current-only
+  entrypoints; the 13-case manifest has separate Linux/Windows identities; and
+  any later G9 deletion change includes the exact reverse import/composition and
+  entrypoint evidence required by the accepted G9 closure.
 
 ## Non-Goals
 
