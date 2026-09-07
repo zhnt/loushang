@@ -168,6 +168,8 @@ def test_optional_adapter_is_dark_with_only_reviewed_g8_through_g13_consumers() 
         Path("src/loushang/coding/appservice_adapter.py"),
         Path("src/loushang/coding/hosted_application.py"),
         Path("src/loushang/coding/hosted_continuity.py"),
+        Path("src/loushang/coding/hosted_catalog.py"),
+        Path("src/loushang/coding/hosted_session.py"),
     }
     adapter_consumers = {
         path

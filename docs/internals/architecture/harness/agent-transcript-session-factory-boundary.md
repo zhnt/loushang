@@ -44,6 +44,19 @@ Native file operations, not a database discovery API.
 binding. A non-persistent load remains a detached copy through
 `AgentTranscriptLifecycle`, so later writes never mutate the source file.
 
+`restore_context` accepts an already-bound lifecycle context and runs the same
+Product header validator and runtime/store acquisition. Unlike ordinary path
+discovery, it does not resolve the selected file leaf before the Store can
+apply its no-follow checks. Trusted callers must bind the source and header;
+this method does not admit client-supplied paths.
+
+`new` optionally accepts immutable `additional_header_metadata`, rejecting
+collisions with standard or Product-selected metadata. It also accepts
+`defer_materialization=False` when the caller requires an empty durable Session
+before publishing its identity. Defaults retain provisional empty Sessions.
+These options do not introduce hosted-application semantics, and extra
+creation identities are not implicitly copied into new forks.
+
 `fork_from` loads the source as a detached session, copies its records into a
 fresh target binding, records the parent conversation and source file reference,
 then releases the detached source lease even if target creation fails. `fork`

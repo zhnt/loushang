@@ -164,6 +164,8 @@ HOSTING_TEST_PATHS := \
 	tests/architecture/test_hosting_h65_windows_lpac_design.py \
 	tests/architecture/test_hosting_architecture_baseline.py
 APPHOST_SOURCES := \
+	src/loushang/coding/hosted_catalog.py \
+	src/loushang/coding/hosted_session.py \
 	src/loushang/apphost \
 	src/loushang/appserver \
 	src/loushang/appservice \
@@ -179,6 +181,9 @@ APPHOST_SOURCES := \
 	src/loushang/harnesstui/mux \
 	src/loushang/coding/cli/apphost.py
 APPHOST_TEST_PATHS := \
+	tests/coding/test_hosted_catalog.py \
+	tests/coding/test_hosted_session.py \
+	tests/coding/test_hosted_session_metadata.py \
 	tests/apphost \
 	tests/appserver \
 	tests/appservice \
@@ -212,6 +217,11 @@ APPHOST_LINT_SUPPORT := \
 	scripts/dev/verify_evidence_manifest.py \
 	tests/harness/worker/test_coding_product_worker_canary.py
 APPSERVICE_SOURCES := \
+	src/loushang/coding/hosted_catalog.py \
+	src/loushang/coding/hosted_session.py \
+	src/loushang/harness/transcript/lifecycle.py \
+	src/loushang/harness/transcript/session_factory.py \
+	src/loushang/harness/transcript/product_session.py \
 	src/loushang/apphost/application.py \
 	src/loushang/appserver \
 	src/loushang/appservice \
@@ -220,6 +230,11 @@ APPSERVICE_SOURCES := \
 	src/loushang/coding/hosted_continuity.py \
 	src/loushang/harnesstui/mux
 APPSERVICE_TEST_PATHS := \
+	tests/coding/test_hosted_catalog.py \
+	tests/coding/test_hosted_session.py \
+	tests/coding/test_hosted_session_metadata.py \
+	tests/harness/transcript/test_session_factory.py \
+	tests/harness/transcript/test_product_session.py \
 	tests/architecture/test_foreground_stdio_hosted_app_g14.py \
 	tests/architecture/test_foreground_stdio_hosted_app_g14_design.py \
 	tests/apphost/test_continuity.py \

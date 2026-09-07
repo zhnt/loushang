@@ -91,6 +91,8 @@ class AgentTranscriptSessionFactory(Generic[BindingInputT, ProductBindingT]):
         persist: bool = True,
         parent_session: str | None = None,
         session_id: str | None = None,
+        additional_header_metadata: Mapping[str, JSONValue] | None = None,
+        defer_materialization: bool = True,
     ) -> AgentTranscriptLifecycleSession[ProductBindingT]:
         """Create one empty transcript with Product-selected runtime metadata."""
 
@@ -103,6 +105,8 @@ class AgentTranscriptSessionFactory(Generic[BindingInputT, ProductBindingT]):
             binding_input=binding_input,
             conversation_id=resolved_session_id,
             parent_session=parent_session,
+            additional_header_metadata=additional_header_metadata,
+            defer_materialization=defer_materialization,
         )
 
     async def load(
@@ -121,8 +125,21 @@ class AgentTranscriptSessionFactory(Generic[BindingInputT, ProductBindingT]):
             session_dir=session_dir,
             cwd_override=cwd_override,
         )
-        binding_input = self._resolve_binding_input(persist)
-        self._validate_restored_header(context.header, binding_input, persist)
+        return await self.restore_context(context)
+
+    async def restore_context(
+        self,
+        context: AgentTranscriptLifecycleContext,
+    ) -> AgentTranscriptLifecycleSession[ProductBindingT]:
+        """Restore an already-bound source without resolving its selected leaf.
+
+        A trusted Product may supply a bounded, verified source context. The
+        Product header validator and normal Store acquisition still run here.
+        """
+        if type(context) is not AgentTranscriptLifecycleContext:
+            raise TypeError("invalid transcript lifecycle context")
+        binding_input = self._resolve_binding_input(context.persist)
+        self._validate_restored_header(context.header, binding_input, context.persist)
         return await self._lifecycle.restore(context, binding_input)
 
     async def open(
@@ -200,8 +217,10 @@ class AgentTranscriptSessionFactory(Generic[BindingInputT, ProductBindingT]):
             )
         binding_input = self._resolve_binding_input(persist)
         self._validate_restored_header(bundle.header, binding_input, persist)
-        cwd = str(cwd_override) if cwd_override is not None else str(
-            bundle.header.metadata.get("cwd", ".")
+        cwd = (
+            str(cwd_override)
+            if cwd_override is not None
+            else str(bundle.header.metadata.get("cwd", "."))
         )
         context = self._new_context(
             session_dir=session_dir,
@@ -319,6 +338,8 @@ class AgentTranscriptSessionFactory(Generic[BindingInputT, ProductBindingT]):
         records: Sequence[AgentTranscriptRecord] = (),
         source_session_dir: str | Path | None = None,
         source_session_id: str | None = None,
+        additional_header_metadata: Mapping[str, JSONValue] | None = None,
+        defer_materialization: bool = True,
     ) -> AgentTranscriptLifecycleSession[ProductBindingT]:
         header = self._new_header(
             conversation_id=conversation_id,
@@ -326,6 +347,7 @@ class AgentTranscriptSessionFactory(Generic[BindingInputT, ProductBindingT]):
             parent_conversation_id=parent_conversation_id,
             parent_session=parent_session,
             binding_input=binding_input,
+            additional_header_metadata=additional_header_metadata,
         )
         context = self._new_context(
             session_dir=session_dir,
@@ -350,6 +372,7 @@ class AgentTranscriptSessionFactory(Generic[BindingInputT, ProductBindingT]):
                 context,
                 binding_input,
                 records=prepared_records,
+                defer_materialization=defer_materialization,
             )
         except BaseException as error:
             if rollback_store is not None:
@@ -386,11 +409,22 @@ class AgentTranscriptSessionFactory(Generic[BindingInputT, ProductBindingT]):
         parent_conversation_id: str | None = None,
         parent_session: str | None = None,
         binding_input: BindingInputT,
+        additional_header_metadata: Mapping[str, JSONValue] | None = None,
     ) -> ConversationHeader:
         metadata: dict[str, JSONValue] = {"cwd": str(cwd)}
         if parent_session is not None:
             metadata["parentSession"] = parent_session
         metadata.update(self._header_metadata(binding_input))
+        if additional_header_metadata is not None:
+            if not isinstance(additional_header_metadata, Mapping):
+                raise TypeError("additional header metadata must be a mapping")
+            if {"cwd", "parentSession", *metadata}.intersection(
+                additional_header_metadata
+            ):
+                raise ValueError(
+                    "additional metadata overrides reserved header metadata"
+                )
+            metadata.update(additional_header_metadata)
         return ConversationHeader(
             conversation_id=self._resolve_conversation_id(conversation_id),
             version=self._conversation_version,

@@ -9,7 +9,8 @@
     {"id": "appserver.stdio", "source": "src/loushang/appserver/stdio.py", "status": "implemented", "owner": "byte-io"},
     {"id": "apphost.foreground", "source": "src/loushang/apphost/foreground.py", "status": "planned", "owner": "ordered-settlement"},
     {"id": "coding.hosted-command", "source": "src/loushang/coding/cli/hosted.py", "status": "planned", "owner": "trusted-product-composition"},
-    {"id": "coding.hosted-binding", "source": "src/loushang/coding/hosted_session.py", "status": "planned", "owner": "canonical-product-session"},
+    {"id": "coding.hosted-binding", "source": "src/loushang/coding/hosted_session.py", "status": "implemented", "owner": "real-product-session"},
+    {"id": "coding.hosted-catalog", "source": "src/loushang/coding/hosted_catalog.py", "status": "implemented", "owner": "canonical-session-identity"},
     {"id": "harnesstui.hosted-mux", "source": "src/loushang/harnesstui/mux/profile.py", "status": "existing-retain", "owner": "client-presentation"}
   ],
   "unchangedDefaultScripts": {

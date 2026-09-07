@@ -212,6 +212,65 @@ not a second UI-specific wire API.
 
 ## Requirements And Evidence Plan
 
+### Product Persistence And Scope Decision
+
+The real Coding edge adds a canonical catalog and a real AgentSession binding.
+These remain separate from the command's configuration/path resolution and
+AppHost's application lifetime. Their source paths are enumerated in inventory
+v7 and the exact optional-consumer architecture gates.
+
+Canonical routing and create-idempotency facts are persisted under
+`coding.hosted` in the existing Coding transcript header. There is no second
+Session registry. Hosted create uses a deterministic SHA-256 identity and
+filename from Product/creator-scope/operation identity; the existing transcript
+store owns atomic create. Repeated or concurrent same-key requests recover
+that exact Session, and changed continuity/compatibility intent conflicts.
+Candidates hold a real transcript owner, verify a hashed file-authority
+revision before claim, and transfer that owner once into the real AgentSession.
+Canonical reads retain the existing transcript owner's bounded, stable,
+regular-file checks, including reparse rejection, instead of using the
+POSIX-only legacy migration adapter.
+
+Generic Transcript creation gains two explicit options: additional immutable
+header metadata that cannot overwrite reserved Product/runtime metadata, and
+`defer_materialization=False` to create an empty durable Session before a
+hosted membership commit. Existing callers still defer empty Session writes.
+These options carry no AppHost, Coding or application semantics in Harness.
+Ordinary/legacy TUI transcripts without the canonical header are not silently
+adopted. Their existing entrypoints remain unchanged.
+
+The cwd scope fingerprint includes the admitted workspace. The user-home
+scope fingerprint depends on its admitted global Session root, so it remains
+discoverable from another workspace. Both execute in the workspace explicitly
+selected at this foreground launch; a persisted header's historical cwd is
+descriptive and does not grant path authority. Root/scope mismatch fails
+closed. G14 does not yet provide a multi-workspace execution manager.
+
+The real Session binding projects public Agent events and a visibly bounded
+recent transcript view. Canonical transcript content is never truncated.
+Approval presentation uses the existing ApprovalBroker's registered waiter,
+fresh opaque interaction tokens and the existing `allow_once`/`deny`/`abort`
+response path. It neither grants persistent permissions nor bypasses policy.
+Tests use the explicit synthetic-model annotation at the test composition
+seam; the production factory retains the standard durable-model constraint.
+
+Three-view review of this refinement: authority remains in the canonical
+Product/Harness owner (no new index or path-bearing wire field); lifecycle
+requires eager empty-Session persistence and single owner transfer; evidence
+must include concurrent create, stale-candidate rejection, cross-cwd global
+discovery, real message persistence and actual ApprovalBroker resolution.
+Those focused cases now pass locally; the subprocess Product/entrypoint and
+native cross-platform acceptance remain pending.
+
+The Product slice's three-view code refinement also preserves each scope's
+bounded candidate snapshot independently, so home discovery cannot evict an
+in-flight cwd resume. Bound-source restoration keeps the selected file leaf
+for Store no-follow checks instead of re-running alias discovery. Construction
+retains the claimed cleanup owner until the complete real Session binding
+transfers, including retry after a disposal failure. Local verification:
+327 Coding/Transcript regression cases and the expanded AppService gate's
+182 cases passed; the latter also checked 36 source files with mypy.
+
 | ID | Acceptance evidence |
 | --- | --- |
 | `G14-WIRE` | fragmented/coalesced frames, all typed methods, invalid input, size/depth limits and handshake mismatch |
