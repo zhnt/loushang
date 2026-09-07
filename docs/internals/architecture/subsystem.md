@@ -33,6 +33,10 @@
 - `loushang.apphost`（A0.4 default-dark runtime 与可选 hosted binder）
 - `loushang.appserver`（A0.4 contract-only structural Product ports）
 
+`loushang.appservice` 已由 G11 接受为独立的应用语义 Scope，但在 G11.0
+设计基线时尚无源码 package。它将只负责 hosted Session、MuxSpace 与逻辑
+attachment 协调，不负责 AppServer transport、AppHost 生命周期或 Product 实现。
+
 当前已落地的支撑包包括：
 
 - `loushang.foundation`

@@ -2,6 +2,7 @@
 
 [Architecture](../README.md) ·
 [AppHost](../apphost/README.md) ·
+[G11 In-Process Hosted Application](hosted-application-g11.md) ·
 [AppService Hosted Boundary](../drafts/appservice-embedded-tui-hosted-boundary-plan.md)
 
 ## Status
@@ -13,6 +14,13 @@
 - Implementation status: implemented — contract-only structural Product port bundle
 - Activation status: none; no protocol, service, listener, connection, or transport
 - Owner: Loushang AppServer architecture
+
+The accepted
+[G11 In-Process Hosted Application](hosted-application-g11.md) design is the
+next delivery boundary.  It permits a strict protocol kernel and client
+contract here, plus a separate Product-neutral `loushang.appservice` semantic
+package.  Until its implementation lands, the Current package remains the
+contract-only A0.4 structural bundle described below.
 
 ## Purpose
 

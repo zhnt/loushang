@@ -121,6 +121,12 @@ short-lived native Hosting child. Product-owned durable control, bounded
 reports, and separate Linux/Windows evidence leave normal CLI/TUI/SDK
 ownership, the G9.3 `RETAIN` decision, AppServer/AppService, and named mux
 unchanged.
+The accepted
+[G11 in-process hosted application](appserver/hosted-application-g11.md)
+design is the first named-mux extraction trigger.  It keeps AppServer protocol,
+AppService semantics, Product adapters, and Harnesstui presentation in separate
+owners and explicitly excludes listeners, IPC, daemon control, default-route
+changes, and Current deletion.
 
 A nested scope is not automatically a top-level subsystem. The parent owns its
 placement, composition policy, and sibling relationships; the child owns its
