@@ -88,3 +88,26 @@ def test_G14_BOUNDARIES_foreground_lifetime_is_an_exact_optional_apphost_edge() 
     source = foreground.read_text()
     for forbidden in ("subprocess", "os.environ", "getcwd", "Path(", "retire("):
         assert forbidden not in source
+
+
+def test_G14_BOUNDARIES_only_explicit_product_command_composes_native_stdio() -> None:
+    command = Path("src/loushang/coding/cli/hosted.py")
+    imports = _imports(command)
+    assert "loushang.apphost.foreground" in imports
+    assert "loushang.appserver.stdio" in imports
+    assert "loushang.appservice.continuity_file" in imports
+    assert "loushang.coding.hosted_session" in imports
+    for default in (
+        "src/loushang/coding/cli/__main__.py",
+        "src/loushang/coding/ui/cli.py",
+        "src/loushang/coding/__init__.py",
+    ):
+        assert "loushang.coding.cli.hosted" not in _imports(Path(default))
+    for path in Path("src/loushang/harnesstui/mux").rglob("*.py"):
+        imports = _imports(path)
+        assert not any(
+            item.startswith(
+                ("loushang.coding", "loushang.apphost", "loushang.appservice")
+            )
+            for item in imports
+        )

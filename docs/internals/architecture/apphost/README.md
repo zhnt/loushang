@@ -95,8 +95,8 @@ connection, treats EOF as terminal, and settles connection work before invoking
 G13 application close. Failed or timed-out cleanup retains its owner for retry;
 the G13 lease cannot be released ahead of unfinished connection work. This edge
 does not enter the core facade, choose paths/Product factories, or own process
-launch/exit. The complete G14 executable and native Product evidence are still
-pending.
+launch/exit. The separate Coding `loushang-hosted` command now composes this edge;
+complete native-platform Product validation remains pending under G14.
 
 Existing Product-specific bootstrap/CLI/TUI paths remain authoritative and do
 not import the G9 composition. The one installed explicit factory may

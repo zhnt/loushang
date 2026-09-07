@@ -13,8 +13,8 @@
 - Parent: `loushang`
 - Authority: normative — A0.4 ports, G11 client contract and G14 connection edge
 - Design status: accepted
-- Implementation status: partial — G14 connection/stdio client implemented; Product executable integration pending
-- Activation status: explicit library; no listener or installed hosted command yet
+- Implementation status: partial — G14 connection, stdio client and Product executable implemented; native-platform delivery validation pending
+- Activation status: explicit library or `loushang-hosted` foreground command; no listener or default-route change
 - Owner: Loushang AppServer architecture
 
 The implemented
@@ -26,8 +26,8 @@ runtime or external entrypoint.
 G14 adds a separately imported connection runtime, bounded framing and stdio
 AppClient. It accepts an injected semantic client and already-owned IO, never
 constructs an AppService, and has no process launch or listener authority.
-The planned Product entrypoint is tracked in the G14 design; it is not yet
-implemented or the default route.
+The Product-owned `loushang-hosted` entrypoint composes this explicit route;
+it remains separate from the existing default CLI/TUI entrypoints.
 
 G12's optional AppHost application edge consumes the client contract for its
 in-process view. AppServer neither constructs nor imports that composition.
@@ -100,5 +100,6 @@ Listener authentication and reconnect semantics remain separate future work.
   the G11 semantics and G12 composition evidence.
 - G14 connection tests cover bounded dispatch, reserved interrupt capacity,
   caller cancellation, EOF and invalid frames. A native subprocess fixture
-  covers byte IO; real Product integration and three-platform results are
-  still required before G14 delivery is complete.
+  covers byte IO. Native real Product/Harnesstui tests now cover the installed
+  command and G13 restart recovery; complete three-platform results and review
+  remain required before G14 delivery is complete.

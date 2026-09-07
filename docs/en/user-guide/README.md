@@ -36,6 +36,27 @@ loushang -p "Summarize the current project."
 
 For building terminal UI applications with `loushang.tui`, see [Building TUI Apps](tui.md).
 
+### Explicit Hosted Application
+
+`loushang-hosted` is an opt-in foreground stdio server for an application
+launcher, not another interactive prompt loop. Existing CLI/TUI commands are
+unchanged. Start with `loushang-hosted --help`.
+
+Supply `--workspace`, `--application-root`, `--cwd-sessions`, and
+`--home-sessions` explicitly. The workspace and application-root parent must
+exist; the three storage directories must be separate. The application state
+directory must be private (0700 on POSIX); an absent leaf is created privately.
+Add `--describe` to inspect path-free scope selectors without starting or
+writing anything. Removing that flag starts the framed protocol over pipes,
+not newline-delimited text; use a `StdioAppClientV1`-based launcher.
+
+The same application ID (default `coding.default`), workspace and storage roots
+restore the saved mux/member/Session state after shutdown. EOF terminates this
+foreground application. Active turns, approvals and attachment authority are
+not resumed. There is no daemon, network listener or automatic reconnect.
+See the [G14 contract and delivery status](../../internals/architecture/appserver/foreground-stdio-hosted-app-g14.md)
+for the client composition and native-platform validation still in progress.
+
 ## Sessions
 
 Sessions preserve the coding conversation and execution record. They are designed for workflows that need resume, fork, export, diagnostics, and later inspection.

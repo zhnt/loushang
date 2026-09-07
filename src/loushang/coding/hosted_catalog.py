@@ -178,8 +178,16 @@ class _Claimed:
     def __init__(
         self, reference: SessionCandidateRefV1, binding: CodingHostedCandidateBindingV1
     ) -> None:
-        self.reference = reference
-        self.opaque_binding = binding
+        self._reference = reference
+        self._binding = binding
+
+    @property
+    def reference(self) -> SessionCandidateRefV1:
+        return self._reference
+
+    @property
+    def opaque_binding(self) -> CodingHostedCandidateBindingV1:
+        return self._binding
 
     async def close(self) -> None:
         await self.opaque_binding.close()
@@ -189,11 +197,14 @@ class _Candidate:
     def __init__(
         self, record: _Record, binding: CodingHostedCandidateBindingV1
     ) -> None:
-        self.projection = record.projection
         self._record = record
         self._binding = binding
         self._claimed = False
         self._closed = False
+
+    @property
+    def projection(self) -> SessionIdentityProjectionV1:
+        return self._record.projection
 
     async def verify_current(self) -> None:
         if (
@@ -218,10 +229,18 @@ class _Candidate:
 class _Opened:
     def __init__(self, binding: CodingHostedCandidateBindingV1) -> None:
         identity = binding.record.identity
-        self.binding_key = SessionBindingKeyV1(
+        self._binding_key = SessionBindingKeyV1(
             identity.product_id, identity.continuity_id, identity.session_id
         )
-        self.opaque_binding = binding
+        self._binding = binding
+
+    @property
+    def binding_key(self) -> SessionBindingKeyV1:
+        return self._binding_key
+
+    @property
+    def opaque_binding(self) -> CodingHostedCandidateBindingV1:
+        return self._binding
 
     async def close(self) -> None:
         # The candidate owns an unconsumed transcript; Product owns a taken one.

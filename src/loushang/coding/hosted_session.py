@@ -24,6 +24,7 @@ from loushang.harness.events import RuntimeEvent
 from loushang.harness.events.runtime_projection import project_session_runtime_event
 from loushang.harness.session import SessionControlPort
 from loushang.harness.tools.core import ToolDefinition
+from loushang.harness.tools.workspace import workspace_tool_runtime_settings
 
 from .appservice_adapter import (
     CodingHostedEventProjectionV1,
@@ -248,15 +249,16 @@ class CodingRealHostedSessionFactoryV1:
         manager = opaque_session_binding.manager_for_construction()
         try:
             approval = InteractiveApprovalResolver(fallback=DenyApprovalResolver())
+            services = self._services_factory(opaque_session_binding.record.scope.cwd)
+            policy = workspace_tool_runtime_settings(services.settings_manager)
             session = create_agent_session(
                 session_manager=manager,
                 model=self._model,
                 stream_fn=self._stream_fn,
-                services=self._services_factory(
-                    opaque_session_binding.record.scope.cwd
-                ),
+                services=services,
                 tools=self._tools,
                 approval_resolver=approval,
+                tool_policy_evaluator=policy.policy_engine,
             )
             opaque_session_binding.retain_constructed_owner(session.dispose)
             binding = CodingRealHostedSessionV1(session, identity, approval)

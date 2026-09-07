@@ -26,6 +26,8 @@ def test_G14_DESIGN_inventory_separates_planned_edges_from_current_defaults() ->
     scripts = tomllib.loads(Path("pyproject.toml").read_text())["project"]["scripts"]
     for name, target in inventory["unchangedDefaultScripts"].items():
         assert scripts[name] == target
+    for name, target in inventory["explicitScript"].items():
+        assert scripts[name] == target
     assert inventory["activation"] == "explicit-foreground-stdio-only"
     assert set(inventory["notGranted"]) == {
         "listener",

@@ -10,7 +10,7 @@
 - Parent: Loushang application architecture
 - Authority: accepted delivery design
 - Design status: accepted following the three-view design review below
-- Implementation status: partial — connection/client, real Coding binding and foreground lifetime implemented; executable composition and native delivery pending
+- Implementation status: partial — explicit executable and real Product subprocess integration implemented; complete native-platform validation and delivery pending
 - Activation status: target explicit foreground stdio command only
 - Tracking: [issue #564](https://github.com/zhnt/loushang/issues/564)
 
@@ -22,7 +22,7 @@ Coding Sessions and a G13 recoverable application. A transport AppClient can
 drive the existing Harnesstui Hosted Mux controller without importing Coding
 or AppService. Closing this foreground connection stops its application.
 
-Current facts: G11 supplies strict JSON values, AppClient, in-process
+Pre-G14 facts: G11 supplies strict JSON values, AppClient, in-process
 AppService and the Hosted Mux controller. G12 owns explicit Product admission
 and ordered application settlement. G13 persists desired mux/member state,
 resumes canonical Sessions and releases its writer lease last. None currently
@@ -206,6 +206,49 @@ files; the architecture documentation gate passed five cases.
 
 ## Coding And Harnesstui Integration
 
+### Explicit installed command
+
+`loushang-hosted` is now installed as `loushang.coding.cli.hosted:main`.
+It requires `--workspace`, `--application-root`, `--cwd-sessions`, and
+`--home-sessions`; `--application-id` defaults to `coding.default`. These are
+trusted outer inputs, not new wire fields. The three storage roots must be
+separate and non-overlapping; the workspace and application-root parent must
+exist. G13 creates the private application leaf or rejects unsafe existing
+permissions. This first explicit profile does not redirect existing default
+Session roots, migrate legacy transcripts, or select a daemon automatically.
+
+Adding `--describe` returns path-free scope fingerprints and application/Product
+identity without acquiring a lease or writing files. An outer launcher can use
+that description to construct `SessionOpenSpecV1` without importing Coding into
+Harnesstui. The launch arguments stay the same for describe and actual launch.
+The stdio mode requires pipes and is not a directly interactive terminal UI.
+
+The installed command uses the existing Product global/project settings paths,
+actual Session factory, model selection, tool surface and policy configuration.
+It installs interactive approval with a deny fallback, not a headless blanket
+grant. Inherited stdout is reserved for framing; incidental Python stdout and
+diagnostics are routed to stderr. A cleanup-incomplete result is a nonzero
+process exit, not a claim that G13 settlement succeeded. On that fatal path the
+outer command exits without entering asyncio's unbounded final cancellation
+join; reusable library owners retain their normal retryable close contract.
+
+Admission pins identify one imported installed Product/profile generation for
+this process. There is no hot replacement path, Worker launcher, filesystem
+sealing claim, or new plugin generation authority. Model response and safe-tool
+injection are trusted library-only test seams; the installed argv accepts no
+model transport, module or factory name.
+
+The first complete native Product tests found that canonical candidate facts
+must be class-defined properties for AppHost's static admission boundary, not
+ordinary mutable instance fields. The owner now conforms without weakening
+AppHost. Native tests separately verify the installed default command's
+help/start/EOF and the real Product's cwd/home recovery using synthetic model
+responses. Both use the existing server, client, G13 runtime and Harnesstui
+controller. A launcher's ready-wait budget includes cold Product imports and
+recovery; the server's finite hello deadline begins only after readiness.
+
+### Product and client responsibilities
+
 The new explicit installed foreground command is a distinct route; existing
 `loushang`, `loushang-tui`, SDK and embedded behavior stay the default.
 Configuration includes a trusted workspace, exact application continuity
@@ -356,3 +399,37 @@ cache; a rerun using an isolated cache passed all 31 checked source files.
 A later sandboxed checker traceback identified a cache `disk I/O error`;
 the final no-cache AppServer check passed all 14 source files. Final focused
 AppServer tests passed 56 cases and architecture documentation passed 5.
+
+## Executable Integration Review (Native Delivery Still Pending)
+
+This is a three-perspective implementation review, not an independent-agent
+or completed cross-platform review claim.
+
+1. Architecture/authority: the installed command is the sole new composition
+   edge. Exact consumer gates retain the default CLI/TUI and AppHost core
+   boundaries. Native admission exposed mutable instance attributes in the
+   real canonical candidate adapter; these were corrected to the class-defined
+   properties required by AppHost, without relaxing its static validation.
+2. Lifecycle/concurrency: actual child tests exercise EOF during a running
+   Agent turn, interrupt, a competing installed writer and a real AgentSession
+   disposer fault. The fault exits nonzero without an unbounded Runner join;
+   a fresh process subsequently recovers the committed canonical transcript.
+   The child owns no parent process and claims no successful cleanup on that
+   fatal path. G13 retains its existing lease-last close contract.
+3. Product/contract evidence: both cwd and user-home restore stable mux,
+   member and Session IDs, messages and fresh attachments through the existing
+   Harnesstui controller. An authorized in-memory preview tool proves the real
+   policy/ApprovalBroker allow and deny paths. Product tool settings now feed
+   the policy evaluator as in the normal Product entrypoint. Synthetic model
+   input handles canonical text parts; production accepts no synthetic argv.
+
+Local verification: all 202 AppService tests passed, including nine real
+Product/installed subprocess cases; 39 exact architecture cases passed;
+Ruff and mypy over 38 source files passed; the documentation gate passed five
+cases. During development a test used the wrong mux-list field, a synthetic
+model omitted text-part input, and one ready wait expired while full-tree
+checks occupied the local CPU. Those were corrected/revalidated; the native
+parent now explicitly gives cold imports plus recovery a bounded 30-second
+ready budget, independently of the server's post-readiness hello deadline.
+Native macOS/Windows CI evidence and the final delivery-wide review remain
+required before marking G14 complete.

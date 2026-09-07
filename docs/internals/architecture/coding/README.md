@@ -46,7 +46,8 @@ the client contract. G14 adds a real Coding canonical Session catalog and
 AgentSession/approval projection. Session identities remain in the existing
 transcript header; Harness still owns transcript storage and runtime binding.
 The [G14 foreground stdio design](../appserver/foreground-stdio-hosted-app-g14.md)
-tracks the still-pending executable and complete subprocess delivery. Existing
+tracks the explicit installed `loushang-hosted` command and still-pending
+complete native-platform delivery. Existing
 Coding CLI/TUI defaults are unchanged; these optional edges do not become
 mandatory UI dependencies.
 
