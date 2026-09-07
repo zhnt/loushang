@@ -7,6 +7,20 @@ from loushang.tui.composer_edit_buffer import (
 )
 
 
+def test_composer_optional_undo_limit_is_bounded_without_changing_the_default():
+    from loushang.tui.ui_parts.composer import Composer
+
+    limited, ordinary = Composer(max_undo_depth=2), Composer()
+    for value in ("one", "two", "three", "four"):
+        limited.set_text(value)
+        ordinary.set_text(value)
+    for _ in range(4):
+        limited.undo()
+        ordinary.undo()
+    assert limited.value == "two"
+    assert ordinary.value == ""
+
+
 def test_composer_edit_buffer_preserves_atom_value_and_display_text() -> None:
     buffer = ComposerEditBuffer()
     marker = ComposerPasteMarker(marker_id=1, text="a\nb\nc", label="[paste #1 +3 lines]")

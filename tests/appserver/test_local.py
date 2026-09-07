@@ -86,14 +86,19 @@ def test_G16_LOCAL_NATIVE_real_authenticated_request_and_client_eof_only_closes_
         server, scopes = _server(directory)
         client = LocalAppClientConnectionV1(directory, "workspace")
         try:
+            with pytest.raises(AppServiceError):
+                _ = client.scopes
             await server.start()
             record = directory.read("workspace")
             assert record == server.record
             assert server._server.sockets[0].getsockname() == ("127.0.0.1", record.port)
             await client.start()
+            assert client.scopes == record.scopes == (LocalRecordScopeV1(SessionScopeV1.CWD, "a" * 64),)
             assert await client.client.list_muxes() == MuxListResultV1(())
             assert server.connection_counts == (0, 1)
             await client.close()
+            with pytest.raises(AppServiceError):
+                _ = client.scopes
             await _until(lambda: server.connection_counts == (0, 0))
             assert len(scopes) == 1 and scopes[0].closed
             assert directory.read("workspace") == record

@@ -1,4 +1,4 @@
-"""Explicit G16 management commands; console installation waits for the TUI.
+"""Explicit G16 management and interactive attach commands.
 
 Development entry: python -m loushang.coding.cli.mux. No command discovers or
 starts a background application. Client exit is not application stop.
@@ -14,7 +14,10 @@ import sys
 from collections.abc import Callable, Coroutine, Sequence
 from contextlib import redirect_stdout
 from pathlib import Path
-from typing import TextIO
+from typing import TYPE_CHECKING, TextIO
+
+if TYPE_CHECKING:
+    from loushang.harnesstui.mux.shell import HostedMuxShellV1
 
 from loushang.appserver.local import LocalAppClientConnectionV1, LocalConnectionModeV1
 from loushang.appserver.local_record import LocalConnectionDirectoryV1, LocalRecordError
@@ -56,6 +59,7 @@ class _ClientCommand:
             else LocalConnectionModeV1.APP,
         )
         self._action, self._name, self._output = action, name, output
+        self._shell: HostedMuxShellV1 | None = None
         self.cleanup_pending = True
 
     async def run(self) -> None:
@@ -65,7 +69,25 @@ class _ClientCommand:
                 _emit({"status": "stop_requested"}, self._output)
                 return
             client = self._connection.client
-            if self._action == "list":
+            if self._action == "attach":
+                from loushang.harnesstui.mux.shell import HostedMuxShellV1
+                from loushang.harnesstui.mux.terminal import run_hosted_mux_shell
+
+                self._shell = HostedMuxShellV1(
+                    client,
+                    selector=MuxSelectorV1(name=self._name),
+                    product_id="coding",
+                    scopes=tuple(
+                        (item.scope, item.fingerprint)
+                        for item in self._connection.scopes
+                    ),
+                )
+                status = await run_hosted_mux_shell(
+                    self._shell, stdin=sys.stdin, stdout=self._output
+                )
+                if status:
+                    raise RuntimeError("interactive connection ended")
+            elif self._action == "list":
                 _emit(
                     {
                         "muxes": [
@@ -88,8 +110,12 @@ class _ClientCommand:
             else:
                 raise ValueError("unsupported local management action")
         finally:
-            await self._connection.close()
-            self._directory.close()
+            try:
+                if self._shell is not None:
+                    await self._shell.close()
+            finally:
+                await self._connection.close()
+                self._directory.close()
             self.cleanup_pending = False
 
 
@@ -123,7 +149,7 @@ def _execute(
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="loushang-mux",
-        description="Explicit local Coding workspace management (interactive attach not yet installed).",
+        description="Explicit local Coding workspace management and interactive attach.",
     )
     parser.add_argument(
         "--connection-root",
@@ -149,6 +175,10 @@ def _parser() -> argparse.ArgumentParser:
     commands.add_parser("list", help="list named muxes without attaching")
     create = commands.add_parser("create", help="create an empty named mux")
     create.add_argument("name")
+    attach = commands.add_parser(
+        "attach", help="control one mux in this terminal; exit only detaches"
+    )
+    attach.add_argument("name")
     close = commands.add_parser(
         "close", help="close a mux and its execution; not detach"
     )
@@ -170,6 +200,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
     output = sys.stdout
+    if args.action == "attach" and (not sys.stdin.isatty() or not output.isatty()):
+        parser.error("interactive attach requires terminal input and output")
     try:
         root = args.connection_root.expanduser().resolve()
         if args.action == "serve":

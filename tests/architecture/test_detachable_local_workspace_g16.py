@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import inspect
 import sys
+import tomllib
 from pathlib import Path
 
 
@@ -195,4 +196,22 @@ def test_G16_BOUNDARIES_product_bootstrap_is_shared_without_transport_or_default
         text = Path(source).read_text()
         assert "hosted_bootstrap" not in text and "hosted_local" not in text
         assert "coding.cli.mux" not in text
-    assert "loushang-mux" not in Path("pyproject.toml").read_text()
+    scripts = tomllib.loads(Path("pyproject.toml").read_text())["project"]["scripts"]
+    assert scripts["loushang-mux"] == "loushang.coding.cli.mux:main"
+
+
+def test_G16_BOUNDARIES_shell_borrows_only_semantics_and_owns_no_native_connection():
+    root = Path("src/loushang/harnesstui/mux")
+    paths = [root / name for name in ("shell.py", "terminal.py", "_shell_tasks.py", "_shell_screen.py")]
+    assert sum(len(path.read_text().splitlines()) for path in paths) <= 850
+    for path in paths:
+        source = path.read_text()
+        for node in ast.walk(ast.parse(source)):
+            if isinstance(node, ast.Import):
+                assert all(alias.name not in {"socket", "subprocess", "os", "pathlib"} for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and not node.level:
+                name = node.module or ""
+                if name.startswith("loushang."):
+                    assert name.startswith(("loushang.tui", "loushang.appserver.client", "loushang.appserver.protocol"))
+        for forbidden in ("close_mux(", "LocalAppClientConnection", "stop_requested", "os.environ", "Path.home(", "Path.cwd("):
+            assert forbidden not in source

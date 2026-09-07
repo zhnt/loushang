@@ -23,8 +23,9 @@
 - Design status: accepted
 - Implementation status: partial — Hosted Product Runtime G0--G10, G12
   foreground application, G13 durable continuity and G14 foreground connection
-  settlement are implemented; G16 has an optional local deployment owner but no
-  installed Product client/server route yet; A0.5 remains not-started
+  settlement are implemented; G16 has an optional local deployment owner and
+  installed Product client/server route, with final platform acceptance pending;
+  A0.5 remains not-started
 - Activation status: default-dark; the exact installed G10 canary selects
   Hosting. G12/G13 have explicit library construction and the separate G14
   `loushang-hosted` command; ordinary CLI/TUI/SDK defaults are unchanged
@@ -116,8 +117,8 @@ record directory and application, waits for the stop reply attempt, then
 settles connections/directory before G13 releases its lease. All stop phases
 share one monotonic budget; timed-out tasks remain owned, and a new budget
 requires an explicit completed-attempt retry. Client EOF does not stop the
-application. The installed `loushang-mux` Product route, interactive shell and
-full native platform proof remain missing. This optional edge does not
+application. The installed `loushang-mux` Product route and interactive shell
+now compose this edge; full native platform proof remains pending. It does not
 activate Hosting service control or change the foreground owner above.
 
 Existing Product-specific bootstrap/CLI/TUI paths remain authoritative and do
@@ -169,14 +170,14 @@ the current AppHost generation, and leaves Product/Harness as Session recovery
 truth. `apphost.continuity` owns the lease-last lifecycle and Coding supplies
 the current-generation canonical recovery edge. It grants no transport or
 process owner and installs no entrypoint itself; G14 selects it through its
-explicit Product command, while G16's installed Product command remains pending.
+explicit Product command, and G16 selects it through `loushang-mux`.
 
 G16's optional local deployment is now composed with real Coding through the
-shared Product bootstrap and development-only `coding.cli.mux` module. AppHost
+shared Product bootstrap and installed `coding.cli.mux` command. AppHost
 owns application settlement after Product startup handoff; its public read-only
 `accepting` fact prevents a startup delivery from announcing ready after stop.
-The [G16.7 checkpoint](../appserver/detachable-local-workspace-g16.md#g167-real-coding-composition-and-development-commands)
-separates that implementation from installed interactive and platform acceptance.
+The [G16.9 checkpoint](../appserver/detachable-local-workspace-g16.md#g169-installed-interactive-terminal-checkpoint)
+separates that implementation and native terminal work from final platform acceptance.
 
 ## Target
 

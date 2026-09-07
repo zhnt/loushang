@@ -13,10 +13,10 @@
 - Parent: Loushang application architecture
 - Authority: normative accepted deployment boundary
 - Design status: accepted following the three-perspective review below
-- Implementation status: partial — semantic scopes, native connections, the
-  AppHost/G13 owner and real Coding composition with development management
-  commands are implemented; installed interactive UI and final platform evidence
-  remain missing, including the Windows record rerun
+- Implementation status: partial — semantic scopes, native connections,
+  AppHost/G13, real Coding composition and installed interactive attach are
+  implemented; cross-platform wheel/fault evidence and whole-delta
+  review remain open, including the Windows record rerun
 - Activation status: explicit new deployment only; G14 and Embedded unchanged
 - Tracking: [Hosted Workspace V1 #566](https://github.com/zhnt/loushang/issues/566)
 - Prerequisite: G15 design accepted in `18d429bc`; G14 delivered in `815c03d2`
@@ -79,9 +79,10 @@ The existing wire values, framing, G13 store/lease, real Coding factory,
 controller and conversation projection are retained. The optional native local
 connection layer now composes record admission, authentication and an injected
 scope factory. The optional AppHost deployment owner now binds that factory to
-the recovered G13 application; Product composition and the terminal client
-entrypoint are still missing. The [inventory](detachable-local-workspace-g16-inventory.json) separates
-those missing responsibilities from existing extensions.
+the recovered G13 application. Real Coding composition and the installed
+interactive terminal client activate this explicit route; the
+[inventory](detachable-local-workspace-g16-inventory.json) distinguishes
+implemented responsibilities from final delivery/evidence still outstanding.
 
 The first G16.1 primitive, `appservice._operations._OwnedAppOperations`, now
 reserves application capacity before effects, retains tasks across delivery
@@ -91,7 +92,7 @@ exclusive mux controllers, scoped read/control validation and interaction
 settlement. It must be installed before exposing an application's clients or
 starting execution, and the outer application must not expose a parallel
 legacy unscoped client to the same peers. AppHost's optional local owner now
-activates this edge after recovery; no installed CLI activates it yet, and
+activates this edge after recovery. The installed `loushang-mux` route uses it;
 the existing G14 request lifetime is unchanged.
 
 `appserver.local_auth` now authenticates an injected byte port and provides
@@ -962,6 +963,79 @@ The focused controller/architecture selection passed 21 cases earlier in the
 slice; documentation and G15/G16 inventory checks passed nine. Final focused
 Ruff and mypy cover all six Hosted Mux modules. No native terminal or full G16
 acceptance is inferred from these results.
+
+### G16.9 Installed Interactive Terminal Checkpoint
+
+The installed `loushang-mux attach NAME` now authenticates once, obtains
+path-free admitted scope facts from that connection, and lends only AppClient
+to the Harnesstui shell. `serve` remains independently started and foreground;
+terminal EOF and explicit detach do not stop it. Non-terminal attach is rejected
+before connection IO. Existing Embedded and G14 entrypoints are unchanged.
+
+The shell reuses the shared conversation screen, Composer, InputReader,
+TerminalSession and native terminal port. One editor has a 16-entry undo bound;
+per-window drafts are limited to 64 KiB UTF-8 and aggregate drafts to 1 MiB.
+Display history is capped at 256 records/512 KiB per window without deleting
+canonical history. Unterminated paste over the input bound fails visibly,
+instead of interpreting its truncated tail as commands. Image paste is rejected
+before clipboard/file effects. The shell has at most 64 local action waiters,
+with eight slots reserved for controls, plus two terminal reader/poll waiters;
+these are bounded concurrent waiters, not an implicit mutation retry queue.
+One retained shell close task and deadline settle those waiters and attachment.
+Overdue tasks remain owned and cleanup is not reported complete.
+
+Turn, approval and interrupt identities are captured synchronously before
+asynchronous request execution. Window navigation and typing do not wait for
+turn completion. First-member creation rejects otherwise unowned text before
+editor effects. Membership refresh preserves existing drafts by stable identity.
+The G11 six-file semantic controller budget stays at 600 lines; G16's four exact
+shell/screen/waiter/terminal modules have a separate 850-line budget, with an
+exact module-set check and no process/socket/storage authority in this UI.
+
+Review-driven fixes in this slice include native terminal rollback after partial
+entry and independent restoration despite output/drain failures; shared TUI
+fault regressions failed before the fix. The Hosted view does not invent a
+Product permission profile, model, filesystem location, or run duration.
+The v1 snapshot contains canonical history and running state, not earlier
+transient assistant deltas; reattachment says so explicitly. No active output
+or request is replayed to disguise that contract limit.
+
+Native tests use the installed client in the existing PTY/ConPTY test driver.
+The all-installed no-model scenario creates a user-home member, edits, detaches,
+lists the retained member and explicitly stops the server. A real Coding/G13
+child with only model/tool responses scripted exercises two clients controlling
+different muxes and scopes, a genuine policy approval, streamed output, retained
+execution after detach, fresh attach and interrupt. A separate test kills the
+exact server process during execution and starts a replacement against the same
+roots, checking stable mux/member/Session identity, a new endpoint instance,
+recovered history and no execution replay, then sends a fresh terminal turn.
+These are installed-editable/source-composition native tests, not isolated-wheel
+evidence; the scripted child is not the installed server command.
+
+Linux validation: `make check-appservice` passed Ruff, mypy (63 files) and
+475 tests with ten Windows-only skips. The broader shared TerminalInput/runner/
+TerminalSession selection passed 69. Isolated Win32-targeted mypy of the changed
+UI/terminal/connection slice passed 15 files; this is not native Windows proof.
+
+A separate offline wheel installation also passed all four native terminal
+cases, with zero skips: all-installed server/attach, two-mux control/approval/
+detach/interrupt, and actual process-death recovery for both cwd and user_home.
+The test runner used the isolated environment from an external cwd with `-I`,
+pytest `pythonpath` set to the repository root (not `src`), and child
+PYTHONPATH/PYTHONHOME removed. An import-origin check verified the command,
+shell and TerminalSession came from the installed environment. Wheel SHA-256:
+`82a417ef94dde7de38dc4a3a8077fdff452d194cf77447db70cb47a6ee18d7f0`.
+The first temporary installation failed due to /tmp quota; an isolated
+environment in the ignored cache using same-filesystem hardlinks succeeded.
+No fallback to the editable installation counted as wheel evidence.
+
+Required macOS/Windows cases have no skip decorators, but their new runs, the
+Windows record rerun, cross-platform isolated-wheel gates, complete fault
+manifest and final three-view whole-delta review remain outstanding. The final
+UX review must also address long approval/help text beyond the current status
+line and audit shutdown failure/retry behavior. G15's foreground launcher
+and Session-discovery picker remain design-only. This checkpoint does not
+declare Hosted Workspace V1 complete.
 
 ### Platform API References
 

@@ -55,3 +55,10 @@ def test_G16_COMMAND_missing_endpoint_is_not_autostart_or_discovery(tmp_path, ca
     assert captured.out == "" and "not_found" in captured.err
     assert str(tmp_path) not in captured.err
     assert not tuple(tmp_path.iterdir())
+
+
+def test_G16_COMMAND_attach_rejects_non_terminal_before_connection_io(tmp_path):
+    with pytest.raises(SystemExit) as missing_tty:
+        main([*_selector(tmp_path), "attach", "dev"])
+    assert missing_tty.value.code == 2
+    assert not tuple(tmp_path.iterdir())

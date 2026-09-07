@@ -255,6 +255,7 @@ class LocalAppClientConnectionV1:
         self._writer: asyncio.StreamWriter | None = None
         self._transport: _LocalTransport | None = None
         self._client: RemoteAppClientV1 | None = None
+        self._scopes: tuple[LocalRecordScopeV1, ...] = ()
         self._start_task: asyncio.Task[None] | None = None
         self._close_task: asyncio.Task[None] | None = None
         self._closed = False
@@ -270,6 +271,13 @@ class LocalAppClientConnectionV1:
     @property
     def stop_requested(self) -> bool:
         return self._stop_requested
+
+    @property
+    def scopes(self) -> tuple[LocalRecordScopeV1, ...]:
+        """Pathless scope facts from the exact mutually authenticated record."""
+        if not self._ready or self._closed or self._mode is not LocalConnectionModeV1.APP:
+            raise AppConnectionClosedError()
+        return self._scopes
 
     async def start(self) -> None:
         if self._closed or self._start_task is not None:
@@ -306,6 +314,7 @@ class LocalAppClientConnectionV1:
                     frames, profile=AppConnectionProfileV1.LOCAL, phase_timeout=self._timeout
                 )
                 await self._client.start()
+                self._scopes = record.scopes
             else:
                 if await frames.receive() != LOCAL_STOP_ACK:
                     raise AppConnectionClosedError()

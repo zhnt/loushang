@@ -27,10 +27,11 @@ def test_G16_DESIGN_inventory_preserves_current_routes_and_platform_scope() -> N
     scripts = tomllib.loads(Path("pyproject.toml").read_text())["project"]["scripts"]
     for name, target in inventory["unchangedScripts"].items():
         assert scripts[name] == target
-    assert not set(inventory["plannedScript"]).intersection(scripts)
-    assert inventory["plannedScript"] == {
+    assert inventory["implementedScript"] == {
         "loushang-mux": "loushang.coding.cli.mux:main"
     }
+    for name, target in inventory["implementedScript"].items():
+        assert scripts[name] == target
     assert "retained Git workspaces" in Path(
         "src/loushang/coding/cli/workspace.py"
     ).read_text()

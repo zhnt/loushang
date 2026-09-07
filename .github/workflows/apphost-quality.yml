@@ -64,6 +64,16 @@ jobs:
           tests/coding/test_hosted_local.py
           tests/coding/test_hosted_local_ownership.py
           tests/coding/test_mux_command.py
+          tests/coding/test_mux_terminal_process.py
+          tests/coding/test_mux_product_terminal.py
+          tests/coding/_local_product_child.py
+          tests/harnesstui/test_hosted_mux_shell.py
+          tests/harnesstui/test_hosted_mux_terminal.py
+          tests/tui/test_terminal_session.py
+          tests/tui/test_composer_edit_buffer.py
+          src/loushang/tui/terminal_session.py
+          src/loushang/tui/composer_edit_buffer.py
+          src/loushang/tui/ui_parts/composer.py
           tests/coding/test_mux_subprocess.py
           tests/coding/test_cli_apphost.py
           tests/dev/test_verify_evidence_manifest.py
@@ -123,6 +133,12 @@ jobs:
           tests/coding/test_hosted_local.py
           tests/coding/test_hosted_local_ownership.py
           tests/coding/test_mux_command.py
+          tests/coding/test_mux_terminal_process.py
+          tests/coding/test_mux_product_terminal.py
+          tests/harnesstui/test_hosted_mux_shell.py
+          tests/harnesstui/test_hosted_mux_terminal.py
+          tests/tui/test_terminal_session.py
+          tests/tui/test_composer_edit_buffer.py
           tests/coding/test_mux_subprocess.py
           tests/coding/test_cli_apphost.py
           tests/dev/test_verify_evidence_manifest.py
