@@ -128,12 +128,14 @@ defines the first explicit optional composition of AppHost, AppService and a
 Coding-owned foreground Session resolver. It is a process-local library only:
 no transport, Hosting owner, installed route or default change is claimed.
 
-The accepted
+The partially implemented
 [G13 Durable Hosted Continuity](durable-hosted-application-continuity-g13.md)
 target adds an optional application-record lease around the same composition.
 It keeps desired MuxSpace/Session coordination in AppService, always re-admits
 the current AppHost generation, and leaves Product/Harness as Session recovery
-truth. It is not implemented yet and grants no transport or process owner.
+truth. G13.1--G13.2 provide the strict store and uncomposed AppService
+transaction/recovery kernel; the AppHost/Product owner is pending. It grants no
+transport or process owner.
 
 ## Target
 
@@ -293,8 +295,9 @@ after Product/OEM admission, never through a derived module name.
 | G10.1--G10.4 | Product control journal, native canary, lazy CLI route, retained cross-platform evidence, and promotion | implemented, explicit and default-dark |
 | G12.0 | optional foreground hosted-application boundary, owner order, threat model and design review | accepted |
 | G12.1--G12.4 | AppHost application owner, Coding foreground resolver, explicit vertical canary and promotion evidence | implemented; explicit library only |
-| G13.0 | durable coordination record, one-writer lease, atomic recovery, retirement boundary and design review | accepted; implementation not started |
-| G13.1--G13.4 | continuity store, AppService transactions/recovery, AppHost/Product composition and restart evidence | not started; explicit library only |
+| G13.0 | durable coordination record, one-writer lease, atomic recovery, retirement boundary and design review | accepted |
+| G13.1--G13.2 | continuity store and AppService transactions/recovery | implemented; uncomposed explicit library only |
+| G13.3--G13.4 | AppHost/Product composition, Harnesstui restart evidence and closure | not started |
 
 ## Evidence
 

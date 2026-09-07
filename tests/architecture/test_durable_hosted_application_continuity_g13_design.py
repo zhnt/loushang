@@ -3,8 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 DESIGN = Path(
-    "docs/internals/architecture/apphost/"
-    "durable-hosted-application-continuity-g13.md"
+    "docs/internals/architecture/apphost/durable-hosted-application-continuity-g13.md"
 )
 APPHOST = Path("docs/internals/architecture/apphost/README.md")
 APPSERVICE = Path("docs/internals/architecture/appservice/README.md")
@@ -16,13 +15,13 @@ def _read() -> str:
     return DESIGN.read_text(encoding="utf-8")
 
 
-def test_g13_design_is_accepted_before_implementation() -> None:
+def test_g13_design_is_accepted_and_tracks_implementation() -> None:
     design = _read()
     for field in (
         "- ID: `DURABLE-HOSTED-APPLICATION-CONTINUITY-G13`",
         "- Authority: normative accepted design",
         "- Design status: accepted",
-        "- Implementation status: not started",
+        "- Implementation status:",
         "- Activation status: explicit process-local recoverable library only",
     ):
         assert field in design
@@ -84,14 +83,14 @@ def test_g13_design_has_closed_ownership_and_recovery_order() -> None:
     assert "foundation JSON" not in design
 
 
-def test_g13_accepted_target_is_adopted_without_claiming_current_code() -> None:
+def test_g13_accepted_target_is_adopted_with_current_scope() -> None:
     design_name = "durable-hosted-application-continuity-g13.md"
     assert design_name in _read_path(APPHOST)
     assert design_name in _read_path(APPSERVICE)
-    assert "accepted, unimplemented G13" in _read_path(AOD)
+    assert "partially implemented G13" in _read_path(AOD)
     ledger = _read_path(LEDGER)
-    assert "accepted G13 one-writer durable coordination/recovery edge" in ledger
-    assert "no application coordination survives process loss" in ledger
+    assert "complete the accepted G13 outer continuity owner" in ledger
+    assert "G13.1--G13.2" in ledger
 
 
 def _read_path(path: Path) -> str:

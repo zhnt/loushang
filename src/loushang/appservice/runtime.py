@@ -39,7 +39,17 @@ from loushang.appserver.protocol import (
     TurnTextV1,
 )
 
+from .continuity import (
+    ApplicationContinuityError,
+    ApplicationContinuityErrorCodeV1,
+    ApplicationContinuityLeaseV1,
+    ApplicationContinuityRecordV1,
+    MuxMemberContinuityV1,
+    MuxSpaceContinuityV1,
+)
 from .ports import HostedSessionPortV1, HostedSessionResolverV1
+
+_CONTINUITY_TOKEN = object()
 
 
 def _error(code: AppErrorCodeV1) -> AppServiceError:
@@ -241,7 +251,9 @@ class _SessionOwner:
         if result is not True:
             raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
 
-    async def _invoke_async(self, callback: Callable[..., object], *args: object) -> object:
+    async def _invoke_async(
+        self, callback: Callable[..., object], *args: object
+    ) -> object:
         if not self._accepting:
             raise _error(AppErrorCodeV1.SESSION_UNAVAILABLE)
         try:
@@ -272,7 +284,10 @@ class _SessionOwner:
     async def _on_event(self, event: SessionEventV1) -> None:
         if not self._accepting:
             return
-        if type(event) is not SessionEventV1 or event.session_id != self.identity.session_id:
+        if (
+            type(event) is not SessionEventV1
+            or event.session_id != self.identity.session_id
+        ):
             self._invalidate_attachments()
             return
         if event.cursor <= self._latest_cursor:
@@ -375,6 +390,9 @@ class AppServiceV1:
         "_cleanup_debt",
         "_close_timeout_seconds",
         "_closed",
+        "_continuity_application_id",
+        "_continuity_lease",
+        "_continuity_revision",
         "_id_factory",
         "_mux_by_id",
         "_mux_by_name",
@@ -414,6 +432,65 @@ class AppServiceV1:
         self._cleanup_debt: set[_SessionOwner] = set()
         self._close_timeout_seconds = float(close_timeout_seconds)
         self._closed = False
+        self._continuity_lease: ApplicationContinuityLeaseV1 | None = None
+        self._continuity_application_id: str | None = None
+        self._continuity_revision: int | None = None
+
+    @property
+    def continuity_enabled(self) -> bool:
+        return self._continuity_lease is not None
+
+    @property
+    def continuity_revision(self) -> int | None:
+        return self._continuity_revision
+
+    def _adopt_continuity_state(
+        self,
+        *,
+        lease: ApplicationContinuityLeaseV1,
+        record: ApplicationContinuityRecordV1 | None,
+        sessions: dict[str, _SessionOwner],
+        _token: object,
+    ) -> None:
+        if _token is not _CONTINUITY_TOKEN:
+            raise TypeError("AppService continuity state requires recovery")
+        if self._continuity_lease is not None or self._mux_by_id or self._sessions:
+            raise RuntimeError("AppService continuity state already initialized")
+        application_id = lease.application_id
+        if record is not None and (
+            record.application_id != application_id
+            or record.product_id != self.product_id
+        ):
+            raise ValueError("AppService continuity identity mismatch")
+        mux_by_id: dict[str, _MuxOwner] = {}
+        mux_by_name: dict[str, _MuxOwner] = {}
+        expected_sessions = {
+            member.session.session_id
+            for mux in (() if record is None else record.mux_spaces)
+            for member in mux.members
+        }
+        if set(sessions) != expected_sessions:
+            raise ValueError("AppService recovered Session set mismatch")
+        if record is not None:
+            for retained in record.mux_spaces:
+                mux = _MuxOwner(retained.mux_space_id, retained.name)
+                mux.revision = retained.revision
+                mux.members.extend(
+                    _Member(
+                        member.member_id,
+                        member.title,
+                        sessions[member.session.session_id],
+                    )
+                    for member in retained.members
+                )
+                mux_by_id[mux.mux_space_id] = mux
+                mux_by_name[mux.name] = mux
+        self._continuity_lease = lease
+        self._continuity_application_id = application_id
+        self._continuity_revision = None if record is None else record.record_revision
+        self._mux_by_id = mux_by_id
+        self._mux_by_name = mux_by_name
+        self._sessions = dict(sessions)
 
     async def create_mux(self, request: MuxCreateV1) -> MuxSpaceV1:
         if type(request) is not MuxCreateV1:
@@ -428,9 +505,15 @@ class AppServiceV1:
             if mux_space_id in self._mux_by_id:
                 raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
             mux = _MuxOwner(mux_space_id, request.name)
+            cancellation = await self._commit_continuity(
+                self._next_continuity_record(add_mux=mux)
+            )
             self._mux_by_id[mux_space_id] = mux
             self._mux_by_name[request.name] = mux
-            return mux.projection()
+            projection = mux.projection()
+        if cancellation is not None:
+            raise cancellation
+        return projection
 
     async def list_muxes(self) -> MuxListResultV1:
         async with self._state_lock:
@@ -495,7 +578,9 @@ class AppServiceV1:
                 controller_generation=attachment.controller_generation,
                 sessions=tuple(
                     AttachedSessionV1(member, snapshot)
-                    for member, snapshot in zip(projection.members, snapshots, strict=True)
+                    for member, snapshot in zip(
+                        projection.members, snapshots, strict=True
+                    )
                 ),
             )
         except BaseException:
@@ -529,6 +614,9 @@ class AppServiceV1:
             async with mux.lock:
                 if mux.closed:
                     return AckV1()
+                cancellation = await self._commit_continuity(
+                    self._next_continuity_record(remove_mux=mux)
+                )
                 mux.closed = True
                 attachments = mux.take_attachments()
                 members = tuple(mux.members)
@@ -540,6 +628,8 @@ class AppServiceV1:
                     self._attachments.pop(attachment.attachment_id, None)
                 self._settle_attachments(attachments, members)
         await self._close_sessions(tuple(member.session for member in members))
+        if cancellation is not None:
+            raise cancellation
         return AckV1()
 
     async def open_member(self, request: MuxMemberOpenV1) -> MuxSpaceV1:
@@ -569,6 +659,7 @@ class AppServiceV1:
         if not self._identity_matches(request, session.identity):
             await self._complete_cleanup(self._close_sessions((session,)))
             raise _error(AppErrorCodeV1.PRODUCT_MISMATCH)
+        published = False
         try:
             member = _Member(self._new_id(), request.session.title, session)
             async with self._state_lock:
@@ -579,10 +670,16 @@ class AppServiceV1:
                     self._require_mux_open(mux)
                     if len(mux.members) >= MAX_MEMBERS:
                         raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
-                    if any(
-                        item.member_id == member.member_id for item in mux.members
-                    ):
+                    if any(item.member_id == member.member_id for item in mux.members):
                         raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+                    staged_members = (*mux.members, member)
+                    cancellation = await self._commit_continuity(
+                        self._next_continuity_record(
+                            replace_mux=mux,
+                            members=staged_members,
+                            mux_revision=mux.revision + 1,
+                        )
+                    )
                     mux.members.append(member)
                     mux.revision += 1
                     attachments = mux.take_attachments()
@@ -591,25 +688,45 @@ class AppServiceV1:
                         self._attachments.pop(attachment.attachment_id, None)
                     self._settle_attachments(attachments, tuple(mux.members))
                     projection = mux.projection()
+                    published = True
+            if cancellation is not None:
+                raise cancellation
             return projection
         except BaseException:
-            await self._complete_cleanup(self._close_sessions((session,)))
+            if not published:
+                await self._complete_cleanup(self._close_sessions((session,)))
             raise
 
     async def close_member(self, request: MuxMemberCloseV1) -> MuxSpaceV1:
         self._require_request(request, MuxMemberCloseV1)
+        if self.continuity_enabled and not request.close_session:
+            raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
         mux = await self._resolve_mux(request.selector)
         async with self._state_lock:
             self._require_open()
             async with mux.lock:
                 self._require_mux_open(mux)
                 selected = next(
-                    (item for item in mux.members if item.member_id == request.member_id),
+                    (
+                        item
+                        for item in mux.members
+                        if item.member_id == request.member_id
+                    ),
                     None,
                 )
                 if selected is None:
                     raise _error(AppErrorCodeV1.NOT_FOUND)
                 prior_members = tuple(mux.members)
+                staged_members = tuple(
+                    item for item in mux.members if item is not selected
+                )
+                cancellation = await self._commit_continuity(
+                    self._next_continuity_record(
+                        replace_mux=mux,
+                        members=staged_members,
+                        mux_revision=mux.revision + 1,
+                    )
+                )
                 mux.members.remove(selected)
                 mux.revision += 1
                 attachments = mux.take_attachments()
@@ -619,6 +736,8 @@ class AppServiceV1:
                 projection = mux.projection()
         if request.close_session:
             await self._close_sessions((selected.session,))
+        if cancellation is not None:
+            raise cancellation
         return projection
 
     async def snapshot_session(
@@ -701,9 +820,7 @@ class AppServiceV1:
                 muxes = tuple(self._mux_by_id.values())
                 sessions = tuple(self._sessions.values())
                 self._cleanup_debt.update(sessions)
-                attachments = tuple(
-                    item[1] for item in self._attachments.values()
-                )
+                attachments = tuple(item[1] for item in self._attachments.values())
                 self._mux_by_id.clear()
                 self._mux_by_name.clear()
                 self._sessions.clear()
@@ -852,6 +969,91 @@ class AppServiceV1:
         if any(isinstance(result, BaseException) for result in results):
             raise _error(AppErrorCodeV1.CLEANUP_INCOMPLETE)
 
+    def _next_continuity_record(
+        self,
+        *,
+        add_mux: _MuxOwner | None = None,
+        remove_mux: _MuxOwner | None = None,
+        replace_mux: _MuxOwner | None = None,
+        members: tuple[_Member, ...] | None = None,
+        mux_revision: int | None = None,
+    ) -> ApplicationContinuityRecordV1 | None:
+        if self._continuity_lease is None:
+            return None
+        retained: list[MuxSpaceContinuityV1] = []
+        for mux in self._mux_by_id.values():
+            if mux is remove_mux:
+                continue
+            if mux is replace_mux:
+                if members is None or mux_revision is None:
+                    raise RuntimeError("incomplete continuity MuxSpace replacement")
+                retained.append(
+                    self._continuity_mux(
+                        mux,
+                        members=members,
+                        revision=mux_revision,
+                    )
+                )
+            else:
+                retained.append(self._continuity_mux(mux))
+        if add_mux is not None:
+            retained.append(self._continuity_mux(add_mux))
+        retained.sort(key=lambda item: (item.name, item.mux_space_id))
+        application_id = self._continuity_application_id
+        if application_id is None:
+            raise RuntimeError("continuity application identity is unavailable")
+        revision = (
+            1 if self._continuity_revision is None else self._continuity_revision + 1
+        )
+        return ApplicationContinuityRecordV1(
+            application_id=application_id,
+            product_id=self.product_id,
+            record_revision=revision,
+            mux_spaces=tuple(retained),
+        )
+
+    @staticmethod
+    def _continuity_mux(
+        mux: _MuxOwner,
+        *,
+        members: tuple[_Member, ...] | None = None,
+        revision: int | None = None,
+    ) -> MuxSpaceContinuityV1:
+        retained = tuple(mux.members) if members is None else members
+        return MuxSpaceContinuityV1(
+            mux_space_id=mux.mux_space_id,
+            name=mux.name,
+            revision=mux.revision if revision is None else revision,
+            members=tuple(
+                MuxMemberContinuityV1(
+                    member_id=member.member_id,
+                    title=member.title,
+                    position=position,
+                    session=member.session.identity,
+                )
+                for position, member in enumerate(retained, 1)
+            ),
+        )
+
+    async def _commit_continuity(
+        self,
+        record: ApplicationContinuityRecordV1 | None,
+    ) -> asyncio.CancelledError | None:
+        if record is None:
+            return None
+        lease = self._continuity_lease
+        if lease is None:
+            raise RuntimeError("continuity record has no lease")
+        task = asyncio.create_task(
+            lease.commit(
+                expected_revision=self._continuity_revision,
+                record=record,
+            )
+        )
+        cancellation = await _join_continuity_commit(task)
+        self._continuity_revision = record.record_revision
+        return cancellation
+
     def _identity_matches(
         self,
         request: MuxMemberOpenV1,
@@ -888,6 +1090,36 @@ class AppServiceV1:
     def _require_mux_open(mux: _MuxOwner) -> None:
         if mux.closed:
             raise _error(AppErrorCodeV1.NOT_FOUND)
+
+
+async def _join_continuity_commit(
+    task: asyncio.Task[None],
+) -> asyncio.CancelledError | None:
+    cancellation: asyncio.CancelledError | None = None
+    caller = asyncio.current_task()
+    while not task.done():
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError as error:
+            if caller is None or caller.cancelling() == 0:
+                break
+            cancellation = error
+        except BaseException:
+            break
+    try:
+        task.result()
+    except asyncio.CancelledError:
+        raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE) from None
+    except ApplicationContinuityError as error:
+        code = (
+            AppErrorCodeV1.REVISION_CONFLICT
+            if error.code is ApplicationContinuityErrorCodeV1.CONFLICT
+            else AppErrorCodeV1.OPERATION_UNAVAILABLE
+        )
+        raise _error(code) from None
+    except BaseException:
+        raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE) from None
+    return cancellation
 
 
 __all__ = ["AppServiceV1"]

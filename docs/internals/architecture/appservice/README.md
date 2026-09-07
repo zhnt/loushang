@@ -11,9 +11,9 @@
 - Parent: `loushang`
 - Authority: normative — G11 in-process application semantics
 - Design status: accepted
-- Implementation status: partial — G11.2 Product-neutral core and G13.1
-  continuity record/store are implemented; G13 runtime integration remains
-  unimplemented
+- Implementation status: partial — G11.2 Product-neutral core and G13.1--G13.2
+  continuity record/store, commit-before-publish mutation and atomic recovery
+  are implemented; the outer AppHost continuity owner remains pending
 - Activation status: explicit in-process construction only
 - Owner: Loushang AppService architecture
 
@@ -35,6 +35,8 @@ The current implementation contains:
 - `continuity.py`: the G13 strict desired-state record and lease/store ports;
 - `continuity_file.py`: the exact-root private atomic JSON adapter with one
   OS-released lock per application key; and
+- `continuity_runtime.py`: the published recovery-attempt owner and
+  all-or-nothing Session/MuxSpace reconstruction; and
 - `__init__.py`: the deliberately small public facade.
 
 ## Dependency And Ownership
@@ -74,24 +76,28 @@ G12 does not move lifecycle authority into AppService. The optional outer
 `apphost.application` owner fences and closes this service before AppHost, while
 AppService continues to know only its injected Product-neutral resolver.
 
-G13.1 implements the accepted strict record, codec, lease ports and concrete
-store without composing them into AppService. AppHost will own the optional
-recovery composition and lease lifetime; Product/Harness remains authoritative
-for canonical Session recovery.
+G13.1--G13.2 implement the accepted strict record/store, optional durable
+AppService mutations and all-or-nothing recovery. The AppService never
+discovers a path or acquires/releases its lease. AppHost will own that optional
+composition and lease lifetime; Product/Harness remains authoritative for
+canonical Session recovery.
 
 ## Non-Goals
 
-Current G11/G12 has no connection, listener, wire dispatcher, authentication,
-IPC, WebSocket, daemon, process controller, persistent MuxSpace store,
-multi-client controller takeover, or AppHost restart recovery. The accepted
-but unimplemented G13 Target covers only durable coordination reconstruction;
-the other exclusions and the default Embedded Profile and installed Coding
+Current G11/G12/G13.2 has no connection, listener, wire dispatcher,
+authentication, IPC, WebSocket, daemon, process controller, multi-client
+controller takeover, or composed AppHost restart owner. The partially
+implemented G13 Target covers only durable coordination reconstruction; the
+other exclusions and the default Embedded Profile and installed Coding
 CLI/TUI/SDK routes remain unchanged.
 
 ## Evidence
 
 - `tests/appservice/test_runtime.py` covers identity, attach barriers, mailbox
   bounds, aggregate concurrency, stale-generation fencing and close order.
+- `tests/appservice/test_continuity.py` and
+  `tests/appservice/test_continuity_runtime.py` cover the strict store,
+  one-writer lease, atomic mutation/recovery and retryable cleanup debt.
 - `tests/coding/test_appservice_adapter.py` covers the Coding Product edge and
   cwd/user-home create/resume facts.
 - `tests/harnesstui/test_hosted_mux_profile.py` covers explicit presentation,
