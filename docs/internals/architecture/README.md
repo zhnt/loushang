@@ -150,6 +150,11 @@ the transport. Real Product interaction, shutdown and fresh-process recovery
 are verified on Linux, macOS and Windows; the G14 record links the exact
 native evidence and integration PR.
 
+The [accepted G15 foreground Hosted TUI design](apphost/foreground-hosted-tui-g15.md)
+defines the optional A0.5 launcher and explicit client presentation boundary.
+It is design-only, not a new installed route. Its G16 handoff separates
+foreground process ownership from a future detachable connection profile.
+
 A nested scope is not automatically a top-level subsystem. The parent owns its
 placement, composition policy, and sibling relationships; the child owns its
 black-box contract and internal component model.

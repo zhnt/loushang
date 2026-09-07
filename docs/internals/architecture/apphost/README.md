@@ -12,6 +12,7 @@
 [G12 Foreground Hosted Application](foreground-hosted-application-g12.md) ·
 [G13 Durable Hosted Continuity](durable-hosted-application-continuity-g13.md) ·
 [G14 Foreground Stdio](../appserver/foreground-stdio-hosted-app-g14.md) ·
+[G15 Foreground Hosted TUI Design](foreground-hosted-tui-g15.md) ·
 [Hosted Product Runtime V1 Plan](../drafts/hosted-product-runtime-v1-plan.md)
 
 ## Status
@@ -98,6 +99,11 @@ does not enter the core facade, choose paths/Product factories, or own process
 launch/exit. The separate Coding `loushang-hosted` command composes this edge;
 [G14 final evidence](../appserver/foreground-stdio-hosted-app-g14.md#final-acceptance-evidence)
 records real Product validation on Linux, macOS and Windows.
+
+The [accepted G15 design](foreground-hosted-tui-g15.md) specifies A0.5 launch
+ownership and a Harnesstui hosted shell. It is a design-only slice: neither the launcher
+nor a terminal client is made Current by design acceptance. G16's detachable
+connection lifetime requires separate acceptance; G14 EOF remains terminal.
 
 Existing Product-specific bootstrap/CLI/TUI paths remain authoritative and do
 not import the G9 composition. The one installed explicit factory may
