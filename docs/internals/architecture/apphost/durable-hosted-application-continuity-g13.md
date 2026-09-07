@@ -14,7 +14,7 @@
 - Parent: Loushang application architecture
 - Authority: normative accepted design
 - Design status: accepted
-- Implementation status: not started
+- Implementation status: partial — G13.1 complete
 - Activation status: explicit process-local recoverable library only
 - Owner: Loushang AppService architecture with AppHost, Product, and storage
   boundary review
@@ -57,7 +57,7 @@ move continuity authority into Hosting or AppServer.
 
 | Plane | Statement |
 | --- | --- |
-| Facts | G11 owns process-local named mux/session semantics. G12 composes one explicit foreground AppService with AppHost canonical routing and an in-process client. Detach already leaves a live MuxSpace and Session intact while that process lives. No application coordination survives AppService destruction. |
+| Facts | G11 owns process-local named mux/session semantics. G12 composes one explicit foreground AppService with AppHost canonical routing and an in-process client. G13.1 implements the uncomposed strict record/lease ports and exact-root private JSON store. Detach already leaves a live MuxSpace and Session intact while that process lives; no runtime yet writes or restores the G13 record. |
 | Current | A G12 caller can detach and reattach only to the same live process-local AppService. Application shutdown closes live Session bindings and forgets MuxSpace membership. |
 | Target | One explicit G13 application key has a single fenced writer. Committed MuxSpace/session desired state survives process loss. A fresh G13 runtime acquires a new owner epoch, resumes canonical Sessions under the current admitted Product generation, publishes the complete recovered graph, and accepts a fresh attachment. |
 | Delta | Add versioned coordination records, an exclusive store lease, commit-before-publication mutations, all-or-nothing recovery, Product integration and bounded evidence. External transport, process supervision and active-execution recovery remain future deltas. |

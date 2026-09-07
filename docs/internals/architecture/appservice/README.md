@@ -11,8 +11,9 @@
 - Parent: `loushang`
 - Authority: normative — G11 in-process application semantics
 - Design status: accepted
-- Implementation status: implemented — G11.2 Product-neutral core; consumed by
-  the optional G12 foreground composition
+- Implementation status: partial — G11.2 Product-neutral core and G13.1
+  continuity record/store are implemented; G13 runtime integration remains
+  unimplemented
 - Activation status: explicit in-process construction only
 - Owner: Loushang AppService architecture
 
@@ -25,12 +26,15 @@ bounded logical delivery.  It does not own an AppServer listener, byte/frame
 buffers, authentication, AppHost composition, Hosting process mechanics,
 Product policy, or UI state.
 
-The G11 implementation contains:
+The current implementation contains:
 
 - `ports.py`: the independently owned hosted Session and resolver protocols;
 - `runtime.py`: MuxSpace, member, Session and attachment lifecycle;
 - `client.py`: the in-process implementation of AppServer's transport-neutral
-  AppClient contract; and
+  AppClient contract;
+- `continuity.py`: the G13 strict desired-state record and lease/store ports;
+- `continuity_file.py`: the exact-root private atomic JSON adapter with one
+  OS-released lock per application key; and
 - `__init__.py`: the deliberately small public facade.
 
 ## Dependency And Ownership
@@ -70,10 +74,10 @@ G12 does not move lifecycle authority into AppService. The optional outer
 `apphost.application` owner fences and closes this service before AppHost, while
 AppService continues to know only its injected Product-neutral resolver.
 
-The accepted G13 Target keeps durable MuxSpace/Session coordination semantics
-in this scope through an injected, exclusively leased store. It adds no Current
-code yet. AppHost will own the optional recovery composition and lease lifetime;
-Product/Harness remains authoritative for canonical Session recovery.
+G13.1 implements the accepted strict record, codec, lease ports and concrete
+store without composing them into AppService. AppHost will own the optional
+recovery composition and lease lifetime; Product/Harness remains authoritative
+for canonical Session recovery.
 
 ## Non-Goals
 
