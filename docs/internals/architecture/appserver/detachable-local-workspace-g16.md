@@ -13,9 +13,9 @@
 - Parent: Loushang application architecture
 - Authority: normative accepted deployment boundary
 - Design status: accepted following the three-perspective review below
-- Implementation status: partial — semantic scopes and the optional native local
-  connection component are implemented; AppHost deployment and Product/UI remain
-  missing, with Windows record rerun and new connection-platform evidence pending
+- Implementation status: partial — semantic scopes, the native local connection
+  component and optional AppHost/G13 deployment owner are implemented; Product/UI
+  remain missing, with Windows record rerun and new platform evidence pending
 - Activation status: explicit new deployment only; G14 and Embedded unchanged
 - Tracking: [Hosted Workspace V1 #566](https://github.com/zhnt/loushang/issues/566)
 - Prerequisite: G15 design accepted in `18d429bc`; G14 delivered in `815c03d2`
@@ -77,8 +77,9 @@ changing the explicit G11/G14 client contract.
 The existing wire values, framing, G13 store/lease, real Coding factory,
 controller and conversation projection are retained. The optional native local
 connection layer now composes record admission, authentication and an injected
-scope factory. AppHost deployment and the terminal client entrypoint are still
-missing. The [inventory](detachable-local-workspace-g16-inventory.json) separates
+scope factory. The optional AppHost deployment owner now binds that factory to
+the recovered G13 application; Product composition and the terminal client
+entrypoint are still missing. The [inventory](detachable-local-workspace-g16-inventory.json) separates
 those missing responsibilities from existing extensions.
 
 The first G16.1 primitive, `appservice._operations._OwnedAppOperations`, now
@@ -88,8 +89,9 @@ The optional `appservice.client_scope.ScopedAppServiceV1` now composes it with
 exclusive mux controllers, scoped read/control validation and interaction
 settlement. It must be installed before exposing an application's clients or
 starting execution, and the outer application must not expose a parallel
-legacy unscoped client to the same peers. No AppHost factory, transport or CLI
-activates this edge yet; the existing G14 request lifetime is unchanged.
+legacy unscoped client to the same peers. AppHost's optional local owner now
+activates this edge after recovery; no installed CLI activates it yet, and
+the existing G14 request lifetime is unchanged.
 
 `appserver.local_auth` now authenticates an injected byte port and provides
 direction-bound sequenced frames. This is not endpoint admission: its material
@@ -735,9 +737,10 @@ Slice review (three perspectives, one reviewer):
   than in-memory framing evidence but is not a real Coding/AppHost server,
   installed client, interactive TUI, restart-recovery or full platform proof.
 
-Remaining: AppHost's public ready-scope and ordered local-stop seam, real Coding
-server/client composition, the installed command and interactive Harnesstui,
-cross-platform native/installed fault evidence, final reviews and promotion.
+Remaining at this checkpoint: AppHost's public ready-scope and ordered local-stop
+seam (implemented in the next checkpoint), real Coding server/client composition,
+the installed command and interactive Harnesstui, cross-platform native/installed
+fault evidence, final reviews and promotion.
 
 Connection-slice verification: `make check-appservice` passed Ruff, mypy for
 51 source files and 367 tests (10 Windows-native cases skipped on Linux).
@@ -747,6 +750,79 @@ checks that the admitted socket handle is closed; `connection_lost` alone is
 not physical-settlement proof. These results are local Linux evidence, not a
 Windows/macOS connection run. The Windows replacement-fault test correction
 and the new native connection code still require remote platform verification.
+
+### G16.6 AppHost And G13 Deployment Checkpoint
+
+The optional `apphost.local.HostedLocalRuntimeV1` adopts a recovered G13
+application and one private connection-record directory before starting IO.
+Its application identity comes from G13's public lease-backed metadata, not a
+second caller-supplied string. It binds only public application capabilities:
+`enable_client_scopes`, `open_client_scope` and `fence_client_scopes`. Neither
+the local edge nor AppServer reaches into private AppService/G13 fields.
+
+Scoped activation is explicit and one-way. Borrowing even an unused legacy
+client prevents later activation, because fencing a getter cannot revoke a
+capability already returned. Once activated, the legacy getter is unavailable;
+repeated activation shares the same application-owned scopes. G13 forwards
+these operations only after recovery is complete. A synchronous scope fence
+denies both new clients and actions from existing clients without cancelling
+already accepted execution. G14 and the core facade remain unchanged.
+
+An admitted stop fences listener and logical scopes and publishes its retained
+close task before the peer attempts `stop_requested`. A reply failure cannot
+discard this intent. The local owner then joins startup, waits for the bounded
+reply attempt, closes connections, settles the private directory, and calls
+G13 close (not retire). Desired state survives; Service/AppHost/Product settle
+before the application lease. Failed connection or record cleanup prevents
+advancing to the application. One 30-second monotonic deadline includes all
+stop phases. Cancelled waiters do not cancel owned tasks; an expired deadline
+does not renew on another close. Explicit `close(retry_timeout=...)` may grant
+another budget only after the previous attempt ends, reusing outstanding phase
+tasks rather than duplicating close work. An external supervisor remains the
+only hard process-termination owner.
+
+Slice review (three perspectives, one reviewer, not independent agents):
+
+- Architecture/authority: keep the local deployment as one optional AppHost
+  module; core modules import no transport and existing G14/Embedded routes do
+  not activate it. The public scope seam closes the legacy-capability bypass.
+  The G12 application component's old 500-line budget failed after adding this
+  public mode/fence seam (525 lines). Its reviewed G16 budget is 550 lines;
+  client selection stays cohesive with the existing application boundary,
+  while the separate local deployment owner is capped at 300. No core import
+  restriction or other component budget is relaxed.
+- Lifecycle/faults: retained close tasks and one deadline cover reply loss,
+  late startup, waiter cancellation, directory failure and explicit retry.
+  Regression-first review found that startup rejection was being mislabeled
+  as cleanup debt even after successful settlement. Startup now preserves its
+  actual failure; unresolved cleanup still takes precedence when necessary.
+- Product/evidence: native loopback tests bind real AppHost/G13/AppService to
+  synthetic Product/lease ports. A client disconnect leaves its accepted turn
+  running; explicit stop settles that turn before Service/AppHost/Product and
+  releases the lease last. These are composition tests, not an installed real
+  Coding server, durable-file restart, interactive terminal or Windows/macOS
+  acceptance. Those full-goal requirements remain open.
+
+Local verification: `make check-apphost` passed Ruff, mypy for 67 source
+files, and 591 tests with 11 platform-related skips. Its G8/G9/G10 evidence
+subgates passed 19/16/15 tests without skips, including manifest validation
+and the installed G10 POSIX canary. The new G16 runtime/scope and boundary
+selection passed 23 tests; the reconciled A0/G12/G16 architecture selection
+passed 37. These are local Linux checks and do not close G16's installed
+Product/UI or three-platform evidence requirements.
+The final `make check-appservice` rerun passed Ruff, mypy for 53 source files
+and 393 tests with 10 Windows-native skips on Linux. Architecture documentation
+validation passed all five cases. Earlier complete runs exposed the obsolete
+A0 optional-module lists and G12 component budget; those guards were explicitly
+reconciled above before both complete gates passed.
+
+Supplemental Windows-platform static checking passed the 36-file G16
+AppHost application/continuity/local, AppService and AppServer chain. Checking
+the entire AppHost package also reported six pre-existing POSIX-only API type
+errors in the unchanged `apphost/integrations/harness_session.py` adapter
+(`O_DIRECTORY`, `O_CLOEXEC`, `O_NOFOLLOW`, `pread`). That optional adapter has
+its own native-support guard; this result is not reported as a whole-package
+Windows pass, and no permission or fallback policy was relaxed to hide it.
 
 ### Platform API References
 

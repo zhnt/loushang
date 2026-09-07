@@ -91,8 +91,12 @@ class ScopedAppServiceV1:
         self._scopes.add(scope)
         return scope
 
-    async def close(self) -> None:
+    def fence(self) -> None:
+        """Reject new client actions synchronously, without cancelling accepted work."""
         self._closed = True
+
+    async def close(self) -> None:
+        self.fence()
         task = self._close_task
         if task is None or (task.done() and (task.cancelled() or task.exception())):
             operation = self._close_once()

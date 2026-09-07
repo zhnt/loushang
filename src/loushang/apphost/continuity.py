@@ -8,6 +8,7 @@ import re
 from contextlib import suppress
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import TYPE_CHECKING
 
 from loushang.appserver.client import AppClientV1
 from loushang.appservice import (
@@ -29,6 +30,9 @@ from .application import (
     _adopt_recovered_appservice,
     _create_unpublished_hosted_application_runtime,
 )
+
+if TYPE_CHECKING:
+    from loushang.appservice.client_scope import AppClientScopeV1
 
 HOSTED_APPLICATION_CONTINUITY_CONTRACT_VERSION = (
     "loushang.apphost.application-continuity/v1"
@@ -209,6 +213,10 @@ class HostedApplicationContinuityRuntimeV1:
         self._lease_released = False
 
     @property
+    def application_id(self) -> str:
+        return self._lease.application_id
+
+    @property
     def product_id(self) -> str:
         return self._application.product_id
 
@@ -219,6 +227,20 @@ class HostedApplicationContinuityRuntimeV1:
     @property
     def client(self) -> AppClientV1:
         return self._application.client
+
+    def enable_client_scopes(self) -> None:
+        """Opt in only after this recovered runtime is published by its attempt."""
+        if not self.accepting:
+            raise HostedApplicationError("hosted_application_not_ready")
+        self._application.enable_client_scopes()
+
+    def open_client_scope(self) -> AppClientScopeV1:
+        if not self.accepting:
+            raise HostedApplicationError("hosted_application_not_ready")
+        return self._application.open_client_scope()
+
+    def fence_client_scopes(self) -> None:
+        self._application.fence_client_scopes()
 
     @property
     def accepting(self) -> bool:

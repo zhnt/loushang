@@ -227,6 +227,8 @@ APPSERVICE_SOURCES := \
 	src/loushang/foundation/observability/identity.py \
 	src/loushang/coding/cli/hosted.py \
 	src/loushang/apphost/foreground.py \
+	src/loushang/apphost/local.py \
+	src/loushang/apphost/continuity.py \
 	src/loushang/coding/hosted_catalog.py \
 	src/loushang/coding/hosted_session.py \
 	src/loushang/harness/transcript/lifecycle.py \
@@ -244,6 +246,9 @@ APPSERVICE_TEST_PATHS := \
 	tests/coding/test_hosted_command.py \
 	tests/coding/test_hosted_subprocess.py \
 	tests/apphost/test_foreground.py \
+	tests/apphost/test_local.py \
+	tests/apphost/test_client_scopes.py \
+	tests/apphost/test_application.py \
 	tests/coding/test_hosted_catalog.py \
 	tests/coding/test_hosted_session.py \
 	tests/coding/test_scoped_hosted_session.py \

@@ -14,7 +14,7 @@
 - Parent: `loushang`
 - Authority: normative — A0.4 ports, G11 client contract and explicit G14/G16 connection edges
 - Design status: accepted
-- Implementation status: partial — G14 is delivered on Linux/macOS/Windows; G16 native library is implemented, with AppHost/Product/UI integration and final native evidence pending
+- Implementation status: partial — G14 is delivered on Linux/macOS/Windows; G16 native library and optional AppHost composition are implemented, with Product/UI integration and final native evidence pending
 - Activation status: explicit library or `loushang-hosted` foreground command; no default-route change or installed G16 command
 - Owner: Loushang AppServer architecture
 
@@ -34,8 +34,9 @@ G16 adds an explicit local connection library with native private records,
 mutual authentication and injected scope ownership. Its sole native-IO adapter
 can bind literal loopback or read an explicitly selected endpoint; no automatic
 startup, discovery, Product construction or process signaling is granted.
-The [G16 checkpoint](detachable-local-workspace-g16.md#g165-native-connection-checkpoint)
-distinguishes this library from the still-missing AppHost/CLI/TUI deployment.
+The [G16 checkpoints](detachable-local-workspace-g16.md#g166-apphost-and-g13-deployment-checkpoint)
+distinguish the implemented library/AppHost edge from the still-missing
+installed Product command and interactive TUI.
 
 G12's optional AppHost application edge consumes the client contract for its
 in-process view. AppServer neither constructs nor imports that composition.

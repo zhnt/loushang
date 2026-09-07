@@ -707,6 +707,7 @@ def test_hosting_apphost_and_appserver_optional_modules_are_exact() -> None:
         "continuity.py",
         "errors.py",
         "foreground.py",
+        "local.py",
         "integrations/__init__.py",
         "integrations/harness_session.py",
         "router.py",

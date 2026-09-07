@@ -433,6 +433,7 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "application.py",
         "continuity.py",
         "foreground.py",
+        "local.py",
     }
     assert {
         path.relative_to(APPSERVER_SOURCE).as_posix()

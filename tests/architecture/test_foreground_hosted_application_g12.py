@@ -189,7 +189,9 @@ def test_G12_INVENTORY_V5_is_exact_source_backed_and_default_dark() -> None:
 
 def test_g12_new_owners_remain_independently_reviewable() -> None:
     limits = {
-        APPHOST_APPLICATION: 500,
+        # G16 adds public client-mode selection/fencing to this same application
+        # boundary. Its native deployment owner has a separate 300-line gate.
+        APPHOST_APPLICATION: 550,
         CODING_APPLICATION: 800,
     }
     for path, limit in limits.items():

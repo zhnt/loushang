@@ -147,3 +147,33 @@ def test_G16_BOUNDARIES_native_io_is_confined_to_explicit_local_adapter() -> Non
         "src/loushang/coding/ui/cli.py",
     ):
         assert "LocalAppServerV1" not in Path(name).read_text()
+
+
+def test_G16_BOUNDARIES_local_apphost_edge_uses_public_application_capabilities() -> None:
+    source = Path("src/loushang/apphost/local.py")
+    assert len(source.read_text().splitlines()) <= 300
+    tree = ast.parse(source.read_text())
+    external = {
+        node.module for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and not node.level
+        and node.module.startswith("loushang.")
+    }
+    assert external == {
+        "loushang.appserver.framing", "loushang.appserver.local",
+        "loushang.appserver.local_record",
+    }
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Attribute) and isinstance(node.value, ast.Attribute)
+                and node.value.attr == "_application"):
+            assert not node.attr.startswith("_")
+        if isinstance(node, ast.Import):
+            assert all(alias.name.partition(".")[0] in sys.stdlib_module_names
+                       and alias.name not in {"socket", "subprocess"} for alias in node.names)
+    for forbidden in ("Path(", "os.environ", ".retire(", "_service", "_lease"):
+        assert forbidden not in source.read_text()
+    for path in (
+        "src/loushang/apphost/__init__.py", "src/loushang/apphost/runtime.py",
+        "src/loushang/apphost/application.py", "src/loushang/apphost/continuity.py",
+        "src/loushang/apphost/foreground.py", "src/loushang/coding/cli/hosted.py",
+    ):
+        assert "HostedLocalRuntimeV1" not in Path(path).read_text()

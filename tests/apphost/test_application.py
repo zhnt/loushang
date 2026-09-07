@@ -129,6 +129,7 @@ def _runtime(
     apphost: _AppHost | None = None,
     product: _Product | None = None,
     timeout: float = 1.0,
+    id_factory: Callable[[], str] | None = None,
 ) -> HostedApplicationRuntimeV1:
     ids = iter(("mux", "member"))
     return create_hosted_application_runtime(
@@ -141,7 +142,7 @@ def _runtime(
             product_owner=product or _Product(events),
             shutdown_budget=AppHostShutdownBudgetV1(1.0, 0.5),
             phase_timeout_seconds=timeout,
-            service_id_factory=lambda: next(ids),
+            service_id_factory=id_factory or (lambda: next(ids)),
         )
     )
 

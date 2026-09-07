@@ -23,7 +23,8 @@
 - Design status: accepted
 - Implementation status: partial — Hosted Product Runtime G0--G10, G12
   foreground application, G13 durable continuity and G14 foreground connection
-  settlement are implemented; A0.5 remains not-started
+  settlement are implemented; G16 has an optional local deployment owner but no
+  installed Product client/server route yet; A0.5 remains not-started
 - Activation status: default-dark; the exact installed G10 canary selects
   Hosting. G12/G13 have explicit library construction and the separate G14
   `loushang-hosted` command; ordinary CLI/TUI/SDK defaults are unchanged
@@ -106,10 +107,18 @@ nor a terminal client is made Current by design acceptance. G16's detachable
 connection lifetime requires separate acceptance; G14 EOF remains terminal.
 
 The [accepted G16 design](../appserver/detachable-local-workspace-g16.md)
-supplies that separate local deployment boundary. Its optional local edge,
-semantic client scopes and installed `loushang-mux` route are not implemented
-yet; design acceptance does not activate Hosting service control or change
-the foreground owner above.
+supplies that separate local deployment boundary. The optional
+`apphost.local.HostedLocalRuntimeV1` now binds a ready recovered application to
+AppServer's authenticated local listener. Public application methods select
+scoped authority before any legacy client is borrowed, create owned client
+scopes and fence admission synchronously. The local edge adopts its private
+record directory and application, waits for the stop reply attempt, then
+settles connections/directory before G13 releases its lease. All stop phases
+share one monotonic budget; timed-out tasks remain owned, and a new budget
+requires an explicit completed-attempt retry. Client EOF does not stop the
+application. The installed `loushang-mux` Product route, interactive shell and
+full native platform proof remain missing. This optional edge does not
+activate Hosting service control or change the foreground owner above.
 
 Existing Product-specific bootstrap/CLI/TUI paths remain authoritative and do
 not import the G9 composition. The one installed explicit factory may
@@ -159,7 +168,8 @@ It keeps desired MuxSpace/Session coordination in AppService, always re-admits
 the current AppHost generation, and leaves Product/Harness as Session recovery
 truth. `apphost.continuity` owns the lease-last lifecycle and Coding supplies
 the current-generation canonical recovery edge. It grants no transport or
-process owner and remains absent from installed routes.
+process owner and installs no entrypoint itself; G14 selects it through its
+explicit Product command, while G16's installed Product command remains pending.
 
 ## Target
 
