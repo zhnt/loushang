@@ -79,7 +79,8 @@ The top-level scopes are:
 - [Ontology](ontology/README.md)
 - [Hosting](hosting/README.md)
 - [AppHost](apphost/README.md)
-- [AppServer structural ports](appserver/README.md)
+- [AppServer](appserver/README.md)
+- [AppService](appservice/README.md)
 - Foundation, represented in the AOD and subsystem map because it is a small
   product-neutral base rather than a large independent architecture package
 
@@ -121,9 +122,9 @@ short-lived native Hosting child. Product-owned durable control, bounded
 reports, and separate Linux/Windows evidence leave normal CLI/TUI/SDK
 ownership, the G9.3 `RETAIN` decision, AppServer/AppService, and named mux
 unchanged.
-The accepted
+The implemented
 [G11 in-process hosted application](appserver/hosted-application-g11.md)
-design is the first named-mux extraction trigger.  It keeps AppServer protocol,
+is the first named-mux extraction trigger.  It keeps AppServer protocol,
 AppService semantics, Product adapters, and Harnesstui presentation in separate
 owners and explicitly excludes listeners, IPC, daemon control, default-route
 changes, and Current deletion.

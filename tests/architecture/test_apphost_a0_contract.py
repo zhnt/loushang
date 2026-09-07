@@ -354,7 +354,7 @@ def test_a0_1_create_and_profile_boundaries_preserve_owner_authority() -> None:
     assert "close" not in profile_members
 
 
-def test_a0_1_has_only_the_reviewed_default_dark_product_consumers() -> None:
+def test_a0_1_has_only_the_reviewed_g8_g9_g10_and_g11_consumers() -> None:
     consumers = {
         path
         for path in Path("src/loushang").rglob("*.py")
@@ -364,6 +364,7 @@ def test_a0_1_has_only_the_reviewed_default_dark_product_consumers() -> None:
         Path("src/loushang/coding/apphost_canary.py"),
         Path("src/loushang/coding/apphost_composition.py"),
         Path("src/loushang/coding/apphost_product.py"),
+        Path("src/loushang/coding/appservice_adapter.py"),
     }
     reverse_adapter_consumers = {
         path

@@ -30,6 +30,7 @@ graph TD
     PKG_AI["loushang.ai"]
     PKG_APPHOST["loushang.apphost"]
     PKG_APPSERVER["loushang.appserver"]
+    PKG_APPSERVICE["loushang.appservice"]
     PKG_CHANNEL["loushang.channel"]
     PKG_CODING["loushang.coding"]
     PKG_FOUNDATION["loushang.foundation"]
@@ -49,12 +50,15 @@ graph TD
     PKG_AI --> PKG_FOUNDATION
     PKG_APPHOST --> PKG_APPSERVER
     PKG_APPHOST --> PKG_HARNESS
+    PKG_APPSERVICE --> PKG_APPSERVER
     PKG_CHANNEL --> PKG_FOUNDATION
     PKG_CHANNEL --> PKG_HARNESS
     PKG_CHANNEL --> PKG_HARNESSWORK
     PKG_CODING --> PKG_AGENT
     PKG_CODING --> PKG_AI
     PKG_CODING --> PKG_APPHOST
+    PKG_CODING --> PKG_APPSERVER
+    PKG_CODING --> PKG_APPSERVICE
     PKG_CODING --> PKG_CHANNEL
     PKG_CODING --> PKG_FOUNDATION
     PKG_CODING --> PKG_HARNESS
@@ -69,6 +73,7 @@ graph TD
     PKG_HARNESS --> PKG_FOUNDATION
     PKG_HARNESS --> PKG_HOSTING
     PKG_HARNESSTUI --> PKG_AGENT
+    PKG_HARNESSTUI --> PKG_APPSERVER
     PKG_HARNESSTUI --> PKG_FOUNDATION
     PKG_HARNESSTUI --> PKG_HARNESS
     PKG_HARNESSTUI --> PKG_TUI
@@ -92,11 +97,12 @@ graph TD
 | `loushang.ai` | `loushang.foundation` |
 | `loushang.apphost` | `loushang.appserver`, `loushang.harness` |
 | `loushang.appserver` | None |
+| `loushang.appservice` | `loushang.appserver` |
 | `loushang.channel` | `loushang.foundation`, `loushang.harness`, `loushang.harnesswork` |
-| `loushang.coding` | `loushang.agent`, `loushang.ai`, `loushang.apphost`, `loushang.channel`, `loushang.foundation`, `loushang.harness`, `loushang.harnesstui`, `loushang.harnesswork`, `loushang.hosting`, `loushang.method`, `loushang.plugin`, `loushang.tui` |
+| `loushang.coding` | `loushang.agent`, `loushang.ai`, `loushang.apphost`, `loushang.appserver`, `loushang.appservice`, `loushang.channel`, `loushang.foundation`, `loushang.harness`, `loushang.harnesstui`, `loushang.harnesswork`, `loushang.hosting`, `loushang.method`, `loushang.plugin`, `loushang.tui` |
 | `loushang.foundation` | None |
 | `loushang.harness` | `loushang.agent`, `loushang.ai`, `loushang.foundation`, `loushang.hosting` |
-| `loushang.harnesstui` | `loushang.agent`, `loushang.foundation`, `loushang.harness`, `loushang.tui` |
+| `loushang.harnesstui` | `loushang.agent`, `loushang.appserver`, `loushang.foundation`, `loushang.harness`, `loushang.tui` |
 | `loushang.harnesswork` | `loushang.agent`, `loushang.ai`, `loushang.foundation`, `loushang.harness` |
 | `loushang.hosting` | None |
 | `loushang.method` | `loushang.harness` |

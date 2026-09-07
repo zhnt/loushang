@@ -15,7 +15,7 @@ def test_g11_0_design_is_accepted_with_explicit_activation() -> None:
         "- ID: `HOSTED-APPLICATION-G11-IN-PROCESS`",
         "- Authority: normative accepted design",
         "- Design status: accepted",
-        "- Implementation status: not-started — G11.0 accepted design baseline",
+        "- Implementation status: implemented — G11.0--G11.4 complete",
         "- Activation status: explicit in-process Hosted Mux Profile only",
     ):
         assert field in design
@@ -55,7 +55,7 @@ def test_g11_design_has_closed_ownership_and_three_view_review() -> None:
     design = " ".join(_read().split())
     for boundary in (
         "appserver.protocol -> Python standard library",
-        "appservice -> appserver.protocol + appserver.ports",
+        "appservice -> appserver.protocol",
         "appserver -/-> AppHost / Hosting / Product / Harness / Harnesstui / TUI",
         "appservice -/-> AppHost / Hosting / Product / Harness / Harnesstui / TUI",
         "Harness -/-> AppServer / AppService / AppHost / Harnesstui",

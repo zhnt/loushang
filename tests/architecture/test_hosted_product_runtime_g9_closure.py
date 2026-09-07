@@ -424,12 +424,10 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
     )
     assert {path.name for path in Path("src/loushang/appserver").glob("*.py")} == {
         "__init__.py",
+        "client.py",
         "ports.py",
     }
-    assert not any(
-        "mux" in path.name.casefold()
-        for path in Path("src/loushang/harnesstui").rglob("*.py")
-    )
+    assert (Path("src/loushang/harnesstui/mux/profile.py")).is_file()
     for entrypoint_id in ("appserver.package", "apphost.hosted"):
         source = _read(Path(rows[entrypoint_id]["source"]))
         module = ast.parse(source, filename=rows[entrypoint_id]["source"])

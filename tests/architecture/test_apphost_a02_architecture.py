@@ -144,7 +144,7 @@ def test_a0_2_catalog_uses_static_exact_pins_and_persistent_retirement() -> None
     assert "bind_profile" not in legacy_source
 
 
-def test_optional_adapter_is_dark_with_only_reviewed_g8_g9_g10_facade_consumers() -> (
+def test_optional_adapter_is_dark_with_only_reviewed_g8_through_g11_consumers() -> (
     None
 ):
     apphost_consumers = {
@@ -160,6 +160,7 @@ def test_optional_adapter_is_dark_with_only_reviewed_g8_g9_g10_facade_consumers(
         Path("src/loushang/coding/apphost_canary.py"),
         Path("src/loushang/coding/apphost_composition.py"),
         Path("src/loushang/coding/apphost_product.py"),
+        Path("src/loushang/coding/appservice_adapter.py"),
     }
     adapter_consumers = {
         path

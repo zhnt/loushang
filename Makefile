@@ -195,6 +195,19 @@ APPHOST_LINT_SUPPORT := \
 	scripts/dev/run_g10_installed_canary.py \
 	scripts/dev/verify_evidence_manifest.py \
 	tests/harness/worker/test_coding_product_worker_canary.py
+APPSERVICE_SOURCES := \
+	src/loushang/appserver/client.py \
+	src/loushang/appserver/protocol \
+	src/loushang/appservice \
+	src/loushang/coding/appservice_adapter.py \
+	src/loushang/harnesstui/mux
+APPSERVICE_TEST_PATHS := \
+	tests/appserver \
+	tests/appservice \
+	tests/coding/test_appservice_adapter.py \
+	tests/harnesstui/test_hosted_mux_profile.py \
+	tests/architecture/test_hosted_application_g11_design.py \
+	tests/architecture/test_hosted_application_g11.py
 
 .PHONY: bootstrap test test-ai check-ai test-tui test-tui-render-contract test-tui-terminal-platform test-tui-native test-tui-tmux lint-ai fmt-ai typecheck-ai typecheck-tui build-binary install-binary clean-binary vendor-ai-moonshot-anthropic-stream vendor-ai-moonshot-anthropic-complete vendor-ai-moonshot-anthropic-tools vendor-ai-moonshot-openai-stream vendor-ai-moonshot-openai-complete vendor-ai-moonshot-openai-tools vendor-ai-dashscope-openai-responses-stream vendor-ai-dashscope-openai-responses-tools example-ai-model-lookup example-ai-complete example-ai-stream example-ai-tools example-ai-typed-context example-ai-advanced-faux-stream example-ai-advanced-context-tools example-ai-advanced-tool-result-roundtrip example-ai-kimi-anthropic-stream example-ai-kimi-anthropic-complete example-ai-kimi-anthropic-tools example-ai-kimi-openai-stream example-ai-kimi-openai-complete example-ai-kimi-openai-tools example-ai-dashscope-openai-responses-stream example-ai-dashscope-openai-responses-tools example-ai-custom-base-url-openai-advanced example-ai-faux-stream example-ai-context-tools-minimal example-ai-tool-result-roundtrip
 .PHONY: test-sandbox test-host-runtime
@@ -203,6 +216,7 @@ APPHOST_LINT_SUPPORT := \
 .PHONY: check-harness lint-harness typecheck-harness test-harness check-plc9c5-c51-contract test-plc9c5-c51-contract check-plc9c5-c52-linux-native test-plc9c5-c52-linux-native check-plc9c5-c53-windows-mechanics test-plc9c5-c53-windows-mechanics check-plc9c5-c55b-windows-lpac-native test-plc9c5-c55b-windows-lpac-native
 .PHONY: check-hosting lint-hosting typecheck-hosting test-hosting
 .PHONY: check-apphost lint-apphost typecheck-apphost test-apphost test-hosted-product-g8-evidence test-hosted-product-g9-linux-evidence test-hosted-product-g10-linux-evidence
+.PHONY: check-appservice lint-appservice typecheck-appservice test-appservice
 .PHONY: check-architecture-docs
 .PHONY: check-harnesstui lint-harnesstui typecheck-harnesstui test-harnesstui
 .PHONY: lane-status
@@ -342,6 +356,17 @@ test-hosted-product-g10-linux-evidence:
 	uv --cache-dir .uv-cache run --extra dev python scripts/dev/verify_pytest_xml.py .artifacts/hosted-product-g10-linux.xml
 	uv --cache-dir .uv-cache run --extra dev python scripts/dev/verify_evidence_manifest.py docs/internals/architecture/apphost/hosted-product-g10-evidence-manifest.json HOSTED-PRODUCT-G10-LINUX .artifacts/hosted-product-g10-linux.xml
 	uv --cache-dir .uv-cache run --extra dev python scripts/dev/run_g10_installed_canary.py --expected-backend posix-process-group-v1
+
+check-appservice: lint-appservice typecheck-appservice test-appservice
+
+lint-appservice:
+	uv --cache-dir .uv-cache run --extra dev ruff check $(APPSERVICE_SOURCES) $(APPSERVICE_TEST_PATHS)
+
+typecheck-appservice:
+	uv --cache-dir .uv-cache run --extra dev mypy --follow-imports=silent $(APPSERVICE_SOURCES)
+
+test-appservice:
+	uv --cache-dir .uv-cache run --extra dev $(PYTEST_RUNNER) $(APPSERVICE_TEST_PATHS) -q
 
 check-architecture-docs:
 	.venv/bin/ruff check scripts/architecture/render_current_package_dependencies.py tests/architecture/test_architecture_documentation.py

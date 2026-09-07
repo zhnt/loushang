@@ -32,10 +32,11 @@
 - `loushang.work`（迁移期 compatibility/integration namespace）
 - `loushang.apphost`（A0.4 default-dark runtime 与可选 hosted binder）
 - `loushang.appserver`（A0.4 contract-only structural Product ports）
+- `loushang.appservice`（G11 in-process hosted Session / MuxSpace semantics）
 
-`loushang.appservice` 已由 G11 接受为独立的应用语义 Scope，但在 G11.0
-设计基线时尚无源码 package。它将只负责 hosted Session、MuxSpace 与逻辑
-attachment 协调，不负责 AppServer transport、AppHost 生命周期或 Product 实现。
+`loushang.appservice` 是 G11 落地的独立应用语义 Scope，只负责 hosted Session、
+MuxSpace 与逻辑 attachment 协调，不负责 AppServer transport、AppHost 生命周期
+或 Product 实现。
 
 当前已落地的支撑包包括：
 
@@ -155,7 +156,8 @@ binder。G8 增加 Coding-owned、default-dark 的 Product/Worker join；G9.1--G
 清单接受 `RETAIN` 决议。G10 增加唯一的精确 installed canary 子命令，以
 Product-owned durable control 显式调用 composition 和短生命周期 Hosting
 child；普通 Coding CLI/TUI/SDK 路径仍不依赖 AppHost composition，系统仍
-没有 launcher 或 AppService/AppServer runtime。
+没有 launcher 或 AppServer transport/runtime。G11 的 AppService 是独立、显式、
+进程内的应用语义 owner，不属于 AppHost。
 
 G9.0 已接受 V1 收口边界，G9.1--G9.2 已实现显式组合和运行级
 rollback/crash 演练，但不改变上述 Current。G9.3 已决定保留 Current；
@@ -173,6 +175,29 @@ structural ports 的外向边；未来 serialized launcher 单独拥有 Hosting 
 AppHost。详见 [AppHost Architecture](./apphost/README.md)、
 [AppServer Structural Ports](./appserver/README.md) 和
 [ARD-003: AppHost Top-Level Placement](./decisions/ARD-003-apphost-top-level-placement.md)。
+
+### loushang-appserver / loushang-appservice
+
+AppServer 拥有 client-safe App Contract、严格 codec 与 transport-neutral
+`AppClientV1`，但 G11 不实现 listener、connection、authentication、framing 或
+wire dispatch。A0.4 的 structural Product ports 继续是 AppHost hosted binder 的
+唯一 AppServer 依赖面。
+
+AppService 是独立的 Product-neutral 应用语义 owner，负责 named MuxSpace、
+hosted Session、membership revision、attach snapshot/cursor barrier，以及每
+attachment 的有界逻辑 mailbox。它只依赖 AppServer contract 和注入的 hosted
+Session ports，不依赖 Harness、具体 Product、AppHost、Hosting、Harnesstui 或
+TUI。Coding adapter 是允许同时依赖 AppService ports、public Harness Session
+API 与 immutable AppHost Session envelope 的 Product 外缘；Harnesstui Hosted
+Mux Profile 只依赖 AppClient contract。
+
+G11 仅提供显式 in-process Hosted Profile，没有 installed route。普通 Embedded
+Profile、Coding CLI/TUI/SDK 和 G9.3 `RETAIN` 决议均不改变。AppServer transport、
+本地 IPC、daemon continuity、Hosting Service Controller、多客户端 takeover 和
+AppHost crash 后的 live-turn recovery 由后续独立目标决定。详见
+[AppServer Architecture](./appserver/README.md)、
+[AppService Architecture](./appservice/README.md) 和
+[G11 In-Process Hosted Application](./appserver/hosted-application-g11.md)。
 
 ### loushang-ai
 

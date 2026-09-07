@@ -8,6 +8,7 @@
 [G9.3 Current Owner Decision](current-worker-owner-decision-g9.md) ·
 [G9 Promotion Record](hosted-product-g9-promotion-record.md) ·
 [G10 Installed Explicit Canary](installed-explicit-canary-g10.md) ·
+[G11 Hosted Application](../appserver/hosted-application-g11.md) ·
 [Hosted Product Runtime V1 Plan](../drafts/hosted-product-runtime-v1-plan.md)
 
 ## Status
@@ -110,6 +111,13 @@ a real short-lived Hosting child. It remains a canary rather than a normal
 Coding session route. Its Product-owned durable enable/rollback control,
 bounded report, lazy CLI edge, source-backed inventory, and separate
 Linux/Windows evidence are retained by the AppHost quality gate.
+
+The implemented sibling
+[G11 Hosted Application](../appserver/hosted-application-g11.md) adds an
+explicit in-process AppService and Harnesstui Hosted Mux Profile. It does not
+compose through AppHost, select Hosting, or change this scope's runtime. The
+A0.4 binder still consumes only AppServer's structural `ports.py`; AppServer's
+new protocol/client contract and AppService remain sibling-owned.
 
 ## Target
 
@@ -278,8 +286,9 @@ after Product/OEM admission, never through a derived module name.
   stale detach, dependency-ordered close, shutdown deadline/retry, re-entry,
   and hosted identity mapping;
 - `tests/architecture/test_apphost_a03_a04_architecture.py` proves that the
-  runtime stays in the standard-library-only core, the hosted edge is the sole
-  AppServer consumer, and the AppServer slice remains contract-only;
+  runtime stays in the standard-library-only core, the hosted edge remains the
+  sole AppHost-to-AppServer consumer, and the A0.4 structural ports remain
+  contract-only after G11;
 - `tests/coding/test_apphost_product.py` and
   `tests/architecture/test_hosted_product_runtime_g8_join.py` prove the exact
   G8 receipt, recovery, ownership, multi-profile/Session, fault, cleanup, and
@@ -305,6 +314,8 @@ after Product/OEM admission, never through a derived module name.
 - `make check-architecture-docs` validates parent documentation integrity.
 
 Passing these gates proves A0.4 mechanics, the default-dark G8--G9 concrete
-Product composition, and the explicitly selected short-lived G10 canary. It
-grants no default Product, normal-session Hosting route, AppService/AppServer
-runtime, launcher, omitted-owner change, or Current deletion.
+Product composition, and the explicitly selected short-lived G10 canary. G10
+itself grants no default Product, normal-session Hosting route,
+AppService/AppServer runtime, launcher, omitted-owner change, or Current
+deletion. G11's separate in-process application semantics do not change those
+AppHost conclusions.

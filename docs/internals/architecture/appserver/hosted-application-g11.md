@@ -13,7 +13,7 @@
 - Parent: Loushang application architecture
 - Authority: normative accepted design
 - Design status: accepted
-- Implementation status: not-started — G11.0 accepted design baseline
+- Implementation status: implemented — G11.0--G11.4 complete
 - Activation status: explicit in-process Hosted Mux Profile only
 - Owner: Loushang application architecture with sibling-scope review
 
@@ -51,10 +51,10 @@ transport later.
 
 | Plane | Statement |
 | --- | --- |
-| Facts | AppHost A0.1--A0.4 and G8--G10 are implemented. AppServer contains only A0.4 structural Product ports. There is no AppService package or Hosted Mux runtime. Normal CLI/TUI/SDK paths remain Current. |
-| Current | Harnesstui binds an embedded Product conversation directly. The G10 command is a short-lived process canary with ephemeral identity and no canonical Session I/O. |
-| Target | An explicit process-local Hosted Mux Profile consumes a typed AppClient; AppService owns MuxSpace and logical attachment semantics over injected Product Session ports. |
-| Delta | Add a strict protocol kernel, AppService core, in-process client, one Coding hosted adapter, Harnesstui mux presentation/controller, inventory v4, and retained behavioral and architecture evidence. |
+| Facts | G11 implements the AppServer protocol/client contract, AppService, one Coding hosted adapter and one explicit Harnesstui Hosted Mux Profile. Normal CLI/TUI/SDK paths remain Current. |
+| Current | The explicit process-local Hosted Mux Profile consumes a typed AppClient; AppService owns MuxSpace and logical attachment semantics over injected Product Session ports. Harnesstui's installed path still binds an embedded Product conversation directly. |
+| Target | A separately accepted successor may compose these semantics into a foreground AppHost and then add a local transport without moving Product, process or presentation authority. |
+| Delta | Foreground AppHost composition, authentication, IPC framing/listener, durable daemon continuity and installed activation remain absent and separately gated. |
 
 ## Requirements
 
@@ -68,7 +68,7 @@ transport later.
 | `G11-R6-ATTACH-BARRIER` | Attach returns one stable membership revision plus one authoritative snapshot/cursor pair per member, then delivers only events after the corresponding cursor. Concurrent membership change yields a typed retry, never a mixed revision. |
 | `G11-R7-BOUNDED-DELIVERY` | Each attachment owns one bounded logical mailbox. Critical overflow marks that attachment lagged and requires a fresh snapshot; it cannot block the Product event source or another attachment. |
 | `G11-R8-LIFECYCLE` | Detach closes only attachment delivery and presenter authority. Member removal and Session close are separate operations. Mux close settles attachments before owned Sessions. Close is bounded, idempotent, and cancellation-safe. |
-| `G11-R9-PRODUCT-EDGE` | The Coding adapter uses public Harness Session controls and explicit Product identity. It projects client-safe snapshots/events and exposes no model/provider, tool implementation, path, credential, or raw exception. |
+| `G11-R9-PRODUCT-EDGE` | The Coding adapter uses public Harness Session controls plus the immutable public AppHost Session envelope and explicit Product identity. It projects client-safe snapshots/events and exposes no model/provider, locator, tool implementation, path, credential, or raw exception. |
 | `G11-R10-PRESENTATION-ISOLATION` | Harnesstui owns only window selection, drafts, focus, scroll state, reducer/controller behavior, and rendering projection. AppService owns no TUI state; widgets perform no service or socket I/O. |
 | `G11-R11-COMPATIBILITY` | The Session identity envelope and scope facts are preserved by the Product resolver. G11 tests create/resume selection for cwd and user-home candidates, but make no cross-process restart or downgrade claim. |
 | `G11-R12-NO-AUTHORITY-EXPANSION` | Passing G11 grants no AppServer listener, IPC, daemon, Hosting Service Controller, A0.5 launcher, default owner change, Current deletion, multi-client takeover, or live-turn recovery after AppHost crash. |
@@ -90,9 +90,9 @@ transport later.
 ```text
 appserver.protocol -> Python standard library
 appserver.client -> appserver.protocol
-appservice -> appserver.protocol + appserver.ports
+appservice -> appserver.protocol
 appservice.client -> appservice + appserver.client
-coding hosted adapter -> appserver.protocol + appservice ports + public Harness
+coding hosted adapter -> appserver.protocol + appservice.ports + public Harness + public AppHost contracts
 harnesstui.mux -> appserver.client + appserver.protocol + Harnesstui/TUI presentation
 future outer composition -> AppHost + AppService + Product adapter
 
@@ -102,8 +102,12 @@ Harness -/-> AppServer / AppService / AppHost / Harnesstui
 Hosting -/-> AppServer / AppService / AppHost / Product / Harnesstui
 ```
 
-The Coding adapter is the deliberate outer edge allowed to depend on both the
-Product/Harness surface and AppService ports.  AppHost core remains unchanged.
+The exact hosted Session port is owned by AppService because it expresses the
+semantic service's Product requirement.  A0.4's generic `appserver.ports`
+bundle remains AppHost composition structure and is not repurposed as a
+runtime Session API.  The Coding adapter is the deliberate outer edge allowed
+to depend on both the Product/Harness surface and AppService ports. AppHost
+core remains unchanged.
 
 ## Mux And Session Model
 
@@ -138,8 +142,8 @@ is hidden by a best-effort partial attachment.
 - Session resolvers return independently owned handles; AppService adopts the
   handle before inspecting snapshot or identity state.
 - Failed member-open compensates the unpublished handle before returning.
-- Detach and close remove admission first, then settle callbacks and owned
-  handles outside locks.
+- Registry, MuxSpace and logical attachment admission/settlement change in one
+  atomic commit; Product callbacks and owned handles settle outside locks.
 - Product callbacks and client callbacks are never invoked while a registry or
   aggregate lock is held.
 - Cancellation after ownership adoption completes compensation before it is
@@ -170,7 +174,7 @@ is hidden by a best-effort partial attachment.
 | G11.0 | accepted boundary, requirements, inventory contract, threat model, parent adoption, architecture guards | three-view design review has no unresolved high/medium finding; no production source change |
 | G11.1 | protocol values/errors/codec/schema and AppClient contract | strict round trips and rejection matrix; no runtime/listener imports |
 | G11.2 | AppService registry, per-mux coordination, Session owner, attach barrier, bounded mailbox, and AppService-owned InProcessAppClient | multi-space/session concurrency, overflow, detach, cancellation, cleanup and ordering tests |
-| G11.3 | Coding hosted Session adapter and identity/scope compatibility fixtures | public Harness-only adapter, create/resume/cwd/user-home evidence, bounded projection |
+| G11.3 | Coding hosted Session adapter and identity/scope compatibility fixtures | public Harness/AppHost-contract-only adapter, create/resume/cwd/user-home evidence, bounded projection |
 | G11.4 | explicit Harnesstui Hosted Mux Profile, reducer/controller/playback, inventory v4 and promotion evidence | Embedded omission, hosted behavior, dependency graph, cross-platform-safe tests and three-view implementation review |
 
 ## Evidence Contract
@@ -220,6 +224,31 @@ The three views accepted this baseline with these binding clarifications:
 
 No unresolved high or medium finding remains.  Production implementation may
 start only within the dependency and non-goal boundaries above.
+
+## G11.4 Implementation Review
+
+The final three-view review found and closed the following issues:
+
+- **Architecture and authority:** the in-process client implementation was
+  moved to AppService, while AppServer retains only the protocol and client
+  interface. The exact hosted Session input port remains AppService-owned;
+  A0.4 `appserver.ports` is not overloaded with runtime semantics. Generated
+  dependencies and inventory v4 record the resulting one-way edges.
+- **Lifecycle, concurrency, and safety:** registry, MuxSpace membership and
+  attachment settlement now share one atomic commit and one lock order.
+  Adopted Session cleanup survives caller cancellation, close has a bounded
+  retryable debt path, lagged attachments remain detachable, and only the
+  latest controller generation can mutate a Session.
+- **Contract, presentation, and evidence:** failure responses and attachment
+  events gained strict codecs; the schema freezes the version and operation
+  vocabulary; Coding identity derives from the canonical path-free AppHost
+  envelope; and the Hosted profile retains interaction identity plus detach
+  authority when close fails.
+
+The same views were re-run after these changes. No unresolved high or medium
+finding remains. The profile remains an explicit library construction and no
+installed entrypoint, AppHost composition, listener, IPC or daemon authority
+was added.
 
 ## Exit Gate
 
