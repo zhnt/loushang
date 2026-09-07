@@ -39,6 +39,17 @@ def _private_file(directory, name, payload):
     return directory._root / name
 
 
+def _replace_held_file(source, target):
+    # Windows rejects overwriting a destination that still has open handles.
+    # Move that exact object aside first, then install a different object at
+    # its old name. This really changes identity on every supported platform;
+    # a native veto is not mistaken for a completed fault injection.
+    retained = target.with_name("retained-" + target.name)
+    target.rename(retained)
+    os.replace(source, target)
+    return retained
+
+
 def test_G16_PRIVATE_RECORD_created_files_are_private_and_non_inheritable(tmp_path, monkeypatch):
     root = tmp_path / "runtime"
     directory = LocalConnectionDirectoryV1(root)
@@ -182,7 +193,7 @@ def test_G16_PRIVATE_RECORD_read_replacement_race_is_rejected(tmp_path, monkeypa
     def read_and_replace(descriptor, count):
         data = original(descriptor, count)
         if foreign.exists():
-            os.replace(foreign, _path(root))
+            _replace_held_file(foreign, _path(root))
         return data
 
     try:
@@ -200,8 +211,8 @@ def test_G16_PRIVATE_RECORD_lock_replacement_fences_publication(tmp_path):
     directory = LocalConnectionDirectoryV1(root)
     lease = directory.acquire("workspace")
     foreign = _private_file(directory, "foreign", b"")
-    os.replace(foreign, _path(root, "lock"))
     try:
+        _replace_held_file(foreign, _path(root, "lock"))
         with pytest.raises(LocalRecordError) as error:
             _publish(lease)
         assert error.value.code is LocalRecordErrorCodeV1.CONFLICT

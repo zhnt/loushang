@@ -654,6 +654,20 @@ Windows-platform mypy check. The documentation gate passed five cases. The
 native record selection includes 39 portable/POSIX cases, with real child
 process crash/lock rotation; the additional Windows cases require native CI.
 
+The first native matrix at `b689d71c` passed the complete AppService gate on
+[Linux](https://github.com/zhnt/loushang/actions/runs/34142859440/job/101808480067)
+and [macOS](https://github.com/zhnt/loushang/actions/runs/34142859440/job/101808479889).
+[Windows](https://github.com/zhnt/loushang/actions/runs/34142859440/job/101808480096)
+ran the native DACL/reparse/handle and crash cases, but failed two shared fault
+tests because their preparation attempted to overwrite a still-open Windows
+destination. The replacement fault now moves the held object aside before
+installing a foreign object at the original name. It still requires actual
+replacement and a `CONFLICT` result; it does not skip the native case or accept
+an OS error as a successful identity-fence test. Its Windows rerun is pending.
+The same draft exposed two older AppHost/Hosting exact module lists that had
+not incorporated G16. Both lists now name the reviewed optional modules; the
+dependency restrictions and default-dark requirements remain enforced.
+
 ### Platform API References
 
 Python's [asyncio streams](https://docs.python.org/3.11/library/asyncio-stream.html)
