@@ -406,12 +406,13 @@ pass and retained platform gate. All were fixed before closure:
   its non-blocking lock attempt. The lock now uses a fixed offset outside file
   content, preserving exact one-writer fencing and crash release without
   making the lock file itself inaccessible.
-- **Contract, compatibility and evidence:** the process-death proof originally
-  waited without a deadline for child stdout, so a platform-specific child
-  startup failure could consume the whole CI job without preserving useful
-  evidence. It now retains the lease explicitly, publishes readiness through a
-  private marker, and converts child exit or a bounded readiness deadline into
-  a diagnostic test failure.
+- **Contract, compatibility and evidence:** two evidence paths were not bounded
+  by their semantic inputs. The process-death proof waited without a deadline
+  for child stdout, and the oversized-record case exposed its 1 MiB payload as
+  a pytest node identifier. The proof now retains the lease explicitly,
+  publishes readiness through a private marker, and converts child exit or a
+  bounded readiness deadline into a diagnostic failure; hostile record samples
+  use short semantic IDs, keeping Windows collection, logs and reports bounded.
 - **Contract, compatibility and evidence:** unexpected store exceptions,
   monolithic line budgets and pre-G13 exact package inventories obscured the
   new boundary. Errors are redacted to stable codes; core and continuity

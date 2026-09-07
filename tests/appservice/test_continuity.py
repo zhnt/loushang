@@ -92,6 +92,15 @@ def test_G13_STRICT_RECORD_round_trips_canonical_values() -> None:
         b"\xff",
         b"x" * (MAX_CONTINUITY_RECORD_BYTES + 1),
     ),
+    ids=(
+        "empty",
+        "duplicate-key",
+        "unsafe-application-id",
+        "non-finite-number",
+        "non-object-root",
+        "invalid-utf8",
+        "oversized",
+    ),
 )
 def test_G13_STRICT_RECORD_rejects_unbounded_unknown_or_duplicate_input(
     payload: bytes,
