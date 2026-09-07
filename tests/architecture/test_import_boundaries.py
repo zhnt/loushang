@@ -527,6 +527,7 @@ def test_production_harnesstui_imports_only_approved_loushang_layers() -> None:
     root = Path("src/loushang/harnesstui")
     testing_root = root / "testing"
     agent_binding = root / "conversation" / "agent_binding.py"
+    hosted_mux_root = root / "mux"
     allowed_prefixes = (
         "loushang.harnesstui",
         "loushang.tui",
@@ -543,7 +544,12 @@ def test_production_harnesstui_imports_only_approved_loushang_layers() -> None:
         and not _matches_any(
             imported,
             allowed_prefixes
-            + (("loushang.agent.types",) if path == agent_binding else ()),
+            + (("loushang.agent.types",) if path == agent_binding else ())
+            + (
+                ("loushang.appserver",)
+                if path.is_relative_to(hosted_mux_root)
+                else ()
+            ),
         )
     ]
 

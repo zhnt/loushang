@@ -180,12 +180,21 @@ class SessionCreateRequestV1:
     creator_scope_id: str
     operation_id: str
     contract_version: str = APPHOST_CONTRACT_VERSION
+    requested_continuity_id: str | None = field(default=None, kw_only=True)
+    requested_scope: SessionDiscoveryScope | None = field(default=None, kw_only=True)
 
     def __post_init__(self) -> None:
         _contract_version("contract_version", self.contract_version, APPHOST_CONTRACT_VERSION)
         _stable_id("product_id", self.product_id)
         _opaque_token("creator_scope_id", self.creator_scope_id)
         _operation_id("operation_id", self.operation_id)
+        if self.requested_continuity_id is not None:
+            _opaque_token(
+                "requested_continuity_id",
+                self.requested_continuity_id,
+            )
+        if self.requested_scope is not None:
+            _enum("requested_scope", self.requested_scope, SessionDiscoveryScope)
 
 
 @dataclass(frozen=True, slots=True)

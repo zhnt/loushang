@@ -91,8 +91,9 @@ presentation, domain language, and composition.
 | `loushang.coding` | Coding Product semantics, LSP/Arch capabilities, prompts, product tools, CLI and final UI composition |
 | `loushang.ontology` | versioned semantic schema, immutable facts/provenance, projections and typed queries |
 | `loushang.hosting` | H0--H6.4 Product-neutral process, endpoint, child-session, and private managed-preparation mechanisms with Linux/Windows evidence; Harness consumption remains default-dark |
-| `loushang.apphost` | A0.4 Product catalog/router, canonical live-binding runtime, embedded profile lifecycle, and optional hosted structural-port binder; G9.1 adds one Product-owned explicit composition while default paths remain dark |
-| `loushang.appserver` | A0.4 contract-only generic structural Product port bundle; no protocol, service, listener, connection, or transport runtime |
+| `loushang.apphost` | Product catalog/router, canonical live-binding runtime, embedded/hosted profile lifecycle, and the optional G12 foreground application owner; installed default paths remain dark |
+| `loushang.appserver` | A0.4 structural Product ports plus the G11 strict protocol and transport-neutral client contract; no service, listener, connection, or transport runtime |
+| `loushang.appservice` | G11 Product-neutral named-mux, hosted Session, attachment and in-process AppClient semantics; G12 composes it only from the optional AppHost application edge |
 
 `loushang.resource` remains a small compatibility surface over Harness resource
 ownership and appears in the generated physical graph while Python source
@@ -117,8 +118,9 @@ flowchart TD
     CHANNEL["Channel"]
     ONTOLOGY["Ontology"]
     HOSTING["Hosting H0-H6.4\ndefault-dark local mechanism"]
-    APPHOST["AppHost G8\ndefault-dark Product runtime join"]
-    APPSERVER["AppServer A0.4\nstructural ports only"]
+    APPHOST["AppHost G12\nexplicit foreground application composition"]
+    APPSERVER["AppServer G11\nprotocol + client contract"]
+    APPSERVICE["AppService G11\nin-process hosted semantics"]
     FOUNDATION["Foundation"]
 
     CODING -->|composes| HARNESS
@@ -135,13 +137,23 @@ flowchart TD
     HARNESS -->|explicit default-dark Worker adapter| HOSTING
     CODING -->|default-dark Product integration| APPHOST
     APPHOST -.->|optional hosted binder only| APPSERVER
+    APPHOST -->|optional foreground application owner| APPSERVICE
+    CODING -->|explicit hosted Session adapter| APPSERVICE
+    APPSERVICE -->|typed contract| APPSERVER
+    HTUI -.->|explicit Hosted Mux AppClient| APPSERVER
 ```
 
 Hosting has one private Harness Worker consumer seam, but Current remains the
 default and no installed Product/native Worker profile activates it. AppHost
 G8 now has a Coding-owned Product integration over the exact Worker receipt,
-but it remains intentionally uncomposed. The dotted AppServer edge is an
-optional in-process wiring dependency, not a production runtime route.
+but it remains intentionally uncomposed. The dotted AppHost-to-AppServer edge
+is an optional in-process wiring dependency, not a production runtime route.
+G11 separately implements AppServer's strict protocol/client contract,
+Product-neutral in-process AppService semantics, one Coding hosted adapter,
+and an explicit Harnesstui Hosted Mux Profile. G12 explicitly composes those
+semantics through an optional AppHost application owner and a Coding-owned
+foreground Session resolver. No installed route selects that profile, and
+there is still no listener, transport, IPC, Hosting owner, or daemon runtime.
 
 Direct and transitive Python imports differ from this semantic view. Consult
 the generated Current graph before making a physical dependency claim.
@@ -182,6 +194,9 @@ Accepted Target directions include:
 - AppHost owns admitted cross-Product catalog/routing, canonical scoped Product
   Runtime bindings, and deployment-profile selection while its core remains
   independent of concrete Products, AppServer, Hosting, and UI frameworks;
+- AppServer owns the client-safe contract while AppService independently owns
+  hosted Session/MuxSpace coordination over injected Product ports; neither
+  owns Product policy, AppHost lifecycle, Hosting, or presentation state;
 - AI, Agent, TUI and other reusable scopes preserve narrow public contracts and
   independent evolution.
 
@@ -208,6 +223,7 @@ The most important current gaps are:
 | physical installation optionality | subsystems remain in one Python distribution |
 | Hosting runtime and Harness adoption | H0--H6.5b mechanisms, PLC9C5 Product/native Worker canaries, and retained Linux/Windows evidence are implemented; installed activation remains default-dark |
 | cross-Product AppHost | G8 joins A0.4 catalog/runtime mechanics to one Coding-owned exact-receipt Product adapter; G9.1--G9.2 implement the explicit composition and drill; G9.3 accepts a source-backed `RETAIN` decision; G9.4 promotes the capability default-dark; G10 implements one exact installed short-lived canary without changing normal Current routes |
+| hosted application boundary | G11 implements a strict App Contract, in-process AppService named-mux semantics, one Coding hosted Session adapter and an explicit Harnesstui profile; G12 composes an explicit foreground AppHost/Coding path with canonical cwd/user-home create/resume and ordered shutdown; IPC, daemon continuity and installed activation remain future deltas |
 
 Detailed gaps belong to the owning scope rather than expanding this AOD.
 Cross-system deltas are indexed in the

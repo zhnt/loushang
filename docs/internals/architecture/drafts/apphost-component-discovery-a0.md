@@ -53,8 +53,8 @@ the accepted placement and the canonical AppHost scope owns current status.
   remains default-dark.
 - At discovery time AppHost, AppServer, and the proposed AppService boundary
   had architecture drafts but no corresponding source packages. The canonical
-  scopes now record AppHost A0.1--A0.4 and an AppServer contract-only slice as
-  implemented; AppService remains absent.
+  scopes now record AppHost A0.1--A0.4 and G11's separate AppServer contract /
+  in-process AppService slice as implemented.
 - Existing conversation/runtime metadata is useful migration evidence, but is
   not yet the generic Session Identity Envelope required before Product
   routing.
