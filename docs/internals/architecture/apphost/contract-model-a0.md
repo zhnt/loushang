@@ -37,9 +37,13 @@ have one. AppHost never derives a root from a scope enum.
 
 `SessionCreateRequestV1` carries the explicit Product identity for a new
 Session plus an already authenticated/admitted `creator_scope_id` and a
-trusted-boundary-minted, high-entropy `operation_id`. Neither token is an
-authorization claim. The injected canonical Session owner uses
-`(product_id, creator_scope_id, operation_id)` as an idempotency identity and
+trusted-boundary-minted, high-entropy `operation_id`. G12 adds optional
+`requested_continuity_id` and `requested_scope` constraints for hosted
+creation; they travel inside the same create-if-absent intent and Router checks
+the resulting canonical projection before Product factory effect. Neither
+token nor constraint is an authorization claim. The injected canonical Session
+owner uses the complete request, rooted at
+`(product_id, creator_scope_id, operation_id)`, as an idempotency identity and
 retains the mapping. After Product selection, AppHost combines the request
 with the descriptor's compatibility identity as `SessionCreateIntentV1`; the
 canonical owner atomically establishes that identity in the envelope. A

@@ -59,12 +59,14 @@ lease, or factory.
 | optional AppHost/Harness Session integration | `src/loushang/apphost/integrations/harness_session.py` | AppHost-owned optional projection of explicitly injected Harness source identities to path-free migration candidates; seals an unchanged single-descriptor snapshot up to 8 MiB, adopts rejected canonical returns into its own retryable cleanup lifecycle, bounds canonical delegation to eight concurrent calls and refuses new calls while debt remains, never retries a relinquished POSIX fd number after an ambiguous close, derives no roots or second index, remains uncomposed, and fails closed on Windows pending a native retained-handle backend |
 | AppHost live binding owner | `src/loushang/apphost/runtime.py` | process-local single-flight Product/runtime binding keyed by canonical Session identity, exact retained catalog generation, per-profile attachment lifetime, admission fencing, retryable dependency-ordered close, and bounded phased shutdown; remains explicitly constructed and uncomposed |
 | optional AppHost/AppServer binder | `src/loushang/apphost/hosted.py` | validates one explicitly selected profile as an exact AppServer structural port bundle and preserves the canonical binding identity; owns no listener, protocol, transport, or service semantics |
+| optional AppHost foreground application owner | `src/loushang/apphost/application.py` | explicitly composes one AppService with one already admitted AppHost Runtime, fences service admission before runtime shutdown, and settles Product construction debt last; remains an uninstalled in-process library and owns no listener, IPC, Hosting, daemon, or Product semantics |
 | AppServer Product ports | `src/loushang/appserver/ports.py` | immutable contract-only identity and Product-supplied Session/projection/work/interaction port bundle; no runtime, listener, protocol, or composition owner |
 | Session discovery composition | `src/loushang/harness/transcript/directory.py`, `src/loushang/harness/machine_resources/control_plane.py`, and `src/loushang/coding/cli/__main__.py` | canonical global plus cwd/home compatibility sources are selected at composition; cwd is a query/filter and compatibility roots are not writable authorities |
 | Linux/Windows Coding Product canary | `src/loushang/coding/_product_worker_canary.py` | sole explicit C5.4/C5.5c Product root; joins Coding Product/Session evidence to the real lifecycle coordinator, exact native-profile friend, Worker health, Capability publication, normal close, rollback, and recovery; omission remains Current and unlisted profiles remain closed |
 | Coding/AppHost G8 Product join | `src/loushang/coding/apphost_product.py` | default-dark Product-owned adapter from AppHost's public factory/runtime contracts to one exact canary receipt and attempt; adopts before inspection, recovers before effect, shares one attempt per AppHost binding, and exposes only frozen profile facts |
 | Coding/AppHost G9 composition | `src/loushang/coding/apphost_composition.py` | sole explicit installed composition owner over the AppHost public facade and G8 adapter; privately retains the raw runtime, fences admission before rollback, latches future attempts, drains exact bindings, and retains retryable cleanup debt; existing bootstrap/CLI/TUI paths do not import it and omission remains Current |
 | Coding/AppHost G10 installed canary | `src/loushang/coding/apphost_canary.py` | exact default-dark `loushang apphost canary` consumer of the G9 composition; uses Product-owned durable control, one ephemeral Session identity, a short-lived native Hosting child, bounded reports, and no same-attempt fallback; ordinary CLI/TUI/SDK omission remains Current |
+| Coding/AppHost G12 foreground hosted edge | `src/loushang/coding/hosted_application.py` | explicit uninstalled Product composition over a foreground Coding Session factory, canonical AppHost create/resume routing, AppService and AppClient; imports no Hosting or Harnesstui and leaves ordinary CLI/TUI/SDK omission Current |
 
 ## Observed Contract Mismatch
 
@@ -86,8 +88,8 @@ port binder, and one Coding-owned exact-receipt Product adapter. There is still:
 - no normal Product entrypoint selects the explicit AppHost composition; only
   the exact short-lived G10 canary does so, and
   no AppHost launcher exists;
-- no AppServer listener, transport, protocol, or application-service runtime;
-- `src/loushang/appservice` is absent.
+- no AppServer listener, transport, or G10 application-service route; G11's
+  separate in-process protocol/AppService library is not composed here;
 - the generic Session Identity Envelope contract is not yet persisted or read
   before Product selection;
 - the optional AppHost-owned Harness integration exposes current JSONL only as explicit migration
@@ -96,8 +98,9 @@ port binder, and one Coding-owned exact-receipt Product adapter. There is still:
   Hosting.
 
 The accepted AppHost architecture now has executable A0.3/A0.4 lifecycle and
-G8 Product/Worker join evidence. AppServer runtime and AppService remain Target
-boundaries, not implemented routes.
+G8 Product/Worker join evidence. AppServer transport and AppService composition
+remain Target boundaries, not implemented routes; G11's explicit in-process
+library does not alter this inventory's installed-route conclusion.
 
 ## Current-To-Target Delta
 
@@ -111,7 +114,7 @@ boundaries, not implemented routes.
 | Session pre-routing identity | AppHost schema plus canonical Session persistence/catalog owner | A0.2 fake owner proves atomic creation/recovery; real canonical envelope persistence remains uncomposed |
 | AppHost cwd/user-global Session projection | AppHost-owned optional integration over the existing Harness Session discovery/catalog owner | A0.2 proves explicit source binding, stable source identity, alias/conflict, an unchanged bounded descriptor read sealed into immutable bytes, no token-to-path behavior, and Windows fail-closed semantics |
 | Product/native Worker activation | Product/Harness composition and domain owner | PLC9C5 Linux/Windows canaries plus G8 receipt/recovery/normal-close join are implemented and retained default-dark; G9 owns closure/retention decisions |
-| hosted App protocol and semantics | future AppServer/AppService scopes | A0.4 supplies only the optional exact port-bundle binder and contract package; listener, transport, protocol, service semantics, and production composition remain separate |
+| hosted App protocol and semantics | AppServer/AppService scopes | G11 implements the protocol and in-process service separately; listener, transport and AppHost/production composition remain absent |
 
 ## Retained Fences
 
@@ -127,8 +130,8 @@ The inventory records, rather than relaxes, these Current fences:
   bindings, the Coding adapter is the sole concrete Product consumer, and the
   explicit installed composition owner is reached only by the exact G10
   canary and remains outside ordinary bootstrap/CLI/TUI paths; optional Harness Session and AppServer port adapters
-  stay outside the core facade, AppServer contains contracts only, and
-  AppService remains absent; and
+  stay outside the core facade; AppServer contains contracts only, and G11's
+  AppService remains outside this AppHost/G10 route; and
 - `src/loushang/coding/apphost_composition.py` and its 13-case Linux/Windows
   evidence implement G9.1--G9.2 without changing omission; G9.3 records the
   accepted `RETAIN` decision and explicit unmet deletion gaps; G9.4 promotes

@@ -39,8 +39,8 @@ current boundary and A0 status live in the [AppHost scope](../apphost/README.md)
   contract behind an explicit default-dark selector.
 - At that time there was no `loushang.apphost`, `loushang.appserver`, or
   `loushang.appservice` source package. The canonical scope now records
-  AppHost A0.1--A0.4 and the AppServer contract-only slice as implemented;
-  AppService remains absent.
+  AppHost A0.1--A0.4, AppServer contracts, and G11's separate in-process
+  AppService as implemented; none existed at the time of this proposal.
 
 ### Accepted target
 

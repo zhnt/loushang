@@ -21,12 +21,13 @@ deployment-profile composition. Placing that responsibility in Harness would
 make the reusable execution substrate own Product topology. Placing it in
 Coding would make peer Products depend on the first Product.
 
-Hosting H0--H6.4 now supplies Product-neutral local process and child-session
-mechanics. It deliberately does not select Products, interpret Sessions, or
-own application protocol. AppServer and AppService remain separate proposed
-siblings for transport and hosted semantic coordination. The missing owner is
-therefore a process-local Product composition root, not another execution,
-transport, persistence, or OS-hosting subsystem.
+At acceptance, Hosting H0--H6.4 supplied Product-neutral local process and
+child-session mechanics while AppServer and AppService were separate proposed
+siblings. Hosting deliberately does not select Products, interpret Sessions,
+or own application protocol. G11 has since implemented the sibling in-process
+AppServer contract and AppService semantics without changing this decision:
+AppHost remains the process-local Product composition root, not another
+execution, transport, persistence, or OS-hosting subsystem.
 
 ## Decision
 

@@ -32,8 +32,8 @@ remote execution, or live process adoption.
   binder, the Coding-owned G8 Product/Worker join, and the G9 explicit outer
   composition and the exact G10 installed canary are implemented. Only that
   short-lived, Product-controlled canary selects the composition; AppServer
-  contains contracts only, normal Product routes remain Current, and
-  AppService remains absent.
+  contains contracts only, normal Product routes remain Current, and G11's
+  separately implemented in-process AppService is not composed into this path.
 - **Proposed Target:** H6 supplies opaque native preparation; AppHost supplies
   explicit Product routing and scoped runtime lifetime; Product/Harness
   composition alone activates one reviewed Worker canary.

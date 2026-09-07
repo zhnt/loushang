@@ -1,0 +1,46 @@
+{
+  "$id": "https://loushang.dev/schema/app-request-v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "operation": {
+      "enum": [
+        "mux/create",
+        "mux/list",
+        "mux/read",
+        "mux/attach",
+        "mux/detach",
+        "mux/close",
+        "mux/member/open",
+        "mux/member/close",
+        "session/snapshot",
+        "turn/start",
+        "turn/steer",
+        "turn/follow_up",
+        "turn/interrupt",
+        "interaction/respond"
+      ]
+    },
+    "payload": {
+      "type": "object"
+    },
+    "protocolVersion": {
+      "const": "loushang.app/v1"
+    },
+    "requestId": {
+      "maxLength": 512,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._~-]{0,511}$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "operation",
+    "payload",
+    "protocolVersion",
+    "requestId"
+  ],
+  "title": "Loushang App Request V1 Vocabulary",
+  "type": "object",
+  "x-loushang-note": "Payload strictness is operation-specific and enforced by the closed reference codec."
+}

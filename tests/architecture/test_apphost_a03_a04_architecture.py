@@ -16,6 +16,7 @@ CORE = {
     APPHOST / "runtime.py",
 }
 HOSTED = APPHOST / "hosted.py"
+APPLICATION = APPHOST / "application.py"
 SCOPE = Path("docs/internals/architecture/apphost/README.md")
 CONTRACT = Path("docs/internals/architecture/apphost/contract-model-a0.md")
 APPSERVER_SCOPE = Path("docs/internals/architecture/appserver/README.md")
@@ -49,7 +50,7 @@ def _imports(path: Path) -> set[str]:
 
 
 def test_a0_3_core_is_stdlib_only_and_facade_exposes_no_optional_edge() -> None:
-    assert {path for path in APPHOST.glob("*.py")} == CORE | {HOSTED}
+    assert {path for path in APPHOST.glob("*.py")} == CORE | {HOSTED, APPLICATION}
     for path in CORE:
         for imported in _imports(path):
             if imported == "loushang.apphost" or imported.startswith(
@@ -65,6 +66,7 @@ def test_a0_3_core_is_stdlib_only_and_facade_exposes_no_optional_edge() -> None:
     assert '"AppHostRuntimeV1"' in facade
     assert '"AppHostSessionLeaseV1"' in facade
     assert "loushang.apphost.hosted" not in facade_imports
+    assert "loushang.apphost.application" not in facade_imports
     assert not any(item.startswith("loushang.appserver") for item in facade_imports)
 
 
@@ -106,7 +108,7 @@ def test_a0_3_registry_owns_single_flight_and_dependency_ordered_close() -> None
     assert "entry_points" not in source
 
 
-def test_a0_4_is_the_only_appserver_import_and_stays_wiring_only() -> None:
+def test_a0_4_hosted_binder_stays_wiring_only_after_g11_consumers() -> None:
     hosted_imports = _imports(HOSTED)
     assert "loushang.appserver.ports" in hosted_imports
     appserver_consumers = {
@@ -119,7 +121,14 @@ def test_a0_4_is_the_only_appserver_import_and_stays_wiring_only() -> None:
             for item in _imports(path)
         )
     }
-    assert appserver_consumers == set()
+    for consumer in appserver_consumers:
+        assert (
+            consumer == Path("src/loushang/coding/appservice_adapter.py")
+            or consumer == Path("src/loushang/coding/hosted_application.py")
+            or consumer == APPLICATION
+            or consumer.is_relative_to(Path("src/loushang/appservice"))
+            or consumer.is_relative_to(Path("src/loushang/harnesstui/mux"))
+        ), consumer
     hosted = _source(HOSTED)
     for forbidden in (
         ".session.",
@@ -135,16 +144,9 @@ def test_a0_4_is_the_only_appserver_import_and_stays_wiring_only() -> None:
         assert forbidden not in hosted
 
 
-def test_appserver_slice_is_contract_only_and_never_imports_apphost() -> None:
-    assert {path.relative_to(APPSERVER) for path in APPSERVER.rglob("*.py")} == {
-        Path("__init__.py"),
-        Path("ports.py"),
-    }
-    imports = {
-        imported
-        for path in APPSERVER.rglob("*.py")
-        for imported in _imports(path)
-    }
+def test_a0_4_appserver_ports_remain_contract_only_after_g11() -> None:
+    ports = APPSERVER / "ports.py"
+    imports = _imports(ports)
     for forbidden in (
         "loushang.apphost",
         "loushang.harness",
@@ -156,10 +158,12 @@ def test_appserver_slice_is_contract_only_and_never_imports_apphost() -> None:
             imported != forbidden and not imported.startswith(f"{forbidden}.")
             for imported in imports
         )
-    combined = "\n".join(_source(path) for path in APPSERVER.rglob("*.py"))
+    combined = _source(ports)
     assert "async def " not in combined
     assert " def listen(" not in combined
     assert " def accept(" not in combined
+    assert (APPSERVER / "protocol" / "__init__.py").is_file()
+    assert (APPSERVER / "client.py").is_file()
 
 
 def test_a0_3_a0_4_docs_and_quality_gate_are_current() -> None:

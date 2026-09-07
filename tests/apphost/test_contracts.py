@@ -376,6 +376,46 @@ def test_create_request_requires_explicit_product_and_operation_identity() -> No
     assert intent.request is request
 
 
+def test_create_request_accepts_optional_hosted_continuity_and_scope() -> None:
+    request = SessionCreateRequestV1(
+        product_id="coding",
+        creator_scope_id="scope-fingerprint",
+        operation_id="01K4J8F3N3J7M9Q2R6T5V8W0XY",
+        requested_continuity_id="continuity-hosted",
+        requested_scope=SessionDiscoveryScope.CURRENT_DIRECTORY,
+    )
+
+    assert request.requested_continuity_id == "continuity-hosted"
+    assert request.requested_scope is SessionDiscoveryScope.CURRENT_DIRECTORY
+    with pytest.raises(InvalidAppHostContractError):
+        SessionCreateRequestV1(
+            product_id="coding",
+            creator_scope_id="scope-fingerprint",
+            operation_id="01K4J8F3N3J7M9Q2R6T5V8W0XY",
+            requested_continuity_id="bad continuity",
+        )
+    with pytest.raises(InvalidAppHostContractError):
+        SessionCreateRequestV1(
+            product_id="coding",
+            creator_scope_id="scope-fingerprint",
+            operation_id="01K4J8F3N3J7M9Q2R6T5V8W0XY",
+            requested_scope="cwd",  # type: ignore[arg-type]
+        )
+
+
+def test_create_request_preserves_the_v1_positional_version_slot() -> None:
+    request = SessionCreateRequestV1(
+        "coding",
+        "creator",
+        "01K4J8F3N3J7M9Q2R6T5V8W0XY",
+        APPHOST_CONTRACT_VERSION,
+    )
+
+    assert request.contract_version == APPHOST_CONTRACT_VERSION
+    assert request.requested_continuity_id is None
+    assert request.requested_scope is None
+
+
 def test_migration_candidate_cannot_imply_or_omit_product_identity_incorrectly() -> None:
     reference = SessionCandidateRefV1(
         source_id="home-legacy",

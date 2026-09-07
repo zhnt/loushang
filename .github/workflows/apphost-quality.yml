@@ -26,30 +26,39 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --extra dev
 
-      - name: Lint AppHost G8 through G10
+      - name: Lint AppHost G8 through G12
         run: >-
           uv run --extra dev ruff check
           src/loushang/apphost
           src/loushang/appserver
+          src/loushang/appservice
           src/loushang/coding/_apphost_canary_child.py
           src/loushang/coding/_apphost_canary_control.py
           src/loushang/coding/_product_worker_canary.py
           src/loushang/coding/apphost_canary.py
           src/loushang/coding/apphost_composition.py
           src/loushang/coding/apphost_product.py
+          src/loushang/coding/appservice_adapter.py
+          src/loushang/coding/hosted_application.py
           src/loushang/coding/cli/__main__.py
           src/loushang/coding/cli/apphost.py
           src/loushang/harness/machine_resources/control_plane.py
+          src/loushang/harnesstui/mux
           scripts/dev/run_g10_installed_canary.py
           scripts/dev/verify_evidence_manifest.py
           tests/apphost
+          tests/appserver
+          tests/appservice
           tests/coding/test_apphost_composition.py
           tests/coding/test_apphost_canary.py
           tests/coding/test_apphost_canary_control.py
           tests/coding/test_apphost_product.py
+          tests/coding/test_appservice_adapter.py
+          tests/coding/test_hosted_application.py
           tests/coding/test_cli_apphost.py
           tests/dev/test_verify_evidence_manifest.py
           tests/harness/worker/test_coding_product_worker_canary.py
+          tests/harnesstui/test_hosted_mux_profile.py
           tests/architecture/test_apphost_a0_contract.py
           tests/architecture/test_apphost_a02_architecture.py
           tests/architecture/test_apphost_a03_a04_architecture.py
@@ -58,28 +67,40 @@ jobs:
           tests/architecture/test_hosted_product_runtime_v1_baseline.py
           tests/architecture/test_hosted_product_g10_explicit_canary_design.py
           tests/architecture/test_hosted_product_g10_explicit_canary.py
+          tests/architecture/test_hosted_application_g11_design.py
+          tests/architecture/test_hosted_application_g11.py
+          tests/architecture/test_foreground_hosted_application_g12_design.py
+          tests/architecture/test_foreground_hosted_application_g12.py
 
-      - name: Typecheck AppHost G8 through G10
+      - name: Typecheck AppHost G8 through G12
         run: >-
           uv run --extra dev mypy --follow-imports=silent
           src/loushang/apphost
           src/loushang/appserver
+          src/loushang/appservice
           src/loushang/coding/_apphost_canary_child.py
           src/loushang/coding/_apphost_canary_control.py
           src/loushang/coding/_product_worker_canary.py
           src/loushang/coding/apphost_canary.py
           src/loushang/coding/apphost_composition.py
           src/loushang/coding/apphost_product.py
+          src/loushang/coding/appservice_adapter.py
+          src/loushang/coding/hosted_application.py
+          src/loushang/harnesstui/mux
           src/loushang/coding/cli/apphost.py
 
-      - name: Test AppHost G8 through G10
+      - name: Test AppHost G8 through G12
         run: >-
           uv run --extra dev python scripts/dev/run_pytest.py
           tests/apphost
+          tests/appserver
+          tests/appservice
           tests/coding/test_apphost_canary.py
           tests/coding/test_apphost_canary_control.py
           tests/coding/test_apphost_composition.py
           tests/coding/test_apphost_product.py
+          tests/coding/test_appservice_adapter.py
+          tests/coding/test_hosted_application.py
           tests/coding/test_cli_apphost.py
           tests/dev/test_verify_evidence_manifest.py
           tests/architecture/test_apphost_a0_contract.py
@@ -90,6 +111,11 @@ jobs:
           tests/architecture/test_hosted_product_runtime_v1_baseline.py
           tests/architecture/test_hosted_product_g10_explicit_canary_design.py
           tests/architecture/test_hosted_product_g10_explicit_canary.py
+          tests/harnesstui/test_hosted_mux_profile.py
+          tests/architecture/test_hosted_application_g11_design.py
+          tests/architecture/test_hosted_application_g11.py
+          tests/architecture/test_foreground_hosted_application_g12_design.py
+          tests/architecture/test_foreground_hosted_application_g12.py
           -q
 
       - name: Retain Hosted Product G8 evidence

@@ -1,0 +1,106 @@
+{
+  "activation": "explicit-in-process-only",
+  "entries": [
+    {
+      "disposition": "protocol-library-no-entrypoint",
+      "entrypointId": "appserver.protocol",
+      "importsAppService": false,
+      "omissionOwner": null,
+      "packagingBinding": null,
+      "source": "src/loushang/appserver/protocol/__init__.py",
+      "supportStatus": "public-library",
+      "surface": "contract"
+    },
+    {
+      "disposition": "client-contract-no-entrypoint",
+      "entrypointId": "appserver.client",
+      "importsAppService": false,
+      "omissionOwner": null,
+      "packagingBinding": null,
+      "source": "src/loushang/appserver/client.py",
+      "supportStatus": "public-library",
+      "surface": "client-contract"
+    },
+    {
+      "disposition": "explicit-in-process-library",
+      "entrypointId": "appservice.runtime",
+      "importsAppService": true,
+      "omissionOwner": null,
+      "packagingBinding": null,
+      "source": "src/loushang/appservice/__init__.py",
+      "supportStatus": "public-library",
+      "surface": "service"
+    },
+    {
+      "disposition": "explicit-product-adapter-library",
+      "entrypointId": "coding.appservice-adapter",
+      "importsAppService": true,
+      "omissionOwner": null,
+      "packagingBinding": null,
+      "source": "src/loushang/coding/appservice_adapter.py",
+      "supportStatus": "product-integration",
+      "surface": "product-adapter"
+    },
+    {
+      "disposition": "explicit-hosted-profile-library",
+      "entrypointId": "harnesstui.hosted-mux",
+      "importsAppService": false,
+      "omissionOwner": null,
+      "packagingBinding": null,
+      "source": "src/loushang/harnesstui/mux/profile.py",
+      "supportStatus": "explicit-library",
+      "surface": "presentation-profile"
+    },
+    {
+      "disposition": "explicit-hosting-canary",
+      "entrypointId": "coding.apphost.canary",
+      "importsAppService": false,
+      "omissionOwner": null,
+      "packagingBinding": "project.scripts.loushang",
+      "source": "src/loushang/coding/apphost_canary.py",
+      "supportStatus": "installed-subcommand",
+      "surface": "canary"
+    },
+    {
+      "disposition": "current-default-explicit-canary",
+      "entrypointId": "coding.cli",
+      "importsAppService": false,
+      "omissionOwner": "current",
+      "packagingBinding": "project.scripts.loushang",
+      "source": "src/loushang/coding/cli/__main__.py",
+      "supportStatus": "installed",
+      "surface": "cli"
+    },
+    {
+      "disposition": "current-only",
+      "entrypointId": "coding.tui",
+      "importsAppService": false,
+      "omissionOwner": "current",
+      "packagingBinding": "project.scripts.loushang-tui",
+      "source": "src/loushang/coding/ui/cli.py",
+      "supportStatus": "installed",
+      "surface": "tui"
+    },
+    {
+      "disposition": "current-only",
+      "entrypointId": "coding.sdk",
+      "importsAppService": false,
+      "omissionOwner": "current",
+      "packagingBinding": null,
+      "source": "src/loushang/coding/__init__.py",
+      "supportStatus": "supported-library",
+      "surface": "sdk"
+    },
+    {
+      "disposition": "current-only",
+      "entrypointId": "harnesstui.embedded",
+      "importsAppService": false,
+      "omissionOwner": "current",
+      "packagingBinding": null,
+      "source": "src/loushang/harnesstui/conversation/application_host.py",
+      "supportStatus": "embedded-library",
+      "surface": "presentation-profile"
+    }
+  ],
+  "inventoryVersion": 4
+}
