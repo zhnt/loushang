@@ -61,3 +61,30 @@ def test_G14_BOUNDARIES_dispatch_is_exhaustive_and_not_remote_reflection() -> No
         and node.func.id in {"getattr", "eval", "exec", "__import__"}
         for node in ast.walk(tree)
     )
+
+
+def test_G14_BOUNDARIES_foreground_lifetime_is_an_exact_optional_apphost_edge() -> None:
+    foreground = Path("src/loushang/apphost/foreground.py")
+    imports = _imports(foreground)
+    allowed = {
+        "loushang.apphost.application",
+        "loushang.apphost.continuity",
+        "loushang.appserver.connection",
+        "loushang.appserver.framing",
+    }
+    assert (
+        imports
+        - {
+            item
+            for item in imports
+            if item.partition(".")[0] in sys.stdlib_module_names
+        }
+        == allowed
+    )
+    for name in ("__init__", "_ownership", "catalog", "contracts", "router", "runtime"):
+        assert "loushang.apphost.foreground" not in _imports(
+            Path(f"src/loushang/apphost/{name}.py")
+        )
+    source = foreground.read_text()
+    for forbidden in ("subprocess", "os.environ", "getcwd", "Path(", "retire("):
+        assert forbidden not in source

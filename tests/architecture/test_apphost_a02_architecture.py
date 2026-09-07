@@ -16,6 +16,7 @@ CORE = {
 OPTIONAL = {
     APPHOST / "application.py",
     APPHOST / "continuity.py",
+    APPHOST / "foreground.py",
     APPHOST / "hosted.py",
 }
 ADAPTER = APPHOST / "integrations/harness_session.py"

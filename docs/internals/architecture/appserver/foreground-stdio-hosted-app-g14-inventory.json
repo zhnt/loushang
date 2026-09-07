@@ -7,7 +7,7 @@
     {"id": "appserver.connection", "source": "src/loushang/appserver/connection.py", "status": "implemented", "owner": "connection-lifetime"},
     {"id": "appserver.remote-client", "source": "src/loushang/appserver/remote_client.py", "status": "implemented", "owner": "client-connection"},
     {"id": "appserver.stdio", "source": "src/loushang/appserver/stdio.py", "status": "implemented", "owner": "byte-io"},
-    {"id": "apphost.foreground", "source": "src/loushang/apphost/foreground.py", "status": "planned", "owner": "ordered-settlement"},
+    {"id": "apphost.foreground", "source": "src/loushang/apphost/foreground.py", "status": "implemented", "owner": "ordered-settlement"},
     {"id": "coding.hosted-command", "source": "src/loushang/coding/cli/hosted.py", "status": "planned", "owner": "trusted-product-composition"},
     {"id": "coding.hosted-binding", "source": "src/loushang/coding/hosted_session.py", "status": "implemented", "owner": "real-product-session"},
     {"id": "coding.hosted-catalog", "source": "src/loushang/coding/hosted_catalog.py", "status": "implemented", "owner": "canonical-session-identity"},

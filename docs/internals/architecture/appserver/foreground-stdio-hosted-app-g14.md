@@ -10,7 +10,7 @@
 - Parent: Loushang application architecture
 - Authority: accepted delivery design
 - Design status: accepted following the three-view design review below
-- Implementation status: partial — connection kernel/client implemented; Product composition and delivery pending
+- Implementation status: partial — connection/client, real Coding binding and foreground lifetime implemented; executable composition and native delivery pending
 - Activation status: target explicit foreground stdio command only
 - Tracking: [issue #564](https://github.com/zhnt/loushang/issues/564)
 
@@ -182,6 +182,27 @@ stdout/stderr, waits a bounded interval and may terminate its own child on
 timeout. AppServer itself has no terminate/kill authority. Stdout belongs
 exclusively to protocol bytes; diagnostics/help use stderr or run before IO
 activation. Windows binary mode must preserve exact bytes.
+
+`apphost.foreground.HostedForegroundRuntimeV1` now implements the optional
+connection-before-application edge over a ready G13 runtime and injected IO.
+Connection settlement fences byte IO first; inherited descriptors remain
+borrowed until the outer process exits. Failed/timed-out cleanup retains the
+same owner/task for retry, and application close cannot overtake unfinished
+connection work. Unit evidence covers EOF mid-turn, cancellation or explicit
+close during handshake, failed application disposal, and a timed-out close
+joined without duplicating its in-flight task. This is lifecycle evidence,
+not yet the required real Product subprocess or native-platform delivery.
+
+Three-view review of this edge: the architecture gate permits only the exact
+optional AppHost module and keeps the core facade independent; lifecycle tests
+prove connection cleanup debt prevents application close, and a retained
+timeout task is joined on retry; contract tests preserve handshake faults as
+failures even after successful cleanup. Seven focused lifecycle cases and 33
+AppHost/ownership architecture cases passed locally. A typecheck initially
+rejected the broad awaitable callback passed to `create_task`; its contract
+now explicitly requires the native coroutine supplied by these close owners.
+The full AppService gate subsequently passed 190 cases and checked 37 source
+files; the architecture documentation gate passed five cases.
 
 ## Coding And Harnesstui Integration
 

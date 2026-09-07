@@ -217,6 +217,7 @@ APPHOST_LINT_SUPPORT := \
 	scripts/dev/verify_evidence_manifest.py \
 	tests/harness/worker/test_coding_product_worker_canary.py
 APPSERVICE_SOURCES := \
+	src/loushang/apphost/foreground.py \
 	src/loushang/coding/hosted_catalog.py \
 	src/loushang/coding/hosted_session.py \
 	src/loushang/harness/transcript/lifecycle.py \
@@ -230,6 +231,7 @@ APPSERVICE_SOURCES := \
 	src/loushang/coding/hosted_continuity.py \
 	src/loushang/harnesstui/mux
 APPSERVICE_TEST_PATHS := \
+	tests/apphost/test_foreground.py \
 	tests/coding/test_hosted_catalog.py \
 	tests/coding/test_hosted_session.py \
 	tests/coding/test_hosted_session_metadata.py \

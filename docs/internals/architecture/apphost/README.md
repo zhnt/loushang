@@ -11,6 +11,7 @@
 [G11 Hosted Application](../appserver/hosted-application-g11.md) ·
 [G12 Foreground Hosted Application](foreground-hosted-application-g12.md) ·
 [G13 Durable Hosted Continuity](durable-hosted-application-continuity-g13.md) ·
+[G14 Foreground Stdio](../appserver/foreground-stdio-hosted-app-g14.md) ·
 [Hosted Product Runtime V1 Plan](../drafts/hosted-product-runtime-v1-plan.md)
 
 ## Status
@@ -87,6 +88,15 @@ the runtime's non-owning Product view into the contract-only
 checks exact Session identity and returns an owned hosted attachment, but never
 invokes Session/Work/projection/interaction ports or constructs AppService,
 protocol, listener, connection, or transport state.
+
+G14's separate optional `apphost.foreground.HostedForegroundRuntimeV1` adopts
+an already recovered G13 application and injected byte IO. It serves one
+connection, treats EOF as terminal, and settles connection work before invoking
+G13 application close. Failed or timed-out cleanup retains its owner for retry;
+the G13 lease cannot be released ahead of unfinished connection work. This edge
+does not enter the core facade, choose paths/Product factories, or own process
+launch/exit. The complete G14 executable and native Product evidence are still
+pending.
 
 Existing Product-specific bootstrap/CLI/TUI paths remain authoritative and do
 not import the G9 composition. The one installed explicit factory may
