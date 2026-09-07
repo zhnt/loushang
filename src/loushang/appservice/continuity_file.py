@@ -6,6 +6,7 @@ import os
 import stat
 import sys
 from hashlib import sha256
+from importlib import import_module
 from pathlib import Path
 
 from .continuity import (
@@ -291,7 +292,14 @@ def _open_private(path: Path, *, create: bool, exclusive: bool = False) -> int:
     flags |= no_follow
     descriptor = os.open(path, flags, 0o600)
     if os.name != "nt":
-        os.fchmod(descriptor, 0o600)
+        try:
+            fchmod = getattr(os, "fchmod", None)
+            if not callable(fchmod):
+                raise OSError("continuity storage requires fchmod")
+            fchmod(descriptor, 0o600)
+        except BaseException:
+            os.close(descriptor)
+            raise
     return descriptor
 
 
@@ -307,30 +315,31 @@ def _reject_symlink(path: Path) -> None:
 
 def _lock_descriptor(descriptor: int) -> None:
     if os.name == "nt":
-        import msvcrt
-
+        msvcrt = import_module("msvcrt")
         if os.fstat(descriptor).st_size == 0:
             os.write(descriptor, b"\0")
         os.lseek(descriptor, 0, os.SEEK_SET)
         locking = getattr(msvcrt, "locking")
         locking(descriptor, getattr(msvcrt, "LK_NBLCK"), 1)
         return
-    import fcntl
-
-    fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    fcntl = import_module("fcntl")
+    flock = getattr(fcntl, "flock")
+    flock(
+        descriptor,
+        getattr(fcntl, "LOCK_EX") | getattr(fcntl, "LOCK_NB"),
+    )
 
 
 def _unlock_descriptor(descriptor: int) -> None:
     if os.name == "nt":
-        import msvcrt
-
+        msvcrt = import_module("msvcrt")
         os.lseek(descriptor, 0, os.SEEK_SET)
         locking = getattr(msvcrt, "locking")
         locking(descriptor, getattr(msvcrt, "LK_UNLCK"), 1)
         return
-    import fcntl
-
-    fcntl.flock(descriptor, fcntl.LOCK_UN)
+    fcntl = import_module("fcntl")
+    flock = getattr(fcntl, "flock")
+    flock(descriptor, getattr(fcntl, "LOCK_UN"))
 
 
 def _fsync_directory(path: Path) -> None:
