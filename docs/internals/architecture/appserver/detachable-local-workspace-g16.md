@@ -1249,6 +1249,31 @@ module origins, artifact digest and every installed package byte. The artifact
 is `.artifacts/g16-clean-review-wheel/loushang-0.1.0-py3-none-any.whl`, SHA-256
 `f6b98012788311ef9516643c7b1a2cf262a85d0a1382a04e950486318a3a2444`.
 
+Supplemental retained-substrate and Embedded verification on source head
+`1efbb7d7` passed without further implementation changes:
+
+- `make check-hosting`: Ruff, mypy for 26 files, 373 passed and 45 skipped
+  in 128.31 seconds. The exact optional-module inventory also passed its
+  independent eight-test architecture selection.
+- `make check-harnesstui`: Ruff, mypy for 152 files, 1,400 passed and 67
+  render-contract cases deselected in 372.00 seconds; the independent render
+  gate below covers that separate selection.
+- `make test-tui`: 1,359 passed and seven skipped in 26.46 seconds, retaining
+  the existing `--skip-host-runtime` selector.
+- `make test-tui-render-contract`: 179 passed, 4,716 deselected in 21.90 seconds.
+- `make test-tui-terminal-platform` and `make test-tui-native`: respectively
+  110 and 12 passed, with no skips, using the actual local POSIX profile.
+- `make test-tui-input-playback`: all five named selection, bracketed-paste,
+  active-surface mouse selection, terminal-cleanup and Ctrl+C scenarios passed.
+
+Read-only CI reconciliation confirmed that PR #567 still tested `b689d71c`:
+the old Hosting/AppHost failures were exact-module inventory omissions already
+corrected locally; its Windows AppService failures were the two native held-file
+replacement injections corrected in `9f92a931`. This reconciliation does not
+turn those old failed jobs into passing jobs. New macOS/Windows G16 runs still
+require publication and native verification; the POSIX results above are
+retained-path regression evidence, not a substitute for that release matrix.
+
 Local review conclusion: the identified source/contract findings are resolved;
 cross-platform release acceptance is still open. In particular the macOS and
 Windows native/wheel rows, the Windows replacement rerun, final exact-head
