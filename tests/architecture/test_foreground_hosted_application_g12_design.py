@@ -69,6 +69,8 @@ def test_g12_design_has_closed_ownership_and_reviewed_lifecycle() -> None:
         "AppService.close()",
         "AppHostRuntime.shutdown(budget)",
         "foreground Coding Product factory.close()",
+        "optional requested continuity and discovery scope",
+        "Router validates both before Product factory effect",
         "Architecture and authority",
         "Lifecycle, concurrency and safety",
         "Contract, compatibility and evidence",

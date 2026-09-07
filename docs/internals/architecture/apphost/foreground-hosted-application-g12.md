@@ -61,7 +61,7 @@ owner settlement before transport and process survival add new failure domains.
 | --- | --- |
 | `G12-R1-EXPLICIT-FOREGROUND` | Construction requires an exact typed activation value. Import, omission, environment, platform, persisted state, AppClient creation and profile discovery cannot activate it. |
 | `G12-R2-ONE-PRODUCT-GENERATION` | One hosted application admits exactly one `product_id` and one immutable catalog generation. Each live Session retains that generation through its AppHost binding; no request may retarget it. |
-| `G12-R3-APPHOST-ROUTING` | AppService's Coding resolver maps create/resume to AppHost create/resume. It receives a canonical path-free Session identity/catalog port, never derives cwd/home paths, never opens a locator, and rejects ambiguous or mismatched identities. |
+| `G12-R3-APPHOST-ROUTING` | AppService's Coding resolver maps create/resume to AppHost create/resume. The backward-compatible AppHost create request carries optional requested continuity and discovery scope into the canonical create-if-absent intent, and Router validates both before Product factory effect. The resolver receives a canonical path-free Session identity/catalog port, never derives cwd/home paths, never opens a locator, and rejects ambiguous or mismatched identities. |
 | `G12-R4-FOREGROUND-PRODUCT` | Coding's G12 Product factory creates one independently owned foreground hosted Session binding from the finally opened AppHost candidate. It neither selects nor imports Hosting and does not reuse the G9/G10 Worker canary owner. |
 | `G12-R5-LEASE-OWNERSHIP` | AppService owns a hosted Session wrapper; the wrapper owns exactly one AppHost profile lease and closes the exact AppHost Session binding. Borrowed Product ports never gain close authority over AppHost. |
 | `G12-R6-ORDERED-SHUTDOWN` | Close first fences new application and AppService admissions, then closes AppService attachments/Sessions, then shuts down AppHost Runtime, then settles Product-factory construction debt. A later phase never runs while a prerequisite remains unresolved. |
@@ -124,11 +124,16 @@ opaque candidate reference to AppHost. Zero matches is not found; more than one
 match or any same-Session mismatch is ambiguous and fails closed. A
 `MIGRATION_REQUIRED` projection is never opened by G12.
 
-For create, the resolver gives AppHost an explicit Product, creator-scope token
-and fresh operation identity. The canonical owner mints and establishes the
-identity. After attachment, the Coding edge validates the returned Product,
-continuity, scope and scope fingerprint before publication. A mismatch is
-closed, never rewritten or silently accepted.
+For create, the resolver gives AppHost an explicit Product, creator-scope token,
+fresh operation identity, requested continuity identity and requested discovery
+scope. The latter two fields are optional additions to
+`SessionCreateRequestV1`, so existing embedded callers retain their contract.
+The canonical owner receives them inside the existing create-if-absent intent,
+mints and establishes the identity, and AppHost Router validates the resulting
+canonical projection before Product factory effect. After attachment, the
+Coding edge also validates Product, continuity, Session, scope and scope
+fingerprint before publication. A mismatch is closed, never rewritten or
+silently accepted.
 
 No protocol value contains a path, provider implementation, locator token,
 candidate reference, admission lease or Product runtime handle.
@@ -238,7 +243,7 @@ through the same view and recorded here.
 
 ## G12.0 Design Review
 
-The first three-view pass found three medium risks and the design was revised:
+The first three-view pass found four medium risks and the design was revised:
 
 - **Architecture and authority:** putting construction in the AppHost facade
   would make every embedded consumer import AppService. The composition is now
@@ -252,6 +257,11 @@ The first three-view pass found three medium risks and the design was revised:
   wrong cwd/user-home candidate or a legacy locator. The resolver now performs
   bounded exact envelope/scope matching, rejects ambiguity and never opens a
   migration-required candidate.
+- **Contract, compatibility and evidence:** the pre-G12 AppHost create request
+  could not carry G11's requested continuity and scope to the canonical owner.
+  Two optional fields now travel in the existing create-if-absent intent and
+  are verified by Router before any Product factory effect; old callers remain
+  source compatible.
 
 The same three views were rerun after these changes. No unresolved high or
 medium finding remains. G12.1 implementation may start only inside the
