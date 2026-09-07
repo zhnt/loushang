@@ -458,6 +458,7 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         for path in APPSERVICE_SOURCE.rglob("*.py")
     } == {
         "__init__.py",
+        "_operations.py",
         "client.py",
         "continuity.py",
         "continuity_file.py",

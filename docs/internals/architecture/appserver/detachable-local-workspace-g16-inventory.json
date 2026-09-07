@@ -3,8 +3,9 @@
   "designId": "DETACHABLE-LOCAL-WORKSPACE-G16",
   "profile": "local-detachable/v1",
   "designStatus": "accepted",
-  "implementationStatus": "not-started",
+  "implementationStatus": "partial",
   "entries": [
+    {"id": "appservice.operation-owner", "source": "src/loushang/appservice/_operations.py", "status": "implemented-uncomposed", "owner": "application-operation-lifetime"},
     {"id": "appserver.local-auth", "source": "src/loushang/appserver/local_auth.py", "status": "planned", "owner": "transport-authentication"},
     {"id": "appserver.local-record", "source": "src/loushang/appserver/local_record.py", "status": "planned", "owner": "endpoint-resource"},
     {"id": "appserver.local-runtime", "source": "src/loushang/appserver/local.py", "status": "planned", "owner": "connection-admission"},

@@ -13,7 +13,8 @@
 - Parent: Loushang application architecture
 - Authority: normative accepted deployment boundary
 - Design status: accepted following the three-perspective review below
-- Implementation status: not-started
+- Implementation status: partial — private operation owner is implemented,
+  semantic scopes, local transport and Product/UI integration remain missing
 - Activation status: explicit new deployment only; G14 and Embedded unchanged
 - Tracking: [Hosted Workspace V1 #566](https://github.com/zhnt/loushang/issues/566)
 - Prerequisite: G15 design accepted in `18d429bc`; G14 delivered in `815c03d2`
@@ -77,6 +78,12 @@ controller and conversation projection are retained. No authenticated local
 listener, private credential record, detachable semantic scope or terminal
 client entrypoint exists yet. The [inventory](detachable-local-workspace-g16-inventory.json)
 separates those missing responsibilities from existing extensions.
+
+The first G16.1 primitive, `appservice._operations._OwnedAppOperations`, now
+reserves application capacity before effects, retains tasks across delivery
+cancellation and performs bounded retryable application-stop settlement.
+It is private and uncomposed. It does not validate mux/Session authority or
+change any current request lifetime until the semantic client scope uses it.
 
 ## Logical And Physical Context
 
@@ -445,13 +452,32 @@ Re-review: the design now has a distinct physical profile, single semantic
 authority, explicit acceptance/cancellation points, bounded control-loss and
 shutdown paths, and a non-conflicting installed route. Accepted for incremental
 implementation. Neither this review nor its architecture tests prove runtime
-completion; inventory status remains not-started until behavior is evidenced.
+completion; inventory status tracks only the behavior actually evidenced.
 
 Design-only verification: the first G16 inventory test failed on the existing
 Git-workspace module collision. After the correction, the G16/G15/G14 design
 and G9 closure selection passed 18 tests, Ruff passed, and
 `make check-architecture-docs` passed its five cases. No production source or
 installed entrypoint changed in this design slice.
+
+### G16.1 Implementation Checkpoint
+
+The private operation owner was added after a failing missing-module
+regression. Focused cases cover lost waiters, occupied busy keys, separate
+ordinary/control capacity, cancellation during close, retry after cleanup
+timeout, lost-result observation and task-construction rollback. No semantic
+scope, authentication, native transport or user interaction is proved by this
+primitive. Those requirements remain open until their integrations land.
+
+Slice review (three perspectives, one reviewer): authority stays outside this
+private lifetime primitive; capacity is reserved before task publication and
+Product effects; close waiters cannot cancel the retained cleanup owner. The
+review added regressions for tasks cancelled before their first step and for
+task-factory failure during both admission and close. The architecture guard
+was corrected from substring matching to exact AST imports after it falsely
+matched the existing `standard_cli_operations` function. The corrected wider
+selection passed 140 cases; final `make check-appservice` passed 233 cases
+with Ruff and mypy. This is a reviewed primitive, not the final G16 code review.
 
 ### Platform API References
 

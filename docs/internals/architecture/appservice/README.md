@@ -28,8 +28,10 @@ Product policy, or UI state.
 The [accepted G16 design](../appserver/detachable-local-workspace-g16.md)
 adds a future optional semantic client scope: connection-bound controller
 authority, application-owned admitted execution and control-loss interaction
-settlement. These remain implementation gaps; the G11/G14 in-process adapter
-and attachment behavior are not silently changed by the design.
+settlement. The first private `_operations.py` owner retains application work
+independently of delivery cancellation, but is not composed yet. Semantic
+client scopes remain an implementation gap; the G11/G14 in-process adapter
+and attachment behavior are unchanged.
 
 The current implementation contains:
 

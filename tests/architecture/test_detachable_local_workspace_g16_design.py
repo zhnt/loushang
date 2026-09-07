@@ -14,12 +14,14 @@ def test_G16_DESIGN_inventory_preserves_current_routes_and_platform_scope() -> N
     assert inventory["inventoryVersion"] == 1
     assert inventory["profile"] == "local-detachable/v1"
     assert inventory["designStatus"] == "accepted"
-    assert inventory["implementationStatus"] == "not-started"
+    assert inventory["implementationStatus"] == "partial"
     assert set(inventory["requiredPlatforms"]) == {"linux", "darwin", "win32"}
     entries = inventory["entries"]
     assert len({entry["id"] for entry in entries}) == len(entries)
     for entry in entries:
-        assert entry["status"] in {"planned", "existing-extend", "existing-retain"}
+        assert entry["status"] in {
+            "planned", "existing-extend", "existing-retain", "implemented-uncomposed"
+        }
         assert Path(entry["source"]).exists() == (entry["status"] != "planned")
     scripts = tomllib.loads(Path("pyproject.toml").read_text())["project"]["scripts"]
     for name, target in inventory["unchangedScripts"].items():
