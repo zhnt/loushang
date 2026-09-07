@@ -2,7 +2,8 @@
 
 [Architecture](../README.md) · [AppServer](../appserver/README.md) ·
 [G11 In-Process Hosted Application](../appserver/hosted-application-g11.md) ·
-[G12 Foreground Hosted Application](../apphost/foreground-hosted-application-g12.md)
+[G12 Foreground Hosted Application](../apphost/foreground-hosted-application-g12.md) ·
+[G13 Durable Hosted Continuity](../apphost/durable-hosted-application-continuity-g13.md)
 
 ## Status
 
@@ -69,12 +70,19 @@ G12 does not move lifecycle authority into AppService. The optional outer
 `apphost.application` owner fences and closes this service before AppHost, while
 AppService continues to know only its injected Product-neutral resolver.
 
+The accepted G13 Target keeps durable MuxSpace/Session coordination semantics
+in this scope through an injected, exclusively leased store. It adds no Current
+code yet. AppHost will own the optional recovery composition and lease lifetime;
+Product/Harness remains authoritative for canonical Session recovery.
+
 ## Non-Goals
 
-G11/G12 has no connection, listener, wire dispatcher, authentication, IPC,
-WebSocket, daemon, process controller, persistent MuxSpace store, multi-client
-controller takeover, or AppHost restart recovery.  The default Embedded
-Profile and installed Coding CLI/TUI/SDK routes remain unchanged.
+Current G11/G12 has no connection, listener, wire dispatcher, authentication,
+IPC, WebSocket, daemon, process controller, persistent MuxSpace store,
+multi-client controller takeover, or AppHost restart recovery. The accepted
+but unimplemented G13 Target covers only durable coordination reconstruction;
+the other exclusions and the default Embedded Profile and installed Coding
+CLI/TUI/SDK routes remain unchanged.
 
 ## Evidence
 

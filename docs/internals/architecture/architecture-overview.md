@@ -173,6 +173,13 @@ placement and sibling dependencies are governed by their parent scope.
 
 ## Accepted Target Architecture
 
+The accepted, unimplemented G13 hosted-continuity slice adds an optional
+one-writer AppService coordination record under an admitted exact root. A fresh
+AppHost application recovers only desired MuxSpace/member identities and
+reopens canonical Product Sessions under the current generation. AppServer
+transport, Hosting service control, active-execution recovery and installed
+activation remain separate Target decisions.
+
 Accepted Target directions include:
 
 - Product-to-Harness-to-Agent-to-AI remains the one-way execution spine;
@@ -223,7 +230,7 @@ The most important current gaps are:
 | physical installation optionality | subsystems remain in one Python distribution |
 | Hosting runtime and Harness adoption | H0--H6.5b mechanisms, PLC9C5 Product/native Worker canaries, and retained Linux/Windows evidence are implemented; installed activation remains default-dark |
 | cross-Product AppHost | G8 joins A0.4 catalog/runtime mechanics to one Coding-owned exact-receipt Product adapter; G9.1--G9.2 implement the explicit composition and drill; G9.3 accepts a source-backed `RETAIN` decision; G9.4 promotes the capability default-dark; G10 implements one exact installed short-lived canary without changing normal Current routes |
-| hosted application boundary | G11 implements a strict App Contract, in-process AppService named-mux semantics, one Coding hosted Session adapter and an explicit Harnesstui profile; G12 composes an explicit foreground AppHost/Coding path with canonical cwd/user-home create/resume and ordered shutdown; IPC, daemon continuity and installed activation remain future deltas |
+| hosted application boundary | G11 implements a strict App Contract, in-process AppService named-mux semantics, one Coding hosted Session adapter and an explicit Harnesstui profile; G12 composes an explicit foreground AppHost/Coding path with canonical cwd/user-home create/resume and ordered shutdown; accepted G13 durable coordination reconstruction is not implemented; IPC, daemon/process continuity and installed activation remain future deltas |
 
 Detailed gaps belong to the owning scope rather than expanding this AOD.
 Cross-system deltas are indexed in the

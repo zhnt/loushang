@@ -71,8 +71,9 @@ jobs:
           tests/architecture/test_hosted_application_g11.py
           tests/architecture/test_foreground_hosted_application_g12_design.py
           tests/architecture/test_foreground_hosted_application_g12.py
+          tests/architecture/test_durable_hosted_application_continuity_g13_design.py
 
-      - name: Typecheck AppHost G8 through G12
+      - name: Typecheck AppHost G8 through G13
         run: >-
           uv run --extra dev mypy --follow-imports=silent
           src/loushang/apphost
@@ -89,7 +90,7 @@ jobs:
           src/loushang/harnesstui/mux
           src/loushang/coding/cli/apphost.py
 
-      - name: Test AppHost G8 through G12
+      - name: Test AppHost G8 through G13
         run: >-
           uv run --extra dev python scripts/dev/run_pytest.py
           tests/apphost
@@ -116,6 +117,7 @@ jobs:
           tests/architecture/test_hosted_application_g11.py
           tests/architecture/test_foreground_hosted_application_g12_design.py
           tests/architecture/test_foreground_hosted_application_g12.py
+          tests/architecture/test_durable_hosted_application_continuity_g13_design.py
           -q
 
       - name: Retain Hosted Product G8 evidence

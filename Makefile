@@ -201,7 +201,8 @@ APPHOST_TEST_PATHS := \
 	tests/architecture/test_hosted_application_g11_design.py \
 	tests/architecture/test_hosted_application_g11.py \
 	tests/architecture/test_foreground_hosted_application_g12_design.py \
-	tests/architecture/test_foreground_hosted_application_g12.py
+	tests/architecture/test_foreground_hosted_application_g12.py \
+	tests/architecture/test_durable_hosted_application_continuity_g13_design.py
 APPHOST_LINT_SUPPORT := \
 	src/loushang/coding/cli/__main__.py \
 	src/loushang/harness/machine_resources/control_plane.py \
@@ -225,7 +226,8 @@ APPSERVICE_TEST_PATHS := \
 	tests/architecture/test_hosted_application_g11_design.py \
 	tests/architecture/test_hosted_application_g11.py \
 	tests/architecture/test_foreground_hosted_application_g12_design.py \
-	tests/architecture/test_foreground_hosted_application_g12.py
+	tests/architecture/test_foreground_hosted_application_g12.py \
+	tests/architecture/test_durable_hosted_application_continuity_g13_design.py
 
 .PHONY: bootstrap test test-ai check-ai test-tui test-tui-render-contract test-tui-terminal-platform test-tui-native test-tui-tmux lint-ai fmt-ai typecheck-ai typecheck-tui build-binary install-binary clean-binary vendor-ai-moonshot-anthropic-stream vendor-ai-moonshot-anthropic-complete vendor-ai-moonshot-anthropic-tools vendor-ai-moonshot-openai-stream vendor-ai-moonshot-openai-complete vendor-ai-moonshot-openai-tools vendor-ai-dashscope-openai-responses-stream vendor-ai-dashscope-openai-responses-tools example-ai-model-lookup example-ai-complete example-ai-stream example-ai-tools example-ai-typed-context example-ai-advanced-faux-stream example-ai-advanced-context-tools example-ai-advanced-tool-result-roundtrip example-ai-kimi-anthropic-stream example-ai-kimi-anthropic-complete example-ai-kimi-anthropic-tools example-ai-kimi-openai-stream example-ai-kimi-openai-complete example-ai-kimi-openai-tools example-ai-dashscope-openai-responses-stream example-ai-dashscope-openai-responses-tools example-ai-custom-base-url-openai-advanced example-ai-faux-stream example-ai-context-tools-minimal example-ai-tool-result-roundtrip
 .PHONY: test-sandbox test-host-runtime
