@@ -701,6 +701,7 @@ def test_hosting_apphost_and_appserver_runtime_edges_remain_dark() -> None:
     } == {
         "__init__.py",
         "_ownership.py",
+        "application.py",
         "catalog.py",
         "contracts.py",
         "errors.py",
@@ -713,7 +714,16 @@ def test_hosting_apphost_and_appserver_runtime_edges_remain_dark() -> None:
     appserver = REPOSITORY_ROOT / "src/loushang/appserver"
     assert {
         path.relative_to(appserver).as_posix() for path in appserver.rglob("*.py")
-    } == {"__init__.py", "ports.py"}
+    } == {
+        "__init__.py",
+        "client.py",
+        "ports.py",
+        "protocol/__init__.py",
+        "protocol/codec.py",
+        "protocol/errors.py",
+        "protocol/model.py",
+        "protocol/schema.py",
+    }
 
     overview = _read(HOSTING_ROOT / "README.md")
     decision = _read(HOSTING_PLACEMENT)
