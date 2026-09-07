@@ -34,6 +34,23 @@ loushang -p "Summarize the current project."
 
 如果要用 `loushang.tui` 构建终端 UI 应用，见 [构建 TUI 应用](tui.md)。
 
+### 显式 Hosted Application
+
+`loushang-hosted` 是供应用启动器连接的前台 stdio 服务，不是新的交互式 prompt loop；
+现有 CLI/TUI 入口不变。可先运行 `loushang-hosted --help`。
+
+启动时显式提供 `--workspace`、`--application-root`、`--cwd-sessions` 和
+`--home-sessions`。工作目录和应用状态目录的父目录须已存在，三个存储目录必须相互
+独立。应用状态目录须为私有目录（POSIX 下 0700），缺失的叶目录会按私有权限创建。
+增加 `--describe` 可只读查看连接所需的范围标识，不启动或写入状态；移除此标志后，
+使用管道连接带帧协议，而不是逐行文本，启动器应使用 `StdioAppClientV1`。
+
+保持相同的 application ID（默认 `coding.default`）、工作目录和存储根，可在关闭后
+恢复 mux、成员和会话。EOF 会终止这个前台应用；正在运行的回合、审批和旧连接权限
+不会恢复。它不提供后台常驻、网络监听或自动重连。
+客户端组合方式、三平台验收证据和集成状态见
+[G14 契约与交付状态](../../internals/architecture/appserver/foreground-stdio-hosted-app-g14.md)。
+
 ## 会话
 
 会话保存 coding 对话与执行记录，适合需要恢复、分叉、导出、诊断和后续检查的工作流。

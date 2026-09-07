@@ -397,6 +397,8 @@ def _run_git(cwd: Path, *args: str) -> str | None:
         result = subprocess.run(
             ["git", "-C", cwd.as_posix(), *args],
             check=False,
+            # Diagnostics must not borrow a terminal or a hosted protocol pipe.
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             text=True,
@@ -415,6 +417,7 @@ def _git_worktree_dirty(cwd: Path) -> bool | None:
         result = subprocess.run(
             ["git", "-C", cwd.as_posix(), "status", "--porcelain"],
             check=False,
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             text=True,

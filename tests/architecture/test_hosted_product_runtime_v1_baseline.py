@@ -432,6 +432,7 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "hosted.py",
         "application.py",
         "continuity.py",
+        "foreground.py",
     }
     assert {
         path.relative_to(APPSERVER_SOURCE).as_posix()
@@ -445,6 +446,12 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "protocol/errors.py",
         "protocol/model.py",
         "protocol/schema.py",
+        "connection.py",
+        "dispatch.py",
+        "framing.py",
+        "remote_client.py",
+        "stdio.py",
+        "protocol/stdio_profile.py",
     }
     assert {
         path.relative_to(APPSERVICE_SOURCE).as_posix()
@@ -503,6 +510,9 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         Path("src/loushang/coding/appservice_adapter.py"),
         Path("src/loushang/coding/hosted_application.py"),
         Path("src/loushang/coding/hosted_continuity.py"),
+        Path("src/loushang/coding/hosted_catalog.py"),
+        Path("src/loushang/coding/hosted_session.py"),
+        Path("src/loushang/coding/cli/hosted.py"),
     }
     retained_fences = " ".join(_section(inventory, "Retained Fences").split())
     for statement in (

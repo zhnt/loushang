@@ -16,7 +16,9 @@ from .model import (
     AppRequestV1,
     AppResponseV1,
     AttachedSessionV1,
+    AttachmentEventsV1,
     AttachmentEventV1,
+    AttachmentReadEventsV1,
     InteractionOutcomeV1,
     InteractionRespondV1,
     MuxAttachmentV1,
@@ -69,7 +71,7 @@ def _loads(payload: bytes) -> _Object:
             object_pairs_hook=_pairs,
             parse_constant=lambda _value: (_ for _ in ()).throw(ValueError()),
         )
-    except (UnicodeDecodeError, ValueError, TypeError, json.JSONDecodeError):
+    except (UnicodeDecodeError, ValueError, TypeError, RecursionError):
         raise InvalidAppMessageError() from None
     if type(value) is not dict:
         raise InvalidAppMessageError()
@@ -77,13 +79,22 @@ def _loads(payload: bytes) -> _Object:
 
 
 def _dumps(value: Mapping[str, object]) -> bytes:
-    return json.dumps(
-        value,
+    encoder = json.JSONEncoder(
         ensure_ascii=False,
         allow_nan=False,
         separators=(",", ":"),
         sort_keys=True,
-    ).encode("utf-8")
+    )
+    output = bytearray()
+    try:
+        for part in encoder.iterencode(value):
+            chunk = part.encode("utf-8")
+            if len(output) + len(chunk) > MAX_MESSAGE_BYTES:
+                raise InvalidAppMessageError()
+            output.extend(chunk)
+    except (UnicodeError, ValueError, TypeError, RecursionError):
+        raise InvalidAppMessageError() from None
+    return bytes(output)
 
 
 def _object(value: object, fields: set[str]) -> _Object:
@@ -171,13 +182,19 @@ def encode_response(response: AppResponseV1) -> bytes:
     elif type(result) is MuxSpaceV1:
         result_type, value = "mux", _encode_mux(result)
     elif type(result) is MuxListResultV1:
-        result_type, value = "muxList", {
-            "muxSpaces": [_encode_mux(item) for item in result.mux_spaces]
-        }
+        result_type, value = (
+            "muxList",
+            {"muxSpaces": [_encode_mux(item) for item in result.mux_spaces]},
+        )
     elif type(result) is MuxAttachmentV1:
         result_type, value = "attachment", _encode_attachment(result)
     elif type(result) is SessionSnapshotV1:
         result_type, value = "snapshot", _encode_snapshot(result)
+    elif type(result) is AttachmentEventsV1:
+        result_type, value = (
+            "events",
+            {"events": [_encode_event(item) for item in result.events]},
+        )
     else:
         raise TypeError("unsupported response result")
     return _dumps(
@@ -223,6 +240,14 @@ def decode_response(payload: bytes) -> AppResponseV1:
         result = _decode_attachment(raw)
     elif result_type == "snapshot":
         result = _decode_snapshot(raw)
+    elif result_type == "events":
+        value = _object(raw, {"events"})
+        events = value["events"]
+        if type(events) is not list or len(events) > 64:
+            raise InvalidAppMessageError()
+        result = _construct(
+            AttachmentEventsV1, events=tuple(_decode_event(item) for item in events)
+        )
     else:
         raise InvalidAppMessageError()
     return _construct(
@@ -235,25 +260,31 @@ def decode_response(payload: bytes) -> AppResponseV1:
 def encode_event(event: AttachmentEventV1) -> bytes:
     if type(event) is not AttachmentEventV1:
         raise TypeError("event must be AttachmentEventV1")
-    return _dumps(
-        {
-            "attachmentId": event.attachment_id,
-            "event": {
-                "cursor": event.event.cursor,
-                "interactionId": event.event.interaction_id,
-                "kind": event.event.kind.value,
-                "sessionId": event.event.session_id,
-                "text": event.event.text,
-            },
-            "memberId": event.member_id,
-            "protocolVersion": APP_PROTOCOL_VERSION,
-        }
-    )
+    return _dumps(_encode_event(event))
+
+
+def _encode_event(event: AttachmentEventV1) -> _Object:
+    return {
+        "attachmentId": event.attachment_id,
+        "event": {
+            "cursor": event.event.cursor,
+            "interactionId": event.event.interaction_id,
+            "kind": event.event.kind.value,
+            "sessionId": event.event.session_id,
+            "text": event.event.text,
+        },
+        "memberId": event.member_id,
+        "protocolVersion": APP_PROTOCOL_VERSION,
+    }
 
 
 def decode_event(payload: bytes) -> AttachmentEventV1:
+    return _decode_event(_loads(payload))
+
+
+def _decode_event(value: object) -> AttachmentEventV1:
     root = _object(
-        _loads(payload),
+        value,
         {"attachmentId", "event", "memberId", "protocolVersion"},
     )
     if root["protocolVersion"] != APP_PROTOCOL_VERSION:
@@ -285,8 +316,17 @@ def _encode_request_payload(request: AppRequestV1) -> _Object:
         return {"name": cast(MuxCreateV1, payload).name}
     if operation is AppOperationV1.MUX_LIST:
         return {}
+    if operation is AppOperationV1.ATTACHMENT_READ_EVENTS:
+        poll = cast(AttachmentReadEventsV1, payload)
+        return {
+            "attachmentId": poll.attachment_id,
+            "controllerGeneration": poll.controller_generation,
+            "limit": poll.limit,
+        }
     if operation in {AppOperationV1.MUX_READ, AppOperationV1.MUX_CLOSE}:
-        return {"selector": _encode_selector(cast(MuxReadV1 | MuxCloseV1, payload).selector)}
+        return {
+            "selector": _encode_selector(cast(MuxReadV1 | MuxCloseV1, payload).selector)
+        }
     if operation is AppOperationV1.MUX_ATTACH:
         attach_value = cast(MuxAttachV1, payload)
         return {
@@ -340,6 +380,14 @@ def _decode_request_payload(operation: AppOperationV1, raw: object) -> object:
     if operation is AppOperationV1.MUX_LIST:
         _object(raw, set())
         return MuxListV1()
+    if operation is AppOperationV1.ATTACHMENT_READ_EVENTS:
+        value = _object(raw, {"attachmentId", "controllerGeneration", "limit"})
+        return _construct(
+            AttachmentReadEventsV1,
+            attachment_id=_string(value["attachmentId"]),
+            controller_generation=_integer(value["controllerGeneration"]),
+            limit=_integer(value["limit"]),
+        )
     if operation in {AppOperationV1.MUX_READ, AppOperationV1.MUX_CLOSE}:
         value = _object(raw, {"selector"})
         factory = MuxReadV1 if operation is AppOperationV1.MUX_READ else MuxCloseV1

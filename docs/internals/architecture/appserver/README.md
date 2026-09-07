@@ -3,6 +3,7 @@
 [Architecture](../README.md) ·
 [AppHost](../apphost/README.md) ·
 [G11 In-Process Hosted Application](hosted-application-g11.md) ·
+[G14 Foreground Stdio](foreground-stdio-hosted-app-g14.md) ·
 [G12 Foreground Hosted Application](../apphost/foreground-hosted-application-g12.md) ·
 [AppService Hosted Boundary](../drafts/appservice-embedded-tui-hosted-boundary-plan.md)
 
@@ -10,10 +11,10 @@
 
 - Scope: `appserver`
 - Parent: `loushang`
-- Authority: normative — A0.4 structural ports and G11 client contract
+- Authority: normative — A0.4 ports, G11 client contract and G14 connection edge
 - Design status: accepted
-- Implementation status: implemented — A0.4 ports plus G11 protocol/client contract
-- Activation status: library only; no listener, connection, framing, or transport
+- Implementation status: implemented — G14 connection, stdio client and Product executable verified on Linux, macOS and Windows
+- Activation status: explicit library or `loushang-hosted` foreground command; no listener or default-route change
 - Owner: Loushang AppServer architecture
 
 The implemented
@@ -21,6 +22,12 @@ The implemented
 protocol kernel and transport-neutral AppClient contract here, plus a separate
 Product-neutral `loushang.appservice` semantic package.  It adds no AppServer
 runtime or external entrypoint.
+
+G14 adds a separately imported connection runtime, bounded framing and stdio
+AppClient. It accepts an injected semantic client and already-owned IO, never
+constructs an AppService, and has no process launch or listener authority.
+The Product-owned `loushang-hosted` entrypoint composes this explicit route;
+it remains separate from the existing default CLI/TUI entrypoints.
 
 G12's optional AppHost application edge consumes the client contract for its
 in-process view. AppServer neither constructs nor imports that composition.
@@ -48,6 +55,8 @@ apphost.application -> loushang.appserver.client
 apphost.hosted -> loushang.appserver.ports + AppHost attachment contracts
 Product hosted profile -> Product public API + loushang.appserver.ports
 Harnesstui Hosted Profile -> loushang.appserver.client + protocol
+appserver.connection -> appserver.client + protocol + byte ports
+appserver.remote_client -> protocol + byte ports
 
 loushang.appserver -/-> AppService / AppHost / Harness / Hosting / Product / UI
 AppHost core -/-> loushang.appserver
@@ -57,9 +66,9 @@ Only `apphost.hosted` imports `ports.py` from AppHost. G11's exact hosted
 Session input port is AppService-owned because it expresses service semantics,
 not AppHost wiring. G11 adds the sibling
 protocol and client abstractions without changing that binder. AppService owns
-concrete semantic coordination and its in-process client implementation. A
-later AppServer runtime must separately accept listener, connection,
-authentication, framing, byte-buffer, and transport lifecycle semantics.
+concrete semantic coordination and its in-process client implementation. The
+G14 connection edge now accepts foreground stdio lifecycle and framing.
+Listener authentication and reconnect semantics remain separate future work.
 
 ## Invariants
 
@@ -89,3 +98,9 @@ authentication, framing, byte-buffer, and transport lifecycle semantics.
   optional outward consumer and unchanged installed-entrypoint boundary.
 - `make check-apphost` retains A0.4/G12 coverage; `make check-appservice` owns
   the G11 semantics and G12 composition evidence.
+- G14 connection tests cover bounded dispatch, reserved interrupt capacity,
+  caller cancellation, EOF and invalid frames. A native subprocess fixture
+  covers byte IO. Native real Product/Harnesstui tests now cover the installed
+  command and G13 restart recovery. The [G14 final evidence](foreground-stdio-hosted-app-g14.md#final-acceptance-evidence)
+  records 211 passing cases on each native platform and the full-delta
+  three-view review; the linked PR records integration status.

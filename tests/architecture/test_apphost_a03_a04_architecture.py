@@ -18,6 +18,7 @@ CORE = {
 HOSTED = APPHOST / "hosted.py"
 APPLICATION = APPHOST / "application.py"
 CONTINUITY = APPHOST / "continuity.py"
+FOREGROUND = APPHOST / "foreground.py"
 SCOPE = Path("docs/internals/architecture/apphost/README.md")
 CONTRACT = Path("docs/internals/architecture/apphost/contract-model-a0.md")
 APPSERVER_SCOPE = Path("docs/internals/architecture/appserver/README.md")
@@ -55,6 +56,7 @@ def test_a0_3_core_is_stdlib_only_and_facade_exposes_no_optional_edge() -> None:
         HOSTED,
         APPLICATION,
         CONTINUITY,
+        FOREGROUND,
     }
     for path in CORE:
         for imported in _imports(path):
@@ -130,8 +132,12 @@ def test_a0_4_hosted_binder_stays_wiring_only_after_g11_consumers() -> None:
         assert (
             consumer == Path("src/loushang/coding/appservice_adapter.py")
             or consumer == Path("src/loushang/coding/hosted_application.py")
+            or consumer == Path("src/loushang/coding/hosted_catalog.py")
+            or consumer == Path("src/loushang/coding/hosted_session.py")
+            or consumer == Path("src/loushang/coding/cli/hosted.py")
             or consumer == APPLICATION
             or consumer == CONTINUITY
+            or consumer == FOREGROUND
             or consumer.is_relative_to(Path("src/loushang/appservice"))
             or consumer.is_relative_to(Path("src/loushang/harnesstui/mux"))
         ), consumer

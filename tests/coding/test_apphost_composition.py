@@ -964,7 +964,7 @@ def test_g9_restart_retains_durable_kill_switch_generation(_case: str) -> None:
 def test_g9_entrypoint_inventory_is_exact_and_source_backed(_case: str) -> None:
     inventory = json.loads(_INVENTORY.read_text(encoding="utf-8"))
     assert set(inventory) == {"inventoryVersion", "decision", "entries"}
-    assert inventory["inventoryVersion"] == 3
+    assert inventory["inventoryVersion"] == 4
     assert inventory["decision"] == "RETAIN"
     entries = {entry["entrypointId"]: entry for entry in inventory["entries"]}
     assert set(entries) == {
@@ -975,6 +975,7 @@ def test_g9_entrypoint_inventory_is_exact_and_source_backed(_case: str) -> None:
         "coding.arch.module-cli",
         "coding.bootstrap",
         "coding.cli",
+        "coding.hosted.command",
         "coding.sdk",
         "coding.tui",
         "harnesstui.named-mux",
@@ -1019,14 +1020,15 @@ def test_g9_entrypoint_inventory_is_exact_and_source_backed(_case: str) -> None:
         ),
         "appserver.package": (
             "appserver",
-            "contract-only",
-            "contract-only-no-entrypoint",
+            "connection-library",
+            "connection-library-no-entrypoint",
         ),
+        "coding.hosted.command": ("hosted", "installed", "explicit-foreground-stdio"),
         "coding.arch.module-cli": ("cli", "supported-module", "non-product-tool"),
         "harnesstui.named-mux": (
             "mux",
-            "design-only",
-            "design-only-no-entrypoint",
+            "client-library",
+            "client-library-no-entrypoint",
         ),
         "plugin.cli": ("cli", "installed", "non-product-tool"),
     }
@@ -1034,6 +1036,7 @@ def test_g9_entrypoint_inventory_is_exact_and_source_backed(_case: str) -> None:
     project = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
     assert project["project"]["scripts"] == {
         "loushang": "loushang.coding.cli.__main__:main",
+        "loushang-hosted": "loushang.coding.cli.hosted:main",
         "loushang-plugin": "loushang.plugin.__main__:main",
         "loushang-tui": "loushang.coding.ui.cli:main",
     }
@@ -1043,6 +1046,7 @@ def test_g9_entrypoint_inventory_is_exact_and_source_backed(_case: str) -> None:
         if row["packagingBinding"] is not None
     } == {
         "project.scripts.loushang",
+        "project.scripts.loushang-hosted",
         "project.scripts.loushang-plugin",
         "project.scripts.loushang-tui",
     }

@@ -310,7 +310,7 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
 
     inventory = json.loads(_read(G9_ENTRYPOINTS))
     assert set(inventory) == {"inventoryVersion", "decision", "entries"}
-    assert inventory["inventoryVersion"] == 3
+    assert inventory["inventoryVersion"] == 4
     assert inventory["decision"] == "RETAIN"
     rows = {row["entrypointId"]: row for row in inventory["entries"]}
     assert set(rows) == {
@@ -321,6 +321,7 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
         "coding.arch.module-cli",
         "coding.bootstrap",
         "coding.cli",
+        "coding.hosted.command",
         "coding.sdk",
         "coding.tui",
         "harnesstui.named-mux",
@@ -347,9 +348,16 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
         assert rows[entrypoint_id]["importsComposition"] is False
         assert rows[entrypoint_id]["omissionOwner"] == "current"
 
-    assert rows["appserver.package"]["disposition"] == ("contract-only-no-entrypoint")
+    assert rows["appserver.package"]["disposition"] == (
+        "connection-library-no-entrypoint"
+    )
     assert rows["apphost.hosted"]["disposition"] == "binder-only-no-entrypoint"
-    assert rows["harnesstui.named-mux"]["disposition"] == ("design-only-no-entrypoint")
+    assert rows["harnesstui.named-mux"]["disposition"] == (
+        "client-library-no-entrypoint"
+    )
+    assert rows["coding.hosted.command"]["disposition"] == "explicit-foreground-stdio"
+    assert rows["coding.hosted.command"]["importsComposition"] is False
+    assert rows["coding.hosted.command"]["omissionOwner"] is None
     for entrypoint_id in ("coding.arch.module-cli", "plugin.cli"):
         assert rows[entrypoint_id]["disposition"] == "non-product-tool"
         assert rows[entrypoint_id]["omissionOwner"] is None
@@ -383,15 +391,16 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
         for entrypoint_id, row in rows.items()
     } == {
         "apphost.hosted": ("hosted", "binder-only"),
-        "appserver.package": ("appserver", "contract-only"),
+        "appserver.package": ("appserver", "connection-library"),
         "coding.apphost.canary": ("canary", "installed-subcommand"),
         "coding.apphost.composition": ("composition", "explicit-library"),
         "coding.arch.module-cli": ("cli", "supported-module"),
         "coding.bootstrap": ("bootstrap", "supported-library"),
         "coding.cli": ("cli", "installed"),
+        "coding.hosted.command": ("hosted", "installed"),
         "coding.sdk": ("sdk", "supported-library"),
         "coding.tui": ("tui", "installed"),
-        "harnesstui.named-mux": ("mux", "design-only"),
+        "harnesstui.named-mux": ("mux", "client-library"),
         "plugin.cli": ("cli", "installed"),
     }
 
@@ -399,6 +408,7 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
     scripts = project["project"]["scripts"]
     assert scripts == {
         "loushang": "loushang.coding.cli.__main__:main",
+        "loushang-hosted": "loushang.coding.cli.hosted:main",
         "loushang-plugin": "loushang.plugin.__main__:main",
         "loushang-tui": "loushang.coding.ui.cli:main",
     }
@@ -409,6 +419,7 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
     }
     assert bindings == {
         "project.scripts.loushang": "coding.cli",
+        "project.scripts.loushang-hosted": "coding.hosted.command",
         "project.scripts.loushang-plugin": "plugin.cli",
         "project.scripts.loushang-tui": "coding.tui",
     }
@@ -425,7 +436,12 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
     assert {path.name for path in Path("src/loushang/appserver").glob("*.py")} == {
         "__init__.py",
         "client.py",
+        "connection.py",
+        "dispatch.py",
+        "framing.py",
         "ports.py",
+        "remote_client.py",
+        "stdio.py",
     }
     assert (Path("src/loushang/harnesstui/mux/profile.py")).is_file()
     for entrypoint_id in ("appserver.package", "apphost.hosted"):

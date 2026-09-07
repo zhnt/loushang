@@ -2,6 +2,16 @@
   "decision": "RETAIN",
   "entries": [
     {
+      "disposition": "explicit-foreground-stdio",
+      "entrypointId": "coding.hosted.command",
+      "importsComposition": false,
+      "omissionOwner": null,
+      "packagingBinding": "project.scripts.loushang-hosted",
+      "source": "src/loushang/coding/cli/hosted.py",
+      "supportStatus": "installed",
+      "surface": "hosted"
+    },
+    {
       "disposition": "explicit-hosting-canary",
       "entrypointId": "coding.apphost.canary",
       "importsComposition": true,
@@ -82,13 +92,13 @@
       "surface": "cli"
     },
     {
-      "disposition": "contract-only-no-entrypoint",
+      "disposition": "connection-library-no-entrypoint",
       "entrypointId": "appserver.package",
       "importsComposition": false,
       "omissionOwner": null,
       "packagingBinding": null,
       "source": "src/loushang/appserver/__init__.py",
-      "supportStatus": "contract-only",
+      "supportStatus": "connection-library",
       "surface": "appserver"
     },
     {
@@ -102,15 +112,15 @@
       "surface": "hosted"
     },
     {
-      "disposition": "design-only-no-entrypoint",
+      "disposition": "client-library-no-entrypoint",
       "entrypointId": "harnesstui.named-mux",
       "importsComposition": false,
       "omissionOwner": null,
       "packagingBinding": null,
-      "source": "docs/internals/architecture/drafts/harnesstui-named-mux-daemon-attach-design.md",
-      "supportStatus": "design-only",
+      "source": "src/loushang/harnesstui/mux/profile.py",
+      "supportStatus": "client-library",
       "surface": "mux"
     }
   ],
-  "inventoryVersion": 3
+  "inventoryVersion": 4
 }

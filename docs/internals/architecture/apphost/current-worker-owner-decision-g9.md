@@ -37,6 +37,14 @@ currently false.
 
 ## Source-Backed Entrypoint Disposition
 
+The table and deletion audit below record the G9 decision-time facts. The live
+inventory has advanced to v4 under G14: it includes the explicit
+`loushang-hosted` command, the AppServer connection library and the Harnesstui
+mux client library. G10's installed canary is also retained. These opt-in
+capabilities do not change default Worker ownership or supersede this
+`RETAIN` decision; current G14 scope and verification live in
+[Foreground Stdio G14](../appserver/foreground-stdio-hosted-app-g14.md).
+
 The canonical machine-readable inventory is
 [`hosted-product-g9-entrypoint-inventory.json`](hosted-product-g9-entrypoint-inventory.json).
 It is checked against `pyproject.toml`, the named source modules, AST imports,

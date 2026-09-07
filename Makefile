@@ -164,6 +164,10 @@ HOSTING_TEST_PATHS := \
 	tests/architecture/test_hosting_h65_windows_lpac_design.py \
 	tests/architecture/test_hosting_architecture_baseline.py
 APPHOST_SOURCES := \
+	src/loushang/foundation/observability/identity.py \
+	src/loushang/coding/cli/hosted.py \
+	src/loushang/coding/hosted_catalog.py \
+	src/loushang/coding/hosted_session.py \
 	src/loushang/apphost \
 	src/loushang/appserver \
 	src/loushang/appservice \
@@ -179,6 +183,12 @@ APPHOST_SOURCES := \
 	src/loushang/harnesstui/mux \
 	src/loushang/coding/cli/apphost.py
 APPHOST_TEST_PATHS := \
+	tests/foundation/observability/test_identity.py \
+	tests/coding/test_hosted_command.py \
+	tests/coding/test_hosted_subprocess.py \
+	tests/coding/test_hosted_catalog.py \
+	tests/coding/test_hosted_session.py \
+	tests/coding/test_hosted_session_metadata.py \
 	tests/apphost \
 	tests/appserver \
 	tests/appservice \
@@ -206,21 +216,40 @@ APPHOST_TEST_PATHS := \
 	tests/architecture/test_durable_hosted_application_continuity_g13_design.py \
 	tests/architecture/test_durable_hosted_application_continuity_g13.py
 APPHOST_LINT_SUPPORT := \
+	tests/coding/_hosted_product_child.py \
 	src/loushang/coding/cli/__main__.py \
 	src/loushang/harness/machine_resources/control_plane.py \
 	scripts/dev/run_g10_installed_canary.py \
 	scripts/dev/verify_evidence_manifest.py \
 	tests/harness/worker/test_coding_product_worker_canary.py
 APPSERVICE_SOURCES := \
+	src/loushang/foundation/observability/identity.py \
+	src/loushang/coding/cli/hosted.py \
+	src/loushang/apphost/foreground.py \
+	src/loushang/coding/hosted_catalog.py \
+	src/loushang/coding/hosted_session.py \
+	src/loushang/harness/transcript/lifecycle.py \
+	src/loushang/harness/transcript/session_factory.py \
+	src/loushang/harness/transcript/product_session.py \
 	src/loushang/apphost/application.py \
-	src/loushang/appserver/client.py \
-	src/loushang/appserver/protocol \
+	src/loushang/appserver \
 	src/loushang/appservice \
 	src/loushang/coding/appservice_adapter.py \
 	src/loushang/coding/hosted_application.py \
 	src/loushang/coding/hosted_continuity.py \
 	src/loushang/harnesstui/mux
 APPSERVICE_TEST_PATHS := \
+	tests/foundation/observability/test_identity.py \
+	tests/coding/test_hosted_command.py \
+	tests/coding/test_hosted_subprocess.py \
+	tests/apphost/test_foreground.py \
+	tests/coding/test_hosted_catalog.py \
+	tests/coding/test_hosted_session.py \
+	tests/coding/test_hosted_session_metadata.py \
+	tests/harness/transcript/test_session_factory.py \
+	tests/harness/transcript/test_product_session.py \
+	tests/architecture/test_foreground_stdio_hosted_app_g14.py \
+	tests/architecture/test_foreground_stdio_hosted_app_g14_design.py \
 	tests/apphost/test_continuity.py \
 	tests/appserver \
 	tests/appservice \
@@ -385,7 +414,7 @@ test-hosted-product-g10-linux-evidence:
 check-appservice: lint-appservice typecheck-appservice test-appservice
 
 lint-appservice:
-	uv --cache-dir .uv-cache run --extra dev ruff check $(APPSERVICE_SOURCES) $(APPSERVICE_TEST_PATHS)
+	uv --cache-dir .uv-cache run --extra dev ruff check $(APPSERVICE_SOURCES) $(APPSERVICE_TEST_PATHS) tests/coding/_hosted_product_child.py
 
 typecheck-appservice:
 	uv --cache-dir .uv-cache run --extra dev mypy --follow-imports=silent $(APPSERVICE_SOURCES)

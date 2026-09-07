@@ -11,6 +11,7 @@
 [G11 Hosted Application](../appserver/hosted-application-g11.md) ·
 [G12 Foreground Hosted Application](foreground-hosted-application-g12.md) ·
 [G13 Durable Hosted Continuity](durable-hosted-application-continuity-g13.md) ·
+[G14 Foreground Stdio](../appserver/foreground-stdio-hosted-app-g14.md) ·
 [Hosted Product Runtime V1 Plan](../drafts/hosted-product-runtime-v1-plan.md)
 
 ## Status
@@ -20,11 +21,11 @@
 - Authority: normative — accepted AppHost scope boundary
 - Design status: accepted
 - Implementation status: partial — Hosted Product Runtime G0--G10, G12
-  foreground application and G13 durable application continuity are
-  implemented; A0.5 remains not-started
+  foreground application, G13 durable continuity and G14 foreground connection
+  settlement are implemented; A0.5 remains not-started
 - Activation status: default-dark; the exact installed G10 canary selects
-  Hosting, while G12/G13 are available only through explicit library
-  construction and ordinary CLI, TUI, SDK, AppService, and AppServer routes do not
+  Hosting. G12/G13 have explicit library construction and the separate G14
+  `loushang-hosted` command; ordinary CLI/TUI/SDK defaults are unchanged
 - Owner: Loushang AppHost architecture
 
 ## Scope
@@ -87,6 +88,16 @@ the runtime's non-owning Product view into the contract-only
 checks exact Session identity and returns an owned hosted attachment, but never
 invokes Session/Work/projection/interaction ports or constructs AppService,
 protocol, listener, connection, or transport state.
+
+G14's separate optional `apphost.foreground.HostedForegroundRuntimeV1` adopts
+an already recovered G13 application and injected byte IO. It serves one
+connection, treats EOF as terminal, and settles connection work before invoking
+G13 application close. Failed or timed-out cleanup retains its owner for retry;
+the G13 lease cannot be released ahead of unfinished connection work. This edge
+does not enter the core facade, choose paths/Product factories, or own process
+launch/exit. The separate Coding `loushang-hosted` command composes this edge;
+[G14 final evidence](../appserver/foreground-stdio-hosted-app-g14.md#final-acceptance-evidence)
+records real Product validation on Linux, macOS and Windows.
 
 Existing Product-specific bootstrap/CLI/TUI paths remain authoritative and do
 not import the G9 composition. The one installed explicit factory may
