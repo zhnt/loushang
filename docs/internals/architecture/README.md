@@ -141,13 +141,14 @@ Session rehydration around that same explicit library edge. It persists no
 Product generation or live execution and still grants no listener, daemon or
 installed activation.
 
-The accepted [G14 foreground stdio design](appserver/foreground-stdio-hosted-app-g14.md)
+The implemented [G14 foreground stdio profile](appserver/foreground-stdio-hosted-app-g14.md)
 adds AppServer-owned bounded connections and a transport AppClient over
-injected byte IO. Its optional AppHost edge will order application settlement;
-its explicit Product command will compose canonical Sessions. This does not
+injected byte IO. Its optional AppHost edge orders application settlement;
+its explicit installed Product command composes canonical Sessions. This does not
 change embedded defaults, grant a listener/daemon, or move G13 recovery into
-the transport. Connection code is under implementation; installed Product
-integration and cross-platform delivery evidence remain pending.
+the transport. Real Product interaction, shutdown and fresh-process recovery
+are verified on Linux, macOS and Windows; the G14 record links the exact
+native evidence and integration PR.
 
 A nested scope is not automatically a top-level subsystem. The parent owns its
 placement, composition policy, and sibling relationships; the child owns its

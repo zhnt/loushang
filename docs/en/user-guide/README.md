@@ -55,7 +55,7 @@ restore the saved mux/member/Session state after shutdown. EOF terminates this
 foreground application. Active turns, approvals and attachment authority are
 not resumed. There is no daemon, network listener or automatic reconnect.
 See the [G14 contract and delivery status](../../internals/architecture/appserver/foreground-stdio-hosted-app-g14.md)
-for the client composition and native-platform validation still in progress.
+for client composition, native-platform validation and integration status.
 
 ## Sessions
 

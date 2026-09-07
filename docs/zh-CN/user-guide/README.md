@@ -48,7 +48,7 @@ loushang -p "Summarize the current project."
 保持相同的 application ID（默认 `coding.default`）、工作目录和存储根，可在关闭后
 恢复 mux、成员和会话。EOF 会终止这个前台应用；正在运行的回合、审批和旧连接权限
 不会恢复。它不提供后台常驻、网络监听或自动重连。
-客户端组合方式和仍在进行的跨平台验收见
+客户端组合方式、三平台验收证据和集成状态见
 [G14 契约与交付状态](../../internals/architecture/appserver/foreground-stdio-hosted-app-g14.md)。
 
 ## 会话

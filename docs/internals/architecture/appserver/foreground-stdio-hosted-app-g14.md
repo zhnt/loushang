@@ -10,9 +10,14 @@
 - Parent: Loushang application architecture
 - Authority: accepted delivery design
 - Design status: accepted following the three-view design review below
-- Implementation status: partial — explicit executable and real Product subprocess integration implemented; complete native-platform validation and delivery pending
-- Activation status: target explicit foreground stdio command only
+- Implementation status: implemented — explicit executable, real Product integration and three-platform native acceptance verified
+- Activation status: explicit foreground stdio command only; existing defaults unchanged
 - Tracking: [issue #564](https://github.com/zhnt/loushang/issues/564)
+- Integration: [PR #565](https://github.com/zhnt/loushang/pull/565) targets `lane/harness`
+
+Earlier partial-review paragraphs retain their checkpoint-time results. The
+[final acceptance evidence](#final-acceptance-evidence) below supersedes those
+pending statements; the PR records integration status separately from capability.
 
 ## Outcome, Facts And Delta
 
@@ -529,3 +534,47 @@ required after the final test corrections.
    Windows path-expectation corrections preserve the collector's existing
    contract. Remaining work is final-head gate evidence and delivery, not an
    unresolved code finding from these three perspectives.
+
+## Final Acceptance Evidence
+
+Reviewed implementation and test head:
+`a53f0ccdac5136a31f4319fb2597fa4ff1df0b58`. The subsequent closure edits are
+documentation-only. Final PR checks must also pass on the documentation head
+before merge; passing a subset of checks is not promotion authority.
+
+| Native platform | AppService gate | Exact run/job evidence |
+| --- | --- | --- |
+| Ubuntu 24.04 / Python 3.11 | 211 passed, zero skips; Ruff and mypy (39 files) passed | [Linux job](https://github.com/zhnt/loushang/actions/runs/34126354200/job/101755834465) |
+| macOS 15 / Python 3.11 | 211 passed, zero skips; Ruff and mypy (39 files) passed | [macOS job](https://github.com/zhnt/loushang/actions/runs/34126354200/job/101755834616) |
+| Windows / Python 3.11 | 211 passed, zero skips; Ruff and mypy (39 files) passed | [Windows job](https://github.com/zhnt/loushang/actions/runs/34126354200/job/101755834444) |
+
+Each job collects all ten `tests/coding/test_hosted_subprocess.py` cases:
+installed help/start/EOF, competing writer, cwd/home recovery, real policy
+approval/denial, turn interruption/EOF, fatal cleanup recovery and approval EOF.
+The tests require real child exit and fresh-process recovery; synthetic model
+responses and an in-memory authorized tool are the only trusted test seams.
+There are no platform skips, live models or network services in this matrix.
+
+Connection and protocol tests prove `G14-WIRE`, `G14-CORRELATION`,
+`G14-CONTROL` and `G14-BACKPRESSURE`, including exact dispatch of all 15 client
+methods. Foreground, catalog and real Session tests add retained cleanup,
+lease-last order, canonical identity, scope and generation fences for
+`G14-OWNERSHIP`/`G14-RECOVERY`. Exact G14 and retained A0/G9 architecture tests
+prove `G14-BOUNDARIES`; the native matrix proves `G14-PRODUCT` and
+`G14-PLATFORMS`. The preceding full-delta three-view review records the
+findings and fixes, including the native Windows Git-input defect.
+
+Additional Linux packaging evidence was produced from a clean `git archive`
+of the reviewed head, not an existing build directory. Its non-editable wheel
+was installed into a separate virtual environment with locked production
+dependencies. All ten Product subprocess cases passed with source-path
+injection disabled; JUnit recorded zero errors/failures/skips. The unchanged
+installed `loushang --help` command also exited zero with task-private settings.
+An earlier sandbox-only help attempt was blocked by read-only configuration
+lock creation; it was rerun outside that sandbox, without a Product code change.
+Local `make check-architecture-docs` passed all five cases.
+
+This delivers the foreground pipe profile only. Daemon discovery, process
+launch supervision, network listeners, cross-connection replay/takeover,
+automatic restart, legacy transcript adoption and default-route activation
+remain explicitly outside G14.

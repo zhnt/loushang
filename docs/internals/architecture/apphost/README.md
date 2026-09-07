@@ -21,11 +21,11 @@
 - Authority: normative — accepted AppHost scope boundary
 - Design status: accepted
 - Implementation status: partial — Hosted Product Runtime G0--G10, G12
-  foreground application and G13 durable application continuity are
-  implemented; A0.5 remains not-started
+  foreground application, G13 durable continuity and G14 foreground connection
+  settlement are implemented; A0.5 remains not-started
 - Activation status: default-dark; the exact installed G10 canary selects
-  Hosting, while G12/G13 are available only through explicit library
-  construction and ordinary CLI, TUI, SDK, AppService, and AppServer routes do not
+  Hosting. G12/G13 have explicit library construction and the separate G14
+  `loushang-hosted` command; ordinary CLI/TUI/SDK defaults are unchanged
 - Owner: Loushang AppHost architecture
 
 ## Scope
@@ -95,8 +95,9 @@ connection, treats EOF as terminal, and settles connection work before invoking
 G13 application close. Failed or timed-out cleanup retains its owner for retry;
 the G13 lease cannot be released ahead of unfinished connection work. This edge
 does not enter the core facade, choose paths/Product factories, or own process
-launch/exit. The separate Coding `loushang-hosted` command now composes this edge;
-complete native-platform Product validation remains pending under G14.
+launch/exit. The separate Coding `loushang-hosted` command composes this edge;
+[G14 final evidence](../appserver/foreground-stdio-hosted-app-g14.md#final-acceptance-evidence)
+records real Product validation on Linux, macOS and Windows.
 
 Existing Product-specific bootstrap/CLI/TUI paths remain authoritative and do
 not import the G9 composition. The one installed explicit factory may

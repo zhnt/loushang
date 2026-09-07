@@ -13,7 +13,7 @@
 - Parent: `loushang`
 - Authority: normative — A0.4 ports, G11 client contract and G14 connection edge
 - Design status: accepted
-- Implementation status: partial — G14 connection, stdio client and Product executable implemented; native-platform delivery validation pending
+- Implementation status: implemented — G14 connection, stdio client and Product executable verified on Linux, macOS and Windows
 - Activation status: explicit library or `loushang-hosted` foreground command; no listener or default-route change
 - Owner: Loushang AppServer architecture
 
@@ -101,5 +101,6 @@ Listener authentication and reconnect semantics remain separate future work.
 - G14 connection tests cover bounded dispatch, reserved interrupt capacity,
   caller cancellation, EOF and invalid frames. A native subprocess fixture
   covers byte IO. Native real Product/Harnesstui tests now cover the installed
-  command and G13 restart recovery; complete three-platform results and review
-  remain required before G14 delivery is complete.
+  command and G13 restart recovery. The [G14 final evidence](foreground-stdio-hosted-app-g14.md#final-acceptance-evidence)
+  records 211 passing cases on each native platform and the full-delta
+  three-view review; the linked PR records integration status.
