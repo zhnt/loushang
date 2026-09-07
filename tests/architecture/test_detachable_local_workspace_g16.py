@@ -83,3 +83,35 @@ def test_G16_BOUNDARIES_authentication_is_stdlib_only_and_off_default_routes() -
         "src/loushang/coding/cli/hosted.py",
     ):
         assert "local_auth" not in Path(name).read_text()
+
+
+def test_G16_BOUNDARIES_native_record_is_one_optional_stdlib_component() -> None:
+    root = Path("src/loushang/appserver")
+    budgets = {
+        "local_record.py": 200, "_local_record_values.py": 180,
+        "_local_record_files.py": 300, "_posix_local_record.py": 130,
+        "_windows_local_record.py": 380,
+    }
+    assert sum(len((root / name).read_text().splitlines()) for name in budgets) <= 1100
+    for name, limit in budgets.items():
+        text = (root / name).read_text()
+        assert len(text.splitlines()) <= limit
+        for node in ast.walk(ast.parse(text)):
+            if isinstance(node, ast.Import):
+                assert all(alias.name.partition(".")[0] in sys.stdlib_module_names
+                           for alias in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                assert node.level or node.module.partition(".")[0] in sys.stdlib_module_names
+            elif (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                  and node.func.id == "import_module"):
+                assert isinstance(node.args[0], ast.Constant)
+                assert node.args[0].value in {"fcntl", "msvcrt"}
+        assert "loushang.hosting" not in text
+        assert "os.environ" not in text and "getenv(" not in text
+        assert "Path.home(" not in text and "Path.cwd(" not in text
+    for facade in (
+        "src/loushang/appserver/__init__.py", "src/loushang/appserver/framing.py",
+        "src/loushang/apphost/foreground.py", "src/loushang/coding/cli/hosted.py",
+        "src/loushang/coding/cli/__main__.py", "src/loushang/coding/ui/cli.py",
+    ):
+        assert "local_record" not in Path(facade).read_text()

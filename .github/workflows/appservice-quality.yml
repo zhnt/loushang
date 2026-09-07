@@ -33,5 +33,5 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --extra dev
 
-      - name: Check G11 through G14 native hosted application
+      - name: Check hosted application and G16 native record security
         run: make check-appservice

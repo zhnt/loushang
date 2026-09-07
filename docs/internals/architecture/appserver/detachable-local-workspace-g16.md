@@ -13,8 +13,9 @@
 - Parent: Loushang application architecture
 - Authority: normative accepted deployment boundary
 - Design status: accepted following the three-perspective review below
-- Implementation status: partial — optional semantic scopes and authentication/
-  framing are implemented; native local deployment and Product/UI remain missing
+- Implementation status: partial — optional semantic scopes, authentication/
+  framing and native record adapters are implemented; local deployment and
+  Product/UI remain missing, and native Windows record evidence is still pending
 - Activation status: explicit new deployment only; G14 and Embedded unchanged
 - Tracking: [Hosted Workspace V1 #566](https://github.com/zhnt/loushang/issues/566)
 - Prerequisite: G15 design accepted in `18d429bc`; G14 delivered in `815c03d2`
@@ -75,8 +76,8 @@ changing the explicit G11/G14 client contract.
 
 The existing wire values, framing, G13 store/lease, real Coding factory,
 controller and conversation projection are retained. No authenticated local
-listener, private credential record or terminal
-client entrypoint exists yet. The [inventory](detachable-local-workspace-g16-inventory.json)
+listener or terminal client entrypoint exists yet. The native record owner is
+implemented but not yet composed with endpoint admission. The [inventory](detachable-local-workspace-g16-inventory.json)
 separates those missing responsibilities from existing extensions.
 
 The first G16.1 primitive, `appservice._operations._OwnedAppOperations`, now
@@ -91,7 +92,7 @@ activates this edge yet; the existing G14 request lifetime is unchanged.
 
 `appserver.local_auth` now authenticates an injected byte port and provides
 direction-bound sequenced frames. This is not endpoint admission: its material
-must come from the future validated private record owner. Authentication keeps
+must come from the validated private record owner. Authentication keeps
 transport cleanup with the caller until successful stream adoption; no semantic
 scope or Product is constructed by the authentication layer itself.
 
@@ -584,6 +585,75 @@ integrity cases, with Ruff and mypy clean (43 source files). The documentation
 gate passed five cases. No native record, listener or installed client evidence
 is claimed by these results.
 
+### G16.4 Private Record Checkpoint
+
+`LocalConnectionDirectoryV1` owns an explicitly supplied canonical local root;
+`LocalEndpointReservationV1` owns a stable endpoint lock and at most one published
+record. Four private helpers separate closed serialization, retained file IO,
+POSIX admission and Windows admission without creating another public package
+or importing Hosting internals. This component has an explicit 1,100-line total
+budget and separate module budgets, not an increase to the G14 protocol budget.
+
+The v1 JSON schema has exactly `schemaVersion`, `profile`, `protocolVersion`,
+`endpoint`, `applicationId`, `productId`, `instance`, `port`, `scopes`,
+`capabilities` and `key`. Capabilities are the closed list `named_mux`,
+`text_turns`, `approvals`; each of one or two scopes contains only `scope`
+(`cwd` or `user_home`) and a 64-character lowercase fingerprint. The endpoint
+name is bounded to 64 ASCII identifier characters and is hashed into its file
+stem. No path, executable, environment variable or PID is admitted from JSON.
+Duplicate fields, extra fields and payloads over 8 KiB fail with redacted codes.
+The authentication digest covers canonical sorted compact public JSON excluding
+only `key`; the key is exactly 32 random bytes, serialized as lowercase hex.
+
+Publication validates any previous private record under the stable OS lock,
+writes and flushes a new private exclusive temporary file, and atomically
+replaces the record. The temporary attempt is owned before creation, and its
+descriptor is retained before inheritance or identity checks. A Windows handle
+that has not transferred to the CRT remains owned until exact-handle deletion
+and close settle. Publication identity is recorded before rename, so an error
+after replacement does not lose retirement ownership. Retiring an endpoint
+never unlinks its stable lock file or an observed replacement record.
+
+An unsuccessful create with no acquired descriptor grants no permission to
+delete an unexpected file at that name. Unsettled cleanup keeps the lease and
+lock, rejects further admission after directory close, and can be retried.
+An uncertain POSIX descriptor close is not retried using a possibly recycled
+integer and remains reported as cleanup debt. Filesystem IO requires the
+injected trusted local filesystem; these synchronous bounded-byte operations
+are not a hard wall-clock guarantee against a stalled kernel/filesystem.
+
+Slice review (three perspectives, one reviewer):
+
+- Architecture/security: the native adapter checks opened objects rather than
+  trusting creation flags or POSIX mode emulation on Windows. POSIX owner-only
+  objects reject symlinks and extra hard links. Windows checks protected,
+  non-null owner/SYSTEM DACLs, current owner, non-reparse type and 128-bit file
+  identity. Native ACL widening/null-DACL and junction tests are present, but
+  their presence is not Windows execution evidence.
+- Lifecycle: regression-first fault tests exposed lost temporary ownership
+  after creation and before validation. The owner now precedes those checks.
+  Tests cover failed writes/flushes, both sides of rename, retryable cleanup
+  debt, preservation of byte-identical foreign replacements, and lock/record
+  replacement conflicts. A real spawned child is terminated through its owned
+  process handle; the next reservation obtains the released lock and rotates
+  credentials without using stale record data as process authority.
+- Evidence/compatibility: default imports, CLI routes, G14 framing and EOF
+  semantics remain unchanged. Native record tests join the existing AppService
+  selection on all three CI platforms. Linux and cross-platform static results
+  do not stand in for Windows/macOS native runs; complete endpoint, installed
+  client and interactive terminal evidence is still required by this goal.
+
+This is an uncomposed record component, not completed local deployment or G16
+acceptance. Native endpoint admission, profile negotiation, scope/stop
+composition, real CLI/TUI and complete cross-platform fault validation remain.
+
+Verification: final `make check-appservice` passed 345 cases on Linux, with
+10 Windows-only cases skipped because their native APIs are unavailable on
+Linux. Ruff and mypy passed (48 source files); AppServer also passed a separate
+Windows-platform mypy check. The documentation gate passed five cases. The
+native record selection includes 39 portable/POSIX cases, with real child
+process crash/lock rotation; the additional Windows cases require native CI.
+
 ### Platform API References
 
 Python's [asyncio streams](https://docs.python.org/3.11/library/asyncio-stream.html)
@@ -595,3 +665,9 @@ proof/tag verification. Windows private creation/validation uses native
 and a real [non-null DACL](https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-setsecuritydescriptordacl),
 not POSIX mode-bit emulation. These references establish API behavior, not
 G16 native acceptance evidence.
+
+The Windows CRT [file lock and handle bridge](https://docs.python.org/3.11/library/msvcrt.html)
+and native [file disposition](https://learn.microsoft.com/en-us/windows/win32/api/winbase/ns-winbase-file_disposition_info)
+are physical ownership mechanisms only. Fault tests use actual
+[DACL replacement](https://learn.microsoft.com/en-us/windows/win32/api/aclapi/nf-aclapi-setnamedsecurityinfow)
+to verify that permissive and null DACLs are rejected before credential reads.
