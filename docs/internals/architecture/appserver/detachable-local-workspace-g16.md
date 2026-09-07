@@ -13,8 +13,8 @@
 - Parent: Loushang application architecture
 - Authority: normative accepted deployment boundary
 - Design status: accepted following the three-perspective review below
-- Implementation status: partial — optional semantic scopes and their private
-  owners are implemented; local transport and Product/UI integration remain missing
+- Implementation status: partial — optional semantic scopes and authentication/
+  framing are implemented; native local deployment and Product/UI remain missing
 - Activation status: explicit new deployment only; G14 and Embedded unchanged
 - Tracking: [Hosted Workspace V1 #566](https://github.com/zhnt/loushang/issues/566)
 - Prerequisite: G15 design accepted in `18d429bc`; G14 delivered in `815c03d2`
@@ -88,6 +88,12 @@ settlement. It must be installed before exposing an application's clients or
 starting execution, and the outer application must not expose a parallel
 legacy unscoped client to the same peers. No AppHost factory, transport or CLI
 activates this edge yet; the existing G14 request lifetime is unchanged.
+
+`appserver.local_auth` now authenticates an injected byte port and provides
+direction-bound sequenced frames. This is not endpoint admission: its material
+must come from the future validated private record owner. Authentication keeps
+transport cleanup with the caller until successful stream adoption; no semantic
+scope or Product is constructed by the authentication layer itself.
 
 ## Logical And Physical Context
 
@@ -540,6 +546,43 @@ passed 36 cases, the exact inventory/boundary selection passed 13 cases, and
 the architecture documentation gate passed five cases. The real-Coding test
 was verified separately and is now explicitly included in both the AppService
 and AppHost Makefile gates. No new CLI or transport is activated by this slice.
+
+### G16.3 Authentication And Integrity Checkpoint
+
+The optional `local_auth` adapter implements the exact three-message proof
+transcript and authenticated frame envelope above, using standard-library
+HMAC-SHA256 and fixed-length constant-time proof/tag comparison. Private framing
+mechanics are shared with G14, but the public `AppFramedStreamV1` signature and
+1 MiB limit stay unchanged. Authentication fixes a 2 KiB frame limit and one
+deadline of at most five seconds; only the authenticated profile admits the
+fixed extra 40 bytes. Oversized lengths fail before reading a body.
+
+Slice review (three perspectives, one reviewer):
+
+- Authentication: distinct proof and direction labels, fresh nonces and the
+  canonical public-record digest are bound together. Independent expected-wire
+  vectors cover the transcript and envelope, while wrong credentials, changed
+  record digest, stale instance, downgrade, duplicate keys, replay and reflection
+  fail closed. Secrets are absent from credential repr and captured wire frames.
+- Lifetime: cancellation of a partial read or uncertainty after a write fences
+  the authenticated channel. No subsequent send, replay or receive can reuse it;
+  the outer caller still owns cleanup on handshake failure. Between-frame EOF
+  retains its distinct clean-EOF signal for the future connection adapter.
+- Compatibility/evidence: all existing G14 connection/framing tests remain in
+  the selection. Authentication is a separately bounded optional module with no
+  reverse semantic dependency or default entrypoint import. These tests use
+  fragmented in-memory byte ports, not native endpoint authentication or ACLs.
+
+Private record creation/validation, native listener/connection admission,
+profile-mode and semantic-scope composition, actual CLI/TUI and three-platform
+fault evidence remain required. This checkpoint is not final G16 acceptance.
+
+Verification: the unchanged AppServer/G14 baseline passed 63 cases; the expanded
+AppServer and exact architecture selection passed 133 cases. Final
+`make check-appservice` passed 305 cases, including 50 local-authentication and
+integrity cases, with Ruff and mypy clean (43 source files). The documentation
+gate passed five cases. No native record, listener or installed client evidence
+is claimed by these results.
 
 ### Platform API References
 

@@ -38,13 +38,17 @@ def require_timeout(value: float) -> None:
         raise ValueError("invalid connection timeout")
 
 
-class AppFramedStreamV1:
-    """One reader and one serialized writer; no independently buffered mailbox."""
+class _SizedFramedStream:
+    """Shared private framing mechanics; public profiles fix their own bounds."""
 
     def __init__(
-        self, transport: AppByteTransportV1, *, io_timeout: float = 10.0
+        self, transport: AppByteTransportV1, *, max_payload: int,
+        io_timeout: float = 10.0,
     ) -> None:
         require_timeout(io_timeout)
+        if type(max_payload) is not int or not 1 <= max_payload <= MAX_MESSAGE_BYTES + 40:
+            raise ValueError("invalid frame payload limit")
+        self._max_payload = max_payload
         self._transport = transport
         self._io_timeout = io_timeout
         self._writer = asyncio.Lock()
@@ -59,7 +63,7 @@ class AppFramedStreamV1:
             async with asyncio.timeout(self._io_timeout):
                 header = first + await self._read_exactly(3)
                 length = int.from_bytes(header, "big")
-                if not 1 <= length <= MAX_MESSAGE_BYTES:
+                if not 1 <= length <= self._max_payload:
                     raise InvalidAppMessageError()
                 return await self._read_exactly(length)
         except (AppServiceError, asyncio.CancelledError):
@@ -81,7 +85,7 @@ class AppFramedStreamV1:
         return bytes(output)
 
     async def send(self, payload: bytes) -> None:
-        if type(payload) is not bytes or not 1 <= len(payload) <= MAX_MESSAGE_BYTES:
+        if type(payload) is not bytes or not 1 <= len(payload) <= self._max_payload:
             raise InvalidAppMessageError()
         try:
             async with asyncio.timeout(self._io_timeout):
@@ -105,6 +109,15 @@ class AppFramedStreamV1:
             raise
         except Exception:
             raise AppConnectionClosedError() from None
+
+
+class AppFramedStreamV1(_SizedFramedStream):
+    """G14 framing: one reader/writer and the unchanged 1 MiB payload bound."""
+
+    def __init__(
+        self, transport: AppByteTransportV1, *, io_timeout: float = 10.0
+    ) -> None:
+        super().__init__(transport, max_payload=MAX_MESSAGE_BYTES, io_timeout=io_timeout)
 
 
 class AsyncioStreamTransportV1:

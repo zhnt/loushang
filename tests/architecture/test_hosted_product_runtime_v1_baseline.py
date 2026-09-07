@@ -449,6 +449,7 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "connection.py",
         "dispatch.py",
         "framing.py",
+        "local_auth.py",
         "remote_client.py",
         "stdio.py",
         "protocol/stdio_profile.py",

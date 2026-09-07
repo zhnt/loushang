@@ -7,7 +7,8 @@
   "entries": [
     {"id": "appservice.operation-owner", "source": "src/loushang/appservice/_operations.py", "status": "implemented", "owner": "application-operation-lifetime"},
     {"id": "appservice.scoped-interactions", "source": "src/loushang/appservice/_scope_interactions.py", "status": "implemented", "owner": "generation-bound-interaction-settlement"},
-    {"id": "appserver.local-auth", "source": "src/loushang/appserver/local_auth.py", "status": "planned", "owner": "transport-authentication"},
+    {"id": "appserver.local-auth", "source": "src/loushang/appserver/local_auth.py", "status": "implemented-uncomposed", "owner": "transport-authentication"},
+    {"id": "appserver.framing", "source": "src/loushang/appserver/framing.py", "status": "existing-extend", "owner": "bounded-byte-framing"},
     {"id": "appserver.local-record", "source": "src/loushang/appserver/local_record.py", "status": "planned", "owner": "endpoint-resource"},
     {"id": "appserver.local-runtime", "source": "src/loushang/appserver/local.py", "status": "planned", "owner": "connection-admission"},
     {"id": "appservice.client-scope", "source": "src/loushang/appservice/client_scope.py", "status": "implemented-uncomposed", "owner": "semantic-client-and-work-lifetime"},
