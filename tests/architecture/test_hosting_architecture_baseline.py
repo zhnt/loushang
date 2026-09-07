@@ -704,6 +704,7 @@ def test_hosting_apphost_and_appserver_runtime_edges_remain_dark() -> None:
         "application.py",
         "catalog.py",
         "contracts.py",
+        "continuity.py",
         "errors.py",
         "integrations/__init__.py",
         "integrations/harness_session.py",

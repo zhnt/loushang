@@ -2,7 +2,8 @@
 
 [Architecture](../README.md) · [AppServer](../appserver/README.md) ·
 [G11 In-Process Hosted Application](../appserver/hosted-application-g11.md) ·
-[G12 Foreground Hosted Application](../apphost/foreground-hosted-application-g12.md)
+[G12 Foreground Hosted Application](../apphost/foreground-hosted-application-g12.md) ·
+[G13 Durable Hosted Continuity](../apphost/durable-hosted-application-continuity-g13.md)
 
 ## Status
 
@@ -10,8 +11,8 @@
 - Parent: `loushang`
 - Authority: normative — G11 in-process application semantics
 - Design status: accepted
-- Implementation status: implemented — G11.2 Product-neutral core; consumed by
-  the optional G12 foreground composition
+- Implementation status: implemented — G11.2 Product-neutral core and the
+  AppService-owned G13.1--G13.2 continuity slices are complete
 - Activation status: explicit in-process construction only
 - Owner: Loushang AppService architecture
 
@@ -24,12 +25,17 @@ bounded logical delivery.  It does not own an AppServer listener, byte/frame
 buffers, authentication, AppHost composition, Hosting process mechanics,
 Product policy, or UI state.
 
-The G11 implementation contains:
+The current implementation contains:
 
 - `ports.py`: the independently owned hosted Session and resolver protocols;
 - `runtime.py`: MuxSpace, member, Session and attachment lifecycle;
 - `client.py`: the in-process implementation of AppServer's transport-neutral
-  AppClient contract; and
+  AppClient contract;
+- `continuity.py`: the G13 strict desired-state record and lease/store ports;
+- `continuity_file.py`: the exact-root private atomic JSON adapter with one
+  OS-released lock per application key;
+- `continuity_runtime.py`: the published recovery-attempt owner and
+  all-or-nothing Session/MuxSpace reconstruction; and
 - `__init__.py`: the deliberately small public facade.
 
 ## Dependency And Ownership
@@ -39,6 +45,7 @@ AppService -> AppServer protocol
 Product outer adapter -> AppService ports + Product/Harness/AppHost public contracts
 Harnesstui Hosted Profile -> AppClient + AppServer protocol
 apphost.application -> AppService
+apphost.continuity -> apphost.application + AppService
 
 AppService -/-> AppHost / Hosting / Harness / Product / Harnesstui / TUI
 AppServer -/-> AppService / AppHost / Hosting / Harness / Product / UI
@@ -69,17 +76,26 @@ G12 does not move lifecycle authority into AppService. The optional outer
 `apphost.application` owner fences and closes this service before AppHost, while
 AppService continues to know only its injected Product-neutral resolver.
 
+G13.1--G13.2 implement the accepted strict record/store, optional durable
+AppService mutations and all-or-nothing recovery. The AppService never
+discovers a path or acquires/releases its lease. The implemented optional
+`apphost.continuity` owner holds that lease through G12 settlement;
+Product/Harness remains authoritative for canonical Session recovery.
+
 ## Non-Goals
 
-G11/G12 has no connection, listener, wire dispatcher, authentication, IPC,
-WebSocket, daemon, process controller, persistent MuxSpace store, multi-client
-controller takeover, or AppHost restart recovery.  The default Embedded
-Profile and installed Coding CLI/TUI/SDK routes remain unchanged.
+Current G11--G13 has no connection, listener, wire dispatcher, authentication,
+IPC, WebSocket, daemon, process controller or multi-client controller takeover.
+G13 covers only explicit durable coordination reconstruction; the default
+Embedded Profile and installed Coding CLI/TUI/SDK routes remain unchanged.
 
 ## Evidence
 
 - `tests/appservice/test_runtime.py` covers identity, attach barriers, mailbox
   bounds, aggregate concurrency, stale-generation fencing and close order.
+- `tests/appservice/test_continuity.py` and
+  `tests/appservice/test_continuity_runtime.py` cover the strict store,
+  one-writer lease, atomic mutation/recovery and retryable cleanup debt.
 - `tests/coding/test_appservice_adapter.py` covers the Coding Product edge and
   cwd/user-home create/resume facts.
 - `tests/harnesstui/test_hosted_mux_profile.py` covers explicit presentation,
@@ -88,4 +104,8 @@ Profile and installed Coding CLI/TUI/SDK routes remain unchanged.
   dependency direction.
 - `tests/architecture/test_foreground_hosted_application_g12.py` proves G12 is
   an outward optional consumer and does not create a reverse dependency.
+- `tests/apphost/test_continuity.py`,
+  `tests/coding/test_hosted_application.py`, and the G13 architecture tests
+  prove lease-last settlement, current-generation cwd/user-home recovery,
+  fresh Harnesstui authority and default-dark inventory v6.
 - `make check-appservice` runs the focused lint, typecheck and behavioral suite.

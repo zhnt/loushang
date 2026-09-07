@@ -40,11 +40,7 @@ def _imports(path: Path) -> set[str]:
 
 
 def _package_imports(root: Path) -> set[str]:
-    return {
-        imported
-        for path in root.rglob("*.py")
-        for imported in _imports(path)
-    }
+    return {imported for path in root.rglob("*.py") for imported in _imports(path)}
 
 
 def _imports_prefix(imports: set[str], prefix: str) -> bool:
@@ -63,7 +59,10 @@ def test_G11_DEPENDENCY_GRAPH_appserver_remains_contract_and_client_only() -> No
         "loushang.tui",
     ):
         assert not _imports_prefix(imports, forbidden)
-    for path in (APPSERVER / "ports.py", *sorted((APPSERVER / "protocol").glob("*.py"))):
+    for path in (
+        APPSERVER / "ports.py",
+        *sorted((APPSERVER / "protocol").glob("*.py")),
+    ):
         for imported in _imports(path):
             if imported == "loushang.appserver" or imported.startswith(
                 "loushang.appserver."
@@ -116,7 +115,9 @@ def test_G11_PRODUCT_ADAPTER_is_the_only_product_harness_bridge() -> None:
     assert consumers == {
         CODING_ADAPTER,
         Path("src/loushang/apphost/application.py"),
+        Path("src/loushang/apphost/continuity.py"),
         Path("src/loushang/coding/hosted_application.py"),
+        Path("src/loushang/coding/hosted_continuity.py"),
     }
 
 
@@ -187,13 +188,18 @@ def test_g11_package_budgets_keep_new_owners_reviewable() -> None:
     groups = {
         "appserver": tuple((APPSERVER / "protocol").glob("*.py"))
         + (APPSERVER / "client.py",),
-        "appservice": tuple(APPSERVICE.glob("*.py")),
+        "appservice-core": tuple(
+            APPSERVICE / name
+            for name in ("__init__.py", "client.py", "ports.py", "runtime.py")
+        ),
+        "appservice-continuity": tuple(APPSERVICE.glob("continuity*.py")),
         "coding-adapter": (CODING_ADAPTER,),
         "harnesstui-mux": tuple(HARNESSTUI_MUX.glob("*.py")),
     }
     limits = {
         "appserver": 1_800,
-        "appservice": 1_200,
+        "appservice-core": 1_500,
+        "appservice-continuity": 1_250,
         "coding-adapter": 400,
         "harnesstui-mux": 600,
     }
