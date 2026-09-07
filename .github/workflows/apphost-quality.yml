@@ -209,7 +209,7 @@ jobs:
       - name: Prove G13 durable continuity on Windows
         shell: pwsh
         run: |
-          uv run --extra dev python scripts/dev/run_pytest.py tests/appservice/test_continuity.py tests/appservice/test_continuity_runtime.py tests/apphost/test_continuity.py tests/coding/test_hosted_application.py tests/architecture/test_durable_hosted_application_continuity_g13.py -k G13 -q --junitxml=.artifacts/hosted-application-g13-windows.xml
+          uv run --extra dev python scripts/dev/run_pytest.py tests/appservice/test_continuity.py tests/appservice/test_continuity_runtime.py tests/apphost/test_continuity.py tests/coding/test_hosted_application.py tests/architecture/test_durable_hosted_application_continuity_g13.py -k G13 -vv -o faulthandler_timeout=30 --junitxml=.artifacts/hosted-application-g13-windows.xml
           uv run --extra dev python scripts/dev/verify_pytest_xml.py .artifacts/hosted-application-g13-windows.xml
       - name: Upload native gate JUnit
         if: always()
