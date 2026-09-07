@@ -13,9 +13,9 @@
 - Parent: Loushang application architecture
 - Authority: normative accepted deployment boundary
 - Design status: accepted following the three-perspective review below
-- Implementation status: partial — optional semantic scopes, authentication/
-  framing and native record adapters are implemented; local deployment and
-  Product/UI remain missing, and native Windows record evidence is still pending
+- Implementation status: partial — semantic scopes and the optional native local
+  connection component are implemented; AppHost deployment and Product/UI remain
+  missing, with Windows record rerun and new connection-platform evidence pending
 - Activation status: explicit new deployment only; G14 and Embedded unchanged
 - Tracking: [Hosted Workspace V1 #566](https://github.com/zhnt/loushang/issues/566)
 - Prerequisite: G15 design accepted in `18d429bc`; G14 delivered in `815c03d2`
@@ -75,10 +75,11 @@ Product approval. The new deployment must close these gaps without silently
 changing the explicit G11/G14 client contract.
 
 The existing wire values, framing, G13 store/lease, real Coding factory,
-controller and conversation projection are retained. No authenticated local
-listener or terminal client entrypoint exists yet. The native record owner is
-implemented but not yet composed with endpoint admission. The [inventory](detachable-local-workspace-g16-inventory.json)
-separates those missing responsibilities from existing extensions.
+controller and conversation projection are retained. The optional native local
+connection layer now composes record admission, authentication and an injected
+scope factory. AppHost deployment and the terminal client entrypoint are still
+missing. The [inventory](detachable-local-workspace-g16-inventory.json) separates
+those missing responsibilities from existing extensions.
 
 The first G16.1 primitive, `appservice._operations._OwnedAppOperations`, now
 reserves application capacity before effects, retains tasks across delivery
@@ -316,8 +317,10 @@ is not. Repeated reconnect cannot bypass global capacity or leak attachments.
 
 ## Bounds And Whole-Application Stop
 
-Defaults: 8 simultaneously authenticated connections; 8 additional pending
-authentication attempts; 32 retained ordinary application operations plus 8
+Defaults: 8 admitted authenticated connections, of which at most 7 are in app
+mode and one slot is reserved for stop; 8 additional negotiating attempts
+(authentication and the first authenticated mode frame share that pending
+budget); 32 retained ordinary application operations plus 8
 reserved control/settlement operations; 32 muxes, 64 live Sessions, 128 total
 live/initializing attachments. Each connection retains G14's 16 ordinary plus
 4 control slots. Authentication frames are at most 2 KiB and have one 5-second
@@ -333,6 +336,10 @@ an authentication coroutine; rejected peers are closed without allocating an
 unbounded task queue. Authentication-to-ready transfer releases/reserves the
 corresponding counters atomically. Cleanup debt continues to consume capacity
 until its actual owner settles. No per-disconnect recreation resets limits.
+The mode frame has its own deadline of at most five seconds after mutual
+authentication; it grants no semantic scope before admission. This allocation
+retains the original total of 16 tracked peer owners and keeps the stop path
+available when all ordinary client slots are occupied.
 
 Application stop has one 30-second monotonic budget. Fence listener and all
 logical scopes, close delivery waiters, revoke interactions, interrupt/join
@@ -667,6 +674,79 @@ an OS error as a successful identity-fence test. Its Windows rerun is pending.
 The same draft exposed two older AppHost/Hosting exact module lists that had
 not incorporated G16. Both lists now name the reviewed optional modules; the
 dependency restrictions and default-dark requirements remain enforced.
+
+### G16.5 Native Connection Checkpoint
+
+`LocalAppServerV1` and `LocalAppClientConnectionV1` now own actual literal IPv4
+loopback connections. Constructors validate configuration without starting IO;
+callers retain each owner through start/close failures. The server reserves an
+endpoint, binds port zero, adopts the native listener before publishing its
+private record, then admits clients. Windows binds with exclusive-address-use;
+there is no hostname, remote address, proxy, port sharing or daemon bootstrap
+parameter. Only `appserver/local.py` can construct native connections.
+
+The connection component borrows its directory. Each server owns only its
+reservation, peer set and startup/close tasks. Each authenticated app peer gets
+one synchronously created `OwnedLocalClientScopeV1` through an injected factory;
+the server neither constructs nor imports AppService. A private peer owner
+reserves capacity before task scheduling and keeps failed scope/IO settlement
+charged to that capacity. Its publication barrier also covers eager task
+factories. Startup and close keep the exact outstanding task after a timeout,
+and late native listener/writer results are adopted and closed behind the
+already-established fence. Graceful close preserves queued stop replies;
+deadline expiry aborts native IO while retaining any semantic cleanup debt.
+
+The shared executor now consumes `AppMessageStreamV1` and a closed
+`AppConnectionProfileV1`. `RemoteAppClientV1` requires explicit profile selection;
+`StdioAppClientV1` fixes G14's original profile and constructor. The server's
+omitted profile is still G14. Profile values live in protocol code, not in the
+authentication engine, and mismatches cannot silently negotiate. Only an
+authenticated local peer can select `app` or `stop` on the native listener;
+no AppClient operation or Product callback is admitted before that point.
+
+Stop remains a separate management exchange. Its injected callback must
+synchronously publish the application stop owner before returning, and receives
+a read-only reply-completion awaitable. That owner waits for the bounded reply
+attempt before tearing down connections. The peer completes the barrier even
+when the reply fails; it never awaits application shutdown through its own
+connection. A received reply means only `stop_requested`, not completed cleanup.
+The AppHost implementation of this callback and aggregate G13 lease-last stop
+is still required; the connection component does not pretend to own it.
+
+Slice review (three perspectives, one reviewer):
+
+- Architecture/security: one exact native-IO module exemption replaces no
+  other G11/G14 restriction. Profile negotiation and message handling remain
+  transport-neutral; factories receive no unauthenticated request or peer-
+  supplied implementation. Reserving one of eight admitted slots for stop
+  prevents ordinary connections from exhausting management admission without
+  increasing the total peer budget. Defaults and installed routes remain dark.
+- Lifetime: native fault tests cover cancelled startup before listener/writer
+  handoff, delayed completion after caller cancellation, retained scope cleanup
+  and stop reply loss. A regression exposed an unclosed coroutine when task
+  creation failed; unstarted work is now closed before propagating that failure.
+  Stop admission precedes its reply and its retained shutdown task cannot await
+  itself through the requester. A normal EOF closes scope authority, not the
+  application-owned execution admitted before that EOF.
+- Product/evidence: real loopback tests now combine this component with the
+  actual AppService and synthetic Product ports. Two mux clients retain
+  independent turns across a disconnect; a fresh connection/attachment restores
+  a snapshot without replay, and old authority/approvals fail. This is stronger
+  than in-memory framing evidence but is not a real Coding/AppHost server,
+  installed client, interactive TUI, restart-recovery or full platform proof.
+
+Remaining: AppHost's public ready-scope and ordered local-stop seam, real Coding
+server/client composition, the installed command and interactive Harnesstui,
+cross-platform native/installed fault evidence, final reviews and promotion.
+
+Connection-slice verification: `make check-appservice` passed Ruff, mypy for
+51 source files and 367 tests (10 Windows-native cases skipped on Linux).
+The additional Hosting/G9/V1/G16 architecture selection passed 34 tests, and
+Windows-platform static mypy passed 23 AppServer files. Native close also
+checks that the admitted socket handle is closed; `connection_lost` alone is
+not physical-settlement proof. These results are local Linux evidence, not a
+Windows/macOS connection run. The Windows replacement-fault test correction
+and the new native connection code still require remote platform verification.
 
 ### Platform API References
 

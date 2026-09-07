@@ -22,11 +22,8 @@ from .framing import (
 )
 from .protocol import APP_PROTOCOL_VERSION
 from .protocol.codec import MAX_MESSAGE_BYTES
+from .protocol.connection_profile import LOCAL_HELLO_V1, LOCAL_PROFILE_V1
 
-LOCAL_PROFILE_V1 = "local-detachable/v1"
-LOCAL_HELLO_V1 = (
-    b'{"profile":"local-detachable/v1","protocolVersion":"loushang.app/v1"}'
-)
 _AUTH_FRAME_BYTES = 2048
 _ENVELOPE_BYTES = 40
 _MAX_SEQUENCE = (1 << 64) - 1

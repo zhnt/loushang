@@ -9,7 +9,7 @@ from .dispatch import dispatch_request
 from .framing import (
     AppConnectionClosedError,
     AppConnectionEOFError,
-    AppFramedStreamV1,
+    AppMessageStreamV1,
     require_timeout,
 )
 from .protocol import (
@@ -23,11 +23,11 @@ from .protocol import (
     decode_request,
     encode_response,
 )
+from .protocol.connection_profile import AppConnectionProfileV1, connection_hello
 from .protocol.stdio_profile import (
     CONTROL_OPERATIONS,
     MAX_CONTROL_REQUESTS,
     MAX_ORDINARY_REQUESTS,
-    STDIO_HELLO_V1,
     connection_request_number,
 )
 
@@ -38,11 +38,13 @@ class AppServerConnectionV1:
     def __init__(
         self,
         client: AppClientV1,
-        stream: AppFramedStreamV1,
+        stream: AppMessageStreamV1,
         *,
         phase_timeout: float = 10.0,
+        profile: AppConnectionProfileV1 = AppConnectionProfileV1.STDIO,
     ) -> None:
         require_timeout(phase_timeout)
+        self._hello = connection_hello(profile)
         self._client = client
         self._stream = stream
         self._timeout = phase_timeout
@@ -62,8 +64,8 @@ class AppServerConnectionV1:
         self._fault = asyncio.get_running_loop().create_future()
         try:
             async with asyncio.timeout(self._timeout):
-                await self._stream.send(STDIO_HELLO_V1)
-                if await self._stream.receive() != STDIO_HELLO_V1:
+                await self._stream.send(self._hello)
+                if await self._stream.receive() != self._hello:
                     raise InvalidAppMessageError()
             self._receiver = asyncio.create_task(self._receive_requests())
             completed, _ = await asyncio.wait(

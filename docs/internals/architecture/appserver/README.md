@@ -12,10 +12,10 @@
 
 - Scope: `appserver`
 - Parent: `loushang`
-- Authority: normative — A0.4 ports, G11 client contract and G14 connection edge
+- Authority: normative — A0.4 ports, G11 client contract and explicit G14/G16 connection edges
 - Design status: accepted
-- Implementation status: implemented — G14 connection, stdio client and Product executable verified on Linux, macOS and Windows
-- Activation status: explicit library or `loushang-hosted` foreground command; no listener or default-route change
+- Implementation status: partial — G14 is delivered on Linux/macOS/Windows; G16 native library is implemented, with AppHost/Product/UI integration and final native evidence pending
+- Activation status: explicit library or `loushang-hosted` foreground command; no default-route change or installed G16 command
 - Owner: Loushang AppServer architecture
 
 The implemented
@@ -29,6 +29,13 @@ AppClient. It accepts an injected semantic client and already-owned IO, never
 constructs an AppService, and has no process launch or listener authority.
 The Product-owned `loushang-hosted` entrypoint composes this explicit route;
 it remains separate from the existing default CLI/TUI entrypoints.
+
+G16 adds an explicit local connection library with native private records,
+mutual authentication and injected scope ownership. Its sole native-IO adapter
+can bind literal loopback or read an explicitly selected endpoint; no automatic
+startup, discovery, Product construction or process signaling is granted.
+The [G16 checkpoint](detachable-local-workspace-g16.md#g165-native-connection-checkpoint)
+distinguishes this library from the still-missing AppHost/CLI/TUI deployment.
 
 G12's optional AppHost application edge consumes the client contract for its
 in-process view. AppServer neither constructs nor imports that composition.
@@ -56,8 +63,9 @@ apphost.application -> loushang.appserver.client
 apphost.hosted -> loushang.appserver.ports + AppHost attachment contracts
 Product hosted profile -> Product public API + loushang.appserver.ports
 Harnesstui Hosted Profile -> loushang.appserver.client + protocol
-appserver.connection -> appserver.client + protocol + byte ports
-appserver.remote_client -> protocol + byte ports
+appserver.connection -> appserver.client + protocol + message ports
+appserver.remote_client -> protocol + message ports
+appserver.local -> native IO + record/auth + injected scope/stop ports
 
 loushang.appserver -/-> AppService / AppHost / Harness / Hosting / Product / UI
 AppHost core -/-> loushang.appserver
@@ -69,7 +77,9 @@ not AppHost wiring. G11 adds the sibling
 protocol and client abstractions without changing that binder. AppService owns
 concrete semantic coordination and its in-process client implementation. The
 G14 connection edge now accepts foreground stdio lifecycle and framing.
-Listener authentication and reconnect semantics remain separate future work.
+G16's optional local edge now composes authentication and connection-scoped
+authority. Product deployment, terminal integration and final platform evidence
+remain separate work; the G14 foreground contract is unchanged.
 
 ## Invariants
 
@@ -94,7 +104,8 @@ Listener authentication and reconnect semantics remain separate future work.
 - `app-protocol-v1.schema.json` freezes the public version and operation
   vocabulary; the reference codec owns operation-specific closed payloads.
 - `tests/architecture/test_hosted_application_g11.py` rejects reverse service,
-  Product, UI, process, and transport dependencies.
+  Product, UI and process dependencies; only the exact G16 local adapter may
+  construct native connections.
 - `tests/architecture/test_foreground_hosted_application_g12.py` retains the
   optional outward consumer and unchanged installed-entrypoint boundary.
 - `make check-apphost` retains A0.4/G12 coverage; `make check-appservice` owns
@@ -105,3 +116,6 @@ Listener authentication and reconnect semantics remain separate future work.
   command and G13 restart recovery. The [G14 final evidence](foreground-stdio-hosted-app-g14.md#final-acceptance-evidence)
   records 211 passing cases on each native platform and the full-delta
   three-view review; the linked PR records integration status.
+- G16 native loopback tests combine the real AppService with synthetic Product
+  ports to exercise accepted work, fresh attachments and approval invalidation.
+  These do not count as installed Product/TUI or restart-recovery evidence.

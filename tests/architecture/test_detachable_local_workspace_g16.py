@@ -115,3 +115,35 @@ def test_G16_BOUNDARIES_native_record_is_one_optional_stdlib_component() -> None
         "src/loushang/coding/cli/__main__.py", "src/loushang/coding/ui/cli.py",
     ):
         assert "local_record" not in Path(facade).read_text()
+
+
+def test_G16_BOUNDARIES_native_io_is_confined_to_explicit_local_adapter() -> None:
+    from loushang.appserver.connection import AppServerConnectionV1
+    from loushang.appserver.protocol.connection_profile import AppConnectionProfileV1
+    from loushang.appserver.remote_client import StdioAppClientV1
+
+    root = Path("src/loushang/appserver")
+    source = (root / "local.py").read_text()
+    assert len(source.splitlines()) <= 450
+    assert len((root / "_local_peer.py").read_text().splitlines()) <= 240
+    assert '_LOOPBACK = "127.0.0.1"' in source
+    assert "MAX_LOCAL_CONNECTIONS = 8" in source
+    assert "MAX_LOCAL_APP_CONNECTIONS = 7" in source
+    assert "MAX_LOCAL_AUTHENTICATING = 8" in source
+    assert "SO_EXCLUSIVEADDRUSE" in source
+    assert "start_serving=False" in source
+    assert "reuse_port=True" not in source
+    for path in root.rglob("*.py"):
+        if path == root / "local.py":
+            continue
+        for node in ast.walk(ast.parse(path.read_text())):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+                assert node.func.attr not in {"start_server", "open_connection", "sock_connect", "create_server", "create_connection"}
+    assert set(inspect.signature(StdioAppClientV1).parameters) == {"stream", "phase_timeout"}
+    assert inspect.signature(AppServerConnectionV1).parameters["profile"].default is AppConnectionProfileV1.STDIO
+    for name in (
+        "src/loushang/appserver/__init__.py", "src/loushang/apphost/foreground.py",
+        "src/loushang/coding/cli/hosted.py", "src/loushang/coding/cli/__main__.py",
+        "src/loushang/coding/ui/cli.py",
+    ):
+        assert "LocalAppServerV1" not in Path(name).read_text()

@@ -28,7 +28,9 @@ def test_G14_BOUNDARIES_connection_has_no_reverse_semantic_or_process_dependency
                 imported.startswith("loushang.appserver.")
                 or imported.partition(".")[0] in sys.stdlib_module_names
             ), (path, imported)
-            assert imported.partition(".")[0] not in {"subprocess", "socket"}
+            assert imported.partition(".")[0] != "subprocess"
+            if path != ROOT / "local.py":
+                assert imported.partition(".")[0] != "socket"
     client_imports = _imports(ROOT / "remote_client.py")
     assert "loushang.appserver.connection" not in client_imports
     assert "loushang.appserver.dispatch" not in client_imports

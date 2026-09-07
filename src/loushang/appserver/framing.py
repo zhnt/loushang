@@ -20,6 +20,16 @@ class AppByteTransportV1(Protocol):
     async def close(self) -> None: ...
 
 
+class AppMessageStreamV1(Protocol):
+    """One bounded, complete-message stream already admitted by its owner."""
+
+    async def receive(self) -> bytes: ...
+
+    async def send(self, payload: bytes) -> None: ...
+
+    async def close(self) -> None: ...
+
+
 class AppConnectionClosedError(AppServiceError):
     def __init__(self) -> None:
         super().__init__(AppErrorCodeV1.SERVICE_CLOSED)
@@ -143,6 +153,7 @@ class AsyncioStreamTransportV1:
 
 __all__ = [
     "AppByteTransportV1",
+    "AppMessageStreamV1",
     "AppConnectionClosedError",
     "AppFramedStreamV1",
     "AsyncioStreamTransportV1",

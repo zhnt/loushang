@@ -72,7 +72,10 @@ def test_G11_DEPENDENCY_GRAPH_appserver_remains_contract_and_client_only() -> No
                 path,
                 imported,
             )
-    combined = "\n".join(_read(path) for path in APPSERVER.rglob("*.py"))
+    # G16 grants native IO to exactly its explicit local deployment adapter;
+    # every contract, dispatcher, scope adapter and legacy route stays dark.
+    combined = "\n".join(_read(path) for path in APPSERVER.rglob("*.py")
+                         if path != APPSERVER / "local.py")
     for forbidden in ("socket", "subprocess", "listen(", "accept(", "connect("):
         assert forbidden not in combined
 

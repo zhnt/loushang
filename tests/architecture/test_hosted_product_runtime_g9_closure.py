@@ -440,6 +440,8 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
         "dispatch.py",
         "framing.py",
         "local_auth.py",
+        "local.py",
+        "_local_peer.py",
         "local_record.py",
         "_local_record_files.py",
         "_local_record_values.py",

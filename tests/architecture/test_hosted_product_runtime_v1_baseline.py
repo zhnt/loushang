@@ -450,6 +450,8 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "dispatch.py",
         "framing.py",
         "local_auth.py",
+        "local.py",
+        "_local_peer.py",
         "local_record.py",
         "_local_record_files.py",
         "_local_record_values.py",
@@ -458,6 +460,7 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "remote_client.py",
         "stdio.py",
         "protocol/stdio_profile.py",
+        "protocol/connection_profile.py",
     }
     assert {
         path.relative_to(APPSERVICE_SOURCE).as_posix()

@@ -723,6 +723,8 @@ def test_hosting_apphost_and_appserver_optional_modules_are_exact() -> None:
         "dispatch.py",
         "framing.py",
         "local_auth.py",
+        "local.py",
+        "_local_peer.py",
         "local_record.py",
         "_local_record_files.py",
         "_local_record_values.py",
@@ -737,6 +739,7 @@ def test_hosting_apphost_and_appserver_optional_modules_are_exact() -> None:
         "protocol/model.py",
         "protocol/schema.py",
         "protocol/stdio_profile.py",
+        "protocol/connection_profile.py",
     }
 
     overview = _read(HOSTING_ROOT / "README.md")
