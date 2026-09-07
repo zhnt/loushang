@@ -209,6 +209,7 @@ APPHOST_TEST_PATHS := \
 	tests/coding/test_hosted_application.py \
 	tests/coding/test_cli_apphost.py \
 	tests/harnesstui/test_hosted_mux_profile.py \
+	tests/harnesstui/test_hosted_mux_interaction.py \
 	tests/dev/test_verify_evidence_manifest.py \
 	tests/architecture/test_apphost_a0_contract.py \
 	tests/architecture/test_apphost_a02_architecture.py \
@@ -282,6 +283,7 @@ APPSERVICE_TEST_PATHS := \
 	tests/coding/test_appservice_adapter.py \
 	tests/coding/test_hosted_application.py \
 	tests/harnesstui/test_hosted_mux_profile.py \
+	tests/harnesstui/test_hosted_mux_interaction.py \
 	tests/architecture/test_hosted_application_g11_design.py \
 	tests/architecture/test_hosted_application_g11.py \
 	tests/architecture/test_foreground_hosted_application_g12_design.py \

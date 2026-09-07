@@ -23,6 +23,7 @@
     {"id": "coding.hosted-bootstrap", "source": "src/loushang/coding/hosted_bootstrap.py", "status": "implemented", "owner": "shared-trusted-product-bootstrap"},
     {"id": "coding.local-runtime", "source": "src/loushang/coding/hosted_local.py", "status": "implemented", "owner": "startup-handoff-and-real-product-composition"},
     {"id": "harnesstui.hosted-shell", "source": "src/loushang/harnesstui/mux/shell.py", "status": "planned", "owner": "terminal-client-presentation"},
+    {"id": "harnesstui.mux-controller", "source": "src/loushang/harnesstui/mux/controller.py", "status": "implemented", "owner": "client-local-editing-and-snapshot-handoff"},
     {"id": "appservice.runtime", "source": "src/loushang/appservice/runtime.py", "status": "existing-extend", "owner": "application-semantics"},
     {"id": "appserver.connection", "source": "src/loushang/appserver/connection.py", "status": "existing-extend", "owner": "bounded-connection"},
     {"id": "coding.hosted-binding", "source": "src/loushang/coding/hosted_session.py", "status": "existing-extend", "owner": "real-session-policy"},

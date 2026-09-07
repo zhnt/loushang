@@ -69,6 +69,7 @@ jobs:
           tests/dev/test_verify_evidence_manifest.py
           tests/harness/worker/test_coding_product_worker_canary.py
           tests/harnesstui/test_hosted_mux_profile.py
+          tests/harnesstui/test_hosted_mux_interaction.py
           tests/architecture/test_apphost_a0_contract.py
           tests/architecture/test_apphost_a02_architecture.py
           tests/architecture/test_apphost_a03_a04_architecture.py
@@ -134,6 +135,7 @@ jobs:
           tests/architecture/test_hosted_product_g10_explicit_canary_design.py
           tests/architecture/test_hosted_product_g10_explicit_canary.py
           tests/harnesstui/test_hosted_mux_profile.py
+          tests/harnesstui/test_hosted_mux_interaction.py
           tests/architecture/test_hosted_application_g11_design.py
           tests/architecture/test_hosted_application_g11.py
           tests/architecture/test_foreground_hosted_application_g12_design.py

@@ -911,6 +911,58 @@ with a separate cache. Its first simultaneous invocation exited 139 without
 diagnostics; no Product change was made to obtain the isolated successful rerun.
 This is static evidence only, not native Windows runtime acceptance.
 
+### G16.8 Interactive Controller Preparation
+
+Before wiring the interactive terminal, regression-first review reproduced
+draft loss in the shared Hosted Mux controller. A long submit response cleared
+the currently selected window rather than the submitted window, and a fresh
+snapshot discarded all local drafts/navigation. Merely attaching the existing
+controller to a terminal would expose these failures to normal typing.
+
+Each local draft now carries an edit revision. A successful submit can clear
+only the same mux/member/Session draft at the captured revision, even when a
+fresh snapshot has replaced the local window object. Editing away and back to
+identical text still changes that revision. The new revision field is
+keyword-only, preserving existing positional window construction. No failed or
+unknown mutation is automatically resubmitted. Refresh and membership
+reattachment copy only local
+draft/revision, scroll position, unread state and selected member by stable
+identity; new snapshot credentials, cursors, records, running state and
+interaction authority are never copied from the stale view. A changed Session
+under the same member receives no previous Session draft.
+
+During a failed refresh, the old view remains available for local editing,
+but its `snapshot_required` fence rejects turn, approval, interrupt and member
+mutations before sending an RPC. A subsequent explicit refresh may acquire a
+new barrier without discarding the drafts. It is not automatic reconnect or
+an operation replay policy.
+
+Slice review (three perspectives, one reviewer, not independent agents):
+
+- Architecture: editing/navigation remains client-local in the existing
+  Harnesstui reducer/controller; no new service, transport or Product dependency.
+- Concurrency: captured edit revisions prevent late responses from erasing new
+  input, and stable identities prevent reordered/replaced members inheriting
+  another Session's draft. Failed refresh retains edits but not usable actions.
+- Evidence: deterministic controlled-waiter tests exercise intermediate states,
+  same-text editing, window changes, snapshot failure/reordering/replacement
+  and late completion across refresh. These are controller tests, not a running
+  shell or native terminal proof. The installed attach route, bounded input
+  queue/drafts, terminal restore and PTY/ConPTY evidence remain open.
+
+The original 600-line G11 Hosted Mux component budget remains unchanged. G15
+still delivers design only; this controller refinement does not implement its
+launcher, global Session picker or the planned G16 interactive shell.
+
+Local verification: the complete AppService gate passed Ruff, mypy (56 source
+files), and 418 tests with 10 Windows-native skips on Linux. The final targeted
+controller selection passed 17 cases, including the supplemental positional-API
+compatibility regression added after that full run had collected its tests.
+The focused controller/architecture selection passed 21 cases earlier in the
+slice; documentation and G15/G16 inventory checks passed nine. Final focused
+Ruff and mypy cover all six Hosted Mux modules. No native terminal or full G16
+acceptance is inferred from these results.
+
 ### Platform API References
 
 Python's [asyncio streams](https://docs.python.org/3.11/library/asyncio-stream.html)
