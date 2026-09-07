@@ -164,6 +164,7 @@ HOSTING_TEST_PATHS := \
 	tests/architecture/test_hosting_h65_windows_lpac_design.py \
 	tests/architecture/test_hosting_architecture_baseline.py
 APPHOST_SOURCES := \
+	src/loushang/tui/ui_parts/text_pager.py \
 	src/loushang/tui/terminal_session.py \
 	src/loushang/tui/composer_edit_buffer.py \
 	src/loushang/tui/ui_parts/composer.py \
@@ -189,6 +190,10 @@ APPHOST_SOURCES := \
 	src/loushang/harnesstui/mux \
 	src/loushang/coding/cli/apphost.py
 APPHOST_TEST_PATHS := \
+	tests/dev/test_run_g16_installed_evidence.py \
+	tests/architecture/test_detachable_local_workspace_g16_evidence.py \
+	tests/tui/test_text_pager.py \
+	tests/harnesstui/test_hosted_mux_details.py \
 	tests/tui/test_terminal_session.py \
 	tests/tui/test_composer_edit_buffer.py \
 	tests/harnesstui/test_hosted_mux_shell.py \
@@ -235,6 +240,9 @@ APPHOST_TEST_PATHS := \
 	tests/architecture/test_durable_hosted_application_continuity_g13_design.py \
 	tests/architecture/test_durable_hosted_application_continuity_g13.py
 APPHOST_LINT_SUPPORT := \
+	scripts/dev/run_g16_installed_evidence.py \
+	tests/coding/test_mux_native_evidence.py \
+	tests/coding/test_mux_installed_evidence.py \
 	tests/coding/_local_product_child.py \
 	tests/coding/_hosted_product_child.py \
 	src/loushang/coding/cli/__main__.py \
@@ -243,6 +251,7 @@ APPHOST_LINT_SUPPORT := \
 	scripts/dev/verify_evidence_manifest.py \
 	tests/harness/worker/test_coding_product_worker_canary.py
 APPSERVICE_SOURCES := \
+	src/loushang/tui/ui_parts/text_pager.py \
 	src/loushang/tui/terminal_session.py \
 	src/loushang/tui/composer_edit_buffer.py \
 	src/loushang/tui/ui_parts/composer.py \
@@ -267,6 +276,11 @@ APPSERVICE_SOURCES := \
 	src/loushang/coding/hosted_continuity.py \
 	src/loushang/harnesstui/mux
 APPSERVICE_TEST_PATHS := \
+	tests/dev/test_run_g16_installed_evidence.py \
+	tests/dev/test_verify_evidence_manifest.py \
+	tests/architecture/test_detachable_local_workspace_g16_evidence.py \
+	tests/tui/test_text_pager.py \
+	tests/harnesstui/test_hosted_mux_details.py \
 	tests/tui/test_terminal_session.py \
 	tests/tui/test_composer_edit_buffer.py \
 	tests/harnesstui/test_hosted_mux_shell.py \
@@ -461,7 +475,7 @@ test-hosted-product-g10-linux-evidence:
 check-appservice: lint-appservice typecheck-appservice test-appservice
 
 lint-appservice:
-	uv --cache-dir .uv-cache run --extra dev ruff check $(APPSERVICE_SOURCES) $(APPSERVICE_TEST_PATHS) tests/coding/_hosted_product_child.py tests/coding/_local_product_child.py
+	uv --cache-dir .uv-cache run --extra dev ruff check $(APPSERVICE_SOURCES) $(APPSERVICE_TEST_PATHS) tests/coding/_hosted_product_child.py tests/coding/_local_product_child.py scripts/dev/run_g16_installed_evidence.py scripts/dev/verify_evidence_manifest.py tests/coding/test_mux_native_evidence.py tests/coding/test_mux_installed_evidence.py
 
 typecheck-appservice:
 	uv --cache-dir .uv-cache run --extra dev mypy --follow-imports=silent $(APPSERVICE_SOURCES)

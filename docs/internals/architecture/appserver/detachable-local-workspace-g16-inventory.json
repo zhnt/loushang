@@ -24,6 +24,7 @@
     {"id": "coding.local-runtime", "source": "src/loushang/coding/hosted_local.py", "status": "implemented", "owner": "startup-handoff-and-real-product-composition"},
     {"id": "harnesstui.hosted-shell", "source": "src/loushang/harnesstui/mux/shell.py", "status": "implemented", "owner": "terminal-client-presentation"},
     {"id": "harnesstui.hosted-screen", "source": "src/loushang/harnesstui/mux/_shell_screen.py", "status": "implemented", "owner": "shared-conversation-presentation"},
+    {"id": "tui.text-pager", "source": "src/loushang/tui/ui_parts/text_pager.py", "status": "implemented", "owner": "bounded-read-only-text-layout"},
     {"id": "harnesstui.hosted-waiters", "source": "src/loushang/harnesstui/mux/_shell_tasks.py", "status": "implemented", "owner": "bounded-local-task-settlement"},
     {"id": "harnesstui.hosted-terminal", "source": "src/loushang/harnesstui/mux/terminal.py", "status": "implemented", "owner": "native-terminal-input-and-render-loop"},
     {"id": "harnesstui.mux-controller", "source": "src/loushang/harnesstui/mux/controller.py", "status": "implemented", "owner": "client-local-editing-and-snapshot-handoff"},

@@ -35,3 +35,81 @@ jobs:
 
       - name: Check hosted application and G16 native record security
         run: make check-appservice
+
+  g16-native-evidence:
+    name: g16-native-${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            platform: linux
+            report: G16-NATIVE-LINUX
+          - os: macos-15
+            platform: darwin
+            report: G16-NATIVE-DARWIN
+          - os: windows-latest
+            platform: win32
+            report: G16-NATIVE-WIN32
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@v5
+      - name: Install locked dependencies
+        run: uv sync --locked --extra dev
+      - name: Run exact G16 native fault cases
+        run: >-
+          uv run python scripts/dev/run_pytest.py tests/coding/test_mux_native_evidence.py
+          --junitxml=.artifacts/g16-native-${{ matrix.platform }}.xml -q -m "not live"
+      - name: Verify platform, exact case IDs and zero skips
+        run: >-
+          uv run python scripts/dev/verify_evidence_manifest.py
+          docs/internals/architecture/appserver/detachable-local-workspace-g16-evidence-manifest.json
+          ${{ matrix.report }}
+          .artifacts/g16-native-${{ matrix.platform }}.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: g16-native-${{ matrix.platform }}
+          path: .artifacts/g16-native-${{ matrix.platform }}.xml
+          if-no-files-found: error
+
+  g16-wheel-evidence:
+    name: g16-wheel-${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            platform: linux
+          - os: macos-15
+            platform: darwin
+          - os: windows-latest
+            platform: win32
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@v5
+      - name: Seed locked offline installation cache
+        run: uv --cache-dir .uv-cache sync --locked --extra dev
+      - name: Build the wheel from this checkout
+        run: uv --cache-dir .uv-cache build --wheel --out-dir .artifacts/g16-wheel
+      - name: Run and verify isolated native terminal evidence
+        run: >-
+          uv --cache-dir .uv-cache run python scripts/dev/run_g16_installed_evidence.py
+          --wheel-dir .artifacts/g16-wheel
+          --platform ${{ matrix.platform }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: g16-wheel-${{ matrix.platform }}
+          path: .artifacts/g16-wheel-${{ matrix.platform }}.xml
+          if-no-files-found: error

@@ -121,3 +121,9 @@ evidence remains separate work. The G14 foreground contract is unchanged.
 - G16 native loopback tests combine the real AppService with synthetic Product
   ports to exercise accepted work, fresh attachments and approval invalidation.
   These do not count as installed Product/TUI or restart-recovery evidence.
+- The separate [G16 evidence manifest](detachable-local-workspace-g16-evidence-manifest.json)
+  requires exact zero-skip native fault and isolated-wheel terminal reports for
+  Linux, macOS and Windows. Platform, installation and terminal backend are
+  verified properties, not conclusions inferred from report names. Gate
+  implementation is distinct from the observed platform results recorded in
+  the [G16.10 checkpoint](detachable-local-workspace-g16.md#g1610-read-only-details-and-exact-evidence-gates).

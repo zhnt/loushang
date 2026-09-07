@@ -31,7 +31,10 @@ def verify_manifest_report(manifest_path: Path, report_id: str, report: Path) ->
         raise ValueError("evidence manifest version is unsupported")
     reports = _mapping(manifest, "reports")
     row = reports.get(report_id)
-    if not isinstance(row, dict) or set(row) != _REPORT_FIELDS:
+    if not isinstance(row, dict) or set(row) not in (
+        _REPORT_FIELDS,
+        _REPORT_FIELDS | {"requiredProperties"},
+    ):
         raise ValueError(f"evidence report {report_id!r} is absent or invalid")
     row = cast(dict[str, object], row)
     if row["status"] != "implemented":
@@ -55,6 +58,8 @@ def verify_manifest_report(manifest_path: Path, report_id: str, report: Path) ->
 
     root = ET.parse(report).getroot()
     suites = _suites(root)
+    if "requiredProperties" in row:
+        _verify_properties(suites, row["requiredProperties"])
     suite_counts = [_verified_suite_counts(suite) for suite in suites]
     counts = {
         name: sum(item[name] for item in suite_counts)
@@ -94,6 +99,29 @@ def verify_manifest_report(manifest_path: Path, report_id: str, report: Path) ->
             f"missing={missing}, unexpected={unexpected}, duplicates={duplicates}"
         )
     return ", ".join(f"{name}={value}" for name, value in counts.items())
+
+
+def _verify_properties(suites: list[ET.Element], required: object) -> None:
+    if (
+        not isinstance(required, dict)
+        or not required
+        or any(
+            not isinstance(name, str)
+            or not name
+            or not isinstance(value, str)
+            or not value
+            for name, value in required.items()
+        )
+    ):
+        raise ValueError("evidence required properties must be nonempty string pairs")
+    for suite in suites:
+        properties = suite.findall("properties/property")
+        for name, expected in required.items():
+            observed = {
+                item.get("value") for item in properties if item.get("name") == name
+            }
+            if observed != {expected}:
+                raise ValueError(f"evidence property {name!r} must be {expected!r}")
 
 
 def _read_json(path: Path) -> dict[str, object]:

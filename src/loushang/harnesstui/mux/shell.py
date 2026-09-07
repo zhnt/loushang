@@ -166,6 +166,18 @@ class HostedMuxShellV1:
         if key in {"tab", "shift+tab"} and not self.screen.composer.has_completions:
             self._select(key == "tab")
             return
+        if key == "f1":
+            self.screen.show_help()
+            return
+        if key == "f2":
+            self._target()
+            self.screen.show_approval()
+            return
+        if key == "ctrl+c":
+            self._command("/interrupt")
+            return
+        if self.screen.handle_details(event):
+            return
         if key in {"pageUp", "pageDown"}:
             window = self.state.active_window
             if window is not None:
@@ -178,9 +190,6 @@ class HostedMuxShellV1:
                     1, min(len(window.records), end + (-8 if key == "pageUp" else 8))
                 )
                 window.scroll_anchor = None if end == len(window.records) else end
-            return
-        if key == "ctrl+c":
-            self._command("/interrupt")
             return
         if key == "enter":
             text = self.screen.composer.value
@@ -228,6 +237,7 @@ class HostedMuxShellV1:
         self._sync_editor()
 
     def _sync_editor(self) -> None:
+        self.screen.dismiss_details()
         self.screen.composer.clear()
         window = self.state.active_window
         self.screen.composer.set_text(window.draft if window else "")
@@ -260,7 +270,10 @@ class HostedMuxShellV1:
         if command in {"/detach", "/exit"} and not args:
             self.exit_requested = True
         elif command == "/help" and not args:
-            self.notice = "/new cwd|user_home [title]; /resume <scope> <continuity> <session>; /approve /deny /interrupt /refresh /close --yes /detach"
+            self.screen.show_help()
+        elif command == "/question" and not args:
+            self._target()
+            self.screen.show_approval()
         elif command == "/refresh" and not args:
             self._membership(self._controller.refresh_snapshot)
         elif command in {"/new", "/resume"} and args:
@@ -302,6 +315,10 @@ class HostedMuxShellV1:
             else:
                 if window.pending_interaction_id is None:
                     raise ValueError("no active interaction")
+                if command == "/approve" and not self.screen.approval_presented():
+                    self.screen.show_approval()
+                    self.notice = "Present all approval details, Esc, then /approve"
+                    return
                 response = InteractionRespondV1(
                     state.attachment_id,
                     state.controller_generation,

@@ -1031,11 +1031,116 @@ No fallback to the editable installation counted as wheel evidence.
 
 Required macOS/Windows cases have no skip decorators, but their new runs, the
 Windows record rerun, cross-platform isolated-wheel gates, complete fault
-manifest and final three-view whole-delta review remain outstanding. The final
-UX review must also address long approval/help text beyond the current status
-line and audit shutdown failure/retry behavior. G15's foreground launcher
+manifest and final three-view whole-delta review remain outstanding at this
+checkpoint. The next slice addresses long approval/help text; the final review
+must still audit shutdown failure/retry behavior. G15's foreground launcher
 and Session-discovery picker remain design-only. This checkpoint does not
 declare Hosted Workspace V1 complete.
+
+### G16.10 Read-Only Details And Exact Evidence Gates
+
+The shared `tui.ui_parts.text_pager.TextPager` now provides bounded plain-text
+paging. It has no command, approval or application authority. It strips terminal
+control sequences, expands tabs, wraps by display-cell width and rejects input
+over 1 MiB before layout. Too-small terminals request resize without crediting
+unshown text. Navigation tracks the contiguous prefix actually included in
+renders: jumping to the last page alone does not imply that middle pages were
+presented, and reflow resets partial presentation. This is presentation
+evidence, not proof that a person has read or understood the text.
+
+Harnesstui owns the semantic binding. F1 or `/help` opens complete command help;
+F2 or `/question` opens the current approval text without changing the local
+draft. `/approve` opens unpresented details without sending an RPC. Only after
+every page has been presented, Esc and a new explicit `/approve` may send the
+current response. `/deny` does not require viewing first. The presentation key
+includes attachment, controller generation, member, Session and question
+identity/text; changing any of them invalidates the previous approval view.
+An expired view stays read-only until explicitly dismissed, so late pasted text
+cannot fall through into an unrelated draft. Nothing automatically approves,
+retries a mutation, or grants new Product policy authority.
+
+The [G16 evidence manifest](detachable-local-workspace-g16-evidence-manifest.json)
+defines six separate native/installed-wheel reports across `linux`, `darwin`
+and `win32`. Each native report requires 26 exact cases; each wheel report
+requires four exact native terminal cases. The selectors reuse authoritative
+tests rather than implementing replacement Product behavior. Platform-specific
+private-file faults select actual POSIX modes/symlinks or Windows DACL/junctions
+and do not convert an OS refusal or a skipped test into successful evidence.
+
+The generic evidence verifier keeps the G8/G9/G10 format compatible and adds
+optional required suite properties. G16 requires the actual platform; wheel
+reports also require `installation=wheel` and the actual `posix-pty` or `conpty`
+backend. Missing, conflicting or incorrect properties fail, as do skipped,
+missing, duplicate, failed or errored cases. Manifest `implemented` means the
+test exists, not that the platform has passed it.
+
+The installed runner builds no Product substitute. It installs the selected
+wheel offline into an isolated environment under the ignored cache, removes
+Python source/environment overrides, and executes the native cases with `-I`
+outside the source working directory. Before pytest, it verifies module origins,
+the selected wheel digest and every installed package file against the artifact
+bytes. This does not rely on an installer retaining a hash in `direct_url.json`.
+Ordinary quality gates test the script and verifier; separate three-platform CI
+jobs execute the native fault and isolated-wheel rows and retain JUnit artifacts.
+
+Reproduction on Linux, after seeding the locked development cache:
+
+```sh
+uv --cache-dir .uv-cache sync --locked --extra dev
+uv --cache-dir .uv-cache build --wheel --out-dir .artifacts/g16-wheel
+uv --cache-dir .uv-cache run python scripts/dev/run_g16_installed_evidence.py --wheel-dir .artifacts/g16-wheel --platform linux
+uv run python scripts/dev/run_pytest.py tests/coding/test_mux_native_evidence.py --junitxml=.artifacts/g16-native-linux.xml -q -m 'not live'
+uv run python scripts/dev/verify_evidence_manifest.py docs/internals/architecture/appserver/detachable-local-workspace-g16-evidence-manifest.json G16-NATIVE-LINUX .artifacts/g16-native-linux.xml
+```
+
+`--wheel-dir` requires exactly one Loushang wheel; `--platform` must match the
+executing OS before installation. On macOS/Windows use `darwin`/`win32` and the
+matching manifest row. Local repository rules still govern pytest execution.
+The script bounds its subprocess waits; native test owners normally settle
+their exact processes/terminals in `finally`. A forced termination of the
+outer test runner is not evidence of completed Product shutdown.
+
+Slice review (three perspectives, one reviewer, not independent agents):
+
+- Architecture: generic text layout stays in TUI; attachment/question authority
+  stays in Harnesstui/AppService. The four hosted UI modules remain within the
+  existing 850-line budget, and no process/socket/storage dependency is added.
+- Interaction/lifecycle: approval presentation cannot authorize a replacement
+  question or silently move late input to another editor. Help preserves drafts,
+  and explicit denial and interrupt remain available. Native interaction tests
+  now open the actual details before explicitly approving. A regression also
+  caught raw C0/C1 controls surviving title sanitization; titles now remove them
+  as well as full terminal escape sequences, like the body.
+- Evidence: regressions caught the installer-metadata assumption. The corrected
+  probe checks installed bytes rather than weakening artifact verification;
+  required platform/backend properties prevent relabeling an ordinary source
+  run as an installed-wheel or native Windows run.
+
+Linux verification: final `make check-appservice` passed Ruff, mypy for 64 source
+files, and 498 tests with ten Windows-only skips in 327.94 seconds. An earlier
+concurrent run had one 30-second timeout in the pre-existing real Coding
+two-scope scenario (494 passed, ten skipped). That exact test passed separately
+in 12.16 seconds, and the complete serial rerun passed without changing its
+timeout or Product lifecycle. The 26-case native fault row passed with zero
+skips and its manifest properties verified. The final UI/documentation/boundary
+selection passed 29 cases. AppHost's Ruff and 78-file typecheck passed; its final
+complete runtime/evidence gate still needs a rerun.
+
+The final isolated Linux wheel row passed all four exact cases in 130.54 seconds
+with zero skips, followed by successful manifest verification. Wheel SHA-256:
+`d6a8c8d851d213dee4724da96040e6f206b9967e4709fb33d6796c3caea3d5b5`.
+This artifact includes the title-control regression fix; a preceding successful
+wheel run is not substituted for this final artifact.
+
+Supplemental Win32-targeted mypy passed the 13-file UI/pager/evidence-script
+selection with an isolated repository cache. Initial attempts crashed or
+reported an internal `mypy.metastore` SQLite `disk I/O error`; changing to that
+cache resolved the tooling failure without changing Product code or suppressing
+type errors. This remains static evidence, not native Windows execution.
+
+The macOS/Windows matrix, Windows replacement rerun, full G16 review and delivery
+remain required; adding these gates alone does not complete them. G15's launcher
+and global discovery picker stay outside this implementation slice.
 
 ### Platform API References
 

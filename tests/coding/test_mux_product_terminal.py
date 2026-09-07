@@ -136,6 +136,13 @@ def test_G16_PRODUCT_TERMINAL_two_muxes_approval_detach_reattach_and_interrupt(
                 _see(developer, "真实跨进程回复")
                 reviewer.write("approval\r")
                 _see(reviewer, "*1!")
+                reviewer.write("/question\r")
+                _see(reviewer, "Approval details")
+                _see(reviewer, "{}")
+                assert "APPROVED_PREVIEW_EXECUTED" not in reviewer.raw_output
+                checkpoint = len(reviewer.raw_output)
+                reviewer.write("\x1b")
+                _see(reviewer, "Approval pending", after=checkpoint)
                 reviewer.write("/approve\r")
                 _see(reviewer, "APPROVED_PREVIEW_EXECUTED")
                 developer.write("hold\r")

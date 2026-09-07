@@ -50,6 +50,11 @@ jobs:
           src/loushang/harness/machine_resources/control_plane.py
           src/loushang/harnesstui/mux
           scripts/dev/run_g10_installed_canary.py
+          scripts/dev/run_g16_installed_evidence.py
+          tests/dev/test_run_g16_installed_evidence.py
+          tests/architecture/test_detachable_local_workspace_g16_evidence.py
+          tests/coding/test_mux_native_evidence.py
+          tests/coding/test_mux_installed_evidence.py
           scripts/dev/verify_evidence_manifest.py
           tests/apphost
           tests/appserver
@@ -68,6 +73,9 @@ jobs:
           tests/coding/test_mux_product_terminal.py
           tests/coding/_local_product_child.py
           tests/harnesstui/test_hosted_mux_shell.py
+          tests/harnesstui/test_hosted_mux_details.py
+          tests/tui/test_text_pager.py
+          src/loushang/tui/ui_parts/text_pager.py
           tests/harnesstui/test_hosted_mux_terminal.py
           tests/tui/test_terminal_session.py
           tests/tui/test_composer_edit_buffer.py
@@ -98,6 +106,7 @@ jobs:
       - name: Typecheck AppHost G8 through G13
         run: >-
           uv run --extra dev mypy --follow-imports=silent
+          src/loushang/tui/ui_parts/text_pager.py
           src/loushang/apphost
           src/loushang/appserver
           src/loushang/appservice
@@ -120,6 +129,8 @@ jobs:
       - name: Test AppHost G8 through G13
         run: >-
           uv run --extra dev python scripts/dev/run_pytest.py
+          tests/dev/test_run_g16_installed_evidence.py
+          tests/architecture/test_detachable_local_workspace_g16_evidence.py
           tests/apphost
           tests/appserver
           tests/appservice
@@ -136,6 +147,8 @@ jobs:
           tests/coding/test_mux_terminal_process.py
           tests/coding/test_mux_product_terminal.py
           tests/harnesstui/test_hosted_mux_shell.py
+          tests/harnesstui/test_hosted_mux_details.py
+          tests/tui/test_text_pager.py
           tests/harnesstui/test_hosted_mux_terminal.py
           tests/tui/test_terminal_session.py
           tests/tui/test_composer_edit_buffer.py
