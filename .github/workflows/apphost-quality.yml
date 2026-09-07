@@ -26,7 +26,7 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --extra dev
 
-      - name: Lint AppHost G8 through G12
+      - name: Lint AppHost G8 through G13
         run: >-
           uv run --extra dev ruff check
           src/loushang/apphost
@@ -40,6 +40,7 @@ jobs:
           src/loushang/coding/apphost_product.py
           src/loushang/coding/appservice_adapter.py
           src/loushang/coding/hosted_application.py
+          src/loushang/coding/hosted_continuity.py
           src/loushang/coding/cli/__main__.py
           src/loushang/coding/cli/apphost.py
           src/loushang/harness/machine_resources/control_plane.py
@@ -72,6 +73,7 @@ jobs:
           tests/architecture/test_foreground_hosted_application_g12_design.py
           tests/architecture/test_foreground_hosted_application_g12.py
           tests/architecture/test_durable_hosted_application_continuity_g13_design.py
+          tests/architecture/test_durable_hosted_application_continuity_g13.py
 
       - name: Typecheck AppHost G8 through G13
         run: >-
@@ -87,6 +89,7 @@ jobs:
           src/loushang/coding/apphost_product.py
           src/loushang/coding/appservice_adapter.py
           src/loushang/coding/hosted_application.py
+          src/loushang/coding/hosted_continuity.py
           src/loushang/harnesstui/mux
           src/loushang/coding/cli/apphost.py
 
@@ -118,6 +121,7 @@ jobs:
           tests/architecture/test_foreground_hosted_application_g12_design.py
           tests/architecture/test_foreground_hosted_application_g12.py
           tests/architecture/test_durable_hosted_application_continuity_g13_design.py
+          tests/architecture/test_durable_hosted_application_continuity_g13.py
           -q
 
       - name: Retain Hosted Product G8 evidence
@@ -202,6 +206,11 @@ jobs:
           uv run --extra dev python scripts/dev/verify_pytest_xml.py .artifacts/hosted-product-g10-windows.xml
           uv run --extra dev python scripts/dev/verify_evidence_manifest.py docs/internals/architecture/apphost/hosted-product-g10-evidence-manifest.json HOSTED-PRODUCT-G10-WINDOWS .artifacts/hosted-product-g10-windows.xml
           uv run --extra dev python scripts/dev/run_g10_installed_canary.py --expected-backend windows-job-v1
+      - name: Prove G13 durable continuity on Windows
+        shell: pwsh
+        run: |
+          uv run --extra dev python scripts/dev/run_pytest.py tests/appservice/test_continuity.py tests/appservice/test_continuity_runtime.py tests/apphost/test_continuity.py tests/coding/test_hosted_application.py tests/architecture/test_durable_hosted_application_continuity_g13.py -k G13 -q --junitxml=.artifacts/hosted-application-g13-windows.xml
+          uv run --extra dev python scripts/dev/verify_pytest_xml.py .artifacts/hosted-application-g13-windows.xml
       - name: Upload native gate JUnit
         if: always()
         uses: actions/upload-artifact@v4
@@ -212,4 +221,5 @@ jobs:
             .artifacts/hosted-product-g8.xml
             .artifacts/hosted-product-g9-windows.xml
             .artifacts/hosted-product-g10-windows.xml
+            .artifacts/hosted-application-g13-windows.xml
           if-no-files-found: error

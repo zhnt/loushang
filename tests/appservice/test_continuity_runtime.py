@@ -10,8 +10,10 @@ import pytest
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
     AppServiceError,
+    MuxAttachV1,
     MuxCloseV1,
     MuxCreateV1,
+    MuxDetachV1,
     MuxMemberCloseV1,
     MuxMemberOpenV1,
     MuxReadV1,
@@ -247,7 +249,7 @@ async def _recover(
     lease: object,
     resolver: _Resolver,
     *,
-    ids: tuple[str, ...] = ("mux-new", "member-new"),
+    ids: tuple[str, ...] = ("mux-new", "member-new", "attachment-new"),
 ):  # type: ignore[no-untyped-def]
     iterator = iter(ids)
     attempt = create_appservice_recovery_attempt(
@@ -413,6 +415,18 @@ async def test_G13_ATOMIC_MUTATION_persists_all_mux_member_transitions() -> None
     assert lease.record.record_revision == 2
     assert lease.record.mux_spaces[0].members[0].session.session_id == "session-1"
 
+    attachment = await service.attach_mux(
+        MuxAttachV1(MuxSelectorV1(mux_space_id=mux.mux_space_id))
+    )
+    await service.detach_mux(
+        MuxDetachV1(
+            attachment.attachment_id,
+            attachment.controller_generation,
+        )
+    )
+    assert lease.record.record_revision == 2
+    assert events == []
+
     with pytest.raises(AppServiceError) as orphaned:
         await service.close_member(
             MuxMemberCloseV1(
@@ -556,3 +570,48 @@ async def test_G13_RESTART_CANARY_reopens_file_record_after_service_loss(
     assert second_resolver.requests[0].session_id == "session-1"
     await second.close()
     await second_lease.close()
+
+
+@_async_test
+async def test_G13_FRESH_AUTHORITY_epoch_fences_replayed_live_ids() -> None:
+    events: list[str] = []
+    first_lease = _MemoryLease(_record("session-1"))
+    first = create_appservice_recovery_attempt(
+        AppServiceRecoveryRequestV1(
+            "coding",
+            _Resolver(events),
+            first_lease,
+            id_factory=lambda: "replayed-id",
+        )
+    )
+    first_service = await first.open()
+    first_attachment = await first_service.attach_mux(
+        MuxAttachV1(MuxSelectorV1(name="dev"))
+    )
+    await first_service.close()
+
+    second_lease = _MemoryLease(first_lease.record)
+    second_lease.owner_epoch = "epoch-2"
+    second = create_appservice_recovery_attempt(
+        AppServiceRecoveryRequestV1(
+            "coding",
+            _Resolver(events),
+            second_lease,
+            id_factory=lambda: "replayed-id",
+        )
+    )
+    second_service = await second.open()
+    second_attachment = await second_service.attach_mux(
+        MuxAttachV1(MuxSelectorV1(name="dev"))
+    )
+
+    assert second_attachment.attachment_id != first_attachment.attachment_id
+    with pytest.raises(AppServiceError) as stale:
+        await second_service.detach_mux(
+            MuxDetachV1(
+                first_attachment.attachment_id,
+                first_attachment.controller_generation,
+            )
+        )
+    assert stale.value.code is AppErrorCodeV1.STALE_ATTACHMENT
+    await second_service.close()

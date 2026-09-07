@@ -115,7 +115,9 @@ def test_G11_PRODUCT_ADAPTER_is_the_only_product_harness_bridge() -> None:
     assert consumers == {
         CODING_ADAPTER,
         Path("src/loushang/apphost/application.py"),
+        Path("src/loushang/apphost/continuity.py"),
         Path("src/loushang/coding/hosted_application.py"),
+        Path("src/loushang/coding/hosted_continuity.py"),
     }
 
 

@@ -7,6 +7,7 @@ import inspect
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from dataclasses import dataclass
+from hashlib import sha256
 from secrets import token_hex
 from typing import cast
 
@@ -392,6 +393,7 @@ class AppServiceV1:
         "_closed",
         "_continuity_application_id",
         "_continuity_lease",
+        "_continuity_owner_epoch",
         "_continuity_revision",
         "_id_factory",
         "_mux_by_id",
@@ -434,6 +436,7 @@ class AppServiceV1:
         self._closed = False
         self._continuity_lease: ApplicationContinuityLeaseV1 | None = None
         self._continuity_application_id: str | None = None
+        self._continuity_owner_epoch: str | None = None
         self._continuity_revision: int | None = None
 
     @property
@@ -487,6 +490,7 @@ class AppServiceV1:
                 mux_by_name[mux.name] = mux
         self._continuity_lease = lease
         self._continuity_application_id = application_id
+        self._continuity_owner_epoch = lease.owner_epoch
         self._continuity_revision = None if record is None else record.record_revision
         self._mux_by_id = mux_by_id
         self._mux_by_name = mux_by_name
@@ -1075,6 +1079,10 @@ class AppServiceV1:
             raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE) from None
         if not isinstance(value, str) or not value:
             raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        owner_epoch = self._continuity_owner_epoch
+        if owner_epoch is not None:
+            digest = sha256(f"{owner_epoch}\0{value}".encode()).hexdigest()
+            return f"g13-{digest}"
         return value
 
     def _require_open(self) -> None:

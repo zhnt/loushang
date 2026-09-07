@@ -125,16 +125,19 @@ class HostedApplicationShutdownReportV1:
     contract_version: str = HOSTED_APPLICATION_CONTRACT_VERSION
 
     def __post_init__(self) -> None:
-        if type(self.completed) is not bool or type(
-            self.product_cleanup_complete
-        ) is not bool:
+        if (
+            type(self.completed) is not bool
+            or type(self.product_cleanup_complete) is not bool
+        ):
             raise TypeError("invalid hosted application shutdown report")
         if self.contract_version != HOSTED_APPLICATION_CONTRACT_VERSION:
             raise ValueError("unsupported hosted application shutdown report")
         for values in (self.timed_out_phases, self.failed_phases):
             if (
                 not isinstance(values, tuple)
-                or any(type(item) is not HostedApplicationShutdownPhase for item in values)
+                or any(
+                    type(item) is not HostedApplicationShutdownPhase for item in values
+                )
                 or len(values) != len(set(values))
             ):
                 raise ValueError("invalid hosted application shutdown phases")
@@ -176,7 +179,7 @@ class HostedApplicationRuntimeV1:
     def __init__(
         self,
         request: HostedApplicationRequestV1,
-        service: AppServiceV1,
+        service: AppServiceV1 | None,
         *,
         _construction_token: object,
     ) -> None:
@@ -189,25 +192,46 @@ class HostedApplicationRuntimeV1:
         self._shutdown_budget = request.shutdown_budget
         self._phase_timeout_seconds = float(request.phase_timeout_seconds)
         self._service = service
-        self._client = InProcessAppClientV1(service)
+        self._client = None if service is None else InProcessAppClientV1(service)
         self._accepting = True
         self._control_lock = asyncio.Lock()
         self._shutdown_task: asyncio.Task[HostedApplicationShutdownReportV1] | None = (
             None
         )
-        self._phase_tasks: dict[HostedApplicationShutdownPhase, asyncio.Task[object]] = (
-            {}
-        )
+        self._phase_tasks: dict[
+            HostedApplicationShutdownPhase, asyncio.Task[object]
+        ] = {}
 
     @property
     def client(self) -> AppClientV1:
         """Return the non-owning transport-neutral client view."""
 
-        return self._client
+        client = self._client
+        if client is None:
+            raise HostedApplicationError("hosted_application_not_ready")
+        return client
 
     @property
     def accepting(self) -> bool:
         return self._accepting
+
+    @property
+    def continuity_revision(self) -> int | None:
+        service = self._service
+        return None if service is None else service.continuity_revision
+
+    def _adopt_service(self, service: AppServiceV1, *, _token: object) -> None:
+        if _token is not _CONSTRUCTION_TOKEN:
+            raise TypeError("hosted application requires its factory")
+        if (
+            type(service) is not AppServiceV1
+            or self._service is not None
+            or not self._accepting
+            or self._shutdown_task is not None
+        ):
+            raise HostedApplicationError("hosted_application_not_ready")
+        self._service = service
+        self._client = InProcessAppClientV1(service)
 
     async def shutdown(self) -> HostedApplicationShutdownReportV1:
         """Fence and settle every owner; an incomplete report is retryable."""
@@ -237,9 +261,14 @@ class HostedApplicationRuntimeV1:
         timed_out: list[HostedApplicationShutdownPhase] = []
         failed: list[HostedApplicationShutdownPhase] = []
 
-        service_result = await self._run_phase(
-            HostedApplicationShutdownPhase.SERVICE,
-            self._service.close,
+        service = self._service
+        service_result = (
+            "completed"
+            if service is None
+            else await self._run_phase(
+                HostedApplicationShutdownPhase.SERVICE,
+                service.close,
+            )
         )
         if service_result == "timed_out":
             timed_out.append(HostedApplicationShutdownPhase.SERVICE)
@@ -338,6 +367,27 @@ def create_hosted_application_runtime(
         service,
         _construction_token=_CONSTRUCTION_TOKEN,
     )
+
+
+def _create_unpublished_hosted_application_runtime(
+    request: HostedApplicationRequestV1,
+) -> HostedApplicationRuntimeV1:
+    """Own G12 dependencies before a recovered AppService can be published."""
+
+    if type(request) is not HostedApplicationRequestV1:
+        raise TypeError("invalid hosted application request")
+    return HostedApplicationRuntimeV1(
+        request,
+        None,
+        _construction_token=_CONSTRUCTION_TOKEN,
+    )
+
+
+def _adopt_recovered_appservice(
+    runtime: HostedApplicationRuntimeV1,
+    service: AppServiceV1,
+) -> None:
+    runtime._adopt_service(service, _token=_CONSTRUCTION_TOKEN)
 
 
 def _shutdown_report(

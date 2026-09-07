@@ -1,0 +1,193 @@
+{
+  "activation": "explicit-durable-in-process-library-only",
+  "entries": [
+    {
+      "disposition": "protocol-library-no-entrypoint",
+      "entrypointId": "appserver.protocol",
+      "importsAppHost": false,
+      "importsAppService": false,
+      "omissionOwner": null,
+      "packagingBinding": null,
+      "source": "src/loushang/appserver/protocol/__init__.py",
+      "supportStatus": "public-library",
+      "surface": "contract"
+    },
+    {
+      "disposition": "client-contract-no-entrypoint",
+      "entrypointId": "appserver.client",
+      "importsAppHost": false,
+      "importsAppService": false,
+      "omissionOwner": null,
+      "packagingBinding": null,
+      "source": "src/loushang/appserver/client.py",
+      "supportStatus": "public-library",
+      "surface": "client-contract"
+    },
+    {
+      "disposition": "explicit-in-process-library",
+      "entrypointId": "appservice.runtime",
+      "importsAppHost": false,
+      "importsAppService": true,
+      "omissionOwner": null,
+      "packagingBinding": null,
+      "source": "src/loushang/appservice/__init__.py",
+      "supportStatus": "public-library",
+      "surface": "service"
+    },
+    {
+      "disposition": "durable-value-contract-no-entrypoint",
+      "entrypointId": "appservice.continuity-contract",
+      "importsAppHost": false,
+      "importsAppService": true,
+      "omissionOwner": null,
+      "packagingBinding": null,
+      "source": "src/loushang/appservice/continuity.py",
+      "supportStatus": "public-library",
+      "surface": "continuity-contract"
+    },
+    {
+      "disposition": "exact-root-private-store-library",
+      "entrypointId": "appservice.continuity-store",
+      "importsAppHost": false,
+      "importsAppService": true,
+      "omissionOwner": null,
+      "packagingBinding": null,
+      "source": "src/loushang/appservice/continuity_file.py",
+      "supportStatus": "explicit-library",
+      "surface": "storage-adapter"
+    },
+    {
+      "disposition": "owned-recovery-library",
+      "entrypointId": "appservice.continuity-recovery",
+      "importsAppHost": false,
+      "importsAppService": true,
+      "omissionOwner": null,
+      "packagingBinding": null,
+      "source": "src/loushang/appservice/continuity_runtime.py",
+      "supportStatus": "public-library",
+      "surface": "recovery"
+    },
+    {
+      "disposition": "optional-composition-library",
+      "entrypointId": "apphost.application",
+      "importsAppHost": true,
+      "importsAppService": true,
+      "omissionOwner": null,
+      "packagingBinding": null,
+      "source": "src/loushang/apphost/application.py",
+      "supportStatus": "explicit-library",
+      "surface": "composition"
+    },
+    {
+      "disposition": "optional-durable-owner-library",
+      "entrypointId": "apphost.continuity",
+      "importsAppHost": true,
+      "importsAppService": true,
+      "omissionOwner": null,
+      "packagingBinding": null,
+      "source": "src/loushang/apphost/continuity.py",
+      "supportStatus": "explicit-library",
+      "surface": "continuity-composition"
+    },
+    {
+      "disposition": "explicit-product-adapter-library",
+      "entrypointId": "coding.appservice-adapter",
+      "importsAppHost": true,
+      "importsAppService": true,
+      "omissionOwner": null,
+      "packagingBinding": null,
+      "source": "src/loushang/coding/appservice_adapter.py",
+      "supportStatus": "product-integration",
+      "surface": "product-adapter"
+    },
+    {
+      "disposition": "explicit-foreground-composition-library",
+      "entrypointId": "coding.hosted-application",
+      "importsAppHost": true,
+      "importsAppService": true,
+      "omissionOwner": null,
+      "packagingBinding": null,
+      "source": "src/loushang/coding/hosted_application.py",
+      "supportStatus": "product-integration",
+      "surface": "composition"
+    },
+    {
+      "disposition": "explicit-durable-composition-library",
+      "entrypointId": "coding.hosted-continuity",
+      "importsAppHost": true,
+      "importsAppService": true,
+      "omissionOwner": null,
+      "packagingBinding": null,
+      "source": "src/loushang/coding/hosted_continuity.py",
+      "supportStatus": "product-integration",
+      "surface": "continuity-composition"
+    },
+    {
+      "disposition": "explicit-hosted-profile-library",
+      "entrypointId": "harnesstui.hosted-mux",
+      "importsAppHost": false,
+      "importsAppService": false,
+      "omissionOwner": null,
+      "packagingBinding": null,
+      "source": "src/loushang/harnesstui/mux/profile.py",
+      "supportStatus": "explicit-library",
+      "surface": "presentation-profile"
+    },
+    {
+      "disposition": "explicit-hosting-canary",
+      "entrypointId": "coding.apphost.canary",
+      "importsAppHost": true,
+      "importsAppService": false,
+      "omissionOwner": null,
+      "packagingBinding": "project.scripts.loushang",
+      "source": "src/loushang/coding/apphost_canary.py",
+      "supportStatus": "installed-subcommand",
+      "surface": "canary"
+    },
+    {
+      "disposition": "current-default-explicit-canary",
+      "entrypointId": "coding.cli",
+      "importsAppHost": false,
+      "importsAppService": false,
+      "omissionOwner": "current",
+      "packagingBinding": "project.scripts.loushang",
+      "source": "src/loushang/coding/cli/__main__.py",
+      "supportStatus": "installed",
+      "surface": "cli"
+    },
+    {
+      "disposition": "current-only",
+      "entrypointId": "coding.tui",
+      "importsAppHost": false,
+      "importsAppService": false,
+      "omissionOwner": "current",
+      "packagingBinding": "project.scripts.loushang-tui",
+      "source": "src/loushang/coding/ui/cli.py",
+      "supportStatus": "installed",
+      "surface": "tui"
+    },
+    {
+      "disposition": "current-only",
+      "entrypointId": "coding.sdk",
+      "importsAppHost": false,
+      "importsAppService": false,
+      "omissionOwner": "current",
+      "packagingBinding": null,
+      "source": "src/loushang/coding/__init__.py",
+      "supportStatus": "supported-library",
+      "surface": "sdk"
+    },
+    {
+      "disposition": "current-only",
+      "entrypointId": "harnesstui.embedded",
+      "importsAppHost": false,
+      "importsAppService": false,
+      "omissionOwner": "current",
+      "packagingBinding": null,
+      "source": "src/loushang/harnesstui/conversation/application_host.py",
+      "supportStatus": "embedded-library",
+      "surface": "presentation-profile"
+    }
+  ],
+  "inventoryVersion": 6
+}

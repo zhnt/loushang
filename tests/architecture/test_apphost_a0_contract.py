@@ -16,6 +16,7 @@ APPHOST_MODULES = {
 }
 APPHOST_OPTIONAL_MODULES = {
     APPHOST_ROOT / "application.py",
+    APPHOST_ROOT / "continuity.py",
     APPHOST_ROOT / "hosted.py",
 }
 HARNESS_SESSION_ADAPTER = Path("src/loushang/apphost/integrations/harness_session.py")
@@ -359,7 +360,7 @@ def test_a0_1_create_and_profile_boundaries_preserve_owner_authority() -> None:
     assert "close" not in profile_members
 
 
-def test_a0_1_has_only_the_reviewed_g8_through_g12_consumers() -> None:
+def test_a0_1_has_only_the_reviewed_g8_through_g13_consumers() -> None:
     consumers = {
         path
         for path in Path("src/loushang").rglob("*.py")
@@ -371,6 +372,7 @@ def test_a0_1_has_only_the_reviewed_g8_through_g12_consumers() -> None:
         Path("src/loushang/coding/apphost_product.py"),
         Path("src/loushang/coding/appservice_adapter.py"),
         Path("src/loushang/coding/hosted_application.py"),
+        Path("src/loushang/coding/hosted_continuity.py"),
     }
     reverse_adapter_consumers = {
         path

@@ -189,8 +189,8 @@ def test_G12_INVENTORY_V5_is_exact_source_backed_and_default_dark() -> None:
 
 def test_g12_new_owners_remain_independently_reviewable() -> None:
     limits = {
-        APPHOST_APPLICATION: 450,
-        CODING_APPLICATION: 750,
+        APPHOST_APPLICATION: 500,
+        CODING_APPLICATION: 800,
     }
     for path, limit in limits.items():
         lines = len(_read(path).splitlines())

@@ -3,6 +3,7 @@
 [Architecture](../README.md) · [AppHost](README.md) ·
 [G12 Foreground Hosted Application](foreground-hosted-application-g12.md) ·
 [AppService](../appservice/README.md) ·
+[Inventory v6](durable-hosted-application-continuity-g13-entrypoint-inventory.json) ·
 [Hosted Application Support Boundary](../hosting/key-designs/hosted-application-support-boundary.md)
 
 ## Status
@@ -14,7 +15,7 @@
 - Parent: Loushang application architecture
 - Authority: normative accepted design
 - Design status: accepted
-- Implementation status: partial — G13.1--G13.2 complete
+- Implementation status: implemented — G13.0--G13.4 complete
 - Activation status: explicit process-local recoverable library only
 - Owner: Loushang AppService architecture with AppHost, Product, and storage
   boundary review
@@ -57,8 +58,8 @@ move continuity authority into Hosting or AppServer.
 
 | Plane | Statement |
 | --- | --- |
-| Facts | G11 owns process-local named mux/session semantics. G12 composes one explicit foreground AppService with AppHost canonical routing and an in-process client. G13.1 implements strict record/lease ports and the exact-root private JSON store; G13.2 implements optional commit-before-publish AppService mutation and all-or-nothing recovery. The outer AppHost lease/application owner is not yet implemented. |
-| Current | A directly composed continuity-enabled AppService can persist and recover named coordination while its caller retains the lease. G12 still has no outer continuity lifecycle owner, so its standard foreground constructor remains process-local. |
+| Facts | G11 owns process-local named mux/session semantics. G12 composes one explicit foreground AppService with AppHost canonical routing and an in-process client. G13 implements the strict record/store, commit-before-publish AppService mutation, all-or-nothing recovery, lease-last AppHost owner, Coding current-generation composition and fresh Harnesstui reattach canary. |
+| Current | An explicitly constructed G13 application can retain named coordination through runtime/process-object loss and recover canonical cwd/user-home Sessions into a fresh current AppHost generation. The G12 constructor and every installed Current route remain unchanged and process-local/default-dark. |
 | Target | One explicit G13 application key has a single fenced writer. Committed MuxSpace/session desired state survives process loss. A fresh G13 runtime acquires a new owner epoch, resumes canonical Sessions under the current admitted Product generation, publishes the complete recovered graph, and accepts a fresh attachment. |
 | Delta | Add versioned coordination records, an exclusive store lease, commit-before-publication mutations, all-or-nothing recovery, Product integration and bounded evidence. External transport, process supervision and active-execution recovery remain future deltas. |
 
@@ -85,7 +86,7 @@ move continuity authority into Hosting or AppServer.
 | --- | --- | --- |
 | `loushang.appservice.continuity` | immutable desired-state values, strict codec, store/lease ports, exact-root JSON adapter and record listing | Product generation, Session storage, AppHost routing, process/service records, attachments or UI |
 | `loushang.appservice.runtime` | optional commit-before-publish coordination, all-or-nothing restore, process-local live MuxSpace/Session owners | path discovery, file-lock mechanics, Product lookup, process continuity or transport |
-| `loushang.apphost.application` optional G13 edge | continuity activation, published recovery-attempt owner, lease lifetime, recoverable AppService construction and settlement after G12 owners | record schema, Product recovery policy, Hosting, listener or presentation |
+| `loushang.apphost.continuity` optional G13 edge | continuity activation, published recovery-attempt owner, lease lifetime, recoverable AppService construction and settlement after G12 owners | record schema, Product recovery policy, Hosting, listener or presentation |
 | Product integration edge | current Product generation admission plus canonical resume implementation | generic continuity schema, mux policy, store path resolution or daemon control |
 | Product/Harness Session owner | transcript, Blob, Session and execution recovery truth | MuxSpace/application registry or store lease |
 | AppServer | future connection/listener owner | continuity store, recovery orchestration or process lifetime |
@@ -103,11 +104,13 @@ application.
 appservice.continuity -> appserver.protocol + standard library
 appservice.runtime -> appservice.continuity + appserver.protocol
 apphost.application -> apphost core + appservice + appserver.client
-Product recovery edge -> apphost.application + appservice.continuity + Product public ports
+apphost.continuity -> apphost.application + appservice + appserver.client
+Product recovery edge -> apphost.continuity + appservice.continuity + Product public ports
 
 appservice.continuity -/-> AppHost / Hosting / Product / Harness / Harnesstui / TUI
 appservice.runtime -/-> AppHost / Hosting / Product / Harness / Harnesstui / TUI
 apphost.application -/-> Hosting / Product / Harness / Harnesstui / TUI
+apphost.continuity -/-> Hosting / Product / Harness / Harnesstui / TUI
 Hosting -/-> appservice / appserver / apphost / Product / UI
 AppServer -/-> appservice.continuity / AppHost / Hosting / Product / UI
 ```
@@ -369,6 +372,46 @@ attachments and active execution remain deliberately absent from the record;
 canonical resume, strict storage, exact retry debt and affected gates are
 explicit. No unresolved high or medium finding remains, so implementation may
 proceed inside the requirements and non-goals above.
+
+## G13.4 Implementation Review
+
+The independent architecture/authority, lifecycle/concurrency, and
+contract/evidence views found six medium risks in the first implementation
+pass. All were fixed before closure:
+
+- **Architecture and authority:** the first Coding composition admitted its
+  AppHost catalog before acquiring the application lease. Coding now acquires
+  the exact lease as its first effect and transfers that capability into the
+  Product-neutral AppHost continuity attempt; Session recovery and every
+  mutation therefore occur only behind the one-writer fence.
+- **Architecture and authority:** the continuity runtime constructor could be
+  invoked without passing the explicit activation-bearing attempt. Runtime
+  construction is now token-guarded, while AppHost's core facade, Hosting,
+  AppServer and all installed routes remain unaware of the optional edge.
+- **Lifecycle, concurrency and safety:** a close racing the nested
+  AppHost-to-Coding attempt handoff could leave a successfully recovered
+  runtime between owners. Each layer now records the received owner before
+  returning it and closes that exact owner when publication loses the race.
+- **Lifecycle, concurrency and safety:** a deterministic ID factory could
+  replay an attachment ID and controller generation after restart. Every new
+  continuity-mode live ID is now namespaced by a one-way digest of the fresh
+  lease owner epoch; persisted mux/member IDs remain stable, while stale
+  pre-restart attachment authority deterministically fails.
+- **Lifecycle, concurrency and safety:** recovery originally risked losing a
+  raw Session port when adaptation failed and could return a closed service in
+  an open/close race. The published recovery attempt now retains ordered,
+  retryable raw-port debt and makes close win before publication.
+- **Contract, compatibility and evidence:** unexpected store exceptions,
+  monolithic line budgets and pre-G13 exact package inventories obscured the
+  new boundary. Errors are redacted to stable codes; core and continuity
+  budgets are independent; inventory v6 is source-backed/default-dark; and
+  Linux, macOS and Windows gates cover the affected portable surfaces.
+
+The same three views were rerun over the corrected source, tests, inventory and
+parent status. G12 construction remains source/behavior compatible, canonical
+cwd and user-home recovery always uses the current generation, lease release is
+last, and no transport/process/default authority was added. No unresolved high
+or medium finding remains.
 
 ## Exit Gate
 

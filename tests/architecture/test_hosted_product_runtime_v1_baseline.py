@@ -431,6 +431,7 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "runtime.py",
         "hosted.py",
         "application.py",
+        "continuity.py",
     }
     assert {
         path.relative_to(APPSERVER_SOURCE).as_posix()
@@ -448,7 +449,15 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
     assert {
         path.relative_to(APPSERVICE_SOURCE).as_posix()
         for path in APPSERVICE_SOURCE.rglob("*.py")
-    } == {"__init__.py", "client.py", "ports.py", "runtime.py"}
+    } == {
+        "__init__.py",
+        "client.py",
+        "continuity.py",
+        "continuity_file.py",
+        "continuity_runtime.py",
+        "ports.py",
+        "runtime.py",
+    }
 
     compatibility = _read(HARNESS_SOURCE / "workspace/process/hosting_compat.py")
     selection = _read(WORKER_SOURCE / "owner_selection.py")
@@ -493,6 +502,7 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         Path("src/loushang/coding/apphost_product.py"),
         Path("src/loushang/coding/appservice_adapter.py"),
         Path("src/loushang/coding/hosted_application.py"),
+        Path("src/loushang/coding/hosted_continuity.py"),
     }
     retained_fences = " ".join(_section(inventory, "Retained Fences").split())
     for statement in (

@@ -19,11 +19,12 @@
 - Parent: `loushang`
 - Authority: normative — accepted AppHost scope boundary
 - Design status: accepted
-- Implementation status: partial — Hosted Product Runtime G0--G10 and the G12
-  foreground hosted application are implemented; A0.5 remains not-started
+- Implementation status: partial — Hosted Product Runtime G0--G10, G12
+  foreground application and G13 durable application continuity are
+  implemented; A0.5 remains not-started
 - Activation status: default-dark; the exact installed G10 canary selects
-  Hosting and G12 is available only through explicit library construction,
-  while ordinary CLI, TUI, SDK, AppService, and AppServer routes do not
+  Hosting, while G12/G13 are available only through explicit library
+  construction and ordinary CLI, TUI, SDK, AppService, and AppServer routes do not
 - Owner: Loushang AppHost architecture
 
 ## Scope
@@ -128,14 +129,14 @@ defines the first explicit optional composition of AppHost, AppService and a
 Coding-owned foreground Session resolver. It is a process-local library only:
 no transport, Hosting owner, installed route or default change is claimed.
 
-The partially implemented
+The implemented
 [G13 Durable Hosted Continuity](durable-hosted-application-continuity-g13.md)
 target adds an optional application-record lease around the same composition.
 It keeps desired MuxSpace/Session coordination in AppService, always re-admits
 the current AppHost generation, and leaves Product/Harness as Session recovery
-truth. G13.1--G13.2 provide the strict store and uncomposed AppService
-transaction/recovery kernel; the AppHost/Product owner is pending. It grants no
-transport or process owner.
+truth. `apphost.continuity` owns the lease-last lifecycle and Coding supplies
+the current-generation canonical recovery edge. It grants no transport or
+process owner and remains absent from installed routes.
 
 ## Target
 
@@ -296,8 +297,8 @@ after Product/OEM admission, never through a derived module name.
 | G12.0 | optional foreground hosted-application boundary, owner order, threat model and design review | accepted |
 | G12.1--G12.4 | AppHost application owner, Coding foreground resolver, explicit vertical canary and promotion evidence | implemented; explicit library only |
 | G13.0 | durable coordination record, one-writer lease, atomic recovery, retirement boundary and design review | accepted |
-| G13.1--G13.2 | continuity store and AppService transactions/recovery | implemented; uncomposed explicit library only |
-| G13.3--G13.4 | AppHost/Product composition, Harnesstui restart evidence and closure | not started |
+| G13.1--G13.2 | continuity store and AppService transactions/recovery | implemented |
+| G13.3--G13.4 | AppHost/Product composition, Harnesstui restart evidence and closure | implemented; explicit library only |
 
 ## Evidence
 

@@ -65,6 +65,7 @@ def test_g13_design_has_closed_ownership_and_recovery_order() -> None:
     for boundary in (
         "appservice.continuity -> appserver.protocol + standard library",
         "appservice.runtime -> appservice.continuity + appserver.protocol",
+        "apphost.continuity -> apphost.application + appservice + appserver.client",
         "appservice.continuity -/-> AppHost / Hosting / Product / Harness / Harnesstui / TUI",
         "AppServer -/-> appservice.continuity / AppHost / Hosting / Product / UI",
         "lease.commit(expected_revision, next_record)",
@@ -87,10 +88,10 @@ def test_g13_accepted_target_is_adopted_with_current_scope() -> None:
     design_name = "durable-hosted-application-continuity-g13.md"
     assert design_name in _read_path(APPHOST)
     assert design_name in _read_path(APPSERVICE)
-    assert "partially implemented G13" in _read_path(AOD)
+    assert "implemented G13" in _read_path(AOD)
     ledger = _read_path(LEDGER)
-    assert "complete the accepted G13 outer continuity owner" in ledger
-    assert "G13.1--G13.2" in ledger
+    assert "G13 implements strict one-writer storage" in ledger
+    assert "G11--G13 implemented designs" in ledger
 
 
 def _read_path(path: Path) -> str:
