@@ -333,10 +333,21 @@ asyncio.run(hold())
         assert process.wait(timeout=10) != 0
 
         store = JsonFileApplicationContinuityStoreV1(root)
-        lease = await store.acquire(
-            application_id="coding.default",
-            owner_epoch="parent",
-        )
+        release_deadline = time.monotonic() + 5
+        while True:
+            try:
+                lease = await store.acquire(
+                    application_id="coding.default",
+                    owner_epoch="parent",
+                )
+                break
+            except ApplicationContinuityError as error:
+                if (
+                    error.code is not ApplicationContinuityErrorCodeV1.LOCKED
+                    or time.monotonic() >= release_deadline
+                ):
+                    raise
+                time.sleep(0.02)
         await lease.close()
     finally:
         if process.poll() is None:

@@ -411,8 +411,10 @@ pass and retained platform gate. All were fixed before closure:
   for child stdout, and the oversized-record case exposed its 1 MiB payload as
   a pytest node identifier. The proof now retains the lease explicitly,
   publishes readiness through a private marker, and converts child exit or a
-  bounded readiness deadline into a diagnostic failure; hostile record samples
-  use short semantic IDs, keeping Windows collection, logs and reports bounded.
+  bounded readiness deadline into a diagnostic failure. Its post-crash probe
+  also allows a bounded Windows kernel-release interval without weakening the
+  immediate live-owner exclusion check. Hostile record samples use short
+  semantic IDs, keeping Windows collection, logs and reports bounded.
 - **Contract, compatibility and evidence:** unexpected store exceptions,
   monolithic line budgets and pre-G13 exact package inventories obscured the
   new boundary. Errors are redacted to stable codes; core and continuity
