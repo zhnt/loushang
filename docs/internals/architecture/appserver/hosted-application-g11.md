@@ -78,8 +78,9 @@ transport later.
 | Component | Owns | Must not own |
 | --- | --- | --- |
 | `loushang.appserver.protocol` | client-safe values, version, typed errors, strict JSON codec and schema fixture | service dispatch, Product objects, listener/framing, lifecycle |
-| `loushang.appserver.client` | transport-neutral AppClient protocol and in-process semantic adapter | sockets, retries, Product resolution, presentation |
+| `loushang.appserver.client` | transport-neutral AppClient protocol only | sockets, retries, AppService implementation, Product resolution, presentation |
 | `loushang.appservice` | MuxSpace registry, per-aggregate coordination, Session owners, logical attachments/mailboxes, attach barrier | transport connections, Product policy, AppHost or OS process lifecycle, UI state |
+| `loushang.appservice.client` | in-process AppClient semantic adapter over one injected AppService | serialization, listener/framing, Product resolution, presentation |
 | Product hosted adapter | public Product/Harness ports, Product-specific projection, identity-envelope preservation | mux policy, transport, AppHost core changes, presentation |
 | `loushang.harnesstui.mux` | hosted window state, reducer, controller, explicit profile factory | Session implementation, AppService construction, sockets, daemon control |
 | AppHost | future outer composition of admitted Product Session ports and AppService | App protocol behavior, mux semantics, Product internals |
@@ -90,6 +91,7 @@ transport later.
 appserver.protocol -> Python standard library
 appserver.client -> appserver.protocol
 appservice -> appserver.protocol + appserver.ports
+appservice.client -> appservice + appserver.client
 coding hosted adapter -> appserver.protocol + appservice ports + public Harness
 harnesstui.mux -> appserver.client + appserver.protocol + Harnesstui/TUI presentation
 future outer composition -> AppHost + AppService + Product adapter
@@ -167,7 +169,7 @@ is hidden by a best-effort partial attachment.
 | --- | --- | --- |
 | G11.0 | accepted boundary, requirements, inventory contract, threat model, parent adoption, architecture guards | three-view design review has no unresolved high/medium finding; no production source change |
 | G11.1 | protocol values/errors/codec/schema and AppClient contract | strict round trips and rejection matrix; no runtime/listener imports |
-| G11.2 | AppService registry, per-mux coordination, Session owner, attach barrier, bounded mailbox, InProcessAppClient | multi-space/session concurrency, overflow, detach, cancellation, cleanup and ordering tests |
+| G11.2 | AppService registry, per-mux coordination, Session owner, attach barrier, bounded mailbox, and AppService-owned InProcessAppClient | multi-space/session concurrency, overflow, detach, cancellation, cleanup and ordering tests |
 | G11.3 | Coding hosted Session adapter and identity/scope compatibility fixtures | public Harness-only adapter, create/resume/cwd/user-home evidence, bounded projection |
 | G11.4 | explicit Harnesstui Hosted Mux Profile, reducer/controller/playback, inventory v4 and promotion evidence | Embedded omission, hosted behavior, dependency graph, cross-platform-safe tests and three-view implementation review |
 
