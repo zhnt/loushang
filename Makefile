@@ -164,6 +164,7 @@ HOSTING_TEST_PATHS := \
 	tests/architecture/test_hosting_h65_windows_lpac_design.py \
 	tests/architecture/test_hosting_architecture_baseline.py
 APPHOST_SOURCES := \
+	src/loushang/foundation/observability/identity.py \
 	src/loushang/coding/cli/hosted.py \
 	src/loushang/coding/hosted_catalog.py \
 	src/loushang/coding/hosted_session.py \
@@ -182,6 +183,7 @@ APPHOST_SOURCES := \
 	src/loushang/harnesstui/mux \
 	src/loushang/coding/cli/apphost.py
 APPHOST_TEST_PATHS := \
+	tests/foundation/observability/test_identity.py \
 	tests/coding/test_hosted_command.py \
 	tests/coding/test_hosted_subprocess.py \
 	tests/coding/test_hosted_catalog.py \
@@ -221,6 +223,7 @@ APPHOST_LINT_SUPPORT := \
 	scripts/dev/verify_evidence_manifest.py \
 	tests/harness/worker/test_coding_product_worker_canary.py
 APPSERVICE_SOURCES := \
+	src/loushang/foundation/observability/identity.py \
 	src/loushang/coding/cli/hosted.py \
 	src/loushang/apphost/foreground.py \
 	src/loushang/coding/hosted_catalog.py \
@@ -236,6 +239,7 @@ APPSERVICE_SOURCES := \
 	src/loushang/coding/hosted_continuity.py \
 	src/loushang/harnesstui/mux
 APPSERVICE_TEST_PATHS := \
+	tests/foundation/observability/test_identity.py \
 	tests/coding/test_hosted_command.py \
 	tests/coding/test_hosted_subprocess.py \
 	tests/apphost/test_foreground.py \

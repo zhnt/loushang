@@ -461,3 +461,21 @@ cancelling or duplicating that task. A later close joins the same owner.
 This does not grant AppServer process-termination authority. The native
 Product matrix also now covers EOF while the actual approval broker waits,
 followed by a fresh process without restored approval or active-turn authority.
+
+On `3548ecda`, the full local AppHost gate passed 420 cases (one unrelated
+existing skip). A separately built non-editable wheel, installed with the
+locked production dependencies into a fresh virtual environment, passed all
+ten real Product subprocess cases with source-path injection disabled. Module
+origin and distribution `direct_url.json` confirmed imports from the installed
+wheel, not the worktree. This is additional Linux evidence, not Windows proof.
+
+The diagnostic Windows run
+[`34124630815`](https://github.com/zhnt/loushang/actions/runs/34124630815)
+located the member-open stall in the existing Foundation runtime-identity Git
+probe, inside the unbounded Windows `communicate()` used by `subprocess.run`
+after its two-second timeout. The probe inherited the application's stdin.
+Git identity/status probes now explicitly receive `DEVNULL`, never the Hosted
+protocol pipe. A regression first proved the inherited-stdin defect; the
+Foundation regression is included in both AppHost and three-platform
+AppService gates. Native revalidation remains required before claiming that
+this change resolves the observed Windows stall.

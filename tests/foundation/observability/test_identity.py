@@ -1,8 +1,32 @@
 from __future__ import annotations
 
+import subprocess
 from types import SimpleNamespace
 
 from loushang.foundation.observability.identity import collect_runtime_identity
+
+
+def test_git_identity_probes_never_inherit_application_stdin(monkeypatch, tmp_path):
+    import loushang.foundation.observability.identity as identity_module
+
+    calls = []
+
+    def run(argv, **kwargs):
+        calls.append(argv)
+        assert kwargs.get("stdin") == subprocess.DEVNULL
+        assert kwargs["stdout"] == subprocess.PIPE
+        assert kwargs["stderr"] == subprocess.DEVNULL
+        assert kwargs["timeout"] == 2
+        return SimpleNamespace(returncode=0, stdout="identity\n")
+
+    monkeypatch.setattr(identity_module.subprocess, "run", run)
+    identity_module.git_identity(tmp_path)
+    assert [call[3:] for call in calls] == [
+        ["rev-parse", "--show-toplevel"],
+        ["rev-parse", "--abbrev-ref", "HEAD"],
+        ["rev-parse", "HEAD"],
+        ["status", "--porcelain"],
+    ]
 
 
 def test_collect_runtime_identity_is_not_coding_specific(tmp_path) -> None:
