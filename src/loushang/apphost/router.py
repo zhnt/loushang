@@ -575,6 +575,7 @@ class AppHostRouterV1:
                     self._cleanup,
                 )
             stack.push_closer(candidate.closer)
+            _validate_created_projection(request, candidate.projection)
             return await _prepare(
                 admission,
                 candidate,
@@ -722,6 +723,7 @@ class AppHostRouterV1:
                 envelope = _canonical_envelope(candidate)
                 if envelope.product_id != request.product_id:
                     raise ProductIncompatibleError()
+                _validate_created_projection(request, candidate.projection)
                 if (
                     provisional is not None
                     and provisional.descriptor.compatibility_id
@@ -748,6 +750,26 @@ class AppHostRouterV1:
                 raise
         finally:
             self._finish_operation_now()
+
+
+def _validate_created_projection(
+    request: SessionCreateRequestV1,
+    projection: SessionIdentityProjectionV1,
+) -> None:
+    envelope = projection.envelope
+    if (
+        projection.mode is not SessionCandidateMode.CANONICAL
+        or type(envelope) is not SessionIdentityEnvelopeV1
+        or (
+            request.requested_continuity_id is not None
+            and envelope.continuity_id != request.requested_continuity_id
+        )
+        or (
+            request.requested_scope is not None
+            and projection.scope is not request.requested_scope
+        )
+    ):
+        raise ProductIncompatibleError()
 
 
 async def _prepare(
