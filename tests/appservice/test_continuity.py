@@ -6,6 +6,7 @@ import os
 import stat
 import subprocess
 import sys
+import time
 from collections.abc import Awaitable, Callable
 from functools import wraps
 from pathlib import Path
@@ -280,29 +281,45 @@ async def test_G13_LEASE_FENCE_process_death_releases_the_os_lock(
     tmp_path: Path,
 ) -> None:
     root = tmp_path / "continuity"
+    ready = tmp_path / "child-ready"
     source = """
 import asyncio
-import os
 import sys
 from pathlib import Path
 from loushang.appservice import JsonFileApplicationContinuityStoreV1
 
 async def hold():
     store = JsonFileApplicationContinuityStoreV1(Path(sys.argv[1]))
-    await store.acquire(application_id="coding.default", owner_epoch="child")
-    os.write(1, b"ready\\n")
+    lease = await store.acquire(application_id="coding.default", owner_epoch="child")
+    Path(sys.argv[2]).write_bytes(b"ready")
     await asyncio.Event().wait()
+    await lease.close()
 
 asyncio.run(hold())
 """
     process = subprocess.Popen(
-        [sys.executable, "-c", source, str(root)],
-        stdout=subprocess.PIPE,
+        [sys.executable, "-c", source, str(root), str(ready)],
+        stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
     )
     try:
-        assert process.stdout is not None
-        assert process.stdout.readline() == b"ready\n"
+        deadline = time.monotonic() + 10
+        while not ready.is_file():
+            if process.poll() is not None:
+                assert process.stderr is not None
+                pytest.fail(
+                    "continuity lease child exited before readiness: "
+                    + process.stderr.read().decode("utf-8", errors="replace")
+                )
+            if time.monotonic() >= deadline:
+                process.kill()
+                process.wait(timeout=10)
+                assert process.stderr is not None
+                pytest.fail(
+                    "continuity lease child did not become ready: "
+                    + process.stderr.read().decode("utf-8", errors="replace")
+                )
+            time.sleep(0.02)
         process.kill()
         assert process.wait(timeout=10) != 0
 

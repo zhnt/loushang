@@ -376,7 +376,7 @@ proceed inside the requirements and non-goals above.
 ## G13.4 Implementation Review
 
 The independent architecture/authority, lifecycle/concurrency, and
-contract/evidence views found seven medium risks across the implementation
+contract/evidence views found eight medium risks across the implementation
 pass and retained platform gate. All were fixed before closure:
 
 - **Architecture and authority:** the first Coding composition admitted its
@@ -406,6 +406,12 @@ pass and retained platform gate. All were fixed before closure:
   its non-blocking lock attempt. The lock now uses a fixed offset outside file
   content, preserving exact one-writer fencing and crash release without
   making the lock file itself inaccessible.
+- **Contract, compatibility and evidence:** the process-death proof originally
+  waited without a deadline for child stdout, so a platform-specific child
+  startup failure could consume the whole CI job without preserving useful
+  evidence. It now retains the lease explicitly, publishes readiness through a
+  private marker, and converts child exit or a bounded readiness deadline into
+  a diagnostic test failure.
 - **Contract, compatibility and evidence:** unexpected store exceptions,
   monolithic line budgets and pre-G13 exact package inventories obscured the
   new boundary. Errors are redacted to stable codes; core and continuity
