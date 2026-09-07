@@ -5,6 +5,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import wraps
+from pathlib import Path
 from typing import cast
 
 import pytest
@@ -28,6 +29,7 @@ from loushang.apphost.application import (
     HostedApplicationActivationV1,
     HostedApplicationRuntimeV1,
 )
+from loushang.apphost.continuity import HostedApplicationContinuityActivationV1
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
     AppServiceError,
@@ -41,6 +43,7 @@ from loushang.appserver.protocol import (
     TranscriptRecordKindV1,
     TranscriptRecordV1,
 )
+from loushang.appservice import JsonFileApplicationContinuityStoreV1
 from loushang.coding.appservice_adapter import (
     CodingHostedEventProjectionV1,
     CodingHostedSnapshotProjectionV1,
@@ -50,6 +53,10 @@ from loushang.coding.hosted_application import (
     CODING_HOSTED_APPLICATION_PROFILE_ID,
     CodingForegroundHostedApplicationRequestV1,
     create_coding_foreground_hosted_application,
+)
+from loushang.coding.hosted_continuity import (
+    CodingHostedContinuityRequestV1,
+    create_coding_hosted_continuity_attempt,
 )
 from loushang.harness.events import RuntimeEvent
 from loushang.harnesstui.mux import open_hosted_mux_profile
@@ -61,11 +68,11 @@ _COMPATIBILITY = "coding-hosted-v1"
 
 
 def _async_test(
-    function: Callable[[], Awaitable[None]],
-) -> Callable[[], None]:
+    function: Callable[..., Awaitable[None]],
+) -> Callable[..., None]:
     @wraps(function)
-    def wrapper() -> None:
-        asyncio.run(function())
+    def wrapper(*args: object, **kwargs: object) -> None:
+        asyncio.run(function(*args, **kwargs))
 
     return wrapper
 
@@ -92,8 +99,10 @@ class _AdmissionSource:
         kind: AppHostAdmissionSubjectKind,
         subject_id: str,
         events: list[str],
+        *,
+        generation_id: str = _GENERATION,
     ) -> None:
-        self.identity = AdmissionIdentityV1(_GENERATION, kind, subject_id)
+        self.identity = AdmissionIdentityV1(generation_id, kind, subject_id)
         self.events = events
         self.pins: list[_Pin] = []
 
@@ -455,6 +464,40 @@ async def _environment(*, fail_close_once: bool = False) -> _Environment:
     return _Environment(app, sessions, session_factory, events)
 
 
+def _foreground_request(
+    *,
+    generation_id: str,
+    sessions: _CanonicalSessions,
+    session_factory: _SessionFactory,
+    events: list[str],
+    ids: _Ids,
+) -> CodingForegroundHostedApplicationRequestV1:
+    return CodingForegroundHostedApplicationRequestV1(
+        activation=HostedApplicationActivationV1(),
+        generation_id=generation_id,
+        product_version="1",
+        compatibility_id=_COMPATIBILITY,
+        product_admission_source=_AdmissionSource(
+            AppHostAdmissionSubjectKind.PRODUCT,
+            "coding",
+            events,
+            generation_id=generation_id,
+        ),
+        profile_admission_source=_AdmissionSource(
+            AppHostAdmissionSubjectKind.PROFILE,
+            CODING_HOSTED_APPLICATION_PROFILE_ID,
+            events,
+            generation_id=generation_id,
+        ),
+        candidate_validator=_CandidateValidator(),
+        sessions=sessions,
+        session_factory=session_factory,
+        shutdown_budget=AppHostShutdownBudgetV1(2.0, 1.0),
+        operation_id_factory=lambda: f"operation-{generation_id}-{ids.value}",
+        service_id_factory=ids,
+    )
+
+
 def _spec(
     *,
     session_id: str | None = None,
@@ -661,3 +704,109 @@ async def test_G12_LEASE_CLOSE_retains_exact_binding_cleanup_debt() -> None:
     report = await environment.app.shutdown()
     assert report.completed is True
     assert environment.session_factory.bindings[0].closed == 2
+
+
+@_async_test
+async def test_G13_RESTART_CANARY_recovers_cwd_and_home_into_current_generation(
+    tmp_path: Path,
+) -> None:
+    store = JsonFileApplicationContinuityStoreV1(tmp_path / "applications")
+    sessions = _CanonicalSessions()
+    sessions.add(
+        session_id="home-session",
+        continuity_id="continuity-home",
+        scope=SessionDiscoveryScope.USER_GLOBAL_CANONICAL,
+        scope_fingerprint=_HOME_FINGERPRINT,
+    )
+
+    first_events: list[str] = []
+    first_factory = _SessionFactory(first_events)
+    first_attempt = create_coding_hosted_continuity_attempt(
+        CodingHostedContinuityRequestV1(
+            activation=HostedApplicationContinuityActivationV1(),
+            foreground=_foreground_request(
+                generation_id="generation-13-first",
+                sessions=sessions,
+                session_factory=first_factory,
+                events=first_events,
+                ids=_Ids(),
+            ),
+            application_id="coding.default",
+            owner_epoch="epoch-first",
+            store=store,
+        )
+    )
+    first = await first_attempt.open()
+    await first.client.create_mux(MuxCreateV1("dev"))
+    dev = await open_hosted_mux_profile(
+        first.client,
+        selector=MuxSelectorV1(name="dev"),
+    )
+    dev_state = await dev.open_member(_spec())
+    cwd_session_id = dev_state.windows[0].session_id
+    first_dev_attachment = dev_state.attachment_id
+
+    await first.client.create_mux(MuxCreateV1("home"))
+    home = await open_hosted_mux_profile(
+        first.client,
+        selector=MuxSelectorV1(name="home"),
+    )
+    home_state = await home.open_member(
+        _spec(
+            session_id="home-session",
+            scope=SessionScopeV1.USER_HOME,
+            continuity_id="continuity-home",
+        )
+    )
+    first_home_attachment = home_state.attachment_id
+    await dev.close()
+    await home.close()
+
+    first_report = await first.shutdown()
+    assert first_report.completed is True
+    summaries = await store.list_applications()
+    assert tuple(item.application_id for item in summaries) == ("coding.default",)
+
+    second_events: list[str] = []
+    second_factory = _SessionFactory(second_events)
+    second_attempt = create_coding_hosted_continuity_attempt(
+        CodingHostedContinuityRequestV1(
+            activation=HostedApplicationContinuityActivationV1(),
+            foreground=_foreground_request(
+                generation_id="generation-13-current",
+                sessions=sessions,
+                session_factory=second_factory,
+                events=second_events,
+                ids=_Ids(),
+            ),
+            application_id="coding.default",
+            owner_epoch="epoch-current",
+            store=store,
+        )
+    )
+    second = await second_attempt.open()
+    recovered_dev = await open_hosted_mux_profile(
+        second.client,
+        selector=MuxSelectorV1(name="dev"),
+    )
+    recovered_home = await open_hosted_mux_profile(
+        second.client,
+        selector=MuxSelectorV1(name="home"),
+    )
+
+    assert second.generation_id == "generation-13-current"
+    assert recovered_dev.state is not None
+    assert recovered_home.state is not None
+    assert recovered_dev.state.windows[0].session_id == cwd_session_id
+    assert recovered_home.state.windows[0].session_id == "home-session"
+    assert recovered_dev.state.attachment_id != first_dev_attachment
+    assert recovered_home.state.attachment_id != first_home_attachment
+    assert len(second_factory.bindings) == 2
+    assert sessions.list_scopes[-2:] == [
+        (SessionDiscoveryScope.CURRENT_DIRECTORY,),
+        (SessionDiscoveryScope.USER_GLOBAL_CANONICAL,),
+    ]
+
+    await recovered_dev.close()
+    await recovered_home.close()
+    assert (await second.shutdown()).completed is True

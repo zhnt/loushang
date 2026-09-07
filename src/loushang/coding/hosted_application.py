@@ -510,35 +510,7 @@ async def create_coding_foreground_hosted_application(
     catalog: AppHostCatalogV1 | None = None
     runtime: AppHostRuntimeV1 | None = None
     try:
-        product = ProductRegistrationV1(
-            descriptor=ProductDescriptorV1(
-                product_id=CODING_PRODUCT_ID,
-                product_version=request.product_version,
-                compatibility_id=request.compatibility_id,
-                supported_profile_ids=(request.profile_id,),
-            ),
-            factory=product_factory,
-            candidate_validator=request.candidate_validator,
-            admission_identity=AdmissionIdentityV1(
-                request.generation_id,
-                AppHostAdmissionSubjectKind.PRODUCT,
-                CODING_PRODUCT_ID,
-            ),
-            admission_source=request.product_admission_source,
-        )
-        profile = ProfileRegistrationV1(
-            descriptor=ProfileDescriptorV1(
-                request.profile_id,
-                request.profile_version,
-            ),
-            factory=CodingHostedProfileFactoryV1(request.profile_id),
-            admission_identity=AdmissionIdentityV1(
-                request.generation_id,
-                AppHostAdmissionSubjectKind.PROFILE,
-                request.profile_id,
-            ),
-            admission_source=request.profile_admission_source,
-        )
+        product, profile = _coding_hosted_registrations(request, product_factory)
         catalog = await AppHostCatalogV1.admit(
             AppHostCatalogInputV1(
                 generation_id=request.generation_id,
@@ -554,22 +526,73 @@ async def create_coding_foreground_hosted_application(
             operation_id_factory=request.operation_id_factory,
         )
         return create_hosted_application_runtime(
-            HostedApplicationRequestV1(
-                activation=request.activation,
-                product_id=CODING_PRODUCT_ID,
-                generation_id=request.generation_id,
-                apphost=runtime,
+            _coding_hosted_application_request(
+                request,
+                product_factory=product_factory,
+                runtime=runtime,
                 resolver=resolver,
-                product_owner=product_factory,
-                shutdown_budget=request.shutdown_budget,
-                phase_timeout_seconds=request.phase_timeout_seconds,
-                service_close_timeout_seconds=request.service_close_timeout_seconds,
-                service_id_factory=request.service_id_factory,
             )
         )
     except BaseException:
         await _settle_failed_construction(runtime, catalog, product_factory)
         raise
+
+
+def _coding_hosted_registrations(
+    request: CodingForegroundHostedApplicationRequestV1,
+    product_factory: CodingForegroundProductFactoryV1,
+) -> tuple[ProductRegistrationV1, ProfileRegistrationV1]:
+    product = ProductRegistrationV1(
+        descriptor=ProductDescriptorV1(
+            product_id=CODING_PRODUCT_ID,
+            product_version=request.product_version,
+            compatibility_id=request.compatibility_id,
+            supported_profile_ids=(request.profile_id,),
+        ),
+        factory=product_factory,
+        candidate_validator=request.candidate_validator,
+        admission_identity=AdmissionIdentityV1(
+            request.generation_id,
+            AppHostAdmissionSubjectKind.PRODUCT,
+            CODING_PRODUCT_ID,
+        ),
+        admission_source=request.product_admission_source,
+    )
+    profile = ProfileRegistrationV1(
+        descriptor=ProfileDescriptorV1(
+            request.profile_id,
+            request.profile_version,
+        ),
+        factory=CodingHostedProfileFactoryV1(request.profile_id),
+        admission_identity=AdmissionIdentityV1(
+            request.generation_id,
+            AppHostAdmissionSubjectKind.PROFILE,
+            request.profile_id,
+        ),
+        admission_source=request.profile_admission_source,
+    )
+    return product, profile
+
+
+def _coding_hosted_application_request(
+    request: CodingForegroundHostedApplicationRequestV1,
+    *,
+    product_factory: CodingForegroundProductFactoryV1,
+    runtime: AppHostRuntimeV1,
+    resolver: CodingAppHostHostedSessionResolverV1,
+) -> HostedApplicationRequestV1:
+    return HostedApplicationRequestV1(
+        activation=request.activation,
+        product_id=CODING_PRODUCT_ID,
+        generation_id=request.generation_id,
+        apphost=runtime,
+        resolver=resolver,
+        product_owner=product_factory,
+        shutdown_budget=request.shutdown_budget,
+        phase_timeout_seconds=request.phase_timeout_seconds,
+        service_close_timeout_seconds=request.service_close_timeout_seconds,
+        service_id_factory=request.service_id_factory,
+    )
 
 
 async def _settle_failed_construction(
