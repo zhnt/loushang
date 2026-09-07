@@ -24,6 +24,8 @@ from .continuity import (
     require_owner_epoch,
 )
 
+_WINDOWS_LOCK_OFFSET = 1 << 30
+
 
 class JsonFileApplicationContinuityStoreV1:
     """One private local record directory with per-application OS locks."""
@@ -316,9 +318,10 @@ def _reject_symlink(path: Path) -> None:
 def _lock_descriptor(descriptor: int) -> None:
     if os.name == "nt":
         msvcrt = import_module("msvcrt")
-        if os.fstat(descriptor).st_size == 0:
-            os.write(descriptor, b"\0")
-        os.lseek(descriptor, 0, os.SEEK_SET)
+        # Windows byte-range locks are mandatory.  Keep the lock outside file
+        # content so another contender can open the lock file and fail the
+        # non-blocking lock attempt instead of blocking on byte-zero access.
+        os.lseek(descriptor, _WINDOWS_LOCK_OFFSET, os.SEEK_SET)
         locking = getattr(msvcrt, "locking")
         locking(descriptor, getattr(msvcrt, "LK_NBLCK"), 1)
         return
@@ -333,7 +336,7 @@ def _lock_descriptor(descriptor: int) -> None:
 def _unlock_descriptor(descriptor: int) -> None:
     if os.name == "nt":
         msvcrt = import_module("msvcrt")
-        os.lseek(descriptor, 0, os.SEEK_SET)
+        os.lseek(descriptor, _WINDOWS_LOCK_OFFSET, os.SEEK_SET)
         locking = getattr(msvcrt, "locking")
         locking(descriptor, getattr(msvcrt, "LK_UNLCK"), 1)
         return

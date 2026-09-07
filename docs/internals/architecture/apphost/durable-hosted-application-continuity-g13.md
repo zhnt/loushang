@@ -376,8 +376,8 @@ proceed inside the requirements and non-goals above.
 ## G13.4 Implementation Review
 
 The independent architecture/authority, lifecycle/concurrency, and
-contract/evidence views found six medium risks in the first implementation
-pass. All were fixed before closure:
+contract/evidence views found seven medium risks across the implementation
+pass and retained platform gate. All were fixed before closure:
 
 - **Architecture and authority:** the first Coding composition admitted its
   AppHost catalog before acquiring the application lease. Coding now acquires
@@ -401,6 +401,11 @@ pass. All were fixed before closure:
   raw Session port when adaptation failed and could return a closed service in
   an open/close race. The published recovery attempt now retains ordered,
   retryable raw-port debt and makes close win before publication.
+- **Lifecycle, concurrency and safety:** the first Windows lease locked byte
+  zero, where mandatory range locking could block a second contender before
+  its non-blocking lock attempt. The lock now uses a fixed offset outside file
+  content, preserving exact one-writer fencing and crash release without
+  making the lock file itself inaccessible.
 - **Contract, compatibility and evidence:** unexpected store exceptions,
   monolithic line budgets and pre-G13 exact package inventories obscured the
   new boundary. Errors are redacted to stable codes; core and continuity
