@@ -479,3 +479,53 @@ protocol pipe. A regression first proved the inherited-stdin defect; the
 Foundation regression is included in both AppHost and three-platform
 AppService gates. Native revalidation remains required before claiming that
 this change resolves the observed Windows stall.
+
+Native run
+[`34125635750`](https://github.com/zhnt/loushang/actions/runs/34125635750)
+on `9660cb94` verified that the real Product member-open stall is resolved:
+all ten Product subprocess cases passed on Windows. The overall Windows job
+was still red (206 passed, four failed) because the newly included legacy
+Foundation tests expected native backslashes instead of the collector's
+existing normalized POSIX-form path strings. Only those expected strings are
+corrected; no production path contract or platform skip is changed.
+
+## Final Three-View Code Review
+
+Scope: the complete G14 delta from `1919c57f`, including the generic Transcript
+options, protocol/connection/client/stdio, Product catalog and Session binding,
+optional foreground owner, installed command and the causal diagnostic fix.
+This is a three-perspective review by one reviewer, not an independent-agent
+review claim. Full-head platform and integration delivery gates are still
+required after the final test corrections.
+
+1. **Architecture and authority:** AppServer remains standard-library-only
+   and accepts semantic and byte ports; it does not import AppService,
+   AppHost, Hosting, Harness or Products. AppHost's foreground edge is exact
+   and optional. Coding alone binds trusted scopes, settings, canonical
+   transcript identity and the real AgentSession. Header metadata is immutable
+   and cannot override reserved runtime/Product keys; default empty Sessions
+   remain deferred. No application registry becomes a second Session store,
+   no client path is executable authority, and no default owner is changed.
+   Stale inventories and the missing independent Product budget were fixed
+   without broad import or size exemptions.
+2. **Lifecycle and concurrency:** typed request dispatch reserves control
+   admission separately from ordinary calls; cancellation retains a bounded
+   pending slot until response/close. EOF fences and settles connection work
+   before application/Product shutdown and the G13 lease. Failed construction
+   retains cleanup ownership; failed/timed-out close stays retryable. Client
+   close's unbounded reader join was reproduced and fixed with single-flight,
+   retained, bounded-wait settlement. Native fault cases distinguish clean
+   exit from fatal cleanup and verify fresh recovery. Git diagnostics no
+   longer borrow the protocol's stdin; Windows native evidence confirms the
+   observed startup stall is gone.
+3. **Behavior and evidence:** installed help/start/EOF, real prompts and
+   streamed Harnesstui projection, real policy approval/denial, interruption,
+   EOF during an active turn or approval, conflicting writers, fatal cleanup,
+   cwd/home recovery and fresh attachment rejection are covered. A new
+   connection-level regression also exercises all 15 public AppClient methods
+   through framing, decoding and exact semantic dispatch; it verifies the
+   deliberate one-event wire poll independently of Product tests. A standalone
+   wheel passed all ten native Product cases outside the source import path.
+   Windows path-expectation corrections preserve the collector's existing
+   contract. Remaining work is final-head gate evidence and delivery, not an
+   unresolved code finding from these three perspectives.

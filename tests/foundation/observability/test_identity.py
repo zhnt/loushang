@@ -46,7 +46,7 @@ def test_collect_runtime_identity_is_not_coding_specific(tmp_path) -> None:
 
     assert identity["package_name"] == "example-product"
     assert identity["related_module_files"] == {
-        "integration": str(tmp_path / "plugin.py")
+        "integration": (tmp_path / "plugin.py").as_posix()
     }
     assert identity["path_candidates"] == []
     assert identity["launch_mode"] in {"console-script", "virtualenv-console-script"}
@@ -121,10 +121,10 @@ def test_collect_runtime_identity_marks_direct_entrypoint_active_outside_path(
         env={"PATH": str(shadowed.parent)},
     )
 
-    assert identity["entrypoint"] == str(active)
+    assert identity["entrypoint"] == active.as_posix()
     assert identity["path_candidates"] == [
-        {"path": str(active), "status": "active", "active": True},
-        {"path": str(shadowed), "status": "shadowed", "active": False},
+        {"path": active.as_posix(), "status": "active", "active": True},
+        {"path": shadowed.as_posix(), "status": "shadowed", "active": False},
     ]
 
 
@@ -152,7 +152,7 @@ def test_collect_runtime_identity_keeps_path_candidates_inactive_for_python_modu
 
     assert identity["launch_mode"] == "python-module"
     assert identity["path_candidates"] == [
-        {"path": str(path_candidate), "status": "shadowed", "active": False}
+        {"path": path_candidate.as_posix(), "status": "shadowed", "active": False}
     ]
 
 
@@ -177,6 +177,6 @@ def test_collect_runtime_identity_discovers_pathext_candidates(tmp_path) -> None
     )
 
     assert identity["path_candidates"] == [
-        {"path": str(active), "status": "active", "active": True},
-        {"path": str(shadowed), "status": "shadowed", "active": False},
+        {"path": active.as_posix(), "status": "active", "active": True},
+        {"path": shadowed.as_posix(), "status": "shadowed", "active": False},
     ]

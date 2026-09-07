@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from typing import cast
+from unittest.mock import create_autospec
 
 import pytest
 
@@ -18,9 +19,29 @@ from loushang.appserver.protocol import (
     AppRequestV1,
     AppResponseV1,
     AppServiceError,
+    AttachmentEventV1,
+    InteractionOutcomeV1,
+    InteractionRespondV1,
     InvalidAppMessageError,
+    MuxAttachmentV1,
+    MuxAttachV1,
+    MuxCloseV1,
+    MuxCreateV1,
+    MuxDetachV1,
     MuxListResultV1,
     MuxListV1,
+    MuxMemberCloseV1,
+    MuxMemberOpenV1,
+    MuxReadV1,
+    MuxSelectorV1,
+    MuxSpaceV1,
+    SessionEventKindV1,
+    SessionEventV1,
+    SessionIdentityV1,
+    SessionOpenSpecV1,
+    SessionScopeV1,
+    SessionSnapshotRequestV1,
+    SessionSnapshotV1,
     TurnInterruptV1,
     TurnTextV1,
     encode_request,
@@ -118,6 +139,74 @@ def test_G14_CONTROL_saturated_prompts_do_not_block_interrupt_or_replies() -> No
         assert await client.list_muxes() == MuxListResultV1(())
         await client.close()
         await serving
+
+    asyncio.run(asyncio.wait_for(scenario(), 3))
+
+
+def test_G14_WIRE_every_client_method_reaches_its_exact_semantic_target() -> None:
+    async def scenario() -> None:
+        identity = SessionIdentityV1("coding", "c", "s", SessionScopeV1.CWD, "a" * 64)
+        selector = MuxSelectorV1(name="dev")
+        mux = MuxSpaceV1("mux", "dev", 1, ())
+        snapshot = SessionSnapshotV1(identity, "Coding", 0, 0, False)
+        attachment = MuxAttachmentV1("a", mux, 1, ())
+        event = AttachmentEventV1(
+            "a", "m", SessionEventV1("s", 1, SessionEventKindV1.TURN_COMPLETED)
+        )
+        calls = (
+            ("create_mux", MuxCreateV1("dev"), mux),
+            ("list_muxes", None, MuxListResultV1((mux,))),
+            ("read_mux", MuxReadV1(selector), mux),
+            ("attach_mux", MuxAttachV1(selector), attachment),
+            ("detach_mux", MuxDetachV1("a", 1), AckV1()),
+            ("close_mux", MuxCloseV1(selector), AckV1()),
+            (
+                "open_member",
+                MuxMemberOpenV1(
+                    selector,
+                    SessionOpenSpecV1(
+                        "coding", "c", SessionScopeV1.CWD, "a" * 64, "Coding"
+                    ),
+                ),
+                mux,
+            ),
+            ("close_member", MuxMemberCloseV1(selector, "m"), mux),
+            ("snapshot_session", SessionSnapshotRequestV1("a", 1, "m"), snapshot),
+            ("start_turn", TurnTextV1("a", 1, "m", "start"), AckV1()),
+            ("steer_turn", TurnTextV1("a", 1, "m", "steer"), AckV1()),
+            ("follow_up_turn", TurnTextV1("a", 1, "m", "follow up"), AckV1()),
+            ("interrupt_turn", TurnInterruptV1("a", 1, "m"), AckV1()),
+            (
+                "respond_interaction",
+                InteractionRespondV1("a", 1, "m", "i", InteractionOutcomeV1.DENY),
+                AckV1(),
+            ),
+        )
+        method_names = {name for name, _, _ in calls} | {"read_events"}
+        assert method_names == {
+            name for name in vars(AppClientV1) if not name.startswith("_")
+        }
+        assert len(method_names) == len(AppOperationV1)
+        semantic = create_autospec(AppClientV1, instance=True)
+        for name, _, result in calls:
+            getattr(semantic, name).return_value = result
+        semantic.read_events.return_value = (event,)
+        client, serving, _, _ = await _connect(semantic)
+        try:
+            for name, request, result in calls:
+                args = () if request is None else (request,)
+                assert await getattr(client, name)(*args) == result
+                getattr(semantic, name).assert_awaited_once_with(*args)
+            assert await client.read_events(
+                attachment_id="a", controller_generation=1, limit=64
+            ) == (event,)
+            # The transport deliberately polls one bounded event per wire frame.
+            semantic.read_events.assert_awaited_once_with(
+                attachment_id="a", controller_generation=1, limit=1
+            )
+        finally:
+            await client.close()
+            await serving
 
     asyncio.run(asyncio.wait_for(scenario(), 3))
 
