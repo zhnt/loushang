@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import faulthandler
 import os
 
 from loushang.agent import synthetic_model_transport
@@ -115,6 +116,10 @@ async def scripted_stream(model, context, options=None):
 
 
 if __name__ == "__main__":
+    # Preserve the child's native thread stacks if a platform-specific block
+    # prevents even asyncio deadlines from running. Never enabled by production.
+    # A watchdog exit is always a failed test, never graceful-close evidence.
+    faulthandler.dump_traceback_later(30, exit=True)
     if os.environ.get("LOUSHANG_G14_TEST_FAIL_DISPOSE") == "1":
 
         async def fail_dispose(self):
@@ -136,4 +141,7 @@ if __name__ == "__main__":
         stream_fn=scripted_stream,
         tools=[_preview_tool()],
     )
-    raise SystemExit(execute_hosted_command(command))
+    try:
+        raise SystemExit(execute_hosted_command(command))
+    finally:
+        faulthandler.cancel_dump_traceback_later()

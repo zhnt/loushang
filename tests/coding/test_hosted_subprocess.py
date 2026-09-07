@@ -100,6 +100,16 @@ async def _child(
             assert b"private-disposal-sentinel" not in stderr
         else:
             assert stderr == b"", stderr.decode(errors="replace")
+    except BaseException as error:
+        if process.returncode is None:
+            process.kill()
+            await asyncio.wait_for(process.wait(), 10)
+        stderr = await errors
+        if stderr:
+            error.add_note(
+                "Hosted child stderr:\n" + stderr[-16_384:].decode(errors="replace")
+            )
+        raise
     finally:
         if process.returncode is None:
             process.kill()
@@ -360,6 +370,48 @@ def test_G14_OWNERSHIP_fatal_cleanup_is_nonzero_and_fresh_process_can_recover(
             window = restored.state.active_window
             assert window.session_id == session_id
             assert window.records[0].text == "persist before failed cleanup"
+            await restored.close()
+
+    asyncio.run(asyncio.wait_for(scenario(), 90))
+
+
+def test_G14_OWNERSHIP_eof_during_approval_does_not_restore_authority(
+    tmp_path: Path,
+) -> None:
+    config = tmp_path / ".loushang"
+    config.mkdir()
+    (config / "settings.json").write_text(
+        json.dumps({"tools": {"ask_tools": ["g14_preview"]}})
+    )
+
+    async def scenario() -> None:
+        async with _child(tmp_path) as client:
+            controller, window = await _open_cwd_member(client, tmp_path)
+            turn = asyncio.create_task(controller.submit("approval"))
+            try:
+                await _poll_until(
+                    controller, lambda: window.pending_interaction_id is not None
+                )
+                assert not turn.done()
+                identity = window.session_id
+                await client.close()
+                with pytest.raises(AppServiceError):
+                    await turn
+            finally:
+                await client.close()
+                await asyncio.gather(turn, return_exceptions=True)
+        async with _child(tmp_path) as fresh:
+            restored = await open_hosted_mux_profile(
+                fresh, selector=MuxSelectorV1(name="dev")
+            )
+            assert restored.state is not None
+            window = restored.state.active_window
+            assert window is not None and window.session_id == identity
+            assert not window.running and window.pending_interaction_id is None
+            assert all(
+                "APPROVED_PREVIEW_EXECUTED" not in record.text
+                for record in window.records
+            )
             await restored.close()
 
     asyncio.run(asyncio.wait_for(scenario(), 90))

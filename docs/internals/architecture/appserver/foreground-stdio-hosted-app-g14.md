@@ -433,3 +433,31 @@ parent now explicitly gives cold imports plus recovery a bounded 30-second
 ready budget, independently of the server's post-readiness hello deadline.
 Native macOS/Windows CI evidence and the final delivery-wide review remain
 required before marking G14 complete.
+
+## Delivery-Wide Review Follow-up (In Progress)
+
+The first PR CI on `ed773a71` passed the Linux/macOS AppService gates but
+failed seven real Product cases on Windows: each stalled while opening a
+member, before a turn. This is unresolved native runtime evidence, not a
+successful three-platform delivery. Child thread dumps and captured stderr
+are now retained on subprocess test failures to locate the blocked owner.
+
+Architecture review found stale exact inventories in the older G9/Hosting
+gates. The live entrypoint inventory is now v4 and describes the separate G14
+command and existing mux/connection libraries; default Worker ownership and
+the G9 `RETAIN` decision are unchanged. G14's three Product adapters account
+for 1,224 lines and have an independent 1,300-line ceiling, following the
+existing G10--G13 slice budgets. The core remains at 33,786 lines under its
+unchanged 33,800-line limit. Shared logic has not been moved into another
+package merely to evade a Product budget. All 41 associated regression cases
+passed after reconciliation.
+
+Lifecycle review found that client close could wait indefinitely for its
+reader when an injected IO owner ignored cancellation. A regression first
+proved the unbounded wait. Client close now fences admission and pending
+calls immediately, retains a single stream/reader settlement task, and
+reports `cleanup_incomplete` at the configured phase deadline without
+cancelling or duplicating that task. A later close joins the same owner.
+This does not grant AppServer process-termination authority. The native
+Product matrix also now covers EOF while the actual approval broker waits,
+followed by a fresh process without restored approval or active-turn authority.

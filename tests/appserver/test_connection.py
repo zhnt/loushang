@@ -257,3 +257,51 @@ def test_G14_BACKPRESSURE_semantic_exceptions_are_redacted_without_dropping_peer
         await serving
 
     asyncio.run(asyncio.wait_for(scenario(), 3))
+
+
+def test_G14_OWNERSHIP_client_close_bounds_and_retains_uncooperative_cleanup() -> None:
+    async def scenario() -> None:
+        left, right = _pair()
+        entered, release = asyncio.Event(), asyncio.Event()
+        close_calls = 0
+        close_cancellations = 0
+        original_close = left.close
+
+        async def blocked_close() -> None:
+            nonlocal close_calls, close_cancellations
+            close_calls += 1
+            entered.set()
+            while not release.is_set():
+                try:
+                    await release.wait()
+                except asyncio.CancelledError:
+                    close_cancellations += 1
+            await original_close()
+
+        left.close = blocked_close
+        server = AppFramedStreamV1(right)
+        client = StdioAppClientV1(AppFramedStreamV1(left), phase_timeout=0.02)
+        await server.send(STDIO_HELLO_V1)
+        await client.start()
+        await server.receive()
+        pending = asyncio.create_task(client.list_muxes())
+        await server.receive()
+        closing = asyncio.create_task(client.close())
+        try:
+            await entered.wait()
+            with pytest.raises(AppServiceError) as first:
+                await asyncio.wait_for(asyncio.shield(closing), 0.3)
+            assert first.value.code is AppErrorCodeV1.CLEANUP_INCOMPLETE
+            with pytest.raises(AppConnectionClosedError):
+                await pending
+            with pytest.raises(AppServiceError) as second:
+                await asyncio.wait_for(client.close(), 0.3)
+            assert second.value.code is AppErrorCodeV1.CLEANUP_INCOMPLETE
+            assert close_calls == 1 and close_cancellations == 0
+        finally:
+            release.set()
+            await asyncio.gather(closing, pending, return_exceptions=True)
+            await client.close()
+        assert close_calls == 1 and close_cancellations == 0
+
+    asyncio.run(asyncio.wait_for(scenario(), 3))

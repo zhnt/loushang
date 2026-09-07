@@ -71,6 +71,8 @@ class StdioAppClientV1:
         self._stream = stream
         self._timeout = phase_timeout
         self._reader: asyncio.Task[None] | None = None
+        self._close_task: asyncio.Task[None] | None = None
+        self._stream_close_task: asyncio.Task[None] | None = None
         self._pending: dict[str, _Pending] = {}
         self._counts = {False: 0, True: 0}
         self._send_lock = asyncio.Lock()
@@ -166,7 +168,7 @@ class StdioAppClientV1:
             self._fail_pending()
             # Explicit close retains the stream and can retry settlement.
             with suppress(AppServiceError):
-                await self._stream.close()
+                await self._close_stream()
 
     def _fail_pending(self) -> None:
         self._closed = True
@@ -178,12 +180,36 @@ class StdioAppClientV1:
 
     async def close(self) -> None:
         self._fail_pending()
+        task = self._close_task
+        if task is None or _failed(task):
+            task = asyncio.create_task(self._close_once())
+            task.add_done_callback(_observe_task)
+            self._close_task = task
+        done, _ = await asyncio.wait({task}, timeout=self._timeout)
+        if not done:
+            # Keep the exact cleanup task even if an IO adapter ignores cancel.
+            raise AppServiceError(AppErrorCodeV1.CLEANUP_INCOMPLETE)
+        await asyncio.shield(task)
+
+    async def _close_once(self) -> None:
         reader = self._reader
+        if (
+            reader is not None
+            and reader is not asyncio.current_task()
+            and not reader.done()
+        ):
+            reader.cancel()
+        await self._close_stream()
         if reader is not None and reader is not asyncio.current_task():
-            if not reader.done():
-                reader.cancel()
             await asyncio.gather(reader, return_exceptions=True)
-        await self._stream.close()
+
+    async def _close_stream(self) -> None:
+        task = self._stream_close_task
+        if task is None or _failed(task):
+            task = asyncio.create_task(self._stream.close())
+            task.add_done_callback(_observe_task)
+            self._stream_close_task = task
+        await asyncio.shield(task)
 
     async def create_mux(self, request: MuxCreateV1) -> MuxSpaceV1:
         return await self._call(AppOperationV1.MUX_CREATE, request, MuxSpaceV1)
@@ -249,6 +275,15 @@ class StdioAppClientV1:
 def _observe_future(future: asyncio.Future[AppResultPayloadV1]) -> None:
     if not future.cancelled():
         future.exception()
+
+
+def _failed(task: asyncio.Task[None]) -> bool:
+    return task.done() and (task.cancelled() or task.exception() is not None)
+
+
+def _observe_task(task: asyncio.Task[None]) -> None:
+    if not task.cancelled():
+        task.exception()
 
 
 __all__ = ["StdioAppClientV1"]

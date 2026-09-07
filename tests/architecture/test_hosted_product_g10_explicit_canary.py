@@ -51,7 +51,8 @@ def test_inventory_v3_records_one_explicit_canary_and_current_omission(
 ) -> None:
     del _case
     inventory = json.loads(_read(INVENTORY))
-    assert inventory["inventoryVersion"] == 3
+    # G14 v4 adds a separate foreground command; the G10 v3 canary stays exact.
+    assert inventory["inventoryVersion"] == 4
     assert inventory["decision"] == "RETAIN"
     rows = {row["entrypointId"]: row for row in inventory["entries"]}
     assert rows["coding.apphost.canary"] == {
