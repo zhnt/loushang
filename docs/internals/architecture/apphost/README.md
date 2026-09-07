@@ -105,6 +105,12 @@ ownership and a Harnesstui hosted shell. It is a design-only slice: neither the 
 nor a terminal client is made Current by design acceptance. G16's detachable
 connection lifetime requires separate acceptance; G14 EOF remains terminal.
 
+The [accepted G16 design](../appserver/detachable-local-workspace-g16.md)
+supplies that separate local deployment boundary. Its optional local edge,
+semantic client scopes and installed `loushang-mux` route are not implemented
+yet; design acceptance does not activate Hosting service control or change
+the foreground owner above.
+
 Existing Product-specific bootstrap/CLI/TUI paths remain authoritative and do
 not import the G9 composition. The one installed explicit factory may
 instantiate the catalog, runtime, selected profiles, and G8 Product

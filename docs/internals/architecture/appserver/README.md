@@ -4,6 +4,7 @@
 [AppHost](../apphost/README.md) ·
 [G11 In-Process Hosted Application](hosted-application-g11.md) ·
 [G14 Foreground Stdio](foreground-stdio-hosted-app-g14.md) ·
+[G16 Detachable Local Workspace Design](detachable-local-workspace-g16.md) ·
 [G12 Foreground Hosted Application](../apphost/foreground-hosted-application-g12.md) ·
 [AppService Hosted Boundary](../drafts/appservice-embedded-tui-hosted-boundary-plan.md)
 

@@ -25,6 +25,12 @@ bounded logical delivery.  It does not own an AppServer listener, byte/frame
 buffers, authentication, AppHost composition, Hosting process mechanics,
 Product policy, or UI state.
 
+The [accepted G16 design](../appserver/detachable-local-workspace-g16.md)
+adds a future optional semantic client scope: connection-bound controller
+authority, application-owned admitted execution and control-loss interaction
+settlement. These remain implementation gaps; the G11/G14 in-process adapter
+and attachment behavior are not silently changed by the design.
+
 The current implementation contains:
 
 - `ports.py`: the independently owned hosted Session and resolver protocols;

@@ -251,6 +251,7 @@ APPSERVICE_TEST_PATHS := \
 	tests/architecture/test_foreground_stdio_hosted_app_g14.py \
 	tests/architecture/test_foreground_stdio_hosted_app_g14_design.py \
 	tests/architecture/test_foreground_hosted_tui_g15_design.py \
+	tests/architecture/test_detachable_local_workspace_g16_design.py \
 	tests/apphost/test_continuity.py \
 	tests/appserver \
 	tests/appservice \

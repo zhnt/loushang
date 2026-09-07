@@ -1,0 +1,466 @@
+# Detachable Local Hosted Workspace G16
+
+[Architecture](../README.md) · [AppServer](README.md) ·
+[AppService](../appservice/README.md) · [AppHost](../apphost/README.md) ·
+[G15 design](../apphost/foreground-hosted-tui-g15.md) ·
+[G14 foreground](foreground-stdio-hosted-app-g14.md)
+
+## Status
+
+- ID: `DETACHABLE-LOCAL-WORKSPACE-G16`
+- Kind: cross-scope deployment, authority and lifecycle decision
+- Scope: AppServer local profile / AppService client scope / AppHost local edge
+- Parent: Loushang application architecture
+- Authority: normative accepted deployment boundary
+- Design status: accepted following the three-perspective review below
+- Implementation status: not-started
+- Activation status: explicit new deployment only; G14 and Embedded unchanged
+- Tracking: [Hosted Workspace V1 #566](https://github.com/zhnt/loushang/issues/566)
+- Prerequisite: G15 design accepted in `18d429bc`; G14 delivered in `815c03d2`
+- Inherits: [principles](../loushang-architecture-principles.md),
+  [governance](../governance-profile.md),
+  [ARD-003](../decisions/ARD-003-apphost-top-level-placement.md)
+
+## Outcome, Requirements And Non-Goals
+
+An explicitly running local application hosts several named muxes and real
+Product Sessions. Two terminal clients can control different muxes. Closing
+one terminal releases only its control authority; already accepted execution
+continues under the application owner. A new connection attaches through a
+fresh snapshot barrier. Restarting the application restores G13 desired state
+and canonical Session history, not in-flight execution.
+
+| ID | Acceptance condition |
+| --- | --- |
+| `G16-LOCAL-AUTH` | only the literal local endpoint is usable; wrong/stale credentials, replay, reflection and unauthenticated operations fail before semantic admission |
+| `G16-PRIVATE-RECORD` | credentials are private from creation, exact-root, bounded, no-follow and instance-fenced; insecure POSIX modes or Windows DACLs fail closed |
+| `G16-PROFILE` | detachable negotiation is distinct from foreground-stdio/v1; neither profile silently changes the other's EOF or Ack contract |
+| `G16-MULTI-MUX` | one application owns multiple names and concurrent Sessions; independent clients control different muxes without extra application processes |
+| `G16-CONTROLLER` | only one client scope controls a mux; another client gets AlreadyAttached; every mutation is scoped, not just turn operations |
+| `G16-ACCEPTED-WORK` | the application's admission point transfers accepted work out of a connection's cancellation lifetime; no connection close cancels that work |
+| `G16-APPROVAL` | losing a controller revokes its unanswered interactions; later unattached approvals fail closed; an old token cannot be answered by a new controller |
+| `G16-REATTACH` | new connection/attachment generations and fresh membership/snapshot/cursor barriers replace old local views; no future, request, decision or event is replayed implicitly |
+| `G16-BOUNDS` | connection, authentication, application-operation, Session, frame, queue and shutdown bounds remain enforceable across repeated disconnects |
+| `G16-STOP` | explicit application stop fences admission, settles retained work/Product owners and releases G13 last; failed cleanup is not reported as clean shutdown |
+| `G16-RECOVERY` | fresh process recovers cwd/home Sessions and stable mux/member identities with fresh credentials and attachments; stale endpoint state grants no process authority |
+| `G16-CLIENT` | installed server and interactive terminal client support create/list/attach/detach/close and safe controls through AppClient |
+| `G16-EVIDENCE` | deterministic tests, real processes/terminals, installed wheel and non-skipped Linux/macOS/Windows fault gates prove the complete profile |
+
+Non-goals: public-network/HTTP/WebSocket endpoints, multi-user tenancy,
+read-only observers or takeover, several writers to one mux, live execution
+replay after process death, automatic mutation retry, service installation,
+automatic daemon launch, a new Hosting service controller, live Embedded
+Session migration, legacy transcript adoption, image upload or default-route
+activation. One endpoint admits one Product ID; it is not a cross-Product mux.
+
+G15's full launcher and resumable-Session picker remain design-only. G16
+implements the shared hosted shell and its independently connected Product
+entrypoint, not the attached-launcher lifecycle. Existing mux/member selection,
+explicit scoped member creation/resume and automatic G13 recovery are included;
+a global resumable-Session discovery UI is not claimed without G15's new API.
+
+## Current Facts And Delta
+
+G14's `AppServerConnectionV1` owns request tasks and cancels them at EOF.
+`AppServiceV1.start_turn` currently awaits the actual Product turn in that
+call. Consequently preserving an AppService object alone cannot preserve a
+turn across transport cancellation. G16 needs application-owned admission.
+
+Current AppService attachments are not connection-scoped. A later attach
+increments the mux controller generation and fences earlier mutations; it
+does not reject the second controller. Current detach does not revoke a
+Product approval. The new deployment must close these gaps without silently
+changing the explicit G11/G14 client contract.
+
+The existing wire values, framing, G13 store/lease, real Coding factory,
+controller and conversation projection are retained. No authenticated local
+listener, private credential record, detachable semantic scope or terminal
+client entrypoint exists yet. The [inventory](detachable-local-workspace-g16-inventory.json)
+separates those missing responsibilities from existing extensions.
+
+## Logical And Physical Context
+
+Logical boundary: an authenticated local client receives an application-scoped
+capability and an independently owned logical client scope. Mux controller
+authority is granted by AppService inside that scope. Product policy and the
+canonical Session owner remain authoritative for actual effects and storage.
+
+Physical composition (edges mean constructs/binds):
+
+```text
+explicit foreground server / external supervisor
+  Product command constructs G13 application
+  optional AppHost local edge binds:
+    AppServer local listener + per-connection semantic scope factory
+    AppService application admission + Product Session binding
+
+client Product command
+  reads one explicitly admitted local connection record
+  authenticates AppServer local client
+  binds borrowed AppClient into Harnesstui hosted shell
+
+client EOF -> that connection/scope settles
+application stop -> all connections/scopes/work/Product owners settle -> G13 lease
+```
+
+The server is independently started. It is not spawned as a TUI-owned G15
+child whose exit would end the application. No Hosting service dependency is
+needed for this profile; an external supervisor may own process continuity.
+
+## Component Discovery And Allocation
+
+| Candidate function | Refine / primary owner | Collaborator | Explicit non-owner |
+| --- | --- | --- | --- |
+| local listener, credential record and authentication | keep one AppServer local connection component | private native filesystem adapter, existing framing | Hosting, Product Session, AppService |
+| connection-bound mux control and accepted-work lifetime | keep one optional AppService client-scope component | existing mux registry and Product ports | socket, transport and UI |
+| controller-bound interaction invalidation | extend AppService Session ownership | Product's existing approval decision port | transport, UI persistence |
+| aggregate start/stop order | keep optional AppHost local deployment edge | injected listener and G13 application | listener internals, Product implementation |
+| trusted executable/configuration and installed CLI | keep Product outer composition | existing real Session factory and scope catalog | generic AppServer and UI |
+| hosted terminal experience | reuse/extend G15 Harnesstui shell boundary | AppClient and generic TUI | process owner, filesystem discovery |
+
+Authentication and credential files are a transport trust boundary, not a
+generic secret-management subsystem. Retained operations belong to application
+coordination, not a detached task pool in the connection. Native private-file
+helpers remain inside the local endpoint resource owner; no dependency on
+Hosting's private Win32 implementation is allowed.
+
+## Local Endpoint Decision
+
+Choose one explicit loopback-only TCP profile on Linux, macOS and Windows.
+Bind IPv4 literal `127.0.0.1` on an OS-assigned port. No hostname resolution,
+wildcard, caller-selected remote address, proxy, alternate address fallback,
+port sharing or public listener is supported. The endpoint record contains
+the actual port and one random application instance identity. A browser HTTP
+request cannot be interpreted as the binary authenticated profile.
+
+Alternatives considered: Unix sockets plus Windows named pipes provide native
+local addressing but require two distinct connection implementations. TLS
+adds certificate provisioning/rotation to the local bootstrap boundary.
+Neither is prohibited as a later adapter, but G16 chooses an explicit
+authenticated loopback profile with a trusted local kernel, not a network
+security or confidentiality claim. Same-account malicious code, administrator
+access, kernel compromise and deliberate port forwarding are outside this
+trust boundary. Credential confidentiality from other ordinary accounts is
+still mandatory; loopback alone is not authentication.
+
+The existing stdlib-only AppServer boundary is retained. Only its exact local
+endpoint adapter may open sockets; no general permission for connections,
+codecs or semantic adapters to spawn, discover Products or access Hosting.
+
+### Credential Record And Publication
+
+The outer Product composition supplies one immutable canonical runtime root
+and endpoint name, resolved once through the existing PlatformPaths authority.
+The AppServer record owner derives only narrow children. It never reads home,
+cwd or environment again. No record field selects executable code, a Session
+root or a Product factory.
+
+The owner acquires an OS-released lock before changing the named record. The
+lock inode is stable and is not unlinked on release. A stale record or PID is
+not permission to signal a process. A competing process using another G13
+store but the same endpoint still cannot publish over the live reservation.
+
+The strict record is at most 8 KiB and contains schema/profile, application
+identity, random instance ID, numeric local port, a 32-byte random key and
+bounded public scope/capability facts. PID is optional diagnostic data, never
+authority. Records are not logged or printed by inspect/help. Secrets are not
+passed through argv, inherited environment, Session metadata or child tools.
+
+POSIX creation requires owner-only directories/files, the current owner and
+stable regular no-follow objects; symlinks and multiple hard links are
+rejected. Windows creation supplies a protected non-null DACL restricted to
+the current user and SYSTEM at creation, and checks owner/DACL/reparse/identity
+on the opened handle before reads or replacement. `chmod(0600)` is not a
+Windows security proof. Native validation must reject permissive/absent DACLs.
+
+Recover G13 and bind the listener before atomically publishing the complete
+record. Start admission only when the complete ready state exists. Failed
+startup closes the listener and reservation. Retirement removes only the
+exact record owned by that instance; never remove a replacement's record.
+Restart rotates the instance and key. Old credentials cannot authenticate a
+new process even if the OS reuses its port.
+
+### Authentication And Frames
+
+The distinct profile is `local-detachable/v1`, carrying `loushang.app/v1`
+semantic operations. It cannot negotiate down to `foreground-stdio/v1`.
+Use fresh 32-byte server/client nonces and HMAC-SHA256 challenge/proof with
+different role labels and an unambiguous transcript binding profile,
+application/instance identity and both nonces. Verify fixed-size proofs with
+constant-time comparison. The key itself never crosses the connection.
+
+No semantic scope or request may be admitted until mutual authentication
+finishes. No early data. Reject unknown fields, invalid sizes, role reflection,
+reused proofs, wrong key, stale instance and unsupported versions with one
+redacted authentication failure. A fresh connection gets fresh derived
+direction-specific keys and sequence counters; none is persisted.
+
+The authentication exchange consists of three strict, length-prefixed JSON
+objects: server challenge (`profile`, `protocol`, `instance`, `server_nonce`),
+client proof (`client_nonce`, `proof`) and server proof (`proof`). Nonces and
+proofs are exactly 64 lowercase hex characters. Instance identity is the exact
+32-character lowercase hex value in the admitted record. No optional or
+unknown fields are accepted. The transcript is the fixed ASCII profile and
+protocol labels separated by NUL, the 32-byte SHA-256 digest of the canonical
+public record (all fields except the key), then server and client nonce bytes.
+Proofs are HMAC(key, role + NUL + transcript) for distinct `client` and `server`
+roles. Direction keys use distinct `c2s` and `s2c` role labels instead.
+
+After authentication, the first authenticated frame selects exactly `app` or
+`stop`. The app path creates a semantic scope and uses the local profile hello
+before any AppClient request. The stop path is a separate bounded management
+exchange, never an extra reflected method on AppClient. Neither can downgrade
+or switch mode after admission. Credential values are excluded from repr,
+exceptions, logs and help output as well as from protocol messages.
+
+Authenticated frames bind direction, sequence and payload with HMAC. The
+application payload remains capped at 1 MiB; a separate fixed 40-byte
+sequence/tag envelope is the only additional frame allowance. Check outer
+length before allocation, MAC and monotonically increasing sequence before
+semantic decoding. No encryption is claimed. Existing G14 framing and message
+limits remain unchanged; the new envelope cannot weaken its defaults.
+The authenticated envelope is an unsigned 8-byte big-endian sequence, a
+32-byte tag and the unchanged semantic payload. Sequences start at one in
+each direction and cannot wrap. The tag covers the sequence and payload with
+the corresponding direction key. The stream uses one writer serialization
+owner so sequence allocation and complete frame writes cannot reorder.
+
+## Semantic Client Scope And Acceptance
+
+AppHost asks the ready application for one owned client scope only after
+authentication. AppServer receives its AppClient and close port through an
+injected factory; it neither imports nor constructs AppService. AppService
+owns the logical scope, opaque identity, attached muxes and retained operation
+budget. Transport connection IDs never become user-supplied authority.
+
+All selectors resolve canonically inside AppService. Listing/reading mux
+metadata is available to the authenticated application client. Mutating
+membership or closing a mux requires that scope's controller lease. Attach to
+an already controlled mux returns `AlreadyAttached` without changing its
+generation. The same scope may explicitly refresh its own attachment barrier;
+replacement is atomic and does not expose an intermediate takeover window.
+No token from another scope grants read-events, snapshot, mutation or approval
+authority, even when it is otherwise a well-formed current-generation token.
+Add the closed error value `already_attached` to the shared error vocabulary
+and schema; do not overload `already_exists` or silently take over a mux. G14
+does not begin emitting the new deployment-specific failure by default.
+
+Admission is the linearization point where the application validates current
+authority, reserves bounded capacity and publishes an owned operation before
+its first Product effect. Work not yet admitted is rejected on scope loss.
+Once admitted, connection cancellation cancels only the delivery waiter; the
+application retains and observes the exact operation until completion or
+explicit application/member stop. There is no automatic retry or exactly-once
+claim after an unknown outcome. G13 create identities retain their existing
+limited idempotency guarantee, not a general RPC replay log.
+
+`start_turn` Ack keeps its existing completion meaning; a cancelled waiter
+does not receive an invented acceptance/completion Ack. While the call waits,
+snapshot/events expose running state. New connections reconcile that state
+instead of retrying the lost request. Only one active start per Session is
+admitted; other starts return busy rather than accumulating a hidden queue.
+Accepted structural mutations also retain commit/cleanup ownership across a
+disconnect; an attach that finishes after its scope closes must be reclaimed
+without publication to that dead scope.
+
+## Detach, Approval And Reattach
+
+Logical detach and EOF both fence that scope's affected control generations.
+They do not interrupt ordinary accepted work. AppService releases the mux
+controller reservation only after fencing the old authority and registering
+required interaction settlement. Cleanup ownership survives cancellation.
+
+An interaction belongs to the controller generation present when it is
+published, not whichever client later happens to be newest. On control loss,
+unanswered interactions are denied through the existing Product decision port.
+An approval requested with no controller is also denied; it cannot create an
+unbounded parked waiter or execute implicitly. No transfer of old questions
+or approvals to a new controller. A decision already admitted before loss may
+finish; disconnect does not roll back an authorized effect.
+
+Application locks are not held while calling Product decision/cleanup ports.
+Pending denial failure becomes bounded application cleanup debt and keeps
+unsafe control re-grant fenced; it cannot be suppressed and called success.
+The Product owns how a denied tool result affects its still-running turn.
+Scope closure separates short attachment-initialization/interaction cleanup
+from long accepted turns. Only the former can delay release of controller
+authority; waiting for a detached turn to finish before allowing reattach
+would defeat this profile. A late attachment result is compensated exactly
+once and cannot leave a ghost controller. Generation replacement also denies
+old unanswered interactions rather than transferring them to a refreshed UI.
+
+Reattach gets a new logical scope/attachment generation and the existing
+membership-revision plus per-member snapshot/cursor barrier. UI applies only
+that generation, preserving local unsubmitted drafts by member identity when
+the member still exists. Cursor gaps require a new snapshot, not guessed
+events. An explicit reconnect action is supported; automatic command replay
+is not. Repeated reconnect cannot bypass global capacity or leak attachments.
+
+## Bounds And Whole-Application Stop
+
+Defaults: 8 simultaneously authenticated connections; 8 additional pending
+authentication attempts; 32 retained ordinary application operations plus 8
+reserved control/settlement operations; 32 muxes, 64 live Sessions, 128 total
+live/initializing attachments. Each connection retains G14's 16 ordinary plus
+4 control slots. Authentication frames are at most 2 KiB and have one 5-second
+deadline. Public record size is separately bounded at 8 KiB.
+
+Each stream has bounded asyncio read/write watermarks; application payloads
+are limited before buffer allocation. Authentication failures and full
+admission close only the offending peer. Ordinary capacity cannot consume
+the reserved interrupt/denial/stop path. Detached work continues to occupy
+application capacity until actually settled, not merely until its peer exits.
+The listener's synchronous accept callback reserves capacity before scheduling
+an authentication coroutine; rejected peers are closed without allocating an
+unbounded task queue. Authentication-to-ready transfer releases/reserves the
+corresponding counters atomically. Cleanup debt continues to consume capacity
+until its actual owner settles. No per-disconnect recreation resets limits.
+
+Application stop has one 30-second monotonic budget. Fence listener and all
+logical scopes, close delivery waiters, revoke interactions, interrupt/join
+retained execution, close Sessions/Product owners, then release the G13
+application lease. The optional AppHost edge owns this ordering. Failed
+dependencies prevent a false lease-last success; retain retryable owners and
+exit nonzero if bounded fatal settlement is required. An external supervisor
+is the hard process-termination owner. Never kill a PID taken from a record.
+
+One authenticated local control request may request application stop through
+an injected AppHost callback, outside AppClient's Session API. Its response
+means `stop_requested`, not `cleanup_completed`; attempt that response within
+the write deadline before starting connection teardown. Once stop is admitted,
+a failed response write does not discard the stop request. Its single-flight
+owner is published before the write and cannot await itself through the
+connection that requested it. The CLI must print that distinction. Native
+tests observe actual process exit separately. A normal client detach never
+invokes that stop callback.
+
+## Product And Terminal Integration
+
+Add an explicit installed `loushang-mux` command with `serve`, `list`,
+`create`, `attach`, `close` and `stop` actions. The existing installed commands
+retain their targets and behavior. `serve` requires admitted workspace,
+application and Session roots, constructs real Coding Sessions and remains a
+foreground process. Clients receive an explicit endpoint record selector; no
+daemon auto-discovery, auto-start or installation is added.
+The source entrypoint is `coding/cli/mux.py`. The existing
+`coding/cli/workspace.py` and `loushang workspace` govern retained Git
+workspaces and must not be repurposed for hosted application control.
+
+The client can create/list named muxes and attach the Harnesstui hosted shell.
+The shell supports scoped member creation/resume, local window navigation,
+drafts, streamed output, approvals, interrupt and detach. Close is a separately
+confirmed destructive intent affecting the selected mux/member, not a synonym
+for exit. The application connection key grants local management authority,
+so `stop` requires an explicit command and is not a UI disconnect fallback.
+
+Reuse the G15 UI boundary and bounds. The G15 inventory must record which
+planned shell/client files G16 actually implements while keeping its unused
+attached launcher and discovery extension as explicit gaps. No claim of full
+G15 implementation or Embedded feature parity follows from this reuse.
+
+## Dependencies, Decisions And Resource Ownership
+
+Intended optional dependencies (not current implemented imports):
+
+```text
+appserver local adapter -> AppServer framing/auth/client ports + stdlib
+appservice client scope -> AppService runtime/ports + AppServer values
+apphost local edge -> AppHost continuity/application + AppServer local ports
+Product server/client command -> admitted Product composition + optional edges
+harnesstui hosted shell -> AppClient/values + shared Harnesstui/TUI
+
+AppServer -/-> AppService / AppHost / Hosting / Product / UI
+AppService -/-> transport / AppHost / Hosting / Product / UI
+AppHost core -/-> local transport adapter / Product / UI
+Hosting -/-> application or protocol semantics
+```
+
+This parent-level decision accepts a new optional deployment boundary, not a
+relaxation of the standard-library-only AppServer or product-neutral Harness.
+The local edge may consume an application-owned scope factory through an
+explicit port; it must not extract private AppService fields from AppHost.
+
+| Resource | Sole owner | Lifetime / location |
+| --- | --- | --- |
+| endpoint record/key/reservation | AppServer local resource owner | injected runtime child; exact instance publication/retirement |
+| socket, auth nonce, frame queues | AppServer connection owner | one connection |
+| logical scope, controller, mailbox | AppService | attachment/control lifetime |
+| accepted operation and cleanup debt | AppService application owner | actual settlement, independent of client |
+| Session execution/transcript/assets | Product/Harness owner | canonical Session lifetime |
+| application record and writer lease | existing G13 owner | application recovery/shutdown, lease last |
+| draft and terminal state | Harnesstui/TUI | client run, private and bounded |
+| diagnostics | existing producer/sink | bounded observability retention, never protocol secrets |
+
+## Evidence And Delivery Plan
+
+1. Design/inventory, exact optional dependency gates and three-view design
+   review. Any feasibility experiment verifies an uncertain platform mechanism,
+   not a narrowed acceptance profile.
+2. Regression-first semantic scope/admission, exclusive controllers, operation
+   retention, approval loss, capacity and shutdown ordering with fake Product
+   ports. Keep legacy in-process/G14 tests unchanged unless correcting a bug.
+3. Authenticated local transport, native private record, replay/reflection/
+   framing tests, bounded unauthenticated/slow peer tests and instance fencing.
+4. Real G13/AppHost/Coding server, installed CLI and Harnesstui shell; test two
+   independent mux clients, close one during a real synthetic-model turn,
+   reattach, reject old authority, then restart and recover canonical state.
+5. Native Linux/macOS/Windows fault matrix, isolated wheel and terminal
+   playback/PTY/ConPTY evidence; full three-view code review and fixes.
+6. PR to lane/harness, reviewed promotion PR to main, then verify remote/local
+   main and harness contain the delivery. Preserve unrelated staged changes;
+   never force-reset a lane to satisfy synchronization.
+
+No required platform case may skip and count as delivered. Unit fakes prove
+semantic ordering, not OS authentication, process survival or terminal cleanup.
+Test models and safe tools are explicit trusted seams; no live model or
+external network service is required. Native connection tests do use the
+profile's real local loopback socket.
+
+### Three-View Design Review
+
+Three perspectives by one reviewer, not an independent-agent claim:
+
+1. Architecture/security (`G16-R1`): loopback is not user authentication, and
+   post-creation chmod is not private Windows credential creation. Resolved
+   with exact record locking/native ACL validation, creation-time privacy,
+   fixed mutual-authentication transcript/role separation and per-direction
+   authenticated sequencing. The local-kernel threat boundary and lack of
+   encryption are explicit. Native Windows ACL and adverse authentication
+   tests remain required runtime evidence, not assumed from POSIX results.
+2. Cancellation/lifecycle (`G16-R2`): preserving the service object does not
+   preserve a turn; second-attach fencing is not exclusive control; late attach
+   completion and stop-response failure can leak ownership. Resolved with an
+   application-owned admission point, scoped mutation authority, exclusive
+   controllers and compensating initialization cleanup, retained interaction
+   denial, pre-task accept capacity and a stop owner independent of its reply.
+   New tests must race each effect against disconnect and bounded shutdown.
+3. Product/evidence (`G16-R3`): the first inventory incorrectly reserved the
+   already existing Git-workspace CLI module; its source-existence test failed.
+   Resolved by the separate `loushang-mux`/`coding.cli.mux` vocabulary and route,
+   preserving Git workspaces. The G15 shell is explicitly included while its
+   attached launcher and discovery API stay unimplemented gaps. Three-platform
+   real multi-client/approval/restart and terminal evidence remain mandatory.
+
+Re-review: the design now has a distinct physical profile, single semantic
+authority, explicit acceptance/cancellation points, bounded control-loss and
+shutdown paths, and a non-conflicting installed route. Accepted for incremental
+implementation. Neither this review nor its architecture tests prove runtime
+completion; inventory status remains not-started until behavior is evidenced.
+
+Design-only verification: the first G16 inventory test failed on the existing
+Git-workspace module collision. After the correction, the G16/G15/G14 design
+and G9 closure selection passed 18 tests, Ruff passed, and
+`make check-architecture-docs` passed its five cases. No production source or
+installed entrypoint changed in this design slice.
+
+### Platform API References
+
+Python's [asyncio streams](https://docs.python.org/3.11/library/asyncio-stream.html)
+provide explicit reader limits, write draining and connection closure; these
+mechanisms do not replace the application's admission and settlement bounds.
+Use [HMAC comparison](https://docs.python.org/3.11/library/hmac.html) for fixed
+proof/tag verification. Windows private creation/validation uses native
+[security descriptors](https://learn.microsoft.com/en-us/windows/win32/api/sddl/nf-sddl-convertstringsecuritydescriptortosecuritydescriptorw)
+and a real [non-null DACL](https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-setsecuritydescriptordacl),
+not POSIX mode-bit emulation. These references establish API behavior, not
+G16 native acceptance evidence.

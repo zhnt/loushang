@@ -24,6 +24,13 @@ Harnesstui or on the other peer.
 
 ## Responsibilities
 
+The [G15 design](../apphost/foreground-hosted-tui-g15.md) specifies an explicit
+Hosted Mux terminal shell over the existing controller and shared presentation.
+The [G16 design](../appserver/detachable-local-workspace-g16.md) plans to consume
+that shell through a separately connected local client. Neither shell is
+implemented merely by accepting those designs; process launch and application
+lifetime stay outside Harnesstui.
+
 This layer owns reusable Harness-oriented terminal interaction, including:
 
 - adapting neutral conversation snapshots and actions to TUI records and

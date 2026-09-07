@@ -155,6 +155,11 @@ defines the optional A0.5 launcher and explicit client presentation boundary.
 It is design-only, not a new installed route. Its G16 handoff separates
 foreground process ownership from a future detachable connection profile.
 
+The [accepted G16 local workspace design](appserver/detachable-local-workspace-g16.md)
+defines authenticated local connections and application-owned work that can
+outlive a client. It is design-only, not an implemented listener or default-route
+change; G14's foreground EOF behavior remains independently authoritative.
+
 A nested scope is not automatically a top-level subsystem. The parent owns its
 placement, composition policy, and sibling relationships; the child owns its
 black-box contract and internal component model.
