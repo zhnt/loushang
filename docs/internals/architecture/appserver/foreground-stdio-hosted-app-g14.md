@@ -10,7 +10,7 @@
 - Parent: Loushang application architecture
 - Authority: accepted delivery design
 - Design status: accepted following the three-view design review below
-- Implementation status: planned; G13 baseline is implemented
+- Implementation status: partial — connection kernel/client implemented; Product composition and delivery pending
 - Activation status: target explicit foreground stdio command only
 - Tracking: [issue #564](https://github.com/zhnt/loushang/issues/564)
 
@@ -168,6 +168,15 @@ on partial startup failure. Cleanup is bounded and observes every spawned
 task. Native blocking stdio adapters must not put uncancellable reads in
 asyncio's default executor, whose shutdown could prevent process exit.
 
+The inherited-stdio adapter is an explicit, single-use process-lifetime
+claim. It borrows standard descriptors from the foreground command and uses
+at most two daemon IO workers, each with a single-job queue. Close fences new
+IO and wakes async waiters; an already-blocked native syscall is released by
+peer closure or process exit. It does not claim that a parked worker has been
+joined. The subprocess exit gate is therefore part of ownership evidence,
+not an optional transport smoke test. Reusable client pipes use the separate
+asyncio stream adapter and remain owned/reaped by their outer launcher.
+
 The real parent closes child stdin to request graceful shutdown, drains
 stdout/stderr, waits a bounded interval and may terminate its own child on
 timeout. AppServer itself has no terminate/kill authority. Stdout belongs
@@ -242,3 +251,28 @@ This is a three-perspective design review, not a claim of independent agents.
 The design is accepted for implementation with these resolutions. Passing
 design review does not certify code correctness or cross-platform readiness;
 implementation findings and native results must be recorded at delivery.
+
+## Connection Implementation Review (Partial Delivery)
+
+- Architecture: moved shared negotiation/capacity/ID policy into a pure
+  protocol profile, so the remote client does not import server dispatch.
+  AST gates enforce sibling-only dependencies and exhaustive typed dispatch.
+- Lifecycle: distinguish clean boundary EOF from truncated frames/IO faults;
+  remote decode failures wake all pending callers and close outgoing IO.
+  Caller cancellation retains a bounded pending slot until reply/close.
+  A native subprocess regression keeps stdin open through handshake timeout
+  to prove that a parked read cannot block foreground process exit.
+- Contract: outgoing JSON is encoded incrementally within the same 1 MiB
+  bound as input. Excessive nesting and unexpected result variants fail
+  closed. Safe semantic error codes preserve the connection; raw exception
+  details are not serialized. Polling returns at most one event per frame.
+
+This review covers only the connection slice. Real Coding/Harnesstui/G13
+integration, complete code review and native Windows/macOS evidence remain
+open under issue #564. The local AppService gate passed 162 tests, including
+the added ownership/architecture regressions. The first combined
+typecheck exited with code 139 while another platform typecheck shared its
+cache; a rerun using an isolated cache passed all 31 checked source files.
+A later sandboxed checker traceback identified a cache `disk I/O error`;
+the final no-cache AppServer check passed all 14 source files. Final focused
+AppServer tests passed 56 cases and architecture documentation passed 5.

@@ -134,12 +134,20 @@ adds the first explicit AppHost-owned lifecycle composition over AppService and
 a Coding-owned foreground Session resolver. It remains an uninstalled
 process-local library; AppServer transport, IPC, Hosting, daemon continuity and
 default-route decisions remain absent.
-The accepted, unimplemented
+The implemented
 [G13 durable hosted continuity](apphost/durable-hosted-application-continuity-g13.md)
 defines a one-writer durable AppService coordination record and canonical
 Session rehydration around that same explicit library edge. It persists no
 Product generation or live execution and still grants no listener, daemon or
 installed activation.
+
+The accepted [G14 foreground stdio design](appserver/foreground-stdio-hosted-app-g14.md)
+adds AppServer-owned bounded connections and a transport AppClient over
+injected byte IO. Its optional AppHost edge will order application settlement;
+its explicit Product command will compose canonical Sessions. This does not
+change embedded defaults, grant a listener/daemon, or move G13 recovery into
+the transport. Connection code is under implementation; installed Product
+integration and cross-platform delivery evidence remain pending.
 
 A nested scope is not automatically a top-level subsystem. The parent owns its
 placement, composition policy, and sibling relationships; the child owns its

@@ -18,7 +18,8 @@
         "turn/steer",
         "turn/follow_up",
         "turn/interrupt",
-        "interaction/respond"
+        "interaction/respond",
+        "attachment/read_events"
       ]
     },
     "payload": {

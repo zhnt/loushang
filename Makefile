@@ -213,14 +213,15 @@ APPHOST_LINT_SUPPORT := \
 	tests/harness/worker/test_coding_product_worker_canary.py
 APPSERVICE_SOURCES := \
 	src/loushang/apphost/application.py \
-	src/loushang/appserver/client.py \
-	src/loushang/appserver/protocol \
+	src/loushang/appserver \
 	src/loushang/appservice \
 	src/loushang/coding/appservice_adapter.py \
 	src/loushang/coding/hosted_application.py \
 	src/loushang/coding/hosted_continuity.py \
 	src/loushang/harnesstui/mux
 APPSERVICE_TEST_PATHS := \
+	tests/architecture/test_foreground_stdio_hosted_app_g14.py \
+	tests/architecture/test_foreground_stdio_hosted_app_g14_design.py \
 	tests/apphost/test_continuity.py \
 	tests/appserver \
 	tests/appservice \

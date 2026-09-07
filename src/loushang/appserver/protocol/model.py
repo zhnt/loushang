@@ -92,6 +92,7 @@ class AppOperationV1(str, Enum):
     TURN_FOLLOW_UP = "turn/follow_up"
     TURN_INTERRUPT = "turn/interrupt"
     INTERACTION_RESPOND = "interaction/respond"
+    ATTACHMENT_READ_EVENTS = "attachment/read_events"
 
 
 @dataclass(frozen=True, slots=True)
@@ -152,7 +153,9 @@ class TranscriptRecordV1:
     def __post_init__(self) -> None:
         if type(self.kind) is not TranscriptRecordKindV1:
             raise ValueError("invalid transcript record kind")
-        _require_text(self.text, field="transcript text", maximum=MAX_TEXT_CHARS, empty=True)
+        _require_text(
+            self.text, field="transcript text", maximum=MAX_TEXT_CHARS, empty=True
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,7 +170,9 @@ class SessionSnapshotV1:
     def __post_init__(self) -> None:
         if type(self.identity) is not SessionIdentityV1:
             raise TypeError("invalid session identity")
-        _require_text(self.title, field="session title", maximum=MAX_TITLE_CHARS, empty=False)
+        _require_text(
+            self.title, field="session title", maximum=MAX_TITLE_CHARS, empty=False
+        )
         if type(self.cursor) is not int or self.cursor < 0:
             raise ValueError("invalid session cursor")
         if type(self.revision) is not int or self.revision < 0:
@@ -196,7 +201,9 @@ class SessionEventV1:
         if type(self.kind) is not SessionEventKindV1:
             raise ValueError("invalid session event kind")
         if self.text is not None:
-            _require_text(self.text, field="event text", maximum=MAX_TEXT_CHARS, empty=True)
+            _require_text(
+                self.text, field="event text", maximum=MAX_TEXT_CHARS, empty=True
+            )
         if self.interaction_id is not None:
             _require_opaque_id(self.interaction_id, field="interaction_id")
         interaction_kind = self.kind in {
@@ -234,7 +241,9 @@ class MuxSpaceMemberV1:
         _require_opaque_id(self.member_id, field="member_id")
         if type(self.session) is not SessionIdentityV1:
             raise TypeError("invalid member session")
-        _require_text(self.title, field="member title", maximum=MAX_TITLE_CHARS, empty=False)
+        _require_text(
+            self.title, field="member title", maximum=MAX_TITLE_CHARS, empty=False
+        )
         _require_positive(self.position, field="member position")
 
 
@@ -269,9 +278,10 @@ class AttachedSessionV1:
     snapshot: SessionSnapshotV1
 
     def __post_init__(self) -> None:
-        if type(self.member) is not MuxSpaceMemberV1 or type(
-            self.snapshot
-        ) is not SessionSnapshotV1:
+        if (
+            type(self.member) is not MuxSpaceMemberV1
+            or type(self.snapshot) is not SessionSnapshotV1
+        ):
             raise TypeError("invalid attached session")
         if self.member.session != self.snapshot.identity:
             raise ValueError("attached session identity mismatch")
@@ -340,7 +350,10 @@ class MuxAttachV1:
     def __post_init__(self) -> None:
         if type(self.selector) is not MuxSelectorV1:
             raise TypeError("invalid mux selector")
-        if type(self.mailbox_capacity) is not int or not 8 <= self.mailbox_capacity <= 4096:
+        if (
+            type(self.mailbox_capacity) is not int
+            or not 8 <= self.mailbox_capacity <= 4096
+        ):
             raise ValueError("invalid mailbox capacity")
 
 
@@ -444,6 +457,32 @@ class InteractionRespondV1:
             raise ValueError("invalid interaction outcome")
 
 
+@dataclass(frozen=True, slots=True)
+class AttachmentReadEventsV1:
+    attachment_id: str
+    controller_generation: int
+    limit: int = 64
+
+    def __post_init__(self) -> None:
+        _require_opaque_id(self.attachment_id, field="attachment_id")
+        _require_positive(self.controller_generation, field="controller_generation")
+        if type(self.limit) is not int or not 1 <= self.limit <= 64:
+            raise ValueError("invalid event limit")
+
+
+@dataclass(frozen=True, slots=True)
+class AttachmentEventsV1:
+    events: tuple[AttachmentEventV1, ...]
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.events) is not tuple
+            or len(self.events) > 64
+            or any(type(item) is not AttachmentEventV1 for item in self.events)
+        ):
+            raise ValueError("invalid event batch")
+
+
 AppRequestPayloadV1: TypeAlias = (
     MuxCreateV1
     | MuxListV1
@@ -457,6 +496,7 @@ AppRequestPayloadV1: TypeAlias = (
     | TurnTextV1
     | TurnInterruptV1
     | InteractionRespondV1
+    | AttachmentReadEventsV1
 )
 
 
@@ -475,6 +515,7 @@ _PAYLOAD_TYPES: dict[AppOperationV1, type[object]] = {
     AppOperationV1.TURN_FOLLOW_UP: TurnTextV1,
     AppOperationV1.TURN_INTERRUPT: TurnInterruptV1,
     AppOperationV1.INTERACTION_RESPOND: InteractionRespondV1,
+    AppOperationV1.ATTACHMENT_READ_EVENTS: AttachmentReadEventsV1,
 }
 
 
@@ -520,6 +561,7 @@ AppResultPayloadV1: TypeAlias = (
     | MuxListResultV1
     | MuxAttachmentV1
     | SessionSnapshotV1
+    | AttachmentEventsV1
 )
 
 
@@ -540,6 +582,7 @@ class AppResponseV1:
             MuxListResultV1,
             MuxAttachmentV1,
             SessionSnapshotV1,
+            AttachmentEventsV1,
         }:
             raise TypeError("invalid app result")
 
@@ -556,6 +599,8 @@ __all__ = [
     "AppResultPayloadV1",
     "AttachedSessionV1",
     "AttachmentEventV1",
+    "AttachmentEventsV1",
+    "AttachmentReadEventsV1",
     "InteractionOutcomeV1",
     "InteractionRespondV1",
     "MuxAttachV1",
