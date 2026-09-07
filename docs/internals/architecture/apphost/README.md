@@ -9,6 +9,7 @@
 [G9 Promotion Record](hosted-product-g9-promotion-record.md) ·
 [G10 Installed Explicit Canary](installed-explicit-canary-g10.md) ·
 [G11 Hosted Application](../appserver/hosted-application-g11.md) ·
+[G12 Foreground Hosted Application](foreground-hosted-application-g12.md) ·
 [Hosted Product Runtime V1 Plan](../drafts/hosted-product-runtime-v1-plan.md)
 
 ## Status
@@ -18,7 +19,8 @@
 - Authority: normative — accepted AppHost scope boundary
 - Design status: accepted
 - Implementation status: partial — Hosted Product Runtime G0--G10 is
-  implemented; A0.5 remains not-started
+  implemented; G12.0 foreground hosted application design is accepted; A0.5
+  remains not-started
 - Activation status: default-dark; only the exact installed G10 canary selects
   Hosting, while ordinary CLI, TUI, SDK, AppService, and AppServer routes do not
 - Owner: Loushang AppHost architecture
@@ -118,6 +120,13 @@ explicit in-process AppService and Harnesstui Hosted Mux Profile. It does not
 compose through AppHost, select Hosting, or change this scope's runtime. The
 A0.4 binder still consumes only AppServer's structural `ports.py`; AppServer's
 new protocol/client contract and AppService remain sibling-owned.
+
+The accepted
+[G12 Foreground Hosted Application](foreground-hosted-application-g12.md)
+defines the first explicit optional composition of AppHost, AppService and a
+Coding-owned foreground Session resolver. G12.0 is design-only: no production
+composition, transport, Hosting owner, installed route or default change is
+claimed until G12.1--G12.4 pass their own gate.
 
 ## Target
 
@@ -267,6 +276,8 @@ after Product/OEM admission, never through a derived module name.
 | G9.4 | architecture reconciliation and lane-to-main promotion | implemented; promoted default-dark |
 | G10.0 | installed explicit canary boundary, durable control, evidence, and threat model | accepted |
 | G10.1--G10.4 | Product control journal, native canary, lazy CLI route, retained cross-platform evidence, and promotion | implemented, explicit and default-dark |
+| G12.0 | optional foreground hosted-application boundary, owner order, threat model and design review | accepted; implementation pending |
+| G12.1--G12.4 | AppHost application owner, Coding foreground resolver, explicit vertical canary and promotion evidence | pending |
 
 ## Evidence
 
