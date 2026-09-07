@@ -7,10 +7,13 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TypeAlias
 
+from .errors import AppFailureV1
+
 APP_PROTOCOL_VERSION = "loushang.app/v1"
 MAX_TEXT_CHARS = 262_144
 MAX_TITLE_CHARS = 256
 MAX_MEMBERS = 128
+MAX_MUX_SPACES = 256
 MAX_SNAPSHOT_RECORDS = 4_096
 
 _STABLE_ID = re.compile(r"[a-z0-9](?:[a-z0-9._-]{0,127})\Z")
@@ -324,6 +327,10 @@ class MuxListV1:
 class MuxReadV1:
     selector: MuxSelectorV1
 
+    def __post_init__(self) -> None:
+        if type(self.selector) is not MuxSelectorV1:
+            raise TypeError("invalid mux selector")
+
 
 @dataclass(frozen=True, slots=True)
 class MuxAttachV1:
@@ -351,11 +358,21 @@ class MuxDetachV1:
 class MuxCloseV1:
     selector: MuxSelectorV1
 
+    def __post_init__(self) -> None:
+        if type(self.selector) is not MuxSelectorV1:
+            raise TypeError("invalid mux selector")
+
 
 @dataclass(frozen=True, slots=True)
 class MuxMemberOpenV1:
     selector: MuxSelectorV1
     session: SessionOpenSpecV1
+
+    def __post_init__(self) -> None:
+        if type(self.selector) is not MuxSelectorV1:
+            raise TypeError("invalid mux selector")
+        if type(self.session) is not SessionOpenSpecV1:
+            raise TypeError("invalid session open specification")
 
 
 @dataclass(frozen=True, slots=True)
@@ -365,6 +382,8 @@ class MuxMemberCloseV1:
     close_session: bool = True
 
     def __post_init__(self) -> None:
+        if type(self.selector) is not MuxSelectorV1:
+            raise TypeError("invalid mux selector")
         _require_opaque_id(self.member_id, field="member_id")
         if type(self.close_session) is not bool:
             raise TypeError("invalid close_session")
@@ -486,12 +505,21 @@ class MuxListResultV1:
     mux_spaces: tuple[MuxSpaceV1, ...]
 
     def __post_init__(self) -> None:
-        if any(type(item) is not MuxSpaceV1 for item in self.mux_spaces):
+        if (
+            not isinstance(self.mux_spaces, tuple)
+            or len(self.mux_spaces) > MAX_MUX_SPACES
+            or any(type(item) is not MuxSpaceV1 for item in self.mux_spaces)
+        ):
             raise TypeError("invalid mux list")
 
 
 AppResultPayloadV1: TypeAlias = (
-    AckV1 | MuxSpaceV1 | MuxListResultV1 | MuxAttachmentV1 | SessionSnapshotV1
+    AckV1
+    | AppFailureV1
+    | MuxSpaceV1
+    | MuxListResultV1
+    | MuxAttachmentV1
+    | SessionSnapshotV1
 )
 
 
@@ -507,6 +535,7 @@ class AppResponseV1:
             raise ValueError("unsupported app protocol version")
         if type(self.result) not in {
             AckV1,
+            AppFailureV1,
             MuxSpaceV1,
             MuxListResultV1,
             MuxAttachmentV1,
@@ -517,6 +546,8 @@ class AppResponseV1:
 
 __all__ = [
     "APP_PROTOCOL_VERSION",
+    "MAX_MEMBERS",
+    "MAX_MUX_SPACES",
     "AckV1",
     "AppOperationV1",
     "AppRequestPayloadV1",

@@ -69,6 +69,7 @@ class _FakeSession:
         self.snapshot_release: asyncio.Event | None = None
         self.turn_entered: asyncio.Event | None = None
         self.turn_release: asyncio.Event | None = None
+        self.close_release: asyncio.Event | None = None
         self.calls: list[tuple[str, object]] = []
         self.closed = 0
 
@@ -151,6 +152,8 @@ class _FakeSession:
     async def close(self) -> None:
         self.closed += 1
         self.calls.append(("close", ""))
+        if self.close_release is not None:
+            await self.close_release.wait()
 
 
 class _Resolver:
@@ -284,6 +287,34 @@ async def test_G11_ATTACH_BARRIER_membership_change_returns_typed_conflict() -> 
 
 
 @_async_test
+async def test_attach_cancellation_removes_reserved_attachment_authority() -> None:
+    service, client, resolver = await _service()
+    await _mux_with_member(client)
+    session = resolver.sessions[0]
+    session.snapshot_entered = asyncio.Event()
+    session.snapshot_release = asyncio.Event()
+
+    attach_task = asyncio.create_task(
+        client.attach_mux(MuxAttachV1(MuxSelectorV1(name="dev")))
+    )
+    await session.snapshot_entered.wait()
+    attach_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await attach_task
+
+    with pytest.raises(AppServiceError) as stale:
+        await client.read_events(
+            attachment_id="id-3",
+            controller_generation=1,
+        )
+    assert stale.value.code is AppErrorCodeV1.STALE_ATTACHMENT
+    session.snapshot_entered = None
+    session.snapshot_release = None
+    assert await client.attach_mux(MuxAttachV1(MuxSelectorV1(name="dev")))
+    await service.close()
+
+
+@_async_test
 async def test_G11_MAILBOX_BOUND_isolates_one_lagged_attachment() -> None:
     service, client, resolver = await _service()
     await _mux_with_member(client)
@@ -303,6 +334,9 @@ async def test_G11_MAILBOX_BOUND_isolates_one_lagged_attachment() -> None:
             controller_generation=first.controller_generation,
         )
     assert lagged.value.code is AppErrorCodeV1.ATTACHMENT_LAGGED
+    assert await client.detach_mux(
+        MuxDetachV1(first.attachment_id, first.controller_generation)
+    )
     second_events = await client.read_events(
         attachment_id=second.attachment_id,
         controller_generation=second.controller_generation,
@@ -338,6 +372,51 @@ async def test_G11_AGGREGATE_CONCURRENCY_blocked_product_open_does_not_lock_muxe
 
 
 @_async_test
+async def test_member_open_cancellation_after_adoption_closes_unpublished_session() -> None:
+    service, client, resolver = await _service()
+    await client.create_mux(MuxCreateV1("dev"))
+    resolver.block_title = "blocked"
+    opening = asyncio.create_task(
+        client.open_member(
+            MuxMemberOpenV1(MuxSelectorV1(name="dev"), _spec("blocked"))
+        )
+    )
+    await resolver.entered.wait()
+    await service._state_lock.acquire()
+    resolver.release.set()
+    while not resolver.sessions:
+        await asyncio.sleep(0)
+
+    opening.cancel()
+    service._state_lock.release()
+    with pytest.raises(asyncio.CancelledError):
+        await opening
+
+    assert resolver.sessions[0].closed == 1
+    assert (await client.read_mux(MuxReadV1(MuxSelectorV1(name="dev")))).members == ()
+    await service.close()
+
+
+@_async_test
+async def test_generated_id_collision_fails_closed_without_registry_overwrite() -> None:
+    resolver = _Resolver()
+    service = AppServiceV1(
+        product_id="coding",
+        resolver=resolver,
+        id_factory=lambda: "same-id",
+    )
+    client = InProcessAppClientV1(service)
+    first = await client.create_mux(MuxCreateV1("one"))
+
+    with pytest.raises(AppServiceError) as collision:
+        await client.create_mux(MuxCreateV1("two"))
+
+    assert collision.value.code is AppErrorCodeV1.OPERATION_UNAVAILABLE
+    assert (await client.list_muxes()).mux_spaces == (first,)
+    await service.close()
+
+
+@_async_test
 async def test_G11_operations_forward_only_after_attachment_generation_fence() -> None:
     service, client, resolver = await _service()
     _mux, member = await _mux_with_member(client)
@@ -369,6 +448,63 @@ async def test_G11_operations_forward_only_after_attachment_generation_fence() -
         await client.start_turn(
             TurnTextV1(attachment.attachment_id, 999, member.member_id, "denied")
         )
+    assert stale.value.code is AppErrorCodeV1.STALE_ATTACHMENT
+    await service.close()
+
+
+@_async_test
+async def test_only_latest_attachment_generation_has_mutation_authority() -> None:
+    service, client, _resolver = await _service()
+    _mux, member = await _mux_with_member(client)
+    first = await client.attach_mux(MuxAttachV1(MuxSelectorV1(name="dev")))
+    second = await client.attach_mux(MuxAttachV1(MuxSelectorV1(name="dev")))
+
+    with pytest.raises(AppServiceError) as stale:
+        await client.start_turn(
+            TurnTextV1(
+                first.attachment_id,
+                first.controller_generation,
+                member.member_id,
+                "denied",
+            )
+        )
+    assert stale.value.code is AppErrorCodeV1.STALE_ATTACHMENT
+    await client.start_turn(
+        TurnTextV1(
+            second.attachment_id,
+            second.controller_generation,
+            member.member_id,
+            "admitted",
+        )
+    )
+    await service.close()
+
+
+@_async_test
+async def test_membership_change_fences_mutation_on_settled_attachment() -> None:
+    service, client, _resolver = await _service()
+    mux, first_member = await _mux_with_member(client)
+    mux = await client.open_member(
+        MuxMemberOpenV1(MuxSelectorV1(name="dev"), _spec("two"))
+    )
+    attachment = await client.attach_mux(MuxAttachV1(MuxSelectorV1(name="dev")))
+    await client.close_member(
+        MuxMemberCloseV1(
+            MuxSelectorV1(name="dev"),
+            mux.members[1].member_id,
+        )
+    )
+
+    with pytest.raises(AppServiceError) as stale:
+        await client.start_turn(
+            TurnTextV1(
+                attachment.attachment_id,
+                attachment.controller_generation,
+                first_member.member_id,
+                "denied",
+            )
+        )
+
     assert stale.value.code is AppErrorCodeV1.STALE_ATTACHMENT
     await service.close()
 
@@ -480,6 +616,30 @@ async def test_product_mismatch_fails_before_resolver_effect() -> None:
     assert mismatch.value.code is AppErrorCodeV1.PRODUCT_MISMATCH
     assert resolver.requests == []
     await service.close()
+
+
+@_async_test
+async def test_service_close_is_bounded_and_retries_retained_cleanup_debt() -> None:
+    resolver = _Resolver()
+    service = AppServiceV1(
+        product_id="coding",
+        resolver=resolver,
+        id_factory=_Ids(),
+        close_timeout_seconds=0.01,
+    )
+    client = InProcessAppClientV1(service)
+    await _mux_with_member(client)
+    release = asyncio.Event()
+    resolver.sessions[0].close_release = release
+
+    with pytest.raises(AppServiceError) as incomplete:
+        await service.close()
+    assert incomplete.value.code is AppErrorCodeV1.CLEANUP_INCOMPLETE
+
+    release.set()
+    await asyncio.sleep(0)
+    await service.close()
+    assert resolver.sessions[0].closed == 1
 
 
 def test_in_process_client_satisfies_transport_neutral_contract() -> None:

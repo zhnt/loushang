@@ -8,7 +8,7 @@ from collections.abc import Callable, Mapping
 from enum import Enum
 from typing import TypeVar, cast
 
-from .errors import InvalidAppMessageError
+from .errors import AppErrorCodeV1, AppFailureV1, InvalidAppMessageError
 from .model import (
     APP_PROTOCOL_VERSION,
     AckV1,
@@ -16,6 +16,7 @@ from .model import (
     AppRequestV1,
     AppResponseV1,
     AttachedSessionV1,
+    AttachmentEventV1,
     InteractionOutcomeV1,
     InteractionRespondV1,
     MuxAttachmentV1,
@@ -31,6 +32,8 @@ from .model import (
     MuxSelectorV1,
     MuxSpaceMemberV1,
     MuxSpaceV1,
+    SessionEventKindV1,
+    SessionEventV1,
     SessionIdentityV1,
     SessionOpenSpecV1,
     SessionScopeV1,
@@ -159,8 +162,12 @@ def encode_response(response: AppResponseV1) -> bytes:
     if type(response) is not AppResponseV1:
         raise TypeError("response must be AppResponseV1")
     result = response.result
+    result_type: str
+    value: _Object
     if type(result) is AckV1:
         result_type, value = "ack", {}
+    elif type(result) is AppFailureV1:
+        result_type, value = "error", {"code": result.code.value}
     elif type(result) is MuxSpaceV1:
         result_type, value = "mux", _encode_mux(result)
     elif type(result) is MuxListResultV1:
@@ -195,6 +202,12 @@ def decode_response(payload: bytes) -> AppResponseV1:
     if result_type == "ack":
         _object(raw, set())
         result: object = AckV1()
+    elif result_type == "error":
+        value = _object(raw, {"code"})
+        result = _construct(
+            AppFailureV1,
+            code=_enum(AppErrorCodeV1, value["code"]),
+        )
     elif result_type == "mux":
         result = _decode_mux(raw)
     elif result_type == "muxList":
@@ -216,6 +229,52 @@ def decode_response(payload: bytes) -> AppResponseV1:
         AppResponseV1,
         request_id=_string(root["requestId"]),
         result=result,
+    )
+
+
+def encode_event(event: AttachmentEventV1) -> bytes:
+    if type(event) is not AttachmentEventV1:
+        raise TypeError("event must be AttachmentEventV1")
+    return _dumps(
+        {
+            "attachmentId": event.attachment_id,
+            "event": {
+                "cursor": event.event.cursor,
+                "interactionId": event.event.interaction_id,
+                "kind": event.event.kind.value,
+                "sessionId": event.event.session_id,
+                "text": event.event.text,
+            },
+            "memberId": event.member_id,
+            "protocolVersion": APP_PROTOCOL_VERSION,
+        }
+    )
+
+
+def decode_event(payload: bytes) -> AttachmentEventV1:
+    root = _object(
+        _loads(payload),
+        {"attachmentId", "event", "memberId", "protocolVersion"},
+    )
+    if root["protocolVersion"] != APP_PROTOCOL_VERSION:
+        raise InvalidAppMessageError()
+    raw_event = _object(
+        root["event"],
+        {"cursor", "interactionId", "kind", "sessionId", "text"},
+    )
+    event = _construct(
+        SessionEventV1,
+        session_id=_string(raw_event["sessionId"]),
+        cursor=_integer(raw_event["cursor"]),
+        kind=_enum(SessionEventKindV1, raw_event["kind"]),
+        text=_optional_string(raw_event["text"]),
+        interaction_id=_optional_string(raw_event["interactionId"]),
+    )
+    return _construct(
+        AttachmentEventV1,
+        attachment_id=_string(root["attachmentId"]),
+        member_id=_string(root["memberId"]),
+        event=event,
     )
 
 
@@ -581,8 +640,10 @@ def reject_non_finite_number(value: float) -> None:
 
 __all__ = [
     "MAX_MESSAGE_BYTES",
+    "decode_event",
     "decode_request",
     "decode_response",
+    "encode_event",
     "encode_request",
     "encode_response",
 ]

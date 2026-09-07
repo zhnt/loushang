@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import Enum
 
 
@@ -35,4 +36,20 @@ class InvalidAppMessageError(AppServiceError):
         super().__init__(AppErrorCodeV1.INVALID_REQUEST)
 
 
-__all__ = ["AppErrorCodeV1", "AppServiceError", "InvalidAppMessageError"]
+@dataclass(frozen=True, slots=True)
+class AppFailureV1:
+    """Immutable transport-safe failure value without a raw message."""
+
+    code: AppErrorCodeV1
+
+    def __post_init__(self) -> None:
+        if type(self.code) is not AppErrorCodeV1:
+            raise TypeError("invalid app failure code")
+
+
+__all__ = [
+    "AppErrorCodeV1",
+    "AppFailureV1",
+    "AppServiceError",
+    "InvalidAppMessageError",
+]

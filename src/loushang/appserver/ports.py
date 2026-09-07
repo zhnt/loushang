@@ -47,9 +47,10 @@ class AppServerProductPortsV1(
 ):
     """Typed immutable wiring bundle; AppHost never invokes these ports.
 
-    AppService later supplies exact protocol types for the four type
-    parameters.  This container deliberately defines no generic command or
-    payload escape hatch and owns no lifecycle close operation.
+    Product/AppHost composition supplies exact types for the four parameters.
+    This container deliberately defines no generic command or payload escape
+    hatch and owns no lifecycle close operation. G11 AppService owns its exact
+    runtime Session input port separately.
     """
 
     identity: AppServerSessionIdentityV1

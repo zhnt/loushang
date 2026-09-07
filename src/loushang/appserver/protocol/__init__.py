@@ -1,9 +1,23 @@
 """Public G11 application protocol contract."""
 
-from .codec import decode_request, decode_response, encode_request, encode_response
-from .errors import AppErrorCodeV1, AppServiceError, InvalidAppMessageError
+from .codec import (
+    decode_event,
+    decode_request,
+    decode_response,
+    encode_event,
+    encode_request,
+    encode_response,
+)
+from .errors import (
+    AppErrorCodeV1,
+    AppFailureV1,
+    AppServiceError,
+    InvalidAppMessageError,
+)
 from .model import (
     APP_PROTOCOL_VERSION,
+    MAX_MEMBERS,
+    MAX_MUX_SPACES,
     AckV1,
     AppOperationV1,
     AppRequestPayloadV1,
@@ -43,8 +57,11 @@ from .schema import operation_names_v1, schema_fingerprint_material_v1
 
 __all__ = [
     "APP_PROTOCOL_VERSION",
+    "MAX_MEMBERS",
+    "MAX_MUX_SPACES",
     "AckV1",
     "AppErrorCodeV1",
+    "AppFailureV1",
     "AppOperationV1",
     "AppRequestPayloadV1",
     "AppRequestV1",
@@ -80,8 +97,10 @@ __all__ = [
     "TranscriptRecordV1",
     "TurnInterruptV1",
     "TurnTextV1",
+    "decode_event",
     "decode_request",
     "decode_response",
+    "encode_event",
     "encode_request",
     "encode_response",
     "operation_names_v1",

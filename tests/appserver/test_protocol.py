@@ -2,16 +2,20 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
 from loushang.appserver.protocol import (
     APP_PROTOCOL_VERSION,
     AckV1,
+    AppErrorCodeV1,
+    AppFailureV1,
     AppOperationV1,
     AppRequestV1,
     AppResponseV1,
     AttachedSessionV1,
+    AttachmentEventV1,
     InteractionOutcomeV1,
     InteractionRespondV1,
     InvalidAppMessageError,
@@ -28,6 +32,8 @@ from loushang.appserver.protocol import (
     MuxSelectorV1,
     MuxSpaceMemberV1,
     MuxSpaceV1,
+    SessionEventKindV1,
+    SessionEventV1,
     SessionIdentityV1,
     SessionOpenSpecV1,
     SessionScopeV1,
@@ -37,8 +43,10 @@ from loushang.appserver.protocol import (
     TranscriptRecordV1,
     TurnInterruptV1,
     TurnTextV1,
+    decode_event,
     decode_request,
     decode_response,
+    encode_event,
     encode_request,
     encode_response,
     operation_names_v1,
@@ -170,6 +178,7 @@ def test_G11_CONTRACT_STRICT_request_round_trip(
     "result",
     (
         AckV1(),
+        AppFailureV1(AppErrorCodeV1.SNAPSHOT_REQUIRED),
         _mux(),
         MuxListResultV1((_mux(),)),
         _attachment(),
@@ -180,6 +189,26 @@ def test_G11_CONTRACT_STRICT_response_round_trip(result: object) -> None:
     response = AppResponseV1("request-1", result)  # type: ignore[arg-type]
 
     assert decode_response(encode_response(response)) == response
+
+
+def test_G11_CONTRACT_STRICT_event_round_trip_is_closed() -> None:
+    event = AttachmentEventV1(
+        "attachment-1",
+        "member-1",
+        SessionEventV1(
+            "session-1",
+            5,
+            SessionEventKindV1.INTERACTION_REQUESTED,
+            "approval required",
+            "interaction-1",
+        ),
+    )
+
+    assert decode_event(encode_event(event)) == event
+    raw = json.loads(encode_event(event))
+    raw["event"]["hidden"] = True
+    with pytest.raises(InvalidAppMessageError):
+        decode_event(json.dumps(raw).encode())
 
 
 @pytest.mark.parametrize(
@@ -214,6 +243,12 @@ def test_G11_MUX_IDENTITY_enforces_domains_and_cardinality() -> None:
         replace(_mux(), members=(replace(_mux().members[0], position=2),))
     with pytest.raises(ValueError, match="attachment sessions"):
         replace(_attachment(), sessions=())
+    with pytest.raises(TypeError, match="mux selector"):
+        MuxReadV1("dev")  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match="mux selector"):
+        MuxCloseV1("dev")  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match="mux list"):
+        MuxListResultV1([_mux()])  # type: ignore[arg-type]
 
 
 def test_protocol_schema_vocabulary_is_closed_and_complete() -> None:
@@ -228,3 +263,15 @@ def test_protocol_schema_vocabulary_is_closed_and_complete() -> None:
         "protocolVersion",
         "requestId",
     }
+    schema = json.loads(
+        Path(
+            "docs/internals/architecture/appserver/app-protocol-v1.schema.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert schema["additionalProperties"] is False
+    assert tuple(schema["properties"]["operation"]["enum"]) == (
+        operation_names_v1()
+    )
+    assert schema["properties"]["protocolVersion"]["const"] == (
+        APP_PROTOCOL_VERSION
+    )
