@@ -13,7 +13,7 @@
 - Parent: Loushang application architecture
 - Authority: normative accepted design
 - Design status: accepted
-- Implementation status: design accepted — G12.0 complete; G12.1--G12.4 pending
+- Implementation status: implemented — G12.0--G12.4 complete
 - Activation status: explicit process-local library only
 - Owner: Loushang AppHost architecture with Product and AppService boundary review
 
@@ -50,10 +50,10 @@ owner settlement before transport and process survival add new failure domains.
 
 | Plane | Statement |
 | --- | --- |
-| Facts | G11 provides the App Contract, AppClient, AppService, one Coding Session adapter and an explicit Harnesstui Hosted Mux Profile. AppHost G8--G10 provides default-dark Product/runtime composition and one unrelated installed Hosting canary. The two capabilities are not composed. |
-| Current | An explicit caller may construct the G11 service directly from callbacks, but no owner joins it to AppHost's canonical Session routing or ordered shutdown. Normal Coding CLI/TUI/SDK remains Current. |
-| Target | One explicit G12 library composition owns one Product generation, AppHost Runtime, AppService and in-process client. Coding supplies the Product-specific foreground Session factory and projection edge; hosted create/resume traverses AppHost and supports canonical cwd and user-home identities. |
-| Delta | Add the optional AppHost lifecycle composition, the Coding foreground Product/resolver edge, an explicit end-to-end Harnesstui canary, inventory v5 and affected gates. Do not add transport, Hosting, installed activation or a default-owner change. |
+| Facts | G11 provides the App Contract, AppClient, AppService, one Coding Session adapter and an explicit Harnesstui Hosted Mux Profile. AppHost G8--G10 provides default-dark Product/runtime composition and one unrelated installed Hosting canary. G12 adds an optional foreground composition without changing either installed route. |
+| Current | An explicit caller may construct one G12 library application that joins AppService to AppHost canonical routing and ordered shutdown. Normal Coding CLI/TUI/SDK remains Current. |
+| Target | The accepted G12 target is realized: one explicit library composition owns one Product generation, AppHost Runtime, AppService and in-process client. Coding supplies the Product-specific foreground Session factory and projection edge; hosted create/resume traverses AppHost and supports canonical cwd and user-home identities. |
+| Delta | G12 closes the foreground in-process composition delta. Transport, Hosting, installed activation, background continuity and a default-owner change remain outside this goal. |
 
 ## Requirements
 
@@ -264,8 +264,34 @@ The first three-view pass found four medium risks and the design was revised:
   source compatible.
 
 The same three views were rerun after these changes. No unresolved high or
-medium finding remains. G12.1 implementation may start only inside the
-requirements and non-goals above.
+medium finding remained, so implementation proceeded inside the requirements
+and non-goals above.
+
+## G12.4 Implementation Review
+
+The final three-view pass found and closed the following issues:
+
+- **Architecture and authority:** the optional application module and Coding
+  edge were missing from the exact package/inventory gates, leaving their
+  dependency direction vulnerable to later drift. Inventory v5, generated
+  dependencies, package budgets and exact consumer/omission guards now cover
+  both modules. A second Product identity test proves the application owner is
+  Product-neutral, while the concrete factory remains Coding-owned.
+- **Lifecycle, concurrency and safety:** failed or internally cancelled close
+  tasks could make a later retry raise while inspecting the old task instead
+  of restarting exact debt. Close-task predicates now treat cancellation and
+  failure as retryable, and tests cover service debt, AppHost timeout, Product
+  debt, caller cancellation and the profile-lease-to-binding retry chain.
+- **Contract, compatibility and evidence:** placing the two optional hosted
+  constraints before `contract_version` changed the meaning of an existing
+  fourth positional argument. The existing version slot is restored and the
+  new fields are keyword-only. The focused vertical canary, canonical
+  cwd/user-home and legacy/ambiguity cases, create-before-factory rejection,
+  inventory v5 and affected AppHost/AppService gates are all source-backed.
+
+The same three views were rerun after these fixes. No unresolved high or medium
+finding remains. The implementation remains an explicit, uninstalled,
+foreground in-process library and grants none of the deferred authorities.
 
 ## Exit Gate
 

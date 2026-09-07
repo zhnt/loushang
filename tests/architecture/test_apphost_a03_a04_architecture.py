@@ -16,6 +16,7 @@ CORE = {
     APPHOST / "runtime.py",
 }
 HOSTED = APPHOST / "hosted.py"
+APPLICATION = APPHOST / "application.py"
 SCOPE = Path("docs/internals/architecture/apphost/README.md")
 CONTRACT = Path("docs/internals/architecture/apphost/contract-model-a0.md")
 APPSERVER_SCOPE = Path("docs/internals/architecture/appserver/README.md")
@@ -49,7 +50,7 @@ def _imports(path: Path) -> set[str]:
 
 
 def test_a0_3_core_is_stdlib_only_and_facade_exposes_no_optional_edge() -> None:
-    assert {path for path in APPHOST.glob("*.py")} == CORE | {HOSTED}
+    assert {path for path in APPHOST.glob("*.py")} == CORE | {HOSTED, APPLICATION}
     for path in CORE:
         for imported in _imports(path):
             if imported == "loushang.apphost" or imported.startswith(
@@ -65,6 +66,7 @@ def test_a0_3_core_is_stdlib_only_and_facade_exposes_no_optional_edge() -> None:
     assert '"AppHostRuntimeV1"' in facade
     assert '"AppHostSessionLeaseV1"' in facade
     assert "loushang.apphost.hosted" not in facade_imports
+    assert "loushang.apphost.application" not in facade_imports
     assert not any(item.startswith("loushang.appserver") for item in facade_imports)
 
 
@@ -122,6 +124,8 @@ def test_a0_4_hosted_binder_stays_wiring_only_after_g11_consumers() -> None:
     for consumer in appserver_consumers:
         assert (
             consumer == Path("src/loushang/coding/appservice_adapter.py")
+            or consumer == Path("src/loushang/coding/hosted_application.py")
+            or consumer == APPLICATION
             or consumer.is_relative_to(Path("src/loushang/appservice"))
             or consumer.is_relative_to(Path("src/loushang/harnesstui/mux"))
         ), consumer

@@ -3,6 +3,7 @@
 [Architecture](../README.md) ·
 [AppHost](../apphost/README.md) ·
 [G11 In-Process Hosted Application](hosted-application-g11.md) ·
+[G12 Foreground Hosted Application](../apphost/foreground-hosted-application-g12.md) ·
 [AppService Hosted Boundary](../drafts/appservice-embedded-tui-hosted-boundary-plan.md)
 
 ## Status
@@ -20,6 +21,9 @@ The implemented
 protocol kernel and transport-neutral AppClient contract here, plus a separate
 Product-neutral `loushang.appservice` semantic package.  It adds no AppServer
 runtime or external entrypoint.
+
+G12's optional AppHost application edge consumes the client contract for its
+in-process view. AppServer neither constructs nor imports that composition.
 
 ## Purpose
 
@@ -40,6 +44,7 @@ path, credential, listener, or transport object.
 
 ```text
 AppService -> loushang.appserver.protocol
+apphost.application -> loushang.appserver.client
 apphost.hosted -> loushang.appserver.ports + AppHost attachment contracts
 Product hosted profile -> Product public API + loushang.appserver.ports
 Harnesstui Hosted Profile -> loushang.appserver.client + protocol
@@ -80,4 +85,7 @@ authentication, framing, byte-buffer, and transport lifecycle semantics.
   vocabulary; the reference codec owns operation-specific closed payloads.
 - `tests/architecture/test_hosted_application_g11.py` rejects reverse service,
   Product, UI, process, and transport dependencies.
-- `make check-apphost` retains A0.4 coverage; `make check-appservice` owns G11.
+- `tests/architecture/test_foreground_hosted_application_g12.py` retains the
+  optional outward consumer and unchanged installed-entrypoint boundary.
+- `make check-apphost` retains A0.4/G12 coverage; `make check-appservice` owns
+  the G11 semantics and G12 composition evidence.

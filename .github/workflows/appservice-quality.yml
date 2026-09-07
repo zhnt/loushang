@@ -32,5 +32,5 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --extra dev
 
-      - name: Check G11 hosted application
+      - name: Check G11 through G12 hosted application
         run: make check-appservice

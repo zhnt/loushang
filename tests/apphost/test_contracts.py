@@ -403,6 +403,19 @@ def test_create_request_accepts_optional_hosted_continuity_and_scope() -> None:
         )
 
 
+def test_create_request_preserves_the_v1_positional_version_slot() -> None:
+    request = SessionCreateRequestV1(
+        "coding",
+        "creator",
+        "01K4J8F3N3J7M9Q2R6T5V8W0XY",
+        APPHOST_CONTRACT_VERSION,
+    )
+
+    assert request.contract_version == APPHOST_CONTRACT_VERSION
+    assert request.requested_continuity_id is None
+    assert request.requested_scope is None
+
+
 def test_migration_candidate_cannot_imply_or_omit_product_identity_incorrectly() -> None:
     reference = SessionCandidateRefV1(
         source_id="home-legacy",

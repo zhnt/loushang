@@ -11,13 +11,13 @@ def _read() -> str:
     return DESIGN.read_text(encoding="utf-8")
 
 
-def test_g12_0_design_is_accepted_but_only_design_is_complete() -> None:
+def test_g12_design_and_implementation_are_complete() -> None:
     design = _read()
     for field in (
         "- ID: `FOREGROUND-HOSTED-APPLICATION-G12`",
         "- Authority: normative accepted design",
         "- Design status: accepted",
-        "- Implementation status: design accepted — G12.0 complete; G12.1--G12.4 pending",
+        "- Implementation status: implemented — G12.0--G12.4 complete",
         "- Activation status: explicit process-local library only",
     ):
         assert field in design

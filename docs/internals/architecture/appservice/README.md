@@ -1,7 +1,8 @@
 # Loushang AppService Architecture
 
 [Architecture](../README.md) · [AppServer](../appserver/README.md) ·
-[G11 In-Process Hosted Application](../appserver/hosted-application-g11.md)
+[G11 In-Process Hosted Application](../appserver/hosted-application-g11.md) ·
+[G12 Foreground Hosted Application](../apphost/foreground-hosted-application-g12.md)
 
 ## Status
 
@@ -9,7 +10,8 @@
 - Parent: `loushang`
 - Authority: normative — G11 in-process application semantics
 - Design status: accepted
-- Implementation status: implemented — G11.2 Product-neutral core
+- Implementation status: implemented — G11.2 Product-neutral core; consumed by
+  the optional G12 foreground composition
 - Activation status: explicit in-process construction only
 - Owner: Loushang AppService architecture
 
@@ -36,6 +38,7 @@ The G11 implementation contains:
 AppService -> AppServer protocol
 Product outer adapter -> AppService ports + Product/Harness/AppHost public contracts
 Harnesstui Hosted Profile -> AppClient + AppServer protocol
+apphost.application -> AppService
 
 AppService -/-> AppHost / Hosting / Harness / Product / Harnesstui / TUI
 AppServer -/-> AppService / AppHost / Hosting / Harness / Product / UI
@@ -62,9 +65,13 @@ close remain separate flags.  Mux close removes admission, settles its
 attachments, then closes owned Sessions.  Service close is idempotent and
 settles every remaining Session, including explicitly unplaced Sessions.
 
+G12 does not move lifecycle authority into AppService. The optional outer
+`apphost.application` owner fences and closes this service before AppHost, while
+AppService continues to know only its injected Product-neutral resolver.
+
 ## Non-Goals
 
-G11 has no connection, listener, wire dispatcher, authentication, IPC,
+G11/G12 has no connection, listener, wire dispatcher, authentication, IPC,
 WebSocket, daemon, process controller, persistent MuxSpace store, multi-client
 controller takeover, or AppHost restart recovery.  The default Embedded
 Profile and installed Coding CLI/TUI/SDK routes remain unchanged.
@@ -79,4 +86,6 @@ Profile and installed Coding CLI/TUI/SDK routes remain unchanged.
   local state, reducer ordering and snapshot recovery.
 - `tests/architecture/test_hosted_application_g11.py` enforces inventory and
   dependency direction.
+- `tests/architecture/test_foreground_hosted_application_g12.py` proves G12 is
+  an outward optional consumer and does not create a reverse dependency.
 - `make check-appservice` runs the focused lint, typecheck and behavioral suite.

@@ -179,9 +179,9 @@ class SessionCreateRequestV1:
     product_id: str
     creator_scope_id: str
     operation_id: str
-    requested_continuity_id: str | None = None
-    requested_scope: SessionDiscoveryScope | None = None
     contract_version: str = APPHOST_CONTRACT_VERSION
+    requested_continuity_id: str | None = field(default=None, kw_only=True)
+    requested_scope: SessionDiscoveryScope | None = field(default=None, kw_only=True)
 
     def __post_init__(self) -> None:
         _contract_version("contract_version", self.contract_version, APPHOST_CONTRACT_VERSION)

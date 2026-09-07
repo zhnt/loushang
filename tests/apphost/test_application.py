@@ -11,6 +11,7 @@ from loushang.apphost.application import (
     HostedApplicationActivationV1,
     HostedApplicationError,
     HostedApplicationRequestV1,
+    HostedApplicationRuntimeV1,
     HostedApplicationShutdownPhase,
     create_hosted_application_runtime,
 )
@@ -110,11 +111,15 @@ class _AppHost:
 
 
 class _Product:
-    def __init__(self, events: list[str]) -> None:
+    def __init__(self, events: list[str], *, fail_close_once: bool = False) -> None:
         self.events = events
+        self._fail_close_once = fail_close_once
 
     async def close(self) -> None:
         self.events.append("product")
+        if self._fail_close_once:
+            self._fail_close_once = False
+            raise RuntimeError("hidden")
 
 
 def _runtime(
@@ -122,8 +127,9 @@ def _runtime(
     *,
     session: _Session | None = None,
     apphost: _AppHost | None = None,
+    product: _Product | None = None,
     timeout: float = 1.0,
-):
+) -> HostedApplicationRuntimeV1:
     ids = iter(("mux", "member"))
     return create_hosted_application_runtime(
         HostedApplicationRequestV1(
@@ -132,7 +138,7 @@ def _runtime(
             generation_id="generation-1",
             apphost=apphost or _AppHost(events),
             resolver=_Resolver(session or _Session(events)),
-            product_owner=_Product(events),
+            product_owner=product or _Product(events),
             shutdown_budget=AppHostShutdownBudgetV1(1.0, 0.5),
             phase_timeout_seconds=timeout,
             service_id_factory=lambda: next(ids),
@@ -140,8 +146,8 @@ def _runtime(
     )
 
 
-async def _open_session(runtime: object) -> None:
-    client = runtime.client  # type: ignore[attr-defined]
+async def _open_session(runtime: HostedApplicationRuntimeV1) -> None:
+    client = runtime.client
     mux = await client.create_mux(MuxCreateV1("dev"))
     await client.open_member(
         MuxMemberOpenV1(
@@ -172,6 +178,28 @@ def test_G12_EXPLICIT_ACTIVATION_rejects_an_activation_subclass() -> None:
             product_owner=_Product(events),
             shutdown_budget=AppHostShutdownBudgetV1(1.0, 0.5),
         )
+
+
+@_async_test
+async def test_G12_OPTIONAL_EDGE_accepts_a_product_neutral_owner() -> None:
+    events: list[str] = []
+    runtime = create_hosted_application_runtime(
+        HostedApplicationRequestV1(
+            activation=HostedApplicationActivationV1(),
+            product_id="slides",
+            generation_id="slides-generation-1",
+            apphost=_AppHost(events),
+            resolver=_Resolver(_Session(events)),
+            product_owner=_Product(events),
+            shutdown_budget=AppHostShutdownBudgetV1(1.0, 0.5),
+        )
+    )
+
+    report = await runtime.shutdown()
+
+    assert runtime.product_id == "slides"
+    assert report.completed is True
+    assert events == ["apphost", "product"]
 
 
 @_async_test
@@ -225,6 +253,21 @@ async def test_G12_APPLICATION_CLOSE_retains_timed_out_apphost_task() -> None:
     second = await runtime.shutdown()
     assert second.completed is True
     assert events == ["apphost", "product"]
+
+
+@_async_test
+async def test_G12_APPLICATION_CLOSE_retries_product_debt_only() -> None:
+    events: list[str] = []
+    runtime = _runtime(events, product=_Product(events, fail_close_once=True))
+
+    first = await runtime.shutdown()
+    assert first.completed is False
+    assert first.failed_phases == (HostedApplicationShutdownPhase.PRODUCT,)
+    assert events == ["apphost", "product"]
+
+    second = await runtime.shutdown()
+    assert second.completed is True
+    assert events == ["apphost", "product", "product"]
 
 
 @_async_test

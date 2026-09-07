@@ -128,6 +128,12 @@ is the first named-mux extraction trigger.  It keeps AppServer protocol,
 AppService semantics, Product adapters, and Harnesstui presentation in separate
 owners and explicitly excludes listeners, IPC, daemon control, default-route
 changes, and Current deletion.
+The implemented
+[G12 foreground hosted application](apphost/foreground-hosted-application-g12.md)
+adds the first explicit AppHost-owned lifecycle composition over AppService and
+a Coding-owned foreground Session resolver. It remains an uninstalled
+process-local library; AppServer transport, IPC, Hosting, daemon continuity and
+default-route decisions remain absent.
 
 A nested scope is not automatically a top-level subsystem. The parent owns its
 placement, composition policy, and sibling relationships; the child owns its

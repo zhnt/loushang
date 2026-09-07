@@ -24,7 +24,10 @@ from loushang.apphost import (
     SessionIdentityEnvelopeV1,
     SessionIdentityProjectionV1,
 )
-from loushang.apphost.application import HostedApplicationActivationV1
+from loushang.apphost.application import (
+    HostedApplicationActivationV1,
+    HostedApplicationRuntimeV1,
+)
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
     AppServiceError,
@@ -323,11 +326,18 @@ class _Control:
 
 
 class _Binding:
-    def __init__(self, payload: _Payload, events: list[str]) -> None:
+    def __init__(
+        self,
+        payload: _Payload,
+        events: list[str],
+        *,
+        fail_close_once: bool = False,
+    ) -> None:
         self._payload = payload
         self._events = events
         self._control = _Control(payload.envelope.session_id)
         self.closed = 0
+        self._fail_close_once = fail_close_once
 
     @property
     def identity(self) -> SessionIdentityV1:
@@ -365,12 +375,16 @@ class _Binding:
     async def close(self) -> None:
         self.closed += 1
         self._events.append(f"session.close:{self.identity.session_id}")
+        if self._fail_close_once:
+            self._fail_close_once = False
+            raise RuntimeError("hidden")
 
 
 class _SessionFactory:
-    def __init__(self, events: list[str]) -> None:
+    def __init__(self, events: list[str], *, fail_close_once: bool = False) -> None:
         self.events = events
         self.bindings: list[_Binding] = []
+        self._fail_close_once = fail_close_once
 
     async def create_session(
         self,
@@ -380,7 +394,12 @@ class _SessionFactory:
     ) -> _Binding:
         assert isinstance(opaque_session_binding, _Payload)
         assert binding_key.session_id == opaque_session_binding.envelope.session_id
-        binding = _Binding(opaque_session_binding, self.events)
+        binding = _Binding(
+            opaque_session_binding,
+            self.events,
+            fail_close_once=self._fail_close_once,
+        )
+        self._fail_close_once = False
         self.bindings.append(binding)
         return binding
 
@@ -396,13 +415,13 @@ class _Ids:
 
 @dataclass
 class _Environment:
-    app: object
+    app: HostedApplicationRuntimeV1
     sessions: _CanonicalSessions
     session_factory: _SessionFactory
     events: list[str]
 
 
-async def _environment() -> _Environment:
+async def _environment(*, fail_close_once: bool = False) -> _Environment:
     events: list[str] = []
     sessions = _CanonicalSessions()
     product_source = _AdmissionSource(
@@ -415,7 +434,7 @@ async def _environment() -> _Environment:
         CODING_HOSTED_APPLICATION_PROFILE_ID,
         events,
     )
-    session_factory = _SessionFactory(events)
+    session_factory = _SessionFactory(events, fail_close_once=fail_close_once)
     ids = _Ids()
     app = await create_coding_foreground_hosted_application(
         CodingForegroundHostedApplicationRequestV1(
@@ -458,7 +477,7 @@ def _spec(
 async def test_G12_VERTICAL_CANARY_crosses_real_composition_create_turn_resume_close() -> None:
     environment = await _environment()
     app = environment.app
-    client = app.client  # type: ignore[attr-defined]
+    client = app.client
     await client.create_mux(MuxCreateV1("dev"))
     controller = await open_hosted_mux_profile(
         client,
@@ -467,7 +486,7 @@ async def test_G12_VERTICAL_CANARY_crosses_real_composition_create_turn_resume_c
 
     state = await controller.open_member(_spec())
     created_id = state.windows[0].session_id
-    assert app.generation_id == _GENERATION  # type: ignore[attr-defined]
+    assert app.generation_id == _GENERATION
     assert environment.sessions.create_intents[0].request.requested_scope is (
         SessionDiscoveryScope.CURRENT_DIRECTORY
     )
@@ -493,7 +512,7 @@ async def test_G12_VERTICAL_CANARY_crosses_real_composition_create_turn_resume_c
 
     await controller.close()
     await client.close_mux(MuxCloseV1(MuxSelectorV1(name="dev")))
-    report = await app.shutdown()  # type: ignore[attr-defined]
+    report = await app.shutdown()
     assert report.completed is True
     assert environment.session_factory.bindings[1].closed == 1
     assert environment.events[-2:] == [
@@ -518,7 +537,7 @@ async def test_G12_SCOPE_COMPAT_resumes_canonical_user_home_only() -> None:
         scope_fingerprint=_HOME_FINGERPRINT,
         mode=SessionCandidateMode.MIGRATION_REQUIRED,
     )
-    client = environment.app.client  # type: ignore[attr-defined]
+    client = environment.app.client
     await client.create_mux(MuxCreateV1("home"))
     controller = await open_hosted_mux_profile(
         client,
@@ -539,7 +558,7 @@ async def test_G12_SCOPE_COMPAT_resumes_canonical_user_home_only() -> None:
     )
     assert reference in environment.sessions.records
     await controller.close()
-    await environment.app.close()  # type: ignore[attr-defined]
+    await environment.app.close()
 
 
 @_async_test
@@ -552,15 +571,21 @@ async def test_G12_SCOPE_COMPAT_rejects_legacy_and_ambiguous_candidates() -> Non
         scope_fingerprint=_HOME_FINGERPRINT,
         mode=SessionCandidateMode.MIGRATION_REQUIRED,
     )
-    for candidate_id in ("duplicate-a", "duplicate-b"):
-        environment.sessions.add(
-            session_id="ambiguous-session",
-            continuity_id="continuity-home",
-            scope=SessionDiscoveryScope.USER_GLOBAL_CANONICAL,
-            scope_fingerprint=_HOME_FINGERPRINT,
-            candidate_id=candidate_id,
-        )
-    client = environment.app.client  # type: ignore[attr-defined]
+    environment.sessions.add(
+        session_id="ambiguous-session",
+        continuity_id="continuity-home",
+        scope=SessionDiscoveryScope.USER_GLOBAL_CANONICAL,
+        scope_fingerprint=_HOME_FINGERPRINT,
+        candidate_id="exact",
+    )
+    environment.sessions.add(
+        session_id="ambiguous-session",
+        continuity_id="conflicting-continuity",
+        scope=SessionDiscoveryScope.USER_GLOBAL_CANONICAL,
+        scope_fingerprint=_HOME_FINGERPRINT,
+        candidate_id="conflict",
+    )
+    client = environment.app.client
     await client.create_mux(MuxCreateV1("home"))
     controller = await open_hosted_mux_profile(
         client,
@@ -587,7 +612,7 @@ async def test_G12_SCOPE_COMPAT_rejects_legacy_and_ambiguous_candidates() -> Non
     assert ambiguous.value.code is AppErrorCodeV1.SESSION_UNAVAILABLE
     assert environment.session_factory.bindings == []
     await controller.close()
-    await environment.app.close()  # type: ignore[attr-defined]
+    await environment.app.close()
 
 
 @_async_test
@@ -600,7 +625,7 @@ async def test_G12_CANONICAL_ROUTING_rejects_bad_create_identity_before_factory(
             environment.sessions.created_scope_override = (
                 SessionDiscoveryScope.USER_GLOBAL_CANONICAL
             )
-        client = environment.app.client  # type: ignore[attr-defined]
+        client = environment.app.client
         await client.create_mux(MuxCreateV1(f"bad-{field}"))
         controller = await open_hosted_mux_profile(
             client,
@@ -613,4 +638,26 @@ async def test_G12_CANONICAL_ROUTING_rejects_bad_create_identity_before_factory(
         assert rejected.value.code is AppErrorCodeV1.SESSION_UNAVAILABLE
         assert environment.session_factory.bindings == []
         await controller.close()
-        await environment.app.close()  # type: ignore[attr-defined]
+        await environment.app.close()
+
+
+@_async_test
+async def test_G12_LEASE_CLOSE_retains_exact_binding_cleanup_debt() -> None:
+    environment = await _environment(fail_close_once=True)
+    client = environment.app.client
+    mux = await client.create_mux(MuxCreateV1("retry-close"))
+    controller = await open_hosted_mux_profile(
+        client,
+        selector=MuxSelectorV1(mux_space_id=mux.mux_space_id),
+    )
+    await controller.open_member(_spec())
+
+    with pytest.raises(AppServiceError) as incomplete:
+        await controller.close_active_member(close_session=True)
+
+    assert incomplete.value.code is AppErrorCodeV1.CLEANUP_INCOMPLETE
+    assert environment.session_factory.bindings[0].closed == 1
+    await controller.close()
+    report = await environment.app.shutdown()
+    assert report.completed is True
+    assert environment.session_factory.bindings[0].closed == 2

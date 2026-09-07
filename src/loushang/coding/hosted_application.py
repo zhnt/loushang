@@ -159,7 +159,7 @@ class _ForegroundSessionOwner:
             if self._closed:
                 return
             task = self._close_task
-            if task is None or (task.done() and task.exception() is not None):
+            if task is None or _void_task_needs_retry(task):
                 task = asyncio.create_task(self.binding.close())
                 task.add_done_callback(_observe_background_result)
                 self._close_task = task
@@ -380,7 +380,7 @@ class _LeasedCodingHostedBinding:
             if self._runtime_closed:
                 return
             task = self._close_task
-            if task is None or (task.done() and task.exception() is not None):
+            if task is None or _void_task_needs_retry(task):
                 task = asyncio.create_task(self._close_once())
                 task.add_done_callback(_observe_background_result)
                 self._close_task = task
@@ -477,14 +477,20 @@ class CodingAppHostHostedSessionResolverV1:
             or any(type(item) is not SessionIdentityProjectionV1 for item in projections)
         ):
             raise ValueError("Coding hosted candidate catalog is invalid")
-        matching = tuple(
+        same_session = tuple(
             item
             for item in projections
             if item.scope is scope
             and item.mode is SessionCandidateMode.CANONICAL
-            and _envelope_matches(request, item.envelope)
+            and type(item.envelope) is SessionIdentityEnvelopeV1
+            and item.envelope.session_id == request.session_id
         )
-        if len(matching) != 1:
+        matching = tuple(
+            item
+            for item in same_session
+            if _envelope_matches(request, item.envelope)
+        )
+        if len(same_session) != 1 or len(matching) != 1:
             raise ValueError("Coding hosted Session candidate is unavailable")
         return await self._runtime.attach_resume(
             product_id=CODING_PRODUCT_ID,
@@ -711,6 +717,10 @@ async def _join_void_owner(task: asyncio.Task[None]) -> None:
 def _observe_background_result(task: asyncio.Task[object]) -> None:
     if not task.cancelled():
         task.exception()
+
+
+def _void_task_needs_retry(task: asyncio.Task[None]) -> bool:
+    return task.done() and (task.cancelled() or task.exception() is not None)
 
 
 __all__ = [

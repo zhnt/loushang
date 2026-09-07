@@ -113,7 +113,11 @@ def test_G11_PRODUCT_ADAPTER_is_the_only_product_harness_bridge() -> None:
         if not path.is_relative_to(APPSERVICE)
         and _imports_prefix(_imports(path), "loushang.appservice")
     }
-    assert consumers == {CODING_ADAPTER}
+    assert consumers == {
+        CODING_ADAPTER,
+        Path("src/loushang/apphost/application.py"),
+        Path("src/loushang/coding/hosted_application.py"),
+    }
 
 
 def test_G11_HOSTED_PROFILE_depends_on_client_contract_not_service_or_product() -> None:

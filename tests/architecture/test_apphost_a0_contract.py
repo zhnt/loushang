@@ -14,7 +14,10 @@ APPHOST_MODULES = {
     APPHOST_ROOT / "router.py",
     APPHOST_ROOT / "runtime.py",
 }
-APPHOST_OPTIONAL_MODULES = {APPHOST_ROOT / "hosted.py"}
+APPHOST_OPTIONAL_MODULES = {
+    APPHOST_ROOT / "application.py",
+    APPHOST_ROOT / "hosted.py",
+}
 HARNESS_SESSION_ADAPTER = Path("src/loushang/apphost/integrations/harness_session.py")
 SCOPE = Path("docs/internals/architecture/apphost/README.md")
 CONTRACT = Path("docs/internals/architecture/apphost/contract-model-a0.md")
@@ -313,6 +316,8 @@ def test_a0_1_create_and_profile_boundaries_preserve_owner_authority() -> None:
         "creator_scope_id",
         "operation_id",
         "contract_version",
+        "requested_continuity_id",
+        "requested_scope",
     }
     create_intent = classes["SessionCreateIntentV1"]
     intent_fields = {
@@ -354,7 +359,7 @@ def test_a0_1_create_and_profile_boundaries_preserve_owner_authority() -> None:
     assert "close" not in profile_members
 
 
-def test_a0_1_has_only_the_reviewed_g8_g9_g10_and_g11_consumers() -> None:
+def test_a0_1_has_only_the_reviewed_g8_through_g12_consumers() -> None:
     consumers = {
         path
         for path in Path("src/loushang").rglob("*.py")
@@ -365,6 +370,7 @@ def test_a0_1_has_only_the_reviewed_g8_g9_g10_and_g11_consumers() -> None:
         Path("src/loushang/coding/apphost_composition.py"),
         Path("src/loushang/coding/apphost_product.py"),
         Path("src/loushang/coding/appservice_adapter.py"),
+        Path("src/loushang/coding/hosted_application.py"),
     }
     reverse_adapter_consumers = {
         path

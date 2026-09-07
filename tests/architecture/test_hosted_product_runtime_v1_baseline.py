@@ -71,6 +71,7 @@ CURRENT_SOURCE_SEAMS = (
     APPHOST_SOURCE / "integrations/harness_session.py",
     APPHOST_SOURCE / "runtime.py",
     APPHOST_SOURCE / "hosted.py",
+    APPHOST_SOURCE / "application.py",
     APPSERVER_SOURCE / "ports.py",
     HARNESS_SOURCE / "machine_resources/control_plane.py",
     Path("src/loushang/coding/cli/__main__.py"),
@@ -78,6 +79,7 @@ CURRENT_SOURCE_SEAMS = (
     Path("src/loushang/coding/apphost_canary.py"),
     Path("src/loushang/coding/apphost_composition.py"),
     Path("src/loushang/coding/apphost_product.py"),
+    Path("src/loushang/coding/hosted_application.py"),
 )
 
 
@@ -428,6 +430,7 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "router.py",
         "runtime.py",
         "hosted.py",
+        "application.py",
     }
     assert {
         path.relative_to(APPSERVER_SOURCE).as_posix()
@@ -489,6 +492,7 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         Path("src/loushang/coding/apphost_composition.py"),
         Path("src/loushang/coding/apphost_product.py"),
         Path("src/loushang/coding/appservice_adapter.py"),
+        Path("src/loushang/coding/hosted_application.py"),
     }
     retained_fences = " ".join(_section(inventory, "Retained Fences").split())
     for statement in (

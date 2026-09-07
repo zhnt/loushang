@@ -18,11 +18,11 @@
 - Parent: `loushang`
 - Authority: normative — accepted AppHost scope boundary
 - Design status: accepted
-- Implementation status: partial — Hosted Product Runtime G0--G10 is
-  implemented; G12.0 foreground hosted application design is accepted; A0.5
-  remains not-started
-- Activation status: default-dark; only the exact installed G10 canary selects
-  Hosting, while ordinary CLI, TUI, SDK, AppService, and AppServer routes do not
+- Implementation status: partial — Hosted Product Runtime G0--G10 and the G12
+  foreground hosted application are implemented; A0.5 remains not-started
+- Activation status: default-dark; the exact installed G10 canary selects
+  Hosting and G12 is available only through explicit library construction,
+  while ordinary CLI, TUI, SDK, AppService, and AppServer routes do not
 - Owner: Loushang AppHost architecture
 
 ## Scope
@@ -121,12 +121,11 @@ compose through AppHost, select Hosting, or change this scope's runtime. The
 A0.4 binder still consumes only AppServer's structural `ports.py`; AppServer's
 new protocol/client contract and AppService remain sibling-owned.
 
-The accepted
+The implemented
 [G12 Foreground Hosted Application](foreground-hosted-application-g12.md)
 defines the first explicit optional composition of AppHost, AppService and a
-Coding-owned foreground Session resolver. G12.0 is design-only: no production
-composition, transport, Hosting owner, installed route or default change is
-claimed until G12.1--G12.4 pass their own gate.
+Coding-owned foreground Session resolver. It is a process-local library only:
+no transport, Hosting owner, installed route or default change is claimed.
 
 ## Target
 
@@ -176,6 +175,7 @@ future launcher -> AppHost serialized values + Hosting contracts
 AppHost optional Harness integration -> public Harness owner + AppHost contracts
 Hosting / AppServer / AppService -/-> AppHost
 AppHost core -/-> Harness / Hosting / AppServer / AppService / concrete Product
+AppHost optional application -> AppService + AppServer client contract
 ```
 
 Optional edges may not be introduced through the core facade merely for
@@ -254,6 +254,13 @@ after Product/OEM admission, never through a derived module name.
 22. G10 may activate only through the exact installed canary command. Its
     ephemeral identity cannot read or write user Sessions, and a successful
     canary cannot authorize normal-session migration or Current deletion.
+23. G12 hosted create carries optional requested continuity and discovery
+    scope in the existing create-if-absent request. Router checks both against
+    the canonical projection before a Product factory effect; callers that omit
+    the fields retain the A0 create contract.
+24. The optional G12 application owner fences and closes AppService before
+    AppHost Runtime shutdown, then settles Product-factory construction debt.
+    It is absent from the core facade and grants no transport or process owner.
 
 ## Delivery Sequence
 
@@ -276,8 +283,8 @@ after Product/OEM admission, never through a derived module name.
 | G9.4 | architecture reconciliation and lane-to-main promotion | implemented; promoted default-dark |
 | G10.0 | installed explicit canary boundary, durable control, evidence, and threat model | accepted |
 | G10.1--G10.4 | Product control journal, native canary, lazy CLI route, retained cross-platform evidence, and promotion | implemented, explicit and default-dark |
-| G12.0 | optional foreground hosted-application boundary, owner order, threat model and design review | accepted; implementation pending |
-| G12.1--G12.4 | AppHost application owner, Coding foreground resolver, explicit vertical canary and promotion evidence | pending |
+| G12.0 | optional foreground hosted-application boundary, owner order, threat model and design review | accepted |
+| G12.1--G12.4 | AppHost application owner, Coding foreground resolver, explicit vertical canary and promotion evidence | implemented; explicit library only |
 
 ## Evidence
 
@@ -321,12 +328,17 @@ after Product/OEM admission, never through a derived module name.
   durable selection, ephemeral Session identity, native Hosting ownership,
   bounded reporting, rollback, cancellation cleanup, and inventory v3 on
   Linux and Windows;
+- `tests/apphost/test_application.py`,
+  `tests/coding/test_hosted_application.py`, and
+  `tests/architecture/test_foreground_hosted_application_g12.py` prove the G12
+  optional Product-neutral lifecycle owner, canonical Coding create/resume,
+  exact lease/binding cleanup, vertical AppClient/Harnesstui path, inventory
+  v5 and unchanged installed routes;
 - `make check-apphost` runs the focused lint, typecheck, and contract suite;
 - `make check-architecture-docs` validates parent documentation integrity.
 
 Passing these gates proves A0.4 mechanics, the default-dark G8--G9 concrete
-Product composition, and the explicitly selected short-lived G10 canary. G10
-itself grants no default Product, normal-session Hosting route,
-AppService/AppServer runtime, launcher, omitted-owner change, or Current
-deletion. G11's separate in-process application semantics do not change those
-AppHost conclusions.
+Product composition, the explicitly selected short-lived G10 canary, and the
+explicit foreground in-process G12 library. It grants no default Product,
+normal-session Hosting route, AppServer transport, launcher, omitted-owner
+change, or Current deletion.

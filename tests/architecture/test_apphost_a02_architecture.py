@@ -13,7 +13,7 @@ CORE = {
     APPHOST / "router.py",
     APPHOST / "runtime.py",
 }
-OPTIONAL = {APPHOST / "hosted.py"}
+OPTIONAL = {APPHOST / "application.py", APPHOST / "hosted.py"}
 ADAPTER = APPHOST / "integrations/harness_session.py"
 SCOPE = Path("docs/internals/architecture/apphost/README.md")
 CONTRACT = Path("docs/internals/architecture/apphost/contract-model-a0.md")
@@ -67,6 +67,7 @@ def test_a0_2_core_is_small_stdlib_only_and_optional_integration_is_separate() -
         item.startswith("loushang.apphost.integrations") for item in facade_imports
     )
     assert "loushang.apphost.hosted" not in facade_imports
+    assert "loushang.apphost.application" not in facade_imports
     assert any(
         item == "loushang.harness" or item.startswith("loushang.harness.")
         for item in _imports(ADAPTER)
@@ -144,7 +145,7 @@ def test_a0_2_catalog_uses_static_exact_pins_and_persistent_retirement() -> None
     assert "bind_profile" not in legacy_source
 
 
-def test_optional_adapter_is_dark_with_only_reviewed_g8_through_g11_consumers() -> (
+def test_optional_adapter_is_dark_with_only_reviewed_g8_through_g12_consumers() -> (
     None
 ):
     apphost_consumers = {
@@ -161,6 +162,7 @@ def test_optional_adapter_is_dark_with_only_reviewed_g8_through_g11_consumers() 
         Path("src/loushang/coding/apphost_composition.py"),
         Path("src/loushang/coding/apphost_product.py"),
         Path("src/loushang/coding/appservice_adapter.py"),
+        Path("src/loushang/coding/hosted_application.py"),
     }
     adapter_consumers = {
         path
