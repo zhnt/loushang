@@ -24,6 +24,10 @@ def test_G16_DESIGN_inventory_preserves_current_routes_and_platform_scope() -> N
             "implemented",
         }
         assert Path(entry["source"]).exists() == (entry["status"] != "planned")
+    windows = next(entry for entry in entries if entry["id"] == "appserver.record-windows")
+    assert windows["status"] == "implemented"  # Composition, not a native pass claim.
+    record_source = Path("src/loushang/appserver/local_record.py").read_text()
+    assert "from ._windows_local_record import _WindowsRecordFiles" in record_source
     scripts = tomllib.loads(Path("pyproject.toml").read_text())["project"]["scripts"]
     for name, target in inventory["unchangedScripts"].items():
         assert scripts[name] == target

@@ -20,7 +20,7 @@ def test_G16_EVIDENCE_exact_platform_case_and_installation_requirements():
         for platform in ("LINUX", "DARWIN", "WIN32")
     }
     native_cases = [identity for identity, _ in _CASES]
-    assert len(native_cases) == len(set(native_cases)) == 26
+    assert len(native_cases) == len(set(native_cases)) == 29
     for platform in ("linux", "darwin", "win32"):
         native = reports[f"G16-NATIVE-{platform.upper()}"]
         assert native["requiredCaseIds"] == native_cases
@@ -67,6 +67,7 @@ def test_G16_EVIDENCE_ci_keeps_native_and_isolated_wheel_gates_required():
         '"pythonpath", "pythonhome", "virtual_env"',
         "is_relative_to(prefix)",
         "archive_info",
+        "_verify_wheel_source(wheel)",
         "verify_evidence_manifest.py",
     ):
         assert invariant in script

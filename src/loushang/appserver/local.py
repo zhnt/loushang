@@ -124,6 +124,8 @@ class LocalAppServerV1:
         task.add_done_callback(_observe)
         try:
             await _join_close(task, self._timeout)
+            if self._closed or self._stop_requested or not self._ready:
+                raise AppConnectionClosedError()
         except BaseException:
             await self.close()
             raise
@@ -286,6 +288,8 @@ class LocalAppClientConnectionV1:
         task.add_done_callback(_observe)
         try:
             await _join_close(task, self._timeout)
+            if self._closed or not self._ready:
+                raise AppConnectionClosedError()
         except BaseException:
             await self.close()
             raise

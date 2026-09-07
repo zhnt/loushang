@@ -391,6 +391,58 @@ def test_G16_LOCAL_START_task_factory_failure_closes_unstarted_coroutine(tmp_pat
     asyncio.run(asyncio.wait_for(scenario(), 5))
 
 
+@pytest.mark.parametrize("kind", ["listener", "client", "stop"])
+def test_G16_LOCAL_READY_settlement_before_start_delivery_cannot_announce_ready(
+    tmp_path, monkeypatch, kind,
+):
+    import loushang.appserver.local as local
+
+    async def scenario():
+        directory = LocalConnectionDirectoryV1(tmp_path / "runtime")
+        stops = []
+        server, scopes = _server(directory, request_stop=stops.append)
+        client = LocalAppClientConnectionV1(directory, "workspace")
+        owner = client if kind == "client" else server
+        join = local._join_close
+
+        async def settle_before_delivery(task, timeout):
+            await join(task, timeout)
+            if task is owner._start_task:
+                if kind == "stop":
+                    reply = asyncio.get_running_loop().create_future()
+                    reply.set_result(None)
+                    server._admit_stop(reply)
+                else:
+                    await owner.close()
+
+        try:
+            if kind == "client":
+                await server.start()
+            with monkeypatch.context() as patch:
+                patch.setattr(local, "_join_close", settle_before_delivery)
+                with pytest.raises(AppServiceError) as closed:
+                    await owner.start()
+                assert closed.value.code.value == "service_closed"
+            assert owner._start_task.done() and owner._closed
+            if kind == "stop":
+                assert len(stops) == 1 and server._stop_requested
+            if kind == "client":
+                with pytest.raises(AppServiceError):
+                    _ = client.client
+                with pytest.raises(AppServiceError):
+                    _ = client.scopes
+            else:
+                assert scopes == []
+                with pytest.raises(LocalRecordError):
+                    directory.read("workspace")
+        finally:
+            await client.close()
+            await server.close()
+            directory.close()
+
+    asyncio.run(asyncio.wait_for(scenario(), 5))
+
+
 @pytest.mark.parametrize("descriptor", [-1, 123])
 def test_G16_LOCAL_CLEANUP_reset_requires_actual_handle_closed_evidence(descriptor):
     from loushang.appserver.local import _LocalTransport

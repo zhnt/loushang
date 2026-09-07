@@ -122,6 +122,27 @@ _CASES = (
         local.test_G16_LOCAL_STOP_lost_reply_does_not_lose_admitted_stop,
     ),
     (
+        "G16-LISTENER-READY-FENCE",
+        partial(
+            local.test_G16_LOCAL_READY_settlement_before_start_delivery_cannot_announce_ready,
+            kind="listener",
+        ),
+    ),
+    (
+        "G16-CLIENT-READY-FENCE",
+        partial(
+            local.test_G16_LOCAL_READY_settlement_before_start_delivery_cannot_announce_ready,
+            kind="client",
+        ),
+    ),
+    (
+        "G16-STOP-READY-FENCE",
+        partial(
+            local.test_G16_LOCAL_READY_settlement_before_start_delivery_cannot_announce_ready,
+            kind="stop",
+        ),
+    ),
+    (
         "G16-PROOF-REFLECTION",
         auth.test_G16_LOCAL_AUTH_client_rejects_reflected_client_proof,
     ),

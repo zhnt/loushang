@@ -119,3 +119,67 @@ def test_G16_TERMINAL_shell_retains_reader_debt_and_repeated_close_joins_one_bud
         assert not shell.cleanup_pending
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("lost_reply", [False, True])
+def test_G16_TERMINAL_restore_precedes_detach_debt_and_close_never_resends(lost_reply):
+    from loushang.appserver.protocol import AckV1, AppErrorCodeV1, AppServiceError
+
+    async def scenario():
+        client = _Client()
+        shell = _shell(client)
+        shell._timeout = 0.03
+        events, release = [], asyncio.Event()
+
+        class Mode:
+            def __enter__(self):
+                events.append("entered")
+
+            def __exit__(self, *args):
+                events.append("restored")
+
+        async def detach(request):
+            events.append("detach")
+            if lost_reply:
+                raise AppServiceError(AppErrorCodeV1.SERVICE_CLOSED)
+            await release.wait()
+            return AckV1()
+
+        async def eof(stream):
+            return ""
+
+        client.detach_mux = detach
+        stdin, stdout = StringIO(), StringIO()
+        with pytest.raises(AppServiceError) as error:
+            await run_hosted_mux_shell(
+                shell,
+                stdin=stdin,
+                stdout=stdout,
+                input_chunk_reader=eof,
+                terminal=FakeTerminalPort(size=TerminalSize(columns=60, rows=24)),
+                session=TerminalSession(
+                    stdin, stdout, mode_factory=lambda *args: Mode()
+                ),
+            )
+        assert error.value.code is (
+            AppErrorCodeV1.SERVICE_CLOSED
+            if lost_reply
+            else AppErrorCodeV1.CLEANUP_INCOMPLETE
+        )
+        assert events == ["entered", "restored", "detach"]
+        task, deadline = shell._detach_task, shell._deadline
+        assert shell.cleanup_pending and task.done() is lost_reply
+        assert not shell._terminal_waiters
+        with pytest.raises(AppServiceError):
+            await shell.close()
+        assert shell._detach_task is task and shell._deadline == deadline
+        assert events.count("detach") == 1
+        if not lost_reply:
+            release.set()
+            await asyncio.wait_for(task, 1)
+            await shell.close()
+            assert not shell.cleanup_pending
+        else:
+            assert shell.cleanup_pending  # Unknown result is not a clean detach.
+
+    asyncio.run(asyncio.wait_for(scenario(), 2))

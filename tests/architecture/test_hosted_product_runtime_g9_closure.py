@@ -310,7 +310,7 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
 
     inventory = json.loads(_read(G9_ENTRYPOINTS))
     assert set(inventory) == {"inventoryVersion", "decision", "entries"}
-    assert inventory["inventoryVersion"] == 4
+    assert inventory["inventoryVersion"] == 5
     assert inventory["decision"] == "RETAIN"
     rows = {row["entrypointId"]: row for row in inventory["entries"]}
     assert set(rows) == {
@@ -322,6 +322,7 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
         "coding.bootstrap",
         "coding.cli",
         "coding.hosted.command",
+        "coding.mux.command",
         "coding.sdk",
         "coding.tui",
         "harnesstui.named-mux",
@@ -358,6 +359,10 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
     assert rows["coding.hosted.command"]["disposition"] == "explicit-foreground-stdio"
     assert rows["coding.hosted.command"]["importsComposition"] is False
     assert rows["coding.hosted.command"]["omissionOwner"] is None
+    assert rows["coding.mux.command"]["disposition"] == "explicit-detachable-local"
+    assert rows["coding.mux.command"]["importsComposition"] is False
+    assert rows["coding.mux.command"]["omissionOwner"] is None
+    assert rows["coding.mux.command"]["source"] == "src/loushang/coding/cli/mux.py"
     for entrypoint_id in ("coding.arch.module-cli", "plugin.cli"):
         assert rows[entrypoint_id]["disposition"] == "non-product-tool"
         assert rows[entrypoint_id]["omissionOwner"] is None
@@ -398,6 +403,7 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
         "coding.bootstrap": ("bootstrap", "supported-library"),
         "coding.cli": ("cli", "installed"),
         "coding.hosted.command": ("hosted", "installed"),
+        "coding.mux.command": ("mux", "installed"),
         "coding.sdk": ("sdk", "supported-library"),
         "coding.tui": ("tui", "installed"),
         "harnesstui.named-mux": ("mux", "client-library"),
@@ -409,6 +415,7 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
     assert scripts == {
         "loushang": "loushang.coding.cli.__main__:main",
         "loushang-hosted": "loushang.coding.cli.hosted:main",
+        "loushang-mux": "loushang.coding.cli.mux:main",
         "loushang-plugin": "loushang.plugin.__main__:main",
         "loushang-tui": "loushang.coding.ui.cli:main",
     }
@@ -420,6 +427,7 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
     assert bindings == {
         "project.scripts.loushang": "coding.cli",
         "project.scripts.loushang-hosted": "coding.hosted.command",
+        "project.scripts.loushang-mux": "coding.mux.command",
         "project.scripts.loushang-plugin": "plugin.cli",
         "project.scripts.loushang-tui": "coding.tui",
     }

@@ -13,7 +13,7 @@
     {"id": "appserver.record-values", "source": "src/loushang/appserver/_local_record_values.py", "status": "implemented", "owner": "closed-record-format"},
     {"id": "appserver.record-files", "source": "src/loushang/appserver/_local_record_files.py", "status": "implemented", "owner": "bounded-io-and-file-lease"},
     {"id": "appserver.record-posix", "source": "src/loushang/appserver/_posix_local_record.py", "status": "implemented", "owner": "native-private-file-admission"},
-    {"id": "appserver.record-windows", "source": "src/loushang/appserver/_windows_local_record.py", "status": "implemented-uncomposed", "owner": "native-private-file-admission"},
+    {"id": "appserver.record-windows", "source": "src/loushang/appserver/_windows_local_record.py", "status": "implemented", "owner": "native-private-file-admission"},
     {"id": "appserver.local-runtime", "source": "src/loushang/appserver/local.py", "status": "implemented", "owner": "connection-admission"},
     {"id": "appserver.local-peer", "source": "src/loushang/appserver/_local_peer.py", "status": "implemented", "owner": "peer-scope-and-close-lifetime"},
     {"id": "appserver.connection-profile", "source": "src/loushang/appserver/protocol/connection_profile.py", "status": "implemented", "owner": "closed-wire-profile"},

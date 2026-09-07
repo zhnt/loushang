@@ -20,15 +20,33 @@ runner = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(runner)
 
 
+_PACKAGE = {
+    "loushang/example.py": b"selected source",
+    "loushang/data.json": b'{"selected": true}',
+}
+
+
+def _source_wheel(root, contents=None):
+    for name, value in _PACKAGE.items():
+        source = root / "src" / name
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_bytes(value)
+    wheel = root / "loushang-0.1.0-py3-none-any.whl"
+    with zipfile.ZipFile(wheel, "w") as archive:
+        for name, value in (_PACKAGE if contents is None else contents).items():
+            archive.writestr(name, value)
+    return wheel
+
+
 def test_g16_runner_binds_installation_to_wheel_digest_and_removes_source_environment(
     tmp_path,
     monkeypatch,
 ):
-    wheel = tmp_path / "loushang-0.1.0-py3-none-any.whl"
-    wheel.write_bytes(b"local test artifact")
+    wheel = _source_wheel(tmp_path)
     digest = hashlib.sha256(wheel.read_bytes()).hexdigest()
     calls = []
     monkeypatch.setattr(runner, "_ROOT", tmp_path)
+    monkeypatch.setattr(runner.os, "environ", {})
     monkeypatch.setattr(runner.shutil, "which", lambda name: "/fake/uv")
     monkeypatch.setattr(
         runner, "_run", lambda argv, **kwargs: calls.append((argv, kwargs))
@@ -60,6 +78,34 @@ def test_g16_runner_rejects_wrong_native_platform_before_installation(
     with pytest.raises(SystemExit) as error:
         runner.main(["--wheel", str(tmp_path / "absent.whl"), "--platform", other])
     assert error.value.code == 2
+
+
+@pytest.mark.parametrize(
+    "fault", ["stale-module", "missing-module", "changed-module", "changed-asset"]
+)
+def test_g16_runner_rejects_stale_build_before_installation(
+    tmp_path, monkeypatch, fault
+):
+    contents = dict(_PACKAGE)
+    if fault == "stale-module":
+        contents["loushang/deleted.py"] = b"obsolete build cache"
+    elif fault == "missing-module":
+        del contents["loushang/example.py"]
+    else:
+        name = (
+            "loushang/example.py" if fault == "changed-module" else "loushang/data.json"
+        )
+        contents[name] = b"obsolete build bytes"
+    wheel = _source_wheel(tmp_path, contents)
+    calls = []
+    monkeypatch.setattr(runner, "_ROOT", tmp_path)
+    monkeypatch.setattr(runner.os, "environ", {})
+    monkeypatch.setattr(runner.shutil, "which", lambda name: "/fake/uv")
+    monkeypatch.setattr(runner, "_run", lambda argv, **kwargs: calls.append(argv))
+    with pytest.raises(ValueError, match="wheel.*source"):
+        runner.main(["--wheel", str(wheel), "--platform", sys.platform])
+    assert not (tmp_path / ".uv-cache").exists()
+    assert calls == []
 
 
 def test_g16_probe_rejects_installed_byte_mismatch_without_trusting_metadata_hash(

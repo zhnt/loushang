@@ -3,7 +3,7 @@
   "reports": {
     "G16-NATIVE-LINUX": {
       "junitPath": ".artifacts/g16-native-linux.xml",
-      "minimumTests": 26,
+      "minimumTests": 29,
       "requiredCaseIds": [
         "G16-PRIVATE-BEFORE-WRITE",
         "G16-PRIVATE-POLICY",
@@ -24,6 +24,9 @@
         "G16-CLEANUP-DEBT",
         "G16-CANCELLED-START",
         "G16-LOST-STOP-REPLY",
+        "G16-LISTENER-READY-FENCE",
+        "G16-CLIENT-READY-FENCE",
+        "G16-STOP-READY-FENCE",
         "G16-PROOF-REFLECTION",
         "G16-PROOF-REPLAY",
         "G16-FRAME-REPLAY",
@@ -55,7 +58,7 @@
     },
     "G16-NATIVE-DARWIN": {
       "junitPath": ".artifacts/g16-native-darwin.xml",
-      "minimumTests": 26,
+      "minimumTests": 29,
       "requiredCaseIds": [
         "G16-PRIVATE-BEFORE-WRITE",
         "G16-PRIVATE-POLICY",
@@ -76,6 +79,9 @@
         "G16-CLEANUP-DEBT",
         "G16-CANCELLED-START",
         "G16-LOST-STOP-REPLY",
+        "G16-LISTENER-READY-FENCE",
+        "G16-CLIENT-READY-FENCE",
+        "G16-STOP-READY-FENCE",
         "G16-PROOF-REFLECTION",
         "G16-PROOF-REPLAY",
         "G16-FRAME-REPLAY",
@@ -107,7 +113,7 @@
     },
     "G16-NATIVE-WIN32": {
       "junitPath": ".artifacts/g16-native-win32.xml",
-      "minimumTests": 26,
+      "minimumTests": 29,
       "requiredCaseIds": [
         "G16-PRIVATE-BEFORE-WRITE",
         "G16-PRIVATE-POLICY",
@@ -128,6 +134,9 @@
         "G16-CLEANUP-DEBT",
         "G16-CANCELLED-START",
         "G16-LOST-STOP-REPLY",
+        "G16-LISTENER-READY-FENCE",
+        "G16-CLIENT-READY-FENCE",
+        "G16-STOP-READY-FENCE",
         "G16-PROOF-REFLECTION",
         "G16-PROOF-REPLAY",
         "G16-FRAME-REPLAY",

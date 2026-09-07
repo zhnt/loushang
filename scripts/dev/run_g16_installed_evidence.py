@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import zipfile
 from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -50,6 +51,36 @@ def _run(
     subprocess.run(argv, cwd=cwd, env=environment, check=True, timeout=timeout)
 
 
+def _verify_wheel_source(wheel: Path) -> None:
+    """Reject stale setuptools build output before creating an environment."""
+    source = (_ROOT / "src").resolve(strict=True)
+    expected = {
+        path.relative_to(source).as_posix()
+        for path in (source / "loushang").rglob("*.py")
+    }
+    with zipfile.ZipFile(wheel) as archive:
+        names = [
+            item.filename
+            for item in archive.infolist()
+            if item.filename.startswith("loushang/") and not item.is_dir()
+        ]
+        if (
+            not expected
+            or len(names) != len(set(names))
+            or {name for name in names if name.endswith(".py")} != expected
+        ):
+            raise ValueError("G16 wheel modules differ from current source")
+        for name in names:
+            path = (source / name).resolve()
+            if (
+                not path.is_relative_to(source)
+                or not path.is_file()
+                or path.read_bytes() != archive.read(name)
+            ):
+                raise ValueError("G16 wheel package bytes differ from current source")
+    print("G16 wheel/source package modules and bytes verified", flush=True)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     source = parser.add_mutually_exclusive_group(required=True)
@@ -70,6 +101,7 @@ def main(argv: list[str] | None = None) -> int:
         wheel = args.wheel.resolve(strict=True)
     if not wheel.is_file() or wheel.suffix != ".whl":
         parser.error("an existing built wheel is required")
+    _verify_wheel_source(wheel)
     uv = shutil.which("uv")
     if uv is None:
         parser.error("uv is required")

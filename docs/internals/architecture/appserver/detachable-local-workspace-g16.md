@@ -15,8 +15,9 @@
 - Design status: accepted following the three-perspective review below
 - Implementation status: partial — semantic scopes, native connections,
   AppHost/G13, real Coding composition and installed interactive attach are
-  implemented; cross-platform wheel/fault evidence and whole-delta
-  review remain open, including the Windows record rerun
+  implemented; Linux native/clean-wheel evidence and the local whole-delta
+  review passed. macOS/Windows fault/wheel evidence, the Windows record rerun,
+  final exact-head review and delivery remain open
 - Activation status: explicit new deployment only; G14 and Embedded unchanged
 - Tracking: [Hosted Workspace V1 #566](https://github.com/zhnt/loushang/issues/566)
 - Prerequisite: G15 design accepted in `18d429bc`; G14 delivered in `815c03d2`
@@ -1132,6 +1133,12 @@ with zero skips, followed by successful manifest verification. Wheel SHA-256:
 This artifact includes the title-control regression fix; a preceding successful
 wheel run is not substituted for this final artifact.
 
+Evidence qualification from G16.11: this run verified the installed artifact,
+but its probe did not yet prove that the artifact's package file set matched
+the source checkout. The stronger source/artifact/install check below supersedes
+it for final release acceptance; a successful historical wheel run alone is
+not proof against stale build-cache contents.
+
 Supplemental Win32-targeted mypy passed the 13-file UI/pager/evidence-script
 selection with an isolated repository cache. Initial attempts crashed or
 reported an internal `mypy.metastore` SQLite `disk I/O error`; changing to that
@@ -1141,6 +1148,113 @@ type errors. This remains static evidence, not native Windows execution.
 The macOS/Windows matrix, Windows replacement rerun, full G16 review and delivery
 remain required; adding these gates alone does not complete them. G15's launcher
 and global discovery picker stay outside this implementation slice.
+
+### G16.11 Whole-Delta Local Code Review And Readiness Fence
+
+Review scope: the complete G16 source delta from the accepted G14 baseline
+`815c03d2` through `cc383e3d`, plus the fixes below. This is a review from three
+perspectives by one reviewer, not three independent agents. Source review and
+Linux evidence do not stand in for native macOS/Windows acceptance.
+
+1. Architecture and authority (`G16-CODE-R1`): the installed `loushang-mux`
+   route was absent from the live G9 entrypoint inventory. Both exhaustive
+   inventory tests failed against the actual five installed scripts. Inventory
+   v5 now records its exact Product command, packaging binding and explicit
+   detachable disposition. It does not import the G9 Worker composition, change
+   omitted Worker ownership, or turn the Harnesstui client library into a
+   launcher. The G10 canary and default routes retain their exact assertions.
+   The G16 Windows record implementation was also still marked uncomposed
+   although `LocalConnectionDirectoryV1` selects it on Windows; it now records
+   that source fact as implemented, without claiming native validation passed.
+2. Lifecycle and concurrency (`G16-CODE-R2`): public local server/client
+   `start()` could return after its owned startup task completed but a concurrent
+   close or admitted stop had already fenced the owner. Three deterministic
+   regressions failed before the fix: listener close, client close and stop
+   between task completion and public delivery. Public start now rechecks its
+   own closed/readiness facts, and the server also checks admitted stop. Failure
+   joins existing cleanup rather than publishing readiness. These three cases
+   join the exact native evidence rows, increasing each row from 26 to 29.
+3. Interaction and evidence (`G16-CODE-R3`): shell shutdown-failure coverage was
+   insufficient to conclude the end-to-end client cleanup review. Additional
+   deterministic tests now cover terminal restoration before a pending or
+   failed detach, retained cleanup debt, reuse of the exact detach task/deadline,
+   no automatic detach retransmission, settlement of that task after a late
+   success, and Product connection/directory close even when shell close raises.
+   The failed logical result remains an error rather than a clean detach claim.
+
+The third perspective also found a release-evidence defect (`G16-CODE-R4`): a
+fresh local wheel build reused `build/lib` and included the deleted
+`loushang/coding/lsp/tool_pack.py`. The existing probe proved installation
+matched that artifact, not that the artifact matched this checkout. Four
+regression cases reproduced admission of an obsolete module, a missing module,
+changed Python bytes and changed packaged asset bytes. The runner now checks
+the exact Python module set, rejects duplicate package entries, and compares
+every packaged source/asset byte with the current checkout before any
+environment creation or installation. It also rejects package paths escaping
+the source root. The existing isolated import/digest/installed-byte checks remain.
+Runner unit fixtures use synthetic environments so their failure output does
+not include ambient developer credentials.
+The stale generated build tree was moved to an ignored, recoverable cache
+directory, not deleted or included in the source commit. A clean rebuilt
+artifact passes the new source check; its runtime evidence is recorded below
+only after the installed scenarios actually pass.
+
+The reviewed ownership chain remains: Product admits configuration and owns
+bootstrap until handoff; AppHost owns ordered application settlement and G13
+lease-last; AppService owns semantic client scopes, approvals and accepted work;
+AppServer owns native admission/authentication/framing/connection cleanup;
+Harnesstui owns borrowed-client interaction; generic TUI owns text layout and
+terminal restoration. No socket/process/Session authority was added to the UI,
+and G14 EOF/default Embedded semantics remain separate.
+
+The requirement audit uses these concrete test scopes. A listed test is an
+evidence location, not by itself a passing or cross-platform completion claim:
+
+| Requirements | Authoritative evidence scope |
+| --- | --- |
+| `G16-LOCAL-AUTH`, `G16-PRIVATE-RECORD` | `tests/appserver/test_local_auth.py`, `test_local_record*.py`, and actual native platform manifest rows: wrong material/Product, replay/reflection, private creation, no-follow, replacement and crash |
+| `G16-PROFILE` | retained `tests/appserver/test_connection.py` and `tests/coding/test_hosted_subprocess.py`, alongside explicit local profile negotiation and native EOF cases |
+| `G16-MULTI-MUX`, `G16-CONTROLLER`, `G16-ACCEPTED-WORK` | `tests/appservice/test_owned_operations.py`, `test_client_scope.py`, `test_local_deployment.py`, and installed real Coding two-mux terminal scenario |
+| `G16-APPROVAL`, `G16-REATTACH` | native disconnect/old-authority cases, generation-bound details tests, and real terminal approval/detach/reattach/interrupt; committed history is distinct from transient output |
+| `G16-BOUNDS`, `G16-STOP` | operation/scope capacity tests, native authentication and stop reserve, `tests/apphost/test_local.py`, Product handoff regressions and terminal cleanup-debt tests |
+| `G16-RECOVERY` | real process kill/restart from the installed wheel for both cwd and user-home, checking stable mux/member/Session identities, changed endpoint instance and no active execution replay |
+| `G16-CLIENT` | installed management/interactive attach, real Coding response/approval and fake-terminal input, draft, navigation, sanitization and failure-restoration checks |
+| `G16-EVIDENCE` | full AppHost/AppService gates plus exact zero-skip native and isolated-wheel manifests on Linux/macOS/Windows; final exact-head CI and delivery remain required |
+
+Local targeted verification: the readiness/AppHost/Product selection passed
+41 tests while reproducing the two inventory failures. The corrected
+G9/G10/inventory/readiness selection passed 35; the terminal/command cleanup
+selection passed ten. The source-wheel runner baseline passed three, the four
+new stale-source regressions failed before its fix, and the corrected runner
+plus evidence architecture selection passed nine. The 29-case native Linux
+row passed with zero skips and manifest verification. Architecture docs passed
+their source-generation check and five tests.
+
+The full `make check-apphost` gate passed Ruff, 78-file mypy, 693 tests with
+11 platform-only skips, G8/G9/G10 exact reports (19/16/15 tests, zero skips),
+and the installed POSIX canary. Its 469.70-second main selection was collected
+before the later three terminal/command tests and four source-wheel regressions;
+those additions have their separate targeted results above. The final
+`make check-appservice` gate then passed Ruff, 64-file mypy and 508 tests with
+ten Windows-only skips in 313.51 seconds, including all seven later regressions.
+The source-wheel runner also passed Win32-targeted mypy and its final
+runner/design selection passed 13 tests; static targeting is not a native
+Windows run. Historical G16.10 evidence above is not relabeled as this source
+state.
+
+The final clean Linux wheel passed all four installed terminal cases in
+120.09 seconds with zero skips and successful manifest verification. This run
+verified current source against the wheel before installation, then isolated
+module origins, artifact digest and every installed package byte. The artifact
+is `.artifacts/g16-clean-review-wheel/loushang-0.1.0-py3-none-any.whl`, SHA-256
+`f6b98012788311ef9516643c7b1a2cf262a85d0a1382a04e950486318a3a2444`.
+
+Local review conclusion: the identified source/contract findings are resolved;
+cross-platform release acceptance is still open. In particular the macOS and
+Windows native/wheel rows, the Windows replacement rerun, final exact-head
+review, PR/promotion and local/remote main+harness synchronization must finish
+before this goal can be called complete. G15 remains design-only for its
+foreground launcher and global Session discovery picker.
 
 ### Platform API References
 
