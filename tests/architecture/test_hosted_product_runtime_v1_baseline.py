@@ -459,7 +459,9 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
     } == {
         "__init__.py",
         "_operations.py",
+        "_scope_interactions.py",
         "client.py",
+        "client_scope.py",
         "continuity.py",
         "continuity_file.py",
         "continuity_runtime.py",

@@ -20,7 +20,8 @@ def test_G16_DESIGN_inventory_preserves_current_routes_and_platform_scope() -> N
     assert len({entry["id"] for entry in entries}) == len(entries)
     for entry in entries:
         assert entry["status"] in {
-            "planned", "existing-extend", "existing-retain", "implemented-uncomposed"
+            "planned", "existing-extend", "existing-retain", "implemented-uncomposed",
+            "implemented",
         }
         assert Path(entry["source"]).exists() == (entry["status"] != "planned")
     scripts = tomllib.loads(Path("pyproject.toml").read_text())["project"]["scripts"]

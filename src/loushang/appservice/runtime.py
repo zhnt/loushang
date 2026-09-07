@@ -9,7 +9,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from hashlib import sha256
 from secrets import token_hex
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from loushang.appserver.protocol import (
     MAX_MEMBERS,
@@ -49,6 +49,9 @@ from .continuity import (
     MuxSpaceContinuityV1,
 )
 from .ports import HostedSessionPortV1, HostedSessionResolverV1
+
+if TYPE_CHECKING:
+    from .client_scope import ScopedAppServiceV1
 
 _CONTINUITY_TOKEN = object()
 
@@ -173,6 +176,7 @@ class _SessionOwner:
         "_unsubscribe",
         "_unsubscribed",
         "identity",
+        "event_handler",
     )
 
     def __init__(self, port: HostedSessionPortV1) -> None:
@@ -187,6 +191,9 @@ class _SessionOwner:
         if type(identity) is not SessionIdentityV1:
             raise _error(AppErrorCodeV1.SESSION_UNAVAILABLE)
         self.identity = identity
+        self.event_handler: (
+            Callable[[_SessionOwner, SessionEventV1], Awaitable[None]] | None
+        ) = None
         self._port = port
         self._attachments: dict[str, _Attachment] = {}
         self._latest_cursor = 0
@@ -296,6 +303,10 @@ class _SessionOwner:
         if self._latest_cursor and event.cursor != self._latest_cursor + 1:
             self._invalidate_attachments()
         self._latest_cursor = event.cursor
+        if self.event_handler is not None:
+            await self.event_handler(self, event)
+            if event.cursor < self._latest_cursor:
+                return
         for attachment in tuple(self._attachments.values()):
             attachment.push(event)
 
@@ -389,6 +400,7 @@ class AppServiceV1:
     __slots__ = (
         "_attachments",
         "_cleanup_debt",
+        "_client_scopes",
         "_close_timeout_seconds",
         "_closed",
         "_continuity_application_id",
@@ -434,6 +446,7 @@ class AppServiceV1:
         self._cleanup_debt: set[_SessionOwner] = set()
         self._close_timeout_seconds = float(close_timeout_seconds)
         self._closed = False
+        self._client_scopes: ScopedAppServiceV1 | None = None
         self._continuity_lease: ApplicationContinuityLeaseV1 | None = None
         self._continuity_application_id: str | None = None
         self._continuity_owner_epoch: str | None = None
@@ -457,7 +470,10 @@ class AppServiceV1:
     ) -> None:
         if _token is not _CONTINUITY_TOKEN:
             raise TypeError("AppService continuity state requires recovery")
-        if self._continuity_lease is not None or self._mux_by_id or self._sessions:
+        if (
+            self._continuity_lease is not None or self._mux_by_id or self._sessions
+            or self._client_scopes is not None
+        ):
             raise RuntimeError("AppService continuity state already initialized")
         application_id = lease.application_id
         if record is not None and (
@@ -649,6 +665,8 @@ class AppServiceV1:
             raise _error(AppErrorCodeV1.SESSION_UNAVAILABLE) from None
         try:
             session = _SessionOwner(port)
+            if self._client_scopes is not None:
+                session.event_handler = self._client_scopes._interactions.on_event
         except BaseException:
             close = getattr(port, "close", None)
             if inspect.iscoroutinefunction(close):
@@ -814,6 +832,12 @@ class AppServiceV1:
         return attachment.read(limit=limit)
 
     async def close(self) -> None:
+        scope_failure = False
+        if self._client_scopes is not None:
+            try:
+                await self._client_scopes.close()
+            except AppServiceError:
+                scope_failure = True
         async with self._state_lock:
             if self._closed:
                 muxes: tuple[_MuxOwner, ...] = ()
@@ -838,6 +862,8 @@ class AppServiceV1:
                 mux.members.clear()
                 mux.revision += 1
         await self._close_sessions(sessions)
+        if scope_failure:
+            raise _error(AppErrorCodeV1.CLEANUP_INCOMPLETE)
 
     async def _resolve_mux(self, selector: MuxSelectorV1) -> _MuxOwner:
         async with self._state_lock:

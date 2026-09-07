@@ -4,7 +4,7 @@ import ast
 from pathlib import Path
 
 
-def test_G16_BOUNDARIES_owned_execution_stays_private_and_uncomposed() -> None:
+def test_G16_BOUNDARIES_owned_execution_stays_private_and_off_default_routes() -> None:
     source = Path("src/loushang/appservice/_operations.py")
     tree = ast.parse(source.read_text())
     imports = {
@@ -37,3 +37,23 @@ def test_G16_BOUNDARIES_owned_execution_stays_private_and_uncomposed() -> None:
             for name in imported
         )
     assert len(source.read_text().splitlines()) <= 250
+
+
+def test_G16_BOUNDARIES_optional_scopes_have_separate_reviewable_budgets() -> None:
+    for name, limit in (("client_scope.py", 600), ("_scope_interactions.py", 220)):
+        source = Path("src/loushang/appservice") / name
+        assert len(source.read_text().splitlines()) <= limit
+        imports = {
+            node.module for node in ast.walk(ast.parse(source.read_text()))
+            if isinstance(node, ast.ImportFrom) and node.module
+        }
+        assert {name for name in imports if name.startswith("loushang.")} == {
+            "loushang.appserver.protocol"
+        }
+    # Explicit optional construction is not activation of G14 or a CLI.
+    for name in (
+        "src/loushang/appservice/__init__.py",
+        "src/loushang/apphost/foreground.py",
+        "src/loushang/coding/cli/hosted.py",
+    ):
+        assert "client_scope" not in Path(name).read_text()

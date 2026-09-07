@@ -27,7 +27,7 @@ class _Operation:
 
 
 class _OwnedAppOperations:
-    """Application-owned operations; only application stop cancels them."""
+    """Application-owned work; only explicit application/member stop cancels it."""
 
     def __init__(
         self,
@@ -64,6 +64,16 @@ class _OwnedAppOperations:
         control: bool = False,
         key: str | None = None,
     ) -> _Result:
+        return await asyncio.shield(self.admit(operation, control=control, key=key))
+
+    def admit(
+        self,
+        operation: Callable[[], Awaitable[_Result]],
+        *,
+        control: bool = False,
+        key: str | None = None,
+    ) -> asyncio.Task[_Result]:
+        """Reserve and publish without yielding between authority and ownership."""
         if type(control) is not bool or (
             key is not None
             and (type(key) is not str or not key or len(key) > 128)
@@ -102,8 +112,7 @@ class _OwnedAppOperations:
         entry.task = cast(asyncio.Task[object], task)
         task.add_done_callback(lambda result: self._finished(entry, result))
         published.set_result(None)
-        # Cancelling this await changes delivery only, not task ownership.
-        return await asyncio.shield(task)
+        return task
 
     async def close(self) -> None:
         self._closing = True
@@ -120,6 +129,37 @@ class _OwnedAppOperations:
             task.add_done_callback(_observe)
             self._close_task = task
         await asyncio.shield(task)
+
+    def cancel_ordinary(self) -> None:
+        """Application-stop phase; leave settlement admission available."""
+        for entry in tuple(self._entries):
+            task = entry.task
+            if (
+                not entry.control and task is not None and not task.done()
+                and not entry.cancellation_sent
+            ):
+                entry.cancellation_sent = True
+                task.cancel()
+
+    def cancel_sessions(self, session_ids: frozenset[str]) -> None:
+        for entry in tuple(self._entries):
+            task = entry.task
+            if (
+                entry.key in session_ids and task is not None and not task.done()
+                and not entry.cancellation_sent
+            ):
+                entry.cancellation_sent = True
+                task.cancel()
+
+    async def join_sessions(self, session_ids: frozenset[str]) -> None:
+        tasks = {
+            entry.task for entry in self._entries
+            if entry.key in session_ids and entry.task is not None
+        }
+        if tasks:
+            _done, pending = await asyncio.wait(tasks, timeout=self._timeout)
+            if pending:
+                raise AppServiceError(AppErrorCodeV1.CLEANUP_INCOMPLETE)
 
     async def _close_once(self) -> None:
         tasks: set[asyncio.Task[object]] = set()

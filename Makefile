@@ -188,6 +188,7 @@ APPHOST_TEST_PATHS := \
 	tests/coding/test_hosted_subprocess.py \
 	tests/coding/test_hosted_catalog.py \
 	tests/coding/test_hosted_session.py \
+	tests/coding/test_scoped_hosted_session.py \
 	tests/coding/test_hosted_session_metadata.py \
 	tests/apphost \
 	tests/appserver \
@@ -245,6 +246,7 @@ APPSERVICE_TEST_PATHS := \
 	tests/apphost/test_foreground.py \
 	tests/coding/test_hosted_catalog.py \
 	tests/coding/test_hosted_session.py \
+	tests/coding/test_scoped_hosted_session.py \
 	tests/coding/test_hosted_session_metadata.py \
 	tests/harness/transcript/test_session_factory.py \
 	tests/harness/transcript/test_product_session.py \

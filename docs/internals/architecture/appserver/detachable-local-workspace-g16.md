@@ -13,8 +13,8 @@
 - Parent: Loushang application architecture
 - Authority: normative accepted deployment boundary
 - Design status: accepted following the three-perspective review below
-- Implementation status: partial — private operation owner is implemented,
-  semantic scopes, local transport and Product/UI integration remain missing
+- Implementation status: partial — optional semantic scopes and their private
+  owners are implemented; local transport and Product/UI integration remain missing
 - Activation status: explicit new deployment only; G14 and Embedded unchanged
 - Tracking: [Hosted Workspace V1 #566](https://github.com/zhnt/loushang/issues/566)
 - Prerequisite: G15 design accepted in `18d429bc`; G14 delivered in `815c03d2`
@@ -75,15 +75,19 @@ changing the explicit G11/G14 client contract.
 
 The existing wire values, framing, G13 store/lease, real Coding factory,
 controller and conversation projection are retained. No authenticated local
-listener, private credential record, detachable semantic scope or terminal
+listener, private credential record or terminal
 client entrypoint exists yet. The [inventory](detachable-local-workspace-g16-inventory.json)
 separates those missing responsibilities from existing extensions.
 
 The first G16.1 primitive, `appservice._operations._OwnedAppOperations`, now
 reserves application capacity before effects, retains tasks across delivery
 cancellation and performs bounded retryable application-stop settlement.
-It is private and uncomposed. It does not validate mux/Session authority or
-change any current request lifetime until the semantic client scope uses it.
+The optional `appservice.client_scope.ScopedAppServiceV1` now composes it with
+exclusive mux controllers, scoped read/control validation and interaction
+settlement. It must be installed before exposing an application's clients or
+starting execution, and the outer application must not expose a parallel
+legacy unscoped client to the same peers. No AppHost factory, transport or CLI
+activates this edge yet; the existing G14 request lifetime is unchanged.
 
 ## Logical And Physical Context
 
@@ -478,6 +482,64 @@ was corrected from substring matching to exact AST imports after it falsely
 matched the existing `standard_cli_operations` function. The corrected wider
 selection passed 140 cases; final `make check-appservice` passed 233 cases
 with Ruff and mypy. This is a reviewed primitive, not the final G16 code review.
+
+### G16.2 Semantic Scope Checkpoint
+
+The optional scope owner implements the same 15 AppClient methods, with eight
+bounded scopes and one exclusive controller per mux. Authority validation and
+retained task admission have no intervening yield. Start-turn completion Ack
+is unchanged; the Session busy key survives delivery and scope cancellation.
+Short attachment/membership work retains ownership separately from long turns.
+Explicit member/mux close cancels and joins that Session's retained turn;
+ordinary detach never does. G16 separately caps muxes at 32 rather than inheriting
+the legacy protocol's broader 256-value limit. Pending create/open reservations
+consume capacity before their first effect and roll back on task-start failure.
+Foreign-scope snapshots/events and stale generations are rejected; refresh
+keeps the controller reservation while replacing the snapshot barrier.
+
+Interaction questions are bounded to 16 per live Session (at most 64 Sessions,
+including opening reservations and retained cleanup). Questions are bound to
+the publishing attachment, not the newest controller. Scope loss and refresh
+deny unanswered questions; no-controller denial debt must settle before a new
+attachment can publish. An admitted response remains owned until it settles.
+Scope close uses one retained waiter per bounded scope rather than occupying
+the control-operation slot needed by its own denial. Actual asynchronous
+Product decisions still share the eight reserved control slots. Synchronous
+steer/follow-up/interrupt calls validate and execute without a suspension or
+queued operation; they create no retained asynchronous work.
+
+Slice review (three perspectives, one reviewer):
+
+- Authority: selectors are resolved canonically; all attachment consumers,
+  including reads, require the calling scope. Unowned denial debt also fences
+  attach, rather than merely rejecting an old approval token after regrant.
+- Lifecycle: fixed a close-mux self-wait and control-capacity starvation when
+  eight scopes close together. Failed denial preserves the controller;
+  application stop still closes Product ports and retains retryable debt.
+  Real Coding integration then exposed an ordered-event/approval-cancellation
+  cycle when an event listener awaited its own automatic-denial completion.
+  The listener now only publishes the retained denial task and returns; attach
+  waits for settlement outside event delivery. Failed unowned denial or denied
+  admission explicitly interrupts the Session; it does not rely on a Product
+  event observer propagating listener exceptions.
+- Compatibility/evidence: the new `already_attached` error has an exact schema
+  vocabulary and codec round trip. New modules have separate 600/220-line
+  review budgets; the G11 core budget and default activation remain unchanged.
+
+These tests exercise fake Product ports, the real AppService owner and the real
+Coding adapter/ApprovalBroker with isolated local Session files. The latter
+verifies denial on disconnect, automatic denial without a controller, then a
+new approval after reattachment; the first run timed out on that last step and
+passed after removing the listener/decision wait cycle. They do not prove
+local authentication, native record privacy, G13 process restart or an
+installed interactive terminal client. Final G16 code review remains open.
+
+Verification: the AppService gate's selected suite passed 253 cases, Ruff and
+mypy passed (42 source files), the focused scope/operation/real-Coding selection
+passed 36 cases, the exact inventory/boundary selection passed 13 cases, and
+the architecture documentation gate passed five cases. The real-Coding test
+was verified separately and is now explicitly included in both the AppService
+and AppHost Makefile gates. No new CLI or transport is activated by this slice.
 
 ### Platform API References
 

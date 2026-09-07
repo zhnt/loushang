@@ -26,12 +26,16 @@ buffers, authentication, AppHost composition, Hosting process mechanics,
 Product policy, or UI state.
 
 The [accepted G16 design](../appserver/detachable-local-workspace-g16.md)
-adds a future optional semantic client scope: connection-bound controller
+adds an optional semantic client scope: connection-bound controller
 authority, application-owned admitted execution and control-loss interaction
-settlement. The first private `_operations.py` owner retains application work
-independently of delivery cancellation, but is not composed yet. Semantic
-client scopes remain an implementation gap; the G11/G14 in-process adapter
-and attachment behavior are unchanged.
+settlement. `client_scope.ScopedAppServiceV1` explicitly installs this policy on
+one service and creates bounded `AppClientScopeV1` capabilities. Its private
+operation owner retains admitted work independently of delivery cancellation;
+its private interaction policy denies questions on control loss. AppHost and
+the local transport do not compose this optional edge yet. It is absent from
+the default facade and entrypoints; ordinary G11/G14 behavior is unchanged.
+The application must install it before exposing clients or starting execution,
+and must never expose a legacy unscoped client to the same untrusted peers.
 
 The current implementation contains:
 
