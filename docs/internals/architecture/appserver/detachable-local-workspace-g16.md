@@ -13,9 +13,10 @@
 - Parent: Loushang application architecture
 - Authority: normative accepted deployment boundary
 - Design status: accepted following the three-perspective review below
-- Implementation status: partial — semantic scopes, the native local connection
-  component and optional AppHost/G13 deployment owner are implemented; Product/UI
-  remain missing, with Windows record rerun and new platform evidence pending
+- Implementation status: partial — semantic scopes, native connections, the
+  AppHost/G13 owner and real Coding composition with development management
+  commands are implemented; installed interactive UI and final platform evidence
+  remain missing, including the Windows record rerun
 - Activation status: explicit new deployment only; G14 and Embedded unchanged
 - Tracking: [Hosted Workspace V1 #566](https://github.com/zhnt/loushang/issues/566)
 - Prerequisite: G15 design accepted in `18d429bc`; G14 delivered in `815c03d2`
@@ -171,7 +172,10 @@ codecs or semantic adapters to spawn, discover Products or access Hosting.
 ### Credential Record And Publication
 
 The outer Product composition supplies one immutable canonical runtime root
-and endpoint name, resolved once through the existing PlatformPaths authority.
+and endpoint name. Default placement belongs to the existing PlatformPaths
+authority; an explicit Product command may instead admit a runtime-root override
+once. The current development command requires that override and an existing
+parent directory; it introduces no second default-path resolver or discovery.
 The AppServer record owner derives only narrow children. It never reads home,
 cwd or environment again. No record field selects executable code, a Session
 root or a Product factory.
@@ -823,6 +827,89 @@ errors in the unchanged `apphost/integrations/harness_session.py` adapter
 (`O_DIRECTORY`, `O_CLOEXEC`, `O_NOFOLLOW`, `pread`). That optional adapter has
 its own native-support guard; this result is not reported as a whole-package
 Windows pass, and no permission or fallback policy was relaxed to hide it.
+
+### G16.7 Real Coding Composition And Development Commands
+
+`coding.hosted_bootstrap` now constructs the real Coding Session factory,
+admitted Product/profile and G13 durable-file attempt for both explicit G14 and
+G16 deployments. The old G14 launch-value import remains an alias to the same
+type, and its default description and foreground EOF semantics are unchanged.
+The shared bootstrap chooses neither transport nor process deployment. Model
+and tool injection remain trusted library test seams, never command-line code
+selection. Default Embedded routes import none of the new composition.
+
+`coding.hosted_local.CodingLocalCommandV1` owns the unopened attempt before
+recovery and retains any late recovery result. It adopts the local AppHost
+owner before starting it, then relinquishes its own application reference.
+After this handoff only AppHost closes the application and private directory;
+the Product wrapper must not reset the AppHost deadline or reclaim the
+application separately. Closing during startup settles an already-adopted local
+owner before joining outer startup, avoiding a startup/close dependency cycle.
+Cancelled waiters retain exact tasks. An explicit retry budget may be granted
+after a failed attempt, but cannot renew an in-flight close.
+
+Review reproduced a ready-after-stop race at both public startup deliveries:
+a finished startup task could return after a concurrent stop had fenced the
+deployment. AppHost now exposes read-only `accepting`, which stop revokes
+synchronously; AppHost and Product recheck it before returning ready. This is
+a point-in-time readiness fact, not a lease guaranteeing future availability.
+Deterministic tests force the gap between task completion and waiter delivery,
+as well as Product handoff, and prove no ready callback after stop and no
+duplicate application close.
+
+The development entry `python -m loushang.coding.cli.mux` supplies explicit
+`serve`, `list`, `create`, `close --yes` and `stop` commands. It requires an exact
+private connection root and endpoint. That root cannot contain the execution
+workspace or overlap application/Session storage. Client commands do not
+autostart an application, discover endpoints or signal a PID. The native client
+checks the expected Coding Product against its single admitted record before
+opening a socket, avoiding a separate preflight read and replacement race.
+Descriptions/results exclude credentials, numeric ports and filesystem paths;
+JSON output escapes terminal controls. `stop_requested` means admission only,
+not completed application cleanup. An unresolved cleanup causes a failure exit,
+not an unbounded runner shutdown or a claim of clean resource release.
+
+Slice review (three perspectives, one reviewer, not independent agents):
+
+- Architecture/security: share one trusted real Product bootstrap, keep native
+  IO in AppServer, keep startup handoff in Product and application settlement
+  in AppHost. Admit explicit runtime-root overrides at the outer boundary,
+  and verify the expected Product before opening the native connection.
+  Exact consumer lists were reconciled for the three new Product modules;
+  their separately reviewed combined budget is 900 lines. The existing Coding
+  Wave A and G14 budgets and core dependency prohibitions remain unchanged.
+- Lifecycle/faults: fix and regress the ready-after-stop race; retain late
+  recovery and shutdown tasks; never transfer ownership back after adoption.
+  Repeated close joins the current operation and cannot implicitly renew its
+  deadline. Client EOF is not an application-stop signal.
+- Product/evidence: tests use real Coding/AppHost/G13 file storage over native
+  authenticated loopback. Two muxes use cwd and user-home Sessions; accepted
+  work survives disconnection, a fresh attachment sees it running, and a new
+  runtime recovers stable identities/history with rotated credentials and no
+  in-flight replay. Separate real command processes also prove management,
+  controller exclusion, stdin EOF survival and explicit stop followed by actual
+  server exit. The model stream/tools alone are synthetic. Same-process runtime
+  replacement is not process-crash recovery evidence, and module invocation is
+  not installed-wheel or interactive-terminal evidence.
+
+Installed `loushang-mux`, the shared interactive shell, real process-crash
+recovery for this profile, PTY/ConPTY and final Linux/macOS/Windows acceptance
+remain required. No installed script is advertised by this slice. The G15
+attached launcher and global resumable-Session discovery picker remain separate
+design-only gaps. Neither library tests nor management commands complete G16.
+
+Local verification: the focused lifecycle/real Product/boundary selection
+passed 26 tests. `make check-appservice` passed Ruff, mypy for 56 source files,
+and 409 tests with 10 Windows-native skips on Linux. Documentation, G14/G16
+inventories and the separate Coding budget selection passed all 10 cases.
+`make check-apphost` passed Ruff, mypy for 70 source files and 606 tests with
+11 platform skips; its G8/G9/G10 subgates passed 19/16/15 tests without skips,
+including manifest checks and the installed G10 POSIX canary. These are Linux
+slice/regression results, not final three-platform G16 acceptance.
+Supplemental Windows-platform mypy passed the 40-file G16 composition selection
+with a separate cache. Its first simultaneous invocation exited 139 without
+diagnostics; no Product change was made to obtain the isolated successful rerun.
+This is static evidence only, not native Windows runtime acceptance.
 
 ### Platform API References
 

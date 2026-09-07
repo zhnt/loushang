@@ -171,6 +171,13 @@ the current-generation canonical recovery edge. It grants no transport or
 process owner and installs no entrypoint itself; G14 selects it through its
 explicit Product command, while G16's installed Product command remains pending.
 
+G16's optional local deployment is now composed with real Coding through the
+shared Product bootstrap and development-only `coding.cli.mux` module. AppHost
+owns application settlement after Product startup handoff; its public read-only
+`accepting` fact prevents a startup delivery from announcing ready after stop.
+The [G16.7 checkpoint](../appserver/detachable-local-workspace-g16.md#g167-real-coding-composition-and-development-commands)
+separates that implementation from installed interactive and platform acceptance.
+
 ## Target
 
 The accepted target adds, by separately reviewed slices:

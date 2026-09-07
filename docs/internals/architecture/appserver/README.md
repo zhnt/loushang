@@ -14,7 +14,7 @@
 - Parent: `loushang`
 - Authority: normative — A0.4 ports, G11 client contract and explicit G14/G16 connection edges
 - Design status: accepted
-- Implementation status: partial — G14 is delivered on Linux/macOS/Windows; G16 native library and optional AppHost composition are implemented, with Product/UI integration and final native evidence pending
+- Implementation status: partial — G14 is delivered on Linux/macOS/Windows; G16 native connections, AppHost and real Coding composition with development management commands are implemented; installed interactive UI and final native evidence remain pending
 - Activation status: explicit library or `loushang-hosted` foreground command; no default-route change or installed G16 command
 - Owner: Loushang AppServer architecture
 
@@ -34,9 +34,9 @@ G16 adds an explicit local connection library with native private records,
 mutual authentication and injected scope ownership. Its sole native-IO adapter
 can bind literal loopback or read an explicitly selected endpoint; no automatic
 startup, discovery, Product construction or process signaling is granted.
-The [G16 checkpoints](detachable-local-workspace-g16.md#g166-apphost-and-g13-deployment-checkpoint)
-distinguish the implemented library/AppHost edge from the still-missing
-installed Product command and interactive TUI.
+The [G16 checkpoints](detachable-local-workspace-g16.md#g167-real-coding-composition-and-development-commands)
+distinguish the implemented library/AppHost/real Coding composition and explicit
+development management commands from the still-missing installed interactive TUI.
 
 G12's optional AppHost application edge consumes the client contract for its
 in-process view. AppServer neither constructs nor imports that composition.
@@ -79,8 +79,9 @@ protocol and client abstractions without changing that binder. AppService owns
 concrete semantic coordination and its in-process client implementation. The
 G14 connection edge now accepts foreground stdio lifecycle and framing.
 G16's optional local edge now composes authentication and connection-scoped
-authority. Product deployment, terminal integration and final platform evidence
-remain separate work; the G14 foreground contract is unchanged.
+authority. Product constructs the real Coding deployment without reverse imports;
+interactive terminal integration and final platform evidence remain separate
+work. The G14 foreground contract is unchanged.
 
 ## Invariants
 

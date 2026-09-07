@@ -69,6 +69,18 @@ class HostedLocalRuntimeV1:
     def cleanup_pending(self) -> bool:
         return not self._settled
 
+    @property
+    def accepting(self) -> bool:
+        """Current deployment readiness, revoked synchronously by stop."""
+        task = self._start_task
+        return (
+            self._scopes_enabled
+            and not self._closing
+            and task is not None
+            and task.done()
+            and not _failed(task)
+        )
+
     async def start(self) -> None:
         if self._start_task is not None or self._closing:
             raise HostedApplicationError("hosted_local_closed")
@@ -80,6 +92,8 @@ class HostedLocalRuntimeV1:
             if not done:
                 raise HostedApplicationError("hosted_local_startup_timeout")
             await asyncio.shield(self._start_task)
+            if not self.accepting:
+                raise HostedApplicationError("hosted_local_closed")
         except BaseException:
             await self.close()
             raise

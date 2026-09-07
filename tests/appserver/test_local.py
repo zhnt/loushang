@@ -62,6 +62,24 @@ async def _until(predicate):
             await asyncio.sleep(0.001)
 
 
+def test_G16_LOCAL_AUTH_expected_product_is_checked_on_admitted_record_before_io(tmp_path):
+    async def scenario():
+        directory = LocalConnectionDirectoryV1(tmp_path / "runtime")
+        server, scopes = _server(directory)
+        client = LocalAppClientConnectionV1(directory, "workspace", expected_product_id="slides")
+        try:
+            await server.start()
+            with pytest.raises(AppServiceError):
+                await client.start()
+            assert client._socket is None
+            assert server.connection_counts == (0, 0) and scopes == []
+        finally:
+            await client.close()
+            await server.close()
+            directory.close()
+    asyncio.run(scenario())
+
+
 def test_G16_LOCAL_NATIVE_real_authenticated_request_and_client_eof_only_closes_scope(tmp_path):
     async def scenario():
         directory = LocalConnectionDirectoryV1(tmp_path / "runtime")

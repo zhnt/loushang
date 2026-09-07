@@ -166,6 +166,9 @@ HOSTING_TEST_PATHS := \
 APPHOST_SOURCES := \
 	src/loushang/foundation/observability/identity.py \
 	src/loushang/coding/cli/hosted.py \
+	src/loushang/coding/cli/mux.py \
+	src/loushang/coding/hosted_bootstrap.py \
+	src/loushang/coding/hosted_local.py \
 	src/loushang/coding/hosted_catalog.py \
 	src/loushang/coding/hosted_session.py \
 	src/loushang/apphost \
@@ -185,6 +188,11 @@ APPHOST_SOURCES := \
 APPHOST_TEST_PATHS := \
 	tests/foundation/observability/test_identity.py \
 	tests/coding/test_hosted_command.py \
+	tests/coding/test_hosted_bootstrap.py \
+	tests/coding/test_hosted_local.py \
+	tests/coding/test_hosted_local_ownership.py \
+	tests/coding/test_mux_command.py \
+	tests/coding/test_mux_subprocess.py \
 	tests/coding/test_hosted_subprocess.py \
 	tests/coding/test_hosted_catalog.py \
 	tests/coding/test_hosted_session.py \
@@ -226,6 +234,9 @@ APPHOST_LINT_SUPPORT := \
 APPSERVICE_SOURCES := \
 	src/loushang/foundation/observability/identity.py \
 	src/loushang/coding/cli/hosted.py \
+	src/loushang/coding/cli/mux.py \
+	src/loushang/coding/hosted_bootstrap.py \
+	src/loushang/coding/hosted_local.py \
 	src/loushang/apphost/foreground.py \
 	src/loushang/apphost/local.py \
 	src/loushang/apphost/continuity.py \
@@ -244,6 +255,11 @@ APPSERVICE_SOURCES := \
 APPSERVICE_TEST_PATHS := \
 	tests/foundation/observability/test_identity.py \
 	tests/coding/test_hosted_command.py \
+	tests/coding/test_hosted_bootstrap.py \
+	tests/coding/test_hosted_local.py \
+	tests/coding/test_hosted_local_ownership.py \
+	tests/coding/test_mux_command.py \
+	tests/coding/test_mux_subprocess.py \
 	tests/coding/test_hosted_subprocess.py \
 	tests/apphost/test_foreground.py \
 	tests/apphost/test_local.py \

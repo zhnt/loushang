@@ -37,6 +37,8 @@ local transport. A synchronous scope fence stops new client actions before
 asynchronous stop settlement, without itself cancelling accepted work. The
 edge is absent from the default facade and installed entrypoints; ordinary
 G11/G14 behavior is unchanged.
+The explicit development-only Coding mux command composes this policy with real
+Product Sessions; it does not add transport or Product dependencies here.
 The application must install it before exposing clients or starting execution,
 and must never expose a legacy unscoped client to the same untrusted peers.
 

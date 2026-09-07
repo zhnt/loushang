@@ -526,6 +526,8 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         Path("src/loushang/coding/hosted_catalog.py"),
         Path("src/loushang/coding/hosted_session.py"),
         Path("src/loushang/coding/cli/hosted.py"),
+        Path("src/loushang/coding/hosted_bootstrap.py"),
+        Path("src/loushang/coding/hosted_local.py"),
     }
     retained_fences = " ".join(_section(inventory, "Retained Fences").split())
     for statement in (

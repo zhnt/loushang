@@ -41,6 +41,10 @@ jobs:
           src/loushang/coding/appservice_adapter.py
           src/loushang/coding/hosted_application.py
           src/loushang/coding/hosted_continuity.py
+          src/loushang/coding/hosted_bootstrap.py
+          src/loushang/coding/hosted_local.py
+          src/loushang/coding/cli/hosted.py
+          src/loushang/coding/cli/mux.py
           src/loushang/coding/cli/__main__.py
           src/loushang/coding/cli/apphost.py
           src/loushang/harness/machine_resources/control_plane.py
@@ -56,6 +60,11 @@ jobs:
           tests/coding/test_apphost_product.py
           tests/coding/test_appservice_adapter.py
           tests/coding/test_hosted_application.py
+          tests/coding/test_hosted_bootstrap.py
+          tests/coding/test_hosted_local.py
+          tests/coding/test_hosted_local_ownership.py
+          tests/coding/test_mux_command.py
+          tests/coding/test_mux_subprocess.py
           tests/coding/test_cli_apphost.py
           tests/dev/test_verify_evidence_manifest.py
           tests/harness/worker/test_coding_product_worker_canary.py
@@ -90,6 +99,10 @@ jobs:
           src/loushang/coding/appservice_adapter.py
           src/loushang/coding/hosted_application.py
           src/loushang/coding/hosted_continuity.py
+          src/loushang/coding/hosted_bootstrap.py
+          src/loushang/coding/hosted_local.py
+          src/loushang/coding/cli/hosted.py
+          src/loushang/coding/cli/mux.py
           src/loushang/harnesstui/mux
           src/loushang/coding/cli/apphost.py
 
@@ -105,6 +118,11 @@ jobs:
           tests/coding/test_apphost_product.py
           tests/coding/test_appservice_adapter.py
           tests/coding/test_hosted_application.py
+          tests/coding/test_hosted_bootstrap.py
+          tests/coding/test_hosted_local.py
+          tests/coding/test_hosted_local_ownership.py
+          tests/coding/test_mux_command.py
+          tests/coding/test_mux_subprocess.py
           tests/coding/test_cli_apphost.py
           tests/dev/test_verify_evidence_manifest.py
           tests/architecture/test_apphost_a0_contract.py

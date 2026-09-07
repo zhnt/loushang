@@ -103,9 +103,12 @@ def test_stop_publishes_owner_and_fences_before_reply_then_settles_dependencies(
 ):
     async def scenario():
         owner, _, _, events = _fake_runtime(monkeypatch)
+        assert not owner.accepting
         await owner.start()
+        assert owner.accepting
         reply = asyncio.get_running_loop().create_future()
         owner._server.request_stop(reply)
+        assert not owner.accepting
         assert owner._close_task is not None
         assert events == ["enable", "listener.start", "fence.listener", "fence.scopes"]
         await asyncio.sleep(0)
@@ -114,6 +117,27 @@ def test_stop_publishes_owner_and_fences_before_reply_then_settles_dependencies(
         await owner.wait_closed()
         assert events[-3:] == ["listener.close", "directory.close", "application.close"]
         assert not owner.cleanup_pending
+
+    asyncio.run(scenario())
+
+
+def test_stop_between_start_task_completion_and_delivery_rejects_ready(monkeypatch):
+    async def scenario():
+        owner, _, _, events = _fake_runtime(monkeypatch)
+        original = owner._start_once
+        reply = asyncio.get_running_loop().create_future()
+        reply.set_result(None)
+
+        async def start_then_stop():
+            await original()
+            # Dispatch stop before asyncio.wait delivers the finished task.
+            asyncio.get_running_loop().call_soon(owner._server.request_stop, reply)
+
+        monkeypatch.setattr(owner, "_start_once", start_then_stop)
+        with pytest.raises(HostedApplicationError, match="hosted_local_closed"):
+            await owner.start()
+        assert not owner.cleanup_pending
+        assert events.count("application.close") == 1
 
     asyncio.run(scenario())
 

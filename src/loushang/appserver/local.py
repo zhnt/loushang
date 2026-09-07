@@ -239,11 +239,17 @@ class LocalAppClientConnectionV1:
     def __init__(
         self, directory: LocalConnectionDirectoryV1, endpoint: str, *,
         mode: LocalConnectionModeV1 = LocalConnectionModeV1.APP, timeout: float = 10.0,
+        expected_product_id: str | None = None,
     ) -> None:
         require_timeout(timeout)
         if timeout > 30 or type(mode) is not LocalConnectionModeV1:
             raise ValueError("invalid local client selection")
+        if expected_product_id is not None and (
+            type(expected_product_id) is not str or not 1 <= len(expected_product_id) <= 128
+        ):
+            raise ValueError("invalid expected local Product")
         self._directory, self._endpoint = directory, endpoint
+        self._expected_product_id = expected_product_id
         self._mode, self._timeout = mode, timeout
         self._socket: socket.socket | None = None
         self._writer: asyncio.StreamWriter | None = None
@@ -278,6 +284,8 @@ class LocalAppClientConnectionV1:
 
     async def _start_once(self) -> None:
         record = self._directory.read(self._endpoint)
+        if self._expected_product_id is not None and record.product_id != self._expected_product_id:
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
         async with asyncio.timeout(self._timeout):
             self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self._socket.set_inheritable(False)

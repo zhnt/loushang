@@ -177,3 +177,22 @@ def test_G16_BOUNDARIES_local_apphost_edge_uses_public_application_capabilities(
         "src/loushang/apphost/foreground.py", "src/loushang/coding/cli/hosted.py",
     ):
         assert "HostedLocalRuntimeV1" not in Path(path).read_text()
+
+
+def test_G16_BOUNDARIES_product_bootstrap_is_shared_without_transport_or_default_activation() -> None:
+    from loushang.coding.cli.hosted import CodingHostedLaunchV1 as LegacyLaunch
+    from loushang.coding.hosted_bootstrap import CodingHostedLaunchV1
+
+    assert LegacyLaunch is CodingHostedLaunchV1
+    bootstrap = Path("src/loushang/coding/hosted_bootstrap.py").read_text()
+    for forbidden in ("LocalAppServerV1", "InheritedStdioTransportV1", "HostedLocalRuntimeV1", "sys.argv", "import subprocess"):
+        assert forbidden not in bootstrap
+    command = Path("src/loushang/coding/cli/mux.py").read_text()
+    assert 'expected_product_id="coding"' in command
+    assert '"stop_requested"' in command and '"--yes"' in command
+    for source in ("src/loushang/coding/cli/__main__.py", "src/loushang/coding/ui/cli.py",
+                   "src/loushang/coding/bootstrap.py", "src/loushang/coding/__init__.py"):
+        text = Path(source).read_text()
+        assert "hosted_bootstrap" not in text and "hosted_local" not in text
+        assert "coding.cli.mux" not in text
+    assert "loushang-mux" not in Path("pyproject.toml").read_text()
