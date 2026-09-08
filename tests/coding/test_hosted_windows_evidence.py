@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import runpy
+import shlex
 import sys
 from pathlib import Path
 
@@ -23,7 +24,9 @@ def run_observation(tmp_path, case):
     supervisor = runpy.run_path(str(repository / "scripts/dev/_evidence_process.py"))
     supervisor["run_pytest"](
         [sys.executable, "-I", "-m", "pytest", "-c", str(repository / "pyproject.toml"),
-         "-o", f"pythonpath={repository}", "--import-mode=importlib", str(probe),
+         "--rootdir", str(tmp_path), "--confcutdir", str(tmp_path),
+         "-o", f"pythonpath={shlex.quote(repository.as_posix())}",
+         "--import-mode=importlib", str(probe),
          "-q", "-m", "not live"],
         cwd=tmp_path, environment={**os.environ, "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"},
         timeout=180,

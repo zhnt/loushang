@@ -2,13 +2,32 @@
 
 from __future__ import annotations
 
+import subprocess
 import threading
+from types import SimpleNamespace
 
 import pytest
 
 from tests.coding import _hosted_windows_witness as witness
 from tests.coding._hosted_windows_api import SuspendedThreads
 from tests.coding._hosted_windows_observer import _controller_chain, _pin_chain
+
+
+def test_windows_probe_collection_is_confined_and_imports_test_helpers(tmp_path, monkeypatch):
+    from tests.coding import test_hosted_windows_evidence as evidence
+
+    def collect(argv, *, cwd, environment, timeout):
+        assert argv[argv.index("--rootdir") + 1] == str(tmp_path)
+        assert argv[argv.index("--confcutdir") + 1] == str(tmp_path)
+        result = subprocess.run(
+            [*argv, "--collect-only"], cwd=cwd, env=environment,
+            capture_output=True, text=True, timeout=timeout,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "1 test collected" in result.stdout
+
+    monkeypatch.setattr(evidence, "runpy", SimpleNamespace(run_path=lambda _: {"run_pytest": collect}))
+    evidence.run_observation(tmp_path, "real")
 
 
 class Api:

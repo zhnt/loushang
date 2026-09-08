@@ -1303,3 +1303,32 @@ checks passed 44 tests in 26.95 seconds
 Actual Windows native execution and full Windows/macOS installed acceptance
 remain pending. No Product API, default entry or dependency boundary changes
 are introduced by this test infrastructure.
+
+### First Native CI Integration Findings
+
+PR #575's first Windows supplement failed all five cases during nested pytest
+collection, before native observation. The repository/config was on D: and
+the generated probe on C:; an unquoted Windows `pythonpath` override lost its
+backslashes through pytest's POSIX shlex parsing. The probe now sets its own
+rootdir/confcutdir and passes a quoted forward-slash repository path. Its
+portable regression invokes a real isolated pytest collection, imports the
+probe and helpers, and requires exactly one collected test. This does not
+replace rerunning the Windows cases.
+
+The same CI exposed stale pre-G17 exact inventories. G9 inventory v6 adds the
+explicit Hosted TUI entry while preserving all Current and canary rows. A0,
+G9/G10, v1 and PLC consumer fences now enumerate the approved optional launcher
+and Product command. Only the exact launcher may import Hosting contracts;
+core and reverse-direction prohibitions remain. Wave A retains its 33,800-line
+core budget and gives the new Product command the independently reviewed
+450-line G17 budget. Generated package facts were refreshed with the existing
+renderer, not hand-edited.
+
+Three-perspective re-review approved these scoped corrections. The expanded
+local selection first passed 85 tests with one further missing v1 consumer;
+that exact entry was repaired and its regression passed separately in 12.94
+seconds (`.artifacts/g17-ci-v1-fence-recheck.xml`). The preceding full selection
+is retained as `.artifacts/g17-ci-fence-fixes.xml`, not claimed all-green.
+The full architecture-documentation gate passed five tests in 48.26 seconds.
+On the first CI head, all three G16 native and all three G16 wheel jobs passed;
+those results preserve baseline evidence but do not establish G17 acceptance.
