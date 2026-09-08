@@ -16,7 +16,8 @@ def test_G15_DESIGN_inventory_records_design_not_runtime_activation() -> None:
     entries = inventory["entries"]
     assert len({entry["id"] for entry in entries}) == len(entries)
     assert {entry["status"] for entry in entries} == {
-        "existing-retain", "planned", "implemented-by-g16",
+        "existing-retain", "implemented-by-g16",
+        "implemented-by-g17",
     }
     for entry in entries:
         assert Path(entry["source"]).exists() == (
@@ -24,6 +25,10 @@ def test_G15_DESIGN_inventory_records_design_not_runtime_activation() -> None:
         ), "reconcile the inventory when a planned responsibility is implemented"
         if entry["status"] == "implemented-by-g16":
             assert entry["id"] == "harnesstui.hosted-shell"
+        if entry["status"] == "implemented-by-g17":
+            assert entry["id"] in {
+                "appserver.session-discovery", "apphost.launcher", "coding.hosted-client"
+            }
     scripts = tomllib.loads(Path("pyproject.toml").read_text())["project"]["scripts"]
     for name, target in inventory["unchangedScripts"].items():
         assert scripts[name] == target
@@ -46,7 +51,7 @@ def test_G15_DESIGN_requirements_have_explicit_ownership_and_evidence_gaps() -> 
         assert f"`{requirement}`" in design
     for boundary in (
         "Design status: accepted",
-        "Implementation status: not-started",
+        "Implementation status: partial",
         "AppHost core -/-> optional launcher / Product / UI",
         "AppServer -/-> Hosting / AppService / AppHost / Product / UI",
         "Harnesstui -/-> Hosting / AppHost / Product / AppService",

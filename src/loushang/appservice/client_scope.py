@@ -37,6 +37,7 @@ from loushang.appserver.protocol import (
 from ._operations import _observe, _OwnedAppOperations
 from ._scope_interactions import _ScopeInteractions
 from .runtime import AppServiceV1, _SessionOwner
+from .session_discovery import SessionDiscoveryViewV1
 
 _Result = TypeVar("_Result")
 
@@ -75,6 +76,8 @@ class ScopedAppServiceV1:
         self._close_task: asyncio.Task[None] | None = None
         self._interactions = _ScopeInteractions(self._operations, self._authority)
         service._client_scopes = self
+        if service._discovery is not None:
+            service._discovery.select_scoped()
         for session in service._sessions.values():
             session.event_handler = self._interactions.on_event
 
@@ -94,6 +97,8 @@ class ScopedAppServiceV1:
     def fence(self) -> None:
         """Reject new client actions synchronously, without cancelling accepted work."""
         self._closed = True
+        if self._service._discovery is not None:
+            self._service._discovery.fence()
 
     async def close(self) -> None:
         self.fence()
@@ -179,9 +184,18 @@ class AppClientScopeV1:
             raise TypeError("client scopes require the application factory")
         self._owner = owner
         self._service = owner._service
+        self._discovery = (
+            None if self._service._discovery is None
+            else self._service._discovery.open_view()
+        )
         self._controllers: dict[str, _Controller] = {}
         self._closed = False
         self._close_task: asyncio.Task[None] | None = None
+
+    @property
+    def discovery_client(self) -> SessionDiscoveryViewV1 | None:
+        self._require_open()
+        return self._discovery
 
     def _require_open(self) -> None:
         if self._closed or self._owner._closed or self._service._closed:
@@ -449,6 +463,8 @@ class AppClientScopeV1:
 
     async def close(self) -> None:
         self._closed = True
+        if self._discovery is not None:
+            self._discovery.fence()
         for controller in self._controllers.values():
             controller.fenced = True
         task = self._close_task

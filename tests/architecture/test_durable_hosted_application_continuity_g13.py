@@ -191,7 +191,9 @@ def test_G13_NEW_OWNERS_remain_independently_reviewable() -> None:
     }
     limits = {
         "appservice-continuity": 1_250,
-        "apphost-continuity": 650,
+        # G17's reviewed borrowed discovery getter and recovery passthrough
+        # add seven lines to this exact file, not another lifecycle owner.
+        "apphost-continuity": 675,
         "coding-continuity": 350,
     }
     for name, paths in groups.items():

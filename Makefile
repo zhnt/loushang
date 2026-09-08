@@ -164,6 +164,7 @@ HOSTING_TEST_PATHS := \
 	tests/architecture/test_hosting_h65_windows_lpac_design.py \
 	tests/architecture/test_hosting_architecture_baseline.py
 APPHOST_SOURCES := \
+	src/loushang/coding/cli/hosted_client.py \
 	src/loushang/tui/ui_parts/text_pager.py \
 	src/loushang/tui/terminal_session.py \
 	src/loushang/tui/composer_edit_buffer.py \
@@ -190,19 +191,42 @@ APPHOST_SOURCES := \
 	src/loushang/harnesstui/mux \
 	src/loushang/coding/cli/apphost.py
 APPHOST_TEST_PATHS := \
+	tests/dev/test_hosted_fixture_stdin.py \
+	tests/dev/test_hosted_debt_cleanup.py \
+	tests/dev/test_hosted_darwin_scenario.py \
+	tests/dev/test_hosted_darwin_observer.py \
+	tests/dev/test_hosted_darwin_witness.py \
+	tests/dev/test_hosted_darwin_api.py \
+	tests/dev/test_evidence_observation.py \
+	tests/dev/test_hosted_windows_observer.py \
+	tests/coding/test_hosted_legacy_evidence.py \
+	tests/coding/test_hosted_entry_evidence.py \
+	tests/dev/test_evidence_process.py \
+	tests/coding/test_hosted_workflow_terminal.py \
+	tests/dev/test_run_g17_installed_evidence.py \
+	tests/coding/test_hosted_client_terminal.py \
+	tests/coding/test_hosted_client.py \
+	tests/apphost/test_launcher.py \
 	tests/dev/test_run_g16_installed_evidence.py \
 	tests/architecture/test_detachable_local_workspace_g16_evidence.py \
 	tests/tui/test_text_pager.py \
 	tests/harnesstui/test_hosted_mux_details.py \
+	tests/harnesstui/test_hosted_mux_editors.py \
+	tests/harnesstui/test_hosted_session_picker.py \
 	tests/tui/test_terminal_session.py \
 	tests/tui/test_composer_edit_buffer.py \
 	tests/harnesstui/test_hosted_mux_shell.py \
 	tests/harnesstui/test_hosted_mux_terminal.py \
+	tests/harnesstui/test_hosted_mux_settlement.py \
 	tests/coding/test_mux_terminal_process.py \
 	tests/coding/test_mux_product_terminal.py \
 	tests/foundation/observability/test_identity.py \
 	tests/coding/test_hosted_command.py \
+	tests/coding/test_hosted_discovery_command.py \
+	tests/coding/test_hosted_discovery_subprocess.py \
 	tests/coding/test_hosted_bootstrap.py \
+	tests/coding/test_hosted_local_discovery.py \
+	tests/coding/test_hosted_local_discovery_subprocess.py \
 	tests/coding/test_hosted_local.py \
 	tests/coding/test_hosted_local_ownership.py \
 	tests/coding/test_mux_command.py \
@@ -240,6 +264,20 @@ APPHOST_TEST_PATHS := \
 	tests/architecture/test_durable_hosted_application_continuity_g13_design.py \
 	tests/architecture/test_durable_hosted_application_continuity_g13.py
 APPHOST_LINT_SUPPORT := \
+	tests/coding/_hosted_windows_api.py \
+	tests/coding/_hosted_windows_observer.py \
+	tests/coding/_hosted_windows_witness.py \
+	tests/coding/test_hosted_windows_evidence.py \
+	tests/coding/_hosted_recovery_cancel.py \
+	tests/coding/test_hosted_installed_evidence.py \
+	tests/coding/_hosted_start_cancel.py \
+	tests/dev/_evidence_branch_fixture.py \
+	scripts/dev/_evidence_process.py \
+	scripts/dev/_evidence_posix.py \
+	scripts/dev/_evidence_windows.py \
+	scripts/dev/run_g17_installed_evidence.py \
+	tests/coding/_hosted_terminal.py \
+	tests/coding/_hosted_client_debt.py \
 	scripts/dev/run_g16_installed_evidence.py \
 	tests/coding/test_mux_native_evidence.py \
 	tests/coding/test_mux_installed_evidence.py \
@@ -251,6 +289,7 @@ APPHOST_LINT_SUPPORT := \
 	scripts/dev/verify_evidence_manifest.py \
 	tests/harness/worker/test_coding_product_worker_canary.py
 APPSERVICE_SOURCES := \
+	src/loushang/coding/cli/hosted_client.py \
 	src/loushang/tui/ui_parts/text_pager.py \
 	src/loushang/tui/terminal_session.py \
 	src/loushang/tui/composer_edit_buffer.py \
@@ -261,10 +300,12 @@ APPSERVICE_SOURCES := \
 	src/loushang/coding/hosted_bootstrap.py \
 	src/loushang/coding/hosted_local.py \
 	src/loushang/apphost/foreground.py \
+	src/loushang/apphost/launcher.py \
 	src/loushang/apphost/local.py \
 	src/loushang/apphost/continuity.py \
 	src/loushang/coding/hosted_catalog.py \
 	src/loushang/coding/hosted_session.py \
+	src/loushang/harness/transcript/jsonl_file.py \
 	src/loushang/harness/transcript/lifecycle.py \
 	src/loushang/harness/transcript/session_factory.py \
 	src/loushang/harness/transcript/product_session.py \
@@ -276,35 +317,63 @@ APPSERVICE_SOURCES := \
 	src/loushang/coding/hosted_continuity.py \
 	src/loushang/harnesstui/mux
 APPSERVICE_TEST_PATHS := \
+	tests/dev/test_hosted_fixture_stdin.py \
+	tests/dev/test_hosted_debt_cleanup.py \
+	tests/dev/test_hosted_darwin_scenario.py \
+	tests/dev/test_hosted_darwin_observer.py \
+	tests/dev/test_hosted_darwin_witness.py \
+	tests/dev/test_hosted_darwin_api.py \
+	tests/dev/test_evidence_observation.py \
+	tests/dev/test_hosted_windows_observer.py \
+	tests/coding/test_hosted_legacy_evidence.py \
+	tests/coding/test_hosted_entry_evidence.py \
+	tests/dev/test_evidence_process.py \
+	tests/coding/test_hosted_workflow_terminal.py \
+	tests/dev/test_run_g17_installed_evidence.py \
+	tests/coding/test_hosted_client_terminal.py \
+	tests/coding/test_hosted_client.py \
+	tests/apphost/test_launcher.py \
 	tests/dev/test_run_g16_installed_evidence.py \
 	tests/dev/test_verify_evidence_manifest.py \
 	tests/architecture/test_detachable_local_workspace_g16_evidence.py \
 	tests/tui/test_text_pager.py \
 	tests/harnesstui/test_hosted_mux_details.py \
+	tests/harnesstui/test_hosted_mux_editors.py \
+	tests/harnesstui/test_hosted_session_picker.py \
 	tests/tui/test_terminal_session.py \
 	tests/tui/test_composer_edit_buffer.py \
 	tests/harnesstui/test_hosted_mux_shell.py \
 	tests/harnesstui/test_hosted_mux_terminal.py \
+	tests/harnesstui/test_hosted_mux_settlement.py \
 	tests/coding/test_mux_terminal_process.py \
 	tests/coding/test_mux_product_terminal.py \
 	tests/foundation/observability/test_identity.py \
 	tests/coding/test_hosted_command.py \
 	tests/coding/test_hosted_bootstrap.py \
+	tests/coding/test_hosted_discovery_command.py \
+	tests/coding/test_hosted_discovery_subprocess.py \
 	tests/coding/test_hosted_local.py \
+	tests/coding/test_hosted_local_discovery.py \
+	tests/coding/test_hosted_local_discovery_subprocess.py \
 	tests/coding/test_hosted_local_ownership.py \
 	tests/coding/test_mux_command.py \
 	tests/coding/test_mux_subprocess.py \
 	tests/coding/test_hosted_subprocess.py \
 	tests/apphost/test_foreground.py \
+	tests/apphost/test_foreground_discovery.py \
 	tests/apphost/test_local.py \
 	tests/apphost/test_client_scopes.py \
 	tests/apphost/test_application.py \
 	tests/coding/test_hosted_catalog.py \
+	tests/coding/test_hosted_discovery.py \
+	tests/coding/test_hosted_discovery_workflow.py \
 	tests/coding/test_hosted_session.py \
 	tests/coding/test_scoped_hosted_session.py \
 	tests/coding/test_hosted_session_metadata.py \
 	tests/harness/transcript/test_session_factory.py \
 	tests/harness/transcript/test_product_session.py \
+	tests/harness/transcript/test_discovery_reads.py \
+	tests/architecture/test_hosted_session_workflow_g17_design.py \
 	tests/architecture/test_foreground_stdio_hosted_app_g14.py \
 	tests/architecture/test_foreground_stdio_hosted_app_g14_design.py \
 	tests/architecture/test_foreground_hosted_tui_g15_design.py \
@@ -475,6 +544,13 @@ test-hosted-product-g10-linux-evidence:
 check-appservice: lint-appservice typecheck-appservice test-appservice
 
 lint-appservice:
+	uv --cache-dir .uv-cache run --extra dev ruff check tests/coding/_hosted_darwin_observer.py tests/coding/test_hosted_darwin_evidence.py
+	uv --cache-dir .uv-cache run --extra dev ruff check tests/coding/_hosted_darwin_witness.py
+	uv --cache-dir .uv-cache run --extra dev ruff check tests/coding/_hosted_darwin_api.py tests/coding/_hosted_owned_group.py tests/coding/_hosted_primitive_child.py tests/coding/test_hosted_darwin_primitives.py
+	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/_evidence_process.py scripts/dev/_evidence_observation.py scripts/dev/_evidence_posix.py scripts/dev/_evidence_windows.py tests/dev/_evidence_branch_fixture.py
+	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/run_g17_installed_evidence.py
+	uv --cache-dir .uv-cache run --extra dev ruff check tests/coding/_hosted_client_debt.py tests/coding/_hosted_start_cancel.py tests/coding/_hosted_recovery_cancel.py tests/coding/test_hosted_installed_evidence.py tests/coding/_hosted_terminal.py
+	uv --cache-dir .uv-cache run --extra dev ruff check tests/coding/_hosted_windows_api.py tests/coding/_hosted_windows_observer.py tests/coding/_hosted_windows_witness.py tests/coding/test_hosted_windows_evidence.py
 	uv --cache-dir .uv-cache run --extra dev ruff check $(APPSERVICE_SOURCES) $(APPSERVICE_TEST_PATHS) tests/coding/_hosted_product_child.py tests/coding/_local_product_child.py scripts/dev/run_g16_installed_evidence.py scripts/dev/verify_evidence_manifest.py tests/coding/test_mux_native_evidence.py tests/coding/test_mux_installed_evidence.py
 
 typecheck-appservice:
@@ -485,8 +561,20 @@ test-appservice:
 
 check-architecture-docs:
 	.venv/bin/ruff check scripts/architecture/render_current_package_dependencies.py tests/architecture/test_architecture_documentation.py
-	.venv/bin/python scripts/architecture/render_current_package_dependencies.py --check
 	.venv/bin/python scripts/dev/run_pytest.py tests/architecture/test_architecture_documentation.py -q
+
+.PHONY: check-changed plan-checks check-docs-light check-agent
+check-changed:
+	.venv/bin/python scripts/ci/check_changed.py
+
+plan-checks:
+	python3 scripts/ci/check_changed.py --plan-only
+
+check-docs-light:
+	python3 scripts/ci/check_docs.py
+
+check-agent:
+	.venv/bin/python scripts/ci/run_checks.py agent
 
 check-harnesstui: lint-harnesstui typecheck-harnesstui test-harnesstui
 

@@ -120,12 +120,14 @@ class LocalEndpointReservationV1:
     def publish(
         self, *, application_id: str, product_id: str, port: int,
         scopes: tuple[LocalRecordScopeV1, ...],
+        session_discovery: bool = False,
     ) -> LocalConnectionRecordV1:
         if self._closed or self._directory._closed:
             raise LocalRecordError(LocalRecordErrorCodeV1.CLOSED)
         record = LocalConnectionRecordV1(
             endpoint=self._endpoint, application_id=application_id, product_id=product_id,
             instance=self._instance, port=port, scopes=scopes, key=self._key,
+            session_discovery=session_discovery,
         )
         if self._published or (self._record is not None and self._record != record):
             raise LocalRecordError(LocalRecordErrorCodeV1.CONFLICT)

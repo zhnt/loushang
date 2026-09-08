@@ -7,6 +7,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from typing import TypeVar, cast
 
+from .client import SessionDiscoveryClientV1
 from .framing import (
     AppConnectionClosedError,
     AppFramedStreamV1,
@@ -38,6 +39,8 @@ from .protocol import (
     MuxMemberOpenV1,
     MuxReadV1,
     MuxSpaceV1,
+    SessionListResultV1,
+    SessionListV1,
     SessionSnapshotRequestV1,
     SessionSnapshotV1,
     TurnInterruptV1,
@@ -45,7 +48,12 @@ from .protocol import (
     decode_response,
     encode_request,
 )
-from .protocol.connection_profile import AppConnectionProfileV1, connection_hello
+from .protocol.connection_profile import (
+    AppConnectionProfileV1,
+    connection_hello,
+    require_profile_operation,
+    supports_session_discovery,
+)
 from .protocol.stdio_profile import (
     CONTROL_OPERATIONS,
     MAX_CONTROL_REQUESTS,
@@ -71,6 +79,7 @@ class RemoteAppClientV1:
     ) -> None:
         require_timeout(phase_timeout)
         self._hello = connection_hello(profile)
+        self._profile = profile
         self._stream = stream
         self._timeout = phase_timeout
         self._reader: asyncio.Task[None] | None = None
@@ -84,12 +93,26 @@ class RemoteAppClientV1:
         self._ready = False
         self._closed = False
 
-    async def start(self) -> None:
+    @property
+    def discovery_client(self) -> SessionDiscoveryClientV1 | None:
+        """Borrow only the explicitly selected, ready discovery capability."""
+        if self._ready and not self._closed and supports_session_discovery(self._profile):
+            return self
+        return None
+
+    async def start(self, *, timeout: float | None = None) -> None:
+        """Negotiate once; an owner may supply its remaining startup budget.
+
+        None preserves the connection phase default. This override applies only
+        to the complete hello exchange, never later sends, close or frame IO.
+        """
+        budget = self._timeout if timeout is None else timeout
+        require_timeout(budget)
         if self._started or self._closed:
             raise AppConnectionClosedError()
         self._started = True
         try:
-            async with asyncio.timeout(self._timeout):
+            async with asyncio.timeout(budget):
                 if await self._stream.receive() != self._hello:
                     raise InvalidAppMessageError()
                 await self._stream.send(self._hello)
@@ -105,6 +128,7 @@ class RemoteAppClientV1:
         payload: AppRequestPayloadV1,
         result_type: type[_Result],
     ) -> _Result:
+        require_profile_operation(self._profile, operation)
         if not self._ready or self._closed:
             raise AppConnectionClosedError()
         control = operation in CONTROL_OPERATIONS
@@ -237,6 +261,20 @@ class RemoteAppClientV1:
 
     async def close_member(self, request: MuxMemberCloseV1) -> MuxSpaceV1:
         return await self._call(AppOperationV1.MEMBER_CLOSE, request, MuxSpaceV1)
+
+    async def list_sessions(self, request: SessionListV1) -> SessionListResultV1:
+        result = await self._call(
+            AppOperationV1.SESSIONS_LIST, request, SessionListResultV1
+        )
+        if (
+            result.product_id != request.product_id
+            or result.scope is not request.scope
+            or result.scope_fingerprint != request.scope_fingerprint
+            or len(result.candidates) > request.limit
+        ):
+            await self.close()
+            raise InvalidAppMessageError()
+        return result
 
     async def snapshot_session(
         self, request: SessionSnapshotRequestV1

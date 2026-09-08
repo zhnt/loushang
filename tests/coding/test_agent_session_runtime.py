@@ -883,6 +883,7 @@ async def test_runtime_fork_session_switches_to_selected_branch(tmp_path) -> Non
     )
     await session.session_manager.append_message(_user_message("tail"))
     original_file = session.session_manager.session_file
+    original_prompt = session.agent.system_prompt
 
     forked = await runtime.fork_session(second_id)
 
@@ -906,11 +907,15 @@ async def test_runtime_fork_session_switches_to_selected_branch(tmp_path) -> Non
         f"## {project_root / 'AGENTS.md'}\n\n"
         "Keep edits minimal."
     )
-    assert forked.agent.system_prompt == (
+    assert forked.agent.system_prompt == original_prompt
+    assert forked.agent.system_prompt.startswith(
         f"Base instructions.\n\n{expected_context}\n\n"
         f"{CODING_STANDARD_SYSTEM_PROMPT_FRAGMENT.rstrip()}\n\n"
-        f"{_runtime_footer(nested)}"
+        "Available tools:\n"
     )
+    assert "- read:" in forked.agent.system_prompt
+    assert "- bash:" in forked.agent.system_prompt
+    assert forked.agent.system_prompt.endswith(_runtime_footer(nested))
 
 
 @_async_test
@@ -3868,10 +3873,16 @@ async def test_runtime_restore_session_accepts_session_id(tmp_path) -> None:
 
     created = await runtime.create_session(cwd=str(project))
     await created.session_manager.append_message(_user_message("materialize"))
+    await runtime.dispose()
+    runtime = create_agent_session_runtime(
+        session_dir=tmp_path, model=_model(), persist=True
+    )
     restored = await runtime.restore_session(created.session_id)
 
     assert restored.session_id == created.session_id
     assert restored.session_manager.get_cwd() == str(project.resolve())
+
+    await runtime.dispose()
 
 
 @_async_test
@@ -3886,9 +3897,15 @@ async def test_runtime_restore_session_accepts_session_id_prefix(tmp_path) -> No
 
     created = await runtime.create_session(cwd=str(project))
     await created.session_manager.append_message(_user_message("materialize"))
+    await runtime.dispose()
+    runtime = create_agent_session_runtime(
+        session_dir=tmp_path, model=_model(), persist=True
+    )
     restored = await runtime.restore_session(created.session_id[:8])
 
     assert restored.session_id == created.session_id
+
+    await runtime.dispose()
 
 
 @_async_test

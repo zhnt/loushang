@@ -1,17 +1,18 @@
 name: Windows Shell Compatibility
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
+  workflow_call:
+    inputs:
+      plan:
+        required: true
+        type: string
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+permissions:
+  contents: read
 
 jobs:
   windows-shell:
+    if: ${{ fromJSON(inputs.plan).checks.windows_shell }}
     runs-on: windows-2022
     timeout-minutes: 15
     steps:
@@ -141,3 +142,18 @@ jobs:
           path: .artifacts/windows-shell-*.xml
           include-hidden-files: true
           if-no-files-found: warn
+
+  selected-checks:
+    name: Selected checks
+    if: always()
+    needs: [windows-shell]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify selected jobs
+        env:
+          CI_PLAN: ${{ inputs.plan }}
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: >-
+          python scripts/ci/verify_gate.py
+          --jobs '{"windows-shell":"windows_shell"}'

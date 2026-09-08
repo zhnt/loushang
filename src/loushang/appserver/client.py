@@ -6,6 +6,8 @@ from typing import Protocol
 
 from .protocol import (
     AckV1,
+    AppErrorCodeV1,
+    AppServiceError,
     AttachmentEventV1,
     InteractionRespondV1,
     MuxAttachmentV1,
@@ -18,11 +20,20 @@ from .protocol import (
     MuxMemberOpenV1,
     MuxReadV1,
     MuxSpaceV1,
+    SessionListResultV1,
+    SessionListV1,
     SessionSnapshotRequestV1,
     SessionSnapshotV1,
     TurnInterruptV1,
     TurnTextV1,
 )
+
+
+class AppConnectionClosedError(AppServiceError):
+    """The local client connection is unusable; not a remote close ACK."""
+
+    def __init__(self) -> None:
+        super().__init__(AppErrorCodeV1.SERVICE_CLOSED)
 
 
 class AppClientV1(Protocol):
@@ -67,4 +78,10 @@ class AppClientV1(Protocol):
     ) -> tuple[AttachmentEventV1, ...]: ...
 
 
-__all__ = ["AppClientV1"]
+class SessionDiscoveryClientV1(Protocol):
+    """Optional borrowed capability, supplied only after explicit admission."""
+
+    async def list_sessions(self, request: SessionListV1) -> SessionListResultV1: ...
+
+
+__all__ = ["AppClientV1", "AppConnectionClosedError", "SessionDiscoveryClientV1"]

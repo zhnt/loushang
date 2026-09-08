@@ -1,0 +1,2 @@
+# Frozen compatibility evidence is hashed byte-for-byte on every platform.
+tests/appserver/fixtures/g16_local_record_values.py.txt text eol=lf

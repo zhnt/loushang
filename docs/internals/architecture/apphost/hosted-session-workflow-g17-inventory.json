@@ -1,0 +1,62 @@
+{
+  "inventoryVersion": 1,
+  "designId": "HOSTED-SESSION-WORKFLOW-G17",
+  "designStatus": "accepted",
+  "implementationStatus": "implemented",
+  "deliveryStatus": "mainline-integration-pending",
+  "baselineCommit": "3c06f5b9a4309e03dc754511eb012f9e2c23cbcb",
+  "trackingIssue": 572,
+  "requiredPlatforms": ["linux", "darwin", "win32"],
+  "requirements": [
+    "G17-DISCOVERY", "G17-AUTHORITY", "G17-COMPAT", "G17-PICKER",
+    "G17-FOREGROUND", "G17-LIFETIMES", "G17-INSTALLED", "G17-REGRESSION"
+  ],
+  "entries": [
+    {"id": "discovery.values", "source": "src/loushang/appserver/protocol/model.py", "status": "implemented", "owner": "appserver", "requirements": ["G17-DISCOVERY", "G17-COMPAT"]},
+    {"id": "discovery.codec", "source": "src/loushang/appserver/protocol/codec.py", "status": "implemented", "owner": "appserver", "requirements": ["G17-DISCOVERY", "G17-COMPAT"]},
+    {"id": "discovery.client", "source": "src/loushang/appserver/client.py", "status": "implemented", "owner": "appserver", "requirements": ["G17-COMPAT"]},
+    {"id": "discovery.profiles", "source": "src/loushang/appserver/protocol/connection_profile.py", "status": "implemented", "owner": "appserver", "requirements": ["G17-COMPAT", "G17-LIFETIMES"]},
+    {"id": "discovery.port", "source": "src/loushang/appservice/discovery_ports.py", "status": "implemented", "owner": "appservice", "requirements": ["G17-AUTHORITY", "G17-DISCOVERY"]},
+    {"id": "resolution.port", "source": "src/loushang/appservice/ports.py", "status": "implemented", "owner": "appservice", "requirements": ["G17-AUTHORITY"]},
+    {"id": "discovery.views", "source": "src/loushang/appservice/session_discovery.py", "status": "implemented", "owner": "appservice", "requirements": ["G17-DISCOVERY", "G17-LIFETIMES"]},
+    {"id": "discovery.product", "source": "src/loushang/coding/hosted_catalog.py", "status": "implemented", "owner": "coding", "requirements": ["G17-AUTHORITY", "G17-DISCOVERY"]},
+    {"id": "discovery.composition", "source": "src/loushang/coding/hosted_bootstrap.py", "status": "implemented", "owner": "coding", "requirements": ["G17-AUTHORITY", "G17-REGRESSION"]},
+    {"id": "discovery.stdio-command", "source": "src/loushang/coding/cli/hosted.py", "status": "implemented", "owner": "coding", "requirements": ["G17-COMPAT", "G17-DISCOVERY"]},
+    {"id": "discovery.local-record", "source": "src/loushang/appserver/_local_record_values.py", "status": "implemented", "owner": "appserver", "requirements": ["G17-COMPAT", "G17-AUTHORITY"]},
+    {"id": "discovery.local-command", "source": "src/loushang/coding/cli/mux.py", "status": "implemented", "owner": "coding", "requirements": ["G17-COMPAT", "G17-DISCOVERY", "G17-LIFETIMES"]},
+    {"id": "picker.shell", "source": "src/loushang/harnesstui/mux/shell.py", "status": "implemented", "owner": "harnesstui", "requirements": ["G17-PICKER", "G17-REGRESSION"]},
+    {"id": "picker.view", "source": "src/loushang/harnesstui/mux/session_picker.py", "status": "implemented", "owner": "harnesstui", "requirements": ["G17-PICKER"]},
+    {"id": "foreground.launcher", "source": "src/loushang/apphost/launcher.py", "status": "implemented", "owner": "apphost", "requirements": ["G17-FOREGROUND", "G17-LIFETIMES"]},
+    {"id": "foreground.command", "source": "src/loushang/coding/cli/hosted_client.py", "status": "implemented", "owner": "coding", "requirements": ["G17-FOREGROUND", "G17-INSTALLED", "G17-REGRESSION"]},
+    {"id": "installed.evidence", "source": "scripts/dev/run_g17_installed_evidence.py", "status": "implemented", "owner": "delivery", "requirements": ["G17-INSTALLED", "G17-REGRESSION"]},
+    {"id": "evidence.legacy-family", "source": "tests/coding/test_hosted_legacy_evidence.py", "status": "implemented", "owner": "delivery", "requirements": ["G17-INSTALLED", "G17-REGRESSION"]},
+    {"id": "evidence.family-selector", "source": "tests/coding/test_hosted_installed_evidence.py", "status": "implemented", "owner": "delivery", "requirements": ["G17-INSTALLED", "G17-REGRESSION", "G17-LIFETIMES"]},
+    {"id": "evidence.linux-native-observer", "source": "tests/coding/test_hosted_entry_evidence.py", "status": "implemented", "owner": "delivery", "requirements": ["G17-INSTALLED", "G17-FOREGROUND", "G17-LIFETIMES"]},
+    {"id": "evidence.windows-native-observer", "source": "tests/coding/_hosted_windows_observer.py", "status": "implemented", "owner": "delivery", "requirements": ["G17-INSTALLED", "G17-FOREGROUND", "G17-LIFETIMES"]},
+    {"id": "evidence.darwin-native-observer", "source": "tests/coding/_hosted_darwin_observer.py", "status": "implemented", "owner": "delivery", "requirements": ["G17-INSTALLED", "G17-FOREGROUND", "G17-LIFETIMES"]},
+    {"id": "evidence.owned-group-observation", "source": "tests/coding/_hosted_owned_group.py", "status": "implemented", "owner": "delivery", "requirements": ["G17-INSTALLED", "G17-LIFETIMES"]},
+    {"id": "evidence.darwin-witness", "source": "tests/coding/_hosted_darwin_witness.py", "status": "implemented", "owner": "delivery", "requirements": ["G17-INSTALLED", "G17-LIFETIMES"]},
+    {"id": "evidence.observation-registry", "source": "scripts/dev/_evidence_observation.py", "status": "implemented", "owner": "delivery", "requirements": ["G17-INSTALLED", "G17-LIFETIMES"]}
+  ],
+  "legacyProfiles": {
+    "foreground-stdio/v1": "retain-exact-hello-and-lifetime",
+    "local-detachable/v1": "retain-exact-default-record-hello-and-lifetime"
+  },
+  "optionalProfiles": ["foreground-stdio-discovery/v1", "local-detachable-discovery/v1"],
+  "unchangedScripts": {
+    "loushang": "loushang.coding.cli.__main__:main",
+    "loushang-tui": "loushang.coding.ui.cli:main",
+    "loushang-hosted": "loushang.coding.cli.hosted:main",
+    "loushang-mux": "loushang.coding.cli.mux:main"
+  },
+  "implementedScript": {"loushang-hosted-tui": "loushang.coding.cli.hosted_client:main"},
+  "reviews": [
+    {"perspective": "architecture-authority", "status": "approved", "resolvedFindings": ["G17-R1", "G17-R2"]},
+    {"perspective": "lifecycle-concurrency", "status": "approved", "resolvedFindings": ["G17-R3", "G17-R4"]},
+    {"perspective": "contract-user-evidence", "status": "approved", "resolvedFindings": ["G17-R1", "G17-R5", "G17-R6", "G17-R7"]}
+  ],
+  "notGranted": [
+    "default-owner-change", "daemon-installation", "automatic-backgrounding",
+    "active-turn-replay", "arbitrary-client-paths", "image-transfer", "second-session-index"
+  ]
+}

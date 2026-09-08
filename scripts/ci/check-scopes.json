@@ -1,0 +1,552 @@
+{
+  "checks": [
+    "docs",
+    "architecture",
+    "ai",
+    "agent",
+    "coding",
+    "harnesstui",
+    "coding_ui",
+    "tui_unit",
+    "tui_playback",
+    "tui_native",
+    "harness",
+    "harness_native",
+    "hosting",
+    "apphost",
+    "appservice",
+    "host_runtime",
+    "windows_shell",
+    "install",
+    "lsp",
+    "ci",
+    "foundation"
+  ],
+  "document_files": [
+    "LICENSE",
+    "NOTICE"
+  ],
+  "rules": [
+    {
+      "paths": [
+        ".github/**",
+        "scripts/ci/**",
+        "tests/ci/**",
+        "Makefile",
+        "pyproject.toml",
+        "uv.lock",
+        "tests/conftest.py",
+        "scripts/dev/run_pytest.py",
+        "scripts/dev/verify_pytest_xml.py",
+        "requirements*.txt",
+        ".gitattributes",
+        "tests/**/conftest.py"
+      ],
+      "checks": [
+        "docs",
+        "architecture",
+        "ai",
+        "agent",
+        "coding",
+        "harnesstui",
+        "coding_ui",
+        "tui_unit",
+        "tui_playback",
+        "tui_native",
+        "harness",
+        "harness_native",
+        "hosting",
+        "apphost",
+        "appservice",
+        "host_runtime",
+        "windows_shell",
+        "install",
+        "lsp",
+        "ci",
+        "foundation"
+      ],
+      "reason": "shared build, dependencies or gate infrastructure"
+    },
+    {
+      "paths": [
+        "src/loushang/ai/**",
+        "tests/ai/**",
+        "tests/protocols/**",
+        "examples/ai/**",
+        "examples/auth/**",
+        "scripts/ai/**",
+        "tests/examples/test_ai*",
+        "tests/examples/test_auth*"
+      ],
+      "checks": [
+        "ai"
+      ],
+      "reason": "AI implementation and offline contracts"
+    },
+    {
+      "paths": [
+        "src/loushang/ai/types.py",
+        "src/loushang/ai/api.py",
+        "src/loushang/ai/__init__.py",
+        "src/loushang/ai/event_stream/**",
+        "src/loushang/ai/options.py",
+        "src/loushang/ai/json_codec.py",
+        "src/loushang/ai/messages.py",
+        "src/loushang/ai/prepared_request.py",
+        "src/loushang/ai/errors.py",
+        "src/loushang/ai/model/**",
+        "src/loushang/ai/tool/validation.py"
+      ],
+      "checks": [
+        "agent",
+        "harness",
+        "coding",
+        "harnesstui",
+        "coding_ui",
+        "tui_playback"
+      ],
+      "reason": "AI consumer contracts"
+    },
+    {
+      "paths": [
+        "src/loushang/agent/**",
+        "tests/agent/**"
+      ],
+      "checks": [
+        "agent"
+      ],
+      "reason": "Agent runtime"
+    },
+    {
+      "paths": [
+        "src/loushang/agent/**"
+      ],
+      "checks": [
+        "harness",
+        "coding",
+        "harnesstui",
+        "coding_ui",
+        "tui_playback"
+      ],
+      "reason": "Agent consumers"
+    },
+    {
+      "paths": [
+        "src/loushang/foundation/**",
+        "tests/foundation/**"
+      ],
+      "checks": [
+        "foundation",
+        "ai",
+        "agent",
+        "harness",
+        "coding",
+        "harnesstui",
+        "coding_ui",
+        "tui_unit",
+        "tui_playback"
+      ],
+      "reason": "shared Foundation contracts"
+    },
+    {
+      "paths": [
+        "src/loushang/foundation/platform*",
+        "src/loushang/foundation/runtime_scope.py",
+        "tests/foundation/test_runtime_scope.py",
+        "src/loushang/foundation/observability/identity.py"
+      ],
+      "checks": [
+        "hosting",
+        "apphost",
+        "appservice",
+        "host_runtime",
+        "windows_shell",
+        "tui_native",
+        "harness_native"
+      ],
+      "reason": "shared platform and runtime scope"
+    },
+    {
+      "paths": [
+        "src/loushang/coding/**",
+        "tests/coding/**",
+        "tests/integration/coding/**",
+        "examples/coding/**"
+      ],
+      "checks": [
+        "coding"
+      ],
+      "reason": "Coding implementation"
+    },
+    {
+      "paths": [
+        "src/loushang/coding/ui/**",
+        "src/loushang/coding/presentation/**",
+        "src/loushang/coding/model_selection*",
+        "src/loushang/coding/prompt_command.py",
+        "tests/coding/test_ui*",
+        "tests/coding/test_screen*",
+        "tests/coding/test_coding_tui*",
+        "tests/coding/ui/**",
+        "tests/coding/tui_support/**"
+      ],
+      "checks": [
+        "coding_ui",
+        "tui_playback"
+      ],
+      "reason": "Coding UI adapters and playback"
+    },
+    {
+      "paths": [
+        "src/loushang/tui/**",
+        "tests/tui/**",
+        "examples/tui/**"
+      ],
+      "checks": [
+        "tui_unit",
+        "tui_playback"
+      ],
+      "reason": "TUI units and deterministic rendering"
+    },
+    {
+      "paths": [
+        "src/loushang/tui/**"
+      ],
+      "checks": [
+        "harnesstui",
+        "coding_ui"
+      ],
+      "reason": "TUI consumer integration"
+    },
+    {
+      "paths": [
+        "src/loushang/harnesstui/**",
+        "tests/harnesstui/**"
+      ],
+      "checks": [
+        "harnesstui",
+        "tui_playback"
+      ],
+      "reason": "HarnessTUI presentation"
+    },
+    {
+      "paths": [
+        "src/loushang/harnesstui/**"
+      ],
+      "checks": [
+        "coding_ui"
+      ],
+      "reason": "Coding consumes HarnessTUI"
+    },
+    {
+      "paths": [
+        "src/loushang/tui/terminal*",
+        "src/loushang/tui/keyboard_protocol.py",
+        "src/loushang/tui/runner.py",
+        "src/loushang/tui/_runner_utils.py",
+        "src/loushang/tui/runtime.py",
+        "src/loushang/tui/render_loop.py",
+        "src/loushang/tui/input.py",
+        "src/loushang/tui/launch.py",
+        "src/loushang/tui/core.py",
+        "src/loushang/tui/tui.py",
+        "src/loushang/coding/cli/**",
+        "src/loushang/coding/ui/cli.py",
+        "src/loushang/coding/ui/screen_loop*",
+        "src/loushang/coding/ui/screen_app*",
+        "tests/tui/test_terminal*",
+        "tests/tui/terminal_process_support/**",
+        "tests/coding/test_cli_terminal*",
+        "tests/coding/test_screen_coding_tui_pty*",
+        "scripts/run_tui_native_tests.py",
+        "scripts/run_tui_platform_tests.py"
+      ],
+      "checks": [
+        "tui_native"
+      ],
+      "reason": "native terminal lifecycle and platform contracts"
+    },
+    {
+      "paths": [
+        "scripts/run_tui_playback.py",
+        "src/loushang/tui/playback*",
+        "tests/tui/test_playback*"
+      ],
+      "checks": [
+        "tui_playback"
+      ],
+      "reason": "playback runner"
+    },
+    {
+      "paths": [
+        "src/loushang/harness/**",
+        "tests/harness/**"
+      ],
+      "checks": [
+        "harness"
+      ],
+      "reason": "Harness implementation"
+    },
+    {
+      "paths": [
+        "src/loushang/harness/session/**",
+        "src/loushang/harness/conversation/**",
+        "src/loushang/harness/events/**",
+        "src/loushang/harness/host/**",
+        "src/loushang/harness/transcript/**",
+        "src/loushang/harness/commands/**"
+      ],
+      "checks": [
+        "coding",
+        "harnesstui",
+        "coding_ui",
+        "tui_playback"
+      ],
+      "reason": "Harness session and presentation consumers"
+    },
+    {
+      "paths": [
+        "src/loushang/harness/workspace/**",
+        "src/loushang/harness/worker/**",
+        "src/loushang/harness/resources/packages/**",
+        "src/loushang/harness/sandbox/**",
+        "src/loushang/harness/machine_resources/**",
+        "tests/harness/workspace/**",
+        "tests/harness/worker/**",
+        "tests/harness/resources/packages/**",
+        "tests/harness/sandbox/**",
+        "tests/harness/machine_resources/**",
+        "src/loushang/coding/_product_worker_canary.py"
+      ],
+      "checks": [
+        "harness_native",
+        "hosting",
+        "host_runtime",
+        "windows_shell"
+      ],
+      "reason": "native process, isolation and resource lifecycle"
+    },
+    {
+      "paths": [
+        "src/loushang/hosting/**",
+        "tests/hosting/**"
+      ],
+      "checks": [
+        "hosting",
+        "harness_native",
+        "windows_shell",
+        "host_runtime"
+      ],
+      "reason": "Hosting platform contracts"
+    },
+    {
+      "paths": [
+        "src/loushang/hosting/**"
+      ],
+      "checks": [
+        "apphost",
+        "appservice"
+      ],
+      "reason": "Hosting provider changes affect hosted application startup and settlement"
+    },
+    {
+      "paths": [
+        "tests/coding/_hosted_*.py",
+        "tests/coding/test_hosted_*evidence.py",
+        "tests/coding/test_hosted_darwin_primitives.py",
+        "tests/tui/terminal_process_support/**",
+        "tests/coding/test_mux_native_evidence.py",
+        "tests/coding/test_mux_installed_evidence.py",
+        "scripts/dev/run_g17_installed_evidence.py",
+        "scripts/dev/run_g16_installed_evidence.py",
+        "scripts/dev/_evidence_*.py",
+        "scripts/dev/verify_evidence_manifest.py"
+      ],
+      "checks": [
+        "appservice"
+      ],
+      "reason": "Native and installed Hosted evidence support must select its full consumer gate"
+    },
+    {
+      "paths": [
+        "src/loushang/apphost/**",
+        "tests/apphost/**"
+      ],
+      "checks": [
+        "apphost"
+      ],
+      "reason": "AppHost"
+    },
+    {
+      "paths": [
+        "src/loushang/appservice/**",
+        "tests/appservice/**",
+        "src/loushang/appserver/**",
+        "tests/appserver/**"
+      ],
+      "checks": [
+        "appservice",
+        "apphost"
+      ],
+      "reason": "AppService and protocol consumers"
+    },
+    {
+      "paths": [
+        "src/loushang/coding/lsp/**",
+        "src/loushang/coding/sandbox/**",
+        "src/loushang/harness/sandbox/**",
+        "src/loushang/harness/tools/process_hosting/**",
+        "tests/integration/coding/test_*_lsp_live.py"
+      ],
+      "checks": [
+        "lsp"
+      ],
+      "reason": "existing real LSP compatibility coverage"
+    },
+    {
+      "paths": [
+        "docs/internals/architecture/harness/plugin/*.json",
+        "docs/internals/architecture/hosting/*.json"
+      ],
+      "checks": [
+        "harness",
+        "harness_native",
+        "hosting",
+        "windows_shell"
+      ],
+      "reason": "machine-consumed plugin and hosting evidence manifests"
+    },
+    {
+      "paths": [
+        "docs/internals/architecture/apphost/*.json",
+        "docs/internals/architecture/appservice/*.json"
+      ],
+      "checks": [
+        "apphost",
+        "appservice"
+      ],
+      "reason": "machine-consumed application evidence manifests"
+    },
+    {
+      "paths": [
+        "scripts/architecture/**",
+        "tests/architecture/test_architecture_documentation.py"
+      ],
+      "checks": [
+        "architecture",
+        "docs"
+      ],
+      "reason": "architecture documentation tooling"
+    },
+    {
+      "paths": [
+        "src/loushang/coding/arch/**",
+        "tests/coding/arch/**"
+      ],
+      "checks": [
+        "architecture",
+        "coding"
+      ],
+      "reason": "source graph implementation"
+    }
+  ],
+  "make_scopes": {
+    "harness": [
+      "HARNESS_SOURCES",
+      "HARNESS_RUNTIME_SUPPORT_SOURCES",
+      "HARNESS_TEST_PATHS"
+    ],
+    "hosting": [
+      "HOSTING_SOURCES",
+      "HOSTING_TEST_PATHS"
+    ],
+    "apphost": [
+      "APPHOST_SOURCES",
+      "APPHOST_TEST_PATHS",
+      "APPHOST_LINT_SUPPORT"
+    ],
+    "appservice": [
+      "APPSERVICE_SOURCES",
+      "APPSERVICE_TEST_PATHS"
+    ],
+    "harnesstui": [
+      "HARNESSTUI_SHARED_SOURCES"
+    ],
+    "coding_ui": [
+      "HARNESSTUI_CODING_ADAPTERS",
+      "CODING_TUI_PRODUCT_SOURCES",
+      "HARNESSTUI_TEST_SUPPORT",
+      "CODING_TUI_PRODUCT_TEST_PATHS"
+    ]
+  },
+  "check_dependencies": {
+    "tui_native": [
+      "tui_unit",
+      "tui_playback"
+    ],
+    "harness_native": [
+      "harness"
+    ],
+    "coding": [
+      "host_runtime"
+    ],
+    "harness": [
+      "host_runtime"
+    ],
+    "hosting": [
+      "host_runtime"
+    ],
+    "apphost": [
+      "host_runtime"
+    ],
+    "appservice": [
+      "host_runtime"
+    ]
+  },
+  "workflows": {
+    "architecture": [
+      "docs",
+      "architecture"
+    ],
+    "ai": [
+      "ai",
+      "install"
+    ],
+    "packages": [
+      "agent",
+      "coding",
+      "foundation"
+    ],
+    "harness": [
+      "harness",
+      "harness_native"
+    ],
+    "harnesstui": [
+      "harnesstui",
+      "coding_ui"
+    ],
+    "tui": [
+      "tui_unit",
+      "tui_playback",
+      "tui_native"
+    ],
+    "hosting": [
+      "hosting"
+    ],
+    "apphost": [
+      "apphost"
+    ],
+    "appservice": [
+      "appservice"
+    ],
+    "host-runtime": [
+      "host_runtime"
+    ],
+    "windows-shell": [
+      "windows_shell"
+    ],
+    "lsp": [
+      "lsp"
+    ]
+  }
+}

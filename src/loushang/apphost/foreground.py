@@ -15,6 +15,7 @@ from loushang.appserver.framing import (
     AppFramedStreamV1,
     require_timeout,
 )
+from loushang.appserver.protocol.connection_profile import AppConnectionProfileV1
 
 from .application import HostedApplicationError
 from .continuity import HostedApplicationContinuityRuntimeV1
@@ -35,14 +36,26 @@ class HostedForegroundRuntimeV1:
         *,
         connection_timeout: float = 10.0,
         settlement_timeout: float = 60.0,
+        session_discovery: bool = False,
     ) -> None:
+        if type(session_discovery) is not bool:
+            raise TypeError("invalid discovery activation")
         require_timeout(connection_timeout)
         require_timeout(settlement_timeout)
+        discovery = application.discovery_client if session_discovery else None
+        if session_discovery and discovery is None:
+            raise HostedApplicationError("hosted_discovery_unavailable")
         self._application = application
         self._connection = AppServerConnectionV1(
             application.client,
             AppFramedStreamV1(transport, io_timeout=connection_timeout),
             phase_timeout=connection_timeout,
+            profile=(
+                AppConnectionProfileV1.STDIO_DISCOVERY
+                if session_discovery
+                else AppConnectionProfileV1.STDIO
+            ),
+            discovery=discovery,
         )
         self._timeout = settlement_timeout
         self._serving: asyncio.Task[None] | None = None

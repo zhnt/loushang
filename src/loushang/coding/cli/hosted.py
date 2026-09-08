@@ -17,6 +17,7 @@ from loushang.apphost.continuity import HostedApplicationContinuityRuntimeV1
 from loushang.apphost.foreground import HostedForegroundRuntimeV1
 from loushang.appserver.framing import require_timeout
 from loushang.appserver.protocol import AppServiceError
+from loushang.appserver.protocol.connection_profile import AppConnectionProfileV1
 from loushang.appserver.stdio import InheritedStdioTransportV1
 from loushang.harness.tools.core import ToolDefinition
 
@@ -39,14 +40,22 @@ class CodingHostedCommandV1:
         tools: list[ToolDefinition] | None = None,
         connection_timeout: float = 10.0,
         settlement_timeout: float = 60.0,
+        session_discovery: bool = False,
     ) -> None:
+        if type(session_discovery) is not bool:
+            raise TypeError("invalid discovery activation")
         require_timeout(connection_timeout)
         require_timeout(settlement_timeout)
         self._launch = launch
         self._connection_timeout = connection_timeout
         self._settlement_timeout = settlement_timeout
+        self._session_discovery = session_discovery
         self._attempt = create_coding_hosted_attempt(
-            launch, model=model, stream_fn=stream_fn, tools=tools
+            launch,
+            model=model,
+            stream_fn=stream_fn,
+            tools=tools,
+            session_discovery=session_discovery,
         )
         self._application: HostedApplicationContinuityRuntimeV1 | None = None
         self._transport: InheritedStdioTransportV1 | None = None
@@ -74,6 +83,7 @@ class CodingHostedCommandV1:
                 self._transport,
                 connection_timeout=self._connection_timeout,
                 settlement_timeout=self._settlement_timeout,
+                session_discovery=self._session_discovery,
             )
             await self._foreground.run()
         finally:
@@ -110,7 +120,7 @@ def _observe(task: asyncio.Task[None]) -> None:
         task.exception()
 
 
-def _parser() -> argparse.ArgumentParser:
+def _parser(*, allow_discovery: bool = False) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="loushang-hosted",
         description="Explicit foreground Coding application over inherited stdio; EOF shuts it down.",
@@ -146,13 +156,29 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="print path-free scope selectors without starting or writing state",
     )
+    if allow_discovery:
+        parser.add_argument(
+            "--session-discovery",
+            action="store_true",
+            help="explicitly select the bounded session-discovery wire profile",
+        )
     return parser
 
 
 def parse_launch(
     argv: Sequence[str] | None = None,
 ) -> tuple[CodingHostedLaunchV1, bool]:
-    parser = _parser()
+    """Legacy library parser: never accept a selection this pair cannot carry."""
+    launch, describe, _ = _parse_options(argv, allow_discovery=False)
+    return launch, describe
+
+
+def _parse_options(
+    argv: Sequence[str] | None,
+    *,
+    allow_discovery: bool,
+) -> tuple[CodingHostedLaunchV1, bool, bool]:
+    parser = _parser(allow_discovery=allow_discovery)
     args = parser.parse_args(argv)
     try:
         launch = CodingHostedLaunchV1(
@@ -164,7 +190,7 @@ def parse_launch(
         )
     except (ValueError, OSError):
         parser.error("invalid hosted launch configuration")
-    return launch, args.describe
+    return launch, args.describe, args.session_discovery if allow_discovery else False
 
 
 def execute_hosted_command(command: CodingHostedCommandV1) -> int:
@@ -198,12 +224,21 @@ def execute_hosted_command(command: CodingHostedCommandV1) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    launch, describe = parse_launch(argv)
+    launch, describe, discovery = _parse_options(argv, allow_discovery=True)
     if describe:
-        print(json.dumps(launch.describe(), ensure_ascii=False, sort_keys=True))
+        profile = (
+            AppConnectionProfileV1.STDIO_DISCOVERY
+            if discovery
+            else AppConnectionProfileV1.STDIO
+        )
+        print(
+            json.dumps(
+                launch.describe(profile=profile), ensure_ascii=False, sort_keys=True
+            )
+        )
         return 0
     try:
-        command = CodingHostedCommandV1(launch)
+        command = CodingHostedCommandV1(launch, session_discovery=discovery)
     except Exception:
         print("hosted_configuration_unavailable", file=sys.stderr)
         return 1

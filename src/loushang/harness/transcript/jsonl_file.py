@@ -92,12 +92,16 @@ _MAX_DISCOVERY_CANDIDATES = 4096
 
 
 @contextmanager
-def agent_transcript_file_lock(path: Path, mode: LockMode) -> Iterator[None]:
+def agent_transcript_file_lock(
+    path: Path, mode: LockMode, *, blocking: bool = True, create_lock: bool = True,
+) -> Iterator[None]:
     """Lock one transcript file with the current platform implementation."""
 
     with journal_file_lock(
         path,
         mode,
+        blocking=blocking,
+        create=create_lock,
         is_windows=_is_windows,
         load_fcntl=_load_fcntl,
         load_msvcrt=_load_msvcrt,
@@ -225,12 +229,21 @@ def decode_agent_transcript_bytes(
     return snapshot.header, list(snapshot.records)
 
 
-def load_agent_transcript_header(path: Path) -> ConversationHeader:
+def load_agent_transcript_header(
+    path: Path, *, blocking: bool = True, create_lock: bool = True,
+) -> ConversationHeader:
     """Read only the Conversation JSONL header without scanning the transcript."""
 
     target = Path(path)
     try:
-        with agent_transcript_file_lock(target, "shared"):
+        lock = (
+            agent_transcript_file_lock(target, "shared")
+            if blocking is True and create_lock is True
+            else agent_transcript_file_lock(
+                target, "shared", blocking=blocking, create_lock=create_lock,
+            )
+        )
+        with lock:
             prefix = _read_stable_regular_prefix(
                 target,
                 max_bytes=_MAX_HEADER_BYTES,
@@ -369,9 +382,13 @@ class AgentTranscriptFileLayout:
         namespace: str,
         *,
         max_candidates: int | None = None,
+        should_stop: Callable[[], bool] | None = None,
+        raise_on_error: bool = False,
     ) -> AgentTranscriptCandidateScan:
         """Return bounded candidates and whether the directory was exhausted."""
 
+        if should_stop is not None and should_stop():
+            return AgentTranscriptCandidateScan((), complete=False)
         if namespace != self.namespace or not _is_directory_no_follow(self.root):
             return AgentTranscriptCandidateScan((), complete=True)
         if max_candidates is not None and (
@@ -389,19 +406,25 @@ class AgentTranscriptFileLayout:
         candidates: list[Path] = []
         complete = True
         try:
-            for inspected, path in enumerate(self.root.iterdir(), start=1):
-                if inspected > _MAX_DISCOVERY_DIRECTORY_ENTRIES:
-                    complete = False
-                    break
-                if path.suffix == ".jsonl" and not path.name.endswith(
-                    "-export.jsonl"
-                ):
-                    if len(candidates) >= candidate_limit:
+            with os.scandir(self.root) as entries:
+                for inspected, entry in enumerate(entries, start=1):
+                    if inspected > _MAX_DISCOVERY_DIRECTORY_ENTRIES or (
+                        should_stop is not None and should_stop()
+                    ):
                         complete = False
                         break
-                    if _is_regular_file_no_follow(path):
-                        candidates.append(path)
+                    path = Path(entry.path)
+                    if path.suffix == ".jsonl" and not path.name.endswith(
+                        "-export.jsonl"
+                    ):
+                        if len(candidates) >= candidate_limit:
+                            complete = False
+                            break
+                        if _is_regular_file_no_follow(path):
+                            candidates.append(path)
         except OSError:
+            if raise_on_error:
+                raise
             return AgentTranscriptCandidateScan((), complete=False)
         return AgentTranscriptCandidateScan(tuple(sorted(candidates)), complete)
 

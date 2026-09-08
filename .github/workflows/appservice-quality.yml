@@ -1,16 +1,145 @@
 name: AppService Quality
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
+  workflow_call:
+    inputs:
+      plan:
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 jobs:
+  g17-darwin-native:
+    if: ${{ fromJSON(inputs.plan).checks.appservice }}
+    name: g17-darwin-native
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@v5
+      - name: Install locked dependencies
+        run: uv --cache-dir .uv-cache sync --locked --extra dev
+      - name: Exercise retained native CLI workflows
+        run: >-
+          uv --cache-dir .uv-cache run python scripts/dev/run_pytest.py
+          tests/coding/test_hosted_darwin_evidence.py
+          --junitxml=.artifacts/g17-darwin-native.xml -q -s -m "not live"
+      - name: Verify exact native cases and zero skips
+        run: >-
+          uv --cache-dir .uv-cache run python scripts/dev/verify_evidence_manifest.py
+          docs/internals/architecture/apphost/hosted-session-workflow-g17-darwin-native-manifest.json
+          G17-DARWIN-NATIVE .artifacts/g17-darwin-native.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: g17-darwin-native
+          path: .artifacts/g17-darwin-native.xml
+          if-no-files-found: error
+
+  g17-darwin-primitives:
+    if: ${{ fromJSON(inputs.plan).checks.appservice }}
+    name: g17-darwin-primitives
+    runs-on: macos-15
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@v5
+      - name: Install locked dependencies
+        run: uv --cache-dir .uv-cache sync --locked --extra dev
+      - name: Exercise public native observation primitives
+        run: >-
+          uv --cache-dir .uv-cache run python scripts/dev/run_pytest.py
+          tests/coding/test_hosted_darwin_primitives.py
+          --junitxml=.artifacts/g17-darwin-primitives.xml -q -m "not live"
+      - name: Verify exact primitive cases and zero skips
+        run: >-
+          uv --cache-dir .uv-cache run python scripts/dev/verify_evidence_manifest.py
+          docs/internals/architecture/apphost/hosted-session-workflow-g17-darwin-primitives-manifest.json
+          G17-DARWIN-PRIMITIVES .artifacts/g17-darwin-primitives.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: g17-darwin-primitives
+          path: .artifacts/g17-darwin-primitives.xml
+          if-no-files-found: error
+
+  g17-wheel-evidence:
+    if: ${{ fromJSON(inputs.plan).checks.appservice }}
+    name: g17-wheel-${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            platform: linux
+          - os: macos-15
+            platform: darwin
+          - os: windows-latest
+            platform: win32
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          architecture: x64
+      - uses: astral-sh/setup-uv@v5
+      - name: Seed locked offline installation cache
+        run: uv --cache-dir .uv-cache sync --locked --extra dev
+      - name: Build current checkout wheel
+        run: uv --cache-dir .uv-cache build --wheel --out-dir .artifacts/g17-wheel
+      - name: Run all eight installed families and verify zero skips
+        run: >-
+          uv --cache-dir .uv-cache run python scripts/dev/run_g17_installed_evidence.py
+          --wheel-dir .artifacts/g17-wheel --platform ${{ matrix.platform }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: g17-wheel-${{ matrix.platform }}
+          path: .artifacts/g17-wheel-${{ matrix.platform }}.xml
+          if-no-files-found: error
+
+  g17-windows-native:
+    if: ${{ fromJSON(inputs.plan).checks.appservice }}
+    name: g17-windows-native
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          architecture: x64
+      - uses: astral-sh/setup-uv@v5
+      - name: Install locked dependencies
+        run: uv sync --locked --extra dev
+      - name: Run native console and fault-observer supplement
+        run: >-
+          uv run python scripts/dev/run_pytest.py tests/coding/test_hosted_windows_evidence.py
+          --junitxml=.artifacts/g17-windows-native.xml -q -m "not live"
+      - name: Verify exact native cases and zero skips
+        run: >-
+          uv run python scripts/dev/verify_evidence_manifest.py
+          docs/internals/architecture/apphost/hosted-session-workflow-g17-windows-native-manifest.json
+          G17-WINDOWS-NATIVE .artifacts/g17-windows-native.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: g17-windows-native
+          path: .artifacts/g17-windows-native.xml
+          if-no-files-found: error
+
   appservice-quality:
+    if: ${{ fromJSON(inputs.plan).checks.appservice }}
     name: appservice-quality-${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -37,6 +166,7 @@ jobs:
         run: make check-appservice
 
   g16-native-evidence:
+    if: ${{ fromJSON(inputs.plan).checks.appservice }}
     name: g16-native-${{ matrix.platform }}
     strategy:
       fail-fast: false
@@ -79,6 +209,7 @@ jobs:
           if-no-files-found: error
 
   g16-wheel-evidence:
+    if: ${{ fromJSON(inputs.plan).checks.appservice }}
     name: g16-wheel-${{ matrix.platform }}
     strategy:
       fail-fast: false
@@ -113,3 +244,18 @@ jobs:
           name: g16-wheel-${{ matrix.platform }}
           path: .artifacts/g16-wheel-${{ matrix.platform }}.xml
           if-no-files-found: error
+
+  selected-checks:
+    name: Selected checks
+    if: always()
+    needs: [appservice-quality, g16-native-evidence, g16-wheel-evidence, g17-darwin-native, g17-darwin-primitives, g17-wheel-evidence, g17-windows-native]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify selected jobs
+        env:
+          CI_PLAN: ${{ inputs.plan }}
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: >-
+          python scripts/ci/verify_gate.py
+          --jobs '{"appservice-quality":"appservice","g16-native-evidence":"appservice","g16-wheel-evidence":"appservice","g17-darwin-native":"appservice","g17-darwin-primitives":"appservice","g17-wheel-evidence":"appservice","g17-windows-native":"appservice"}'

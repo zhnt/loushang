@@ -21,6 +21,7 @@ from .continuity import (
     require_application_id,
     require_owner_epoch,
 )
+from .discovery_ports import HostedSessionDiscoveryBindingV1, require_discovery_context
 from .ports import HostedSessionPortV1, HostedSessionResolverV1
 from .runtime import (
     _CONTINUITY_TOKEN,
@@ -38,8 +39,10 @@ class AppServiceRecoveryRequestV1:
     continuity_lease: ApplicationContinuityLeaseV1 = field(repr=False)
     id_factory: Callable[[], str] | None = field(default=None, repr=False)
     close_timeout_seconds: float = 10.0
+    discovery: HostedSessionDiscoveryBindingV1 | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
+        require_discovery_context(self.discovery, self.product_id)
         if type(self.product_id) is not str or not self.product_id:
             raise ValueError("invalid recovery Product identity")
         if not inspect.iscoroutinefunction(
@@ -179,6 +182,7 @@ class AppServiceRecoveryAttemptV1:
                 resolver=self._request.resolver,
                 id_factory=self._request.id_factory,
                 close_timeout_seconds=self._request.close_timeout_seconds,
+                discovery=self._request.discovery,
             )
             service._adopt_continuity_state(
                 lease=self._request.continuity_lease,

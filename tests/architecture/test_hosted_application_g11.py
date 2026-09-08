@@ -47,6 +47,13 @@ def _imports_prefix(imports: set[str], prefix: str) -> bool:
     return any(item == prefix or item.startswith(f"{prefix}.") for item in imports)
 
 
+def test_G17_controller_borrows_only_appserver_semantics() -> None:
+    imports = _imports(HARNESSTUI_MUX / "controller.py")
+    assert {name for name in imports if name.startswith("loushang.appserver")} == {
+        "loushang.appserver.client", "loushang.appserver.protocol",
+    }
+
+
 def test_G11_DEPENDENCY_GRAPH_appserver_remains_contract_and_client_only() -> None:
     imports = _package_imports(APPSERVER)
     for forbidden in (
@@ -122,6 +129,11 @@ def test_G11_PRODUCT_ADAPTER_is_the_only_product_harness_bridge() -> None:
         Path("src/loushang/coding/hosted_application.py"),
         Path("src/loushang/coding/hosted_continuity.py"),
         Path("src/loushang/coding/hosted_bootstrap.py"),
+        Path("src/loushang/coding/hosted_catalog.py"),
+    }
+    assert {name for name in _imports(Path("src/loushang/coding/hosted_catalog.py"))
+            if name.startswith("loushang.appservice")} == {
+        "loushang.appservice.discovery_ports",
     }
 
 
@@ -204,7 +216,10 @@ def test_g11_package_budgets_keep_new_owners_reviewable() -> None:
         ),
     }
     limits = {
-        "appserver": 1_800,
+        # G17's independently reviewed optional discovery algebra/codec adds
+        # 271 lines to this exact group; all protocol modules still count.
+        # See hosted-session-workflow-g17.md, Reviewability Budget Supplement.
+        "appserver": 2_100,
         "appservice-core": 1_500,
         "appservice-continuity": 1_250,
         "coding-adapter": 400,
@@ -213,9 +228,10 @@ def test_g11_package_budgets_keep_new_owners_reviewable() -> None:
     for name, paths in groups.items():
         lines = sum(len(_read(path).splitlines()) for path in paths)
         assert lines <= limits[name], (name, lines, limits[name])
-    # The G16 terminal owner has its own exact, separately tested 850-line
+    # The G17 terminal owner has its own exact, separately tested 950-line
     # budget; do not expand the G11 semantic controller budget or hide new files.
     assert {path.name for path in HARNESSTUI_MUX.glob("*.py")} == {
         *(path.name for path in groups["harnesstui-mux"]),
         "shell.py", "terminal.py", "_shell_tasks.py", "_shell_screen.py",
+        "session_picker.py",
     }

@@ -1,13 +1,18 @@
 name: Host Runtime Quality
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
+  workflow_call:
+    inputs:
+      plan:
+        required: true
+        type: string
+
+permissions:
+  contents: read
 
 jobs:
   host-runtime-quality:
+    if: ${{ fromJSON(inputs.plan).checks.host_runtime }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -23,4 +28,21 @@ jobs:
         run: make bootstrap
 
       - name: Host runtime tests
-        run: make test-host-runtime
+        env:
+          CI_PLAN: ${{ inputs.plan }}
+        run: uv run python scripts/ci/run_checks.py host_runtime
+
+  selected-checks:
+    name: Selected checks
+    if: always()
+    needs: [host-runtime-quality]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify selected jobs
+        env:
+          CI_PLAN: ${{ inputs.plan }}
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: >-
+          python scripts/ci/verify_gate.py
+          --jobs '{"host-runtime-quality":"host_runtime"}'

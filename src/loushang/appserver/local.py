@@ -19,12 +19,13 @@ from ._local_peer import (
     LOCAL_STOP_ACK,
     LOCAL_STOP_MODE,
     OwnedLocalClientScopeV1,
+    OwnedLocalDiscoveryScopeV1,
     _failed,
     _LocalPeer,
     _observe,
     _spawn,
 )
-from .client import AppClientV1
+from .client import AppClientV1, SessionDiscoveryClientV1
 from .framing import AppConnectionClosedError, AsyncioStreamTransportV1, require_timeout
 from .local_auth import authenticate_local_client
 from .local_record import (
@@ -34,7 +35,6 @@ from .local_record import (
     LocalRecordScopeV1,
 )
 from .protocol import AppErrorCodeV1, AppServiceError
-from .protocol.connection_profile import AppConnectionProfileV1
 from .remote_client import RemoteAppClientV1
 
 MAX_LOCAL_CONNECTIONS = 8
@@ -82,11 +82,14 @@ class LocalAppServerV1:
         scope_factory: Callable[[], OwnedLocalClientScopeV1],
         request_stop: Callable[[Awaitable[None]], None],
         auth_timeout: float = 5.0, close_timeout: float = 10.0,
+        discovery_scope_factory: Callable[[], OwnedLocalDiscoveryScopeV1] | None = None,
     ) -> None:
         require_timeout(auth_timeout)
         require_timeout(close_timeout)
         if auth_timeout > 5 or close_timeout > 30:
             raise ValueError("local deployment timeout exceeds profile bound")
+        if discovery_scope_factory is not None and not callable(discovery_scope_factory):
+            raise TypeError("invalid discovery scope factory")
         # Validate all record facts before obtaining a lock or opening IO.
         LocalConnectionRecordV1(endpoint=endpoint, application_id=application_id,
                                 product_id=product_id, scopes=scopes, port=1,
@@ -94,6 +97,7 @@ class LocalAppServerV1:
         self._directory, self._endpoint = directory, endpoint
         self._application_id, self._product_id, self._scopes = application_id, product_id, scopes
         self._scope_factory, self._request_stop = scope_factory, request_stop
+        self._discovery_factory = discovery_scope_factory
         self._auth_timeout, self._timeout = auth_timeout, close_timeout
         self._reservation: LocalEndpointReservationV1 | None = None
         self._record: LocalConnectionRecordV1 | None = None
@@ -150,6 +154,7 @@ class LocalAppServerV1:
         self._record = self._reservation.publish(
             application_id=self._application_id, product_id=self._product_id,
             port=port, scopes=self._scopes,
+            session_discovery=self._discovery_factory is not None,
         )
         self._ready = True
         await self._server.start_serving()
@@ -169,6 +174,8 @@ class LocalAppServerV1:
                 fence=writer.close, abort=writer.transport.abort, scope_factory=self._scope_factory,
                 admit=self._admit, retire=self._peers.discard, request_stop=self._admit_stop,
                 auth_timeout=self._auth_timeout, close_timeout=self._timeout,
+                profile=self._record.semantic_profile,
+                discovery_scope_factory=self._discovery_factory,
             )
         except Exception:
             writer.transport.abort()
@@ -271,6 +278,12 @@ class LocalAppClientConnectionV1:
         return self._client
 
     @property
+    def discovery_client(self) -> SessionDiscoveryClientV1 | None:
+        if not self._ready or self._closed or self._client is None:
+            return None
+        return self._client.discovery_client
+
+    @property
     def stop_requested(self) -> bool:
         return self._stop_requested
 
@@ -315,7 +328,7 @@ class LocalAppClientConnectionV1:
             await frames.send(LOCAL_APP_MODE if self._mode is LocalConnectionModeV1.APP else LOCAL_STOP_MODE)
             if self._mode is LocalConnectionModeV1.APP:
                 self._client = RemoteAppClientV1(
-                    frames, profile=AppConnectionProfileV1.LOCAL, phase_timeout=self._timeout
+                    frames, profile=record.semantic_profile, phase_timeout=self._timeout
                 )
                 await self._client.start()
                 self._scopes = record.scopes
@@ -359,5 +372,6 @@ class LocalAppClientConnectionV1:
 __all__ = [
     "LocalAppServerV1", "LocalAppClientConnectionV1", "LocalConnectionModeV1",
     "OwnedLocalClientScopeV1", "MAX_LOCAL_CONNECTIONS", "MAX_LOCAL_APP_CONNECTIONS",
+    "OwnedLocalDiscoveryScopeV1",
     "MAX_LOCAL_AUTHENTICATING",
 ]

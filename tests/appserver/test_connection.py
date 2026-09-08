@@ -6,7 +6,7 @@ from unittest.mock import create_autospec
 
 import pytest
 
-from loushang.appserver.client import AppClientV1
+from loushang.appserver.client import AppClientV1, SessionDiscoveryClientV1
 from loushang.appserver.connection import AppServerConnectionV1
 from loushang.appserver.framing import (
     AppConnectionClosedError,
@@ -186,7 +186,13 @@ def test_G14_WIRE_every_client_method_reaches_its_exact_semantic_target() -> Non
         assert method_names == {
             name for name in vars(AppClientV1) if not name.startswith("_")
         }
-        assert len(method_names) == len(AppOperationV1)
+        # G17 adds an optional capability without growing the legacy protocol.
+        optional_names = {
+            name for name in vars(SessionDiscoveryClientV1) if not name.startswith("_")
+        }
+        assert optional_names == {"list_sessions"}
+        assert not method_names.intersection(optional_names)
+        assert len(method_names | optional_names) == len(AppOperationV1)
         semantic = create_autospec(AppClientV1, instance=True)
         for name, _, result in calls:
             getattr(semantic, name).return_value = result

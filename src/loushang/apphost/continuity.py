@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from loushang.appserver.client import AppClientV1
+from loushang.appserver.client import AppClientV1, SessionDiscoveryClientV1
 from loushang.appservice import (
     ApplicationContinuityError,
     ApplicationContinuityErrorCodeV1,
@@ -227,6 +227,12 @@ class HostedApplicationContinuityRuntimeV1:
     @property
     def client(self) -> AppClientV1:
         return self._application.client
+
+    @property
+    def discovery_client(self) -> SessionDiscoveryClientV1 | None:
+        if not self.accepting:
+            raise HostedApplicationError("hosted_application_not_ready")
+        return self._application.discovery_client
 
     def enable_client_scopes(self) -> None:
         """Opt in only after this recovered runtime is published by its attempt."""
@@ -464,6 +470,7 @@ class HostedApplicationContinuityAttemptV1:
                 AppServiceRecoveryRequestV1(
                     product_id=self._request.application.product_id,
                     resolver=self._request.application.resolver,
+                    discovery=self._request.application.discovery,
                     continuity_lease=self._lease,
                     id_factory=self._request.application.service_id_factory,
                     close_timeout_seconds=(

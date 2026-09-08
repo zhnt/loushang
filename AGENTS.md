@@ -25,7 +25,7 @@ Prefer `uv` for all Python workflows in this repository.
 - `make bootstrap` — create `.venv` and install the package with dev dependencies.
 - `uv run pytest tests -q` — run the full test suite.
 - `make test-ai` — run AI-focused tests.
-- `make check-ai` — run AI lint, typecheck, and focused tests; run before committing or pushing AI changes, and fix/report any failures.
+- `make check-ai` — run AI lint, typecheck, and focused tests when AI implementation, contracts, tests, or affected dependencies change; ordinary documentation does not require this suite.
 - `make lint-ai` — run `ruff check` on AI modules and tests.
 - `make fmt-ai` — format AI modules and tests with Ruff.
 - `make typecheck-ai` — run `mypy` on `src/loushang/ai`.
@@ -50,7 +50,16 @@ of truth for this local execution rule.
 ## Commit & Pull Request Guidelines
 Recent history uses short summaries and occasional conventional prefixes such as `test(integration): ...`. Prefer concise, imperative commit messages; use `type(scope): summary` when helpful. PRs should explain the user-visible change, list validation performed, and call out config or API contract changes. Link related issues or design docs when relevant.
 
-Before committing or pushing AI-related changes, run `make check-ai`. If it fails, fix the issue before committing; when reporting work, include the failed check and the fix applied.
+Use `make plan-checks` to inspect the change scope and `make check-changed` to run
+the applicable local checks. When the plan selects AI, run `make check-ai` (also
+included by `check-changed`) and fix/report failures before committing or pushing.
+Do not run AI, Agent, Harness, or TUI suites solely because Coding depends on them.
+Ordinary documentation uses `make check-docs-light`; changes to source contracts,
+shared fixtures, dependencies, or machine-consumed documents can select broader
+checks. Do not repeat passing suites without relevant changes or unresolved
+failures. For changes to CI selection itself, run the focused `tests/ci` suite
+and Actions syntax validation locally; the PR provides full remote validation.
+See `docs/internals/testing/change-aware-quality-gates.md` for the shared rules.
 
 ## Configuration & Contributor Notes
 Model metadata is defined in `src/loushang/ai/model/models.json`; keep examples and docs aligned with it. Treat `examples/ai/` as public guidance: main examples should show the shortest supported path, while protocol-heavy or custom-registry flows should be marked advanced.

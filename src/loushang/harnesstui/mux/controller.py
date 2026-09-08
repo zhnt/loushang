@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from loushang.appserver.client import AppClientV1
+from loushang.appserver.client import AppClientV1, AppConnectionClosedError
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
     AppServiceError,
@@ -196,6 +196,11 @@ class HostedMuxControllerV1:
             await self._client.detach_mux(
                 MuxDetachV1(state.attachment_id, state.controller_generation)
             )
+        except AppConnectionClosedError:
+            # The local connection is unusable, so this view cannot retain an
+            # attachment. This is not a remote ACK: connection/scope/process
+            # owners still prove their own cleanup independently.
+            pass
         except AppServiceError as error:
             if error.code is not AppErrorCodeV1.STALE_ATTACHMENT:
                 raise

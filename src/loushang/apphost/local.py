@@ -40,7 +40,10 @@ class HostedLocalRuntimeV1:
         connection_timeout: float = 10.0,
         startup_timeout: float = 30.0,
         settlement_timeout: float = 30.0,
+        session_discovery: bool = False,
     ) -> None:
+        if type(session_discovery) is not bool:
+            raise TypeError("invalid discovery activation")
         for timeout in (startup_timeout, settlement_timeout):
             _require_budget(timeout)
         self._application, self._directory = application, directory
@@ -53,6 +56,7 @@ class HostedLocalRuntimeV1:
             scope_factory=application.open_client_scope,
             request_stop=self._request_stop,
             close_timeout=connection_timeout,
+            discovery_scope_factory=application.open_client_scope if session_discovery else None,
         )
         self._startup_timeout, self._timeout = startup_timeout, settlement_timeout
         self._start_task: asyncio.Task[None] | None = None
