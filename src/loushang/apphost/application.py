@@ -10,11 +10,15 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Protocol
 
-from loushang.appserver.client import AppClientV1
+from loushang.appserver.client import AppClientV1, SessionDiscoveryClientV1
 from loushang.appservice import (
     AppServiceV1,
     HostedSessionResolverV1,
     InProcessAppClientV1,
+)
+from loushang.appservice.discovery_ports import (
+    HostedSessionDiscoveryBindingV1,
+    require_discovery_context,
 )
 
 from .contracts import AppHostShutdownBudgetV1, AppHostShutdownReportV1
@@ -87,8 +91,10 @@ class HostedApplicationRequestV1:
     phase_timeout_seconds: float = 10.0
     service_close_timeout_seconds: float = 10.0
     service_id_factory: Callable[[], str] | None = None
+    discovery: HostedSessionDiscoveryBindingV1 | None = None
 
     def __post_init__(self) -> None:
+        require_discovery_context(self.discovery, self.product_id, self.generation_id)
         if type(self.activation) is not HostedApplicationActivationV1:
             raise TypeError("hosted application requires explicit activation")
         if _STABLE_ID.fullmatch(self.product_id) is None:
@@ -222,6 +228,14 @@ class HostedApplicationRuntimeV1:
             raise HostedApplicationError("hosted_application_not_ready")
         self._client_borrowed = True
         return client
+
+    @property
+    def discovery_client(self) -> SessionDiscoveryClientV1 | None:
+        if not self._accepting:
+            raise HostedApplicationError("hosted_application_not_ready")
+        self.client  # Shares the legacy borrow/mode fence, even before first query.
+        assert self._service is not None
+        return self._service.discovery_client
 
     def enable_client_scopes(self) -> None:
         """Select scoped authority after recovery and before borrowing any client.
@@ -411,6 +425,7 @@ def create_hosted_application_runtime(
         resolver=request.resolver,
         id_factory=request.service_id_factory,
         close_timeout_seconds=request.service_close_timeout_seconds,
+        discovery=request.discovery,
     )
     return HostedApplicationRuntimeV1(
         request,

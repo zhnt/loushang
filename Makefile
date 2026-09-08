@@ -265,6 +265,7 @@ APPSERVICE_SOURCES := \
 	src/loushang/apphost/continuity.py \
 	src/loushang/coding/hosted_catalog.py \
 	src/loushang/coding/hosted_session.py \
+	src/loushang/harness/transcript/jsonl_file.py \
 	src/loushang/harness/transcript/lifecycle.py \
 	src/loushang/harness/transcript/session_factory.py \
 	src/loushang/harness/transcript/product_session.py \
@@ -300,11 +301,15 @@ APPSERVICE_TEST_PATHS := \
 	tests/apphost/test_client_scopes.py \
 	tests/apphost/test_application.py \
 	tests/coding/test_hosted_catalog.py \
+	tests/coding/test_hosted_discovery.py \
+	tests/coding/test_hosted_discovery_workflow.py \
 	tests/coding/test_hosted_session.py \
 	tests/coding/test_scoped_hosted_session.py \
 	tests/coding/test_hosted_session_metadata.py \
 	tests/harness/transcript/test_session_factory.py \
 	tests/harness/transcript/test_product_session.py \
+	tests/harness/transcript/test_discovery_reads.py \
+	tests/architecture/test_hosted_session_workflow_g17_design.py \
 	tests/architecture/test_foreground_stdio_hosted_app_g14.py \
 	tests/architecture/test_foreground_stdio_hosted_app_g14_design.py \
 	tests/architecture/test_foreground_hosted_tui_g15_design.py \

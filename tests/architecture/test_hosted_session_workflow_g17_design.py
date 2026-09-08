@@ -9,6 +9,12 @@ from pathlib import Path
 ROOT = Path("docs/internals/architecture/apphost")
 
 
+def test_G17_DISCOVERY_owner_has_an_independent_exact_reviewability_budget() -> None:
+    root = Path("src/loushang/appservice")
+    paths = [root / name for name in ("discovery_ports.py", "session_discovery.py")]
+    assert sum(len(path.read_text().splitlines()) for path in paths) <= 500
+
+
 def test_G17_DESIGN_inventory_separates_accepted_baseline_from_target() -> None:
     inventory = json.loads(
         (ROOT / "hosted-session-workflow-g17-inventory.json").read_text()

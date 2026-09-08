@@ -10,8 +10,10 @@ import asyncio
 import hashlib
 import os
 import stat
+import threading
+import time
 from collections.abc import Awaitable, Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import cast
 
@@ -27,7 +29,17 @@ from loushang.apphost import (
     SessionIdentityEnvelopeV1,
     SessionIdentityProjectionV1,
 )
-from loushang.appserver.protocol import SessionIdentityV1, SessionScopeV1
+from loushang.appserver.protocol import (
+    SessionAvailabilityV1,
+    SessionCompatibilityV1,
+    SessionDiscoveryCandidateV1,
+    SessionIdentityV1,
+    SessionScopeV1,
+)
+from loushang.appservice.discovery_ports import (
+    HostedSessionDiscoveryScopeV1,
+    HostedSessionDiscoverySnapshotV1,
+)
 from loushang.foundation.json import JSONValue
 from loushang.harness.conversation import ConversationHeader
 from loushang.harness.runtime import ResolvedRuntimeProfile, RuntimeProfileBinding
@@ -35,9 +47,11 @@ from loushang.harness.transcript import (
     AgentTranscriptLifecycleContext,
     AgentTranscriptSessionFactory,
 )
-from loushang.harness.transcript.jsonl_file import load_agent_transcript_header
+from loushang.harness.transcript.jsonl_file import (
+    AgentTranscriptFileLayout,
+    load_agent_transcript_header,
+)
 from loushang.harness.transcript.session_catalog import (
-    AgentTranscriptSessionCatalog,
     SessionDiscoveryReadBudget,
     session_file_authority_fingerprint,
 )
@@ -54,6 +68,7 @@ CODING_HOSTED_COMPATIBILITY_ID = "coding-hosted-v1"
 _METADATA_KEY = "coding.hosted"
 _MAX_CANDIDATES = 256
 _MAX_TRANSCRIPT_BYTES = 8 * 1024 * 1024
+_DISCOVERY_BYTES = 32 * 1024 * 1024
 
 
 class CodingHostedCatalogError(RuntimeError):
@@ -282,6 +297,102 @@ class CodingHostedSessionCatalogV1:
         self._records: dict[SessionCandidateRefV1, _Record] = {}
         self._lock = asyncio.Lock()
 
+    async def discover_sessions(
+        self, scope: HostedSessionDiscoveryScopeV1, *, stop: Callable[[], bool],
+    ) -> HostedSessionDiscoverySnapshotV1:
+        if type(scope) is not HostedSessionDiscoveryScopeV1 or scope.product_id != "coding":
+            raise ValueError("unadmitted discovery scope")
+        selected = next((item for item in self.scopes if (
+            item.scope is scope.scope and item.fingerprint == scope.scope_fingerprint
+        )), None)
+        if selected is None:
+            raise ValueError("unadmitted discovery scope")
+        cancelled = threading.Event()
+        loop = asyncio.get_running_loop()
+        completed: asyncio.Future[HostedSessionDiscoverySnapshotV1 | None] = loop.create_future()
+
+        def read() -> None:
+            try:
+                value = self._read_discovery(
+                    selected, scope, lambda: cancelled.is_set() or stop(),
+                )
+            except BaseException:
+                value = None  # Never export a filesystem exception to the client.
+            # Only actual read completion resolves this signal. Runner's task
+            # cancellation cannot manufacture it by cancelling a to_thread Task.
+            loop.call_soon_threadsafe(completed.set_result, value)
+
+        loop.run_in_executor(None, read)
+        while True:
+            try:
+                result = await asyncio.shield(completed)
+                break
+            except asyncio.CancelledError:
+                cancelled.set()
+        if cancelled.is_set():
+            raise asyncio.CancelledError()
+        if result is None:
+            raise CodingHostedCatalogError()
+        return result
+
+    def _read_discovery(
+        self, admitted: CodingHostedScopeV1, scope: HostedSessionDiscoveryScopeV1,
+        stop: Callable[[], bool],
+    ) -> HostedSessionDiscoverySnapshotV1:
+        deadline = time.monotonic() + 5
+        def stopped() -> bool:
+            return stop() or time.monotonic() >= deadline
+        if stopped():
+            return HostedSessionDiscoverySnapshotV1(scope, (), False, omitted_count_exact=False)
+        before = _directory_revision(admitted.session_dir)
+        if before is None:
+            return HostedSessionDiscoverySnapshotV1(scope, (), True)
+        layout = AgentTranscriptFileLayout(admitted.session_dir)
+        scan = layout.scan_candidate_path_snapshot(
+            layout.namespace, max_candidates=_MAX_CANDIDATES,
+            should_stop=stopped, raise_on_error=True,
+        )
+        budget = SessionDiscoveryReadBudget(
+            remaining_candidates=_MAX_CANDIDATES, remaining_bytes=_DISCOVERY_BYTES,
+        )
+        complete, omitted, duplicate = scan.complete, 0, False
+        rows: dict[str, SessionDiscoveryCandidateV1] = {}
+        for path in scan.paths:
+            if stopped() or not budget.reserve(candidates=1, bytes_=64 * 1024):
+                complete = False
+                break
+            try:
+                record = _read_record(admitted, path, discovery=True)
+            except (OSError, ValueError, CodingHostedCatalogError):
+                complete, omitted = False, omitted + 1
+                continue
+            if record is None:
+                omitted += 1  # Legacy history is observed, never adopted.
+                continue
+            identity = record.identity
+            if identity.session_id in rows:
+                duplicate, omitted = True, omitted + 1
+                continue
+            envelope = record.projection.envelope
+            compatible = envelope is not None and (
+                envelope.product_compatibility_id == CODING_HOSTED_COMPATIBILITY_ID
+            )
+            rows[identity.session_id] = SessionDiscoveryCandidateV1(
+                identity, f"Session {identity.session_id[:12]}",
+                SessionCompatibilityV1.COMPATIBLE if compatible else SessionCompatibilityV1.UNSUPPORTED,
+                SessionAvailabilityV1.AVAILABLE if compatible else SessionAvailabilityV1.UNAVAILABLE,
+            )
+        if _directory_revision(admitted.session_dir) != before or stopped():
+            complete = False
+        candidates = tuple(rows[key] for key in sorted(rows))
+        if not complete or duplicate:
+            # The strict routing owner cannot establish authority in a partial
+            # or ambiguous directory; no display row promises otherwise.
+            availability = (SessionAvailabilityV1.UNAVAILABLE if complete
+                            else SessionAvailabilityV1.UNVERIFIED)
+            candidates = tuple(replace(row, availability=availability) for row in candidates)
+        return HostedSessionDiscoverySnapshotV1(scope, candidates, complete, omitted, complete)
+
     async def list_identities(
         self,
         scopes: tuple[SessionDiscoveryScope, ...],
@@ -296,28 +407,28 @@ class CodingHostedSessionCatalogV1:
         async with self._lock:
             records: list[_Record] = []
             for scope in selected:
-                snapshot = AgentTranscriptSessionCatalog(
-                    scope.session_dir
-                ).bounded_index_snapshot(
-                    enrich_limit=_MAX_CANDIDATES,
-                    segment_bytes=32768,
-                    read_budget=SessionDiscoveryReadBudget(
-                        remaining_candidates=_MAX_CANDIDATES,
-                        remaining_bytes=32 * 1024 * 1024,
-                    ),
+                before = _directory_revision(scope.session_dir)
+                if before is None:
+                    continue
+                layout = AgentTranscriptFileLayout(scope.session_dir)
+                snapshot = layout.scan_candidate_path_snapshot(
+                    layout.namespace, max_candidates=_MAX_CANDIDATES, raise_on_error=True,
                 )
-                if (
-                    not snapshot.complete
-                    or snapshot.enriched_count != snapshot.authority_count
-                ):
+                if not snapshot.complete:
                     raise CodingHostedCatalogError()
-                for item in snapshot.items:
-                    path = item.projection.session_file
-                    if path is None:
-                        continue
+                budget = SessionDiscoveryReadBudget(
+                    remaining_candidates=_MAX_CANDIDATES, remaining_bytes=32 * 1024 * 1024,
+                )
+                for path in snapshot.paths:
+                    if not budget.reserve(candidates=1, bytes_=64 * 1024):
+                        raise CodingHostedCatalogError()
+                    # Routing validates every bounded canonical header. A display
+                    # summary's omitted row is never proof of missing authority.
                     record = _read_record(scope, path)
                     if record is not None:
                         records.append(record)
+                if _directory_revision(scope.session_dir) != before:
+                    raise CodingHostedCatalogError()
             identities = [item.identity.session_id for item in records]
             if len(set(identities)) != len(identities) or len(records) > limit:
                 raise CodingHostedCatalogError()
@@ -434,6 +545,19 @@ def _create_identity(request: SessionCreateRequestV1) -> str:
     ).hexdigest()
 
 
+def _directory_revision(path: Path) -> tuple[int, int, int] | None:
+    try:
+        status = path.lstat()
+    except FileNotFoundError:
+        return None
+    if not stat.S_ISDIR(status.st_mode) or (
+        getattr(status, "st_file_attributes", 0)
+        & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    ):
+        raise CodingHostedCatalogError()
+    return status.st_dev, status.st_ino, status.st_mtime_ns
+
+
 def _revision(path: Path) -> str:
     status = path.lstat()
     if (
@@ -446,11 +570,14 @@ def _revision(path: Path) -> str:
     return hashlib.sha256(session_file_authority_fingerprint(path).encode()).hexdigest()
 
 
-def _read_record(scope: CodingHostedScopeV1, path: Path) -> _Record | None:
+def _read_record(
+    scope: CodingHostedScopeV1, path: Path, *, discovery: bool = False,
+) -> _Record | None:
     if path.parent != scope.session_dir:
         raise CodingHostedCatalogError()
     before = _revision(path)
-    header = load_agent_transcript_header(path)
+    header = (load_agent_transcript_header(path, blocking=False, create_lock=False)
+              if discovery else load_agent_transcript_header(path))
     if _revision(path) != before:
         raise CodingHostedCatalogError()
     raw = header.metadata.get(_METADATA_KEY)

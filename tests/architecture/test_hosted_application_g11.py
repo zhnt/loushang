@@ -122,6 +122,11 @@ def test_G11_PRODUCT_ADAPTER_is_the_only_product_harness_bridge() -> None:
         Path("src/loushang/coding/hosted_application.py"),
         Path("src/loushang/coding/hosted_continuity.py"),
         Path("src/loushang/coding/hosted_bootstrap.py"),
+        Path("src/loushang/coding/hosted_catalog.py"),
+    }
+    assert {name for name in _imports(Path("src/loushang/coding/hosted_catalog.py"))
+            if name.startswith("loushang.appservice")} == {
+        "loushang.appservice.discovery_ports",
     }
 
 

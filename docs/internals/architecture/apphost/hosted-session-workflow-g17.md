@@ -10,8 +10,9 @@
 - Kind: incremental cross-scope contract and delivery design
 - Authority: normative accepted incremental design; inherits G15/G16 boundaries
 - Design status: accepted after independent three-perspective review and re-review
-- Implementation status: partial — discovery values/codec and optional wire profiles;
-  Product discovery, AppService views, picker, launcher and installed acceptance pending
+- Implementation status: partial — discovery protocol, Product reads, AppService
+  views and opt-in library composition; installed wiring, picker, launcher and
+  installed acceptance pending
 - Activation status: explicit opt-in only; Embedded and legacy G14/G16 retained
 - Tracking: [G17 #572](https://github.com/zhnt/loushang/issues/572)
 - Baseline: `3c06f5b9a4309e03dc754511eb012f9e2c23cbcb`
@@ -56,11 +57,33 @@ and inbound dispatch; the connection receives an independently injected
 discovery port. Remote clients reject pages for a different requested scope or
 over the requested limit. Legacy hello bytes and default profiles are retained.
 
-This slice is implemented-uncomposed: no installed Product command selects the
-new profiles or exposes directory discovery yet. Neither a working picker nor
-G17 runtime/installed acceptance is claimed by protocol tests. Subsequent
-slices must update the source inventory and required-case manifest as actual
-Product, semantic, UI and process ownership is delivered.
+The next local slice binds the existing Coding catalog to bounded, read-only
+discovery and AppService's client-local snapshots. The Harness header reader
+has explicit nonblocking/no-lock-creation options; directory enumeration now
+streams and closes at its bound rather than first materializing all entries.
+Actual worker completion retains the scan slot after caller cancellation;
+application fence revokes borrowed discovery, and unresolved scans prevent
+Product Session owners from being released. Complete duplicate directories
+disable all rows, while partial scans mark every observed row unverified.
+The completion signal is resolved only after the synchronous read returns;
+cancelling all asyncio Tasks cannot counterfeit thread completion. Canonical
+routing now checks every bounded header directly, not a display projection's
+possibly omitted rows, before treating a successful empty query as missing.
+
+Installed Product bootstrap now supplies resolver admission independently of
+the discovery switch. Both ordinary and recovered application construction
+carry the optional discovery binding; enabling it requires exactly the same
+admitted scopes. Library callers that omit both remain supported. Tests cover
+real cwd/home transcript discovery, appends since listing, resume, a synthetic
+model turn, scoped-client detach, and desired-state recovery without replay.
+The synthetic model is test-only and does not enter command-line input.
+
+These slices remain implemented-uncomposed at the installed entry boundary:
+no installed Product command selects the new profiles or exposes directory
+discovery yet. A real Product library test is not a working picker or native
+installed acceptance. Subsequent slices must update the source inventory and
+required-case manifest as installed composition, UI and process ownership
+are delivered. All eight native case families remain planned on each platform.
 
 ### Reviewability Budget Supplement
 
@@ -73,6 +96,19 @@ protocol module. All import gates and other owner budgets are unchanged.
 This permits neither moving code outside the counted group to hide it nor
 adding Product IO, pagination state or process ownership to the protocol.
 Later Product/AppService/UI work receives no automatic budget expansion.
+
+The next independent architecture review approved a separate exact 500-line
+group for `appservice/discovery_ports.py + session_discovery.py` (308 lines at
+initial review). G11 adds only `coding/hosted_catalog.py` to its external
+AppService consumers, with a further assertion that this file imports only
+`appservice.discovery_ports`, never the service runtime. Product IO remains in
+the Product catalog; the new semantic owner remains Product/process neutral.
+
+The same reviewer approved only `apphost/continuity.py` from 650 to 675 lines:
+648 baseline lines become 655 (+7) for the borrowed optional capability getter
+and recovery-request passthrough. No new lifecycle algorithm or persisted
+field is added. The other G13 groups and all other import/size gates remain
+unchanged. These supplements do not substitute for final full-goal code review.
 
 ## Requirements And Delivery Slices
 
@@ -229,7 +265,8 @@ port failures to `not_found` / `session_unavailable`; unknown exceptions remain
 redacted unavailable, and cancellation is propagated rather than reclassified.
 This explicitly replaces the current catch-all resolver-error mapping for
 typed failures only. Installed Product composition supplies its exact admitted
-scope set to both resolver and discovery. The resolver checks Product/scope/
+scope set independently to the resolver, whether discovery is enabled or not;
+optional discovery reuses that same set. The resolver checks Product/scope/
 fingerprint before enumeration, including on direct identity `/resume`, not
 merely after a binding lease has been constructed. Legacy library construction
 without discovery remains supported and is not implicitly given new scope
@@ -435,3 +472,48 @@ The older single-reviewer G15 review is not evidence for this new contract.
 Baseline local checks before implementation: 970 passed / 11 platform skips in
 AppServer, AppService, AppHost, Harnesstui and G15/G16 design tests. These are
 retained baseline checks, not G17 native/installed acceptance.
+
+## G17.1 Local Implementation Review
+
+Three independent reviewers rechecked the current Product/semantic slice only.
+All reported their findings closed after regression-first corrections:
+
+- Architecture (P2): resolver admission was derived from optional discovery.
+  Independent admitted scopes now reach both resolver construction paths even
+  when discovery is disabled. Enabling discovery requires the same exact set;
+  forged scope/fingerprint requests cause no catalog call in either mode.
+- Lifecycle (P1): cancellation of an internal `to_thread` Task could release
+  the scan slot while its thread still ran. An actual-read completion signal
+  now owns settlement, independently of asyncio Task cancellation. A real
+  blocked-worker regression cancels all outstanding application Tasks and
+  proves retained debt before release and successful cleanup only afterwards.
+- Contract/evidence (P2): the old display-summary catalog could omit malformed
+  or large-header entries and misclassify them as missing. Strict routing now
+  validates the actual bounded candidates and directory revision. Real damaged
+  files/invalid roots fail unavailable; valid 35 KiB headers remain resumable.
+
+The focused Product/catalog/AppService set passed 48 tests after these fixes.
+The lifecycle reviewer also independently ran both cancellation regressions
+with an isolated temporary root: two passed. Static Ruff and the 19-file
+changed-source typecheck passed. These local slice reviews are not the final
+G17 implementation review and do not replace UI, launcher or native wheel
+evidence. The first broad run had temporary-directory/child-start failures.
+The isolated-root rerun passed 1,427 tests with 11 platform skips and one G16
+disconnect-case failure: its five-second running poll included cold turn
+preflight. The recorded held user message appeared 5.666 seconds after the
+previous completed reply, then was aborted during test cleanup. This timing
+does not prove a production preflight root cause. A reviewer audited 25 ordered
+cases after fixture teardown and found no retained changes in key functions,
+environment or live threads; an isolated pass alone is not failure closure.
+
+The G16 case now waits for the actual synthetic `hold` model entry (also
+observing early turn failure) before its existing running poll. The complete
+scenario remains bounded by 30 seconds; both five-second observation windows,
+disconnect/reattach, STOP and two-scope recovery assertions are unchanged.
+The lifecycle reviewer approved this execution-stage synchronization correction;
+the related ordered selection passed 26 tests. The final isolated-root broad
+run passed 1,428 tests with 11 platform skips in 285.47 seconds, covering
+AppServer, AppService, AppHost, Harnesstui, Harness transcripts, Hosted Coding
+and G11–G17 architecture tests. The local JUnit report is
+`.artifacts/g17-discovery-local.xml`. The exact AppService static gate also
+passed Ruff and mypy on 67 source files. No G17 native wheel case is claimed.

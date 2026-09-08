@@ -5,6 +5,8 @@ from dataclasses import replace
 
 import pytest
 
+from loushang.agent import synthetic_model_transport
+from loushang.ai.types import TextPart
 from loushang.appserver.local import LocalAppClientConnectionV1, LocalConnectionModeV1
 from loushang.appserver.local_record import LocalConnectionDirectoryV1
 from loushang.appserver.protocol import (
@@ -65,8 +67,28 @@ def test_G16_PRODUCT_real_coding_retains_disconnected_work_and_recovers_both_sco
         monkeypatch.setenv("LOUSHANG_HOME", str(root / "platform"))
         monkeypatch.setenv("LOUSHANG_RUNTIME_DIR", str(root / "runtime"))
         launch = _local_launch(root)
+        hold_entered = asyncio.Event()
+
+        @synthetic_model_transport
+        async def observed_stream(model, context, options=None):
+            stream = await scripted_stream(model, context, options)
+            latest = context.messages[-1]
+            if latest.role == "user":
+                text = (
+                    latest.content
+                    if isinstance(latest.content, str)
+                    else "".join(
+                        part.text
+                        for part in latest.content
+                        if isinstance(part, TextPart)
+                    )
+                )
+                if text == "hold":
+                    hold_entered.set()
+            return stream
+
         command = CodingLocalCommandV1(
-            launch, model=_model(), stream_fn=scripted_stream, tools=[]
+            launch, model=_model(), stream_fn=observed_stream, tools=[]
         )
         directory = LocalConnectionDirectoryV1(launch.connection_root)
         first, second, fresh = (
@@ -126,6 +148,19 @@ def test_G16_PRODUCT_real_coding_retains_disconnected_work_and_recovers_both_sco
                     )
                 )
             )
+            # This case tests disconnect during execution, not a cold-start SLO.
+            # Model entry remains bounded by the unchanged 30-second scenario.
+            entered = asyncio.create_task(hold_entered.wait())
+            try:
+                done, _ = await asyncio.wait(
+                    (entered, turn), return_when=asyncio.FIRST_COMPLETED
+                )
+                if turn in done:
+                    await turn  # Preserve a preflight failure instead of timing out.
+                    pytest.fail("held turn completed before disconnect")
+            finally:
+                entered.cancel()
+                await asyncio.gather(entered, return_exceptions=True)
             async with asyncio.timeout(5):
                 while not (
                     await first.client.snapshot_session(
