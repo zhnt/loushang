@@ -14,7 +14,7 @@
 - Parent: `loushang`
 - Authority: normative — A0.4 ports, G11 client contract and explicit G14/G16 connection edges
 - Design status: accepted
-- Implementation status: partial — G14 is delivered on Linux/macOS/Windows; G16 native connections, AppHost, real Coding composition and installed interactive attach are implemented; isolated-wheel and final platform fault evidence remain pending
+- Implementation status: implemented — G14 and G16 are delivered on Linux/macOS/Windows, including G16 native connections, real Coding composition and isolated-wheel interactive attach; see the delivery record and subsequent G17.0 baseline regression below
 - Activation status: explicit library, `loushang-hosted` foreground command or `loushang-mux` local route; no default-route change
 - Owner: Loushang AppServer architecture
 
@@ -34,9 +34,10 @@ G16 adds an explicit local connection library with native private records,
 mutual authentication and injected scope ownership. Its sole native-IO adapter
 can bind literal loopback or read an explicitly selected endpoint; no automatic
 startup, discovery, Product construction or process signaling is granted.
-The [G16 checkpoints](detachable-local-workspace-g16.md#g169-installed-interactive-terminal-checkpoint)
-distinguish the implemented library/AppHost/real Coding composition and installed
-interactive TUI from isolated-wheel and final platform acceptance still required.
+The [G16 final delivery record](detachable-local-workspace-g16.md#final-delivery-acceptance)
+records native fault and isolated-wheel terminal acceptance on all three platforms
+and promotion to main. G17.0 separately tracks the subsequent Hosting test
+regression; historical G16 checkpoints are not rewritten as current status.
 
 G12's optional AppHost application edge consumes the client contract for its
 in-process view. AppServer neither constructs nor imports that composition.
@@ -80,8 +81,8 @@ concrete semantic coordination and its in-process client implementation. The
 G14 connection edge now accepts foreground stdio lifecycle and framing.
 G16's optional local edge now composes authentication and connection-scoped
 authority. Product constructs the real Coding deployment without reverse imports;
-the installed interactive terminal borrows only AppClient. Final platform
-evidence remains separate work. The G14 foreground contract is unchanged.
+the installed interactive terminal borrows only AppClient. The delivery record
+links the accepted platform evidence. The G14 foreground contract is unchanged.
 
 ## Invariants
 
@@ -126,4 +127,4 @@ evidence remains separate work. The G14 foreground contract is unchanged.
   Linux, macOS and Windows. Platform, installation and terminal backend are
   verified properties, not conclusions inferred from report names. Gate
   implementation is distinct from the observed platform results recorded in
-  the [G16.10 checkpoint](detachable-local-workspace-g16.md#g1610-read-only-details-and-exact-evidence-gates).
+  the [final delivery record](detachable-local-workspace-g16.md#final-delivery-acceptance).
