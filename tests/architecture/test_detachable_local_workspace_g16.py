@@ -203,7 +203,11 @@ def test_G16_BOUNDARIES_product_bootstrap_is_shared_without_transport_or_default
 def test_G16_BOUNDARIES_shell_borrows_only_semantics_and_owns_no_native_connection():
     root = Path("src/loushang/harnesstui/mux")
     paths = [root / name for name in ("shell.py", "terminal.py", "_shell_tasks.py", "_shell_screen.py")]
-    assert sum(len(path.read_text().splitlines()) for path in paths) <= 850
+    # G17 reviewed presentation supplement; the semantic controller cap stays 600.
+    assert sum(len(path.read_text().splitlines()) for path in paths) <= 950
+    picker = root / "session_picker.py"
+    assert len(picker.read_text().splitlines()) <= 450
+    paths.append(picker)
     for path in paths:
         source = path.read_text()
         for node in ast.walk(ast.parse(source)):

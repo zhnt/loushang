@@ -81,6 +81,7 @@ class _ClientCommand:
                         (item.scope, item.fingerprint)
                         for item in self._connection.scopes
                     ),
+                    discovery_client=self._connection.discovery_client,
                 )
                 status = await run_hosted_mux_shell(
                     self._shell, stdin=sys.stdin, stdout=self._output

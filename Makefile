@@ -194,6 +194,8 @@ APPHOST_TEST_PATHS := \
 	tests/architecture/test_detachable_local_workspace_g16_evidence.py \
 	tests/tui/test_text_pager.py \
 	tests/harnesstui/test_hosted_mux_details.py \
+	tests/harnesstui/test_hosted_mux_editors.py \
+	tests/harnesstui/test_hosted_session_picker.py \
 	tests/tui/test_terminal_session.py \
 	tests/tui/test_composer_edit_buffer.py \
 	tests/harnesstui/test_hosted_mux_shell.py \
@@ -286,6 +288,8 @@ APPSERVICE_TEST_PATHS := \
 	tests/architecture/test_detachable_local_workspace_g16_evidence.py \
 	tests/tui/test_text_pager.py \
 	tests/harnesstui/test_hosted_mux_details.py \
+	tests/harnesstui/test_hosted_mux_editors.py \
+	tests/harnesstui/test_hosted_session_picker.py \
 	tests/tui/test_terminal_session.py \
 	tests/tui/test_composer_edit_buffer.py \
 	tests/harnesstui/test_hosted_mux_shell.py \

@@ -11,8 +11,8 @@
 - Authority: normative accepted incremental design; inherits G15/G16 boundaries
 - Design status: accepted after independent three-perspective review and re-review
 - Implementation status: partial — discovery protocol, Product reads, AppService
-  views and explicit installed foreground/local wiring; picker, launcher and
-  installed acceptance pending
+  views, explicit installed foreground/local wiring and shared picker;
+  foreground launcher and installed acceptance pending
 - Activation status: explicit opt-in only; Embedded and legacy G14/G16 retained
 - Tracking: [G17 #572](https://github.com/zhnt/loushang/issues/572)
 - Baseline: `3c06f5b9a4309e03dc754511eb012f9e2c23cbcb`
@@ -97,8 +97,8 @@ typed scope factory retains the exact scope before borrowing the port, and
 missing/failed capability access closes that scope. STOP never creates a scope
 or APP hello and retains its reserved connection slot.
 
-Discovery's semantic and installed wire paths are composed; the picker and
-launch owner are pending. A real installed stdio/local command test is not an
+Discovery's semantic and installed wire paths and the shared picker are
+composed; the launch owner is pending. A real installed stdio/local command test is not an
 isolated-wheel or terminal acceptance test. All eight native case families
 remain planned on each platform; subsequent slices must update the inventory
 and required-case manifest as those user paths are delivered.
@@ -345,6 +345,28 @@ authenticated capability records remain errors.
 
 ## G17.2 Picker And Interaction
 
+### Reviewed Presentation Budget And State Ownership
+
+The architecture review approved one new `harnesstui/mux/session_picker.py`
+module with a 450-line cap and a 950-line cap (previously 850) for the exact
+existing shell/terminal/tasks/screen group. The G11 semantic controller group's
+600-line cap is unchanged. The picker is explicitly inventoried and receives
+the same no-filesystem/process/reverse-import checks as the shell.
+
+One serialized query runner belongs to the existing ShellActions owner. Scope
+changes and refresh coalesce into one latest pending request; they do not
+launch competing scans. Dismissal fences publication without pretending that
+the outstanding borrowed query has settled. Shell close fences publication and
+joins the runner under the existing absolute cleanup budget.
+
+Editor instances are retained by `(mux_space_id, member_id, session_id)`, only
+for current members (at most the protocol's 128). Removed/replaced identities
+are pruned and shell close releases the cache. Reattachment/reordering alone
+does not clear editor history. Rebinding input uses a new public InputRouter,
+not a write to its private target. Each editor retains the existing 16-entry
+undo/redo bounds and 20-entry kill ring; the 1 MiB current-draft aggregate is
+not a claim that all editing history together occupies at most 1 MiB.
+
 The existing shell receives a borrowed optional discovery client. F3 opens the
 picker without touching the composer; `/sessions <cwd|user_home|global>` is an
 additional command entry. Arrows/Enter select,
@@ -406,6 +428,44 @@ The outer Product command makes deployment semantics visible: foreground quit
 ends its child; local detach leaves the independent application/accepted work
 alive. G16 stop stays a separate explicit command. No automatic backgrounding,
 supervisor installation, orphan adoption or active-turn replay is introduced.
+
+### G17.3 Implementation Boundary Check (Not Yet Implemented)
+
+The architecture follow-up accepts an optional async settlement callback in the
+terminal runner: Product composition binds it to the launch owner's close,
+which adopts one UI-detach callable without importing UI. Default/G16 callers
+retain the existing shell-owned cleanup. The same selected settlement strategy
+must also cover `shell.start()` failure: its current automatic five-second
+close followed by a separate launcher twenty-second close would violate the
+single budget. Do not remove automatic cleanup for independent library callers.
+
+Publish the first detach binding, close task, absolute deadline and independent
+force watchdog before awaiting any cleanup. Repeated close joins the same
+operation; it cannot replace the detach binding or renew the budget. An explicit
+cleanup retry must not resend an unknown logical detach or restart an expired
+graceful window; retain and reuse outstanding termination/cleanup tasks. A normal
+child exit avoids forced termination. Startup/attach failure, cancellation and
+terminal-entry failure must reach this same owner, with terminal restoration
+before settlement whenever the terminal was acquired.
+
+The launch attempt adopts a dedicated ProcessHostingPort before start, so its
+close can reclaim even a reservation whose lease has not returned. With no
+published lease, immediately publish and retain host.close rather than waiting
+for startup first: Hosting needs that close to cancel/reclaim the outstanding
+reservation. Each startup await must retain a returned resource before checking
+the closing fence, so a late lease cannot be discarded. It borrows
+LaunchPreparationPort, not ownership of a shared preparation service. Transfer
+stdout to a raw drain only after RemoteAppClient.close succeeds **and the
+retained startup/hello task has actually settled and cannot publish another
+reader**. Lifecycle review found a P1 in the weaker close-only condition:
+RemoteAppClient.start performs hello IO in the caller task before registering
+its response reader, so close can succeed while a cancellation-resistant hello
+read still owns stdout. Close must fence late-ready publication synchronously,
+retain that startup task and wait for actual settlement before any reader
+handoff. On failure retain ownership and terminate at the independent cutoff
+before attempting settlement again. No private reader-field
+inspection or concurrent drain is an acceptable substitute. These are concrete
+implementation constraints, not launcher or native acceptance evidence.
 
 ## G17.4 Evidence And Completion Gate
 
@@ -632,3 +692,49 @@ skips and zero failures/errors in 639.153 seconds. The retained JUnit report is
 `.artifacts/g17-local-discovery.xml`. Both discovery modes of the G16 lifetime
 case passed within their per-generation watchdogs. This closes the local wiring
 regression gate, not the unexplained broad-run slowdown or G17 native acceptance.
+
+## G17.2 Picker Implementation Review
+
+The shared shell borrows discovery explicitly; installed local attach supplies
+the capability from its authenticated connection. F3 and `/sessions` open a
+bounded modal, `/resume` without identity opens it, and `global` normalizes to
+the admitted user-home scope in both picker and explicit identity commands.
+Only explicit row selection calls the existing member-open path. Expiry,
+incompleteness and unsupported rows do not cause fallback scans or opens.
+
+Architecture, lifecycle and contract reviewers approved this bounded increment
+after follow-up fixes. The contract review found a P2: coalesced normal text
+events (`rr`/`nr`) lost refresh intent. Real InputReader regression first failed
+both combined chunks; the fix processes normal command characters in order
+while never executing pasted text. The query owner still retains only one
+runner and one latest pending request. Further tests exercise page-two identity,
+late scope results, reserved controls during saturation, duplicate selection,
+cancel-resistant query cleanup debt and release under the same close deadline.
+
+Stable per-member Composer instances preserve cursor, selection and undo across
+selection/reattachment/reordering. The screen's explicit binding updates both
+the editor and its retained bottom frame; successful close releases the cache
+and replaces screen/frame/router references. Tests populate a nonempty kill
+ring and render before close, so this assertion cannot pass merely by clearing
+an unused editor. The final exact presentation sizes are 905/950 and 247/450.
+
+The original shell/details/terminal baseline passed 16 tests. Three editor
+regressions failed before implementation; twelve initial picker cases failed
+before injection. The final picker/editor/terminal/design set passed 37 tests
+in 3.91 seconds, and AppService Ruff plus mypy passed (68 source files).
+A real Coding/native-local integration set passed 14 tests in 24.47 seconds,
+including both admitted scopes: picker discovery, canonical resume, model
+interaction, UI detach and reattachment with retained history. The model seam
+is test-only; terminal byte playback uses FakeTerminalPort. Neither substitutes
+for the required isolated-wheel/native-terminal evidence.
+
+An earlier combination run had 45 passes and one original G16 lost-reply
+terminal test hit its unchanged two-second watchdog. Static review found no
+new wait on that failure path; its isolated rerun passed all five terminal
+cases (the failing case took 0.02 seconds). The expanded run passed 67 runtime/
+architecture cases and failed only the then-stale picker inventory, now fixed.
+These results do not explain the earlier wall-time excursion. No production or
+test timeout was raised for the picker slice. The complete AppService gate
+passed with 703 tests, ten platform skips, Ruff and mypy in 461.71 seconds;
+the retained JUnit report is `.artifacts/g17-picker.xml`. This closes G17.2's
+affected local gate, not the required G17.4 isolated-wheel/native acceptance.

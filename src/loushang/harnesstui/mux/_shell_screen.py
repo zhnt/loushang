@@ -27,6 +27,9 @@ Ctrl+B 1..9 selects a window. Each window retains its own local draft.
 PageUp / PageDown scrolls history, or the open read-only details.
 F1 or /help opens this help. Esc closes details without changing a draft.
 F2 or /question opens the current approval details.
+F3 or /sessions [cwd|user_home|global] discovers saved Sessions.
+In the picker: Tab scope, arrows select, n next page, r refresh, Enter resume.
+global means admitted user_home, not a union or filesystem-wide search.
 /approve requires all current details to have been presented, then an explicit command.
 /deny rejects the current approval without requiring a review.
 /interrupt or Ctrl+C interrupts the selected Session.
@@ -79,6 +82,12 @@ class HostedMuxScreenV1(ScreenConversationApp):
         return _HostedFramePresentation(
             ScreenFrameCopy("Working", "Steer", "", "Follow-up", "")
         )
+
+    def bind_editor(self, composer: Composer) -> None:
+        self.composer = composer
+        # The shared frame retains its editor between renders, including after
+        # terminal restore. Rebind it now so pruning/close releases old history.
+        self._bottom_frame_component.composer = composer
 
     def _approval_key(self) -> tuple[object, ...] | None:
         mux, window = self.shell.state, self.shell.state.active_window
@@ -210,7 +219,12 @@ class HostedMuxScreenV1(ScreenConversationApp):
             ),
         )
         self._sync_details()
-        rendered = self._detail.render(inner) if self._detail else super().render(inner)
+        if self.shell.picker.visible:
+            rendered = self.shell.picker.render(inner)
+        else:
+            rendered = (
+                self._detail.render(inner) if self._detail else super().render(inner)
+            )
         if (
             self._detail is not None
             and self._detail.fully_presented

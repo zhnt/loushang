@@ -221,9 +221,10 @@ def test_g11_package_budgets_keep_new_owners_reviewable() -> None:
     for name, paths in groups.items():
         lines = sum(len(_read(path).splitlines()) for path in paths)
         assert lines <= limits[name], (name, lines, limits[name])
-    # The G16 terminal owner has its own exact, separately tested 850-line
+    # The G17 terminal owner has its own exact, separately tested 950-line
     # budget; do not expand the G11 semantic controller budget or hide new files.
     assert {path.name for path in HARNESSTUI_MUX.glob("*.py")} == {
         *(path.name for path in groups["harnesstui-mux"]),
         "shell.py", "terminal.py", "_shell_tasks.py", "_shell_screen.py",
+        "session_picker.py",
     }
