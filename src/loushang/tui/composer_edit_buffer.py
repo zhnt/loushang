@@ -33,10 +33,16 @@ ComposerSnapshot = tuple[tuple[ComposerAtom, ...], int]
 
 @dataclass(slots=True)
 class ComposerEditBuffer:
+    max_undo_depth: int | None = field(default=None, kw_only=True)
     _atoms: list[ComposerAtom] = field(default_factory=list, repr=False)
     _cursor: int = 0
     _undo_stack: UndoStack[ComposerSnapshot] = field(default_factory=UndoStack, repr=False)
     _redo_stack: UndoStack[ComposerSnapshot] = field(default_factory=UndoStack, repr=False)
+
+    def __post_init__(self) -> None:
+        if self.max_undo_depth is not None:
+            self._undo_stack = UndoStack(max_depth=self.max_undo_depth)
+            self._redo_stack = UndoStack(max_depth=self.max_undo_depth)
 
     def __len__(self) -> int:
         return len(self._atoms)

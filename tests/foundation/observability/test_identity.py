@@ -1,8 +1,32 @@
 from __future__ import annotations
 
+import subprocess
 from types import SimpleNamespace
 
 from loushang.foundation.observability.identity import collect_runtime_identity
+
+
+def test_git_identity_probes_never_inherit_application_stdin(monkeypatch, tmp_path):
+    import loushang.foundation.observability.identity as identity_module
+
+    calls = []
+
+    def run(argv, **kwargs):
+        calls.append(argv)
+        assert kwargs.get("stdin") == subprocess.DEVNULL
+        assert kwargs["stdout"] == subprocess.PIPE
+        assert kwargs["stderr"] == subprocess.DEVNULL
+        assert kwargs["timeout"] == 2
+        return SimpleNamespace(returncode=0, stdout="identity\n")
+
+    monkeypatch.setattr(identity_module.subprocess, "run", run)
+    identity_module.git_identity(tmp_path)
+    assert [call[3:] for call in calls] == [
+        ["rev-parse", "--show-toplevel"],
+        ["rev-parse", "--abbrev-ref", "HEAD"],
+        ["rev-parse", "HEAD"],
+        ["status", "--porcelain"],
+    ]
 
 
 def test_collect_runtime_identity_is_not_coding_specific(tmp_path) -> None:
@@ -22,7 +46,7 @@ def test_collect_runtime_identity_is_not_coding_specific(tmp_path) -> None:
 
     assert identity["package_name"] == "example-product"
     assert identity["related_module_files"] == {
-        "integration": str(tmp_path / "plugin.py")
+        "integration": (tmp_path / "plugin.py").as_posix()
     }
     assert identity["path_candidates"] == []
     assert identity["launch_mode"] in {"console-script", "virtualenv-console-script"}
@@ -97,10 +121,10 @@ def test_collect_runtime_identity_marks_direct_entrypoint_active_outside_path(
         env={"PATH": str(shadowed.parent)},
     )
 
-    assert identity["entrypoint"] == str(active)
+    assert identity["entrypoint"] == active.as_posix()
     assert identity["path_candidates"] == [
-        {"path": str(active), "status": "active", "active": True},
-        {"path": str(shadowed), "status": "shadowed", "active": False},
+        {"path": active.as_posix(), "status": "active", "active": True},
+        {"path": shadowed.as_posix(), "status": "shadowed", "active": False},
     ]
 
 
@@ -128,7 +152,7 @@ def test_collect_runtime_identity_keeps_path_candidates_inactive_for_python_modu
 
     assert identity["launch_mode"] == "python-module"
     assert identity["path_candidates"] == [
-        {"path": str(path_candidate), "status": "shadowed", "active": False}
+        {"path": path_candidate.as_posix(), "status": "shadowed", "active": False}
     ]
 
 
@@ -153,6 +177,6 @@ def test_collect_runtime_identity_discovers_pathext_candidates(tmp_path) -> None
     )
 
     assert identity["path_candidates"] == [
-        {"path": str(active), "status": "active", "active": True},
-        {"path": str(shadowed), "status": "shadowed", "active": False},
+        {"path": active.as_posix(), "status": "active", "active": True},
+        {"path": shadowed.as_posix(), "status": "shadowed", "active": False},
     ]

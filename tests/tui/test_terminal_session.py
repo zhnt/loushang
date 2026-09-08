@@ -3,6 +3,8 @@ from __future__ import annotations
 from io import StringIO
 from typing import Literal
 
+import pytest
+
 from loushang.tui.input import InputEvent
 from loushang.tui.terminal_backends import NativeTerminalPlatform
 from loushang.tui.terminal_capabilities import TerminalRuntimeCapabilities
@@ -39,6 +41,73 @@ def test_terminal_session_cleanup_is_idempotent() -> None:
 
     assert mode.entered == 1
     assert mode.exited == 1
+
+
+@pytest.mark.parametrize("phase", ["startup", "shutdown", "drain", "mode_exit"])
+def test_terminal_session_fault_does_not_skip_remaining_native_restoration(phase):
+    class Output(StringIO):
+        broken = False
+
+        def write(self, text):
+            if self.broken or (phase == "startup" and "\x1b[16t" in text):
+                raise OSError("terminal output unavailable")
+            return super().write(text)
+
+    class Mode(_RecordingMode):
+        def __exit__(self, *args):
+            super().__exit__(*args)
+            if phase == "mode_exit":
+                raise OSError("mode exit failed")
+            return False
+
+    def drain(*args, **kwargs):
+        if phase == "drain":
+            raise OSError("drain failed")
+        return ""
+
+    output, mode, console = Output(), Mode(), _RecordingConsoleMode()
+    session = TerminalSession(
+        stdin=StringIO(), stdout=output,
+        capabilities=TerminalRuntimeCapabilities(
+            windows_vt_input=True, alternate_screen=True, query_cell_size=True,
+            keyboard_protocol_strategy="kitty_then_modify_other_keys",
+            mouse_selection_owner="application",
+        ),
+        mode_factory=lambda *args: mode, drain_input_func=drain,
+        native_platform=NativeTerminalPlatform(
+            console_mode=console, modifier_keys=_RecordingModifierKeys(shift_pressed=False),
+        ),
+    )
+    with pytest.raises(OSError):
+        with session:
+            output.broken = phase == "shutdown"
+    assert mode.exited == 1
+    assert console.calls[-2:] == ["disable_input", "disable_output"]
+    session.__exit__(None, None, None)
+    assert mode.exited == 1
+
+
+def test_terminal_session_partial_alternate_screen_write_restores_output_mode():
+    class Output(StringIO):
+        def write(self, text):
+            if "\x1b[?1049h" in text:
+                raise OSError("partial alternate screen write")
+            return super().write(text)
+
+    output, mode, console = Output(), _RecordingMode(), _RecordingConsoleMode()
+    session = TerminalSession(
+        stdin=StringIO(), stdout=output,
+        capabilities=TerminalRuntimeCapabilities(windows_vt_input=True, alternate_screen=True),
+        mode_factory=lambda *args: mode,
+        native_platform=NativeTerminalPlatform(
+            console_mode=console, modifier_keys=_RecordingModifierKeys(shift_pressed=False),
+        ),
+    )
+    with pytest.raises(OSError):
+        session.__enter__()
+    assert mode.entered == mode.exited == 0
+    assert console.calls == ["enable_output", "disable_output"]
+    assert "\x1b[?1049l" in output.getvalue()
 
 
 def test_terminal_session_owns_exit_drain_after_runtime_protocol_cleanup() -> None:

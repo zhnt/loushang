@@ -134,12 +134,31 @@ adds the first explicit AppHost-owned lifecycle composition over AppService and
 a Coding-owned foreground Session resolver. It remains an uninstalled
 process-local library; AppServer transport, IPC, Hosting, daemon continuity and
 default-route decisions remain absent.
-The accepted, unimplemented
+The implemented
 [G13 durable hosted continuity](apphost/durable-hosted-application-continuity-g13.md)
 defines a one-writer durable AppService coordination record and canonical
 Session rehydration around that same explicit library edge. It persists no
 Product generation or live execution and still grants no listener, daemon or
 installed activation.
+
+The implemented [G14 foreground stdio profile](appserver/foreground-stdio-hosted-app-g14.md)
+adds AppServer-owned bounded connections and a transport AppClient over
+injected byte IO. Its optional AppHost edge orders application settlement;
+its explicit installed Product command composes canonical Sessions. This does not
+change embedded defaults, grant a listener/daemon, or move G13 recovery into
+the transport. Real Product interaction, shutdown and fresh-process recovery
+are verified on Linux, macOS and Windows; the G14 record links the exact
+native evidence and integration PR.
+
+The [accepted G15 foreground Hosted TUI design](apphost/foreground-hosted-tui-g15.md)
+defines the optional A0.5 launcher and explicit client presentation boundary.
+It is design-only, not a new installed route. Its G16 handoff separates
+foreground process ownership from a future detachable connection profile.
+
+The [accepted G16 local workspace design](appserver/detachable-local-workspace-g16.md)
+defines authenticated local connections and application-owned work that can
+outlive a client. It is design-only, not an implemented listener or default-route
+change; G14's foreground EOF behavior remains independently authoritative.
 
 A nested scope is not automatically a top-level subsystem. The parent owns its
 placement, composition policy, and sibling relationships; the child owns its

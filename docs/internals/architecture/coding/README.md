@@ -40,6 +40,17 @@ Reusable Session, Host/RPC mechanics, tools, resources, extensions, policy,
 approval, sandbox, events and conversation mechanisms are Harness-owned.
 Product-neutral conversation/TUI composition is HarnessTUI-owned.
 
+The explicit hosted-application library edge uses AppHost for Product admission
+and application lifetime, AppService for mux coordination, and AppServer for
+the client contract. G14 adds a real Coding canonical Session catalog and
+AgentSession/approval projection. Session identities remain in the existing
+transcript header; Harness still owns transcript storage and runtime binding.
+The [G14 foreground stdio design](../appserver/foreground-stdio-hosted-app-g14.md)
+tracks the explicit installed `loushang-hosted` command, verified native
+Linux/macOS/Windows behavior and integration status. Existing
+Coding CLI/TUI defaults are unchanged; these optional edges do not become
+mandatory UI dependencies.
+
 ## Target
 
 Coding remains a thin but real Product, not an empty facade. It retains domain

@@ -3,7 +3,7 @@ from __future__ import annotations
 import sys
 import time
 from collections.abc import Callable
-from contextlib import AbstractContextManager
+from contextlib import AbstractContextManager, ExitStack
 from dataclasses import dataclass, field
 from types import TracebackType
 from typing import Literal, TextIO
@@ -84,25 +84,43 @@ class TerminalSession:
     _windows_vt_output_active: bool = field(default=False, init=False, repr=False)
     _windows_console_mode_active: bool = field(default=False, init=False, repr=False)
     _windows_output_mode_active: bool = field(default=False, init=False, repr=False)
+    _alternate_screen_active: bool = field(default=False, init=False, repr=False)
     _entered: bool = field(default=False, init=False, repr=False)
 
     def __enter__(self) -> TerminalSession:
+        if self._entered:
+            raise RuntimeError("terminal session already entered")
         if self.environment is None:
             self.environment = terminal_environment_from_env()
         if self.capabilities is None:
             self.capabilities = detect_terminal_capabilities(self.environment)
         native_platform = self._native_platform()
+        self._entered = True
+        try:
+            return self._enter_modes(native_platform)
+        except BaseException:
+            # __exit__ is not called by `with` when __enter__ raises.
+            self.__exit__(*sys.exc_info())
+            raise
+
+    def _enter_modes(self, native_platform: NativeTerminalPlatform) -> TerminalSession:
+        assert self.capabilities is not None
         if self.capabilities.windows_vt_input and self._control_writes_allowed():
+            self._windows_output_mode_active = True
             self._windows_vt_output_active = (
                 native_platform.console_mode.enable_vt_output(self.stdout)
             )
             self._windows_output_mode_active = self._windows_vt_output_active
         if self._control_writes_allowed() and self.capabilities.alternate_screen:
+            # A failed write may already have emitted a partial enable sequence.
+            self._alternate_screen_active = True
             self._write_sequences((ALTERNATE_SCREEN_ENABLE_SEQUENCE,))
         factory = self.mode_factory or _default_mode_factory
-        self._mode = factory(self.stdin, self.stdout, self.capabilities)
-        self._mode.__enter__()
+        mode = factory(self.stdin, self.stdout, self.capabilities)
+        mode.__enter__()  # A mode owns rollback of its own failed entry.
+        self._mode = mode
         if self.capabilities.windows_vt_input and self._control_writes_allowed():
+            self._windows_console_mode_active = True
             self._windows_vt_input_active = bool(
                 native_platform.console_mode.enable_vt_input(
                     self.stdin,
@@ -122,11 +140,10 @@ class TerminalSession:
             self._control_writes_allowed()
             and self.capabilities.application_mouse_tracking_enabled
         ):
-            self._write_sequences(MOUSE_ENABLE_SEQUENCES)
             self._mouse_mode_active = True
+            self._write_sequences(MOUSE_ENABLE_SEQUENCES)
         if self._control_writes_allowed() and self.capabilities.query_cell_size:
             self._write_sequences(("\x1b[16t",))
-        self._entered = True
         return self
 
     def __exit__(
@@ -135,36 +152,47 @@ class TerminalSession:
         exc: BaseException | None,
         traceback: TracebackType | None,
     ) -> bool | None:
-        if not self._entered or self._mode is None:
+        if not self._entered:
             return False
         self._entered = False
-        if self._keyboard_controller is not None:
-            self._write_sequences(self._keyboard_controller.shutdown_sequences())
-        if self._mouse_mode_active:
-            self._write_sequences(MOUSE_DISABLE_SEQUENCES)
-            self._mouse_mode_active = False
-        if self.drain_on_exit and self._control_writes_allowed():
-            self.drain_input_func(
-                self.stdin,
-                max_bytes=self.drain_limit,
-                idle_timeout=self.drain_idle_timeout,
-                max_duration=self.drain_max_duration,
-            )
-        native_platform = self._native_platform()
+        # Register in reverse order. Each remaining restoration is attempted
+        # even if output, drain, or another native restoration raises.
+        cleanup = ExitStack()
+        if self._windows_output_mode_active:
+            cleanup.callback(self._restore_console_mode, output=True)
+        if self._alternate_screen_active:
+            self._alternate_screen_active = False
+            cleanup.callback(self._write_sequences, (ALTERNATE_SCREEN_DISABLE_SEQUENCE,))
+        mode, self._mode = self._mode, None
+        if mode is not None:
+            cleanup.push(mode.__exit__)
         if self._windows_console_mode_active:
+            cleanup.callback(self._restore_console_mode, output=False)
+        if mode is not None and self.drain_on_exit and self._control_writes_allowed():
+            cleanup.callback(
+                self.drain_input_func, self.stdin, max_bytes=self.drain_limit,
+                idle_timeout=self.drain_idle_timeout, max_duration=self.drain_max_duration,
+            )
+        if self._mouse_mode_active:
+            self._mouse_mode_active = False
+            cleanup.callback(self._write_sequences, MOUSE_DISABLE_SEQUENCES)
+        controller, self._keyboard_controller = self._keyboard_controller, None
+        if controller is not None:
+            # Compute inside the callback so even sequence-generation errors
+            # cannot prevent native mode restoration.
+            cleanup.callback(lambda: self._write_sequences(controller.shutdown_sequences()))
+        return cleanup.__exit__(exc_type, exc, traceback)
+
+    def _restore_console_mode(self, *, output: bool) -> None:
+        native_platform = self._native_platform()
+        if output:
+            native_platform.console_mode.disable_vt_output()
+            self._windows_output_mode_active = False
+            self._windows_vt_output_active = False
+        else:
             native_platform.console_mode.disable_vt_input()
             self._windows_console_mode_active = False
             self._windows_vt_input_active = False
-        try:
-            suppress = self._mode.__exit__(exc_type, exc, traceback)
-        finally:
-            if self.capabilities is not None and self.capabilities.alternate_screen and self._control_writes_allowed():
-                self._write_sequences((ALTERNATE_SCREEN_DISABLE_SEQUENCE,))
-            if self._windows_output_mode_active:
-                native_platform.console_mode.disable_vt_output()
-                self._windows_output_mode_active = False
-                self._windows_vt_output_active = False
-        return suppress
 
     def consume_control_events(self, events: tuple[InputEvent, ...]) -> None:
         if self._keyboard_controller is not None:

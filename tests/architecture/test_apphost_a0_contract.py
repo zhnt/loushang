@@ -17,6 +17,8 @@ APPHOST_MODULES = {
 APPHOST_OPTIONAL_MODULES = {
     APPHOST_ROOT / "application.py",
     APPHOST_ROOT / "continuity.py",
+    APPHOST_ROOT / "foreground.py",
+    APPHOST_ROOT / "local.py",
     APPHOST_ROOT / "hosted.py",
 }
 HARNESS_SESSION_ADAPTER = Path("src/loushang/apphost/integrations/harness_session.py")
@@ -373,6 +375,11 @@ def test_a0_1_has_only_the_reviewed_g8_through_g13_consumers() -> None:
         Path("src/loushang/coding/appservice_adapter.py"),
         Path("src/loushang/coding/hosted_application.py"),
         Path("src/loushang/coding/hosted_continuity.py"),
+        Path("src/loushang/coding/hosted_catalog.py"),
+        Path("src/loushang/coding/hosted_session.py"),
+        Path("src/loushang/coding/cli/hosted.py"),
+        Path("src/loushang/coding/hosted_bootstrap.py"),
+        Path("src/loushang/coding/hosted_local.py"),
     }
     reverse_adapter_consumers = {
         path

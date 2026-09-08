@@ -41,11 +41,20 @@ jobs:
           src/loushang/coding/appservice_adapter.py
           src/loushang/coding/hosted_application.py
           src/loushang/coding/hosted_continuity.py
+          src/loushang/coding/hosted_bootstrap.py
+          src/loushang/coding/hosted_local.py
+          src/loushang/coding/cli/hosted.py
+          src/loushang/coding/cli/mux.py
           src/loushang/coding/cli/__main__.py
           src/loushang/coding/cli/apphost.py
           src/loushang/harness/machine_resources/control_plane.py
           src/loushang/harnesstui/mux
           scripts/dev/run_g10_installed_canary.py
+          scripts/dev/run_g16_installed_evidence.py
+          tests/dev/test_run_g16_installed_evidence.py
+          tests/architecture/test_detachable_local_workspace_g16_evidence.py
+          tests/coding/test_mux_native_evidence.py
+          tests/coding/test_mux_installed_evidence.py
           scripts/dev/verify_evidence_manifest.py
           tests/apphost
           tests/appserver
@@ -56,10 +65,29 @@ jobs:
           tests/coding/test_apphost_product.py
           tests/coding/test_appservice_adapter.py
           tests/coding/test_hosted_application.py
+          tests/coding/test_hosted_bootstrap.py
+          tests/coding/test_hosted_local.py
+          tests/coding/test_hosted_local_ownership.py
+          tests/coding/test_mux_command.py
+          tests/coding/test_mux_terminal_process.py
+          tests/coding/test_mux_product_terminal.py
+          tests/coding/_local_product_child.py
+          tests/harnesstui/test_hosted_mux_shell.py
+          tests/harnesstui/test_hosted_mux_details.py
+          tests/tui/test_text_pager.py
+          src/loushang/tui/ui_parts/text_pager.py
+          tests/harnesstui/test_hosted_mux_terminal.py
+          tests/tui/test_terminal_session.py
+          tests/tui/test_composer_edit_buffer.py
+          src/loushang/tui/terminal_session.py
+          src/loushang/tui/composer_edit_buffer.py
+          src/loushang/tui/ui_parts/composer.py
+          tests/coding/test_mux_subprocess.py
           tests/coding/test_cli_apphost.py
           tests/dev/test_verify_evidence_manifest.py
           tests/harness/worker/test_coding_product_worker_canary.py
           tests/harnesstui/test_hosted_mux_profile.py
+          tests/harnesstui/test_hosted_mux_interaction.py
           tests/architecture/test_apphost_a0_contract.py
           tests/architecture/test_apphost_a02_architecture.py
           tests/architecture/test_apphost_a03_a04_architecture.py
@@ -78,6 +106,7 @@ jobs:
       - name: Typecheck AppHost G8 through G13
         run: >-
           uv run --extra dev mypy --follow-imports=silent
+          src/loushang/tui/ui_parts/text_pager.py
           src/loushang/apphost
           src/loushang/appserver
           src/loushang/appservice
@@ -90,12 +119,18 @@ jobs:
           src/loushang/coding/appservice_adapter.py
           src/loushang/coding/hosted_application.py
           src/loushang/coding/hosted_continuity.py
+          src/loushang/coding/hosted_bootstrap.py
+          src/loushang/coding/hosted_local.py
+          src/loushang/coding/cli/hosted.py
+          src/loushang/coding/cli/mux.py
           src/loushang/harnesstui/mux
           src/loushang/coding/cli/apphost.py
 
       - name: Test AppHost G8 through G13
         run: >-
           uv run --extra dev python scripts/dev/run_pytest.py
+          tests/dev/test_run_g16_installed_evidence.py
+          tests/architecture/test_detachable_local_workspace_g16_evidence.py
           tests/apphost
           tests/appserver
           tests/appservice
@@ -105,6 +140,19 @@ jobs:
           tests/coding/test_apphost_product.py
           tests/coding/test_appservice_adapter.py
           tests/coding/test_hosted_application.py
+          tests/coding/test_hosted_bootstrap.py
+          tests/coding/test_hosted_local.py
+          tests/coding/test_hosted_local_ownership.py
+          tests/coding/test_mux_command.py
+          tests/coding/test_mux_terminal_process.py
+          tests/coding/test_mux_product_terminal.py
+          tests/harnesstui/test_hosted_mux_shell.py
+          tests/harnesstui/test_hosted_mux_details.py
+          tests/tui/test_text_pager.py
+          tests/harnesstui/test_hosted_mux_terminal.py
+          tests/tui/test_terminal_session.py
+          tests/tui/test_composer_edit_buffer.py
+          tests/coding/test_mux_subprocess.py
           tests/coding/test_cli_apphost.py
           tests/dev/test_verify_evidence_manifest.py
           tests/architecture/test_apphost_a0_contract.py
@@ -116,6 +164,7 @@ jobs:
           tests/architecture/test_hosted_product_g10_explicit_canary_design.py
           tests/architecture/test_hosted_product_g10_explicit_canary.py
           tests/harnesstui/test_hosted_mux_profile.py
+          tests/harnesstui/test_hosted_mux_interaction.py
           tests/architecture/test_hosted_application_g11_design.py
           tests/architecture/test_hosted_application_g11.py
           tests/architecture/test_foreground_hosted_application_g12_design.py

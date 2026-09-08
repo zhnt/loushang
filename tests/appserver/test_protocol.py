@@ -179,6 +179,7 @@ def test_G11_CONTRACT_STRICT_request_round_trip(
     (
         AckV1(),
         AppFailureV1(AppErrorCodeV1.SNAPSHOT_REQUIRED),
+        AppFailureV1(AppErrorCodeV1.ALREADY_ATTACHED),
         _mux(),
         MuxListResultV1((_mux(),)),
         _attachment(),
@@ -269,6 +270,9 @@ def test_protocol_schema_vocabulary_is_closed_and_complete() -> None:
         ).read_text(encoding="utf-8")
     )
     assert schema["additionalProperties"] is False
+    assert schema["$defs"]["errorCode"]["enum"] == [
+        code.value for code in AppErrorCodeV1
+    ]
     assert tuple(schema["properties"]["operation"]["enum"]) == (
         operation_names_v1()
     )

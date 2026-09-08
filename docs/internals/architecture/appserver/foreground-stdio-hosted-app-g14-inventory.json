@@ -1,0 +1,23 @@
+{
+  "inventoryVersion": 7,
+  "designId": "FOREGROUND-STDIO-HOSTED-APP-G14",
+  "activation": "explicit-foreground-stdio-only",
+  "entries": [
+    {"id": "appserver.protocol", "source": "src/loushang/appserver/protocol", "status": "existing-extend", "owner": "wire-contract"},
+    {"id": "appserver.connection", "source": "src/loushang/appserver/connection.py", "status": "implemented", "owner": "connection-lifetime"},
+    {"id": "appserver.remote-client", "source": "src/loushang/appserver/remote_client.py", "status": "implemented", "owner": "client-connection"},
+    {"id": "appserver.stdio", "source": "src/loushang/appserver/stdio.py", "status": "implemented", "owner": "byte-io"},
+    {"id": "apphost.foreground", "source": "src/loushang/apphost/foreground.py", "status": "implemented", "owner": "ordered-settlement"},
+    {"id": "coding.hosted-command", "source": "src/loushang/coding/cli/hosted.py", "status": "implemented", "owner": "trusted-product-composition"},
+    {"id": "coding.hosted-bootstrap", "source": "src/loushang/coding/hosted_bootstrap.py", "status": "implemented", "owner": "shared-trusted-product-bootstrap"},
+    {"id": "coding.hosted-binding", "source": "src/loushang/coding/hosted_session.py", "status": "implemented", "owner": "real-product-session"},
+    {"id": "coding.hosted-catalog", "source": "src/loushang/coding/hosted_catalog.py", "status": "implemented", "owner": "canonical-session-identity"},
+    {"id": "harnesstui.hosted-mux", "source": "src/loushang/harnesstui/mux/profile.py", "status": "existing-retain", "owner": "client-presentation"}
+  ],
+  "unchangedDefaultScripts": {
+    "loushang": "loushang.coding.cli.__main__:main",
+    "loushang-tui": "loushang.coding.ui.cli:main"
+  },
+  "explicitScript": {"loushang-hosted": "loushang.coding.cli.hosted:main"},
+  "notGranted": ["listener", "daemon", "reconnect", "active-turn-replay", "default-owner-change"]
+}

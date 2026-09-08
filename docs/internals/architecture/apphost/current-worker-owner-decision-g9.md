@@ -37,10 +37,21 @@ currently false.
 
 ## Source-Backed Entrypoint Disposition
 
+The table and deletion audit below record the G9 decision-time facts. The live
+inventory has advanced to v5 under G16: it includes the explicit
+`loushang-mux` local deployment/client command alongside G14's
+`loushang-hosted` command, the AppServer connection library and the Harnesstui
+mux client library. G10's installed canary is also retained. These opt-in
+capabilities do not change default Worker ownership or supersede this
+`RETAIN` decision; their scopes and verification live in
+[Foreground Stdio G14](../appserver/foreground-stdio-hosted-app-g14.md) and
+[Detachable Local G16](../appserver/detachable-local-workspace-g16.md).
+
 The canonical machine-readable inventory is
 [`hosted-product-g9-entrypoint-inventory.json`](hosted-product-g9-entrypoint-inventory.json).
 It is checked against `pyproject.toml`, the named source modules, AST imports,
-and the absence of AppServer, hosted, and mux runtime launchers.
+and unchanged default entrypoints. The absence of hosted/mux runtime routes
+was a G9 decision-time fact, not a current-source assertion.
 
 | Surface | Current disposition | Consequence |
 | --- | --- | --- |

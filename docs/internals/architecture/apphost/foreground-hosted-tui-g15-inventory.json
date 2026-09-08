@@ -1,0 +1,29 @@
+{
+  "inventoryVersion": 1,
+  "designId": "FOREGROUND-HOSTED-TUI-G15",
+  "delivery": "design-only",
+  "baselineCommit": "815c03d246edc49493e5e254528dc981941d031d",
+  "entries": [
+    {"id": "hosting.process", "source": "src/loushang/hosting/contracts.py", "status": "existing-retain", "owner": "process-lifetime"},
+    {"id": "appserver.client", "source": "src/loushang/appserver/remote_client.py", "status": "existing-retain", "owner": "protocol-connection"},
+    {"id": "coding.hosted-server", "source": "src/loushang/coding/cli/hosted.py", "status": "existing-retain", "owner": "trusted-product-composition"},
+    {"id": "apphost.continuity", "source": "src/loushang/apphost/continuity.py", "status": "existing-retain", "owner": "application-recovery"},
+    {"id": "harnesstui.mux", "source": "src/loushang/harnesstui/mux/controller.py", "status": "existing-retain", "owner": "logical-client-presentation"},
+    {"id": "appserver.session-discovery", "source": "src/loushang/appserver/protocol/session_discovery.py", "status": "planned", "owner": "pathless-discovery-contract"},
+    {"id": "apphost.launcher", "source": "src/loushang/apphost/launcher.py", "status": "planned", "owner": "foreground-child-lifetime"},
+    {"id": "harnesstui.hosted-shell", "source": "src/loushang/harnesstui/mux/shell.py", "status": "implemented-by-g16", "owner": "terminal-client-presentation"},
+    {"id": "coding.hosted-client", "source": "src/loushang/coding/cli/hosted_client.py", "status": "planned", "owner": "trusted-client-composition"}
+  ],
+  "unchangedScripts": {
+    "loushang": "loushang.coding.cli.__main__:main",
+    "loushang-tui": "loushang.coding.ui.cli:main",
+    "loushang-hosted": "loushang.coding.cli.hosted:main"
+  },
+  "requirements": ["G15-EXPLICIT", "G15-ADMISSION", "G15-LIFETIME", "G15-INTERACTION", "G15-MUX", "G15-RECOVERY", "G15-CAPABILITIES", "G15-EVIDENCE"],
+  "reviewFindings": [
+    {"id": "G15-R1", "perspective": "architecture-authority", "status": "resolved", "requirements": ["G15-ADMISSION", "G15-RECOVERY"]},
+    {"id": "G15-R2", "perspective": "lifecycle-concurrency", "status": "resolved", "requirements": ["G15-LIFETIME"]},
+    {"id": "G15-R3", "perspective": "contract-user-evidence", "status": "resolved", "requirements": ["G15-INTERACTION", "G15-CAPABILITIES", "G15-EVIDENCE"]}
+  ],
+  "notGranted": ["daemon", "listener", "reconnect", "active-turn-replay", "default-owner-change", "image-transfer"]
+}

@@ -1,6 +1,26 @@
 {
   "$id": "https://loushang.dev/schema/app-request-v1.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "errorCode": {
+      "type": "string",
+      "enum": [
+        "invalid_request",
+        "not_found",
+        "already_exists",
+        "already_attached",
+        "product_mismatch",
+        "revision_conflict",
+        "snapshot_required",
+        "stale_attachment",
+        "attachment_lagged",
+        "session_unavailable",
+        "operation_unavailable",
+        "cleanup_incomplete",
+        "service_closed"
+      ]
+    }
+  },
   "additionalProperties": false,
   "properties": {
     "operation": {
@@ -18,7 +38,8 @@
         "turn/steer",
         "turn/follow_up",
         "turn/interrupt",
-        "interaction/respond"
+        "interaction/respond",
+        "attachment/read_events"
       ]
     },
     "payload": {

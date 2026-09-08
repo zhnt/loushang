@@ -432,6 +432,8 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "hosted.py",
         "application.py",
         "continuity.py",
+        "foreground.py",
+        "local.py",
     }
     assert {
         path.relative_to(APPSERVER_SOURCE).as_posix()
@@ -445,13 +447,31 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "protocol/errors.py",
         "protocol/model.py",
         "protocol/schema.py",
+        "connection.py",
+        "dispatch.py",
+        "framing.py",
+        "local_auth.py",
+        "local.py",
+        "_local_peer.py",
+        "local_record.py",
+        "_local_record_files.py",
+        "_local_record_values.py",
+        "_posix_local_record.py",
+        "_windows_local_record.py",
+        "remote_client.py",
+        "stdio.py",
+        "protocol/stdio_profile.py",
+        "protocol/connection_profile.py",
     }
     assert {
         path.relative_to(APPSERVICE_SOURCE).as_posix()
         for path in APPSERVICE_SOURCE.rglob("*.py")
     } == {
         "__init__.py",
+        "_operations.py",
+        "_scope_interactions.py",
         "client.py",
+        "client_scope.py",
         "continuity.py",
         "continuity_file.py",
         "continuity_runtime.py",
@@ -503,6 +523,11 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         Path("src/loushang/coding/appservice_adapter.py"),
         Path("src/loushang/coding/hosted_application.py"),
         Path("src/loushang/coding/hosted_continuity.py"),
+        Path("src/loushang/coding/hosted_catalog.py"),
+        Path("src/loushang/coding/hosted_session.py"),
+        Path("src/loushang/coding/cli/hosted.py"),
+        Path("src/loushang/coding/hosted_bootstrap.py"),
+        Path("src/loushang/coding/hosted_local.py"),
     }
     retained_fences = " ".join(_section(inventory, "Retained Fences").split())
     for statement in (

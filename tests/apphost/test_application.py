@@ -129,6 +129,7 @@ def _runtime(
     apphost: _AppHost | None = None,
     product: _Product | None = None,
     timeout: float = 1.0,
+    id_factory: Callable[[], str] | None = None,
 ) -> HostedApplicationRuntimeV1:
     ids = iter(("mux", "member"))
     return create_hosted_application_runtime(
@@ -141,7 +142,7 @@ def _runtime(
             product_owner=product or _Product(events),
             shutdown_budget=AppHostShutdownBudgetV1(1.0, 0.5),
             phase_timeout_seconds=timeout,
-            service_id_factory=lambda: next(ids),
+            service_id_factory=id_factory or (lambda: next(ids)),
         )
     )
 
@@ -235,14 +236,35 @@ async def test_G12_APPLICATION_CLOSE_retries_service_debt_before_dependents() ->
     assert events == ["service", "service", "apphost", "product"]
 
 
-@_async_test
-async def test_G12_APPLICATION_CLOSE_retains_timed_out_apphost_task() -> None:
+def test_G12_APPLICATION_CLOSE_retains_timed_out_apphost_task(monkeypatch) -> None:
+    original_timeout = asyncio.timeout
+    timeouts: list[asyncio.Timeout] = []
+
+    def timeout(seconds: float) -> asyncio.Timeout:
+        owner = original_timeout(seconds)
+        timeouts.append(owner)
+        return owner
+
+    class ExpiringAppHost(_AppHost):
+        async def shutdown(
+            self, budget: AppHostShutdownBudgetV1
+        ) -> AppHostShutdownReportV1:
+            # Expire only after the apphost phase has actually started. A
+            # 10ms wall-clock budget can expire the earlier service on Windows.
+            timeouts[-1].reschedule(asyncio.get_running_loop().time())
+            return await super().shutdown(budget)
+
+    monkeypatch.setattr(asyncio, "timeout", timeout)
+    asyncio.run(_assert_retained_apphost_task(ExpiringAppHost))
+
+
+async def _assert_retained_apphost_task(apphost_type: type[_AppHost]) -> None:
     events: list[str] = []
     gate = asyncio.Event()
     runtime = _runtime(
         events,
-        apphost=_AppHost(events, gate=gate),
-        timeout=0.01,
+        apphost=apphost_type(events, gate=gate),
+        timeout=5.0,
     )
 
     first = await runtime.shutdown()

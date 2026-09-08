@@ -8,6 +8,7 @@ and disposal mechanics shared by Conversation JSONL Agent transcripts.
 from __future__ import annotations
 
 import asyncio
+import os
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -64,11 +65,11 @@ class AgentTranscriptLifecycleContext:
 
     def __post_init__(self) -> None:
         session_dir = Path(self.session_dir).expanduser().resolve(strict=False)
-        session_file = (
-            Path(self.session_file).expanduser().resolve(strict=False)
-            if self.session_file is not None
-            else None
-        )
+        session_file = None
+        if self.session_file is not None:
+            absolute = Path(os.path.abspath(Path(self.session_file).expanduser()))
+            # Keep the selected leaf intact for the Store's no-follow checks.
+            session_file = absolute.parent.resolve(strict=False) / absolute.name
         object.__setattr__(self, "session_dir", session_dir)
         object.__setattr__(self, "session_file", session_file)
         object.__setattr__(self, "cwd", str(self.cwd))
@@ -101,7 +102,9 @@ class AgentTranscriptLifecycleSession(Generic[ProductBindingT]):
     session_blob_health: tuple[SessionBlobHealth, ...] = ()
     _disposed: bool = field(default=False, init=False, repr=False)
     _ownership_state: str = field(default="root_owned", init=False, repr=False)
-    _dispose_lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False, repr=False)
+    _dispose_lock: asyncio.Lock = field(
+        default_factory=asyncio.Lock, init=False, repr=False
+    )
 
     @property
     def product_binding(self) -> ProductBindingT:
@@ -253,9 +256,12 @@ class AgentTranscriptLifecycle(Generic[BindingInputT, ProductBindingT]):
         *,
         records: Sequence[AgentTranscriptRecord] = (),
         leaf_id: str | None = None,
+        defer_materialization: bool = True,
     ) -> AgentTranscriptLifecycleSession[ProductBindingT]:
         """Create one bound transcript and release its lease on failure."""
 
+        if type(defer_materialization) is not bool:
+            raise TypeError("defer_materialization must be a boolean")
         runtime_binding = await self._bind_runtime(context, binding_input)
         try:
             transcript = await AgentTranscriptUnitOfWork.create(
@@ -266,7 +272,9 @@ class AgentTranscriptLifecycle(Generic[BindingInputT, ProductBindingT]):
                 leaf_id=leaf_id,
                 id_factory=self._id_factory,
                 profile=runtime_binding.profile,
-                defer_materialization=context.persist and not records,
+                defer_materialization=context.persist
+                and defer_materialization
+                and not records,
             )
         except BaseException:
             await runtime_binding.dispose()

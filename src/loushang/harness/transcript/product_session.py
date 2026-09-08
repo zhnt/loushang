@@ -269,6 +269,8 @@ class ProductTranscriptSession(
         persist: bool = True,
         parent_session: str | None = None,
         session_id: str | None = None,
+        additional_header_metadata: Mapping[str, JSONValue] | None = None,
+        defer_materialization: bool = True,
     ) -> Self:
         lifecycle_session = await cls._session_factory().new(
             session_dir=session_dir,
@@ -276,6 +278,8 @@ class ProductTranscriptSession(
             persist=persist,
             parent_session=parent_session,
             session_id=session_id,
+            additional_header_metadata=additional_header_metadata,
+            defer_materialization=defer_materialization,
         )
         return cls(lifecycle_session=lifecycle_session)
 

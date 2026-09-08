@@ -43,8 +43,7 @@ def _write_report(path: Path, *, second: str = "G8-TWO", skipped: bool = False) 
         '<testsuite errors="0" failures="0" skipped="%d" tests="2">'
         '<testcase name="test_one[G8-ONE]" />'
         '<testcase name="test_two[%s]">%s</testcase>'
-        "</testsuite>"
-        % (int(skipped), second, "<skipped />" if skipped else ""),
+        "</testsuite>" % (int(skipped), second, "<skipped />" if skipped else ""),
         encoding="utf-8",
     )
 
@@ -82,3 +81,41 @@ def test_generic_evidence_manifest_rejects_missing_skipped_or_duplicate_cases(
 
     with pytest.raises(ValueError):
         verify_manifest_report(manifest, "G8", report)
+
+
+@pytest.mark.parametrize(
+    "properties,accepted",
+    [
+        ("", False),
+        ('<property name="native_platform" value="win32"/>', False),
+        ('<property name="native_platform" value="linux"/>', True),
+        (
+            '<property name="native_platform" value="linux"/><property name="native_platform" value="win32"/>',
+            False,
+        ),
+    ],
+)
+def test_evidence_required_properties_reject_wrong_or_missing_native_platform(
+    tmp_path,
+    monkeypatch,
+    properties,
+    accepted,
+):
+    monkeypatch.chdir(tmp_path)
+    manifest, report = Path("manifest.json"), Path(".artifacts/g8.xml")
+    _write_manifest(manifest, report)
+    value = json.loads(manifest.read_text())
+    value["reports"]["G8"]["requiredProperties"] = {"native_platform": "linux"}
+    manifest.write_text(json.dumps(value))
+    _write_report(report)
+    report.write_text(
+        report.read_text().replace(
+            '<testcase name="test_one[G8-ONE]" />',
+            f'<properties>{properties}</properties><testcase name="test_one[G8-ONE]" />',
+        )
+    )
+    if accepted:
+        assert "skipped=0" in verify_manifest_report(manifest, "G8", report)
+    else:
+        with pytest.raises(ValueError):
+            verify_manifest_report(manifest, "G8", report)

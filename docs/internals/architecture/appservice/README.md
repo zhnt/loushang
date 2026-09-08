@@ -25,6 +25,23 @@ bounded logical delivery.  It does not own an AppServer listener, byte/frame
 buffers, authentication, AppHost composition, Hosting process mechanics,
 Product policy, or UI state.
 
+The [accepted G16 design](../appserver/detachable-local-workspace-g16.md)
+adds an optional semantic client scope: connection-bound controller
+authority, application-owned admitted execution and control-loss interaction
+settlement. `client_scope.ScopedAppServiceV1` explicitly installs this policy on
+one service and creates bounded `AppClientScopeV1` capabilities. Its private
+operation owner retains admitted work independently of delivery cancellation;
+its private interaction policy denies questions on control loss. AppHost's
+optional local deployment now binds its public ready-scope factory into the
+local transport. A synchronous scope fence stops new client actions before
+asynchronous stop settlement, without itself cancelling accepted work. The
+edge is absent from the default facade and installed entrypoints; ordinary
+G11/G14 behavior is unchanged.
+The explicit development-only Coding mux command composes this policy with real
+Product Sessions; it does not add transport or Product dependencies here.
+The application must install it before exposing clients or starting execution,
+and must never expose a legacy unscoped client to the same untrusted peers.
+
 The current implementation contains:
 
 - `ports.py`: the independently owned hosted Session and resolver protocols;

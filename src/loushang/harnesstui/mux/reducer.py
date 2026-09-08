@@ -40,6 +40,21 @@ def state_from_attachment(attachment: MuxAttachmentV1) -> HostedMuxState:
     )
 
 
+def preserve_local_state(fresh: HostedMuxState, previous: HostedMuxState) -> None:
+    """Copy editing/navigation only; authority and execution come from the barrier."""
+    if fresh.mux_space_id != previous.mux_space_id:
+        return
+    old = {(item.member_id, item.session_id): item for item in previous.windows}
+    for index, item in enumerate(fresh.windows):
+        source = old.get((item.member_id, item.session_id))
+        if source is None:
+            continue
+        item.draft, item.draft_revision = source.draft, source.draft_revision
+        item.scroll_anchor, item.unread = source.scroll_anchor, source.unread
+        if source is previous.active_window:
+            fresh.active_index = index
+
+
 def reduce_events(
     state: HostedMuxState,
     events: tuple[AttachmentEventV1, ...],
@@ -103,6 +118,7 @@ def set_active_draft(state: HostedMuxState, text: str) -> None:
     if window is None:
         raise RuntimeError("hosted mux has no active window")
     window.draft = text
+    window.draft_revision += 1
 
 
 def _mark_active_read(state: HostedMuxState) -> None:

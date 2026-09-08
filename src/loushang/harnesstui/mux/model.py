@@ -19,6 +19,7 @@ class HarnessWindowState:
     last_cursor: int = 0
     unread: bool = False
     draft: str = ""
+    draft_revision: int = field(default=0, kw_only=True)
     assistant_draft: str = ""
     pending_interaction_id: str | None = None
     pending_interaction_text: str | None = None

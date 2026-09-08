@@ -693,7 +693,7 @@ def test_hosting_discovery_is_grounded_in_current_harness_facts() -> None:
         assert current_owner in discovery
 
 
-def test_hosting_apphost_and_appserver_runtime_edges_remain_dark() -> None:
+def test_hosting_apphost_and_appserver_optional_modules_are_exact() -> None:
     assert (REPOSITORY_ROOT / "src/loushang/hosting").is_dir()
     apphost = REPOSITORY_ROOT / "src/loushang/apphost"
     assert {
@@ -706,6 +706,8 @@ def test_hosting_apphost_and_appserver_runtime_edges_remain_dark() -> None:
         "contracts.py",
         "continuity.py",
         "errors.py",
+        "foreground.py",
+        "local.py",
         "integrations/__init__.py",
         "integrations/harness_session.py",
         "router.py",
@@ -718,12 +720,27 @@ def test_hosting_apphost_and_appserver_runtime_edges_remain_dark() -> None:
     } == {
         "__init__.py",
         "client.py",
+        "connection.py",
+        "dispatch.py",
+        "framing.py",
+        "local_auth.py",
+        "local.py",
+        "_local_peer.py",
+        "local_record.py",
+        "_local_record_files.py",
+        "_local_record_values.py",
+        "_posix_local_record.py",
+        "_windows_local_record.py",
         "ports.py",
+        "remote_client.py",
+        "stdio.py",
         "protocol/__init__.py",
         "protocol/codec.py",
         "protocol/errors.py",
         "protocol/model.py",
         "protocol/schema.py",
+        "protocol/stdio_profile.py",
+        "protocol/connection_profile.py",
     }
 
     overview = _read(HOSTING_ROOT / "README.md")

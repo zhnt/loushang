@@ -1,0 +1,50 @@
+{
+  "inventoryVersion": 1,
+  "designId": "DETACHABLE-LOCAL-WORKSPACE-G16",
+  "profile": "local-detachable/v1",
+  "designStatus": "accepted",
+  "implementationStatus": "partial",
+  "entries": [
+    {"id": "appservice.operation-owner", "source": "src/loushang/appservice/_operations.py", "status": "implemented", "owner": "application-operation-lifetime"},
+    {"id": "appservice.scoped-interactions", "source": "src/loushang/appservice/_scope_interactions.py", "status": "implemented", "owner": "generation-bound-interaction-settlement"},
+    {"id": "appserver.local-auth", "source": "src/loushang/appserver/local_auth.py", "status": "implemented", "owner": "transport-authentication"},
+    {"id": "appserver.framing", "source": "src/loushang/appserver/framing.py", "status": "existing-extend", "owner": "bounded-byte-framing"},
+    {"id": "appserver.local-record", "source": "src/loushang/appserver/local_record.py", "status": "implemented", "owner": "endpoint-resource"},
+    {"id": "appserver.record-values", "source": "src/loushang/appserver/_local_record_values.py", "status": "implemented", "owner": "closed-record-format"},
+    {"id": "appserver.record-files", "source": "src/loushang/appserver/_local_record_files.py", "status": "implemented", "owner": "bounded-io-and-file-lease"},
+    {"id": "appserver.record-posix", "source": "src/loushang/appserver/_posix_local_record.py", "status": "implemented", "owner": "native-private-file-admission"},
+    {"id": "appserver.record-windows", "source": "src/loushang/appserver/_windows_local_record.py", "status": "implemented", "owner": "native-private-file-admission"},
+    {"id": "appserver.local-runtime", "source": "src/loushang/appserver/local.py", "status": "implemented", "owner": "connection-admission"},
+    {"id": "appserver.local-peer", "source": "src/loushang/appserver/_local_peer.py", "status": "implemented", "owner": "peer-scope-and-close-lifetime"},
+    {"id": "appserver.connection-profile", "source": "src/loushang/appserver/protocol/connection_profile.py", "status": "implemented", "owner": "closed-wire-profile"},
+    {"id": "appservice.client-scope", "source": "src/loushang/appservice/client_scope.py", "status": "implemented", "owner": "semantic-client-and-work-lifetime"},
+    {"id": "apphost.local-edge", "source": "src/loushang/apphost/local.py", "status": "implemented", "owner": "ordered-application-settlement"},
+    {"id": "coding.mux-command", "source": "src/loushang/coding/cli/mux.py", "status": "implemented", "owner": "installed-management-and-interactive-attach"},
+    {"id": "coding.hosted-bootstrap", "source": "src/loushang/coding/hosted_bootstrap.py", "status": "implemented", "owner": "shared-trusted-product-bootstrap"},
+    {"id": "coding.local-runtime", "source": "src/loushang/coding/hosted_local.py", "status": "implemented", "owner": "startup-handoff-and-real-product-composition"},
+    {"id": "harnesstui.hosted-shell", "source": "src/loushang/harnesstui/mux/shell.py", "status": "implemented", "owner": "terminal-client-presentation"},
+    {"id": "harnesstui.hosted-screen", "source": "src/loushang/harnesstui/mux/_shell_screen.py", "status": "implemented", "owner": "shared-conversation-presentation"},
+    {"id": "tui.text-pager", "source": "src/loushang/tui/ui_parts/text_pager.py", "status": "implemented", "owner": "bounded-read-only-text-layout"},
+    {"id": "harnesstui.hosted-waiters", "source": "src/loushang/harnesstui/mux/_shell_tasks.py", "status": "implemented", "owner": "bounded-local-task-settlement"},
+    {"id": "harnesstui.hosted-terminal", "source": "src/loushang/harnesstui/mux/terminal.py", "status": "implemented", "owner": "native-terminal-input-and-render-loop"},
+    {"id": "harnesstui.mux-controller", "source": "src/loushang/harnesstui/mux/controller.py", "status": "implemented", "owner": "client-local-editing-and-snapshot-handoff"},
+    {"id": "appservice.runtime", "source": "src/loushang/appservice/runtime.py", "status": "existing-extend", "owner": "application-semantics"},
+    {"id": "appserver.connection", "source": "src/loushang/appserver/connection.py", "status": "existing-extend", "owner": "bounded-connection"},
+    {"id": "coding.hosted-binding", "source": "src/loushang/coding/hosted_session.py", "status": "existing-extend", "owner": "real-session-policy"},
+    {"id": "apphost.continuity", "source": "src/loushang/apphost/continuity.py", "status": "existing-retain", "owner": "canonical-recovery"}
+  ],
+  "unchangedScripts": {
+    "loushang": "loushang.coding.cli.__main__:main",
+    "loushang-tui": "loushang.coding.ui.cli:main",
+    "loushang-hosted": "loushang.coding.cli.hosted:main"
+  },
+  "implementedScript": {"loushang-mux": "loushang.coding.cli.mux:main"},
+  "requirements": ["G16-LOCAL-AUTH", "G16-PRIVATE-RECORD", "G16-PROFILE", "G16-MULTI-MUX", "G16-CONTROLLER", "G16-ACCEPTED-WORK", "G16-APPROVAL", "G16-REATTACH", "G16-BOUNDS", "G16-STOP", "G16-RECOVERY", "G16-CLIENT", "G16-EVIDENCE"],
+  "requiredPlatforms": ["linux", "darwin", "win32"],
+  "reviewFindings": [
+    {"id": "G16-R1", "perspective": "architecture-security", "status": "resolved"},
+    {"id": "G16-R2", "perspective": "cancellation-lifecycle", "status": "resolved"},
+    {"id": "G16-R3", "perspective": "product-evidence", "status": "resolved"}
+  ],
+  "notGranted": ["public-network", "multi-user-tenancy", "same-mux-multiple-writers", "automatic-mutation-replay", "hosting-service", "default-owner-change", "image-transfer"]
+}

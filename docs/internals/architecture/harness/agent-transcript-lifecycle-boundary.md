@@ -48,13 +48,20 @@ Product does not call it and may use a persistent context with no file path.
 ## Lifecycle Semantics
 
 `create()` with retained initial records persists them through the bound store.
-A persistent empty create is provisional: it binds the runtime and builds the
+A persistent empty create is provisional by default: it binds the runtime and builds the
 in-memory repository without calling `ConversationStore.create()`.
 Administrative records may be staged in that repository. The first user Agent
 message or application message atomically calls Store create with the header,
 all staged records, and the materializing message. Disposing a still
 provisional transcript only releases its binding, so no empty authority or
 index row exists to delete.
+
+An explicit `defer_materialization=False` instead creates even an empty
+transcript through the same Store. Products can therefore publish a durable
+identity before the first message without introducing a second authority.
+The lifecycle context canonicalizes parent directories while retaining its
+selected file leaf, leaving no-follow enforcement to the Store. Ordinary
+path discovery and explicitly bound-source restoration remain distinct.
 
 `restore()` loads an already materialized persistent store, while a
 non-persistent restore snapshots a current Conversation JSONL source into the

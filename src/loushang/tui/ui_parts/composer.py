@@ -95,6 +95,7 @@ class _CompletionRefreshRequest:
 
 @dataclass(slots=True)
 class Composer:
+    max_undo_depth: int | None = field(default=None, kw_only=True)
     prompt: str = "> "
     continuation_prompt: str = "  "
     large_paste_line_threshold: int = 8
@@ -126,6 +127,8 @@ class Composer:
     _completion_last_started_at: float | None = None
 
     def __post_init__(self) -> None:
+        if self.max_undo_depth is not None:
+            self._buffer = ComposerEditBuffer(max_undo_depth=self.max_undo_depth)
         self._selection_controller = SelectionController(
             length=lambda: len(self._buffer),
             cursor=lambda: self._buffer.cursor,
