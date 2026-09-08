@@ -10,9 +10,9 @@
     {"id": "apphost.continuity", "source": "src/loushang/apphost/continuity.py", "status": "existing-retain", "owner": "application-recovery"},
     {"id": "harnesstui.mux", "source": "src/loushang/harnesstui/mux/controller.py", "status": "existing-retain", "owner": "logical-client-presentation"},
     {"id": "appserver.session-discovery", "source": "src/loushang/appserver/protocol/model.py", "status": "implemented-by-g17", "owner": "pathless-discovery-contract"},
-    {"id": "apphost.launcher", "source": "src/loushang/apphost/launcher.py", "status": "implemented-uncomposed", "owner": "foreground-child-lifetime"},
+    {"id": "apphost.launcher", "source": "src/loushang/apphost/launcher.py", "status": "implemented-by-g17", "owner": "foreground-child-lifetime"},
     {"id": "harnesstui.hosted-shell", "source": "src/loushang/harnesstui/mux/shell.py", "status": "implemented-by-g16", "owner": "terminal-client-presentation"},
-    {"id": "coding.hosted-client", "source": "src/loushang/coding/cli/hosted_client.py", "status": "planned", "owner": "trusted-client-composition"}
+    {"id": "coding.hosted-client", "source": "src/loushang/coding/cli/hosted_client.py", "status": "implemented-by-g17", "owner": "trusted-client-composition"}
   ],
   "unchangedScripts": {
     "loushang": "loushang.coding.cli.__main__:main",

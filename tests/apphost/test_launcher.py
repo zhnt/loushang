@@ -559,7 +559,11 @@ def test_G17_LAUNCH_expired_budget_cannot_publish_new_ordinary_phases(tmp_path):
                 await owner.close()
             assert error.value.code is AppErrorCodeV1.CLEANUP_INCOMPLETE
             assert owner._deadline == deadline
-            assert "drain" not in owner._phases and host.calls == ["start"]
+            assert "drain" not in owner._phases
+            # The already-authorized physical watchdog closes the dedicated
+            # host independently; repetition does not publish a new drain.
+            assert host.calls == ["start", "close"]
+            assert not owner.process_cleanup_pending
         finally:
             release.set()
             await owner.close(retry_timeout=0.3)
@@ -591,9 +595,11 @@ def test_G17_LAUNCH_retry_only_repeats_failed_phase_once_per_attempt(tmp_path, f
             assert "private" not in str(debt.value)
             assert lease.closes == attempt + 1
             assert lease.calls.count("terminate") == 1
+            assert owner.process_cleanup_pending
         await owner.close(retry_timeout=0.2)
         assert lease.closes == failures + 1
         assert lease.calls.count("terminate") == 1
         assert not owner.cleanup_pending
+        assert not owner.process_cleanup_pending
 
     asyncio.run(scenario())

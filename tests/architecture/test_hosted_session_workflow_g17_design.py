@@ -11,6 +11,45 @@ from pathlib import Path
 ROOT = Path("docs/internals/architecture/apphost")
 
 
+def test_G17_COMMAND_is_one_optional_product_composition_with_fixed_dependencies() -> None:
+    path = Path("src/loushang/coding/cli/hosted_client.py")
+    source = path.read_text()
+    tree = ast.parse(source)
+    assert len(source.splitlines()) <= 450
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            assert all(item.name.split(".")[0] in sys.stdlib_module_names for item in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            assert not node.level and node.module.split(".")[0] in sys.stdlib_module_names
+    project_imports = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            project_imports.update(
+                item.name for item in node.names
+                if item.name.split(".")[0] not in sys.stdlib_module_names
+            )
+        elif isinstance(node, ast.ImportFrom):
+            if node.level:
+                assert node.level == 2 and node.module == "hosted_bootstrap"
+                project_imports.add("loushang.coding.hosted_bootstrap")
+            elif node.module.startswith("loushang."):
+                project_imports.add(node.module)
+    assert project_imports == {
+        "loushang.apphost.launcher", "loushang.appserver.protocol",
+        "loushang.appserver.protocol.connection_profile",
+        "loushang.hosting.contracts", "loushang.hosting.runtime",
+        "loushang.harnesstui.mux.shell", "loushang.harnesstui.mux.terminal",
+        "loushang.coding.hosted_bootstrap",
+    }
+    for entry in (
+        "src/loushang/coding/cli/__main__.py", "src/loushang/coding/ui/cli.py",
+        "src/loushang/coding/__init__.py", "src/loushang/coding/cli/__init__.py",
+        "src/loushang/apphost/__init__.py", "src/loushang/appservice/__init__.py",
+        "src/loushang/coding/cli/mux.py", "src/loushang/coding/cli/hosted.py",
+    ):
+        assert "hosted_client" not in Path(entry).read_text()
+
+
 def test_G17_LAUNCH_owner_has_exact_optional_imports_and_reviewability_budget() -> None:
     path = Path("src/loushang/apphost/launcher.py")
     source = path.read_text()
@@ -76,7 +115,8 @@ def test_G17_DESIGN_inventory_separates_accepted_baseline_from_target() -> None:
     scripts = tomllib.loads(Path("pyproject.toml").read_text())["project"]["scripts"]
     for name, target in inventory["unchangedScripts"].items():
         assert scripts[name] == target
-    assert not set(inventory["plannedScript"]).intersection(scripts)
+    for name, target in inventory["implementedScript"].items():
+        assert scripts[name] == target
 
 
 def test_G17_DESIGN_traces_profiles_lifetimes_and_complete_delivery() -> None:

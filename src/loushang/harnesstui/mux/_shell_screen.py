@@ -38,9 +38,9 @@ global means admitted user_home, not a union or filesystem-wide search.
 /resume <scope> <continuity> <session> opens an explicit saved identity.
 /refresh reconciles an unknown outcome; it does not retry a mutation.
 /close --yes closes this member and its execution, not the application.
-/detach or Ctrl+B d disconnects this terminal; accepted work continues.
-Ctrl+D with an empty editor also detaches. Image paste is unavailable.
-The installed create/list/attach/close/stop commands manage named muxes.
+{exit_help}
+Ctrl+D with an empty editor or terminal EOF also exits. Image paste is unavailable.
+{management_help}
 Application restart restores history and membership, not in-flight execution.
 """
 
@@ -108,7 +108,17 @@ class HostedMuxScreenV1(ScreenConversationApp):
         )
 
     def show_help(self) -> None:
-        self._detail, self._detail_key = TextPager("Hosted help", _HELP), None
+        exit_help = (
+            "/exit, /detach or Ctrl+B d ends this application; work does not continue in background."
+            if self.shell.exit_ends_application else
+            "/detach or Ctrl+B d disconnects this terminal; accepted work continues."
+        )
+        management_help = (
+            "--mux selects a named mux; this foreground application has no background management endpoint."
+            if self.shell.exit_ends_application else
+            "The installed create/list/attach/close/stop commands manage named muxes."
+        )
+        self._detail, self._detail_key = TextPager("Hosted help", _HELP.format(exit_help=exit_help, management_help=management_help)), None
 
     def show_approval(self) -> None:
         key = self._approval_key()
@@ -205,7 +215,7 @@ class HostedMuxScreenV1(ScreenConversationApp):
                 for index, item in enumerate(mux.windows)
             )
         )
-        footer += " | /help /detach"
+        footer += " | /help " + ("/exit ends app" if self.shell.exit_ends_application else "/detach")
         row = RenderLine(
             truncate_to_width(footer, max_width=max(1, constraints.width - 1))
         )

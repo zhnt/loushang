@@ -13,8 +13,8 @@
 - Authority: normative accepted boundary design
 - Design status: accepted following the three-perspective review below
 - Implementation status: partial — G16 supplies the shared shell; G17 supplies
-  discovery and an uncomposed launch owner. The installed foreground client
-  and its native acceptance remain pending.
+  discovery, the launch owner and explicit Product client. Entry re-review
+  passed; native acceptance remains pending.
 - Activation status: existing defaults and G14 foreground semantics unchanged
 - Tracking: [Hosted Workspace V1 #566](https://github.com/zhnt/loushang/issues/566)
 - Inherits: [architecture principles](../loushang-architecture-principles.md),
@@ -47,13 +47,13 @@ the baseline separately from planned files:
   explicit launch preparation, bounded byte IO and process-tree cleanup.
 - G14 provides framed stdio, AppClient, real Coding Sessions and an installed
   `loushang-hosted` executable. G13 owns durable application coordination and
-  canonical Session recovery. No launcher is installed for the client.
+  canonical Session recovery. G17 adds the separate `loushang-hosted-tui` client.
 - `harnesstui.mux` now includes G16's interactive shell and native terminal
   loop alongside the state, reducer, controller and shared conversation view.
   Its installed `loushang-mux attach` borrows an independently connected client;
   this is not a G15 launch owner.
-- G17 implements AppHost A0.5's optional launch owner, currently uncomposed;
-  the G15 foreground client entrypoint remains missing. Existing `loushang`
+- G17 composes AppHost A0.5's optional launch owner into the foreground client;
+  entry re-review passed and native acceptance remains pending. Existing `loushang`
   and `loushang-tui` remain Embedded routes.
 - AppClient's legacy required surface has no resumable-Session listing operation.
   G17 adds the separate optional discovery contract, codec and profile checks,

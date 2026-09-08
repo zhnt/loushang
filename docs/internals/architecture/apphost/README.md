@@ -26,11 +26,12 @@
   foreground application, G13 durable continuity and G14 foreground connection
   settlement are implemented; G16 has an optional local deployment owner and
   installed Product client/server route delivered on Linux/macOS/Windows;
-  G17 implements A0.5 as an optional uncomposed launch owner
+  G17 implements A0.5 with an explicit foreground Product entry (re-review passed)
 - Activation status: default-dark; the exact installed G10 canary selects
   Hosting. G12/G13 have explicit library construction and the separate G14
   `loushang-hosted` command; G16 has the separate installed `loushang-mux`
-  local route. Ordinary CLI/TUI/SDK defaults are unchanged
+  local route, and G17 adds explicit `loushang-hosted-tui`. Ordinary CLI/TUI/SDK
+  defaults are unchanged
 - Owner: Loushang AppHost architecture
 
 ## Scope
@@ -105,9 +106,9 @@ launch/exit. The separate Coding `loushang-hosted` command composes this edge;
 records real Product validation on Linux, macOS and Windows.
 
 The [accepted G15 design](foreground-hosted-tui-g15.md) specifies A0.5 launch
-ownership and a Harnesstui hosted shell. G17 now implements its optional launcher
-(uncomposed) and cwd/home Session picker; the installed foreground client and
-native acceptance remain pending. G16 separately delivers the shared terminal
+ownership and a Harnesstui hosted shell. G17 now implements its optional launcher,
+explicit Product entry and cwd/home Session picker; entry re-review passed and
+native acceptance remains pending. G16 separately delivers the shared terminal
 shell under detachable connection ownership; G14 EOF remains terminal.
 
 The [accepted G16 design](../appserver/detachable-local-workspace-g16.md)
@@ -188,8 +189,8 @@ The [G17 incremental workflow](hosted-session-workflow-g17.md) has passed its
 independent three-perspective design review for bounded Session discovery, the
 shared shell picker, A0.5 foreground launch ownership and installed three-platform
 acceptance. Discovery values/codec, profiles, Product reads, AppService views and
-the shared picker are implemented. The optional launch owner is uncomposed;
-the installed foreground client and three-platform acceptance remain pending.
+the shared picker are implemented. The optional launch owner is composed into
+the explicit foreground client; entry re-review passed and three-platform acceptance remains pending.
 The activation status above is unchanged.
 
 ## Target
@@ -336,7 +337,7 @@ after Product/OEM admission, never through a derived module name.
 | A0.2 | catalog/router, exact admission-pin verification, idempotent Session create/candidate adapter, and explicit importer over fakes | implemented, uncomposed |
 | A0.3 | canonical live-binding registry, scoped runtime lifecycle, and embedded profile | implemented, uncomposed |
 | A0.4 | optional hosted binder over the contract-only AppServer structural port bundle | implemented, uncomposed |
-| A0.5 | optional serialized launcher | implemented by G17, uncomposed; Product entry/native acceptance pending |
+| A0.5 | optional serialized launcher | composed by G17; Product entry reviewed; native acceptance pending |
 | G8.0 | cross-scope Product/Worker join boundary and executable guards | accepted |
 | G8.1 | Coding Product registration/factory, exact receipt join, and frozen profile projection | implemented, uncomposed |
 | G8.2 | concrete Coding canary normal-close lifecycle and Product compatibility | implemented, uncomposed |

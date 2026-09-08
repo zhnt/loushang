@@ -165,3 +165,102 @@ def test_G17_SETTLEMENT_cleanup_failure_remains_visible_after_terminal_restore()
             await shell.close()
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("expired", [False, True])
+def test_G17_STARTUP_shared_deadline_bounds_attach_before_terminal_takeover(expired):
+    async def scenario():
+        client = _Client()
+        events = []
+        release = asyncio.Event()
+        original_attach = client.attach_mux
+
+        async def attach(request):
+            events.append("attach")
+            await release.wait()
+            return await original_attach(request)
+
+        client.attach_mux = attach
+        shell = _shell(client)
+
+        async def settlement():
+            events.append("settlement")
+            release.set()  # Stand-in for the outer owner's connection reclamation.
+            await shell.close()
+
+        class Mode:
+            def __enter__(self):
+                events.append("terminal.enter")
+
+            def __exit__(self, *args):
+                events.append("terminal.restore")
+
+        stdin, stdout = StringIO(), StringIO()
+        with pytest.raises(TimeoutError):
+            await run_hosted_mux_shell(
+                shell,
+                stdin=stdin,
+                stdout=stdout,
+                session=TerminalSession(stdin, stdout, mode_factory=lambda *args: Mode()),
+                settlement=settlement,
+                startup_deadline=asyncio.get_running_loop().time() + (-1 if expired else 0.02),
+            )
+        assert "terminal.enter" not in events and "settlement" in events
+        assert ("attach" in events) is not expired
+        assert not shell.cleanup_pending
+
+    asyncio.run(scenario())
+
+
+def test_G17_STARTUP_deadline_does_not_limit_ready_terminal_interaction():
+    async def scenario():
+        shell = _shell(_Client())
+        stdin, stdout = StringIO(), StringIO()
+        deadline = asyncio.get_running_loop().time() + 0.05
+
+        async def later_eof(stream):
+            await asyncio.sleep(0.08)
+            assert asyncio.get_running_loop().time() > deadline
+            return ""
+
+        assert await run_hosted_mux_shell(
+            shell, stdin=stdin, stdout=stdout, input_chunk_reader=later_eof,
+            terminal=FakeTerminalPort(size=TerminalSize(columns=80, rows=24)),
+            session=TerminalSession(stdin, stdout), startup_deadline=deadline,
+        ) == 0
+        assert not shell.cleanup_pending
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("foreground", [False, True])
+def test_G17_EXIT_copy_matches_the_selected_application_lifetime(foreground):
+    from loushang.appserver.protocol import MuxSelectorV1, SessionScopeV1
+    from loushang.harnesstui.mux.shell import HostedMuxShellV1
+    from loushang.tui.core import RenderConstraints
+    from loushang.tui.input import InputEvent
+
+    async def scenario():
+        client = _Client()
+        shell = HostedMuxShellV1(
+            client, selector=MuxSelectorV1(name="dev"), product_id="coding",
+            scopes=((SessionScopeV1.CWD, "d" * 64),),
+            exit_ends_application=foreground,
+        )
+        await shell.start()
+        rendered = shell.screen.render(RenderConstraints(width=100, max_height=24))
+        assert ("/exit ends app" in "\n".join(line.text for line in rendered.lines)) is foreground
+        shell.screen.show_help()
+        text = shell.screen._detail.text
+        assert ("ends this application" in text) is foreground
+        assert ("accepted work continues" in text) is not foreground
+        assert ("no background management endpoint" in text) is foreground
+        assert ("create/list/attach/close/stop" in text) is not foreground
+        shell.handle(InputEvent(kind="key", key="escape"))
+        shell.handle(InputEvent(kind="text", text="/exit"))
+        shell.handle(InputEvent(kind="key", key="enter"))
+        assert shell.exit_requested
+        await shell.close()
+        assert [name for name, _ in client.calls].count("detach") == 1
+
+    asyncio.run(scenario())

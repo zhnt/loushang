@@ -12,8 +12,8 @@
 - Design status: accepted after independent three-perspective review and re-review
 - Implementation status: partial — discovery protocol, Product reads, AppService
   views, explicit installed foreground/local wiring and shared picker;
-  uncomposed foreground launch owner; Product client entry and installed
-  acceptance pending
+  foreground launch owner and explicit Product client entry implemented;
+  Product-entry re-review passed; isolated-wheel/native acceptance pending
 - Activation status: explicit opt-in only; Embedded and legacy G14/G16 retained
 - Tracking: [G17 #572](https://github.com/zhnt/loushang/issues/572)
 - Baseline: `3c06f5b9a4309e03dc754511eb012f9e2c23cbcb`
@@ -99,8 +99,8 @@ missing/failed capability access closes that scope. STOP never creates a scope
 or APP hello and retains its reserved connection slot.
 
 Discovery's semantic and installed wire paths and the shared picker are
-composed; the launch owner is implemented but not yet composed into a Product
-client entry. A real installed stdio/local command test is not an
+composed; the launch owner is now composed into the explicit Product client
+entry, with implementation re-review passed. A real installed stdio/local command test is not an
 isolated-wheel or terminal acceptance test. All eight native case families
 remain planned on each platform; subsequent slices must update the inventory
 and required-case manifest as those user paths are delivered.
@@ -431,7 +431,7 @@ ends its child; local detach leaves the independent application/accepted work
 alive. G16 stop stays a separate explicit command. No automatic backgrounding,
 supervisor installation, orphan adoption or active-turn replay is introduced.
 
-### G17.3 Implementation Boundary Check (Product Entry Pending)
+### G17.3 Implementation Boundary Check
 
 The architecture follow-up accepts an optional async settlement callback in the
 terminal runner: Product composition binds it to the launch owner's close,
@@ -773,7 +773,8 @@ launch owner and its fault matrix are tracked separately below.
 
 The optional `apphost.launcher` now adopts a dedicated Hosting port, retains late
 leases and exposes borrowed semantic clients only after the selected hello is
-ready. Product command composition remains pending. The pipe adapter bounds
+ready. At this owner-slice baseline Product composition was still pending; the
+subsequent Product entry is tracked below. The pipe adapter bounds
 reads to 64 KiB and writes to 1 MiB, with one lock across every chunk of a frame,
 including the four-byte header. Its close requests EOF only; it does not take
 process ownership from Hosting.
@@ -807,3 +808,148 @@ in 8.27 seconds (`.artifacts/g17-launcher-regression.xml`). The AppService Ruff
 gate and mypy on 69 source files passed. The optional owner and private adapter
 remain within the accepted 550-line budget; exact dependency and default-dark
 core gates remain enforced. These are not the G17.4 required-case reports.
+
+## G17.3 Product Entry And Failure-Reclamation Supplement
+
+The separate `loushang-hosted-tui` entry now composes the owner and shared shell.
+Its single optional Product module has a 450-line budget. Project dependencies
+are lazy and exactly gated; default Embedded, G14 and G16 routes do not import it.
+Example (the application directory's parent and workspace must already exist):
+
+```bash
+loushang-hosted-tui --workspace /work/project \
+  --application-root /private/applications/coding \
+  --cwd-sessions /private/sessions/project \
+  --home-sessions /private/sessions/global --mux main
+```
+
+`--describe` is read-only, pathless and usable without a terminal. Interactive
+mode requires both terminal input and output before any launch effect. The
+selected mux is read first; only exact `NOT_FOUND` creates it once. Unknown
+mutation outcomes are not retried. The returned stable mux ID, rather than its
+name, binds attachment. Empty muxes do not silently create Sessions. The picker
+gets the explicitly admitted discovery port, never a legacy fallback.
+
+Product freezes the complete request and effective environment, retaining the
+venv interpreter's `sys.executable` path. The fixed child argv uses `-I -m
+loushang.coding.cli.hosted` and the explicit discovery profile. Workspace and
+`PYTHONPATH`/`PYTHONHOME` cannot substitute a module; there is no weaker fallback.
+The selected interpreter must see the installation without user-site packages.
+Preparation checks the whole request and rechecks executable/workspace identity
+before spawn. This trusts the installed environment; it is not H6 sealed
+execution, a sandbox, or a claim that stat checks eliminate filesystem races.
+
+One startup budget starts at Product `main` entry, covering subsequent lazy
+imports, preparation, the child's cold imports/recovery/hello and mux selection
+and attachment. It does not cover Python's earlier console-script bootstrap or
+Coding facade initialization. Synchronous imports cannot be preempted, so every
+subsequent admission checks expiry. Elapsed monotonic time is converted to the
+event loop's deadline, not treated as the same absolute clock. The terminal
+runner applies that deadline only to attachment; ready interaction has no
+startup timeout. No late response can publish a shell after the Product close
+fence. Terminal restoration precedes outer settlement.
+
+The presentation-only `exit_ends_application` choice changes foreground help
+and footer: `/exit`, `/detach`, Ctrl+B d, empty-editor Ctrl+D and terminal EOF
+end the foreground application. There is no background management endpoint for
+this child. Default local presentation continues to promise detach/accepted-work
+survival, with G16's separate management commands.
+
+### Physical Reclamation Debt At The Outermost Controller
+
+The controller is the child's only process owner. Unlike the hosted child, it
+cannot call `os._exit` merely because a 20-second settlement attempt expired.
+That would discard the POSIX process-group owner and could orphan the child.
+The optional launcher's pathless `process_cleanup_pending` is a conservative
+proof: startup has actually ended, any published process lease closed
+successfully, and the dedicated Hosting port closed successfully. An exit code,
+terminate return or forced-exit flag alone never proves physical reclamation.
+The existing `cleanup_pending` still includes unresolved UI/protocol work.
+
+The already-authorized physical watchdog closes the lease and dedicated host
+independently of UI/protocol settlement, including normal child exit. A failed
+physical phase is only retried under an explicit later budget; successful or
+in-flight phases remain retained. Physical cleanup is not new Product execution.
+
+After an unsuccessful bounded attempt, terminal mode has been restored and the
+controller visibly retains its Runner and existing cleanup tasks. It continues
+driving that event loop; it does not block it with synchronous input. The prompt
+explains that **Ctrl+C now explicitly retries cleanup**, granting at most another
+20 seconds. Ordinary repetition, EOF or missing stdin neither grants a retry nor
+abandons the owner. This recovery mode starts no second stdin reader: a previous
+UI waiter may still own input. It never restarts a child or replays a business
+mutation, changes the detach binding, or resets the graceful cutoff.
+
+A continuous, non-raising SIGINT handler covers the entire controller holding
+period, including synchronous diagnostic output and Runner handoffs. Its first
+interrupt cancels the active interaction once; subsequent signals record retry
+intent, and debt-mode signals only request cleanup. Signals during a retry are
+coalesced as later intent, not cancellation of the cleanup owner. Broken or
+closed stderr is best-effort diagnostic failure, never permission to abandon
+the physical owner. The prior signal handler is restored only after physical
+reclamation, before ordinary Runner shutdown.
+
+Only after physical reclamation is proven may the outer process use a nonzero
+fatal exit to release remaining client-only debt. It prints
+`hosted_cleanup_incomplete`; this exception is not a claim of complete semantic
+settlement. Forced, unknown or nonzero child exit also cannot become a zero
+Product result. The entry/failure supplement has passed implementation re-review;
+the real-child/fake-terminal tests do not replace G17.4's required native cases.
+
+### Product Increment Review And Local Evidence
+
+All three independent perspectives approved the Product increment after the
+admission, startup deadline, foreground/local copy, physical-owner abandonment,
+continuous SIGINT and broken-diagnostic fixes. No P1/P2 remained in that review.
+The complete affected AppService gate passed 785 tests with 10 native-platform
+skips in 428.78 seconds (`.artifacts/g17-product-entry.xml`), plus Ruff and mypy
+on 70 source files. A subsequent fixture-only correction was rerun separately.
+
+The installed `loushang-hosted-tui --help` command starts successfully. Three
+additional real-command/native-terminal cases passed in 65.87 seconds
+(`.artifacts/g17-terminal-entry.xml`): ready/foreground exit, cwd picker/history
+restore/relaunch, and home picker/history restore/relaunch under a different
+admitted execution cwd. Each history case retains its single canonical Session
+file, and the second process renders the restored message without recreating a
+Session or replaying work. These cases are now included in both local gates.
+
+The subsequent terminal-fixture review found that killing only the PTY
+controller's process group could abandon its separately grouped Hosted child
+after a failed assertion. The foreground-only test context now first requests
+SIGINT settlement on POSIX (terminal exit intent on Windows) and gives the owner
+its full close budget. If needed, POSIX cleanup freezes the still-owned parent
+before recursively adopting its actual descendants, bounds adoption to 128
+descendants and a shared ten-second deadline, then terminates the adopted
+descendants before restoring the controller to reap them. Every exceptional
+path resumes its stopped processes in descendant-before-parent order. This is
+a controlled Python test-tree guard, not hostile-process containment; no Product
+process policy or generic terminal driver semantics changed.
+
+Five real native cases passed after the initial cleanup fix in 89.46 seconds
+(`.artifacts/g17-terminal-entry-reclamation.xml`), including an intentionally
+failed predicate against the real Product and an unresponsive test controller
+whose child has a separate process group. Both failure cases check that the
+observed child PID is gone after settlement. The history/entry cases themselves
+observe command exit and rendered history; they do not independently prove
+terminal-mode restoration or child reaping. These remain explicit G17.4 duties.
+After tightening the per-node and remaining-time bounds, all four selected
+cleanup regressions passed in 15.14 seconds (three unrelated cases deselected;
+`.artifacts/g17-terminal-cleanup-guard.xml`). The two added guard cases prove
+that over-capacity adoption resumes stopped processes without partial killing,
+and that `ps` receives only the remaining time budget. The G15/G16/G17
+architecture subset also passed all 11 tests; Ruff and mypy on 70 source files
+passed again. Required installed evidence remains unchanged and pending.
+
+The physical-debt regression also uses an actual POSIX child: while termination
+is deliberately held past a shortened test close budget, the controller remains
+alive after terminal restoration and the child is demonstrably still live.
+After releasing the retained cleanup, the child is reaped before the controller
+exits nonzero. Separate real-SIGINT tests cover synchronous status output and a
+second signal during retry; broken/closed stderr and stdin EOF cannot abandon
+the owner. These local tests do not claim hostile external-kill survivability.
+
+Product is 367/450 lines, launcher 444/550, and the exact four-file shared
+presentation group 944/950. These results close the local G17.3 implementation
+increment, not G17.4. The terminal cases used this editable installation on
+Linux; isolated wheel origins/bytes and all eight required case families on
+Linux, macOS and Windows remain unverified and are not marked accepted.

@@ -194,6 +194,17 @@ class HostedForegroundClientV1:
         return not self._settled
 
     @property
+    def process_cleanup_pending(self) -> bool:
+        """Physical reclamation proof, independent of remaining UI debt."""
+        if self._startup is not None and not self._startup.done():
+            return True
+        names = ("host", "lease") if self._lease is not None else ("host",)
+        return any(
+            (task := self._phases.get(name)) is None or not task.done() or _failed(task)
+            for name in names
+        )
+
+    @property
     def forced_exit(self) -> bool:
         return self._forced
 
@@ -333,23 +344,23 @@ class HostedForegroundClientV1:
                 {self._exit},
                 timeout=max(0, self._cutoff - asyncio.get_running_loop().time()),
             )
-        if not self._exit.done() or _failed(self._exit):
-            if self._exit.done():
-                await asyncio.sleep(
-                    max(0, self._cutoff - asyncio.get_running_loop().time())
-                )
-            await self._reclaim()
+        if self._exit.done() and _failed(self._exit):
+            await asyncio.sleep(
+                max(0, self._cutoff - asyncio.get_running_loop().time())
+            )
+        await self._reclaim()
 
     async def _reclaim(self, *, retry: bool = False) -> None:
         assert self._lease is not None
-        try:
-            await asyncio.shield(
-                self._phase("terminate", self._terminate, retry=retry, mandatory=True)
-            )
-        except Exception:
-            # Hosting.close owns fallback handle/tree reclamation even when
-            # terminate or the exit observation failed. Do not gate it on IO.
-            self._forced = True
+        assert self._exit is not None
+        if self._forced or not self._exit.done() or _failed(self._exit):
+            try:
+                await asyncio.shield(
+                    self._phase("terminate", self._terminate, retry=retry, mandatory=True)
+                )
+            except Exception:
+                # Hosting.close still owns last-resort handle/tree reclamation.
+                self._forced = True
         await asyncio.shield(
             self._phase(
                 "lease",
@@ -357,6 +368,9 @@ class HostedForegroundClientV1:
                 retry=retry,
                 mandatory=True,
             )
+        )
+        await asyncio.shield(
+            self._phase("host", self._host.close, retry=retry, mandatory=True)
         )
 
     async def _terminate(self) -> None:

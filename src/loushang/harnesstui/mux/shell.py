@@ -52,9 +52,11 @@ class HostedMuxShellV1:
         scopes: tuple[tuple[SessionScopeV1, str], ...],
         close_timeout: float = 5.0,
         discovery_client: SessionDiscoveryClientV1 | None = None,
+        exit_ends_application: bool = False,
     ) -> None:
         if (
-            type(close_timeout) not in (float, int)
+            type(exit_ends_application) is not bool
+            or type(close_timeout) not in (float, int)
             or not 0 < close_timeout <= 20
             or not 1 <= len(scopes) <= 2
         ):
@@ -64,6 +66,7 @@ class HostedMuxShellV1:
         if len({scope for scope, _ in scopes}) != len(scopes):
             raise ValueError("ambiguous hosted scope")
         self._client, self._selector = client, selector
+        self.exit_ends_application = exit_ends_application
         self._product_id, self._scopes = product_id, dict(scopes)
         self._controller = HostedMuxControllerV1(client, selector=selector)
         self._actions = ShellActions(self._failed)
