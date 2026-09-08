@@ -169,7 +169,7 @@ def unknown(path):
 
 
 def complete(path):
-    """Native observer has proved registered exits, reaping and terminal restore."""
+    """Observer proved physical exit/reaping; any failed terminal verdict remains a test failure."""
     with _locked(Path(path).parent):
         value = _read(path)
         if value["phase"] == "closed":

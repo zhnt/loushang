@@ -11,6 +11,26 @@ from pathlib import Path
 ROOT = Path("docs/internals/architecture/apphost")
 
 
+def test_G17_DARWIN_native_entry_supplement_keeps_full_wheel_pending():
+    from tests.coding import test_hosted_darwin_evidence as native
+
+    name = "hosted-session-workflow-g17-darwin-native-manifest.json"
+    row = json.loads((ROOT / name).read_text())["reports"]["G17-DARWIN-NATIVE"]
+    test = native.test_G17_TERMINAL_DARWIN_modes_and_physical_exit
+    marker = next(mark for mark in test.pytestmark if mark.name == "parametrize")
+    assert row["requiredCaseIds"] == [parameter.id for parameter in marker.args[1]]
+    assert row["minimumTests"] == 3
+    assert row["requiredProperties"] == {"native_platform": "darwin", "terminal_backend": "posix-pty"}
+    wheel = json.loads((ROOT / "hosted-session-workflow-g17-evidence-manifest.json").read_text())
+    assert wheel["reports"]["G17-WHEEL-DARWIN"]["status"] == "planned"
+    workflow = Path(".github/workflows/appservice-quality.yml").read_text()
+    job = workflow.split("  g17-darwin-native:\n", 1)[1].split("\n  g17-darwin-primitives:", 1)[0]
+    assert name in job and row["junitPath"] in job
+    assert "runs-on: macos-15" in job and "--locked" in job
+    assert "tests/coding/test_hosted_darwin_evidence.py" in job
+    assert "if: always()" in job and "if-no-files-found: error" in job
+
+
 def test_G17_DARWIN_primitives_do_not_claim_installed_or_terminal_acceptance():
     from tests.coding import test_hosted_darwin_primitives as native
 

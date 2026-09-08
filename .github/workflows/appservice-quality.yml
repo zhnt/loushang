@@ -10,6 +10,35 @@ permissions:
   contents: read
 
 jobs:
+  g17-darwin-native:
+    name: g17-darwin-native
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@v5
+      - name: Install locked dependencies
+        run: uv --cache-dir .uv-cache sync --locked --extra dev
+      - name: Exercise retained native CLI workflows
+        run: >-
+          uv --cache-dir .uv-cache run python scripts/dev/run_pytest.py
+          tests/coding/test_hosted_darwin_evidence.py
+          --junitxml=.artifacts/g17-darwin-native.xml -q -m "not live"
+      - name: Verify exact native cases and zero skips
+        run: >-
+          uv --cache-dir .uv-cache run python scripts/dev/verify_evidence_manifest.py
+          docs/internals/architecture/apphost/hosted-session-workflow-g17-darwin-native-manifest.json
+          G17-DARWIN-NATIVE .artifacts/g17-darwin-native.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: g17-darwin-native
+          path: .artifacts/g17-darwin-native.xml
+          if-no-files-found: error
+
   g17-darwin-primitives:
     name: g17-darwin-primitives
     runs-on: macos-15

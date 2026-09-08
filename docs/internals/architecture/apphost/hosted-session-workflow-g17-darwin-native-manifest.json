@@ -1,0 +1,19 @@
+{
+  "manifestVersion": 1,
+  "reports": {
+    "G17-DARWIN-NATIVE": {
+      "junitPath": ".artifacts/g17-darwin-native.xml",
+      "minimumTests": 3,
+      "requiredCaseIds": [
+        "G17-DARWIN-ENTRY",
+        "G17-DARWIN-PUBLICATION-CANCEL",
+        "G17-DARWIN-FORCED-EXIT"
+      ],
+      "requiredProperties": {
+        "native_platform": "darwin",
+        "terminal_backend": "posix-pty"
+      },
+      "status": "implemented"
+    }
+  }
+}

@@ -200,8 +200,12 @@ The retained CLI witness protocol is implemented and three-view reviewed, with
 Linux real-PTY controls; macOS CLI observation and its full wheel gate,
 three-platform CI acceptance and delivery remain pending; the default editable
 suite does not activate the dedicated wheel-only selector.
-The latest `1264a79e` Windows quality run was cancelled after three G14
-real-child failures; earlier green quality is not current-head closure.
+The `1264a79e` Windows quality run was cancelled after three G14 real-child
+failures; the subsequent `75fe6a48` AppService workflow passed all 13 jobs,
+including Windows quality (952 passed, 61 skipped). This rerun does not identify
+the cause of the earlier failures. The retained Darwin observer now composes
+three native entry/cancel/forced-exit cases, with actual CI still required;
+recovery cancellation and full eight-family wheel acceptance remain pending.
 The activation status above is unchanged.
 
 ## Target

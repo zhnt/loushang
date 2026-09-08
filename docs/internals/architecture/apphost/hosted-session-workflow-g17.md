@@ -1718,3 +1718,49 @@ architecture, lifecycle and contract review approved this corrected slice.
 This is not yet a native Darwin CLI selector: integration with frozen-parent
 descendant admission, kqueue proof, the whole-scenario scope and all eight
 installed families remains required. No complete Darwin manifest is activated.
+
+The `75fe6a48efc7ce2857bee95f4e5bf0ed0a5de6b7` AppService workflow
+`34230795867` passed all 13 jobs. Windows quality `102076122374` passed 952
+tests with 61 skips in 544.27 seconds; the three preceding G14 real-child
+failures did not recur. This is a passing rerun, not a proven diagnosis of the
+earlier failures. Both complete Linux/Windows wheel jobs, the Darwin primitive
+job, Windows native supplement and all six G16 native/wheel jobs also passed.
+
+### Darwin Native Entry Observer Composition
+
+The next increment composes actual installed CLI entry, publication cancellation
+and stopped-Hosted forced exit in a separate three-case native manifest/job.
+The underlying CLI, Hosting backend, grace/force budgets and terminal renderer
+are unchanged. Recovery cancellation and the full eight-family wheel selector
+remain outstanding; the complete Darwin manifest stays planned.
+
+Before the witness starts, the observation is registered beneath the retained
+pytest supervisor. The observer samples witness diagnostics once and requires
+the original PID to be live. It then stops the witness-retained CLI and walks a
+bounded, unbranched Hosted chain. Each descendant signal requires current
+ancestry and its original parent still stopped; kqueue registration is followed
+by a second frozen-chain check. Resume checks these facts again and rejects any
+observed exit or changed identity. Invalid admission remains sticky. Normal
+resume runs descendants before the CLI; forced exit leaves Hosted processes
+stopped and lets the unchanged Product cleanup do the actual termination.
+
+Completion requires registered exit events plus disappearance of every Hosted
+PID, including zombies, then matching witness exit/reap receipts and CLI
+disappearance. Inner scope closure precedes witness release; outer scope closure
+follows witness exit and terminal-driver/watch release. All admission/completion
+file IO retries retain this same chain and proof, including atomic publication
+that committed before acknowledgement failed. No retry repeats spawn, freeze,
+exit intent or completed reap. Schema/identity/native observation failures remain
+unknown and keep the owner stack; no generic PID/tree fallback may bypass debt.
+
+Physical completion and user acceptance are distinct. A known terminal-mode or
+exit-code failure retains its failed verdict while the proven-exited chain is
+precisely reclaimed; it never restores modes in the fixture to manufacture a
+pass. The user-exit deadline is non-renewable and checked again at the successful
+return boundary, even if the final cleanup step crossed the deadline.
+
+Architecture, lifecycle and contract re-review approved the corrected observer.
+The observer/witness/API/registry/architecture selection passed 108 tests in
+6.76 seconds (`.artifacts/g17-native-observer-reviewed.xml`); Ruff, Actionlint
+and diff checks passed. Native macOS execution of these three cases is still
+required, and this selection is not installed eight-family acceptance.
