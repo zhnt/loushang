@@ -1566,6 +1566,18 @@ remains required to close these
 two reported failures; the failure stack alone did not establish a Product
 resource-refresh deadlock.
 
+The subsequent `d4e7289a80cece8bf8285b9be2a2683e524651bd` AppService workflow
+`34226302166` completed successfully across all 12 jobs. Windows quality
+`102061158395` passed 911 tests with 50 skips in 568.37 seconds; the two earlier
+failures are absent. Required installed reports remain separate from quality
+skips: Windows `102061158210` passed eight tests in 173.72 seconds and Linux
+`102061158241` passed eight in 136.96 seconds, each with exact-manifest validation
+and zero skips/failures/errors. Their wheel SHA-256 values were respectively
+`52f7ebab961b59d7c77a5e66209994d1f4381527183e6190f5e09a36621278cc` and
+`ab5280cc9fb673d81c284c9ed38d377d1b67e578d8be2176f4abc4a3aacda93e`.
+The Windows native supplement, all six G16 native/wheel jobs and Linux/macOS
+quality also passed. This head still supplies no G17 native Darwin report.
+
 ## G17.4 Darwin Observation Admission Guard
 
 The first Darwin infrastructure slice supplies a POSIX observation registry,
@@ -1614,3 +1626,34 @@ Darwin's retained CLI witness, public waitid/WNOWAIT and kqueue observation,
 whole-scenario physical-proof retention, cancellation/forced-exit cases and
 full wheel CI composition remain required. Completing this registry alone
 must not change the Darwin manifest from planned or satisfy G17-INSTALLED.
+
+### Darwin Public-API Primitive Supplement
+
+The next test-only slice composes five native cases: unreaped exit observation,
+registered exit events, a confirmed stop/resume heartbeat barrier, and sticky
+rejection of unexpected fork/exec topology. The dedicated macOS job checks the
+exact five-case primitive manifest with zero skips. It does not claim an
+installed CLI, restored terminal modes or complete eight-family acceptance;
+the full Darwin manifest remains planned.
+
+The bindings use public Darwin `waitid(P_PID, WNOHANG | WEXITED | WNOWAIT)` and
+kqueue process filters. The owning parent must retain its child until explicit
+reap authorization; a kqueue event alone grants no signal authority. ABI fields
+use explicit Darwin 64-bit widths even when portable controls run on Windows.
+`EV_RECEIPT` uses its public numeric value because CPython 3.11 does not export
+that constant. Exit observation waits for both the exit event and the exact
+waitable exit code within one deadline, without assuming those kernel states
+become visible simultaneously.
+
+Primitive child fixtures run isolated Python with `-I -S` in an independent
+POSIX session. Fork parents retain their actual reaping obligation through
+interrupts and marker-publication failure. Portable controls send a real
+process-group SIGINT and inject an actual post-fork file-write error, then
+verify live ancestry and final child/parent absence after actual waitpid.
+Cleanup diagnostics cannot break the continuous interrupt guard.
+
+Architecture, lifecycle and contract re-review approved the corrected slice.
+Portable/API/architecture regressions passed 27 tests in 1.47 seconds
+(`.artifacts/g17-darwin-primitives-reviewed.xml`); Ruff and diff checks passed.
+Native macOS execution is still required. This supplement is preparation for,
+not a replacement for, the retained CLI witness and whole-workflow observer.

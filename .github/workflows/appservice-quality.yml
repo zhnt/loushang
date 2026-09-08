@@ -10,6 +10,35 @@ permissions:
   contents: read
 
 jobs:
+  g17-darwin-primitives:
+    name: g17-darwin-primitives
+    runs-on: macos-15
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@v5
+      - name: Install locked dependencies
+        run: uv --cache-dir .uv-cache sync --locked --extra dev
+      - name: Exercise public native observation primitives
+        run: >-
+          uv --cache-dir .uv-cache run python scripts/dev/run_pytest.py
+          tests/coding/test_hosted_darwin_primitives.py
+          --junitxml=.artifacts/g17-darwin-primitives.xml -q -m "not live"
+      - name: Verify exact primitive cases and zero skips
+        run: >-
+          uv --cache-dir .uv-cache run python scripts/dev/verify_evidence_manifest.py
+          docs/internals/architecture/apphost/hosted-session-workflow-g17-darwin-primitives-manifest.json
+          G17-DARWIN-PRIMITIVES .artifacts/g17-darwin-primitives.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: g17-darwin-primitives
+          path: .artifacts/g17-darwin-primitives.xml
+          if-no-files-found: error
+
   g17-wheel-evidence:
     name: g17-wheel-${{ matrix.platform }}
     strategy:

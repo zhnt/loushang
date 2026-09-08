@@ -1,0 +1,21 @@
+{
+  "manifestVersion": 1,
+  "reports": {
+    "G17-DARWIN-PRIMITIVES": {
+      "junitPath": ".artifacts/g17-darwin-primitives.xml",
+      "minimumTests": 5,
+      "requiredCaseIds": [
+        "G17-DARWIN-WNOWAIT",
+        "G17-DARWIN-EXIT-WATCH",
+        "G17-DARWIN-STOP-BARRIER",
+        "G17-DARWIN-FORK-REJECT",
+        "G17-DARWIN-EXEC-REJECT"
+      ],
+      "requiredProperties": {
+        "native_platform": "darwin",
+        "observation_backend": "waitid-kqueue"
+      },
+      "status": "implemented"
+    }
+  }
+}

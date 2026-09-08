@@ -11,6 +11,28 @@ from pathlib import Path
 ROOT = Path("docs/internals/architecture/apphost")
 
 
+def test_G17_DARWIN_primitives_do_not_claim_installed_or_terminal_acceptance():
+    from tests.coding import test_hosted_darwin_primitives as native
+
+    name = "hosted-session-workflow-g17-darwin-primitives-manifest.json"
+    row = json.loads((ROOT / name).read_text())["reports"]["G17-DARWIN-PRIMITIVES"]
+    test = native.test_G17_DARWIN_public_observation_primitives
+    marker = next(mark for mark in test.pytestmark if mark.name == "parametrize")
+    assert row["requiredCaseIds"] == marker.args[1]
+    assert row["minimumTests"] == 5
+    assert row["requiredProperties"] == {
+        "native_platform": "darwin", "observation_backend": "waitid-kqueue",
+    }
+    wheel = json.loads((ROOT / "hosted-session-workflow-g17-evidence-manifest.json").read_text())
+    assert wheel["reports"]["G17-WHEEL-DARWIN"]["status"] == "planned"
+    workflow = Path(".github/workflows/appservice-quality.yml").read_text()
+    job = workflow.split("  g17-darwin-primitives:\n", 1)[1].split("\n  g17-wheel-evidence:", 1)[0]
+    assert name in job and row["junitPath"] in job
+    assert "runs-on: macos-15" in job and "--locked" in job
+    assert "tests/coding/test_hosted_darwin_primitives.py" in job
+    assert "if: always()" in job and "if-no-files-found: error" in job
+
+
 def test_G17_WINDOWS_native_supplement_is_not_full_wheel_acceptance() -> None:
     from tests.coding import test_hosted_windows_evidence as native
 
