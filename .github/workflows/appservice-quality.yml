@@ -1,16 +1,18 @@
 name: AppService Quality
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
+  workflow_call:
+    inputs:
+      plan:
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 jobs:
   g17-darwin-native:
+    if: ${{ fromJSON(inputs.plan).checks.appservice }}
     name: g17-darwin-native
     runs-on: macos-15
     timeout-minutes: 10
@@ -40,6 +42,7 @@ jobs:
           if-no-files-found: error
 
   g17-darwin-primitives:
+    if: ${{ fromJSON(inputs.plan).checks.appservice }}
     name: g17-darwin-primitives
     runs-on: macos-15
     timeout-minutes: 5
@@ -69,6 +72,7 @@ jobs:
           if-no-files-found: error
 
   g17-wheel-evidence:
+    if: ${{ fromJSON(inputs.plan).checks.appservice }}
     name: g17-wheel-${{ matrix.platform }}
     strategy:
       fail-fast: false
@@ -105,6 +109,7 @@ jobs:
           if-no-files-found: error
 
   g17-windows-native:
+    if: ${{ fromJSON(inputs.plan).checks.appservice }}
     name: g17-windows-native
     runs-on: windows-latest
     timeout-minutes: 20
@@ -134,6 +139,7 @@ jobs:
           if-no-files-found: error
 
   appservice-quality:
+    if: ${{ fromJSON(inputs.plan).checks.appservice }}
     name: appservice-quality-${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -160,6 +166,7 @@ jobs:
         run: make check-appservice
 
   g16-native-evidence:
+    if: ${{ fromJSON(inputs.plan).checks.appservice }}
     name: g16-native-${{ matrix.platform }}
     strategy:
       fail-fast: false
@@ -202,6 +209,7 @@ jobs:
           if-no-files-found: error
 
   g16-wheel-evidence:
+    if: ${{ fromJSON(inputs.plan).checks.appservice }}
     name: g16-wheel-${{ matrix.platform }}
     strategy:
       fail-fast: false
@@ -236,3 +244,18 @@ jobs:
           name: g16-wheel-${{ matrix.platform }}
           path: .artifacts/g16-wheel-${{ matrix.platform }}.xml
           if-no-files-found: error
+
+  selected-checks:
+    name: Selected checks
+    if: always()
+    needs: [appservice-quality, g16-native-evidence, g16-wheel-evidence, g17-darwin-native, g17-darwin-primitives, g17-wheel-evidence, g17-windows-native]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify selected jobs
+        env:
+          CI_PLAN: ${{ inputs.plan }}
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: >-
+          python scripts/ci/verify_gate.py
+          --jobs '{"appservice-quality":"appservice","g16-native-evidence":"appservice","g16-wheel-evidence":"appservice","g17-darwin-native":"appservice","g17-darwin-primitives":"appservice","g17-wheel-evidence":"appservice","g17-windows-native":"appservice"}'

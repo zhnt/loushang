@@ -30,7 +30,9 @@ def test_package_controller_installs_local_package_updates_settings_and_refreshe
 ) -> None:
     local_package = tmp_path / "local-pack"
     local_package.mkdir()
-    settings = SettingsManager(ControlConfig())
+    settings = SettingsManager(
+        ControlConfig(), project_settings_path=tmp_path / "settings.json"
+    )
     materializer = PackageMaterializer(install_root=tmp_path / "packages")
     resource_loader = DefaultResourceLoader()
     refreshes: list[str] = []
@@ -63,7 +65,9 @@ def test_package_controller_installs_local_package_updates_settings_and_refreshe
 def test_package_controller_installs_python_package_updates_settings_and_refreshes_once(
     tmp_path,
 ) -> None:
-    settings = SettingsManager(ControlConfig())
+    settings = SettingsManager(
+        ControlConfig(), project_settings_path=tmp_path / "settings.json"
+    )
     resource_loader = DefaultResourceLoader()
     refreshes: list[str] = []
 

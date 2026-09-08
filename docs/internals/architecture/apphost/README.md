@@ -26,7 +26,8 @@
   foreground application, G13 durable continuity and G14 foreground connection
   settlement are implemented; G16 has an optional local deployment owner and
   installed Product client/server route delivered on Linux/macOS/Windows;
-  G17 implements A0.5 with an explicit foreground Product entry (re-review passed)
+  G17 implements A0.5 with an explicit foreground Product entry and accepted
+  three-platform native/isolated-wheel evidence; mainline promotion is pending
 - Activation status: default-dark; the exact installed G10 canary selects
   Hosting. G12/G13 have explicit library construction and the separate G14
   `loushang-hosted` command; G16 has the separate installed `loushang-mux`
@@ -190,30 +191,16 @@ independent three-perspective design review for bounded Session discovery, the
 shared shell picker, A0.5 foreground launch ownership and installed three-platform
 acceptance. Discovery values/codec, profiles, Product reads, AppService views and
 the shared picker are implemented. The optional launch owner is composed into
-the explicit foreground client; entry re-review passed. G17.4's complete eight-family
-Linux and Windows isolated-wheel CI passed all eight families with zero skips
-on `d4e7289a`; the Windows five-case native supplement, all six G16 native/
-wheel jobs and all three platform quality jobs also passed. The two earlier
-Windows quality failures are absent in this rerun. Darwin public-API primitives
-and their dedicated five-case CI gate passed with zero skips on `1264a79e`.
-The retained CLI witness protocol is implemented and three-view reviewed, with
-Linux real-PTY controls; macOS CLI observation and its full wheel gate,
-three-platform CI acceptance and delivery remain pending; the default editable
-suite does not activate the dedicated wheel-only selector.
-The `1264a79e` Windows quality run was cancelled after three G14 real-child
-failures; the subsequent `75fe6a48` AppService workflow passed all 13 jobs,
-including Windows quality (952 passed, 61 skipped). This rerun does not identify
-the cause of the earlier failures. On `937bc55c`, the three Darwin native
-entry/cancel/forced-exit cases and five public-API primitives passed with zero
-skips. That AppService workflow passed 13 of 14 jobs: Windows quality failed
-seven simulated Darwin signal tests because Windows has no `SIGSTOP`. Those
-controls now use module-local simulated signal constants without skipping tests.
-Recovery cancellation now composes seed, cancellation and relaunch under one
-retained scenario owner; its fourth native CI case is pending. Full Darwin
-eight-family wheel composition is now implemented, including native-owned
-cwd/global picker workflows and the macOS wheel matrix job. This is executable
-gate status only: actual Darwin eight-family acceptance and final three-platform
-delivery remain pending.
+the explicit foreground client; entry and implementation re-reviews passed.
+On `49952155`, [AppService CI](https://github.com/zhnt/loushang/actions/runs/34245326853)
+passed all 15 jobs: all eight installed workflow families on each of Linux,
+macOS and Windows with zero skips; four Darwin native workflows; six Darwin
+public-API primitives, including owned-group settlement; five Windows native
+cases; all six G16 native/wheel jobs; and all three platform quality jobs.
+The default editable suite does not activate the dedicated wheel-only selector.
+Historical failures and their corrections remain in the incremental workflow
+record. Mainline CI integration, final PR promotion and local refresh remain
+pending; the accepted pre-integration run does not prove a later merge head.
 The activation status above is unchanged.
 
 ## Target
@@ -360,7 +347,7 @@ after Product/OEM admission, never through a derived module name.
 | A0.2 | catalog/router, exact admission-pin verification, idempotent Session create/candidate adapter, and explicit importer over fakes | implemented, uncomposed |
 | A0.3 | canonical live-binding registry, scoped runtime lifecycle, and embedded profile | implemented, uncomposed |
 | A0.4 | optional hosted binder over the contract-only AppServer structural port bundle | implemented, uncomposed |
-| A0.5 | optional serialized launcher | composed by G17; Product entry reviewed; native acceptance pending |
+| A0.5 | optional serialized launcher | composed by G17; three-platform acceptance on `49952155`; promotion pending |
 | G8.0 | cross-scope Product/Worker join boundary and executable guards | accepted |
 | G8.1 | Coding Product registration/factory, exact receipt join, and frozen profile projection | implemented, uncomposed |
 | G8.2 | concrete Coding canary normal-close lifecycle and Product compatibility | implemented, uncomposed |

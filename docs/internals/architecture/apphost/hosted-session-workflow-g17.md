@@ -10,10 +10,12 @@
 - Kind: incremental cross-scope contract and delivery design
 - Authority: normative accepted incremental design; inherits G15/G16 boundaries
 - Design status: accepted after independent three-perspective review and re-review
-- Implementation status: partial — discovery protocol, Product reads, AppService
+- Implementation status: implemented — discovery protocol, Product reads, AppService
   views, explicit installed foreground/local wiring and shared picker;
   foreground launch owner and explicit Product client entry implemented;
-  Product-entry re-review passed; isolated-wheel/native acceptance pending
+  Product-entry and implementation re-reviews passed; three-platform
+  isolated-wheel/native acceptance passed on `49952155`
+- Delivery status: mainline integration and promotion pending
 - Activation status: explicit opt-in only; Embedded and legacy G14/G16 retained
 - Tracking: [G17 #572](https://github.com/zhnt/loushang/issues/572)
 - Baseline: `3c06f5b9a4309e03dc754511eb012f9e2c23cbcb`
@@ -1929,7 +1931,7 @@ design review is required for helper-process evidence. This commit neither
 ignores that event nor relaxes the sticky-unknown ownership rule. Full Darwin
 acceptance and mainline promotion remain outstanding.
 
-### Darwin Owned-Group Evidence Correction (Implemented, Native Acceptance Pending)
+### Darwin Owned-Group Evidence Correction (Accepted On `49952155`)
 
 The confirmed fork exposes a mismatch between the fixed-chain test and the
 accepted [H2 owned-tree contract](../hosting/process-platform-h2.md#common-platform-contract).
@@ -2042,4 +2044,44 @@ complete affected launcher, observer, witness, registry, runner and architecture
 selection then passed all 232 tests in 39.26 seconds
 (`.artifacts/g17-owned-group-complete-local.xml`), with `make lint-appservice`
 and diff checks clean. These are local Linux results; the required six-case
-Darwin primitive, native workflow and complete wheel reports remain pending.
+Darwin primitive, native workflow and complete wheel reports were still pending
+at that local verification point. The following native run closes that gap.
+
+### Three-Platform Acceptance And Mainline CI Integration
+
+Commit `4995215553e9518e5dc1d0645a6e4c8ec4cbe88f` passed all 11 remote
+workflows. [AppService run 34245326853](https://github.com/zhnt/loushang/actions/runs/34245326853)
+completed all 15 jobs successfully. Its retained native and isolated-wheel
+reports prove the unchanged installed acceptance matrix:
+
+| Evidence | Result | Job |
+| --- | --- | --- |
+| Linux isolated wheel | 8 families, zero skips | `102125718321` |
+| Darwin isolated wheel | 8 families, zero skips | `102125718224` |
+| Windows isolated wheel | 8 families, zero skips | `102125718511` |
+| Darwin retained CLI workflows | 4 cases, zero skips | `102125717978` |
+| Darwin public-API primitives | 6 cases, zero skips | `102125718476` |
+| Windows native supplement | 5 cases, zero skips | `102125718352` |
+
+Each dedicated gate also verified exact case identities and absence of failures
+or errors. All six G16 native/wheel jobs and all three AppService quality jobs
+passed; Windows quality reported 1023 passed and 76 platform-selected skips.
+Those broad-suite skips do not replace or weaken the zero-skip dedicated gates.
+The installed runner verifies wheel digest, import origin and installed bytes;
+editable-only results are not installation evidence. This accepted run does not
+retroactively change any earlier failed or cancelled report.
+
+Integration with main `7c41cd57` adopts its change-aware reusable workflows.
+The four G17 job families now carry the AppService scope guard, and all seven
+AppService job families are included in both summary dependencies and the
+strict result mapping. CI routing covers Hosted evidence support, native
+PTY/ConPTY fixtures, G16/G17 installed runners and Hosting provider consumers.
+Regression controls reject failed, cancelled or unexpectedly skipped G17
+families and assert that both summary levels wait for their complete job maps.
+The focused CI and G17 architecture selection passed 51 tests with no skips,
+failures or errors (`.artifacts/g17-ci-main-reviewed.xml`).
+
+Implementation and pre-integration three-platform acceptance are complete.
+The merge head must obtain fresh remote CI before PR promotion through
+`lane/harness` to `main` and local refresh. These delivery operations remain
+pending and are not implied by the accepted `49952155` report.

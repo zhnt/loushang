@@ -10,6 +10,7 @@ from loushang.coding.domain import (
     CodingDomainRequest,
     MethodPolicy,
 )
+from loushang.method import MethodLoader
 
 
 def test_coding_domain_request_defaults() -> None:
@@ -94,7 +95,9 @@ def test_prepare_turn_with_skill_backed_method_adds_guidance(tmp_path: Path) -> 
         method="review",
     )
 
-    prepared = CodingDomainApp().prepare_turn(request)
+    prepared = CodingDomainApp(
+        method_loader=MethodLoader(skill_authority="legacy_explicit")
+    ).prepare_turn(request)
 
     assert prepared.method_id == "skill:review"
     assert prepared.method_guidance is not None
@@ -137,7 +140,9 @@ def test_prepare_turn_method_policy_takes_precedence_over_method(tmp_path: Path)
         method_policy=MethodPolicy.explicit("debug"),
     )
 
-    prepared = CodingDomainApp().prepare_turn(request)
+    prepared = CodingDomainApp(
+        method_loader=MethodLoader(skill_authority="legacy_explicit")
+    ).prepare_turn(request)
 
     assert prepared.method_id == "skill:debug"
     assert prepared.method_guidance is not None
@@ -279,7 +284,9 @@ def test_prepare_turn_empty_guidance_keeps_prompt_but_records_method(tmp_path: P
         method="empty",
     )
 
-    prepared = CodingDomainApp().prepare_turn(request)
+    prepared = CodingDomainApp(
+        method_loader=MethodLoader(skill_authority="legacy_explicit")
+    ).prepare_turn(request)
 
     assert prepared.method_id == "skill:empty"
     assert prepared.method_guidance is None

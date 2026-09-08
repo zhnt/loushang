@@ -208,13 +208,21 @@ separate fixed-Ubuntu required job. Each required job emits pytest XML and
 fails closed when the report is empty, skipped, failing, or records the wrong
 native backend.
 
-Both TUI workflows cancel superseded runs for the same ref. Every pytest job
-uses a bounded GitHub job timeout and `faulthandler_timeout=60`, so a stalled
-async lifecycle emits a Python stack before the runner deadline. The
-Harnesstui quality job also persists JUnit XML and passes it through the same
-fail-closed verifier. `tui-cross-platform-contracts` is the stable aggregate
-required-check context: it succeeds only after every Linux, Windows, native
-terminal, and tmux dependency succeeds.
+The shared `quality.yml` entrypoint selects TUI units, deterministic playback,
+and native terminal checks independently, and cancels superseded PR runs.
+Presentation-only changes do not provision PTY, ConPTY, or tmux; terminal
+lifecycle and platform changes select those native contracts. Every terminal
+contract job uses a bounded GitHub job timeout and `faulthandler_timeout=60`,
+so a stalled async lifecycle emits a Python stack before the runner deadline.
+HarnessTUI core and Coding UI adapter jobs preserve separate JUnit reports
+and the existing fail-closed report verifier.
+
+`tui-cross-platform-contracts` remains a compatibility required-check context
+backed by `quality-gate`. Every selected check must succeed; an unselected
+check must be skipped intentionally. A failed selector or an unexpectedly
+skipped selected check blocks the gate. Scheduled and manual full runs select
+every native contract. See [change-aware quality gates](../../../testing/change-aware-quality-gates.md)
+for selection rules and the branch-protection migration.
 
 Deterministic screen-loop lifecycle recipes use `BlockingPromptController`
 for prompts that settle during abort. Its one-shot context requires the prompt

@@ -1,16 +1,18 @@
 name: Hosting Quality
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
+  workflow_call:
+    inputs:
+      plan:
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 jobs:
   hosting-quality:
+    if: ${{ fromJSON(inputs.plan).checks.hosting }}
     name: hosting-quality (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
@@ -247,3 +249,18 @@ jobs:
           tests/architecture/test_hosting_h65_windows_lpac_design.py
           tests/architecture/test_hosting_architecture_baseline.py
           -q
+
+  selected-checks:
+    name: Selected checks
+    if: always()
+    needs: [hosting-quality]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify selected jobs
+        env:
+          CI_PLAN: ${{ inputs.plan }}
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: >-
+          python scripts/ci/verify_gate.py
+          --jobs '{"hosting-quality":"hosting"}'

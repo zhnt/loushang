@@ -561,8 +561,20 @@ test-appservice:
 
 check-architecture-docs:
 	.venv/bin/ruff check scripts/architecture/render_current_package_dependencies.py tests/architecture/test_architecture_documentation.py
-	.venv/bin/python scripts/architecture/render_current_package_dependencies.py --check
 	.venv/bin/python scripts/dev/run_pytest.py tests/architecture/test_architecture_documentation.py -q
+
+.PHONY: check-changed plan-checks check-docs-light check-agent
+check-changed:
+	.venv/bin/python scripts/ci/check_changed.py
+
+plan-checks:
+	python3 scripts/ci/check_changed.py --plan-only
+
+check-docs-light:
+	python3 scripts/ci/check_docs.py
+
+check-agent:
+	.venv/bin/python scripts/ci/run_checks.py agent
 
 check-harnesstui: lint-harnesstui typecheck-harnesstui test-harnesstui
 

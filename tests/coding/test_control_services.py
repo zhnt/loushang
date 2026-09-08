@@ -5,6 +5,7 @@ from datetime import date
 from pathlib import Path
 
 from loushang.ai.model import Capabilities, Model
+from loushang.coding.prompt import CODING_STANDARD_SYSTEM_PROMPT_FRAGMENT
 
 
 def _runtime_footer(cwd: str) -> str:
@@ -154,7 +155,8 @@ def test_create_services_provides_settings_and_model_resolution_for_sessions(
     )
     assert (
         session.agent.system_prompt
-        == f"Be precise.\n\n{_runtime_footer(str(Path('/tmp/project').resolve()))}"
+        == f"Be precise.\n\n{CODING_STANDARD_SYSTEM_PROMPT_FRAGMENT.rstrip()}\n\n"
+        f"{_runtime_footer(str(Path('/tmp/project').resolve()))}"
     )
     assert session.agent.thinking_level == "high"
 
@@ -342,7 +344,8 @@ def test_create_services_can_use_preloaded_persistent_settings_manager(
     assert session.agent.thinking_level == "minimal"
     assert (
         session.agent.system_prompt
-        == f"Use project policy.\n\n{_runtime_footer(str(project_root))}"
+        == f"Use project policy.\n\n{CODING_STANDARD_SYSTEM_PROMPT_FRAGMENT.rstrip()}\n\n"
+        f"{_runtime_footer(str(project_root))}"
     )
 
 

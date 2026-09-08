@@ -107,18 +107,14 @@ def test_testing_strategy_separates_native_terminal_and_tmux_evidence() -> None:
 def test_terminal_test_entrypoints_separate_simulated_and_host_runtime() -> None:
     makefile = Path("Makefile").read_text(encoding="utf-8")
     runner = Path("scripts/run_tui_platform_tests.py").read_text(encoding="utf-8")
-    native_runner = Path("scripts/run_tui_native_tests.py").read_text(
-        encoding="utf-8"
-    )
+    native_runner = Path("scripts/run_tui_native_tests.py").read_text(encoding="utf-8")
     backend = Path("tests/tui/test_terminal_process_backend.py").read_text(
         encoding="utf-8"
     )
     product = Path("tests/coding/test_cli_terminal_contract.py").read_text(
         encoding="utf-8"
     )
-    posix = Path("tests/tui/test_terminal_input_posix.py").read_text(
-        encoding="utf-8"
-    )
+    posix = Path("tests/tui/test_terminal_input_posix.py").read_text(encoding="utf-8")
 
     assert "test-tui-input-playback:" in makefile
     assert "scripts/run_tui_platform_tests.py current" in makefile
@@ -146,19 +142,28 @@ def test_required_terminal_workflows_fail_fast_and_publish_stable_gate() -> None
     terminal = Path(".github/workflows/tui-render-contract.yml").read_text(
         encoding="utf-8"
     )
+    entrypoint = Path(".github/workflows/quality.yml").read_text(encoding="utf-8")
 
     assert "BlockingPromptController" in strategy
     assert "`tui-cross-platform-contracts`" in strategy
 
     for workflow in (harnesstui, terminal):
-        assert "cancel-in-progress: true" in workflow
+        assert "workflow_call:" in workflow
         assert "faulthandler_timeout=60" in workflow
         assert "timeout-minutes:" in workflow
+        assert "verify_gate.py" in workflow
+        assert "if: always()" in workflow
 
-    assert "--junitxml=.artifacts/harnesstui-quality.xml" in harnesstui
-    assert "verify_pytest_xml.py .artifacts/harnesstui-quality.xml" in harnesstui
-    assert "tui-cross-platform-contracts:" in terminal
-    assert "Require every cross-platform terminal contract" in terminal
+    assert (
+        "cancel-in-progress: ${{ github.event_name == 'pull_request' }}" in entrypoint
+    )
+    for report in ("harnesstui-core", "coding-ui"):
+        assert f"--junitxml=.artifacts/{report}.xml" in harnesstui
+        assert f"verify_pytest_xml.py .artifacts/{report}.xml" in harnesstui
+    assert "tui-cross-platform-contracts:" in entrypoint
+    assert "needs: quality-gate" in entrypoint
+    assert "checks.tui_playback" in terminal
+    assert "checks.tui_native" in terminal
 
 
 def test_theme_key_design_lists_editor_selection_token() -> None:
