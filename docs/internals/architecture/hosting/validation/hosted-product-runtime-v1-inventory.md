@@ -68,6 +68,12 @@ lease, or factory.
 | Coding/AppHost G10 installed canary | `src/loushang/coding/apphost_canary.py` | exact default-dark `loushang apphost canary` consumer of the G9 composition; uses Product-owned durable control, one ephemeral Session identity, a short-lived native Hosting child, bounded reports, and no same-attempt fallback; ordinary CLI/TUI/SDK omission remains Current |
 | Coding/AppHost G12 foreground hosted edge | `src/loushang/coding/hosted_application.py` | explicit uninstalled Product composition over a foreground Coding Session factory, canonical AppHost create/resume routing, AppService and AppClient; imports no Hosting or Harnesstui and leaves ordinary CLI/TUI/SDK omission Current |
 
+The separate [optional Product execution contract](../../appservice/execution-contract.md)
+adds `execution_contract.py`, `execution_ports.py`, `execution_guard.py` and
+`execution_snapshot.py` to AppService's source inventory. These in-process
+helpers cover invocation settlement and composite snapshot validation; no
+existing Product route, wire profile or native Worker canary activates them.
+
 ## Observed Contract Mismatch
 
 | Boundary | Producer shape | Consumer shape | Current result |

@@ -59,6 +59,11 @@ The current implementation contains:
   all-or-nothing Session/MuxSpace reconstruction; and
 - `__init__.py`: the deliberately small public facade.
 
+The separate [optional Product execution contract](execution-contract.md) adds
+invocation identity, full-call settlement and composite snapshot validation.
+Its helpers and fake-Product conformance tests are implemented; the submission
+ledger, new wire methods and production Product activation remain future work.
+
 ## Dependency And Ownership
 
 ```text

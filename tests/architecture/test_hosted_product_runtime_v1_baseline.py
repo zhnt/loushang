@@ -475,6 +475,10 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "continuity.py",
         "continuity_file.py",
         "continuity_runtime.py",
+        "execution_contract.py",
+        "execution_guard.py",
+        "execution_ports.py",
+        "execution_snapshot.py",
         "ports.py",
         "runtime.py",
     }
@@ -538,6 +542,25 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "Hosting imports no Harness, Product, AppHost, AppServer, or AppService",
     ):
         assert statement in retained_fences
+
+
+def test_optional_execution_contract_has_bounded_modules_and_no_activation() -> None:
+    modules = (
+        "execution_contract", "execution_guard", "execution_ports", "execution_snapshot"
+    )
+    for name in modules:
+        path = APPSERVICE_SOURCE / f"{name}.py"
+        assert len(_read(path).splitlines()) <= 250
+        assert {item for item in _imports(path) if item.startswith("loushang.")} == {
+            "loushang.appserver.protocol"
+        }
+    for path in (
+        APPSERVICE_SOURCE / "__init__.py",
+        APPSERVER_SOURCE / "protocol/__init__.py",
+        Path("src/loushang/coding/appservice_adapter.py"),
+        Path("src/loushang/coding/cli/mux.py"),
+    ):
+        assert all(name not in _read(path) for name in modules)
 
 
 def test_current_session_discovery_roots_preserve_exact_modes(tmp_path: Path) -> None:
