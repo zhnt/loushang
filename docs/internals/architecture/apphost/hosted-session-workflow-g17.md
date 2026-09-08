@@ -1657,3 +1657,20 @@ Portable/API/architecture regressions passed 27 tests in 1.47 seconds
 (`.artifacts/g17-darwin-primitives-reviewed.xml`); Ruff and diff checks passed.
 Native macOS execution is still required. This supplement is preparation for,
 not a replacement for, the retained CLI witness and whole-workflow observer.
+
+The first actual macOS primitive job `102068652964` in workflow `34228565864`
+on `41ee3b9f` passed four cases and failed STOP-BARRIER after the confirmed stop
+and stable heartbeat: waitid returned a state the adapter rejected. Public XNU
+sources explain a compatible stopped-state path: kernel compilation disables
+UNIX03 in [cdefs.h](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/sys/cdefs.h),
+so [wait.h](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/sys/wait.h)
+defines WSTOPPED as 0177; that mask overlaps the supplied options in the
+[waitid stop branch](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_exit.c).
+The original failure did not record raw code/status, so this explanation still
+requires a native rerun. The adapter now recognizes only exact-PID/SIGCHLD,
+CLD_STOPPED with a valid Darwin stop signal as non-terminal (`None`). It neither
+reaps nor relaxes exit proof, and unknown diagnostics include bounded numeric
+code/status. Seven controls first produced four failures and three passes;
+the corrected portable/API/architecture selection passed 34 tests in 1.35
+seconds (`.artifacts/g17-darwin-stopped-reviewed.xml`). Native acceptance remains
+pending until the unchanged five-case gate passes on the corrected head.

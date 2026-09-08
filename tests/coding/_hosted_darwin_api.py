@@ -60,7 +60,13 @@ class DarwinObservationApi:
             return information.si_status
         if information.si_code in {2, 3} and 0 < information.si_status < 32:
             return -information.si_status
-        raise RuntimeError("unexpected native waitid state")
+        # XNU's kernel WSTOPPED mask also overlaps WEXITED/WNOWAIT. A valid
+        # CLD_STOPPED result is still non-terminal; never authorize its reap.
+        if information.si_code == 5 and information.si_status in {17, 18, 21, 22}:
+            return None
+        raise RuntimeError(
+            f"unexpected native waitid state: code={information.si_code}, status={information.si_status}"
+        )
 
 
 class DarwinExitWatch:

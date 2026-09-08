@@ -159,6 +159,27 @@ def test_darwin_waitid_observes_without_reaping(monkeypatch):
     assert module._SigInfo.padding.offset == 48
 
 
+@pytest.mark.parametrize("status", [17, 18, 21, 22, 0, 9, 32])
+def test_darwin_waitid_stopped_child_is_not_an_exit(monkeypatch, status):
+    from tests.coding import _hosted_darwin_api as module
+
+    def waitid(kind, pid, target, options):
+        assert options == 0x25
+        info = ctypes.cast(target, ctypes.POINTER(module._SigInfo)).contents
+        info.si_pid, info.si_signo = pid, 20
+        info.si_code, info.si_status = 5, status  # CLD_STOPPED, not CLD_EXITED.
+        return 0
+
+    monkeypatch.setattr(module, "sys", SimpleNamespace(platform="darwin"))
+    api = module.DarwinObservationApi(libc=SimpleNamespace(waitid=waitid))
+    if status in {17, 18, 21, 22}:
+        assert api.exited_unreaped(1234) is None
+        assert api.exited_unreaped(1234) is None
+    else:
+        with pytest.raises(RuntimeError, match="unexpected native waitid state"):
+            api.exited_unreaped(1234)
+
+
 @pytest.mark.parametrize("result", ["live", "signal", "foreign", "unknown", "error"])
 def test_darwin_waitid_never_infers_exit_from_invalid_evidence(monkeypatch, result):
     from tests.coding import _hosted_darwin_api as module
