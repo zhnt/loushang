@@ -429,7 +429,7 @@ ends its child; local detach leaves the independent application/accepted work
 alive. G16 stop stays a separate explicit command. No automatic backgrounding,
 supervisor installation, orphan adoption or active-turn replay is introduced.
 
-### G17.3 Implementation Boundary Check (Not Yet Implemented)
+### G17.3 Implementation Boundary Check (Launcher Pending)
 
 The architecture follow-up accepts an optional async settlement callback in the
 terminal runner: Product composition binds it to the launch owner's close,
@@ -466,6 +466,14 @@ handoff. On failure retain ownership and terminate at the independent cutoff
 before attempting settlement again. No private reader-field
 inspection or concurrent drain is an acceptable substitute. These are concrete
 implementation constraints, not launcher or native acceptance evidence.
+
+The architecture reviewer approved one optional `apphost/launcher.py` with a
+550-line cap for the launch/client owner and its private pipe bridge together.
+The exact allowed cross-package imports are Hosting public contracts and
+AppServer client, framing, remote client and protocol values. AppHost core and
+facade stay default-dark; no private Hosting backend, Product, AppService or UI
+dependency is added. Implementing A0.5 must update the old no-launcher assertion,
+exact optional-module inventory and G15/G17 inventories, not relax core gates.
 
 ## G17.4 Evidence And Completion Gate
 
@@ -738,3 +746,23 @@ test timeout was raised for the picker slice. The complete AppService gate
 passed with 703 tests, ten platform skips, Ruff and mypy in 461.71 seconds;
 the retained JUnit report is `.artifacts/g17-picker.xml`. This closes G17.2's
 affected local gate, not the required G17.4 isolated-wheel/native acceptance.
+
+## G17.3 Settlement Hook Review
+
+The first G17.3 increment adds an optional async settlement callback to the
+terminal runner and the shell's startup-failure path. Default callers retain
+shell-only cleanup; Product composition can select one outer owner without
+introducing any UI dependency on AppHost or Hosting. The same callback may be
+invoked again by terminal finally after startup failure, so it must join one
+retained owner rather than create a fresh close budget.
+
+All three independent perspectives approved this bounded hook. Four initial
+regressions failed before implementation. The final selection passed 51 tests
+in 8.43 seconds, including default G16 terminal/shell, picker, architecture,
+normal exit, attach/terminal-entry failure, startup cancellation and cleanup
+failure propagation after terminal restoration. Ruff and mypy passed (11 mux
+source files); the exact four-file presentation group is 917/950 lines.
+
+This proves cleanup strategy selection and ordering, not a twenty-second
+process deadline, force/reap behavior or installed foreground entry. The actual
+launch owner and its fault matrix remain pending.

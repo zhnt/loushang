@@ -200,6 +200,7 @@ APPHOST_TEST_PATHS := \
 	tests/tui/test_composer_edit_buffer.py \
 	tests/harnesstui/test_hosted_mux_shell.py \
 	tests/harnesstui/test_hosted_mux_terminal.py \
+	tests/harnesstui/test_hosted_mux_settlement.py \
 	tests/coding/test_mux_terminal_process.py \
 	tests/coding/test_mux_product_terminal.py \
 	tests/foundation/observability/test_identity.py \
@@ -294,6 +295,7 @@ APPSERVICE_TEST_PATHS := \
 	tests/tui/test_composer_edit_buffer.py \
 	tests/harnesstui/test_hosted_mux_shell.py \
 	tests/harnesstui/test_hosted_mux_terminal.py \
+	tests/harnesstui/test_hosted_mux_settlement.py \
 	tests/coding/test_mux_terminal_process.py \
 	tests/coding/test_mux_product_terminal.py \
 	tests/foundation/observability/test_identity.py \

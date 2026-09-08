@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import shlex
-from collections.abc import Callable, Coroutine
+from collections.abc import Awaitable, Callable, Coroutine
 from secrets import token_hex
 from typing import TypeVar
 
@@ -104,7 +104,9 @@ class HostedMuxShellV1:
     def cleanup_pending(self) -> bool:
         return not self._settled
 
-    async def start(self) -> None:
+    async def start(
+        self, *, settlement: Callable[[], Awaitable[None]] | None = None
+    ) -> None:
         if self._start_task is not None or self._closing:
             raise ValueError("hosted shell already started or closed")
         self._start_task = owned_task(self._controller.start)
@@ -118,7 +120,7 @@ class HostedMuxShellV1:
                     "running; earlier partial output is not in the v1 snapshot"
                 )
         except BaseException:
-            await self.close()
+            await (self.close() if settlement is None else settlement())
             raise
 
     def handle(self, event: InputEvent) -> None:
