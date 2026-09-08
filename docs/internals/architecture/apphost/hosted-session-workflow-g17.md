@@ -1674,3 +1674,47 @@ code/status. Seven controls first produced four failures and three passes;
 the corrected portable/API/architecture selection passed 34 tests in 1.35
 seconds (`.artifacts/g17-darwin-stopped-reviewed.xml`). Native acceptance remains
 pending until the unchanged five-case gate passes on the corrected head.
+
+On `1264a79e0202d5300d4dfd5b182a5f9fafeb10b6`, workflow `34229171422`'s
+Darwin primitive job `102070685045` passed all five cases in 0.58 seconds;
+the exact verifier reported zero skips/failures/errors. Linux/Windows complete
+wheel jobs, Windows native supplement, all six G16 native/wheel jobs and
+Linux/macOS quality also passed. Windows quality `102070685456` was cancelled
+after 676.73 seconds with 3 failed, 440 passed and 48 skipped: G14 real policy
+approval `[approve]` and running-turn interrupt/EOF restart `[False/True]`.
+Captured child stacks include installed distribution-evidence path resolution;
+this is diagnostic evidence, not a proven cause or permission to expand budgets.
+Those failures remain open despite the separate installed reports passing.
+
+### Retained CLI Witness Protocol
+
+The stdlib-only Darwin witness now owns one actual child, samples but never
+restores terminal modes, and never reads terminal input. Its caught SIGINT
+handler protects the witness without giving an exec'd CLI inherited SIG_IGN.
+The child remains unreaped while waitid/WNOWAIT supplies exit facts. The witness
+publishes `exited-retained`, accepts only a canonical matching PID reap request,
+then waits and publishes `reaped`. It cannot exit until a separate matching
+release command arrives. These files belong to private test control, not Product
+state, and the observer still owes descendant and terminal proof before release.
+
+Spawn outcome, sample, exit facts and completed reap remain in one state object
+across receipt IO retry. Ambiguous spawn is never repeated. Only classified
+receipt IO is retryable; native observation errors become sticky failure.
+Sample is published once, so later sample-write problems cannot starve exit
+observation. Entry checks its registered open observation and ancestor tokens/
+sealing under the registry lock, allowing ordinary `unused` supervisor ancestors,
+and strips the control environment key before launching the actual CLI.
+
+Portable negatives cover early/mismatched commands, publication/stat failure,
+native failure followed by a putative success, ambiguous spawn and invalid
+scope ancestry. Actual Linux PTY controls exercise normal input and process-group
+SIGINT: the child exits with 0/130, modes match baseline, and its zombie remains
+owned until reap authorization. Their cleanup retains the witness across timeout,
+interrupt and broken diagnostics rather than returning with an unfinished child.
+The combined witness/API/architecture selection passed 60 tests in 2.36 seconds
+(`.artifacts/g17-witness-reviewed.xml`); Ruff and diff checks passed. Independent
+architecture, lifecycle and contract review approved this corrected slice.
+
+This is not yet a native Darwin CLI selector: integration with frozen-parent
+descendant admission, kqueue proof, the whole-scenario scope and all eight
+installed families remains required. No complete Darwin manifest is activated.

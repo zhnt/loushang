@@ -191,6 +191,7 @@ APPHOST_SOURCES := \
 	src/loushang/harnesstui/mux \
 	src/loushang/coding/cli/apphost.py
 APPHOST_TEST_PATHS := \
+	tests/dev/test_hosted_darwin_witness.py \
 	tests/dev/test_hosted_darwin_api.py \
 	tests/dev/test_evidence_observation.py \
 	tests/dev/test_hosted_windows_observer.py \
@@ -312,6 +313,7 @@ APPSERVICE_SOURCES := \
 	src/loushang/coding/hosted_continuity.py \
 	src/loushang/harnesstui/mux
 APPSERVICE_TEST_PATHS := \
+	tests/dev/test_hosted_darwin_witness.py \
 	tests/dev/test_hosted_darwin_api.py \
 	tests/dev/test_evidence_observation.py \
 	tests/dev/test_hosted_windows_observer.py \
@@ -534,6 +536,7 @@ test-hosted-product-g10-linux-evidence:
 check-appservice: lint-appservice typecheck-appservice test-appservice
 
 lint-appservice:
+	uv --cache-dir .uv-cache run --extra dev ruff check tests/coding/_hosted_darwin_witness.py
 	uv --cache-dir .uv-cache run --extra dev ruff check tests/coding/_hosted_darwin_api.py tests/coding/_hosted_primitive_child.py tests/coding/test_hosted_darwin_primitives.py
 	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/_evidence_process.py scripts/dev/_evidence_observation.py scripts/dev/_evidence_posix.py scripts/dev/_evidence_windows.py tests/dev/_evidence_branch_fixture.py
 	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/run_g17_installed_evidence.py

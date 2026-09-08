@@ -195,10 +195,13 @@ Linux and Windows isolated-wheel CI passed all eight families with zero skips
 on `d4e7289a`; the Windows five-case native supplement, all six G16 native/
 wheel jobs and all three platform quality jobs also passed. The two earlier
 Windows quality failures are absent in this rerun. Darwin public-API primitives
-and their dedicated five-case CI gate are composed and three-view reviewed;
-actual native primitive execution, macOS CLI observation and its full wheel gate,
+and their dedicated five-case CI gate passed with zero skips on `1264a79e`.
+The retained CLI witness protocol is implemented and three-view reviewed, with
+Linux real-PTY controls; macOS CLI observation and its full wheel gate,
 three-platform CI acceptance and delivery remain pending; the default editable
 suite does not activate the dedicated wheel-only selector.
+The latest `1264a79e` Windows quality run was cancelled after three G14
+real-child failures; earlier green quality is not current-head closure.
 The activation status above is unchanged.
 
 ## Target
