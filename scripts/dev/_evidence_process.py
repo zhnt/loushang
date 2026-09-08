@@ -58,6 +58,12 @@ def _await_result(process, result, deadline, interrupted=None):
 
 
 def _cleanup(process, job, *, forced, state):
+    if state.get("observation") is not None:
+        # Do this before any tree scan, signal, release or root reap: a CLI may
+        # have orphaned an unobserved child before a later scan sees an empty tree.
+        _support("_evidence_observation").require_closed(
+            state["observation"], not_started=bool(state.get("not_admitted")),
+        )
     if state.get("not_admitted") and job is None:
         leftovers = False
         process.kill()  # -I -S gate has not been allowed to execute site/tests.
@@ -121,12 +127,13 @@ def _await_admission(process, job, result, deadline, interrupted):
     raise subprocess.TimeoutExpired(process.args, 0)
 
 
-def run_pytest(argv, *, cwd, environment, timeout, cleanup_timeout=60):
+def run_pytest(argv, *, cwd, environment, timeout, cleanup_timeout=60, observation=False):
     """argv is the exact isolated Python -I -m pytest command from the runner."""
     if argv[1:4] != ["-I", "-m", "pytest"]:
         raise ValueError("evidence supervisor requires isolated pytest")
     return _run_controller(argv, argv[4:], "--child", cwd=cwd, environment=environment,
-                           timeout=timeout, cleanup_timeout=cleanup_timeout)
+                           timeout=timeout, cleanup_timeout=cleanup_timeout,
+                           observation=observation)
 
 
 def run_python(argv, *, cwd, environment, timeout, cleanup_timeout=60):
@@ -143,7 +150,8 @@ def run_python(argv, *, cwd, environment, timeout, cleanup_timeout=60):
                                control_root=Path(private))
 
 
-def _run_controller(argv, arguments, mode, *, cwd, environment, timeout, cleanup_timeout, control_root=None):
+def _run_controller(argv, arguments, mode, *, cwd, environment, timeout, cleanup_timeout,
+                    control_root=None, observation=False):
     result = (control_root or cwd) / "pytest-controller-result"
     if result.exists() or result.with_suffix(".admission").exists():
         raise ValueError("evidence result path already exists")
@@ -151,21 +159,42 @@ def _run_controller(argv, arguments, mode, *, cwd, environment, timeout, cleanup
     executable = argv[0]
     if native is not None:
         executable, environment = native.prepare_controller(executable, environment)
+    state = {}
+    if os.name == "posix":
+        ledger = _support("_evidence_observation")
+        # Ownership context belongs to this supervisor, not its configurable
+        # child environment. A reduced child env cannot detach nested debt.
+        parent = os.environ.get(ledger.ENVIRONMENT_KEY)
+        state["observation"] = ledger.create(
+            control_root or cwd, parent=parent, observation=observation,
+        )
+        environment = {key: value for key, value in environment.items()
+                       if key.upper() != ledger.ENVIRONMENT_KEY}
+        environment[ledger.ENVIRONMENT_KEY] = str(state["observation"]["path"])
+    elif observation:
+        raise ValueError("native observation receipts require POSIX supervision")
     interrupted = threading.Event()
     previous = signal.signal(signal.SIGINT, lambda *_: interrupted.set())
     process = job = None
     failure = None
     status = 1
-    state = {}
     receipt = None
     try:
         deadline = time.monotonic() + timeout
-        process = subprocess.Popen(
-            [executable, "-I", "-S", str(Path(__file__).resolve()), mode, str(result), *arguments],
-            cwd=cwd, env=environment, stdin=subprocess.PIPE,
-            start_new_session=os.name == "posix",
-            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
-        )
+        try:
+            process = subprocess.Popen(
+                [executable, "-I", "-S", str(Path(__file__).resolve()), mode, str(result), *arguments],
+                cwd=cwd, env=environment, stdin=subprocess.PIPE,
+                start_new_session=os.name == "posix",
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
+            )
+        except OSError:
+            # Popen's synchronous OS-error path has no surviving returned child;
+            # do not strand an observation that was never allowed to execute.
+            # An ambiguous interruption is deliberately not treated as no-spawn.
+            if state.get("observation") is not None:
+                ledger.require_closed(state["observation"], not_started=True)
+            raise
         try:
             if native is not None:
                 job = native.EvidenceJob(process)

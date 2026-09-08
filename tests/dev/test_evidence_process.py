@@ -628,6 +628,8 @@ def test_evidence_empty_tree_keeps_live_spawning_thread_frozen_until_kill(tmp_pa
 
     def support(name):
         module = load(name)
+        if name != "_evidence_posix":
+            return module
         reclaim = module.reclaim_descendants
 
         def held(root, reap, **kwargs):

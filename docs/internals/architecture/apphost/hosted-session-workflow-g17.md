@@ -102,8 +102,8 @@ Discovery's semantic and installed wire paths and the shared picker are
 composed; the launch owner is now composed into the explicit Product client
 entry, with implementation re-review passed. A real installed stdio/local command test is not an
 isolated-wheel or terminal acceptance test. The complete eight-family selector
-is now composed for Linux and Windows; Darwin remains planned, and the Windows
-full wheel report still awaits execution. Manifest
+is now composed for Linux and Windows and both passed on `c9f205bd`; Darwin
+remains planned. Windows comprehensive quality still requires a clean rerun. Manifest
 `implemented` means an executable gate, not a passing result; actual run
 evidence is recorded separately below. Three-platform acceptance remains open.
 
@@ -1565,3 +1565,52 @@ the fixture-only corrections; Ruff and diff checks passed. Actual Windows rerun
 remains required to close these
 two reported failures; the failure stack alone did not establish a Product
 resource-refresh deadlock.
+
+## G17.4 Darwin Observation Admission Guard
+
+The first Darwin infrastructure slice supplies a POSIX observation registry,
+not a Darwin observer or a passing native selector. Every first-party POSIX
+evidence supervisor registers a scope before starting its retained controller.
+Nested supervisors inherit the actual supervisor's scope, independently of a
+caller-supplied child environment, and keep records in the outer private root.
+Removing an inner workspace cannot discard an ancestor's view of observation
+debt. Windows keeps its existing independent Job containment path.
+
+A native-observation scope starts open before spawning, records a bounded
+controller/child identity set when admitted, and can only be completed by the
+trusted observer after physical proof. Unknown identity is not completed by a
+later empty process-tree scan. The registry itself does not observe processes,
+grant numeric-PID signal authority or manufacture physical proof. Before any
+tree scan, signal, release or reap, a supervisor seals registration beneath its
+scope and checks the entire subtree for unfinished observations. Registration
+and sealing share one interprocess flock, so either registration wins and the
+ancestor retains debt, or sealing wins and the new registration cannot spawn.
+
+Registry size, scope count, ancestry, receipt size and lock acquisition are
+bounded. Duplicate JSON keys, missing/corrupt receipts and wrong identities
+fail closed. Atomic publication failure preserves the prior admitted record
+for the same observer to retry; a closed receipt is idempotent. Only a known
+pre-start abort, including Popen's synchronous OS-error path, can discharge an
+observation without native proof. An ambiguous interruption is not such an
+abort. Controller-only environment data is stripped at the test Product
+environment boundary; no Product package imports or handles this registry.
+
+The initial local-only ticket proposal was rejected during lifecycle review
+because an outer supervisor could bypass the inner debt. Review additionally
+closed parent-context inheritance, Product-environment leakage, zero-spawn
+false debt and duplicate-JSON findings. Cross-process register/seal controls,
+ancestor retention after inner-directory removal, depth limits, publication
+retry and zero-effect cleanup negatives cover those corrections. These tests
+are registered in both affected AppHost and AppService quality selections.
+The final registry, supervisor and wheel-runner selection passed 90 tests with
+one Windows-only skip in 46.54 seconds (`.artifacts/g17-observation-reviewed.xml`).
+The earlier Product-environment/real-child combination passed 76 tests with one
+Windows-only skip in 165.39 seconds. Architecture, lifecycle and contract
+re-review approved this infrastructure slice after the listed corrections;
+24 G11/G16/G17 architecture checks and `make lint-appservice` also passed.
+These local results do not establish native Darwin observation.
+
+Darwin's retained CLI witness, public waitid/WNOWAIT and kqueue observation,
+whole-scenario physical-proof retention, cancellation/forced-exit cases and
+full wheel CI composition remain required. Completing this registry alone
+must not change the Darwin manifest from planned or satisfy G17-INSTALLED.
