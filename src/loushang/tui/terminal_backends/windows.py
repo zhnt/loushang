@@ -51,6 +51,7 @@ _ESCAPE_BURST_MAX_CHARS = 4096
 ConsoleModuleLoader = Callable[[], Any | None]
 Kernel32Loader = Callable[[], Any | None]
 
+_ENABLE_PROCESSED_INPUT = 0x0001
 _ENABLE_QUICK_EDIT_MODE = 0x0040
 _ENABLE_EXTENDED_FLAGS = 0x0080
 _ENABLE_VIRTUAL_TERMINAL_INPUT = 0x0200
@@ -532,6 +533,9 @@ def _windows_console_input_mode(
     preserve_native_selection: bool,
 ) -> int:
     requested = mode | _ENABLE_EXTENDED_FLAGS
+    # While the TUI owns input, Ctrl+C is a key, not a console signal that
+    # cancels the whole client. disable_vt_input restores the original flags.
+    requested &= ~_ENABLE_PROCESSED_INPUT
     if not preserve_native_selection:
         requested &= ~_ENABLE_QUICK_EDIT_MODE
     if vt_input:

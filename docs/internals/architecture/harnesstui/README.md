@@ -24,6 +24,18 @@ Harnesstui or on the other peer.
 
 ## Responsibilities
 
+The [G15 design](../apphost/foreground-hosted-tui-g15.md) specifies an explicit
+Hosted Mux terminal shell over the existing controller and shared presentation.
+The [G16 implementation](../appserver/detachable-local-workspace-g16.md#g169-installed-interactive-terminal-checkpoint)
+now consumes that shared shell through a separately connected local client.
+Its installed attach route reuses the conversation screen and editor, with
+per-window drafts and bounded asynchronous controls. Harnesstui binds read-only
+help/approval details to the current attachment/question; the generic TUI
+`TextPager` owns only text layout and navigation. Process launch, native local
+connections and application lifetime stay outside Harnesstui. The G15 launcher
+and global Session-discovery picker remain design-only, and G16's final
+cross-platform acceptance is still pending.
+
 This layer owns reusable Harness-oriented terminal interaction, including:
 
 - adapting neutral conversation snapshots and actions to TUI records and

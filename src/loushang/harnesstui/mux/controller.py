@@ -19,7 +19,7 @@ from loushang.appserver.protocol import (
 )
 
 from .model import HarnessWindowState, HostedMuxState
-from .reducer import reduce_events, set_active_draft, state_from_attachment
+from .reducer import preserve_local_state, reduce_events, state_from_attachment
 
 
 class HostedMuxControllerV1:
@@ -83,6 +83,7 @@ class HostedMuxControllerV1:
 
     async def refresh_snapshot(self) -> HostedMuxState:
         state = self._require_state()
+        state.snapshot_required = True
         try:
             await self._client.detach_mux(
                 MuxDetachV1(
@@ -93,16 +94,17 @@ class HostedMuxControllerV1:
         except AppServiceError as error:
             if error.code is not AppErrorCodeV1.STALE_ATTACHMENT:
                 raise
-        self.state = None
-        return await self.start()
+        return await self._reattach_after_membership_change()
 
     async def open_member(self, request: SessionOpenSpecV1) -> HostedMuxState:
-        self._require_state()
+        self._require_state(current=True)
         await self._client.open_member(MuxMemberOpenV1(self._selector, request))
         return await self._reattach_after_membership_change()
 
-    async def close_active_member(self, *, close_session: bool = True) -> HostedMuxState:
-        state = self._require_state()
+    async def close_active_member(
+        self, *, close_session: bool = True
+    ) -> HostedMuxState:
+        state = self._require_state(current=True)
         window = state.active_window
         if window is None:
             raise RuntimeError("hosted mux has no active window")
@@ -118,6 +120,7 @@ class HostedMuxControllerV1:
     async def submit(self, text: str | None = None) -> None:
         state, window = self._active()
         selected = window.draft if text is None else text
+        revision = window.draft_revision
         request = TurnTextV1(
             state.attachment_id,
             state.controller_generation,
@@ -125,7 +128,17 @@ class HostedMuxControllerV1:
             selected,
         )
         await self._client.start_turn(request)
-        set_active_draft(state, "")
+        current = self.state
+        if current is not None and current.mux_space_id == state.mux_space_id:
+            for item in current.windows:
+                if (
+                    (item.member_id, item.session_id)
+                    == (window.member_id, window.session_id)
+                    and item.draft_revision == revision
+                    and item.draft == selected
+                ):
+                    item.draft = ""
+                    item.draft_revision += 1
 
     async def steer(self, text: str) -> None:
         state, window = self._active()
@@ -189,16 +202,25 @@ class HostedMuxControllerV1:
         self.state = None
 
     async def _reattach_after_membership_change(self) -> HostedMuxState:
-        self.state = None
-        return await self.start()
+        previous = self._require_state()
+        previous.snapshot_required = True
+        attachment = await self._client.attach_mux(
+            MuxAttachV1(self._selector, self._mailbox_capacity)
+        )
+        fresh = state_from_attachment(attachment)
+        preserve_local_state(fresh, previous)
+        self.state = fresh
+        return fresh
 
-    def _require_state(self) -> HostedMuxState:
+    def _require_state(self, *, current: bool = False) -> HostedMuxState:
         if self.state is None:
             raise RuntimeError("hosted mux controller is not started")
+        if current and self.state.snapshot_required:
+            raise AppServiceError(AppErrorCodeV1.SNAPSHOT_REQUIRED)
         return self.state
 
     def _active(self) -> tuple[HostedMuxState, HarnessWindowState]:
-        state = self._require_state()
+        state = self._require_state(current=True)
         window = state.active_window
         if window is None:
             raise RuntimeError("hosted mux has no active window")

@@ -2,6 +2,16 @@
   "decision": "RETAIN",
   "entries": [
     {
+      "disposition": "explicit-detachable-local",
+      "entrypointId": "coding.mux.command",
+      "importsComposition": false,
+      "omissionOwner": null,
+      "packagingBinding": "project.scripts.loushang-mux",
+      "source": "src/loushang/coding/cli/mux.py",
+      "supportStatus": "installed",
+      "surface": "mux"
+    },
+    {
       "disposition": "explicit-foreground-stdio",
       "entrypointId": "coding.hosted.command",
       "importsComposition": false,
@@ -122,5 +132,5 @@
       "surface": "mux"
     }
   ],
-  "inventoryVersion": 4
+  "inventoryVersion": 5
 }

@@ -72,7 +72,10 @@ def test_G11_DEPENDENCY_GRAPH_appserver_remains_contract_and_client_only() -> No
                 path,
                 imported,
             )
-    combined = "\n".join(_read(path) for path in APPSERVER.rglob("*.py"))
+    # G16 grants native IO to exactly its explicit local deployment adapter;
+    # every contract, dispatcher, scope adapter and legacy route stays dark.
+    combined = "\n".join(_read(path) for path in APPSERVER.rglob("*.py")
+                         if path != APPSERVER / "local.py")
     for forbidden in ("socket", "subprocess", "listen(", "accept(", "connect("):
         assert forbidden not in combined
 
@@ -118,7 +121,7 @@ def test_G11_PRODUCT_ADAPTER_is_the_only_product_harness_bridge() -> None:
         Path("src/loushang/apphost/continuity.py"),
         Path("src/loushang/coding/hosted_application.py"),
         Path("src/loushang/coding/hosted_continuity.py"),
-        Path("src/loushang/coding/cli/hosted.py"),
+        Path("src/loushang/coding/hosted_bootstrap.py"),
     }
 
 
@@ -195,7 +198,10 @@ def test_g11_package_budgets_keep_new_owners_reviewable() -> None:
         ),
         "appservice-continuity": tuple(APPSERVICE.glob("continuity*.py")),
         "coding-adapter": (CODING_ADAPTER,),
-        "harnesstui-mux": tuple(HARNESSTUI_MUX.glob("*.py")),
+        "harnesstui-mux": tuple(
+            HARNESSTUI_MUX / name for name in
+            ("__init__.py", "controller.py", "model.py", "profile.py", "projection.py", "reducer.py")
+        ),
     }
     limits = {
         "appserver": 1_800,
@@ -207,3 +213,9 @@ def test_g11_package_budgets_keep_new_owners_reviewable() -> None:
     for name, paths in groups.items():
         lines = sum(len(_read(path).splitlines()) for path in paths)
         assert lines <= limits[name], (name, lines, limits[name])
+    # The G16 terminal owner has its own exact, separately tested 850-line
+    # budget; do not expand the G11 semantic controller budget or hide new files.
+    assert {path.name for path in HARNESSTUI_MUX.glob("*.py")} == {
+        *(path.name for path in groups["harnesstui-mux"]),
+        "shell.py", "terminal.py", "_shell_tasks.py", "_shell_screen.py",
+    }

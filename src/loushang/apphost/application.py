@@ -8,7 +8,7 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from loushang.appserver.client import AppClientV1
 from loushang.appservice import (
@@ -18,6 +18,9 @@ from loushang.appservice import (
 )
 
 from .contracts import AppHostShutdownBudgetV1, AppHostShutdownReportV1
+
+if TYPE_CHECKING:
+    from loushang.appservice.client_scope import AppClientScopeV1, ScopedAppServiceV1
 
 HOSTED_APPLICATION_CONTRACT_VERSION = "loushang.apphost.application/v1"
 
@@ -165,10 +168,13 @@ class HostedApplicationRuntimeV1:
         "_accepting",
         "_apphost",
         "_client",
+        "_client_borrowed",
         "_control_lock",
         "_phase_tasks",
         "_phase_timeout_seconds",
         "_product_owner",
+        "_scoped_clients",
+        "_scope_close_timeout",
         "_service",
         "_shutdown_budget",
         "_shutdown_task",
@@ -193,6 +199,9 @@ class HostedApplicationRuntimeV1:
         self._phase_timeout_seconds = float(request.phase_timeout_seconds)
         self._service = service
         self._client = None if service is None else InProcessAppClientV1(service)
+        self._client_borrowed = False
+        self._scoped_clients: ScopedAppServiceV1 | None = None
+        self._scope_close_timeout = float(request.service_close_timeout_seconds)
         self._accepting = True
         self._control_lock = asyncio.Lock()
         self._shutdown_task: asyncio.Task[HostedApplicationShutdownReportV1] | None = (
@@ -206,10 +215,51 @@ class HostedApplicationRuntimeV1:
     def client(self) -> AppClientV1:
         """Return the non-owning transport-neutral client view."""
 
+        if self._scoped_clients is not None:
+            raise HostedApplicationError("hosted_application_client_mode_conflict")
         client = self._client
         if client is None:
             raise HostedApplicationError("hosted_application_not_ready")
+        self._client_borrowed = True
         return client
+
+    def enable_client_scopes(self) -> None:
+        """Select scoped authority after recovery and before borrowing any client.
+
+        An already borrowed legacy capability cannot be revoked by changing
+        this getter, so activation fails even when that client was never used.
+        Repeating the same explicit activation does not create another owner.
+        """
+        if (
+            not self._accepting
+            or self._service is None
+            or self._shutdown_task is not None
+        ):
+            raise HostedApplicationError("hosted_application_not_ready")
+        if self._client_borrowed:
+            raise HostedApplicationError("hosted_application_client_mode_conflict")
+        if self._scoped_clients is None:
+            from loushang.appservice.client_scope import ScopedAppServiceV1
+
+            self._scoped_clients = ScopedAppServiceV1(
+                self._service, close_timeout=self._scope_close_timeout
+            )
+            self._client = None
+
+    def open_client_scope(self) -> AppClientScopeV1:
+        """Create one owned client through the explicitly selected mode."""
+        if not self._accepting or self._shutdown_task is not None:
+            raise HostedApplicationError("hosted_application_not_ready")
+        if self._scoped_clients is None:
+            raise HostedApplicationError("hosted_application_client_scopes_not_enabled")
+        return self._scoped_clients.open_client_scope()
+
+    def fence_client_scopes(self) -> None:
+        """Stop admission before asynchronous connection/application settlement."""
+        if self._scoped_clients is None:
+            raise HostedApplicationError("hosted_application_client_scopes_not_enabled")
+        self._accepting = False
+        self._scoped_clients.fence()
 
     @property
     def accepting(self) -> bool:

@@ -1,0 +1,170 @@
+{
+  "manifestVersion": 1,
+  "reports": {
+    "G16-NATIVE-LINUX": {
+      "junitPath": ".artifacts/g16-native-linux.xml",
+      "minimumTests": 29,
+      "requiredCaseIds": [
+        "G16-PRIVATE-BEFORE-WRITE",
+        "G16-PRIVATE-POLICY",
+        "G16-NO-FOLLOW",
+        "G16-HARD-LINK",
+        "G16-RECORD-BOUNDS",
+        "G16-RECORD-REPLACEMENT",
+        "G16-READ-REPLACEMENT",
+        "G16-LOCK-REPLACEMENT",
+        "G16-RECORD-CRASH",
+        "G16-PUBLICATION-FAILURE",
+        "G16-WRONG-PRODUCT",
+        "G16-REAL-LOCAL-IO",
+        "G16-WRONG-CREDENTIALS",
+        "G16-PENDING-BOUNDS",
+        "G16-IDLE-PEER",
+        "G16-STOP-RESERVE",
+        "G16-CLEANUP-DEBT",
+        "G16-CANCELLED-START",
+        "G16-LOST-STOP-REPLY",
+        "G16-LISTENER-READY-FENCE",
+        "G16-CLIENT-READY-FENCE",
+        "G16-STOP-READY-FENCE",
+        "G16-PROOF-REFLECTION",
+        "G16-PROOF-REPLAY",
+        "G16-FRAME-REPLAY",
+        "G16-FRAME-NEW-CONNECTION",
+        "G16-FRAME-BOUNDS",
+        "G16-MULTI-MUX-AUTHORITY",
+        "G16-DISCONNECT-APPROVAL"
+      ],
+      "requiredProperties": {
+        "native_platform": "linux"
+      },
+      "status": "implemented"
+    },
+    "G16-WHEEL-LINUX": {
+      "junitPath": ".artifacts/g16-wheel-linux.xml",
+      "minimumTests": 4,
+      "requiredCaseIds": [
+        "G16-INSTALLED-ATTACH",
+        "G16-INSTALLED-TWO-MUX",
+        "G16-INSTALLED-CRASH-CWD",
+        "G16-INSTALLED-CRASH-HOME"
+      ],
+      "requiredProperties": {
+        "native_platform": "linux",
+        "terminal_backend": "posix-pty",
+        "installation": "wheel"
+      },
+      "status": "implemented"
+    },
+    "G16-NATIVE-DARWIN": {
+      "junitPath": ".artifacts/g16-native-darwin.xml",
+      "minimumTests": 29,
+      "requiredCaseIds": [
+        "G16-PRIVATE-BEFORE-WRITE",
+        "G16-PRIVATE-POLICY",
+        "G16-NO-FOLLOW",
+        "G16-HARD-LINK",
+        "G16-RECORD-BOUNDS",
+        "G16-RECORD-REPLACEMENT",
+        "G16-READ-REPLACEMENT",
+        "G16-LOCK-REPLACEMENT",
+        "G16-RECORD-CRASH",
+        "G16-PUBLICATION-FAILURE",
+        "G16-WRONG-PRODUCT",
+        "G16-REAL-LOCAL-IO",
+        "G16-WRONG-CREDENTIALS",
+        "G16-PENDING-BOUNDS",
+        "G16-IDLE-PEER",
+        "G16-STOP-RESERVE",
+        "G16-CLEANUP-DEBT",
+        "G16-CANCELLED-START",
+        "G16-LOST-STOP-REPLY",
+        "G16-LISTENER-READY-FENCE",
+        "G16-CLIENT-READY-FENCE",
+        "G16-STOP-READY-FENCE",
+        "G16-PROOF-REFLECTION",
+        "G16-PROOF-REPLAY",
+        "G16-FRAME-REPLAY",
+        "G16-FRAME-NEW-CONNECTION",
+        "G16-FRAME-BOUNDS",
+        "G16-MULTI-MUX-AUTHORITY",
+        "G16-DISCONNECT-APPROVAL"
+      ],
+      "requiredProperties": {
+        "native_platform": "darwin"
+      },
+      "status": "implemented"
+    },
+    "G16-WHEEL-DARWIN": {
+      "junitPath": ".artifacts/g16-wheel-darwin.xml",
+      "minimumTests": 4,
+      "requiredCaseIds": [
+        "G16-INSTALLED-ATTACH",
+        "G16-INSTALLED-TWO-MUX",
+        "G16-INSTALLED-CRASH-CWD",
+        "G16-INSTALLED-CRASH-HOME"
+      ],
+      "requiredProperties": {
+        "native_platform": "darwin",
+        "terminal_backend": "posix-pty",
+        "installation": "wheel"
+      },
+      "status": "implemented"
+    },
+    "G16-NATIVE-WIN32": {
+      "junitPath": ".artifacts/g16-native-win32.xml",
+      "minimumTests": 29,
+      "requiredCaseIds": [
+        "G16-PRIVATE-BEFORE-WRITE",
+        "G16-PRIVATE-POLICY",
+        "G16-NO-FOLLOW",
+        "G16-HARD-LINK",
+        "G16-RECORD-BOUNDS",
+        "G16-RECORD-REPLACEMENT",
+        "G16-READ-REPLACEMENT",
+        "G16-LOCK-REPLACEMENT",
+        "G16-RECORD-CRASH",
+        "G16-PUBLICATION-FAILURE",
+        "G16-WRONG-PRODUCT",
+        "G16-REAL-LOCAL-IO",
+        "G16-WRONG-CREDENTIALS",
+        "G16-PENDING-BOUNDS",
+        "G16-IDLE-PEER",
+        "G16-STOP-RESERVE",
+        "G16-CLEANUP-DEBT",
+        "G16-CANCELLED-START",
+        "G16-LOST-STOP-REPLY",
+        "G16-LISTENER-READY-FENCE",
+        "G16-CLIENT-READY-FENCE",
+        "G16-STOP-READY-FENCE",
+        "G16-PROOF-REFLECTION",
+        "G16-PROOF-REPLAY",
+        "G16-FRAME-REPLAY",
+        "G16-FRAME-NEW-CONNECTION",
+        "G16-FRAME-BOUNDS",
+        "G16-MULTI-MUX-AUTHORITY",
+        "G16-DISCONNECT-APPROVAL"
+      ],
+      "requiredProperties": {
+        "native_platform": "win32"
+      },
+      "status": "implemented"
+    },
+    "G16-WHEEL-WIN32": {
+      "junitPath": ".artifacts/g16-wheel-win32.xml",
+      "minimumTests": 4,
+      "requiredCaseIds": [
+        "G16-INSTALLED-ATTACH",
+        "G16-INSTALLED-TWO-MUX",
+        "G16-INSTALLED-CRASH-CWD",
+        "G16-INSTALLED-CRASH-HOME"
+      ],
+      "requiredProperties": {
+        "native_platform": "win32",
+        "terminal_backend": "conpty",
+        "installation": "wheel"
+      },
+      "status": "implemented"
+    }
+  }
+}

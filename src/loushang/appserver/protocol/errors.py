@@ -10,6 +10,7 @@ class AppErrorCodeV1(str, Enum):
     INVALID_REQUEST = "invalid_request"
     NOT_FOUND = "not_found"
     ALREADY_EXISTS = "already_exists"
+    ALREADY_ATTACHED = "already_attached"
     PRODUCT_MISMATCH = "product_mismatch"
     REVISION_CONFLICT = "revision_conflict"
     SNAPSHOT_REQUIRED = "snapshot_required"

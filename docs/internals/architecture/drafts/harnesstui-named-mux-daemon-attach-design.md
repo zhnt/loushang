@@ -17,7 +17,8 @@
 - Design status: proposed
 - Review status: re-review accepted as an aligned proposal; implementation
   prerequisites remain gated
-- Implementation status: not-started
+- Implementation status: partial prerequisites — G11--G14 are implemented;
+  interactive shell and detachable local deployment remain proposed
 - Owner: Loushang application and presentation architecture
 - Current evidence:
   - `src/loushang/tui/ui_parts/widgets/tabs.py`
@@ -34,9 +35,18 @@ Loushang. It adds multiple named attach targets, multiple concurrently live
 Sessions, a long-lived AppHost profile, and a Harnesstui window shell. It
 does not authorize implementation by itself.
 
-The design is subordinate to the existing AppService drafts and consumes the
-still-proposed AppHost and Hosting baseline as prerequisites, not as Current
-implementation. In particular, AppService remains outside Harness Capability
+The original proposal's prerequisite snapshot is superseded by the canonical
+[AppHost](../apphost/README.md), [AppService](../appservice/README.md) and
+[G14](../appserver/foreground-stdio-hosted-app-g14.md) records. G11--G14 now
+provide named mux semantics, durable coordination, real Coding Sessions and
+foreground stdio, but not this draft's detachable lifetime or interactive
+terminal shell. [G15](../apphost/foreground-hosted-tui-g15.md) is the new
+design-only launcher/UI slice; G16 must separately accept authenticated local
+connections and execution that outlives a client. The slices below retain the
+original roadmap and do not override those Current facts. Historical AppHost
+placement drafts are not the current boundary authority.
+
+AppService remains outside Harness Capability
 and Plugin composition, AppHost is the only whole-process composition owner,
 the default embedded TUI remains available, and attach never migrates a
 mutable embedded Session into a daemon.

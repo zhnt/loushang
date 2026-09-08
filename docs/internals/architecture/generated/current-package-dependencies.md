@@ -119,6 +119,7 @@ graph TD
 | --- | --- |
 | `loushang` | `loushang.coding.cli.__main__:main` |
 | `loushang-hosted` | `loushang.coding.cli.hosted:main` |
+| `loushang-mux` | `loushang.coding.cli.mux:main` |
 | `loushang-plugin` | `loushang.plugin.__main__:main` |
 | `loushang-tui` | `loushang.coding.ui.cli:main` |
 

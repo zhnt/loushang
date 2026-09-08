@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import pytest
+
 from loushang.tui.terminal_backends.windows import WindowsConsoleMode
 
+ENABLE_PROCESSED_INPUT = 0x0001
 ENABLE_QUICK_EDIT_MODE = 0x0040
 ENABLE_EXTENDED_FLAGS = 0x0080
 ENABLE_VIRTUAL_TERMINAL_INPUT = 0x0200
@@ -70,6 +73,26 @@ def test_windows_console_input_mode_disables_quick_edit_when_vt_is_rejected() ->
 
     assert kernel32.set_modes == [vt_mode, quick_edit_mode, initial_mode]
     assert adapter.mode_configured() is False
+
+
+@pytest.mark.parametrize("reject_vt", [False, True])
+@pytest.mark.parametrize("preserve_selection", [False, True])
+def test_windows_console_ctrl_c_is_input_until_original_mode_is_restored(
+    reject_vt: bool, preserve_selection: bool
+) -> None:
+    initial_mode = ENABLE_PROCESSED_INPUT | ENABLE_QUICK_EDIT_MODE | 0x0004
+    kernel32 = _FakeKernel32(initial_mode=initial_mode, reject_vt_input=reject_vt)
+    adapter = _platform(kernel32)
+
+    assert adapter.enable_vt_input(
+        object(), preserve_native_selection=preserve_selection
+    ) is not reject_vt
+    assert adapter.mode_configured()
+    for mode in kernel32.set_modes:
+        assert not mode & ENABLE_PROCESSED_INPUT
+        assert bool(mode & ENABLE_QUICK_EDIT_MODE) is preserve_selection
+    adapter.disable_vt_input()
+    assert kernel32.set_modes[-1] == initial_mode
 
 
 def test_windows_console_output_mode_enables_vt_processing_and_restores() -> None:

@@ -1,4 +1,4 @@
-"""Transport AppClient over an explicitly connected foreground stdio pair."""
+"""Transport AppClient over an admitted message stream and closed wire profile."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from typing import TypeVar, cast
 from .framing import (
     AppConnectionClosedError,
     AppFramedStreamV1,
+    AppMessageStreamV1,
     require_timeout,
 )
 from .protocol import (
@@ -44,11 +45,11 @@ from .protocol import (
     decode_response,
     encode_request,
 )
+from .protocol.connection_profile import AppConnectionProfileV1, connection_hello
 from .protocol.stdio_profile import (
     CONTROL_OPERATIONS,
     MAX_CONTROL_REQUESTS,
     MAX_ORDINARY_REQUESTS,
-    STDIO_HELLO_V1,
 )
 
 _Result = TypeVar("_Result", bound=AppResultPayloadV1)
@@ -61,13 +62,15 @@ class _Pending:
     control: bool
 
 
-class StdioAppClientV1:
+class RemoteAppClientV1:
     """Own one connection, never a process; publish before calling start()."""
 
     def __init__(
-        self, stream: AppFramedStreamV1, *, phase_timeout: float = 10.0
+        self, stream: AppMessageStreamV1, *, profile: AppConnectionProfileV1,
+        phase_timeout: float = 10.0,
     ) -> None:
         require_timeout(phase_timeout)
+        self._hello = connection_hello(profile)
         self._stream = stream
         self._timeout = phase_timeout
         self._reader: asyncio.Task[None] | None = None
@@ -87,9 +90,9 @@ class StdioAppClientV1:
         self._started = True
         try:
             async with asyncio.timeout(self._timeout):
-                if await self._stream.receive() != STDIO_HELLO_V1:
+                if await self._stream.receive() != self._hello:
                     raise InvalidAppMessageError()
-                await self._stream.send(STDIO_HELLO_V1)
+                await self._stream.send(self._hello)
             self._ready = True
             self._reader = asyncio.create_task(self._receive_responses())
         except BaseException:
@@ -272,6 +275,13 @@ class StdioAppClientV1:
         return result.events
 
 
+class StdioAppClientV1(RemoteAppClientV1):
+    """G14 client: fixed foreground profile and unchanged construction."""
+
+    def __init__(self, stream: AppFramedStreamV1, *, phase_timeout: float = 10.0) -> None:
+        super().__init__(stream, profile=AppConnectionProfileV1.STDIO, phase_timeout=phase_timeout)
+
+
 def _observe_future(future: asyncio.Future[AppResultPayloadV1]) -> None:
     if not future.cancelled():
         future.exception()
@@ -286,4 +296,4 @@ def _observe_task(task: asyncio.Task[None]) -> None:
         task.exception()
 
 
-__all__ = ["StdioAppClientV1"]
+__all__ = ["RemoteAppClientV1", "StdioAppClientV1"]

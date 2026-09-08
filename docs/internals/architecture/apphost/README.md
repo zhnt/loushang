@@ -12,6 +12,7 @@
 [G12 Foreground Hosted Application](foreground-hosted-application-g12.md) ·
 [G13 Durable Hosted Continuity](durable-hosted-application-continuity-g13.md) ·
 [G14 Foreground Stdio](../appserver/foreground-stdio-hosted-app-g14.md) ·
+[G15 Foreground Hosted TUI Design](foreground-hosted-tui-g15.md) ·
 [Hosted Product Runtime V1 Plan](../drafts/hosted-product-runtime-v1-plan.md)
 
 ## Status
@@ -22,7 +23,9 @@
 - Design status: accepted
 - Implementation status: partial — Hosted Product Runtime G0--G10, G12
   foreground application, G13 durable continuity and G14 foreground connection
-  settlement are implemented; A0.5 remains not-started
+  settlement are implemented; G16 has an optional local deployment owner and
+  installed Product client/server route, with final platform acceptance pending;
+  A0.5 remains not-started
 - Activation status: default-dark; the exact installed G10 canary selects
   Hosting. G12/G13 have explicit library construction and the separate G14
   `loushang-hosted` command; ordinary CLI/TUI/SDK defaults are unchanged
@@ -99,6 +102,25 @@ launch/exit. The separate Coding `loushang-hosted` command composes this edge;
 [G14 final evidence](../appserver/foreground-stdio-hosted-app-g14.md#final-acceptance-evidence)
 records real Product validation on Linux, macOS and Windows.
 
+The [accepted G15 design](foreground-hosted-tui-g15.md) specifies A0.5 launch
+ownership and a Harnesstui hosted shell. It is a design-only slice: neither the launcher
+nor a terminal client is made Current by design acceptance. G16's detachable
+connection lifetime requires separate acceptance; G14 EOF remains terminal.
+
+The [accepted G16 design](../appserver/detachable-local-workspace-g16.md)
+supplies that separate local deployment boundary. The optional
+`apphost.local.HostedLocalRuntimeV1` now binds a ready recovered application to
+AppServer's authenticated local listener. Public application methods select
+scoped authority before any legacy client is borrowed, create owned client
+scopes and fence admission synchronously. The local edge adopts its private
+record directory and application, waits for the stop reply attempt, then
+settles connections/directory before G13 releases its lease. All stop phases
+share one monotonic budget; timed-out tasks remain owned, and a new budget
+requires an explicit completed-attempt retry. Client EOF does not stop the
+application. The installed `loushang-mux` Product route and interactive shell
+now compose this edge; full native platform proof remains pending. It does not
+activate Hosting service control or change the foreground owner above.
+
 Existing Product-specific bootstrap/CLI/TUI paths remain authoritative and do
 not import the G9 composition. The one installed explicit factory may
 instantiate the catalog, runtime, selected profiles, and G8 Product
@@ -147,7 +169,15 @@ It keeps desired MuxSpace/Session coordination in AppService, always re-admits
 the current AppHost generation, and leaves Product/Harness as Session recovery
 truth. `apphost.continuity` owns the lease-last lifecycle and Coding supplies
 the current-generation canonical recovery edge. It grants no transport or
-process owner and remains absent from installed routes.
+process owner and installs no entrypoint itself; G14 selects it through its
+explicit Product command, and G16 selects it through `loushang-mux`.
+
+G16's optional local deployment is now composed with real Coding through the
+shared Product bootstrap and installed `coding.cli.mux` command. AppHost
+owns application settlement after Product startup handoff; its public read-only
+`accepting` fact prevents a startup delivery from announcing ready after stop.
+The [G16.9 checkpoint](../appserver/detachable-local-workspace-g16.md#g169-installed-interactive-terminal-checkpoint)
+separates that implementation and native terminal work from final platform acceptance.
 
 ## Target
 
