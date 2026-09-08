@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import ctypes
 import os
 import runpy
 import signal
 import subprocess
 import sys
 import time
+from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import patch
 
@@ -21,7 +23,67 @@ from .test_hosted_client_terminal import _installed
 from .test_mux_terminal_process import _terminal_environment
 
 
-def _observe_entry(tmp_path):
+def _pidfd_open(pid):
+    # Some portable Python builds omit os.pidfd_open even on supported Linux.
+    # Use libc's typed API, never a numeric-PID signalling fallback.
+    libc = ctypes.CDLL(None, use_errno=True)
+    operation = libc.pidfd_open
+    operation.argtypes = [ctypes.c_int, ctypes.c_uint]
+    operation.restype = ctypes.c_int
+    descriptor = operation(pid, 0)
+    if descriptor < 0:
+        raise OSError(ctypes.get_errno(), "pidfd admission failed")
+    return descriptor
+
+
+def _pidfd_signal(descriptor, signum):
+    libc = ctypes.CDLL(None, use_errno=True)
+    operation = libc.pidfd_send_signal
+    operation.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_void_p, ctypes.c_uint]
+    operation.restype = ctypes.c_int
+    if operation(descriptor, signum, None, 0) < 0:
+        raise OSError(ctypes.get_errno(), "pidfd signal failed")
+
+
+def _stop_children(parent, children):
+    # Bind identity before checking ancestry. A recycled numeric PID must never
+    # turn this fault injector into a signal to an unrelated process.
+    with ExitStack() as handles:
+        descriptors = []
+        for pid in children:
+            descriptor = _pidfd_open(pid)
+            handles.callback(os.close, descriptor)
+            descriptors.append(descriptor)
+        table = process_table()
+        assert parent in table and "Z" not in table[parent][1], "controller exited"
+        assert all(pid in table and table[pid][0] == parent for pid in children), "child changed"
+        for descriptor in descriptors:
+            _pidfd_signal(descriptor, signal.SIGSTOP)
+        deadline = time.monotonic() + 5
+        while True:
+            table = process_table(deadline=deadline)
+            assert all(pid in table and table[pid][0] == parent for pid in children)
+            if all("T" in table[pid][1] for pid in children):
+                break
+            assert time.monotonic() < deadline, "service did not enter stopped state"
+            time.sleep(0.01)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux pidfd fault injection")
+def test_fault_injection_rejects_changed_child_before_signalling(monkeypatch):
+    module = sys.modules[__name__]
+    closed, sent = [], []
+    monkeypatch.setattr(module, "_pidfd_open", lambda pid: 900)
+    monkeypatch.setattr(os, "close", closed.append)
+    monkeypatch.setattr(module, "_pidfd_signal", lambda *args: sent.append(args))
+    monkeypatch.setattr(module, "process_table", lambda: {100: (1, "S"), 101: (999, "S")})
+    with pytest.raises(AssertionError, match="child changed"):
+        _stop_children(100, [101])
+    assert closed == [900]
+    assert not sent
+
+
+def _observe_entry(tmp_path, *, force_exit=False, cancel_start=False):
     import pty
     import termios
 
@@ -35,23 +97,47 @@ def _observe_entry(tmp_path):
         opened.append((master, termios.tcgetattr(slave)))
         return master, slave
 
+    executable = (
+        [sys.executable, "-I", str(Path(__file__).with_name("_hosted_start_cancel.py"))]
+        if cancel_start else [_installed()]
+    )
     with patch.object(pty, "openpty", observe), foreground_terminal(
-        [_installed(), *_argv(tmp_path)], cwd=tmp_path,
+        [*executable, *_argv(tmp_path)], cwd=tmp_path,
         env=_terminal_environment(tmp_path), columns=100, rows=30,
     ) as driver:
         driver.read_until(
-            lambda out: "/exit ends app" in strip_control_sequences(out), timeout=35
+            lambda out: ("G17 publication held" if cancel_start else "/exit ends app")
+            in strip_control_sequences(out), timeout=35
         )
         (master, baseline), = opened
         active = termios.tcgetattr(master)
-        assert active != baseline, "ready must actually enter native terminal mode"
-        assert not active[3] & (termios.ECHO | termios.ICANON)
-        parent = driver.diagnostics.pid
+        if cancel_start:
+            assert active == baseline, "unpublished startup must not enter raw mode"
+        else:
+            assert active != baseline, "ready must actually enter native terminal mode"
+            assert not active[3] & (termios.ECHO | termios.ICANON)
+        diagnostics = driver.diagnostics
+        assert diagnostics.exit_status is None, "controller exited before observation"
+        parent = diagnostics.pid
         children = [pid for pid, entry in process_table().items() if entry[0] == parent]
         assert children, "installed foreground command must own a real Hosted process"
         assert all(os.getpgid(pid) != os.getpgid(parent) for pid in children)
-        driver.write("/exit\r")
-        assert driver.wait(timeout=25) == 0, driver.diagnostics
+        if force_exit:
+            # The actual service cannot process detach or EOF while stopped.
+            # Leave Product grace/force budgets and its real Hosting backend intact.
+            _stop_children(parent, children)
+        if cancel_start:
+            os.kill(parent, signal.SIGINT)
+        else:
+            driver.write("/exit\r")
+        code = driver.wait(timeout=25)
+        assert code == (130 if cancel_start else 1 if force_exit else 0), driver.diagnostics
+        if cancel_start:
+            assert "G17 publication cancelled" in driver.raw_output
+            assert "G17 late lease returned" in driver.raw_output
+            assert "G17 terminal invoked" not in driver.raw_output
+            assert "hosted_interrupted" in driver.raw_output
+            assert "/exit ends app" not in strip_control_sequences(driver.raw_output)
         assert termios.tcgetattr(master) == baseline
         table = process_table()
         assert all(pid not in table for pid in children), "a zombie is not a reaped child"
@@ -92,8 +178,10 @@ def _guarded(operation):
 
 
 def _scenario(root, case):
-    if case == "real":
-        _guarded(lambda: _observe_entry(root))
+    if case in {"real", "forced-exit", "start-cancel"}:
+        _guarded(lambda: _observe_entry(
+            root, force_exit=case == "forced-exit", cancel_start=case == "start-cancel",
+        ))
     else:
         def broken_controller():
             script = (
@@ -119,6 +207,20 @@ def _scenario(root, case):
 @pytest.mark.skipif(sys.platform != "linux", reason="supplemental Linux independent reaper evidence")
 @pytest.mark.parametrize("case", ["real", "controller-leak", "silent-leak"])
 def test_G17_TERMINAL_ENTRY_native_observation_retains_failure_reaper(tmp_path, case):
+    _run_observation(tmp_path, case)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="supplemental Linux independent reaper evidence")
+def test_G17_TERMINAL_FORCED_EXIT_stopped_service_restores_terminal_and_reaps(tmp_path):
+    _run_observation(tmp_path, "forced-exit")
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="supplemental Linux independent reaper evidence")
+def test_G17_TERMINAL_START_CANCEL_late_actual_lease_cannot_activate_terminal(tmp_path):
+    _run_observation(tmp_path, "start-cancel")
+
+
+def _run_observation(tmp_path, case):
     repository = Path(__file__).resolve().parents[2]
     root = tmp_path / "observation"
     root.mkdir()

@@ -48,6 +48,7 @@ from pathlib import Path
 from urllib.parse import urldefrag
 prefix = Path(sys.prefix).resolve()
 names = ('loushang.coding.cli.hosted_client', 'loushang.apphost.launcher',
+         'loushang.coding.cli.__main__', 'loushang.coding.ui.mode',
          'loushang.coding.cli.mux', 'loushang.harnesstui.mux.shell',
          'loushang.appserver.local', 'loushang.appservice.client_scope',
          'loushang.apphost.local', 'loushang.tui.ui_parts.text_pager')

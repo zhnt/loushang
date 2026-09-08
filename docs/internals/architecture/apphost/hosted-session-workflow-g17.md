@@ -1131,3 +1131,64 @@ dependency restriction; architecture review approved the correction and all
 18 A0/G14/G17 boundary checks then passed in 27.00 seconds
 (`.artifacts/g17-consumer-boundary-final.xml`). These local conditional skips
 are not exceptions to the required zero-skip native release matrix.
+
+### Legacy Family And Linux Native Fault Supplement
+
+`tests/coding/test_hosted_legacy_evidence.py` composes actual legacy local CLI,
+G14 installed stdio help/hello/list/EOF, and the installed `loushang --tui`
+Embedded welcome/quit path. Each has a distinct private root. The aggregate
+constrains inherited local/G14 environments; G14 also runs from its private
+cwd. Embedded receives only OS/terminal prerequisites and explicit private
+Loushang roots, not provider credentials, plugin flags or Python source paths.
+Its paste/focus mode pairs, zero exit, no driver termination fallback and
+stopped reader remain observable requirements. The wheel origin probe now
+includes the Embedded console module and its TUI dispatch module. This family
+is in local focused gates but is not yet composed into full wheel acceptance;
+the existing five-case smoke selection is unchanged.
+
+The Linux observer now additionally exercises two real-process fault paths:
+
+- After the actual installed foreground CLI becomes ready, stop its real
+  Hosted child using an identity-bound pidfd. `/exit` must return 1, restore
+  actual PTY termios exactly, and reap the child before fixture fallback.
+  Product grace/force budgets and the Hosting backend are unchanged.
+- A test-only wrapper holds publication of an already-created real Hosting
+  lease. Cancellation is deliberately resisted until the real host finishes
+  closing; the late lease must still settle. The real Product `main` runs on
+  a native PTY, exits 130, never invokes the observed/delegated terminal entry,
+  and leaves the PTY baseline unchanged and the child absent. This is a
+  library fault seam, not a substitute for the shipped CLI entry case.
+
+The independent Linux subreaper guard continues to reject successful evidence
+if it must reclaim leftovers. Review corrected numeric child PID signalling
+to typed libc pidfd calls, retained the controller identity by checking its
+unreaped live diagnostics once, and added a terminal-entry observer rather
+than inferring absence of transient activation from two termios samples.
+The local portable Python lacks `os.pidfd_open`/`signal.pidfd_send_signal`;
+the system libc exposes both APIs. Missing APIs or failed admission fail the
+test; there is no numeric-PID fallback or skip that manufactures acceptance.
+
+Contract review also corrected inherited G14 source-path contamination and
+removed an unbound `application` directory assertion that could not prove
+Embedded storage behavior. Environment-injection regressions check both the
+filter and its actual aggregate call boundaries. Architecture, lifecycle and
+contract re-review approved this bounded increment with those findings closed.
+
+Local evidence:
+
+- Revised LEGACY native aggregation and runner regressions: 15 passed in
+  49.13 seconds (`.artifacts/g17-legacy-isolation-revised.xml`).
+- Final native ENTRY/fault and boundary selection: 25 passed, three unselected
+  LEGACY tests, in 71.99 seconds
+  (`.artifacts/g17-native-faults-and-boundary-final.xml`).
+- Final environment injection, Embedded probe assertions and inventory
+  traceability: 21 passed, one unselected native LEGACY test, in 5.05 seconds
+  (`.artifacts/g17-legacy-boundary-final.xml`).
+- `make lint-apphost` passed. Initial cancellation-fixture and missing Python
+  pidfd-binding failures were corrected in the test harness, not Product code.
+
+These are local editable-installation/Linux observations. Recovery-phase
+cancellation, macOS/Windows durable observation, isolated-wheel composition
+of all eight required families and the three-platform CI matrix remain work
+to complete. All full manifest rows remain planned; neither this supplement
+nor the prior partial smoke closes G17.4.

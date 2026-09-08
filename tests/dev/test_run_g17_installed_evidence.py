@@ -36,6 +36,8 @@ def test_g17_partial_wheel_smoke_cannot_write_or_verify_release_report(tmp_path,
     probe = next(argv for argv, _ in calls if "-c" in argv)
     assert "loushang.coding.cli.hosted_client" in probe[probe.index("-c") + 1]
     assert "loushang.apphost.launcher" in probe[probe.index("-c") + 1]
+    assert "loushang.coding.cli.__main__" in probe[probe.index("-c") + 1]
+    assert "loushang.coding.ui.mode" in probe[probe.index("-c") + 1]
     for _, options in calls:
         assert not {"pythonpath", "pythonhome", "virtual_env"} & {
             key.lower() for key in options["environment"]
