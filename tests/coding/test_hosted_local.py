@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from dataclasses import replace
 
 import pytest
@@ -59,14 +60,23 @@ def test_G16_PRODUCT_launch_rejects_shared_storage_and_does_not_create_files(tmp
     assert str(tmp_path) not in repr(launch)
 
 
+@pytest.mark.parametrize("discovery_enabled", [False, True])
 def test_G16_PRODUCT_real_coding_retains_disconnected_work_and_recovers_both_scopes(
-    tmp_path, monkeypatch
+    tmp_path,
+    monkeypatch,
+    discovery_enabled,
 ):
-    async def scenario():
+    began = time.monotonic()
+    timings = []
+
+    def mark(phase):
+        timings.append((phase, round(time.monotonic() - began, 3)))
+
+    async def first_generation():
         root = tmp_path.resolve()
         monkeypatch.setenv("LOUSHANG_HOME", str(root / "platform"))
         monkeypatch.setenv("LOUSHANG_RUNTIME_DIR", str(root / "runtime"))
-        launch = _local_launch(root)
+        launch = replace(_local_launch(root), session_discovery=discovery_enabled)
         hold_entered = asyncio.Event()
 
         @synthetic_model_transport
@@ -101,7 +111,9 @@ def test_G16_PRODUCT_real_coding_retains_disconnected_work_and_recovers_both_sco
         identities = []
         old_key = None
         try:
+            mark("first_start")
             await command.start()
+            mark("first_ready_construct_and_interact")
             old_key = directory.read(launch.endpoint).key
             for connection, scope, name in zip(
                 (first, second),
@@ -149,7 +161,7 @@ def test_G16_PRODUCT_real_coding_retains_disconnected_work_and_recovers_both_sco
                 )
             )
             # This case tests disconnect during execution, not a cold-start SLO.
-            # Model entry remains bounded by the unchanged 30-second scenario.
+            # Model entry remains bounded by this generation's 30-second watchdog.
             entered = asyncio.create_task(hold_entered.wait())
             try:
                 done, _ = await asyncio.wait(
@@ -196,10 +208,12 @@ def test_G16_PRODUCT_real_coding_retains_disconnected_work_and_recovers_both_sco
             )
             assert snapshot.running
             assert replacement.attachment_id != attachment.attachment_id
+            mark("first_stop")
             await stop.start()
             assert stop.stop_requested
             await command.wait_closed()
             assert not command.cleanup_pending
+            mark("first_stopped")
         finally:
             await asyncio.gather(
                 first.close(), second.close(), fresh.close(), stop.close()
@@ -208,7 +222,11 @@ def test_G16_PRODUCT_real_coding_retains_disconnected_work_and_recovers_both_sco
             if turn is not None:
                 await asyncio.gather(turn, return_exceptions=True)
             directory.close()
+        mark("first_settled")
+        return launch, identities, old_key
 
+    async def recovery_generation(launch, identities, old_key):
+        mark("recovery_start")
         recovered = CodingLocalCommandV1(
             launch, model=_model(), stream_fn=scripted_stream, tools=[]
         )
@@ -216,6 +234,7 @@ def test_G16_PRODUCT_real_coding_retains_disconnected_work_and_recovers_both_sco
         client = LocalAppClientConnectionV1(new_directory, launch.endpoint)
         try:
             await recovered.start()
+            mark("recovery_ready")
             assert new_directory.read(launch.endpoint).key != old_key
             await client.start()
             muxes = (await client.client.list_muxes()).mux_spaces
@@ -246,5 +265,17 @@ def test_G16_PRODUCT_real_coding_retains_disconnected_work_and_recovers_both_sco
             await client.close()
             await recovered.close(retry_timeout=5)
             new_directory.close()
+        mark("recovery_settled")
 
-    asyncio.run(asyncio.wait_for(scenario(), 30))
+    async def scenario():
+        try:
+            facts = await asyncio.wait_for(first_generation(), 30)
+            # A new application's recovery does not inherit the previous
+            # generation's elapsed test time. No operation retry renews a budget.
+            await asyncio.wait_for(recovery_generation(*facts), 30)
+        except BaseException as error:
+            mark("failed")
+            error.add_note(f"G16 lifecycle phase timings (seconds): {timings}")
+            raise
+
+    asyncio.run(scenario())

@@ -170,6 +170,10 @@ def _parser() -> argparse.ArgumentParser:
     serve.add_argument("--cwd-sessions", required=True, type=Path)
     serve.add_argument("--home-sessions", required=True, type=Path)
     serve.add_argument(
+        "--session-discovery", action="store_true",
+        help="explicitly advertise bounded discovery in the authenticated record",
+    )
+    serve.add_argument(
         "--describe", action="store_true", help="print path-free selectors without IO"
     )
     commands.add_parser("list", help="list named muxes without attaching")
@@ -219,6 +223,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 ),
                 root,
                 args.endpoint,
+                session_discovery=args.session_discovery,
             )
             if args.describe:
                 _emit(launch.describe(), output)

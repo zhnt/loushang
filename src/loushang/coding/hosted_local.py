@@ -29,8 +29,11 @@ class CodingLocalLaunchV1:
     application: CodingHostedLaunchV1
     connection_root: Path = field(repr=False)
     endpoint: str
+    session_discovery: bool = field(default=False, kw_only=True)
 
     def __post_init__(self) -> None:
+        if type(self.session_discovery) is not bool:
+            raise TypeError("invalid discovery activation")
         root = self.connection_root
         if (
             type(self.application) is not CodingHostedLaunchV1
@@ -68,7 +71,10 @@ class CodingLocalLaunchV1:
 
     def describe(self) -> dict[str, object]:
         return {
-            **self.application.describe(profile=AppConnectionProfileV1.LOCAL),
+            **self.application.describe(profile=(
+                AppConnectionProfileV1.LOCAL_DISCOVERY if self.session_discovery
+                else AppConnectionProfileV1.LOCAL
+            )),
             "endpoint": self.endpoint,
         }
 
@@ -98,7 +104,8 @@ class CodingLocalCommandV1:
         self._launch = launch
         self._directory = LocalConnectionDirectoryV1(launch.connection_root)
         self._attempt = create_coding_hosted_attempt(
-            launch.application, model=model, stream_fn=stream_fn, tools=tools
+            launch.application, model=model, stream_fn=stream_fn, tools=tools,
+            session_discovery=launch.session_discovery,
         )
         self._application: HostedApplicationContinuityRuntimeV1 | None = None
         self._local: HostedLocalRuntimeV1 | None = None
@@ -143,6 +150,7 @@ class CodingLocalCommandV1:
             self._launch.endpoint,
             scopes=self._launch.scopes,
             settlement_timeout=self._timeout,
+            session_discovery=self._launch.session_discovery,
         )
         self._application = None  # AppHost has adopted both application and directory.
         await self._local.start()

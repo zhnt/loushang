@@ -11,7 +11,7 @@
 - Authority: normative accepted incremental design; inherits G15/G16 boundaries
 - Design status: accepted after independent three-perspective review and re-review
 - Implementation status: partial — discovery protocol, Product reads, AppService
-  views and explicit installed foreground wiring; local wiring, picker, launcher and
+  views and explicit installed foreground/local wiring; picker, launcher and
   installed acceptance pending
 - Activation status: explicit opt-in only; Embedded and legacy G14/G16 retained
 - Tracking: [G17 #572](https://github.com/zhnt/loushang/issues/572)
@@ -88,8 +88,17 @@ parser carries all options without silently discarding capability selection.
 Foreground construction rejects an absent opted-in port before sending hello;
 the published Product command still owns cleanup if construction fails.
 
-Discovery remains only partially composed: local record/APP wiring, the picker
-and launch owner are pending. A real installed stdio command test is not an
+The installed `loushang-mux serve --session-discovery` path now also binds
+discovery to the private record's exact optional capability tuple. Its record
+schema and authentication domain remain unchanged. Both authenticated peers
+derive their APP hello from that same record; there is no client-side profile
+override or downgrade. Default scopes need no discovery attribute. The optional
+typed scope factory retains the exact scope before borrowing the port, and
+missing/failed capability access closes that scope. STOP never creates a scope
+or APP hello and retains its reserved connection slot.
+
+Discovery's semantic and installed wire paths are composed; the picker and
+launch owner are pending. A real installed stdio/local command test is not an
 isolated-wheel or terminal acceptance test. All eight native case families
 remain planned on each platform; subsequent slices must update the inventory
 and required-case manifest as those user paths are delivered.
@@ -557,3 +566,69 @@ AppHost's existing directory selection also includes the foreground tests.
 These checks use the installed console entry in the local development
 environment, not an isolated wheel or terminal. They do not close local
 discovery wiring, picker, launch ownership or any required G17 native case.
+
+### Explicit Local Wiring Review
+
+The local slice preserves the default serialized record bytes and the
+`local-detachable/v1` authentication domain. The exact optional capability is
+included in the existing record digest; both peers select the semantic APP
+profile from the mutually authenticated record. No client flag, re-read or
+automatic downgrade chooses that profile. Legacy scopes keep their original
+structural interface; only the optional typed factory borrows discovery.
+All three reviewers approved the bounded architecture, lifecycle and contract
+changes without remaining P1/P2 findings. No import or size budget expanded.
+
+The pre-change local baseline passed 65 tests. Regression-first wire/record
+tests initially failed 14 cases (eight existing-compatible checks passed), and
+the Product/CLI opt-in tests initially failed all six before composition.
+The resulting native transport/record and legacy set passed 63 tests. The
+expanded Product/compatibility/lifetime/architecture set passed 64 tests in
+43.10 seconds, including G16 held-work disconnect/recovery with discovery both
+off and on. One initial Product assertion assumed a turn reply synchronously
+delivered the scoped event relay; the test now waits for actual history records
+within a five-second observation bound and the original 30-second scenario.
+Production execution behavior and existing G16 timing budgets were not changed.
+
+The frozen baseline decoder fixture is the complete original record module
+from `7bf9e35f`, Git blob `b711e677cc9039117eda87995920db4f04d00b55`, verified
+by SHA-256 before execution. It accepts the new implementation's legacy bytes
+and rejects discovery bytes with its own original corrupt-record error. This
+is frozen-decoder compatibility, not an old installed-client binary test.
+Separate tests prove capability-tampered records fail authentication before
+scope creation, cross-profile APP hello fails without discovery dispatch and
+closes its exact scope, and seven APP clients leave the reserved STOP slot.
+
+Actual local installed entry tests restore nonempty cwd/home history, preserve
+the application across stdin EOF and client close, and explicitly STOP with a
+zero exit status. They remain distinct from isolated-wheel/terminal acceptance.
+The strengthened installed logical reattach (including the existing history
+view) and documentation set passed ten tests in 93.98 seconds. The complete
+AppService gate passed Ruff/mypy but its default leased-scratch test run ended
+with 672 passed, ten platform skips and two failures in 538.62 seconds. Both
+were the G16 held-work case (discovery off/on), cancelled by its outer 30-second
+whole-scenario bound during the second application's recovery. They had already
+passed their first application's running/disconnect/STOP checks. This is not
+classified as an environment-only failure or fixed by isolated passing tests.
+
+An independent default-scratch diagnostic passed both cases in 29.03 seconds;
+four real Product Session constructions accounted for roughly 11 seconds per
+case and each second-generation startup took 4.96 seconds. This identifies the
+main local work, not the cause of the broad run's additional elapsed time.
+Lifecycle and contract reviewers independently confirmed that G16 specifies
+per-application startup/STOP budgets, not a combined two-generation 30-second
+SLO. The test now uses two consecutive, fixed 30-second generation watchdogs.
+Only after the first generation has successfully stopped and closed all its
+resources does the second recover the same durable root and identity facts.
+All five-second observation windows and production budgets remain unchanged;
+no retry or individual close grants a fresh generation budget. Failure notes
+record startup, interaction, STOP and recovery phase times.
+
+This explicitly changes the test's nominal watchdog allowance from 30 to
+30 + 30 seconds; it is not a performance fix or an environment diagnosis.
+Cancellation cleanup may extend wall time beyond that nominal allowance.
+The default-wrapper focused lifetime set passed 20 tests in 43.17 seconds.
+The revised full AppService test gate completed with 674 passed, ten platform
+skips and zero failures/errors in 639.153 seconds. The retained JUnit report is
+`.artifacts/g17-local-discovery.xml`. Both discovery modes of the G16 lifetime
+case passed within their per-generation watchdogs. This closes the local wiring
+regression gate, not the unexplained broad-run slowdown or G17 native acceptance.

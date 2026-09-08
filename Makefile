@@ -205,6 +205,8 @@ APPHOST_TEST_PATHS := \
 	tests/coding/test_hosted_discovery_command.py \
 	tests/coding/test_hosted_discovery_subprocess.py \
 	tests/coding/test_hosted_bootstrap.py \
+	tests/coding/test_hosted_local_discovery.py \
+	tests/coding/test_hosted_local_discovery_subprocess.py \
 	tests/coding/test_hosted_local.py \
 	tests/coding/test_hosted_local_ownership.py \
 	tests/coding/test_mux_command.py \
@@ -296,6 +298,8 @@ APPSERVICE_TEST_PATHS := \
 	tests/coding/test_hosted_discovery_command.py \
 	tests/coding/test_hosted_discovery_subprocess.py \
 	tests/coding/test_hosted_local.py \
+	tests/coding/test_hosted_local_discovery.py \
+	tests/coding/test_hosted_local_discovery_subprocess.py \
 	tests/coding/test_hosted_local_ownership.py \
 	tests/coding/test_mux_command.py \
 	tests/coding/test_mux_subprocess.py \
