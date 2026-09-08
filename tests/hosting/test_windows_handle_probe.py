@@ -3,6 +3,7 @@ from __future__ import annotations
 import ctypes
 from ctypes import wintypes
 from functools import partial
+from types import SimpleNamespace
 
 import pytest
 
@@ -56,7 +57,9 @@ class _Kernel:
         return True
 
     def probe(self):
-        return WindowsHandleIdentityProbe(self, last_error=lambda: self.error)
+        return WindowsHandleIdentityProbe(
+            self, kernelbase=self, last_error=lambda: self.error
+        )
 
 
 def test_same_numeric_handle_in_another_process_is_not_inheritance() -> None:
@@ -71,6 +74,29 @@ def test_same_numeric_handle_in_another_process_is_not_inheritance() -> None:
     ]
     assert api.DuplicateHandle.argtypes[:3] == (wintypes.HANDLE,) * 3
     assert api.GetCurrentProcess.restype is wintypes.HANDLE
+
+
+def test_default_probe_loads_comparison_from_kernelbase(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api = _Kernel()
+    kernelbase = SimpleNamespace(CompareObjectHandles=api.CompareObjectHandles)
+    del api.CompareObjectHandles  # Not exported by kernel32 on Windows Server 2022.
+    loaded: list[tuple[str, bool]] = []
+
+    def load(name: str, *, use_last_error: bool):
+        loaded.append((name, use_last_error))
+        return {"kernel32": api, "kernelbase": kernelbase}[name]
+
+    monkeypatch.setattr(ctypes, "WinDLL", load, raising=False)
+    monkeypatch.setattr(ctypes, "get_last_error", lambda: api.error, raising=False)
+    probe = WindowsHandleIdentityProbe()
+    assert loaded == [("kernel32", True), ("kernelbase", True)]
+    assert not probe.matches(api.child_process, api.expected, api.expected)
+    api.child[api.expected] = api.parent[api.expected]
+    assert probe.matches(api.child_process, api.expected, api.expected)
+    assert kernelbase.CompareObjectHandles.argtypes == (wintypes.HANDLE,) * 2
+    assert kernelbase.CompareObjectHandles.restype is wintypes.BOOL
 
 
 @pytest.mark.parametrize("same_number", [False, True])

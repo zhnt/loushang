@@ -82,3 +82,23 @@ and a corrected-head native Windows Hosting run remain required before closing
 #569 or declaring G17.0's cross-platform baseline accepted. Publication is
 deferred at this local checkpoint under weekday push quiet hours; native
 acceptance remains open, without weakening the isolation assertion.
+
+## Native Loader Correction
+
+The first published [PR #570](https://github.com/zhnt/loushang/pull/570) head
+`3114d767` passed Linux/macOS Hosting, but its
+[Windows job](https://github.com/zhnt/loushang/actions/runs/34179928549/job/101916772852)
+failed all four endpoint cases during probe construction: `CompareObjectHandles`
+is exported by the documented `Kernelbase.dll`, not `Kernel32.dll`. That run
+reported four failures, 359 passes and 75 platform skips; it never established
+native object-isolation results.
+
+The helper now binds comparison from Kernelbase and keeps the other functions
+in Kernel32. A default-construction regression models distinct DLL exports,
+reproduced the missing-symbol failure before the correction, and checks both
+collision rejection and real-sharing detection after loading. Injected fakes
+no longer constitute the only loader coverage. Missing DLLs or symbols remain
+hard failures; there is no numeric fallback, skip or production change.
+
+The local `loushang --help` and `loushang-mux --help` startup smoke checks also
+passed. Native acceptance still requires the corrected PR head's green matrix.

@@ -13,14 +13,20 @@ class WindowsHandleIdentityProbe:
         self,
         kernel32: Any = None,
         *,
+        kernelbase: Any = None,
         last_error: Callable[[], int] | None = None,
     ) -> None:
         if kernel32 is None:
             kernel32 = getattr(ctypes, "WinDLL")("kernel32", use_last_error=True)
+        if kernelbase is None:
+            kernelbase = getattr(ctypes, "WinDLL")("kernelbase", use_last_error=True)
         self._last_error = last_error or getattr(ctypes, "get_last_error")
 
-        def bind(name: str, result: Any, arguments: tuple[Any, ...]) -> Any:
-            function = getattr(kernel32, name)
+        def bind(
+            name: str, result: Any, arguments: tuple[Any, ...],
+            *, library: Any = kernel32,
+        ) -> Any:
+            function = getattr(library, name)
             function.restype = result
             function.argtypes = arguments
             return function
@@ -37,7 +43,11 @@ class WindowsHandleIdentityProbe:
             (handle, handle, handle, ctypes.POINTER(handle),
              wintypes.DWORD, wintypes.BOOL, wintypes.DWORD),
         )
-        self._compare = bind("CompareObjectHandles", wintypes.BOOL, (handle, handle))
+        # This API is documented in Kernelbase.dll, not Kernel32.dll.
+        self._compare = bind(
+            "CompareObjectHandles", wintypes.BOOL, (handle, handle),
+            library=kernelbase,
+        )
         self._close = bind("CloseHandle", wintypes.BOOL, (handle,))
 
     def matches(self, process: int, remote: int, expected: int) -> bool:
