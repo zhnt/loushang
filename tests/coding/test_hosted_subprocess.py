@@ -136,6 +136,7 @@ def test_G14_PRODUCT_installed_entrypoint_help_startup_and_clean_eof(
         help_process = await asyncio.create_subprocess_exec(
             _installed_command(),
             "--help",
+            stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=_environment(tmp_path),

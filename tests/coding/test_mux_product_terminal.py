@@ -83,6 +83,7 @@ def _command(root, environment, *args):
     result = subprocess.run(
         [_installed(), *_selector(root), *args],
         env=environment,
+        stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
         timeout=30,

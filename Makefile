@@ -191,6 +191,8 @@ APPHOST_SOURCES := \
 	src/loushang/harnesstui/mux \
 	src/loushang/coding/cli/apphost.py
 APPHOST_TEST_PATHS := \
+	tests/dev/test_hosted_fixture_stdin.py \
+	tests/dev/test_hosted_debt_cleanup.py \
 	tests/dev/test_hosted_darwin_scenario.py \
 	tests/dev/test_hosted_darwin_observer.py \
 	tests/dev/test_hosted_darwin_witness.py \
@@ -315,6 +317,8 @@ APPSERVICE_SOURCES := \
 	src/loushang/coding/hosted_continuity.py \
 	src/loushang/harnesstui/mux
 APPSERVICE_TEST_PATHS := \
+	tests/dev/test_hosted_fixture_stdin.py \
+	tests/dev/test_hosted_debt_cleanup.py \
 	tests/dev/test_hosted_darwin_scenario.py \
 	tests/dev/test_hosted_darwin_observer.py \
 	tests/dev/test_hosted_darwin_witness.py \

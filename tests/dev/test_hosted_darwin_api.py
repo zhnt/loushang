@@ -230,7 +230,7 @@ def _native(events, *, admission_error=False):
 
 @pytest.mark.parametrize("fault", ["fork", "exec", "foreign", "error", "registration"])
 def test_darwin_watch_rejects_unknown_topology_and_failed_registration(fault):
-    from tests.coding._hosted_darwin_api import DarwinExitWatch
+    from tests.coding._hosted_darwin_api import DarwinExitWatch, DarwinWatchEventError
 
     event = SimpleNamespace(ident=1234 if fault != "foreign" else 1235,
                             flags=0x4000 if fault == "error" else 0,
@@ -243,8 +243,10 @@ def test_darwin_watch_rejects_unknown_topology_and_failed_registration(fault):
         return
     watch = DarwinExitWatch([1234], native=native)
     try:
-        with pytest.raises(RuntimeError):
+        with pytest.raises(DarwinWatchEventError) as rejected:
             watch.exited()
+        assert rejected.value.registered is (fault != "foreign")
+        assert (rejected.value.flags, rejected.value.notes) == (event.flags, event.fflags)
         with pytest.raises(RuntimeError):
             watch.exited()  # Empty later observations cannot clear unknown debt.
     finally:

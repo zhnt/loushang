@@ -1852,3 +1852,50 @@ jobs passed, validating the portable signal correction. Its Windows native
 ENTRY supplement failed the strict topology check with unexpected snapshot
 children (`csrss.exe` and `winlogon.exe`); this remains undiagnosed, not an
 accepted exception to the process-tree invariant. No final delivery is claimed.
+
+The local full Linux wheel run for the complete composition passed all eight
+families in 434.13 seconds, with zero skips, failures or errors and verified
+wheel SHA-256 `102930190d29a4d03f6096a97b2367939e56fbdf40a96a9c21e9c5490e3e705a`.
+The inventory now records the composed three-platform observers, Darwin witness
+and shared observation registry. Individual `implemented` entries describe code
+composition; overall delivery remains partial until native acceptance and
+mainline promotion have both completed.
+
+### Whole-Goal Review And Remaining Native Failures
+
+The bounded whole-Product architecture/authority, lifecycle and user-contract
+re-review found no new Product P1/P2. It did find a test-only P2: the real debt
+fixture's timeout fallback sent SIGKILL to a historical child PID and immediately
+killed its controller. The replacement retains the same actual controller and
+one wait task after publishing release; observation timeout, caller cancellation
+and release-file IO failure cannot discard this owner. No historical PID can
+authorize termination. Four negative controls and the existing Product command
+selection passed 30 tests in 22.07 seconds; lifecycle re-review closed that P2.
+
+On `4869b303`, AppService workflow `34236846540` passed Linux wheel, Windows
+native, all six G16 jobs and all three quality jobs. Windows wheel job
+`102096654771` failed four families at their non-interactive help/management
+subprocess calls (each retained its 30-second timeout). Disabling pytest capture
+exposed a control-input inheritance gap: rebinding `sys.stdin` does not replace
+the native standard input inherited by subprocesses. Foreground help, local
+management and legacy G14 help now explicitly use null input; the G14 service
+protocol still uses its required PIPE. The underlying Windows timeout location
+is not proved by this correction; native verification remains necessary.
+
+Darwin native job `102096654597` showed successful ENTRY and publication-cancel
+observations, then entered sticky unknown in the first recovery workflow CLI,
+after `/new` and before recovery cancellation itself. The failure was the
+kqueue event-rejection branch, not a demonstrated Product cancellation failure.
+Source review confirms that creating a Session can spawn synchronous Git
+identity diagnostics, but the original event masks were not recorded. The
+observer now reports only registered-identity membership and numeric flag/note
+masks for rejected events. No fork/exec allowance, deadline, retry or physical
+proof condition is changed. Both Darwin native and complete wheel jobs reached
+their CI timeouts; neither supplies a passing full report.
+
+Architecture and contract re-review approved these fixture/diagnostic corrections.
+The combined focused selection passed 65 tests in 12.51 seconds; three actual
+Linux entry/G14/local workflows passed in 94.80 seconds. The supervisor's actual
+FD/Windows-handle input isolation and Darwin helper-process proof remain separate
+follow-up work. Overall delivery remains open; no failed run is retroactively
+reclassified as passing.

@@ -19,7 +19,7 @@ from pathlib import Path
 from loushang.tui.cell_width import strip_control_sequences
 from tests.tui.terminal_process_support import spawn_terminal_process
 
-from ._hosted_darwin_api import DarwinExitWatch
+from ._hosted_darwin_api import DarwinExitWatch, DarwinWatchEventError
 from ._hosted_darwin_witness import ReceiptIOError
 from ._hosted_terminal import process_table
 from .test_hosted_client import _argv
@@ -314,6 +314,9 @@ class NativeObservation:
                     if trace is not None else "unknown")
         with suppress(OSError, ValueError):
             print(f"native observation unknown: {type(error).__name__} at {location}", flush=True)
+            if isinstance(error, DarwinWatchEventError):
+                print(f"native watch masks: registered={error.registered}, "
+                      f"flags={error.flags:#x}, notes={error.notes:#x}", flush=True)
             self.ledger["unknown"](self.ticket["path"])
 
 

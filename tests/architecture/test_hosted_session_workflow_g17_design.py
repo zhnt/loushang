@@ -190,6 +190,12 @@ def test_G17_DESIGN_inventory_separates_accepted_baseline_from_target() -> None:
         assert set(entry["requirements"]) <= requirements
         covered.update(entry["requirements"])
     assert covered == requirements
+    by_id = {entry["id"]: entry for entry in entries}
+    for platform in inventory["requiredPlatforms"]:
+        observer_name = "windows" if platform == "win32" else platform
+        observer = by_id[f"evidence.{observer_name}-native-observer"]
+        assert observer["status"] == "implemented"
+        assert {"G17-INSTALLED", "G17-LIFETIMES"} <= set(observer["requirements"])
     scripts = tomllib.loads(Path("pyproject.toml").read_text())["project"]["scripts"]
     for name, target in inventory["unchangedScripts"].items():
         assert scripts[name] == target

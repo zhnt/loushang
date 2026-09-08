@@ -6,7 +6,6 @@ import asyncio
 import json
 import os
 import sys
-from contextlib import suppress
 from dataclasses import replace
 from io import StringIO
 from types import SimpleNamespace
@@ -481,6 +480,8 @@ def test_G17_RECLAIM_failed_diagnostic_sink_cannot_discard_owner(monkeypatch, fa
 def test_G17_RECLAIM_real_outer_controller_cannot_exit_while_child_is_still_owned(tmp_path):
     from pathlib import Path
 
+    from ._hosted_debt_cleanup import release_controller
+
     async def scenario():
         process = await asyncio.create_subprocess_exec(
             sys.executable, str(Path(__file__).with_name("_hosted_client_debt.py")), str(tmp_path),
@@ -510,15 +511,6 @@ def test_G17_RECLAIM_real_outer_controller_cannot_exit_while_child_is_still_owne
             with pytest.raises(ProcessLookupError):
                 os.kill(child_pid, 0)  # Child was reaped before controller fatal exit.
         finally:
-            (tmp_path / "release-reclamation").touch()
-            if process.returncode is None:
-                try:
-                    await asyncio.wait_for(process.wait(), 15)
-                except TimeoutError:
-                    if child_pid is not None:
-                        with suppress(ProcessLookupError):
-                            os.kill(child_pid, 9)
-                    process.kill()
-                    await process.wait()
+            await release_controller(process, tmp_path / "release-reclamation")
 
     asyncio.run(asyncio.wait_for(scenario(), 70))

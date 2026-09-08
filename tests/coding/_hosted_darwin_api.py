@@ -14,6 +14,14 @@ import sys
 _EV_RECEIPT = 0x0040  # Public Darwin event.h; CPython 3.11 does not export it.
 
 
+class DarwinWatchEventError(RuntimeError):
+    """Fixed native masks for diagnosis; no process names or runtime payloads."""
+
+    def __init__(self, *, registered, flags, notes):
+        super().__init__("native process topology became unknown")
+        self.registered, self.flags, self.notes = registered, flags, notes
+
+
 class _SigValue(ctypes.Union):
     _fields_ = [("integer", ctypes.c_int), ("pointer", ctypes.c_void_p)]
 
@@ -109,7 +117,9 @@ class DarwinExitWatch:
                 if (event.ident not in self._pids
                         or event.flags & self._native.KQ_EV_ERROR
                         or event.fflags != self._native.KQ_NOTE_EXIT):
-                    raise RuntimeError("native process topology became unknown")
+                    raise DarwinWatchEventError(
+                        registered=event.ident in self._pids, flags=event.flags, notes=event.fflags,
+                    )
                 self._ended.add(event.ident)
         except BaseException:
             self._unknown = True

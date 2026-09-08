@@ -52,7 +52,7 @@ def test_G17_TERMINAL_ENTRY_installed_help_ready_and_foreground_exit(
 def _installed_help(root):
     help_result = subprocess.run(
         [_installed(), "--help"], env=_terminal_environment(root),
-        capture_output=True, text=True, timeout=30,
+        stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=30,
     )
     assert help_result.returncode == 0 and not help_result.stderr
     assert "exit ends its application" in help_result.stdout
