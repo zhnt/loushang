@@ -1928,3 +1928,72 @@ candidate cause, not an independently identified child. A separate incremental
 design review is required for helper-process evidence. This commit neither
 ignores that event nor relaxes the sticky-unknown ownership rule. Full Darwin
 acceptance and mainline promotion remain outstanding.
+
+### Darwin Owned-Group Evidence Correction (Design Accepted, Implementation Pending)
+
+The confirmed fork exposes a mismatch between the fixed-chain test and the
+accepted [H2 owned-tree contract](../hosting/process-platform-h2.md#common-platform-contract).
+H2 owns a POSIX process group, not every process in an arbitrary fork genealogy;
+deliberate session/group escape is outside its security guarantee. G17 must
+exercise real Session creation and recovery without adding a stronger hostile
+process containment requirement. This correction is test-only: it does not
+change Hosting ownership, installed Product entrypoints, or the eight required
+user-workflow families. It supersedes the fixed-chain-only acceptance rule for
+these controlled native workflows, not the strict primitive's fork rejection.
+
+The accepted proof combines the retained chain with an independent owned-group
+observation:
+
+1. While the actual CLI and Hosted chain are frozen, capture every member's
+   process group and verify the Hosted root is a group leader distinct from both
+   CLI and witness groups. Every Hosted chain member must belong to that same
+   Hosting-created group; admission refuses another topology. The second frozen
+   parent/identity fence must also confirm these original group identities.
+2. Keep the CLI watch strict. The explicit owned-group mode permits NOTE_FORK
+   only on the admitted Hosted chain, records which registered identities
+   forked (not a count or complete child inventory), and still requires NOTE_EXIT
+   for every chain member. FORK alone is
+   never exit evidence. Foreign events, EXEC, invalid masks, and API errors
+   remain sticky unknown. The strict default and primitive negatives remain.
+3. After chain exit notes, retained CLI exit, and actual Hosted PID absence,
+   require `killpg(admitted_group, 0)` to return ESRCH AND a complete native
+   `ps` PGID membership table to contain no member of that group, including
+   zombies. Darwin's signal probe alone must not stand for zombie absence.
+   A successful probe means the group is not empty; EPERM is not absence;
+   other errors or failed/malformed/incomplete table reads do not complete
+   observation. This observation sends no terminating signal and does not
+   enumerate descendants using a now-reparented PPID tree. Numeric reuse can
+   conservatively delay/fail this check, never authorize killing a replacement.
+4. Only then authorize the witness's actual CLI reap, verify terminal modes and
+   result, and complete the original observation registry scope. Missing group
+   proof cannot be replaced by timeout, an empty PID snapshot, or a fork receipt.
+
+The fixture must also seal its real Git diagnostics environment before starting
+the installed command. Remove inherited `GIT_*`, use null global/system config,
+disable system config, and cap repository discovery at the case root's parent.
+Set highest-priority environment config overrides `core.fsmonitor=false` and
+`core.hooksPath` to the null path. This also covers editable native supplements
+whose source-identity diagnostic cwd lies outside the case's discovery ceiling;
+their source repository must not launch ambient fsmonitor or hook commands.
+Require the admitted workspace to lie within that root with no intervening
+`.git`. This still executes the real Git diagnostic subprocess; it prevents a
+fixture below `.artifacts` from adopting the host repository's configuration,
+including an external fsmonitor daemon. No arbitrary tool/plugin workload or
+malicious replacement Git binary is claimed by these fixed cases.
+
+Required controls: fork-only cannot satisfy exit; coalesced FORK|EXIT is recorded
+and still needs group proof; foreign/EXEC/error remain unknown; nonleader or
+changed group refuses admission; live helper and zombie/group residual prevent
+release even after main-chain exit (including ESRCH with a same-group zombie);
+EPERM/IO failure never means empty; real
+same-group helper exits and is reaped before acceptance; hostile ambient Git
+configuration cannot cross the fixture ceiling. Native macOS must run the group
+primitive and all unchanged installed workflow families with zero skips.
+This correction does not retroactively change any failed CI result.
+
+All three design perspectives approved after correcting two P2 findings:
+signal-zero alone does not prove zombie absence, and workspace-only Git sealing
+does not cover editable source-identity diagnostics. The unmodified observer,
+API, scenario and G17 architecture baseline passed 70 tests in 11.10 seconds
+(`.artifacts/g17-owned-group-baseline.xml`). Implementation and native acceptance
+remain pending; the current executable observer still rejects these forks.
