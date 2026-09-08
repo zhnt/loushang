@@ -31,6 +31,9 @@ Current live references:
 
 Standalone drafts:
 
+- [Loushang GUI Requirements](gui-requirements.md)
+- [Loushang GUI Engineering Bootstrap Plan](gui-engineering-bootstrap-plan.md)
+- [Loushang GUI Engineering Bootstrap Review](gui-engineering-bootstrap-review.md)
 - [Foundation Refactor Plan](foundation-refactor-plan.md)
 - [Foundation Phase 0 Inventory](foundation-phase-0-inventory.md)
 - [Loushang Future Target Architecture v3](future-loushang-architecture-v3.md)
