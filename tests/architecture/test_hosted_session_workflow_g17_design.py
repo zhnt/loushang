@@ -178,7 +178,8 @@ def test_G17_DESIGN_inventory_separates_accepted_baseline_from_target() -> None:
     assert inventory["inventoryVersion"] == 1
     assert inventory["designId"] == "HOSTED-SESSION-WORKFLOW-G17"
     assert inventory["implementationStatus"] == "implemented"
-    assert inventory["deliveryStatus"] == "mainline-integration-pending"
+    assert inventory["deliveryStatus"] == "acceptance-complete"
+    assert inventory["promotionPullRequest"] == 577
     assert inventory["trackingIssue"] == 572
     assert set(inventory["requiredPlatforms"]) == {"linux", "darwin", "win32"}
     entries = inventory["entries"]

@@ -14,8 +14,10 @@
   views, explicit installed foreground/local wiring and shared picker;
   foreground launch owner and explicit Product client entry implemented;
   Product-entry and implementation re-reviews passed; three-platform
-  isolated-wheel/native acceptance passed on `49952155`
-- Delivery status: mainline integration and promotion pending
+  isolated-wheel/native acceptance passed on main-integrated `1cd08a57`
+- Delivery status: acceptance complete; [immutable evidence](hosted-session-workflow-g17-acceptance-record.md)
+  and [promotion PR #577](https://github.com/zhnt/loushang/pull/577) distinguish
+  implementation acceptance from live mainline delivery state
 - Activation status: explicit opt-in only; Embedded and legacy G14/G16 retained
 - Tracking: [G17 #572](https://github.com/zhnt/loushang/issues/572)
 - Baseline: `3c06f5b9a4309e03dc754511eb012f9e2c23cbcb`
@@ -2082,6 +2084,7 @@ The focused CI and G17 architecture selection passed 51 tests with no skips,
 failures or errors (`.artifacts/g17-ci-main-reviewed.xml`).
 
 Implementation and pre-integration three-platform acceptance are complete.
-The merge head must obtain fresh remote CI before PR promotion through
-`lane/harness` to `main` and local refresh. These delivery operations remain
-pending and are not implied by the accepted `49952155` report.
+At the integration commit, fresh remote CI, PR promotion through `lane/harness`
+to `main` and local refresh were still required; none was implied by the
+accepted `49952155` report. The subsequent [acceptance record](hosted-session-workflow-g17-acceptance-record.md)
+records the integrated head's fresh success and its separate promotion tracking.

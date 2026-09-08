@@ -27,7 +27,8 @@
   settlement are implemented; G16 has an optional local deployment owner and
   installed Product client/server route delivered on Linux/macOS/Windows;
   G17 implements A0.5 with an explicit foreground Product entry and accepted
-  three-platform native/isolated-wheel evidence; mainline promotion is pending
+  three-platform native/isolated-wheel evidence; delivery is tracked by
+  [G17 promotion PR #577](https://github.com/zhnt/loushang/pull/577)
 - Activation status: default-dark; the exact installed G10 canary selects
   Hosting. G12/G13 have explicit library construction and the separate G14
   `loushang-hosted` command; G16 has the separate installed `loushang-mux`
@@ -199,8 +200,12 @@ public-API primitives, including owned-group settlement; five Windows native
 cases; all six G16 native/wheel jobs; and all three platform quality jobs.
 The default editable suite does not activate the dedicated wheel-only selector.
 Historical failures and their corrections remain in the incremental workflow
-record. Mainline CI integration, final PR promotion and local refresh remain
-pending; the accepted pre-integration run does not prove a later merge head.
+record. Main-integrated `1cd08a57` subsequently passed all 66 final jobs in
+[unified CI](https://github.com/zhnt/loushang/actions/runs/34247900896), including
+fresh three-platform eight-family acceptance. The [acceptance record](hosted-session-workflow-g17-acceptance-record.md)
+separates immutable implementation evidence from the live promotion state in
+[PR #577](https://github.com/zhnt/loushang/pull/577) and local-refresh tracking
+in [#572](https://github.com/zhnt/loushang/issues/572).
 The activation status above is unchanged.
 
 ## Target
@@ -347,7 +352,7 @@ after Product/OEM admission, never through a derived module name.
 | A0.2 | catalog/router, exact admission-pin verification, idempotent Session create/candidate adapter, and explicit importer over fakes | implemented, uncomposed |
 | A0.3 | canonical live-binding registry, scoped runtime lifecycle, and embedded profile | implemented, uncomposed |
 | A0.4 | optional hosted binder over the contract-only AppServer structural port bundle | implemented, uncomposed |
-| A0.5 | optional serialized launcher | composed by G17; three-platform acceptance on `49952155`; promotion pending |
+| A0.5 | optional serialized launcher | composed by G17; integrated acceptance on `1cd08a57`; promotion tracked by PR #577 |
 | G8.0 | cross-scope Product/Worker join boundary and executable guards | accepted |
 | G8.1 | Coding Product registration/factory, exact receipt join, and frozen profile projection | implemented, uncomposed |
 | G8.2 | concrete Coding canary normal-close lifecycle and Product compatibility | implemented, uncomposed |
