@@ -204,7 +204,10 @@ def test_g11_package_budgets_keep_new_owners_reviewable() -> None:
         ),
     }
     limits = {
-        "appserver": 1_800,
+        # G17's independently reviewed optional discovery algebra/codec adds
+        # 271 lines to this exact group; all protocol modules still count.
+        # See hosted-session-workflow-g17.md, Reviewability Budget Supplement.
+        "appserver": 2_100,
         "appservice-core": 1_500,
         "appservice-continuity": 1_250,
         "coding-adapter": 400,

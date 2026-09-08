@@ -16,7 +16,7 @@ def test_G15_DESIGN_inventory_records_design_not_runtime_activation() -> None:
     entries = inventory["entries"]
     assert len({entry["id"] for entry in entries}) == len(entries)
     assert {entry["status"] for entry in entries} == {
-        "existing-retain", "planned", "implemented-by-g16",
+        "existing-retain", "planned", "implemented-by-g16", "implemented-uncomposed",
     }
     for entry in entries:
         assert Path(entry["source"]).exists() == (
@@ -24,6 +24,8 @@ def test_G15_DESIGN_inventory_records_design_not_runtime_activation() -> None:
         ), "reconcile the inventory when a planned responsibility is implemented"
         if entry["status"] == "implemented-by-g16":
             assert entry["id"] == "harnesstui.hosted-shell"
+        if entry["status"] == "implemented-uncomposed":
+            assert entry["id"] == "appserver.session-discovery"
     scripts = tomllib.loads(Path("pyproject.toml").read_text())["project"]["scripts"]
     for name, target in inventory["unchangedScripts"].items():
         assert scripts[name] == target

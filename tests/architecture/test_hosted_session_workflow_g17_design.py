@@ -15,7 +15,7 @@ def test_G17_DESIGN_inventory_separates_accepted_baseline_from_target() -> None:
     )
     assert inventory["inventoryVersion"] == 1
     assert inventory["designId"] == "HOSTED-SESSION-WORKFLOW-G17"
-    assert inventory["implementationStatus"] == "not-started"
+    assert inventory["implementationStatus"] == "partial"
     assert inventory["trackingIssue"] == 572
     assert set(inventory["requiredPlatforms"]) == {"linux", "darwin", "win32"}
     entries = inventory["entries"]
@@ -23,7 +23,7 @@ def test_G17_DESIGN_inventory_separates_accepted_baseline_from_target() -> None:
     requirements = set(inventory["requirements"])
     covered: set[str] = set()
     for entry in entries:
-        assert entry["status"] in {"existing-extend", "planned"}
+        assert entry["status"] in {"existing-extend", "planned", "implemented-uncomposed"}
         assert Path(entry["source"]).exists() == (entry["status"] != "planned")
         assert set(entry["requirements"]) <= requirements
         covered.update(entry["requirements"])

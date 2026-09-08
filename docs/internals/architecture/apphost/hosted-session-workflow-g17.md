@@ -10,7 +10,8 @@
 - Kind: incremental cross-scope contract and delivery design
 - Authority: normative accepted incremental design; inherits G15/G16 boundaries
 - Design status: accepted after independent three-perspective review and re-review
-- Implementation status: not-started
+- Implementation status: partial — discovery values/codec and optional wire profiles;
+  Product discovery, AppService views, picker, launcher and installed acceptance pending
 - Activation status: explicit opt-in only; Embedded and legacy G14/G16 retained
 - Tracking: [G17 #572](https://github.com/zhnt/loushang/issues/572)
 - Baseline: `3c06f5b9a4309e03dc754511eb012f9e2c23cbcb`
@@ -24,7 +25,7 @@ according to the selected deployment lifetime. Required installed user paths
 pass on Linux, macOS and Windows. Existing Embedded and G16 behavior does not
 regress. This is the complete delivery objective, not a design-only closure.
 
-Current source facts:
+Source facts at the G17 design baseline:
 
 - `appserver.client.AppClientV1` lists muxes, not resumable Session history.
 - `coding.hosted_catalog.CodingHostedSessionCatalogV1` owns real canonical
@@ -44,6 +45,34 @@ owner. Existing Session stores, AppHost catalog, mux coordination, terminal
 engine, process host and protocol framing retain their responsibilities.
 No new top-level package, persistent Session index, daemon installer, default
 activation, arbitrary executable RPC, automatic replay or image transfer.
+
+### Implementation Progress
+
+The first G17.1 implementation slice supplies `SessionListV1`,
+`SessionListResultV1`, bounded candidate/completeness values and the strict
+`sessions/list` codec. `SessionDiscoveryClientV1` is separate from the unchanged
+required `AppClientV1` surface. Explicit new profiles guard both outbound calls
+and inbound dispatch; the connection receives an independently injected
+discovery port. Remote clients reject pages for a different requested scope or
+over the requested limit. Legacy hello bytes and default profiles are retained.
+
+This slice is implemented-uncomposed: no installed Product command selects the
+new profiles or exposes directory discovery yet. Neither a working picker nor
+G17 runtime/installed acceptance is claimed by protocol tests. Subsequent
+slices must update the source inventory and required-case manifest as actual
+Product, semantic, UI and process ownership is delivered.
+
+### Reviewability Budget Supplement
+
+The architecture reviewer independently approved changing only G11's exact
+`appserver/protocol/*.py + appserver/client.py` group from 1,800 to 2,100 lines.
+At review this group grew from 1,640 to 1,911 lines (+271) for the accepted
+discovery algebra, explicit codec, optional client and closed profile checks;
+remaining headroom changed from 160 to 189 lines. The glob still counts every
+protocol module. All import gates and other owner budgets are unchanged.
+This permits neither moving code outside the counted group to hide it nor
+adding Product IO, pagination state or process ownership to the protocol.
+Later Product/AppService/UI work receives no automatic budget expansion.
 
 ## Requirements And Delivery Slices
 

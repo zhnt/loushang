@@ -53,9 +53,11 @@ the baseline separately from planned files:
   this is not a G15 launch owner.
 - AppHost A0.5 and the G15 foreground launcher/client entrypoint remain missing.
   Existing `loushang` and `loushang-tui` remain Embedded routes.
-- AppClient has no resumable-Session listing operation. The Product catalog
-  exists server-side, but a client picker cannot read it through the current
-  wire contract. Its bounded discovery extension below remains a named gap.
+- AppClient's legacy required surface has no resumable-Session listing operation.
+  G17 adds the separate optional discovery contract, codec and profile checks;
+  these are implemented-uncomposed, not an end-to-end Product discovery route.
+  The Product catalog exists server-side, but AppService discovery views and
+  a client picker remain implementation gaps.
 
 The older named-mux proposal informs UI behavior, not current implementation
 status. In particular its detachable lifetime cannot be applied to G14 pipes.

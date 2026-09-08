@@ -18,6 +18,8 @@ from .protocol import (
     MuxMemberOpenV1,
     MuxReadV1,
     MuxSpaceV1,
+    SessionListResultV1,
+    SessionListV1,
     SessionSnapshotRequestV1,
     SessionSnapshotV1,
     TurnInterruptV1,
@@ -67,4 +69,10 @@ class AppClientV1(Protocol):
     ) -> tuple[AttachmentEventV1, ...]: ...
 
 
-__all__ = ["AppClientV1"]
+class SessionDiscoveryClientV1(Protocol):
+    """Optional borrowed capability, supplied only after explicit admission."""
+
+    async def list_sessions(self, request: SessionListV1) -> SessionListResultV1: ...
+
+
+__all__ = ["AppClientV1", "SessionDiscoveryClientV1"]

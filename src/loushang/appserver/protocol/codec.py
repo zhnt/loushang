@@ -11,6 +11,7 @@ from typing import TypeVar, cast
 from .errors import AppErrorCodeV1, AppFailureV1, InvalidAppMessageError
 from .model import (
     APP_PROTOCOL_VERSION,
+    MAX_DISCOVERY_PAGE,
     AckV1,
     AppOperationV1,
     AppRequestV1,
@@ -34,9 +35,14 @@ from .model import (
     MuxSelectorV1,
     MuxSpaceMemberV1,
     MuxSpaceV1,
+    SessionAvailabilityV1,
+    SessionCompatibilityV1,
+    SessionDiscoveryCandidateV1,
     SessionEventKindV1,
     SessionEventV1,
     SessionIdentityV1,
+    SessionListResultV1,
+    SessionListV1,
     SessionOpenSpecV1,
     SessionScopeV1,
     SessionSnapshotRequestV1,
@@ -190,6 +196,8 @@ def encode_response(response: AppResponseV1) -> bytes:
         result_type, value = "attachment", _encode_attachment(result)
     elif type(result) is SessionSnapshotV1:
         result_type, value = "snapshot", _encode_snapshot(result)
+    elif type(result) is SessionListResultV1:
+        result_type, value = "sessionList", _encode_session_list(result)
     elif type(result) is AttachmentEventsV1:
         result_type, value = (
             "events",
@@ -240,6 +248,8 @@ def decode_response(payload: bytes) -> AppResponseV1:
         result = _decode_attachment(raw)
     elif result_type == "snapshot":
         result = _decode_snapshot(raw)
+    elif result_type == "sessionList":
+        result = _decode_session_list(raw)
     elif result_type == "events":
         value = _object(raw, {"events"})
         events = value["events"]
@@ -316,6 +326,15 @@ def _encode_request_payload(request: AppRequestV1) -> _Object:
         return {"name": cast(MuxCreateV1, payload).name}
     if operation is AppOperationV1.MUX_LIST:
         return {}
+    if operation is AppOperationV1.SESSIONS_LIST:
+        query = cast(SessionListV1, payload)
+        return {
+            "productId": query.product_id,
+            "scope": query.scope.value,
+            "scopeFingerprint": query.scope_fingerprint,
+            "limit": query.limit,
+            "continuation": query.continuation,
+        }
     if operation is AppOperationV1.ATTACHMENT_READ_EVENTS:
         poll = cast(AttachmentReadEventsV1, payload)
         return {
@@ -380,6 +399,18 @@ def _decode_request_payload(operation: AppOperationV1, raw: object) -> object:
     if operation is AppOperationV1.MUX_LIST:
         _object(raw, set())
         return MuxListV1()
+    if operation is AppOperationV1.SESSIONS_LIST:
+        value = _object(raw, {
+            "productId", "scope", "scopeFingerprint", "limit", "continuation"
+        })
+        return _construct(
+            SessionListV1,
+            product_id=_string(value["productId"]),
+            scope=_enum(SessionScopeV1, value["scope"]),
+            scope_fingerprint=_string(value["scopeFingerprint"]),
+            limit=_integer(value["limit"]),
+            continuation=_optional_string(value["continuation"]),
+        )
     if operation is AppOperationV1.ATTACHMENT_READ_EVENTS:
         value = _object(raw, {"attachmentId", "controllerGeneration", "limit"})
         return _construct(
@@ -490,6 +521,57 @@ def _decode_selector(raw: object) -> MuxSelectorV1:
         MuxSelectorV1,
         mux_space_id=_optional_string(value["muxSpaceId"]),
         name=_optional_string(value["name"]),
+    )
+
+
+def _encode_session_list(value: SessionListResultV1) -> _Object:
+    return {
+        "productId": value.product_id,
+        "scope": value.scope.value,
+        "scopeFingerprint": value.scope_fingerprint,
+        "snapshotId": value.snapshot_id,
+        "complete": value.complete,
+        "continuation": value.continuation,
+        "omittedCount": value.omitted_count,
+        "omittedCountExact": value.omitted_count_exact,
+        "candidates": [
+            {"identity": _encode_identity(item.identity), "title": item.title,
+             "compatibility": item.compatibility.value,
+             "availability": item.availability.value}
+            for item in value.candidates
+        ],
+    }
+
+
+def _decode_session_list(raw: object) -> SessionListResultV1:
+    value = _object(raw, {
+        "productId", "scope", "scopeFingerprint", "snapshotId", "complete",
+        "continuation", "omittedCount", "omittedCountExact", "candidates",
+    })
+    raw_candidates = value["candidates"]
+    if type(raw_candidates) is not list or len(raw_candidates) > MAX_DISCOVERY_PAGE:
+        raise InvalidAppMessageError()
+    candidates = []
+    for raw_candidate in raw_candidates:
+        item = _object(raw_candidate, {"identity", "title", "compatibility", "availability"})
+        candidates.append(_construct(
+            SessionDiscoveryCandidateV1,
+            identity=_decode_identity(item["identity"]),
+            title=_string(item["title"]),
+            compatibility=_enum(SessionCompatibilityV1, item["compatibility"]),
+            availability=_enum(SessionAvailabilityV1, item["availability"]),
+        ))
+    return _construct(
+        SessionListResultV1,
+        product_id=_string(value["productId"]),
+        scope=_enum(SessionScopeV1, value["scope"]),
+        scope_fingerprint=_string(value["scopeFingerprint"]),
+        snapshot_id=_string(value["snapshotId"]),
+        complete=_boolean(value["complete"]),
+        continuation=_optional_string(value["continuation"]),
+        omitted_count=_integer(value["omittedCount"]),
+        omitted_count_exact=_boolean(value["omittedCountExact"]),
+        candidates=tuple(candidates),
     )
 
 

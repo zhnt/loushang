@@ -186,8 +186,9 @@ it neither activates A0.5 nor changes application ownership.
 The [G17 incremental workflow](hosted-session-workflow-g17.md) has passed its
 independent three-perspective design review for bounded Session discovery, the
 shared shell picker, A0.5 foreground launch ownership and installed three-platform
-acceptance. Implementation is not started; this design does not change
-the implementation or activation status above until its slices are delivered.
+acceptance. Its first slice implements the optional discovery values/codec and
+profile enforcement without Product composition. Discovery views, picker and
+launcher are still pending; the activation status above is unchanged.
 
 ## Target
 
