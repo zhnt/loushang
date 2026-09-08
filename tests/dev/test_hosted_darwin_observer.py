@@ -11,6 +11,10 @@ from tests.coding import _hosted_darwin_observer as module
 
 
 def _chain(monkeypatch, *, fault=None):
+    # These tests simulate Darwin signals and process state; never depend on
+    # the runner's signal constants (Windows has no SIGSTOP or SIGCONT).
+    # Replace this module's reference only, not the shared stdlib module.
+    monkeypatch.setattr(module, "signal", SimpleNamespace(SIGSTOP=17, SIGCONT=19, SIGINT=2))
     table = {90: (80, "S"), 100: (90, "S"), 101: (100, "S")}
     sent, watched = [], []
 
@@ -64,6 +68,8 @@ def _observation(tmp_path, monkeypatch):
     receipts = {}
     observation = object.__new__(module.NativeObservation)
     observation.unknown, observation.admitted, observation.requested = False, True, True
+    observation.close_parent, observation.resumed = True, True
+    observation.parent_proof = None
     observation.chain_ready, observation.witness_ended, observation.parent_closed = True, False, False
     observation.finished, observation.reaped, observation.closed = None, False, False
     observation.receipts = tmp_path

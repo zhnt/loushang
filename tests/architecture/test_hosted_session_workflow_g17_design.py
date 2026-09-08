@@ -19,7 +19,7 @@ def test_G17_DARWIN_native_entry_supplement_keeps_full_wheel_pending():
     test = native.test_G17_TERMINAL_DARWIN_modes_and_physical_exit
     marker = next(mark for mark in test.pytestmark if mark.name == "parametrize")
     assert row["requiredCaseIds"] == [parameter.id for parameter in marker.args[1]]
-    assert row["minimumTests"] == 3
+    assert row["minimumTests"] == 4
     assert row["requiredProperties"] == {"native_platform": "darwin", "terminal_backend": "posix-pty"}
     wheel = json.loads((ROOT / "hosted-session-workflow-g17-evidence-manifest.json").read_text())
     assert wheel["reports"]["G17-WHEEL-DARWIN"]["status"] == "planned"

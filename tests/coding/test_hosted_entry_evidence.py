@@ -232,12 +232,13 @@ def test_G17_TERMINAL_START_CANCEL_durable_recovery_reclaims_and_can_relaunch(tm
     _run_observation(tmp_path, "recovery-cancel", timeout=150)
 
 
-def _observe_recovery_cancel(root, *, observer=_observe_entry):
+def _observe_recovery_cancel(root, *, observer=_observe_entry, recovery_cli=None):
     from loushang.ai.types import UserMessage
     from loushang.appservice.continuity import decode_application_continuity_record
     from loushang.coding.session_manager import SessionManager
 
-    _recovery_cli(root, create=True)
+    recovery_cli = _recovery_cli if recovery_cli is None else recovery_cli
+    recovery_cli(root, create=True)
     historical = "G17 history survives recovery cancellation without replay"
     (canonical,) = (root / "cwd").glob("*.jsonl")
 
@@ -258,7 +259,7 @@ def _observe_recovery_cancel(root, *, observer=_observe_entry):
     assert json.loads((root / "recovery-held").read_text()) == asdict(member.session)
     assert record.read_bytes() == snapshot, "cancelled recovery must not rewrite desired state"
     assert canonical.read_bytes() == history_bytes, "cancelled recovery must preserve history"
-    _recovery_cli(root, create=False, historical=historical)
+    recovery_cli(root, create=False, historical=historical)
     (reopened,) = decode_application_continuity_record(record.read_bytes()).mux_spaces
     assert reopened.mux_space_id == mux.mux_space_id
     assert reopened.members == mux.members
@@ -272,15 +273,19 @@ def _recovery_cli(root, *, create, historical=None):
         [_installed(), *_argv(root)], cwd=root, env=environment, columns=100, rows=30,
     ) as driver:
         driver.read_until(lambda out: "/exit ends app" in strip_control_sequences(out), timeout=35)
-        if create:
-            driver.write("/new cwd Recovery sentinel\r")
-        driver.read_until(lambda out: "*1" in strip_control_sequences(out), timeout=20)
-        driver.read_until(lambda out: "Recovery sentinel" in strip_control_sequences(out), timeout=10)
-        if historical:
-            driver.read_until(lambda out: historical in strip_control_sequences(out), timeout=20)
+        _recovery_interaction(driver, create=create, historical=historical)
         driver.write("/exit\r")
         assert driver.wait(timeout=25) == 0, driver.diagnostics
         assert driver.diagnostics.termination is None
+
+
+def _recovery_interaction(driver, *, create, historical=None):
+    if create:
+        driver.write("/new cwd Recovery sentinel\r")
+    driver.read_until(lambda out: "*1" in strip_control_sequences(out), timeout=20)
+    driver.read_until(lambda out: "Recovery sentinel" in strip_control_sequences(out), timeout=10)
+    if historical:
+        driver.read_until(lambda out: historical in strip_control_sequences(out), timeout=20)
 
 
 def _run_observation(tmp_path, case, *, timeout=90):

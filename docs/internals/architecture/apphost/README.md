@@ -203,9 +203,14 @@ suite does not activate the dedicated wheel-only selector.
 The `1264a79e` Windows quality run was cancelled after three G14 real-child
 failures; the subsequent `75fe6a48` AppService workflow passed all 13 jobs,
 including Windows quality (952 passed, 61 skipped). This rerun does not identify
-the cause of the earlier failures. The retained Darwin observer now composes
-three native entry/cancel/forced-exit cases, with actual CI still required;
-recovery cancellation and full eight-family wheel acceptance remain pending.
+the cause of the earlier failures. On `937bc55c`, the three Darwin native
+entry/cancel/forced-exit cases and five public-API primitives passed with zero
+skips. That AppService workflow passed 13 of 14 jobs: Windows quality failed
+seven simulated Darwin signal tests because Windows has no `SIGSTOP`. Those
+controls now use module-local simulated signal constants without skipping tests.
+Recovery cancellation now composes seed, cancellation and relaunch under one
+retained scenario owner; its fourth native CI case is pending. Full Darwin
+eight-family wheel acceptance and final three-platform delivery remain pending.
 The activation status above is unchanged.
 
 ## Target

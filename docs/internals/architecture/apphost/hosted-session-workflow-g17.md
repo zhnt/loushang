@@ -1764,3 +1764,38 @@ The observer/witness/API/registry/architecture selection passed 108 tests in
 6.76 seconds (`.artifacts/g17-native-observer-reviewed.xml`); Ruff, Actionlint
 and diff checks passed. Native macOS execution of these three cases is still
 required, and this selection is not installed eight-family acceptance.
+
+On `937bc55c6f7204ac8a478eba6cfdb33e0c7b302b`, AppService workflow
+`34232595095` supplied the actual native result: job `102082205245` passed
+all three cases in 26.39 seconds; the five primitive cases passed in 0.70 seconds.
+Both reports passed exact zero-skip/failure/error verification. Thirteen of the
+fourteen workflow jobs passed, including both complete Linux/Windows wheel jobs
+and all G16 jobs. Windows quality failed seven simulated Darwin signal tests
+(`SIGSTOP` is absent on Windows), with 968 passed and 61 skipped. The test-only
+signal seam now supplies module-local Darwin constants, leaving stdlib signals
+and Product behavior unchanged and retaining these controls on Windows.
+
+### Darwin Recovery Cancellation Composition
+
+The fourth native case now runs seed creation, interrupted recovery and relaunch
+through three separate retained CLI observations under one `NativeScenario`.
+Each CLI receives a unique receipt directory and closes its inner scope only
+after physical proof. The outer scope remains admitted until all three witnesses
+and their readers/watches are released. Its immutable initial receipt identity
+is historical bookkeeping, never authority to signal a later process.
+
+The shared recovery fixture accepts explicit observer and CLI-interaction seams;
+Linux/Windows retain their existing defaults. Darwin injects both seams, so seed
+creation and final history verification cannot silently use a generic terminal
+owner. Cancellation still checks canonical transcript bytes, continuity records
+and exact member identity before reopening the same history.
+
+Real-registry controls cover second-CLI debt, history assertion failure at the
+first or third CLI, outer publication failure before/after commit without repeated
+release, sticky unknown state, and the actual scenario entry's two callback
+bindings. The focused observer/witness/API/registry/architecture selection passed
+116 tests in 7.98 seconds locally; the existing Linux recovery-cancel integration
+passed one test in 62.87 seconds. All three re-review perspectives approved the
+slice after the contract review's entry-wiring regression request was implemented.
+Actual macOS execution of the fourth case remains pending, and the full
+eight-family Darwin wheel manifest remains planned.

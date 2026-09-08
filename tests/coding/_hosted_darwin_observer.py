@@ -139,22 +139,28 @@ class FrozenChain:
 
 
 class NativeObservation:
-    def __init__(self, root, ledger, parent_scope, *, force_exit=False, cancel_start=False):
+    def __init__(self, root, ledger, parent_scope, *, force_exit=False, cancel_start=False,
+                 cancel_recovery=False, close_parent=True, receipt_name="witness"):
         self.root, self.ledger = root, ledger
         self.parent_scope = parent_scope
-        self.ticket = ledger["create"](root, parent=parent_scope, observation=True)
-        self.receipts = root / "witness"
+        self.receipts = root / receipt_name
         self.receipts.mkdir()
         self.force_exit, self.cancel_start = force_exit, cancel_start
+        self.cancel_recovery, self.close_parent = cancel_recovery, close_parent
+        self.parent_proof = None
         self.driver = self.started = self.chain = self.finished = None
         self.admitted = self.requested = self.reaped = self.closed = self.unknown = False
         self.chain_ready = self.witness_ended = self.parent_closed = False
         self.mode_restored = False
         self.active_modes_valid = False
+        self.resumed = False
+        self.ticket = ledger["create"](root, parent=parent_scope, observation=True)
 
     def start(self):
-        executable = ([sys.executable, "-I", str(Path(__file__).with_name("_hosted_start_cancel.py"))]
-                      if self.cancel_start else [_installed()])
+        cancelled = self.cancel_start or self.cancel_recovery
+        script = "_hosted_recovery_cancel.py" if self.cancel_recovery else "_hosted_start_cancel.py"
+        executable = ([sys.executable, "-I", str(Path(__file__).with_name(script))]
+                      if cancelled else [_installed()])
         environment = _terminal_environment(self.root)
         environment[self.ledger["ENVIRONMENT_KEY"]] = str(self.ticket["path"])
         self.driver = spawn_terminal_process(
@@ -168,13 +174,14 @@ class NativeObservation:
         if diagnostics.exit_status is not None or self.started["witness"] != diagnostics.pid:
             raise RuntimeError("native witness identity mismatch")
         self.driver.read_until(
-            lambda out: ("G17 publication held" if self.cancel_start else "/exit ends app")
+            lambda out: (self.root / "recovery-held").is_file() if self.cancel_recovery else
+            ("G17 publication held" if self.cancel_start else "/exit ends app")
             in strip_control_sequences(out), timeout=35,
         )
         _command(self.receipts, "sample.request", self.started["pid"])
         _until(lambda: _read(self.receipts, "sample") is not None)
         active = _read(self.receipts, "sample")["modes"]
-        if self.cancel_start:
+        if cancelled:
             self.active_modes_valid = active == self.started["baseline"]
         else:
             import termios
@@ -202,16 +209,26 @@ class NativeObservation:
         except OSError as error:
             raise ReceiptIOError("native observation completion pending") from error
 
+    def activate(self):
+        if self.unknown or not self.chain_ready:
+            raise RuntimeError("native chain has no activation proof")
+        if not self.admitted:
+            self._admit_scope(self.ticket["path"], self.chain.cli, self.chain.pids[1:])
+            controller, children = self.parent_proof or (os.getpid(), [self.started["witness"]])
+            self._admit_scope(self.parent_scope, controller, children)
+            self.admitted = True
+        if not self.resumed:
+            self.chain.resume(force_exit=self.force_exit)
+            self.resumed = True
+
     def settle_step(self):
         if self.unknown or not self.chain_ready:
             return False
         if not self.admitted:
-            self._admit_scope(self.ticket["path"], self.chain.cli, self.chain.pids[1:])
-            self._admit_scope(self.parent_scope, os.getpid(), [self.started["witness"]])
-            self.admitted = True
+            self.activate()
         if not self.requested:
-            self.chain.resume(force_exit=self.force_exit)
-            if self.cancel_start:
+            self.activate()
+            if self.cancel_start or self.cancel_recovery:
                 self.chain._verify_signal_target(self.chain.cli, self.chain.witness)
                 os.kill(self.chain.cli, signal.SIGINT)  # Unreaped witness child.
             else:
@@ -249,7 +266,7 @@ class NativeObservation:
             self.driver.close()
             self.chain.watch.close()
             self.witness_ended = True
-        if not self.parent_closed:
+        if self.close_parent and not self.parent_closed:
             self._complete_scope(self.parent_scope)
             self.parent_closed = True
         return True
@@ -290,30 +307,132 @@ class NativeObservation:
             self.ledger["unknown"](self.ticket["path"])
 
 
+def _assert_observation(observation, budget_ok):
+    assert budget_ok, "native exit exceeded its user budget"
+    assert observation.mode_restored, "native CLI did not restore terminal modes"
+    assert observation.active_modes_valid, "native CLI terminal activation was invalid"
+    cancelled = observation.cancel_start or observation.cancel_recovery
+    expected = 130 if cancelled else 1 if observation.force_exit else 0
+    assert observation.finished["code"] == expected
+    assert observation.driver.diagnostics.termination is None
+    assert not observation.driver.diagnostics.reader_alive
+    if cancelled:
+        output = observation.driver.raw_output
+        assert "G17 terminal invoked" not in output and "/exit ends app" not in strip_control_sequences(output)
+        assert "hosted_interrupted" in output
+    if observation.cancel_start:
+        assert all(message in output for message in (
+            "hosted_interrupted", "G17 publication cancelled", "G17 late lease returned",
+        ))
+
+
+class NativeScenario:
+    """One retained outer scope spanning every CLI in a user workflow."""
+
+    def __init__(self, ledger, parent):
+        self.ledger, self.parent = ledger, parent
+        self.observations = []
+        self.parent_proof = None
+        self.closed = False
+        self.unknown = False
+
+    def observe(self, root, *, interaction=None, **options):
+        if self.closed or self.unknown or len(self.observations) >= 8:
+            raise RuntimeError("native scenario is closed or exceeds its CLI bound")
+        observation = NativeObservation(
+            root, self.ledger, self.parent, close_parent=False,
+            receipt_name=f"witness-{len(self.observations)}", **options,
+        )
+        self.observations.append(observation)
+        try:
+            try:
+                observation.start()
+                if self.parent_proof is None:
+                    self.parent_proof = (os.getpid(), [observation.started["witness"]])
+                observation.parent_proof = self.parent_proof
+                while True:
+                    try:
+                        observation.activate()
+                        break
+                    except ReceiptIOError:
+                        time.sleep(0.01)
+            except BaseException as error:
+                observation.retain_failure(error)
+                raise
+            if interaction is not None:
+                interaction(observation.driver)
+        finally:
+            budget_ok = observation.settle()
+        _assert_observation(observation, budget_ok)
+
+    def recovery_cli(self, root, *, create, historical=None):
+        from .test_hosted_entry_evidence import _recovery_interaction
+
+        self.observe(root, interaction=lambda driver: _recovery_interaction(
+            driver, create=create, historical=historical,
+        ))
+
+    def close_step(self):
+        if self.unknown:
+            return False
+        for observation in self.observations:
+            if observation.unknown:
+                return False
+            if not observation.witness_ended:
+                observation.settle()
+            if not observation.witness_ended or not observation.closed:
+                return False
+        if self.observations:
+            self.observations[0]._complete_scope(self.parent)
+        else:
+            try:
+                self.ledger["require_closed"](
+                    {"path": self.parent, "token": self.parent.stem}, not_started=True,
+                )
+            except RuntimeError as error:
+                if isinstance(error.__cause__, OSError):
+                    raise ReceiptIOError("empty native scenario completion pending") from error
+                raise
+        self.closed = True
+        return True
+
+    def close(self):
+        previous = signal.signal(signal.SIGINT, lambda *_: None)
+        next_report = time.monotonic() + 5
+        try:
+            while not self.closed:
+                try:
+                    if self.close_step():
+                        return
+                except ReceiptIOError:
+                    pass
+                except BaseException:
+                    self.unknown = True
+                    with suppress(OSError, ValueError):
+                        self.ledger["unknown"](self.parent)
+                if not self.closed:
+                    if time.monotonic() >= next_report:
+                        with suppress(OSError, ValueError):
+                            print("native scenario completion pending; owner retained", flush=True)
+                        next_report = time.monotonic() + 5
+                    time.sleep(0.01)
+        finally:
+            signal.signal(signal.SIGINT, previous)
+
+
 def scenario(root, case):
     assert sys.platform == "darwin"
     repository = Path(__file__).resolve().parents[2]
     ledger = runpy.run_path(str(repository / "scripts/dev/_evidence_observation.py"))
     parent = Path(os.environ[ledger["ENVIRONMENT_KEY"]])
-    observation = NativeObservation(root, ledger, parent, force_exit=case == "forced-exit",
-                                    cancel_start=case == "start-cancel")
+    owner = NativeScenario(ledger, parent)
     try:
-        observation.start()
-    except BaseException as error:
-        observation.retain_failure(error)
-        raise
+        if case == "recovery-cancel":
+            from .test_hosted_entry_evidence import _observe_recovery_cancel
+
+            _observe_recovery_cancel(root, observer=owner.observe, recovery_cli=owner.recovery_cli)
+        else:
+            assert case in {"real", "start-cancel", "forced-exit"}
+            owner.observe(root, force_exit=case == "forced-exit", cancel_start=case == "start-cancel")
     finally:
-        budget_ok = observation.settle()
-    assert budget_ok, "native exit exceeded its user budget"
-    assert observation.mode_restored, "native CLI did not restore terminal modes"
-    assert observation.active_modes_valid, "native CLI terminal activation was invalid"
-    expected = 130 if case == "start-cancel" else 1 if case == "forced-exit" else 0
-    assert observation.finished["code"] == expected
-    assert observation.driver.diagnostics.termination is None
-    assert not observation.driver.diagnostics.reader_alive
-    if case == "start-cancel":
-        output = observation.driver.raw_output
-        assert "G17 terminal invoked" not in output and "/exit ends app" not in strip_control_sequences(output)
-        assert all(message in output for message in (
-            "hosted_interrupted", "G17 publication cancelled", "G17 late lease returned",
-        ))
+        owner.close()

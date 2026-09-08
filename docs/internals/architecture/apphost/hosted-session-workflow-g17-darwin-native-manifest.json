@@ -3,10 +3,11 @@
   "reports": {
     "G17-DARWIN-NATIVE": {
       "junitPath": ".artifacts/g17-darwin-native.xml",
-      "minimumTests": 3,
+      "minimumTests": 4,
       "requiredCaseIds": [
         "G17-DARWIN-ENTRY",
         "G17-DARWIN-PUBLICATION-CANCEL",
+        "G17-DARWIN-RECOVERY-CANCEL",
         "G17-DARWIN-FORCED-EXIT"
       ],
       "requiredProperties": {

@@ -36,6 +36,7 @@ def run_observation(tmp_path, case):
 @pytest.mark.parametrize("case", [
     pytest.param("real", id="G17-DARWIN-ENTRY"),
     pytest.param("start-cancel", id="G17-DARWIN-PUBLICATION-CANCEL"),
+    pytest.param("recovery-cancel", id="G17-DARWIN-RECOVERY-CANCEL"),
     pytest.param("forced-exit", id="G17-DARWIN-FORCED-EXIT"),
 ])
 def test_G17_TERMINAL_DARWIN_modes_and_physical_exit(tmp_path, case, record_testsuite_property):
