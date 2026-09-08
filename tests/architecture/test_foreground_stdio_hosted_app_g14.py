@@ -73,6 +73,7 @@ def test_G14_BOUNDARIES_foreground_lifetime_is_an_exact_optional_apphost_edge() 
         "loushang.apphost.continuity",
         "loushang.appserver.connection",
         "loushang.appserver.framing",
+        "loushang.appserver.protocol.connection_profile",
     }
     assert (
         imports

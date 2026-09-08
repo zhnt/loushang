@@ -29,7 +29,7 @@ def test_G17_DESIGN_inventory_separates_accepted_baseline_from_target() -> None:
     requirements = set(inventory["requirements"])
     covered: set[str] = set()
     for entry in entries:
-        assert entry["status"] in {"existing-extend", "planned", "implemented-uncomposed"}
+        assert entry["status"] in {"existing-extend", "planned", "implemented-uncomposed", "partially-composed", "implemented"}
         assert Path(entry["source"]).exists() == (entry["status"] != "planned")
         assert set(entry["requirements"]) <= requirements
         covered.update(entry["requirements"])

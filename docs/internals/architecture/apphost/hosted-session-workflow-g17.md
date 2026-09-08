@@ -11,7 +11,7 @@
 - Authority: normative accepted incremental design; inherits G15/G16 boundaries
 - Design status: accepted after independent three-perspective review and re-review
 - Implementation status: partial — discovery protocol, Product reads, AppService
-  views and opt-in library composition; installed wiring, picker, launcher and
+  views and explicit installed foreground wiring; local wiring, picker, launcher and
   installed acceptance pending
 - Activation status: explicit opt-in only; Embedded and legacy G14/G16 retained
 - Tracking: [G17 #572](https://github.com/zhnt/loushang/issues/572)
@@ -78,12 +78,21 @@ real cwd/home transcript discovery, appends since listing, resume, a synthetic
 model turn, scoped-client detach, and desired-state recovery without replay.
 The synthetic model is test-only and does not enter command-line input.
 
-These slices remain implemented-uncomposed at the installed entry boundary:
-no installed Product command selects the new profiles or exposes directory
-discovery yet. A real Product library test is not a working picker or native
-installed acceptance. Subsequent slices must update the source inventory and
-required-case manifest as installed composition, UI and process ownership
-are delivered. All eight native case families remain planned on each platform.
+The explicit installed `loushang-hosted --session-discovery` command now
+selects the new foreground profile and exposes the admitted discovery port.
+Default invocation retains the old profile and does not probe optional
+capabilities. `--describe --session-discovery` reports the selected profile
+without starting or writing state. The public legacy `parse_launch` library
+helper retains its pair return and rejects the new flag; the command's private
+parser carries all options without silently discarding capability selection.
+Foreground construction rejects an absent opted-in port before sending hello;
+the published Product command still owns cleanup if construction fails.
+
+Discovery remains only partially composed: local record/APP wiring, the picker
+and launch owner are pending. A real installed stdio command test is not an
+isolated-wheel or terminal acceptance test. All eight native case families
+remain planned on each platform; subsequent slices must update the inventory
+and required-case manifest as those user paths are delivered.
 
 ### Reviewability Budget Supplement
 
@@ -109,6 +118,11 @@ The same reviewer approved only `apphost/continuity.py` from 650 to 675 lines:
 and recovery-request passthrough. No new lifecycle algorithm or persisted
 field is added. The other G13 groups and all other import/size gates remain
 unchanged. These supplements do not substitute for final full-goal code review.
+
+For explicit foreground wiring the architecture reviewer approved only adding
+`appserver.protocol.connection_profile` to the exact `apphost/foreground.py`
+import set. This is a closed pure-value selection, not Product, filesystem or
+process responsibility. No import wildcard or file-size budget changed.
 
 ## Requirements And Delivery Slices
 
@@ -517,3 +531,29 @@ AppServer, AppService, AppHost, Harnesstui, Harness transcripts, Hosted Coding
 and G11–G17 architecture tests. The local JUnit report is
 `.artifacts/g17-discovery-local.xml`. The exact AppService static gate also
 passed Ruff and mypy on 67 source files. No G17 native wheel case is claimed.
+
+### Explicit Foreground Wiring Review
+
+The next bounded slice adds only explicit stdio command composition. All three
+reviewers approved architecture/authority, lifecycle and contract boundaries.
+The installed command's discovery profile is opt-in; legacy invocation and
+its library parser remain compatible. Regression-first selection tests failed
+before wiring (nine failed, two passed), then the new/legacy foreground and
+architecture set passed 36 tests. The installed/legacy subprocess selection
+passed 48 tests in 168.79 seconds.
+
+Reviewer-requested evidence additions cover both admitted scopes with a real
+persisted UserMessage, then compare the installed child's wire snapshot and
+controller history projection. A command-level missing-capability case proves
+application/transport recovery and repeated-close idempotence after foreground
+construction fails. Those additions and G17 traceability passed 22 tests in
+22.43 seconds. An initial test incorrectly accessed a presentation window's
+nonexistent `identity` attribute; it now checks the actual wire snapshot's
+complete identity and no longer masks assertion failures during cleanup.
+Both AppService and AppHost static gates passed (Ruff; mypy on 67 and 80
+source files respectively). New command tests are included in both gates;
+AppHost's existing directory selection also includes the foreground tests.
+
+These checks use the installed console entry in the local development
+environment, not an isolated wheel or terminal. They do not close local
+discovery wiring, picker, launch ownership or any required G17 native case.
