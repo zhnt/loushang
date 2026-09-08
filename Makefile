@@ -191,6 +191,10 @@ APPHOST_SOURCES := \
 	src/loushang/harnesstui/mux \
 	src/loushang/coding/cli/apphost.py
 APPHOST_TEST_PATHS := \
+	tests/coding/test_hosted_entry_evidence.py \
+	tests/dev/test_evidence_process.py \
+	tests/coding/test_hosted_workflow_terminal.py \
+	tests/dev/test_run_g17_installed_evidence.py \
 	tests/coding/test_hosted_client_terminal.py \
 	tests/coding/test_hosted_client.py \
 	tests/apphost/test_launcher.py \
@@ -251,6 +255,11 @@ APPHOST_TEST_PATHS := \
 	tests/architecture/test_durable_hosted_application_continuity_g13_design.py \
 	tests/architecture/test_durable_hosted_application_continuity_g13.py
 APPHOST_LINT_SUPPORT := \
+	tests/dev/_evidence_branch_fixture.py \
+	scripts/dev/_evidence_process.py \
+	scripts/dev/_evidence_posix.py \
+	scripts/dev/_evidence_windows.py \
+	scripts/dev/run_g17_installed_evidence.py \
 	tests/coding/_hosted_terminal.py \
 	tests/coding/_hosted_client_debt.py \
 	scripts/dev/run_g16_installed_evidence.py \
@@ -292,6 +301,10 @@ APPSERVICE_SOURCES := \
 	src/loushang/coding/hosted_continuity.py \
 	src/loushang/harnesstui/mux
 APPSERVICE_TEST_PATHS := \
+	tests/coding/test_hosted_entry_evidence.py \
+	tests/dev/test_evidence_process.py \
+	tests/coding/test_hosted_workflow_terminal.py \
+	tests/dev/test_run_g17_installed_evidence.py \
 	tests/coding/test_hosted_client_terminal.py \
 	tests/coding/test_hosted_client.py \
 	tests/apphost/test_launcher.py \
@@ -506,6 +519,8 @@ test-hosted-product-g10-linux-evidence:
 check-appservice: lint-appservice typecheck-appservice test-appservice
 
 lint-appservice:
+	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/_evidence_process.py scripts/dev/_evidence_posix.py scripts/dev/_evidence_windows.py tests/dev/_evidence_branch_fixture.py
+	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/run_g17_installed_evidence.py
 	uv --cache-dir .uv-cache run --extra dev ruff check tests/coding/_hosted_client_debt.py tests/coding/_hosted_terminal.py
 	uv --cache-dir .uv-cache run --extra dev ruff check $(APPSERVICE_SOURCES) $(APPSERVICE_TEST_PATHS) tests/coding/_hosted_product_child.py tests/coding/_local_product_child.py scripts/dev/run_g16_installed_evidence.py scripts/dev/verify_evidence_manifest.py tests/coding/test_mux_native_evidence.py tests/coding/test_mux_installed_evidence.py
 

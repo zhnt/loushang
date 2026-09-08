@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+import time
 from enum import Enum
 
 import pytest
@@ -148,6 +149,122 @@ def test_G17_LAUNCH_ready_borrows_clients_and_graceful_close_releases_one_host(
         assert owner.discovery_client is None
         assert lease.calls.count("terminate") == 0
         assert lease.calls.count("close") == 1 and host.calls == ["start", "close"]
+
+    asyncio.run(scenario())
+
+
+def test_G17_LAUNCH_cold_hello_uses_owner_budget_not_default_connection_phase(tmp_path):
+    async def scenario():
+        class ColdLease(_Lease):
+            async def read_stdout(self, size):
+                if not self.read_sizes:
+                    # Exercise the actual default 10-second connection timer;
+                    # the explicit owner has admitted a 15-second startup.
+                    await asyncio.sleep(10.1)
+                return await super().read_stdout(size)
+
+        owner, lease, host = _owner(tmp_path, ColdLease(), startup_timeout=15)
+        try:
+            await owner.start()
+            assert owner.discovery_client is not None
+        finally:
+            await owner.close()
+        assert not owner.cleanup_pending and not owner.process_cleanup_pending
+        assert lease.calls.count("close") == host.calls.count("close") == 1
+
+    asyncio.run(scenario())
+
+
+def test_G17_LAUNCH_spawn_consumes_the_same_hello_deadline(tmp_path, monkeypatch):
+    from loushang.appserver.remote_client import RemoteAppClientV1
+
+    async def scenario():
+        observed = []
+        start = RemoteAppClientV1.start
+
+        async def hello(client, *, timeout=None):
+            observed.append(timeout)
+            return await start(client, timeout=timeout)
+
+        class Host(_Host):
+            async def start(self, *args):
+                await asyncio.sleep(0.03)
+                return await super().start(*args)
+
+        monkeypatch.setattr(RemoteAppClientV1, "start", hello)
+        lease = _Lease()
+        owner, _, _ = _owner(tmp_path, lease, Host(lease), startup_timeout=1)
+        try:
+            await owner.start()
+            assert len(observed) == 1 and 0 < observed[0] <= 0.98
+            assert owner._client._timeout == 10  # Ordinary phases were not enlarged.
+        finally:
+            await owner.close()
+
+    asyncio.run(scenario())
+
+
+def test_G17_LAUNCH_expired_queued_start_cannot_admit_spawn(tmp_path, monkeypatch):
+    from loushang.apphost import launcher
+
+    async def scenario():
+        owned = launcher._owned
+        first = True
+
+        def queued(operation):
+            nonlocal first
+            if not first:
+                return owned(operation)
+            first = False
+
+            async def enter_late():
+                time.sleep(0.03)  # The startup body has not entered yet.
+                return await operation()
+
+            return owned(enter_late)
+
+        monkeypatch.setattr(launcher, "_owned", queued)
+        owner, lease, host = _owner(tmp_path, startup_timeout=0.02)
+        with pytest.raises(TimeoutError):
+            await owner.start()
+        assert host.calls == ["close"]
+        assert not lease.calls and owner._lease is None
+        assert not owner.process_cleanup_pending
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("phase", ["spawn", "hello"])
+def test_G17_LAUNCH_late_completion_cannot_publish_ready_or_admit_new_io(tmp_path, monkeypatch, phase):
+    from loushang.appserver.remote_client import RemoteAppClientV1
+
+    async def scenario():
+        start = RemoteAppClientV1.start
+
+        async def hello(client, *, timeout=None):
+            await start(client, timeout=timeout)
+            time.sleep(0.03)  # Simulate loop blockage after IO completes.
+
+        class Host(_Host):
+            async def start(self, *args):
+                if phase == "spawn":
+                    time.sleep(0.03)  # Late return before timeout callback can run.
+                return await super().start(*args)
+
+        if phase == "hello":
+            monkeypatch.setattr(RemoteAppClientV1, "start", hello)
+        lease = _Lease()
+        owner, _, host = _owner(tmp_path, lease, Host(lease), startup_timeout=0.02)
+        with pytest.raises(TimeoutError):
+            await owner.start()
+        assert not owner._ready and owner.discovery_client is None
+        assert not owner.cleanup_pending and not owner.process_cleanup_pending
+        assert lease.calls.count("close") == host.calls.count("close") == 1
+        if phase == "spawn":
+            assert not lease.writes and owner._client is None
+            # Reclamation may still drain output; no new framed hello reader
+            # (which begins with a one-byte read) may be admitted after expiry.
+            assert all(size == 64 * 1024 for size in lease.read_sizes)
 
     asyncio.run(scenario())
 

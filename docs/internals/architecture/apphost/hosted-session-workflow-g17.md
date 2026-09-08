@@ -953,3 +953,181 @@ presentation group 944/950. These results close the local G17.3 implementation
 increment, not G17.4. The terminal cases used this editable installation on
 Linux; isolated wheel origins/bytes and all eight required case families on
 Linux, macOS and Windows remain unverified and are not marked accepted.
+
+## G17.4 Native Workflow And Isolated Preflight Increment
+
+The cwd/home native cases now create their canonical Session through the actual
+installed foreground CLI. They explicitly close its member before exiting, so
+a later picker does not attempt to take a Session still owned by the creator
+mux. Historical content is appended only while the application is stopped.
+An empty named `picker` mux must be observed before selection, with the history
+sentinel absent; only output after Enter may satisfy the history and member
+assertions. A new process then proves automatic durable restoration. Home
+selection still uses a different admitted execution cwd.
+
+Additional real local CLI cases exercise discovery opt-in, history selection,
+detach, history reattach and explicit STOP; the application must remain alive
+between clients. The unchanged local profile instead reports unavailable
+discovery and still supports create/list/detach/STOP. Its Esc-to-command
+transition waits for newly rendered main-screen content, rather than depending
+on terminal input chunking. A separate real Product two-mux case runs the
+existing synthetic-model stream/tool/approval/interrupt scenario with discovery
+enabled. Its library seam does not substitute for the shipped CLI cases.
+
+The first local run found three fixture failures (legacy Esc coalescing and
+two attempts to reopen an already-owned Session). Correcting the input
+handshake and explicitly releasing membership produced five passing native
+cases in 177.10 seconds (`.artifacts/g17-native-workflow-revised.xml`; five
+unrelated cases deselected). Contract/user-evidence re-review approved these
+revisions without remaining P1/P2.
+
+`scripts/dev/run_g17_installed_evidence.py --smoke` builds an independent
+offline installation from a selected wheel and verifies source/package module
+sets, wheel digest, installed package bytes and relevant import origins. It
+runs exactly these five partial workflow cases and writes only
+`.artifacts/g17-wheel-smoke-<platform>.xml`. Runner tests cover report
+separation, exact case names and rejection of missing, duplicate, unexpected,
+skipped or failed cases. This mode never invokes the complete evidence manifest.
+Without `--smoke`, the runner refuses admission until the complete eight-family
+selector exists. The inventory therefore marks the runner partially composed;
+all three full evidence rows remain planned. Entry terminal-mode/child-reaping
+observation, complete legacy/Embedded coverage, native startup cancellation and
+forced-exit families, and the three-platform CI matrix still require completion.
+
+The first Linux isolated-wheel preflight verified source, wheel and installed
+bytes (wheel SHA-256 `f74409abd651f5ec5bba967de7c973c75d7eb2da03c3fec45b39469664462e10`)
+but failed acceptance: four cases passed and the cwd case exited with
+`hosted_client_failed` before terminal readiness on a subsequent launch
+(`.artifacts/g17-wheel-smoke-linux.xml`, 254.14 seconds). Its cause remains
+unverified; no startup budget was enlarged. This first attempt is not passing
+evidence, even though subsequent attempts below passed.
+The unchanged default G16 native two-mux scenario passed separately in 108.31
+seconds (`.artifacts/g17-g16-native-default-regression.xml`).
+
+Initial increment review approved the architecture boundary but found a runner P1:
+`subprocess.run(timeout=...)` can kill pytest before its native fixture cleanup
+and then remove the temporary environment while separately grouped descendants
+remain. This required repair before committing the runner. A
+separate report-validation P2 has been repaired by replacing outer-interpreter
+assertions with explicit exceptions, including an optimized-interpreter
+regression.
+
+The revised test-only supervisor is composed of three stdlib-only helpers under
+`scripts/dev`; Product and Hosting have no dependency on it. Its wrapper starts
+with `-I -S` and admits site/test imports only after the parent's start gate
+(and Windows Job assignment). Timeout requests cooperative interruption first;
+even result-publication failures retain the wrapper until a physical-cleanup
+release. Parse, pipe-close, repeated-SIGINT and late-wait failures cannot drop
+ownership. Windows cleanup requires the independent non-breakaway Job's active
+count to reach zero. POSIX freezes the retained Python tree, reclaims leaves
+through their actual parents and hands off a still-frozen empty root.
+
+The subsequent architecture review found that an adopted sibling could be lost
+when its intermediate parent exited after reaping another leaf. The supervisor
+now retains an adopted-member ledger across scans and cleanup retries. Global
+PID disappearance, not absence from the current root tree or zombie status, is
+required to clear a member. Changed ancestry is sticky cleanup debt and does
+not authorize further signals. Resuming a stopped child additionally requires
+its parent to remain frozen, closing the last-snapshot-to-resume race. Root
+release requires both the current tree and ledger to be empty. These are
+controlled Python-tree guarantees for observed descendants, not universal POSIX
+containment of children orphaned before the first scan.
+
+Deterministic regressions first reproduced both the forgotten-sibling and
+last-snapshot race. A Linux-only independent subreaper regression then checks
+real A/B branching, two rejected cleanup attempts, and acceptance only after
+the actual new parent reaps the lost sibling. The fixture itself runs inside a
+retained supervisor wrapper. Its timeout regression requires a fixture-finally
+completion receipt and absence of all four recorded PIDs. An initial fixture
+cleanup fault involved `ps` including its own transient child PID; the retained
+owner required explicit recovery in that attempt, which is not accepted as an
+automatic-cleanup pass. The Linux fixture now reads its direct-child list from
+procfs without creating a transient observer process.
+
+After the fixture repair, all 37 supervisor, runner and G17 architecture checks
+passed automatically in 22.24 seconds
+(`.artifacts/g17-supervisor-ledger-final.xml`). Ruff and `git diff --check`
+passed. The original five-path contract review and the revised architecture and
+lifecycle reviews approve only this partial increment, not the full native
+acceptance matrix.
+
+A subsequent isolated-wheel run passed all five workflow cases in 176.65
+seconds, but its runner exited nonzero while removing read-only snapshot
+directories. The bounded cleanup retry now repairs only owned, non-link
+directories under that exact private installation; it never changes shared
+hardlinked cache-file permissions. Failed installations remain for diagnosis.
+After this repair, the same wheel passed all five cases in 169.52 seconds and
+the runner exited zero (`.artifacts/g17-wheel-smoke-linux.xml`). This is Linux
+partial preflight evidence only. The earlier intermittent cwd restart failure
+still has no verified root cause. All eight complete families and the native
+macOS/Windows matrix remain required before release acceptance.
+
+The final preflight against that original wheel subsequently reproduced a
+before-ready failure on the user-home relaunch: four passed and one failed in
+217.24 seconds. The supervisor settled and retained the failed installation at
+`.artifacts/g17-installed-a_9qcect`; a snapshot of its synthetic home inputs was
+kept before three diagnostic replays, all of which succeeded. The latest report
+therefore supersedes the earlier green report at the same smoke path. Neither
+the earlier green run nor these diagnostic replays close the intermittent
+failure's root cause.
+
+### Startup Budget Correction
+
+Inspection identified an independently reproducible startup-policy issue: the
+foreground owner admitted up to 30 seconds, but its connection still used the
+default ten-second hello wait. A controlled 10.1-second first-byte delay under
+an explicit 15-second owner reproduced the premature timeout before the change.
+The revised `RemoteAppClientV1.start(*, timeout=None)` permits an explicit budget
+for this hello exchange only; omitted/None preserves `phase_timeout`. Validation
+precedes state changes. It never changes ordinary send, close or the framing
+deadline after the first byte. No wire/profile or default G14/G16 policy changed.
+
+The launch owner captures one deadline before publishing startup. It checks
+closing/expiry before a queued task may spawn, retains a returned lease before
+rechecking, gives only the remaining budget to hello, and checks again before
+publishing ready. The original retained startup, close and cancellation rules
+remain. Review caught a queued-task admission gap; its regression first showed
+an expired task still spawning, then verified zero spawn and normal host close.
+All 112 focused connection, discovery, launcher and G17 architecture cases
+passed in 12.03 seconds (`.artifacts/g17-startup-budget-final.xml`); Ruff and
+mypy on both changed source files passed. Three perspectives approved the
+revised budget increment. This is a verified policy correction, not a claim
+that the original intermittent wheel failure has been conclusively explained.
+
+A new wheel was built independently at `.artifacts/g17-budget-wheel`, SHA-256
+`185525883b1b2a0d3c861b1ac969e2a7dce427aef4e580d8207388b9d63a6c34`.
+The new isolated-wheel preflight verified current package bytes, imports and
+digest, then passed all five selected cases in 218.29 seconds with runner exit
+zero (`.artifacts/g17-wheel-smoke-linux.xml`). The original wheel no longer
+matches current Product source bytes. This new passing preflight remains
+partial evidence, not proof of the intermittent failure's precise cause or
+completion of the eight-family, three-platform release matrix.
+
+### Supplemental Linux ENTRY Observation
+
+`tests/coding/test_hosted_entry_evidence.py` observes the actual allocated PTY's
+native initial mode, verifies ECHO/ICANON are disabled at ready, and checks exact
+restoration after the shipped CLI exits. Independently observed Hosted child
+PIDs must disappear, not merely become zombies. Assertions happen before
+fixture fallback, with no Product terminal or launcher replacement.
+
+The observer runs inside a private supervised Linux subreaper so that a broken
+controller cannot orphan a child before observation or cleanup. The guard
+reaps actual direct children; if it finds leftovers after an otherwise
+successful operation, it rejects success after cleanup. One fault case retains
+the original assertion when a controller exits zero but leaves a separate-group
+child; another rejects an operation that silently leaves a child. These tests
+are supplementary local evidence, not yet isolated-wheel or cross-platform
+ENTRY acceptance. macOS and Windows durable observer guards remain pending;
+the tests are not added to the fixed five-case smoke or full eight-family IDs.
+
+The final affected run passed all three guarded ENTRY cases along with the
+connection and foreground regressions: 370 passed, ten platform-conditional
+cases skipped, and one architecture failure in 76.99 seconds
+(`.artifacts/g17-affected-entry-and-connections.xml`). That failure was the old
+A0 exact-consumer list omitting the already-approved G17
+`coding/cli/hosted_client.py` entry. Adding only this explicit path preserved the
+dependency restriction; architecture review approved the correction and all
+18 A0/G14/G17 boundary checks then passed in 27.00 seconds
+(`.artifacts/g17-consumer-boundary-final.xml`). These local conditional skips
+are not exceptions to the required zero-skip native release matrix.

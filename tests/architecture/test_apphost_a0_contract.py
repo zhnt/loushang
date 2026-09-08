@@ -369,7 +369,7 @@ def test_a0_1_create_and_profile_boundaries_preserve_owner_authority() -> None:
     assert "close" not in profile_members
 
 
-def test_a0_1_has_only_the_reviewed_g8_through_g13_consumers() -> None:
+def test_a0_1_has_only_the_reviewed_g8_through_g17_consumers() -> None:
     consumers = {
         path
         for path in Path("src/loushang").rglob("*.py")
@@ -385,6 +385,7 @@ def test_a0_1_has_only_the_reviewed_g8_through_g13_consumers() -> None:
         Path("src/loushang/coding/hosted_catalog.py"),
         Path("src/loushang/coding/hosted_session.py"),
         Path("src/loushang/coding/cli/hosted.py"),
+        Path("src/loushang/coding/cli/hosted_client.py"),
         Path("src/loushang/coding/hosted_bootstrap.py"),
         Path("src/loushang/coding/hosted_local.py"),
     }

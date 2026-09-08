@@ -14,7 +14,6 @@ import pytest
 from loushang.ai.types import UserMessage
 from loushang.appserver.protocol import SessionScopeV1
 from loushang.coding.hosted_bootstrap import CodingHostedLaunchV1
-from loushang.coding.hosted_catalog import CodingHostedSessionCatalogV1
 from loushang.coding.session_manager import SessionManager
 from loushang.tui.cell_width import strip_control_sequences
 from tests.tui.terminal_process_support import (
@@ -23,7 +22,6 @@ from tests.tui.terminal_process_support import (
 
 from ._hosted_terminal import foreground_terminal, process_table
 from .test_hosted_client import _argv, _launch
-from .test_hosted_discovery import _create
 from .test_mux_terminal_process import _terminal_environment
 
 
@@ -62,9 +60,24 @@ def test_G17_TERMINAL_PICKER_resumes_canonical_history_and_recovers_on_relaunch(
     launch = _launch(tmp_path)
     scope = next(item for item in launch.scopes if item.scope is scope_kind)
     text = f"G17 canonical history recovered in {scope_kind.value}"
+    environment = _terminal_environment(tmp_path)
+    # Creation is an actual installed CLI operation, not a catalog substitute.
+    with foreground_terminal(
+        [_installed(), *_argv(tmp_path)], cwd=tmp_path, env=environment,
+        columns=100, rows=30,
+    ) as creator:
+        creator.read_until(lambda out: "/exit ends app" in strip_control_sequences(out), timeout=35)
+        creator.write(f"/new {scope_kind.value} Native history\r")
+        creator.read_until(lambda out: "*1" in strip_control_sequences(out), timeout=20)
+        checkpoint = len(creator.raw_output)
+        creator.write("/close --yes\r")
+        creator.read_until(
+            lambda out: "no-session" in strip_control_sequences(out[checkpoint:]), timeout=20
+        )
+        creator.write("/exit\r")
+        assert creator.wait(timeout=25) == 0, creator.diagnostics
 
     async def seed():
-        await _create(CodingHostedSessionCatalogV1((scope,)), scope)
         (path,) = scope.session_dir.glob("*.jsonl")
         manager = await SessionManager.open(path)
         try:
@@ -84,7 +97,9 @@ def test_G17_TERMINAL_PICKER_resumes_canonical_history_and_recovers_on_relaunch(
             launch.cwd_sessions, launch.home_sessions,
         )
         assert other.scopes[1].fingerprint == scope.fingerprint
-    environment = _terminal_environment(tmp_path)
+    # An empty named mux must explicitly select history; it cannot satisfy the
+    # first predicate by automatically restoring the creator's existing member.
+    arguments.extend(["--mux", "picker"])
     record_testsuite_property("terminal_backend", selected_backend_name())
     for attempt in range(2):
         with foreground_terminal(
@@ -92,14 +107,24 @@ def test_G17_TERMINAL_PICKER_resumes_canonical_history_and_recovers_on_relaunch(
             columns=100, rows=30,
         ) as driver:
             driver.read_until(lambda out: "/exit ends app" in strip_control_sequences(out), timeout=35)
+            driver.read_until(lambda out: "picker |" in strip_control_sequences(out), timeout=10)
+            checkpoint = 0
             if attempt == 0:
+                assert text not in strip_control_sequences(driver.raw_output)
                 selected_scope = "global" if scope_kind is SessionScopeV1.USER_HOME else "cwd"
                 driver.write(f"/sessions {selected_scope}\r")
                 driver.read_until(
                     lambda out: "select a saved Session" in strip_control_sequences(out), timeout=15
                 )
+                assert text not in strip_control_sequences(driver.raw_output)
+                checkpoint = len(driver.raw_output)
                 driver.write("\r")
-            driver.read_until(lambda out: text in strip_control_sequences(out), timeout=20)
+            driver.read_until(
+                lambda out, start=checkpoint: text in strip_control_sequences(out[start:]), timeout=20
+            )
+            driver.read_until(
+                lambda out, start=checkpoint: "*1" in strip_control_sequences(out[start:]), timeout=10
+            )
             driver.write("\x02d")  # Foreground detach ends this application's child.
             assert driver.wait(timeout=25) == 0, driver.diagnostics
     assert len(tuple(scope.session_dir.glob("*.jsonl"))) == 1

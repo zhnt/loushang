@@ -100,12 +100,19 @@ class RemoteAppClientV1:
             return self
         return None
 
-    async def start(self) -> None:
+    async def start(self, *, timeout: float | None = None) -> None:
+        """Negotiate once; an owner may supply its remaining startup budget.
+
+        None preserves the connection phase default. This override applies only
+        to the complete hello exchange, never later sends, close or frame IO.
+        """
+        budget = self._timeout if timeout is None else timeout
+        require_timeout(budget)
         if self._started or self._closed:
             raise AppConnectionClosedError()
         self._started = True
         try:
-            async with asyncio.timeout(self._timeout):
+            async with asyncio.timeout(budget):
                 if await self._stream.receive() != self._hello:
                     raise InvalidAppMessageError()
                 await self._stream.send(self._hello)

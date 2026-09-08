@@ -231,30 +231,43 @@ class HostedForegroundClientV1:
     async def start(self) -> None:
         if self._startup is not None or self._closing:
             raise AppConnectionClosedError()
-        self._startup = _owned(self._open)
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + self._startup_timeout
+        self._startup = _owned(lambda: self._open(deadline))
         try:
-            done, _ = await asyncio.wait({self._startup}, timeout=self._startup_timeout)
-            if not done:
+            done, _ = await asyncio.wait(
+                {self._startup}, timeout=max(0, deadline - loop.time())
+            )
+            if not done or loop.time() >= deadline:
                 raise TimeoutError("hosted_startup_timeout")
             await asyncio.shield(self._startup)
         except BaseException:
             await self.close()
             raise
 
-    async def _open(self) -> None:
+    async def _open(self, deadline: float) -> None:
+        if self._closing:
+            raise AppConnectionClosedError()
+        if asyncio.get_running_loop().time() >= deadline:
+            raise TimeoutError("hosted_startup_timeout")
         # Always retain a late resource before evaluating the close fence.
         self._lease = await self._host.start(self._request, self._preparation)
         self._transport = _ProcessByteTransport(self._lease)
         self._exit = _owned(self._lease.wait)
         if self._closing:
             raise AppConnectionClosedError()
+        remaining = deadline - asyncio.get_running_loop().time()
+        if remaining <= 0:
+            raise TimeoutError("hosted_startup_timeout")
         self._client = RemoteAppClientV1(
             AppFramedStreamV1(self._transport),
             profile=self._profile,
         )
-        await self._client.start()
+        await self._client.start(timeout=remaining)
         if self._closing:
             raise AppConnectionClosedError()
+        if asyncio.get_running_loop().time() >= deadline:
+            raise TimeoutError("hosted_startup_timeout")
         self._ready = True
 
     def _phase(
