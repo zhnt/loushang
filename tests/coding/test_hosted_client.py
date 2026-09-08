@@ -284,7 +284,22 @@ def test_G17_COMMAND_real_child_ignores_workspace_and_pythonpath_shadow(tmp_path
 
     async def scenario():
         command = CodingHostedTuiCommandV1(_launch(tmp_path))
-        assert await command.run(stdin=StringIO(), stdout=StringIO()) == 0
+        try:
+            assert await command.run(stdin=StringIO(), stdout=StringIO()) == 0
+        except BaseException as error:
+            # Test-owned, bounded lifecycle facts only: no stderr, argv, env
+            # or exception messages from the Product enter the diagnostic.
+            owner = command._owner
+            phases = {}
+            for name in ("detach", "client", "eof", "drain", "terminate", "lease", "host"):
+                task = owner._phases.get(name)
+                phases[name] = (
+                    "absent" if task is None else "pending" if not task.done() else
+                    "cancelled" if task.cancelled() else
+                    type(task.exception()).__name__ if task.exception() is not None else "done"
+                )
+            error.add_note(f"Hosted settlement phases: {phases}; forced={owner.forced_exit}")
+            raise
         assert not command.cleanup_pending and not command._owner.cleanup_pending
         assert events == ["enter", "restore"]
         assert not (tmp_path / "shadow-executed").exists()

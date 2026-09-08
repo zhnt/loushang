@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ntpath
 import os
 import sys
 from pathlib import Path
@@ -45,11 +46,17 @@ def _private_environment(root):
         "loushang_runtime_dir",
         "loushang_tmpdir",
     }
-    return {
+    environment = {
         key: value
         for key, value in _terminal_environment(root).items()
         if key.casefold() in allowed
     }
+    # Bootstrap model/config lookup needs an OS home even for cwd sessions.
+    # Do not read the actual user's home via POSIX pwd or Windows USERPROFILE.
+    home = root / "user-home"
+    home.mkdir(exist_ok=True)
+    environment.update(HOME=str(home), USERPROFILE=str(home))
+    return environment
 
 
 def _embedded(root):
@@ -115,11 +122,19 @@ def test_legacy_environment_excludes_ambient_source_and_credentials(
         "OPENAI_API_KEY",
         "ANTHROPIC_API_KEY",
         "LOUSHANG_G14_TEST_FAIL_DISPOSE",
+        "HOME", "USERPROFILE", "HOMEDRIVE", "HOMEPATH",
     ):
         monkeypatch.setenv(name, "ambient-sentinel")
     environment = _private_environment(tmp_path)
     assert "ambient-sentinel" not in environment.values()
     assert environment["LOUSHANG_HOME"] == str(tmp_path / "platform")
+    home = tmp_path / "user-home"
+    assert environment["HOME"] == environment["USERPROFILE"] == str(home)
+    assert home.is_dir()
+    with patch.dict(os.environ, environment, clear=True):
+        assert Path.home() == home
+        # Exercise Windows' home algorithm on every test platform.
+        assert ntpath.expanduser("~") == str(home)
 
 
 def test_legacy_aggregate_confines_inherited_g14_environment(tmp_path, monkeypatch):

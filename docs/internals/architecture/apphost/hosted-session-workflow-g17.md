@@ -1418,3 +1418,33 @@ seconds, with the one Windows-only actual-venv case skipped on Linux
 Windows acceptance result. Changed-file Ruff, `make lint-apphost` and diff
 checks passed; the native CI must execute that case as well as the existing
 normal and deliberately leaking multigeneration cases.
+
+### Native Windows Pass And Legacy Home Isolation
+
+On `c9332719`, native Windows job `102041078095` passed all five supplemental
+cases in 58.30 seconds. The exact manifest verifier confirmed five tests with
+zero skips, failures and errors. This establishes the console/fault supplement
+and its actual supervised execution, not the eight-family Windows wheel report.
+The same head's Windows quality job was still running when this increment was
+prepared; the separate-venv and remaining Product-flow results are not inferred
+from the supplemental pass.
+
+The legacy failure's first visible notice was `session_unavailable`, followed
+by the generic refresh hint. Its private environment had removed all OS home
+variables. Real session bootstrap necessarily resolves `Path.home()` while
+constructing/configuring the model registry: Windows cannot expand it without
+USERPROFILE/HOMEPATH, while POSIX can fall back to the actual user's passwd
+home. Each legacy fixture now creates its own `user-home` and explicitly sets
+HOME and USERPROFILE after allowlist filtering. Ambient home values, credentials
+and source paths stay excluded; platform storage and Session scope roots are
+unchanged. A regression first failed on the missing HOME and now verifies both
+Path.home and Windows ntpath expansion against the private directory.
+
+The full Linux legacy selection passed three tests in 53.44 seconds
+(`.artifacts/g17-legacy-private-home.xml`). Separately, the real-child isolation
+test now attaches only fixed lifecycle-phase states, exception class names and
+the forced flag on failure; its unchanged successful Linux path passed in 9.69
+seconds. These diagnostics add no cleanup, retry or budget behavior and do not
+expose stderr, environment, arguments or exception messages. All three reviewers
+approved this fixture/diagnostic increment. Actual Windows legacy and real-child
+results remain required before their failures can be marked closed.
