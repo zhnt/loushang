@@ -25,6 +25,34 @@ supervisor = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(supervisor)
 
 
+@pytest.mark.parametrize("operation", ["probe", "uncaptured-pytest", "captured-pytest"])
+def test_native_stdin_of_descendants_is_eof_not_supervisor_control(tmp_path, operation):
+    child = "import os,sys; assert os.read(0,1)==b''; assert sys.stdin.read()==''"
+    body = (
+        "import subprocess,sys\nfrom pathlib import Path\n"
+        f"result=subprocess.run([sys.executable,'-I','-S','-c',{child!r}], "
+        "capture_output=True, timeout=5)\n"
+        "assert result.returncode==0, result.stderr\n"
+        "Path('stdio-detached').touch()\n"
+    )
+    environment = {key: value for key, value in os.environ.items()
+                   if key.lower() not in {"pythonpath", "pythonhome", "pytest_addopts"}}
+    environment["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
+    if operation == "probe":
+        supervisor.run_python([sys.executable, "-I", "-c", body], cwd=tmp_path,
+                              environment=environment, timeout=30)
+    else:
+        config, test = tmp_path / "pytest.ini", tmp_path / "test_stdin.py"
+        config.write_text("[pytest]\n")
+        test.write_text("def test_stdin():\n" + "".join(f"    {line}\n" for line in body.splitlines()))
+        capture = ["-s"] if operation == "uncaptured-pytest" else []
+        supervisor.run_pytest([sys.executable, "-I", "-m", "pytest", "-c", str(config),
+                               str(test), "-q", *capture], cwd=tmp_path,
+                              environment=environment, timeout=30)
+    # Returning also requires the independent start/release handshake to finish.
+    assert (tmp_path / "stdio-detached").is_file()
+
+
 def _windows_layout(root):
     base, venv = root / "base", root / "venv"
     base.mkdir()

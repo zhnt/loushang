@@ -1899,3 +1899,32 @@ Linux entry/G14/local workflows passed in 94.80 seconds. The supervisor's actual
 FD/Windows-handle input isolation and Darwin helper-process proof remain separate
 follow-up work. Overall delivery remains open; no failed run is retroactively
 reclassified as passing.
+
+### Native Input Isolation And Confirmed Fork Diagnostic
+
+The supervisor now duplicates its private input channel into a non-inheritable
+descriptor, then detaches native FD 0 and Python stdin before `site.main()`.
+On Windows it also binds the standard input HANDLE to the persistent null FD 0.
+The original control reader and start/release handshake remain independent.
+Actual nested subprocess regressions failed before the fix in both Python-probe
+and uncaptured-pytest modes, then passed after it. Default pytest FD capture is
+also covered. The combined supervisor/registry/runner/input selection passed
+99 tests with one platform skip in 51.82 seconds on Linux; this does not replace
+Windows native verification. All three review perspectives approved the input
+isolation; the default-capture control follows the architecture review suggestion.
+
+On `8ec5f3de`, workflow `34239960487` passed both Linux and Windows complete wheel
+jobs, Windows native, all six G16 jobs, Darwin primitives, and Linux/macOS quality.
+Windows quality had one failure with 986 passes and 72 skips: the newly added
+source-inspection test decoded UTF-8 source with the Windows default cp1252
+codec. The test now specifies UTF-8; no Product encoding behavior is changed.
+
+Darwin native job `102107286736` again timed out while retaining the first
+recovery-seed observation. This time its recorded event was registered=True,
+flags=0x61, notes=0x40000000: a NOTE_FORK event, not NOTE_EXIT. This confirms the
+fixed-chain observer rejects a real fork after `/new`; it does not identify the
+child executable by itself. The synchronous Git diagnostics source path is a
+candidate cause, not an independently identified child. A separate incremental
+design review is required for helper-process evidence. This commit neither
+ignores that event nor relaxes the sticky-unknown ownership rule. Full Darwin
+acceptance and mainline promotion remain outstanding.

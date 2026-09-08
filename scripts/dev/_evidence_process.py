@@ -246,6 +246,24 @@ def _run_controller(argv, arguments, mode, *, cwd, environment, timeout, cleanup
         signal.signal(signal.SIGINT, previous)
 
 
+def _isolate_stdin():
+    """Detach both native stdin and Python's view from the private control pipe."""
+    with open(os.devnull, "rb") as empty:
+        os.dup2(empty.fileno(), 0)
+    if os.name == "nt":
+        import ctypes
+        import msvcrt
+        from ctypes import wintypes
+
+        # Windows subprocess uses GetStdHandle, not sys.stdin or CRT fd lookup.
+        set_handle = ctypes.WinDLL("kernel32", use_last_error=True).SetStdHandle
+        set_handle.argtypes = [wintypes.DWORD, wintypes.HANDLE]
+        set_handle.restype = wintypes.BOOL
+        if not set_handle(wintypes.DWORD(-10), wintypes.HANDLE(msvcrt.get_osfhandle(0))):
+            raise ctypes.WinError(ctypes.get_last_error())
+    sys.stdin = open(os.devnull)
+
+
 def _child(result, arguments, *, python=False):
     if os.name == "nt":
         admission = result.with_suffix(".admission.pending")
@@ -253,6 +271,7 @@ def _child(result, arguments, *, python=False):
         admission.replace(result.with_suffix(".admission"))
     # pytest fd capture must never replace the supervisor's control descriptor.
     control = os.fdopen(os.dup(sys.stdin.fileno()))
+    os.set_inheritable(control.fileno(), False)
     if control.readline().strip() != "start":
         result.write_text(json.dumps({"code": 1, "force_cleanup": True}))
         while True:
@@ -285,7 +304,7 @@ def _child(result, arguments, *, python=False):
     try:
         reader.start()
         # Pytest and tests must not consume the supervisor's control channel.
-        sys.stdin = open(os.devnull)
+        _isolate_stdin()
         import site
 
         site.main()  # -S keeps .pth/sitecustomize behind the start/Job gate.

@@ -34,7 +34,7 @@ def test_foreground_help_and_local_management_have_explicit_empty_input(tmp_path
 def test_g14_help_null_input_does_not_replace_the_service_protocol_pipe():
     from tests.coding import test_hosted_subprocess as legacy
 
-    tree = ast.parse(Path(legacy.__file__).read_text())
+    tree = ast.parse(Path(legacy.__file__).read_text(encoding="utf-8"))
     owners = [node for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
               and node.name in {"_child", "test_G14_PRODUCT_installed_entrypoint_help_startup_and_clean_eof"}]
     commands = [node for owner in owners for node in ast.walk(owner) if isinstance(node, ast.Call)
