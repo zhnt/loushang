@@ -57,8 +57,10 @@ assertion (`000PING` expected, `010PING` observed; 350 passed, one failed,
 kernel-object identity. The exited child's objects cannot be reconstructed
 from that output, so this record does not declare the failure harmless or the
 post-merge gate green. [G17.0 #569](https://github.com/zhnt/loushang/issues/569)
-tracks the identity-aware regression and native rerun, documented in the
-[Hosting baseline note](../hosting/validation/stable-delivery-baseline-g17.md).
+records the identity-aware regression, corrected DLL binding and successful
+three-platform native acceptance on [PR #570](https://github.com/zhnt/loushang/pull/570),
+documented in the
+[Hosting baseline note](../hosting/validation/stable-delivery-baseline-g17.md#native-acceptance).
 The checkpoints below retain their original pre-delivery evidence and pending
 items; they are not the current G16 acceptance status.
 

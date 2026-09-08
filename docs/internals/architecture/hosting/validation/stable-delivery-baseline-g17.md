@@ -4,6 +4,10 @@
 [G16 delivery](../../appserver/detachable-local-workspace-g16.md#final-delivery-acceptance) ·
 [Tracking #569](https://github.com/zhnt/loushang/issues/569)
 
+Native acceptance has passed; see the [accepted evidence](#native-acceptance).
+The local checkpoint and first failed publication below are historical records,
+not the current native acceptance status.
+
 ## Scope And Diagnosis
 
 This slice changes test evidence and current architecture indexes only. It does
@@ -102,3 +106,31 @@ hard failures; there is no numeric fallback, skip or production change.
 
 The local `loushang --help` and `loushang-mux --help` startup smoke checks also
 passed. Native acceptance still requires the corrected PR head's green matrix.
+
+## Native Acceptance
+
+On 2026-09-08, corrected feature head
+`fe20c1bea5451ad457f16049f8e78e94632df909` passed all 33 checks on
+[PR #570](https://github.com/zhnt/loushang/pull/570) and merged into
+`lane/harness` as `0ffe6d5249cf95753069faa007485294646ff3f9`.
+The [Hosting run](https://github.com/zhnt/loushang/actions/runs/34180343960)
+completed successfully on all three native platforms:
+
+| Platform | Full Hosting contract suite | Native job |
+| --- | --- | --- |
+| Ubuntu 24.04 | 392 passed, 47 platform/profile skips | [Linux evidence](https://github.com/zhnt/loushang/actions/runs/34180343960/job/101917980290) |
+| macOS 15 | 369 passed, 70 platform/profile skips | [macOS evidence](https://github.com/zhnt/loushang/actions/runs/34180343960/job/101917980481) |
+| Windows Server 2022 | 364 passed, 75 platform/profile skips | [Windows evidence](https://github.com/zhnt/loushang/actions/runs/34180343960/job/101917980456) |
+
+All four native Windows endpoint parameters ran successfully: `isolated`,
+`leaked-parent-read`, `leaked-parent-write` and `leaked-sentinel`. None is among
+the platform skips. The helper's ten deterministic regressions, including its
+default DLL loading path, also passed. The corrected local focused selection
+passed 30 tests with eight Windows-only skips, plus Ruff and Win32-targeted mypy.
+CI's contract selection and platform expectations differ from the local Make
+selection, so their aggregate pass/skip counts are not interchangeable.
+
+This closes the native evidence gap without changing production inheritance,
+retrospectively clearing the original failed run, or activating G15. Main
+promotion uses its own final-head PR checks; this record does not substitute
+feature-head evidence for the promotion gate.
