@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import sys
-import time
 from enum import Enum
 
 import pytest
@@ -247,23 +246,36 @@ def test_G17_LAUNCH_late_completion_cannot_publish_ready_or_admit_new_io(tmp_pat
 
     async def scenario():
         start = RemoteAppClientV1.start
+        loop = asyncio.get_running_loop()
+        clock = loop.time
+        elapsed = 0.0
+        advanced = []
+        monkeypatch.setattr(loop, "time", lambda: clock() + elapsed)
+
+        def complete_late():
+            nonlocal elapsed
+            # Advance the owner's clock without yielding to its timeout callback.
+            # A short wall-clock sleep does not establish this on every OS clock.
+            elapsed += 2.0
+            advanced.append(phase)
 
         async def hello(client, *, timeout=None):
             await start(client, timeout=timeout)
-            time.sleep(0.03)  # Simulate loop blockage after IO completes.
+            complete_late()
 
         class Host(_Host):
             async def start(self, *args):
                 if phase == "spawn":
-                    time.sleep(0.03)  # Late return before timeout callback can run.
+                    complete_late()
                 return await super().start(*args)
 
         if phase == "hello":
             monkeypatch.setattr(RemoteAppClientV1, "start", hello)
         lease = _Lease()
-        owner, _, host = _owner(tmp_path, lease, Host(lease), startup_timeout=0.02)
+        owner, _, host = _owner(tmp_path, lease, Host(lease), startup_timeout=1)
         with pytest.raises(TimeoutError):
             await owner.start()
+        assert advanced == [phase]  # Prove the intended boundary was exercised.
         assert not owner._ready and owner.discovery_client is None
         assert not owner.cleanup_pending and not owner.process_cleanup_pending
         assert lease.calls.count("close") == host.calls.count("close") == 1
