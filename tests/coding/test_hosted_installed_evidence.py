@@ -1,4 +1,4 @@
-"""Eight required G17 families; Linux composed, other native observers pending."""
+"""Eight required G17 families; Linux/Windows composed, Darwin pending."""
 
 from __future__ import annotations
 
@@ -18,6 +18,17 @@ from . import test_hosted_legacy_evidence as legacy
 from . import test_hosted_workflow_terminal as workflow
 
 
+def _run_native(root, case):
+    if sys.platform == "win32":
+        from .test_hosted_windows_evidence import run_observation
+
+        run_observation(root, case)
+    else:
+        assert sys.platform == "linux", "Darwin native observer is not composed yet"
+        options = {"timeout": 150} if case in {"start-cancel", "recovery-cancel"} else {}
+        native._run_observation(root, case, **options)
+
+
 @pytest.mark.parametrize("case_id", [
     "G17-INSTALLED-ENTRY",
     "G17-INSTALLED-CWD",
@@ -32,7 +43,7 @@ def test_G17_installed_evidence(case_id, tmp_path, record_testsuite_property, mo
     from loushang.coding.cli import hosted_client
     from loushang.coding.ui import mode
 
-    assert sys.platform == "linux", "complete Darwin/Windows observers are not composed yet"
+    assert sys.platform in {"linux", "win32"}, "complete Darwin observer is not composed yet"
     direct = json.loads(distribution("loushang").read_text("direct_url.json") or "{}")
     prefix = Path(sys.prefix).resolve()
     assert "archive_info" in direct and all(
@@ -46,7 +57,7 @@ def test_G17_installed_evidence(case_id, tmp_path, record_testsuite_property, mo
         foreground.test_G17_TERMINAL_ENTRY_installed_help_ready_and_foreground_exit(
             tmp_path, record_testsuite_property,
         )
-        native._run_observation(tmp_path, "real")
+        _run_native(tmp_path, "real")
     elif case_id in {"G17-INSTALLED-CWD", "G17-INSTALLED-HOME"}:
         foreground.test_G17_TERMINAL_PICKER_resumes_canonical_history_and_recovers_on_relaunch(
             tmp_path, record_testsuite_property,
@@ -68,8 +79,8 @@ def test_G17_installed_evidence(case_id, tmp_path, record_testsuite_property, mo
         for case in ("start-cancel", "recovery-cancel"):
             root = tmp_path / case
             root.mkdir()
-            native._run_observation(root, case, timeout=150)
+            _run_native(root, case)
     elif case_id == "G17-NATIVE-FORCED-EXIT":
-        native._run_observation(tmp_path, "forced-exit")
+        _run_native(tmp_path, "forced-exit")
     else:
         raise AssertionError("unexpected G17 required family")

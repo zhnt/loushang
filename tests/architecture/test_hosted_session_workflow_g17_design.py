@@ -25,11 +25,24 @@ def test_G17_WINDOWS_native_supplement_is_not_full_wheel_acceptance() -> None:
         "native_platform": "win32", "terminal_backend": "conpty",
     }
     wheel = json.loads((ROOT / "hosted-session-workflow-g17-evidence-manifest.json").read_text())
-    assert wheel["reports"]["G17-WHEEL-WIN32"]["status"] == "planned"
+    assert wheel["reports"]["G17-WHEEL-WIN32"]["requiredProperties"]["installation"] == "wheel"
+    assert len(wheel["reports"]["G17-WHEEL-WIN32"]["requiredCaseIds"]) == 8
     workflow = Path(".github/workflows/appservice-quality.yml").read_text()
     assert name in workflow and row["junitPath"] in workflow
     assert "tests/coding/test_hosted_windows_evidence.py" in workflow
     assert "architecture: x64" in workflow
+
+
+def test_G17_WHEEL_ci_composes_full_linux_and_windows_without_smoke():
+    workflow = Path(".github/workflows/appservice-quality.yml").read_text()
+    job = workflow.split("  g17-wheel-evidence:\n", 1)[1].split("\n  g17-windows-native:", 1)[0]
+    assert "- os: ubuntu-24.04\n            platform: linux" in job
+    assert "- os: windows-latest\n            platform: win32" in job
+    assert job.count("- os:") == 2
+    assert "run_g17_installed_evidence.py" in job and "--smoke" not in job
+    assert "--locked" in job and "build --wheel" in job
+    assert "if: always()" in job and "if-no-files-found: error" in job
+    assert "path: .artifacts/g17-wheel-${{ matrix.platform }}.xml" in job
 
 
 def test_G17_COMMAND_is_one_optional_product_composition_with_fixed_dependencies() -> None:
@@ -192,7 +205,7 @@ def test_G17_DESIGN_requires_own_installed_cases_on_each_native_platform() -> No
         assert set(report["requiredCaseIds"]) == required
         assert len(report["requiredCaseIds"]) == len(required)
         assert report["minimumTests"] >= len(required)
-        assert report["status"] == ("implemented" if platform == "linux" else "planned")
+        assert report["status"] == ("planned" if platform == "darwin" else "implemented")
         assert report["requiredProperties"] == {
             "native_platform": platform,
             "installation": "wheel",

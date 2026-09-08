@@ -11,9 +11,11 @@ import _thread
 import importlib.util
 import json
 import os
+import runpy
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from contextlib import suppress
@@ -123,7 +125,26 @@ def run_pytest(argv, *, cwd, environment, timeout, cleanup_timeout=60):
     """argv is the exact isolated Python -I -m pytest command from the runner."""
     if argv[1:4] != ["-I", "-m", "pytest"]:
         raise ValueError("evidence supervisor requires isolated pytest")
-    result = cwd / "pytest-controller-result"
+    return _run_controller(argv, argv[4:], "--child", cwd=cwd, environment=environment,
+                           timeout=timeout, cleanup_timeout=cleanup_timeout)
+
+
+def run_python(argv, *, cwd, environment, timeout, cleanup_timeout=60):
+    """Run a trusted isolated probe under the same retained process owner."""
+    if (len(argv) < 3 or argv[1] != "-I" or
+            not (argv[2] == "-c" and len(argv) >= 4 or Path(argv[2]).is_absolute())):
+        raise ValueError("evidence probe requires isolated code or an absolute script")
+    # Multiple probes may share a cwd with the full pytest controller. Their
+    # receipts must not collide; this directory is removed only after the
+    # retained owner has returned with physical cleanup established.
+    with tempfile.TemporaryDirectory(prefix="g17-probe-", dir=cwd) as private:
+        return _run_controller(argv, argv[2:], "--python-child", cwd=cwd, environment=environment,
+                               timeout=timeout, cleanup_timeout=cleanup_timeout,
+                               control_root=Path(private))
+
+
+def _run_controller(argv, arguments, mode, *, cwd, environment, timeout, cleanup_timeout, control_root=None):
+    result = (control_root or cwd) / "pytest-controller-result"
     if result.exists() or result.with_suffix(".admission").exists():
         raise ValueError("evidence result path already exists")
     native = _support("_evidence_windows") if os.name == "nt" else None
@@ -140,7 +161,7 @@ def run_pytest(argv, *, cwd, environment, timeout, cleanup_timeout=60):
     try:
         deadline = time.monotonic() + timeout
         process = subprocess.Popen(
-            [executable, "-I", "-S", str(Path(__file__).resolve()), "--child", str(result), *argv[4:]],
+            [executable, "-I", "-S", str(Path(__file__).resolve()), mode, str(result), *arguments],
             cwd=cwd, env=environment, stdin=subprocess.PIPE,
             start_new_session=os.name == "posix",
             creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
@@ -196,7 +217,7 @@ def run_pytest(argv, *, cwd, environment, timeout, cleanup_timeout=60):
         signal.signal(signal.SIGINT, previous)
 
 
-def _child(result, arguments):
+def _child(result, arguments, *, python=False):
     if os.name == "nt":
         admission = result.with_suffix(".admission.pending")
         admission.write_text(json.dumps({"pid": os.getpid(), "no_site": sys.flags.no_site}))
@@ -239,9 +260,20 @@ def _child(result, arguments):
         import site
 
         site.main()  # -S keeps .pth/sitecustomize behind the start/Job gate.
-        import pytest
+        if python:
+            sys.argv = ["-c", *arguments[2:]] if arguments[0] == "-c" else list(arguments)
+            try:
+                if arguments[0] == "-c":
+                    exec(compile(arguments[1], "<evidence-probe>", "exec"), {"__name__": "__main__"})
+                else:
+                    runpy.run_path(arguments[0], run_name="__main__")
+                code = 0
+            except SystemExit as error:
+                code = 0 if error.code is None else error.code if type(error.code) is int and 0 <= error.code <= 255 else 1
+        else:
+            import pytest
 
-        code = int(pytest.main(arguments))
+            code = int(pytest.main(arguments))
     except KeyboardInterrupt:
         code = 130
     except BaseException:
@@ -277,6 +309,6 @@ def _child(result, arguments):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 3 or sys.argv[1] != "--child":
-        raise SystemExit("private evidence controller requires --child")
-    raise SystemExit(_child(Path(sys.argv[2]), sys.argv[3:]))
+    if len(sys.argv) < 3 or sys.argv[1] not in {"--child", "--python-child"}:
+        raise SystemExit("private evidence controller requires an explicit child mode")
+    raise SystemExit(_child(Path(sys.argv[2]), sys.argv[3:], python=sys.argv[1] == "--python-child"))

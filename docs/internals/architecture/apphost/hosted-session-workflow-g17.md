@@ -102,7 +102,8 @@ Discovery's semantic and installed wire paths and the shared picker are
 composed; the launch owner is now composed into the explicit Product client
 entry, with implementation re-review passed. A real installed stdio/local command test is not an
 isolated-wheel or terminal acceptance test. The complete eight-family selector
-is now composed for Linux; macOS/Windows observers remain planned. Manifest
+is now composed for Linux and Windows; Darwin remains planned, and the Windows
+full wheel report still awaits execution. Manifest
 `implemented` means an executable gate, not a passing result; actual run
 evidence is recorded separately below. Three-platform acceptance remains open.
 
@@ -1448,3 +1449,45 @@ seconds. These diagnostics add no cleanup, retry or budget behavior and do not
 expose stderr, environment, arguments or exception messages. All three reviewers
 approved this fixture/diagnostic increment. Actual Windows legacy and real-child
 results remain required before their failures can be marked closed.
+
+### Complete Windows Wheel Composition
+
+The exact eight-family selector now dispatches Windows native observations to
+the independently verified Windows observer, while preserving Linux's existing
+observer and timeout choices. Both startup cancellation phases still run in
+separate directories. The Windows full manifest is implemented because its gate
+is composed, not because it has passed. Darwin full mode continues to reject
+before installation. A dedicated CI matrix builds the current wheel and runs
+the full selector/verifier on Linux and Windows, separately from the five-case
+Windows native supplement; no smoke selector can satisfy this job.
+
+The runner quotes its forward-slash repository-only pytest path, preserves
+isolated wheel/module byte checks, and explicitly checks the target venv prefix
+and executable. Its two fixed Python probes (wheel validation and manifest
+verification) now use the same retained supervisor as pytest, including Job
+admission, deadline, interrupt and physical-cleanup guards. They get independent
+receipt directories and preserve script argv/SystemExit semantics. Arbitrary
+Python probe calls are rejected by the runner; external uv installation commands
+retain their existing separate path.
+
+Native CI also showed that the multigeneration leak fixture could drop its
+Windows Popen object, close stdin and thereby let its supposedly leaked child
+exit cooperatively. The fixture now explicitly retains that object. Both pytest
+and standalone probe leak controls require a successful execution receipt before
+claiming rejection for native leftovers; the standalone probe also records its
+successfully spawned child and checks physical removal on POSIX. Error-mode
+probes require the exact requested exit code. These are test-fixture corrections,
+not permission to accept extra active Job processes.
+
+Architecture, lifecycle and contract re-review approved this composition after
+strengthening the probe leak negative control. The combined local selection
+passed 71 tests with one Windows-only skip in 42.12 seconds
+(`.artifacts/g17-windows-wheel-composition-final.xml`); the strengthened probe and
+multigeneration selection passed nine tests in 13.61 seconds. Absolute-script
+argv and SystemExit preservation additionally passed both cases in 0.68 seconds.
+The preceding combined run was not green: an undeclared YAML import was removed, and concurrent
+default pytest scratch cleanup had removed another run's temporary root. The
+passing rerun used the repository's managed, per-run scratch wrapper. Fixed
+Actionlint 1.7.7, verified against its release checksum, accepted the workflow.
+Full native wheel results remain required; no three-platform acceptance or
+mainline delivery is claimed by this increment.

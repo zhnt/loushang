@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import _thread
 import importlib.util
 import json
 import os
@@ -221,6 +222,117 @@ def test_windows_native_controller_preserves_venv_and_defers_site_until_job(tmp_
     ))
     supervisor.run_pytest(argv, cwd=tmp_path, environment=environment, timeout=20)
     assert len(admitted) == 1 and closed == [True] and marker.exists()
+    marker.unlink()
+    supervisor.run_python([str(executable), "-I", "-c",
+        "import os,sys,pytest; from pathlib import Path; "
+        f"assert Path(sys.prefix) == Path({str(venv)!r}); "
+        f"assert Path(sys.executable) == Path({str(executable)!r}); "
+        f"assert Path(pytest.__file__).is_relative_to(Path({str(packages)!r})); "
+        "assert '__PYVENV_LAUNCHER__' not in os.environ"],
+        cwd=tmp_path, environment=environment, timeout=20)
+    assert len(admitted) == 2 and closed == [True, True] and marker.exists()
+
+
+@pytest.mark.parametrize("mode", ["normal", "error", "timeout", "leak"])
+def test_isolated_python_probes_share_physical_cleanup_guard(tmp_path, monkeypatch, mode):
+    _, environment = _fixture(tmp_path, "normal")
+    receipts = []
+    await_result = supervisor._await_result
+
+    def observed_result(*args, **kwargs):
+        value = await_result(*args, **kwargs)
+        receipts.append(value)
+        return value
+
+    monkeypatch.setattr(supervisor, "_await_result", observed_result)
+    source = "import os,time,subprocess,sys\nfrom pathlib import Path\n"
+    source += "Path('probe.pid').write_text(str(os.getpid()))\n"
+    if mode == "error":
+        source += "raise SystemExit(7)\n"
+    elif mode == "timeout":
+        source += "while True: time.sleep(0.02)\n"
+    elif mode == "leak":
+        source += "child = subprocess.Popen([sys.executable, '-I', '-c', 'import time;time.sleep(60)'])\n"
+        source += "Path('probe.child').write_text(str(child.pid))\n"
+    command = [sys.executable, "-I", "-c", source]
+    expected = subprocess.TimeoutExpired if mode == "timeout" else subprocess.CalledProcessError
+    if mode == "normal":
+        # Two probes can share cwd without consuming the pytest receipt name.
+        for _ in range(2):
+            supervisor.run_python(command, cwd=tmp_path, environment=environment, timeout=3)
+    else:
+        with pytest.raises(expected) as caught:
+            supervisor.run_python(command, cwd=tmp_path, environment=environment, timeout=3)
+        if mode == "error":
+            assert caught.value.returncode == 7
+        elif mode == "leak":
+            assert receipts == [{"code": 0, "force_cleanup": False}]
+            assert int((tmp_path / "probe.child").read_text()) > 0
+    assert not list(tmp_path.glob("g17-probe-*"))
+    assert not (tmp_path / "pytest-controller-result").exists()
+    if os.name == "posix":
+        with pytest.raises(ProcessLookupError):
+            os.kill(int((tmp_path / "probe.pid").read_text()), 0)
+        if mode == "leak":
+            with pytest.raises(ProcessLookupError):
+                os.kill(int((tmp_path / "probe.child").read_text()), 0)
+
+
+def test_isolated_python_probe_interrupt_preserves_finally_and_owner(tmp_path):
+    _, environment = _fixture(tmp_path, "normal")
+    ready = tmp_path / "probe.ready"
+    source = (
+        "import os,time\nfrom pathlib import Path\n"
+        "try:\n"
+        "    Path('probe.ready').write_text(str(os.getpid()))\n"
+        "    while True: time.sleep(0.02)\n"
+        "finally:\n"
+        "    Path('probe.finally').touch()\n"
+    )
+    sent = []
+
+    def interrupt():
+        deadline = time.monotonic() + 10
+        while not ready.exists():
+            if time.monotonic() >= deadline:
+                return
+            time.sleep(0.01)
+        sent.append(True)
+        _thread.interrupt_main()  # The retained supervisor's SIGINT handler.
+
+    thread = threading.Thread(target=interrupt)
+    thread.start()
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            supervisor.run_python([sys.executable, "-I", "-c", source], cwd=tmp_path,
+                                  environment=environment, timeout=15, cleanup_timeout=5)
+    finally:
+        thread.join(timeout=10)
+    assert not thread.is_alive() and sent == [True]
+    assert (tmp_path / "probe.finally").exists()
+    assert not list(tmp_path.glob("g17-probe-*"))
+    if os.name == "posix":
+        with pytest.raises(ProcessLookupError):
+            os.kill(int(ready.read_text()), 0)
+
+
+@pytest.mark.parametrize("code", [0, 7])
+def test_isolated_script_probe_preserves_argv_and_exit_code(tmp_path, code):
+    script = tmp_path / "verify_probe.py"
+    script.write_text(
+        "import sys\nfrom pathlib import Path\n"
+        f"assert Path(sys.argv[0]) == Path({str(script)!r})\n"
+        "assert sys.argv[1:] == ['expected-argument']\n"
+        f"raise SystemExit({code})\n"
+    )
+    argv = [sys.executable, "-I", str(script), "expected-argument"]
+    if code:
+        with pytest.raises(subprocess.CalledProcessError) as caught:
+            supervisor.run_python(argv, cwd=tmp_path, environment=dict(os.environ), timeout=3)
+        assert caught.value.returncode == code
+    else:
+        supervisor.run_python(argv, cwd=tmp_path, environment=dict(os.environ), timeout=3)
+    assert not list(tmp_path.glob("g17-probe-*"))
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX adopted branch accounting")
 @pytest.mark.parametrize("boundary", ["reap", "resume"])
@@ -327,13 +439,16 @@ def _fixture(root, mode):
     test = root / "test_fault.py"
     test.write_text(
         "import os, subprocess, sys, time\nfrom pathlib import Path\n"
+        "retained_children = []\n"
         "def test_owned_tree():\n"
         f"    child = subprocess.Popen([sys.executable, '-I', '-c', {_MIDDLE!r}], "
         "stdin=subprocess.PIPE, start_new_session=os.name == 'posix')\n"
         "    Path('child.pid').write_text(str(child.pid))\n"
         "    while not Path('grandchild.pid').exists(): time.sleep(0.01)\n"
         f"    mode = {mode!r}\n"
-        "    if mode == 'leak': return\n"
+        "    if mode == 'leak':\n"
+        "        retained_children.append(child)\n"
+        "        return\n"
         "    try:\n"
         "        Path('interrupt.ready').write_text('finally armed')\n"
         "        while mode != 'normal':\n"
@@ -381,6 +496,10 @@ def test_evidence_supervisor_retains_multigeneration_owner_until_reaped(tmp_path
                 cleanup_timeout=0.5 if mode == "stubborn" else 10,
             )
     _assert_gone(tmp_path)
+    if mode == "leak":
+        assert json.loads((tmp_path / "pytest-controller-result").read_text()) == {
+            "code": 0, "force_cleanup": False,
+        }, "the negative control must fail on native leftovers, not an unrelated test error"
     if mode in {"normal", "cooperative"}:
         assert (tmp_path / "finally.done").read_text() == "done"
 

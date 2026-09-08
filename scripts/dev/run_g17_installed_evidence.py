@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import importlib.util
 import os
+import shlex
 import shutil
 import stat
 import subprocess
@@ -47,6 +48,9 @@ from importlib.metadata import distribution
 from pathlib import Path
 from urllib.parse import urldefrag
 prefix = Path(sys.prefix).resolve()
+expected_python = Path(sys.argv[3])
+assert prefix == expected_python.parent.parent.resolve(), 'G17 interpreter escaped target venv'
+assert Path(sys.executable).resolve() == expected_python.resolve(), 'G17 executable differs from target venv'
 names = ('loushang.coding.cli.hosted_client', 'loushang.apphost.launcher',
          'loushang.coding.cli.__main__', 'loushang.coding.ui.mode',
          'loushang.coding.cli.mux', 'loushang.harnesstui.mux.shell',
@@ -76,14 +80,21 @@ print('G17 isolated wheel origins, digest and installed bytes verified', flush=T
 def _run(
     argv: list[str], *, cwd: Path, environment: dict[str, str], timeout: int
 ) -> None:
-    if argv[1:4] == ["-I", "-m", "pytest"]:
+    if argv[1:2] == ["-I"]:
         path = Path(__file__).with_name("_evidence_process.py")
         spec = importlib.util.spec_from_file_location("_evidence_process", path)
         if spec is None or spec.loader is None:
             raise RuntimeError("evidence supervisor missing")
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-        module.run_pytest(argv, cwd=cwd, environment=environment, timeout=timeout)
+        if argv[1:4] == ["-I", "-m", "pytest"]:
+            operation = module.run_pytest
+        elif (argv[2:3] == ["-c"] and argv[3:4] == [_PROBE] or
+              argv[2:3] == [str(_ROOT / "scripts/dev/verify_evidence_manifest.py")]):
+            operation = module.run_python
+        else:
+            raise ValueError("unrecognized G17 isolated probe")
+        operation(argv, cwd=cwd, environment=environment, timeout=timeout)
         return
     subprocess.run(argv, cwd=cwd, env=environment, check=True, timeout=timeout)
 
@@ -179,8 +190,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("the complete G17 installed case selector is not implemented yet")
     if args.platform != sys.platform:
         parser.error("evidence platform must match the executing native platform")
-    if not args.smoke and sys.platform != "linux":
-        parser.error("complete Darwin/Windows native observers are not composed yet")
+    if not args.smoke and sys.platform not in {"linux", "win32"}:
+        parser.error("complete Darwin native observer is not composed yet")
     if args.wheel_dir is not None:
         wheels = tuple(args.wheel_dir.resolve(strict=True).glob("loushang-*.whl"))
         if len(wheels) != 1:
@@ -276,7 +287,7 @@ def main(argv: list[str] | None = None) -> int:
             timeout=180,
         )
         _run(
-            [str(executable), "-I", "-c", _PROBE, digest, str(wheel)],
+            [str(executable), "-I", "-c", _PROBE, digest, str(wheel), str(executable)],
             cwd=root,
             environment=environment,
             timeout=60,
@@ -290,7 +301,7 @@ def main(argv: list[str] | None = None) -> int:
                 "-c",
                 str(_ROOT / "pyproject.toml"),
                 "-o",
-                f"pythonpath={_ROOT}",
+                f"pythonpath={shlex.quote(_ROOT.as_posix())}",
                 "--import-mode=importlib",
                 *(
                     [

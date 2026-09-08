@@ -10,6 +10,40 @@ permissions:
   contents: read
 
 jobs:
+  g17-wheel-evidence:
+    name: g17-wheel-${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            platform: linux
+          - os: windows-latest
+            platform: win32
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          architecture: x64
+      - uses: astral-sh/setup-uv@v5
+      - name: Seed locked offline installation cache
+        run: uv --cache-dir .uv-cache sync --locked --extra dev
+      - name: Build current checkout wheel
+        run: uv --cache-dir .uv-cache build --wheel --out-dir .artifacts/g17-wheel
+      - name: Run all eight installed families and verify zero skips
+        run: >-
+          uv --cache-dir .uv-cache run python scripts/dev/run_g17_installed_evidence.py
+          --wheel-dir .artifacts/g17-wheel --platform ${{ matrix.platform }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: g17-wheel-${{ matrix.platform }}
+          path: .artifacts/g17-wheel-${{ matrix.platform }}.xml
+          if-no-files-found: error
+
   g17-windows-native:
     name: g17-windows-native
     runs-on: windows-latest

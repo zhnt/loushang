@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import shlex
 import stat
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -31,7 +33,7 @@ def test_g17_partial_wheel_smoke_cannot_write_or_verify_release_report(tmp_path,
     command = next(argv for argv, _ in calls if "pytest" in argv)
     assert "-I" in command and "-k" in command
     assert "--g17-installed-evidence" not in command
-    assert f"pythonpath={tmp_path}" in command
+    assert f"pythonpath={shlex.quote(tmp_path.as_posix())}" in command
     assert str(tmp_path / "tests/coding/test_hosted_workflow_terminal.py") in command
     assert not any("verify_evidence_manifest.py" in arg for argv, _ in calls for arg in argv)
     probe = next(argv for argv, _ in calls if "-c" in argv)
@@ -53,7 +55,7 @@ def test_g17_release_refuses_missing_complete_selector_before_installation(tmp_p
     assert error.value.code == 2
 
 
-@pytest.mark.parametrize("platform", ["darwin", "win32"])
+@pytest.mark.parametrize("platform", ["darwin"])
 def test_g17_full_refuses_uncomposed_platform_before_installation(tmp_path, monkeypatch, platform):
     selector = tmp_path / "tests/coding/test_hosted_installed_evidence.py"
     selector.parent.mkdir(parents=True)
@@ -66,24 +68,59 @@ def test_g17_full_refuses_uncomposed_platform_before_installation(tmp_path, monk
     assert error.value.code == 2
 
 
-def test_g17_full_uses_only_complete_selector_and_release_verifier(tmp_path, monkeypatch):
+@pytest.mark.parametrize("platform", ["linux", "win32"])
+def test_g17_full_uses_only_complete_selector_and_release_verifier(tmp_path, monkeypatch, platform):
     wheel = _source_wheel(tmp_path)
     selector = tmp_path / "tests/coding/test_hosted_installed_evidence.py"
     selector.parent.mkdir(parents=True)
     selector.touch()
     calls = []
     monkeypatch.setattr(runner, "_ROOT", tmp_path)
-    monkeypatch.setattr(runner.sys, "platform", "linux")
+    monkeypatch.setattr(runner.sys, "platform", platform)
     monkeypatch.setattr(runner.shutil, "which", lambda _: "/fake/uv")
     monkeypatch.setattr(runner, "_run", lambda argv, **kwargs: calls.append(argv))
     monkeypatch.setattr(runner, "_verify_smoke", lambda _: pytest.fail("unexpected smoke"))
-    assert runner.main(["--wheel", str(wheel), "--platform", "linux"]) == 0
+    assert runner.main(["--wheel", str(wheel), "--platform", platform]) == 0
     command, = [argv for argv in calls if "pytest" in argv]
     assert str(selector) in command and "-k" not in command
     assert "--g17-installed-evidence" in command
-    assert f"--junitxml={tmp_path / '.artifacts/g17-wheel-linux.xml'}" in command
+    assert f"--junitxml={tmp_path / f'.artifacts/g17-wheel-{platform}.xml'}" in command
     verification, = [argv for argv in calls if any("verify_evidence_manifest.py" in item for item in argv)]
-    assert verification[-2:] == ["G17-WHEEL-LINUX", ".artifacts/g17-wheel-linux.xml"]
+    assert verification[-2:] == [f"G17-WHEEL-{platform.upper()}", f".artifacts/g17-wheel-{platform}.xml"]
+
+
+@pytest.mark.parametrize("platform", ["linux", "win32"])
+def test_g17_native_cases_use_the_verified_platform_observer(tmp_path, monkeypatch, platform):
+    from tests.coding import test_hosted_installed_evidence as selector
+    from tests.coding import test_hosted_windows_evidence as windows
+
+    calls = []
+    monkeypatch.setattr(selector.sys, "platform", platform)
+    monkeypatch.setattr(selector.native, "_run_observation", lambda *args, **kwargs: calls.append("linux"))
+    monkeypatch.setattr(windows, "run_observation", lambda *args: calls.append("win32"))
+    selector._run_native(tmp_path, "recovery-cancel")
+    assert calls == [platform]
+
+
+def test_g17_python_routes_keep_probes_and_pytest_under_supervision(tmp_path, monkeypatch):
+    routes = []
+    module = SimpleNamespace(
+        run_pytest=lambda *args, **kwargs: routes.append("pytest"),
+        run_python=lambda *args, **kwargs: routes.append("probe"),
+    )
+    monkeypatch.setattr(runner.importlib.util, "module_from_spec", lambda _: module)
+    monkeypatch.setattr(runner.importlib.util, "spec_from_file_location", lambda *args: SimpleNamespace(
+        loader=SimpleNamespace(exec_module=lambda _: None),
+    ))
+    monkeypatch.setattr(runner.subprocess, "run", lambda *args, **kwargs: routes.append("external"))
+    options = {"cwd": tmp_path, "environment": {}, "timeout": 10}
+    runner._run([sys.executable, "-I", "-m", "pytest"], **options)
+    runner._run([sys.executable, "-I", "-c", runner._PROBE, "digest", "wheel", "venv"], **options)
+    runner._run([sys.executable, "-I", str(runner._ROOT / "scripts/dev/verify_evidence_manifest.py")], **options)
+    runner._run(["uv", "venv"], **options)
+    with pytest.raises(ValueError, match="unrecognized"):
+        runner._run([sys.executable, "-I", "-c", "unknown code"], **options)
+    assert routes == ["pytest", "probe", "probe", "external"]
 
 
 @pytest.mark.parametrize("enabled", [False, True])

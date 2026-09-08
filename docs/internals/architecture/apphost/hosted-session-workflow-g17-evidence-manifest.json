@@ -59,7 +59,7 @@
         "terminal_backend": "conpty",
         "installation": "wheel"
       },
-      "status": "planned"
+      "status": "implemented"
     }
   }
 }
