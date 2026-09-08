@@ -1,16 +1,18 @@
 name: AppService Quality
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
+  workflow_call:
+    inputs:
+      plan:
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 jobs:
   appservice-quality:
+    if: ${{ fromJSON(inputs.plan).checks.appservice }}
     name: appservice-quality-${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -37,6 +39,7 @@ jobs:
         run: make check-appservice
 
   g16-native-evidence:
+    if: ${{ fromJSON(inputs.plan).checks.appservice }}
     name: g16-native-${{ matrix.platform }}
     strategy:
       fail-fast: false
@@ -79,6 +82,7 @@ jobs:
           if-no-files-found: error
 
   g16-wheel-evidence:
+    if: ${{ fromJSON(inputs.plan).checks.appservice }}
     name: g16-wheel-${{ matrix.platform }}
     strategy:
       fail-fast: false
@@ -113,3 +117,18 @@ jobs:
           name: g16-wheel-${{ matrix.platform }}
           path: .artifacts/g16-wheel-${{ matrix.platform }}.xml
           if-no-files-found: error
+
+  selected-checks:
+    name: Selected checks
+    if: always()
+    needs: [appservice-quality, g16-native-evidence, g16-wheel-evidence]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify selected jobs
+        env:
+          CI_PLAN: ${{ inputs.plan }}
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: >-
+          python scripts/ci/verify_gate.py
+          --jobs '{"appservice-quality":"appservice","g16-native-evidence":"appservice","g16-wheel-evidence":"appservice"}'

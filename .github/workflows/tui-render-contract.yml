@@ -1,20 +1,34 @@
 name: TUI Cross-platform Contracts
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
+  workflow_call:
+    inputs:
+      plan:
+        required: true
+        type: string
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+permissions:
+  contents: read
 
 env:
   PYTEST_ADDOPTS: "-o faulthandler_timeout=60"
 
 jobs:
+  tui-unit:
+    if: ${{ fromJSON(inputs.plan).checks.tui_unit }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --locked --extra dev
+      - run: uv run python scripts/ci/run_checks.py tui_unit
+
   deterministic-render:
+    if: ${{ fromJSON(inputs.plan).checks.tui_playback }}
     name: deterministic-render (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
@@ -47,6 +61,7 @@ jobs:
         run: uv run python scripts/dev/verify_pytest_xml.py .artifacts/deterministic-render.xml
 
   terminal-platform-unit:
+    if: ${{ fromJSON(inputs.plan).checks.tui_native }}
     name: terminal-platform-unit (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
@@ -98,6 +113,7 @@ jobs:
         run: uv run python scripts/dev/verify_pytest_xml.py .artifacts/terminal-platform-windows.xml
 
   native-terminal:
+    if: ${{ fromJSON(inputs.plan).checks.tui_native }}
     name: native-terminal (${{ matrix.backend }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
@@ -140,6 +156,7 @@ jobs:
           --require-property terminal_backend=${{ matrix.backend }}
 
   tmux-scrollback:
+    if: ${{ fromJSON(inputs.plan).checks.tui_native }}
     name: tmux-scrollback (ubuntu-24.04)
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -175,32 +192,17 @@ jobs:
       - name: Reject empty, skipped, or failing report
         run: uv run python scripts/dev/verify_pytest_xml.py .artifacts/tmux-scrollback.xml
 
-  tui-cross-platform-contracts:
-    name: tui-cross-platform-contracts
+  selected-checks:
+    name: Selected checks
     if: always()
-    needs:
-      - deterministic-render
-      - terminal-platform-unit
-      - native-terminal
-      - tmux-scrollback
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    needs: [tui-unit, deterministic-render, terminal-platform-unit, native-terminal, tmux-scrollback]
+    runs-on: ubuntu-latest
     steps:
-      - name: Require every cross-platform terminal contract
+      - uses: actions/checkout@v4
+      - name: Verify selected jobs
         env:
-          DETERMINISTIC_RENDER: ${{ needs.deterministic-render.result }}
-          TERMINAL_PLATFORM_UNIT: ${{ needs.terminal-platform-unit.result }}
-          NATIVE_TERMINAL: ${{ needs.native-terminal.result }}
-          TMUX_SCROLLBACK: ${{ needs.tmux-scrollback.result }}
-        run: |
-          for result in \
-            "$DETERMINISTIC_RENDER" \
-            "$TERMINAL_PLATFORM_UNIT" \
-            "$NATIVE_TERMINAL" \
-            "$TMUX_SCROLLBACK"
-          do
-            if [ "$result" != "success" ]; then
-              echo "required TUI job did not succeed: $result" >&2
-              exit 1
-            fi
-          done
+          CI_PLAN: ${{ inputs.plan }}
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: >-
+          python scripts/ci/verify_gate.py
+          --jobs '{"tui-unit":"tui_unit","deterministic-render":"tui_playback","terminal-platform-unit":"tui_native","native-terminal":"tui_native","tmux-scrollback":"tui_native"}'

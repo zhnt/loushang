@@ -1,13 +1,18 @@
 name: Harness Quality
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
+  workflow_call:
+    inputs:
+      plan:
+        required: true
+        type: string
+
+permissions:
+  contents: read
 
 jobs:
   linux-harness:
+    if: ${{ fromJSON(inputs.plan).checks.harness }}
     name: Linux harness
     runs-on: ubuntu-latest
     steps:
@@ -139,6 +144,7 @@ jobs:
         run: make check-harness
 
   macos-exec:
+    if: ${{ fromJSON(inputs.plan).checks.harness_native }}
     name: macOS local exec contract
     runs-on: macos-15
     timeout-minutes: 15
@@ -175,20 +181,17 @@ jobs:
           path: .artifacts/macos-local-exec.xml
           if-no-files-found: warn
 
-  harness-quality:
-    name: harness-quality
+  selected-checks:
+    name: Selected checks
     if: always()
-    needs:
-      - linux-harness
-      - macos-exec
+    needs: [linux-harness, macos-exec]
     runs-on: ubuntu-latest
     steps:
-      - name: Require Linux and macOS contracts
+      - uses: actions/checkout@v4
+      - name: Verify selected jobs
         env:
-          LINUX_RESULT: ${{ needs.linux-harness.result }}
-          MACOS_RESULT: ${{ needs.macos-exec.result }}
+          CI_PLAN: ${{ inputs.plan }}
+          CI_NEEDS: ${{ toJSON(needs) }}
         run: >-
-          python -c "import os, sys;
-          results = {'linux': os.environ['LINUX_RESULT'], 'macos': os.environ['MACOS_RESULT']};
-          print(results);
-          sys.exit(0 if all(value == 'success' for value in results.values()) else 1)"
+          python scripts/ci/verify_gate.py
+          --jobs '{"linux-harness":"harness","macos-exec":"harness_native"}'
