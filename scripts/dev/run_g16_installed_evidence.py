@@ -146,6 +146,31 @@ def main(argv: list[str] | None = None) -> int:
         executable = target / (
             "Scripts/python.exe" if os.name == "nt" else "bin/python"
         )
+        # A locked sync caches artifacts, not necessarily registry index
+        # responses. Reuse the lock rather than resolving dependencies offline
+        # against index metadata that only a warm developer cache may contain.
+        _run(
+            [
+                uv,
+                "--cache-dir",
+                str(cache),
+                "sync",
+                "--offline",
+                "--locked",
+                "--extra",
+                "dev",
+                "--no-install-project",
+                "--no-editable",
+                "--project",
+                str(_ROOT),
+                "--python",
+                sys.executable,
+                "--link-mode=hardlink",
+            ],
+            cwd=root,
+            environment={**environment, "UV_PROJECT_ENVIRONMENT": str(target)},
+            timeout=180,
+        )
         _run(
             [
                 uv,
@@ -154,11 +179,11 @@ def main(argv: list[str] | None = None) -> int:
                 "pip",
                 "install",
                 "--offline",
+                "--no-deps",
                 "--link-mode=hardlink",
                 "--python",
                 str(executable),
                 "loushang @ " + wheel.as_uri() + "#sha256=" + digest,
-                "pytest>=8,<9",
             ],
             cwd=root,
             environment=environment,

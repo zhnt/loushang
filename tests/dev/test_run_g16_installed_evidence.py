@@ -54,7 +54,14 @@ def test_g16_runner_binds_installation_to_wheel_digest_and_removes_source_enviro
     for name in ("PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV"):
         monkeypatch.setenv(name, "untrusted/source")
     assert runner.main(["--wheel", str(wheel), "--platform", sys.platform]) == 0
+    sync, sync_options = next((argv, opts) for argv, opts in calls if "sync" in argv)
+    assert {"--offline", "--locked", "--no-install-project"} <= set(sync)
+    assert sync[sync.index("--project") + 1] == str(tmp_path)
+    target = Path(sync_options["environment"]["UV_PROJECT_ENVIRONMENT"])
+    assert target.parent == sync_options["cwd"]
     install = next(argv for argv, _ in calls if "install" in argv)
+    assert "--offline" in install and "--no-deps" in install
+    assert "pytest>=8,<9" not in install
     assert "loushang @ " + wheel.as_uri() + "#sha256=" + digest in install
     probe = next(argv for argv, _ in calls if "-c" in argv)
     assert probe[-2:] == [digest, str(wheel)] and "-I" in probe

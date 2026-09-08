@@ -1321,6 +1321,15 @@ activation boundaries remain unchanged. All remote required rows must be
 successful on the final PR head; a previous-head pass or local Win32 static
 check is not substituted for native Windows execution.
 
+The next CI run at `f500c8f1` exposed a second cold-cache assumption: locked
+sync had cached wheel artifacts but not the registry index metadata required
+by a fresh offline dependency resolution. The runner now syncs the checkout's
+locked development dependencies into the private target with the project
+excluded, then installs only the selected, source-verified wheel with no
+dependency re-resolution. Neither network access nor editable project imports
+are allowed during evidence execution. A runner regression requires this
+separation and failed before the correction.
+
 ### Platform API References
 
 Python's [asyncio streams](https://docs.python.org/3.11/library/asyncio-stream.html)
