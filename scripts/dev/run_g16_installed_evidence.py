@@ -119,10 +119,13 @@ def main(argv: list[str] | None = None) -> int:
     cache = _ROOT / ".uv-cache"
     cache.mkdir(exist_ok=True)
     report = Path(f".artifacts/g16-wheel-{sys.platform}.xml")
-    (_ROOT / report).parent.mkdir(exist_ok=True)
-    # Keep the private environment on the cache filesystem: no /tmp copy quota
-    # pressure and no reuse of the editable developer environment.
-    with tempfile.TemporaryDirectory(prefix="g16-installed-", dir=cache) as temporary:
+    artifacts = (_ROOT / report).parent
+    artifacts.mkdir(exist_ok=True)
+    # Keep private work beside, never inside, uv's managed cache. This avoids
+    # /tmp quota pressure without reusing the editable developer environment.
+    with tempfile.TemporaryDirectory(
+        prefix="g16-installed-", dir=artifacts
+    ) as temporary:
         root = Path(temporary)
         target = root / "venv"
         _run(

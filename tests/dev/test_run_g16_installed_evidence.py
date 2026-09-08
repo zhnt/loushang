@@ -80,6 +80,41 @@ def test_g16_runner_rejects_wrong_native_platform_before_installation(
     assert error.value.code == 2
 
 
+@pytest.mark.parametrize("fail_install", [False, True])
+def test_g16_runner_keeps_temporary_work_outside_uv_cache_and_cleans_it(
+    tmp_path, monkeypatch, fail_install
+):
+    wheel = _source_wheel(tmp_path)
+    cache = tmp_path / ".uv-cache"
+    temporary_roots = []
+    monkeypatch.setattr(runner, "_ROOT", tmp_path)
+    monkeypatch.setattr(runner.os, "environ", {})
+    monkeypatch.setattr(runner.shutil, "which", lambda name: "/fake/uv")
+
+    def run(argv, *, cwd, **kwargs):
+        assert not cwd.is_relative_to(cache)
+        if "venv" in argv:
+            target = Path(argv[-1])
+            assert not target.is_relative_to(cache)
+            assert target.parent == cwd
+            assert cwd.parent == tmp_path / ".artifacts"
+            assert cwd.is_dir()
+            temporary_roots.append(cwd)
+        if "install" in argv and fail_install:
+            raise RuntimeError("installation failed")
+
+    monkeypatch.setattr(runner, "_run", run)
+    arguments = ["--wheel", str(wheel), "--platform", sys.platform]
+    if fail_install:
+        with pytest.raises(RuntimeError, match="installation failed"):
+            runner.main(arguments)
+    else:
+        assert runner.main(arguments) == 0
+    assert len(temporary_roots) == 1
+    assert not temporary_roots[0].exists()
+    assert cache.is_dir()
+
+
 @pytest.mark.parametrize(
     "fault", ["stale-module", "missing-module", "changed-module", "changed-asset"]
 )

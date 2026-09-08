@@ -13,11 +13,13 @@
 - Parent: Loushang application architecture
 - Authority: normative accepted deployment boundary
 - Design status: accepted following the three-perspective review below
-- Implementation status: partial — semantic scopes, native connections,
+- Implementation status: implemented — semantic scopes, native connections,
   AppHost/G13, real Coding composition and installed interactive attach are
   implemented; Linux native/clean-wheel evidence and the local whole-delta
-  review passed. macOS/Windows fault/wheel evidence, the Windows record rerun,
-  final exact-head review and delivery remain open
+  review passed. Three-platform native fault evidence passed at `bda21085`.
+  Release acceptance is gated by corrected-head checks and the final review
+  recorded on [PR #567](https://github.com/zhnt/loushang/pull/567), followed by
+  promotion and synchronization; implementation alone is not release acceptance
 - Activation status: explicit new deployment only; G14 and Embedded unchanged
 - Tracking: [Hosted Workspace V1 #566](https://github.com/zhnt/loushang/issues/566)
 - Prerequisite: G15 design accepted in `18d429bc`; G14 delivered in `815c03d2`
@@ -1076,7 +1078,7 @@ missing, duplicate, failed or errored cases. Manifest `implemented` means the
 test exists, not that the platform has passed it.
 
 The installed runner builds no Product substitute. It installs the selected
-wheel offline into an isolated environment under the ignored cache, removes
+wheel offline into an isolated environment under ignored `.artifacts`, removes
 Python source/environment overrides, and executes the native cases with `-I`
 outside the source working directory. Before pytest, it verifies module origins,
 the selected wheel digest and every installed package file against the artifact
@@ -1280,6 +1282,44 @@ Windows native/wheel rows, the Windows replacement rerun, final exact-head
 review, PR/promotion and local/remote main+harness synchronization must finish
 before this goal can be called complete. G15 remains design-only for its
 foreground launcher and global Session discovery picker.
+
+### G16.12 Native CI Installation-Workspace Correction
+
+The first post-review CI run at `bda21085` passed all three exact native fault
+rows, including the Windows held-file replacement cases. Its isolated-wheel
+rows failed before installation: CI's uv 0.12.10 rejects a working directory
+inside its managed cache, unlike the local uv 0.10.12 used for earlier evidence.
+
+The evidence runner now creates its private temporary environment under
+ignored `.artifacts`, beside `.uv-cache`, not inside it. It retains offline
+installation, digest/source/installed-byte checks, isolated imports, exact
+native manifests and cleanup on success or failure. Both directory-boundary
+regression cases failed before this correction. This is an evidence-runner
+fix, not a Product authority or deployment change; all three wheel rows must
+pass on the corrected head before merge.
+
+The Windows full suite also exposed Ctrl+C reaching the console signal handler
+instead of the Hosted Mux key handler. The native console mode now clears
+`ENABLE_PROCESSED_INPUT` while the terminal session owns input, for both VT
+admission and its fallback, and restores the exact original flags on exit.
+Four regression cases failed before the fix and now cover both native-selection
+policies and VT acceptance/rejection. No Product-specific signal handling or
+weakened interrupt assertion is introduced.
+
+The G12 retained-AppHost-task test previously used a 10ms wall-clock budget,
+which could expire the preceding service phase on Windows. It now reschedules
+the real asyncio timeout only when the blocked AppHost callback has started,
+retaining the same timed-out-phase, task-reuse and dependency-order assertions.
+The application shutdown implementation and production budgets are unchanged.
+
+The correction's architecture/security, lifecycle and evidence review is a
+single reviewer's three perspectives, continuing G16.11. The only Product
+source delta is the four-line native console mode correction; other changes
+are runner isolation, deterministic test timing and evidence documentation.
+The scoped authority, retained execution, G13 lease-last ordering and G15/G14
+activation boundaries remain unchanged. All remote required rows must be
+successful on the final PR head; a previous-head pass or local Win32 static
+check is not substituted for native Windows execution.
 
 ### Platform API References
 
