@@ -4,6 +4,7 @@ import asyncio
 import os
 import threading
 from collections.abc import Awaitable, Callable
+from contextlib import AsyncExitStack
 from functools import wraps
 from pathlib import Path
 from typing import ParamSpec
@@ -20,9 +21,15 @@ from loushang.hosting import (
     ProcessStreamSpec,
 )
 from loushang.hosting._endpoint_host import _InheritedEndpointHost
-from loushang.hosting._win32_process import _Win32SpawnHandles
+from loushang.hosting._win32_process import (
+    _CtypesWin32Api,
+    _Win32AttributeList,
+    _Win32SpawnHandles,
+)
 from loushang.hosting._windows_endpoint import _WindowsEndpointBackend
 from loushang.hosting._windows_process import _WindowsProcessBackend
+
+from ._windows_handle_probe import WindowsHandleIdentityProbe
 
 _P = ParamSpec("_P")
 
@@ -310,38 +317,28 @@ async def test_windows_attachment_primary_survives_cleanup_failure() -> None:
 
 
 @pytest.mark.skipif(os.name != "nt", reason="native Windows endpoint")
+@pytest.mark.parametrize(
+    "leaked_index", [None, 0, 1, 2],
+    ids=["isolated", "leaked-parent-read", "leaked-parent-write", "leaked-sentinel"],
+)
 @_async_test
-async def test_native_windows_endpoint_process_round_trip(tmp_path: Path) -> None:
+async def test_native_windows_endpoint_process_round_trip(
+    tmp_path: Path, leaked_index: int | None,
+) -> None:
     import msvcrt
     import sys
 
-    endpoint_host = _InheritedEndpointHost(_WindowsEndpointBackend())
-    endpoint_lease = await endpoint_host.create()
-    sentinel_descriptor = os.open(
-        tmp_path / "h3-ambient-sentinel", os.O_CREAT | os.O_RDWR
-    )
-    sentinel_handle = msvcrt.get_osfhandle(sentinel_descriptor)
-    os.set_handle_inheritable(sentinel_handle, True)
-    transport = endpoint_lease._pair.transport
-    hidden_handles = (
-        transport._read_handle,  # type: ignore[attr-defined]
-        transport._write_handle,  # type: ignore[attr-defined]
-        sentinel_handle,
-    )
     request = ProcessLaunchRequest(
         argv=(
             sys.executable,
             "-c",
             (
-                "import ctypes,sys; flags=ctypes.c_ulong(); "
-                "get=ctypes.windll.kernel32.GetHandleInformation; "
-                "visibility=b''.join(b'1' if get(int(value),ctypes.byref(flags)) "
-                "else b'0' for value in sys.argv[1:]); "
+                "import sys; sys.stdout.buffer.write(b'READY'); "
+                "sys.stdout.buffer.flush(); "
                 "data=sys.stdin.buffer.read(4); "
-                "sys.stdout.buffer.write(visibility+data.upper()); "
+                "sys.stdout.buffer.write(data.upper()); "
                 "sys.stdout.buffer.flush()"
             ),
-            *(str(handle) for handle in hidden_handles),
         ),
         cwd=str(tmp_path.resolve()),
         effective_environment=tuple(os.environ.items()),
@@ -351,24 +348,72 @@ async def test_native_windows_endpoint_process_round_trip(tmp_path: Path) -> Non
             stderr=ProcessStderrMode.DISCARD,
         ),
     )
-    process_backend = _WindowsProcessBackend()
-    try:
-        process = await process_backend.spawn(
-            request,
-            inheritance=endpoint_lease.inheritance,
-            on_spawn=lambda attached: None,
+    async with AsyncExitStack() as cleanup:
+        endpoint_host = _InheritedEndpointHost(_WindowsEndpointBackend())
+        cleanup.push_async_callback(endpoint_host.close)
+        endpoint_lease = await endpoint_host.create()
+        cleanup.push_async_callback(endpoint_lease.close)
+        sentinel_descriptor = os.open(
+            tmp_path / "h3-ambient-sentinel", os.O_CREAT | os.O_RDWR
+        )
+        cleanup.callback(os.close, sentinel_descriptor)
+        sentinel_handle = msvcrt.get_osfhandle(sentinel_descriptor)
+        os.set_handle_inheritable(sentinel_handle, True)
+        transport = endpoint_lease._pair.transport
+        hidden_handles = (
+            transport._read_handle,  # type: ignore[attr-defined]
+            transport._write_handle,  # type: ignore[attr-defined]
+            sentinel_handle,
         )
 
-        await endpoint_lease.endpoint.write(b"ping")
-        assert await endpoint_lease.endpoint.read(7) == b"000PING"
-        assert await process.wait() == 0
-        await process_backend.wait_tree(process)
-        await process_backend.close_process_handles(process)
-    finally:
-        await endpoint_lease.close()
-        await process_backend.close_backend()
-        await endpoint_host.close()
-        os.close(sentinel_descriptor)
+        class _LeakingApi(_CtypesWin32Api):
+            """Native positive control: deliberately violate the exact allowlist."""
+
+            def _attribute_list(
+                self, job: int, inherited_handles: tuple[int, int, int],
+            ) -> _Win32AttributeList:
+                assert leaked_index is not None
+                leaked = hidden_handles[leaked_index]
+                os.set_handle_inheritable(leaked, True)
+                return super()._attribute_list(
+                    job, (*inherited_handles, leaked),  # type: ignore[arg-type]
+                )
+
+        process_backend = _WindowsProcessBackend(
+            api=None if leaked_index is None else _LeakingApi()
+        )
+        cleanup.push_async_callback(process_backend.close_backend)
+
+        async def read_exactly(size: int) -> bytes:
+            data = b""
+            while len(data) < size:
+                chunk = await endpoint_lease.endpoint.read(size - len(data))
+                assert chunk, "child exited before the endpoint handshake completed"
+                data += chunk
+            return data
+
+        async with asyncio.timeout(20):
+            process = await process_backend.spawn(
+                request,
+                inheritance=endpoint_lease.inheritance,
+                on_spawn=lambda attached: cleanup.push_async_callback(
+                    process_backend.close_process_handles, attached
+                ),
+            )
+            assert await read_exactly(5) == b"READY"
+            # The child remains blocked on stdin throughout object comparison.
+            # HANDLE numbers are process-local; validity alone is not leakage.
+            assert process._process_handle is not None
+            probe = WindowsHandleIdentityProbe()
+            matches = tuple(
+                probe.matches(process._process_handle, handle, handle)
+                for handle in hidden_handles
+            )
+            assert matches == tuple(index == leaked_index for index in range(3))
+            await endpoint_lease.endpoint.write(b"ping")
+            assert await read_exactly(4) == b"PING"
+            assert await process.wait() == 0
+            await process_backend.wait_tree(process)
 
 
 @pytest.mark.skipif(os.name != "nt", reason="native Windows endpoint")

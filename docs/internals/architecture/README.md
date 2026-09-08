@@ -152,13 +152,17 @@ native evidence and integration PR.
 
 The [accepted G15 foreground Hosted TUI design](apphost/foreground-hosted-tui-g15.md)
 defines the optional A0.5 launcher and explicit client presentation boundary.
-It is design-only, not a new installed route. Its G16 handoff separates
-foreground process ownership from a future detachable connection profile.
+Its launcher and global Session-discovery picker remain design-only. G16
+delivers the shared terminal shell under a separate detachable connection
+lifetime, without activating G15 foreground process ownership.
 
-The [accepted G16 local workspace design](appserver/detachable-local-workspace-g16.md)
-defines authenticated local connections and application-owned work that can
-outlive a client. It is design-only, not an implemented listener or default-route
-change; G14's foreground EOF behavior remains independently authoritative.
+The implemented G16 local workspace supplies authenticated local connections,
+application-owned work that can outlive a client, and the installed
+`loushang-mux` Product route. Its
+[final delivery record](appserver/detachable-local-workspace-g16.md#final-delivery-acceptance)
+records native and isolated-wheel acceptance on Linux/macOS/Windows and main
+promotion, separately from the post-merge Hosting regression tracked by G17.0.
+Embedded defaults and G14's foreground EOF behavior remain unchanged.
 
 A nested scope is not automatically a top-level subsystem. The parent owns its
 placement, composition policy, and sibling relationships; the child owns its

@@ -14,7 +14,7 @@ def test_G16_DESIGN_inventory_preserves_current_routes_and_platform_scope() -> N
     assert inventory["inventoryVersion"] == 1
     assert inventory["profile"] == "local-detachable/v1"
     assert inventory["designStatus"] == "accepted"
-    assert inventory["implementationStatus"] == "partial"
+    assert inventory["implementationStatus"] == "implemented"
     assert set(inventory["requiredPlatforms"]) == {"linux", "darwin", "win32"}
     entries = inventory["entries"]
     assert len({entry["id"] for entry in entries}) == len(entries)
@@ -62,3 +62,27 @@ def test_G16_DESIGN_traces_detach_authority_and_real_evidence_requirements() -> 
     for finding in inventory["reviewFindings"]:
         assert finding["status"] == "resolved"
         assert f"`{finding['id']}`" in design
+
+
+def test_G17_BASELINE_indexes_link_delivery_without_activating_g15() -> None:
+    design = (ROOT / "detachable-local-workspace-g16.md").read_text()
+    assert "## Final Delivery Acceptance" in design
+    delivery = design.split("## Final Delivery Acceptance", 1)[1].split("\n## ", 1)[0]
+    for evidence in (
+        "2455767a", "f05f8cc2", "/pull/567", "/pull/568",
+        "34177069952", "G17.0", "G15", "design-only",
+    ):
+        assert evidence in delivery
+    for scope in ("", "apphost", "appserver", "appservice", "harnesstui"):
+        index = " ".join((ROOT.parent / scope / "README.md").read_text().split())
+        assert "detachable-local-workspace-g16.md#final-delivery-acceptance" in index
+        assert "G17.0" in index
+        for obsolete in (
+            "final platform acceptance pending", "full native platform proof remains pending",
+            "isolated-wheel and final platform fault evidence remain pending",
+            "final platform acceptance still required", "final cross-platform acceptance pending",
+            "cross-platform acceptance is still pending",
+            "design-only, not an implemented listener",
+        ):
+            assert obsolete not in index
+    assert "A0.5 remains not-started" in (ROOT.parent / "apphost/README.md").read_text()
