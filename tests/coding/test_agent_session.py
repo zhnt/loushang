@@ -5768,7 +5768,9 @@ def test_agent_session_installs_and_uninstalls_package_with_settings(tmp_path) -
         record.target_path.mkdir(parents=True, exist_ok=True)
         return record.with_lifecycle("installed")
 
-    settings = SettingsManager(ControlConfig())
+    settings = SettingsManager(
+        ControlConfig(), project_settings_path=tmp_path / "settings.json"
+    )
     materializer = PackageMaterializer(
         install_root=tmp_path / "packages", backend=backend
     )
@@ -5813,7 +5815,9 @@ def test_agent_session_installs_and_uninstalls_local_package_with_settings(
 
     local_package = tmp_path / "local-pack"
     local_package.mkdir()
-    settings = SettingsManager(ControlConfig())
+    settings = SettingsManager(
+        ControlConfig(), project_settings_path=tmp_path / "settings.json"
+    )
     materializer = PackageMaterializer(install_root=tmp_path / "packages")
     session = AgentSession(
         agent=Agent(),
@@ -5916,7 +5920,10 @@ def test_agent_session_install_package_refreshes_resources_for_current_session(
         )
         return record.with_lifecycle("installed")
 
-    settings = SettingsManager(ControlConfig(system_prompt="Base"))
+    settings = SettingsManager(
+        ControlConfig(system_prompt="Base"),
+        project_settings_path=tmp_path / "settings.json",
+    )
     materializer = PackageMaterializer(
         install_root=tmp_path / "packages", backend=backend
     )
@@ -5963,7 +5970,9 @@ def test_agent_session_emits_package_progress_events(tmp_path) -> None:
         record.target_path.mkdir(parents=True, exist_ok=True)
         return record.with_lifecycle("installed")
 
-    settings = SettingsManager(ControlConfig())
+    settings = SettingsManager(
+        ControlConfig(), project_settings_path=tmp_path / "settings.json"
+    )
     materializer = PackageMaterializer(
         install_root=tmp_path / "packages", backend=backend
     )
