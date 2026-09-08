@@ -1,0 +1,65 @@
+{
+  "manifestVersion": 1,
+  "reports": {
+    "G17-WHEEL-LINUX": {
+      "junitPath": ".artifacts/g17-wheel-linux.xml",
+      "minimumTests": 8,
+      "requiredCaseIds": [
+        "G17-INSTALLED-ENTRY",
+        "G17-INSTALLED-CWD",
+        "G17-INSTALLED-HOME",
+        "G17-INSTALLED-LOCAL",
+        "G17-INSTALLED-LEGACY",
+        "G17-PRODUCT-INTERACTION",
+        "G17-NATIVE-START-CANCEL",
+        "G17-NATIVE-FORCED-EXIT"
+      ],
+      "requiredProperties": {
+        "native_platform": "linux",
+        "terminal_backend": "posix-pty",
+        "installation": "wheel"
+      },
+      "status": "implemented"
+    },
+    "G17-WHEEL-DARWIN": {
+      "junitPath": ".artifacts/g17-wheel-darwin.xml",
+      "minimumTests": 8,
+      "requiredCaseIds": [
+        "G17-INSTALLED-ENTRY",
+        "G17-INSTALLED-CWD",
+        "G17-INSTALLED-HOME",
+        "G17-INSTALLED-LOCAL",
+        "G17-INSTALLED-LEGACY",
+        "G17-PRODUCT-INTERACTION",
+        "G17-NATIVE-START-CANCEL",
+        "G17-NATIVE-FORCED-EXIT"
+      ],
+      "requiredProperties": {
+        "native_platform": "darwin",
+        "terminal_backend": "posix-pty",
+        "installation": "wheel"
+      },
+      "status": "implemented"
+    },
+    "G17-WHEEL-WIN32": {
+      "junitPath": ".artifacts/g17-wheel-win32.xml",
+      "minimumTests": 8,
+      "requiredCaseIds": [
+        "G17-INSTALLED-ENTRY",
+        "G17-INSTALLED-CWD",
+        "G17-INSTALLED-HOME",
+        "G17-INSTALLED-LOCAL",
+        "G17-INSTALLED-LEGACY",
+        "G17-PRODUCT-INTERACTION",
+        "G17-NATIVE-START-CANCEL",
+        "G17-NATIVE-FORCED-EXIT"
+      ],
+      "requiredProperties": {
+        "native_platform": "win32",
+        "terminal_backend": "conpty",
+        "installation": "wheel"
+      },
+      "status": "implemented"
+    }
+  }
+}

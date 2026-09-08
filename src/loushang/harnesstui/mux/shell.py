@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import shlex
-from collections.abc import Callable, Coroutine
+from collections.abc import Awaitable, Callable, Coroutine
 from secrets import token_hex
 from typing import TypeVar
 
-from loushang.appserver.client import AppClientV1
+from loushang.appserver.client import AppClientV1, SessionDiscoveryClientV1
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
     AppServiceError,
@@ -21,6 +21,7 @@ from loushang.appserver.protocol import (
     TurnInterruptV1,
     TurnTextV1,
 )
+from loushang.tui import Composer
 from loushang.tui.input import InputEvent, InputRouter
 
 from ._shell_screen import HostedMuxScreenV1, safe_text
@@ -28,6 +29,7 @@ from ._shell_tasks import ShellActions, join, owned_task
 from .controller import HostedMuxControllerV1
 from .model import HarnessWindowState, HostedMuxState
 from .reducer import select_next, select_previous, select_window, set_active_draft
+from .session_picker import SessionPickerV1
 
 MAX_DRAFT_BYTES = 64 * 1024
 MAX_SHELL_DRAFT_BYTES = 1024 * 1024
@@ -49,9 +51,12 @@ class HostedMuxShellV1:
         product_id: str,
         scopes: tuple[tuple[SessionScopeV1, str], ...],
         close_timeout: float = 5.0,
+        discovery_client: SessionDiscoveryClientV1 | None = None,
+        exit_ends_application: bool = False,
     ) -> None:
         if (
-            type(close_timeout) not in (float, int)
+            type(exit_ends_application) is not bool
+            or type(close_timeout) not in (float, int)
             or not 0 < close_timeout <= 20
             or not 1 <= len(scopes) <= 2
         ):
@@ -61,9 +66,18 @@ class HostedMuxShellV1:
         if len({scope for scope, _ in scopes}) != len(scopes):
             raise ValueError("ambiguous hosted scope")
         self._client, self._selector = client, selector
+        self.exit_ends_application = exit_ends_application
         self._product_id, self._scopes = product_id, dict(scopes)
         self._controller = HostedMuxControllerV1(client, selector=selector)
         self._actions = ShellActions(self._failed)
+        self._editors: dict[tuple[str, str, str], Composer] = {}
+        self.picker = SessionPickerV1(
+            discovery_client,
+            actions=self._actions,
+            product_id=product_id,
+            scopes=self._scopes,
+            select=self._resume_selected,
+        )
         self._start_task: asyncio.Task[HostedMuxState] | None = None
         self._close_task: asyncio.Task[None] | None = None
         self._detach_task: asyncio.Task[None] | None = None
@@ -93,7 +107,9 @@ class HostedMuxShellV1:
     def cleanup_pending(self) -> bool:
         return not self._settled
 
-    async def start(self) -> None:
+    async def start(
+        self, *, settlement: Callable[[], Awaitable[None]] | None = None
+    ) -> None:
         if self._start_task is not None or self._closing:
             raise ValueError("hosted shell already started or closed")
         self._start_task = owned_task(self._controller.start)
@@ -107,7 +123,7 @@ class HostedMuxShellV1:
                     "running; earlier partial output is not in the v1 snapshot"
                 )
         except BaseException:
-            await self.close()
+            await (self.close() if settlement is None else settlement())
             raise
 
     def handle(self, event: InputEvent) -> None:
@@ -117,12 +133,16 @@ class HostedMuxShellV1:
             self._handle(event)
         except AppServiceError as error:
             self.notice = error.code.value
+            if self.picker.visible:
+                self.picker.status = self.notice
         except (ValueError, KeyError) as error:
             self.notice = (
                 str(error)
                 if str(error) in {"draft_limit", "action_queue_full"}
                 else "invalid_or_unavailable_action"
             )
+            if self.picker.visible:
+                self.picker.status = self.notice
 
     def resize(self, width: int, height: int) -> None:
         self._router.width, self._router.height = width, height
@@ -163,18 +183,26 @@ class HostedMuxShellV1:
         if key == "ctrl+v":
             self.notice = "image_paste_unavailable"
             return
-        if key in {"tab", "shift+tab"} and not self.screen.composer.has_completions:
-            self._select(key == "tab")
+        if key == "f3":
+            self.screen.dismiss_details()
+            self.picker.open()
             return
         if key == "f1":
+            self.picker.dismiss()
             self.screen.show_help()
             return
         if key == "f2":
             self._target()
+            self.picker.dismiss()
             self.screen.show_approval()
             return
         if key == "ctrl+c":
             self._command("/interrupt")
+            return
+        if self.picker.handle(event):
+            return
+        if key in {"tab", "shift+tab"} and not self.screen.composer.has_completions:
+            self._select(key == "tab")
             return
         if self.screen.handle_details(event):
             return
@@ -238,9 +266,51 @@ class HostedMuxShellV1:
 
     def _sync_editor(self) -> None:
         self.screen.dismiss_details()
-        self.screen.composer.clear()
+        self.picker.dismiss()
+        keys = {
+            (self.state.mux_space_id, item.member_id, item.session_id)
+            for item in self.state.windows
+        }
+        self._editors = {
+            key: editor for key, editor in self._editors.items() if key in keys
+        }
         window = self.state.active_window
-        self.screen.composer.set_text(window.draft if window else "")
+        key = (
+            (self.state.mux_space_id, window.member_id, window.session_id)
+            if window
+            else None
+        )
+        editor = self._editors.get(key) if key else None
+        if editor is None:
+            editor = Composer(max_undo_depth=16)
+            if key is not None:
+                self._editors[key] = editor
+        draft = window.draft if window else ""
+        if editor.value != draft:
+            editor.set_text(draft)
+        if editor is not self.screen.composer:
+            self.screen.bind_editor(editor)
+            self._router = InputRouter(
+                composer=editor,
+                surface_host=self._router.surface_host,
+                width=self._router.width,
+                height=self._router.height,
+                keybindings=self._router.keybindings,
+            )
+
+    def _resume_selected(self, spec: SessionOpenSpecV1) -> None:
+        if self.state.snapshot_required:
+            raise AppServiceError(AppErrorCodeV1.SNAPSHOT_REQUIRED)
+
+        async def resume() -> HostedMuxState:
+            state = await self._controller.open_member(spec)
+            for index, window in enumerate(state.windows):
+                if window.session_id == spec.session_id:
+                    select_window(state, index)
+                    break
+            return state
+
+        self._membership(resume)
 
     def _target(self) -> tuple[HostedMuxState, HarnessWindowState]:
         state = self.state
@@ -276,8 +346,11 @@ class HostedMuxShellV1:
             self.screen.show_approval()
         elif command == "/refresh" and not args:
             self._membership(self._controller.refresh_snapshot)
+        elif command in {"/sessions", "/resume"} and len(args) <= 1:
+            self.screen.dismiss_details()
+            self.picker.open(args[0] if args else None)
         elif command in {"/new", "/resume"} and args:
-            scope = SessionScopeV1(args[0])
+            scope = SessionScopeV1("user_home" if args[0] == "global" else args[0])
             fingerprint = self._scopes[scope]
             if command == "/resume" and len(args) != 3:
                 raise ValueError("resume requires explicit identity")
@@ -392,6 +465,7 @@ class HostedMuxShellV1:
         if self._settled:
             return
         self._closing = True
+        self.picker.close()
         if self._deadline is None:
             self._deadline = asyncio.get_running_loop().time() + self._timeout
         if self._close_task is None or (
@@ -416,6 +490,9 @@ class HostedMuxShellV1:
         if self._detach_task is None:
             self._detach_task = owned_task(self._controller.close)
         await join(self._detach_task, self._deadline)
+        self._editors.clear()
+        self.screen.bind_editor(Composer(max_undo_depth=16))
+        self._router = InputRouter(composer=self.screen.composer)
         self._settled = True
 
 

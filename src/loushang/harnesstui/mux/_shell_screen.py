@@ -27,6 +27,9 @@ Ctrl+B 1..9 selects a window. Each window retains its own local draft.
 PageUp / PageDown scrolls history, or the open read-only details.
 F1 or /help opens this help. Esc closes details without changing a draft.
 F2 or /question opens the current approval details.
+F3 or /sessions [cwd|user_home|global] discovers saved Sessions.
+In the picker: Tab scope, arrows select, n next page, r refresh, Enter resume.
+global means admitted user_home, not a union or filesystem-wide search.
 /approve requires all current details to have been presented, then an explicit command.
 /deny rejects the current approval without requiring a review.
 /interrupt or Ctrl+C interrupts the selected Session.
@@ -35,9 +38,9 @@ F2 or /question opens the current approval details.
 /resume <scope> <continuity> <session> opens an explicit saved identity.
 /refresh reconciles an unknown outcome; it does not retry a mutation.
 /close --yes closes this member and its execution, not the application.
-/detach or Ctrl+B d disconnects this terminal; accepted work continues.
-Ctrl+D with an empty editor also detaches. Image paste is unavailable.
-The installed create/list/attach/close/stop commands manage named muxes.
+{exit_help}
+Ctrl+D with an empty editor or terminal EOF also exits. Image paste is unavailable.
+{management_help}
 Application restart restores history and membership, not in-flight execution.
 """
 
@@ -80,6 +83,12 @@ class HostedMuxScreenV1(ScreenConversationApp):
             ScreenFrameCopy("Working", "Steer", "", "Follow-up", "")
         )
 
+    def bind_editor(self, composer: Composer) -> None:
+        self.composer = composer
+        # The shared frame retains its editor between renders, including after
+        # terminal restore. Rebind it now so pruning/close releases old history.
+        self._bottom_frame_component.composer = composer
+
     def _approval_key(self) -> tuple[object, ...] | None:
         mux, window = self.shell.state, self.shell.state.active_window
         if (
@@ -99,7 +108,17 @@ class HostedMuxScreenV1(ScreenConversationApp):
         )
 
     def show_help(self) -> None:
-        self._detail, self._detail_key = TextPager("Hosted help", _HELP), None
+        exit_help = (
+            "/exit, /detach or Ctrl+B d ends this application; work does not continue in background."
+            if self.shell.exit_ends_application else
+            "/detach or Ctrl+B d disconnects this terminal; accepted work continues."
+        )
+        management_help = (
+            "--mux selects a named mux; this foreground application has no background management endpoint."
+            if self.shell.exit_ends_application else
+            "The installed create/list/attach/close/stop commands manage named muxes."
+        )
+        self._detail, self._detail_key = TextPager("Hosted help", _HELP.format(exit_help=exit_help, management_help=management_help)), None
 
     def show_approval(self) -> None:
         key = self._approval_key()
@@ -196,7 +215,7 @@ class HostedMuxScreenV1(ScreenConversationApp):
                 for index, item in enumerate(mux.windows)
             )
         )
-        footer += " | /help /detach"
+        footer += " | /help " + ("/exit ends app" if self.shell.exit_ends_application else "/detach")
         row = RenderLine(
             truncate_to_width(footer, max_width=max(1, constraints.width - 1))
         )
@@ -210,7 +229,12 @@ class HostedMuxScreenV1(ScreenConversationApp):
             ),
         )
         self._sync_details()
-        rendered = self._detail.render(inner) if self._detail else super().render(inner)
+        if self.shell.picker.visible:
+            rendered = self.shell.picker.render(inner)
+        else:
+            rendered = (
+                self._detail.render(inner) if self._detail else super().render(inner)
+            )
         if (
             self._detail is not None
             and self._detail.fully_presented

@@ -39,7 +39,8 @@
         "turn/follow_up",
         "turn/interrupt",
         "interaction/respond",
-        "attachment/read_events"
+        "attachment/read_events",
+        "sessions/list"
       ]
     },
     "payload": {
@@ -63,5 +64,5 @@
   ],
   "title": "Loushang App Request V1 Vocabulary",
   "type": "object",
-  "x-loushang-note": "Payload strictness is operation-specific and enforced by the closed reference codec."
+  "x-loushang-note": "Payload strictness is enforced by the closed reference codec. sessions/list additionally requires an explicitly admitted discovery connection profile; codec recognition grants no capability."
 }

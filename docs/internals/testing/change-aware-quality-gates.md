@@ -17,6 +17,8 @@ their results through `quality-gate`. Local development uses the same
 | HarnessTUI presentation | HarnessTUI core, Coding UI adapters, deterministic playback |
 | Coding UI adapters | Coding UI and deterministic playback, plus Coding checks where applicable |
 | Terminal lifecycle/platform code | TUI units, playback, platform units, native PTY/ConPTY, and tmux |
+| Hosting provider source | Hosting checks and its AppHost/AppService startup and settlement consumers |
+| Hosted native/wheel evidence helpers, supervisors, and PTY/ConPTY fixture drivers | AppService quality plus G16/G17 native and installed matrices |
 | Shared dependencies, gate infrastructure, or unknown non-document paths | All configured checks |
 
 Rules are additive. Makefile source/test inventories retain explicitly shared

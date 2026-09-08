@@ -81,6 +81,7 @@ class _ClientCommand:
                         (item.scope, item.fingerprint)
                         for item in self._connection.scopes
                     ),
+                    discovery_client=self._connection.discovery_client,
                 )
                 status = await run_hosted_mux_shell(
                     self._shell, stdin=sys.stdin, stdout=self._output
@@ -170,6 +171,10 @@ def _parser() -> argparse.ArgumentParser:
     serve.add_argument("--cwd-sessions", required=True, type=Path)
     serve.add_argument("--home-sessions", required=True, type=Path)
     serve.add_argument(
+        "--session-discovery", action="store_true",
+        help="explicitly advertise bounded discovery in the authenticated record",
+    )
+    serve.add_argument(
         "--describe", action="store_true", help="print path-free selectors without IO"
     )
     commands.add_parser("list", help="list named muxes without attaching")
@@ -219,6 +224,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 ),
                 root,
                 args.endpoint,
+                session_discovery=args.session_discovery,
             )
             if args.describe:
                 _emit(launch.describe(), output)

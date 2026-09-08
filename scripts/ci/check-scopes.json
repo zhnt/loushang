@@ -341,6 +341,34 @@
     },
     {
       "paths": [
+        "src/loushang/hosting/**"
+      ],
+      "checks": [
+        "apphost",
+        "appservice"
+      ],
+      "reason": "Hosting provider changes affect hosted application startup and settlement"
+    },
+    {
+      "paths": [
+        "tests/coding/_hosted_*.py",
+        "tests/coding/test_hosted_*evidence.py",
+        "tests/coding/test_hosted_darwin_primitives.py",
+        "tests/tui/terminal_process_support/**",
+        "tests/coding/test_mux_native_evidence.py",
+        "tests/coding/test_mux_installed_evidence.py",
+        "scripts/dev/run_g17_installed_evidence.py",
+        "scripts/dev/run_g16_installed_evidence.py",
+        "scripts/dev/_evidence_*.py",
+        "scripts/dev/verify_evidence_manifest.py"
+      ],
+      "checks": [
+        "appservice"
+      ],
+      "reason": "Native and installed Hosted evidence support must select its full consumer gate"
+    },
+    {
+      "paths": [
         "src/loushang/apphost/**",
         "tests/apphost/**"
       ],

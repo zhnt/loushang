@@ -51,8 +51,8 @@ def test_inventory_v3_records_one_explicit_canary_and_current_omission(
 ) -> None:
     del _case
     inventory = json.loads(_read(INVENTORY))
-    # G14 v4 and G16 v5 add separate commands; the G10 v3 canary stays exact.
-    assert inventory["inventoryVersion"] == 5
+    # G14 v4, G16 v5 and G17 v6 add commands; the G10 v3 canary stays exact.
+    assert inventory["inventoryVersion"] == 6
     assert inventory["decision"] == "RETAIN"
     rows = {row["entrypointId"]: row for row in inventory["entries"]}
     assert rows["coding.apphost.canary"] == {
@@ -130,6 +130,11 @@ def test_dependency_graph_has_only_the_accepted_product_owned_edges(
     ):
         for path in package.rglob("*.py"):
             imports = _imports(path)
+            if path == Path("src/loushang/apphost/launcher.py"):
+                assert {name for name in imports if name.startswith("loushang.hosting")} == {
+                    "loushang.hosting.contracts",
+                }
+                imports = imports - {"loushang.hosting.contracts"}
             assert not any(
                 name == prefix or name.startswith(f"{prefix}.")
                 for prefix in forbidden

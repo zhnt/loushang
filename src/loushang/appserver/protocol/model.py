@@ -15,6 +15,8 @@ MAX_TITLE_CHARS = 256
 MAX_MEMBERS = 128
 MAX_MUX_SPACES = 256
 MAX_SNAPSHOT_RECORDS = 4_096
+MAX_DISCOVERY_PAGE = 64
+MAX_DISCOVERY_CANDIDATES = 256
 
 _STABLE_ID = re.compile(r"[a-z0-9](?:[a-z0-9._-]{0,127})\Z")
 _OPAQUE_ID = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9._~-]{0,511})\Z")
@@ -93,6 +95,7 @@ class AppOperationV1(str, Enum):
     TURN_INTERRUPT = "turn/interrupt"
     INTERACTION_RESPOND = "interaction/respond"
     ATTACHMENT_READ_EVENTS = "attachment/read_events"
+    SESSIONS_LIST = "sessions/list"
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,6 +117,123 @@ class SessionIdentityV1:
             or _FINGERPRINT.fullmatch(self.scope_fingerprint) is None
         ):
             raise ValueError("invalid scope_fingerprint")
+
+
+class SessionCompatibilityV1(str, Enum):
+    COMPATIBLE = "compatible"
+    UNSUPPORTED = "unsupported"
+
+
+class SessionAvailabilityV1(str, Enum):
+    AVAILABLE = "available"
+    UNAVAILABLE = "unavailable"
+    UNVERIFIED = "unverified"
+
+
+def _require_discovery_scope(
+    product_id: str, scope: SessionScopeV1, fingerprint: str
+) -> None:
+    _require_stable_id(product_id, field="product_id")
+    if type(scope) is not SessionScopeV1:
+        raise ValueError("invalid discovery scope")
+    if type(fingerprint) is not str or _FINGERPRINT.fullmatch(fingerprint) is None:
+        raise ValueError("invalid scope_fingerprint")
+
+
+@dataclass(frozen=True, slots=True)
+class SessionListV1:
+    """A scope-bound discovery query, never a client filesystem path."""
+
+    product_id: str
+    scope: SessionScopeV1
+    scope_fingerprint: str
+    limit: int = 32
+    continuation: str | None = None
+
+    def __post_init__(self) -> None:
+        _require_discovery_scope(self.product_id, self.scope, self.scope_fingerprint)
+        if type(self.limit) is not int or not 1 <= self.limit <= MAX_DISCOVERY_PAGE:
+            raise ValueError("invalid discovery page limit")
+        if self.continuation is not None:
+            _require_opaque_id(self.continuation, field="discovery continuation")
+
+
+@dataclass(frozen=True, slots=True)
+class SessionDiscoveryCandidateV1:
+    """An observation of canonical identity, not a resume capability."""
+
+    identity: SessionIdentityV1
+    title: str
+    compatibility: SessionCompatibilityV1
+    availability: SessionAvailabilityV1
+
+    def __post_init__(self) -> None:
+        if type(self.identity) is not SessionIdentityV1:
+            raise TypeError("invalid discovery identity")
+        _require_text(self.title, field="candidate title", maximum=MAX_TITLE_CHARS,
+                      empty=False)
+        if type(self.compatibility) is not SessionCompatibilityV1:
+            raise TypeError("invalid discovery compatibility")
+        if type(self.availability) is not SessionAvailabilityV1:
+            raise TypeError("invalid discovery availability")
+        if (
+            self.availability is SessionAvailabilityV1.AVAILABLE
+            and self.compatibility is not SessionCompatibilityV1.COMPATIBLE
+        ):
+            raise ValueError("incompatible candidate cannot be available")
+
+
+@dataclass(frozen=True, slots=True)
+class SessionListResultV1:
+    """A bounded page; complete describes the scan, not pagination exhaustion."""
+
+    product_id: str
+    scope: SessionScopeV1
+    scope_fingerprint: str
+    snapshot_id: str
+    candidates: tuple[SessionDiscoveryCandidateV1, ...]
+    complete: bool
+    continuation: str | None = None
+    omitted_count: int = 0
+    omitted_count_exact: bool = True
+
+    def __post_init__(self) -> None:
+        _require_discovery_scope(self.product_id, self.scope, self.scope_fingerprint)
+        _require_opaque_id(self.snapshot_id, field="discovery snapshot")
+        if self.continuation is not None:
+            _require_opaque_id(self.continuation, field="discovery continuation")
+        if type(self.complete) is not bool or type(self.omitted_count_exact) is not bool:
+            raise TypeError("invalid discovery completeness")
+        if (
+            type(self.omitted_count) is not int
+            or not 0 <= self.omitted_count <= MAX_DISCOVERY_CANDIDATES
+        ):
+            raise ValueError("invalid discovery omission count")
+        if not self.complete and self.omitted_count_exact:
+            raise ValueError("incomplete scan cannot claim exact omissions")
+        if (
+            type(self.candidates) is not tuple
+            or len(self.candidates) > MAX_DISCOVERY_PAGE
+            or any(type(item) is not SessionDiscoveryCandidateV1 for item in self.candidates)
+        ):
+            raise ValueError("invalid discovery candidates")
+        if self.continuation is not None and not self.candidates:
+            raise ValueError("discovery continuation must make progress")
+        identities = set()
+        for candidate in self.candidates:
+            identity = candidate.identity
+            if (
+                identity.product_id != self.product_id
+                or identity.scope is not self.scope
+                or identity.scope_fingerprint != self.scope_fingerprint
+                or identity in identities
+                or (
+                    not self.complete
+                    and candidate.availability is not SessionAvailabilityV1.UNVERIFIED
+                )
+            ):
+                raise ValueError("inconsistent discovery candidate")
+            identities.add(identity)
 
 
 @dataclass(frozen=True, slots=True)
@@ -497,6 +617,7 @@ AppRequestPayloadV1: TypeAlias = (
     | TurnInterruptV1
     | InteractionRespondV1
     | AttachmentReadEventsV1
+    | SessionListV1
 )
 
 
@@ -516,6 +637,7 @@ _PAYLOAD_TYPES: dict[AppOperationV1, type[object]] = {
     AppOperationV1.TURN_INTERRUPT: TurnInterruptV1,
     AppOperationV1.INTERACTION_RESPOND: InteractionRespondV1,
     AppOperationV1.ATTACHMENT_READ_EVENTS: AttachmentReadEventsV1,
+    AppOperationV1.SESSIONS_LIST: SessionListV1,
 }
 
 
@@ -562,6 +684,7 @@ AppResultPayloadV1: TypeAlias = (
     | MuxAttachmentV1
     | SessionSnapshotV1
     | AttachmentEventsV1
+    | SessionListResultV1
 )
 
 
@@ -583,6 +706,7 @@ class AppResponseV1:
             MuxAttachmentV1,
             SessionSnapshotV1,
             AttachmentEventsV1,
+            SessionListResultV1,
         }:
             raise TypeError("invalid app result")
 
@@ -591,6 +715,8 @@ __all__ = [
     "APP_PROTOCOL_VERSION",
     "MAX_MEMBERS",
     "MAX_MUX_SPACES",
+    "MAX_DISCOVERY_PAGE",
+    "MAX_DISCOVERY_CANDIDATES",
     "AckV1",
     "AppOperationV1",
     "AppRequestPayloadV1",
@@ -619,6 +745,11 @@ __all__ = [
     "SessionEventKindV1",
     "SessionEventV1",
     "SessionIdentityV1",
+    "SessionAvailabilityV1",
+    "SessionCompatibilityV1",
+    "SessionDiscoveryCandidateV1",
+    "SessionListV1",
+    "SessionListResultV1",
     "SessionOpenSpecV1",
     "SessionScopeV1",
     "SessionSnapshotRequestV1",

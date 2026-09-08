@@ -48,7 +48,14 @@ from .continuity import (
     MuxMemberContinuityV1,
     MuxSpaceContinuityV1,
 )
-from .ports import HostedSessionPortV1, HostedSessionResolverV1
+from .discovery_ports import HostedSessionDiscoveryBindingV1
+from .ports import (
+    HostedSessionPortV1,
+    HostedSessionResolutionErrorV1,
+    HostedSessionResolutionFailureV1,
+    HostedSessionResolverV1,
+)
+from .session_discovery import SessionDiscoveryOwnerV1, SessionDiscoveryViewV1
 
 if TYPE_CHECKING:
     from .client_scope import ScopedAppServiceV1
@@ -403,6 +410,7 @@ class AppServiceV1:
         "_client_scopes",
         "_close_timeout_seconds",
         "_closed",
+        "_discovery",
         "_continuity_application_id",
         "_continuity_lease",
         "_continuity_owner_epoch",
@@ -423,6 +431,7 @@ class AppServiceV1:
         resolver: HostedSessionResolverV1,
         id_factory: Callable[[], str] | None = None,
         close_timeout_seconds: float = 10.0,
+        discovery: HostedSessionDiscoveryBindingV1 | None = None,
     ) -> None:
         if not product_id:
             raise ValueError("product_id must be non-empty")
@@ -436,6 +445,14 @@ class AppServiceV1:
         ):
             raise ValueError("close_timeout_seconds must be in (0, 60]")
         self.product_id = product_id
+        if discovery is not None and (
+            type(discovery) is not HostedSessionDiscoveryBindingV1
+            or any(scope.product_id != product_id for scope in discovery.scopes)
+        ):
+            raise ValueError("invalid Product discovery binding")
+        self._discovery = None if discovery is None else SessionDiscoveryOwnerV1(
+            discovery, close_timeout=close_timeout_seconds
+        )
         self._resolver = resolver
         self._id_factory = id_factory or (lambda: token_hex(16))
         self._state_lock = asyncio.Lock()
@@ -455,6 +472,12 @@ class AppServiceV1:
     @property
     def continuity_enabled(self) -> bool:
         return self._continuity_lease is not None
+
+    @property
+    def discovery_client(self) -> SessionDiscoveryViewV1 | None:
+        if self._closed or self._discovery is None:
+            return None
+        return self._discovery.legacy_client
 
     @property
     def continuity_revision(self) -> int | None:
@@ -661,6 +684,14 @@ class AppServiceV1:
             port = await self._resolver.open_session(request.session)
         except asyncio.CancelledError:
             raise
+        except HostedSessionResolutionErrorV1 as error:
+            code = (
+                AppErrorCodeV1.NOT_FOUND
+                if type(error) is HostedSessionResolutionErrorV1
+                and error.reason is HostedSessionResolutionFailureV1.MISSING
+                else AppErrorCodeV1.SESSION_UNAVAILABLE
+            )
+            raise _error(code) from None
         except BaseException:
             raise _error(AppErrorCodeV1.SESSION_UNAVAILABLE) from None
         try:
@@ -833,6 +864,8 @@ class AppServiceV1:
 
     async def close(self) -> None:
         scope_failure = False
+        if self._discovery is not None:
+            self._discovery.fence()
         if self._client_scopes is not None:
             try:
                 await self._client_scopes.close()
@@ -861,6 +894,8 @@ class AppServiceV1:
                 mux.attachments.clear()
                 mux.members.clear()
                 mux.revision += 1
+        if self._discovery is not None:
+            await self._discovery.close()
         await self._close_sessions(sessions)
         if scope_failure:
             raise _error(AppErrorCodeV1.CLEANUP_INCOMPLETE)

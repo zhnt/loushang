@@ -25,6 +25,7 @@ if __name__ == "__main__":
         ),
         Path(args.connection_root).resolve(),
         args.endpoint,
+        session_discovery=args.session_discovery,
     )
     command = CodingLocalCommandV1(
         launch,

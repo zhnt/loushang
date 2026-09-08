@@ -48,6 +48,16 @@ from loushang.appserver.protocol import (
     SessionScopeV1,
 )
 from loushang.appservice import HostedSessionPortV1
+from loushang.appservice.discovery_ports import (
+    HostedSessionDiscoveryBindingV1,
+    HostedSessionDiscoveryScopeV1,
+    require_admitted_scopes,
+    require_discovery_context,
+)
+from loushang.appservice.ports import (
+    HostedSessionResolutionErrorV1,
+    HostedSessionResolutionFailureV1,
+)
 
 from .appservice_adapter import (
     CodingHostedEventProjectionV1,
@@ -99,8 +109,14 @@ class CodingForegroundHostedApplicationRequestV1:
     service_id_factory: Callable[[], str] | None = field(default=None, repr=False)
     phase_timeout_seconds: float = 10.0
     service_close_timeout_seconds: float = 10.0
+    discovery: HostedSessionDiscoveryBindingV1 | None = field(default=None, repr=False)
+    admitted_scopes: tuple[HostedSessionDiscoveryScopeV1, ...] | None = None
 
     def __post_init__(self) -> None:
+        require_discovery_context(self.discovery, CODING_PRODUCT_ID, self.generation_id)
+        require_admitted_scopes(self.admitted_scopes, CODING_PRODUCT_ID)
+        if self.discovery is not None and self.discovery.scopes != self.admitted_scopes:
+            raise ValueError("discovery and resolver scopes must agree")
         if type(self.activation) is not HostedApplicationActivationV1:
             raise TypeError("Coding hosted application requires explicit activation")
         for name, value in (
@@ -398,7 +414,7 @@ class _LeasedCodingHostedBinding:
 class CodingAppHostHostedSessionResolverV1:
     """Resolve G11 Session requests exclusively through canonical AppHost routes."""
 
-    __slots__ = ("_operation_id", "_profile_id", "_runtime", "_sessions")
+    __slots__ = ("_operation_id", "_profile_id", "_runtime", "_sessions", "_scopes")
 
     def __init__(
         self,
@@ -407,21 +423,28 @@ class CodingAppHostHostedSessionResolverV1:
         sessions: SessionIdentityCatalogPortV1,
         profile_id: str,
         operation_id_factory: Callable[[], str],
+        admitted_scopes: tuple[HostedSessionDiscoveryScopeV1, ...] | None = None,
     ) -> None:
         if type(runtime) is not AppHostRuntimeV1:
             raise TypeError("Coding hosted resolver AppHost Runtime is invalid")
         if not callable(operation_id_factory):
             raise TypeError("Coding hosted resolver operation factory is invalid")
+        require_admitted_scopes(admitted_scopes, CODING_PRODUCT_ID)
         self._runtime = runtime
         self._sessions = sessions
         self._profile_id = profile_id
         self._operation_id = operation_id_factory
+        self._scopes = admitted_scopes
 
     async def open_session(self, request: SessionOpenSpecV1) -> HostedSessionPortV1:
         if type(request) is not SessionOpenSpecV1 or request.product_id != (
             CODING_PRODUCT_ID
         ):
             raise ValueError("Coding hosted open request is invalid")
+        if self._scopes is not None and HostedSessionDiscoveryScopeV1(
+            request.product_id, request.scope, request.scope_fingerprint,
+        ) not in self._scopes:
+            raise HostedSessionResolutionErrorV1(HostedSessionResolutionFailureV1.UNAVAILABLE)
         lease = (
             await self._attach_create(request)
             if request.session_id is None
@@ -490,6 +513,8 @@ class CodingAppHostHostedSessionResolverV1:
             for item in same_session
             if _envelope_matches(request, item.envelope)
         )
+        if not same_session and self._scopes is not None:
+            raise HostedSessionResolutionErrorV1(HostedSessionResolutionFailureV1.MISSING)
         if len(same_session) != 1 or len(matching) != 1:
             raise ValueError("Coding hosted Session candidate is unavailable")
         return await self._runtime.attach_resume(
@@ -524,6 +549,7 @@ async def create_coding_foreground_hosted_application(
             sessions=request.sessions,
             profile_id=request.profile_id,
             operation_id_factory=request.operation_id_factory,
+            admitted_scopes=request.admitted_scopes,
         )
         return create_hosted_application_runtime(
             _coding_hosted_application_request(
@@ -592,6 +618,7 @@ def _coding_hosted_application_request(
         phase_timeout_seconds=request.phase_timeout_seconds,
         service_close_timeout_seconds=request.service_close_timeout_seconds,
         service_id_factory=request.service_id_factory,
+        discovery=request.discovery,
     )
 
 

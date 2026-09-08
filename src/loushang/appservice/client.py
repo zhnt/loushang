@@ -23,6 +23,7 @@ from loushang.appserver.protocol import (
 )
 
 from .runtime import AppServiceV1
+from .session_discovery import SessionDiscoveryViewV1
 
 
 class InProcessAppClientV1:
@@ -34,6 +35,10 @@ class InProcessAppClientV1:
         if type(service) is not AppServiceV1:
             raise TypeError("service must be AppServiceV1")
         self._service = service
+
+    @property
+    def discovery_client(self) -> SessionDiscoveryViewV1 | None:
+        return self._service.discovery_client
 
     async def create_mux(self, request: MuxCreateV1) -> MuxSpaceV1:
         return await self._service.create_mux(request)

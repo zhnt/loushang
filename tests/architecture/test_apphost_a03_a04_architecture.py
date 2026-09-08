@@ -58,6 +58,7 @@ def test_a0_3_core_is_stdlib_only_and_facade_exposes_no_optional_edge() -> None:
         CONTINUITY,
         FOREGROUND,
         APPHOST / "local.py",
+        APPHOST / "launcher.py",
     }
     for path in CORE:
         for imported in _imports(path):
@@ -136,6 +137,7 @@ def test_a0_4_hosted_binder_stays_wiring_only_after_g11_consumers() -> None:
             or consumer == Path("src/loushang/coding/hosted_catalog.py")
             or consumer == Path("src/loushang/coding/hosted_session.py")
             or consumer == Path("src/loushang/coding/cli/hosted.py")
+            or consumer == Path("src/loushang/coding/cli/hosted_client.py")
             or consumer == Path("src/loushang/coding/cli/mux.py")
             or consumer == Path("src/loushang/coding/hosted_bootstrap.py")
             or consumer == Path("src/loushang/coding/hosted_local.py")
@@ -143,6 +145,7 @@ def test_a0_4_hosted_binder_stays_wiring_only_after_g11_consumers() -> None:
             or consumer == CONTINUITY
             or consumer == FOREGROUND
             or consumer == APPHOST / "local.py"
+            or consumer == APPHOST / "launcher.py"
             or consumer.is_relative_to(Path("src/loushang/appservice"))
             or consumer.is_relative_to(Path("src/loushang/harnesstui/mux"))
         ), consumer

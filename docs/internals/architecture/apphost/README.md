@@ -13,6 +13,7 @@
 [G13 Durable Hosted Continuity](durable-hosted-application-continuity-g13.md) ·
 [G14 Foreground Stdio](../appserver/foreground-stdio-hosted-app-g14.md) ·
 [G15 Foreground Hosted TUI Design](foreground-hosted-tui-g15.md) ·
+[G17 Explicit Hosted Session Workflow](hosted-session-workflow-g17.md) ·
 [Hosted Product Runtime V1 Plan](../drafts/hosted-product-runtime-v1-plan.md)
 
 ## Status
@@ -25,11 +26,14 @@
   foreground application, G13 durable continuity and G14 foreground connection
   settlement are implemented; G16 has an optional local deployment owner and
   installed Product client/server route delivered on Linux/macOS/Windows;
-  A0.5 remains not-started
+  G17 implements A0.5 with an explicit foreground Product entry and accepted
+  three-platform native/isolated-wheel evidence; delivery is tracked by
+  [G17 promotion PR #577](https://github.com/zhnt/loushang/pull/577)
 - Activation status: default-dark; the exact installed G10 canary selects
   Hosting. G12/G13 have explicit library construction and the separate G14
   `loushang-hosted` command; G16 has the separate installed `loushang-mux`
-  local route. Ordinary CLI/TUI/SDK defaults are unchanged
+  local route, and G17 adds explicit `loushang-hosted-tui`. Ordinary CLI/TUI/SDK
+  defaults are unchanged
 - Owner: Loushang AppHost architecture
 
 ## Scope
@@ -104,9 +108,10 @@ launch/exit. The separate Coding `loushang-hosted` command composes this edge;
 records real Product validation on Linux, macOS and Windows.
 
 The [accepted G15 design](foreground-hosted-tui-g15.md) specifies A0.5 launch
-ownership and a Harnesstui hosted shell. Its launcher and global Session picker
-remain design-only. G16 separately delivers the shared terminal shell under
-detachable connection ownership; G14 EOF remains terminal.
+ownership and a Harnesstui hosted shell. G17 now implements its optional launcher,
+explicit Product entry and cwd/home Session picker; entry re-review passed and
+native acceptance remains pending. G16 separately delivers the shared terminal
+shell under detachable connection ownership; G14 EOF remains terminal.
 
 The [accepted G16 design](../appserver/detachable-local-workspace-g16.md)
 supplies that separate local deployment boundary. The optional
@@ -181,6 +186,27 @@ The [G16 final delivery record](../appserver/detachable-local-workspace-g16.md#f
 records three-platform native/isolated-wheel acceptance and main promotion.
 G17.0 tracks the subsequent Hosting handle-isolation test regression separately;
 it neither activates A0.5 nor changes application ownership.
+
+The [G17 incremental workflow](hosted-session-workflow-g17.md) has passed its
+independent three-perspective design review for bounded Session discovery, the
+shared shell picker, A0.5 foreground launch ownership and installed three-platform
+acceptance. Discovery values/codec, profiles, Product reads, AppService views and
+the shared picker are implemented. The optional launch owner is composed into
+the explicit foreground client; entry and implementation re-reviews passed.
+On `49952155`, [AppService CI](https://github.com/zhnt/loushang/actions/runs/34245326853)
+passed all 15 jobs: all eight installed workflow families on each of Linux,
+macOS and Windows with zero skips; four Darwin native workflows; six Darwin
+public-API primitives, including owned-group settlement; five Windows native
+cases; all six G16 native/wheel jobs; and all three platform quality jobs.
+The default editable suite does not activate the dedicated wheel-only selector.
+Historical failures and their corrections remain in the incremental workflow
+record. Main-integrated `1cd08a57` subsequently passed all 66 final jobs in
+[unified CI](https://github.com/zhnt/loushang/actions/runs/34247900896), including
+fresh three-platform eight-family acceptance. The [acceptance record](hosted-session-workflow-g17-acceptance-record.md)
+separates immutable implementation evidence from the live promotion state in
+[PR #577](https://github.com/zhnt/loushang/pull/577) and local-refresh tracking
+in [#572](https://github.com/zhnt/loushang/issues/572).
+The activation status above is unchanged.
 
 ## Target
 
@@ -326,7 +352,7 @@ after Product/OEM admission, never through a derived module name.
 | A0.2 | catalog/router, exact admission-pin verification, idempotent Session create/candidate adapter, and explicit importer over fakes | implemented, uncomposed |
 | A0.3 | canonical live-binding registry, scoped runtime lifecycle, and embedded profile | implemented, uncomposed |
 | A0.4 | optional hosted binder over the contract-only AppServer structural port bundle | implemented, uncomposed |
-| A0.5 | optional serialized launcher | deferred pending its own boundary review |
+| A0.5 | optional serialized launcher | composed by G17; integrated acceptance on `1cd08a57`; promotion tracked by PR #577 |
 | G8.0 | cross-scope Product/Worker join boundary and executable guards | accepted |
 | G8.1 | Coding Product registration/factory, exact receipt join, and frozen profile projection | implemented, uncomposed |
 | G8.2 | concrete Coding canary normal-close lifecycle and Product compatibility | implemented, uncomposed |
