@@ -1,0 +1,21 @@
+{
+  "manifestVersion": 1,
+  "reports": {
+    "G17-WINDOWS-NATIVE": {
+      "junitPath": ".artifacts/g17-windows-native.xml",
+      "minimumTests": 5,
+      "requiredCaseIds": [
+        "G17-WINDOWS-ENTRY",
+        "G17-WINDOWS-PUBLICATION-CANCEL",
+        "G17-WINDOWS-RECOVERY-CANCEL",
+        "G17-WINDOWS-FORCED-EXIT",
+        "G17-WINDOWS-SUSPEND-BARRIER"
+      ],
+      "requiredProperties": {
+        "native_platform": "win32",
+        "terminal_backend": "conpty"
+      },
+      "status": "implemented"
+    }
+  }
+}

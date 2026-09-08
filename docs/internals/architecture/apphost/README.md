@@ -191,7 +191,9 @@ shared shell picker, A0.5 foreground launch ownership and installed three-platfo
 acceptance. Discovery values/codec, profiles, Product reads, AppService views and
 the shared picker are implemented. The optional launch owner is composed into
 the explicit foreground client; entry re-review passed. G17.4's complete eight-family
-Linux isolated-wheel run has passed with zero skips. macOS/Windows native observers,
+Linux isolated-wheel run has passed with zero skips. The Windows native observer
+and a separate five-case CI supplement are composed, with actual native results
+still pending. macOS observation, full Windows/macOS wheel gates,
 three-platform CI acceptance and delivery remain pending; the default editable
 suite does not activate the dedicated wheel-only selector.
 The activation status above is unchanged.

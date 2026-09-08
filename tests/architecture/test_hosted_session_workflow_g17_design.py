@@ -11,6 +11,27 @@ from pathlib import Path
 ROOT = Path("docs/internals/architecture/apphost")
 
 
+def test_G17_WINDOWS_native_supplement_is_not_full_wheel_acceptance() -> None:
+    from tests.coding import test_hosted_windows_evidence as native
+
+    name = "hosted-session-workflow-g17-windows-native-manifest.json"
+    manifest = json.loads((ROOT / name).read_text())
+    row = manifest["reports"]["G17-WINDOWS-NATIVE"]
+    test = native.test_G17_TERMINAL_WINDOWS_console_modes_and_physical_exit
+    marker = next(mark for mark in test.pytestmark if mark.name == "parametrize")
+    assert row["requiredCaseIds"] == [parameter.id for parameter in marker.args[1]]
+    assert row["minimumTests"] == 5
+    assert row["requiredProperties"] == {
+        "native_platform": "win32", "terminal_backend": "conpty",
+    }
+    wheel = json.loads((ROOT / "hosted-session-workflow-g17-evidence-manifest.json").read_text())
+    assert wheel["reports"]["G17-WHEEL-WIN32"]["status"] == "planned"
+    workflow = Path(".github/workflows/appservice-quality.yml").read_text()
+    assert name in workflow and row["junitPath"] in workflow
+    assert "tests/coding/test_hosted_windows_evidence.py" in workflow
+    assert "architecture: x64" in workflow
+
+
 def test_G17_COMMAND_is_one_optional_product_composition_with_fixed_dependencies() -> None:
     path = Path("src/loushang/coding/cli/hosted_client.py")
     source = path.read_text()

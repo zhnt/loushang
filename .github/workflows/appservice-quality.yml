@@ -10,6 +10,35 @@ permissions:
   contents: read
 
 jobs:
+  g17-windows-native:
+    name: g17-windows-native
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          architecture: x64
+      - uses: astral-sh/setup-uv@v5
+      - name: Install locked dependencies
+        run: uv sync --locked --extra dev
+      - name: Run native console and fault-observer supplement
+        run: >-
+          uv run python scripts/dev/run_pytest.py tests/coding/test_hosted_windows_evidence.py
+          --junitxml=.artifacts/g17-windows-native.xml -q -m "not live"
+      - name: Verify exact native cases and zero skips
+        run: >-
+          uv run python scripts/dev/verify_evidence_manifest.py
+          docs/internals/architecture/apphost/hosted-session-workflow-g17-windows-native-manifest.json
+          G17-WINDOWS-NATIVE .artifacts/g17-windows-native.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: g17-windows-native
+          path: .artifacts/g17-windows-native.xml
+          if-no-files-found: error
+
   appservice-quality:
     name: appservice-quality-${{ matrix.os }}
     strategy:

@@ -232,7 +232,7 @@ def test_G17_TERMINAL_START_CANCEL_durable_recovery_reclaims_and_can_relaunch(tm
     _run_observation(tmp_path, "recovery-cancel", timeout=150)
 
 
-def _observe_recovery_cancel(root):
+def _observe_recovery_cancel(root, *, observer=_observe_entry):
     from loushang.ai.types import UserMessage
     from loushang.appservice.continuity import decode_application_continuity_record
     from loushang.coding.session_manager import SessionManager
@@ -254,7 +254,7 @@ def _observe_recovery_cancel(root):
     snapshot = record.read_bytes()
     (mux,) = decode_application_continuity_record(snapshot).mux_spaces
     (member,) = mux.members
-    _observe_entry(root, cancel_recovery=True)
+    observer(root, cancel_recovery=True)
     assert json.loads((root / "recovery-held").read_text()) == asdict(member.session)
     assert record.read_bytes() == snapshot, "cancelled recovery must not rewrite desired state"
     assert canonical.read_bytes() == history_bytes, "cancelled recovery must preserve history"

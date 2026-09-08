@@ -1262,3 +1262,44 @@ mainline delivery. macOS/Windows guarded native observations and full wheel
 jobs remain pending; the active G17 objective is not complete. A passing run
 also does not establish the precise cause of the original intermittent
 before-ready failure recorded above.
+
+## G17.4 Windows Native Observer Supplement
+
+The test-only Windows observer is now composed separately from full installed
+acceptance. A retained witness shares the actual CLI's ConPTY, reads baseline,
+ready and post-exit console modes without changing them, and stays attached
+until the observer releases it. Its real console control handler does not give
+the child an inherited ignore-Ctrl+C attribute. The witness reports its own
+native PID; pinned process ancestry plus console membership separates venv
+redirectors and console launchers from the detached Hosted service.
+
+The independent evidence supervisor assigns its non-breakaway Job before any
+pytest child starts. Every witness and fault fixture stays in that Job. Native
+thread handles are registered before suspension; synchronous GetThreadContext
+confirmation precedes a bounded thread-snapshot fixed point. Cleanup only
+undoes confirmed owned suspend increments, retains ambiguous effects, and
+retries failed handle closes without resuming twice. Interruption during the
+suspend-state handoff retains uncertain ownership for the outer Job.
+
+The separate Windows AMD64 CI job requires five exact zero-skip cases: normal
+entry/exit, publication cancellation, recovery cancellation, forced exit, and
+a native heartbeat negative control. The last proves that suspension actually
+stops execution while the process remains alive, and that undoing suspension
+restores progress before cooperative fixture exit. Recovery cancellation
+reuses the existing full identity, canonical history bytes and subsequent
+actual CLI recovery assertions; the default Linux observer is unchanged.
+
+The [native supplement manifest](hosted-session-workflow-g17-windows-native-manifest.json)
+requires Windows/ConPTY properties but makes no wheel-installation claim.
+Its implemented status means the selector and CI are composed, not that native
+execution has passed. The main Windows eight-family wheel row remains planned.
+Three-perspective re-review approved this implementation/CI slice after
+correcting Windows mode assumptions, native process roles, suspend confirmation,
+and interrupted suspend/resume bookkeeping. An interrupted Resume retains
+unknown effect state so reentrant cleanup cannot decrement a suspend count twice.
+Local portable observer, manifest, architecture and supervisor regression
+checks passed 44 tests in 26.95 seconds
+(`.artifacts/g17-windows-observer-final.xml`); `make lint-apphost` passed.
+Actual Windows native execution and full Windows/macOS installed acceptance
+remain pending. No Product API, default entry or dependency boundary changes
+are introduced by this test infrastructure.
