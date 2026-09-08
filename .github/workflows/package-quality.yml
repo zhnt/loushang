@@ -1,0 +1,69 @@
+name: Package Quality
+
+on:
+  workflow_call:
+    inputs:
+      plan:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  agent:
+    if: ${{ fromJSON(inputs.plan).checks.agent }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --locked --extra dev
+      - name: Offline package regression
+        run: uv run python scripts/ci/run_checks.py agent
+
+  coding:
+    if: ${{ fromJSON(inputs.plan).checks.coding }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --locked --extra dev
+      - name: Offline package regression
+        run: uv run python scripts/ci/run_checks.py coding
+
+  foundation:
+    if: ${{ fromJSON(inputs.plan).checks.foundation }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --locked --extra dev
+      - name: Offline package regression
+        run: uv run python scripts/ci/run_checks.py foundation
+
+  selected-checks:
+    name: Selected checks
+    if: always()
+    needs: [agent, coding, foundation]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify selected jobs
+        env:
+          CI_PLAN: ${{ inputs.plan }}
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: >-
+          python scripts/ci/verify_gate.py
+          --jobs '{"agent":"agent","coding":"coding","foundation":"foundation"}'

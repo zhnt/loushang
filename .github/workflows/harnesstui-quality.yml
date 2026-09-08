@@ -1,17 +1,18 @@
 name: Harnesstui Quality
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
+  workflow_call:
+    inputs:
+      plan:
+        required: true
+        type: string
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+permissions:
+  contents: read
 
 jobs:
-  harnesstui-quality:
+  harnesstui-core:
+    if: ${{ fromJSON(inputs.plan).checks.harnesstui }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -33,16 +34,68 @@ jobs:
         env:
           PYTEST_ADDOPTS: >-
             -o faulthandler_timeout=60
-            --junitxml=.artifacts/harnesstui-quality.xml
-        run: make check-harnesstui
+            --junitxml=.artifacts/harnesstui-core.xml
+        run: uv run python scripts/ci/run_checks.py harnesstui
 
       - name: Reject empty, skipped, or failing report
-        run: uv run python scripts/dev/verify_pytest_xml.py .artifacts/harnesstui-quality.xml
+        run: uv run python scripts/dev/verify_pytest_xml.py .artifacts/harnesstui-core.xml
 
       - name: Upload pytest report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: harnesstui-quality-pytest-report
-          path: .artifacts/harnesstui-quality.xml
+          name: harnesstui-core-pytest-report
+          path: .artifacts/harnesstui-core.xml
           if-no-files-found: warn
+
+  coding-ui:
+    if: ${{ fromJSON(inputs.plan).checks.coding_ui }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: make bootstrap
+
+      - name: Create report directory
+        run: uv run python -c "from pathlib import Path; Path('.artifacts').mkdir(exist_ok=True)"
+
+      - name: Harnesstui quality gate
+        env:
+          PYTEST_ADDOPTS: >-
+            -o faulthandler_timeout=60
+            --junitxml=.artifacts/coding-ui.xml
+        run: uv run python scripts/ci/run_checks.py coding_ui
+
+      - name: Reject empty, skipped, or failing report
+        run: uv run python scripts/dev/verify_pytest_xml.py .artifacts/coding-ui.xml
+
+      - name: Upload pytest report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coding-ui-pytest-report
+          path: .artifacts/coding-ui.xml
+          if-no-files-found: warn
+
+  selected-checks:
+    name: Selected checks
+    if: always()
+    needs: [harnesstui-core, coding-ui]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify selected jobs
+        env:
+          CI_PLAN: ${{ inputs.plan }}
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: >-
+          python scripts/ci/verify_gate.py
+          --jobs '{"harnesstui-core":"harnesstui","coding-ui":"coding_ui"}'

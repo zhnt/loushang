@@ -25,8 +25,15 @@ from loushang.harness.config.agent import (
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 
 
-def _runtime_args(*, no_tools: bool = False) -> SimpleNamespace:
-    return SimpleNamespace(no_tools=no_tools, tools=(), no_session=True)
+def _runtime_args(
+    *, no_tools: bool = False, no_builtin_tools: bool = False
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        no_tools=no_tools,
+        no_builtin_tools=no_builtin_tools,
+        tools=(),
+        no_session=True,
+    )
 
 
 def _create_cli_session(
@@ -209,7 +216,7 @@ def test_arch_pack_remains_available_without_builtin_tools(tmp_path: Path) -> No
     settings = SettingsManager(ControlConfig(capabilities={"coding.arch": "always"}))
     services = create_services(settings_manager=settings)
     runtime = default_runtime_builder(
-        args=_runtime_args(),
+        args=_runtime_args(no_builtin_tools=True),
         cwd=tmp_path,
         session_dir=tmp_path / "sessions",
         services=services,

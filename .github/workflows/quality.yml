@@ -1,0 +1,199 @@
+name: Change-aware Quality
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 20 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      plan: ${{ steps.select.outputs.plan }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Select checks and explain scope
+        id: select
+        run: python scripts/ci/select_checks.py --event
+      - name: Verify routing and fail-closed aggregation
+        if: ${{ fromJSON(steps.select.outputs.plan).checks.ci }}
+        run: python -m unittest discover -s tests/ci -v
+      - uses: actions/setup-go@v5
+        if: ${{ fromJSON(steps.select.outputs.plan).checks.ci }}
+        with:
+          go-version: "1.26.0"
+          cache: false
+      - name: Validate Actions syntax
+        if: ${{ fromJSON(steps.select.outputs.plan).checks.ci }}
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck=""
+
+  architecture:
+    needs: changes
+    if: ${{ fromJSON(needs.changes.outputs.plan).workflows['architecture'] }}
+    uses: ./.github/workflows/architecture-quality.yml
+    with:
+      plan: ${{ needs.changes.outputs.plan }}
+
+  ai:
+    needs: changes
+    if: ${{ fromJSON(needs.changes.outputs.plan).workflows['ai'] }}
+    uses: ./.github/workflows/ai-quality.yml
+    with:
+      plan: ${{ needs.changes.outputs.plan }}
+
+  packages:
+    needs: changes
+    if: ${{ fromJSON(needs.changes.outputs.plan).workflows['packages'] }}
+    uses: ./.github/workflows/package-quality.yml
+    with:
+      plan: ${{ needs.changes.outputs.plan }}
+
+  harness:
+    needs: changes
+    if: ${{ fromJSON(needs.changes.outputs.plan).workflows['harness'] }}
+    uses: ./.github/workflows/harness-quality.yml
+    with:
+      plan: ${{ needs.changes.outputs.plan }}
+
+  harnesstui:
+    needs: changes
+    if: ${{ fromJSON(needs.changes.outputs.plan).workflows['harnesstui'] }}
+    uses: ./.github/workflows/harnesstui-quality.yml
+    with:
+      plan: ${{ needs.changes.outputs.plan }}
+
+  tui:
+    needs: changes
+    if: ${{ fromJSON(needs.changes.outputs.plan).workflows['tui'] }}
+    uses: ./.github/workflows/tui-render-contract.yml
+    with:
+      plan: ${{ needs.changes.outputs.plan }}
+
+  hosting:
+    needs: changes
+    if: ${{ fromJSON(needs.changes.outputs.plan).workflows['hosting'] }}
+    uses: ./.github/workflows/hosting-quality.yml
+    with:
+      plan: ${{ needs.changes.outputs.plan }}
+
+  apphost:
+    needs: changes
+    if: ${{ fromJSON(needs.changes.outputs.plan).workflows['apphost'] }}
+    uses: ./.github/workflows/apphost-quality.yml
+    with:
+      plan: ${{ needs.changes.outputs.plan }}
+
+  appservice:
+    needs: changes
+    if: ${{ fromJSON(needs.changes.outputs.plan).workflows['appservice'] }}
+    uses: ./.github/workflows/appservice-quality.yml
+    with:
+      plan: ${{ needs.changes.outputs.plan }}
+
+  host-runtime:
+    needs: changes
+    if: ${{ fromJSON(needs.changes.outputs.plan).workflows['host-runtime'] }}
+    uses: ./.github/workflows/host-runtime-quality.yml
+    with:
+      plan: ${{ needs.changes.outputs.plan }}
+
+  windows-shell:
+    needs: changes
+    if: ${{ fromJSON(needs.changes.outputs.plan).workflows['windows-shell'] }}
+    uses: ./.github/workflows/windows-shell-compatibility.yml
+    with:
+      plan: ${{ needs.changes.outputs.plan }}
+
+  lsp:
+    needs: changes
+    if: ${{ fromJSON(needs.changes.outputs.plan).workflows['lsp'] }}
+    uses: ./.github/workflows/coding-lsp-compatibility.yml
+    with:
+      plan: ${{ needs.changes.outputs.plan }}
+
+  quality-gate:
+    name: quality-gate
+    if: always()
+    needs: [changes, architecture, ai, packages, harness, harnesstui, tui, hosting, apphost, appservice, host-runtime, windows-shell, lsp]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require every selected workflow
+        env:
+          CI_PLAN: ${{ needs.changes.outputs.plan }}
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: >-
+          python scripts/ci/verify_gate.py --section workflows
+          --jobs '{"architecture":"architecture","ai":"ai","packages":"packages","harness":"harness","harnesstui":"harnesstui","tui":"tui","hosting":"hosting","apphost":"apphost","appservice":"appservice","host-runtime":"host-runtime","windows-shell":"windows-shell","lsp":"lsp"}'
+
+  # Compatibility context: remove after branch protection requires quality-gate.
+  ai-quality:
+    name: ai-quality
+    if: always()
+    needs: quality-gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the unified gate
+        env:
+          RESULT: ${{ needs.quality-gate.result }}
+        run: test "$RESULT" = success
+
+  # Compatibility context: remove after branch protection requires quality-gate.
+  harness-quality:
+    name: harness-quality
+    if: always()
+    needs: quality-gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the unified gate
+        env:
+          RESULT: ${{ needs.quality-gate.result }}
+        run: test "$RESULT" = success
+
+  # Compatibility context: remove after branch protection requires quality-gate.
+  harnesstui-quality:
+    name: harnesstui-quality
+    if: always()
+    needs: quality-gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the unified gate
+        env:
+          RESULT: ${{ needs.quality-gate.result }}
+        run: test "$RESULT" = success
+
+  # Compatibility context: remove after branch protection requires quality-gate.
+  tui-cross-platform-contracts:
+    name: tui-cross-platform-contracts
+    if: always()
+    needs: quality-gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the unified gate
+        env:
+          RESULT: ${{ needs.quality-gate.result }}
+        run: test "$RESULT" = success
+
+  # Compatibility context: remove after branch protection requires quality-gate.
+  architecture-docs:
+    name: Architecture documentation
+    if: always()
+    needs: quality-gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the unified gate
+        env:
+          RESULT: ${{ needs.quality-gate.result }}
+        run: test "$RESULT" = success

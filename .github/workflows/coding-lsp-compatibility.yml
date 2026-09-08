@@ -1,38 +1,18 @@
 name: Coding LSP Compatibility
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/coding-lsp-compatibility.yml"
-      - "pyproject.toml"
-      - "uv.lock"
-      - "src/loushang/coding/lsp/**"
-      - "src/loushang/coding/sandbox/**"
-      - "src/loushang/harness/sandbox/**"
-      - "src/loushang/harness/tools/process_hosting/**"
-      - "tests/integration/coding/test_gopls_lsp_live.py"
-      - "tests/integration/coding/test_pyright_lsp_live.py"
-      - "tests/integration/coding/test_rust_analyzer_lsp_live.py"
-      - "tests/integration/coding/test_typescript_lsp_live.py"
-  pull_request:
-    paths:
-      - ".github/workflows/coding-lsp-compatibility.yml"
-      - "pyproject.toml"
-      - "uv.lock"
-      - "src/loushang/coding/lsp/**"
-      - "src/loushang/coding/sandbox/**"
-      - "src/loushang/harness/sandbox/**"
-      - "src/loushang/harness/tools/process_hosting/**"
-      - "tests/integration/coding/test_gopls_lsp_live.py"
-      - "tests/integration/coding/test_pyright_lsp_live.py"
-      - "tests/integration/coding/test_rust_analyzer_lsp_live.py"
-      - "tests/integration/coding/test_typescript_lsp_live.py"
-  workflow_dispatch:
+  workflow_call:
+    inputs:
+      plan:
+        required: true
+        type: string
+
+permissions:
+  contents: read
 
 jobs:
   pyright-live:
+    if: ${{ fromJSON(inputs.plan).checks.lsp }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -58,6 +38,7 @@ jobs:
         run: uv run python scripts/dev/run_pytest.py tests/integration/coding/test_pyright_lsp_live.py -q
 
   typescript-live:
+    if: ${{ fromJSON(inputs.plan).checks.lsp }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -89,6 +70,7 @@ jobs:
           -q
 
   gopls-live:
+    if: ${{ fromJSON(inputs.plan).checks.lsp }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -120,6 +102,7 @@ jobs:
           -q
 
   rust-analyzer-live:
+    if: ${{ fromJSON(inputs.plan).checks.lsp }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -152,3 +135,18 @@ jobs:
           uv run python scripts/dev/run_pytest.py
           tests/integration/coding/test_rust_analyzer_lsp_live.py
           -q
+
+  selected-checks:
+    name: Selected checks
+    if: always()
+    needs: [pyright-live, typescript-live, gopls-live, rust-analyzer-live]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify selected jobs
+        env:
+          CI_PLAN: ${{ inputs.plan }}
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: >-
+          python scripts/ci/verify_gate.py
+          --jobs '{"pyright-live":"lsp","typescript-live":"lsp","gopls-live":"lsp","rust-analyzer-live":"lsp"}'
