@@ -210,6 +210,10 @@ def test_G17_LAUNCH_expired_queued_start_cannot_admit_spawn(tmp_path, monkeypatc
     async def scenario():
         owned = launcher._owned
         first = True
+        loop = asyncio.get_running_loop()
+        clock = loop.time
+        elapsed = 0.0
+        monkeypatch.setattr(loop, "time", lambda: clock() + elapsed)
 
         def queued(operation):
             nonlocal first
@@ -218,13 +222,16 @@ def test_G17_LAUNCH_expired_queued_start_cannot_admit_spawn(tmp_path, monkeypatc
             first = False
 
             async def enter_late():
-                time.sleep(0.03)  # The startup body has not entered yet.
+                nonlocal elapsed
+                # Cross the owner's clock deadline explicitly. Wall-clock sleep
+                # does not prove this boundary on coarse Windows loop clocks.
+                elapsed += 2.0
                 return await operation()
 
             return owned(enter_late)
 
         monkeypatch.setattr(launcher, "_owned", queued)
-        owner, lease, host = _owner(tmp_path, startup_timeout=0.02)
+        owner, lease, host = _owner(tmp_path, startup_timeout=1)
         with pytest.raises(TimeoutError):
             await owner.start()
         assert host.calls == ["close"]

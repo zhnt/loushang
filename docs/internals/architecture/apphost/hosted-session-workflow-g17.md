@@ -1527,3 +1527,41 @@ The fixture also cancels its poll on early assertion failure before gathering
 tasks. Fresh Windows quality and full Linux/Windows wheel reports are required
 before declaring the observed Windows failures closed or reusing earlier wheel
 acceptance; the Product bytes changed in this increment.
+
+### First Complete Linux And Windows CI Acceptance
+
+On `c9f205bdfba8c3c8e399bfb5d1716a5a254bb3c8`, AppService workflow
+`34223772723` passed both complete wheel jobs: Linux `102052819178` ran eight
+families in 128.50 seconds, and Windows `102052819237` ran eight in 145.78
+seconds. Both verified installed module origins/bytes and the exact required
+manifest. Wheel SHA-256 values were respectively
+`d0767f169d97d4109e0d057dfe1126301fba94bec02dc06c9d81322f030cf9b9` and
+`fc115f61ff38fd1147882250164b6bf037aaed3525eaaaad02deda617de6bd46`.
+The Windows five-case native supplement and all six G16 native/wheel matrix
+jobs also passed on that head. This does not cover G17 Darwin observation.
+
+The same workflow's Windows quality job `102052819320` failed two tests, with
+907 passes and 25 skips. The previous detach and leaking-child fixture failures
+were absent, but this is not an all-green quality claim. The new failures were
+the queued-start deadline regression and G14 failed-construction cleanup retry.
+
+The queued-start fixture previously slept 30 milliseconds to cross a 20
+millisecond loop-clock budget. It now advances the exact loop clock before
+entering the startup body and still requires no spawn or lease operations.
+It does not enlarge or modify any Product budget. For the Session fixture,
+private settings alone did not isolate user-resource roots or durable plugin
+lifecycle IO: those resolve platform paths independently. HOME, USERPROFILE,
+LOUSHANG_HOME, runtime and scratch roots are now private, with a resolver-root
+regression. The existing 20-second watchdog remains unchanged; a timeout gains
+only fixed phase names and monotonic elapsed times. This distinguishes slow
+synchronous construction from later cleanup debt without assuming either is
+the proven CI cause. No Product close algorithm or cancellation contract changed.
+
+Both test files passed the preceding Linux baseline (52 tests in 27.19 seconds)
+and the revised selection (53 tests in 26.75 seconds;
+`.artifacts/g17-windows-clock-home.xml`). The deterministic queued-start case
+also passed separately. Architecture, lifecycle and contract re-review approved
+the fixture-only corrections; Ruff and diff checks passed. Actual Windows rerun
+remains required to close these
+two reported failures; the failure stack alone did not establish a Product
+resource-refresh deadlock.
