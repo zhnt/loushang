@@ -15,17 +15,54 @@
 - Design status: accepted following the three-perspective review below
 - Implementation status: implemented — semantic scopes, native connections,
   AppHost/G13, real Coding composition and installed interactive attach are
-  implemented; Linux native/clean-wheel evidence and the local whole-delta
-  review passed. Three-platform native fault evidence passed at `bda21085`.
-  Release acceptance is gated by corrected-head checks and the final review
-  recorded on [PR #567](https://github.com/zhnt/loushang/pull/567), followed by
-  promotion and synchronization; implementation alone is not release acceptance
+  delivered on Linux/macOS/Windows and promoted to main. The
+  [final delivery record](#final-delivery-acceptance) separates accepted G16
+  evidence from the subsequent Hosting baseline regression tracked by G17.0;
+  implementation, delivery and current gate health are distinct facts
 - Activation status: explicit new deployment only; G14 and Embedded unchanged
 - Tracking: [Hosted Workspace V1 #566](https://github.com/zhnt/loushang/issues/566)
 - Prerequisite: G15 design accepted in `18d429bc`; G14 delivered in `815c03d2`
 - Inherits: [principles](../loushang-architecture-principles.md),
   [governance](../governance-profile.md),
   [ARD-003](../decisions/ARD-003-apphost-top-level-placement.md)
+
+## Final Delivery Acceptance
+
+The accepted feature head is `2455767acd23de1dc3422e76225b25a78a03720b`.
+[PR #567](https://github.com/zhnt/loushang/pull/567) passed all 37 checks and
+merged into `lane/harness`; the promotion
+[PR #568](https://github.com/zhnt/loushang/pull/568) also passed all 37 checks
+and merged as main `f05f8cc254642045f58af622a0c8537a2a1725cb`. That main tree
+matches the accepted feature tree. Main and the harness lane were synchronized
+at delivery; this is a historical delivery fact, not a permanent claim about
+moving branches.
+
+The corrected-head G16 evidence reports were downloaded and independently
+verified against the [exact manifest](detachable-local-workspace-g16-evidence-manifest.json):
+
+| Native platform | Native fault cases | Isolated-wheel terminal cases | Failures / errors / skips |
+| --- | ---: | ---: | --- |
+| Linux | 29 | 4 | 0 / 0 / 0 |
+| macOS | 29 | 4 | 0 / 0 / 0 |
+| Windows | 29 | 4 | 0 / 0 / 0 |
+
+G15 remains design-only for its foreground launcher and global Session picker.
+G16 delivers the shared shell and explicit detachable `loushang-mux` route;
+it does not change Embedded defaults or G14 terminal EOF semantics.
+
+After promotion, [Hosting run 34177069952](https://github.com/zhnt/loushang/actions/runs/34177069952)
+passed Ubuntu/macOS but failed the Windows endpoint round-trip isolation
+assertion (`000PING` expected, `010PING` observed; 350 passed, one failed,
+75 skipped). The old check establishes numeric handle validity, not shared
+kernel-object identity. The exited child's objects cannot be reconstructed
+from that output, so this record does not declare the failure harmless or the
+post-merge gate green. [G17.0 #569](https://github.com/zhnt/loushang/issues/569)
+records the identity-aware regression, corrected DLL binding and successful
+three-platform native acceptance on [PR #570](https://github.com/zhnt/loushang/pull/570),
+documented in the
+[Hosting baseline note](../hosting/validation/stable-delivery-baseline-g17.md#native-acceptance).
+The checkpoints below retain their original pre-delivery evidence and pending
+items; they are not the current G16 acceptance status.
 
 ## Outcome, Requirements And Non-Goals
 
@@ -84,8 +121,8 @@ connection layer now composes record admission, authentication and an injected
 scope factory. The optional AppHost deployment owner now binds that factory to
 the recovered G13 application. Real Coding composition and the installed
 interactive terminal client activate this explicit route; the
-[inventory](detachable-local-workspace-g16-inventory.json) distinguishes
-implemented responsibilities from final delivery/evidence still outstanding.
+[inventory](detachable-local-workspace-g16-inventory.json) records implemented
+responsibilities; final delivery and later gate health are recorded above.
 
 The first G16.1 primitive, `appservice._operations._OwnedAppOperations`, now
 reserves application capacity before effects, retains tasks across delivery

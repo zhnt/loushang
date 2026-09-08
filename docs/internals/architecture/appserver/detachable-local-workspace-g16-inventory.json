@@ -3,7 +3,7 @@
   "designId": "DETACHABLE-LOCAL-WORKSPACE-G16",
   "profile": "local-detachable/v1",
   "designStatus": "accepted",
-  "implementationStatus": "partial",
+  "implementationStatus": "implemented",
   "entries": [
     {"id": "appservice.operation-owner", "source": "src/loushang/appservice/_operations.py", "status": "implemented", "owner": "application-operation-lifetime"},
     {"id": "appservice.scoped-interactions", "source": "src/loushang/appservice/_scope_interactions.py", "status": "implemented", "owner": "generation-bound-interaction-settlement"},
