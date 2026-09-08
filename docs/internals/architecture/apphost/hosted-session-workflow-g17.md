@@ -1491,3 +1491,39 @@ passing rerun used the repository's managed, per-run scratch wrapper. Fixed
 Actionlint 1.7.7, verified against its release checksum, accepted the workflow.
 Full native wheel results remain required; no three-platform acceptance or
 mainline delivery is claimed by this increment.
+
+### Cancelled Poll And Local Connection Closure
+
+Windows quality job `102043052614` on `b81df8d7` completed with 890 passes,
+25 skips and two failures. The legacy private-home case passed. One remaining
+failure was the leaking-child fixture corrected above; the other real-child
+case reported only `detach=AppConnectionClosedError`, with client, EOF, drain,
+lease and host phases done, termination absent and `forced=False`.
+
+Cancelling the shell's poll while RemoteAppClient is sending closes that local
+connection deliberately: a potentially partial frame cannot be reused. A later
+detach is therefore rejected locally. Controller close now accepts that concrete
+local connection exception and releases its view only after poll settlement.
+This is not a remote detach acknowledgement. Connection, scope, lease and process
+owners retain their independent cleanup duties. Ordinary wire SERVICE_CLOSED,
+OSError and cancellation still fail and retain the view's cleanup debt.
+
+Architecture re-review found and closed a P2: the semantic controller must not
+import framing. AppConnectionClosedError now belongs to the transport-neutral
+client contract; framing preserves the same class as a compatibility export,
+including EOF inheritance and error code. No wire bytes, timeout, ownership
+algorithm or architecture budget changed. Exact controller import and exception
+identity regressions first failed twice before that boundary correction.
+
+The real RemoteAppClient state machine with a controlled stream reproduces
+cancel-during-send and delayed cancellation; it does not substitute for a native
+transport test. Its two regression cases failed before the close fix. The final
+expanded connection, local authentication/discovery, shell, Product-client and
+G11/G16/G17 architecture selection passed 156 tests in 40.18 seconds
+(`.artifacts/g17-detach-client-contract.xml`). Ruff, three-source mypy and diff
+checks passed. Architecture, lifecycle and contract re-review approved the
+corrected implementation with no remaining P1/P2 findings in this slice.
+The fixture also cancels its poll on early assertion failure before gathering
+tasks. Fresh Windows quality and full Linux/Windows wheel reports are required
+before declaring the observed Windows failures closed or reusing earlier wheel
+acceptance; the Product bytes changed in this increment.

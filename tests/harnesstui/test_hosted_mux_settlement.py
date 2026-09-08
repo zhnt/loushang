@@ -15,6 +15,116 @@ from .test_hosted_mux_profile import _Client
 from .test_hosted_mux_shell import _shell
 
 
+def test_G17_connection_closed_error_retains_legacy_identity():
+    from loushang.appserver.client import AppConnectionClosedError
+    from loushang.appserver.framing import AppConnectionClosedError as LegacyClosed
+    from loushang.appserver.framing import AppConnectionEOFError
+    from loushang.appserver.protocol import AppErrorCodeV1, AppServiceError
+
+    assert LegacyClosed is AppConnectionClosedError
+    assert issubclass(AppConnectionEOFError, AppConnectionClosedError)
+    assert isinstance(AppConnectionClosedError(), AppServiceError)
+    assert AppConnectionClosedError().code is AppErrorCodeV1.SERVICE_CLOSED
+
+
+@pytest.mark.parametrize("hold_cancel", [False, True])
+def test_G17_SETTLEMENT_cancelled_poll_send_closes_local_attachment(hold_cancel):
+    from loushang.appserver.protocol.connection_profile import (
+        AppConnectionProfileV1,
+        connection_hello,
+    )
+    from loushang.appserver.remote_client import RemoteAppClientV1
+
+    async def scenario():
+        entered, cancelled, release = asyncio.Event(), asyncio.Event(), asyncio.Event()
+        hello = connection_hello(AppConnectionProfileV1.STDIO)
+        sends, closed, detached = [], [], []
+
+        class Stream:
+            first = True
+
+            async def receive(self):
+                if self.first:
+                    self.first = False
+                    return hello
+                await asyncio.Event().wait()
+
+            async def send(self, value):
+                if value == hello:
+                    return
+                sends.append(value)
+                entered.set()
+                try:
+                    await asyncio.Event().wait()
+                except asyncio.CancelledError:
+                    cancelled.set()
+                    if hold_cancel:
+                        await release.wait()
+                    raise
+
+            async def close(self):
+                closed.append(True)
+
+        remote = RemoteAppClientV1(Stream(), profile=AppConnectionProfileV1.STDIO)
+        await remote.start()
+        client = _Client()
+        client.read_events = remote.read_events
+
+        async def detach(request):
+            detached.append(request)
+            return await remote.detach_mux(request)
+
+        client.detach_mux = detach
+        shell = _shell(client)
+        await shell.start()
+        poll = shell.start_terminal_waiter(shell.poll)
+        settlement = None
+        try:
+            await asyncio.wait_for(entered.wait(), 1)
+            settlement = asyncio.create_task(shell.close())
+            await asyncio.wait_for(cancelled.wait(), 1)
+            if hold_cancel:
+                assert not settlement.done() and shell.cleanup_pending
+                assert shell.state is not None and not detached
+            release.set()
+            await asyncio.wait_for(settlement, 1)
+            assert poll.done() and poll.cancelled()
+            assert not shell.cleanup_pending and shell._controller.state is None
+            assert len(sends) == len(detached) == 1 and closed == [True]
+            await shell.close()
+            assert len(detached) == 1
+        finally:
+            release.set()
+            if not poll.done():
+                poll.cancel()
+            await remote.close()
+            await asyncio.gather(poll, *([settlement] if settlement else []), return_exceptions=True)
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("kind", ["service", "io"])
+def test_G17_SETTLEMENT_unknown_detach_failure_remains_debt(kind):
+    from loushang.appserver.protocol import AppErrorCodeV1, AppServiceError
+
+    async def scenario():
+        client = _Client()
+
+        async def detach(request):
+            if kind == "service":
+                raise AppServiceError(AppErrorCodeV1.SERVICE_CLOSED)
+            raise OSError("unknown detach outcome")
+
+        client.detach_mux = detach
+        shell = _shell(client)
+        await shell.start()
+        with pytest.raises(AppServiceError if kind == "service" else OSError):
+            await shell.close()
+        assert shell.cleanup_pending and shell._controller.state is not None
+
+    asyncio.run(scenario())
+
+
 @pytest.mark.parametrize("failure", [None, "attach", "terminal"])
 def test_G17_SETTLEMENT_one_outer_policy_covers_exit_and_startup_failures(failure):
     async def scenario():

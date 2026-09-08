@@ -47,6 +47,13 @@ def _imports_prefix(imports: set[str], prefix: str) -> bool:
     return any(item == prefix or item.startswith(f"{prefix}.") for item in imports)
 
 
+def test_G17_controller_borrows_only_appserver_semantics() -> None:
+    imports = _imports(HARNESSTUI_MUX / "controller.py")
+    assert {name for name in imports if name.startswith("loushang.appserver")} == {
+        "loushang.appserver.client", "loushang.appserver.protocol",
+    }
+
+
 def test_G11_DEPENDENCY_GRAPH_appserver_remains_contract_and_client_only() -> None:
     imports = _package_imports(APPSERVER)
     for forbidden in (

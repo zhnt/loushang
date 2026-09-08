@@ -6,7 +6,8 @@ import asyncio
 import math
 from typing import Protocol
 
-from .protocol import AppErrorCodeV1, AppServiceError, InvalidAppMessageError
+from .client import AppConnectionClosedError as AppConnectionClosedError
+from .protocol import AppServiceError, InvalidAppMessageError
 from .protocol.codec import MAX_MESSAGE_BYTES
 
 
@@ -28,11 +29,6 @@ class AppMessageStreamV1(Protocol):
     async def send(self, payload: bytes) -> None: ...
 
     async def close(self) -> None: ...
-
-
-class AppConnectionClosedError(AppServiceError):
-    def __init__(self) -> None:
-        super().__init__(AppErrorCodeV1.SERVICE_CLOSED)
 
 
 class AppConnectionEOFError(AppConnectionClosedError):
