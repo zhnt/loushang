@@ -80,15 +80,19 @@ class DarwinObservationApi:
 class DarwinExitWatch:
     """Bounded registered exits; an unexpected topology change stays unknown."""
 
-    def __init__(self, pids, *, native=None):
+    def __init__(self, pids, *, native=None, group_members=()):
         if not 1 <= len(pids) <= 8 or len(set(pids)) != len(pids):
             raise ValueError("ambiguous native observation process set")
         for pid in pids:
             _pid(pid)
+        if (len(set(group_members)) != len(group_members)
+                or not set(group_members).issubset(pids)):
+            raise ValueError("owned-group members must be registered identities")
         if native is None and sys.platform != "darwin":
             raise RuntimeError("native Darwin kqueue required")
         self._native = select if native is None else native
         self._pids, self._ended = set(pids), set()
+        self._group_members, self._forked = set(group_members), set()
         self._unknown, self._closed = False, False
         self._queue = self._native.kqueue()
         try:
@@ -114,17 +118,28 @@ class DarwinExitWatch:
             raise RuntimeError("native process observation unavailable")
         try:
             for event in self._queue.control([], 8, 0):
+                allowed = self._native.KQ_NOTE_EXIT
+                if event.ident in self._group_members:
+                    allowed |= self._native.KQ_NOTE_FORK
                 if (event.ident not in self._pids
                         or event.flags & self._native.KQ_EV_ERROR
-                        or event.fflags != self._native.KQ_NOTE_EXIT):
+                        or not event.fflags or event.fflags & ~allowed):
                     raise DarwinWatchEventError(
                         registered=event.ident in self._pids, flags=event.flags, notes=event.fflags,
                     )
-                self._ended.add(event.ident)
+                if event.fflags & self._native.KQ_NOTE_FORK:
+                    self._forked.add(event.ident)
+                if event.fflags & self._native.KQ_NOTE_EXIT:
+                    self._ended.add(event.ident)
         except BaseException:
             self._unknown = True
             raise
         return set(self._ended)
+
+    @property
+    def forked(self):
+        """Observed group activity, not an exact fork count or child inventory."""
+        return set(self._forked)
 
     def close(self):
         if not self._closed:

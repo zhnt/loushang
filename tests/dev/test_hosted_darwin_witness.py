@@ -237,6 +237,15 @@ def test_protocol_cleanup_retries_timeouts_before_releasing_owner(tmp_path, monk
     (tmp_path / "started").write_text('{"pid":1234}')
     (tmp_path / "exited-retained").touch()
     (tmp_path / "reaped").touch()
+    write_text = Path.write_text
+    publications = []
+
+    def pending_only(path, text, **kwargs):
+        assert path.name in {"reap.request.pending", "release.pending"}
+        publications.append(path.name)
+        return write_text(path, text, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", pending_only)
 
     def until(predicate):
         assert signal.getsignal(signal.SIGINT) != previous
@@ -259,9 +268,11 @@ def test_protocol_cleanup_retries_timeouts_before_releasing_owner(tmp_path, monk
     assert waits == ["wait", "wait"]
     assert calls[-1] == "close"
     assert signal.getsignal(signal.SIGINT) == previous
+    assert publications == ["reap.request.pending", "release.pending"] * 2
 
 
 def _settle_protocol_control(driver, root):
+    from tests.coding._hosted_darwin_observer import _command
     from tests.coding._hosted_terminal import process_table
     from tests.coding.test_hosted_darwin_primitives import _until
 
@@ -274,10 +285,10 @@ def _settle_protocol_control(driver, root):
                 if not (root / "exited-retained").exists():
                     driver.write("x")
                     _until(lambda: (root / "exited-retained").exists())
-                (root / "reap.request").write_text(str(child))
+                _command(root, "reap.request", child)
                 _until(lambda: (root / "reaped").exists())
                 _until(lambda child=child: child not in process_table())
-                (root / "release").write_text(str(child))
+                _command(root, "release", child)
                 code = driver.wait(timeout=5)
                 driver.close()
                 return child, code
@@ -308,6 +319,7 @@ def test_witness_entry_allows_unused_supervisor_but_not_sealed_ancestor(tmp_path
 @pytest.mark.skipif(sys.platform != "linux", reason="real Linux WNOWAIT/PTY protocol control")
 @pytest.mark.parametrize("interrupt", [False, True])
 def test_witness_retains_real_child_exit_and_terminal_until_authorized_reap(tmp_path, interrupt):
+    from tests.coding._hosted_darwin_observer import _command
     from tests.coding._hosted_terminal import process_table
     from tests.coding.test_hosted_darwin_primitives import _until
     from tests.tui.terminal_process_support import spawn_terminal_process
@@ -350,7 +362,7 @@ def test_witness_retains_real_child_exit_and_terminal_until_authorized_reap(tmp_
         _until(lambda: (tmp_path / "started").exists())
         started = json.loads((tmp_path / "started").read_text())
         child = started["pid"]
-        (tmp_path / "sample.request").write_text(str(child))
+        _command(tmp_path, "sample.request", child)
         _until(lambda: (tmp_path / "sample").exists())
         assert json.loads((tmp_path / "sample").read_text())["modes"] != started["baseline"]
         if interrupt:

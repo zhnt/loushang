@@ -546,7 +546,7 @@ check-appservice: lint-appservice typecheck-appservice test-appservice
 lint-appservice:
 	uv --cache-dir .uv-cache run --extra dev ruff check tests/coding/_hosted_darwin_observer.py tests/coding/test_hosted_darwin_evidence.py
 	uv --cache-dir .uv-cache run --extra dev ruff check tests/coding/_hosted_darwin_witness.py
-	uv --cache-dir .uv-cache run --extra dev ruff check tests/coding/_hosted_darwin_api.py tests/coding/_hosted_primitive_child.py tests/coding/test_hosted_darwin_primitives.py
+	uv --cache-dir .uv-cache run --extra dev ruff check tests/coding/_hosted_darwin_api.py tests/coding/_hosted_owned_group.py tests/coding/_hosted_primitive_child.py tests/coding/test_hosted_darwin_primitives.py
 	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/_evidence_process.py scripts/dev/_evidence_observation.py scripts/dev/_evidence_posix.py scripts/dev/_evidence_windows.py tests/dev/_evidence_branch_fixture.py
 	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/run_g17_installed_evidence.py
 	uv --cache-dir .uv-cache run --extra dev ruff check tests/coding/_hosted_client_debt.py tests/coding/_hosted_start_cancel.py tests/coding/_hosted_recovery_cancel.py tests/coding/test_hosted_installed_evidence.py tests/coding/_hosted_terminal.py

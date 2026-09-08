@@ -21,6 +21,7 @@ from tests.tui.terminal_process_support import spawn_terminal_process
 
 from ._hosted_darwin_api import DarwinExitWatch, DarwinWatchEventError
 from ._hosted_darwin_witness import ReceiptIOError
+from ._hosted_owned_group import group_empty, isolated_git_environment, process_groups
 from ._hosted_terminal import process_table
 from .test_hosted_client import _argv
 from .test_hosted_client_terminal import _installed
@@ -72,6 +73,7 @@ class FrozenChain:
         self.cli, self.witness = cli, witness
         self.pids, self.stopped = [], set()
         self.watch = None
+        self.group = None
         self.invalid = False
 
     def admit(self):
@@ -98,14 +100,23 @@ class FrozenChain:
             parent, current = current, children[0]
         if len(self.pids) < 2:
             raise RuntimeError("ready observation lacks actual Hosted child")
-        self.watch = DarwinExitWatch(self.pids)
+        groups = process_groups()
+        self.group = self.pids[1]
+        if (groups[self.cli][0] == self.group or groups[self.witness][0] == self.group
+                or any(groups[pid][0] != self.group for pid in self.pids[1:])):
+            raise RuntimeError("native Hosted chain lacks its independent owned group")
+        self.watch = DarwinExitWatch(self.pids, group_members=self.pids[1:])
         table = process_table()
+        confirmed_groups = process_groups()
         for index, pid in enumerate(self.pids):
             owner = self.witness if index == 0 else self.pids[index - 1]
             expected = self.pids[index + 1:index + 2]
             if (table.get(pid, (None, ""))[0] != owner or "T" not in table[pid][1]
-                    or sorted(key for key, (ppid, _) in table.items() if ppid == pid) != expected):
+                    or sorted(key for key, (ppid, _) in table.items() if ppid == pid) != expected
+                    or confirmed_groups[pid][0] != groups[pid][0]):
                 raise RuntimeError("native frozen chain changed during watch admission")
+        if confirmed_groups[self.witness][0] != groups[self.witness][0]:
+            raise RuntimeError("native witness group changed during admission")
 
     @staticmethod
     def _stopped(pid, parent):
@@ -157,6 +168,10 @@ class NativeObservation:
         self.cancel_recovery, self.close_parent = cancel_recovery, close_parent
         self.parent_proof = None
         self.arguments = tuple(_argv(root) if arguments is None else arguments)
+        # Pure preflight cannot leave an observation ticket with no process.
+        self.environment = isolated_git_environment(
+            self.root, self.arguments, _terminal_environment(self.root),
+        )
         self.exit_command = exit_command
         self.driver = self.started = self.chain = self.finished = None
         self.admitted = self.requested = self.reaped = self.closed = self.unknown = False
@@ -171,7 +186,7 @@ class NativeObservation:
         script = "_hosted_recovery_cancel.py" if self.cancel_recovery else "_hosted_start_cancel.py"
         executable = ([sys.executable, "-I", str(Path(__file__).with_name(script))]
                       if cancelled else [_installed()])
-        environment = _terminal_environment(self.root)
+        environment = dict(self.environment)
         environment[self.ledger["ENVIRONMENT_KEY"]] = str(self.ticket["path"])
         self.driver = spawn_terminal_process(
             [sys.executable, "-I", "-S", str(Path(__file__).with_name("_hosted_darwin_witness.py")),
@@ -252,6 +267,8 @@ class NativeObservation:
             table = process_table()
             if any(pid in table for pid in self.chain.pids[1:]):
                 return False  # A zombie child is not a reaped Hosted process.
+            if not group_empty(self.chain.group):
+                return False  # Includes unregistered and reparented group members.
             # Failed user evidence is not unknown process identity. Preserve the
             # exact mismatch, reclaim the known-exited chain, then fail the test.
             self.mode_restored = finished["modes"] == self.started["baseline"]

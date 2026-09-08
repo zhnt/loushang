@@ -40,7 +40,7 @@ def test_G17_DARWIN_primitives_do_not_claim_installed_or_terminal_acceptance():
     test = native.test_G17_DARWIN_public_observation_primitives
     marker = next(mark for mark in test.pytestmark if mark.name == "parametrize")
     assert row["requiredCaseIds"] == marker.args[1]
-    assert row["minimumTests"] == 5
+    assert row["minimumTests"] == 6
     assert row["requiredProperties"] == {
         "native_platform": "darwin", "observation_backend": "waitid-kqueue",
     }

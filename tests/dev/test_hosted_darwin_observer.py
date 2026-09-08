@@ -2,12 +2,37 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from tests.coding import _hosted_darwin_observer as module
+
+
+@pytest.mark.skipif(os.name != "posix", reason="actual POSIX observation registry")
+@pytest.mark.parametrize("fault", ["workspace", "repository", "environment"])
+def test_invalid_pre_spawn_git_scope_leaves_no_observation_debt(tmp_path, monkeypatch, fault):
+    from tests.dev.test_evidence_process import supervisor
+
+    ledger = supervisor._support("_evidence_observation")
+    outer = ledger.create(tmp_path, observation=False)
+    root = tmp_path / "fixture"
+    root.mkdir()
+    if fault == "repository":
+        (root / ".git").mkdir()
+    arguments = ["--workspace", str(tmp_path if fault == "workspace" else root)]
+    before = set(outer["path"].parent.iterdir())
+    spawned = []
+    monkeypatch.setattr(module, "spawn_terminal_process", lambda *a, **k: spawned.append(True))
+    if fault == "environment":
+        monkeypatch.setattr(module, "_terminal_environment", lambda root: (_ for _ in ()).throw(OSError("env failed")))
+    with pytest.raises((ValueError, OSError)):
+        module.NativeObservation(root, vars(ledger), outer["path"], arguments=arguments)
+    assert not spawned
+    assert set(outer["path"].parent.iterdir()) == before
+    ledger.require_closed(outer, not_started=True)
 
 
 def _chain(monkeypatch, *, fault=None):
@@ -23,13 +48,15 @@ def _chain(monkeypatch, *, fault=None):
         assert pid == 100 or "T" in table[100][1]
         table[pid] = (table[pid][0], "T" if sig == module.signal.SIGSTOP else "S")
 
-    def watch(pids):
+    def watch(pids, *, group_members):
+        assert group_members == [101]
         watched.append(list(pids))
         if fault == "fence":
             table[101] = (99, "T")
         return SimpleNamespace(exited=lambda: set())
 
     monkeypatch.setattr(module, "process_table", lambda: dict(table))
+    monkeypatch.setattr(module, "process_groups", lambda: {90: (90, "S"), 100: (90, "T"), 101: (101, "T")})
     monkeypatch.setattr(module.os, "kill", kill)
     monkeypatch.setattr(module, "DarwinExitWatch", watch)
     if fault == "ancestry":
@@ -79,12 +106,13 @@ def _observation(tmp_path, monkeypatch):
     observation.parent_scope = tmp_path / "outer.json"
     observation.ledger = {"complete": lambda path: calls.append(Path(path).stem + "-closed")}
     observation.chain = SimpleNamespace(
-        cli=100, pids=[100, 101],
+        cli=100, pids=[100, 101], group=101,
         watch=SimpleNamespace(exited=lambda: set(ended), close=lambda: calls.append("watch-closed")),
     )
     observation.driver = SimpleNamespace(wait=lambda **kw: calls.append("witness-wait") or 0,
                                          close=lambda: calls.append("driver-closed"))
     monkeypatch.setattr(module, "process_table", lambda: dict(table))
+    monkeypatch.setattr(module, "group_empty", lambda pgid: True)
     monkeypatch.setattr(module, "_read", lambda root, name: receipts.get(name))
     monkeypatch.setattr(module, "_command", lambda root, name, pid: calls.append(name))
     return observation, calls, ended, table, receipts
@@ -102,6 +130,51 @@ def test_observer_requires_exit_note_absence_modes_and_reap_before_release(tmp_p
     receipts["reaped"] = {"pid": 100, "code": 0}
     assert observation.settle_step()
     assert calls[-6:] == ["scope-closed", "release", "witness-wait", "driver-closed", "watch-closed", "outer-closed"]
+
+
+@pytest.mark.parametrize("fault", ["nonleader", "shared", "changed"])
+def test_chain_group_admission_rejects_unowned_or_changed_groups(monkeypatch, fault):
+    chain, sent, _, _ = _chain(monkeypatch)
+    reads = []
+
+    def groups():
+        reads.append(True)
+        group = 101 if fault == "changed" and len(reads) == 1 else 999
+        return {90: (90, "S"), 100: (101 if fault == "shared" else 90, "T"),
+                101: (101 if fault == "shared" else group, "T")}
+
+    monkeypatch.setattr(module, "process_groups", groups)
+    with pytest.raises(RuntimeError, match="group|chain changed"):
+        chain.admit()
+    assert chain.invalid
+    assert all(sig == module.signal.SIGSTOP for _, sig in sent)
+
+
+@pytest.mark.parametrize("state", ["S", "Z", "error", "unknown"])
+def test_unregistered_group_residual_prevents_witness_reap_and_scope_release(tmp_path, monkeypatch, state):
+    observation, calls, ended, table, receipts = _observation(tmp_path, monkeypatch)
+    ended.update({100, 101})
+    table.clear()  # Reparented helper is not in the old main-chain PID table.
+    receipts["exited-retained"] = {"code": 0, "modes": [1, 2]}
+
+    def residual(pgid):
+        assert pgid == 101
+        if state == "error":
+            raise OSError("group observation unavailable")
+        return False
+
+    monkeypatch.setattr(module, "group_empty", residual)
+    if state == "error":
+        with pytest.raises(OSError):
+            observation.settle_step()
+    else:
+        assert not observation.settle_step()
+    assert not calls and observation.finished is None
+    if state == "unknown":
+        observation.unknown = True
+    monkeypatch.setattr(module, "group_empty", lambda pgid: True)
+    assert not observation.settle_step()
+    assert calls == ([] if state == "unknown" else ["reap.request"])
 
 
 @pytest.mark.parametrize("fault", ["identity", "unknown"])
@@ -157,6 +230,7 @@ def test_exited_witness_receipt_cannot_authorize_any_child_signal(tmp_path, monk
 
 
 def test_witness_spawn_preserves_picker_workspace_and_mux_arguments(tmp_path, monkeypatch):
+    (tmp_path / "elsewhere").mkdir()
     arguments = ["--workspace", str(tmp_path / "elsewhere"), "--mux", "picker"]
     ledger = {"create": lambda *a, **kw: {"path": tmp_path / "scope.json"},
               "ENVIRONMENT_KEY": "G17_NATIVE_OBSERVATION"}

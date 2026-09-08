@@ -177,6 +177,7 @@ def test_picker_scenario_retains_all_three_cli_arguments_and_exit_intents(tmp_pa
     from tests.coding import test_hosted_client_terminal as picker
 
     owner, ledger, outer, calls = _scenario(tmp_path, monkeypatch)
+    (tmp_path / "other-workspace").mkdir()
     initial = ["--workspace", str(tmp_path)]
     resumed = ["--workspace", str(tmp_path / "other-workspace"), "--mux", "picker"]
 

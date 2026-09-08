@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import signal
 import sys
@@ -10,7 +11,8 @@ import time
 import pytest
 
 from ._hosted_darwin_api import DarwinExitWatch, DarwinObservationApi
-from ._hosted_primitive_child import _child
+from ._hosted_owned_group import group_empty, process_groups
+from ._hosted_primitive_child import _child, group_family
 from ._hosted_terminal import process_table
 
 
@@ -42,11 +44,15 @@ def _exit_observed(watch, api, pid, code):
     "G17-DARWIN-STOP-BARRIER",
     "G17-DARWIN-FORK-REJECT",
     "G17-DARWIN-EXEC-REJECT",
+    "G17-DARWIN-OWNED-GROUP",
 ])
 def test_G17_DARWIN_public_observation_primitives(case, tmp_path, record_testsuite_property):
     record_testsuite_property("native_platform", sys.platform)
     record_testsuite_property("observation_backend", "waitid-kqueue")
     api = DarwinObservationApi()
+    if case == "G17-DARWIN-OWNED-GROUP":
+        _owned_group(tmp_path)
+        return
     if case == "G17-DARWIN-WNOWAIT":
         with _child("import sys; sys.exit(7)") as process:
             _until(lambda: api.exited_unreaped(process.pid) == 7)
@@ -132,3 +138,40 @@ def _heartbeat(root, api):
             assert process.pid not in process_table()
         finally:
             watch.close()
+
+
+def _owned_group(root):
+    """Root reap cannot conceal an unregistered live or zombie group member."""
+    with group_family(root) as parent:
+        watch = None
+        try:
+            _until(lambda: (root / "family-ready").is_file())
+            leader, helper = json.loads((root / "family-ready").read_text(encoding="utf-8"))
+            groups = process_groups()
+            assert groups[leader][0] == groups[helper][0] == leader
+            assert groups[parent.pid][0] != leader
+            if sys.platform == "darwin":
+                watch = DarwinExitWatch([leader, helper])
+            assert not group_empty(leader)
+            parent.stdin.write(b"root\n")
+            parent.stdin.flush()
+            _until(lambda: (root / "root-reaped").is_file())
+            groups = process_groups()
+            assert leader not in groups and groups[helper][0] == leader
+            if watch is not None:
+                _until(lambda: leader in watch.exited())
+            assert not group_empty(leader)  # Main root gone; live helper retained.
+            parent.stdin.write(b"helper\n")
+            parent.stdin.flush()
+            _until(lambda: "Z" in process_groups()[helper][1])
+            if watch is not None:
+                _until(lambda: watch.exited() == {leader, helper})
+            assert not group_empty(leader)  # Both EXITs cannot hide a zombie.
+            parent.stdin.write(b"reap\n")
+            parent.stdin.flush()
+            _until(lambda: (root / "family-reaped").is_file())
+            _until(lambda: group_empty(leader))
+            assert leader not in process_groups() and helper not in process_groups()
+        finally:
+            if watch is not None:
+                watch.close()

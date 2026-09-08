@@ -1929,7 +1929,7 @@ design review is required for helper-process evidence. This commit neither
 ignores that event nor relaxes the sticky-unknown ownership rule. Full Darwin
 acceptance and mainline promotion remain outstanding.
 
-### Darwin Owned-Group Evidence Correction (Design Accepted, Implementation Pending)
+### Darwin Owned-Group Evidence Correction (Implemented, Native Acceptance Pending)
 
 The confirmed fork exposes a mismatch between the fixed-chain test and the
 accepted [H2 owned-tree contract](../hosting/process-platform-h2.md#common-platform-contract).
@@ -1996,4 +1996,50 @@ signal-zero alone does not prove zombie absence, and workspace-only Git sealing
 does not cover editable source-identity diagnostics. The unmodified observer,
 API, scenario and G17 architecture baseline passed 70 tests in 11.10 seconds
 (`.artifacts/g17-owned-group-baseline.xml`). Implementation and native acceptance
-remain pending; the current executable observer still rejects these forks.
+were pending at that design commit; no passing native report was claimed.
+
+The implementation now composes the admitted group predicate in the real
+observer without replacing the installed CLI. Sixteen new controls failed
+before implementation. The primitive manifest retains its original five cases
+and adds OWNED-GROUP: an independent real parent owns two actual members of one
+group, reaps the leader, retains a live helper, then retains that helper as a
+zombie. Both residual states must prevent acceptance; only the actual parent's
+final wait permits group-empty proof. On Darwin this also observes both EXIT
+notes. The same group lifecycle runs on Linux as portable evidence, not a
+substitute for the macOS primitive or complete wheel families.
+
+Implementation review closed two P2 findings: group-family ready JSON is now
+published by atomic replace after the complete write; pure workspace/Git
+preflight now precedes observation-ticket creation. Three actual-registry
+preflight controls failed before that correction and passed afterwards,
+confirming zero spawn and no orphaned scope on rejection. Architecture,
+lifecycle and contract re-review approved the corrected implementation.
+
+The preceding `14260985` workflow `34241558564` passed Linux/Windows complete
+wheel, Windows native, Darwin primitives, all six G16 jobs and Linux/macOS
+quality. Its Windows quality passed the new native-input modes and UTF-8 source
+control but failed the existing late-hello test (989 passed, 72 skipped): its
+sleep-based deadline assertion did not raise the expected TimeoutError.
+The test now advances that exact loop clock at the completed spawn or
+hello boundary and asserts that boundary was reached. No Product code or budget
+is changed. Both Darwin workflow jobs timed out under the old strict observer;
+the new owned-group implementation must obtain fresh native reports.
+
+The final local integration attempt exposed two picker fakes with nonexistent
+workspace directories and an older Linux witness control that directly
+overwrote published sample/reap/release commands. Its child had already been
+actually reaped, but a partial command read left the test witness failed. After
+verifying that reap and absence of descendants, the failed test witness alone
+was terminated using a pinned kernel handle while its actual test parent was
+retained; the original test process reported 3 failures and 229 passes. This is
+failed evidence, not a successful timeout retry. The fakes now create their
+declared workspace, and real witness controls reuse the existing atomic command
+publisher. Retry controls require writes to pending files only. No Product
+command, process budget or sticky-unknown rule was changed.
+
+The corrected witness/scenario selection passed 37 tests in 8.49 seconds. The
+complete affected launcher, observer, witness, registry, runner and architecture
+selection then passed all 232 tests in 39.26 seconds
+(`.artifacts/g17-owned-group-complete-local.xml`), with `make lint-appservice`
+and diff checks clean. These are local Linux results; the required six-case
+Darwin primitive, native workflow and complete wheel reports remain pending.

@@ -271,3 +271,159 @@ def test_darwin_watch_records_only_registered_exit_events():
         watch.close()
         watch.close()
     assert closed == [True]
+
+
+@pytest.mark.parametrize("combined", [False, True])
+def test_owned_group_watch_records_fork_without_inventing_exit(combined):
+    from tests.coding._hosted_darwin_api import DarwinExitWatch
+
+    notes = 0x40000000 | (0x80000000 if combined else 0)
+    native, _, _ = _native([
+        [SimpleNamespace(ident=1235, flags=0x61, fflags=notes)],
+        [SimpleNamespace(ident=1234, flags=0, fflags=0x80000000),
+         SimpleNamespace(ident=1235, flags=0, fflags=0x80000000)],
+    ])
+    watch = DarwinExitWatch([1234, 1235], native=native, group_members=[1235])
+    try:
+        assert watch.exited() == ({1235} if combined else set())
+        assert watch.forked == {1235}
+        assert watch.exited() == {1234, 1235}
+        assert watch.forked == {1235}
+    finally:
+        watch.close()
+
+
+@pytest.mark.parametrize("pid,notes,flags", [
+    (1234, 0x40000000, 0), (9999, 0x40000000, 0),
+    (1235, 0x20000000, 0), (1235, 0xA0000000, 0),
+    (1235, 1, 0), (1235, 0, 0), (1235, 0x40000000, 0x4000),
+])
+def test_owned_group_mode_does_not_admit_cli_forks_or_unknown_events(pid, notes, flags):
+    from tests.coding._hosted_darwin_api import DarwinExitWatch
+
+    native, _, _ = _native([[SimpleNamespace(ident=pid, flags=flags, fflags=notes)]])
+    watch = DarwinExitWatch([1234, 1235], native=native, group_members=[1235])
+    try:
+        with pytest.raises(RuntimeError, match="topology"):
+            watch.exited()
+        with pytest.raises(RuntimeError, match="unavailable"):
+            watch.exited()
+    finally:
+        watch.close()
+
+
+@pytest.mark.parametrize("probe,rows,empty", [
+    (None, {}, False), (PermissionError(), {}, False),
+    (ProcessLookupError(), {1236: (1235, "S")}, False),
+    (ProcessLookupError(), {1236: (1235, "Z")}, False),
+    (ProcessLookupError(), {1236: (4321, "S")}, True),
+])
+def test_owned_group_absence_requires_signal_zero_and_all_members_gone(monkeypatch, probe, rows, empty):
+    from tests.coding import _hosted_owned_group as group
+
+    calls = []
+
+    def killpg(pgid, sig):
+        assert (pgid, sig) == (1235, 0)
+        calls.append("probe")
+        if probe is not None:
+            raise probe
+
+    monkeypatch.setattr(group.os, "killpg", killpg, raising=False)
+    monkeypatch.setattr(group, "process_groups", lambda: calls.append("table") or rows)
+    assert group.group_empty(1235) is empty
+    assert calls == (["probe", "table"] if isinstance(probe, ProcessLookupError) else ["probe"])
+
+
+@pytest.mark.parametrize("failure", ["probe", "table"])
+def test_owned_group_observation_error_cannot_complete(monkeypatch, failure):
+    from tests.coding import _hosted_owned_group as group
+
+    def killpg(*_):
+        raise OSError("observation failed") if failure == "probe" else ProcessLookupError()
+
+    monkeypatch.setattr(group.os, "killpg", killpg, raising=False)
+    monkeypatch.setattr(group, "process_groups", lambda: (_ for _ in ()).throw(OSError("table failed")))
+    with pytest.raises(OSError):
+        group.group_empty(1235)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="actual POSIX group and zombie observation")
+def test_owned_group_family_keeps_actual_reaper_through_live_and_zombie_residual(tmp_path):
+    from tests.coding.test_hosted_darwin_primitives import _owned_group
+
+    _owned_group(tmp_path)
+
+
+def test_group_family_readiness_is_published_only_after_complete_json(tmp_path, monkeypatch):
+    from tests.coding._hosted_primitive_child import _publish_group_ready
+
+    replace = Path.replace
+    calls = []
+
+    def publish(path, target):
+        assert not target.exists()
+        assert json.loads(path.read_text(encoding="utf-8")) == [1234, 1235]
+        calls.append(True)
+        return replace(path, target)
+
+    monkeypatch.setattr(Path, "replace", publish)
+    _publish_group_ready(tmp_path, [1234, 1235])
+    assert calls == [True]
+    assert json.loads((tmp_path / "family-ready").read_text(encoding="utf-8")) == [1234, 1235]
+
+
+@pytest.mark.parametrize("bad", ["empty", "missing-self", "duplicate", "malformed"])
+def test_native_group_table_rejects_incomplete_or_invalid_output(monkeypatch, bad):
+    from tests.coding import _hosted_owned_group as group
+
+    me = os.getpid()
+    output = {"empty": "", "missing-self": "1 1 S\n",
+              "duplicate": f"{me} 10 S\n{me} 10 S\n", "malformed": f"{me} 10 S\ntruncated"}[bad]
+    monkeypatch.setattr(group.subprocess, "run", lambda *a, **k: SimpleNamespace(stdout=output))
+    with pytest.raises((RuntimeError, ValueError)):
+        group.process_groups()
+
+
+def test_git_environment_cannot_inherit_host_repository_or_helper_configuration(tmp_path):
+    import subprocess
+
+    from tests.coding._hosted_owned_group import isolated_git_environment
+
+    repository, workspace = tmp_path / "repository", tmp_path / "repository" / "fixture"
+    workspace.mkdir(parents=True)
+    environment = {**os.environ, "GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "core.fsmonitor",
+                   "GIT_CONFIG_VALUE_0": "ambient-helper", "git_dir": "ambient-repository"}
+    sealed = isolated_git_environment(workspace, ["--workspace", str(workspace)], environment)
+    assert "git_dir" not in sealed and sealed["GIT_CONFIG_COUNT"] == "2"
+    assert sealed["GIT_CONFIG_VALUE_0"] == "false"
+
+    def git(cwd, *args, check=True):
+        return subprocess.run(["git", "-C", str(cwd), *args], env=sealed,
+                              stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                              timeout=5, check=check)
+
+    git(repository, "init", "--quiet")
+    git(repository, "config", "--local", "core.fsmonitor", "ambient-helper")
+    git(repository, "config", "--local", "core.hooksPath", "ambient-hooks")
+    assert git(workspace, "rev-parse", "--show-toplevel", check=False).returncode != 0
+    # Editable source queries can still find this repo, but config precedence
+    # must suppress its external helpers without suppressing Git itself.
+    assert git(repository, "config", "--get", "core.fsmonitor").stdout.strip() == "false"
+    assert git(repository, "config", "--get", "core.hooksPath").stdout.strip() == os.devnull
+    git(repository, "status", "--porcelain")
+
+
+@pytest.mark.parametrize("fault", ["outside", "git-dir", "git-file", "missing-workspace"])
+def test_git_seal_rejects_out_of_scope_or_repository_workspaces(tmp_path, fault):
+    from tests.coding._hosted_owned_group import isolated_git_environment
+
+    root = tmp_path / "fixture"
+    root.mkdir()
+    if fault == "git-dir":
+        (root / ".git").mkdir()
+    elif fault == "git-file":
+        (root / ".git").write_text("gitdir: somewhere\n", encoding="utf-8")
+    arguments = [] if fault == "missing-workspace" else ["--workspace", str(tmp_path if fault == "outside" else root)]
+    with pytest.raises(ValueError):
+        isolated_git_environment(root, arguments, {})
