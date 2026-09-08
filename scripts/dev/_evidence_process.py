@@ -56,7 +56,7 @@ def _await_result(process, result, deadline, interrupted=None):
 
 
 def _cleanup(process, job, *, forced, state):
-    if state.get("not_admitted"):
+    if state.get("not_admitted") and job is None:
         leftovers = False
         process.kill()  # -I -S gate has not been allowed to execute site/tests.
     elif job is not None:
@@ -98,13 +98,38 @@ def _cleanup(process, job, *, forced, state):
     return leftovers or process.returncode != 0
 
 
+def _await_admission(process, job, result, deadline, interrupted):
+    admission = result.with_suffix(".admission")
+    while time.monotonic() < deadline:
+        if interrupted.is_set():
+            raise KeyboardInterrupt
+        if admission.is_file():
+            value = json.loads(admission.read_text())
+            if (type(value) is not dict or set(value) != {"pid", "no_site"}
+                    or type(value["pid"]) is not int or value["pid"] != process.pid
+                    or type(value["no_site"]) is not int or value["no_site"] != 1
+                    or job.active() != 1):
+                raise ValueError("controller native admission identity mismatch")
+            if interrupted.is_set():
+                raise KeyboardInterrupt
+            if time.monotonic() >= deadline:
+                raise subprocess.TimeoutExpired(process.args, 0)
+            return
+        time.sleep(0.02)
+    raise subprocess.TimeoutExpired(process.args, 0)
+
+
 def run_pytest(argv, *, cwd, environment, timeout, cleanup_timeout=60):
     """argv is the exact isolated Python -I -m pytest command from the runner."""
     if argv[1:4] != ["-I", "-m", "pytest"]:
         raise ValueError("evidence supervisor requires isolated pytest")
     result = cwd / "pytest-controller-result"
-    if result.exists():
+    if result.exists() or result.with_suffix(".admission").exists():
         raise ValueError("evidence result path already exists")
+    native = _support("_evidence_windows") if os.name == "nt" else None
+    executable = argv[0]
+    if native is not None:
+        executable, environment = native.prepare_controller(executable, environment)
     interrupted = threading.Event()
     previous = signal.signal(signal.SIGINT, lambda *_: interrupted.set())
     process = job = None
@@ -113,22 +138,28 @@ def run_pytest(argv, *, cwd, environment, timeout, cleanup_timeout=60):
     state = {}
     receipt = None
     try:
+        deadline = time.monotonic() + timeout
         process = subprocess.Popen(
-            [argv[0], "-I", "-S", str(Path(__file__).resolve()), "--child", str(result), *argv[4:]],
+            [executable, "-I", "-S", str(Path(__file__).resolve()), "--child", str(result), *argv[4:]],
             cwd=cwd, env=environment, stdin=subprocess.PIPE,
             start_new_session=os.name == "posix",
             creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
         )
         try:
-            if os.name == "nt":
-                job = _support("_evidence_windows").EvidenceJob(process)
+            if native is not None:
+                job = native.EvidenceJob(process)
+                _await_admission(process, job, result, min(deadline, time.monotonic() + 10), interrupted)
+            if interrupted.is_set():
+                raise KeyboardInterrupt
+            if time.monotonic() >= deadline:
+                raise subprocess.TimeoutExpired(process.args, 0)
         except BaseException as error:
             failure = error
             state["not_admitted"] = True
         else:
             _send(process, "start")
             try:
-                receipt = _await_result(process, result, time.monotonic() + timeout, interrupted)
+                receipt = _await_result(process, result, deadline, interrupted)
             except BaseException as error:
                 failure = error
                 _send(process, "interrupt")
@@ -166,6 +197,10 @@ def run_pytest(argv, *, cwd, environment, timeout, cleanup_timeout=60):
 
 
 def _child(result, arguments):
+    if os.name == "nt":
+        admission = result.with_suffix(".admission.pending")
+        admission.write_text(json.dumps({"pid": os.getpid(), "no_site": sys.flags.no_site}))
+        admission.replace(result.with_suffix(".admission"))
     # pytest fd capture must never replace the supervisor's control descriptor.
     control = os.fdopen(os.dup(sys.stdin.fileno()))
     if control.readline().strip() != "start":

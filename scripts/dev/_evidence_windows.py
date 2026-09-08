@@ -3,7 +3,57 @@
 from __future__ import annotations
 
 import ctypes
+import sys
 from ctypes import wintypes
+from pathlib import Path
+
+
+def _venv_config(executable):
+    candidates = [path for path in (
+        executable.parent / "pyvenv.cfg", executable.parent.parent / "pyvenv.cfg",
+    ) if path.is_file()]
+    if len(candidates) > 1:
+        raise ValueError("ambiguous controller venv configuration")
+    return candidates[0] if candidates else None
+
+
+def prepare_controller(executable, environment):
+    """Avoid a redirector before Job admission; standard CPython layout only.
+
+    Keep CPython's own venv executable override, not a PYTHONPATH substitute.
+    All site processing remains behind the wrapper's -I -S/start gate.
+    """
+    target = Path(executable)
+    if not target.is_absolute() or target.name.lower() != "python.exe" or not target.is_file():
+        raise ValueError("controller requires an absolute CPython executable")
+    config = _venv_config(target)
+    base = target
+    if config is not None:
+        with config.open("rb") as stream:
+            raw = stream.read(65537)
+        if len(raw) > 65536:
+            raise ValueError("controller venv configuration exceeds limit")
+        homes = [value.strip() for line in raw.decode("utf-8").splitlines()
+                 for key, separator, value in [line.partition("=")]
+                 if separator and key.strip().lower() == "home"]
+        if len(homes) != 1 or not Path(homes[0]).is_absolute():
+            raise ValueError("controller venv requires one absolute home")
+        base = Path(homes[0]) / "python.exe"
+        if not base.is_file() or _venv_config(base) is not None:
+            raise ValueError("controller base interpreter is missing or another venv")
+    # Embedded/._pth distributions may re-enable site despite -S. Do not
+    # launch them and then try to diagnose a pre-admission side effect.
+    runtime = base.parent / f"python{sys.version_info.major}{sys.version_info.minor}.dll"
+    if not runtime.is_file():
+        raise ValueError("controller requires a matching standard CPython runtime")
+    for directory in {target.parent, base.parent}:
+        if any(path.name.lower().endswith("._pth") for path in directory.iterdir()):
+            raise ValueError("controller does not admit ._pth interpreter layouts")
+    clean = {key: value for key, value in environment.items()
+             if key.lower() not in {"pythonexecutable", "__pyvenv_launcher__"}}
+    if config is not None:
+        clean["__PYVENV_LAUNCHER__"] = str(target)
+    return str(base), clean
 
 
 class Accounting(ctypes.Structure):

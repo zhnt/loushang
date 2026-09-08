@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import signal
 import subprocess
 import sys
+import sysconfig
 import threading
 import time
+import venv as venv_module
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -19,6 +22,205 @@ _SPEC = importlib.util.spec_from_file_location("_evidence_process", _PATH)
 assert _SPEC is not None and _SPEC.loader is not None
 supervisor = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(supervisor)
+
+
+def _windows_layout(root):
+    base, venv = root / "base", root / "venv"
+    base.mkdir()
+    (venv / "Scripts").mkdir(parents=True)
+    executable = venv / "Scripts/python.exe"
+    executable.touch()
+    (base / "python.exe").touch()
+    (base / f"python{sys.version_info.major}{sys.version_info.minor}.dll").touch()
+    (venv / "pyvenv.cfg").write_text(f"home = {base}\n")
+    return base, venv, executable
+
+
+def test_windows_controller_bypasses_only_target_venv_redirector(tmp_path):
+    native = supervisor._support("_evidence_windows")
+    base, _, executable = _windows_layout(tmp_path)
+    environment = {"PythonExecutable": "bad", "__pyvenv_launcher__": "bad", "KEEP": "yes"}
+    program, clean = native.prepare_controller(str(executable), environment)
+    assert program == str(base / "python.exe")
+    assert clean == {"KEEP": "yes", "__PYVENV_LAUNCHER__": str(executable)}
+    assert environment["PythonExecutable"] == "bad"
+
+
+@pytest.mark.parametrize("fault", ["relative", "duplicate", "nested", "pth-base", "pth-venv", "dll", "large"])
+def test_windows_controller_rejects_ambiguous_or_site_enabling_layout(tmp_path, fault):
+    native = supervisor._support("_evidence_windows")
+    base, venv, executable = _windows_layout(tmp_path)
+    config = venv / "pyvenv.cfg"
+    if fault == "relative":
+        config.write_text("home = relative\n")
+    elif fault == "duplicate":
+        config.write_text(f"home = {base}\nhome = {base}\n")
+    elif fault == "nested":
+        (base / "pyvenv.cfg").write_text(f"home = {base}\n")
+    elif fault.startswith("pth"):
+        directory = base if fault == "pth-base" else executable.parent
+        (directory / "python311._pth").write_text("import site\n")
+    elif fault == "dll":
+        (base / f"python{sys.version_info.major}{sys.version_info.minor}.dll").unlink()
+    else:
+        config.write_text("x" * 65537)
+    with pytest.raises(ValueError):
+        native.prepare_controller(str(executable), {})
+
+
+def test_windows_controller_base_interpreter_does_not_inherit_venv_override(tmp_path):
+    native = supervisor._support("_evidence_windows")
+    base, _, _ = _windows_layout(tmp_path)
+    program, environment = native.prepare_controller(str(base / "python.exe"), {
+        "PYTHONEXECUTABLE": "bad", "__PYVENV_LAUNCHER__": "bad",
+    })
+    assert program == str(base / "python.exe") and environment == {}
+
+
+@pytest.mark.parametrize("fault", [None, "pid", "site", "extra", "boolean", "job"])
+def test_windows_admission_requires_actual_wrapper_and_single_owned_process(tmp_path, fault):
+    result = tmp_path / "pytest-controller-result"
+    value = {"pid": 77, "no_site": 1}
+    if fault in {"pid", "site"}:
+        value["pid" if fault == "pid" else "no_site"] = 0
+    elif fault == "extra":
+        value["extra"] = 1
+    elif fault == "boolean":
+        value["no_site"] = True
+    result.with_suffix(".admission").write_text(json.dumps(value))
+    process = SimpleNamespace(pid=77, args=["controlled"])
+    job = SimpleNamespace(active=lambda: 2 if fault == "job" else 1)
+    arguments = (process, job, result, time.monotonic() + 1, threading.Event())
+    if fault is None:
+        supervisor._await_admission(*arguments)
+    else:
+        with pytest.raises(ValueError, match="identity"):
+            supervisor._await_admission(*arguments)
+
+
+def test_windows_failed_admission_terminates_assigned_job_before_release():
+    events = []
+    counts = iter([2, 0])
+    job = SimpleNamespace(active=lambda: next(counts),
+                          terminate=lambda: events.append("terminate"),
+                          close=lambda: events.append("close-job"))
+    process = SimpleNamespace(returncode=1, wait=lambda **_: events.append("wait"),
+                              stdin=SimpleNamespace(close=lambda: events.append("close-pipe")))
+    assert supervisor._cleanup(process, job, forced=True, state={"not_admitted": True})
+    assert events == ["terminate", "wait", "close-job", "close-pipe"]
+
+
+def test_windows_admission_observes_interrupt_during_final_job_query(tmp_path):
+    result = tmp_path / "pytest-controller-result"
+    result.with_suffix(".admission").write_text(json.dumps({"pid": 77, "no_site": 1}))
+    interrupted = threading.Event()
+
+    def active():
+        interrupted.set()
+        return 1
+
+    with pytest.raises(KeyboardInterrupt):
+        supervisor._await_admission(SimpleNamespace(pid=77), SimpleNamespace(active=active),
+                                    result, time.monotonic() + 1, interrupted)
+
+
+@pytest.mark.parametrize("fault", ["cancelled", "expired"])
+def test_windows_late_admission_never_starts_tests_and_reclaims_job(tmp_path, monkeypatch, fault):
+    events, handlers = [], []
+    clock = [0]
+    counts = iter([1, 1, 0])
+
+    def active():
+        if fault == "cancelled":
+            handlers[0]()
+        else:
+            clock[0] = 4
+        return next(counts)
+
+    job = SimpleNamespace(active=active, terminate=lambda: events.append("terminate"),
+                          close=lambda: events.append("close-job"))
+
+    def spawn(*args, **kwargs):
+        (tmp_path / "pytest-controller-result.admission").write_text(
+            json.dumps({"pid": 77, "no_site": 1})
+        )
+        return SimpleNamespace(pid=77, args=["controlled"], returncode=1,
+                               wait=lambda **_: events.append("wait"),
+                               stdin=SimpleNamespace(close=lambda: events.append("close-pipe")))
+
+    def handler(number, callback):
+        handlers.append(callback)
+        return lambda *_: None
+
+    monkeypatch.setattr(supervisor, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(supervisor, "time", SimpleNamespace(monotonic=lambda: clock[0]))
+    monkeypatch.setattr(supervisor.subprocess, "CREATE_NEW_PROCESS_GROUP", 0, raising=False)
+    monkeypatch.setattr(supervisor.subprocess, "Popen", spawn)
+    monkeypatch.setattr(signal, "signal", handler)
+    monkeypatch.setattr(supervisor, "_send", lambda _, message: events.append(message))
+    monkeypatch.setattr(supervisor, "_support", lambda _: SimpleNamespace(
+        prepare_controller=lambda executable, env: (executable, env), EvidenceJob=lambda _: job,
+    ))
+    with pytest.raises(KeyboardInterrupt if fault == "cancelled" else subprocess.TimeoutExpired):
+        supervisor.run_pytest([sys.executable, "-I", "-m", "pytest"],
+                              cwd=tmp_path, environment={}, timeout=3)
+    assert events == ["terminate", "wait", "close-job", "close-pipe"]
+
+
+@pytest.mark.skipif(os.name != "nt", reason="actual CPython Windows venv and Job admission")
+def test_windows_native_controller_preserves_venv_and_defers_site_until_job(tmp_path, monkeypatch):
+    venv = tmp_path / "separate-venv"
+    # No redirector or subprocess is needed for a no-pip fixture layout.
+    with monkeypatch.context() as setup:
+        def unexpected_spawn(*args, **kwargs):
+            raise AssertionError("venv fixture setup must not spawn an unowned process")
+
+        setup.setattr(subprocess, "Popen", unexpected_spawn)
+        venv_module.EnvBuilder(with_pip=False).create(venv)
+    marker = tmp_path / "site-executed"
+    packages = Path(sysconfig.get_path("purelib"))
+    site = venv / "Lib/site-packages"
+    # Share only pytest's dependency directory for this fixture, not a Product
+    # acceptance claim. Full wheel tests still verify their own installed bytes.
+    (site / "evidence.pth").write_text(
+        f"{packages.as_posix()}\nimport pathlib; pathlib.Path({str(marker)!r}).touch()\n",
+        encoding="utf-8",
+    )
+    argv, environment = _fixture(tmp_path, "normal")
+    executable = venv / "Scripts/python.exe"
+    argv[0] = str(executable)
+    (tmp_path / "test_fault.py").write_text(
+        "import os, sys, pytest\nfrom pathlib import Path\n"
+        "def test_isolated_venv():\n"
+        f"    assert Path(sys.executable) == Path({str(executable)!r})\n"
+        f"    assert Path(sys.prefix) == Path({str(venv)!r})\n"
+        f"    assert Path({str(marker)!r}).exists()\n"
+        f"    assert Path(pytest.__file__).is_relative_to(Path({str(packages)!r}))\n"
+        "    assert not any(k.lower() == '__pyvenv_launcher__' for k in os.environ)\n"
+    )
+    environment.update({"PYTHONEXECUTABLE": "untrusted", "__PYVENV_LAUNCHER__": "untrusted"})
+    native = supervisor._support("_evidence_windows")
+    admitted, closed = [], []
+    admission = supervisor._await_admission
+
+    def admit(process, job, *args):
+        admission(process, job, *args)
+        assert not marker.exists(), "site ran before the Job/start gate"
+        assert job.active() == 1
+        admitted.append(process.pid)
+
+    class Job(native.EvidenceJob):
+        def close(self):
+            assert self.active() == 0
+            super().close()
+            closed.append(True)
+
+    monkeypatch.setattr(supervisor, "_await_admission", admit)
+    monkeypatch.setattr(supervisor, "_support", lambda _: SimpleNamespace(
+        EvidenceJob=Job, prepare_controller=native.prepare_controller,
+    ))
+    supervisor.run_pytest(argv, cwd=tmp_path, environment=environment, timeout=20)
+    assert len(admitted) == 1 and closed == [True] and marker.exists()
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX adopted branch accounting")
 @pytest.mark.parametrize("boundary", ["reap", "resume"])
@@ -368,7 +570,9 @@ def test_evidence_job_admission_failure_keeps_root_wait_in_retry_guard(tmp_path,
     monkeypatch.setattr(supervisor, "os", SimpleNamespace(name="nt"))
     monkeypatch.setattr(supervisor.subprocess, "CREATE_NEW_PROCESS_GROUP", 0, raising=False)
     monkeypatch.setattr(supervisor.subprocess, "Popen", lambda *args, **kwargs: Process())
-    monkeypatch.setattr(supervisor, "_support", lambda _: SimpleNamespace(EvidenceJob=job))
+    monkeypatch.setattr(supervisor, "_support", lambda _: SimpleNamespace(
+        EvidenceJob=job, prepare_controller=lambda executable, env: (executable, env),
+    ))
     monkeypatch.setattr(signal, "signal", signal_handler)
     with monkeypatch.context() as patch:
         patch.setattr(sys, "stderr", Diagnostic())

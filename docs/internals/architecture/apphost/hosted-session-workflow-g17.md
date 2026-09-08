@@ -1273,9 +1273,9 @@ the child an inherited ignore-Ctrl+C attribute. The witness reports its own
 native PID; pinned process ancestry plus console membership separates venv
 redirectors and console launchers from the detached Hosted service.
 
-The independent evidence supervisor intends to assign its non-breakaway Job
-before pytest starts. Native CI exposed a venv redirector admission gap that
-still needs correction, so full descendant ownership is not yet accepted. Native
+The independent evidence supervisor assigns its non-breakaway Job before
+pytest starts. Its redirector admission correction is implemented below but
+still awaits native CI, so full descendant ownership is not yet accepted. Native
 thread handles are registered before suspension; synchronous GetThreadContext
 confirmation precedes a bounded thread-snapshot fixed point. Cleanup only
 undoes confirmed owned suspend increments, retains ambiguous effects, and
@@ -1377,3 +1377,44 @@ controlled base interpreter is the reviewed next approach to eliminating the
 redirector-before-Job race while preserving isolated startup and venv imports.
 Windows native rerun, full Windows/macOS wheel composition, exact-head matrix
 acceptance and mainline delivery remain open.
+
+### Windows Controller Admission Correction
+
+The supervisor now bypasses only the test controller's venv redirector. It
+reads the target executable's bounded `pyvenv.cfg`, requires one absolute base
+home and an existing matching standard CPython runtime, and rejects nested
+redirectors or adjacent `._pth` layouts before spawning. The copied environment
+removes both executable overrides case-insensitively, then sets the trusted
+venv launcher override to preserve CPython's own executable/prefix handling.
+There is no PATH fallback or PYTHONPATH replacement, and Product launch code
+is unchanged. This is a controlled test-interpreter layout contract, not binary
+signature verification or protection against concurrent executable replacement.
+
+The actual base interpreter runs `-I -S` and publishes an atomic pre-start
+receipt. After Job assignment, the parent requires the receipt PID to equal
+the Popen PID, `no_site` to be one, and Job active count to be exactly one.
+Only then can `start` enable `site.main()` and pytest. Both cancellation and
+deadline are rechecked after observation and before release; admission consumes
+the existing overall deadline, with its own maximum of ten seconds. If admission
+fails after assignment, cleanup terminates and empties the whole Job before
+waiting for the root and closing handles. The existing extra-process failure
+criterion is not relaxed.
+
+Portable tests cover malformed/ambiguous layouts, inherited overrides, receipt
+identity, late cancellation and expired admission, including the complete
+no-start/Job-reclamation path. A Windows-only actual test creates a separate
+venv in-process with subprocess creation forbidden, proves that its `.pth`
+sentinel has not run at admission, then verifies target executable/prefix,
+the fixture's declared pytest dependency origin, launcher-variable clearing,
+and Job count zero at close. It intentionally shares pytest dependencies and
+does not claim isolated Product wheel evidence. The existing deliberate
+multigeneration leak regression must still fail and reclaim its descendants.
+Three-perspective re-review approved after closing fixture setup ownership,
+late cancellation and deadline findings. Native Windows results remain pending.
+
+The final local supervisor/runner/sidecar selection passed 85 tests in 48.42
+seconds, with the one Windows-only actual-venv case skipped on Linux
+(`.artifacts/g17-controller-admission-final.xml`). This skip is not a required
+Windows acceptance result. Changed-file Ruff, `make lint-apphost` and diff
+checks passed; the native CI must execute that case as well as the existing
+normal and deliberately leaking multigeneration cases.
