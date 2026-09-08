@@ -13,6 +13,7 @@
 [G13 Durable Hosted Continuity](durable-hosted-application-continuity-g13.md) ·
 [G14 Foreground Stdio](../appserver/foreground-stdio-hosted-app-g14.md) ·
 [G15 Foreground Hosted TUI Design](foreground-hosted-tui-g15.md) ·
+[G17 Explicit Hosted Session Workflow](hosted-session-workflow-g17.md) ·
 [Hosted Product Runtime V1 Plan](../drafts/hosted-product-runtime-v1-plan.md)
 
 ## Status
@@ -181,6 +182,12 @@ The [G16 final delivery record](../appserver/detachable-local-workspace-g16.md#f
 records three-platform native/isolated-wheel acceptance and main promotion.
 G17.0 tracks the subsequent Hosting handle-isolation test regression separately;
 it neither activates A0.5 nor changes application ownership.
+
+The [G17 incremental workflow](hosted-session-workflow-g17.md) has passed its
+independent three-perspective design review for bounded Session discovery, the
+shared shell picker, A0.5 foreground launch ownership and installed three-platform
+acceptance. Implementation is not started; this design does not change
+the implementation or activation status above until its slices are delivered.
 
 ## Target
 
