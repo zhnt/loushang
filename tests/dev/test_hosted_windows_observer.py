@@ -10,7 +10,21 @@ import pytest
 
 from tests.coding import _hosted_windows_witness as witness
 from tests.coding._hosted_windows_api import SuspendedThreads
-from tests.coding._hosted_windows_observer import _controller_chain, _pin_chain
+from tests.coding._hosted_windows_observer import (
+    _controller_chain,
+    _pin_chain,
+    _tree_fact,
+)
+
+
+def test_windows_tree_failure_diagnostics_are_bounded_metadata_only():
+    api = SimpleNamespace(process_names={1: "python.exe", 2: "conhost.exe"})
+    facts = _tree_fact(api, 1, list(range(2, 102)), [(pid, 0) for pid in range(20)])
+    assert facts["parent"] == (1, "python.exe")
+    assert facts["children"][0] == (2, "conhost.exe")
+    assert facts["child_count"] == 100
+    assert len(facts["children"]) == 16 and len(facts["chain"]) == 8
+    assert set(facts) == {"parent", "children", "chain", "child_count"}
 
 
 def test_windows_probe_collection_is_confined_and_imports_test_helpers(tmp_path, monkeypatch):

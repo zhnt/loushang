@@ -40,7 +40,9 @@ def _pin_chain(api, root, witness, handles):
             break
         # No tool turns occur in these cases. Account for console-script
         # launcher shims, but reject unknown/branching topologies before faults.
-        assert len(children) == 1 and len(chain) < 8, "unexpected native entry process tree"
+        assert len(children) == 1 and len(chain) < 8, (
+            "unexpected native entry process tree", _tree_fact(api, parent, children, chain),
+        )
         parent = children[0]
     assert len(chain) >= 2, "ready/cancel observation must include a real Hosted child"
     current = api.entries()
@@ -49,6 +51,17 @@ def _pin_chain(api, root, witness, handles):
         assert current.get(pid) == parent and not api.ended(descriptor), "process identity changed"
         parent = pid
     return chain
+
+
+def _tree_fact(api, parent, children, chain):
+    # Bounded diagnostic only: image basenames, never command lines or env.
+    names = getattr(api, "process_names", {})
+    return {
+        "parent": (parent, names.get(parent)),
+        "chain": [(pid, names.get(pid)) for pid, _ in chain[:8]],
+        "children": [(pid, names.get(pid)) for pid in children[:16]],
+        "child_count": len(children),
+    }
 
 
 def _controller_chain(chain, started, console):
@@ -179,7 +192,7 @@ def _heartbeat(root):
             if pid == actual:
                 break
             children = [key for key, parent in table.items() if parent == pid]
-            assert len(children) == 1
+            assert len(children) == 1, _tree_fact(api, pid, children, [])
             expected_parent, pid = pid, children[0]
         assert pid == actual and process is not None
         assert api.entries().get(actual) == expected_parent and not api.ended(process)

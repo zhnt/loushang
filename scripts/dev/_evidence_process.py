@@ -60,7 +60,9 @@ def _cleanup(process, job, *, forced, state):
         leftovers = False
         process.kill()  # -I -S gate has not been allowed to execute site/tests.
     elif job is not None:
-        leftovers = state.setdefault("leftovers", job.active() > 1)
+        active = job.active()
+        state.setdefault("active_before_cleanup", active)
+        leftovers = state.setdefault("leftovers", active > 1)
         if forced or leftovers:
             job.terminate()
         else:
@@ -152,6 +154,12 @@ def run_pytest(argv, *, cwd, environment, timeout, cleanup_timeout=60):
         if failure is not None:
             raise failure
         if status or leftovers:
+            with suppress(OSError, ValueError):
+                print(
+                    f"evidence failed: status={status}, leftovers={leftovers}, "
+                    f"force_cleanup={forced}, job_active={state.get('active_before_cleanup')}",
+                    file=sys.stderr, flush=True,
+                )
             raise subprocess.CalledProcessError(status or 1, argv)
     finally:
         signal.signal(signal.SIGINT, previous)

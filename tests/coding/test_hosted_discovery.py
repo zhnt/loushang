@@ -163,7 +163,7 @@ def test_G17_PRODUCT_nonblocking_lock_contention_is_visible_and_read_only(tmp_pa
             "from pathlib import Path; import sys; "
             "from loushang.harness.journal import journal_file_lock\n"
             "with journal_file_lock(Path(sys.argv[1]), 'exclusive'):\n"
-            " print('locked', flush=True)\n"
+            " sys.stdout.buffer.write(b'locked\\n'); sys.stdout.buffer.flush()\n"
             " sys.stdin.read(1)\n"
         )
         child = subprocess.Popen(

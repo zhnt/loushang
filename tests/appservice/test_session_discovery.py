@@ -272,8 +272,9 @@ def test_G17_DISCOVERY_pending_scan_settles_before_product_sessions_close():
     async def scenario():
         product, resolver = _Product(), _Resolver()
         product.release.clear()
+        # Verify release/close ordering, not a sub-tick scheduling deadline.
         service = AppServiceV1(product_id="coding", resolver=resolver,
-                               discovery=_binding(product), close_timeout_seconds=0.01)
+                               discovery=_binding(product), close_timeout_seconds=0.1)
         await _mux_with_member(InProcessAppClientV1(service))
         view = service.discovery_client
         assert view is not None

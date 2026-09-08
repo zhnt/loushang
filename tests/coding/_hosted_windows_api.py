@@ -29,6 +29,7 @@ class ThreadEntry(ctypes.Structure):
 class WindowsObservationApi:
     def __init__(self):
         self.failed_closes = set()
+        self.process_names = {}
         self.api = ctypes.WinDLL("kernel32", use_last_error=True)
 
     def call(self, name, arguments, result, *values):
@@ -92,6 +93,7 @@ class WindowsObservationApi:
         if snapshot == INVALID:
             raise ctypes.WinError(ctypes.get_last_error())
         result = []
+        names = {}
         try:
             entry = structure()
             entry.size = ctypes.sizeof(entry)
@@ -101,10 +103,14 @@ class WindowsObservationApi:
                             snapshot, ctypes.byref(entry)):
                 result.append((int(entry.tid), int(entry.pid)) if threads else
                               (int(entry.pid), int(entry.parent)))
+                if not threads:
+                    names[int(entry.pid)] = entry.exe
                 operation = "Next"
                 entry.size = ctypes.sizeof(entry)
             if ctypes.get_last_error() != 18:  # ERROR_NO_MORE_FILES
                 raise ctypes.WinError(ctypes.get_last_error())
+            if not threads:
+                self.process_names = names
             return dict(result)
         finally:
             self.close(snapshot)
