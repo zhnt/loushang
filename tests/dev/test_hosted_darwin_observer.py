@@ -70,6 +70,7 @@ def _observation(tmp_path, monkeypatch):
     observation.unknown, observation.admitted, observation.requested = False, True, True
     observation.close_parent, observation.resumed = True, True
     observation.parent_proof = None
+    observation.exit_command = "/exit\r"
     observation.chain_ready, observation.witness_ended, observation.parent_closed = True, False, False
     observation.finished, observation.reaped, observation.closed = None, False, False
     observation.receipts = tmp_path
@@ -153,6 +154,34 @@ def test_exited_witness_receipt_cannot_authorize_any_child_signal(tmp_path, monk
     with pytest.raises(RuntimeError, match="witness identity"):
         observation.start()
     assert not sent and not observation.chain_ready
+
+
+def test_witness_spawn_preserves_picker_workspace_and_mux_arguments(tmp_path, monkeypatch):
+    arguments = ["--workspace", str(tmp_path / "elsewhere"), "--mux", "picker"]
+    ledger = {"create": lambda *a, **kw: {"path": tmp_path / "scope.json"},
+              "ENVIRONMENT_KEY": "G17_NATIVE_OBSERVATION"}
+    observed = []
+
+    def spawn(argv, **options):
+        observed.append(argv)
+        raise RuntimeError("test stops before native spawn")
+
+    monkeypatch.setattr(module, "spawn_terminal_process", spawn)
+    monkeypatch.setattr(module, "_installed", lambda: "installed-cli")
+    monkeypatch.setattr(module, "_terminal_environment", lambda root: {})
+    observation = module.NativeObservation(tmp_path, ledger, tmp_path / "outer.json", arguments=arguments)
+    with pytest.raises(RuntimeError, match="before native spawn"):
+        observation.start()
+    assert observed[0][-len(arguments) - 1:] == ["installed-cli", *arguments]
+
+
+def test_foreground_detach_intent_is_sent_by_owner_not_interaction(tmp_path, monkeypatch):
+    observation, calls, _, _, _ = _observation(tmp_path, monkeypatch)
+    observation.exit_command, observation.requested = "\x02d", False
+    observation.force_exit = observation.cancel_start = observation.cancel_recovery = False
+    observation.driver.write = calls.append
+    assert not observation.settle_step()
+    assert calls == ["\x02d"]
 
 
 def test_known_terminal_failure_reclaims_then_preserves_failed_evidence(tmp_path, monkeypatch):

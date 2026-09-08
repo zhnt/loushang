@@ -39,7 +39,7 @@
         "terminal_backend": "posix-pty",
         "installation": "wheel"
       },
-      "status": "planned"
+      "status": "implemented"
     },
     "G17-WHEEL-WIN32": {
       "junitPath": ".artifacts/g17-wheel-win32.xml",

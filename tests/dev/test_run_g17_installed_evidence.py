@@ -55,20 +55,7 @@ def test_g17_release_refuses_missing_complete_selector_before_installation(tmp_p
     assert error.value.code == 2
 
 
-@pytest.mark.parametrize("platform", ["darwin"])
-def test_g17_full_refuses_uncomposed_platform_before_installation(tmp_path, monkeypatch, platform):
-    selector = tmp_path / "tests/coding/test_hosted_installed_evidence.py"
-    selector.parent.mkdir(parents=True)
-    selector.touch()
-    monkeypatch.setattr(runner, "_ROOT", tmp_path)
-    monkeypatch.setattr(runner.sys, "platform", platform)
-    monkeypatch.setattr(runner, "_run", lambda *_, **__: pytest.fail("unexpected installation"))
-    with pytest.raises(SystemExit) as error:
-        runner.main(["--wheel", str(tmp_path / "absent.whl"), "--platform", platform])
-    assert error.value.code == 2
-
-
-@pytest.mark.parametrize("platform", ["linux", "win32"])
+@pytest.mark.parametrize("platform", ["linux", "darwin", "win32"])
 def test_g17_full_uses_only_complete_selector_and_release_verifier(tmp_path, monkeypatch, platform):
     wheel = _source_wheel(tmp_path)
     selector = tmp_path / "tests/coding/test_hosted_installed_evidence.py"
@@ -84,13 +71,15 @@ def test_g17_full_uses_only_complete_selector_and_release_verifier(tmp_path, mon
     command, = [argv for argv in calls if "pytest" in argv]
     assert str(selector) in command and "-k" not in command
     assert "--g17-installed-evidence" in command
+    assert "-s" in command
     assert f"--junitxml={tmp_path / f'.artifacts/g17-wheel-{platform}.xml'}" in command
     verification, = [argv for argv in calls if any("verify_evidence_manifest.py" in item for item in argv)]
     assert verification[-2:] == [f"G17-WHEEL-{platform.upper()}", f".artifacts/g17-wheel-{platform}.xml"]
 
 
-@pytest.mark.parametrize("platform", ["linux", "win32"])
+@pytest.mark.parametrize("platform", ["linux", "darwin", "win32"])
 def test_g17_native_cases_use_the_verified_platform_observer(tmp_path, monkeypatch, platform):
+    from tests.coding import test_hosted_darwin_evidence as darwin
     from tests.coding import test_hosted_installed_evidence as selector
     from tests.coding import test_hosted_windows_evidence as windows
 
@@ -98,8 +87,25 @@ def test_g17_native_cases_use_the_verified_platform_observer(tmp_path, monkeypat
     monkeypatch.setattr(selector.sys, "platform", platform)
     monkeypatch.setattr(selector.native, "_run_observation", lambda *args, **kwargs: calls.append("linux"))
     monkeypatch.setattr(windows, "run_observation", lambda *args: calls.append("win32"))
+    monkeypatch.setattr(darwin, "run_observation", lambda *args: calls.append("darwin"))
     selector._run_native(tmp_path, "recovery-cancel")
     assert calls == [platform]
+
+
+@pytest.mark.parametrize("family,case", [("ENTRY", "real"), ("CWD", "cwd"), ("HOME", "home")])
+def test_darwin_foreground_families_cannot_bypass_native_owner(tmp_path, monkeypatch, family, case):
+    from tests.coding import test_hosted_installed_evidence as selector
+
+    calls = []
+    monkeypatch.setattr(selector, "sys", SimpleNamespace(platform="darwin", prefix=str(_SCRIPT.parents[2])))
+    monkeypatch.setattr(selector, "distribution", lambda name: SimpleNamespace(
+        read_text=lambda name: '{"archive_info": {}}',
+    ))
+    monkeypatch.setattr(selector.foreground, "_installed_help", lambda root: calls.append("help"))
+    monkeypatch.setattr(selector.foreground, "foreground_terminal", lambda *a, **kw: pytest.fail("generic terminal bypass"))
+    monkeypatch.setattr(selector, "_run_native", lambda root, native_case: calls.append(native_case))
+    selector.test_G17_installed_evidence(f"G17-INSTALLED-{family}", tmp_path, lambda *a: None, monkeypatch)
+    assert calls == (["help", case] if family == "ENTRY" else [case])
 
 
 def test_g17_python_routes_keep_probes_and_pytest_under_supervision(tmp_path, monkeypatch):

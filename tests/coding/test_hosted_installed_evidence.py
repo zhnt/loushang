@@ -1,4 +1,4 @@
-"""Eight required G17 families; Linux/Windows composed, Darwin pending."""
+"""Eight required G17 families on each native platform, from the actual wheel."""
 
 from __future__ import annotations
 
@@ -23,8 +23,12 @@ def _run_native(root, case):
         from .test_hosted_windows_evidence import run_observation
 
         run_observation(root, case)
+    elif sys.platform == "darwin":
+        from .test_hosted_darwin_evidence import run_observation
+
+        run_observation(root, case)
     else:
-        assert sys.platform == "linux", "Darwin native observer is not composed yet"
+        assert sys.platform == "linux", "unsupported native observer platform"
         options = {"timeout": 150} if case in {"start-cancel", "recovery-cancel"} else {}
         native._run_observation(root, case, **options)
 
@@ -43,7 +47,7 @@ def test_G17_installed_evidence(case_id, tmp_path, record_testsuite_property, mo
     from loushang.coding.cli import hosted_client
     from loushang.coding.ui import mode
 
-    assert sys.platform in {"linux", "win32"}, "complete Darwin observer is not composed yet"
+    assert sys.platform in {"linux", "darwin", "win32"}, "unsupported installed evidence platform"
     direct = json.loads(distribution("loushang").read_text("direct_url.json") or "{}")
     prefix = Path(sys.prefix).resolve()
     assert "archive_info" in direct and all(
@@ -54,15 +58,21 @@ def test_G17_installed_evidence(case_id, tmp_path, record_testsuite_property, mo
     record_testsuite_property("terminal_backend", selected_backend_name())
     record_testsuite_property("installation", "wheel")
     if case_id == "G17-INSTALLED-ENTRY":
-        foreground.test_G17_TERMINAL_ENTRY_installed_help_ready_and_foreground_exit(
-            tmp_path, record_testsuite_property,
-        )
+        if sys.platform == "darwin":
+            foreground._installed_help(tmp_path)  # Help has no Hosted child.
+        else:
+            foreground.test_G17_TERMINAL_ENTRY_installed_help_ready_and_foreground_exit(
+                tmp_path, record_testsuite_property,
+            )
         _run_native(tmp_path, "real")
     elif case_id in {"G17-INSTALLED-CWD", "G17-INSTALLED-HOME"}:
-        foreground.test_G17_TERMINAL_PICKER_resumes_canonical_history_and_recovers_on_relaunch(
-            tmp_path, record_testsuite_property,
-            SessionScopeV1.CWD if case_id.endswith("-CWD") else SessionScopeV1.USER_HOME,
-        )
+        if sys.platform == "darwin":
+            _run_native(tmp_path, "cwd" if case_id.endswith("-CWD") else "home")
+        else:
+            foreground.test_G17_TERMINAL_PICKER_resumes_canonical_history_and_recovers_on_relaunch(
+                tmp_path, record_testsuite_property,
+                SessionScopeV1.CWD if case_id.endswith("-CWD") else SessionScopeV1.USER_HOME,
+            )
     elif case_id == "G17-INSTALLED-LOCAL":
         workflow.test_G17_TERMINAL_LOCAL_discovery_picker_detach_reattach_and_stop(
             tmp_path, record_testsuite_property,

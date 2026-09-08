@@ -26,7 +26,7 @@ def run_observation(tmp_path, case):
         [sys.executable, "-I", "-m", "pytest", "-c", str(repository / "pyproject.toml"),
          "--rootdir", str(tmp_path), "--confcutdir", str(tmp_path),
          "-o", f"pythonpath={shlex.quote(repository.as_posix())}",
-         "--import-mode=importlib", str(probe), "-q", "-m", "not live"],
+         "--import-mode=importlib", str(probe), "-q", "-s", "-m", "not live"],
         cwd=tmp_path, environment={**os.environ, "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"},
         timeout=180, observation=True,
     )

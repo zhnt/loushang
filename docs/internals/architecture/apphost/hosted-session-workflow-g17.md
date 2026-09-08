@@ -102,8 +102,9 @@ Discovery's semantic and installed wire paths and the shared picker are
 composed; the launch owner is now composed into the explicit Product client
 entry, with implementation re-review passed. A real installed stdio/local command test is not an
 isolated-wheel or terminal acceptance test. The complete eight-family selector
-is now composed for Linux and Windows and both passed on `c9f205bd`; Darwin
-remains planned. Windows comprehensive quality still requires a clean rerun. Manifest
+is now composed for all three platforms. Linux and Windows have passing reports;
+Darwin's complete wheel result remains pending. Windows comprehensive quality
+still requires a clean result on the delivery head. Manifest
 `implemented` means an executable gate, not a passing result; actual run
 evidence is recorded separately below. Three-platform acceptance remains open.
 
@@ -1799,3 +1800,55 @@ passed one test in 62.87 seconds. All three re-review perspectives approved the
 slice after the contract review's entry-wiring regression request was implemented.
 Actual macOS execution of the fourth case remains pending, and the full
 eight-family Darwin wheel manifest remains planned.
+
+### Complete Darwin Wheel Composition
+
+This increment supersedes the prior planned composition state: the exact
+eight-family wheel selector and CI matrix now include Darwin. `implemented`
+means the executable gate exists, not that its report passed. The native fourth
+case and the complete Darwin wheel report still require actual CI evidence.
+
+The foreground families use the retained native observer. ENTRY runs the real
+installed help command separately, then starts its Hosted controller only through
+the native owner. CWD/HOME share the existing real picker workflow with an
+explicit CLI interaction seam: creation, selection and relaunch each have their
+own observation, all under one scenario. Arguments are copied unchanged, including
+the changed workspace for global history and the named picker mux. Interactions
+only drive/read UI; the owner sends `/exit` or foreground detach and performs all
+wait/reap/terminal verification. START-CANCEL still runs both publication and
+durable-recovery cancellation; FORCED-EXIT retains the stopped-child fault.
+
+LOCAL, PRODUCT-INTERACTION and LEGACY retain the already accepted G16 direct
+owners. Their fixed test topology differs: local application/runtime live within
+the directly owned server; attach/control commands connect without launching a
+Hosted child; the scripted Product tool is an in-memory preview; G14's service
+and the startup-only Embedded command are directly owned. These families prove
+their actual user workflows, server survival after detach and explicit stop,
+not arbitrary process-tree containment. No generic terminal may replace the
+native owner of a foreground CLI with an independent Hosted child.
+
+The runner retains isolated wheel provenance, installed-byte checks, explicit
+eight-case activation and zero-skip/failure/error report verification. Portable
+controls verify each Darwin foreground dispatch, all three picker callback
+bindings, exact argv propagation and owner-issued detach. The combined
+runner/observer/registry/architecture selection passed 145 tests in 39.64 seconds;
+unchanged Linux user workflows passed ENTRY/CWD/HOME (3 tests, 133.04 seconds).
+These local results are not Darwin acceptance.
+
+The preceding `7bbd5f79` native Darwin job `102090453426` reached its CI timeout
+without producing a JUnit report. Captured pytest output supplied no phase
+diagnosis, so no underlying failure cause is claimed. Both nested and outer
+native pytest now stream output, as does the full wheel runner. Scenario progress
+uses only fixed phase names and a CLI index, with diagnostic IO failures suppressed;
+no terminal contents, arguments or environment are printed by these new markers.
+Owner retention, physical proof, exit budgets and manifest requirements are
+unchanged. This provides diagnosis on the next actual run, not a timeout fix.
+
+All three re-review perspectives approved the complete composition; lifecycle
+and contract also approved the diagnostic supplement. The final focused
+selection passed 146 tests in 57.67 seconds, with Ruff, Actionlint and diff checks
+clean. On `7bbd5f79`, both complete Linux/Windows wheel jobs and all three quality
+jobs passed, validating the portable signal correction. Its Windows native
+ENTRY supplement failed the strict topology check with unexpected snapshot
+children (`csrss.exe` and `winlogon.exe`); this remains undiagnosed, not an
+accepted exception to the process-tree invariant. No final delivery is claimed.

@@ -210,7 +210,10 @@ seven simulated Darwin signal tests because Windows has no `SIGSTOP`. Those
 controls now use module-local simulated signal constants without skipping tests.
 Recovery cancellation now composes seed, cancellation and relaunch under one
 retained scenario owner; its fourth native CI case is pending. Full Darwin
-eight-family wheel acceptance and final three-platform delivery remain pending.
+eight-family wheel composition is now implemented, including native-owned
+cwd/global picker workflows and the macOS wheel matrix job. This is executable
+gate status only: actual Darwin eight-family acceptance and final three-platform
+delivery remain pending.
 The activation status above is unchanged.
 
 ## Target

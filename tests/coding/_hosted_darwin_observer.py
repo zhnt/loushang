@@ -35,6 +35,13 @@ def _until(predicate, timeout=5):
         time.sleep(0.01)
 
 
+def _progress(phase, index):
+    # Fixed test-owned labels only: no argv, environment or terminal contents.
+    # Diagnostics must never interrupt the retained cleanup owner.
+    with suppress(OSError, ValueError):
+        print(f"native scenario CLI {index}: {phase}", flush=True)
+
+
 def _read(root, name):
     try:
         if (root / "failed").exists():
@@ -140,7 +147,8 @@ class FrozenChain:
 
 class NativeObservation:
     def __init__(self, root, ledger, parent_scope, *, force_exit=False, cancel_start=False,
-                 cancel_recovery=False, close_parent=True, receipt_name="witness"):
+                 cancel_recovery=False, close_parent=True, receipt_name="witness",
+                 arguments=None, exit_command="/exit\r"):
         self.root, self.ledger = root, ledger
         self.parent_scope = parent_scope
         self.receipts = root / receipt_name
@@ -148,6 +156,8 @@ class NativeObservation:
         self.force_exit, self.cancel_start = force_exit, cancel_start
         self.cancel_recovery, self.close_parent = cancel_recovery, close_parent
         self.parent_proof = None
+        self.arguments = tuple(_argv(root) if arguments is None else arguments)
+        self.exit_command = exit_command
         self.driver = self.started = self.chain = self.finished = None
         self.admitted = self.requested = self.reaped = self.closed = self.unknown = False
         self.chain_ready = self.witness_ended = self.parent_closed = False
@@ -165,7 +175,7 @@ class NativeObservation:
         environment[self.ledger["ENVIRONMENT_KEY"]] = str(self.ticket["path"])
         self.driver = spawn_terminal_process(
             [sys.executable, "-I", "-S", str(Path(__file__).with_name("_hosted_darwin_witness.py")),
-             str(self.receipts), *executable, *_argv(self.root)],
+             str(self.receipts), *executable, *self.arguments],
             cwd=self.root, env=environment, columns=100, rows=30,
         )
         _until(lambda: _read(self.receipts, "started") is not None, 15)
@@ -232,7 +242,7 @@ class NativeObservation:
                 self.chain._verify_signal_target(self.chain.cli, self.chain.witness)
                 os.kill(self.chain.cli, signal.SIGINT)  # Unreaped witness child.
             else:
-                self.driver.write("/exit\r")
+                self.driver.write(self.exit_command)
             self.requested = True
         if self.finished is None:
             ended = self.chain.watch.exited()
@@ -344,8 +354,10 @@ class NativeScenario:
             receipt_name=f"witness-{len(self.observations)}", **options,
         )
         self.observations.append(observation)
+        index = len(self.observations)
         try:
             try:
+                _progress("starting", index)
                 observation.start()
                 if self.parent_proof is None:
                     self.parent_proof = (os.getpid(), [observation.started["witness"]])
@@ -359,10 +371,13 @@ class NativeScenario:
             except BaseException as error:
                 observation.retain_failure(error)
                 raise
+            _progress("active", index)
             if interaction is not None:
                 interaction(observation.driver)
         finally:
+            _progress("settling", index)
             budget_ok = observation.settle()
+        _progress("released", index)
         _assert_observation(observation, budget_ok)
 
     def recovery_cli(self, root, *, create, historical=None):
@@ -371,6 +386,9 @@ class NativeScenario:
         self.observe(root, interaction=lambda driver: _recovery_interaction(
             driver, create=create, historical=historical,
         ))
+
+    def picker_cli(self, root, arguments, interaction, *, exit_command):
+        self.observe(root, arguments=arguments, interaction=interaction, exit_command=exit_command)
 
     def close_step(self):
         if self.unknown:
@@ -431,6 +449,13 @@ def scenario(root, case):
             from .test_hosted_entry_evidence import _observe_recovery_cancel
 
             _observe_recovery_cancel(root, observer=owner.observe, recovery_cli=owner.recovery_cli)
+        elif case in {"cwd", "home"}:
+            from loushang.appserver.protocol import SessionScopeV1
+
+            from .test_hosted_client_terminal import _picker_workflow
+
+            scope = SessionScopeV1.CWD if case == "cwd" else SessionScopeV1.USER_HOME
+            _picker_workflow(root, scope, run_cli=owner.picker_cli)
         else:
             assert case in {"real", "start-cancel", "forced-exit"}
             owner.observe(root, force_exit=case == "forced-exit", cancel_start=case == "start-cancel")

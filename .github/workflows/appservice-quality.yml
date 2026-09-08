@@ -26,7 +26,7 @@ jobs:
         run: >-
           uv --cache-dir .uv-cache run python scripts/dev/run_pytest.py
           tests/coding/test_hosted_darwin_evidence.py
-          --junitxml=.artifacts/g17-darwin-native.xml -q -m "not live"
+          --junitxml=.artifacts/g17-darwin-native.xml -q -s -m "not live"
       - name: Verify exact native cases and zero skips
         run: >-
           uv --cache-dir .uv-cache run python scripts/dev/verify_evidence_manifest.py
@@ -76,6 +76,8 @@ jobs:
         include:
           - os: ubuntu-24.04
             platform: linux
+          - os: macos-15
+            platform: darwin
           - os: windows-latest
             platform: win32
     runs-on: ${{ matrix.os }}

@@ -14,6 +14,14 @@ from tests.coding import _hosted_darwin_observer as module
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="POSIX observation registry")
 
 
+def test_phase_diagnostic_io_failure_cannot_unwind_owner(monkeypatch):
+    def fail(*args, **kwargs):
+        raise OSError("diagnostic output unavailable")
+
+    monkeypatch.setattr("builtins.print", fail)
+    module._progress("settling", 2)
+
+
 def _scenario(tmp_path, monkeypatch):
     ledger = runpy.run_path(str(Path(module.__file__).resolve().parents[2] / "scripts/dev/_evidence_observation.py"))
     outer = ledger["create"](tmp_path, observation=True)
@@ -162,3 +170,31 @@ def test_recovery_seed_and_relaunch_use_owned_cli_without_generic_terminal(tmp_p
     assert [value for name, value in calls if name == "history"] == [
         {"create": True, "historical": None}, {"create": False, "historical": "preserved"},
     ]
+
+
+@pytest.mark.parametrize("case,scope", [("cwd", "cwd"), ("home", "user_home")])
+def test_picker_scenario_retains_all_three_cli_arguments_and_exit_intents(tmp_path, monkeypatch, case, scope):
+    from tests.coding import test_hosted_client_terminal as picker
+
+    owner, ledger, outer, calls = _scenario(tmp_path, monkeypatch)
+    initial = ["--workspace", str(tmp_path)]
+    resumed = ["--workspace", str(tmp_path / "other-workspace"), "--mux", "picker"]
+
+    def workflow(root, actual_scope, *, run_cli):
+        assert actual_scope.value == scope
+        assert run_cli == owner.picker_cli
+        for index, arguments in enumerate((initial, resumed, resumed)):
+            run_cli(root, arguments, lambda driver: calls.append(("interact", driver.index)),
+                    exit_command="/exit\r" if index == 0 else "\x02d")
+
+    monkeypatch.setattr(picker, "_picker_workflow", workflow)
+    monkeypatch.setattr(picker, "foreground_terminal", lambda *a, **kw: pytest.fail("generic terminal bypass"))
+    monkeypatch.setattr(module, "sys", SimpleNamespace(platform="darwin"))
+    monkeypatch.setattr(module, "runpy", SimpleNamespace(run_path=lambda path: ledger))
+    monkeypatch.setenv(ledger["ENVIRONMENT_KEY"], str(outer["path"]))
+    monkeypatch.setattr(module, "NativeScenario", lambda actual_ledger, parent: owner)
+    module.scenario(tmp_path, case)
+    ledger["require_closed"](outer)
+    assert [item.arguments for item in owner.observations] == [tuple(initial), tuple(resumed), tuple(resumed)]
+    assert [item.exit_command for item in owner.observations] == ["/exit\r", "\x02d", "\x02d"]
+    assert [value for name, value in calls if name == "interact"] == [1, 2, 3]
