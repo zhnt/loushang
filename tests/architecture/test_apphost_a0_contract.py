@@ -18,6 +18,7 @@ APPHOST_OPTIONAL_MODULES = {
     APPHOST_ROOT / "application.py",
     APPHOST_ROOT / "continuity.py",
     APPHOST_ROOT / "foreground.py",
+    APPHOST_ROOT / "launcher.py",
     APPHOST_ROOT / "local.py",
     APPHOST_ROOT / "hosted.py",
 }
@@ -274,13 +275,19 @@ def test_a0_1_public_all_exactly_matches_the_frozen_facade_bindings() -> None:
     assert set(exported) == imported
 
 
-def test_a0_slices_add_runtime_and_hosted_but_no_launcher() -> None:
+def test_a0_slices_keep_launcher_optional_and_core_default_dark() -> None:
     names = {path.name for path in APPHOST_ROOT.iterdir()}
     assert {"catalog.py", "router.py", "runtime.py", "hosted.py"} <= names
-    for forbidden in ("profiles.py", "launcher.py"):
-        assert forbidden not in names
+    assert "launcher.py" in names
+    assert "profiles.py" not in names
 
     all_core_source = "\n".join(_source(path) for path in sorted(APPHOST_MODULES))
+    assert not any(
+        imported == "loushang.apphost.launcher"
+        or imported.startswith("loushang.apphost.launcher.")
+        for path in APPHOST_MODULES
+        for imported in _resolved_imports(path)
+    )
     for ambient_effect in (
         "os.environ",
         "os.getcwd",

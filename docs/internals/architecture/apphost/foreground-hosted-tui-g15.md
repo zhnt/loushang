@@ -12,8 +12,9 @@
 - Parent: Loushang application architecture
 - Authority: normative accepted boundary design
 - Design status: accepted following the three-perspective review below
-- Implementation status: not-started for the G15 launcher; the shared shell is
-  implemented by G16, which does not implement the foreground child lifetime
+- Implementation status: partial — G16 supplies the shared shell; G17 supplies
+  discovery and an uncomposed launch owner. The installed foreground client
+  and its native acceptance remain pending.
 - Activation status: existing defaults and G14 foreground semantics unchanged
 - Tracking: [Hosted Workspace V1 #566](https://github.com/zhnt/loushang/issues/566)
 - Inherits: [architecture principles](../loushang-architecture-principles.md),
@@ -51,13 +52,13 @@ the baseline separately from planned files:
   loop alongside the state, reducer, controller and shared conversation view.
   Its installed `loushang-mux attach` borrows an independently connected client;
   this is not a G15 launch owner.
-- AppHost A0.5 and the G15 foreground launcher/client entrypoint remain missing.
-  Existing `loushang` and `loushang-tui` remain Embedded routes.
+- G17 implements AppHost A0.5's optional launch owner, currently uncomposed;
+  the G15 foreground client entrypoint remains missing. Existing `loushang`
+  and `loushang-tui` remain Embedded routes.
 - AppClient's legacy required surface has no resumable-Session listing operation.
-  G17 adds the separate optional discovery contract, codec and profile checks;
-  these are implemented-uncomposed, not an end-to-end Product discovery route.
-  The Product catalog exists server-side, but AppService discovery views and
-  a client picker remain implementation gaps.
+  G17 adds the separate optional discovery contract, codec and profile checks,
+  Product catalog reads, AppService discovery views and the client picker.
+  Their local gates pass; installed foreground workflow evidence is pending.
 
 The older named-mux proposal informs UI behavior, not current implementation
 status. In particular its detachable lifetime cannot be applied to G14 pipes.

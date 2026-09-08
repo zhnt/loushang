@@ -12,7 +12,8 @@
 - Design status: accepted after independent three-perspective review and re-review
 - Implementation status: partial — discovery protocol, Product reads, AppService
   views, explicit installed foreground/local wiring and shared picker;
-  foreground launcher and installed acceptance pending
+  uncomposed foreground launch owner; Product client entry and installed
+  acceptance pending
 - Activation status: explicit opt-in only; Embedded and legacy G14/G16 retained
 - Tracking: [G17 #572](https://github.com/zhnt/loushang/issues/572)
 - Baseline: `3c06f5b9a4309e03dc754511eb012f9e2c23cbcb`
@@ -98,7 +99,8 @@ missing/failed capability access closes that scope. STOP never creates a scope
 or APP hello and retains its reserved connection slot.
 
 Discovery's semantic and installed wire paths and the shared picker are
-composed; the launch owner is pending. A real installed stdio/local command test is not an
+composed; the launch owner is implemented but not yet composed into a Product
+client entry. A real installed stdio/local command test is not an
 isolated-wheel or terminal acceptance test. All eight native case families
 remain planned on each platform; subsequent slices must update the inventory
 and required-case manifest as those user paths are delivered.
@@ -429,7 +431,7 @@ ends its child; local detach leaves the independent application/accepted work
 alive. G16 stop stays a separate explicit command. No automatic backgrounding,
 supervisor installation, orphan adoption or active-turn replay is introduced.
 
-### G17.3 Implementation Boundary Check (Launcher Pending)
+### G17.3 Implementation Boundary Check (Product Entry Pending)
 
 The architecture follow-up accepts an optional async settlement callback in the
 terminal runner: Product composition binds it to the launch owner's close,
@@ -765,4 +767,43 @@ source files); the exact four-file presentation group is 917/950 lines.
 
 This proves cleanup strategy selection and ordering, not a twenty-second
 process deadline, force/reap behavior or installed foreground entry. The actual
-launch owner and its fault matrix remain pending.
+launch owner and its fault matrix are tracked separately below.
+
+## G17.3 Launch Owner Implementation Review
+
+The optional `apphost.launcher` now adopts a dedicated Hosting port, retains late
+leases and exposes borrowed semantic clients only after the selected hello is
+ready. Product command composition remains pending. The pipe adapter bounds
+reads to 64 KiB and writes to 1 MiB, with one lock across every chunk of a frame,
+including the four-byte header. Its close requests EOF only; it does not take
+process ownership from Hosting.
+
+Independent cutoff reclamation reaches `lease.close` even if terminate or exit
+observation fails. Reader handoff still requires actual startup/hello and client
+settlement. Unknown exit observation is never invented as a successful exit;
+`forced_exit` and the bounded scalar diagnostics remain available to Product,
+which must report forced/unknown exit as nonzero. Raw stderr, argv, environment
+and implementation exception strings do not cross the diagnostics/cleanup
+error boundary.
+
+Review fixes include exact profile enum admission before spawn, keeping adopted
+detach tasks observable rather than cancelling them at cutoff, rejecting new
+ordinary cleanup stages after deadline expiry, and retaining Hosting's last
+resort close independently of exit observation. A further regression-first fix
+retains terminate as its own phase and records each retry attempt: successful or
+in-flight tasks are reused, and each failed phase can restart at most once per
+explicit retry. Both duplicate-successful-terminate and double-close-in-one-retry
+cases failed before this fix. Failed UI detach is not replayed.
+
+These deterministic owner faults and exact architecture gates are local evidence,
+not Product terminal, native process or isolated-wheel acceptance. G17.4's eight
+case families remain planned on all three platforms.
+
+All three independent reviewers approved this owner slice after the fixes above.
+The final owner/architecture selection passed 70 tests in 30.90 seconds
+(`.artifacts/g17-launcher.xml`). AppHost, AppServer and the shared shell/terminal
+settlement regression selection passed 469 tests with 11 native-Windows skips
+in 8.27 seconds (`.artifacts/g17-launcher-regression.xml`). The AppService Ruff
+gate and mypy on 69 source files passed. The optional owner and private adapter
+remain within the accepted 550-line budget; exact dependency and default-dark
+core gates remain enforced. These are not the G17.4 required-case reports.

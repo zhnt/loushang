@@ -2,11 +2,50 @@
 
 from __future__ import annotations
 
+import ast
 import json
+import sys
 import tomllib
 from pathlib import Path
 
 ROOT = Path("docs/internals/architecture/apphost")
+
+
+def test_G17_LAUNCH_owner_has_exact_optional_imports_and_reviewability_budget() -> None:
+    path = Path("src/loushang/apphost/launcher.py")
+    source = path.read_text()
+    assert len(source.splitlines()) <= 550
+    allowed = {
+        "loushang.hosting.contracts",
+        "loushang.appserver.client",
+        "loushang.appserver.framing",
+        "loushang.appserver.remote_client",
+        "loushang.appserver.protocol",
+        "loushang.appserver.protocol.connection_profile",
+    }
+    imports: set[str] = set()
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.ImportFrom):
+            assert node.level == 0 and node.module is not None
+            imports.add(node.module)
+        elif isinstance(node, ast.Import):
+            imports.update(alias.name for alias in node.names)
+    assert {name for name in imports if name.startswith("loushang.")} == allowed
+    assert all(
+        name in allowed or name.split(".")[0] in sys.stdlib_module_names
+        for name in imports
+    )
+    assert not {name.split(".")[0] for name in imports}.intersection(
+        {"os", "pathlib", "subprocess", "socket", "importlib", "shutil", "tempfile"}
+    )
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name):
+                assert node.func.id not in {"open", "eval", "exec", "__import__"}
+            if isinstance(node.func, ast.Attribute):
+                assert node.func.attr not in {
+                    "create_subprocess_exec", "create_subprocess_shell"
+                }
 
 
 def test_G17_DISCOVERY_owner_has_an_independent_exact_reviewability_budget() -> None:

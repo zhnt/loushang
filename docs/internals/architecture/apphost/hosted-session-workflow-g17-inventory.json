@@ -25,7 +25,7 @@
     {"id": "discovery.local-command", "source": "src/loushang/coding/cli/mux.py", "status": "implemented", "owner": "coding", "requirements": ["G17-COMPAT", "G17-DISCOVERY", "G17-LIFETIMES"]},
     {"id": "picker.shell", "source": "src/loushang/harnesstui/mux/shell.py", "status": "implemented", "owner": "harnesstui", "requirements": ["G17-PICKER", "G17-REGRESSION"]},
     {"id": "picker.view", "source": "src/loushang/harnesstui/mux/session_picker.py", "status": "implemented", "owner": "harnesstui", "requirements": ["G17-PICKER"]},
-    {"id": "foreground.launcher", "source": "src/loushang/apphost/launcher.py", "status": "planned", "owner": "apphost", "requirements": ["G17-FOREGROUND", "G17-LIFETIMES"]},
+    {"id": "foreground.launcher", "source": "src/loushang/apphost/launcher.py", "status": "implemented-uncomposed", "owner": "apphost", "requirements": ["G17-FOREGROUND", "G17-LIFETIMES"]},
     {"id": "foreground.command", "source": "src/loushang/coding/cli/hosted_client.py", "status": "planned", "owner": "coding", "requirements": ["G17-FOREGROUND", "G17-INSTALLED", "G17-REGRESSION"]},
     {"id": "installed.evidence", "source": "scripts/dev/run_g17_installed_evidence.py", "status": "planned", "owner": "delivery", "requirements": ["G17-INSTALLED", "G17-REGRESSION"]}
   ],

@@ -190,6 +190,7 @@ APPHOST_SOURCES := \
 	src/loushang/harnesstui/mux \
 	src/loushang/coding/cli/apphost.py
 APPHOST_TEST_PATHS := \
+	tests/apphost/test_launcher.py \
 	tests/dev/test_run_g16_installed_evidence.py \
 	tests/architecture/test_detachable_local_workspace_g16_evidence.py \
 	tests/tui/test_text_pager.py \
@@ -268,6 +269,7 @@ APPSERVICE_SOURCES := \
 	src/loushang/coding/hosted_bootstrap.py \
 	src/loushang/coding/hosted_local.py \
 	src/loushang/apphost/foreground.py \
+	src/loushang/apphost/launcher.py \
 	src/loushang/apphost/local.py \
 	src/loushang/apphost/continuity.py \
 	src/loushang/coding/hosted_catalog.py \
@@ -284,6 +286,7 @@ APPSERVICE_SOURCES := \
 	src/loushang/coding/hosted_continuity.py \
 	src/loushang/harnesstui/mux
 APPSERVICE_TEST_PATHS := \
+	tests/apphost/test_launcher.py \
 	tests/dev/test_run_g16_installed_evidence.py \
 	tests/dev/test_verify_evidence_manifest.py \
 	tests/architecture/test_detachable_local_workspace_g16_evidence.py \
