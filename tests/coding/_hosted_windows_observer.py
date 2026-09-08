@@ -25,32 +25,58 @@ def _receipt(driver, root, name, timeout):
     return json.loads((root / name).read_text(encoding="utf-8"))
 
 
-def _pin_chain(api, root, witness, handles):
+def _pin_chain(api, root, witness, handles, *, minimum=2):
     table = api.entries()
     assert table.get(root) == witness, "controller identity changed"
-    chain = []
+    chain, sidecars, pinned = [], [], {}
+
+    def pin(pid):
+        if pid not in pinned:
+            descriptor = api.open_process(pid)
+            handles.callback(api.close, descriptor)
+            pinned[pid] = descriptor
+            assert not api.ended(descriptor), "observed process already exited"
+        return pinned[pid]
+
     parent = root
     while True:
-        descriptor = api.open_process(parent)
-        handles.callback(api.close, descriptor)
-        assert not api.ended(descriptor), "observed process already exited"
+        descriptor = pin(parent)
         chain.append((parent, descriptor))
         children = [pid for pid, owner in table.items() if owner == parent]
         if not children:
             break
-        # No tool turns occur in these cases. Account for console-script
-        # launcher shims, but reject unknown/branching topologies before faults.
+        # CREATE_NO_WINDOW can create one system console host alongside the
+        # actual interpreter. Retain it for exit proof, never fault targeting.
+        if len(children) == 2:
+            assert not sidecars, "multiple native console sidecars"
+            candidates = [pid for pid in children if api.is_console_host(pin(pid))]
+            assert len(candidates) == 1, "unverified native console branch"
+            sidecar = candidates[0]
+            assert sidecar not in table.values(), "native console sidecar has descendants"
+            sidecars.append((sidecar, pinned[sidecar]))
+            children.remove(sidecar)
         assert len(children) == 1 and len(chain) < 8, (
             "unexpected native entry process tree", _tree_fact(api, parent, children, chain),
         )
         parent = children[0]
-    assert len(chain) >= 2, "ready/cancel observation must include a real Hosted child"
+    assert len(chain) >= minimum, "ready/cancel observation must include a real Hosted child"
+    assert not any(api.is_console_host(descriptor) for _, descriptor in chain), (
+        "native console host cannot be a main-chain target"
+    )
     current = api.entries()
-    parent = witness
-    for pid, descriptor in chain:
-        assert current.get(pid) == parent and not api.ended(descriptor), "process identity changed"
-        parent = pid
-    return chain
+    for pid, descriptor in [*chain, *sidecars]:
+        assert current.get(pid) == table[pid] and not api.ended(descriptor), "process identity changed"
+    for pid in pinned:
+        assert {key for key, owner in current.items() if owner == pid} == {
+            key for key, owner in table.items() if owner == pid
+        }, "process descendants changed"
+    return chain, sidecars
+
+
+def _assert_exited(api, chain, sidecars, *, deadline):
+    while not all(api.ended(handle) for _, handle in [*chain, *sidecars]):
+        assert time.monotonic() < deadline, "Hosted process or console sidecar remains"
+        time.sleep(0.01)
 
 
 def _tree_fact(api, parent, children, chain):
@@ -109,18 +135,19 @@ def observe(root, *, force_exit=False, cancel_start=False, cancel_recovery=False
                 assert active[1] & 0x0005 == 0x0005, "VT/processed output not configured"
             with ExitStack() as handles:
                 handles.callback(api.retry_closes)
-                chain = _pin_chain(api, driver.diagnostics.pid, os.getpid(), handles)
+                chain, sidecars = _pin_chain(api, driver.diagnostics.pid, os.getpid(), handles)
                 chain = _controller_chain(chain, started, set(sample["console"]))
                 pid, process = chain[-1]
                 suspended = SuspendedThreads(api, pid, process)
                 handles.callback(suspended.close)
                 if force_exit:
                     suspended.stop()
+                deadline = time.monotonic() + 25
                 driver.write("\x03" if cancelled else "/exit\r")
-                finished = _receipt(driver, receipts, "finished", 25)
+                finished = _receipt(driver, receipts, "finished", max(0, deadline - time.monotonic()))
                 assert finished["code"] == (130 if cancelled else 1 if force_exit else 0)
                 assert finished["modes"] == started["baseline"]
-                assert all(api.ended(handle) for _, handle in chain), "Hosted process remains"
+                _assert_exited(api, chain, sidecars, deadline=deadline)
                 if cancelled:
                     assert "G17 terminal invoked" not in driver.raw_output
                     assert "/exit ends app" not in strip_control_sequences(driver.raw_output)
@@ -180,22 +207,9 @@ def _heartbeat(root):
     with ExitStack() as handles:
         handles.callback(api.retry_closes)
         # A base interpreter has no venv shim, so this fixture admits one node.
-        table = api.entries()
-        expected_parent = os.getpid()
-        pid = child.pid
-        process = None
-        for _ in range(8):
-            assert table.get(pid) == expected_parent
-            process = api.open_process(pid)
-            handles.callback(api.close, process)
-            assert not api.ended(process)
-            if pid == actual:
-                break
-            children = [key for key, parent in table.items() if parent == pid]
-            assert len(children) == 1, _tree_fact(api, pid, children, [])
-            expected_parent, pid = pid, children[0]
-        assert pid == actual and process is not None
-        assert api.entries().get(actual) == expected_parent and not api.ended(process)
+        chain, sidecars = _pin_chain(api, child.pid, os.getpid(), handles, minimum=1)
+        pid, process = chain[-1]
+        assert pid == actual, "heartbeat target is not the observed leaf"
         fault = SuspendedThreads(api, actual, process)
         handles.callback(fault.close)
         fault.stop()
@@ -206,5 +220,6 @@ def _heartbeat(root):
         fault.close()
         until(lambda: heartbeat.stat().st_size > stopped_size)
         (root / "stop").touch()
+        deadline = time.monotonic() + 10
         assert child.wait(timeout=10) == 0
-        assert api.ended(process)
+        _assert_exited(api, chain, sidecars, deadline=deadline)

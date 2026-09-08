@@ -4,17 +4,156 @@ from __future__ import annotations
 
 import subprocess
 import threading
+from contextlib import ExitStack
 from types import SimpleNamespace
 
 import pytest
 
 from tests.coding import _hosted_windows_witness as witness
-from tests.coding._hosted_windows_api import SuspendedThreads
+from tests.coding._hosted_windows_api import SuspendedThreads, WindowsObservationApi
 from tests.coding._hosted_windows_observer import (
+    _assert_exited,
     _controller_chain,
     _pin_chain,
     _tree_fact,
 )
+
+
+@pytest.mark.parametrize("image,accepted", [
+    (r"C:\WINDOWS\system32\ConHost.exe", True),
+    (r"C:\workspace\conhost.exe", False),
+    ("C:\\workspace\\\U0001f600\\python.exe", False),
+    (r"C:\Windows\System32\conhost.exe.fake", False),
+])
+def test_windows_console_image_uses_pinned_full_path(image, accepted):
+    class ImageApi(WindowsObservationApi):
+        def __init__(self):
+            pass
+
+        def call(self, name, arguments, result, *values):
+            if name == "QueryFullProcessImageNameW":
+                handle, flags, buffer, size = values
+                assert handle == 44 and flags == 0
+                buffer.value = image
+                size._obj.value = len(image.encode("utf-16-le")) // 2
+                return 1
+            assert name == "GetSystemDirectoryW"
+            values[0].value = r"C:\Windows\System32"
+            return len(values[0].value)
+
+    assert ImageApi().is_console_host(44) is accepted
+
+
+def test_windows_system_directory_length_counts_wide_characters():
+    directory = "C:\\\U0001f600\\System32"
+    image = directory + "\\conhost.exe"
+
+    class ImageApi(WindowsObservationApi):
+        def __init__(self):
+            pass
+
+        def call(self, name, arguments, result, *values):
+            if name == "QueryFullProcessImageNameW":
+                values[2].value = image
+                values[3]._obj.value = len(image.encode("utf-16-le")) // 2
+                return 1
+            assert name == "GetSystemDirectoryW"
+            values[0].value = directory
+            return len(directory.encode("utf-16-le")) // 2
+
+    assert ImageApi().is_console_host(44)
+
+
+@pytest.mark.parametrize("stage", ["image-failed", "image-truncated", "directory-failed", "directory-truncated"])
+def test_windows_console_image_rejects_incomplete_native_queries(stage):
+    class ImageApi(WindowsObservationApi):
+        def __init__(self):
+            pass
+
+        def call(self, name, arguments, result, *values):
+            if name == "QueryFullProcessImageNameW":
+                if stage == "image-failed":
+                    return 0
+                values[2].value = r"C:\Windows\System32\conhost.exe"
+                values[3]._obj.value = 32768 if stage == "image-truncated" else len(values[2].value)
+                return 1
+            assert name == "GetSystemDirectoryW"
+            return 0 if stage == "directory-failed" else 32768
+
+    with pytest.raises(RuntimeError, match="query"):
+        ImageApi().is_console_host(44)
+
+
+class TreeApi:
+    def __init__(self, table, *, current=None, images=None):
+        self.tables = iter([table, table if current is None else current])
+        self.images = images or {3: r"C:\Windows\System32\conhost.exe"}
+        self.opened, self.closed, self.dead = [], [], set()
+
+    def entries(self):
+        return next(self.tables)
+
+    def open_process(self, pid):
+        self.opened.append(pid)
+        return pid
+
+    def close(self, handle):
+        self.closed.append(handle)
+
+    def ended(self, handle):
+        return handle in self.dead
+
+    def is_console_host(self, handle):
+        assert handle in self.opened
+        return self.images.get(handle, "python.exe").lower() == (
+            r"c:\windows\system32\conhost.exe"
+        )
+
+
+def test_windows_tree_retains_console_sidecar_outside_fault_chain():
+    api = TreeApi({1: 99, 2: 1, 3: 2, 4: 2})
+    with ExitStack() as handles:
+        chain, sidecars = _pin_chain(api, 1, 99, handles)
+        assert chain == [(1, 1), (2, 2), (4, 4)]
+        assert sidecars == [(3, 3)]
+        api.dead.update([1, 2, 4])
+        with pytest.raises(AssertionError, match="remains"):
+            _assert_exited(api, chain, sidecars, deadline=0)
+        api.dead.add(3)
+        _assert_exited(api, chain, sidecars, deadline=0)
+    assert sorted(api.closed) == [1, 2, 3, 4]
+
+
+def test_windows_single_child_console_host_cannot_be_fault_target():
+    api = TreeApi({1: 99, 2: 1, 3: 2})
+    with pytest.raises(AssertionError, match="main-chain target"), ExitStack() as handles:
+        _pin_chain(api, 1, 99, handles)
+    assert sorted(api.closed) == [1, 2, 3]
+
+
+@pytest.mark.parametrize("case", ["lookalike", "second", "descendant", "reparent", "new", "api"])
+def test_windows_tree_rejects_unverified_console_branches(case, monkeypatch):
+    table = {1: 99, 2: 1, 3: 2, 4: 2}
+    current = dict(table)
+    images = {3: r"C:\Windows\System32\conhost.exe"}
+    if case == "lookalike":
+        images[3] = r"C:\workspace\conhost.exe"
+    elif case == "second":
+        table.update({5: 4, 6: 4})
+        current = dict(table)
+        images[5] = images[3]
+    elif case == "descendant":
+        table[5] = 3
+    elif case == "reparent":
+        current[3] = 99
+    elif case == "new":
+        current[5] = 4
+    api = TreeApi(table, current=current, images=images)
+    if case == "api":
+        monkeypatch.setattr(api, "is_console_host", lambda _: (_ for _ in ()).throw(OSError()))
+    with pytest.raises((AssertionError, OSError)), ExitStack() as handles:
+        _pin_chain(api, 1, 99, handles)
+    assert sorted(api.closed) == sorted(api.opened)
 
 
 def test_windows_tree_failure_diagnostics_are_bounded_metadata_only():
@@ -208,6 +347,9 @@ def test_windows_process_chain_rejects_changed_ancestry_and_closes_handles():
 
         def open_process(self, pid):
             return pid
+
+        def is_console_host(self, handle):
+            return False
 
     api = ChainApi()
     with pytest.raises(AssertionError, match="identity changed"), ExitStack() as handles:

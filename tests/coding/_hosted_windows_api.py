@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ctypes
+import ntpath
 import sysconfig
 import time
 
@@ -128,6 +129,26 @@ class WindowsObservationApi:
             raise ctypes.WinError(ctypes.get_last_error())
         return result == 0
 
+    def is_console_host(self, handle):
+        # Query the pinned process, not Toolhelp's basename or environment.
+        # Bound both Win32 buffers and reject failures/truncation.
+        image = ctypes.create_unicode_buffer(32768)
+        size = DWORD(len(image))
+        if not self.call("QueryFullProcessImageNameW",
+                         [HANDLE, DWORD, ctypes.POINTER(ctypes.c_wchar), ctypes.POINTER(DWORD)],
+                         ctypes.c_int, handle, 0, image, ctypes.byref(size)):
+            raise RuntimeError("native process image query failed")
+        if not 0 < size.value < len(image) or _wide_length(image.value) != size.value:
+            raise RuntimeError("native process image query incomplete")
+        directory = ctypes.create_unicode_buffer(32768)
+        length = self.call("GetSystemDirectoryW", [ctypes.POINTER(ctypes.c_wchar), DWORD],
+                           DWORD, directory, len(directory))
+        if not 0 < length < len(directory) or _wide_length(directory.value) != length:
+            raise RuntimeError("native system directory query incomplete")
+        return ntpath.normcase(image.value) == ntpath.normcase(
+            ntpath.join(directory.value, "conhost.exe")
+        )
+
     def open_thread(self, tid, pid):
         handle = self.call("OpenThread", [DWORD, ctypes.c_int, DWORD], HANDLE,
                            0x00100000 | 0x0800 | 0x0002 | 0x0008, False, tid)
@@ -165,6 +186,11 @@ class WindowsObservationApi:
     def resume(self, handle):
         if self.call("ResumeThread", [HANDLE], DWORD, handle) == 0xFFFFFFFF:
             raise ctypes.WinError(ctypes.get_last_error())
+
+
+def _wide_length(value):
+    # Win32 counts UTF-16 WCHARs, not Python Unicode code points.
+    return len(value.encode("utf-16-le", errors="surrogatepass")) // 2
 
 
 class SuspendedThreads:

@@ -1273,8 +1273,9 @@ the child an inherited ignore-Ctrl+C attribute. The witness reports its own
 native PID; pinned process ancestry plus console membership separates venv
 redirectors and console launchers from the detached Hosted service.
 
-The independent evidence supervisor assigns its non-breakaway Job before any
-pytest child starts. Every witness and fault fixture stays in that Job. Native
+The independent evidence supervisor intends to assign its non-breakaway Job
+before pytest starts. Native CI exposed a venv redirector admission gap that
+still needs correction, so full descendant ownership is not yet accepted. Native
 thread handles are registered before suspension; synchronous GetThreadContext
 confirmation precedes a bounded thread-snapshot fixed point. Cleanup only
 undoes confirmed owned suspend increments, retains ambiguous effects, and
@@ -1332,3 +1333,47 @@ is retained as `.artifacts/g17-ci-fence-fixes.xml`, not claimed all-green.
 The full architecture-documentation gate passed five tests in 48.26 seconds.
 On the first CI head, all three G16 native and all three G16 wheel jobs passed;
 those results preserve baseline evidence but do not establish G17 acceptance.
+
+### Native Process Topology And Remaining Windows Failures
+
+Windows native job `102033391999` on `2c9d93de` reached actual observation.
+Both the Hosted launch and the heartbeat fixture showed a Python redirector
+with two children: a console host and the executing Python process. The former
+single-chain observer rejected this topology before fault injection.
+
+The observer now retains at most one console sidecar separately from the main
+chain. It queries the pinned process handle's full executable path and compares
+it with the system API's directory plus `conhost.exe`; environment values and
+Toolhelp basenames cannot grant admission. Query failure or truncation,
+additional sidecars, descendants of a sidecar and changed ancestry/children
+are rejected. Every main-chain image is also checked, so a lone console-host
+child cannot become the suspension target. Final exit proof covers main chain
+and sidecar handles within the existing deadline, without killing a remaining
+sidecar to manufacture success. The heartbeat uses the same observer.
+
+The portable selection passed 28 tests in 11.18 seconds after adding full-path,
+API-failure, topology and physical-exit negative controls. An earlier run had
+26 passes and one assertion-message mismatch: the new child-set fence detected
+changed ancestry before the existing identity diagnostic. All identities are
+now checked before child sets; both checks remain required. Lifecycle review
+also found and closed the single-child console-host target ambiguity. These
+portable results do not establish native or wheel acceptance.
+
+Contract re-review additionally corrected native path-length validation to
+count UTF-16 code units, including non-BMP interpreter and system-directory
+paths. Architecture, lifecycle and contract re-review approved the final
+sidecar slice. Its combined observer, manifest, runner and architecture
+selection passed 63 tests in 24.83 seconds
+(`.artifacts/g17-sidecar-review.xml`); changed-file Ruff and diff checks passed.
+
+On the same CI head, Windows quality job `102033392342` finished with 852
+passes, 25 skips and three failures: legacy member creation/reattachment,
+normal supervised multigeneration cleanup, and real-child command settlement.
+The line-ending, frozen-fixture and pending-scan test corrections passed.
+The supervised normal test itself passed but cleanup recorded two active Job
+processes. Their identities remain to be proven; permitting an extra active
+process is not an acceptable fix. Direct invocation of the target venv's
+controlled base interpreter is the reviewed next approach to eliminating the
+redirector-before-Job race while preserving isolated startup and venv imports.
+Windows native rerun, full Windows/macOS wheel composition, exact-head matrix
+acceptance and mainline delivery remain open.
