@@ -30,6 +30,7 @@ def test_g17_partial_wheel_smoke_cannot_write_or_verify_release_report(tmp_path,
     assert reports == [tmp_path / f".artifacts/g17-wheel-smoke-{sys.platform}.xml"]
     command = next(argv for argv, _ in calls if "pytest" in argv)
     assert "-I" in command and "-k" in command
+    assert "--g17-installed-evidence" not in command
     assert f"pythonpath={tmp_path}" in command
     assert str(tmp_path / "tests/coding/test_hosted_workflow_terminal.py") in command
     assert not any("verify_evidence_manifest.py" in arg for argv, _ in calls for arg in argv)
@@ -50,6 +51,57 @@ def test_g17_release_refuses_missing_complete_selector_before_installation(tmp_p
     with pytest.raises(SystemExit) as error:
         runner.main(["--wheel", str(tmp_path / "absent.whl"), "--platform", sys.platform])
     assert error.value.code == 2
+
+
+@pytest.mark.parametrize("platform", ["darwin", "win32"])
+def test_g17_full_refuses_uncomposed_platform_before_installation(tmp_path, monkeypatch, platform):
+    selector = tmp_path / "tests/coding/test_hosted_installed_evidence.py"
+    selector.parent.mkdir(parents=True)
+    selector.touch()
+    monkeypatch.setattr(runner, "_ROOT", tmp_path)
+    monkeypatch.setattr(runner.sys, "platform", platform)
+    monkeypatch.setattr(runner, "_run", lambda *_, **__: pytest.fail("unexpected installation"))
+    with pytest.raises(SystemExit) as error:
+        runner.main(["--wheel", str(tmp_path / "absent.whl"), "--platform", platform])
+    assert error.value.code == 2
+
+
+def test_g17_full_uses_only_complete_selector_and_release_verifier(tmp_path, monkeypatch):
+    wheel = _source_wheel(tmp_path)
+    selector = tmp_path / "tests/coding/test_hosted_installed_evidence.py"
+    selector.parent.mkdir(parents=True)
+    selector.touch()
+    calls = []
+    monkeypatch.setattr(runner, "_ROOT", tmp_path)
+    monkeypatch.setattr(runner.sys, "platform", "linux")
+    monkeypatch.setattr(runner.shutil, "which", lambda _: "/fake/uv")
+    monkeypatch.setattr(runner, "_run", lambda argv, **kwargs: calls.append(argv))
+    monkeypatch.setattr(runner, "_verify_smoke", lambda _: pytest.fail("unexpected smoke"))
+    assert runner.main(["--wheel", str(wheel), "--platform", "linux"]) == 0
+    command, = [argv for argv in calls if "pytest" in argv]
+    assert str(selector) in command and "-k" not in command
+    assert "--g17-installed-evidence" in command
+    assert f"--junitxml={tmp_path / '.artifacts/g17-wheel-linux.xml'}" in command
+    verification, = [argv for argv in calls if any("verify_evidence_manifest.py" in item for item in argv)]
+    assert verification[-2:] == ["G17-WHEEL-LINUX", ".artifacts/g17-wheel-linux.xml"]
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_g17_wheel_selector_needs_explicit_collection_activation(enabled):
+    root = _SCRIPT.parents[2]
+    command = [
+        sys.executable, "-I", "-m", "pytest", "-c", str(root / "pyproject.toml"),
+        "-o", f"pythonpath={root}", "--collect-only", "-q",
+        str(root / "tests/coding/test_hosted_installed_evidence.py"),
+    ]
+    if enabled:
+        command.append("--g17-installed-evidence")
+    result = subprocess.run(command, cwd=root, capture_output=True, text=True, timeout=45)
+    assert result.returncode == (0 if enabled else 5), result.stdout + result.stderr
+    cases = [line for line in result.stdout.splitlines() if "::test_G17_installed_evidence[" in line]
+    assert len(cases) == (8 if enabled else 0), result.stdout
+    if not enabled:
+        assert "(8 deselected)" in result.stdout
 
 
 @pytest.mark.parametrize("fault", [None, "missing", "duplicate", "unexpected", "skipped", "failure", "error"])

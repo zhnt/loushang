@@ -101,9 +101,10 @@ or APP hello and retains its reserved connection slot.
 Discovery's semantic and installed wire paths and the shared picker are
 composed; the launch owner is now composed into the explicit Product client
 entry, with implementation re-review passed. A real installed stdio/local command test is not an
-isolated-wheel or terminal acceptance test. All eight native case families
-remain planned on each platform; subsequent slices must update the inventory
-and required-case manifest as those user paths are delivered.
+isolated-wheel or terminal acceptance test. The complete eight-family selector
+is now composed for Linux; macOS/Windows observers remain planned. Manifest
+`implemented` means an executable gate, not a passing result; actual run
+evidence is recorded separately below. Three-platform acceptance remains open.
 
 ### Reviewability Budget Supplement
 
@@ -1192,3 +1193,72 @@ cancellation, macOS/Windows durable observation, isolated-wheel composition
 of all eight required families and the three-platform CI matrix remain work
 to complete. All full manifest rows remain planned; neither this supplement
 nor the prior partial smoke closes G17.4.
+
+### Recovery Cancellation And Complete Linux Selector
+
+The recovery-cancellation fault now starts with a Session created by the actual
+installed foreground CLI. After that CLI stops, the test adds one offline
+UserMessage sentinel through SessionManager and retains canonical bytes and
+the decoded desired-state record. A fixed test child delegates to real service
+`main`, waits for the original `_recover_session` to reopen the actual Session,
+then holds its owner before recovery/hello publication. The real controller
+receives SIGINT and must exit 130 with unchanged native terminal mode, no
+terminal-entry invocation and no remaining child. This proves physical
+reclamation during recovery, not cooperative AppService settlement inside a
+forcibly terminated process.
+
+The recovered owner's complete SessionIdentity must match the decoded durable
+member, not a value inferred from its filename. Desired state and canonical
+history remain byte-identical after cancellation. A new actual installed CLI
+must then display the history sentinel that was never typed into that terminal;
+its durable mux identity and complete members remain equal, with no new
+canonical file and unchanged history bytes. Review corrected the initial
+`hosted-` filename/identity mismatch and strengthened the initially empty
+Session to this nonempty-history proof. The final focused native case passed
+in 57.87 seconds (`.artifacts/g17-recovery-history-native.xml`).
+
+`tests/coding/test_hosted_installed_evidence.py` now selects exactly eight G17
+family IDs. ENTRY combines real installed help/start/exit with the independent
+native observer. START-CANCEL runs both publication and recovery cancellation
+in separate private roots; either failure fails that family. Other families
+reuse the actual cwd/home picker, local lifetime, legacy aggregate and explicit
+synthetic-model Product interaction paths. Provenance assertions require wheel
+archive metadata and real import locations before recording `installation=wheel`;
+the outer runner additionally verifies the selected digest and exact package
+module sets and bytes. The full selector is not in editable-source test gates.
+
+Linux's manifest row is implemented because this gate is composed; full mode
+still rejects macOS/Windows before installing anything. Their manifest rows
+remain planned and the overall inventory remains partial. Five-case smoke
+keeps its independent selector, report and verifier. Runner/architecture
+boundary checks passed 22 tests in 1.08 seconds
+(`.artifacts/g17-full-selector-boundary.xml`); actual pytest collection found
+exactly the eight required IDs. `make lint-apphost` also passed.
+
+The first complete Linux isolated-wheel run passed all eight required families
+in 336.38 seconds. `.artifacts/g17-wheel-linux.xml` contains exactly the required
+IDs, `native_platform=linux`, `terminal_backend=posix-pty`, `installation=wheel`,
+and zero skips, failures or errors. The manifest verifier and outer runner both
+exited zero, including supervised descendant settlement and private installation
+cleanup. The independently built wheel's SHA-256 is
+`185525883b1b2a0d3c861b1ac969e2a7dce427aef4e580d8207388b9d63a6c34`;
+its Product modules are unchanged from the prior budget-fix wheel.
+
+Architecture re-review then corrected default test activation: ordinary
+editable suites must not execute a wheel-only selector. `tests/conftest.py`
+now deselects only this exact file unless `--g17-installed-evidence` is supplied;
+full runner supplies it, smoke does not. An explicit selector invocation
+without activation selects zero tests and exits 5, not a skipped/passing full
+report. The first full run had already started before this collection-only
+correction; its eight family implementations are unchanged. The activation
+boundary has separate collection and runner regression evidence.
+The final activation/runner/architecture selection passed 24 tests in 12.19
+seconds (`.artifacts/g17-selector-activation-final.xml`). Architecture,
+lifecycle and contract re-review approved the increment after the identity,
+history-proof and default-activation findings were corrected.
+
+This is local Linux wheel acceptance, not exact-head three-platform CI or
+mainline delivery. macOS/Windows guarded native observations and full wheel
+jobs remain pending; the active G17 objective is not complete. A passing run
+also does not establish the precise cause of the original intermittent
+before-ready failure recorded above.

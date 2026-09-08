@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import ctypes
+import json
 import os
 import runpy
 import signal
@@ -10,6 +12,7 @@ import subprocess
 import sys
 import time
 from contextlib import ExitStack
+from dataclasses import asdict
 from pathlib import Path
 from unittest.mock import patch
 
@@ -83,7 +86,7 @@ def test_fault_injection_rejects_changed_child_before_signalling(monkeypatch):
     assert not sent
 
 
-def _observe_entry(tmp_path, *, force_exit=False, cancel_start=False):
+def _observe_entry(tmp_path, *, force_exit=False, cancel_start=False, cancel_recovery=False):
     import pty
     import termios
 
@@ -97,21 +100,22 @@ def _observe_entry(tmp_path, *, force_exit=False, cancel_start=False):
         opened.append((master, termios.tcgetattr(slave)))
         return master, slave
 
-    executable = (
-        [sys.executable, "-I", str(Path(__file__).with_name("_hosted_start_cancel.py"))]
-        if cancel_start else [_installed()]
-    )
+    cancelled = cancel_start or cancel_recovery
+    script = "_hosted_recovery_cancel.py" if cancel_recovery else "_hosted_start_cancel.py"
+    executable = ([sys.executable, "-I", str(Path(__file__).with_name(script))]
+                  if cancelled else [_installed()])
     with patch.object(pty, "openpty", observe), foreground_terminal(
         [*executable, *_argv(tmp_path)], cwd=tmp_path,
         env=_terminal_environment(tmp_path), columns=100, rows=30,
     ) as driver:
         driver.read_until(
-            lambda out: ("G17 publication held" if cancel_start else "/exit ends app")
-            in strip_control_sequences(out), timeout=35
+            lambda out: (tmp_path / "recovery-held").is_file() if cancel_recovery else
+            ("G17 publication held" if cancel_start else "/exit ends app")
+            in strip_control_sequences(out), timeout=35,
         )
         (master, baseline), = opened
         active = termios.tcgetattr(master)
-        if cancel_start:
+        if cancelled:
             assert active == baseline, "unpublished startup must not enter raw mode"
         else:
             assert active != baseline, "ready must actually enter native terminal mode"
@@ -126,15 +130,16 @@ def _observe_entry(tmp_path, *, force_exit=False, cancel_start=False):
             # The actual service cannot process detach or EOF while stopped.
             # Leave Product grace/force budgets and its real Hosting backend intact.
             _stop_children(parent, children)
-        if cancel_start:
+        if cancelled:
             os.kill(parent, signal.SIGINT)
         else:
             driver.write("/exit\r")
         code = driver.wait(timeout=25)
-        assert code == (130 if cancel_start else 1 if force_exit else 0), driver.diagnostics
+        assert code == (130 if cancelled else 1 if force_exit else 0), driver.diagnostics
         if cancel_start:
             assert "G17 publication cancelled" in driver.raw_output
             assert "G17 late lease returned" in driver.raw_output
+        if cancelled:
             assert "G17 terminal invoked" not in driver.raw_output
             assert "hosted_interrupted" in driver.raw_output
             assert "/exit ends app" not in strip_control_sequences(driver.raw_output)
@@ -178,7 +183,9 @@ def _guarded(operation):
 
 
 def _scenario(root, case):
-    if case in {"real", "forced-exit", "start-cancel"}:
+    if case == "recovery-cancel":
+        _guarded(lambda: _observe_recovery_cancel(root))
+    elif case in {"real", "forced-exit", "start-cancel"}:
         _guarded(lambda: _observe_entry(
             root, force_exit=case == "forced-exit", cancel_start=case == "start-cancel",
         ))
@@ -220,7 +227,63 @@ def test_G17_TERMINAL_START_CANCEL_late_actual_lease_cannot_activate_terminal(tm
     _run_observation(tmp_path, "start-cancel")
 
 
-def _run_observation(tmp_path, case):
+@pytest.mark.skipif(sys.platform != "linux", reason="supplemental Linux independent reaper evidence")
+def test_G17_TERMINAL_START_CANCEL_durable_recovery_reclaims_and_can_relaunch(tmp_path):
+    _run_observation(tmp_path, "recovery-cancel", timeout=150)
+
+
+def _observe_recovery_cancel(root):
+    from loushang.ai.types import UserMessage
+    from loushang.appservice.continuity import decode_application_continuity_record
+    from loushang.coding.session_manager import SessionManager
+
+    _recovery_cli(root, create=True)
+    historical = "G17 history survives recovery cancellation without replay"
+    (canonical,) = (root / "cwd").glob("*.jsonl")
+
+    async def seed_history():
+        manager = await SessionManager.open(canonical)
+        try:
+            await manager.append_message(UserMessage(role="user", content=historical, timestamp=1.0))
+        finally:
+            await manager.dispose_runtime_profile()
+
+    asyncio.run(seed_history())
+    history_bytes = canonical.read_bytes()
+    (record,) = (root / "application").glob("*.json")
+    snapshot = record.read_bytes()
+    (mux,) = decode_application_continuity_record(snapshot).mux_spaces
+    (member,) = mux.members
+    _observe_entry(root, cancel_recovery=True)
+    assert json.loads((root / "recovery-held").read_text()) == asdict(member.session)
+    assert record.read_bytes() == snapshot, "cancelled recovery must not rewrite desired state"
+    assert canonical.read_bytes() == history_bytes, "cancelled recovery must preserve history"
+    _recovery_cli(root, create=False, historical=historical)
+    (reopened,) = decode_application_continuity_record(record.read_bytes()).mux_spaces
+    assert reopened.mux_space_id == mux.mux_space_id
+    assert reopened.members == mux.members
+    assert tuple((root / "cwd").glob("*.jsonl")) == (canonical,)
+    assert canonical.read_bytes() == history_bytes
+
+
+def _recovery_cli(root, *, create, historical=None):
+    environment = _terminal_environment(root)
+    with foreground_terminal(
+        [_installed(), *_argv(root)], cwd=root, env=environment, columns=100, rows=30,
+    ) as driver:
+        driver.read_until(lambda out: "/exit ends app" in strip_control_sequences(out), timeout=35)
+        if create:
+            driver.write("/new cwd Recovery sentinel\r")
+        driver.read_until(lambda out: "*1" in strip_control_sequences(out), timeout=20)
+        driver.read_until(lambda out: "Recovery sentinel" in strip_control_sequences(out), timeout=10)
+        if historical:
+            driver.read_until(lambda out: historical in strip_control_sequences(out), timeout=20)
+        driver.write("/exit\r")
+        assert driver.wait(timeout=25) == 0, driver.diagnostics
+        assert driver.diagnostics.termination is None
+
+
+def _run_observation(tmp_path, case, *, timeout=90):
     repository = Path(__file__).resolve().parents[2]
     root = tmp_path / "observation"
     root.mkdir()
@@ -236,6 +299,6 @@ def _run_observation(tmp_path, case):
         [sys.executable, "-I", "-m", "pytest", "-c", str(repository / "pyproject.toml"),
          "-o", f"pythonpath={repository}", "--import-mode=importlib", str(probe),
          "-q", "-m", "not live"],
-        cwd=tmp_path, environment=environment, timeout=90,
+        cwd=tmp_path, environment=environment, timeout=timeout,
     )
     assert (root / "observer.settled").exists()

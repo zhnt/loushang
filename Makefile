@@ -256,6 +256,8 @@ APPHOST_TEST_PATHS := \
 	tests/architecture/test_durable_hosted_application_continuity_g13_design.py \
 	tests/architecture/test_durable_hosted_application_continuity_g13.py
 APPHOST_LINT_SUPPORT := \
+	tests/coding/_hosted_recovery_cancel.py \
+	tests/coding/test_hosted_installed_evidence.py \
 	tests/coding/_hosted_start_cancel.py \
 	tests/dev/_evidence_branch_fixture.py \
 	scripts/dev/_evidence_process.py \
@@ -524,7 +526,7 @@ check-appservice: lint-appservice typecheck-appservice test-appservice
 lint-appservice:
 	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/_evidence_process.py scripts/dev/_evidence_posix.py scripts/dev/_evidence_windows.py tests/dev/_evidence_branch_fixture.py
 	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/run_g17_installed_evidence.py
-	uv --cache-dir .uv-cache run --extra dev ruff check tests/coding/_hosted_client_debt.py tests/coding/_hosted_start_cancel.py tests/coding/_hosted_terminal.py
+	uv --cache-dir .uv-cache run --extra dev ruff check tests/coding/_hosted_client_debt.py tests/coding/_hosted_start_cancel.py tests/coding/_hosted_recovery_cancel.py tests/coding/test_hosted_installed_evidence.py tests/coding/_hosted_terminal.py
 	uv --cache-dir .uv-cache run --extra dev ruff check $(APPSERVICE_SOURCES) $(APPSERVICE_TEST_PATHS) tests/coding/_hosted_product_child.py tests/coding/_local_product_child.py scripts/dev/run_g16_installed_evidence.py scripts/dev/verify_evidence_manifest.py tests/coding/test_mux_native_evidence.py tests/coding/test_mux_installed_evidence.py
 
 typecheck-appservice:

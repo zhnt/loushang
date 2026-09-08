@@ -19,7 +19,7 @@
         "terminal_backend": "posix-pty",
         "installation": "wheel"
       },
-      "status": "planned"
+      "status": "implemented"
     },
     "G17-WHEEL-DARWIN": {
       "junitPath": ".artifacts/g17-wheel-darwin.xml",

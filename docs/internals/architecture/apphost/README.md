@@ -190,7 +190,10 @@ independent three-perspective design review for bounded Session discovery, the
 shared shell picker, A0.5 foreground launch ownership and installed three-platform
 acceptance. Discovery values/codec, profiles, Product reads, AppService views and
 the shared picker are implemented. The optional launch owner is composed into
-the explicit foreground client; entry re-review passed and three-platform acceptance remains pending.
+the explicit foreground client; entry re-review passed. G17.4's complete eight-family
+Linux isolated-wheel run has passed with zero skips. macOS/Windows native observers,
+three-platform CI acceptance and delivery remain pending; the default editable
+suite does not activate the dedicated wheel-only selector.
 The activation status above is unchanged.
 
 ## Target

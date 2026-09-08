@@ -179,6 +179,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("the complete G17 installed case selector is not implemented yet")
     if args.platform != sys.platform:
         parser.error("evidence platform must match the executing native platform")
+    if not args.smoke and sys.platform != "linux":
+        parser.error("complete Darwin/Windows native observers are not composed yet")
     if args.wheel_dir is not None:
         wheels = tuple(args.wheel_dir.resolve(strict=True).glob("loushang-*.whl"))
         if len(wheels) != 1:
@@ -297,7 +299,8 @@ def main(argv: list[str] | None = None) -> int:
                         "-k", "LOCAL or LEGACY or PICKER or PRODUCT",
                     ]
                     if args.smoke else
-                    [str(_ROOT / "tests/coding/test_hosted_installed_evidence.py")]
+                    [str(_ROOT / "tests/coding/test_hosted_installed_evidence.py"),
+                     "--g17-installed-evidence"]
                 ),
                 f"--basetemp={root / 'test-temp'}",
                 f"--junitxml={_ROOT / report}",

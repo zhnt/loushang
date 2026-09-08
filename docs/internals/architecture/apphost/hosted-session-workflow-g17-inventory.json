@@ -28,7 +28,8 @@
     {"id": "foreground.launcher", "source": "src/loushang/apphost/launcher.py", "status": "implemented", "owner": "apphost", "requirements": ["G17-FOREGROUND", "G17-LIFETIMES"]},
     {"id": "foreground.command", "source": "src/loushang/coding/cli/hosted_client.py", "status": "implemented", "owner": "coding", "requirements": ["G17-FOREGROUND", "G17-INSTALLED", "G17-REGRESSION"]},
     {"id": "installed.evidence", "source": "scripts/dev/run_g17_installed_evidence.py", "status": "partially-composed", "owner": "delivery", "requirements": ["G17-INSTALLED", "G17-REGRESSION"]},
-    {"id": "evidence.legacy-family", "source": "tests/coding/test_hosted_legacy_evidence.py", "status": "implemented-uncomposed", "owner": "delivery", "requirements": ["G17-INSTALLED", "G17-REGRESSION"]},
+    {"id": "evidence.legacy-family", "source": "tests/coding/test_hosted_legacy_evidence.py", "status": "partially-composed", "owner": "delivery", "requirements": ["G17-INSTALLED", "G17-REGRESSION"]},
+    {"id": "evidence.family-selector", "source": "tests/coding/test_hosted_installed_evidence.py", "status": "partially-composed", "owner": "delivery", "requirements": ["G17-INSTALLED", "G17-REGRESSION", "G17-LIFETIMES"]},
     {"id": "evidence.linux-native-observer", "source": "tests/coding/test_hosted_entry_evidence.py", "status": "partially-composed", "owner": "delivery", "requirements": ["G17-INSTALLED", "G17-FOREGROUND", "G17-LIFETIMES"]}
   ],
   "legacyProfiles": {

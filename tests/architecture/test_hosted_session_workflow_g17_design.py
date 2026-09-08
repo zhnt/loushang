@@ -171,7 +171,7 @@ def test_G17_DESIGN_requires_own_installed_cases_on_each_native_platform() -> No
         assert set(report["requiredCaseIds"]) == required
         assert len(report["requiredCaseIds"]) == len(required)
         assert report["minimumTests"] >= len(required)
-        assert report["status"] == "planned"
+        assert report["status"] == ("implemented" if platform == "linux" else "planned")
         assert report["requiredProperties"] == {
             "native_platform": platform,
             "installation": "wheel",
