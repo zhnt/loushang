@@ -1,7 +1,7 @@
 # AppService Hosted Boundary With An Embedded TUI
 
 [Architecture](../README.md) · [Drafts](README.md) ·
-[Future Architecture v3](future-loushang-architecture-v3.md) ·
+[Future Architecture V3.1](future-loushang-architecture-v3.1.md) ·
 [Application Service Refactor](application-service-refactor.md) ·
 [AppHost Top-Level Placement](apphost-top-level-placement.md) ·
 [AppHost A0 Contract Baseline](apphost-contract-baseline-a0.md) ·
@@ -28,7 +28,7 @@
   - `tests/coding/test_rpc_controls.py`
   - `tests/coding/test_rpc_wire_playback.py`
 
-This proposed Target plan clarifies one deployment choice in the v3 target
+This proposed Target plan clarifies one deployment choice in the V3.1 target
 architecture:
 
 - the default native TUI remains an embedded, in-process Product surface and
@@ -124,10 +124,10 @@ or a daemon. A future remote TUI mode may use `AppClient`, but that is a
 separate hosted composition selected at startup rather than a replacement for
 the embedded fast path.
 
-The optional in-process `AppClient` described by v3 remains available when a
-Product explicitly elects an AppClient-backed profile. This plan declines that
-option for the default native TUI; it does not remove the option from the
-architecture.
+The in-process `AppClient` described by V3.1 remains available inside an
+explicitly hosted profile. It does not turn HarnessTUI Embedded into an
+AppService/AppHost client or grant it attachment/controller lifecycle. This
+plan keeps the default native TUI on the direct embedded path.
 
 CodingTUI and CodingApp may be independently installable Host/Presentation
 Profile Plugins while remaining surfaces of the same Coding Product. Product
@@ -136,7 +136,8 @@ policy, and continuity—not by UI technology.
 
 AppService is the hosted application coordinator. It is not a universal UI
 backend, a Capability provider, a Plugin manager, or a second Harness runtime.
-AppServer is the hosted server/connection runtime profile around AppService.
+AppServer owns hosted endpoint, admission and connection mechanics around an
+injected semantic client; it does not own AppService semantics.
 Hosting supplies optional OS process mechanisms to the outer Platform Host; it
 is not part of AppService and does not own AppServer listeners or connections.
 
