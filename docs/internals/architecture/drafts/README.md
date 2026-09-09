@@ -31,7 +31,9 @@ Current live references:
 
 Standalone drafts:
 
+- [GUI 原生开发交接：Windows / macOS](gui-native-development-handoff.md)
 - [Loushang GUI Requirements](gui-requirements.md)
+- [GUI 系统上下文与边界合同](gui-system-context-and-boundary-contract.md)
 - [Loushang GUI Engineering Bootstrap Plan](gui-engineering-bootstrap-plan.md)
 - [Loushang GUI Engineering Bootstrap Review](gui-engineering-bootstrap-review.md)
 - [Foundation Refactor Plan](foundation-refactor-plan.md)

@@ -25,6 +25,8 @@ GUI 文档展示和 GUI playback；具体工程建设尚未执行。本文不安
 
 用户结果、功能与质量验收口径见 [GUI 需求](gui-requirements.md)；本文负责
 工程准备与交付顺序，不能以计划替代需求确认或正式架构设计。
+Windows/macOS 接手机器从 [原生开发交接](gui-native-development-handoff.md) 开始，
+其中提供 GitHub 获取方式、阅读顺序、服务能力基线与首轮实施切片。
 
 ## 1. 决策与交付范围
 
@@ -65,6 +67,29 @@ GUI 是 Product-neutral 的图形客户端承载面，Coding 是首个产品适�
 当前协议不承诺全局历史 Session 发现、图片上传、完整工具/Diff/Artifact 的结构化
 投影或同 mux 多控制者。初版文档阅读可以使用本地固定样例；真实产品缺失的数据
 必须由对应 owner 增量扩展契约，不能包装成通用任意 payload 绕过现有闭合校验。
+
+### 2.1 服务端就绪复核：2026-09-09
+
+上节保留原始 `3c06f5b9` 基线。当前本地及远端 main 已到 `9bc69361`；以下更新
+取代旧基线中的会话发现缺口判断，其余未交付能力不因此升级为已实现。
+
+| 能力 | 当前证据与状态 | GUI 可以如何推进 |
+| --- | --- | --- |
+| G16 同机连接、快照、事件、控制与重连 | 已在 main；既有合同继续适用 | B2 可通过当前完成式 `start_turn` 接入，事件与中断并行处理 |
+| G17 受控会话发现和显式 Hosted 工作流 | [PR #577](https://github.com/zhnt/loushang/pull/577) 已合并；[验收记录](../apphost/hosted-session-workflow-g17-acceptance-record.md) 包含 Linux/macOS/Windows 原生与独立安装证据 | 评估可选 `SessionDiscoveryClientV1` 的有界 cwd/home 列表；真实使用须显式选择 `local-detachable-discovery/v1` 并在 C1 更新 GUI 接入约束，旧 G16 profile 不提供该能力 |
+| 稳定执行身份与生命周期基础机制 | [任务 #576](https://github.com/zhnt/loushang/issues/576) 仍开放；任务分支 `0c58b02b` 含 `68add836` 的可选值、Product port、执行 guard、复合快照及确定性测试，尚未合入 main | 可作为设计输入；不能当成已对 GUI 开放的执行 API |
+| 执行提交、submission 去重、查询、定向中断的客户端协议 | #576 明确留给后续增量；真实 Coding execution port 和生产装配尚未启用 | execution 模式的真实接入等待服务端交付；Mock 明确标为未来合同样例 |
+| Rust/TypeScript 客户端兼容与 GUI 原生回放 | 尚无 GUI 工程和 C1/L2 实证 | 进入 GUI 组件设计、原生工程基线与 Mock playback，不等待全部后端扩展 |
+
+最新 [main 定时检查](https://github.com/zhnt/loushang/actions/runs/34286885467)
+整体失败，根失败位于 Windows shell 的 PLC9B native quarantine 步骤；该次所有
+AppService G16/G17 原生、wheel 与三平台 quality jobs 成功。此处只记录检查
+状态，不推断失败根因，也不把服务器的三平台通过等同于 GUI 已通过。#576 分支
+另有未解决的 G10 canary 超时记录；其旧局部通过不能替代整条执行服务交付。
+
+开工结论：GUI 方案、独立原生界面与离线回放可以立即推进；当前 G16/G17 与
+未来 execution 接入分别验收。C1 必须先明确所选服务能力及版本，不能把两种
+启动响应语义混成同一接口。GUI 自身的性能和恢复证据仍需实际取得。
 
 ## 3. Proposed：职责与依赖
 
@@ -189,6 +214,28 @@ Linux、macOS、Windows 均可承担完整 GUI 任务：修改 Rust/React、启�
   每个系统至少建立一个具名开发基线；其他 CPU 架构单列状态，不把一个系统
   的单架构结果扩展为全架构支持。环境缺口留在对应平台任务中跟踪。
 
+### 4.2 主开发环境与交接：2026-09-09 用户方向
+
+GUI 的主要实现、交互调试与 playback 工作放在 **Windows 或 macOS 的真实图形
+环境机器**。三平台支持范围保持不变；Linux 可继续承担服务端开发、设计、静态
+检查和其平台验证。主开发机器尚未指定，本节不声称已连接或初始化任何新机器。
+
+交接先完成需求/边界与候选组件设计、可运行切片清单和仓库文档同步；原生 GUI
+实现从选定机器开始，不等 Linux 实现完毕才移交。在本机独立 clone/worktree
+中按锁文件安装工具与依赖，使用各机本地配置和凭据，禁止复制 Linux 的 `.venv`、
+`node_modules` 或 Rust 编译产物充当 Windows/macOS 环境。
+
+GUI-B0 记录实际 OS/CPU、Rust/Node、系统构建依赖、图形会话与自动化驱动配置。
+GUI-B1 的第一个原生切片就提供同一场景的本机回放入口：输入 → 流式输出 →
+中断 → 文档阅读 → 逐步断言与失败截图；至少一条经过真实 Rust IPC。此后每个
+交互切片在主开发机器边开发边回放，输入法、焦点、剪贴板与缩放另做原生检查。
+driver 是否适用必须在所选机器验证，不把浏览器 Mock 通过算成桌面通过。
+
+B2 在这台机器运行本机 Python 服务接入真实协议；新 execution API 只有在
+服务端交付后启用。另一桌面平台和 Linux 按原有阶段补齐各自必需证据，单机
+开发顺畅不免除三平台验证。首轮只运行 GUI 相关静态/状态/回放检查；协议改变
+才增加对应服务契约检查，不因桌面布局修改重跑所有 Python 包。
+
 ## 5. 三平台开发布局与 SSH/Linux 工作方式
 
 **Linux、macOS、Windows 均为正式开发环境；SSH/Linux 是可选的主工作方式。**
@@ -237,6 +284,10 @@ GUI-B2 固定使用 `local-detachable/v1`。Mock 阶段不依赖连接；G14 如
 跨语言契约准备由 AppServer owner 负责，GUI 消费：
 
 - 完整请求/响应/快照/事件/错误 payload 定义，以及与 reference codec 的一致性；
+- 由协议 owner 维护一个带版本的完整合同源，生成所需 JSON Schema、Rust/TypeScript
+  类型或绑定，避免各语言手写同一字段集合；具体生成路径在 C1 选择。生成产物
+  与合同版本/摘要绑定，只在相关合同变化时检查漂移；现有宽泛 payload Schema
+  补齐前不能直接用来声称类型完整，生成类型也不能替代下面的行为测试向量；
 - Rust 与 Python 双向测试向量：合法值、重复字段、未知字段、无效 UTF-8、越界
   整数、消息上限和错误值；类型生成不能替代 codec 行为测试；
 - framing、hello/profile、认证 transcript、完整性序号、超时、连接关闭；
@@ -250,6 +301,11 @@ GUI-B2 固定使用 `local-detachable/v1`。Mock 阶段不依赖连接；G14 如
 UI-facing port 隐藏 transport/profile/auth 细节；Tauri bridge 只暴露所需操作。
 浏览器 Mock 与真实 bridge 使用相同的 UI 值模型和行为样例。Rust 网络/认证模块
 不依赖 React，不把浏览器可访问凭据作为通信捷径。
+
+GUI-B1 的界面切片同时覆盖会话状态总览、文档/Diff 阅读时控制可达，以及明确的
+项目上下文与会话归属，按 [需求](gui-requirements.md) 的 GUI-FR-014 和 FR-007/010
+验收。结构化轮次/工具条目、行级反馈、系统通知按 GUI-FUT-001/002/003 后续推进；
+不将尚未提供的服务能力加到 Mock 并冒充真实接入。
 
 GUI 断开时展示 disconnected；终止当前 event reader，拒绝旧连接/attachment
 generation 的迟到事件。重新连接使用新认证、attachment 和快照屏障。不得自动
