@@ -10,6 +10,7 @@
 - Implementation status: not-started
 - Owner: Loushang architecture / future GUI requirement owner
 - Source baseline: `3c06f5b9`, inspected 2026-09-08
+- Execution contract update: `d89c4c9f` on `main` (PR #580), inspected 2026-09-09
 - Design stage: requirements; placement and component design follow separately
 
 本文是第一步需求设计，描述用户结果、质量约束和验收条件。具体组件、目录、
@@ -132,19 +133,31 @@ GUI-NFR-003 的 100 ms 来自现有工程方案，是待校准的初始目标，
 | ID | 约束 | 对需求设计的影响 |
 | --- | --- | --- |
 | GUI-CON-001 | 首期采用 Tauri/Rust + React/TypeScript，与现有 Python 运行时同仓协作 | 技术方向已选；具体组件、数据流与边界仍按后续设计完成 |
-| GUI-CON-002 | 首个真实连接使用本机 G16 `local-detachable/v1` | 各平台 GUI 与服务同机；跨机器 Git 协作不等于远程 AppClient 支持 |
+| GUI-CON-002 | 首个真实连接显式使用本机 `local-detachable-execution/v1`；需要 G17 会话发现时使用 `local-detachable-discovery-execution/v1` | 继承 G16 本机认证、控制权与恢复边界；C1 核对 profile/capabilities/版本，不静默回退旧 start；各平台 GUI 与服务同机 |
 | GUI-CON-003 | GUI 消费既有 Product/AppService 的执行、审批与 Session 事实 | GUI 退出、画面回放和界面缓存不能重新定义执行生命周期或成为事实存储权威 |
 | GUI-CON-004 | 浏览器自动化由后续产品能力/插件负责，采用独立浏览器窗口 | GUI 可展示结果；不会因新增文档 pane 而拥有浏览器执行或会话寿命 |
 | GUI-CON-005 | 开发者可运行与最终用户可安装是不同交付 | 首期验证开发者构建；公开发布、后端打包、签名、安装与更新另立交付 |
 
 当前 [AppClient](../../../../src/loushang/appserver/client.py) 已有 mux/member、
 快照、turn、交互响应与事件操作；[G16](../appserver/detachable-local-workspace-g16.md)
-明确本机身份、控制权与恢复语义。完整跨语言 payload、认证和本机记录兼容
-仍需 C1 的独立证据。协议中未提供的能力不能通过读取 Python 内部对象补齐。
+明确本机身份、控制权与恢复语义。[PR #580](https://github.com/zhnt/loushang/pull/580)
+已交付可选的 `loushang.execution/v1` 提交、查询、定向中断、复合快照和恢复参考；
+真实 Coding 装配需要显式启用，默认行为保持不变。旧 `start_turn` 仍等待完成，
+不将其 Ack 改成接收确认。具体 profile 选择见 [工程计划 §6](gui-engineering-bootstrap-plan.md)。
+完整跨语言 payload、认证和本机记录兼容仍需 C1 的独立证据。
+协议中未提供的能力不能通过读取 Python 内部对象补齐。
+
+GUI-FR-004/005/009/014 在 execution 模式下消费明确的 accepted/running/终态，
+无输出也能显示运行；成功来自服务结果，等待取消和连接断开不等于执行停止。
+启动响应丢失时以原提交身份查询，显式重试保持精确文本与提交身份；服务实例
+变化时保留未知结果，不自动重放。该行为属于首期执行接入，消息/工具条目身份
+和跨服务重启的执行恢复仍是后续能力，详见边界合同 BC-004/006。
 
 | 需求相关缺口 | 首期处理 | 后续责任与退出条件 |
 | --- | --- | --- |
-| 全局历史 Session 发现 | GUI-FR-002 只展示已连接服务可见且可操作的集合；2026-09-09 main 已提供 G17 有界 cwd/home 候选发现，但旧 G16 profile 不提供 | 可选 G17 能力须在 C1 显式选择 discovery profile 并更新接入约束；全局跨 scope 列表仍不承诺，Mock 历史列表不算真实接入 |
+| 全局历史 Session 发现 | GUI-FR-002 只展示已连接服务可见且可操作的集合；G17 已提供有界 cwd/home 候选发现，但仅 execution profile 不含发现能力 | 按 GUI-CON-002 显式选择 discovery + execution 组合 profile 并取得 C1/B2 证据；全局跨 scope 列表仍不承诺，Mock 历史列表不算真实接入 |
+| GUI execution 跨语言与原生接入 | 服务端已交付，首期按已提交 codec、JSON 样例和恢复参考设计 Mock 与真实客户端 | AppServer/GUI owners 完成 C1 的独立兼容测试与 B2 三平台闭环；Python 或 PR CI 通过不替代 GUI 证据 |
+| 跨服务重启的执行登记与去重恢复 | 提交键保存到服务实例结束，实例变化保留未知结果；不自动重试或从 Session 历史推断执行登记 | 另行设计持久化、保存期限与重启保证；首期客户端遵守 `restartRecovery: false` |
 | 完整工具/Diff/图片/Artifact 的结构化投影 | GUI-FR-007 先用本地样例验证渲染，GUI-FR-008 支持用户选定本地文档 | 产品与协议 owner 提供明确来源/类型/大小/权限合同后，再验收真实结果 |
 | 远程 AppService 与远端浏览器可视访问 | 首期同机服务；远端 GUI/浏览器通过远程图形会话观察 | 新连接 profile 和权限边界需独立设计 |
 | 发布包的 Python 后端分发 | 使用各机显式配置的开发后端 | 产品发布范围另行确定，不用开发机 `.venv` 充当发行包 |
@@ -169,7 +182,7 @@ GUI-NFR-003 的 100 ms 来自现有工程方案，是待校准的初始目标，
 
 | ID | 候选用户结果 | 进入实施所需条件 |
 | --- | --- | --- |
-| GUI-FUT-001 | 按轮次查看消息、工具执行和文件变更，并从结果定位对应执行条目 | Product/AppService 提供稳定的轮次/条目身份、状态与引用；界面分组不能假装服务已有这些字段 |
+| GUI-FUT-001 | 按轮次查看消息、工具执行和文件变更，并从结果定位对应执行条目 | 已交付 execution ID 可关联完整执行；消息/工具条目 ID、文件变更引用和富条目投影仍需 Product/AppService 扩展，界面分组不能假装已有这些字段 |
 | GUI-FUT-002 | 针对文档或 Diff 的具体位置提交反馈并跟进修正 | 明确来源版本、行/片段定位、失效处理及产品命令；反馈提交与立即执行修改分开 |
 | GUI-FUT-003 | 后台运行时收到可配置的任务完成、待审批/回答通知 | 三平台系统通知准入与隐私策略；点击回到会话后重新校验交互有效性，不从通知直接授予旧权限 |
 
