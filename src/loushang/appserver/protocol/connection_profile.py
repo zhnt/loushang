@@ -17,6 +17,8 @@ class AppConnectionProfileV1(str, Enum):
     LOCAL = LOCAL_PROFILE_V1
     STDIO_DISCOVERY = "foreground-stdio-discovery/v1"
     LOCAL_DISCOVERY = "local-detachable-discovery/v1"
+    LOCAL_EXECUTION = "local-detachable-execution/v1"
+    LOCAL_DISCOVERY_EXECUTION = "local-detachable-discovery-execution/v1"
 
 
 _HELLOS = {
@@ -31,10 +33,29 @@ _HELLOS = {
 }
 
 
-def connection_hello(profile: AppConnectionProfileV1) -> bytes:
+def connection_hello(
+    profile: AppConnectionProfileV1, *, service_instance_id: str | None = None,
+) -> bytes:
     if type(profile) is not AppConnectionProfileV1:
         raise ValueError("invalid application connection profile")
+    if supports_execution(profile):
+        if service_instance_id is None:
+            raise ValueError("execution hello requires a service instance")
+        from ..execution.codec import execution_hello
+
+        return execution_hello(profile.value, service_instance_id)
+    if service_instance_id is not None:
+        raise ValueError("legacy hello cannot carry execution identity")
     return _HELLOS[profile]
+
+
+def supports_execution(profile: AppConnectionProfileV1) -> bool:
+    if type(profile) is not AppConnectionProfileV1:
+        raise ValueError("invalid application connection profile")
+    return profile in {
+        AppConnectionProfileV1.LOCAL_EXECUTION,
+        AppConnectionProfileV1.LOCAL_DISCOVERY_EXECUTION,
+    }
 
 
 def supports_session_discovery(profile: AppConnectionProfileV1) -> bool:
@@ -43,6 +64,7 @@ def supports_session_discovery(profile: AppConnectionProfileV1) -> bool:
     return profile in {
         AppConnectionProfileV1.STDIO_DISCOVERY,
         AppConnectionProfileV1.LOCAL_DISCOVERY,
+        AppConnectionProfileV1.LOCAL_DISCOVERY_EXECUTION,
     }
 
 

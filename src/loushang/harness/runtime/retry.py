@@ -47,6 +47,7 @@ class RetryCoordinator(Generic[C]):
         self._cancel_handle: C | None = None
         self._delay_active = False
         self._continuation_task: asyncio.Task[None] | None = None
+        self._retained_continuations: set[asyncio.Task[None]] = set()
 
     @property
     def attempt(self) -> int:
@@ -91,6 +92,31 @@ class RetryCoordinator(Generic[C]):
             return
         if isinstance(future, asyncio.Future):
             await future
+
+    async def settle(self, *, cancel_pending: bool = False) -> None:
+        """Join retry continuations even after their waiter has been resolved."""
+        cancelled: set[asyncio.Task[None]] = set()
+        if cancel_pending:
+            self.abort()
+        while self._retained_continuations:
+            tasks = tuple(self._retained_continuations)
+            if cancel_pending:
+                for task in tasks:
+                    if task not in cancelled:
+                        cancelled.add(task)
+                        if not task.cancelling():
+                            task.cancel()
+            results = await asyncio.gather(
+                *(asyncio.shield(task) for task in tasks), return_exceptions=True
+            )
+            for result in results:
+                if isinstance(result, Exception):
+                    raise result
+
+    def _observe_continuation(self, task: asyncio.Task[None]) -> None:
+        self._retained_continuations.discard(task)
+        if not task.cancelled():
+            task.exception()
 
     async def finish(self, outcome: RetryOutcome) -> None:
         try:
@@ -170,6 +196,8 @@ class RetryCoordinator(Generic[C]):
         attempt = self._attempt
         task = asyncio.create_task(self._run_continuation(attempt, continue_run))
         self._continuation_task = task
+        self._retained_continuations.add(task)
+        task.add_done_callback(self._observe_continuation)
         return task
 
     async def _run_continuation(
@@ -209,7 +237,8 @@ class RetryCoordinator(Generic[C]):
         if task is None or task.done() or task is asyncio.current_task():
             return
         self._continuation_task = None
-        task.cancel()
+        if not task.cancelling():
+            task.cancel()
 
     def _resolve_and_reset(self) -> None:
         continuation_task = self._continuation_task
@@ -218,6 +247,7 @@ class RetryCoordinator(Generic[C]):
             continuation_task is not None
             and continuation_task is not asyncio.current_task()
             and not continuation_task.done()
+            and not continuation_task.cancelling()
         ):
             continuation_task.cancel()
 

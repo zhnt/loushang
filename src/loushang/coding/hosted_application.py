@@ -54,6 +54,7 @@ from loushang.appservice.discovery_ports import (
     require_admitted_scopes,
     require_discovery_context,
 )
+from loushang.appservice.execution_service import HostedExecutionServiceBindingV1
 from loushang.appservice.ports import (
     HostedSessionResolutionErrorV1,
     HostedSessionResolutionFailureV1,
@@ -111,9 +112,12 @@ class CodingForegroundHostedApplicationRequestV1:
     service_close_timeout_seconds: float = 10.0
     discovery: HostedSessionDiscoveryBindingV1 | None = field(default=None, repr=False)
     admitted_scopes: tuple[HostedSessionDiscoveryScopeV1, ...] | None = None
+    execution: HostedExecutionServiceBindingV1 | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         require_discovery_context(self.discovery, CODING_PRODUCT_ID, self.generation_id)
+        if self.execution is not None and type(self.execution) is not HostedExecutionServiceBindingV1:
+            raise TypeError("invalid Coding execution activation")
         require_admitted_scopes(self.admitted_scopes, CODING_PRODUCT_ID)
         if self.discovery is not None and self.discovery.scopes != self.admitted_scopes:
             raise ValueError("discovery and resolver scopes must agree")
@@ -414,7 +418,7 @@ class _LeasedCodingHostedBinding:
 class CodingAppHostHostedSessionResolverV1:
     """Resolve G11 Session requests exclusively through canonical AppHost routes."""
 
-    __slots__ = ("_operation_id", "_profile_id", "_runtime", "_sessions", "_scopes")
+    __slots__ = ("_operation_id", "_profile_id", "_runtime", "_sessions", "_scopes", "_execution")
 
     def __init__(
         self,
@@ -424,12 +428,16 @@ class CodingAppHostHostedSessionResolverV1:
         profile_id: str,
         operation_id_factory: Callable[[], str],
         admitted_scopes: tuple[HostedSessionDiscoveryScopeV1, ...] | None = None,
+        execution: bool = False,
     ) -> None:
         if type(runtime) is not AppHostRuntimeV1:
             raise TypeError("Coding hosted resolver AppHost Runtime is invalid")
         if not callable(operation_id_factory):
             raise TypeError("Coding hosted resolver operation factory is invalid")
         require_admitted_scopes(admitted_scopes, CODING_PRODUCT_ID)
+        if type(execution) is not bool:
+            raise TypeError("invalid Coding execution activation")
+        self._execution = execution
         self._runtime = runtime
         self._sessions = sessions
         self._profile_id = profile_id
@@ -461,6 +469,10 @@ class CodingAppHostHostedSessionResolverV1:
             )
             if not _identity_matches_open(request, wrapper.identity):
                 raise ValueError("Coding hosted binding identity mismatch")
+            if self._execution:
+                from .hosted_execution import create_leased_coding_execution_session
+
+                return create_leased_coding_execution_session(binding, wrapper)
             return CodingHostedSessionV1(wrapper)
         except BaseException:
             if wrapper is not None:
@@ -550,6 +562,7 @@ async def create_coding_foreground_hosted_application(
             profile_id=request.profile_id,
             operation_id_factory=request.operation_id_factory,
             admitted_scopes=request.admitted_scopes,
+            execution=request.execution is not None,
         )
         return create_hosted_application_runtime(
             _coding_hosted_application_request(
@@ -619,6 +632,7 @@ def _coding_hosted_application_request(
         service_close_timeout_seconds=request.service_close_timeout_seconds,
         service_id_factory=request.service_id_factory,
         discovery=request.discovery,
+        execution=request.execution,
     )
 
 
