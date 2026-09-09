@@ -206,7 +206,6 @@ APPHOST_TEST_PATHS := \
 	tests/dev/test_run_g17_installed_evidence.py \
 	tests/coding/test_hosted_client_terminal.py \
 	tests/coding/test_hosted_client.py \
-	tests/apphost/test_launcher.py \
 	tests/dev/test_run_g16_installed_evidence.py \
 	tests/architecture/test_detachable_local_workspace_g16_evidence.py \
 	tests/tui/test_text_pager.py \

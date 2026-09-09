@@ -244,6 +244,43 @@ class GateTests(unittest.TestCase):
 
 
 class SuiteSelectionTests(unittest.TestCase):
+    def assert_non_overlapping_test_paths(self, paths):
+        roots = [Path(path.split("::", 1)[0]) for path in paths]
+        for index, left in enumerate(roots):
+            for right in roots[index + 1:]:
+                self.assertFalse(
+                    left.is_relative_to(right) or right.is_relative_to(left),
+                    f"overlapping pytest collection paths: {left}, {right}",
+                )
+
+    def test_apphost_inventory_collects_the_whole_package_without_overlap(self):
+        paths = selector.make_paths()["APPHOST_TEST_PATHS"]
+        self.assertEqual(paths.count("tests/apphost"), 1)
+        self.assert_non_overlapping_test_paths(paths)
+
+    def test_collection_overlap_guard_uses_path_boundaries_in_both_orders(self):
+        parent = "tests/apphost"
+        child = "tests/apphost/test_launcher.py"
+        for paths in ((parent, child), (child, parent)):
+            with self.subTest(paths=paths), self.assertRaises(AssertionError):
+                self.assert_non_overlapping_test_paths(paths)
+        self.assert_non_overlapping_test_paths(
+            (parent, "tests/apphost_extra/test_launcher.py")
+        )
+
+    def test_apphost_directory_keeps_launcher_and_sibling_consumer_routing(self):
+        service_paths = selector.make_paths()["APPSERVICE_TEST_PATHS"]
+        self.assertIn("tests/apphost/test_launcher.py", service_paths)
+        paths = sorted((ROOT / "tests/apphost").glob("test_*.py"))
+        self.assertTrue(paths)
+        for path in paths:
+            relative = path.relative_to(ROOT).as_posix()
+            checks = selector.select([relative])["checks"]
+            with self.subTest(path=relative):
+                self.assertTrue(checks["apphost"])
+                if relative in service_paths:
+                    self.assertTrue(checks["appservice"])
+
     def test_coding_backend_excludes_the_separately_owned_ui_inventory(self):
         (command,) = runner.commands("coding")
         self.assertIn("--ignore=tests/coding/test_screen_coding_tui_app.py", command)
