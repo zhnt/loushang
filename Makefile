@@ -316,6 +316,13 @@ APPSERVICE_SOURCES := \
 	src/loushang/coding/hosted_continuity.py \
 	src/loushang/harnesstui/mux
 APPSERVICE_TEST_PATHS := \
+	tests/dev/test_g18_provenance.py \
+	tests/dev/test_g18_recovery.py \
+	tests/dev/test_g18_slot.py \
+	tests/dev/test_g18_bytecode.py \
+	tests/dev/test_g18_comparison.py \
+	tests/dev/test_measure_g18_startup.py \
+	tests/dev/test_measure_g18_native.py \
 	tests/dev/test_hosted_fixture_stdin.py \
 	tests/dev/test_hosted_debt_cleanup.py \
 	tests/dev/test_hosted_darwin_scenario.py \
@@ -543,6 +550,13 @@ test-hosted-product-g10-linux-evidence:
 check-appservice: lint-appservice typecheck-appservice test-appservice
 
 lint-appservice:
+	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/_g18_provenance.py
+	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/_g18_recovery.py
+	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/_g18_slot.py
+	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/_g18_bytecode.py
+	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/_g18_comparison.py
+	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/measure_g18_startup.py
+	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/measure_g18_native.py tests/coding/_g18_native_probe.py
 	uv --cache-dir .uv-cache run --extra dev ruff check tests/coding/_hosted_darwin_observer.py tests/coding/test_hosted_darwin_evidence.py
 	uv --cache-dir .uv-cache run --extra dev ruff check tests/coding/_hosted_darwin_witness.py
 	uv --cache-dir .uv-cache run --extra dev ruff check tests/coding/_hosted_darwin_api.py tests/coding/_hosted_owned_group.py tests/coding/_hosted_primitive_child.py tests/coding/test_hosted_darwin_primitives.py

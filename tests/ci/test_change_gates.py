@@ -105,6 +105,44 @@ class ScopeTests(unittest.TestCase):
         )
         self.assertIn("coding_ui", self.selected("tests/coding/test_ui_status_line.py"))
 
+    def test_g18_collector_has_selection_and_actual_test_lint_ownership(self):
+        makefile = (ROOT / "Makefile").read_text()
+        lint = makefile.split("\nlint-appservice:\n", 1)[1].split("\ntypecheck-appservice:", 1)[0]
+        for script, test in (
+            ("scripts/dev/_g18_provenance.py", "tests/dev/test_g18_provenance.py"),
+            ("scripts/dev/_g18_recovery.py", "tests/dev/test_g18_recovery.py"),
+            ("scripts/dev/_g18_slot.py", "tests/dev/test_g18_slot.py"),
+            ("scripts/dev/_g18_bytecode.py", "tests/dev/test_g18_bytecode.py"),
+            ("scripts/dev/_g18_comparison.py", "tests/dev/test_g18_comparison.py"),
+            ("scripts/dev/measure_g18_startup.py", "tests/dev/test_measure_g18_startup.py"),
+            ("scripts/dev/measure_g18_native.py", "tests/dev/test_measure_g18_native.py"),
+        ):
+            with self.subTest(script=script, test=test):
+                for path in (script, test):
+                    self.assertEqual(self.selected(path), {"docs", "appservice", "host_runtime"})
+                self.assertIn(test, selector.make_paths()["APPSERVICE_TEST_PATHS"])
+                self.assertIn(f"ruff check {script}", lint)
+        for evidence in (
+            "startup-performance-g18-linux-aa-baseline.json",
+            "startup-performance-g18-linux-native-warm-aa-baseline.json",
+            "startup-performance-g18-linux-absent-aa-failure.json",
+        ):
+            with self.subTest(evidence=evidence):
+                self.assertEqual(
+                    self.selected(f"docs/internals/architecture/harness/{evidence}"),
+                    {"docs", "appservice", "host_runtime"},
+                )
+        self.assertIn("$(APPSERVICE_TEST_PATHS)", lint)
+        self.assertIn("$(PYTEST_RUNNER) $(APPSERVICE_TEST_PATHS)", makefile)
+        # No broad tests/dev exception: unknown tools still get full validation.
+        self.assertEqual(self.selected("tests/dev/test_unknown_tool.py"),
+                         set(selector.select([], full=True)["checks"]))
+
+    def test_coding_facade_checks_all_entry_consumers_additively(self):
+        self.assertTrue({"coding", "architecture", "host_runtime", "coding_ui",
+                         "tui_native", "apphost", "appservice", "install"}
+                        <= self.selected("src/loushang/coding/__init__.py"))
+
     def test_g17_evidence_and_hosting_providers_select_native_application_consumers(self):
         paths = (
             "tests/coding/_hosted_darwin_observer.py",
