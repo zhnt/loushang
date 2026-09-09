@@ -10,6 +10,7 @@
 - Implementation status: not-started
 - Owner: Loushang architecture / future GUI delivery owner
 - Source baseline: `3c06f5b9` on `main`, inspected 2026-09-08
+- Execution contract update: `d89c4c9f` on `main` (PR #580), inspected 2026-09-09
 - Delivery objective: GUI engineering bootstrap plan and three-perspective review
 
 本文是单一中文方案源。用户已选择 Tauri + React 的讨论方向、独立浏览器窗口、
@@ -25,6 +26,8 @@ GUI 文档展示和 GUI playback；具体工程建设尚未执行。本文不安
 
 用户结果、功能与质量验收口径见 [GUI 需求](gui-requirements.md)；本文负责
 工程准备与交付顺序，不能以计划替代需求确认或正式架构设计。
+Windows/macOS 接手机器从 [原生开发交接](gui-native-development-handoff.md) 开始，
+其中提供 GitHub 获取方式、阅读顺序、服务能力基线与首轮实施切片。
 
 ## 1. 决策与交付范围
 
@@ -65,6 +68,31 @@ GUI 是 Product-neutral 的图形客户端承载面，Coding 是首个产品适�
 当前协议不承诺全局历史 Session 发现、图片上传、完整工具/Diff/Artifact 的结构化
 投影或同 mux 多控制者。初版文档阅读可以使用本地固定样例；真实产品缺失的数据
 必须由对应 owner 增量扩展契约，不能包装成通用任意 payload 绕过现有闭合校验。
+
+### 2.1 服务端就绪复核：2026-09-09
+
+上节保留原始 `3c06f5b9` 基线。本次以已合并的 `main@d89c4c9f` 复核，
+以下更新取代旧基线中的会话发现与 execution 缺口判断。GUI 的 C1 跨语言兼容
+和原生运行验收仍待完成，服务端能力交付不改变 GUI 的 not-started 状态。
+
+| 能力 | 当前证据与状态 | GUI 可以如何推进 |
+| --- | --- | --- |
+| G16 同机连接、快照、事件、控制与重连 | 已在 main；既有合同继续适用 | 新 execution profile 复用本机认证和 attachment 边界；旧 `start_turn` 保留等待完成语义 |
+| G17 受控会话发现和显式 Hosted 工作流 | [PR #577](https://github.com/zhnt/loushang/pull/577) 已合并；[验收记录](../apphost/hosted-session-workflow-g17-acceptance-record.md) 包含 Linux/macOS/Windows 原生与独立安装证据 | GUI 如需有界 cwd/home 候选发现，显式选择 §6 的 discovery + execution 组合 profile；旧 G16 profile 不提供发现能力 |
+| 稳定执行身份与生命周期 | [PR #580](https://github.com/zhnt/loushang/pull/580) 已合并；真实 Coding/Harness Product 端口、明确 running 通知、AppService 登记/去重、独立执行容量和清理归属已交付 | 消费服务发布的 execution 状态；无输出命令也可进入 running，通信等待结束不等于执行清理完成 |
+| 执行提交、查询、定向中断与恢复协议 | [交付记录](../appservice/execution-service-delivery.md) 与 [可选客户端](../../../../src/loushang/appserver/execution/client.py) 已在 main；真实 Coding 装配可显式注入，默认构造继续保持旧行为 | B2 显式选择 execution profile，C1 对接已交付 codec、恢复参考和 JSON 样例；无需再等待 #576 服务端增量 |
+| Rust/TypeScript 客户端兼容与 GUI 原生回放 | 尚无 GUI 工程和 C1/L2 实证 | 进入 GUI 组件设计、原生工程基线与 Mock playback，不等待全部后端扩展 |
+
+[PR #580 检查](https://github.com/zhnt/loushang/actions/runs/34338671469) 在
+`ea97cd26` 上完成并通过，合并提交为 `d89c4c9f`。这是本次采用的服务端集成
+证据，不代表 GUI 的 Rust/TypeScript、桌面 IPC 或 playback 已通过。早期
+[main 定时检查](https://github.com/zhnt/loushang/actions/runs/34286885467) 的
+Windows quarantine 失败，以及交付记录中的本地 G10/G17 超时是历史记录；
+本次 CI 通过不构成这些计时差异的原因归属，也不将历史失败作为服务尚未交付的依据。
+
+开工结论：GUI 方案、独立原生界面、离线回放与 C1 可以推进；B2 按 §6 明确的
+可选 execution 合同接入。其开发不依赖 G18 完成，默认启用和 GUI 自身性能、
+恢复及三平台证据仍分别验收。
 
 ## 3. Proposed：职责与依赖
 
@@ -189,6 +217,28 @@ Linux、macOS、Windows 均可承担完整 GUI 任务：修改 Rust/React、启�
   每个系统至少建立一个具名开发基线；其他 CPU 架构单列状态，不把一个系统
   的单架构结果扩展为全架构支持。环境缺口留在对应平台任务中跟踪。
 
+### 4.2 主开发环境与交接：2026-09-09 用户方向
+
+GUI 的主要实现、交互调试与 playback 工作放在 **Windows 或 macOS 的真实图形
+环境机器**。三平台支持范围保持不变；Linux 可继续承担服务端开发、设计、静态
+检查和其平台验证。主开发机器尚未指定，本节不声称已连接或初始化任何新机器。
+
+交接先完成需求/边界与候选组件设计、可运行切片清单和仓库文档同步；原生 GUI
+实现从选定机器开始，不等 Linux 实现完毕才移交。在本机独立 clone/worktree
+中按锁文件安装工具与依赖，使用各机本地配置和凭据，禁止复制 Linux 的 `.venv`、
+`node_modules` 或 Rust 编译产物充当 Windows/macOS 环境。
+
+GUI-B0 记录实际 OS/CPU、Rust/Node、系统构建依赖、图形会话与自动化驱动配置。
+GUI-B1 的第一个原生切片就提供同一场景的本机回放入口：输入 → 流式输出 →
+中断 → 文档阅读 → 逐步断言与失败截图；至少一条经过真实 Rust IPC。此后每个
+交互切片在主开发机器边开发边回放，输入法、焦点、剪贴板与缩放另做原生检查。
+driver 是否适用必须在所选机器验证，不把浏览器 Mock 通过算成桌面通过。
+
+B2 在这台机器运行显式启用 execution 的本机 Python 服务，按 §6 接入已交付
+协议并取得 C1 兼容证据。另一桌面平台和 Linux 按原有阶段补齐各自必需证据，单机
+开发顺畅不免除三平台验证。首轮只运行 GUI 相关静态/状态/回放检查；协议改变
+才增加对应服务契约检查，不因桌面布局修改重跑所有 Python 包。
+
 ## 5. 三平台开发布局与 SSH/Linux 工作方式
 
 **Linux、macOS、Windows 均为正式开发环境；SSH/Linux 是可选的主工作方式。**
@@ -231,12 +281,35 @@ Vite 的 SSH 转发仅服务前端开发。它不意味着 G16 的 private recor
 
 ## 6. AppClient 跨语言接入与生命周期
 
-GUI-B2 固定使用 `local-detachable/v1`。Mock 阶段不依赖连接；G14 如用于独立
-诊断实验必须显式标注 foreground 生命周期，不作为 G16 自动回退路径。
+GUI-B2 首个真实接入选择 `local-detachable-execution/v1`；需要 G17 有界会话
+发现时，显式选择 `local-detachable-discovery-execution/v1`。C1 同时核对服务
+record 的封闭 capabilities、认证后的 hello 与客户端配置，禁止静默切换 profile。
+
+| 使用场景 | 连接 profile | 可用合同与兼容边界 |
+| --- | --- | --- |
+| B2 执行接入基线 | `local-detachable-execution/v1` | 既有 AppClient + 可选 ExecutionClient；不包含会话发现 |
+| B2 执行与会话发现 | `local-detachable-discovery-execution/v1` | 上述合同 + 可选 SessionDiscoveryClient；发现范围仍受 cwd/home 与权限限制 |
+| 既有 G16 客户端兼容 | `local-detachable/v1` | 保留 `start_turn` 完成语义；不提供 execution 或 discovery 扩展 |
+| 既有 G17 客户端兼容 | `local-detachable-discovery/v1` | 既有 AppClient + discovery；不提供 execution 扩展 |
+
+既有操作继续使用 `loushang.app/v1`，六个 `execution/*` 操作独立使用
+`loushang.execution/v1`。能力缺失或版本不支持时拒绝该 execution 接入，不以旧
+`start_turn` 代替提交或恢复。Mock 阶段不依赖连接；G14 仅可作为显式标注的
+foreground 诊断实验。服务端仍由开发者显式装配；真实 Coding 的可选装配方式见
+[交付记录](../appservice/execution-service-delivery.md#composition-and-protocol)，
+该接入选择不改变默认 CLI/TUI、Product 或服务构造。
 
 跨语言契约准备由 AppServer owner 负责，GUI 消费：
 
 - 完整请求/响应/快照/事件/错误 payload 定义，以及与 reference codec 的一致性；
+- execution 的 [model/codec](../../../../src/loushang/appserver/execution/codec.py)、
+  [JSON 样例](../../../../tests/appserver/fixtures/execution_v1.json) 和
+  [恢复参考](../../../../src/loushang/appserver/execution/recovery.py) 已交付；
+  C1 补齐 Rust/TypeScript 的独立兼容证据，样例存在不等于跨语言验证完成；
+- 由协议 owner 维护一个带版本的完整合同源，生成所需 JSON Schema、Rust/TypeScript
+  类型或绑定，避免各语言手写同一字段集合；具体生成路径在 C1 选择。生成产物
+  与合同版本/摘要绑定，只在相关合同变化时检查漂移；现有宽泛 payload Schema
+  补齐前不能直接用来声称类型完整，生成类型也不能替代下面的行为测试向量；
 - Rust 与 Python 双向测试向量：合法值、重复字段、未知字段、无效 UTF-8、越界
   整数、消息上限和错误值；类型生成不能替代 codec 行为测试；
 - framing、hello/profile、认证 transcript、完整性序号、超时、连接关闭；
@@ -251,12 +324,23 @@ UI-facing port 隐藏 transport/profile/auth 细节；Tauri bridge 只暴露所�
 浏览器 Mock 与真实 bridge 使用相同的 UI 值模型和行为样例。Rust 网络/认证模块
 不依赖 React，不把浏览器可访问凭据作为通信捷径。
 
+GUI-B1 的界面切片同时覆盖会话状态总览、文档/Diff 阅读时控制可达，以及明确的
+项目上下文与会话归属，按 [需求](gui-requirements.md) 的 GUI-FR-014 和 FR-007/010
+验收。结构化轮次/工具条目、行级反馈、系统通知按 GUI-FUT-001/002/003 后续推进；
+不将尚未提供的服务能力加到 Mock 并冒充真实接入。
+
 GUI 断开时展示 disconnected；终止当前 event reader，拒绝旧连接/attachment
-generation 的迟到事件。重新连接使用新认证、attachment 和快照屏障。不得自动
-重放发送、审批、关闭等 mutation。各操作的 Ack 按现有合同解释，`start_turn`
-Ack 保留执行完成的含义；等待期间通过 snapshot/events 展示运行状态，不虚构
-独立的接纳 Ack。断线后未收到响应的请求结果可能未知，应重新取得服务端事实，
-不能猜测 accepted/completed 或重试 mutation。
+generation 的迟到事件。重新连接使用新认证、attachment 和复合快照屏障。保存
+原 `submission_id`、精确文本、Session identity 与 `serviceInstanceId`；丢失提交
+响应时先按 submission 查询，查无记录也不自动重发。用户明确重试时只在同一
+服务实例与会话、当前权限下复用原提交和文本；实例变化保留未知结果并停止重放。
+登记保存到服务实例结束，无跨服务重启去重或执行恢复保证。
+
+`execution/submit` 返回执行记录，不等待终态；返回或重试取得的记录可能已经
+running 或终态。按 revision 合并，较迟的 accepted 响应不得覆盖较新的状态。
+`start_turn` 继续返回完成式 Ack，不能单凭 Ack 推断业务成功；审批、关闭与其他
+mutation 不自动重放。完整身份、恢复和清理语义见
+[边界合同 BC-004/006](gui-system-context-and-boundary-contract.md)。
 
 连接仍存活也可能丢失增量。UI reducer 原子安装 membership 与每个 member 的
 snapshot/cursor 屏障，按 member/session 身份追踪游标，并忽略重复事件。
@@ -266,6 +350,7 @@ snapshot/cursor 屏障，按 member/session 身份追踪游标，并忽略重复
 和已移除 member/session 的迟到事件，避免新旧快照与增量混装。
 
 以上接入义务依据 [G16](../appserver/detachable-local-workspace-g16.md)、
+[execution 交付合同](../appservice/execution-service-delivery.md)、
 [现有客户端](../../../../src/loushang/appserver/remote_client.py) 与
 [mux reducer](../../../../src/loushang/harnesstui/mux/reducer.py)；Rust 实现需
 取得自己的契约测试证据，不能仅以 Python 客户端通过替代。
@@ -381,13 +466,14 @@ GUI-B1 提交最小必需 case manifest。必需 CI gate 对 missing、skipped�
 | --- | --- | --- | --- |
 | GUI-B0 工程基线 | GUI delivery + 三平台 owners | 本方案评审；实施 issue | scope placement/目录边界、lane 管理入口、版本锁、AGENTS；三平台从独立 checkout 初始化，统一 doctor/dev/build 入口、最小 React/Tauri 构建及原生窗口启动证据 |
 | GUI-B1 独立界面与回放 | GUI presentation/testing + 三平台 owners | B0 | Mock AppClient、文档/会话 shell、三平台 L0/L1 与最小 L2、各平台真实 invoke/event canary、必需 case manifest 与失败产物；锁定 workload/预算、场景重置与测试入口隔离 |
-| GUI-C1 跨语言契约准备 | AppServer + GUI client owners | B0；可与 B1 并行 | 完整 payload 与 codec 对齐、认证/framing/record 测试向量、JS 数值 bridge、兼容与拒绝策略；不改变默认服务行为 |
-| GUI-B2 本机真实连接 | GUI client + AppService/Product owners | B1 + C1 | 三平台各自完成本机 G16 路径；创建/选择 mux、发送、流式、中断、审批、断开重连闭环；真实连接错误、单控制者与缺口屏障恢复验证；长 turn 未返回时事件/审批/中断仍可达，普通请求容量耗尽时控制请求仍可达 |
+| GUI-C1 跨语言契约准备 | AppServer + GUI client owners | B0；可与 B1 并行 | §6 profile/版本与 capability 准入、完整 payload/codec 及 execution 恢复样例对齐；认证/framing/record 测试向量、JS 数值 bridge、兼容与拒绝策略；不改变默认服务行为 |
+| GUI-B2 本机真实连接 | GUI client + AppService/Product owners | B1 + C1 | 三平台各自完成 §6 的本机 execution 路径；创建/选择 mux、提交、流式、定向中断、审批、断开重连闭环；无输出 running、丢失响应按 submission 查询、实例变化不重放、清理后终态及缺口屏障恢复；执行中事件/审批/中断仍可达，普通请求容量耗尽时控制请求仍可达；旧 start 完成语义兼容另验 |
 | GUI-B3 桌面开发验收 | GUI + platform owners | B2 | 已声明平台的发布 profile 启动、L3 桌面体验及离线交互 canary；未验平台明确列缺口；开发者构建可交付 |
 
 B1 使用实际 Tauri 测试构建与 Mock/IPC fixtures，不依赖真实 AppService；其中
-每个平台至少一条 canary 保留真实 Rust invoke/event 路径。B2 使用同机 G16 和受控离线
-Product，B3 另查发布 profile。
+每个平台至少一条 canary 保留真实 Rust invoke/event 路径。B2 使用 §6 选定的
+同机 execution profile 和受控离线 Product；发现功能只在组合 profile 下验收，
+B3 另查发布 profile。
 各平台子任务可以并行推进；阶段整体完成要求三平台对应的必需证据齐全。
 环境未就绪的平台保持未完成并落实 owner，不阻止其他平台继续编码，也不
 以其他平台的成功替代其退出条件。
