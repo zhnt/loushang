@@ -39,6 +39,7 @@ class CodingHostedSnapshotProjectionV1:
     revision: int
     running: bool
     records: tuple[TranscriptRecordV1, ...] = ()
+    truncated: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.title, str) or not self.title.strip():
@@ -47,6 +48,8 @@ class CodingHostedSnapshotProjectionV1:
             raise ValueError("Coding hosted snapshot revision is invalid")
         if type(self.running) is not bool:
             raise TypeError("Coding hosted snapshot running state is invalid")
+        if type(self.truncated) is not bool:
+            raise TypeError("Coding hosted snapshot omission flag is invalid")
         if any(type(item) is not TranscriptRecordV1 for item in self.records):
             raise TypeError("Coding hosted snapshot records are invalid")
 
@@ -58,10 +61,13 @@ class CodingHostedEventProjectionV1:
     kind: SessionEventKindV1
     text: str | None = None
     interaction_id: str | None = None
+    truncated: bool = False
 
     def __post_init__(self) -> None:
         if type(self.kind) is not SessionEventKindV1:
             raise TypeError("Coding hosted event kind is invalid")
+        if type(self.truncated) is not bool:
+            raise TypeError("Coding hosted event omission flag is invalid")
         SessionEventV1(
             session_id="projection",
             cursor=1,
@@ -266,6 +272,7 @@ class CodingHostedSessionV1:
             text=projection.text,
             interaction_id=projection.interaction_id,
         )
+        self._observe_projection(projection, hosted_event)
         for listener in tuple(self._listeners):
             try:
                 result = listener(hosted_event)
@@ -275,6 +282,11 @@ class CodingHostedSessionV1:
                 raise
             except Exception:
                 continue
+
+    def _observe_projection(
+        self, projection: CodingHostedEventProjectionV1, event: SessionEventV1
+    ) -> None:
+        """Synchronous Product observation before optional delivery listeners."""
 
     @staticmethod
     def _prompt_request(text: str) -> SessionPromptRequest:

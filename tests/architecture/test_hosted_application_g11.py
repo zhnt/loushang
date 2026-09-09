@@ -130,11 +130,22 @@ def test_G11_PRODUCT_ADAPTER_is_the_only_product_harness_bridge() -> None:
         Path("src/loushang/coding/hosted_continuity.py"),
         Path("src/loushang/coding/hosted_bootstrap.py"),
         Path("src/loushang/coding/hosted_catalog.py"),
+        Path("src/loushang/coding/hosted_execution.py"),
+        Path("src/loushang/coding/_hosted_execution_work.py"),
     }
     assert {name for name in _imports(Path("src/loushang/coding/hosted_catalog.py"))
             if name.startswith("loushang.appservice")} == {
         "loushang.appservice.discovery_ports",
     }
+    # The new capability is selected by its owner, never discovered by importing
+    # a default Product or by altering the legacy Hosted Session port.
+    for path in (
+        CODING_ADAPTER,
+        Path("src/loushang/coding/hosted_bootstrap.py"),
+        Path("src/loushang/coding/hosted_application.py"),
+        Path("src/loushang/coding/__init__.py"),
+    ):
+        assert "hosted_execution" not in _read(path)
 
 
 def test_G11_HOSTED_PROFILE_depends_on_client_contract_not_service_or_product() -> None:
@@ -222,7 +233,9 @@ def test_g11_package_budgets_keep_new_owners_reviewable() -> None:
         "appserver": 2_100,
         "appservice-core": 1_500,
         "appservice-continuity": 1_250,
-        "coding-adapter": 400,
+        # Optional execution adds omission metadata and a synchronous projection
+        # seam; its two owners have a separate budget in the Wave A contract.
+        "coding-adapter": 420,
         "harnesstui-mux": 600,
     }
     for name, paths in groups.items():

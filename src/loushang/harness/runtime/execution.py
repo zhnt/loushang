@@ -309,6 +309,34 @@ class HostRuntime(Generic[T]):
             self._active_run_id = None
         await self._events.drain()
 
+    async def settle_runs(self, *, cancel_pending: bool = False) -> None:
+        """Join retained continuations as well as the active driver.
+
+        Unlike the legacy idle observation, this includes deferred runs which
+        have not entered yet. The owning Product must fence new external input.
+        """
+        cancelled: set[asyncio.Task[object]] = set()
+        if cancel_pending:
+            self.abort()
+        while True:
+            tasks = tuple(self._deferred_tasks)
+            if cancel_pending:
+                for task in tasks:
+                    if task not in cancelled and task is not self._active_task:
+                        cancelled.add(task)
+                        if not task.cancelling():
+                            task.cancel()
+            await self.wait_for_idle()
+            if tasks:
+                results = await asyncio.gather(
+                    *(asyncio.shield(task) for task in tasks), return_exceptions=True
+                )
+                for result in results:
+                    if isinstance(result, Exception):
+                        raise result
+            if not self._deferred_tasks:
+                return
+
     async def dispose(self) -> None:
         async with self._dispose_lock:
             if self._status == "disposed":

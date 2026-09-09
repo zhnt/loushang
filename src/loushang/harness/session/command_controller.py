@@ -318,6 +318,12 @@ class SessionCommandController(Generic[ResultT]):
             return await self._resource_source.execute_async(normalized_name, args)
         return await self._runtime.execute(invocation_name, args)
 
+    async def dispatch_command_async(
+        self, invocation_name: str, args: str
+    ) -> CommandDispatchOutcome[ResultT]:
+        """Preserve command failure separately from its legacy result envelope."""
+        return await self._runtime.dispatch(invocation_name, args)
+
     async def _dispatch_builtin_command(
         self,
         invocation: ParsedSlashCommand,

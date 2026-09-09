@@ -191,3 +191,44 @@ async def _append(values: list, value: object) -> None:
 
 async def _noop() -> None:
     return None
+
+
+def test_settlement_joins_cancelled_continuation_cleanup_after_waiter_reset() -> None:
+    async def scenario() -> None:
+        coordinator = _coordinator([], [], [])
+        entered, cleaning, release = asyncio.Event(), asyncio.Event(), asyncio.Event()
+        completed = []
+
+        async def continuation() -> None:
+            entered.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cleaning.set()
+                await release.wait()
+                completed.append("cleanup")
+
+        await coordinator.retry("busy", policy=RetryPolicy(True, 1, 0))
+        task = coordinator.continue_retry(continuation)
+        await entered.wait()
+        await coordinator.finish(RetryOutcome(success=False, attempt=1, cancelled=True))
+        await coordinator.wait()
+        await cleaning.wait()
+        assert not task.done()
+        settling = asyncio.Event()
+
+        async def settle() -> None:
+            settling.set()
+            await coordinator.settle(cancel_pending=True)
+
+        waiter = asyncio.create_task(settle())
+        try:
+            await settling.wait()
+            assert not waiter.done()
+            assert task.cancelling() == 1
+        finally:
+            release.set()
+            await waiter
+        assert completed == ["cleanup"]
+
+    asyncio.run(asyncio.wait_for(scenario(), 10))

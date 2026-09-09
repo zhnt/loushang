@@ -61,8 +61,9 @@ The current implementation contains:
 
 The separate [optional Product execution contract](execution-contract.md) adds
 invocation identity, full-call settlement and composite snapshot validation.
-Its helpers and fake-Product conformance tests are implemented; the submission
-ledger, new wire methods and production Product activation remain future work.
+Its helpers and explicitly constructed real Coding adapter are implemented;
+mechanism fixtures and real Product tests verify them separately. The submission
+ledger, new wire methods and default Product activation remain future work.
 
 ## Dependency And Ownership
 

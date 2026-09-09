@@ -7,13 +7,21 @@
 - Authority: descriptive — source contract and deterministic verification record
 - Design status: proposed for integration into the execution lifecycle service
 - Implementation status: implemented opt-in values, Product port, invocation
-  guard and composite snapshot validator; production composition not activated
+  guard, composite snapshot validator and real Coding adapter; default Product
+  composition and submission protocol not activated
 - Owner: AppService contract and Product adapter owners
 
 This increment makes one Product invocation independently identifiable and
 waitable. It supplies reusable mechanisms and tests before introducing a new
 submission service. Existing `HostedSessionPortV1`, `start_turn`, wire codecs,
 client scopes and Coding composition retain their current contracts.
+
+`loushang.coding.hosted_execution.CodingHostedExecutionSessionV1` is the optional
+real Product implementation. Its constructor takes exclusive ownership of one
+`CodingRealHostedSessionV1`; an application selects it explicitly and supplies
+the resulting port behind its existing authorization boundary. It must not also
+install a second Hosted adapter or direct input driver on that same binding.
+No installed CLI, public facade or default resolver selects this capability.
 
 The source lives in `execution_contract.py`, `execution_ports.py`,
 `execution_guard.py` and `execution_snapshot.py` under `loushang.appservice`.
@@ -123,18 +131,74 @@ execution order. Evidence is divided as follows:
 | `tests/appservice/test_execution_guard.py` | Pre-entry/full-call/legacy interruption, no-model success, explicit failure, cleanup ownership and retry, uncancellable child effects, cancelled waiters, A/B result-delivery race, immediate retry failure, task construction rejection |
 | `tests/appservice/test_execution_snapshot.py` | A/B matching, source/application completion race, service-only outcome, binding reopen/replacement, authority loss, bounded recovery, independent cursors, duplicates, gaps, overflow and bounded retries |
 | `tests/appservice/test_execution_port_conformance.py` | Asynchronous fake Product implementing the optional port, command and model calls through the real guard and snapshot validator, reconnect projection and interruption through cleanup |
+| `tests/coding/test_hosted_execution.py` | Real Coding Session and canonical factory, literal input compatibility, extension/model failure, full/legacy interruption, retry identity, cancelled waiters/close, preparation retirement, retained tool-thread effects, final cleanup events, bounded snapshots and persistent Session reopen |
+| `tests/harness/runtime/test_retry.py` | Retained continuation cleanup after the legacy retry waiter resets; settlement must not cancel that cleanup a second time |
 
-The fake Product and test application projection are verification fixtures.
-They do not establish real Coding support, AppService ledger implementation,
-durable execution recovery, native-platform acceptance or GUI delivery.
+The fake Product and test application projection remain mechanism fixtures.
+Real Coding verification is separately recorded below. Neither establishes an
+AppService ledger, durable execution recovery, native-platform acceptance or
+GUI delivery.
 
-The next increment must bind explicit Product outcomes and quiescence into the
-real adapter and build the application admission/ledger owner. Reserve maximum
+The next integration increment must build the application admission/ledger
+owner over the optional real adapter. Reserve maximum
 lifecycle record capacity before acceptance; make duplicate lookup precede new
 capacity checks. Then add versioned submission/query/interrupt methods, expected
 service-instance fencing and negotiated client support on the stabilized shared
 AppHost base. Keep old wait-until-complete and legacy interrupt semantics.
 Message/tool entry IDs remain later work.
+
+## Real Coding Adapter
+
+The opt-in adapter inherits the legacy Hosted Session surface and owns one
+execution guard. Its `start_turn` submits a private invocation and waits for
+its result; the original default adapter continues to use its existing prompt
+operation. New and old interruption on the optional binding both check the
+same guard; turn-only interruption tests the current Agent without setting a
+pending command/preparation interrupt.
+
+Coding reads explicit input disposition through the existing Harness prompt
+pipeline. A per-call controller copy observes command dispatch and preflight;
+it does not mutate shared callbacks or reimplement input ordering. Extension
+command dispatch retains a bounded failure code independently of its legacy
+result. Agent outcomes come from the actual last assistant result, including
+normal-return failures and interruption. Successful automatic retries replace
+the failed attempt's result while retaining one execution ID. Accepted input
+handled without an Agent run can succeed independently of model output.
+
+Whole-call interruption is checked again before entering subsequent work
+phases, so a preparation owner that consumes coroutine cancellation cannot
+accidentally start a model call. Retry continuations and deferred Agent runs
+are retained and joined beyond the legacy idle observation. Cancellation already
+delivered to a continuation is not repeated during settlement. Final settlement
+drains ordered Session projections after the last owner cleanup, including events
+scheduled by that cleanup. Product/tool owners remain responsible
+for joining their own effects, including threads and processes that outlive a
+cancelled await; the adapter never infers such settlement from task cancellation.
+
+Failed preparation retires the binding. Its staged runtime cleanup uses the
+existing retryable Product cleanup path; a failed cleanup leaves the execution
+running and rejects new input. Retrying settlement performs no prompt replay.
+The binding must be closed even after that cleanup eventually succeeds.
+
+Closing the optional adapter rejects new input immediately, interrupts active
+work, joins or retries settlement, then closes the real binding. Cancellation of
+a close waiter leaves the retained close task owned. An interrupt received after
+successful work entered cleanup preserves the actual successful outcome.
+
+Snapshots cache content at the synchronous Product projection boundary and
+capture execution observation without yielding. Terminal publication refreshes
+the final content after settlement. Drafts are replacements, capped at 16,384
+characters, and cleared by final messages. Both truncated deltas and omitted
+transcript records propagate an explicit omission flag. Reopening a persisted
+Session retains its conversation but starts a fresh execution observation and
+cursor domain; execution-history persistence remains an AppService concern.
+
+The two optional Coding modules have a combined 400-line ceiling and a
+250-line per-module ceiling. The legacy G11 adapter allowance increases from
+400 to 420 lines for bounded omission metadata and one synchronous projection
+observation seam. Default import/activation assertions and the unchanged wire
+schema constrain that shared addition. The AppHost/AppService test inventories
+include the new real Product tests and implementation modules.
 
 ## Local Verification Record — 2026-09-08
 
@@ -179,3 +243,59 @@ must not be inferred from this increment's deterministic results.
 Local logs and XML reports are retained under `.artifacts/` with the
 `execution-contract-` prefix in the task worktree; they are not packaged runtime
 artifacts. The shared AppHost gate must be resolved before integration promotion.
+
+## Real Product Verification — 2026-09-09
+
+Source base: `0c58b02b`, incorporating G17 `9bc69361`. This increment explicitly
+constructs the real optional adapter; it does not activate the default Product,
+add a submission ledger, or change the wire protocol.
+
+- The existing focused baseline passed 241 tests before implementation.
+- The focused Product/command/Host/retry/PromptController selection passed
+  78 tests, including 20 real execution scenarios. Regression-first cases exposed
+  cancellation swallowed during preparation, terminal publication before cleanup
+  events were delivered, and repeated cancellation interrupting retry cleanup.
+- A subsequent regression exposed swallowed compaction cancellation entering
+  the next extension phase. The phase checkpoint fix passed its regression and
+  the literal-input compatibility case; interruption during an old asynchronous
+  event subscriber also passed, including the following execution.
+- The canonical factory scenario also passed in isolation after an earlier run
+  timed out while other tests were running. The watchdog remains unchanged; that
+  earlier timeout is not treated as proof of an environmental cause.
+- The change-aware plan selected all local scopes because the shared Makefile
+  inventories changed. Documentation invariants and the generated dependency
+  graph passed. AI checks passed lint, typing, catalog/import checks, 61 offline
+  example tests and 849 regression tests (2 skipped, 7 deselected), but failed
+  coverage: 89.66% total and 89.35% runtime core against the existing 90% limits.
+  AI implementation, its tests, coverage scripts and dependency manifests are
+  unchanged from this increment's source base. The two excluded cases carry the
+  Host Runtime marker and exercise local OAuth callbacks. This result describes
+  the selected offline subset, not the complete gate or proof of a baseline
+  coverage defect. The existing coverage limits and safety selectors are kept.
+- AppHost, AppService, Hosting and HarnessTUI static checks passed. Harness
+  Ruff and mypy passed (682 source files); the final prompt-compaction helper
+  also passed its focused type check. The additional optional adapter is an
+  explicit AppServer consumer in the A0.4 architecture inventory; the corrected
+  inventory passed all six tests.
+
+The first combined Harness run was terminated without a complete result after
+heavy memory swapping and a transcript-load timing failure. It is not a gate
+pass. Its complete offline inventory is included in a fresh run partitioned by
+test file, with each architecture file in a separate process. Per-batch XML
+retains both successful and failed attempts.
+
+Serial controls used a clean G17 worktree and this execution worktree, each with
+its own editable installation and Python 3.11.15 environment backed by the same
+dependency versions. G17 failed both the G10 ephemeral canary and the large
+transcript-load budget in two runs; this execution branch passed both in the
+intervening run. G17's measured load rates were 0.41 and 0.49 seconds/MB against
+the unchanged 0.35 budget; its G10 canary hit the unchanged five-second timeout.
+The execution branch's G10 case took 3.86 seconds. The loading implementation and
+test have no delta from G17. These results do not establish an execution-induced
+performance regression or resolve the earlier timing discrepancy. They do not
+replace platform acceptance or justify relaxing the existing budgets.
+
+Remaining independent scope results are recorded in the task worktree under
+`.artifacts/execution-product-scopes/`; focused logs and XML use the
+`execution-product-` prefix. Platform acceptance and the previously unresolved
+G10 startup difference require their own evidence before integration promotion.

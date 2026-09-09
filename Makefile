@@ -176,6 +176,8 @@ APPHOST_SOURCES := \
 	src/loushang/coding/hosted_local.py \
 	src/loushang/coding/hosted_catalog.py \
 	src/loushang/coding/hosted_session.py \
+	src/loushang/coding/hosted_execution.py \
+	src/loushang/coding/_hosted_execution_work.py \
 	src/loushang/apphost \
 	src/loushang/appserver \
 	src/loushang/appservice \
@@ -234,6 +236,7 @@ APPHOST_TEST_PATHS := \
 	tests/coding/test_hosted_subprocess.py \
 	tests/coding/test_hosted_catalog.py \
 	tests/coding/test_hosted_session.py \
+	tests/coding/test_hosted_execution.py \
 	tests/coding/test_scoped_hosted_session.py \
 	tests/coding/test_hosted_session_metadata.py \
 	tests/apphost \
@@ -305,6 +308,8 @@ APPSERVICE_SOURCES := \
 	src/loushang/apphost/continuity.py \
 	src/loushang/coding/hosted_catalog.py \
 	src/loushang/coding/hosted_session.py \
+	src/loushang/coding/hosted_execution.py \
+	src/loushang/coding/_hosted_execution_work.py \
 	src/loushang/harness/transcript/jsonl_file.py \
 	src/loushang/harness/transcript/lifecycle.py \
 	src/loushang/harness/transcript/session_factory.py \
@@ -368,6 +373,7 @@ APPSERVICE_TEST_PATHS := \
 	tests/coding/test_hosted_discovery.py \
 	tests/coding/test_hosted_discovery_workflow.py \
 	tests/coding/test_hosted_session.py \
+	tests/coding/test_hosted_execution.py \
 	tests/coding/test_scoped_hosted_session.py \
 	tests/coding/test_hosted_session_metadata.py \
 	tests/harness/transcript/test_session_factory.py \
