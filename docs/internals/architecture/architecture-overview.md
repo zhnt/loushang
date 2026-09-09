@@ -213,7 +213,7 @@ An accepted Target is not an implementation claim. The
 [Harness Current Owner Map](harness/current-owner-map.md) records both the
 implemented Mount runtime and the remaining Capability rollout boundaries.
 
-Unresolved proposals under `drafts/`, including broader future-v3 material,
+Unresolved proposals under `drafts/`, including broader future-V3.1 material,
 remain candidate directions until the governing owner accepts the specific
 contract through a decision or canonical scope document. The AOD's own
 accepted status does not accept those candidates. Follow the

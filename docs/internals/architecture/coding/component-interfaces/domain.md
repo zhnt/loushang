@@ -109,7 +109,7 @@ parameters; it does not redefine their semantics.
 - `--work-log` is supported for one-shot text/print/json prompts and rejected in TUI/RPC paths.
 - Fixed linear `MethodPlan` execution is represented as one prepared coding turn per step.
 
-## V3 Target Direction
+## V3.1 Target Direction
 
 - Coding is the domain-specific Product. The target architecture does not add a
   second `CodingDomainApp` runtime inside that Product.

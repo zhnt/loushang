@@ -1,7 +1,7 @@
 # Harnesstui Named Mux And Daemon Attach
 
 [Architecture](../README.md) · [Drafts](README.md) ·
-[Future Architecture v3](future-loushang-architecture-v3.md) ·
+[Future Architecture V3.1](future-loushang-architecture-v3.1.md) ·
 [Application Service Refactor](application-service-refactor.md) ·
 [AppService Hosted Boundary](appservice-embedded-tui-hosted-boundary-plan.md)
 

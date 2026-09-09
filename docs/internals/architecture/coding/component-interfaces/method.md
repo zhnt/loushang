@@ -17,7 +17,7 @@
 
 The full boundary is documented in [domain.md](domain.md).
 
-This is a current compatibility surface. In the v3 target, Coding remains the
+This is a current compatibility surface. In the V3.1 target, Coding remains the
 domain-specific Product and its Product Session/Work bindings absorb this thin
 bridge; no independent `CodingDomainApp` runtime is added.
 

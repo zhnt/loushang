@@ -1,0 +1,264 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1650" viewBox="0 0 1800 1650" role="img" aria-labelledby="title desc">
+  <title id="title">楼上（Loushang）未来目标架构 V3.1</title>
+  <desc id="desc">V3.1 将 HarnessGUI 与 HarnessTUI Hosted Mux 表示为共享 G16 detachable AppHost application 的独立客户端，将 Embedded TUI 表示为绕过 hosted lifecycle 的独立组合，并明确 AppServer、AppService、AppHost、Product、Harness workspace/change provider 的职责和依赖方向。</desc>
+  <defs>
+    <linearGradient id="page" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f8fafc"/>
+      <stop offset="1" stop-color="#eef2ff"/>
+    </linearGradient>
+    <linearGradient id="hosted" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#eff6ff"/>
+      <stop offset="1" stop-color="#eef2ff"/>
+    </linearGradient>
+    <linearGradient id="embedded" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ecfdf5"/>
+      <stop offset="1" stop-color="#ccfbf1"/>
+    </linearGradient>
+    <filter id="shadow" x="-15%" y="-15%" width="130%" height="140%">
+      <feDropShadow dx="0" dy="5" stdDeviation="8" flood-color="#0f172a" flood-opacity="0.11"/>
+    </filter>
+    <marker id="depends" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M1,1 L11,6 L1,11 Z" fill="#475569"/>
+    </marker>
+    <style>
+      .title { font: 700 34px "Segoe UI", "Microsoft YaHei", sans-serif; fill: #0f172a; }
+      .subtitle { font: 400 17px "Segoe UI", "Microsoft YaHei", sans-serif; fill: #475569; }
+      .panel-title { font: 700 23px "Segoe UI", "Microsoft YaHei", sans-serif; fill: #0f172a; }
+      .box-title { font: 700 19px "Segoe UI", "Microsoft YaHei", sans-serif; fill: #0f172a; }
+      .body { font: 400 15px "Segoe UI", "Microsoft YaHei", sans-serif; fill: #475569; }
+      .small { font: 400 13px "Segoe UI", "Microsoft YaHei", sans-serif; fill: #64748b; }
+      .tiny { font: 400 12px "Segoe UI", "Microsoft YaHei", sans-serif; fill: #64748b; }
+      .panel { fill: #ffffff; stroke: #cbd5e1; stroke-width: 2; rx: 24; }
+      .client { fill: #ffffff; stroke: #2563eb; stroke-width: 2.5; rx: 18; }
+      .future { fill: #ffffff; stroke: #94a3b8; stroke-width: 2; stroke-dasharray: 8 6; rx: 18; }
+      .embedded-box { fill: #f0fdfa; stroke: #0f766e; stroke-width: 2.3; rx: 18; }
+      .service { fill: #eff6ff; stroke: #2563eb; stroke-width: 2.4; rx: 16; }
+      .host { fill: #f5f3ff; stroke: #7c3aed; stroke-width: 2.3; rx: 16; }
+      .product { fill: #fff7ed; stroke: #ea580c; stroke-width: 2.3; rx: 16; }
+      .harness { fill: #faf5ff; stroke: #9333ea; stroke-width: 2.3; rx: 16; }
+      .work { fill: #fff1f2; stroke: #e11d48; stroke-width: 2.1; rx: 16; }
+      .method { fill: #fffbeb; stroke: #d97706; stroke-width: 2.1; rx: 16; }
+      .source { fill: #f8fafc; stroke: #64748b; stroke-width: 2; rx: 16; }
+      .boundary { fill: #0f172a; stroke: #0f172a; stroke-width: 2; rx: 16; }
+      .boundary-title { font: 700 18px "Segoe UI", "Microsoft YaHei", sans-serif; fill: #ffffff; }
+      .boundary-body { font: 400 13px "Segoe UI", "Microsoft YaHei", sans-serif; fill: #cbd5e1; }
+      .connect { fill: none; stroke: #2563eb; stroke-width: 2.4; }
+      .connect-muted { fill: none; stroke: #64748b; stroke-width: 2; stroke-dasharray: 7 6; }
+      .connect-green { fill: none; stroke: #0f766e; stroke-width: 2.4; }
+      .dependency { fill: none; stroke: #475569; stroke-width: 2.3; marker-end: url(#depends); }
+      .divider { stroke: #cbd5e1; stroke-width: 1.5; }
+    </style>
+  </defs>
+
+  <rect width="1800" height="1650" fill="url(#page)"/>
+  <text x="900" y="50" text-anchor="middle" class="title">楼上（Loushang）未来目标架构 V3.1</text>
+  <text x="900" y="80" text-anchor="middle" class="subtitle">Presentation client · hosted application · embedded fast path · shared Harness substrate</text>
+
+  <!-- Client profiles: physical/interaction connections have no arrows. -->
+  <rect x="55" y="110" width="1690" height="270" class="panel" filter="url(#shadow)"/>
+  <text x="85" y="148" class="panel-title">客户端与进程形态</text>
+  <text x="1720" y="148" text-anchor="end" class="small">本区连线无箭头：表示交互/连接，不表示依赖</text>
+
+  <rect x="90" y="175" width="340" height="108" class="client"/>
+  <text x="260" y="213" text-anchor="middle" class="box-title">HarnessGUI</text>
+  <text x="260" y="239" text-anchor="middle" class="body">桌面 presentation client</text>
+  <text x="260" y="263" text-anchor="middle" class="small">窗口 · 导航 · pane · 本地 UI state</text>
+
+  <rect x="465" y="175" width="340" height="108" class="client"/>
+  <text x="635" y="213" text-anchor="middle" class="box-title">HarnessTUI Hosted Mux</text>
+  <text x="635" y="239" text-anchor="middle" class="body">G16 detachable client</text>
+  <text x="635" y="263" text-anchor="middle" class="small">终端输入 · 布局 · playback</text>
+
+  <rect x="840" y="175" width="340" height="108" class="future"/>
+  <text x="1010" y="213" text-anchor="middle" class="box-title">Later Remote Clients</text>
+  <text x="1010" y="239" text-anchor="middle" class="body">WebUI · IDE · mobile · P2P</text>
+  <text x="1010" y="263" text-anchor="middle" class="small">需独立 trust / transport 决策</text>
+
+  <rect x="1260" y="175" width="420" height="108" class="embedded-box"/>
+  <text x="1470" y="213" text-anchor="middle" class="box-title">HarnessTUI Embedded</text>
+  <text x="1470" y="239" text-anchor="middle" class="body">Product-owned direct composition</text>
+  <text x="1470" y="263" text-anchor="middle" class="small">不经过 AppServer / AppService / AppHost</text>
+
+  <rect x="90" y="310" width="1090" height="52" class="boundary"/>
+  <text x="635" y="333" text-anchor="middle" class="boundary-title">AppClientV1 + optional ExecutionClientV1 / HarnessClient facets</text>
+  <text x="635" y="352" text-anchor="middle" class="boundary-body">conversation/control · execution identity/recovery · capabilities · workspace · changes · artifacts</text>
+  <path d="M260 283 L260 310" class="connect"/>
+  <path d="M635 283 L635 310" class="connect"/>
+  <path d="M1010 283 L1010 310" class="connect-muted"/>
+  <path d="M1470 283 L1470 362" class="connect-green"/>
+  <text x="1483" y="345" class="small">in-process value adapter</text>
+
+  <!-- Physical compositions. -->
+  <rect x="55" y="415" width="1180" height="700" fill="url(#hosted)" stroke="#2563eb" stroke-width="2.5" rx="26" filter="url(#shadow)"/>
+  <text x="85" y="455" class="panel-title">Hosted application composition</text>
+  <text x="1205" y="455" text-anchor="end" class="small">G16 local detachable：GUI 与 Hosted Mux 共用一个后台</text>
+
+  <rect x="80" y="480" width="1130" height="510" fill="#ffffff" fill-opacity="0.78" stroke="#94a3b8" stroke-width="1.8" rx="20"/>
+  <text x="105" y="512" class="body">同一个 G16 detachable AppHost application</text>
+
+  <rect x="105" y="535" width="310" height="112" class="service"/>
+  <text x="260" y="570" text-anchor="middle" class="box-title">AppServer</text>
+  <text x="260" y="596" text-anchor="middle" class="body">endpoint · admission · framing</text>
+  <text x="260" y="622" text-anchor="middle" class="small">connection / transport lifecycle</text>
+
+  <rect x="455" y="535" width="360" height="112" class="service"/>
+  <text x="635" y="570" text-anchor="middle" class="box-title">AppService</text>
+  <text x="635" y="596" text-anchor="middle" class="body">Mux · attachment · controller</text>
+  <text x="635" y="622" text-anchor="middle" class="small">snapshot · revision · event routing</text>
+
+  <rect x="855" y="535" width="325" height="112" class="product"/>
+  <text x="1018" y="570" text-anchor="middle" class="box-title">Product Hosted Binding</text>
+  <text x="1018" y="596" text-anchor="middle" class="body">injected HostedSessionPort</text>
+  <text x="1018" y="622" text-anchor="middle" class="small">Product-owned adapter</text>
+
+  <path d="M415 591 L455 591" class="connect"/>
+  <text x="435" y="579" text-anchor="middle" class="tiny">injected client</text>
+  <path d="M815 591 L855 591" class="connect"/>
+  <text x="835" y="579" text-anchor="middle" class="tiny">hosted port</text>
+
+  <rect x="105" y="690" width="245" height="105" class="host"/>
+  <text x="228" y="725" text-anchor="middle" class="box-title">AppHost Runtime</text>
+  <text x="228" y="751" text-anchor="middle" class="body">canonical Product routing</text>
+  <text x="228" y="776" text-anchor="middle" class="small">scoped runtime / binding lifecycle</text>
+
+  <rect x="385" y="690" width="245" height="105" class="method"/>
+  <text x="508" y="725" text-anchor="middle" class="box-title">Method</text>
+  <text x="508" y="751" text-anchor="middle" class="body">reusable way of working</text>
+  <text x="508" y="776" text-anchor="middle" class="small">constraints · gates · evidence</text>
+
+  <rect x="665" y="690" width="245" height="105" class="work"/>
+  <text x="788" y="725" text-anchor="middle" class="box-title">Work</text>
+  <text x="788" y="751" text-anchor="middle" class="body">accepted commitment</text>
+  <text x="788" y="776" text-anchor="middle" class="small">event log · replay · artifact refs</text>
+
+  <rect x="945" y="690" width="235" height="105" class="product"/>
+  <text x="1063" y="725" text-anchor="middle" class="box-title">Product Runtime</text>
+  <text x="1063" y="751" text-anchor="middle" class="body">conversation / execution</text>
+  <text x="1063" y="776" text-anchor="middle" class="small">projection · policy · artifacts</text>
+
+  <path d="M1018 647 L1018 670 L228 670 L228 690" class="connect-muted"/>
+  <path d="M350 743 L385 743" class="connect-muted"/>
+  <path d="M630 743 L665 743" class="connect-muted"/>
+  <path d="M910 743 L945 743" class="connect-muted"/>
+
+  <rect x="105" y="835" width="505" height="125" class="harness"/>
+  <text x="358" y="870" text-anchor="middle" class="box-title">Harness capability substrate</text>
+  <text x="358" y="896" text-anchor="middle" class="body">session · resources · context · approval · sandbox</text>
+  <text x="358" y="922" text-anchor="middle" class="body">workspace/change provider：repo · branch · worktree · diff</text>
+  <text x="358" y="946" text-anchor="middle" class="small">exact provider owns facts; clients receive bounded projections</text>
+
+  <rect x="650" y="835" width="530" height="125" class="harness"/>
+  <text x="915" y="870" text-anchor="middle" class="box-title">Agent + AI + admitted tools</text>
+  <text x="915" y="896" text-anchor="middle" class="body">Agent loop depends on AI provider · tools run through policy</text>
+  <text x="915" y="922" text-anchor="middle" class="body">browser / provider / tools are execution capabilities</text>
+  <text x="915" y="946" text-anchor="middle" class="small">presentation observes client-safe facts; it gains no effect authority</text>
+
+  <path d="M1063 795 L1063 815 L358 815 L358 835" class="connect-muted"/>
+  <path d="M610 898 L650 898" class="connect-muted"/>
+
+  <rect x="105" y="1020" width="1075" height="68" class="source"/>
+  <text x="643" y="1048" text-anchor="middle" class="box-title">Local repository / worktree / files / sandbox resources</text>
+  <text x="643" y="1073" text-anchor="middle" class="small">Harness provider reads admitted resources; HarnessGUI and Hosted Mux never become Git authority</text>
+  <path d="M358 960 L358 1020" class="connect-muted"/>
+
+  <rect x="1260" y="415" width="485" height="700" fill="url(#embedded)" stroke="#0f766e" stroke-width="2.5" rx="26" filter="url(#shadow)"/>
+  <text x="1290" y="455" class="panel-title">Embedded TUI application</text>
+  <text x="1715" y="481" text-anchor="end" class="small">独立 runtime；不与 Hosted 共享 Session</text>
+
+  <rect x="1300" y="535" width="405" height="105" class="embedded-box"/>
+  <text x="1503" y="570" text-anchor="middle" class="box-title">HarnessTUI Embedded</text>
+  <text x="1503" y="597" text-anchor="middle" class="body">terminal presentation</text>
+  <text x="1503" y="621" text-anchor="middle" class="small">input · layout · rendering · playback</text>
+
+  <rect x="1300" y="690" width="405" height="120" class="embedded-box"/>
+  <text x="1503" y="728" text-anchor="middle" class="box-title">Product-owned composition</text>
+  <text x="1503" y="756" text-anchor="middle" class="body">direct conversation binding</text>
+  <text x="1503" y="782" text-anchor="middle" class="small">no AppClient hosted lifecycle</text>
+  <path d="M1503 640 L1503 690" class="connect-green"/>
+
+  <rect x="1300" y="860" width="405" height="130" class="embedded-box"/>
+  <text x="1503" y="898" text-anchor="middle" class="box-title">Embedded Harness runtime</text>
+  <text x="1503" y="926" text-anchor="middle" class="body">Session · Agent · AI · admitted tools</text>
+  <text x="1503" y="952" text-anchor="middle" class="small">may reuse value contracts via in-process adapter</text>
+  <text x="1503" y="976" text-anchor="middle" class="small">no attach / controller / detach / reattach</text>
+  <path d="M1503 810 L1503 860" class="connect-green"/>
+
+  <text x="1503" y="1045" text-anchor="middle" class="body">Embedded local state does not auto-sync, merge,</text>
+  <text x="1503" y="1071" text-anchor="middle" class="body">or hand off into the hosted application.</text>
+
+  <!-- Dependency view: every arrow uses the user-defined direction. -->
+  <rect x="55" y="1150" width="1690" height="420" class="panel" filter="url(#shadow)"/>
+  <text x="85" y="1190" class="panel-title">Scope dependency direction</text>
+  <text x="1720" y="1190" text-anchor="end" class="box-title">A ──▶ B = A 依赖 B</text>
+
+  <rect x="85" y="1225" width="220" height="68" class="client"/>
+  <text x="195" y="1253" text-anchor="middle" class="box-title">HarnessGUI</text>
+  <text x="195" y="1278" text-anchor="middle" class="small">presentation</text>
+
+  <rect x="85" y="1320" width="220" height="68" class="client"/>
+  <text x="195" y="1348" text-anchor="middle" class="box-title">Hosted Mux</text>
+  <text x="195" y="1373" text-anchor="middle" class="small">presentation</text>
+
+  <rect x="350" y="1272" width="235" height="68" class="boundary"/>
+  <text x="468" y="1300" text-anchor="middle" class="boundary-title">Client boundaries</text>
+  <text x="468" y="1324" text-anchor="middle" class="boundary-body">app + execution + facets</text>
+
+  <rect x="630" y="1272" width="230" height="68" class="service"/>
+  <text x="745" y="1300" text-anchor="middle" class="box-title">AppServer / Service</text>
+  <text x="745" y="1324" text-anchor="middle" class="small">injected ports</text>
+
+  <rect x="905" y="1272" width="220" height="68" class="product"/>
+  <text x="1015" y="1300" text-anchor="middle" class="box-title">Hosted Binding</text>
+  <text x="1015" y="1324" text-anchor="middle" class="small">Product-owned</text>
+
+  <rect x="1170" y="1272" width="200" height="68" class="host"/>
+  <text x="1270" y="1300" text-anchor="middle" class="box-title">AppHost</text>
+  <text x="1270" y="1324" text-anchor="middle" class="small">canonical runtime</text>
+
+  <rect x="1415" y="1272" width="235" height="68" class="product"/>
+  <text x="1533" y="1300" text-anchor="middle" class="box-title">Product Runtime</text>
+  <text x="1533" y="1324" text-anchor="middle" class="small">semantics / policy</text>
+
+  <path d="M305 1259 L330 1259 L330 1294 L350 1294" class="dependency"/>
+  <path d="M305 1354 L330 1354 L330 1318 L350 1318" class="dependency"/>
+  <path d="M585 1306 L630 1306" class="dependency"/>
+  <path d="M860 1306 L905 1306" class="dependency"/>
+  <path d="M1125 1306 L1170 1306" class="dependency"/>
+  <path d="M1370 1306 L1415 1306" class="dependency"/>
+
+  <rect x="85" y="1440" width="220" height="68" class="embedded-box"/>
+  <text x="195" y="1468" text-anchor="middle" class="box-title">Embedded TUI</text>
+  <text x="195" y="1493" text-anchor="middle" class="small">presentation</text>
+
+  <rect x="350" y="1440" width="235" height="68" class="embedded-box"/>
+  <text x="468" y="1468" text-anchor="middle" class="box-title">Embedded Compose</text>
+  <text x="468" y="1493" text-anchor="middle" class="small">Product-owned</text>
+
+  <rect x="905" y="1415" width="220" height="68" class="harness"/>
+  <text x="1015" y="1443" text-anchor="middle" class="box-title">Harness</text>
+  <text x="1015" y="1468" text-anchor="middle" class="small">execution substrate</text>
+
+  <rect x="1170" y="1415" width="200" height="68" class="harness"/>
+  <text x="1270" y="1443" text-anchor="middle" class="box-title">Agent</text>
+  <text x="1270" y="1468" text-anchor="middle" class="small">execution loop</text>
+
+  <rect x="1415" y="1415" width="235" height="68" class="harness"/>
+  <text x="1533" y="1443" text-anchor="middle" class="box-title">AI / Tool adapters</text>
+  <text x="1533" y="1468" text-anchor="middle" class="small">admitted capabilities</text>
+
+  <rect x="630" y="1500" width="230" height="52" class="source"/>
+  <text x="745" y="1532" text-anchor="middle" class="body">Workspace / Change</text>
+  <rect x="905" y="1500" width="220" height="52" class="source"/>
+  <text x="1015" y="1532" text-anchor="middle" class="body">Git / worktree</text>
+
+  <path d="M305 1474 L350 1474" class="dependency"/>
+  <path d="M585 1474 L885 1474 L885 1449 L905 1449" class="dependency"/>
+  <path d="M1533 1340 L1533 1385 L1015 1385 L1015 1415" class="dependency"/>
+  <path d="M1125 1449 L1170 1449" class="dependency"/>
+  <path d="M1370 1449 L1415 1449" class="dependency"/>
+  <path d="M1015 1483 L1015 1490 L745 1490 L745 1500" class="dependency"/>
+  <path d="M860 1526 L905 1526" class="dependency"/>
+
+  <line x1="55" y1="1605" x2="1745" y2="1605" class="divider"/>
+  <text x="65" y="1632" class="small">V3.1：实线无箭头 = 交互/物理连接；虚线无箭头 = 语义协作；带箭头 = scope dependency，且仅表示“左侧依赖右侧”。</text>
+</svg>

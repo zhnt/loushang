@@ -11,6 +11,8 @@
 - Owner: Loushang architecture / future GUI scope owner
 - Source baseline: `7c41cd57dd96f9da2964ef6146fc474ff96f674e`, inspected 2026-09-08
 - Execution contract update: `d89c4c9f` on `main` (PR #580), inspected 2026-09-09
+- Target architecture: [Loushang Future Target Architecture V3.1](future-loushang-architecture-v3.1.md)
+- Reference evidence: [GUI reference system inventory](gui-reference-system-inventory.md)
 - Design stage: black-box framing; component discovery follows separately
 
 本文承接 [GUI 需求](gui-requirements.md)，完成逻辑上下文、物理上下文、职责与
@@ -77,23 +79,18 @@ GUI 跨语言与原生验收尚未完成，本文更新不代表正式 scope pla
 ## 3. 逻辑系统上下文
 
 下图全部为 **Proposed GUI context**。GUI 保持一个黑盒；服务侧与桌面侧也是
-相邻边界，未展开其内部组件。实线表示首期交互，虚线表示后续交互。
+相邻边界，未展开其内部组件。无箭头实线表示首期交互，无箭头虚线表示后续
+交互；它们不表示依赖方向。
 
 ```mermaid
 flowchart LR
-    U[桌面用户] -->|输入、控制、选择文档| G[GUI 黑盒]
-    G -->|会话状态、文档、故障反馈| U
-    D[开发者与回放维护者] -->|场景、操作、断言| G
-    G -->|步骤结果、截图、日志| D
-    G -->|App Contract 请求| S[应用服务边界：AppServer / AppService]
-    S -->|快照、事件、结果或封闭错误| G
-    S -->|经注入端口执行和决策| P[Product / 已有执行运行时]
-    P -->|Session 事实与结果| S
-    G -->|受限窗口、输入、文件读取入口| O[操作系统与本机文件系统]
-    O -->|输入、窗口事件、已许可内容| G
-    P -.->|选择与调用| B[后续浏览器插件]
-    B -.->|启动、操控、关闭| W[独立浏览器窗口]
-    B -.->|经产品合同返回结果| P
+    U[桌面用户] ---|输入、控制、文档 / 状态、结果、故障| G[HarnessGUI 黑盒]
+    D[开发者与回放维护者] ---|场景、操作、断言 / 结果、截图、日志| G
+    G ---|App Contract 请求 / 快照、事件、结果、封闭错误| S[应用服务边界：AppServer / AppService]
+    S ---|Product-owned injected ports / Session 事实与结果| P[Product / 已有执行运行时]
+    G ---|受限窗口、输入、文件读取入口| O[操作系统与本机文件系统]
+    P -.-|后续选择的执行 capability| B[浏览器插件]
+    B -.-|启动、操控、关闭| W[独立浏览器窗口]
 ```
 
 模型 provider、工具、Harness、浏览器控制器不是 GUI 的直接对接者。它们的执行
@@ -104,9 +101,33 @@ flowchart LR
 桌面行为、文档类型与回放驱动。这些是后续组件发现的输入，当前不按一项变化
 一个组件划分，也不把 React/Tauri/Playwright 名称当作逻辑组件。
 
+依赖图只使用 `A --> B = A 依赖 B`：
+
+```mermaid
+flowchart LR
+    G[HarnessGUI] --> C[AppClientV1 + optional ExecutionClientV1 / HarnessClient facets]
+    T[HarnessTUI Hosted Mux] --> C
+    C --> S[AppServer / AppService]
+    S --> B[Product-owned hosted binding]
+    B --> A[AppHost]
+    A --> P[Product runtime]
+    P --> H[Harness / Agent / AI / admitted tools]
+    H --> W[Harness workspace/change provider]
+    W --> R[Git repository / worktree]
+    E[HarnessTUI Embedded] --> EP[Product-owned embedded composition]
+    EP --> H
+```
+
+HarnessGUI 与 G16 detachable HarnessTUI Hosted Mux 使用各自的 client scope，
+连接同一个 G16 AppService/AppHost application；它们不共享草稿、焦点、滚动或
+attachment generation。HarnessTUI Embedded 由 Product outer composition 直接
+绑定 Harness，不经过 AppServer/AppService/AppHost。首期只有 Product-neutral
+HarnessGUI，不建立 Coding、Design、Research 或 Work GUI 类别。
+
 ## 4. 物理上下文与部署约束
 
 以下是拟议的同机真实接入；框表示部署边界，**不表示 GUI 内部组件分解**。
+本图使用无箭头连线表示物理连接，不表示依赖。
 WebView 由操作系统承载，实际进程数取决于平台，不承诺“整个 GUI 只有一个进程”。
 
 ```mermaid
@@ -115,13 +136,12 @@ flowchart LR
         subgraph G[GUI 桌面应用边界]
             W[系统 WebView：React / TypeScript]
             R[Tauri / Rust 本机承载]
-            W -->|受限 invoke| R
-            R -->|类型化状态与结果| W
+            W ---|受限 invoke / 类型化状态与结果| R
         end
-        R -->|G16 本机认证 / app v1 + execution v1| S[显式启动的 Python 服务进程]
-        R -->|准入校验后读取| E[本机 endpoint record]
-        R -->|用户许可范围内读取| F[本地文档]
-        S -.->|后续产品插件启动| B[独立浏览器进程与窗口]
+        R ---|G16 本机认证 / app v1 + execution v1| S[显式启动的 Python 服务进程]
+        R ---|准入校验后读取| E[本机 endpoint record]
+        R ---|用户许可范围内读取| F[本地文档]
+        S -.-|后续产品插件启动| B[独立浏览器进程与窗口]
     end
 ```
 
@@ -150,11 +170,14 @@ GUI-B2 使用 BC-002 的 execution profile，继承 G16 的同机认证与可分
 | --- | --- | --- |
 | 输入草稿、焦点、滚动、选中页、窗口偏好 | GUI | 管理本地状态；草稿在应用存活期间按完整会话上下文隔离 |
 | Session transcript、运行状态、工具效果 | Product / 既有 Session runtime | 只消费公开投影，不扫描 Session 存储或补造执行结果 |
+| endpoint record、连接准入、认证、framing 与 transport lifecycle | AppServer | GUI 只读取匹配实例的受限连接材料；不能由 record 或 PID 推断进程控制权 |
 | mux/member、控制 generation、交互有效性 | AppService | 使用当前授予的上下文；所有可变操作最终由服务鉴权 |
 | execution 登记、提交去重与执行容量 | AppService；执行结果与清理事实由 Product 提供 | 保存服务实例/会话/提交与执行身份；消费权威状态，等待者结束不释放服务执行容量 |
-| 服务进程、持久化根准入、整体关闭顺序 | 既有 AppHost / 部署 owner | 仅关闭自己持有的连接；不杀记录中的 PID，不触发应用 stop |
+| canonical Product catalog、routing 与 scoped runtime/binding lifecycle | AppHost | GUI 与 AppService 均不构造第二个 Product runtime；AppHost 不拥有窗口或 client state |
+| 服务进程、持久化根准入、整体关闭顺序 | outer hosted application / deployment owner | GUI 仅关闭自己持有的连接；不杀记录中的 PID，不触发 application stop |
 | GUI 连接、请求关联、原生窗口与监听 | GUI | 有界创建与释放；交付等待结束不表示服务操作撤销 |
 | 本地文档与文件内容 | 用户 / 文件系统 | 获许后只读；不因渲染修改项目文件 |
+| repository、branch、worktree 与 change/diff 事实 | Harness workspace/change provider | 只消费有界、版本化投影；GUI 不直接成为 Git authority，也不把全部变更归因于当前 Agent |
 | 产品结果引用与读取授权 | 产品及其后续公开合同 | 校验类型和权限后展示；不能把路径字符串直接当文件授权 |
 | 浏览器会话与执行效果 | 后续产品选择的浏览器 provider | 可展示经产品返回的结果；pane 关闭和 UI 回放不控制浏览器寿命 |
 | 测试场景、时钟注入与证据目录 | GUI 测试支持 / 测试运行者 | 默认离线；测试产物写到指定位置，真实内容录制必须显式启用 |
