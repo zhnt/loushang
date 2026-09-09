@@ -14,6 +14,10 @@ planning, work event persistence, or AI provider behavior.
 
 ## Start Here
 
+- [G18 Linux-first Startup Performance Plan](startup-performance-plan.md) scopes
+  isolated startup measurement and import/dispatch optimization, with Linux-first
+  delivery and later external macOS/Windows acceptance; it does not change runtime
+  ownership or readiness semantics.
 - [Current Owner Map](current-owner-map.md) is the short, authoritative map of
   implemented owners, dependency direction, Product-owned exclusions, Session
   assembly phases, and public loading boundaries.
