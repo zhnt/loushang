@@ -256,6 +256,7 @@ class CommandDispatchOutcome(Generic[ResultT]):
     handled: bool
     result: ResultT | None = None
     handler_name: str | None = None
+    failure_code: str | None = None
 
     @classmethod
     def unhandled(cls) -> CommandDispatchOutcome[ResultT]:

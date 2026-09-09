@@ -184,6 +184,7 @@ class CodingHostedContinuityAttemptV1:
                 profile_id=request.profile_id,
                 operation_id_factory=request.operation_id_factory,
                 admitted_scopes=request.admitted_scopes,
+                execution=request.execution is not None,
             )
             application = _coding_hosted_application_request(
                 request,

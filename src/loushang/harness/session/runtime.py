@@ -323,6 +323,11 @@ class SessionRuntime:
     async def wait_for_idle(self) -> None:
         await self._host_runtime.wait_for_idle()
 
+    async def settle_execution(self, *, interrupted: bool = False) -> None:
+        """Drain retained Agent continuations and their ordered projections."""
+        await self._host_runtime.settle_runs(cancel_pending=interrupted)
+        await self._event_bus.drain()
+
     async def run_agent_prompt(
         self,
         prompt: object,

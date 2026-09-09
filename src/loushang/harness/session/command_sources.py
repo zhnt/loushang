@@ -78,11 +78,15 @@ class ExtensionCommandSourceRuntime(Generic[ResultT]):
         if command is None:
             return CommandDispatchOutcome.unhandled()
         context = provider.create_command_context(fallback_cwd=self.get_cwd())
+        failure_code = None
         try:
             await command.handler(invocation.args, context)
         except Exception as exc:
             self.record_error(command, exc)
-        return CommandDispatchOutcome.handled_result(self.result_factory(command))
+            failure_code = "extension_command_failed"
+        return CommandDispatchOutcome(
+            handled=True, result=self.result_factory(command), failure_code=failure_code
+        )
 
     async def get_argument_completions(
         self, invocation_name: str, prefix: str

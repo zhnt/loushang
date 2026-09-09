@@ -234,6 +234,10 @@ class HostedApplicationContinuityRuntimeV1:
             raise HostedApplicationError("hosted_application_not_ready")
         return self._application.discovery_client
 
+    @property
+    def execution_enabled(self) -> bool:
+        return self._application is not None and self._application.execution_enabled
+
     def enable_client_scopes(self) -> None:
         """Opt in only after this recovered runtime is published by its attempt."""
         if not self.accepting:
@@ -471,6 +475,7 @@ class HostedApplicationContinuityAttemptV1:
                     product_id=self._request.application.product_id,
                     resolver=self._request.application.resolver,
                     discovery=self._request.application.discovery,
+                    execution=self._request.application.execution,
                     continuity_lease=self._lease,
                     id_factory=self._request.application.service_id_factory,
                     close_timeout_seconds=(

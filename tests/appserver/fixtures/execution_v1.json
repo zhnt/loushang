@@ -1,0 +1,105 @@
+{
+  "hello": {
+    "executionVersion": "loushang.execution/v1",
+    "profile": "local-detachable-execution/v1",
+    "protocolVersion": "loushang.app/v1",
+    "restartRecovery": false,
+    "serviceInstanceId": "instance",
+    "submissionRetention": "service_instance_lifetime"
+  },
+  "submit": {
+    "operation": "execution/submit",
+    "payload": {
+      "control": {
+        "attachmentId": "attachment",
+        "controllerGeneration": 1,
+        "memberId": "member"
+      },
+      "expectedInstanceId": "instance",
+      "submissionId": "submission",
+      "text": "你好"
+    },
+    "protocolVersion": "loushang.execution/v1",
+    "requestId": "1"
+  },
+  "accepted": {
+    "protocolVersion": "loushang.execution/v1",
+    "requestId": "1",
+    "result": {
+      "identity": {
+        "continuityId": "continuity",
+        "productId": "coding",
+        "scope": "cwd",
+        "scopeFingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "sessionId": "session"
+      },
+      "serviceInstanceId": "instance",
+      "state": {
+        "executionId": "execution",
+        "interruptRequested": false,
+        "outcome": null,
+        "revision": 1,
+        "status": "accepted"
+      },
+      "submissionId": "submission"
+    },
+    "resultType": "record"
+  },
+  "succeeded": {
+    "protocolVersion": "loushang.execution/v1",
+    "requestId": "2",
+    "result": {
+      "identity": {
+        "continuityId": "continuity",
+        "productId": "coding",
+        "scope": "cwd",
+        "scopeFingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "sessionId": "session"
+      },
+      "serviceInstanceId": "instance",
+      "state": {
+        "executionId": "execution",
+        "interruptRequested": false,
+        "outcome": {
+          "errorCode": null,
+          "legacyResult": {},
+          "status": "succeeded"
+        },
+        "revision": 3,
+        "status": "succeeded"
+      },
+      "submissionId": "submission"
+    },
+    "resultType": "record"
+  },
+  "already_terminal": {
+    "protocolVersion": "loushang.execution/v1",
+    "requestId": "3",
+    "result": {
+      "disposition": "already_terminal",
+      "record": {
+        "identity": {
+          "continuityId": "continuity",
+          "productId": "coding",
+          "scope": "cwd",
+          "scopeFingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "sessionId": "session"
+        },
+        "serviceInstanceId": "instance",
+        "state": {
+          "executionId": "execution",
+          "interruptRequested": false,
+          "outcome": {
+            "errorCode": null,
+            "legacyResult": {},
+            "status": "succeeded"
+          },
+          "revision": 3,
+          "status": "succeeded"
+        },
+        "submissionId": "submission"
+      }
+    },
+    "resultType": "interrupt"
+  }
+}

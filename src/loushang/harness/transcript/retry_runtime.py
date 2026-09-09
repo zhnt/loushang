@@ -158,6 +158,9 @@ class AgentTranscriptRetryRuntime:
     async def wait(self) -> None:
         await self._coordinator.wait()
 
+    async def settle(self, *, interrupted: bool = False) -> None:
+        await self._coordinator.settle(cancel_pending=interrupted)
+
     def ensure_future(self) -> asyncio.Future[None]:
         return self._coordinator.ensure_waiter()
 

@@ -22,6 +22,7 @@ from .continuity import (
     require_owner_epoch,
 )
 from .discovery_ports import HostedSessionDiscoveryBindingV1, require_discovery_context
+from .execution_service import HostedExecutionServiceBindingV1
 from .ports import HostedSessionPortV1, HostedSessionResolverV1
 from .runtime import (
     _CONTINUITY_TOKEN,
@@ -40,9 +41,15 @@ class AppServiceRecoveryRequestV1:
     id_factory: Callable[[], str] | None = field(default=None, repr=False)
     close_timeout_seconds: float = 10.0
     discovery: HostedSessionDiscoveryBindingV1 | None = field(default=None, repr=False)
+    execution: HostedExecutionServiceBindingV1 | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         require_discovery_context(self.discovery, self.product_id)
+        if self.execution is not None and (
+            type(self.execution) is not HostedExecutionServiceBindingV1
+            or self.execution.application_id != self.continuity_lease.application_id
+        ):
+            raise ValueError("invalid execution recovery activation")
         if type(self.product_id) is not str or not self.product_id:
             raise ValueError("invalid recovery Product identity")
         if not inspect.iscoroutinefunction(
@@ -183,6 +190,7 @@ class AppServiceRecoveryAttemptV1:
                 id_factory=self._request.id_factory,
                 close_timeout_seconds=self._request.close_timeout_seconds,
                 discovery=self._request.discovery,
+                execution=self._request.execution,
             )
             service._adopt_continuity_state(
                 lease=self._request.continuity_lease,

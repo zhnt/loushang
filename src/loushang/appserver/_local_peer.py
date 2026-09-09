@@ -9,6 +9,7 @@ from typing import Protocol
 
 from .client import AppClientV1, SessionDiscoveryClientV1
 from .connection import AppServerConnectionV1
+from .execution.client import ExecutionClientV1
 from .framing import AppByteTransportV1, AppConnectionClosedError
 from .local_auth import LocalAuthenticationV1, authenticate_local_server
 from .protocol import AppErrorCodeV1, AppServiceError
@@ -30,6 +31,11 @@ class OwnedLocalDiscoveryScopeV1(OwnedLocalClientScopeV1, Protocol):
 
     @property
     def discovery_client(self) -> SessionDiscoveryClientV1 | None: ...
+
+
+class OwnedLocalExecutionScopeV1(OwnedLocalDiscoveryScopeV1, Protocol):
+    @property
+    def execution_client(self) -> ExecutionClientV1 | None: ...
 
 
 def _observe(task: asyncio.Task[None]) -> None:
@@ -59,6 +65,7 @@ class _LocalPeer:
         close_timeout: float,
         profile: AppConnectionProfileV1 = AppConnectionProfileV1.LOCAL,
         discovery_scope_factory: Callable[[], OwnedLocalDiscoveryScopeV1] | None = None,
+        execution_scope_factory: Callable[[], OwnedLocalExecutionScopeV1] | None = None,
     ) -> None:
         self.mode: bytes | None = None
         self.task: asyncio.Task[None] | None = None
@@ -67,6 +74,7 @@ class _LocalPeer:
         self._admit, self._retire, self._request_stop = admit, retire, request_stop
         self._auth_timeout, self._timeout = auth_timeout, close_timeout
         self._profile, self._discovery_factory = profile, discovery_scope_factory
+        self._execution_factory = execution_scope_factory
         self._published = asyncio.get_running_loop().create_future()
         self._scope: OwnedLocalClientScopeV1 | None = None
         self._connection: AppServerConnectionV1 | None = None
@@ -119,7 +127,18 @@ class _LocalPeer:
                 raise AppConnectionClosedError()
             if mode == LOCAL_APP_MODE:
                 discovery = None
-                if self._discovery_factory is None:
+                execution = None
+                if self._execution_factory is not None:
+                    execution_scope = self._execution_factory()
+                    self._scope = execution_scope
+                    execution = execution_scope.execution_client
+                    if execution is None:
+                        raise AppConnectionClosedError()
+                    if self._discovery_factory is not None:
+                        discovery = execution_scope.discovery_client
+                        if discovery is None:
+                            raise AppConnectionClosedError()
+                elif self._discovery_factory is None:
                     self._scope = self._scope_factory()
                 else:
                     scope = self._discovery_factory()
@@ -130,6 +149,7 @@ class _LocalPeer:
                 self._connection = AppServerConnectionV1(
                     self._scope, frames, profile=self._profile,
                     phase_timeout=self._timeout, discovery=discovery,
+                    execution=execution,
                 )
                 await self._connection.serve()
             else:
