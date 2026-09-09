@@ -206,6 +206,9 @@ that do not conflict with that method.
 
 ## Refinement Principles
 
+通用判断口径见 [Design Guidance](design-guidance.md#common-design-judgment)；
+以下规则将其应用到组件细化。
+
 ### 1. High Cohesion, Low Coupling
 
 - 单一组件仍应追求高内聚
@@ -225,24 +228,10 @@ that do not conflict with that method.
 
 ### 3. Decomposition Granularity Rule
 
-粒度控制应克制。
-
-推荐经验范围：
-
-- `3-7` 个同级对象最理想
-- `8-9` 进入复查区
-- `>9` 通常需要重新分组或上提中间抽象
-
-这里的数字只适用于：
-
-- 层内对象数
-- 同级组件组对象数
-
-不适用于：
-
-- 所有 helper
-- 所有类
-- 所有责任簇的总量
+粒度控制应克制。按职责、变化、一致性和故障边界比较 `split / merge / keep`，
+并检查新增接口、协作和运维成本是否值得。同级对象数量只提示复查，不设目标
+数量范围，也不要求代码规模相同；不得为凑数增加层次。组件边界不自动要求
+独立服务、进程或部署。详细判断见通用粒度准则。
 
 ### 4. Consistent Decomposition View
 

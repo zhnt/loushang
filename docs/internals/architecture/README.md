@@ -62,6 +62,12 @@ Do not treat Target as implemented, Current as automatically desirable, or
 History as a current ownership source. When Current and Target differ, record a
 Delta rather than blending the two in one unlabeled diagram.
 
+Drafts, proposals and undecided extensions are candidate directions. Keep them
+separate from accepted Target and do not count their absence as implementation
+debt. The [Target acceptance rule](../architecture-method/README.md#target-acceptance)
+and [governance profile](governance-profile.md#target-acceptance-in-loushang)
+define acceptance evidence and ledger promotion.
+
 ## Architecture Scope Tree
 
 The top-level scopes are:
@@ -224,12 +230,16 @@ drift guards.
 ## Draft, Validation, Reference, And History
 
 - [Architecture Drafts](drafts/README.md) contain unresolved proposals and are
-  not accepted requirements.
+  not accepted requirements. New identified ARDs follow their owning scope's
+  `decisions/draft/` or `decisions/proposed/` lifecycle; general exploration and
+  delivery plans retain their own locations.
 - `validation/` records architecture conclusions drawn from tests, comparisons,
   or spikes.
 - `reference/` records external or comparative material and is never Loushang
   architecture authority.
 - `history/` preserves superseded designs and terminology for traceability.
+  Decision records using state directories retain superseded rationale in
+  `decisions/superseded/` without a duplicate history copy.
 
 Historical terminology and old paths may remain in non-live material. Do not
 rewrite history merely to match current package names, but make its historical
