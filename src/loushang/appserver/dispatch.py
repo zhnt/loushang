@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from typing import cast
 
-from .client import AppClientV1
+from .client import AppClientV1, SessionDiscoveryClientV1
 from .protocol import (
+    AppErrorCodeV1,
     AppOperationV1,
     AppRequestV1,
     AppResultPayloadV1,
+    AppServiceError,
     AttachmentEventsV1,
     AttachmentReadEventsV1,
     InteractionRespondV1,
@@ -19,6 +21,7 @@ from .protocol import (
     MuxMemberCloseV1,
     MuxMemberOpenV1,
     MuxReadV1,
+    SessionListV1,
     SessionSnapshotRequestV1,
     TurnInterruptV1,
     TurnTextV1,
@@ -26,7 +29,8 @@ from .protocol import (
 
 
 async def dispatch_request(
-    client: AppClientV1, request: AppRequestV1
+    client: AppClientV1, request: AppRequestV1,
+    *, discovery: SessionDiscoveryClientV1 | None = None,
 ) -> AppResultPayloadV1:
     value = request.payload
     match request.operation:
@@ -34,6 +38,10 @@ async def dispatch_request(
             return await client.create_mux(cast(MuxCreateV1, value))
         case AppOperationV1.MUX_LIST:
             return await client.list_muxes()
+        case AppOperationV1.SESSIONS_LIST:
+            if discovery is None:
+                raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+            return await discovery.list_sessions(cast(SessionListV1, value))
         case AppOperationV1.MUX_READ:
             return await client.read_mux(cast(MuxReadV1, value))
         case AppOperationV1.MUX_ATTACH:

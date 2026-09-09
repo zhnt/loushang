@@ -183,6 +183,7 @@ class CodingHostedContinuityAttemptV1:
                 sessions=request.sessions,
                 profile_id=request.profile_id,
                 operation_id_factory=request.operation_id_factory,
+                admitted_scopes=request.admitted_scopes,
             )
             application = _coding_hosted_application_request(
                 request,

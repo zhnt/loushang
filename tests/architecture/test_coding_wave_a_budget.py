@@ -17,6 +17,7 @@ G14_PRODUCT_SLICE = frozenset(
     {"cli/hosted.py", "hosted_catalog.py", "hosted_session.py"}
 )
 G16_PRODUCT_SLICE = frozenset({"hosted_bootstrap.py", "hosted_local.py", "cli/mux.py"})
+G17_PRODUCT_SLICE = frozenset({"cli/hosted_client.py"})
 
 
 def test_coding_package_stays_within_wave_a_budget() -> None:
@@ -37,6 +38,7 @@ def test_coding_package_stays_within_wave_a_budget() -> None:
         | G13_PRODUCT_SLICE
         | G14_PRODUCT_SLICE
         | G16_PRODUCT_SLICE
+        | G17_PRODUCT_SLICE
     )
     assert approved <= line_counts.keys(), line_counts
     core_line_counts = {
@@ -68,3 +70,5 @@ def test_coding_package_stays_within_wave_a_budget() -> None:
     assert sum(g14_line_counts.values()) <= 1_300, g14_line_counts
     g16_line_counts = {path: line_counts[path] for path in sorted(G16_PRODUCT_SLICE)}
     assert sum(g16_line_counts.values()) <= 900, g16_line_counts
+    g17_line_counts = {path: line_counts[path] for path in sorted(G17_PRODUCT_SLICE)}
+    assert sum(g17_line_counts.values()) <= 450, g17_line_counts

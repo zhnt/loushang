@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from enum import Enum
 from typing import Protocol
 
 from loushang.appserver.protocol import (
@@ -16,6 +17,21 @@ from loushang.appserver.protocol import (
 HostedSessionEventListenerV1 = Callable[
     [SessionEventV1], Awaitable[None] | None
 ]
+
+
+class HostedSessionResolutionFailureV1(str, Enum):
+    MISSING = "missing"
+    UNAVAILABLE = "unavailable"
+
+
+class HostedSessionResolutionErrorV1(RuntimeError):
+    """Closed Product failure; missing requires a complete successful lookup."""
+
+    def __init__(self, reason: HostedSessionResolutionFailureV1) -> None:
+        if type(reason) is not HostedSessionResolutionFailureV1:
+            raise TypeError("invalid Session resolution failure")
+        self.reason = reason
+        super().__init__(reason.value)
 
 
 class HostedSessionPortV1(Protocol):
@@ -58,4 +74,6 @@ __all__ = [
     "HostedSessionEventListenerV1",
     "HostedSessionPortV1",
     "HostedSessionResolverV1",
+    "HostedSessionResolutionFailureV1",
+    "HostedSessionResolutionErrorV1",
 ]

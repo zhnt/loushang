@@ -2,6 +2,16 @@
   "decision": "RETAIN",
   "entries": [
     {
+      "disposition": "explicit-owned-foreground-tui",
+      "entrypointId": "coding.hosted-tui.command",
+      "importsComposition": false,
+      "omissionOwner": null,
+      "packagingBinding": "project.scripts.loushang-hosted-tui",
+      "source": "src/loushang/coding/cli/hosted_client.py",
+      "supportStatus": "installed",
+      "surface": "hosted"
+    },
+    {
       "disposition": "explicit-detachable-local",
       "entrypointId": "coding.mux.command",
       "importsComposition": false,
@@ -132,5 +142,5 @@
       "surface": "mux"
     }
   ],
-  "inventoryVersion": 5
+  "inventoryVersion": 6
 }

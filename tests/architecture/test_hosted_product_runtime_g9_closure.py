@@ -310,7 +310,7 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
 
     inventory = json.loads(_read(G9_ENTRYPOINTS))
     assert set(inventory) == {"inventoryVersion", "decision", "entries"}
-    assert inventory["inventoryVersion"] == 5
+    assert inventory["inventoryVersion"] == 6
     assert inventory["decision"] == "RETAIN"
     rows = {row["entrypointId"]: row for row in inventory["entries"]}
     assert set(rows) == {
@@ -322,6 +322,7 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
         "coding.bootstrap",
         "coding.cli",
         "coding.hosted.command",
+        "coding.hosted-tui.command",
         "coding.mux.command",
         "coding.sdk",
         "coding.tui",
@@ -359,6 +360,9 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
     assert rows["coding.hosted.command"]["disposition"] == "explicit-foreground-stdio"
     assert rows["coding.hosted.command"]["importsComposition"] is False
     assert rows["coding.hosted.command"]["omissionOwner"] is None
+    assert rows["coding.hosted-tui.command"]["disposition"] == "explicit-owned-foreground-tui"
+    assert rows["coding.hosted-tui.command"]["importsComposition"] is False
+    assert rows["coding.hosted-tui.command"]["omissionOwner"] is None
     assert rows["coding.mux.command"]["disposition"] == "explicit-detachable-local"
     assert rows["coding.mux.command"]["importsComposition"] is False
     assert rows["coding.mux.command"]["omissionOwner"] is None
@@ -403,6 +407,7 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
         "coding.bootstrap": ("bootstrap", "supported-library"),
         "coding.cli": ("cli", "installed"),
         "coding.hosted.command": ("hosted", "installed"),
+        "coding.hosted-tui.command": ("hosted", "installed"),
         "coding.mux.command": ("mux", "installed"),
         "coding.sdk": ("sdk", "supported-library"),
         "coding.tui": ("tui", "installed"),
@@ -415,6 +420,7 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
     assert scripts == {
         "loushang": "loushang.coding.cli.__main__:main",
         "loushang-hosted": "loushang.coding.cli.hosted:main",
+        "loushang-hosted-tui": "loushang.coding.cli.hosted_client:main",
         "loushang-mux": "loushang.coding.cli.mux:main",
         "loushang-plugin": "loushang.plugin.__main__:main",
         "loushang-tui": "loushang.coding.ui.cli:main",
@@ -427,6 +433,7 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
     assert bindings == {
         "project.scripts.loushang": "coding.cli",
         "project.scripts.loushang-hosted": "coding.hosted.command",
+        "project.scripts.loushang-hosted-tui": "coding.hosted-tui.command",
         "project.scripts.loushang-mux": "coding.mux.command",
         "project.scripts.loushang-plugin": "plugin.cli",
         "project.scripts.loushang-tui": "coding.tui",
@@ -534,9 +541,12 @@ def test_g9_4_retains_apphost_core_and_current_inventory_fences() -> None:
             name == "loushang.coding" or name.startswith("loushang.coding.")
             for name in imports
         )
-        assert not any(
-            name == "loushang.hosting" or name.startswith("loushang.hosting.")
-            for name in imports
+        hosting_imports = {
+            name for name in imports
+            if name == "loushang.hosting" or name.startswith("loushang.hosting.")
+        }
+        assert hosting_imports == (
+            {"loushang.hosting.contracts"} if path == APPHOST / "launcher.py" else set()
         )
     for path in APPHOST_CORE:
         source = _read(path)

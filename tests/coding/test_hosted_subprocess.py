@@ -41,11 +41,21 @@ def _argv(root: Path) -> list[str]:
 
 def _environment(root: Path) -> dict[str, str]:
     return {
-        **os.environ,
+        **{key: value for key, value in os.environ.items()
+           if key.casefold() != "g17_native_observation"},
         "LOUSHANG_HOME": str(root / "platform"),
         "LOUSHANG_RUNTIME_DIR": str(root / "runtime"),
         "LOUSHANG_TMPDIR": str(root / "scratch"),
     }
+
+
+def test_observation_control_context_never_enters_product_environment(tmp_path, monkeypatch):
+    from .test_mux_terminal_process import _terminal_environment
+
+    monkeypatch.setenv("G17_NATIVE_OBSERVATION", "private-controller-ticket")
+    monkeypatch.setenv("g17_native_observation", "foreign-ticket")
+    for environment in (_environment(tmp_path), _terminal_environment(tmp_path)):
+        assert not any(key.casefold() == "g17_native_observation" for key in environment)
 
 
 def _installed_command() -> str:
@@ -126,6 +136,7 @@ def test_G14_PRODUCT_installed_entrypoint_help_startup_and_clean_eof(
         help_process = await asyncio.create_subprocess_exec(
             _installed_command(),
             "--help",
+            stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=_environment(tmp_path),

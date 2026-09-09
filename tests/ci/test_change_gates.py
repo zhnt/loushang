@@ -105,6 +105,35 @@ class ScopeTests(unittest.TestCase):
         )
         self.assertIn("coding_ui", self.selected("tests/coding/test_ui_status_line.py"))
 
+    def test_g17_evidence_and_hosting_providers_select_native_application_consumers(self):
+        paths = (
+            "tests/coding/_hosted_darwin_observer.py",
+            "tests/coding/_hosted_owned_group.py",
+            "tests/coding/_hosted_windows_witness.py",
+            "tests/coding/_hosted_primitive_child.py",
+            "tests/coding/test_hosted_darwin_primitives.py",
+            "tests/coding/test_hosted_installed_evidence.py",
+            "tests/tui/terminal_process_support/posix_pty.py",
+            "tests/tui/terminal_process_support/windows_conpty.py",
+            "tests/coding/test_mux_native_evidence.py",
+            "tests/coding/test_mux_installed_evidence.py",
+            "scripts/dev/run_g16_installed_evidence.py",
+            "scripts/dev/run_g17_installed_evidence.py",
+            "scripts/dev/_evidence_process.py",
+            "scripts/dev/_evidence_observation.py",
+            "scripts/dev/_evidence_windows.py",
+            "scripts/dev/verify_evidence_manifest.py",
+            "src/loushang/hosting/_posix_process.py",
+            "src/loushang/hosting/_windows_process.py",
+            "src/loushang/hosting/runtime.py",
+            "src/loushang/hosting/contracts.py",
+        )
+        for path in paths:
+            with self.subTest(path=path):
+                plan = selector.select([path])
+                self.assertTrue(plan["checks"]["appservice"])
+                self.assertTrue(plan["workflows"]["appservice"])
+
     def test_machine_consumed_docs_are_not_skipped(self):
         actual = self.selected(
             "docs/internals/architecture/harness/plugin/plugin-lifecycle-plc9c5-evidence-manifest.json"
@@ -379,7 +408,23 @@ class WorkflowContractTests(unittest.TestCase):
                 re.findall(r"^  ([\w-]+):", text.split("\njobs:\n")[1], re.M)
             )
             self.assertEqual(all_jobs, set(mapping) | {"selected-checks"}, path.name)
+            summary = text.split("\n  selected-checks:\n")[1]
+            needs = re.search(r"    needs: \[(.*)\]", summary)[1]
+            self.assertEqual(set(needs.split(", ")), set(mapping), path.name)
             self.assertIn("    if: always()", text)
+
+    def test_appservice_summary_rejects_each_failed_or_cancelled_g17_family(self):
+        text = (ROOT / ".github/workflows/appservice-quality.yml").read_text()
+        mapping = json.loads(re.search(r"--jobs '(.*)'", text)[1])
+        expected = {"g17-darwin-native", "g17-darwin-primitives",
+                    "g17-wheel-evidence", "g17-windows-native"}
+        self.assertTrue(expected <= set(mapping))
+        for failed in expected:
+            for result in ("failure", "cancelled", "skipped"):
+                needs = {job: {"result": "success"} for job in mapping}
+                needs[failed]["result"] = result
+                with self.subTest(job=failed, result=result), self.assertRaises(ValueError):
+                    guard.verify({"version": 1, "checks": {"appservice": True}}, needs, mapping)
 
     def test_compatibility_contexts_require_the_unified_gate(self):
         text = (ROOT / ".github/workflows/quality.yml").read_text()
@@ -395,6 +440,9 @@ class WorkflowContractTests(unittest.TestCase):
             )
         mapping = json.loads(re.search(r"--jobs '(.*)'", text)[1])
         self.assertEqual(set(mapping), set(selector.select([])["workflows"]))
+        summary = text.split("\n  quality-gate:\n")[1]
+        needs = re.search(r"    needs: \[(.*)\]", summary)[1]
+        self.assertEqual(set(needs.split(", ")), set(mapping) | {"changes"})
 
 
 class DocumentationTests(unittest.TestCase):

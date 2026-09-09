@@ -7,7 +7,7 @@ from collections.abc import Awaitable, Callable, Coroutine
 from contextlib import suppress
 from typing import Protocol
 
-from .client import AppClientV1
+from .client import AppClientV1, SessionDiscoveryClientV1
 from .connection import AppServerConnectionV1
 from .framing import AppByteTransportV1, AppConnectionClosedError
 from .local_auth import LocalAuthenticationV1, authenticate_local_server
@@ -23,6 +23,13 @@ class OwnedLocalClientScopeV1(AppClientV1, Protocol):
     """Factory result owned by one authenticated peer; not the application."""
 
     async def close(self) -> None: ...
+
+
+class OwnedLocalDiscoveryScopeV1(OwnedLocalClientScopeV1, Protocol):
+    """Optional factory result; the legacy scope surface stays unchanged."""
+
+    @property
+    def discovery_client(self) -> SessionDiscoveryClientV1 | None: ...
 
 
 def _observe(task: asyncio.Task[None]) -> None:
@@ -50,6 +57,8 @@ class _LocalPeer:
         admit: Callable[[_LocalPeer, bytes], bool], retire: Callable[[_LocalPeer], None],
         request_stop: Callable[[Awaitable[None]], None], auth_timeout: float,
         close_timeout: float,
+        profile: AppConnectionProfileV1 = AppConnectionProfileV1.LOCAL,
+        discovery_scope_factory: Callable[[], OwnedLocalDiscoveryScopeV1] | None = None,
     ) -> None:
         self.mode: bytes | None = None
         self.task: asyncio.Task[None] | None = None
@@ -57,6 +66,7 @@ class _LocalPeer:
         self._fence, self._abort, self._scope_factory = fence, abort, scope_factory
         self._admit, self._retire, self._request_stop = admit, retire, request_stop
         self._auth_timeout, self._timeout = auth_timeout, close_timeout
+        self._profile, self._discovery_factory = profile, discovery_scope_factory
         self._published = asyncio.get_running_loop().create_future()
         self._scope: OwnedLocalClientScopeV1 | None = None
         self._connection: AppServerConnectionV1 | None = None
@@ -108,10 +118,18 @@ class _LocalPeer:
                     or not self._admit(self, mode)):
                 raise AppConnectionClosedError()
             if mode == LOCAL_APP_MODE:
-                self._scope = self._scope_factory()
+                discovery = None
+                if self._discovery_factory is None:
+                    self._scope = self._scope_factory()
+                else:
+                    scope = self._discovery_factory()
+                    self._scope = scope  # Ownership precedes the fallible borrow.
+                    discovery = scope.discovery_client
+                    if discovery is None:
+                        raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
                 self._connection = AppServerConnectionV1(
-                    self._scope, frames, profile=AppConnectionProfileV1.LOCAL,
-                    phase_timeout=self._timeout,
+                    self._scope, frames, profile=self._profile,
+                    phase_timeout=self._timeout, discovery=discovery,
                 )
                 await self._connection.serve()
             else:

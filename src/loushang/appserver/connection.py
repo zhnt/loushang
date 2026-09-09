@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 
-from .client import AppClientV1
+from .client import AppClientV1, SessionDiscoveryClientV1
 from .dispatch import dispatch_request
 from .framing import (
     AppConnectionClosedError,
@@ -23,7 +23,11 @@ from .protocol import (
     decode_request,
     encode_response,
 )
-from .protocol.connection_profile import AppConnectionProfileV1, connection_hello
+from .protocol.connection_profile import (
+    AppConnectionProfileV1,
+    connection_hello,
+    require_profile_operation,
+)
 from .protocol.stdio_profile import (
     CONTROL_OPERATIONS,
     MAX_CONTROL_REQUESTS,
@@ -42,9 +46,12 @@ class AppServerConnectionV1:
         *,
         phase_timeout: float = 10.0,
         profile: AppConnectionProfileV1 = AppConnectionProfileV1.STDIO,
+        discovery: SessionDiscoveryClientV1 | None = None,
     ) -> None:
         require_timeout(phase_timeout)
         self._hello = connection_hello(profile)
+        self._profile = profile
+        self._discovery = discovery
         self._client = client
         self._stream = stream
         self._timeout = phase_timeout
@@ -110,8 +117,9 @@ class AppServerConnectionV1:
     async def _execute(self, request: AppRequestV1, *, control: bool) -> None:
         try:
             try:
+                require_profile_operation(self._profile, request.operation)
                 result: AppResultPayloadV1 = await dispatch_request(
-                    self._client, request
+                    self._client, request, discovery=self._discovery
                 )
             except AppServiceError as error:
                 result = AppFailureV1(error.code)

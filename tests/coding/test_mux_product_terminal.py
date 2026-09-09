@@ -27,13 +27,15 @@ from .test_mux_terminal_process import _installed, _terminal_environment
 
 
 @contextmanager
-def _product(root):
+def _product(root, *, installed=False, discovery=False):
     environment = _terminal_environment(root)
     process = subprocess.Popen(
         [
-            sys.executable,
-            str(Path(__file__).with_name("_local_product_child.py")),
+            *([_installed()] if installed else [
+                sys.executable, str(Path(__file__).with_name("_local_product_child.py"))
+            ]),
             *_serve(root),
+            *(["--session-discovery"] if discovery else []),
         ],
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
@@ -81,6 +83,7 @@ def _command(root, environment, *args):
     result = subprocess.run(
         [_installed(), *_selector(root), *args],
         env=environment,
+        stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
         timeout=30,
@@ -115,6 +118,7 @@ def _see(driver, text, *, after=0):
 def test_G16_PRODUCT_TERMINAL_two_muxes_approval_detach_reattach_and_interrupt(
     tmp_path,
     record_testsuite_property,
+    discovery=False,
 ):
     root = tmp_path.resolve()
     record_testsuite_property("terminal_backend", selected_backend_name())
@@ -123,7 +127,7 @@ def test_G16_PRODUCT_TERMINAL_two_muxes_approval_detach_reattach_and_interrupt(
     (config / "settings.json").write_text(
         json.dumps({"tools": {"ask_tools": ["g14_preview"]}})
     )
-    with _product(root) as (server, environment):
+    with _product(root, discovery=discovery) as (server, environment):
         _command(root, environment, "create", "dev")
         _command(root, environment, "create", "review")
         with _terminal(root, environment, "review") as reviewer:

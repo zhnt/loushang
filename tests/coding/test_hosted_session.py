@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from pathlib import Path
 
 import pytest
@@ -30,6 +31,26 @@ from loushang.coding.hosted_session import CodingRealHostedSessionFactoryV1
 from loushang.coding.session.agent_session import AgentSession
 from loushang.harness.approval import ApprovalRequest
 from loushang.harness.config.agent import SettingsManager
+
+
+@pytest.fixture(autouse=True)
+def _private_session_home(tmp_path, monkeypatch):
+    home = tmp_path / "user-home"
+    home.mkdir()
+    for key, path in {
+        "HOME": home, "USERPROFILE": home, "LOUSHANG_HOME": tmp_path / "platform",
+        "LOUSHANG_RUNTIME_DIR": tmp_path / "runtime", "LOUSHANG_TMPDIR": tmp_path / "scratch",
+    }.items():
+        monkeypatch.setenv(key, str(path))
+
+
+def test_hosted_session_fixture_admits_only_private_user_resources(tmp_path):
+    from loushang.harness.resources.layout import resolve_user_resource_roots
+
+    assert Path.home().resolve() == (tmp_path / "user-home").resolve()
+    roots, explicit = resolve_user_resource_roots()
+    assert roots == ((tmp_path / "platform").resolve(),)
+    assert not explicit
 
 
 def _model() -> Model:
@@ -155,17 +176,26 @@ def test_G14_OWNERSHIP_failed_session_construction_retains_cleanup_for_retry(
 ) -> None:
     import loushang.coding.hosted_session as module
 
+    began = time.perf_counter()
+    phases = []
+
+    def phase(name):
+        phases.append((name, round(time.perf_counter() - began, 3)))
+
     async def scenario() -> None:
         candidate, claimed, identity, factory = await _construction(tmp_path)
+        phase("candidate-ready")
         original_dispose = AgentSession.dispose
         attempts = 0
 
         async def failing_dispose(session: AgentSession) -> None:
             nonlocal attempts
             attempts += 1
+            phase("dispose-enter")
             if attempts == 1:
                 raise RuntimeError("temporary cleanup failure")
             await original_dispose(session)
+            phase("dispose-done")
 
         def reject_binding(*args):
             raise RuntimeError("binding construction failed")
@@ -180,12 +210,20 @@ def test_G14_OWNERSHIP_failed_session_construction_retains_cleanup_for_retry(
                 opaque_session_binding=claimed.opaque_binding,
             )
         assert attempts == 1
+        phase("factory-failed")
         await claimed.close()
+        phase("retry-closed")
         await claimed.close()
         await candidate.close()
         assert attempts == 2
 
-    asyncio.run(asyncio.wait_for(scenario(), 20))
+    try:
+        asyncio.run(asyncio.wait_for(scenario(), 20))
+    except TimeoutError as error:
+        # Fixed phase names and durations only; no paths, settings or raw task
+        # representations. Keep the original watchdog and failure unchanged.
+        error.add_note(f"Hosted construction/cleanup phase durations: {phases!r}")
+        raise
 
 
 def test_G14_PRODUCT_real_approval_broker_round_trip_and_close(tmp_path: Path) -> None:

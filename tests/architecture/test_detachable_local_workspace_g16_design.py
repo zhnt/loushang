@@ -85,4 +85,6 @@ def test_G17_BASELINE_indexes_link_delivery_without_activating_g15() -> None:
             "design-only, not an implemented listener",
         ):
             assert obsolete not in index
-    assert "A0.5 remains not-started" in (ROOT.parent / "apphost/README.md").read_text()
+    assert "G17 implements A0.5 with an explicit foreground Product entry" in (
+        ROOT.parent / "apphost/README.md"
+    ).read_text()

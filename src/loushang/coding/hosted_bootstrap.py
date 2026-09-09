@@ -25,6 +25,10 @@ from loushang.appserver.protocol import SessionScopeV1
 from loushang.appserver.protocol.connection_profile import AppConnectionProfileV1
 from loushang.appservice.continuity import require_application_id
 from loushang.appservice.continuity_file import JsonFileApplicationContinuityStoreV1
+from loushang.appservice.discovery_ports import (
+    HostedSessionDiscoveryBindingV1,
+    HostedSessionDiscoveryScopeV1,
+)
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.tools.core import ToolDefinition
 
@@ -141,9 +145,19 @@ def create_coding_hosted_attempt(
     model: Model | ModelSelection | None = None,
     stream_fn: StreamFn | None = None,
     tools: list[ToolDefinition] | None = None,
+    session_discovery: bool = False,
 ) -> CodingHostedContinuityAttemptV1:
     """Bind real Coding/G13 once; test seams never enter command-line input."""
+    if type(session_discovery) is not bool:
+        raise TypeError("invalid discovery activation")
     generation = token_hex(16)
+    catalog = CodingHostedSessionCatalogV1(launch.scopes)
+    admitted_scopes = tuple(HostedSessionDiscoveryScopeV1(
+        "coding", scope.scope, scope.fingerprint,
+    ) for scope in catalog.scopes)
+    discovery = None if not session_discovery else HostedSessionDiscoveryBindingV1(
+        generation, admitted_scopes, catalog,
+    )
     product_version = hashlib.sha256(version("loushang").encode()).hexdigest()
     foreground = CodingForegroundHostedApplicationRequestV1(
         activation=HostedApplicationActivationV1(),
@@ -163,7 +177,9 @@ def create_coding_hosted_attempt(
             )
         ),
         candidate_validator=CodingHostedCandidateValidatorV1(),
-        sessions=CodingHostedSessionCatalogV1(launch.scopes),
+        sessions=catalog,
+        discovery=discovery,
+        admitted_scopes=admitted_scopes,
         session_factory=CodingRealHostedSessionFactoryV1(
             services_factory=_services,
             model=model,

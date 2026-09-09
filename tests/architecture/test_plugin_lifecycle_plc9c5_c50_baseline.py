@@ -892,11 +892,16 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
         for path in (*CODING_ROOT.rglob("*.py"), *APPHOST_ROOT.rglob("*.py"))
         if any(imported.startswith("loushang.hosting") for imported in _imports(path))
     }
-    assert hosting_consumers == {CODING_APPHOST_CANARY}
-    assert not any(
-        imported.startswith("loushang.hosting._")
-        for imported in _imports(CODING_APPHOST_CANARY)
-    )
+    assert hosting_consumers == {
+        CODING_APPHOST_CANARY,
+        CODING_ROOT / "cli/hosted_client.py",
+        APPHOST_ROOT / "launcher.py",
+    }
+    for consumer in hosting_consumers:
+        assert not any(
+            imported.startswith("loushang.hosting._")
+            for imported in _imports(consumer)
+        )
 
 
 def test_c50_import_guard_resolves_relative_and_parent_alias_forms() -> None:

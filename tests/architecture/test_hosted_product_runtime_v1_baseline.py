@@ -433,6 +433,7 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "application.py",
         "continuity.py",
         "foreground.py",
+        "launcher.py",
         "local.py",
     }
     assert {
@@ -475,10 +476,12 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "continuity.py",
         "continuity_file.py",
         "continuity_runtime.py",
+        "discovery_ports.py",
         "execution_contract.py",
         "execution_guard.py",
         "execution_ports.py",
         "execution_snapshot.py",
+        "session_discovery.py",
         "ports.py",
         "runtime.py",
     }
@@ -530,6 +533,7 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         Path("src/loushang/coding/hosted_catalog.py"),
         Path("src/loushang/coding/hosted_session.py"),
         Path("src/loushang/coding/cli/hosted.py"),
+        Path("src/loushang/coding/cli/hosted_client.py"),
         Path("src/loushang/coding/hosted_bootstrap.py"),
         Path("src/loushang/coding/hosted_local.py"),
     }
