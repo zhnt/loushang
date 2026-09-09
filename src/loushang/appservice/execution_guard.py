@@ -24,11 +24,8 @@ from .execution_contract import (
     _counter,
     _identifier,
 )
-
-
-def _observe(task: asyncio.Task[ExecutionOutcomeV1]) -> None:
-    if not task.cancelled():
-        task.exception()
+from .execution_notifications import ExecutionObserversV1
+from .execution_notifications import observe_execution_task as _observe
 
 
 class ExecutionControlV1:
@@ -73,6 +70,13 @@ class ExecutionGuardV1:
         self._entered = False
         self._candidate: ExecutionOutcomeV1 | None = None
         self._debt = False
+        self._observers = ExecutionObserversV1()
+
+    def subscribe_observation(
+        self, listener: Callable[[ExecutionObservationV1], None]
+    ) -> Callable[[], None]:
+        """Subscribe before admission; entry precedes even silent Product work."""
+        return self._observers.subscribe(listener)
 
     @property
     def observation(self) -> ExecutionObservationV1:
@@ -193,6 +197,7 @@ class ExecutionGuardV1:
         self._observation = ExecutionObservationV1(
             self._state.execution_id, ExecutionStatusV1.RUNNING
         )
+        self._observers.emit(self._observation)
         try:
             outcome = await self._work.run(self._control)
             if type(outcome) is not ExecutionOutcomeV1:
@@ -240,3 +245,5 @@ class ExecutionGuardV1:
             outcome=self._candidate,
         )
         self._debt = False
+        if self._entered:
+            self._observers.emit(self._observation)

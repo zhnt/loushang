@@ -463,6 +463,13 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "stdio.py",
         "protocol/stdio_profile.py",
         "protocol/connection_profile.py",
+        "execution/__init__.py",
+        "execution/model.py",
+        "execution/codec.py",
+        "execution/client.py",
+        "execution/dispatch.py",
+        "execution/remote.py",
+        "execution/recovery.py",
     }
     assert {
         path.relative_to(APPSERVICE_SOURCE).as_posix()
@@ -481,6 +488,9 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "execution_guard.py",
         "execution_ports.py",
         "execution_snapshot.py",
+        "execution_notifications.py",
+        "execution_registry.py",
+        "execution_service.py",
         "session_discovery.py",
         "ports.py",
         "runtime.py",
@@ -555,9 +565,10 @@ def test_optional_execution_contract_has_bounded_modules_and_no_activation() -> 
     for name in modules:
         path = APPSERVICE_SOURCE / f"{name}.py"
         assert len(_read(path).splitlines()) <= 250
-        assert {item for item in _imports(path) if item.startswith("loushang.")} == {
-            "loushang.appserver.protocol"
-        }
+        expected = {"loushang.appserver.protocol"}
+        if name == "execution_contract":
+            expected.add("loushang.appserver.execution.model")
+        assert {item for item in _imports(path) if item.startswith("loushang.")} == expected
     for path in (
         APPSERVICE_SOURCE / "__init__.py",
         APPSERVER_SOURCE / "protocol/__init__.py",
@@ -565,6 +576,23 @@ def test_optional_execution_contract_has_bounded_modules_and_no_activation() -> 
         Path("src/loushang/coding/cli/mux.py"),
     ):
         assert all(name not in _read(path) for name in modules)
+
+
+def test_execution_service_and_transport_have_separate_bounded_owners() -> None:
+    # #576 increments add explicit owners; they do not raise the G11 core or
+    # Product helper budgets. See execution-service-delivery.md.
+    for name, maximum in {
+        "execution_notifications": 60, "execution_registry": 400, "execution_service": 250,
+    }.items():
+        path = APPSERVICE_SOURCE / f"{name}.py"
+        assert len(_read(path).splitlines()) <= maximum
+        assert all(not item.startswith(("loushang.coding", "loushang.harness", "loushang.apphost"))
+                   for item in _imports(path))
+    transport = tuple((APPSERVER_SOURCE / "execution").glob("*.py"))
+    assert sum(len(_read(path).splitlines()) for path in transport) <= 1200
+    assert all(len(_read(path).splitlines()) <= 400 for path in transport)
+    assert all(not item.startswith(("loushang.appservice", "loushang.coding", "loushang.apphost"))
+               for path in transport for item in _imports(path))
 
 
 def test_current_session_discovery_roots_preserve_exact_modes(tmp_path: Path) -> None:

@@ -142,10 +142,24 @@ def test_G11_PRODUCT_ADAPTER_is_the_only_product_harness_bridge() -> None:
     for path in (
         CODING_ADAPTER,
         Path("src/loushang/coding/hosted_bootstrap.py"),
-        Path("src/loushang/coding/hosted_application.py"),
         Path("src/loushang/coding/__init__.py"),
     ):
         assert "hosted_execution" not in _read(path)
+    # The foreground owner may select the optional adapter, but only within
+    # its explicit execution branch. Default construction must not import it.
+    composition = ast.parse(_read(Path("src/loushang/coding/hosted_application.py")))
+    execution_imports = {
+        node for node in ast.walk(composition)
+        if isinstance(node, ast.ImportFrom) and node.module == "hosted_execution"
+    }
+    guarded_imports = {
+        imported for node in ast.walk(composition)
+        if isinstance(node, ast.If) and ast.unparse(node.test) == "self._execution"
+        for statement in node.body for imported in ast.walk(statement)
+        if isinstance(imported, ast.ImportFrom) and imported.module == "hosted_execution"
+    }
+    assert len(execution_imports) == 1
+    assert execution_imports == guarded_imports
 
 
 def test_G11_HOSTED_PROFILE_depends_on_client_contract_not_service_or_product() -> None:

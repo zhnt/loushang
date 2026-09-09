@@ -742,6 +742,13 @@ def test_hosting_apphost_and_appserver_optional_modules_are_exact() -> None:
         "protocol/schema.py",
         "protocol/stdio_profile.py",
         "protocol/connection_profile.py",
+        "execution/__init__.py",
+        "execution/client.py",
+        "execution/codec.py",
+        "execution/dispatch.py",
+        "execution/model.py",
+        "execution/recovery.py",
+        "execution/remote.py",
     }
 
     overview = _read(HOSTING_ROOT / "README.md")

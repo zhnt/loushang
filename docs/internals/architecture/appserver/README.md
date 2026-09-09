@@ -42,6 +42,14 @@ regression; historical G16 checkpoints are not rewritten as current status.
 G12's optional AppHost application edge consumes the client contract for its
 in-process view. AppServer neither constructs nor imports that composition.
 
+The [optional execution delivery](../appservice/execution-service-delivery.md)
+adds a separate `execution` package for closed values, codecs and client
+recovery, plus explicitly selected local execution profiles. The hello binds
+the AppService instance and states its retention guarantee. AppService owns
+submission registration and cleanup; this transport still owns only request
+delivery and borrowed scoped capabilities. Existing v1 frames and default
+profiles are unchanged. Native GUI acceptance follows the documented handoff.
+
 ## Purpose
 
 The contract-only structural Product port bundle remains the A0.4 stable

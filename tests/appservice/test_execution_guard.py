@@ -74,6 +74,33 @@ class Work:
 
 
 @scenario
+async def test_explicit_entry_is_delivered_before_silent_work_and_terminal_after_cleanup():
+    guard, work = ExecutionGuardV1(source_cursor=lambda: 7), Work()
+    seen = []
+
+    def observe(value):
+        seen.append((value, work.starts, work.cleaning.is_set()))
+
+    unsubscribe = guard.subscribe_observation(observe)
+    guard.start(ExecutionRequestV1("silent", "command"), work)
+    assert seen == []
+    await work.entered.wait()
+    assert len(seen) == 1
+    assert seen[0][0].execution_id == "silent"
+    assert seen[0][0].status is ExecutionStatusV1.RUNNING
+    assert seen[0][1:] == (0, False)
+    work.release.set()
+    await guard.wait("silent")
+    assert seen[-1][0].final_cursor == 7
+    assert seen[-1][1:] == (1, True)
+    unsubscribe()
+    guard.start(ExecutionRequestV1("cancel-before-entry", "command"), Work())
+    guard.interrupt("cancel-before-entry", InterruptModeV1.WHOLE_EXECUTION)
+    await guard.wait("cancel-before-entry")
+    assert len(seen) == 2
+
+
+@scenario
 async def test_whole_interrupt_covers_preflight_and_retains_cleanup_ownership() -> None:
     guard = ExecutionGuardV1()
     work = Work()

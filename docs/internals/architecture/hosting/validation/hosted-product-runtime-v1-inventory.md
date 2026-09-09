@@ -70,9 +70,14 @@ lease, or factory.
 
 The separate [optional Product execution contract](../../appservice/execution-contract.md)
 adds `execution_contract.py`, `execution_ports.py`, `execution_guard.py` and
-`execution_snapshot.py` to AppService's source inventory. These in-process
-helpers cover invocation settlement and composite snapshot validation; no
-existing Product route, wire profile or native Worker canary activates them.
+`execution_snapshot.py` to AppService's source inventory. The subsequent
+[execution service delivery](../../appservice/execution-service-delivery.md)
+adds `execution_notifications.py`, `execution_registry.py` and
+`execution_service.py`, plus AppServer's optional `execution` package. These
+owners provide explicit Product entry notifications, independent settlement
+ownership, instance-local deduplication and versioned recovery. Only explicit
+foreground composition and execution-capable local profiles select them;
+default Product routes and native Worker canaries retain their existing paths.
 
 ## Observed Contract Mismatch
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
+from secrets import token_hex
 from typing import cast
 from uuid import uuid4
 
@@ -17,6 +18,7 @@ from loushang.appserver.protocol import (
 )
 from loushang.appservice.execution_contract import (
     ExecutionContentEventV1,
+    ExecutionObservationV1,
     ExecutionOutcomeV1,
     ExecutionRequestV1,
     ExecutionSourceSnapshotV1,
@@ -25,9 +27,15 @@ from loushang.appservice.execution_contract import (
     InterruptModeV1,
 )
 from loushang.appservice.execution_guard import ExecutionGuardV1
+from loushang.appservice.execution_registry import ExecutionLimitsV1
+from loushang.appservice.execution_service import HostedExecutionServiceBindingV1
 
 from ._hosted_execution_work import CodingExecutionWorkV1
-from .appservice_adapter import CodingHostedEventProjectionV1, CodingHostedSessionV1
+from .appservice_adapter import (
+    CodingHostedEventProjectionV1,
+    CodingHostedSessionBindingV1,
+    CodingHostedSessionV1,
+)
 from .hosted_session import CodingRealHostedSessionV1
 from .session.agent_session import AgentSession
 
@@ -39,16 +47,23 @@ class CodingHostedExecutionSessionV1(CodingHostedSessionV1):
     or direct input driver may run against that same AgentSession concurrently.
     """
 
-    def __init__(self, binding: CodingRealHostedSessionV1) -> None:
+    def __init__(
+        self, binding: CodingRealHostedSessionV1, *,
+        owner: CodingHostedSessionBindingV1 | None = None,
+    ) -> None:
         if type(binding) is not CodingRealHostedSessionV1:
             raise TypeError("execution requires a real Coding Product binding")
+        if owner is not None and (
+            owner.identity != binding.identity or owner.control is not binding.control
+        ):
+            raise ValueError("execution close owner must own the exact Product binding")
         self._session = cast(AgentSession, binding.control)
         self._content: set[Callable[[ExecutionContentEventV1], None]] = set()
         self._draft = ""
         self._truncated = False
         self._closing = False
         self._execution_close_task: asyncio.Task[None] | None = None
-        super().__init__(binding)
+        super().__init__(binding if owner is None else owner)
         self._projection = binding.project_snapshot()
         self._guard = ExecutionGuardV1(source_cursor=self._complete_source)
 
@@ -69,6 +84,12 @@ class CodingHostedExecutionSessionV1(CodingHostedSessionV1):
 
     async def wait_execution(self, execution_id: str) -> ExecutionOutcomeV1:
         return await self._guard.wait(execution_id)
+
+    def subscribe_execution_observation(
+        self, listener: Callable[[ExecutionObservationV1], None]
+    ) -> Callable[[], None]:
+        self._require_execution_open()
+        return self._guard.subscribe_observation(listener)
 
     def interrupt_execution(self, execution_id: str, mode: InterruptModeV1) -> bool:
         self._require_execution_open()
@@ -185,6 +206,26 @@ class CodingHostedExecutionSessionV1(CodingHostedSessionV1):
 def _observe_close(task: asyncio.Task[None]) -> None:
     if not task.cancelled():
         task.exception()
+
+
+def create_coding_execution_service_binding(
+    application_id: str, *, service_instance_id: str | None = None,
+    limits: ExecutionLimitsV1 = ExecutionLimitsV1(),
+) -> HostedExecutionServiceBindingV1:
+    """Explicit composition selection; create a fresh value per application instance."""
+    return HostedExecutionServiceBindingV1(
+        application_id, service_instance_id or token_hex(16),
+        lambda port: port if isinstance(port, CodingHostedExecutionSessionV1) else None,
+        limits,
+    )
+
+
+def create_leased_coding_execution_session(
+    binding: object, owner: CodingHostedSessionBindingV1,
+) -> CodingHostedExecutionSessionV1:
+    if type(binding) is not CodingRealHostedSessionV1:
+        raise TypeError("execution requires a real Coding Product Session")
+    return CodingHostedExecutionSessionV1(binding, owner=owner)
 
 
 __all__ = ["CodingHostedExecutionSessionV1"]

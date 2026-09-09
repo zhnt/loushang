@@ -64,6 +64,9 @@ class FakeProduct:
     async def wait_execution(self, execution_id: str) -> ExecutionOutcomeV1:
         return await self.guard.wait(execution_id)
 
+    def subscribe_execution_observation(self, listener):
+        return self.guard.subscribe_observation(listener)
+
     def interrupt_execution(self, execution_id: str, mode: InterruptModeV1) -> bool:
         return self.guard.interrupt(execution_id, mode)
 

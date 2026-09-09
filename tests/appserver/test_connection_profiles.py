@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import asyncio
 from typing import cast
+from unittest.mock import create_autospec
 
 import pytest
 
 from loushang.appserver.client import AppClientV1
 from loushang.appserver.connection import AppServerConnectionV1
+from loushang.appserver.execution.client import ExecutionClientV1
 from loushang.appserver.framing import AppFramedStreamV1
 from loushang.appserver.protocol import (
     AppServiceError,
@@ -16,6 +18,7 @@ from loushang.appserver.protocol import (
 from loushang.appserver.protocol.connection_profile import (
     AppConnectionProfileV1,
     connection_hello,
+    supports_execution,
 )
 from loushang.appserver.remote_client import RemoteAppClientV1
 
@@ -26,8 +29,12 @@ from .test_connection import _pair, _SemanticClient
 def test_G16_PROFILE_closed_message_stream_keeps_exact_negotiation(profile):
     async def scenario():
         left, right = _pair()
+        execution = None
+        if supports_execution(profile):
+            execution = create_autospec(ExecutionClientV1, instance=True)
+            execution.service_instance_id = "instance"
         server = AppServerConnectionV1(cast(AppClientV1, _SemanticClient()),
-                                      AppFramedStreamV1(right), profile=profile)
+                                      AppFramedStreamV1(right), profile=profile, execution=execution)
         client = RemoteAppClientV1(AppFramedStreamV1(left), profile=profile)
         serving = asyncio.create_task(server.serve())
         try:

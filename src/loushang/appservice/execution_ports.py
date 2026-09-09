@@ -9,6 +9,7 @@ from loushang.appserver.protocol import SessionIdentityV1
 
 from .execution_contract import (
     ExecutionContentEventV1,
+    ExecutionObservationV1,
     ExecutionOutcomeV1,
     ExecutionRequestV1,
     ExecutionSourceSnapshotV1,
@@ -44,6 +45,19 @@ class HostedExecutionPortV1(Protocol):
     async def retry_execution_settlement(self, execution_id: str) -> None: ...
 
     async def snapshot_execution(self) -> ExecutionSourceSnapshotV1: ...
+
+    def subscribe_execution_observation(
+        self, listener: Callable[[ExecutionObservationV1], None]
+    ) -> Callable[[], None]:
+        """Nonblocking causal lifecycle notification, reserved before admission.
+
+        Emit running after installing source identity and before any Product
+        work, including commands that emit no content. Emit terminal with its
+        final cursor only after cleanup. A pre-entry interruption emits neither;
+        wait_execution still returns its explicit outcome. This stream never
+        passes through a content mailbox or relies on model events.
+        """
+        ...
 
     def subscribe_execution_content(
         self, listener: Callable[[ExecutionContentEventV1], None]

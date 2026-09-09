@@ -49,6 +49,13 @@ from .continuity import (
     MuxSpaceContinuityV1,
 )
 from .discovery_ports import HostedSessionDiscoveryBindingV1
+from .execution_registry import (
+    ExecutionBindingV1,
+    ExecutionErrorCodeV1,
+    ExecutionRegistryV1,
+    ExecutionServiceErrorV1,
+)
+from .execution_service import HostedExecutionServiceBindingV1
 from .ports import (
     HostedSessionPortV1,
     HostedSessionResolutionErrorV1,
@@ -177,6 +184,8 @@ class _SessionOwner:
         "_attachments",
         "_close_lock",
         "_close_task",
+        "_execution",
+        "_execution_registry",
         "_latest_cursor",
         "_port",
         "_settled",
@@ -208,6 +217,8 @@ class _SessionOwner:
         self._settled = False
         self._unsubscribed = False
         self._close_task: asyncio.Task[None] | None = None
+        self._execution: ExecutionBindingV1 | None = None
+        self._execution_registry: ExecutionRegistryV1 | None = None
         self._close_lock = asyncio.Lock()
         try:
             self._unsubscribe = subscribe(self._on_event)
@@ -333,7 +344,7 @@ class _SessionOwner:
                 self._invalidate_attachments()
                 self._attachments.clear()
             if self._close_task is None:
-                self._close_task = asyncio.create_task(self._port.close())
+                self._close_task = asyncio.create_task(self._close_port())
             task = self._close_task
         try:
             await asyncio.shield(task)
@@ -348,6 +359,11 @@ class _SessionOwner:
             if self._close_task is task:
                 self._settled = True
                 self._close_task = None
+
+    async def _close_port(self) -> None:
+        if self._execution_registry is not None and self._execution is not None:
+            await self._execution_registry.close_binding(self._execution)
+        await self._port.close()
 
 
 @dataclass(frozen=True, slots=True)
@@ -411,6 +427,8 @@ class AppServiceV1:
         "_close_timeout_seconds",
         "_closed",
         "_discovery",
+        "_execution_config",
+        "_execution_registry",
         "_continuity_application_id",
         "_continuity_lease",
         "_continuity_owner_epoch",
@@ -432,6 +450,7 @@ class AppServiceV1:
         id_factory: Callable[[], str] | None = None,
         close_timeout_seconds: float = 10.0,
         discovery: HostedSessionDiscoveryBindingV1 | None = None,
+        execution: HostedExecutionServiceBindingV1 | None = None,
     ) -> None:
         if not product_id:
             raise ValueError("product_id must be non-empty")
@@ -445,6 +464,13 @@ class AppServiceV1:
         ):
             raise ValueError("close_timeout_seconds must be in (0, 60]")
         self.product_id = product_id
+        if execution is not None and type(execution) is not HostedExecutionServiceBindingV1:
+            raise TypeError("invalid execution service configuration")
+        self._execution_config = execution
+        self._execution_registry = None if execution is None else ExecutionRegistryV1(
+            application_id=execution.application_id,
+            service_instance_id=execution.service_instance_id, limits=execution.limits,
+        )
         if discovery is not None and (
             type(discovery) is not HostedSessionDiscoveryBindingV1
             or any(scope.product_id != product_id for scope in discovery.scopes)
@@ -473,6 +499,22 @@ class AppServiceV1:
     def continuity_enabled(self) -> bool:
         return self._continuity_lease is not None
 
+    def _execution_binding(self, session: _SessionOwner) -> ExecutionBindingV1:
+        config, registry = self._execution_config, self._execution_registry
+        if config is None or registry is None:
+            raise ExecutionServiceErrorV1(ExecutionErrorCodeV1.UNSUPPORTED)
+        if not session._accepting:
+            raise _error(AppErrorCodeV1.SESSION_UNAVAILABLE)
+        if session._execution is None:
+            port = config.select_port(session._port)
+            if port is None:
+                raise ExecutionServiceErrorV1(ExecutionErrorCodeV1.UNSUPPORTED)
+            if port.identity != session.identity:
+                raise _error(AppErrorCodeV1.SESSION_UNAVAILABLE)
+            session._execution = registry.bind(port)
+            session._execution_registry = registry
+        return session._execution
+
     @property
     def discovery_client(self) -> SessionDiscoveryViewV1 | None:
         if self._closed or self._discovery is None:
@@ -499,6 +541,10 @@ class AppServiceV1:
         ):
             raise RuntimeError("AppService continuity state already initialized")
         application_id = lease.application_id
+        if self._execution_config is not None and (
+            self._execution_config.application_id != application_id
+        ):
+            raise ValueError("execution application identity mismatch")
         if record is not None and (
             record.application_id != application_id
             or record.product_id != self.product_id
@@ -717,7 +763,10 @@ class AppServiceV1:
             member = _Member(self._new_id(), request.session.title, session)
             async with self._state_lock:
                 self._require_open()
-                if session.identity.session_id in self._sessions:
+                if session.identity.session_id in self._sessions or any(
+                    item.identity.session_id == session.identity.session_id
+                    for item in self._cleanup_debt
+                ):
                     raise _error(AppErrorCodeV1.ALREADY_EXISTS)
                 async with mux.lock:
                     self._require_mux_open(mux)
@@ -789,6 +838,8 @@ class AppServiceV1:
                 projection = mux.projection()
         if request.close_session:
             await self._close_sessions((selected.session,))
+        elif self._execution_registry is not None and selected.session._execution is not None:
+            await self._execution_registry.close_binding(selected.session._execution)
         if cancellation is not None:
             raise cancellation
         return projection
@@ -808,6 +859,15 @@ class AppServiceV1:
     async def start_turn(self, request: TurnTextV1) -> AckV1:
         self._require_request(request, TurnTextV1)
         session = await self._resolve_text_session(request)
+        if self._execution_registry is not None:
+            try:
+                binding = self._execution_binding(session)
+            except ExecutionServiceErrorV1 as error:
+                if error.code is not ExecutionErrorCodeV1.UNSUPPORTED:
+                    raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE) from None
+            else:
+                await self._execution_registry.start_legacy(binding, request.text)
+                return AckV1()
         await session.start_turn(request.text)
         return AckV1()
 
@@ -864,6 +924,8 @@ class AppServiceV1:
 
     async def close(self) -> None:
         scope_failure = False
+        if self._execution_registry is not None:
+            self._execution_registry.fence()
         if self._discovery is not None:
             self._discovery.fence()
         if self._client_scopes is not None:
@@ -879,7 +941,7 @@ class AppServiceV1:
             else:
                 self._closed = True
                 muxes = tuple(self._mux_by_id.values())
-                sessions = tuple(self._sessions.values())
+                sessions = tuple(dict.fromkeys((*self._sessions.values(), *self._cleanup_debt)))
                 self._cleanup_debt.update(sessions)
                 attachments = tuple(item[1] for item in self._attachments.values())
                 self._mux_by_id.clear()
@@ -1011,7 +1073,8 @@ class AppServiceV1:
             return
         async with self._state_lock:
             for session in sessions:
-                self._sessions.pop(session.identity.session_id, None)
+                if self._sessions.get(session.identity.session_id) is session:
+                    self._sessions.pop(session.identity.session_id)
                 self._cleanup_debt.add(session)
         results = await asyncio.gather(
             *(

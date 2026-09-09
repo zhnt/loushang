@@ -42,17 +42,28 @@ class ExecutionSnapshotBufferV1:
         identity: SessionIdentityV1,
         *,
         capacity: int = 256,
+        byte_capacity: int = 524_288,
     ) -> None:
         if type(identity) is not SessionIdentityV1:
             raise TypeError("invalid source identity")
         if type(capacity) is not int or not 1 <= capacity <= 1024:
             raise ValueError("invalid execution buffer capacity")
+        if type(byte_capacity) is not int or not 8192 <= byte_capacity <= 524_288:
+            raise ValueError("invalid execution buffer byte capacity")
         self.binding = binding
         self.identity = identity
         self._capacity = capacity
+        self._byte_capacity = byte_capacity
+        self._bytes = 0
         self._events: deque[ExecutionDeliveryV1] = deque()
         self._watermarks: tuple[int, int] | None = None
         self._invalid = False
+
+    @property
+    def content_cursor(self) -> int:
+        if self._invalid or self._watermarks is None:
+            raise AppServiceError(AppErrorCodeV1.SNAPSHOT_REQUIRED)
+        return self._watermarks[0]
 
     def push(self, event: ExecutionDeliveryV1) -> None:
         """Nonblocking delivery; overflow or malformed stream requires a new cut."""
@@ -83,14 +94,22 @@ class ExecutionSnapshotBufferV1:
                     return
                 metadata = event.revision
             self._watermarks = content, metadata
-        if len(self._events) >= self._capacity:
+        # Bound the worst-case JSON string expansion, including envelope/IDs.
+        # Delivery remains under one transport frame; no partial event is sent.
+        size = (
+            6 * len(event.source.text or "") + 8192
+            if isinstance(event, ExecutionContentEventV1) else 8192
+        )
+        if len(self._events) >= self._capacity or self._bytes + size > self._byte_capacity:
             self.invalidate()
             return
         self._events.append(event)
+        self._bytes += size
 
     def invalidate(self) -> None:
         self._invalid = True
         self._events.clear()
+        self._bytes = 0
 
     def require_current(self, view: ExecutionBindingViewV1) -> None:
         if view.binding is not self.binding or view.identity != self.identity:
@@ -104,6 +123,7 @@ class ExecutionSnapshotBufferV1:
             raise AppServiceError(AppErrorCodeV1.SNAPSHOT_REQUIRED)
         events = tuple(self._events)
         self._events.clear()
+        self._bytes = 0
         self._watermarks = snapshot.source.source.cursor, snapshot.executions.revision
         for event in events:
             self.push(event)
@@ -114,6 +134,7 @@ class ExecutionSnapshotBufferV1:
             raise AppServiceError(AppErrorCodeV1.SNAPSHOT_REQUIRED)
         events = tuple(self._events)
         self._events.clear()
+        self._bytes = 0
         return events
 
 

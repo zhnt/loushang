@@ -6,6 +6,18 @@ import asyncio
 
 from .client import AppClientV1, SessionDiscoveryClientV1
 from .dispatch import dispatch_request
+from .execution.client import ExecutionClientV1
+from .execution.codec import decode_call, is_execution_frame
+from .execution.codec import encode_response as encode_execution_response
+from .execution.dispatch import dispatch_execution
+from .execution.model import (
+    ExecutionCallV1,
+    ExecutionFailureV1,
+    ExecutionOperationV1,
+    ExecutionResponseV1,
+    ExecutionResultV1,
+    ExecutionServiceErrorV1,
+)
 from .framing import (
     AppConnectionClosedError,
     AppConnectionEOFError,
@@ -27,6 +39,7 @@ from .protocol.connection_profile import (
     AppConnectionProfileV1,
     connection_hello,
     require_profile_operation,
+    supports_execution,
 )
 from .protocol.stdio_profile import (
     CONTROL_OPERATIONS,
@@ -47,9 +60,18 @@ class AppServerConnectionV1:
         phase_timeout: float = 10.0,
         profile: AppConnectionProfileV1 = AppConnectionProfileV1.STDIO,
         discovery: SessionDiscoveryClientV1 | None = None,
+        execution: ExecutionClientV1 | None = None,
     ) -> None:
         require_timeout(phase_timeout)
-        self._hello = connection_hello(profile)
+        if supports_execution(profile):
+            if execution is None:
+                raise ValueError("execution profile requires an explicit capability")
+            self._hello = connection_hello(profile, service_instance_id=execution.service_instance_id)
+        elif execution is not None:
+            raise ValueError("execution capability requires its profile")
+        else:
+            self._hello = connection_hello(profile)
+        self._execution = execution
         self._profile = profile
         self._discovery = discovery
         self._client = client
@@ -92,16 +114,24 @@ class AppServerConnectionV1:
                 payload = await self._stream.receive()
             except AppConnectionEOFError:
                 return
-            request = decode_request(payload)
+            request = (
+                decode_call(payload)
+                if self._execution is not None and is_execution_frame(payload)
+                else decode_request(payload)
+            )
             number = connection_request_number(request.request_id)
             if number <= self._last_id:
                 raise InvalidAppMessageError()
             self._last_id = number
-            control = request.operation in CONTROL_OPERATIONS
+            control = request.operation in CONTROL_OPERATIONS or request.operation in {
+                ExecutionOperationV1.INTERRUPT, ExecutionOperationV1.GET, ExecutionOperationV1.FIND,
+            }
             maximum = MAX_CONTROL_REQUESTS if control else MAX_ORDINARY_REQUESTS
             if self._counts[control] >= maximum:
                 await self._stream.send(
-                    encode_response(
+                    encode_execution_response(ExecutionResponseV1(
+                        request.request_id, AppFailureV1(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+                    )) if isinstance(request, ExecutionCallV1) else encode_response(
                         AppResponseV1(
                             request.request_id,
                             AppFailureV1(AppErrorCodeV1.OPERATION_UNAVAILABLE),
@@ -114,8 +144,11 @@ class AppServerConnectionV1:
             self._tasks.add(task)
             task.add_done_callback(self._tasks.discard)
 
-    async def _execute(self, request: AppRequestV1, *, control: bool) -> None:
+    async def _execute(self, request: AppRequestV1 | ExecutionCallV1, *, control: bool) -> None:
         try:
+            if isinstance(request, ExecutionCallV1):
+                await self._execute_execution(request)
+                return
             try:
                 require_profile_operation(self._profile, request.operation)
                 result: AppResultPayloadV1 = await dispatch_request(
@@ -135,6 +168,19 @@ class AppServerConnectionV1:
                 self._fault.set_result(None)
         finally:
             self._counts[control] -= 1
+
+    async def _execute_execution(self, request: ExecutionCallV1) -> None:
+        assert self._execution is not None
+        result: ExecutionResultV1
+        try:
+            result = await dispatch_execution(self._execution, request)
+        except ExecutionServiceErrorV1 as error:
+            result = ExecutionFailureV1(error.code)
+        except AppServiceError as error:
+            result = AppFailureV1(error.code)
+        except Exception:
+            result = AppFailureV1(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        await self._stream.send(encode_execution_response(ExecutionResponseV1(request.request_id, result)))
 
     async def close(self) -> None:
         async with self._close_lock:

@@ -178,6 +178,93 @@ def test_real_command_is_accepted_before_entry_and_succeeds_without_agent(tmp_pa
     _run(scenario())
 
 
+def test_real_execution_service_closes_apphost_lease_after_whole_execution_settlement(tmp_path):
+    from loushang.apphost import SessionBindingKeyV1
+    from loushang.appserver.protocol import (
+        MuxAttachV1,
+        MuxCreateV1,
+        MuxMemberCloseV1,
+        MuxMemberOpenV1,
+        MuxSelectorV1,
+        SessionOpenSpecV1,
+        SessionSnapshotRequestV1,
+    )
+    from loushang.appservice.client_scope import ScopedAppServiceV1
+    from loushang.appservice.runtime import AppServiceV1
+    from loushang.coding.hosted_application import _LeasedCodingHostedBinding
+    from loushang.coding.hosted_execution import create_coding_execution_service_binding
+
+    async def scenario():
+        entered, cleanup_entered, cleanup_release = (asyncio.Event() for _ in range(3))
+        events = []
+
+        async def command(args, context):
+            entered.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cleanup_entered.set()
+                await cleanup_release.wait()
+                events.append("execution-cleaned")
+
+        binding, session = await _binding(tmp_path, command=command)
+        identity = binding.identity
+
+        class Lease:
+            binding_key = SessionBindingKeyV1(identity.product_id, identity.continuity_id, identity.session_id)
+
+            async def close(self):
+                events.append("lease-closed")
+
+        class Runtime:
+            async def close_session(self, key):
+                assert key == Lease.binding_key
+                events.append("runtime-close")
+                await binding.close()
+
+        leased = _LeasedCodingHostedBinding(runtime=Runtime(), lease=Lease(), binding=binding)
+        hosted = CodingHostedExecutionSessionV1(binding, owner=leased)
+
+        class Resolver:
+            async def open_session(self, request):
+                return hosted
+
+        service = AppServiceV1(
+            product_id="coding", resolver=Resolver(),
+            execution=create_coding_execution_service_binding("application", service_instance_id="instance"),
+        )
+        owner = ScopedAppServiceV1(service)
+        scope = owner.open_client_scope()
+        try:
+            mux = await scope.create_mux(MuxCreateV1("work"))
+            selector = MuxSelectorV1(mux_space_id=mux.mux_space_id)
+            await scope.attach_mux(MuxAttachV1(selector))
+            mux = await scope.open_member(MuxMemberOpenV1(selector, SessionOpenSpecV1(
+                identity.product_id, identity.continuity_id, identity.scope,
+                identity.scope_fingerprint, "real", identity.session_id,
+            )))
+            attachment = await scope.attach_mux(MuxAttachV1(selector))
+            control = SessionSnapshotRequestV1(attachment.attachment_id, attachment.controller_generation, mux.members[0].member_id)
+            record = await scope.execution_client.submit_execution(control, "instance", "submission", "/work silent")
+            await entered.wait()
+            running = await scope.execution_client.get_execution(control, "instance", record.state.execution_id)
+            assert running.state.status is ExecutionStatusV1.RUNNING
+            assert session.messages == []
+            closing = asyncio.create_task(scope.close_member(MuxMemberCloseV1(selector, control.member_id)))
+            await cleanup_entered.wait()
+            assert events == [] and not closing.done()
+            assert service._execution_registry.active_count == 1
+            cleanup_release.set()
+            await closing
+            assert events == ["execution-cleaned", "lease-closed", "runtime-close"]
+            assert service._execution_registry.get(identity, record.state.execution_id).state.status is ExecutionStatusV1.INTERRUPTED
+        finally:
+            cleanup_release.set()
+            await service.close()
+
+    _run(scenario())
+
+
 def test_real_command_failure_has_explicit_outcome_and_retains_legacy_ack(tmp_path):
     async def scenario():
         async def command(args, context):

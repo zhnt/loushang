@@ -5,11 +5,16 @@
 ## Status And Scope
 
 - Authority: descriptive — source contract and deterministic verification record
-- Design status: proposed for integration into the execution lifecycle service
+- Design status: accepted for the optional execution lifecycle integration
 - Implementation status: implemented opt-in values, Product port, invocation
   guard, composite snapshot validator and real Coding adapter; default Product
   composition and submission protocol not activated
 - Owner: AppService contract and Product adapter owners
+
+The [subsequent execution service delivery](execution-service-delivery.md)
+records AppService registration, lifecycle ownership and versioned client
+integration. The verification history below remains specific to this original
+Product increment; it does not imply default activation or native GUI acceptance.
 
 This increment makes one Product invocation independently identifiable and
 waitable. It supplies reusable mechanisms and tests before introducing a new
@@ -139,13 +144,11 @@ Real Coding verification is separately recorded below. Neither establishes an
 AppService ledger, durable execution recovery, native-platform acceptance or
 GUI delivery.
 
-The next integration increment must build the application admission/ledger
-owner over the optional real adapter. Reserve maximum
-lifecycle record capacity before acceptance; make duplicate lookup precede new
-capacity checks. Then add versioned submission/query/interrupt methods, expected
-service-instance fencing and negotiated client support on the stabilized shared
-AppHost base. Keep old wait-until-complete and legacy interrupt semantics.
-Message/tool entry IDs remain later work.
+The application admission/ledger owner and versioned submission/query/interrupt
+methods are now described in the separate delivery record. They reserve maximum
+lifecycle record capacity before acceptance, check duplicates before new
+capacity, fence service instances and preserve old wait-until-complete and
+legacy interrupt semantics. Message/tool entry IDs remain later work.
 
 ## Real Coding Adapter
 

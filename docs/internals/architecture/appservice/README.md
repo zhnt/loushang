@@ -61,9 +61,12 @@ The current implementation contains:
 
 The separate [optional Product execution contract](execution-contract.md) adds
 invocation identity, full-call settlement and composite snapshot validation.
-Its helpers and explicitly constructed real Coding adapter are implemented;
-mechanism fixtures and real Product tests verify them separately. The submission
-ledger, new wire methods and default Product activation remain future work.
+Its helpers and explicitly constructed real Coding adapter are implemented.
+The [execution service delivery](execution-service-delivery.md) adds the
+instance-local submission ledger, independent settlement ownership, scoped
+recovery and an optional versioned local protocol. Mechanism, real Product and
+transport tests verify these separately. Default Product activation and native
+GUI platform acceptance remain separate integration work.
 
 ## Dependency And Ownership
 
