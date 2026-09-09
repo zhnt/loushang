@@ -277,6 +277,35 @@ add a submission ledger, or change the wire protocol.
   also passed its focused type check. The additional optional adapter is an
   explicit AppServer consumer in the A0.4 architecture inventory; the corrected
   inventory passed all six tests.
+- The Coding Session/AppHost/legacy Hosted/CLI batch passed 624 tests (two
+  deselected). Its G10 ephemeral canary passed in 4.106 seconds under the
+  original budget. This is an additional passing execution-branch result,
+  not an explanation of the earlier cross-worktree timing discrepancy.
+- All 22 real execution scenarios passed together in the broader Coding batch.
+  That batch also exposed two test-environment defects: the task's editable
+  install predated G17's new console entrypoint, and temporary nested pytest
+  probes inherited a custom option without loading its defining conftest.
+  The editable install was refreshed offline without changing dependencies.
+  The parent retains explicit `--skip-host-runtime` and marker filters; inherited
+  `PYTEST_ADDOPTS` now contains only the standard `not live` selector. Original
+  failures and targeted rechecks are retained separately. The two affected G17
+  files subsequently passed all 14 tests, including real terminal history
+  recovery, startup cancellation, forced exit and process reclamation.
+
+- The final selection requested 936 test files in 85 batches, retaining
+  `not live`, `not requires_host_runtime`, the terminal/platform marker
+  exclusions and explicit `--skip-host-runtime`. It also includes local native
+  cases which the repository leaves in that selection; it is not wheel or
+  cross-platform acceptance. After the explicit rechecks below, the combined
+  unique-case result is **11,051 passed, 147 skipped, zero unresolved failures**.
+  The separate CI unittest selection passed all 41 tests.
+- A late `/tmp` quota failure prevented C fixture compilation in 18 Hosting
+  cases and four Harness native worker cases. The affected Hosting file passed
+  all 22 tests, and the four worker cases passed separately, with only compiler
+  `TMPDIR` redirected to a task-owned directory on the workspace filesystem.
+  No Product implementation, timeout or capability selector was changed for
+  these environment failures. The G10 canary and large-journal load budget both
+  passed in the final batched selection under their original budgets.
 
 The first combined Harness run was terminated without a complete result after
 heavy memory swapping and a transcript-load timing failure. It is not a gate
@@ -295,7 +324,18 @@ test have no delta from G17. These results do not establish an execution-induced
 performance regression or resolve the earlier timing discrepancy. They do not
 replace platform acceptance or justify relaxing the existing budgets.
 
-Remaining independent scope results are recorded in the task worktree under
+Raw independent scope results are recorded in the task worktree under
 `.artifacts/execution-product-scopes/`; focused logs and XML use the
-`execution-product-` prefix. Platform acceptance and the previously unresolved
-G10 startup difference require their own evidence before integration promotion.
+`execution-product-` prefix. The original batches contain 33 failures: one
+architecture inventory omission, ten G17 test-environment failures and 22
+compiler quota failures. `execution-product-final-results.json` records every
+recheck's case identity and original batch; `execution-product-final.xml` contains
+the resolved unique-case results. Raw failures are retained rather than rewritten
+as successful initial runs.
+
+This completes the optional real Product increment and its selected local
+regressions. It does not make the full change-aware gate green: the AI coverage
+result above, complete installation/platform acceptance and the unresolved G10
+cross-worktree timing discrepancy still require their own evidence before
+integration promotion. The temporary clean G17 comparison worktree was removed
+after its evidence was retained; the execution delivery branch remains local.
