@@ -83,3 +83,49 @@ empirical validation. Keep material adoption rationale and source links in the
 relevant ARD or key design; small observations need no separate reference report.
 Project-specific reference inventories belong in the adoption profile or scope
 materials, subject to the workspace's research-storage rules.
+
+## Turn Reference Interfaces Into Verifiable Specifications
+
+When a comparable system informs a human-facing interface, do not move directly
+from screenshots to components or implementation. Treat the work as a
+specification refinement:
+
+1. record authoritative external documentation, versioned observations, local
+   implementation facts and participant decisions as different evidence kinds;
+2. name the local user and task outcome before selecting reference placement;
+3. map each reference noun to the local domain vocabulary and identities,
+   explicitly declining false equivalences;
+4. define information hierarchy, stable regions, navigation and independently
+   scrollable or collapsible areas;
+5. specify observable states, actions, focus, keyboard, accessibility,
+   localization, responsive behavior, failure and recovery;
+6. identify the owner, freshness and capability behind every dynamic value or
+   command, including unavailable and incompatible behavior;
+7. trace representative success and failure scenarios to requirements and
+   deterministic presentation evidence, then obtain real integration evidence
+   separately where the interface crosses a runtime boundary.
+
+Use an evidence-and-decision ledger such as:
+
+| Reference fact or observation | Interpretation | Local decision | Requirement | Fact/capability owner | Verification |
+| --- | --- | --- | --- | --- | --- |
+| visible layout in a named version | candidate information hierarchy | adopt, adapt or decline | stable ID | local UI, service or provider | fixture, accessibility check, integration |
+
+A screenshot establishes only what is visible in the captured state. It does
+not establish hidden behavior, complete state transitions, backend identity,
+authority, accessibility or stability across versions. External product
+documentation may establish more behavior, but it remains reference evidence
+until the local scope accepts a requirement or specification.
+
+A human-facing interface specification is a specialization of the method's
+`Specification` artifact. It may freeze navigation, placement, visible state,
+commands and accessibility without assigning React components, terminal
+widgets, view models or service endpoints. Pixel values are tokens or
+constraints, not evidence of component boundaries. A pane that displays a
+capability does not become that capability's authority.
+
+Start from the
+[human-facing interface specification template](templates/interface-specification.md)
+when the surface has several regions, states or external capability sources.
+For a small surface, keep the same questions as a section of the owning
+specification instead of creating another document.

@@ -15,10 +15,12 @@
 - Design stage: requirements; placement and component design follow separately
 - System context: [GUI system context and boundary contract](gui-system-context-and-boundary-contract.md)
 - Reference evidence: [GUI reference system inventory](gui-reference-system-inventory.md)
+- Interface specification: [HarnessGUI interface specification](gui-interface-specification.md)
 
 本文是第一步需求设计，描述用户结果、质量约束和验收条件。具体组件、目录、
-接口字段、状态机和测试驱动由后续设计确定。以下需求尚未成为已接受 Target，
-也不代表已有 GUI 实现；评审通过与运行验收分别记录。
+接口字段和服务状态机由后续设计确定；可观察布局、导航和界面状态由独立的
+[界面规约](gui-interface-specification.md) 冻结。以下需求尚未成为已接受 Target，
+也不代表已有 GUI 实现；规约评审与运行验收分别记录。
 
 继承 [架构方法](../../architecture-method/README.md)、
 [项目治理规范](../governance-profile.md) 和
@@ -28,7 +30,9 @@
 需求已经评审通过的证明。
 
 V2 增量从 Codex App 参考材料补充多任务可见性、工作上下文、环境与权限信息、
-只读变更审查和 pane continuity，并按用户方向固定既有 AppHost 与单一
+只读变更审查和 pane continuity；后续界面规约按用户确认补充 Workspace 分组的
+Session 导航、活动 Session 标志、Run 内 Task 步骤、可展开执行详情和
+Task/Subagent 面板，并按用户方向固定既有 AppHost 与单一
 HarnessGUI。桌面 GUI 不再建立第二个 Host；它与
 G16 detachable HarnessTUI Hosted Mux 作为 peer presentation 复用同一长期运行的
 AppHost/AppService application；G15/G17 foreground launcher 仍拥有其 child/退出
@@ -60,8 +64,10 @@ HarnessGUI 与 Hosted Mux 对服务公开的 `workspace`、`changes`、`artifact
 | 用户补充方向（2026-09-09） | 先整理系统环境图和黑盒需求，参考 Codex App 界面 | 先登记参考事实、外部关系和用户结果；不从界面布局反推组件或隐含权限 |
 | 用户最终方向（2026-09-09） | 暂不考虑 Coding GUI，只有 HarnessGUI；仓库、Diff、worktree 是通用能力；GUI 与 Hosted Mux 共用接口族 | 取消首期 Product GUI/presentation contribution 分区；通用能力由服务端 capability 与版本化 HarnessClient facet 声明，两个前端均可消费 |
 | 用户补充方向（2026-09-09） | Desktop GUI Host 使用既有 AppHost，并与 TUI 共用同一个；HarnessTUI 有 Hosted Mux（tmux）和 Embedded 两种形态 | 删除第二个 GUI Host 概念；GUI 复用 G16 detachable application 及其 Hosted Mux shell，Embedded 保持直接 Product/Harness 路径；G15/G17 foreground child lifecycle 不冒充可共享 Host |
+| 用户界面方向（2026-09-10） | 左栏按 Workspace 展开 Session，包含新对话、最近、用户区和 Git/SVN 标志；活动 Session 显示运行动画 | 由界面规约冻结导航位置和状态表达；VCS 值仍须来自公开 provider，SVN 是待补候选能力 |
+| 用户执行可见性方向（2026-09-10） | `第 1/4 步` 表示 Run 内 Task；中央执行摘要可展开查看读取、命令和工具活动；Subagent 类似派生 multi-agent 执行者 | 区分 Session、Run、Task、Activity 与 AgentRun；先以 fixture 验证，真实模式不从文本猜测缺失事实 |
 | Codex 官方参考 | 桌面工作区组织项目/会话、长期工作、文件结果、review、terminal 和 worktree | 采用多任务可见性、上下文/来源可信和只读 review 问题；可变 Git、终端、Handoff 等能力保留后续 |
-| 用户提供截图 | 可见状态同时呈现任务导航、主对话/输入、环境、变更和来源 | 作为单状态观察证据；不冻结三栏布局、标签、图标或隐藏行为，截图不入库 |
+| 用户提供截图 | 可见状态同时呈现 Workspace/Session 导航、活动 Session 标志、主对话/输入、Task 步骤、可折叠执行详情、环境、变更、Subagent 和来源 | 作为指定版本的布局观察证据；采用项由用户方向和界面规约单独决定，截图不证明隐藏行为且不入库 |
 | 已有工程方案 | Mock 优先、同机 AppService 接入、真实原生验证、发布另行交付 | 作为本稿的阶段基线，保留外部契约缺口 |
 | 本稿细化建议 | 草稿隔离、键盘可达性、故障提示、性能场景和量化验收 | 拟议需求，可在评审时调整，不视为用户已逐项确认 |
 
@@ -76,6 +82,10 @@ GUI 展示需求不改变已有 Product、Session、Plugin 与执行权限的权
 “工作上下文”是用户辨认长期任务来源所需的项目、目录或 Product 背景；会话是
 一次可持续交互的独立对话，工作空间是当前服务提供的会话组织。工作上下文不
 等于 mux、Git worktree 或 Session，也不要求 GUI 新建项目数据库或跨项目运行时。
+一次用户提交产生一个可辨认的 Run/execution；Task 是该 Run 内的工作项，
+Activity 是 Task 内的读取、命令、工具或等待记录；AgentRun 是根 Agent 或
+Subagent 的执行分配。Task 不是 Session，AgentRun 也不是 Task。没有公开
+Task/AgentRun 投影时，真实 GUI 只显示 Run 状态，不解析 Assistant 文本补造结构。
 GUI 可以同时显示多个事实，但每项须保留自己的 owner、identity 和新鲜度；具体
 映射见边界合同。
 
@@ -95,9 +105,9 @@ GUI 可以同时显示多个事实，但每项须保留自己的 owner、identit
 | ID | 用户可观察的需求 | 最小验收条件 | 首次证据 |
 | --- | --- | --- | --- |
 | GUI-FR-001 | 独立启动与离线体验：未启动后端时也能打开 GUI，使用明确标注的样例体验基本交互 | 无后端、无真实模型请求时可打开界面、阅读样例并运行 Mock 场景；样例状态不会显示为真实会话 | B0/B1 |
-| GUI-FR-002 | 工作上下文、工作空间与会话导航：在已知项目/目录背景中选择服务可见的会话集合，创建、打开或切换其允许操作的会话 | 工作上下文、application、mux/member 与 Session 不被折叠成同一 identity；至少两个会话切换时消息、状态、草稿和后续操作对象归属正确；空列表、失效对象与控制冲突可解释 | B1/B2 |
+| GUI-FR-002 | 工作上下文、工作空间与会话导航：左栏按 Workspace 分组、展开和滚动服务可见的 Session，并提供新对话与有界“最近”入口 | 工作上下文、application、mux/member 与 Session 不被折叠成同一 identity；至少两个 Workspace、每个两个 Session 切换时消息、状态、草稿和后续操作对象归属正确；最近只索引同一 Session；空列表、失效对象与控制冲突可解释 | B1/B2 |
 | GUI-FR-003 | 文本输入：支持中文/英文、多行编辑、粘贴、选择、复制及显式发送 | 输入法组合过程中不误发送；用户提交的文本不丢失、不被无提示改写；切换会话后未发送草稿仍与原会话绑定 | B1，原生输入 B3 |
-| GUI-FR-004 | 会话输出与运行反馈：显示用户输入、流式输出和服务提供的运行/终止结果 | 同一消息不会因流式片段重复追加；服务未确认完成时不显示成功；本地发送中、服务运行中、失败及结果未知可区分 | B1/B2 |
+| GUI-FR-004 | 会话输出与运行反馈：显示用户输入、流式输出和服务提供的运行/终止结果；中央 Run 摘要可展开查看有界 Activity 详情 | 同一消息不会因流式片段重复追加；展开/收起只改变本地展示且不重放命令；服务未确认完成时不显示成功；本地发送中、服务运行中、失败及结果未知可区分 | B1/B2 |
 | GUI-FR-005 | 运行中控制：用户可请求中断，并使用服务合同支持的继续输入方式 | 长任务尚未返回时中断入口仍可用；补充当前任务与排队后续任务的语义清楚；请求失败不会伪装为已执行 | B1/B2 |
 | GUI-FR-006 | 待处理交互：显示服务要求用户回答的审批或选择，并提交合法答复 | 显示请求对象、可选操作和当前有效性；失效或已答复的请求不能再次授权；服务拒绝答复时可解释 | B1/B2 |
 | GUI-FR-007 | 文档阅读：只读展示 Markdown、纯文本、代码、Diff 和图片内容 | 首期格式清单见下文；支持选择/复制适用文本与滚动；内容变化、窗口缩放不造成正文错序或无故清空 | B1；真实来源按契约验收 |
@@ -107,17 +117,19 @@ GUI 可以同时显示多个事实，但每项须保留自己的 owner、identit
 | GUI-FR-011 | 退出与分离：关闭 GUI 能结束自身连接，并让用户理解服务仍可能继续运行 | 关闭窗口不等价于停止应用服务；重开后读取当前事实；不会恢复已失效的审批；不承诺跨崩溃恢复未持久化草稿 | B2/B3 |
 | GUI-FR-012 | 自动回放：维护者可保存、选择并重复执行一组 GUI 操作场景 | 场景表达输入、事件、等待和逐步断言；可自动操作界面并报告通过或失败；默认离线，不依赖真实模型或浏览器插件副作用 | B1 |
 | GUI-FR-013 | 回放证据查看：维护者可定位失败步骤并查看对应状态、画面和日志 | 每次运行可关联场景版本、构建来源和执行环境；失败步骤可定位；证据可通过本地产物查看，首期不要求应用内时间线播放器 | B1 |
-| GUI-FR-014 | 会话状态总览：无需逐个打开会话即可知道哪些会话正在运行、等待答复或有未读更新 | 当前 attachment 覆盖的会话集合可显示服务已知的运行/终止/有效交互状态和 GUI 本地未读状态；点击定位到对应会话；断线标陈旧，不能把未运行猜为成功完成 | B1/B2 |
+| GUI-FR-014 | 会话状态总览：无需逐个打开会话即可知道哪些会话正在运行、等待答复或有未读更新；活动 Session 在左栏显示运行动画和文字 | 当前 attachment 覆盖的会话集合可显示服务已知的运行/终止/有效交互状态和 GUI 本地未读状态；点击定位到对应会话；动画不是唯一状态表达；断线标陈旧，不能把未运行猜为成功完成 | B1/B2 |
 | GUI-FR-015 | 工作上下文与执行环境可见：用户采取操作前可以辨认当前项目/目录背景、application、mux/member/Session，以及服务公开的 Local/Worktree、仓库、分支或版本信息 | 每项显示值保留来源和新鲜度；协议未提供的值显示 unknown/unavailable，不从目录名或选中页推断；上下文变化后旧页面不能向新对象静默提交 | B1 fixture；真实来源按 C1/B2 合同验收 |
 | GUI-FR-016 | 权限与能力可见：展示服务公开的连接 profile、控制状态、模型/执行策略、审批模式和工具/来源能力，并只允许合同支持的改变 | 可用、只读、未知和不支持可区分；显示权限不等于授予权限；服务不支持选择时不提供假选择器；旧 generation 或断线后可变操作立即冻结 | B1 fixture；真实来源按 C1/B2 合同验收 |
 | GUI-FR-017 | 工作区变更概览与只读审查：用户能辨认是否有变更、查看具名范围的文本 Diff，并知道内容来源和版本 | 区分工作树、暂存区、提交、分支或轮次等实际支持的 scope；不得把仓库全部修改归因于当前 Agent；无权威来源时显示 unavailable；首期不暂存、回滚、提交或推送 | B1 fixture；B3 必须用已接受的 Harness workspace/change provider 取得真实证据 |
 | GUI-FR-018 | 共享 HarnessClient 能力一致性：服务公开的 `workspace`、`changes`、`artifacts` 等可选 facet 对 HarnessGUI 与 G16 Hosted Mux 使用同一版本、identity、来源、revision 与错误语义 | B1 双 client fixture 证明 capability 出现、缺失、版本不相容和撤销时，两端解释一致；能力是否可用只由服务端声明，不按 GUI/TUI 类型分配；两个前端可以采用不同表现但不得建立第二个事实 owner | B1 fixture；C1/B2 真实合同证据 |
 | GUI-FR-019 | 同一 G16 detachable AppHost application 的多前端一致性：HarnessTUI Hosted Mux 与 GUI 通过各自 client scope 使用同一已准入 Product application，且不复制 Product Runtime 或另建 GUI authority；Embedded 与 G15/G17 foreground 不属于该共享生命周期 | B1 双 client fixture 验证投影与本地状态隔离；B2/B3 证明两个真实 client 可控制不同 mux，同一 mux 的第二次 attach 返回 `already_attached` 且不改变 generation，detach/连接关闭只释放本 client scope，已接受工作继续；重连以 fresh generation/snapshot barrier 恢复；草稿、焦点、滚动不互串；不提供 observer 或 takeover | B1 双 client fixture；B2/B3 真实 G16 共享 application 证据 |
+| GUI-FR-020 | Run 内 Task 与多 Agent 可见性：显示当前 Task、已知步骤/并行进度、可展开 Activity，以及根 Agent/Subagent 的 Task 分配与返回摘要 | fixture 至少覆盖四 Task、一个派生 Agent、中央 `第 1/4 步`、左栏 active Run 和执行详情展开；Task 与 AgentRun identity 分离且可互相定位；真实 capability 缺失、撤销或不相容时明确 unavailable，不从文本推断 | B1 fixture；真实来源按 C1/B2 后续合同验收 |
 
 首期文档格式基线（拟议）：Markdown 的标题、段落、列表、引用、链接、表格、
 代码块和图片；UTF-8 纯文本与代码；只读文本 Diff；PNG/JPEG 静态图片。
-文件选择入口、页面布局与语法高亮方案不在需求阶段冻结。其他格式明确提示
-不支持；禁止用“打开文档”隐式进入通用浏览器、编辑器或脚本执行环境。
+文件选择入口与语法高亮方案不在需求阶段冻结；页面布局由
+[界面规约](gui-interface-specification.md) 单独冻结。其他格式明确提示不支持；
+禁止用“打开文档”隐式进入通用浏览器、编辑器或脚本执行环境。
 
 GUI-FR-003 的草稿保证限应用存活期间的切换和短暂连接变化；应用崩溃/退出后的
 草稿持久化是后续候选。GUI-FR-002 不承诺跨重启历史 Session 发现；GUI-FR-007
@@ -221,6 +233,7 @@ GUI-FR-004/005/009/014 在 execution 模式下消费明确的 accepted/running/�
 | GUI execution 跨语言与原生接入 | 服务端已交付，首期按已提交 codec、JSON 样例和恢复参考设计 Mock 与真实客户端 | AppServer/GUI owners 完成 C1 的独立兼容测试与 B2 三平台闭环；Python 或 PR CI 通过不替代 GUI 证据 |
 | 跨服务重启的执行登记与去重恢复 | 提交键保存到服务实例结束，实例变化保留未知结果；不自动重试或从 Session 历史推断执行登记 | 另行设计持久化、保存期限与重启保证；首期客户端遵守 `restartRecovery: false` |
 | 完整工具/Diff/图片/Artifact 的结构化投影 | GUI-FR-007 先用本地样例验证渲染，GUI-FR-008 支持用户选定本地文档 | Product、Harness 与 AppService capability owners 提供明确来源、类型、大小、分页、权限和失效合同后，再验收真实结果 |
+| Run/Task/Activity/AgentRun 投影 | GUI-FR-020 以明确 fixture 验证左栏运行状态、Task 步骤、可折叠 Activity 和 Subagent 面板；真实模式缺失时显示 unavailable | Product/Harness/AppService owners 冻结 identity、关系、事件、容量、权限、失效和恢复合同；GUI owner 取得 C1/B2 跨语言与原生证据 |
 | 项目、环境、模型、策略、权限和来源投影 | GUI-FR-015/016 可用明确 fixture 设计状态；真实界面只显示当前公开事实 | Harness/AppService capability owner 冻结 identity、版本、可变性和错误合同后，取得 C1/B2 证据 |
 | Git 变更事实来源 | GUI-FR-017 在 B1 先验证只读展示、scope、unavailable 降级与归因规则；B3 仍要求真实来源 | `loushang.harness.workspace` 作为 authoritative mechanism owner；AppService/AppContract 提供只读 Workspace/ChangeSet facet，并取得真实仓库证据后完成首期 |
 | 共享 HarnessClient 可选 facet | GUI-FR-018 在 B1 用双 client fixture 验证 capability、来源、版本与失败隔离 | AppService 冻结 capability discovery；Harness exact provider 冻结 Workspace/ChangeSet/Artifact schema、revision、分页和失效合同；GUI/TUI 不另建 frontend-specific authority |
@@ -275,7 +288,7 @@ GUI-FR-012/013 的回放继续用于确定性 UI 验证；录制用户业务操�
 | GUI-OQ-005 | Workspace/ChangeSet facet 的 exact schema、分页/容量、revision 与失效规则 | authoritative mechanism 已固定为 `loushang.harness.workspace`，取数经 AppService/AppContract；待收敛值合同，不建立 GUI/TUI 双重 owner | C1 schema/contract 冻结及真实接入前 |
 | GUI-OQ-006 | 工作上下文、环境、模型、策略、权限和来源的公开字段与可变性 | 当前只显示已知值和 unknown；不从内部对象、路径或 UI 选择推断 | C1 schema/contract 冻结前 |
 | GUI-OQ-007 | 首期是否需要 GUI 自有项目索引，以及固定/搜索/归档范围 | 默认无 GUI 项目数据库；保持为 GUI-FUT-004 | scope acceptance 或历史导航进入设计前 |
-| GUI-OQ-008 | 一个 HarnessGUI 进程/窗口如何组合会话、workspace、changes 与 artifact pane，并隔离多工作上下文的草稿和阅读状态 | 候选发现比较单窗口多 pane、多工作区与多窗口；不把视觉 tab 当作 Session/worktree 迁移或 capability admission | 接受 GUI placement/component model 前 |
+| GUI-OQ-008 | 一个 HarnessGUI 进程/窗口如何组合会话、workspace、changes 与 artifact pane，并隔离多工作上下文的草稿和阅读状态 | 已选择单窗口左侧 Workspace/Session、中央 Session/Run、右侧 Work Dock 的候选布局；多窗口、跨窗口迁移及 pane persistence 仍待定；视觉 tab 不构成 Session/worktree 迁移或 capability admission | 组件设计及多窗口需求进入范围前 |
 | GUI-OQ-009 | 未来是否允许 HarnessTUI Hosted Mux 与 GUI 同时观察或显式 takeover 同一 mux | 首期不新增：G16 已定义 one-controller-per-mux，第二个 scope 得到 `already_attached`，read-events/snapshot 也不能越 scope；共用 AppHost 只先支持不同 mux 的并行控制和断开后 fresh reattach。Embedded 与 G15/G17 foreground 不进入该决定 | 若 observer/takeover 被提升为需求，在其 C1/实现前独立接受；不阻塞 GUI-FR-019 按现有 G16 语义验收 |
 
 ## 8. 需求验证与下一步
@@ -293,6 +306,7 @@ GUI-FR-012/013 是开发者使用的验证功能，GUI-NFR-008 约束其确定�
 两者分别验收；仅有最终截图不足以证明状态和操作正确。
 
 下一步依次为：评审并确认 [参考系统清单](gui-reference-system-inventory.md)、
-[系统上下文与边界合同](gui-system-context-and-boundary-contract.md) 和本需求范围；接受单一 HarnessGUI、
-共享 HarnessClient facet、共用 AppHost 关系与关键黑盒边界后，再进行候选组件发现、
-功能映射与收敛。此次不新增 GUI 运行入口、不改变 AppHost/AppService。
+[系统上下文与边界合同](gui-system-context-and-boundary-contract.md)、
+[界面规约](gui-interface-specification.md) 和本需求范围；接受单一 HarnessGUI、
+共享 HarnessClient facet、共用 AppHost 关系与关键黑盒边界后，再进行候选组件
+发现、功能映射与收敛。此次不新增 GUI 运行入口、不改变 AppHost/AppService。
