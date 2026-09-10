@@ -487,6 +487,52 @@ diagnostic of the remaining pre-output/pre-wait-return interval. The facade
 candidate remains implemented but its performance benefit is unaccepted;
 inert/warm/absent A/A retain their original inconclusive verdicts.
 
+### Resource preflight after the observer diagnostic
+
+A read-only resource preflight on 2026-09-10 (recorded by 10:11 UTC) found
+material current memory/paging pressure. It ran no Product or new timing series.
+The checks were repeated outside the managed sandbox, matching the execution
+context used for G18 tests, because sandbox process listings are namespace-limited
+and one separate read-only command failed before execution while preparing a
+`/tmp/.agents` mount with `Quota exceeded`.
+
+Observed outside the sandbox:
+
+- One online CPU; affinity remains `[0]`. The current scope and visible user-slice
+  ancestors expose `cpu.max = max 100000` and zero throttled periods/time. There
+  is no evidence here of an adjustable task CPU-quota bottleneck or another CPU
+  to isolate onto.
+- `/proc/meminfo`: `MemTotal=1676332 kB`, and one snapshot had
+  `MemAvailable=271796 kB` (approximately 1.60 GiB total / 0.26 GiB available).
+- The current Codex control process (PID 2046146) had 847,672 KiB RSS in the
+  process listing, then 570,132 KiB RSS and 721,280 KiB swapped in a later status
+  snapshot. These are separate snapshots, not simultaneous totals or a leak
+  diagnosis. Paused peer agents do not eliminate the controller's memory cost.
+- The two interval rows of outside-sandbox `vmstat 1 3` reported swap-in/out
+  `620/0` and `7860/98128` in its default KiB/s units; the latter interval had
+  `wa=31` (approximately 95.8 MiB/s swap-out and 31% I/O wait). The first,
+  since-boot row is not used as an interval measurement.
+- A later PSI snapshot reported memory `some/full avg10=8.18/6.61` and I/O
+  `some/full avg10=12.24/10.39`. This is contemporaneous environment evidence,
+  not a reconstruction of pressure during any earlier performance sample.
+
+The existing inert A/A rows were also decomposed without new execution:
+hosted-help user-CPU medians for a/b were 3.362980/3.535183 seconds in block 0
+and 3.267134/3.481105 in block 1; system-CPU medians were
+0.216680/0.223555 and 0.196495/0.214890. Thus a pure wall-wait explanation remains
+insufficient. Current paging pressure must not be presented as the proven cause
+of historical A/A spread or all pre-output/pre-wait-return time.
+
+The next timing step needs a user-coordinated resource change: either stabilize
+capacity on this Linux machine or provide a task-isolated Linux runner. Do not
+kill peer/control processes, change system swap/cache policy, modify Product
+dispatch/lifecycle or relax statistical gates to work around the environment.
+No new hard memory SLO or substitute acceptance condition is introduced here.
+After a resource/environment change, record that condition and re-establish the
+full original A/A checks before the required A/B acceptance; old and new timings
+must not be pooled or their difference attributed to the facade. The G18 goal
+and all remaining acceptance requirements stay open pending that coordination.
+
 ## Bounded Order/Import Diagnosis — Pre-Execution Review
 
 Independent raw-data review reproduced all ten comparator results and verified
