@@ -1,9 +1,11 @@
 # G18.0 Scenario Inventory
 
-- Source baseline: `9bc69361494293595ae424be225c61e3226a9996`
+- Historical source baseline: `9bc69361494293595ae424be225c61e3226a9996`
+- Current source pair: [Linux facade delivery](startup-performance-g18-linux-delivery.md)
 - Authority: measurement inventory for the [G18 plan](startup-performance-plan.md),
   not a replacement readiness or lifecycle contract
-- Status: installed inert-path reference frozen (9/10 stable); native milestone collection pending
+- Status: historical inert reference 9/10 stable and native reports not fully accepted;
+  current pair frozen, new stability and performance acceptance pending
 - Platform: current Linux first; macOS/Windows adapters and acceptance pending
 
 ## A — Installed Inert Paths
@@ -52,7 +54,8 @@ pair/block; case order reverses in block two. All samples are kept, including
 warmups and failures. Reports are atomically replaced after each sample; a failed
 case stops collection with partial evidence, never silently retries.
 
-Each child has a fresh `/tmp/loushang-g18-baseline-*/...` app root outside the
+Each child has a fresh `loushang-g18-baseline-*/...` app root under the explicit
+scratch parent (current pair: `/var/tmp`, historical default: `/tmp`), outside the
 checkout, synthetic HOME/config/runtime/temp, a fixed environment allowlist,
 and no inherited provider/source/Git configuration. Parent environment is not
 modified. All inputs are empty: recovery behavior is not inferred from these cases.

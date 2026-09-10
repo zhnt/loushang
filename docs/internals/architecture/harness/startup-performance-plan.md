@@ -36,10 +36,17 @@
   reviewed fixture corrections committed locally (7fc472c2, 179edf39), followed by
   AppHost collection correction (2e5f47c5), failure-only thread evidence (e85b20fe),
   and G18 measurement tooling/gate wiring (d9e11a90);
-  Product facade remains uncommitted and performance-unaccepted; no push or merge
+  Product facade independently committed as 537cc910 after three-view pre-review;
+  new shared-cleanup baseline 5f7346bb and candidate wheels/installations identity-verified;
+  new inert A/A completed 440 valid observations, nine of ten cases stable;
+  hosted-help side/block spread remains inconclusive and requires diagnosis;
+  installed readiness/stability/performance acceptance pending; no push or merge;
+  current progress: [Linux local delivery](startup-performance-g18-linux-delivery.md)
 - Authority: delivery plan; accepted runtime boundaries and public contracts take precedence
 - Tracking: [G18 #578](https://github.com/zhnt/loushang/issues/578)
-- Baseline: `9bc69361494293595ae424be225c61e3226a9996` (G17 promotion)
+- Historical baseline: `9bc69361494293595ae424be225c61e3226a9996` (G17 promotion; retained)
+- Current paired baseline: `5f7346bb93c0b58203f60450a50cbf54c5713cec` (shared cleanup fix)
+- Current facade candidate: `537cc91099a1a48bf16ec15f9d20772a6204737a`
 - Branch: `harness/g18-startup-performance`, in the existing isolated Harness lane
 - Owner: Harness lane coordinates delivery; code stays in its owning package.
   Performance tooling is not a new responsibility of the Harness runtime.
@@ -66,8 +73,8 @@ Current 由源码和测试说明；下文 Target 不等于已实现。
 当前源码事实：
 
 - 基线 `src/loushang/coding/__init__.py` eagerly imports arch/tool-pack、bootstrap、
-  runtime、SDK、Session。当前未提交 G18.1 候选改为显式类型导入与按需 runtime exports；
-  定向兼容性回归通过，广泛门禁与性能验收仍待完成。任何 Coding 子模块仍先执行祖先 facade，
+  runtime、SDK、Session。当前已独立提交的 G18.1 候选改为显式类型导入与按需 runtime exports；
+  定向兼容性及上述广泛源码门禁已通过，安装态与性能验收仍待完成。任何 Coding 子模块仍先执行祖先 facade，
   hosted client 也不例外。
 - `src/loushang/coding/cli/__main__.py` 在 dispatch 前加载多个 handler 和运行时。
   `run_cli` 在函数定义时绑定可注入 callable defaults；现有签名和路由顺序不能随意改。
