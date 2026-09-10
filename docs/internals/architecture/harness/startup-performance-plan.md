@@ -38,8 +38,13 @@
   and G18 measurement tooling/gate wiring (d9e11a90);
   Product facade independently committed as 537cc910 after three-view pre-review;
   new shared-cleanup baseline 5f7346bb and candidate wheels/installations identity-verified;
-  new inert A/A completed 440 valid observations, nine of ten cases stable;
-  hosted-help side/block spread remains inconclusive and requires diagnosis;
+  first shared-cleanup inert A/A completed 440 valid observations, nine of ten cases stable,
+  with hosted-help inconclusive; its bounded diagnosis did not establish a root cause;
+  after a recorded controller/resource condition change, one reviewed full inert A/A
+  completed another 440 valid observations: nine of ten cases stable, plugin-help
+  inconclusive on both four-group median span and block-0/b MAD; raw evidence and
+  comparator independently audited in three views, no P1/P2; the old and new reports
+  remain separate, with no pooling, automatic retry or A/B authorization;
   new HOME isolation and fixed-slot recovery correctness controls pass;
   new native warm A/A completed 308 valid observations, 16/41 metrics stable and
   25/41 inconclusive, independently reproduced;

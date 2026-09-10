@@ -580,6 +580,77 @@ passing inert alone does not close G18. Prior formal and diagnostic reports stay
 immutable and separate: no pooling, no replacement, and no attribution of old/new
 timing differences to the unchanged Product or the unmeasured facade candidate.
 
+### Completed resource-condition resumption — audited, still inconclusive
+
+The one authorized collection is terminal: session 6683 exited 0, from
+2026-09-10 12:24:21 to 12:57:17 UTC. Its immutable record is
+`.artifacts/g18-linux-delivery/inert-aa-resource-02/report.json`, SHA-256
+`c8ceca479de42269ae03e06767f421821a12ee1d0654a5186005bd3264a44c80`.
+Report status is `complete-record-only`, comparison phase `aa`, and the overall
+verdict remains **inconclusive**. Normal collector exit is not acceptance.
+
+All 440 observations are complete and valid: 400 formal samples and 40 explicit
+warmups, with the original exact identities, side/case order, argv, cwd, output
+predicates and deadlines. All exit codes are zero and stderr is empty. The four
+installation-verification probes are outside those timings. Both sides use the
+same frozen A source/wheel, not the facade candidate. Audit verified the shared
+source receipt, both installation inventories (41 distributions and six console
+entries), 1,200 helper inputs before/after/current, and unchanged A/B wheel and
+prior report hashes. Normal runner completion includes its original final
+installation verification. No Product execution was added during this audit.
+
+The original exact-decimal comparator was independently reproduced for every
+case. Nine cases pass; only `plugin-help` is inconclusive. Its four groups are
+shown in milliseconds below; displayed rounding is not used for decisions.
+
+| Block / side | Median | MAD | MAD upper limit |
+| --- | ---: | ---: | ---: |
+| 0 / a | 684.937233 | 27.280958 | 68.493723 |
+| 0 / b | 735.079371 | 73.710717 | 73.507937 |
+| 1 / a | 652.240386 | 11.877317 | 65.224039 |
+| 1 / b | 679.619586 | 14.970601 | 67.961959 |
+
+The four-group median span is 82.838986 ms, above its 65.224039 ms limit by
+17.614947 ms. Block 0 / b also exceeds its MAD limit by approximately 0.202780 ms.
+Thus this is not merely a sub-millisecond MAD miss: the independent span gate
+also fails. All 44 plugin-help outputs are identical. The previously unstable
+`hosted-help` passes in this collection, but old plugin-help passes and new
+hosted-help passes must not be combined into an accepted ten-case baseline.
+
+Existing plugin-help rows were decomposed without another collection. Paired
+b-minus-a median wall / total-CPU deltas, in milliseconds, are:
+
+| Block | Execution order | Pairs | Wall delta | Total CPU delta |
+| --- | --- | ---: | ---: | ---: |
+| 0 | AB | 5 | +16.770 | +1.373 |
+| 0 | BA | 5 | +99.201 | +35.286 |
+| 1 | AB | 5 | +47.740 | +34.846 |
+| 1 | BA | 5 | -37.275 | -9.811 |
+
+Total CPU is user plus system CPU per observation before paired subtraction
+and median calculation. These small descriptive groups do not establish a
+consistent fixed-side penalty, a simple repeatable order effect or a root cause.
+Static entry inspection identifies `loushang.plugin.__main__:main`; argparse
+help exits before validation/conformance operations. The inspected entry and
+supporting source show no direct Coding facade dependency; this is not a full
+dynamic import trace, a waiver of the plugin guard, or authority to change Plugin
+or Harness runtime code.
+
+The post-collection resource receipt, recorded by 12:58:33 UTC in
+`resource-resume-01.json`, has 1,029,620 KiB available memory, controller RSS
+120,488 KiB and swapped memory 104,876 KiB. Memory PSI avg10 is zero; I/O
+some/full avg10 is 0.95/0.78. The two vmstat interval swap-in/out readings are
+0/0 and 168/0 KiB/s. Before/after snapshots do not reconstruct pressure during
+the measurement window or establish that it was paging-free.
+
+Architecture, evidence-contract and compatibility reviewers independently
+completed the result review with no P1/P2. This approves evidence integrity and
+the stated inconclusive conclusion, not stability or performance acceptance.
+Keep the original inert, native warm and native absent reports separate and
+unchanged. No automatic retry, selective recollection, threshold relaxation or
+A/B follows this result. Further sampling needs a bounded reviewed diagnostic
+or an actionable reviewed condition change; G18 acceptance remains open.
+
 ## Bounded Order/Import Diagnosis — Pre-Execution Review
 
 Independent raw-data review reproduced all ten comparator results and verified
