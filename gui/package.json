@@ -1,0 +1,36 @@
+{
+  "name": "@loushang/harness-gui",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Product-neutral native HarnessGUI shell for Loushang",
+  "type": "module",
+  "packageManager": "pnpm@11.19.0",
+  "engines": {
+    "node": "24.19.0",
+    "pnpm": "11.19.0"
+  },
+  "scripts": {
+    "doctor": "node ../scripts/gui/run.mjs doctor",
+    "bootstrap": "pnpm install --frozen-lockfile",
+    "dev:web": "vite",
+    "dev": "tauri dev",
+    "build:web": "node ../scripts/gui/run.mjs build-web",
+    "check": "node ../scripts/gui/run.mjs check",
+    "build": "tauri build --no-bundle",
+    "preview": "vite preview",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "@tauri-apps/api": "^2"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@vitejs/plugin-react": "^6.0.2",
+    "typescript": "~6.0.3",
+    "vite": "^8.0.16",
+    "@tauri-apps/cli": "^2"
+  }
+}

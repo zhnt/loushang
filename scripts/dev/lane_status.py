@@ -9,7 +9,16 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-EXPECTED_LANES = ("tui", "code", "harness", "method", "ai", "agent", "ontology")
+EXPECTED_LANES = (
+    "tui",
+    "gui",
+    "code",
+    "harness",
+    "method",
+    "ai",
+    "agent",
+    "ontology",
+)
 
 
 @dataclass(frozen=True)
