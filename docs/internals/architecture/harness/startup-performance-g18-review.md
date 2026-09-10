@@ -1661,3 +1661,79 @@ facade additive consumer scopes 保持；Makefile/CI 基础设施修改仍选择
 恢复须先核对 SHA/原目标不存在：21/22 可复制整个对应 sample 目录回原 scratch；
 27/28 只复制 native.json 回仍存在的 sample 目录，不覆盖任何新文件。迁移释放了少量
 空间/目录项后补丁已成功落盘；不宣称主机配额或性能噪声问题已整体解决。
+
+### Authorized Independent Cleanup Identity Repair — 2026-09-10
+
+用户随后明确授权“独立修复 cleanup P1”。这是对既有缺陷的独立修复授权，不是
+G18 性能优化自动扩权，不授权 push/merge 或 G18.2。保留未提交 facade/SDK/lazy/budget
+四文件原样，修复仅触及 Coding Continuity staging owner、对应回归及合同说明。
+
+新私有环境、原 leased runner 的完整 bridge 基线（exec 98621，
+`/var/tmp/lg18-tests-qTSrz8`）为 **1 failed / 11 passed / 1 skipped，2.29 s**；
+失败仍是原替换保护未抛 OSError，不是超时。新增负控（exec 79354，
+`/var/tmp/lg18-tests-Ohew4S`）在原实现上得到 **4 failed / 12 passed / 1 skipped /
+7 teardown errors，2.68 s**：缺失 retained file descriptor 造成确定性 owner-contract
+失败，另实际复现写入失败后替换文件被误删、128 次同名冲突耗尽后未拥有文件被误删。
+这些均保留原失败回执，没有用改为 rename 的场景规避 inode 复用。
+
+修复将原文件 descriptor 连同目录 descriptor 移交私有 staged value，直到按身份
+清理结束才在 finally 中释放两者。写入失败时，只有本次成功创建且仍匹配打开句柄
+的文件才可 unlink；创建未成功的路径不获得删除权限。原 directory-relative no-follow
+检查、0600/0700、prepared abort 和 cancellation-atomic owned task 顺序不变。
+这不提供原先也不存在的同用户并发 compare-and-unlink 原子性；没有引入路径 fallback。
+
+修正后的完整 bridge（exec 32037，`/var/tmp/lg18-tests-iufHGg`）为 **17 passed /
+1 skipped，2.71 s**。新增检查覆盖原 inode 持续有效且不可继承、替换内容保留、abort
+一次、已消失文件、写入/prepare 的失败或取消，以及清理 worker 被屏障保留期间重复
+取消不得提前释放两个句柄。所有完成路径核对实际 descriptor 已关闭。唯一 skip 为
+本机已有 secure staging 时不适用的 unsupported-platform 分支，不是豁免失败。
+Ruff 通过；Mypy 单模块通过（exec 63609）；原 Wave A 预算不变且通过，Product 净增
+11 行，没有修改待提交的 facade 预算文件或新增 Product 模块。
+
+| Receipt | SHA256 |
+| --- | --- |
+| bridge-before.xml | `82afd1cf88fadc5413143bfce9f6a4165f50bb70afbb4defbee207f599ea92fa` |
+| bridge-regressions-red.xml | `78c1f3f1a63445c2b50bbaa2369de6e96ef660ee92812e1cb2c33fd31dcc3058` |
+| bridge-after.xml | `dc01c9f443c655783a89e3cc5e60fb3577432bd5f66eb24340b57e588c148114` |
+
+以上文件位于 `.artifacts/g18-cleanup-p1/`。本修复的 change-aware 选择为 docs、
+architecture、coding、host_runtime；没有仅因 Coding 依赖而重跑 AI/Harness/AppHost。
+原完整 Coding 离线命令在新私有根 `/var/tmp/lg18-tests-KfCCUe` 完成（exec 13934，
+exit 0）：**2430 passed / 21 skipped / 20 deselected，1528.59 s**。动态 UI 排除
+清单、not live、skip-host-runtime 均保留。与原 Coding 失败报告逐项比较，原 2446
+个 case ID 无一移除，21 个 skip ID 完全相同；增加的恰为本修复五个 case，原
+`test_coding_portable_activation_bridge_rejects_replaced_temporary_file` 由失败转通过。
+
+随后顺序运行 change-aware 原 Coding host-runtime 命令（exec 96208，exit 0，
+新私有根 `/var/tmp/lg18-tests-QpSGLE`）：**2 passed / 1 skipped / 2468 deselected，
+25.64 s**。真实 CLI 退出恢复共享终端模式、POSIX raw/cursor/synchronized-output
+生命周期两项通过；唯一 skip 为原 Windows ConPTY 合同。未放宽超时或启动 live/network
+检查，没有冒充 macOS/Windows 验收。
+
+| Full repair receipt | SHA256 |
+| --- | --- |
+| coding-offline-after.xml | `eb8ec344156f669744f05285522ee251d31f1e94890100804af8165dcb618460` |
+| coding-host-runtime-after.xml | `a2dd3b4d2a734ba5dff70a5bc3dedb701a3d4c000d5b1dace867d8113df3b3c8` |
+
+以上门禁在保留原 facade 四文件的源码组合上运行；不宣称独立提交已经重新安装或单独
+重跑全套。只读 AST 对比 HEAD 确认 Product 仅修改 `_PrivateContinuityPayload`、
+`_write_private_continuity_payload_at`、`_remove_private_continuity_payload` 三个私有
+定义，其余 Product AST 不变。文档 invariants、三个改动文档链接和包依赖图检查通过。
+本轮是独立修复与本地核验，没有新增三视角评审，不延用历史评审为本修复背书。
+提交只收录该 Product 文件、bridge 回归和三份相关合同/状态文档；原 facade 四文件
+逐字未变且不纳入。没有 push/merge；G18 native A/A、不可变候选及性能验收仍待完成，
+旧失败/不确定报告不改写。
+
+静态检查和 apply_patch 曾因 sandbox synthetic mount 的 `/tmp` quota 失败，属于
+环境错误。没有修改 Product 或放宽检查来掩盖它。确认旧 absent preflight 报告终态
+failed、原 sample-19/20 目标 PID 不存在且新目标未占用后，仅迁移两份普通回执至
+既有 `.artifacts/g18-baseline/retained-scratch/native-preflight-83tyi44b/` 的同名 sample
+目录；迁移前后 SHA 完全一致，补丁工具随后恢复。没有删除其他任务文件、更改权限
+或迁移只读 snapshot，原历史报告不改。需要读取原路径时先按 SHA 核验并复制回
+`/tmp/loushang-g18-native-83tyi44b/sample-19/native.json`、`sample-20/native.json`，
+仅限目标不存在，不能覆盖新文件。
+
+| Additional retained receipt | SHA256 |
+| --- | --- |
+| sample-19/native.json | `89b32095998ed64f3bcfec7b054e6af11964735aa43cf20629c445eb3935e42c` |
+| sample-20/native.json | `67c7581d5e3051c329c05a3d13f0d03879e18ed87e1c120a9b8ac39feb903621` |

@@ -17,7 +17,11 @@
   Harness (4488), HarnessTUI (872),
   TUI unit (1252), Coding UI (577) and deterministic playback (179) gates
   passed; Coding UI fixture temp-root correction also passed three-view review;
-  Coding broad gate has one reproduced pre-existing cleanup identity failure, pending separate scope authorization;
+  independent repair of the pre-existing Coding cleanup identity failure was explicitly
+  authorized on 2026-09-10; retained file ownership and failure cleanup are implemented;
+  focused bridge passed (17, one original platform skip), full Coding offline passed
+  (2430, 21 unchanged skips), and Linux CLI host-runtime passed (2, one Windows skip);
+  this closes the independent cleanup blocker, not the G18 performance acceptance;
   AppHost collection P2 corrected and reviewed; the full gate passed (1255, 12 platform skips),
   with all 102 inventory modules and 1267 expected case IDs recorded; G8/G9/G10 gates,
   their validators and the G10 canary passed;
