@@ -533,6 +533,53 @@ full original A/A checks before the required A/B acceptance; old and new timings
 must not be pooled or their difference attributed to the facade. The G18 goal
 and all remaining acceptance requirements stay open pending that coordination.
 
+### Resource-condition resumption — reviewed pre-execution plan
+
+At the resumed session on 2026-09-10 (preflight recorded by 12:19 UTC), there is
+an observable condition change, not merely another request to retry: the prior
+controller PID 2046146 no longer exists; the new controller PID 3023451 has
+222,300 KiB RSS and zero swapped memory. Two outside-sandbox snapshots show
+924,864/941,352 KiB available memory, with no swap-out in their four one-second
+interval rows. The second snapshot has zero memory/I/O PSI avg10. CPU count and
+physical RAM have not increased; this is a lower-controller-footprint condition,
+not a claim of a dedicated runner or a memory expansion. These idle observations
+neither prove stability under Product load nor explain previous A/A outcomes.
+The bounded preflight receipt is retained at
+`.artifacts/g18-linux-delivery/resource-resume-01.json`.
+
+Three-view pre-execution review passed with no P1/P2. The single next collection:
+
+- Invoke the unchanged `scripts/dev/measure_g18_startup.py` against existing
+  `install-a` and `install-a2`, both using source
+  `5f7346bb93c0b58203f60450a50cbf54c5713cec` and the same already frozen A wheel.
+  Candidate B is not measured. Use the original isolated CPython 3.11.15 runner,
+  offline uv, private HOME/TMP and `/var/tmp` scratch parent.
+- Fresh, exclusive output directory:
+  `.artifacts/g18-linux-delivery/inert-aa-resource-02`.
+  Two blocks, ten pairs per block, all ten unchanged cases, alternating side
+  order and reversed case order in block 1. Exactly 400 formal samples plus
+  40 declared warmups, plus four installation-verification probes outside those
+  timing samples; no selective case, retry, replacement or append.
+- Preserve the original warm-bytecode/fresh-process conditions, argv, output
+  assertions, 60-second measured-sample deadline, the original 75-second outer
+  retained owner and physical settlement contract,
+  source/wheel/install/helper before/after verification and exact comparator.
+  New external cache paths belong to this report. No profiler or polling hook
+  is inserted; no existing cache, report, installation or Product state is
+  manually cleared or modified.
+- Reviewers and task tests/builds must finish before timing. Record a final
+  resource snapshot after review and a post-collection snapshot; preflight
+  readings are descriptive, not newly invented acceptance gates. Retain the
+  original per-sample load values. If collection fails, keep partial evidence;
+  if the full comparison is inconclusive, do not automatically repeat it.
+
+This authorizes neither A/B nor an automatic second A/A attempt. Native warm and
+absent A/A, both native A/B conditions, inert A/B and final delivery review remain
+required. Revisit their scheduling after auditing this complete inert result;
+passing inert alone does not close G18. Prior formal and diagnostic reports stay
+immutable and separate: no pooling, no replacement, and no attribution of old/new
+timing differences to the unchanged Product or the unmeasured facade candidate.
+
 ## Bounded Order/Import Diagnosis — Pre-Execution Review
 
 Independent raw-data review reproduced all ten comparator results and verified
