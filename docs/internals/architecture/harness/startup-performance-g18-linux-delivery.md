@@ -715,6 +715,42 @@ resource purchase is authorized by this handoff. Once a target is available:
 This is a reviewed handoff, not an executed migration or an accepted baseline.
 The facade implementation remains frozen and the full G18 goal remains open.
 
+### User-confirmed exclusive-window resumption — reviewed execution plan
+
+After the isolation handoff, the user explicitly confirmed that other workloads
+can remain paused and this Linux machine can be reserved throughout the complete
+measurement window. This is a user-coordinated concurrency condition, not a
+claim of additional CPU/RAM, OS-enforced isolation or a proven noise root cause.
+The new idle preflight shows one CPU, 1,676,332 KiB total RAM, 953,216 KiB
+available RAM, zero memory/I/O PSI avg10 and 2,213,540 KiB available filesystem
+space. Idle snapshots alone are not the basis for resumption; the explicit
+exclusive-window commitment is. The controller and OS still consume resources.
+
+Architecture, evidence-contract and compatibility pre-execution review passed
+with no P1/P2. Execute exactly one unchanged complete inert A/A collection,
+under a new exclusive output directory
+`.artifacts/g18-linux-delivery/inert-aa-exclusive-03`. Reuse the frozen local A
+and A2 installations, A source/wheel, original CPython/offline private parent
+environment and `/var/tmp` scratch parent. Recheck source/wheel/helper inputs;
+the collector must retain its before/after installed identity checks. No
+relocation or installation rebuild is implied by this same-machine window.
+
+Preserve all ten cases, two blocks and ten pairs per block: 400 formal samples,
+40 explicit warmups and four identity probes outside timing. Keep original
+alternating side order, reversed case order in block 1, warm external bytecode,
+fresh process/app state, argv/output predicates, 60-second sample deadline,
+75-second retained owner and physical cleanup, plus exact comparison thresholds.
+No profiler, extra monitoring hook, cache deletion or Product edit is introduced.
+Finish reviews and checks before launch; record one final resource snapshot and
+one post-collection snapshot outside the sample window. During collection, only
+observe the existing process handle and provide brief progress updates.
+
+Any collection/identity/owner failure or inconclusive full comparison ends this
+attempt with its original evidence retained. No retry, selective case replay,
+old/new pooling or automatic A/B is authorized. An accepted and audited inert
+result allows planning the separately required native warm and absent A/A under
+the confirmed window; it does not accept those conditions or close G18.
+
 ## Bounded Order/Import Diagnosis — Pre-Execution Review
 
 Independent raw-data review reproduced all ten comparator results and verified
