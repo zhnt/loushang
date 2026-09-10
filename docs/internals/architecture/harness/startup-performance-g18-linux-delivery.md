@@ -292,6 +292,114 @@ predeclared counts, stop conditions and review. No automatic reruns, changed
 thresholds, selective samples, dispatch/lifecycle expansion, push or merge.
 This scoped evidence review is not final three-view delivery approval.
 
+## Observer Segmentation Follow-Up — Design Reviewed, Implementation Pending
+
+The current formal receipts retain aggregate milestones and spawn identities,
+not per-call wait/idle/reader intervals. Those intervals cannot be reconstructed
+from the existing formal data. The historical eight-observation settlement
+diagnostic used the old 9bc6936 baseline; it localized its foreground cost before
+the original wait returned, not in idle/close, but cannot establish the cause of
+the new baseline's spread. Its bounded call-wrapping approach can be reused without
+rerunning or relabeling the historical evidence.
+
+Reviewed next step: one diagnostic-only series of exactly eight complete original
+fixture invocations using the two existing A references (`install-a`, `install-a2`)
+and the unchanged A observer. Neither side is the facade candidate. New ignored
+diagnostic files/output, task-private HOME/TMP under `/var/tmp`, fresh Product
+state for every invocation, and new per-reference external bytecode roots are
+required. External caches persist within this series; installed caches are recorded
+as found, not cleared. Preparation invocations do not establish the formal warm
+or absent condition. All eight observations remain ineligible for acceptance.
+
+| Order | Case | Reference | Role |
+| --- | --- | --- | --- |
+| 1 | foreground | A1 | preparation |
+| 2 | product-first-use | A1 | preparation |
+| 3 | product-first-use | A2 | preparation |
+| 4 | foreground | A2 | preparation |
+| 5 | foreground | A2 | diagnostic |
+| 6 | product-first-use | A2 | diagnostic |
+| 7 | product-first-use | A1 | diagnostic |
+| 8 | foreground | A1 | diagnostic |
+
+Each invocation retains the original fixture, commands, synthetic model transport,
+ready/interrupt/exit witnesses, inner deadlines, 150-second outer retained owner
+and physical settlement assertions. Eight fixture invocations are not eight
+processes: Product first use includes server, terminal and command children.
+Before/after installation, source/wheel, helper and diagnostic-file pins must match.
+Record original measured/observer identities, exact fixture order, cache condition,
+per-invocation load, raw observation and diagnostic receipts. Any failure, dropped
+event, incomplete boundary or pin mismatch stops the series and invalidates the
+diagnostic; retain partial evidence and do not replace or append observations.
+
+Observer-only hooks may wrap original calls to terminal/Popen wait, original
+`_try_wait`, idle-output drain, close and the admitted terminal reader's existing
+join; reuse the prior transparent call-wrapping logic. Also record Ctrl-C write,
+output-buffer publication, reader-done notification and each original `read_until`
+predicate call/return. Do not add process polling/reaping, threads, signal handlers,
+Product hooks, waits, witness calls or a global profiler. Original arguments,
+return objects, exceptions and cancellation must pass through exactly once even
+when recording fails; recording failure is sticky and never bypasses cleanup.
+Do not coerce or format original return objects to record them. If the original
+probe fails and diagnostic publication also fails, preserve the original failure
+as primary and retain the publication failure only as additional information.
+
+Use at most 8,192 events and 4 MiB total diagnostic content per invocation,
+including decoded raw chunks, predicate evidence and metadata, with identical
+limits for preparation and diagnostic roles. Enforce the UTF-8 serialized-byte
+budget while buffering, not only at final publication. Capacity exhaustion marks
+the trace sticky-invalid; it must not interrupt original work/cleanup or permit
+silent clipping followed by acceptance. Publish bounded evidence only after the
+original probe returns or raises; do not retain unbounded output snapshots.
+
+Output mapping uses original decoded Unicode strings, per-driver chunk ordinals
+and cumulative character ranges, and the original character checkpoint
+(`len(raw_output)`), not PTY byte offsets. UTF-8 bytes measure capacity separately.
+Record the original predicate input's character length and bounded fingerprint
+to correlate it with the retained chunk prefixes without storing each growing
+snapshot. Offline replay alone evaluates the original interrupt witness on those
+prefixes. Buffer truncation or incomplete mapping invalidates the diagnostic,
+not permission to use a later witness or repeat the run. No terminal content is
+sent to an external service.
+
+Wrap the original `_record_output` with entry/return timestamps; do not insert a
+new Product/condition notification hook. These timestamps bracket the call, not
+the exact publication point: its return also follows responder work. Predicate
+input-prefix evidence supplies the publication/check relationship; if intervals
+overlap, retain that uncertainty instead of claiming a precise positive delay.
+Do not reread `raw_output` as a substitute for the actual predicate argument,
+reinvoke the live predicate, or add synchronization/notifications to obtain a more
+precise timestamp. Offline replay uses the frozen witness semantics and must
+agree with the original recorded predicate outcome.
+
+Admission and validation use invocation identity plus spawn/driver ordinals and
+original PID/argv, not PID alone. Correlate each admitted driver object with its
+own original reader object; only that reader's existing join may be recorded,
+never arbitrary thread joins. Non-admitted calls pass through untouched. Cover
+early reader output during driver construction or reject the trace as incomplete.
+Distinguish server, each terminal attachment and command subprocesses, and use
+unique call IDs/thread identities for nested or repeated calls. The validator
+must pair call entry/return events, verify original milestone anchors and relevant
+per-driver wait/close boundaries, and reject missing or unmatched records.
+Nested intervals must not be summed as independent costs. Reader notification is
+not proof of reader termination; a negative-to-positive `_try_wait` window is not
+an exact exit time or deductible overhead. Readiness notification can wake both
+the observer's condition wait and POSIX select early; neither 50 ms timeout is a
+fixed detection delay. Output already received versus predicate success can
+localize the observer tail, but cannot identify Product poll/render/RPC or
+pre-reader scheduling as the cause of the remaining interval.
+
+Architecture, evidence-contract and compatibility design review/re-review found
+no remaining P1/P2. Initial P2 findings on character/byte mapping, raw-content
+capacity and publication timing were corrected above; the original failure and
+per-reader ownership requirements were also made explicit. This is design
+approval only, not evidence of a working diagnostic or a performance result.
+
+Before any real invocation: implement only the ignored diagnostic, exercise
+mock-only transparency/bounds/identity/partial-failure controls, and review the
+implementation. This design does not authorize a new
+formal A/A run, A/B acceptance, threshold change, Product change or final delivery.
+
 ## Bounded Order/Import Diagnosis — Pre-Execution Review
 
 Independent raw-data review reproduced all ten comparator results and verified
