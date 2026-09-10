@@ -4,7 +4,7 @@
 
 - ID: `STARTUP-PERFORMANCE-G18`
 - Design status: accepted — three-view design review and corrective re-review passed
-- Implementation status: partial G18.0 — Linux inert-path A/A reference frozen (9/10 stable);
+- Historical G18.0 collection status — Linux inert-path A/A reference frozen (9/10 stable);
   fixed-slot warm native A/A collected (308 valid; 30/41 stable, overall inconclusive);
   absent-bytecode collection stopped on sample 87 ready timeout (86 valid, not accepted);
   stable native baseline and candidate comparison remain pending
@@ -40,6 +40,9 @@
   new shared-cleanup baseline 5f7346bb and candidate wheels/installations identity-verified;
   new inert A/A completed 440 valid observations, nine of ten cases stable;
   hosted-help side/block spread remains inconclusive and requires diagnosis;
+  new HOME isolation and fixed-slot recovery correctness controls pass;
+  new native warm A/A completed 308 valid observations, 16/41 metrics stable and
+  25/41 inconclusive, independently reproduced; absent A/A and all A/B remain pending;
   installed readiness/stability/performance acceptance pending; no push or merge;
   current progress: [Linux local delivery](startup-performance-g18-linux-delivery.md)
 - Authority: delivery plan; accepted runtime boundaries and public contracts take precedence

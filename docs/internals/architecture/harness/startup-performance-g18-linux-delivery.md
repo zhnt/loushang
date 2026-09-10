@@ -76,7 +76,7 @@ This verifies the pair, not installed readiness or a performance improvement.
 - [x] New offline wheels and four independent reference installations prepared.
 - [x] Immutable source/wheel and four installation identities verified and recorded.
 - [x] Installed HOME isolation correctness controls pass on both A and B.
-- [ ] Fixed-slot recovery correctness controls pass.
+- [x] Fixed-slot recovery correctness controls pass.
 - [ ] Inert ten-case A/A stability accepted under the existing policy.
 - [ ] Native warm and absent A/A: each complete seven-case, 41-metric comparison accepted.
 - [ ] Inert A/B: priority help targets and other-entry no-regression accepted.
@@ -124,6 +124,90 @@ and isolated foreground opens a member. All eight controls settle, both ambient
 before/after inventories match, and both parent-environment witnesses are unchanged.
 This proves the scoped isolation controls and actual installed startup paths;
 their diagnostic timestamps do not constitute A/B performance acceptance.
+
+## Fixed-Slot Recovery Correctness
+
+Exec 30453 completed with exit 0, private parent root
+`/var/tmp/lg18-tests-2StBrR`, retained scratch
+`/var/tmp/loushang-g18-native-xcy_o1wg`. Report:
+`.artifacts/g18-linux-delivery/slot-recovery-01/report.json`, SHA256
+`6843461c2caa745d4dbc0745977b219504bd7a4a04c4fa4c81173486ae84d631`.
+
+Both cwd and user-home/global complete preparation followed by restored A/B/A
+at the same fixed prefix: eight valid stages in the exact declared order.
+Both slot builds complete; all eight pre/post installation receipts match their
+respective slot build. The two references use the same baseline A wheel, not
+the facade candidate. The retained owner returns only after physical cleanup;
+each preparation records two settled real launches, and each restored launch
+records ready, visible history, first command and settlement milestones.
+
+Post-run audit matched all eight raw observer receipts, all 1,200 current helper
+hashes/modes and their before/after inventories. Each retained seed archive still
+matches its full manifest; the unchanged manifest digests across restores 0–3 are:
+
+- cwd: `72be729a1080ca48dab8606bb4448e7338c0985bc949868b8592ab5dc9fb0d6b`.
+- user-home/global: `bbe930d983abcd2971d3f7039902f64cebe13fea10f053b83298c1be1e94cced`.
+
+The coordinator verifies restored bytes/modes/mtime before each operation and
+checks the immutable seed afterward. Inode/ctime are not preserved, and this
+does not establish a warm Store-head condition. The final slot is idle, not
+failed, and active on A. `complete-record-only` with comparison `not-evaluated`
+is the expected correctness-only result, not native A/A performance acceptance.
+
+## Native Warm A/A — Complete, Inconclusive
+
+Exec 35360 completed with exit 0, private parent root
+`/var/tmp/lg18-tests-K9Tm8U`; retained scratch
+`/var/tmp/loushang-g18-native-17l_6az5`. Report:
+`.artifacts/g18-linux-delivery/native-aa-warm-01/report.json`, SHA256
+`eec2d6772a88e88b7193907a4b4e9c4d95b9680db048d5c7e65fbd936bd20780`.
+This is the new shared-cleanup baseline against itself, not A/B and not the
+historical 9bc6936 warm run. Both fixed-slot builds use the same frozen A wheel.
+
+All 308 observations are complete and valid: exactly 280 formal samples and 28
+declared warmups, with all seven cases, two blocks, ten pairs per block, reversed
+case order in block two and the original alternating side order. The post-run
+audit matched that exact sequence, all raw observer receipts, all sample pre/post
+installation identities against their slot builds, 616 hashed cache receipts,
+both opaque seed archives, and all 1,200 helper hashes/modes before/after/current.
+Each recovery scope records 44 resets against one unchanged snapshot. Warm cache
+preparation preserves its before/ready inventory. The final slot is idle and not
+failed; the original collector also completes its final reference/observer pins.
+
+Independent read-only contract review reproduced all 41 comparator results:
+
+| Case | Stable metrics | Inconclusive metrics |
+| --- | ---: | ---: |
+| embedded | 4 | 1 |
+| foreground | 1 | 3 |
+| local-mux | 1 | 5 |
+| g14-stdio | 2 | 1 |
+| recovery-cwd | 1 | 4 |
+| recovery-global | 1 | 4 |
+| product-first-use | 6 | 7 |
+| Total | 16 | 25 |
+
+The overall verdict remains **inconclusive**, not accepted. Failures of stability
+include cross-block/four-group median spread and within-group MAD; there is no
+sample failure or comparator mismatch. For example, foreground ready's A-block
+spread is 0.748791 seconds against a 0.744206-second boundary; proximity is not
+permission to round to pass. Recovery-cwd ready's B-block spread is 1.880351
+seconds against 1.004704, so this is not merely a numerical boundary issue.
+
+Existing-data diagnosis also finds two interrupt-duration clusters around 0.17
+and 0.215 seconds. Different group proportions place medians in different
+clusters; original AB/BA paired median(B-A) differences are only +0.002342 and
+-0.000967 seconds. Do not interpret the roughly 40 ms aggregate side-median
+difference as a stable side overhead or a Product regression, and do not use
+paired differences to replace the frozen four-group calibration rule. Correlated
+recovery ready/history/spawn boundaries are not three independent root causes.
+
+This review is not final delivery review. Preserve the full result; do not retry
+warm until green or start A/B acceptance. The separately required absent A/A may
+proceed once, serially, with a fresh slot/output and original conditions after
+capacity and retained-owner completion checks. It cannot supersede warm's
+inconclusive result. Further warm calibration requires an actionable diagnosis
+and a predeclared condition change, without reducing scenarios or thresholds.
 
 ## Bounded Order/Import Diagnosis — Pre-Execution Review
 
@@ -197,7 +281,7 @@ CPU accounting, and nested cumulative times are not summed.
 
 Root cause remains unresolved. Do not turn this result into an accepted baseline,
 change thresholds or automatically repeat full inert A/A. Continue the separately
-required fixed-slot recovery correctness work; native A/A can then be calibrated
+required fixed-slot recovery correctness work (now completed above); native A/A can be calibrated
 under its original conditions without claiming to resolve the inert-path issue.
 
 Formal runs retain two blocks of ten pairs, all original cases and warmups,
