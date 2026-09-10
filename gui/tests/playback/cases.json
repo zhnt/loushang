@@ -1,20 +1,20 @@
 {
   "schemaVersion": 1,
-  "milestone": "GUI-B1-first-slice",
+  "milestone": "GUI-B1-workspace-task-review-slice",
   "cases": [
     {
       "id": "GUI-B1-L0-STATE",
       "level": "L0",
       "command": "pnpm run test",
       "requiredOn": ["linux", "macos", "windows"],
-      "intent": "Project fixture snapshots and events without draft leakage; reject duplicate, invalid, gapped, and stale event sequences."
+      "intent": "Project Workspace, Session, Run, Task, Activity, AgentRun and ChangeSet fixtures without local-state leakage; reject duplicate, invalid, gapped and stale event sequences."
     },
     {
-      "id": "GUI-B1-L1-CONVERSATION",
+      "id": "GUI-B1-L1-WORKSPACE-TASK-REVIEW",
       "level": "L1",
       "command": "pnpm run test",
       "requiredOn": ["linux", "macos", "windows"],
-      "intent": "Drive two sessions through draft isolation, submit, streaming, document selection, and interrupt."
+      "intent": "Drive three Workspace kinds through Session draft isolation, active Run progress, expandable activities, Task/AgentRun cross-navigation and Quick Look to read-only Review."
     },
     {
       "id": "GUI-B1-L2-FIXTURE-BRIDGE",

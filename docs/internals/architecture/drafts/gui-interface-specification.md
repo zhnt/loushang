@@ -270,6 +270,21 @@ Composer 固定在中央区底部，包含附件托盘、多行输入、权限�
 IME 组合期间 Enter 不发送；草稿按完整 Session identity 隔离。打开文档、任务或
 右侧面板后仍可返回 Composer，且不会丢失草稿或改变发送目标。
 
+### 6.5 ChangeSet card 与 Diff Quick Look
+
+Transcript 中的具名 ChangeSet 先以摘要卡片呈现文件数、增删行、scope、revision
+和有界文件清单。点击文件打开中央 Quick Look；Quick Look 是只读、非模态的
+临时 Diff 浮层，关闭后焦点返回原文件行，且不改变 transcript、Composer 草稿或
+发送目标。用户可从 Quick Look 显式升级到右侧完整 Review 面板：
+
+    ChangeSet summary -> file Quick Look -> Work Dock Review
+
+Quick Look 与 Review 引用同一个 document/change identity 和 revision，不复制事实。
+Quick Look 不提供暂存、还原、提交或推送；完整 Review 在首期同样只读，未来只有
+服务 capability 同时声明权限、revision 前提和失败语义后才能出现可变操作。
+ChangeSet 没有 accepted provider 时，卡片和 Quick Look 不得从文件系统或
+Assistant 文本补造。
+
 ## 7. Work Dock
 
 Work Dock 是右侧可关闭、可调整宽度的 tab 容器。首期至少支持环境、任务、
@@ -366,7 +381,7 @@ Workspace、Task、Subagent、VCS、ChangeSet 或权限事实。
 | GUI-UI-AC-004 | 点击中央执行摘要展开读取文件、运行命令与工具活动，再次点击收起；不触发任何真实动作 | GUI-FR-004, GUI-FR-012 |
 | GUI-UI-AC-005 | Task 与 AgentRun 互相定位；派生 Agent 完成后摘要回到根 Run，但 Task 和 Agent identity 不合并 | GUI-FR-020 |
 | GUI-UI-AC-006 | Task capability 缺失、撤销或版本不兼容时，步骤与面板明确降级，Session 输入和中断仍按基础合同可用 | GUI-FR-009, GUI-FR-018 |
-| GUI-UI-AC-007 | 打开 Diff/文档/Task 面板后 Composer 草稿、发送目标与 transcript 阅读位置保持 | GUI-FR-003, GUI-FR-007, GUI-FR-010 |
+| GUI-UI-AC-007 | 点击 ChangeSet 文件打开中央 Quick Look，再显式升级到右侧完整 Review；两级视图引用同一 document/revision，Composer 草稿、发送目标与 transcript 阅读位置保持，所有仓库可变操作保持不可用 | GUI-FR-003, GUI-FR-007, GUI-FR-010, GUI-FR-017 |
 | GUI-UI-AC-008 | 事件 gap 或 generation 改变后所有旧 Run/Task/Agent 状态标记 stale，并冻结可变操作直到 fresh snapshot | GUI-FR-009, GUI-FR-019 |
 | GUI-UI-AC-009 | 窄窗口依次收起右侧与左侧，Task 状态、输入及中断仍可达 | GUI-FR-010 |
 | GUI-UI-AC-010 | 键盘和 reduced-motion 模式可以完成 Workspace、Session、Task、Activity、Dock 和 Composer 主路径 | GUI-NFR-002 |

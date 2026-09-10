@@ -7,10 +7,13 @@ integration and will later adapt the accepted App Contract. The GUI does not
 own Product, Harness, AppService, or AppHost runtimes.
 
 The current B1 slice is deliberately offline. It provides a Product-neutral UI
-port, a deterministic Mock AppClient, isolated per-session drafts, streaming and
-interrupt state projection, and read-only fixture documents. Every sample value
-is labelled as fixture data. It does not start a Python backend, request a model,
-or connect to G16. Cross-language and real-service work remain in C1 and B2 as described in the
+port and a deterministic Mock AppClient with three Workspace kinds, grouped
+Sessions, isolated per-Session drafts, active Run and Task progress, expandable
+Activity details, distinct root/subagent AgentRuns, and read-only ChangeSet
+review through a central Quick Look and the Work Dock. Every sample value is
+labelled as fixture data. It does not read a repository, start a Python backend,
+request a model, or connect to G16. Cross-language and real-service work remain
+in C1 and B2 as described in the
 [engineering plan](../docs/internals/architecture/drafts/gui-engineering-bootstrap-plan.md).
 
 ## Toolchain
