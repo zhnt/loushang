@@ -202,12 +202,95 @@ difference as a stable side overhead or a Product regression, and do not use
 paired differences to replace the frozen four-group calibration rule. Correlated
 recovery ready/history/spawn boundaries are not three independent root causes.
 
+Read-only source inspection and independent contract review support a possible
+poll/render phase effect, not a demonstrated cause of the interrupt clusters.
+The [Product terminal loop](../../../../src/loushang/harnesstui/mux/terminal.py)
+sleeps 50 ms after each event poll; its render loop normally wakes on input or
+a 50 ms timeout while the long-lived poll task remains pending. These are not
+strict 50 ms periods: operation time and scheduling also contribute. In contrast,
+the [terminal observer](../../../../tests/tui/terminal_process_support/base.py)
+notifies waiting readers when output arrives, so its 50 ms condition-wait bound
+does not establish a fixed detection delay. The original interrupt metric spans
+Ctrl-C write through the visible idle witness, not cancellation processing alone.
+
+Following absent collection and its evidence audit, a possible bounded,
+diagnostic-only follow-up is observer segmentation: timestamp Ctrl-C write,
+PTY read return/output notification, and the original predicate's first success,
+preserving its checkpoint and witness. Use fixed-capacity in-memory records and
+write them only after settlement. Such evidence could locate delay after reader
+receipt, but cannot distinguish Product polling/rendering from scheduling before
+the reader receives output. This is not an approved execution schedule, a reason
+to alter the frozen wheels or timings, or permission to retry calibration; any
+run still requires predeclared counts, stop conditions and review.
+
 This review is not final delivery review. Preserve the full result; do not retry
-warm until green or start A/B acceptance. The separately required absent A/A may
+warm until green or start A/B acceptance. The separately required absent A/A was authorized to
 proceed once, serially, with a fresh slot/output and original conditions after
 capacity and retained-owner completion checks. It cannot supersede warm's
 inconclusive result. Further warm calibration requires an actionable diagnosis
 and a predeclared condition change, without reducing scenarios or thresholds.
+
+## Native Absent A/A — Complete, Inconclusive
+
+Exec 68239 completed with exit 0, private parent root
+`/var/tmp/lg18-tests-BafgVo`; retained scratch
+`/var/tmp/loushang-g18-native-0yv1kw4j`. Report:
+`.artifacts/g18-linux-delivery/native-aa-absent-01/report.json`, SHA256
+`b5714d264c46858a1dda5d3c52371a78669c004265de34ff624f6739ab407495`.
+Both references and fixed-slot builds use the same frozen shared-cleanup A wheel.
+This is the separately required absent condition, not a warm rerun or A/B.
+
+All 308 observations are complete and valid: 280 formal samples and 28 declared
+warmups, with the exact seven-case/two-block/ten-pair ordering and iterations
+1–308. Main audit and independent contract review reproduced all 41 original
+comparator results. Main audit also matched all 308 raw observer receipts,
+all sample and preparation pre/post installation receipts against their slot
+builds, 616 hashed cache receipts, and 1,200 helper hashes/modes before/after/current.
+Every pre-launch cache receipt has empty installed and external ready inventories;
+normal writes during observation remain allowed. This is not an OS page-cache flush.
+Both frozen A/B wheel hashes are unchanged. The final slot is idle, active on B,
+and not failed; the original collector completed final reference/observer pins.
+
+Both seed preparations and retained archives match their manifests, with 44
+resets per recovery scope and unchanged seed digests/timestamps across restores:
+
+- cwd: `9c0ef2cbb3474f47045c283502c22cc66525d0d76e077930ee7967ac911804b2`.
+- user-home/global: `c6c4b58e9ad8c9ae91952f3226672f4c335a8bcb584f87d014d37437235e3a37`.
+
+The overall verdict is **inconclusive: 28 stable metrics, 13 inconclusive**.
+Collection success does not establish calibration or performance acceptance.
+
+| Case | Stable | Inconclusive | Inconclusive metrics |
+| --- | ---: | ---: | --- |
+| embedded | 4 | 1 | settlement |
+| foreground | 3 | 1 | settlement |
+| local-mux | 4 | 2 | attach frame; detach settlement |
+| g14-stdio | 2 | 1 | settlement |
+| recovery-cwd | 4 | 1 | settlement |
+| recovery-global | 4 | 1 | settlement |
+| product-first-use | 7 | 6 | dev attach frame; first tool; interrupt; review/dev/reattach detach settlement |
+| Total | 28 | 13 | |
+
+For example, foreground settlement's four-group median spread is 0.205987 seconds
+against a 0.169132-second boundary. Local-mux attach spread is 0.596088 against
+0.444714. Product first-tool A0 MAD is 0.022184 against 0.016012. These displayed
+values are rounded only for reading; the comparator uses the original exact values.
+
+Across the warm and absent conditions, 15 metrics pass in both, 12 are inconclusive
+in both, 13 pass only absent, and dev attach frame passes only warm. This compares
+stability verdicts, not speed; do not pool conditions or assemble a passing set
+from different runs. Interrupt again has roughly 0.17/0.215-second clusters, but
+the side direction reverses: absent A block medians are 0.215294/0.214118, B
+0.174073/0.175745, whereas warm has A lower and B higher. This contradicts a fixed
+B-install overhead explanation; it does not prove poll/render or observer causality.
+
+Preserve inert, warm and absent inconclusive results. No A/B acceptance run has
+started. Remaining diagnosis should distinguish available exit/output/reader
+boundaries, especially for settlement/detach, without calling every failure machine
+noise. Any additional observer segmentation remains diagnostic-only and requires
+predeclared counts, stop conditions and review. No automatic reruns, changed
+thresholds, selective samples, dispatch/lifecycle expansion, push or merge.
+This scoped evidence review is not final three-view delivery approval.
 
 ## Bounded Order/Import Diagnosis — Pre-Execution Review
 

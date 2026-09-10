@@ -42,7 +42,10 @@
   hosted-help side/block spread remains inconclusive and requires diagnosis;
   new HOME isolation and fixed-slot recovery correctness controls pass;
   new native warm A/A completed 308 valid observations, 16/41 metrics stable and
-  25/41 inconclusive, independently reproduced; absent A/A and all A/B remain pending;
+  25/41 inconclusive, independently reproduced;
+  new native absent A/A completed 308 valid observations, 28/41 metrics stable and
+  13/41 inconclusive, with raw evidence audited and the comparison independently reproduced;
+  inert, warm and absent stability remain unaccepted; all A/B remain pending;
   installed readiness/stability/performance acceptance pending; no push or merge;
   current progress: [Linux local delivery](startup-performance-g18-linux-delivery.md)
 - Authority: delivery plan; accepted runtime boundaries and public contracts take precedence
