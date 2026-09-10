@@ -13,10 +13,14 @@
     "doctor": "node ../scripts/gui/run.mjs doctor",
     "bootstrap": "pnpm install --frozen-lockfile",
     "dev:web": "vite",
-    "dev": "tauri dev",
+    "dev": "node ../scripts/gui/run.mjs dev-native",
+    "dev:fixture-native": "node ../scripts/gui/run.mjs dev-fixture-native",
     "build:web": "node ../scripts/gui/run.mjs build-web",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "check": "node ../scripts/gui/run.mjs check",
-    "build": "tauri build --no-bundle",
+    "build": "node ../scripts/gui/run.mjs build-native",
+    "build:fixture-native": "node ../scripts/gui/run.mjs build-fixture-native",
     "preview": "vite preview",
     "tauri": "tauri"
   },
@@ -26,11 +30,17 @@
     "@tauri-apps/api": "^2"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^24.10.0",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^6.0.2",
+    "jsdom": "^27.2.0",
     "typescript": "~6.0.3",
     "vite": "^8.0.16",
+    "vitest": "^4.0.17",
     "@tauri-apps/cli": "^2"
   }
 }

@@ -6,9 +6,11 @@ TypeScript own presentation and UI-local state; Tauri/Rust owns desktop
 integration and will later adapt the accepted App Contract. The GUI does not
 own Product, Harness, AppService, or AppHost runtimes.
 
-The current B0 slice is deliberately offline. It does not start a Python
-backend, request a model, implement Mock AppClient playback, or connect to G16.
-Those capabilities remain in B1, C1, and B2 as described in the
+The current B1 slice is deliberately offline. It provides a Product-neutral UI
+port, a deterministic Mock AppClient, isolated per-session drafts, streaming and
+interrupt state projection, and read-only fixture documents. Every sample value
+is labelled as fixture data. It does not start a Python backend, request a model,
+or connect to G16. Cross-language and real-service work remain in C1 and B2 as described in the
 [engineering plan](../docs/internals/architecture/drafts/gui-engineering-bootstrap-plan.md).
 
 ## Toolchain
@@ -31,9 +33,14 @@ pnpm --dir gui run doctor
 pnpm --dir gui run bootstrap
 pnpm --dir gui run dev:web
 pnpm --dir gui run dev
+pnpm --dir gui run dev:fixture-native
+pnpm --dir gui run test
 pnpm --dir gui run check
 pnpm --dir gui run build
 ```
 
 `dev:web` starts only the browser shell. `dev` starts the native Tauri window.
-`build` creates a native executable without producing installers.
+`test` runs reducer and React playback checks. `build` creates a native
+executable without producing installers. `dev:fixture-native` and
+`build:fixture-native` enable the B1-only Rust invoke/event canary; the command
+is absent from the default native build.

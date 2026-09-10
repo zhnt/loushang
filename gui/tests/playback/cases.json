@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "milestone": "GUI-B1-first-slice",
+  "cases": [
+    {
+      "id": "GUI-B1-L0-STATE",
+      "level": "L0",
+      "command": "pnpm run test",
+      "requiredOn": ["linux", "macos", "windows"],
+      "intent": "Project fixture snapshots and events without draft leakage; reject duplicate, invalid, gapped, and stale event sequences."
+    },
+    {
+      "id": "GUI-B1-L1-CONVERSATION",
+      "level": "L1",
+      "command": "pnpm run test",
+      "requiredOn": ["linux", "macos", "windows"],
+      "intent": "Drive two sessions through draft isolation, submit, streaming, document selection, and interrupt."
+    },
+    {
+      "id": "GUI-B1-L2-FIXTURE-BRIDGE",
+      "level": "L2",
+      "command": "pnpm run dev:fixture-native",
+      "requiredOn": ["windows"],
+      "passText": "Rust invoke + event verified",
+      "intent": "Cross the real React to Rust invoke/event boundary while the Rust AppClient side remains a fixed fixture."
+    },
+    {
+      "id": "GUI-B1-L2-DEFAULT-BRIDGE-LOCKED",
+      "level": "L2",
+      "command": "pnpm run dev",
+      "requiredOn": ["windows"],
+      "passText": "Native bridge locked",
+      "intent": "Prove the fixture IPC command is unavailable in the default native build."
+    }
+  ]
+}
