@@ -292,7 +292,7 @@ predeclared counts, stop conditions and review. No automatic reruns, changed
 thresholds, selective samples, dispatch/lifecycle expansion, push or merge.
 This scoped evidence review is not final three-view delivery approval.
 
-## Observer Segmentation Follow-Up — Design Reviewed, Implementation Pending
+## Observer Segmentation Follow-Up — Reviewed Design and Completed Diagnostic
 
 The current formal receipts retain aggregate milestones and spawn identities,
 not per-call wait/idle/reader intervals. Those intervals cannot be reconstructed
@@ -399,6 +399,93 @@ Before any real invocation: implement only the ignored diagnostic, exercise
 mock-only transparency/bounds/identity/partial-failure controls, and review the
 implementation. This design does not authorize a new
 formal A/A run, A/B acceptance, threshold change, Product change or final delivery.
+
+### Implementation and execution receipt
+
+The ignored implementation lives in
+`.artifacts/g18-linux-delivery/observer_segmentation/`. Its wrapper, offline
+validator and fixed-order coordinator passed 67 mock-only controls and Ruff.
+Three-view implementation review/re-review closed two P2 findings before any
+real invocation:
+
+- Foreground directly assigns `first_command_seconds` and
+  `spawn_through_first_command_seconds`; they do not generate `probe.mark` calls.
+  The validator now preserves all four original foreground metrics and checks
+  the direct values against original spawn/write/read/ready/settlement anchors.
+  A control invokes the original foreground orchestration with process and
+  terminal operations fully mocked, rather than relying only on synthetic rows.
+- The last chunk in an actual predicate input is not necessarily the earliest
+  chunk containing the witness. Offline replay now separately retains the
+  earliest complete prefix satisfying the frozen checkpoint/witness and the
+  actual predicate input's publication bracket. Controls cover Unicode,
+  cross-chunk witnesses, multiple chunks before a predicate, and overlapping
+  publication/check intervals. No live witness calls were added.
+
+The sole predefined series completed all eight invocations in the table above;
+the retained coordinator session exited 0. No invocation was retried or replaced.
+The report is
+`.artifacts/g18-linux-delivery/observer-segmentation-01/report.json`, SHA-256
+`2cb7f47baf8f21108a9096502021d6deff1e033918bc23edeb6d959c7bbc6aea`.
+Private scratch and original receipts remain at
+`/var/tmp/lg18-segments-8rdsp5cp`; parent environment is
+`/var/tmp/lg18-tests-tQnHAh`.
+
+Both A references and the observer retain the shared cleanup baseline wheel.
+Before/after installation receipts match; the 1,200 helper pins, seven diagnostic
+file pins and wheel hash match before/after and the post-run read-only audit.
+All eight original observations remain `observed`, `valid=false`, not accepted
+performance samples. The audit revalidated each original observation and raw
+trace, receipt hash/size, exact order and offline segmentation result. There were
+618–1,637 events and 417,479–850,237 trace bytes per invocation, no dropped events
+or sticky recording failure. Even the compact per-sample coordinator metadata
+plus both raw receipts remained below 4 MiB (maximum 2,948,538 bytes). Installed
+caches were inventoried as found and never cleared; external caches persisted
+per reference as designed. Preparation and diagnostic observations are not pooled
+as a formal warm/absent condition.
+
+### Bounded findings and next boundary
+
+Foreground settlement in the two diagnostic-role invocations was 1,392.491 ms
+(#5, A2) and 1,803.476 ms (#8, A1). Their original `Popen.wait()` intervals were
+1,376.573 and 1,782.697 ms respectively. Idle-drain calls were 0.027–0.033 ms,
+close calls 0.242/0.306 ms and admitted reader joins 0.028/0.040 ms. Thus this
+instrumented pair localizes most settlement time and its spread before the
+original process wait returns, not in those observer tail operations. Nested
+intervals are not summed or deducted from original milestones.
+
+For the four first-use invocations, all figures below are milliseconds. The
+middle column brackets the original output call relative to the original
+interrupt start; it is not a precise publication timestamp. The final column
+bounds the interval from that publication bracket to entry of the successful
+original predicate call; predicate execution itself is separate.
+
+| Invocation / role | Original interrupt | Earliest witness publication bracket | Publication-to-predicate-entry bracket |
+| --- | ---: | ---: | ---: |
+| #2 A1 preparation | 216.504 | 215.665–215.888 | 0.116–0.339 |
+| #3 A2 preparation | 167.556 | 166.838–167.045 | 0.050–0.258 |
+| #6 A2 diagnostic | 166.159 | 165.458–165.655 | 0.068–0.265 |
+| #7 A1 diagnostic | 170.661 | 169.587–169.803 | 0.383–0.598 |
+
+The successful predicate calls took 0.364–0.390 ms. In these observations, the
+large interval precedes the witness's output-publication bracket; the sub-ms
+observer tail cannot explain a 40–50 ms separation. This is localization within
+the instrumented series, not proof of the cause of the older formal A/A results.
+It does not distinguish Product emission/poll/render/RPC work from scheduling
+or other pre-reader delay. The raw output never leaves the local environment.
+
+Across all four foreground observations (including preparation), the last
+negative-to-positive original `_try_wait` observation windows were
+50.290–50.359 ms, and reader-done-return to process-wait-return was
+3.498–26.400 ms. Neither is an exact process exit timestamp or deductible fixed
+tax; reader notification remains distinct from reader termination.
+
+This closes the bounded observer diagnostic, not G18. It does not justify
+changing observer deadlines/polling, modifying Product dispatch/lifecycle,
+relaxing stability thresholds, starting formal A/B, or repeating A/A until green.
+Further measurement needs an actionable, reviewed condition change or a scoped
+diagnostic of the remaining pre-output/pre-wait-return interval. The facade
+candidate remains implemented but its performance benefit is unaccepted;
+inert/warm/absent A/A retain their original inconclusive verdicts.
 
 ## Bounded Order/Import Diagnosis — Pre-Execution Review
 
