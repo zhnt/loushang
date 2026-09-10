@@ -45,6 +45,9 @@
   inconclusive on both four-group median span and block-0/b MAD; raw evidence and
   comparator independently audited in three views, no P1/P2; the old and new reports
   remain separate, with no pooling, automatic retry or A/B authorization;
+  next-step three-view review closed further speculative plugin profiling;
+  measurement awaits a user-coordinated, sustainable Linux isolation condition,
+  with target-local installation/control revalidation and all original gates retained;
   new HOME isolation and fixed-slot recovery correctness controls pass;
   new native warm A/A completed 308 valid observations, 16/41 metrics stable and
   25/41 inconclusive, independently reproduced;

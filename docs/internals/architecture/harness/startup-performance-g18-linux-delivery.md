@@ -651,6 +651,70 @@ unchanged. No automatic retry, selective recollection, threshold relaxation or
 A/B follows this result. Further sampling needs a bounded reviewed diagnostic
 or an actionable reviewed condition change; G18 acceptance remains open.
 
+### Next-measurement decision — close diagnosis, require an actionable condition
+
+Three-view follow-up review does not recommend another plugin importtime run:
+there is no specific, falsifiable hypothesis whose result currently identifies
+an authorized change to the frozen Coding facade pair. Finding unrelated
+Plugin/Harness import costs would not authorize their optimization. A profile
+pass, identical import sequence or another quiet idle snapshot would not itself
+justify fresh formal sampling. No new Product/runtime finding was raised.
+
+A final existing-data check covered all 400 formal observations in their twenty
+original pair windows, retaining the forty warmups as two separate windows.
+Each case's wall and total child CPU values were divided by that case's median
+over all forty formal observations, for descriptive cross-case comparison only.
+Plugin's two-side median normalized wall values range from 0.9375 to 1.1499;
+the other nine cases' eighteen-observation medians range from 0.9777 to 1.0399.
+The plugin-high block-0/pair-3 window is 1.1499 versus 0.9811 for the other cases;
+block-1/pair-7 reverses that relationship (0.9800 versus 1.0399). These sequential,
+coarse windows do not establish or exclude shared short-lived contention.
+No observations were removed and no acceptance comparison was replaced.
+
+The report records per-observation child CPU and post-observation load averages,
+but not absolute sample timestamps, PSI, page faults or context switches.
+Wall minus child CPU includes observer/scheduling and other time, not a pure
+I/O-wait measure. Existing data therefore do not identify a further actionable
+condition correction. Stop mining these reports and stop new sampling under
+unchanged conditions; retain all inconclusive verdicts.
+
+The next prerequisite is user-coordinated, sustainable measurement isolation:
+a task-isolated Linux runner or an equivalent documented local resource change.
+An external machine is a proposed route, not a proven root-cause fix or a new
+acceptance requirement. No remote access, system tuning, process termination or
+resource purchase is authorized by this handoff. Once a target is available:
+
+- Carry the exact A/B commits, frozen wheel bytes/hashes, project/lock and hashed
+  dependency export, plus the reviewed scripts/tests and their helper manifest.
+  Keep the original CPython 3.11.15 build and compatible Linux dependency
+  artifacts; any necessary interpreter/build/dependency change requires explicit
+  registration and review as an additional environment change before timing.
+- Recreate A, A2, observer-A and B installations on that target. Do not copy old
+  virtualenvs. Reverify source/wheel, installed bytes, direct URLs, wrappers and
+  RECORD, Python/dependency inventories and all six entries. Target-specific
+  absolute paths and wrapper hashes require new receipts, not old identity claims.
+- Reuse the unchanged startup/native collectors and provenance/comparison,
+  slot/bytecode/recovery and retained-owner support. Prepare the native
+  provisioner's `.artifacts/g18-design/uv-cache` offline before collection.
+  Create new private HOME/TMP/XDG roots, caches and seed/slot receipts; build
+  both native slot environments at their shared canonical execution prefix,
+  retaining same-filesystem switching and independent observer ownership.
+- Complete target-local installation, HOME-isolation and slot/recovery/owner
+  controls before timing. Record CPU/affinity/quota, RAM/swap/PSI, kernel,
+  interpreter, filesystem/scratch/cache locations and the practical isolation
+  arrangement. Finish concurrent review/tests/builds before sampling. Resource
+  snapshots remain descriptive, not replacements for original stability gates.
+- Review the concrete target and execution plan before launching one full inert
+  A/A. On acceptance and audit, schedule native warm and absent A/A separately;
+  all original A/A conditions must be accepted before the full required A/B work.
+  Preserve original case/metric counts, order, warmups, cache policies, argv,
+  PTY, deadlines, cleanup and thresholds. Any failed collection/identity/owner
+  check or inconclusive comparison stops automatic progression: preserve its
+  evidence, do not fill gaps or retry until green. Never pool old/new reports.
+
+This is a reviewed handoff, not an executed migration or an accepted baseline.
+The facade implementation remains frozen and the full G18 goal remains open.
+
 ## Bounded Order/Import Diagnosis — Pre-Execution Review
 
 Independent raw-data review reproduced all ten comparator results and verified
