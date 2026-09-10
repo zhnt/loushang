@@ -2,7 +2,8 @@
 
 ## Status And Scope
 
-Status: in progress; source candidate and paired installations frozen, performance acceptance pending.
+Status: in progress; source candidate and paired installations frozen; exclusive-window
+inert A/A accepted, native stability and all A/B performance acceptance pending.
 Tracking: [G18 #578](https://github.com/zhnt/loushang/issues/578).
 Authority: [accepted G18 plan](startup-performance-plan.md), including its measurement,
 scheduling and facade-budget addenda. This record does not replace the thresholds.
@@ -77,7 +78,7 @@ This verifies the pair, not installed readiness or a performance improvement.
 - [x] Immutable source/wheel and four installation identities verified and recorded.
 - [x] Installed HOME isolation correctness controls pass on both A and B.
 - [x] Fixed-slot recovery correctness controls pass.
-- [ ] Inert ten-case A/A stability accepted under the existing policy.
+- [x] Inert ten-case A/A stability accepted under the existing policy (exclusive-03 only).
 - [ ] Native warm and absent A/A: each complete seven-case, 41-metric comparison accepted.
 - [ ] Inert A/B: priority help targets and other-entry no-regression accepted.
 - [ ] Native warm and absent A/B: ready, first use and settlement no-regression accepted.
@@ -750,6 +751,56 @@ attempt with its original evidence retained. No retry, selective case replay,
 old/new pooling or automatic A/B is authorized. An accepted and audited inert
 result allows planning the separately required native warm and absent A/A under
 the confirmed window; it does not accept those conditions or close G18.
+
+### Exclusive-window result — complete inert A/A accepted
+
+The reviewed attempt completed from 2026-09-10 14:22:31.769973 to
+14:56:23.905064 UTC. Session 36031 is terminal with exit 0. Its immutable report
+is `.artifacts/g18-linux-delivery/inert-aa-exclusive-03/report.json`, SHA-256
+`fa824481dbb75df8bf5961a0dabf663d3b50909c4fd29bee37be0eb1228b9760`.
+Task-owned scratch is `/var/tmp/loushang-g18-baseline-6e2uu17_`; private parent
+state is `/var/tmp/lg18-tests-hMhGT5`. Neither was cleared or reused mid-run.
+
+All 440 observations are complete and valid: 400 formal samples and 40 explicit
+warmups. Audit reproduced every original identity and execution order, argv/cwd,
+output predicate, status and finite nonnegative wall/CPU value. All exit codes
+are zero, failure fields null and stderr empty. Four installation identity
+probes remain outside these timings. Source/wheel receipts match the frozen A
+pair, not candidate B; both sides have matching interpreter, 41 distributions
+and six console entries. All 1,200 helper inputs and runner/provenance hashes
+match before/after/current, and both frozen wheel hashes and earlier reports
+remain unchanged. Normal completion follows the collector's final source,
+installation and helper verification; the audit launched no further Product.
+
+The original comparator and all summary values were independently reproduced
+from this report alone. All ten cases and the overall A/A comparison pass.
+Independent exact-Fraction checks also confirm all four-group median spans and
+all group MADs satisfy the unchanged thresholds. In particular, plugin-help's
+median span is 39.093243 ms against a 69.830960 ms upper limit; its smallest group
+MAD margin is 27.673620 ms. These rounded values describe, not decide, the result.
+The maximum measured sample is 10.531465 seconds; original 60-second sample and
+75-second retained-owner deadlines were not changed.
+
+Architecture, evidence-contract and compatibility result reviews passed with
+no P1/P2. This accepts the complete inert A/A under the user-confirmed exclusive
+window. Previous inconclusive reports remain intact and unaccepted; none of
+their passing cases contribute to this result. The change in outcome does not
+prove the cause of earlier variation, pressure-free operation or facade gains.
+
+The post-collection snapshot at 14:56:49 UTC records 1,015,836 KiB available RAM,
+memory PSI some/full avg10 0.07/0.07 and I/O PSI 1.41/1.14. Its two vmstat interval
+swap-in/out readings are 0/0 and 4/0 KiB/s. The descriptive receipt is
+`.artifacts/g18-linux-delivery/resource-exclusive-03.json`; these readings do
+not reconstruct the full measurement interval.
+
+Next is a separately reviewed native **warm A/A** plan: retain the exclusive
+window, verify actual runner/scratch capacity before launch, use new output and
+a fresh original fixed slot, the frozen A/A2 references and independent A
+observer, and preserve all seed/recovery/cache/owner contracts. Keep seven cases,
+two blocks and ten pairs: 280 formal observations plus 28 warmups, with all
+41 metrics required. Setup and identity work stays outside those timings.
+Native absent A/A and all inert/native A/B remain pending. No automatic retry or
+A/B is authorized by this acceptance, and G18 is not complete.
 
 ## Bounded Order/Import Diagnosis — Pre-Execution Review
 

@@ -46,14 +46,17 @@
   comparator independently audited in three views, no P1/P2; the old and new reports
   remain separate, with no pooling, automatic retry or A/B authorization;
   next-step three-view review closed further speculative plugin profiling;
-  measurement awaits a user-coordinated, sustainable Linux isolation condition,
-  with target-local installation/control revalidation and all original gates retained;
+  user subsequently confirmed a complete exclusive Linux measurement window;
+  the reviewed exclusive-03 inert A/A completed 440 valid observations and all ten
+  cases passed original stability gates; source/installation/helper/raw comparison
+  audits and three-view result reviews passed, no P1/P2; inert A/A accepted for
+  this independent report only, without attributing the outcome to facade gains;
   new HOME isolation and fixed-slot recovery correctness controls pass;
   new native warm A/A completed 308 valid observations, 16/41 metrics stable and
   25/41 inconclusive, independently reproduced;
   new native absent A/A completed 308 valid observations, 28/41 metrics stable and
   13/41 inconclusive, with raw evidence audited and the comparison independently reproduced;
-  inert, warm and absent stability remain unaccepted; all A/B remain pending;
+  native warm and absent stability remain unaccepted; all A/B remain pending;
   installed readiness/stability/performance acceptance pending; no push or merge;
   current progress: [Linux local delivery](startup-performance-g18-linux-delivery.md)
 - Authority: delivery plan; accepted runtime boundaries and public contracts take precedence
