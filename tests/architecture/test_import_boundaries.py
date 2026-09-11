@@ -1333,7 +1333,7 @@ def test_prompt_input_runtime_is_harness_owned_and_coding_adopts_it() -> None:
     agent_args_source = Path("src/loushang/harness/cli/agent_args.py").read_text(
         encoding="utf-8"
     )
-    cli_source = Path("src/loushang/coding/cli/__main__.py").read_text(encoding="utf-8")
+    cli_source = Path("src/loushang/coding/cli/application.py").read_text(encoding="utf-8")
     prompt_input_imports = _absolute_imports(prompt_input_path)
     image_payload_imports = _absolute_imports(image_payload_path)
     read_tool_imports = _absolute_imports(read_tool_path)
@@ -1511,7 +1511,7 @@ def test_harness_product_host_stdio_and_shutdown_helpers_are_neutral() -> None:
     stdout_guard_source = Path("src/loushang/harness/host/stdout_guard.py").read_text(
         encoding="utf-8"
     )
-    cli_source = Path("src/loushang/coding/cli/__main__.py").read_text(encoding="utf-8")
+    cli_source = Path("src/loushang/coding/cli/application.py").read_text(encoding="utf-8")
     application_source = Path("src/loushang/harness/cli/application.py").read_text(
         encoding="utf-8"
     )
@@ -1553,7 +1553,7 @@ def test_cli_product_host_operations_are_shared_and_product_neutral() -> None:
     scenario_cli_source = Path("src/loushang/harness/scenario/cli.py").read_text(
         encoding="utf-8"
     )
-    coding_source = Path("src/loushang/coding/cli/__main__.py").read_text(
+    coding_source = Path("src/loushang/coding/cli/application.py").read_text(
         encoding="utf-8"
     )
     boundary = Path(
@@ -2603,7 +2603,7 @@ def test_agent_product_host_bindings_use_existing_shared_owners() -> None:
         if _matches_any(imported, boundary.forbidden_prefixes)
     ] == []
 
-    cli_source = Path("src/loushang/coding/cli/__main__.py").read_text(encoding="utf-8")
+    cli_source = Path("src/loushang/coding/cli/application.py").read_text(encoding="utf-8")
     coding_work_source = Path("src/loushang/coding/adapters/harnesswork.py").read_text(
         encoding="utf-8"
     )
@@ -5156,7 +5156,7 @@ def test_coding_session_lifecycle_consumers_use_operation_results() -> None:
         encoding="utf-8"
     )
     rpc_source = _read_python_package(Path("src/loushang/harness/host/rpc"))
-    cli_source = Path("src/loushang/coding/cli/__main__.py").read_text(encoding="utf-8")
+    cli_source = Path("src/loushang/coding/cli/application.py").read_text(encoding="utf-8")
 
     assert "fork_session_with_result" not in runtime_source
     assert "entry_id: str, options: object | None = None" not in runtime_source

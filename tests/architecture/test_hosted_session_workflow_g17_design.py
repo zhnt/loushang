@@ -120,7 +120,7 @@ def test_G17_COMMAND_is_one_optional_product_composition_with_fixed_dependencies
         "loushang.coding.hosted_bootstrap",
     }
     for entry in (
-        "src/loushang/coding/cli/__main__.py", "src/loushang/coding/ui/cli.py",
+        "src/loushang/coding/cli/__main__.py", "src/loushang/coding/cli/application.py", "src/loushang/coding/ui/cli.py",
         "src/loushang/coding/__init__.py", "src/loushang/coding/cli/__init__.py",
         "src/loushang/apphost/__init__.py", "src/loushang/appservice/__init__.py",
         "src/loushang/coding/cli/mux.py", "src/loushang/coding/cli/hosted.py",

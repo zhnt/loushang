@@ -14,7 +14,7 @@ INVENTORY = Path(
 CANARY = Path("src/loushang/coding/apphost_canary.py")
 CONTROL = Path("src/loushang/coding/_apphost_canary_control.py")
 CLI_ADAPTER = Path("src/loushang/coding/cli/apphost.py")
-CLI_ROOT = Path("src/loushang/coding/cli/__main__.py")
+CLI_ROOT = Path("src/loushang/coding/cli/application.py")
 MACHINE_RESOURCES = Path("src/loushang/harness/machine_resources/control_plane.py")
 
 

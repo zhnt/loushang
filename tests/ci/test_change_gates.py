@@ -105,6 +105,16 @@ class ScopeTests(unittest.TestCase):
         )
         self.assertIn("coding_ui", self.selected("tests/coding/test_ui_status_line.py"))
 
+    def test_cli_application_move_keeps_lint_and_catalog_guard_ownership(self):
+        inventories = selector.make_paths()
+        application = "src/loushang/coding/cli/application.py"
+        catalog_guard = "tests/architecture/test_resource_catalog_rcp5_contract.py"
+        self.assertIn(application, inventories["APPHOST_LINT_SUPPORT"])
+        self.assertIn(catalog_guard, inventories["HARNESS_TEST_PATHS"])
+        self.assertTrue({"coding", "apphost"} <= self.selected(application))
+        self.assertIn("harness", self.selected(catalog_guard))
+        self.assertNotIn("ai", self.selected(catalog_guard))
+
     def test_g18_collector_has_selection_and_actual_test_lint_ownership(self):
         makefile = (ROOT / "Makefile").read_text()
         lint = makefile.split("\nlint-appservice:\n", 1)[1].split("\ntypecheck-appservice:", 1)[0]

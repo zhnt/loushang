@@ -159,6 +159,7 @@ def test_G11_EMBEDDED_OMISSION_preserves_every_installed_current_route() -> None
         Path("src/loushang/coding/__init__.py"),
         Path("src/loushang/coding/bootstrap.py"),
         Path("src/loushang/coding/cli/__main__.py"),
+        Path("src/loushang/coding/cli/application.py"),
         Path("src/loushang/coding/ui/cli.py"),
         Path("src/loushang/harnesstui/__init__.py"),
         Path("src/loushang/harnesstui/conversation/application_host.py"),

@@ -55,7 +55,7 @@ MAKEFILE = Path("Makefile")
 EXPECTED_CURRENT_SOURCE_PATHS = {
     "src/loushang/coding/bootstrap.py",
     "src/loushang/coding/_product_worker_canary.py",
-    "src/loushang/coding/cli/__main__.py",
+    "src/loushang/coding/cli/application.py",
     "src/loushang/coding/session_manager.py",
     "src/loushang/harness/capabilities/component_host.py",
     "src/loushang/harness/capabilities/component_runtime.py",

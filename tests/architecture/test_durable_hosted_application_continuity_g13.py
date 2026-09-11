@@ -134,6 +134,7 @@ def test_G13_NO_AUTHORITY_EXPANSION_has_no_transport_process_or_path_discovery()
         Path("src/loushang/coding/__init__.py"),
         Path("src/loushang/coding/bootstrap.py"),
         Path("src/loushang/coding/cli/__main__.py"),
+        Path("src/loushang/coding/cli/application.py"),
         Path("src/loushang/coding/ui/cli.py"),
         Path("src/loushang/harnesstui/__init__.py"),
         Path("src/loushang/harnesstui/conversation/application_host.py"),

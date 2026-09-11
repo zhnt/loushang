@@ -120,6 +120,7 @@ HARNESS_TEST_PATHS := \
 	tests/coding/test_agent_session_model_input.py \
 	tests/architecture/test_import_boundaries.py \
 	tests/architecture/test_capability_runtime_convergence_pr0.py \
+	tests/architecture/test_resource_catalog_rcp5_contract.py \
 	tests/architecture/test_composition_lifecycle_authority_cla0.py \
 	tests/architecture/test_plugin_lifecycle_plc9_baseline.py \
 	tests/architecture/test_plugin_lifecycle_plc9a1_contract.py \
@@ -283,6 +284,7 @@ APPHOST_LINT_SUPPORT := \
 	tests/coding/_local_product_child.py \
 	tests/coding/_hosted_product_child.py \
 	src/loushang/coding/cli/__main__.py \
+	src/loushang/coding/cli/application.py \
 	src/loushang/harness/machine_resources/control_plane.py \
 	scripts/dev/run_g10_installed_canary.py \
 	scripts/dev/verify_evidence_manifest.py \
