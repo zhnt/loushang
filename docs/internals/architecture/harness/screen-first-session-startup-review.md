@@ -91,3 +91,11 @@ and passed with a new outside-checkout directory on the main filesystem.
 AI static/catalog/import checks and coverage passed (851 tests, 90.63% total
 coverage). Remaining release and platform checks are pending; these observations
 do not constitute final release acceptance.
+
+Native CLI lifecycle probes also use a short, empty project and the existing
+private user/platform environment fixture, with source imports explicitly
+restored for editable-source checks. Changing cwd alone still inherited the
+developer's model/configuration and could omit the idle field at 80 columns.
+The isolated shared/POSIX executable probes pass (2 tests), retaining their
+original timeout and terminal restoration assertions. The repository-directory
+startup timeout is not represented as a passing performance acceptance.

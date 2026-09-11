@@ -7,10 +7,10 @@ from pathlib import Path
 import pytest
 
 from loushang.tui import strip_control_sequences
+from tests.coding.test_cli_terminal_contract import _cli_sandbox
 from tests.tui.terminal_process_support import (
     selected_backend_name,
     spawn_terminal_process,
-    terminal_test_environment,
 )
 
 pytestmark = [
@@ -25,8 +25,8 @@ def _record_backend(record_testsuite_property) -> None:
     record_testsuite_property("terminal_backend", selected_backend_name())
 
 
-def test_posix_cli_exposes_raw_cursor_and_synchronized_output_lifecycle() -> None:
-    output = _run_cli_and_quit()
+def test_posix_cli_exposes_raw_cursor_and_synchronized_output_lifecycle(tmp_path: Path) -> None:
+    output = _run_cli_and_quit(tmp_path)
 
     assert "\x1b[?25l" in output
     assert "\x1b[?2026h" in output
@@ -37,12 +37,12 @@ def test_posix_cli_exposes_raw_cursor_and_synchronized_output_lifecycle() -> Non
     assert " | running" not in final_tail
 
 
-def _run_cli_and_quit() -> str:
-    repo_root = Path(__file__).resolve().parents[2]
+def _run_cli_and_quit(cwd: Path) -> str:
+    workspace, env = _cli_sandbox(cwd)
     with spawn_terminal_process(
         [sys.executable, "-m", "loushang.coding.cli", "--tui"],
-        cwd=repo_root,
-        env=terminal_test_environment(repo_root),
+        cwd=workspace,
+        env=env,
         columns=80,
         rows=24,
     ) as driver:
