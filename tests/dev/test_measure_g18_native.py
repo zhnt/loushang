@@ -318,6 +318,332 @@ def test_native_failure_snapshot_is_bounded_and_does_not_read_process_inputs(tmp
     assert "environ" not in result and "cmdline" not in result
 
 
+def _diagnostic_proc_process(root, pid, parent, *, children="", threads=1):
+    fields = ["S", str(parent), *(["0"] * 17), str(pid * 10)]
+    stat = f"{pid} (diagnostic worker) " + " ".join(fields)
+    base = root / str(pid)
+    base.mkdir(parents=True)
+    for name, value in {
+        "stat": stat,
+        "status": "Threads: 1",
+        "wchan": "ep_poll",
+        "io": "read_bytes: 0",
+        "schedstat": "10 20 3",
+    }.items():
+        (base / name).write_text(value)
+    for offset in range(threads):
+        task = base / "task" / str(pid + offset)
+        task.mkdir(parents=True)
+        for name, value in {
+            "stat": stat,
+            "wchan": "ep_poll",
+            "schedstat": "10 20 3",
+            "stack": "kernel_wait",
+            "children": children if not offset else "",
+        }.items():
+            (task / name).write_text(value)
+    (base / "environ").write_text("PRIVATE_CANARY")
+    (base / "cmdline").write_text("PRIVATE_CANARY")
+    return base
+
+
+def test_seed_diagnostic_real_coordinator_prepares_once_without_samples(
+    tmp_path, monkeypatch
+):
+    test_fixed_native_collector_orders_cache_and_owner_and_never_counts_failed_warmup(
+        tmp_path, monkeypatch, "warm", None, seed_only=True
+    )
+
+
+def test_diagnostic_tree_links_descendants_and_omits_private_inputs(tmp_path):
+    from tests.coding._g18_native_probe import failure_tree_snapshot
+
+    _diagnostic_proc_process(tmp_path, 123, 1, children="456")
+    _diagnostic_proc_process(tmp_path, 456, 123)
+    value = failure_tree_snapshot(123, 1230, proc=tmp_path)
+    assert value["complete"]
+    assert [p["pid"] for p in value["processes"]] == [123, 456]
+    assert all(p["usable"] for p in value["processes"])
+    assert all(t["usable"] for p in value["processes"] for t in p["threads"])
+    assert "PRIVATE_CANARY" not in json.dumps(value)
+
+
+@pytest.mark.parametrize("fault", ["root", "missing", "parent", "thread", "permission"])
+def test_diagnostic_tree_refuses_races_and_records_unavailable_state(
+    tmp_path, monkeypatch, fault
+):
+    import io
+
+    from tests.coding import _g18_native_probe as probe
+
+    base = _diagnostic_proc_process(tmp_path, 123, 1, children="456")
+    child = _diagnostic_proc_process(tmp_path, 456, 123)
+    original = Path.open
+    calls = 0
+    target = base / "task/123/stat" if fault == "thread" else base / "stat"
+
+    def changed(path, *args, **kwargs):
+        nonlocal calls
+        if fault == "permission" and path.name == "stack":
+            raise PermissionError("unavailable kernel stack")
+        if fault == "missing" and path == child / "stat":
+            raise FileNotFoundError
+        if path == target and fault in {"root", "thread"}:
+            calls += 1
+            if calls >= 2:
+                return io.BytesIO(b"123 (worker) S 1 " + b"0 " * 17 + b"9999")
+        if fault == "parent" and path == child / "stat":
+            return io.BytesIO(b"456 (worker) S 777 " + b"0 " * 17 + b"4560")
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", changed)
+    value = probe.failure_tree_snapshot(123, 1230, proc=tmp_path)
+    assert not value["complete"]
+    if fault == "root":
+        assert not any(p["usable"] for p in value["processes"])
+    if fault in {"missing", "parent"}:
+        assert not any(p["pid"] == 456 and p["usable"] for p in value["processes"])
+    if fault == "thread":
+        assert not value["processes"][0]["threads"][0]["usable"]
+
+
+@pytest.mark.parametrize("limit", ["process", "thread", "payload", "time", "no-pin"])
+def test_diagnostic_tree_bounds_include_enumeration_and_serialization(tmp_path, limit):
+    from tests.coding._g18_native_probe import failure_tree_snapshot
+
+    base = _diagnostic_proc_process(
+        tmp_path,
+        123,
+        1,
+        children=" ".join(str(n) for n in range(200, 212)),
+        threads=12 if limit == "thread" else 1,
+    )
+    for pid in range(200, 212):
+        node = _diagnostic_proc_process(
+            tmp_path, pid, 123, threads=8 if limit == "payload" else 1
+        )
+        if limit == "payload":
+            for path in node.rglob("stack"):
+                path.write_text("\x00" * 12000)
+    if limit == "payload":
+        (base / "status").write_text("\x00" * 12000)
+    ticks = iter([0, 2, 2, 2, 2])
+    options = {"clock": lambda: next(ticks, 2)} if limit == "time" else {}
+    value = failure_tree_snapshot(
+        123, None if limit == "no-pin" else 1230, proc=tmp_path, **options
+    )
+    assert not value["complete"]
+    assert len(value["processes"]) <= 8
+    assert all(len(p["threads"]) <= 8 for p in value["processes"])
+    assert len(json.dumps(value).encode()) <= 256 * 1024
+    if limit in {"time", "no-pin"}:
+        assert not value["processes"]
+
+
+@pytest.mark.parametrize("diagnostic", [False, True])
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux native diagnostic PTY")
+def test_diagnostic_failure_preserves_original_exception_and_default_has_no_tree(
+    tmp_path, monkeypatch, diagnostic
+):
+    import pty
+    import termios
+    from contextlib import contextmanager
+    from types import SimpleNamespace
+
+    from tests.coding import _g18_native_probe as probe
+
+    calls = []
+    monkeypatch.setattr(probe, "FAILURE_TREE_DIAGNOSTIC", diagnostic)
+    monkeypatch.setattr(pty, "openpty", lambda: (1, 2))
+    monkeypatch.setattr(termios, "tcgetattr", lambda _: [])
+    monkeypatch.setattr(
+        probe, "diagnostic_identity", lambda _: calls.append("pin") or 1230
+    )
+    monkeypatch.setattr(probe, "failure_process_snapshot", lambda _: {})
+
+    def unavailable(*args):
+        calls.append("tree")
+        raise KeyboardInterrupt("diagnostic failed")
+
+    @contextmanager
+    def terminal(*args, **kwargs):
+        pty.openpty()
+        try:
+            yield SimpleNamespace(diagnostics=SimpleNamespace(pid=123))
+        finally:
+            calls.append("cleanup")
+
+    monkeypatch.setattr(probe, "failure_tree_snapshot", unavailable)
+    monkeypatch.setattr(probe, "foreground_terminal", terminal)
+    error = TimeoutError("original ready timeout")
+    with pytest.raises(TimeoutError) as caught:
+        with probe.observed_terminal([], tmp_path, {}, failure_report={}):
+            raise error
+    assert caught.value is error
+    assert calls == (["pin", "tree", "cleanup"] if diagnostic else ["cleanup"])
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        ["--checkpoint"],
+        ["--resume"],
+        ["--pause-after", "1"],
+        ["--cases", "recovery-cwd"],
+        ["--home-isolation-only"],
+        ["--cache-mode", "absent"],
+    ],
+)
+def test_seed_diagnostic_rejects_incompatible_modes_before_product(
+    tmp_path, monkeypatch, extra
+):
+    test_fixed_native_cli_refuses_ambiguous_conditions_before_side_effects(
+        tmp_path,
+        monkeypatch,
+        [
+            "--fixed-slot",
+            "--cache-mode",
+            "warm",
+            "--requirements",
+            str(tmp_path / "requirements"),
+            "--seed-preparation-diagnostic",
+            *extra,
+        ],
+    )
+
+
+@pytest.mark.parametrize("phase", ["aa", "ab", "owner-failure"])
+def test_seed_diagnostic_cli_is_zero_sample_and_retains_final_pins(
+    tmp_path, monkeypatch, phase
+):
+    from types import SimpleNamespace
+
+    pins, calls = [], []
+    source = {"commit": "baseline", "lock_sha256": "lock", "wheel_sha256": "same"}
+    sources = {side: dict(source) for side in ("a", "b")}
+    if phase == "ab":
+        sources["b"]["wheel_sha256"] = "different"
+    monkeypatch.setattr(
+        runner.inert,
+        "source_pair",
+        lambda *_: ({side: tmp_path / side for side in ("a", "b")}, sources),
+    )
+    monkeypatch.setattr(
+        runner.inert,
+        "provenance_module",
+        lambda: SimpleNamespace(helper_manifest=lambda _: {"helper": "fixed"}),
+    )
+    monkeypatch.setattr(runner.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(runner.os, "sched_getaffinity", lambda _: {0}, raising=False)
+
+    def pin(prefix, *_):
+        pins.append(prefix)
+        return dict(python="same", dependencies=[], entries={})
+
+    error = TimeoutError("original owner failure")
+
+    def collect(*args, **kwargs):
+        assert args[2] == ["recovery-cwd"]
+        assert args[-2]["seed_diagnostic"] is True
+        assert args[-2]["samples"] == []
+        calls.append("seed")
+        if phase == "owner-failure":
+            raise error
+
+    monkeypatch.setattr(runner.inert, "verify_pinned_install", pin)
+    monkeypatch.setattr(runner, "provision_slot", lambda *_: object())
+    monkeypatch.setattr(runner, "collect_fixed_native", collect)
+    monkeypatch.setattr(
+        runner.inert,
+        "comparison_module",
+        lambda: pytest.fail("diagnostic cannot compare"),
+    )
+    output = tmp_path / "out"
+    args = [
+        "--install-a",
+        str(tmp_path / "a"),
+        "--install-b",
+        str(tmp_path / "b"),
+        "--observer-install",
+        str(tmp_path / "observer"),
+        "--wheel",
+        str(tmp_path / "wheel"),
+        "--output",
+        str(output),
+        "--scratch-parent",
+        str(tmp_path),
+        "--fixed-slot",
+        "--cache-mode",
+        "warm",
+        "--requirements",
+        str(tmp_path / "requirements"),
+        "--seed-preparation-diagnostic",
+    ]
+    if phase == "ab":
+        with pytest.raises(SystemExit) as caught:
+            runner.main(args)
+        assert caught.value.code == 2 and not output.exists() and not pins and not calls
+        return
+    if phase == "owner-failure":
+        with pytest.raises(TimeoutError) as caught:
+            runner.main(args)
+        assert caught.value is error
+    else:
+        assert runner.main(args) == 0
+    value = json.loads((output / "report.json").read_text())
+    assert value["scope"] == "linux-seed-startup-diagnostic"
+    assert value["samples"] == [] and calls == ["seed"]
+    assert value["comparison"]["verdict"] == "not-evaluated"
+    assert len(pins) == (3 if phase == "owner-failure" else 6)
+    assert value["status"] == (
+        "failed" if phase == "owner-failure" else "complete-record-only"
+    )
+
+
+def test_diagnostic_observer_publication_failure_does_not_replace_owner_error(
+    tmp_path, monkeypatch
+):
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+
+    import loushang.coding
+    from tests.coding import _g18_native_probe as probe
+
+    root = tmp_path / "workspace"
+    root.mkdir()
+    monkeypatch.chdir(root)
+    monkeypatch.setattr(
+        probe,
+        "sys",
+        SimpleNamespace(platform="linux", prefix=str(tmp_path / "install")),
+    )
+    monkeypatch.setattr(
+        loushang.coding, "__file__", str(tmp_path / "install/lib/coding.py")
+    )
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path / "home"))
+    monkeypatch.setattr(probe, "measured_entries", lambda _: nullcontext())
+    error = TimeoutError("original ready failure")
+
+    def fail(_):
+        raise error
+
+    publications = []
+
+    def publication(*args):
+        publications.append(True)
+        if len(publications) > 1:
+            raise OSError("publication failure")
+
+    monkeypatch.setattr(probe, "_guarded", fail)
+    monkeypatch.setattr(probe, "publish", publication)
+    with pytest.raises(TimeoutError) as caught:
+        probe.main(
+            root, "prepare:recovery-cwd", tmp_path / "report.json", tmp_path / "install"
+        )
+    assert caught.value is error
+    assert "publication failed" in error.__notes__[0]
+
+
 @pytest.mark.parametrize("change", [None, "bytes", "missing"])
 def test_native_report_cannot_complete_when_trusted_helpers_change(
     tmp_path, monkeypatch, change
@@ -620,7 +946,7 @@ def test_invalid_scratch_parent_is_rejected_before_source_or_output(
 @pytest.mark.parametrize("cache_mode", ["warm", "absent"])
 @pytest.mark.parametrize("fault", [None, "pre", "cache", "owner", "post"])
 def test_fixed_native_collector_orders_cache_and_owner_and_never_counts_failed_warmup(
-    tmp_path, monkeypatch, cache_mode, fault
+    tmp_path, monkeypatch, cache_mode, fault, seed_only=False
 ):
     if __import__("sys").platform != "linux":
         pytest.skip("Linux native fixed slot")
@@ -641,6 +967,8 @@ def test_fixed_native_collector_orders_cache_and_owner_and_never_counts_failed_w
         scratch=str(tmp_path / "scratch"),
         slot_builds=[{"installation": {"side": side}} for side in ("a", "b")],
     )
+    if seed_only:
+        report["seed_diagnostic"] = True
     path = output / "report.json"
     sources = {side: {"wheel_sha256": side} for side in ("a", "b")}
     events = []
@@ -671,6 +999,10 @@ def test_fixed_native_collector_orders_cache_and_owner_and_never_counts_failed_w
         return prepare_cache(self, side, mode)
 
     def owner(argv, *, cwd, environment, timeout):
+        if seed_only:
+            assert argv[-1] == "--failure-tree"
+            assert timeout == 240
+            assert not any("FAILURE_TREE" in key for key in environment)
         workspace, receipt = Path(argv[3]), Path(argv[5])
         stage, case = argv[4].split(":") if ":" in argv[4] else ("fresh", argv[4])
         number = 0 if stage == "prepare" else report["samples"][-1]["iteration"]
@@ -761,6 +1093,8 @@ def test_fixed_native_collector_orders_cache_and_owner_and_never_counts_failed_w
     monkeypatch.setattr(runner.bytecode_policy.BytecodePolicy, "prepare", cache)
     monkeypatch.setattr(runner.owner, "run_python", owner)
     cases = ("foreground", "recovery-cwd", "recovery-global")
+    if seed_only:
+        cases = ("recovery-cwd",)
     args = (
         slot,
         cache_mode,
@@ -774,6 +1108,13 @@ def test_fixed_native_collector_orders_cache_and_owner_and_never_counts_failed_w
         report,
         path,
     )
+    if seed_only:
+        runner.collect_fixed_native(*args)
+        assert report["samples"] == []
+        assert len(report["seed_setup"]) == 1 and report["seed_setup"][0]["valid"]
+        assert events == [("pre", 0), ("owner", 0), ("post", 0)]
+        assert not slot.receipt["busy"] and not slot.receipt["failed"]
+        return
     if fault:
         with pytest.raises((ValueError, TimeoutError)):
             runner.collect_fixed_native(*args)

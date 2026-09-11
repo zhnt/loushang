@@ -635,6 +635,7 @@ def run_recovery_stage(
                 str(receipt),
                 str(measured),
                 str(output / "observer-bytecode"),
+                *(["--failure-tree"] if report.get("seed_diagnostic") else []),
             ],
             cwd=control,
             environment=environment,
@@ -952,6 +953,9 @@ def collect_fixed_native(
             report["slot"] = slot.receipt
             inert.write_report(path, report)
 
+    if report.get("seed_diagnostic"):
+        return  # The original seed/pins settled; final identity checks still run.
+
     warmed = {
         (sample["block"], sample["case"], sample["side"])
         for sample in report["samples"]
@@ -1204,6 +1208,11 @@ def main(argv=None):
     )
     selection = parser.add_mutually_exclusive_group()
     selection.add_argument(
+        "--seed-preparation-diagnostic",
+        action="store_true",
+        help="one warm A/A recovery-cwd seed preparation; no samples or comparison",
+    )
+    selection.add_argument(
         "--slot-switch-recovery-preflight",
         action="store_true",
         help="same-wheel two-venv A/B/A at one fixed prefix; correctness only",
@@ -1227,6 +1236,16 @@ def main(argv=None):
     parser.add_argument("--blocks", type=int, default=2)
     parser.add_argument("--pairs-per-block", type=int, default=10)
     args = parser.parse_args(argv)
+    if args.seed_preparation_diagnostic and (
+        not args.fixed_slot
+        or args.cache_mode != "warm"
+        or args.checkpoint
+        or args.resume
+        or args.pause_after is not None
+    ):
+        parser.error(
+            "seed diagnostic requires warm fixed-slot without checkpoint/resume"
+        )
     if args.fixed_slot:
         if args.cache_mode is None or args.requirements is None:
             parser.error("--fixed-slot requires --cache-mode and --requirements")
@@ -1268,6 +1287,8 @@ def collect_main(args, parser, campaign=None):
         parser.error("positive counts and unique cases required")
     if args.home_isolation_only:
         args.cases, args.blocks, args.pairs_per_block = ["home-isolation"], 1, 1
+    if args.seed_preparation_diagnostic:
+        args.cases, args.blocks, args.pairs_per_block = ["recovery-cwd"], 1, 1
     if args.restored_recovery_preflight:
         args.cases, args.blocks, args.pairs_per_block = (
             ["recovery-cwd", "recovery-global"],
@@ -1286,7 +1307,9 @@ def collect_main(args, parser, campaign=None):
     mode = (
         "aa" if sources["a"]["wheel_sha256"] == sources["b"]["wheel_sha256"] else "ab"
     )
-    if args.restored_recovery_preflight and mode != "aa":
+    if (
+        args.restored_recovery_preflight or args.seed_preparation_diagnostic
+    ) and mode != "aa":
         parser.error("restored recovery preflight requires the same baseline wheel")
     output = args.output.absolute()
     resumed = campaign is not None and campaign.resuming
@@ -1349,6 +1372,8 @@ def collect_main(args, parser, campaign=None):
         "installations": {},
     }
     path = output / "report.json"
+    if args.seed_preparation_diagnostic:
+        report.update(scope="linux-seed-startup-diagnostic", seed_diagnostic=True)
     if campaign is not None:
         plan = {
             key: report[key]

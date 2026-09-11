@@ -992,6 +992,8 @@ Any new execution/instrumentation requires a separate reviewed diagnostic plan:
 new state, original argv/PTY/35-second ready and retained-owner deadlines,
 failure-only bounded evidence before cleanup, no Product edits, debugger attach,
 threshold changes or acceptance claims. No diagnostic rerun has been performed.
+The separately reviewed [single-seed diagnostic](startup-performance-g18-seed-diagnostic.md)
+defines that next execution and its explicit non-acceptance boundary.
 
 ## Bounded Order/Import Diagnosis — Pre-Execution Review
 

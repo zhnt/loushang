@@ -25,8 +25,15 @@ from unittest.mock import patch
 # The installed interpreter resolves Product modules from its wheel. Only test
 # support is admitted from the checkout; never put checkout/src on sys.path.
 ROOT = Path(__file__).resolve().parents[2]
+FAILURE_TREE_DIAGNOSTIC = False
 sys.path.insert(0, str(ROOT))
 if __name__ == "__main__":
+    if len(sys.argv) not in (6, 7) or (
+        len(sys.argv) == 7
+        and (sys.argv[6] != "--failure-tree" or sys.argv[2] != "prepare:recovery-cwd")
+    ):
+        raise SystemExit("invalid native observer diagnostic arguments")
+    FAILURE_TREE_DIAGNOSTIC = len(sys.argv) == 7
     # -I deliberately ignores PYTHONPYCACHEPREFIX. Only the observer uses this
     # fixed cache; the measured commands inherit their own explicit environment.
     sys.pycache_prefix = str(Path(sys.argv[5]))
@@ -122,6 +129,142 @@ def failure_process_snapshot(pid, *, proc=Path("/proc")):
     return result
 
 
+def _stat_identity(value):
+    fields = value.rsplit(") ", 1)[1].split()
+    return int(fields[1]), int(fields[19])  # PPID, starttime; comm may contain spaces.
+
+
+def diagnostic_identity(pid, *, proc=Path("/proc")):
+    try:
+        with (proc / str(pid) / "stat").open() as stream:
+            return _stat_identity(stream.read(4096))[1]
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def failure_tree_snapshot(pid, starttime, *, proc=Path("/proc"), clock=time.monotonic):
+    """Diagnostic-only non-atomic counters, never process adoption or signalling."""
+    result = {"complete": True, "processes": [], "issues": []}
+    deadline, remaining = clock() + 1, 256 * 1024
+
+    def issue(reason):
+        result["complete"] = False
+        if reason not in result["issues"]:
+            result["issues"].append(reason)
+
+    def available():
+        if remaining <= 0 or clock() >= deadline:
+            issue("budget_exhausted")
+            return False
+        return True
+
+    def read(path):
+        nonlocal remaining
+        if not available():
+            return "<budget_exhausted>"
+        try:
+            with path.open("rb") as stream:
+                value = stream.read(min(4096, remaining))
+            remaining -= len(value)
+            if len(value) == 4096:
+                issue("read_truncated")
+            return value.decode("utf-8", errors="replace")
+        except OSError as error:
+            issue(type(error).__name__)
+            return f"<{type(error).__name__}>"
+
+    def identity(path):
+        try:
+            return _stat_identity(read(path / "stat"))
+        except (ValueError, IndexError):
+            issue("identity_unavailable")
+            return None
+
+    def chain_valid(chain):
+        for index, (ancestor, expected) in enumerate(chain):
+            value = identity(proc / str(ancestor))
+            if (
+                value is None
+                or value[1] != expected
+                or (index and value[0] != chain[index - 1][0])
+            ):
+                issue("identity_or_parent_changed")
+                return False
+        return True
+
+    if starttime is None:
+        issue("root_identity_unavailable")
+        return result
+    pending, seen = [[(pid, starttime)]], {pid}
+    while pending and available():
+        chain = pending.pop(0)
+        current, expected = chain[-1]
+        if not chain_valid(chain):
+            continue
+        base = proc / str(current)
+        entry = {"pid": current, "starttime": expected, "usable": False, "threads": []}
+        result["processes"].append(entry)
+        for name in ("status", "wchan", "schedstat", "io"):
+            entry[name] = read(base / name)
+        children = set()
+        try:
+            with os.scandir(base / "task") as tasks:
+                for count, task in enumerate(tasks):
+                    if count >= 8 or not available():
+                        issue("thread_enumeration_truncated")
+                        break
+                    if not task.name.isdigit():
+                        issue("invalid_thread_entry")
+                        continue
+                    thread = Path(task.path)
+                    before = identity(thread)
+                    item = {"tid": int(task.name), "usable": False}
+                    entry["threads"].append(item)
+                    if before is None:
+                        continue
+                    item["starttime"] = before[1]
+                    for name in ("wchan", "schedstat", "stack"):
+                        item[name] = read(thread / name)
+                    candidates = read(thread / "children").split()
+                    if before == identity(thread):
+                        item["usable"] = True
+                        for child in candidates:
+                            if not child.isdigit():
+                                issue("invalid_child_entry")
+                                continue
+                            if len(children) >= 8:
+                                issue("child_enumeration_truncated")
+                                break
+                            children.add(int(child))
+                    else:
+                        issue("thread_identity_changed")
+        except OSError as error:
+            issue(type(error).__name__)
+        entry["usable"] = chain_valid(chain)
+        if not entry["usable"]:
+            continue
+        for child in sorted(children):
+            if child in seen:
+                continue
+            if len(seen) >= 8 or not available():
+                issue("process_enumeration_truncated")
+                break
+            seen.add(child)
+            child_identity = identity(proc / str(child))
+            if child_identity is None or child_identity[0] != current:
+                issue("child_relationship_changed")
+                continue
+            pending.append([*chain, (child, child_identity[1])])
+    if pending:
+        issue("process_enumeration_truncated")
+    if not chain_valid([(pid, starttime)]):
+        for entry in result["processes"]:
+            entry["usable"] = False
+    if len(json.dumps(result).encode()) > 256 * 1024:
+        return {"complete": False, "processes": [], "issues": ["serialized_size_limit"]}
+    return result
+
+
 @contextmanager
 def observed_terminal(argv, root, environment, *, failure_report=None):
     import pty
@@ -146,13 +289,27 @@ def observed_terminal(argv, root, environment, *, failure_report=None):
         ) as driver,
     ):
         ((master, original),) = terminals
+        pinned = (
+            diagnostic_identity(driver.diagnostics.pid)
+            if FAILURE_TREE_DIAGNOSTIC
+            else None
+        )
         try:
             yield driver, master, original
-        except BaseException:
+        except BaseException as error:
             if failure_report is not None:
-                failure_report["failure_process"] = failure_process_snapshot(
-                    driver.diagnostics.pid
-                )
+                try:
+                    failure_report["failure_process"] = failure_process_snapshot(
+                        driver.diagnostics.pid
+                    )
+                    if FAILURE_TREE_DIAGNOSTIC:
+                        failure_report["failure_tree"] = failure_tree_snapshot(
+                            driver.diagnostics.pid, pinned
+                        )
+                except BaseException as diagnostic_error:
+                    error.add_note(
+                        f"failure diagnostics unavailable: {type(diagnostic_error).__name__}"
+                    )
             raise
         assert not driver.is_alive()
         assert termios.tcgetattr(master) == original, "terminal modes not restored"
@@ -961,6 +1118,8 @@ def recovery(root, report, *, prepare_only=False):
                 )
             except BaseException:
                 setup["failure_process"] = unused.get("failure_process")
+                if "failure_tree" in unused:
+                    setup["failure_tree"] = unused["failure_tree"]
                 raise
             setup["status"] = "settled"
             setup["settled_at"] = time.perf_counter()
@@ -1102,15 +1261,24 @@ def main(root, case, receipt, measured_prefix):
         else:
             recovery(root, report)
 
+    failure = None
     try:
         with measured_entries(measured_prefix):
             _guarded(operation)
         report.update(status="observed", valid=False)  # Outer owner must still approve.
     except BaseException as error:
+        failure = error
         report.update(status="failed", failure=f"{type(error).__name__}: {error}")
         raise
     finally:
-        publish(receipt, report)
+        try:
+            publish(receipt, report)
+        except BaseException as publication_error:
+            if failure is None:
+                raise
+            failure.add_note(
+                f"observer receipt publication failed: {type(publication_error).__name__}"
+            )
 
 
 if __name__ == "__main__":
