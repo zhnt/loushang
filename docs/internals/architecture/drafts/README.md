@@ -60,3 +60,4 @@ Standalone drafts:
 - [Application Model And Artifact Compiler](application-model-and-artifact-compiler.md)
 - [Pluggable Transcript Compaction Strategies](pluggable-transcript-compaction-strategies.md)
 - [Project-Declared Configuration And Pluggable Conversation Persistence](project-declared-configuration-and-pluggable-conversation-persistence.md)
+- [服务端 Harness 与业务 Product 边界（讨论稿，含架构图）](server-side-harness-and-business-product.md)
