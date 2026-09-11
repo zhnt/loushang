@@ -4,11 +4,16 @@ This boundary covers only process-host mechanics shared by product CLIs.  It
 does not move argument grammar, mode selection, product command handlers,
 resource/package wording, Work/Method preparation, or output schemas.
 
+G18 separates the process entrypoint (`coding.cli.__main__`) from the existing
+Product bindings (`coding.cli.application`); see the
+[CLI loading boundary](startup-performance-g18-cli-boundary.md). The shared
+lifecycle owner and injected operations below are unchanged.
+
 ## Ownership
 
 | Source mechanism | Shared owner | Product injection | Deletion condition |
 | --- | --- | --- | --- |
-| Repeated sequential turn invocation and non-final failure disposal in `coding.cli.__main__` | `harness.host.product_host.ProductHostLifecycle.run_turns` | Product supplies turn values, invocation callback, and runtime/session disposal candidates | Coding uses the lifecycle helper for prompt, print, and mode runner loops; no duplicate loop remains |
+| Repeated sequential turn invocation and non-final failure disposal in `coding.cli.application` | `harness.host.product_host.ProductHostLifecycle.run_turns` | Product supplies turn values, invocation callback, and runtime/session disposal candidates | Coding uses the lifecycle helper for prompt, print, and mode runner loops; no duplicate loop remains |
 | TTY detection for injected streams | `harness.host.product_host.stream_is_tty` | None | Coding does not implement its own `isatty` probe |
 | Prompt/stdin/file/image input normalization | `harness.host.prompt_input` owns assembly; `harness.tools.workspace.image_payload` owns image MIME, dimensions, encoding, limits, and resize preparation | Coding supplies prompt/file arguments and the image-resize choice | Coding keeps argument parsing and prompt policy; Host and the read tool consume one prepared-image contract while retaining their own omission and presentation decisions |
 | Model listing normalization, sorting, query matching, and metadata table | `harness.session.model_selection` | Coding supplies the model getter and selects JSON/TSV output | Coding keeps preferred-model policy and persistence wording |

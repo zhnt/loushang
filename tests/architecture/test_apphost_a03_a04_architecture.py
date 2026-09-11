@@ -136,6 +136,7 @@ def test_a0_4_hosted_binder_stays_wiring_only_after_g11_consumers() -> None:
             or consumer == Path("src/loushang/coding/hosted_application.py")
             or consumer == Path("src/loushang/coding/hosted_catalog.py")
             or consumer == Path("src/loushang/coding/hosted_session.py")
+            or consumer == Path("src/loushang/coding/hosted_execution.py")
             or consumer == Path("src/loushang/coding/cli/hosted.py")
             or consumer == Path("src/loushang/coding/cli/hosted_client.py")
             or consumer == Path("src/loushang/coding/cli/mux.py")

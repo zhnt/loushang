@@ -22,10 +22,18 @@ capability, component group, or component. Link to the parent placement.
 Summarize implemented ownership and link to source, tests, generated facts, or
 a Current owner map. Do not copy a complete generated dependency table.
 
-## Target
+## Accepted Target
 
-Summarize accepted/proposed design and label its maturity. Do not claim Target
-objects exist in Current.
+Summarize only accepted contracts and link their acceptance evidence. State
+explicitly when no Target has been accepted. Do not claim Target objects exist
+in Current or infer acceptance of an extension from an accepted prerequisite.
+
+## Candidate Directions
+
+Optional: list draft/proposed designs or questions awaiting a scope-owner
+decision. Link the proposal when it exists and identify the decision owner.
+These candidates have no implementation-gap classification; listing them does
+not accept them or commit to delivery. Remove this section when unused.
 
 ## Owns
 
@@ -60,6 +68,11 @@ Link to inherited definitions and principles instead of copying them. Keep a
 few local additions here; create `glossary.md` or `principles.md` only when the
 scope has a substantial, stable body of its own language or design rules.
 
+Local principles identify their kind (invariant, preference or heuristic),
+verification and exception authority. Local terms identify their canonical
+meaning, aliases and owning scope; link requirements and behavior to their
+canonical contracts rather than embedding them in definitions.
+
 ## Composition, Interaction And Dependency
 
 Use separate labeled views. Do not use one unlabeled arrow for construction,
@@ -71,9 +84,20 @@ Give the authoritative reading order: requirements, placement/boundary, system
 context, inherited/local vocabulary and principles, specification, final
 component model, key designs/ARDs, traceability, facts and history.
 
+Link this scope's decision index, which groups ARDs under `draft/`, `proposed/`,
+`accepted/` and `superseded/` as needed. Link cross-scope decisions at the nearest
+common parent. Unselected options stay inside their ARD; review and acceptance
+evidence remain distinct. Declare any legacy decision paths awaiting migration.
+
 ## Current-To-Target Gaps
 
-- `<missing | partial | deviated | unmodeled | stale-document | drift>`: ...
+- `<missing | partial | deviated>`: accepted contract and acceptance evidence;
+  Current evidence; owning scope; remaining difference.
+- `<unmodeled | stale-document | drift>`: Current/design evidence; owning scope;
+  the design-coverage or documentation issue requiring review.
+
+Keep unaccepted extensions in Candidate Directions even when a prerequisite is
+already implemented. After acceptance, derive their delta from Current facts.
 
 ## Change Triggers And Evidence
 

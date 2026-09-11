@@ -93,7 +93,7 @@ Work 的权威事实以及 Loushang substrate 的权限、证据、持久化和�
 
 Current Coding-specific method usage is bridged through
 `loushang.coding.domain`. This is a compatibility facade over the shared Method
-runtime, not a separate long-term DomainApp execution layer. In the v3 target,
+runtime, not a separate long-term DomainApp execution layer. In the V3.1 target,
 the Coding Product work preparer consumes the Method plan and its Product work
 executor binds each admitted step to Harness. When a method is enacted,
 `loushang.harnesswork` owns the resulting run, plan, step, outcome, event-log, replay,

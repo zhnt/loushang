@@ -105,6 +105,55 @@ class ScopeTests(unittest.TestCase):
         )
         self.assertIn("coding_ui", self.selected("tests/coding/test_ui_status_line.py"))
 
+    def test_cli_application_move_keeps_lint_and_catalog_guard_ownership(self):
+        inventories = selector.make_paths()
+        application = "src/loushang/coding/cli/application.py"
+        catalog_guard = "tests/architecture/test_resource_catalog_rcp5_contract.py"
+        self.assertIn(application, inventories["APPHOST_LINT_SUPPORT"])
+        self.assertIn(catalog_guard, inventories["HARNESS_TEST_PATHS"])
+        self.assertTrue({"coding", "apphost"} <= self.selected(application))
+        self.assertIn("harness", self.selected(catalog_guard))
+        self.assertNotIn("ai", self.selected(catalog_guard))
+
+    def test_g18_collector_has_selection_and_actual_test_lint_ownership(self):
+        makefile = (ROOT / "Makefile").read_text()
+        lint = makefile.split("\nlint-appservice:\n", 1)[1].split("\ntypecheck-appservice:", 1)[0]
+        for script, test in (
+            ("scripts/dev/_g18_provenance.py", "tests/dev/test_g18_provenance.py"),
+            ("scripts/dev/_g18_recovery.py", "tests/dev/test_g18_recovery.py"),
+            ("scripts/dev/_g18_slot.py", "tests/dev/test_g18_slot.py"),
+            ("scripts/dev/_g18_bytecode.py", "tests/dev/test_g18_bytecode.py"),
+            ("scripts/dev/_g18_checkpoint.py", "tests/dev/test_g18_checkpoint.py"),
+            ("scripts/dev/_g18_comparison.py", "tests/dev/test_g18_comparison.py"),
+            ("scripts/dev/measure_g18_startup.py", "tests/dev/test_measure_g18_startup.py"),
+            ("scripts/dev/measure_g18_native.py", "tests/dev/test_measure_g18_native.py"),
+        ):
+            with self.subTest(script=script, test=test):
+                for path in (script, test):
+                    self.assertEqual(self.selected(path), {"docs", "appservice", "host_runtime"})
+                self.assertIn(test, selector.make_paths()["APPSERVICE_TEST_PATHS"])
+                self.assertIn(f"ruff check {script}", lint)
+        for evidence in (
+            "startup-performance-g18-linux-aa-baseline.json",
+            "startup-performance-g18-linux-native-warm-aa-baseline.json",
+            "startup-performance-g18-linux-absent-aa-failure.json",
+        ):
+            with self.subTest(evidence=evidence):
+                self.assertEqual(
+                    self.selected(f"docs/internals/architecture/harness/{evidence}"),
+                    {"docs", "appservice", "host_runtime"},
+                )
+        self.assertIn("$(APPSERVICE_TEST_PATHS)", lint)
+        self.assertIn("$(PYTEST_RUNNER) $(APPSERVICE_TEST_PATHS)", makefile)
+        # No broad tests/dev exception: unknown tools still get full validation.
+        self.assertEqual(self.selected("tests/dev/test_unknown_tool.py"),
+                         set(selector.select([], full=True)["checks"]))
+
+    def test_coding_facade_checks_all_entry_consumers_additively(self):
+        self.assertTrue({"coding", "architecture", "host_runtime", "coding_ui",
+                         "tui_native", "apphost", "appservice", "install"}
+                        <= self.selected("src/loushang/coding/__init__.py"))
+
     def test_g17_evidence_and_hosting_providers_select_native_application_consumers(self):
         paths = (
             "tests/coding/_hosted_darwin_observer.py",
@@ -244,6 +293,43 @@ class GateTests(unittest.TestCase):
 
 
 class SuiteSelectionTests(unittest.TestCase):
+    def assert_non_overlapping_test_paths(self, paths):
+        roots = [Path(path.split("::", 1)[0]) for path in paths]
+        for index, left in enumerate(roots):
+            for right in roots[index + 1:]:
+                self.assertFalse(
+                    left.is_relative_to(right) or right.is_relative_to(left),
+                    f"overlapping pytest collection paths: {left}, {right}",
+                )
+
+    def test_apphost_inventory_collects_the_whole_package_without_overlap(self):
+        paths = selector.make_paths()["APPHOST_TEST_PATHS"]
+        self.assertEqual(paths.count("tests/apphost"), 1)
+        self.assert_non_overlapping_test_paths(paths)
+
+    def test_collection_overlap_guard_uses_path_boundaries_in_both_orders(self):
+        parent = "tests/apphost"
+        child = "tests/apphost/test_launcher.py"
+        for paths in ((parent, child), (child, parent)):
+            with self.subTest(paths=paths), self.assertRaises(AssertionError):
+                self.assert_non_overlapping_test_paths(paths)
+        self.assert_non_overlapping_test_paths(
+            (parent, "tests/apphost_extra/test_launcher.py")
+        )
+
+    def test_apphost_directory_keeps_launcher_and_sibling_consumer_routing(self):
+        service_paths = selector.make_paths()["APPSERVICE_TEST_PATHS"]
+        self.assertIn("tests/apphost/test_launcher.py", service_paths)
+        paths = sorted((ROOT / "tests/apphost").glob("test_*.py"))
+        self.assertTrue(paths)
+        for path in paths:
+            relative = path.relative_to(ROOT).as_posix()
+            checks = selector.select([relative])["checks"]
+            with self.subTest(path=relative):
+                self.assertTrue(checks["apphost"])
+                if relative in service_paths:
+                    self.assertTrue(checks["appservice"])
+
     def test_coding_backend_excludes_the_separately_owned_ui_inventory(self):
         (command,) = runner.commands("coding")
         self.assertIn("--ignore=tests/coding/test_screen_coding_tui_app.py", command)

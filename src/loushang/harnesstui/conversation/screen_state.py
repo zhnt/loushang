@@ -43,6 +43,7 @@ class ScreenConversationState:
     )
     interruption_message: str | None = None
     status_message: str | None = None
+    startup_pending: bool = False
     model_label: str | None = None
     cwd: str = ""
     branch: str | None = None

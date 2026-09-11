@@ -60,7 +60,7 @@ SOURCE_ROOTS = (Path("src/loushang"),)
 
 LEGACY_DISABLED_PLUGIN_FILES = {
     Path("src/loushang/coding/bootstrap.py"),
-    Path("src/loushang/coding/cli/__main__.py"),
+    Path("src/loushang/coding/cli/application.py"),
     Path("src/loushang/coding/continuity_bootstrap.py"),
     Path("src/loushang/harness/config/agent/_settings_codec.py"),
     Path("src/loushang/harness/config/agent/_settings_patch.py"),
@@ -109,7 +109,7 @@ LEGACY_DISABLED_PLUGIN_SCOPE_COUNTS = Counter(
         ): 5,
         (Path("src/loushang/coding/continuity_bootstrap.py"), "_configured_sources"): 1,
         (
-            Path("src/loushang/coding/cli/__main__.py"),
+            Path("src/loushang/coding/cli/application.py"),
             "_run_list_packages.fallback_records",
         ): 2,
         (Path("src/loushang/harness/config/agent/types.py"), "ControlConfig"): 1,
@@ -1111,7 +1111,7 @@ def test_plc9_freezes_named_package_lifecycle_sites_and_occurrences() -> None:
     expected[(agent_args, "agent_cli_argument_values", "check_package_updates")] = 1
     expected[
         (
-            Path("src/loushang/coding/cli/__main__.py"),
+            Path("src/loushang/coding/cli/application.py"),
             "_run_list_packages",
             "get_packages",
         )

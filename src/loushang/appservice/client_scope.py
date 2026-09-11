@@ -36,6 +36,8 @@ from loushang.appserver.protocol import (
 
 from ._operations import _observe, _OwnedAppOperations
 from ._scope_interactions import _ScopeInteractions
+from .execution_registry import ExecutionErrorCodeV1, ExecutionServiceErrorV1
+from .execution_service import ScopedExecutionClientV1
 from .runtime import AppServiceV1, _SessionOwner
 from .session_discovery import SessionDiscoveryViewV1
 
@@ -147,6 +149,9 @@ class ScopedAppServiceV1:
         attachment = controller.attachment
         if attachment is None:
             return
+        execution = controller.scope._execution_client
+        if execution is not None:
+            execution.detach(attachment.attachment_id)
         await self._interactions.revoke(attachment.attachment_id)
         try:
             await self._service.detach_mux(MuxDetachV1(
@@ -191,6 +196,17 @@ class AppClientScopeV1:
         self._controllers: dict[str, _Controller] = {}
         self._closed = False
         self._close_task: asyncio.Task[None] | None = None
+        self._execution_client: ScopedExecutionClientV1 | None = None
+
+    @property
+    def execution_client(self) -> ScopedExecutionClientV1 | None:
+        self._require_open()
+        registry = self._service._execution_registry
+        if registry is None:
+            return None
+        if self._execution_client is None:
+            self._execution_client = ScopedExecutionClientV1(self, registry)
+        return self._execution_client
 
     @property
     def discovery_client(self) -> SessionDiscoveryViewV1 | None:
@@ -394,6 +410,24 @@ class AppClientScopeV1:
             raise AppServiceError(AppErrorCodeV1.STALE_ATTACHMENT)
         return session
 
+    def _require_current_session(
+        self, request: SessionSnapshotRequestV1, session: _SessionOwner,
+    ) -> None:
+        self._attachment(request.attachment_id, request.controller_generation)
+        pair = self._service._attachments.get(request.attachment_id)
+        if pair is None:
+            raise AppServiceError(AppErrorCodeV1.STALE_ATTACHMENT)
+        mux, attachment = pair
+        if (
+            not attachment.active or mux.closed
+            or attachment.controller_generation != request.controller_generation
+            or mux.next_generation != request.controller_generation
+            or self._service._sessions.get(session.identity.session_id) is not session
+            or not any(member.member_id == request.member_id and member.session is session
+                       for member in mux.members)
+        ):
+            raise AppServiceError(AppErrorCodeV1.STALE_ATTACHMENT)
+
     async def snapshot_session(
         self, request: SessionSnapshotRequestV1
     ) -> SessionSnapshotV1:
@@ -410,6 +444,19 @@ class AppClientScopeV1:
         session = await self._session(
             request.attachment_id, request.controller_generation, request.member_id
         )
+        registry = self._service._execution_registry
+        if registry is not None:
+            try:
+                binding = self._service._execution_binding(session)
+            except ExecutionServiceErrorV1 as error:
+                if error.code is not ExecutionErrorCodeV1.UNSUPPORTED:
+                    raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE) from None
+            else:
+                self._require_current_session(SessionSnapshotRequestV1(
+                    request.attachment_id, request.controller_generation, request.member_id
+                ), session)
+                await registry.start_legacy(binding, request.text)
+                return AckV1()
         await self._owner._operations.execute(
             lambda: session.start_turn(request.text), key=session.identity.session_id
         )
@@ -463,6 +510,8 @@ class AppClientScopeV1:
 
     async def close(self) -> None:
         self._closed = True
+        if self._execution_client is not None:
+            self._execution_client.detach()
         if self._discovery is not None:
             self._discovery.fence()
         for controller in self._controllers.values():

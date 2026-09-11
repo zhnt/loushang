@@ -41,6 +41,7 @@ PROMOTION_RECORD = Path(
 INSTALLED_CODING_ROOTS = (
     Path("src/loushang/coding/bootstrap.py"),
     Path("src/loushang/coding/cli/__main__.py"),
+    Path("src/loushang/coding/cli/application.py"),
     Path("src/loushang/coding/ui/cli.py"),
 )
 
@@ -443,7 +444,7 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
         Path("src/loushang/coding/__init__.py")
     )
     assert "loushang.coding.bootstrap" in _imports(
-        Path("src/loushang/coding/cli/__main__.py")
+        Path("src/loushang/coding/cli/application.py")
     )
     assert "loushang.coding.cli.__main__" in _imports(
         Path("src/loushang/coding/ui/cli.py")

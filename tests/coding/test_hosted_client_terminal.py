@@ -118,30 +118,33 @@ def _picker_workflow(tmp_path, scope_kind, *, run_cli):
     # first predicate by automatically restoring the creator's existing member.
     arguments.extend(["--mux", "picker"])
 
-    def resume(driver, *, attempt):
-        driver.read_until(lambda out: "picker |" in strip_control_sequences(out), timeout=10)
-        checkpoint = 0
-        if attempt == 0:
-            assert text not in strip_control_sequences(driver.raw_output)
-            selected_scope = "global" if scope_kind is SessionScopeV1.USER_HOME else "cwd"
-            driver.write(f"/sessions {selected_scope}\r")
-            driver.read_until(
-                lambda out: "select a saved Session" in strip_control_sequences(out), timeout=15
-            )
-            assert text not in strip_control_sequences(driver.raw_output)
-            checkpoint = len(driver.raw_output)
-            driver.write("\r")
-        driver.read_until(
-            lambda out, start=checkpoint: text in strip_control_sequences(out[start:]), timeout=20
-        )
-        driver.read_until(
-            lambda out, start=checkpoint: "*1" in strip_control_sequences(out[start:]), timeout=10
-        )
-
     for attempt in range(2):
-        run_cli(tmp_path, arguments, lambda driver, attempt=attempt: resume(driver, attempt=attempt),
+        run_cli(tmp_path, arguments,
+                lambda driver, attempt=attempt: _picker_resume(driver, text, scope_kind, attempt),
                 exit_command="\x02d")  # Foreground detach ends this application's child.
     assert len(tuple(scope.session_dir.glob("*.jsonl"))) == 1
+
+
+def _picker_resume(driver, text, scope_kind, attempt):
+    """Shared original witness for live CLI2 and live/restored CLI3."""
+    driver.read_until(lambda out: "picker |" in strip_control_sequences(out), timeout=10)
+    checkpoint = 0
+    if attempt == 0:
+        assert text not in strip_control_sequences(driver.raw_output)
+        selected_scope = "global" if scope_kind is SessionScopeV1.USER_HOME else "cwd"
+        driver.write(f"/sessions {selected_scope}\r")
+        driver.read_until(
+            lambda out: "select a saved Session" in strip_control_sequences(out), timeout=15
+        )
+        assert text not in strip_control_sequences(driver.raw_output)
+        checkpoint = len(driver.raw_output)
+        driver.write("\r")
+    driver.read_until(
+        lambda out, start=checkpoint: text in strip_control_sequences(out[start:]), timeout=20
+    )
+    driver.read_until(
+        lambda out, start=checkpoint: "*1" in strip_control_sequences(out[start:]), timeout=10
+    )
 
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX independent process-group regression")

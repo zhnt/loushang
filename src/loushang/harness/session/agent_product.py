@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable, Sequence
-from typing import Any, Literal, Protocol, cast
+from typing import TYPE_CHECKING, Any, Literal, Protocol, cast
+
+if TYPE_CHECKING:
+    from loushang.harness.session.prompt_execution import PromptExecutionResult
 
 from loushang.agent import Agent
 from loushang.ai.api_registry import (
@@ -280,6 +283,61 @@ class AgentProductSession(AgentSessionAdapterMixin):
     async def continue_run(self) -> None:
         await self.prepare_model_call_runtime()
         await super().continue_run()
+
+    async def execute_prompt(
+        self, text: str, *, source: str = "execution",
+        check_cancelled: Callable[[], None] | None = None,
+    ) -> PromptExecutionResult:
+        """Opt-in full invocation input result, retaining the legacy prompt API."""
+        from loushang.harness.session.prompt_execution import execute_prompt
+
+        if not self.execution_available:
+            raise RuntimeError("failed execution preparation requires Session retirement")
+        try:
+            await self.prepare_model_call_runtime()
+        except BaseException:
+            self._execution_preparation_failed = True
+            raise
+        if check_cancelled is not None:
+            check_cancelled()
+        result = await execute_prompt(
+            self._composition.session_runtime.prompt_controller,
+            self._composition.command_controller.dispatch_command_async,
+            text,
+            source=source,
+            check_cancelled=check_cancelled,
+        )
+        await self._composition.retry_runtime.settle()
+        await self._composition.session_runtime.host_runtime.settle_runs()
+        return result
+
+    @property
+    def execution_available(self) -> bool:
+        """Failed preparation retires this binding rather than replaying setup."""
+        return not getattr(self, "_execution_preparation_failed", False)
+
+    async def settle_execution(self, *, interrupted: bool = False) -> None:
+        """Prove invocation quiescence without disposing the reusable Session."""
+        if interrupted:
+            self.abort_retry()
+            self.abort_command()
+            self.abort_compaction()
+            self.abort_branch_summary()
+        await self._composition.retry_runtime.settle(interrupted=interrupted)
+        await self._composition.session_runtime.host_runtime.settle_runs(
+            cancel_pending=interrupted
+        )
+        if interrupted:
+            await self._composition.compaction_runtime.cancel_and_wait()
+            await self._composition.navigation_runtime.cancel_and_wait()
+        if not self.execution_available:
+            # Failed preparation may retain staged component/Plugin rollback
+            # debt. The existing retryable owner cleanup must settle it before
+            # the execution can become terminal; this Session cannot be reused.
+            await self._dispose_session_runtime_profile()
+        # Owner cleanup can schedule final events. Drain only after every owner
+        # has joined so the terminal source cursor includes those projections.
+        await self._composition.session_runtime.settle_execution()
 
     async def execute_command_async(
         self,

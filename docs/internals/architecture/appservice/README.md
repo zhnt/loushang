@@ -59,6 +59,15 @@ The current implementation contains:
   all-or-nothing Session/MuxSpace reconstruction; and
 - `__init__.py`: the deliberately small public facade.
 
+The separate [optional Product execution contract](execution-contract.md) adds
+invocation identity, full-call settlement and composite snapshot validation.
+Its helpers and explicitly constructed real Coding adapter are implemented.
+The [execution service delivery](execution-service-delivery.md) adds the
+instance-local submission ledger, independent settlement ownership, scoped
+recovery and an optional versioned local protocol. Mechanism, real Product and
+transport tests verify these separately. Default Product activation and native
+GUI platform acceptance remain separate integration work.
+
 ## Dependency And Ownership
 
 ```text

@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Awaitable, Callable
-from contextlib import AbstractContextManager, nullcontext
+from collections.abc import Awaitable, Callable, Iterator
+from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Generic, TextIO, TypeVar
@@ -384,6 +384,36 @@ def bind_action_host_to_screen_runner(
     )
 
 
+@contextmanager
+def open_conversation_screen_runtime(
+    profile: ConversationScreenRunProfile,
+) -> Iterator[ConversationInputRouterFactoryPort | None]:
+    """Own the selected input resources independently of terminal acquisition."""
+
+    runtime_resources: RuntimeResourceOwner | None = None
+    scope: RuntimeScope | None = None
+    runtime_context: AbstractContextManager[object] = nullcontext()
+    if profile.runtime is not None:
+        scope = profile.runtime.scope_factory()
+        runtime_context = profile.runtime.context_factory(scope)
+    with runtime_context:
+        try:
+            factory = profile.input_router_factory
+            if profile.runtime is not None:
+                assert scope is not None
+                runtime_resources = RuntimeResourceOwner.acquire(
+                    scope,
+                    sweep_policy=profile.runtime.sweep_policy,
+                    artifact_store_factory=profile.runtime.artifact_store_factory,
+                )
+                profile.runtime.observe_sweep(runtime_resources.sweep_report)
+                factory = profile.runtime.input_router_factory(scope)
+            yield factory
+        finally:
+            if runtime_resources is not None:
+                runtime_resources.close()
+
+
 async def run_action_host_conversation_screen(
     *,
     app: ConversationScreenPort,
@@ -403,47 +433,27 @@ async def run_action_host_conversation_screen(
     """Run a screen by binding one neutral action host exactly once."""
 
     callbacks = bind_action_host_to_screen_runner(action_host)
-    runtime_resources: RuntimeResourceOwner | None = None
-    scope: RuntimeScope | None = None
-    input_router_factory = profile.input_router_factory
-    runtime_context: AbstractContextManager[object] = nullcontext()
-    if profile.runtime is not None:
-        scope = profile.runtime.scope_factory()
-        runtime_context = profile.runtime.context_factory(scope)
-    with runtime_context:
-        try:
-            if profile.runtime is not None:
-                assert scope is not None
-                runtime_resources = RuntimeResourceOwner.acquire(
-                    scope,
-                    sweep_policy=profile.runtime.sweep_policy,
-                    artifact_store_factory=profile.runtime.artifact_store_factory,
-                )
-                profile.runtime.observe_sweep(runtime_resources.sweep_report)
-                input_router_factory = profile.runtime.input_router_factory(scope)
-            return await run_conversation_screen(
-                app=app,
-                stdin=stdin,
-                stdout=stdout,
-                handle_prompt=callbacks.handle_prompt,
-                handle_local=handle_local,
-                handle_steer=callbacks.handle_steer,
-                handle_followup=callbacks.handle_followup,
-                handle_surface_intent=handle_surface_intent,
-                on_abort=callbacks.on_abort,
-                should_exit=should_exit,
-                is_local_command=is_local_command,
-                keybindings=keybindings,
-                terminal_mode_factory=terminal_mode_factory,
-                terminal_size_provider=terminal_size_provider,
-                input_chunk_reader=input_chunk_reader,
-                input_router_factory=input_router_factory,
-                interruption_message=profile.interruption_message,
-                cancellation_message=profile.cancellation_message,
-            )
-        finally:
-            if runtime_resources is not None:
-                runtime_resources.close()
+    with open_conversation_screen_runtime(profile) as input_router_factory:
+        return await run_conversation_screen(
+            app=app,
+            stdin=stdin,
+            stdout=stdout,
+            handle_prompt=callbacks.handle_prompt,
+            handle_local=handle_local,
+            handle_steer=callbacks.handle_steer,
+            handle_followup=callbacks.handle_followup,
+            handle_surface_intent=handle_surface_intent,
+            on_abort=callbacks.on_abort,
+            should_exit=should_exit,
+            is_local_command=is_local_command,
+            keybindings=keybindings,
+            terminal_mode_factory=terminal_mode_factory,
+            terminal_size_provider=terminal_size_provider,
+            input_chunk_reader=input_chunk_reader,
+            input_router_factory=input_router_factory,
+            interruption_message=profile.interruption_message,
+            cancellation_message=profile.cancellation_message,
+        )
 
 
 TextActionHandler = Callable[

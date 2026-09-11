@@ -2,21 +2,26 @@
 
 ## Status
 
-- ID: `GUI-ENGINEERING-BOOTSTRAP-V1`
+- ID: `GUI-ENGINEERING-BOOTSTRAP-V2`
 - Scope: Loushang proposed graphical client / cross-scope delivery
 - Parent: Loushang
 - Authority: descriptive — proposed delivery plan; not an accepted scope contract
 - Design status: proposed
 - Implementation status: not-started
 - Owner: Loushang architecture / future GUI delivery owner
-- Source baseline: `3c06f5b9` on `main`, inspected 2026-09-08
-- Delivery objective: GUI engineering bootstrap plan and three-perspective review
+- Source baseline: `0e3cfc2f` on `main`, updated 2026-09-09
+- Execution contract update: `d89c4c9f` on `main` (PR #580), inspected 2026-09-09
+- Target architecture: [Loushang Future Target Architecture V3.1](future-loushang-architecture-v3.1.md)
+- Delivery objective: GUI engineering bootstrap, execution handoff, and V3.1 AppHost/presentation alignment
 
 本文是单一中文方案源。用户已选择 Tauri + React 的讨论方向、独立浏览器窗口、
 GUI 文档展示和 GUI playback；具体工程建设尚未执行。本文不安装工具链、不新增
 运行入口、不改变默认 CLI/TUI，也不把拟议的目录、命令和协议扩展描述为已实现。
 实施跟踪 issue、GUI lane 和正式 scope placement 在实施启动时建立。
 补充需求：macOS、Windows 与 Linux 均作为正式开发环境，允许同时协作开发。
+V2 进一步固定：桌面 GUI 不新建 Host，而与 G16 detachable HarnessTUI Hosted
+Mux 复用既有 AppHost/AppService application；HarnessTUI Embedded 仍走直接
+Product/Harness 组合，G15/G17 foreground child lifecycle 保持不变。
 
 继承 [架构方法](../../architecture-method/README.md)、
 [治理规范](../governance-profile.md)、
@@ -25,6 +30,8 @@ GUI 文档展示和 GUI playback；具体工程建设尚未执行。本文不安
 
 用户结果、功能与质量验收口径见 [GUI 需求](gui-requirements.md)；本文负责
 工程准备与交付顺序，不能以计划替代需求确认或正式架构设计。
+Windows/macOS 接手机器从 [原生开发交接](gui-native-development-handoff.md) 开始，
+其中提供 GitHub 获取方式、阅读顺序、服务能力基线与首轮实施切片。
 
 ## 1. 决策与交付范围
 
@@ -33,8 +40,9 @@ Tauri/Rust 负责桌面集成与 AppClient 连接。保留现有 Python Product/
 运行时，通过 App Contract 协作。首期一个 Rust crate、一个前端 package，
 共享库出现真实第二个消费者时再提取 Cargo workspace 或前端 workspace。
 
-GUI 是 Product-neutral 的图形客户端承载面，Coding 是首个产品适配者；目录
-名称不自动建立新的 Product identity，也不提前承诺独立 GUI 插件运行时。
+首期只有 Product-neutral 的 HarnessGUI，不建立 Coding/Design/Research/Work 等
+Product-specific GUI surface，也不提前承诺独立 GUI 插件运行时。当前 hosted
+Product 仍在 AppHost 后方提供运行时 binding，不因此成为前端目录或 identity。
 
 本轮建设目标：
 
@@ -66,35 +74,82 @@ GUI 是 Product-neutral 的图形客户端承载面，Coding 是首个产品适�
 投影或同 mux 多控制者。初版文档阅读可以使用本地固定样例；真实产品缺失的数据
 必须由对应 owner 增量扩展契约，不能包装成通用任意 payload 绕过现有闭合校验。
 
+### 2.1 服务端就绪复核：2026-09-09
+
+上节保留原始 `3c06f5b9` 基线。本次以已合并的 `main@d89c4c9f` 复核，
+以下更新取代旧基线中的会话发现与 execution 缺口判断。GUI 的 C1 跨语言兼容
+和原生运行验收仍待完成，服务端能力交付不改变 GUI 的 not-started 状态。
+
+| 能力 | 当前证据与状态 | GUI 可以如何推进 |
+| --- | --- | --- |
+| G16 同机连接、快照、事件、控制与重连 | 已在 main；既有合同继续适用 | 新 execution profile 复用本机认证和 attachment 边界；旧 `start_turn` 保留等待完成语义 |
+| G17 受控会话发现和显式 Hosted 工作流 | [PR #577](https://github.com/zhnt/loushang/pull/577) 已合并；[验收记录](../apphost/hosted-session-workflow-g17-acceptance-record.md) 包含 Linux/macOS/Windows 原生与独立安装证据 | GUI 如需有界 cwd/home 候选发现，显式选择 §6 的 discovery + execution 组合 profile；旧 G16 profile 不提供发现能力 |
+| 稳定执行身份与生命周期 | [PR #580](https://github.com/zhnt/loushang/pull/580) 已合并；真实 Coding/Harness Product 端口、明确 running 通知、AppService 登记/去重、独立执行容量和清理归属已交付 | 消费服务发布的 execution 状态；无输出命令也可进入 running，通信等待结束不等于执行清理完成 |
+| 执行提交、查询、定向中断与恢复协议 | [交付记录](../appservice/execution-service-delivery.md) 与 [可选客户端](../../../../src/loushang/appserver/execution/client.py) 已在 main；真实 Coding 装配可显式注入，默认构造继续保持旧行为 | B2 显式选择 execution profile，C1 对接已交付 codec、恢复参考和 JSON 样例；无需再等待 #576 服务端增量 |
+| Rust/TypeScript 客户端兼容与 GUI 原生回放 | 尚无 GUI 工程和 C1/L2 实证 | 进入 GUI 组件设计、原生工程基线与 Mock playback，不等待全部后端扩展 |
+
+[PR #580 检查](https://github.com/zhnt/loushang/actions/runs/34338671469) 在
+`ea97cd26` 上完成并通过，合并提交为 `d89c4c9f`。这是本次采用的服务端集成
+证据，不代表 GUI 的 Rust/TypeScript、桌面 IPC 或 playback 已通过。早期
+[main 定时检查](https://github.com/zhnt/loushang/actions/runs/34286885467) 的
+Windows quarantine 失败，以及交付记录中的本地 G10/G17 超时是历史记录；
+本次 CI 通过不构成这些计时差异的原因归属，也不将历史失败作为服务尚未交付的依据。
+
+开工结论：GUI 方案、独立原生界面、离线回放与 C1 可以推进；B2 按 §6 明确的
+可选 execution 合同接入。其开发不依赖 G18 完成，默认启用和 GUI 自身性能、
+恢复及三平台证据仍分别验收。
+
 ## 3. Proposed：职责与依赖
 
-```text
-React presentation and GUI-local state
-  -> UI-facing AppClient port
-       -> Mock implementation                       [offline]
-       -> Tauri bridge -> Rust AppClient             [local desktop]
-                            -> AppServer -> AppService -> Product
+下面只画依赖关系，并统一采用 `A --> B` 表示 **A 依赖 B**：
 
-Product browser plugin -> browser runtime -> independent browser window [later]
-Product presentation adapter -> GUI document/result components          [later]
+```mermaid
+flowchart LR
+    HG[HarnessGUI React presentation / local state] --> UP[HarnessClient UI port]
+    MI[Mock adapter] --> UP
+    TB[Tauri bridge adapter] --> UP
+    TB --> RA[Rust AppClient adapter]
+    RA --> AC[AppClientV1 baseline]
+    RA --> FC[Optional capability facet contracts]
+    HM[G16 detachable HarnessTUI Hosted Mux] --> AC
+    HM --> FC
+    FC --> HP[Harness semantic providers]
+    EI[Embedded HarnessTUI in-process adapter] --> HP
+    BP[Product browser plugin] --> BR[Browser runtime contract]
 ```
 
-箭头表示调用或使用契约；不是生命周期所有权转移。整个图为拟议 GUI 接入形态。
+运行时请求顺序不使用依赖箭头表达：React 先调用 UI-facing port；被选择的
+Mock 或 Tauri adapter 处理请求；本机真实路径再由 Rust AppClient 编码 App
+Contract，经过 AppServer/AppService、Product-owned resolver 和既有 AppHost
+Runtime 到达 Product。G16 Hosted Mux 使用同一 AppService/AppHost application
+但保留独立 client scope；它与 GUI 对 optional facet 使用同一合同。HarnessTUI
+Embedded 则由 Product outer composition 直接绑定 conversation，并通过 in-process
+adapter 复用相同值语义，不进入 hosted 生命周期。
 
 | 责任 | 唯一 owner | 边界 |
 | --- | --- | --- |
 | 布局、控件、文档阅读、焦点、滚动和选择 | GUI presentation | 不读取 Python Session 存储，不执行 Agent 工具 |
 | UI 事件归约与展示缓存 | GUI client state | 服务端事实可重建；草稿、选中项等本地 UI 状态单独管理 |
+| 会话、mux/member、workspace、changes/review、artifacts 和 capability 呈现 | HarnessGUI responsibility | Product-neutral；不导入 Coding/Design/Research/Work 类型，不直接读取 Git |
+| 可选 facet 的 availability、wire version 与错误 | AppService/AppContract owner | HarnessGUI 与 Hosted Mux 使用同一合同；不按前端类型分叉 |
+| Workspace/ChangeSet/Artifact 值语义、来源、revision、容量和失效 | Harness exact provider owner | `loushang.harness.workspace` 是 Git 只读事实机制；AppService 投影，不建立 GUI/TUI authority |
 | 桌面窗口、菜单、受限系统入口 | Rust desktop adapter | 不成为 Product Runtime 或第二个 AppHost |
 | wire framing、认证、请求关联和连接状态 | Rust AppClient | 不重新定义 turn、审批和 Session 语义 |
-| Session、执行、交互与恢复的权威事实 | 现有 Product/AppService owners | GUI 通过注入的契约消费 |
+| client scope、attachment、controller、detach/reattach 语义 | AppService | GUI 与 G16 Hosted Mux 是消费者；沿用 different-mux concurrency、one-controller-per-mux 和 `already_attached` |
+| canonical Product Runtime 与 hosted Session binding | 现有 AppHost | 只证明 runtime/binding 不复制；不拥有 AppService client semantics，Embedded/G15/G17 foreground 不进入共享 lifecycle |
+| Session 执行、交互、transcript 与资产事实 | Product/Harness owner | GUI 通过注入合同消费，不建立第二个 authority |
 | 浏览器启动、执行、重跑和关闭策略 | 以后由 Product 选择的浏览器 provider | 不从 GUI pane 是否可见推断浏览器进程寿命 |
 | 录制、场景执行、断言与证据输出 | GUI testing/playback support | 测试依赖不进入正常桌面发布包 |
 
-AppService 不导入 GUI/Tauri/React/Playwright。GUI 不直接读取 Coding 内部对象，
+AppService 不导入 GUI/Tauri/React/Playwright。GUI 不直接读取 Product 内部对象，
 也不建立隐藏 Python HTTP bridge、通用 RPC escape hatch 或新的插件注册体系。
-GUI 的装配根选择静态产品界面贡献；独立启停的 UI 插件以后走既有插件架构的
-相应 owner 合同，不能因为新增一个面板就创建新的运行时管理者。
+桌面 GUI 与 G16 detachable HarnessTUI Hosted Mux 共用既有 AppHost application；
+HarnessTUI Embedded 保留直接 Product/Harness 组合，G15/G17 foreground 仍由
+controller 拥有 child。共用 Host 不等于共享草稿、焦点或同 mux controller 权限，
+也不能把不同 deployment profile 折叠为同一生命周期。
+首期所有 pane 都属于 HarnessGUI。扩展 workspace、changes、artifact 等能力时，
+先扩展共享 facet 与 exact provider 合同，不能因为新增一个面板就创建新的 Product
+GUI、registry 或前端专用运行时管理者。
 
 首期 Markdown、代码和 Diff 展示采用受控渲染；文档内容不执行脚本、不获得
 Tauri 系统命令权限，链接通过显式导航策略处理。读取本地文档使用窄文件入口，
@@ -118,7 +173,7 @@ loushang/
       app/                       composition and layout
       ui/                        reusable visual/document components
       client/                    UI port, mock, reducer, bridge adapter
-      products/                  optional Product presentation adapters
+      features/                  workspace, changes, artifacts and other Harness panes
     src-tauri/
       Cargo.toml
       Cargo.lock
@@ -189,6 +244,28 @@ Linux、macOS、Windows 均可承担完整 GUI 任务：修改 Rust/React、启�
   每个系统至少建立一个具名开发基线；其他 CPU 架构单列状态，不把一个系统
   的单架构结果扩展为全架构支持。环境缺口留在对应平台任务中跟踪。
 
+### 4.2 主开发环境与交接：2026-09-09 用户方向
+
+GUI 的主要实现、交互调试与 playback 工作放在 **Windows 或 macOS 的真实图形
+环境机器**。三平台支持范围保持不变；Linux 可继续承担服务端开发、设计、静态
+检查和其平台验证。主开发机器尚未指定，本节不声称已连接或初始化任何新机器。
+
+交接先完成需求/边界与候选组件设计、可运行切片清单和仓库文档同步；原生 GUI
+实现从选定机器开始，不等 Linux 实现完毕才移交。在本机独立 clone/worktree
+中按锁文件安装工具与依赖，使用各机本地配置和凭据，禁止复制 Linux 的 `.venv`、
+`node_modules` 或 Rust 编译产物充当 Windows/macOS 环境。
+
+GUI-B0 记录实际 OS/CPU、Rust/Node、系统构建依赖、图形会话与自动化驱动配置。
+GUI-B1 的第一个原生切片就提供同一场景的本机回放入口：输入 → 流式输出 →
+中断 → 文档阅读 → 逐步断言与失败截图；至少一条经过真实 Rust IPC。此后每个
+交互切片在主开发机器边开发边回放，输入法、焦点、剪贴板与缩放另做原生检查。
+driver 是否适用必须在所选机器验证，不把浏览器 Mock 通过算成桌面通过。
+
+B2 在这台机器运行显式启用 execution 的本机 Python 服务，按 §6 接入已交付
+协议并取得 C1 兼容证据。另一桌面平台和 Linux 按原有阶段补齐各自必需证据，单机
+开发顺畅不免除三平台验证。首轮只运行 GUI 相关静态/状态/回放检查；协议改变
+才增加对应服务契约检查，不因桌面布局修改重跑所有 Python 包。
+
 ## 5. 三平台开发布局与 SSH/Linux 工作方式
 
 **Linux、macOS、Windows 均为正式开发环境；SSH/Linux 是可选的主工作方式。**
@@ -231,19 +308,55 @@ Vite 的 SSH 转发仅服务前端开发。它不意味着 G16 的 private recor
 
 ## 6. AppClient 跨语言接入与生命周期
 
-GUI-B2 固定使用 `local-detachable/v1`。Mock 阶段不依赖连接；G14 如用于独立
-诊断实验必须显式标注 foreground 生命周期，不作为 G16 自动回退路径。
+GUI-B2 首个真实接入选择 `local-detachable-execution/v1`；需要 G17 有界会话
+发现时，显式选择 `local-detachable-discovery-execution/v1`。C1 同时核对服务
+record 的封闭 capabilities、认证后的 hello 与客户端配置，禁止静默切换 profile。
+
+| 使用场景 | 连接 profile | 可用合同与兼容边界 |
+| --- | --- | --- |
+| B2 执行接入基线 | `local-detachable-execution/v1` | 既有 AppClient + 可选 ExecutionClient；不包含会话发现 |
+| B2 执行与会话发现 | `local-detachable-discovery-execution/v1` | 上述合同 + 可选 SessionDiscoveryClient；发现范围仍受 cwd/home 与权限限制 |
+| 既有 G16 客户端兼容 | `local-detachable/v1` | 保留 `start_turn` 完成语义；不提供 execution 或 discovery 扩展 |
+| 既有 G17 客户端兼容 | `local-detachable-discovery/v1` | 既有 AppClient + discovery；不提供 execution 扩展 |
+
+既有操作继续使用 `loushang.app/v1`，六个 `execution/*` 操作独立使用
+`loushang.execution/v1`。能力缺失或版本不支持时拒绝该 execution 接入，不以旧
+`start_turn` 代替提交或恢复。Mock 阶段不依赖连接；G14 仅可作为显式标注的
+foreground 诊断实验。服务端仍由开发者显式装配；真实 Coding 的可选装配方式见
+[交付记录](../appservice/execution-service-delivery.md#composition-and-protocol)，
+该接入选择不改变默认 CLI/TUI、Product 或服务构造。
+
+`AppClientV1` 保持现有 mux、member、turn、interaction 和 event 基线，不为 GUI
+改名或破坏兼容性。`HarnessClient` 表示的是可组合接口族，不是新的 service owner：
+
+- `CapabilityClientV1` 发现服务声明的 facet name、version、availability 和 limits；
+- `WorkspaceClientV1` 只读描述 workspace/repo/worktree identity 和 source revision；
+- `ChangeSetClientV1` 读取具名 change scope 与有界文本 Diff；
+- `ArtifactClientV1` 是预留可选 facet，等待 exact value contract acceptance；
+- HarnessGUI 与 G16 Hosted Mux 可消费相同 facet；Embedded 只通过 in-process
+  adapter 复用值语义，不使用 hosted attachment lifecycle。
+
+首个实现切片只包含 capability discovery、Workspace 与 ChangeSet 只读查询；不加入
+stage、discard、commit、push、branch switching、worktree creation 或 Handoff mutation。
 
 跨语言契约准备由 AppServer owner 负责，GUI 消费：
 
 - 完整请求/响应/快照/事件/错误 payload 定义，以及与 reference codec 的一致性；
+- execution 的 [model/codec](../../../../src/loushang/appserver/execution/codec.py)、
+  [JSON 样例](../../../../tests/appserver/fixtures/execution_v1.json) 和
+  [恢复参考](../../../../src/loushang/appserver/execution/recovery.py) 已交付；
+  C1 补齐 Rust/TypeScript 的独立兼容证据，样例存在不等于跨语言验证完成；
+- 由协议 owner 维护一个带版本的完整合同源，生成所需 JSON Schema、Rust/TypeScript
+  类型或绑定，避免各语言手写同一字段集合；具体生成路径在 C1 选择。生成产物
+  与合同版本/摘要绑定，只在相关合同变化时检查漂移；现有宽泛 payload Schema
+  补齐前不能直接用来声称类型完整，生成类型也不能替代下面的行为测试向量；
 - Rust 与 Python 双向测试向量：合法值、重复字段、未知字段、无效 UTF-8、越界
   整数、消息上限和错误值；类型生成不能替代 codec 行为测试；
 - framing、hello/profile、认证 transcript、完整性序号、超时、连接关闭；
 - 有界 pending 请求、普通/控制请求独立容量、单 writer 与持续运行的 response/
   event reader；等待长 turn 不得持有阻断中断、审批或读事件的客户端总锁；
 - 本机记录验证的 POSIX/Windows 原生差异与互认证，不把“能读到文件”当成准入；
-- JS 安全整数边界：cursor/revision/generation 等值在 Rust↔TypeScript bridge
+- JS 安全整数边界：cursor/revision/generation 等值在 Rust 与 TypeScript bridge
   中采用经过约定的无损表示，测试超过 `2^53 - 1` 的值；不修改既有 wire 数值语义；
 - 版本、schema/codec 兼容证据与 frontend 类型更新的联合检查。
 
@@ -251,12 +364,23 @@ UI-facing port 隐藏 transport/profile/auth 细节；Tauri bridge 只暴露所�
 浏览器 Mock 与真实 bridge 使用相同的 UI 值模型和行为样例。Rust 网络/认证模块
 不依赖 React，不把浏览器可访问凭据作为通信捷径。
 
+GUI-B1 的界面切片同时覆盖会话状态总览、文档/Diff 阅读时控制可达，以及明确的
+项目上下文与会话归属，按 [需求](gui-requirements.md) 的 GUI-FR-014 和 FR-007/010
+验收。结构化轮次/工具条目、行级反馈、系统通知按 GUI-FUT-001/002/003 后续推进；
+不将尚未提供的服务能力加到 Mock 并冒充真实接入。
+
 GUI 断开时展示 disconnected；终止当前 event reader，拒绝旧连接/attachment
-generation 的迟到事件。重新连接使用新认证、attachment 和快照屏障。不得自动
-重放发送、审批、关闭等 mutation。各操作的 Ack 按现有合同解释，`start_turn`
-Ack 保留执行完成的含义；等待期间通过 snapshot/events 展示运行状态，不虚构
-独立的接纳 Ack。断线后未收到响应的请求结果可能未知，应重新取得服务端事实，
-不能猜测 accepted/completed 或重试 mutation。
+generation 的迟到事件。重新连接使用新认证、attachment 和复合快照屏障。保存
+原 `submission_id`、精确文本、Session identity 与 `serviceInstanceId`；丢失提交
+响应时先按 submission 查询，查无记录也不自动重发。用户明确重试时只在同一
+服务实例与会话、当前权限下复用原提交和文本；实例变化保留未知结果并停止重放。
+登记保存到服务实例结束，无跨服务重启去重或执行恢复保证。
+
+`execution/submit` 返回执行记录，不等待终态；返回或重试取得的记录可能已经
+running 或终态。按 revision 合并，较迟的 accepted 响应不得覆盖较新的状态。
+`start_turn` 继续返回完成式 Ack，不能单凭 Ack 推断业务成功；审批、关闭与其他
+mutation 不自动重放。完整身份、恢复和清理语义见
+[边界合同 BC-004/006](gui-system-context-and-boundary-contract.md)。
 
 连接仍存活也可能丢失增量。UI reducer 原子安装 membership 与每个 member 的
 snapshot/cursor 屏障，按 member/session 身份追踪游标，并忽略重复事件。
@@ -266,6 +390,7 @@ snapshot/cursor 屏障，按 member/session 身份追踪游标，并忽略重复
 和已移除 member/session 的迟到事件，避免新旧快照与增量混装。
 
 以上接入义务依据 [G16](../appserver/detachable-local-workspace-g16.md)、
+[execution 交付合同](../appservice/execution-service-delivery.md)、
 [现有客户端](../../../../src/loushang/appserver/remote_client.py) 与
 [mux reducer](../../../../src/loushang/harnesstui/mux/reducer.py)；Rust 实现需
 取得自己的契约测试证据，不能仅以 Python 客户端通过替代。
@@ -294,7 +419,8 @@ GUI-B1 为三平台分别锁定验证过的 driver/provider/plugin 组合，L2 �
 提供本机入口和最小必需场景。自动化 server、backend
 execute 与 IPC Mock 入口只装配到专用测试构建；发布构建以依赖/feature 检查和
 实际产物探测证明这些入口不可用。测试构建通过不能替代发布构建的启动验收。
-L2 每个平台至少一条 canary 禁用 IPC Mock，真实经过 React → Rust invoke/event；B1
+L2 每个平台至少一条 canary 禁用 IPC Mock，真实经过 React 与 Rust invoke/event
+边界；B1
 可在 Rust AppClient port 后使用固定 fixture，B2 的 canary 则经过真实本机
 AppClient transport。脚本设置输入值、WebDriver 输入与系统原生输入分别记录，
 不能把 DOM 注入视为中文 IME、原生粘贴或系统剪贴板的证明。
@@ -380,14 +506,17 @@ GUI-B1 提交最小必需 case manifest。必需 CI gate 对 missing、skipped�
 | 里程碑 | 主要 owner | 依赖 | 可审核交付与退出条件 |
 | --- | --- | --- | --- |
 | GUI-B0 工程基线 | GUI delivery + 三平台 owners | 本方案评审；实施 issue | scope placement/目录边界、lane 管理入口、版本锁、AGENTS；三平台从独立 checkout 初始化，统一 doctor/dev/build 入口、最小 React/Tauri 构建及原生窗口启动证据 |
-| GUI-B1 独立界面与回放 | GUI presentation/testing + 三平台 owners | B0 | Mock AppClient、文档/会话 shell、三平台 L0/L1 与最小 L2、各平台真实 invoke/event canary、必需 case manifest 与失败产物；锁定 workload/预算、场景重置与测试入口隔离 |
-| GUI-C1 跨语言契约准备 | AppServer + GUI client owners | B0；可与 B1 并行 | 完整 payload 与 codec 对齐、认证/framing/record 测试向量、JS 数值 bridge、兼容与拒绝策略；不改变默认服务行为 |
-| GUI-B2 本机真实连接 | GUI client + AppService/Product owners | B1 + C1 | 三平台各自完成本机 G16 路径；创建/选择 mux、发送、流式、中断、审批、断开重连闭环；真实连接错误、单控制者与缺口屏障恢复验证；长 turn 未返回时事件/审批/中断仍可达，普通请求容量耗尽时控制请求仍可达 |
-| GUI-B3 桌面开发验收 | GUI + platform owners | B2 | 已声明平台的发布 profile 启动、L3 桌面体验及离线交互 canary；未验平台明确列缺口；开发者构建可交付 |
+| GUI-B1 独立界面与回放 | GUI presentation/testing + 三平台 owners | B0 | Mock AppClient、文档/会话 shell、三平台 L0/L1 与最小 L2、各平台真实 invoke/event canary、必需 case manifest 与失败产物；GUI 与 Hosted-Mux-shaped 双 client fixture 证明 capability/Workspace/ChangeSet 值语义、不可用降级、本地状态隔离、不同 mux 投影和同 mux `already_attached`；锁定 workload/预算、场景重置与测试入口隔离 |
+| GUI-C1 跨语言契约准备 | AppServer/AppService + GUI/Harness client owners | B0；可与 B1 并行 | §6 profile/版本与 capability 准入、完整 payload/codec 及 execution 恢复样例对齐；认证/framing/record 测试向量、JS 数值 bridge、兼容与拒绝策略；冻结 capability discovery 与 Workspace/ChangeSet identity/source/revision/limits/error schema，并证明 G16 attachment/controller 值在 Rust/前端解释一致；observer/takeover 不进入首期合同 |
+| GUI-B2 本机真实连接 | GUI client + AppService/Product owners | B1 + C1 | 三平台各自完成 §6 的本机 execution 路径；G16 Hosted Mux 与 GUI 使用同一 detachable AppHost application 并控制不同 mux；两端消费同一 provider 投影；创建/选择 mux、提交、流式、定向中断、审批、断开重连闭环；无输出 running、丢失响应查询、实例变化不重放、清理后终态、`already_attached`、normal detach 和 fresh generation/barrier 均有证据 |
+| GUI-B3 桌面开发验收 | GUI + HarnessTUI + platform owners | B2 | 已声明平台的发布 profile 启动、L3 桌面体验及离线交互 canary；保留 G16 Hosted Mux/GUI 共用同一 detachable application 的原生证据，以及 Embedded TUI 与 G15/G17 foreground lifecycle 未改变的回归；未验平台明确列缺口；开发者构建可交付 |
 
-B1 使用实际 Tauri 测试构建与 Mock/IPC fixtures，不依赖真实 AppService；其中
-每个平台至少一条 canary 保留真实 Rust invoke/event 路径。B2 使用同机 G16 和受控离线
-Product，B3 另查发布 profile。
+B1 使用实际 Tauri 测试构建与 Mock/IPC fixtures，不依赖真实 AppService；每个平台
+至少一条 canary 保留真实 Rust invoke/event 路径。双 client fixture 只证明
+GUI-FR-019 的 UI 投影与本地状态规则，不证明真实 AppHost 并发。B2 使用 §6 选定的
+同机 execution profile、同一个 G16 detachable application 和受控离线 Product；
+发现功能只在组合 profile 下验收，observer/takeover 继续是非目标。B3 另查发布
+profile、Embedded TUI 与 G15/G17 foreground omission/regression。
 各平台子任务可以并行推进；阶段整体完成要求三平台对应的必需证据齐全。
 环境未就绪的平台保持未完成并落实 owner，不阻止其他平台继续编码，也不
 以其他平台的成功替代其退出条件。

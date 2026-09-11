@@ -120,6 +120,7 @@ HARNESS_TEST_PATHS := \
 	tests/coding/test_agent_session_model_input.py \
 	tests/architecture/test_import_boundaries.py \
 	tests/architecture/test_capability_runtime_convergence_pr0.py \
+	tests/architecture/test_resource_catalog_rcp5_contract.py \
 	tests/architecture/test_composition_lifecycle_authority_cla0.py \
 	tests/architecture/test_plugin_lifecycle_plc9_baseline.py \
 	tests/architecture/test_plugin_lifecycle_plc9a1_contract.py \
@@ -176,6 +177,8 @@ APPHOST_SOURCES := \
 	src/loushang/coding/hosted_local.py \
 	src/loushang/coding/hosted_catalog.py \
 	src/loushang/coding/hosted_session.py \
+	src/loushang/coding/hosted_execution.py \
+	src/loushang/coding/_hosted_execution_work.py \
 	src/loushang/apphost \
 	src/loushang/appserver \
 	src/loushang/appservice \
@@ -206,7 +209,6 @@ APPHOST_TEST_PATHS := \
 	tests/dev/test_run_g17_installed_evidence.py \
 	tests/coding/test_hosted_client_terminal.py \
 	tests/coding/test_hosted_client.py \
-	tests/apphost/test_launcher.py \
 	tests/dev/test_run_g16_installed_evidence.py \
 	tests/architecture/test_detachable_local_workspace_g16_evidence.py \
 	tests/tui/test_text_pager.py \
@@ -234,6 +236,7 @@ APPHOST_TEST_PATHS := \
 	tests/coding/test_hosted_subprocess.py \
 	tests/coding/test_hosted_catalog.py \
 	tests/coding/test_hosted_session.py \
+	tests/coding/test_hosted_execution.py \
 	tests/coding/test_scoped_hosted_session.py \
 	tests/coding/test_hosted_session_metadata.py \
 	tests/apphost \
@@ -284,6 +287,7 @@ APPHOST_LINT_SUPPORT := \
 	tests/coding/_local_product_child.py \
 	tests/coding/_hosted_product_child.py \
 	src/loushang/coding/cli/__main__.py \
+	src/loushang/coding/cli/application.py \
 	src/loushang/harness/machine_resources/control_plane.py \
 	scripts/dev/run_g10_installed_canary.py \
 	scripts/dev/verify_evidence_manifest.py \
@@ -305,6 +309,8 @@ APPSERVICE_SOURCES := \
 	src/loushang/apphost/continuity.py \
 	src/loushang/coding/hosted_catalog.py \
 	src/loushang/coding/hosted_session.py \
+	src/loushang/coding/hosted_execution.py \
+	src/loushang/coding/_hosted_execution_work.py \
 	src/loushang/harness/transcript/jsonl_file.py \
 	src/loushang/harness/transcript/lifecycle.py \
 	src/loushang/harness/transcript/session_factory.py \
@@ -317,6 +323,14 @@ APPSERVICE_SOURCES := \
 	src/loushang/coding/hosted_continuity.py \
 	src/loushang/harnesstui/mux
 APPSERVICE_TEST_PATHS := \
+	tests/dev/test_g18_provenance.py \
+	tests/dev/test_g18_recovery.py \
+	tests/dev/test_g18_slot.py \
+	tests/dev/test_g18_bytecode.py \
+	tests/dev/test_g18_checkpoint.py \
+	tests/dev/test_g18_comparison.py \
+	tests/dev/test_measure_g18_startup.py \
+	tests/dev/test_measure_g18_native.py \
 	tests/dev/test_hosted_fixture_stdin.py \
 	tests/dev/test_hosted_debt_cleanup.py \
 	tests/dev/test_hosted_darwin_scenario.py \
@@ -368,6 +382,7 @@ APPSERVICE_TEST_PATHS := \
 	tests/coding/test_hosted_discovery.py \
 	tests/coding/test_hosted_discovery_workflow.py \
 	tests/coding/test_hosted_session.py \
+	tests/coding/test_hosted_execution.py \
 	tests/coding/test_scoped_hosted_session.py \
 	tests/coding/test_hosted_session_metadata.py \
 	tests/harness/transcript/test_session_factory.py \
@@ -544,6 +559,14 @@ test-hosted-product-g10-linux-evidence:
 check-appservice: lint-appservice typecheck-appservice test-appservice
 
 lint-appservice:
+	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/_g18_provenance.py
+	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/_g18_recovery.py
+	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/_g18_slot.py
+	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/_g18_bytecode.py
+	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/_g18_checkpoint.py
+	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/_g18_comparison.py
+	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/measure_g18_startup.py
+	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/measure_g18_native.py tests/coding/_g18_native_probe.py
 	uv --cache-dir .uv-cache run --extra dev ruff check tests/coding/_hosted_darwin_observer.py tests/coding/test_hosted_darwin_evidence.py
 	uv --cache-dir .uv-cache run --extra dev ruff check tests/coding/_hosted_darwin_witness.py
 	uv --cache-dir .uv-cache run --extra dev ruff check tests/coding/_hosted_darwin_api.py tests/coding/_hosted_owned_group.py tests/coding/_hosted_primitive_child.py tests/coding/test_hosted_darwin_primitives.py

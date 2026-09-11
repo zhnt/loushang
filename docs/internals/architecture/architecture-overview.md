@@ -176,11 +176,11 @@ placement and sibling dependencies are governed by their parent scope.
 The implemented G13 hosted-continuity slice adds an optional
 one-writer AppService coordination record under an admitted exact root. A fresh
 AppHost application recovers only desired MuxSpace/member identities and
-reopens canonical Product Sessions under the current generation. AppServer
-transport, Hosting service control, active-execution recovery and installed
-activation remain separate Target decisions. The strict store, atomic
-AppService recovery, lease-last AppHost owner and Coding current-generation
-composition remain explicit library surfaces and default-dark.
+reopens canonical Product Sessions under the current generation. G14/G16 add
+separately accepted connection and deployment contracts, tracked by
+[AppServer](appserver/README.md) and [AppHost](apphost/README.md). Their acceptance
+does not extend to broader Hosting service control, active-execution recovery
+or default activation. Those extensions require their own accepted contracts.
 
 Accepted Target directions include:
 
@@ -213,30 +213,41 @@ An accepted Target is not an implementation claim. The
 [Harness Current Owner Map](harness/current-owner-map.md) records both the
 implemented Mount runtime and the remaining Capability rollout boundaries.
 
-Unresolved proposals under `drafts/`, including broader future-v3 material,
-remain proposed until promoted by an accepted decision or canonical scope
-document.
+Unresolved proposals under `drafts/`, including broader future-V3.1 material,
+remain candidate directions until the governing owner accepts the specific
+contract through a decision or canonical scope document. The AOD's own
+accepted status does not accept those candidates. Follow the
+[Target acceptance rule](../architecture-method/README.md#target-acceptance).
 
 ## Major Current-To-Target Deltas
 
-The most important current gaps are:
+These gaps compare Current with accepted contracts. The linked ledger records
+acceptance evidence and owners; candidate extensions are kept separately.
 
 | Target | Current delta |
 | --- | --- |
-| production rollout of declared Capability bundles and refreshable dependency semantics | Planner, transactional Binder, live Runtime and read-only Projector are implemented; selected Harness and Coding capabilities remain rollout targets, and `stable_reference` refresh remains fail-closed |
-| complete durable WorkHandle/result/recovery semantics | HarnessWork has an implemented kernel but the full target remains partial |
-| capability negotiation and general interaction protocol | Channel currently provides narrower values and JSONL adapters |
-| persistent approval, remote/mixed-placement agents and managed runtime | selected local mechanisms exist; broader target remains partial or proposed |
-| Ontology source-backed write-back, reconciliation, decisions and production source connectors | ontology-owned Action planning and Fact commits are implemented; Product-hosted source mutation remains unimplemented |
-| multiple real Products validating shared abstractions | Coding remains the only installed Product entrypoint |
-| physical installation optionality | subsystems remain in one Python distribution |
-| Hosting runtime and Harness adoption | H0--H6.5b mechanisms, PLC9C5 Product/native Worker canaries, and retained Linux/Windows evidence are implemented; installed activation remains default-dark |
-| cross-Product AppHost | G8 joins A0.4 catalog/runtime mechanics to one Coding-owned exact-receipt Product adapter; G9.1--G9.2 implement the explicit composition and drill; G9.3 accepts a source-backed `RETAIN` decision; G9.4 promotes the capability default-dark; G10 implements one exact installed short-lived canary without changing normal Current routes |
-| hosted application boundary | G11 implements a strict App Contract, in-process AppService named-mux semantics, one Coding hosted Session adapter and an explicit Harnesstui profile; G12 composes an explicit foreground AppHost/Coding path; G13 adds the strict one-writer store, atomic AppService recovery, lease-last AppHost owner, Coding current-generation cwd/user-home recovery and fresh Harnesstui reattach; IPC, daemon/process continuity and installed activation remain future deltas |
+| accepted owner-scoped Capability bundle rollout | Planner, Binder, Runtime, Projector and selected production bundles are implemented; the Capability boundary records remaining Process-scoped continuity rollout; broader refresh is a candidate extension |
+| accepted observable WorkHandle and persisted typed-result boundaries | HarnessWork has an implemented kernel; these accepted boundaries remain partial, while crash-resume design requires a separate decision |
+| Ontology ARD-012 source-backed write-back and reconciliation | ontology-owned Action planning and Fact commits are implemented; Product-hosted source mutation remains unimplemented |
+| AppHost A0.5/G15 foreground launcher | G8 joins A0.4 catalog/runtime mechanics to one Coding-owned exact-receipt Product adapter; G9.1--G9.2 implement the explicit composition and drill; G9.3 accepts a source-backed `RETAIN` decision; G9.4 promotes the capability default-dark; G10 implements one exact installed short-lived canary without changing normal Current routes; later G14/G16 routes do not implement the accepted G15 launcher |
+| architecture governance coverage | generated facts and selected documentation gates exist; adoption across canonical scopes remains incremental |
 
 Detailed gaps belong to the owning scope rather than expanding this AOD.
 Cross-system deltas are indexed in the
-[Current-To-Target Gap Ledger](current-target-gap-ledger.md).
+[Current-To-Target Gap Ledger](current-target-gap-ledger.md#accepted-target-deltas).
+
+## Candidate Directions
+
+The ledger separately records
+[candidate directions](current-target-gap-ledger.md#candidate-directions),
+including a second Product, physical installation optionality, broader Channel
+protocols, crash recovery, graph refresh and activation beyond accepted routes.
+It also tracks the complete LSP/Arch scope proposals without demoting their
+already accepted individual contracts. Broader persistent-approval,
+remote/mixed-placement agent and managed-runtime proposals likewise need
+acceptance of their specific scope contracts before becoming Target deltas.
+Candidate absence is not implementation debt; rejection or deferral does not
+close an implementation gap.
 
 ## Architecture Evaluation Lens
 

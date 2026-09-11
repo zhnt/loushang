@@ -121,6 +121,7 @@ class LocalEndpointReservationV1:
         self, *, application_id: str, product_id: str, port: int,
         scopes: tuple[LocalRecordScopeV1, ...],
         session_discovery: bool = False,
+        session_execution: bool = False,
     ) -> LocalConnectionRecordV1:
         if self._closed or self._directory._closed:
             raise LocalRecordError(LocalRecordErrorCodeV1.CLOSED)
@@ -128,6 +129,7 @@ class LocalEndpointReservationV1:
             endpoint=self._endpoint, application_id=application_id, product_id=product_id,
             instance=self._instance, port=port, scopes=scopes, key=self._key,
             session_discovery=session_discovery,
+            session_execution=session_execution,
         )
         if self._published or (self._record is not None and self._record != record):
             raise LocalRecordError(LocalRecordErrorCodeV1.CONFLICT)

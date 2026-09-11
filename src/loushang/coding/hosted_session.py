@@ -64,6 +64,7 @@ class CodingRealHostedSessionV1:
         records: list[TranscriptRecordV1] = []
         remaining = _TEXT_LIMIT
         omitted = False
+        truncated = False
         for message in reversed(self._session.messages):
             record = _message_record(message)
             if record is None:
@@ -72,6 +73,7 @@ class CodingRealHostedSessionV1:
                 omitted = True
                 break
             records.append(record)
+            truncated |= len(_message_text(message)) > _TEXT_LIMIT
             remaining -= len(record.text)
         records.reverse()
         if omitted:
@@ -89,6 +91,7 @@ class CodingRealHostedSessionV1:
             revision=self._revision,
             running=self._session.is_streaming,
             records=tuple(records),
+            truncated=omitted or truncated,
         )
 
     def project_event(
@@ -129,7 +132,8 @@ class CodingRealHostedSessionV1:
                 delta = update.get("delta")
                 if isinstance(delta, str):
                     return CodingHostedEventProjectionV1(
-                        SessionEventKindV1.ASSISTANT_DELTA, _bounded(delta)
+                        SessionEventKindV1.ASSISTANT_DELTA, _bounded(delta),
+                        truncated=len(delta) > _TEXT_LIMIT,
                     )
         if payload.get("hosted_presentation") is True and kind in {
             "tool_approval_requested",
@@ -279,6 +283,17 @@ def _bounded(text: str, *, limit: int = _TEXT_LIMIT) -> str:
 def _message_record(message: object) -> TranscriptRecordV1 | None:
     if not isinstance(message, UserMessage | AssistantMessage):
         return None
+    return TranscriptRecordV1(
+        TranscriptRecordKindV1.USER
+        if isinstance(message, UserMessage)
+        else TranscriptRecordKindV1.ASSISTANT,
+        _bounded(_message_text(message)),
+    )
+
+
+def _message_text(message: object) -> str:
+    if not isinstance(message, UserMessage | AssistantMessage):
+        return ""
     content = message.content
     text = (
         content
@@ -289,12 +304,7 @@ def _message_record(message: object) -> TranscriptRecordV1 | None:
             if getattr(part, "type", None) == "text"
         )
     )
-    return TranscriptRecordV1(
-        TranscriptRecordKindV1.USER
-        if isinstance(message, UserMessage)
-        else TranscriptRecordKindV1.ASSISTANT,
-        _bounded(text),
-    )
+    return text
 
 
 def _observe_close(task: asyncio.Task[None]) -> None:
