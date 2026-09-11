@@ -6,7 +6,10 @@ Status: in progress; source candidate and paired installations frozen; exclusive
 inert A/A accepted, native stability and all A/B performance acceptance pending.
 Latest full warm A/A (`native-aa-warm-exclusive-04`) completed all 308 valid
 observations but is inconclusive: 12/41 metrics pass, 29/41 do not calibrate.
-Absent A/A and all A/B remain gated; no automatic repeat is authorized.
+Absent A/A and formal A/B acceptance remain gated; no automatic repeat is authorized.
+The user subsequently authorized a separate
+[exploratory mean A/B](startup-performance-g18-exploratory-means.md), which does
+not change this formal classification or constitute final delivery acceptance.
 Tracking: [G18 #578](https://github.com/zhnt/loushang/issues/578).
 Authority: [accepted G18 plan](startup-performance-plan.md), including its measurement,
 scheduling and facade-budget addenda. This record does not replace the thresholds.
