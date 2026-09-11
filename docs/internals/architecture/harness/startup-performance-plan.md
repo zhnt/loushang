@@ -68,7 +68,9 @@
   the reviewed single-seed diagnosis subsequently completed its two original CLI
   workflows with zero formal observations and no failure-tree capture; this
   non-reproduction result does not establish the old timeout cause or stability,
-  and automatic formal reruns remain stopped pending a reviewed condition decision;
+  a subsequent three-view condition review approved one fresh complete warm A/A
+  after the previously active peer, old tests and directory scans had exited;
+  final preflight is required and failure/inconclusive stops this attempt;
   resumed segments do not automatically qualify for performance acceptance;
   installed readiness/stability/performance acceptance pending; no push or merge;
   current progress: [Linux local delivery](startup-performance-g18-linux-delivery.md)

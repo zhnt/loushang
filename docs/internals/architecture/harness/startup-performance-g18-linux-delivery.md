@@ -1001,6 +1001,54 @@ zero formal observations and did not evaluate a comparator. This is a
 non-reproduction result, not a root-cause finding or accepted native stability;
 the diagnostic document binds its reports and next-decision boundary.
 
+### Post-cleanup exclusive warm A/A — reviewed execution decision
+
+Status: three-view pre-execution review passed with no P1/P2; final preflight is
+required before one full attempt only. The user requested
+continuation of the complete Linux acceptance plan after the bounded diagnosis.
+The basis for a new attempt is an explicit restored measurement window, not the
+single-seed success: the previously observed active peer `loushang` PID 3081809
+is now absent, as are the historical pytest jobs and directory scans. No new
+collector/test/compiler workload was found. This task will run no reviews,
+tests, builds or diagnostic samplers alongside formal collection. Continue the
+user-coordinated exclusive-window arrangement; other services and the controller
+still exist, so this is not OS-enforced isolation or a causal explanation of the
+old timeout.
+
+Current free space is 8,756,980 KiB (8.35 GiB), above the reviewed 2.1 GiB
+per-attempt capacity requirement. The two vmstat interval rows show 76%/87%
+idle, 12/8 KiB swap-in and no swap-out, unlike the busy launch snapshot of the
+failed checkpoint-03. These are descriptive observations, not newly invented
+performance gates or a guarantee of stability. Record another final capacity,
+process and resource snapshot after all reviews/checks finish and before launch;
+do not poll until a preferred snapshot appears or launch if competing work has
+resumed. Capture a post-collection snapshot outside the measurement window.
+
+Use fresh output `.artifacts/g18-linux-delivery/native-aa-warm-exclusive-04`,
+new private parent environment, `/var/tmp` scratch and newly provisioned slot.
+Retain the same frozen A source/wheel on both sides, A/A2 reference installations,
+fixed independent observer and hashed requirements. Tools remain the reviewed
+`eaa082a4` implementation (only documentation changed afterward). Run original
+`--fixed-slot --cache-mode warm --checkpoint`, all seven cases, two blocks and
+ten pairs per block: 308 observations, including 28 warmups, and all 41 metrics.
+Keep original seeds/resets/cache semantics, side alternation and reversed second
+block, PTY predicates, deadlines, ownership and pre/post provenance checks.
+
+Do not pass `--seed-preparation-diagnostic`, `--resume` or `--pause-after`. The
+new failure-tree instrumentation remains off in formal mode. No historical
+failed/diagnostic state is resumed, copied, relabeled, or mixed into the report.
+If a controlled pause is actually requested, preserve the safe checkpoint but
+do not automatically resume for acceptance; the separate segmented-calibration
+restriction still applies. The intended full attempt is uninterrupted.
+
+Failure or a complete `inconclusive` comparison ends this attempt and preserves
+all evidence. No repeated seed probe, full retry, selective replay, threshold
+change or automatic A/B is authorized. A complete pass still requires independent
+three-view evidence audit before acceptance. Only afterward may absent A/A be
+separately planned; all original A/A conditions must be accepted before required
+inert/native A/B. The full goal, no-push/no-merge boundary and pending native/A/B
+checklist are unchanged.
+
 ## Bounded Order/Import Diagnosis — Pre-Execution Review
 
 Independent raw-data review reproduced all ten comparator results and verified
