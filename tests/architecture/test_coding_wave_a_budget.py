@@ -19,6 +19,7 @@ G14_PRODUCT_SLICE = frozenset(
 G16_PRODUCT_SLICE = frozenset({"hosted_bootstrap.py", "hosted_local.py", "cli/mux.py"})
 G17_PRODUCT_SLICE = frozenset({"cli/hosted_client.py"})
 G18_FACADE_SLICE = frozenset({"__init__.py"})
+EXECUTION_PRODUCT_SLICE = frozenset({"hosted_execution.py", "_hosted_execution_work.py"})
 
 APPROVED_SLICES = {
     "g10": G10_PRODUCT_SLICE,
@@ -29,6 +30,7 @@ APPROVED_SLICES = {
     "g16": G16_PRODUCT_SLICE,
     "g17": G17_PRODUCT_SLICE,
     "g18": G18_FACADE_SLICE,
+    "execution": EXECUTION_PRODUCT_SLICE,
 }
 
 
@@ -76,13 +78,16 @@ def test_coding_package_stays_within_wave_a_budget() -> None:
     g18_core_allowance = 87 + 185 + 16 + 11
     assert sum(groups["core"].values()) <= 33_686 + g18_core_allowance, groups["core"]
     assert sum(groups["g10"].values()) <= 1_800, groups["g10"]
-    assert sum(groups["g11"].values()) <= 400, groups["g11"]
+    # Preserve main's optional execution projection allowance.
+    assert sum(groups["g11"].values()) <= 420, groups["g11"]
     assert sum(groups["g12"].values()) <= 800, groups["g12"]
     assert sum(groups["g13"].values()) <= 350, groups["g13"]
     assert sum(groups["g14"].values()) <= 1_300, groups["g14"]
     assert sum(groups["g16"].values()) <= 900, groups["g16"]
     assert sum(groups["g17"].values()) <= 450, groups["g17"]
     assert sum(groups["g18"].values()) <= 200, groups["g18"]
+    assert sum(groups["execution"].values()) <= 400, groups["execution"]
+    assert max(groups["execution"].values()) <= 250, groups["execution"]
 
 
 def test_unapproved_files_stay_in_core_and_every_file_is_counted_once() -> None:

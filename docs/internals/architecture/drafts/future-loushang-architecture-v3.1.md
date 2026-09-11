@@ -1,55 +1,75 @@
-# Loushang Future Target Architecture v3
+# Loushang Future Target Architecture V3.1
 
 [Architecture](../README.md) · [Drafts](README.md) ·
-[Open SVG](../future-loushang-architecture-v3.svg)
+[Open SVG](../future-loushang-architecture-v3.1.svg) ·
+[HarnessGUI System Context](gui-system-context-and-boundary-contract.md)
 
 ## Status
 
 Status: proposed target architecture.
 
-This document explains the decisions and invariants shown in the v3 diagram.
-It is not a description of the current Python package or public API surface and
-does not authorize creating AppService, a daemon, WebSocket transport, a relay,
-or distributed state synchronization ahead of an accepted delivery
-requirement.
+Revision: V3.1 replaces the former V3.0 target artifacts. The V3.0 Markdown,
+SVG, and PNG paths are removed rather than retained as a parallel architecture.
+
+V3.1 aligns the future target with the accepted AppServer, AppService, AppHost,
+G16 detachable workspace, G17 hosted-session, and Execution V1 boundaries. It also carries
+the proposed HarnessGUI black-box boundary forward as a target client profile.
+That inclusion does not by itself accept a GUI package, framework, optional
+HarnessClient facet, or public API.
+
+This document explains the decisions and invariants shown in the V3.1 diagram.
+It is not a complete description of the current Python package or public API
+surface. Existing AppServer/AppService/AppHost contracts remain governed by
+their accepted decisions; proposed GUI, optional client facets, cloud,
+WebSocket, relay, and distributed-state behavior still require their own
+accepted delivery requirements.
 
 Current code, tests, and accepted ARDs remain authoritative. When this document
 conflicts with them, the live source wins until a later ARD explicitly accepts
 the target decision.
 
-![Loushang future target architecture v3](../future-loushang-architecture-v3.svg)
+![Loushang future target architecture V3.1](../future-loushang-architecture-v3.1.svg)
 
-The overview deliberately shows only coarse Product and Harness Capability
-boundaries. Product resolver/factory contracts and the explicit choice between
-Session-turn and Work submission semantics remain in the prose below; they are
-not repeated in the diagram. Capability-internal Binding Facets are also left
-out of the overview.
+The overview separates interaction/physical connection from scope dependency.
+In architecture diagrams an arrow always means `A --> B`: **A depends on B**.
+Runtime request and event order is described with numbered steps rather than a
+second arrow meaning. Programming-language return annotations and API
+signatures are not architecture arrows.
+Product resolver/factory contracts, Session-turn versus Work submission, and
+Capability-internal Binding Facets remain in the prose below.
 
 ## Purpose
 
-The target architecture supports two operating shapes without creating two
-execution models:
+The target architecture supports three client/deployment profiles without
+creating competing Product or Harness semantics:
 
 - a small local Product TUI may bind Harnesstui directly to one embedded Product
   runtime and Harness instance;
-- a daemon or cloud application host retains live Sessions and admitted Work
-  runs while TUI, WebUI, IDE, and P2P peers attach, disconnect, and resume.
+- a G16 detachable local application may retain live Sessions and admitted Work
+  while HarnessGUI and HarnessTUI Hosted Mux attach through separate AppClient
+  scopes; and
+- a later daemon or cloud deployment may expose the same admitted App Contract
+  to WebUI, IDE, mobile, or P2P peers after its trust decisions are accepted.
 
-Both shapes reuse the same Product definitions, factories, Harness contracts,
+All profiles reuse the same Product definitions, factories, Harness contracts,
 and Product-owned semantics. They do not share a mutable Session or Work runtime
 instance across process boundaries.
 
+HarnessGUI is a presentation client, not a Desktop GUI Host. HarnessTUI Hosted
+Mux and HarnessGUI can share one detachable hosted application without sharing
+drafts, focus, scroll state, attachment generations, or control authority.
+HarnessTUI Embedded remains a separate Product-owned composition and bypasses
+AppServer, AppService, and AppHost.
+
 The primary mobile story is:
 
-```text
-Local Daemon starts a Coding Session
-  -> phone attaches through an AppClient
-  -> phone submits work and later disconnects
-  -> Session / Work continues in the Daemon
-  -> phone reconnects from a new attachment
-  -> AppService returns a snapshot plus subsequent events
-  -> the current controller handles any new approval interaction
-```
+1. A local daemon starts a Coding Session.
+2. A phone attaches through an AppClient.
+3. The phone submits work and later disconnects.
+4. The Session or Work continues in the daemon.
+5. The phone reconnects from a new attachment.
+6. AppService returns a snapshot plus subsequent events.
+7. The current controller handles any new approval interaction.
 
 ## Core Decisions
 
@@ -64,8 +84,11 @@ but each owns independent mutable state, cancellation, transcript bindings,
 approval presentation, and lifecycle.
 
 The Product registry is therefore a narrow `ProductResolver`, not a runtime
-service locator and not a capability-routing god object. AppService consumes
-resolved Product ports; it does not import Coding, Research, PPT, or Design.
+service locator and not a capability-routing god object. AppHost uses the
+resolver to own canonical admitted Product runtime bindings. The outer hosted
+application composition injects narrow AppHost-backed Product ports into
+AppService; AppService imports neither AppHost nor Coding, Research, PPT, or
+Design.
 
 The target type shape is deliberately small. The names below are conceptual,
 not current public API:
@@ -90,9 +113,9 @@ class ResolvedProductDefinition:
 Resolution returns one immutable typed definition, never `dict[str, Any]`.
 Identity and capability views are safe to cache. Each factory invocation
 creates a new runtime binding; it cannot return a process-global mutable
-Session, executor, Approval presenter, or Work runtime. The exact Product
-binding protocols should be named only when the first AppService vertical slice
-proves their required methods.
+Session, executor, Approval presenter, or Work runtime. Exact Product binding
+protocols evolve only through the governing AppHost and Product decisions, not
+through presentation-specific shortcuts.
 
 ### 2. Select Session or Work semantics explicitly
 
@@ -103,8 +126,8 @@ operations:
 
 | Operation | Meaning | Route |
 |---|---|---|
-| `session_turn` / `run_once` | A lightweight interaction with no durable business commitment | Product conversation binding -> Harness |
-| `submit_work` | An accepted business intent requiring a queryable, replayable terminal outcome | Product work preparer -> Work -> Product executor -> Harness |
+| `session_turn` / `run_once` | A lightweight interaction with no durable business commitment | via Product conversation binding and Harness |
+| `submit_work` | An accepted business intent requiring a queryable, replayable terminal outcome | via Product work preparer, Work, Product executor and Harness |
 
 The standard Coding Channel `SubmitCodingTurn` adapter is a Work operation and
 uses the second route. A local lightweight Coding prompt may use the first
@@ -145,7 +168,7 @@ be exposed as one of three progressively stronger capabilities:
 An execution may have progress without requiring one stateful server process,
 and an asynchronous `RunRef` does not imply an attachable Agent session. Job
 state may live in a queue or store and be served by interchangeable instances.
-V3 therefore does not define one universal provider containing `invoke`,
+V3.1 therefore does not define one universal provider containing `invoke`,
 `submit`, `attach`, `send`, `inspect`, `cancel`, and `close`.
 
 The LSP analogy applies only to the local-client/remote-service boundary. The
@@ -155,13 +178,10 @@ schema is not the wire protocol. The client adds protocol version, request and
 caller identity, idempotency, authorization scope, and event cursor fields that
 the model must not control.
 
-```text
-local Agent
-  -> admitted tool
-  -> capability client
-  -> stdio JSON-RPC | IPC | HTTP | gRPC | A2A adapter
-  -> remote capability service
-```
+The dependency direction is: local Agent depends on an admitted tool; the tool
+depends on a capability client; the client depends on its selected stdio
+JSON-RPC, IPC, HTTP, gRPC, or A2A adapter; and that adapter depends on the remote
+capability service.
 
 The first collaboration implementation binds one explicitly selected provider
 for a Session-scoped collaboration Capability: either the current local
@@ -200,7 +220,7 @@ job lifecycle, or new multi-agent runtime abstraction.
 Model capability may absorb more planning, decomposition, reflection, context
 selection, generic verifier prompting, and tool-selection heuristics over time.
 Those features are model-contingent cognitive scaffolds, not durable system
-authority. V3 therefore does not grow the Agent loop or AppService around the
+authority. V3.1 therefore does not grow the Agent loop or AppService around the
 current limitations of a particular model generation.
 
 The stable Loushang substrate owns invariants that remain necessary even when a
@@ -227,19 +247,12 @@ bindings.
 
 Planning and verification each have a durable and a disposable form:
 
-```text
-plan as cognitive aid
-  -> replaceable model strategy
-
-plan as coordination / approval / resume / audit contract
-  -> Product binding and Work-owned fact after acceptance
-
-self-verification prompt or fixed verdict format
-  -> replaceable model strategy
-
-compiler / test / scanner / independent-environment evidence
-  -> Product-interpreted evidence correlated by Work
-```
+| Form | Architectural treatment |
+|---|---|
+| plan as cognitive aid | replaceable model strategy |
+| plan as coordination / approval / resume / audit contract | Product binding and Work-owned fact after acceptance |
+| self-verification prompt or fixed verdict format | replaceable model strategy |
+| compiler / test / scanner / independent-environment evidence | Product-interpreted evidence correlated by Work |
 
 At the Method boundary, the durable rule is: **Method specifies what must hold;
 the model decides how to achieve it.** Method owns reusable roles,
@@ -270,44 +283,98 @@ coordination, the feature stays outside the stable substrate.
 Model capability may swallow Agent cognition; it must not swallow authority,
 effect control, evidence, persistence, coordination, or Work truth.
 
+### 6. Separate presentation, application coordination, and runtime hosting
+
+V3.1 makes four previously compressed boundaries explicit:
+
+| Boundary | Owns | Must not own |
+|---|---|---|
+| HarnessGUI / HarnessTUI | window or terminal interaction, layout, rendering, drafts, focus, scroll and client-local recovery UX | Product runtime, Session truth, AppHost lifecycle, Git truth or tool authority |
+| AppServer | endpoint publication, connection admission, authentication, framing, limits and transport lifecycle | Mux/Session semantics, Product resolution, Agent execution or presentation |
+| AppService | Mux/member, attachment, controller, detach/reattach, snapshots, revisions and client-safe request/event/interaction routing | AppHost construction, Product policy, Harness execution or UI state |
+| AppHost | canonical admitted Product catalog/routing and scoped Product runtime binding lifecycle | AppServer transport, AppService coordination semantics or GUI/TUI rendering |
+
+The outer hosted application composition is the lifecycle owner that constructs
+and injects these parts. Sharing one process does not collapse their ownership.
+AppService depends on an injected hosted Product port; a Product-owned hosted
+binding uses AppHost canonical routing. AppServer depends on an injected
+connection-scoped semantic client. No core scope imports a presentation.
+
+`AppClientV1` is the stable conversation/control client boundary. The accepted
+optional `ExecutionClientV1` adds explicit execution identity, status, query,
+interrupt and recovery behavior without changing the base client. Proposed,
+versioned HarnessClient facets may later project capabilities, workspace,
+changes and artifacts. An optional client or facet is not a new service owner:
+AppService owns its wire availability, while the exact Product or Harness
+provider owns the fact.
+
 ## Client And Process Profiles
+
+### G16 detachable hosted profile
+
+```text
+dependency direction: A --> B means A depends on B
+
+HarnessGUI -----------------------> AppClientV1 + optional ExecutionClientV1 / HarnessClient facets
+HarnessTUI Hosted Mux ------------> AppClientV1 + optional ExecutionClientV1 / HarnessClient facets
+client adapters ------------------> App Contract / local transport
+AppServer ------------------------> connection-scoped semantic client
+AppService -----------------------> injected HostedSessionPort
+Product-owned hosted binding -----> AppHost
+AppHost --------------------------> admitted Product runtime
+Product runtime ------------------> Harness
+Harness --------------------------> Agent / admitted tool boundary
+Agent ----------------------------> AI
+```
+
+HarnessGUI and G16 detachable HarnessTUI Hosted Mux may connect to the same
+hosted application. Each connection has its own AppClient scope, attachment
+generation, cursor and local presentation state. They may control different
+Muxes; a second attachment to the same Mux remains subject to the AppService
+controller contract and does not silently become an observer or takeover.
+
+The hosted request sequence is: (1) client, (2) admitted AppServer endpoint,
+(3) AppService, (4) injected Product-owned hosted binding, (5) AppHost canonical
+runtime, (6) Product and (7) Harness/Agent/AI/tools. Results and events return
+through the same owned boundaries.
+
+Normal client detach does not stop the G16 application or accepted execution.
+G15/G17 foreground launchers remain a different deployment profile: their
+controller owns and settles the child application, so they are not used as the
+shared HarnessGUI backend.
 
 ### Embedded TUI profile
 
 ```text
-Product TUI composition
-  -> Harnesstui
-  -> Conversation UI binding
-  -> Embedded Product runtime
-  -> per-Session Harness instance
+dependency direction: A --> B means A depends on B
+
+HarnessTUI Embedded -------------> Product-owned embedded composition
+embedded composition ------------> per-Session Harness runtime
+Harness runtime -----------------> Agent / admitted tool boundary
+Agent ---------------------------> AI
 ```
 
-The binding chooses its backend at startup. Harnesstui continues to own terminal
-input, layout, rendering, local surfaces, and playback.
+HarnessTUI continues to own terminal input, layout, rendering, local surfaces,
+and playback. The Product-owned composition binds the embedded conversation
+directly and bypasses AppServer, AppService, and AppHost. An in-process adapter
+may reuse compatible workspace/change value semantics, but it does not acquire
+hosted attachment, controller, detach or reattach lifecycle.
 
-An embedded Product may persist a local transcript, but v3 defines no automatic
+An embedded Product may persist a local transcript, but V3.1 defines no automatic
 sync, merge, or runtime handoff to a daemon. The embedded profile is therefore
 local-only and non-migratable. A Session that must survive the foreground
-process or support multi-device attach uses AppService from the beginning,
-possibly through an in-process `AppClient` before a daemon exists.
-The default-native-TUI delivery choice in
+process or support multi-device attach starts in a hosted profile. The
+default-native-TUI delivery choice in
 [AppService Hosted Boundary With An Embedded TUI](appservice-embedded-tui-hosted-boundary-plan.md)
 keeps this as an explicit Product election rather than the default local path.
 
-### Hosted profile
+### Later remote-client profile
 
-```text
-TUI / WebUI / IDE / P2P peer
-  -> AppClient contract
-  -> versioned App protocol
-  -> endpoint adapter
-  -> AppService
-  -> resolved Product Session or Work port
-```
-
-The Application Host may be a local daemon or a cloud AppServer. Deployment
-changes placement, isolation, admission, and credentials; it does not change
-Product, Work, or Harness semantics.
+A daemon or cloud deployment may later admit WebUI, IDE, mobile, or P2P peers
+through the same App Contract. AppServer remains the transport/admission edge;
+AppService remains the application coordinator; AppHost remains the canonical
+Product runtime/binding host. Deployment changes placement, isolation,
+admission and credentials without changing Product, Work or Harness semantics.
 
 Client processes own presentation and user interaction only. A P2P peer is a
 remote application peer for pairing, attach, resume, and notification. It is
@@ -334,6 +401,15 @@ values cover, initially:
 Protocol values are client-safe projections, not serialized SessionFacade,
 Product runtime, or widget objects.
 
+The base `AppClientV1` remains useful when no optional execution client or facet
+is available. Accepted connection profiles may negotiate `ExecutionClientV1`;
+capability discovery may advertise separately versioned HarnessClient facets
+for workspace, changes, artifacts, or other proven capability families. Unknown,
+incompatible, withdrawn, or stale-generation facets fail closed without
+breaking the base conversation/control contract. HarnessGUI and HarnessTUI
+Hosted Mux consume the same provider-owned value semantics; presentation type
+does not select a different source of truth.
+
 ### Channel
 
 `loushang.channel` remains a narrower operation/event boundary. It carries
@@ -346,29 +422,37 @@ not the transport behind every `AppClient` request and does not become a
 universal UI command bus. AppService consumes injected Channel/Work ports where
 the operation requires them and direct Session ports where it does not.
 
-### Transport
+### Transport and AppServer
 
 In-process calls, local IPC, HTTP/WebSocket, P2P direct connections, and relay
 fallback are transport adapters over admitted protocol values. They own
 framing, connection lifecycle, limits, and delivery mechanics. They do not own
 Session commands, Product discovery, Work state, approval policy, or UI layout.
 
+AppServer is the admitted endpoint owner over those transports. It publishes
+and revokes endpoint records, authenticates and fences a connection, constructs
+its bounded client scope, and dispatches only to an injected semantic client.
+It does not resolve Product runtimes or become AppService/AppHost.
+
 ### Duplex direction
 
 Client input and server delivery are separate directions even when one duplex
 connection carries both:
 
-```text
-client input
-  AppClient -> transport -> endpoint -> AppService
-    -> Product Session port -> Harness                  # session_turn
-    -> Product Work port -> Work -> Product executor   # submit_work
+Client input is processed in this runtime order:
 
-server delivery
-  Harness / Work facts -> Product projection -> AppService
-    -> endpoint -> transport -> AppClient
-       events / snapshots / interaction requests
-```
+1. AppClient, transport and AppServer admission;
+2. the connection-scoped AppService client;
+3. either the Product Session port and Harness for `session_turn`, or the
+   Product Work port, Work and Product executor for `submit_work`.
+
+Server delivery is processed in this runtime order:
+
+1. Harness or Work emits facts;
+2. Product projects client-safe values;
+3. AppService orders and routes them; and
+4. AppServer and transport deliver events, snapshots or interaction requests
+   to AppClient.
 
 Only payload families admitted by the Channel contract use a Channel endpoint.
 Neither `session_turn` nor `submit_work` is forced through Channel merely
@@ -396,35 +480,36 @@ AppService does not own:
 - Product prompts, tools, artifact semantics, or event vocabulary;
 - approval futures, timeout, fallback, cancellation, or decision policy; or
 - terminal, WebUI, IDE, or mobile rendering.
+- AppServer endpoint/connection lifecycle or AppHost runtime lifecycle.
 
 Host infrastructure may add resource admission, a live Session routing table,
 execution dispatch, workers, and bounded outbound delivery. Execution remains
 serialized within one Session while independent Sessions may run concurrently.
 
-At composition time AppService receives an explicit `ProductResolver` plus
-host-owned providers for admitted Session, Work, and optional Channel ports.
-The exact provider protocols remain part of the first vertical slice; the
-invariant is that AppService never consults a global registry, imports a
-Product implementation Python package, or performs provider discovery while
-dispatching a request.
+At composition time the outer hosted application resolves the Product and
+constructs an AppHost-backed hosted binding. AppService receives narrow
+providers for admitted Session, Work, and optional Channel or HarnessClient
+facet ports. The invariant is that AppService never consults a global registry,
+imports AppHost or a Product implementation Python package, or performs
+provider discovery while dispatching a request.
 
-The host maintains a live Session routing table, not a filesystem directory or
-persistent Session catalog.
+AppHost maintains canonical admitted Product runtime/binding identity. Hosted
+application infrastructure may maintain a live Session routing table, not a
+filesystem directory or persistent Session catalog. AppServer remains outside
+both authorities.
 
 ## Method, Work, Harness, Agent, And AI
 
-The semantic ownership chain is:
+The semantic execution sequence is:
 
-```text
-MethodPlan
-  -> Product Work Preparer
-  -> WorkRunSpec / future WorkPlanSpec
-  -> Work
-  -> Product WorkDomainExecutor
-  -> Harness
-  -> Agent
-  -> AI
-```
+1. MethodPlan;
+2. Product Work Preparer;
+3. WorkRunSpec or a future WorkPlanSpec;
+4. Work;
+5. Product WorkDomainExecutor;
+6. Harness;
+7. Agent; and
+8. AI.
 
 Method owns reusable ways of working, constraints, expected artifacts, and plan
 preparation. A MethodPlan returns to the Product work preparer because Product
@@ -451,8 +536,11 @@ independent of Harness and Product code.
 The overview uses stable owner-level Capability IDs. Its initial Harness
 boundaries are `harness.workspace`, `harness.resources`, and
 `harness.session`; Product-owned examples include `coding.lsp` and
-`coding.arch`. A Capability Plan node is an ID and its declared requirements,
-while a live runtime node is a Mounted Capability bound to a concrete scope.
+`coding.arch`. Repository identity, branch, worktree and diff/change facts are
+generic `harness.workspace`/change-provider concerns rather than GUI or Coding
+presentation state. A Capability Plan node is an ID and its declared
+requirements, while a live runtime node is a Mounted Capability bound to a
+concrete scope.
 Product, Plugin, Package, and Extension identities remain composition,
 provenance, delivery, or admission facts rather than graph nodes.
 
@@ -492,7 +580,7 @@ a Session.
 
 ### Method visibility in clients
 
-V3 does not add `MethodPlanStatus` or `MethodStepStatus` to the base App
+V3.1 does not add `MethodPlanStatus` or `MethodStepStatus` to the base App
 protocol. When a Product first needs to render method progress, its projection
 may derive a Product-facing application view from Method identity and
 Work-owned plan/step facts. Harnesstui consumes that view without importing the
@@ -513,12 +601,12 @@ Authority remains with the semantic owner:
 | Client snapshot and revision | AppService projection | Derived from authoritative Session/Work state; it is not a second transcript store |
 | Work run, events, replay, and Work-correlated artifacts | Work event log | Required only for admitted Work |
 | Method resources and reusable definitions | Method catalog | MethodPlan execution facts belong to Work |
-| Workspace files and sandbox mechanism | Harness/workspace boundary | Product owns content and validation |
-| Product artifact meaning and materialization | Product | A lightweight Session output need not become a Work `ArtifactRef` |
+| Workspace, repository, branch, worktree and change/diff facts | Harness workspace/change provider | AppService/App Contract may project bounded client-safe values; Product owns content meaning and validation; presentation never reads Git as an authority |
+| Product artifact meaning and materialization | Product, with Work owning Work-correlated references | A lightweight Session output need not become a Work `ArtifactRef`; a client facet is only a projection |
 | Session approval audit events | Harness event source plus an optional Product/Host retention sink | Runtime delivery is observable but not durable by default |
 | Attachment, lease, device, and idempotency records | AppService control plane | These are application coordination facts, not transcript facts |
 
-There is no v3 state-merge protocol between an embedded Session and a hosted
+There is no V3.1 state-merge protocol between an embedded Session and a hosted
 Session. Import or migration, if later required, must be an explicit Product
 operation with conflict and identity semantics; it must not be an accidental
 side effect of attach.
@@ -557,7 +645,7 @@ was admitted through Work. Harness currently emits session-scoped tool approval
 request/resolution runtime events, so a lightweight approval is correlated and
 observable without inventing a WorkRun.
 
-Runtime events are not, by themselves, a durable audit log. V3 does not require
+Runtime events are not, by themselves, a durable audit log. V3.1 does not require
 approval decisions to be inserted into transcript records, copied into every
 client snapshot, or written to a second approval store. If a Product or
 deployment requires historical compliance queries outside Work, it must bind an
@@ -595,7 +683,7 @@ cloud implementation is accepted.
 
 ## Explicit Non-Goals
 
-The v3 target does not require:
+The V3.1 target does not require:
 
 - routing every Product turn through Work or Method;
 - turning Channel into the universal App protocol;
@@ -608,33 +696,43 @@ The v3 target does not require:
 - treating every remote Agent call as a stateful collaboration Session;
 - one universal remote-Agent interface or a mandatory `AgentExecutionPort`;
 - Product imports inside AppService; or
-- one universal Product runtime binding capable of arbitrary injection.
+- one universal Product runtime binding capable of arbitrary injection;
+- a second Desktop GUI Host beside AppHost;
+- Product-specific Coding, Design, Research, PPT, or Work GUI classes; or
+- direct GUI/TUI ownership of repository, worktree, diff, artifact, model,
+  browser, provider, or tool facts.
 
 ## Staged Delivery
 
-The overview sequence below is subordinate to the detailed phase gates in
-[Application Service Refactor](application-service-refactor.md):
+The V3.1 delivery sequence starts from the accepted AppServer/AppService/AppHost
+and G16/G17 baseline and remains subordinate to governing ARDs:
 
-1. Preserve the direct embedded Product/Harnesstui/Harness path, finish the
-   narrow Product runtime contracts, and complete a checked inventory of every
-   server-backed Harnesstui capability. Each item must map to an App command,
-   read model/event, interaction, or explicitly local UI operation.
-2. Extract the smallest versioned App protocol slice and its semantic contract
-   tests. Do not hide unmodeled capabilities in a generic dictionary command.
-3. Introduce AppService and `InProcessAppClient`; add one ordered server-output
-   path only when duplex ordering requires it.
-4. If a Product elects AppClient as its Harnesstui backend, migrate only after
-   the capability inventory closes. The migrated binding retains no concrete
-   Session side door.
-5. Add the local daemon and IPC transport so Sessions outlive one foreground
-   client and support attach/detach.
-6. Add snapshot revision, bounded delivery, cursor handling, and
-   `SnapshotRequired` before promising reliable mobile reconnect.
-7. Add WebUI/IDE and managed-channel adapters over the same App Contract.
+1. Preserve the direct Embedded TUI path and the accepted G16 detachable and
+   G15/G17 foreground lifecycle distinctions. Do not migrate or merge their
+   mutable Session runtimes.
+2. Accept the HarnessGUI scope and component placement before adding a GUI
+   package. Keep the native desktop process presentation-only and use the
+   existing G16 detachable hosted application.
+3. Preserve the accepted optional Execution V1 profile and freeze the smallest
+   optional HarnessClient capability-discovery and
+   workspace/change value contracts, including source identity, version,
+   revision, bounds, invalidation and closed errors. Keep `AppClientV1` usable
+   when these facets are absent.
+4. Implement one read-only workspace/change vertical slice through the exact
+   Harness provider, AppService projection, App Contract and both HarnessGUI
+   and Hosted Mux adapters. Neither client reads Git directly.
+5. Prove two clients against one G16 application: different-Mux concurrency,
+   one controller per Mux, `already_attached`, normal detach without stop,
+   cursor/revision recovery, stale-generation rejection and presentation-state
+   isolation.
+6. Add HarnessGUI navigation, conversation, changes/review, artifacts and
+   environment/status panes only from accepted client-safe projections.
+7. Add WebUI/IDE or managed-channel adapters over the same App Contract only
+   after a consuming requirement is accepted.
 8. Add cloud tenant isolation, authorization, credential policy, usage
-   attribution, quotas, and worker admission before multi-tenant deployment.
+   attribution, quotas and worker admission before multi-tenant deployment.
 9. Add P2P direct transport and relay fallback only after identity, pairing,
-   authorization, and reconnect semantics are stable.
+   authorization and reconnect semantics are stable.
 
 Two capabilities have independent gates rather than mandatory phase numbers:
 
@@ -657,6 +755,12 @@ interaction.
 
 - [Application Service Refactor](application-service-refactor.md)
 - [AppService Hosted Boundary With An Embedded TUI](appservice-embedded-tui-hosted-boundary-plan.md)
+- [HarnessGUI System Context And Boundary Contract](gui-system-context-and-boundary-contract.md)
+- [G16 Detachable Local Workspace](../appserver/detachable-local-workspace-g16.md)
+- [G17 Hosted Session Workflow](../apphost/hosted-session-workflow-g17.md)
+- [Execution Contract](../appservice/execution-contract.md)
+- [Execution Service Delivery](../appservice/execution-service-delivery.md)
+- [AppHost Architecture](../apphost/README.md)
 - [Agent, Harness, And Product Adapters](../agent/ARD-001-agent-harness-and-product-adapters.md)
 - [Harness Product Runtime Core Boundary](../harness/product-runtime-core-boundary.md)
 - [Capability Dependency And Mount Lifecycle](../harness/capability-dependency-and-mount-lifecycle.md)

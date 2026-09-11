@@ -3,11 +3,24 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass
 from typing import TypeVar, cast
 
 from .client import SessionDiscoveryClientV1
+from .execution.codec import (
+    decode_execution_hello,
+    encode_call,
+    is_execution_frame,
+)
+from .execution.codec import decode_response as decode_execution_response
+from .execution.model import (
+    ExecutionCallV1,
+    ExecutionFailureV1,
+    ExecutionServiceErrorV1,
+)
+from .execution.remote import RemoteExecutionClientV1
 from .framing import (
     AppConnectionClosedError,
     AppFramedStreamV1,
@@ -52,6 +65,7 @@ from .protocol.connection_profile import (
     AppConnectionProfileV1,
     connection_hello,
     require_profile_operation,
+    supports_execution,
     supports_session_discovery,
 )
 from .protocol.stdio_profile import (
@@ -65,9 +79,11 @@ _Result = TypeVar("_Result", bound=AppResultPayloadV1)
 
 @dataclass(frozen=True, slots=True)
 class _Pending:
-    future: asyncio.Future[AppResultPayloadV1]
+    future: asyncio.Future[object]
     result_type: type[object]
     control: bool
+    execution: bool = False
+    allow_missing: bool = False
 
 
 class RemoteAppClientV1:
@@ -78,7 +94,7 @@ class RemoteAppClientV1:
         phase_timeout: float = 10.0,
     ) -> None:
         require_timeout(phase_timeout)
-        self._hello = connection_hello(profile)
+        self._hello = b"" if supports_execution(profile) else connection_hello(profile)
         self._profile = profile
         self._stream = stream
         self._timeout = phase_timeout
@@ -92,6 +108,11 @@ class RemoteAppClientV1:
         self._started = False
         self._ready = False
         self._closed = False
+        self._execution_client: RemoteExecutionClientV1 | None = None
+
+    @property
+    def execution_client(self) -> RemoteExecutionClientV1 | None:
+        return self._execution_client if self._ready and not self._closed else None
 
     @property
     def discovery_client(self) -> SessionDiscoveryClientV1 | None:
@@ -113,7 +134,12 @@ class RemoteAppClientV1:
         self._started = True
         try:
             async with asyncio.timeout(budget):
-                if await self._stream.receive() != self._hello:
+                hello = await self._stream.receive()
+                if supports_execution(self._profile):
+                    instance = decode_execution_hello(hello, self._profile.value)
+                    self._hello = hello
+                    self._execution_client = RemoteExecutionClientV1(instance, self._send_execution)
+                elif hello != self._hello:
                     raise InvalidAppMessageError()
                 await self._stream.send(self._hello)
             self._ready = True
@@ -129,9 +155,29 @@ class RemoteAppClientV1:
         result_type: type[_Result],
     ) -> _Result:
         require_profile_operation(self._profile, operation)
+        result = await self._send_encoded(
+            lambda request_id: encode_request(AppRequestV1(request_id, operation, payload)),
+            result_type, control=operation in CONTROL_OPERATIONS,
+        )
+        return cast(_Result, result)
+
+    async def _send_execution(
+        self, build: Callable[[str], ExecutionCallV1], result_type: type[object],
+        control: bool, allow_missing: bool,
+    ) -> object:
+        if self.execution_client is None:
+            raise AppConnectionClosedError()
+        return await self._send_encoded(
+            lambda request_id: encode_call(build(request_id)), result_type,
+            control=control, execution=True, allow_missing=allow_missing,
+        )
+
+    async def _send_encoded(
+        self, encode: Callable[[str], bytes], result_type: type[object], *,
+        control: bool, execution: bool = False, allow_missing: bool = False,
+    ) -> object:
         if not self._ready or self._closed:
             raise AppConnectionClosedError()
-        control = operation in CONTROL_OPERATIONS
         maximum = MAX_CONTROL_REQUESTS if control else MAX_ORDINARY_REQUESTS
         if self._counts[control] >= maximum:
             raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
@@ -146,15 +192,15 @@ class RemoteAppClientV1:
                     if self._next_id > (1 << 63) - 1:
                         raise AppConnectionClosedError()
                     request_id = str(self._next_id)
-                    encoded = encode_request(
-                        AppRequestV1(request_id, operation, payload)
-                    )
-                    future: asyncio.Future[AppResultPayloadV1] = (
+                    encoded = encode(request_id)
+                    future: asyncio.Future[object] = (
                         asyncio.get_running_loop().create_future()
                     )
                     # A cancelled local caller still owns a bounded remote slot.
                     future.add_done_callback(_observe_future)
-                    self._pending[request_id] = _Pending(future, result_type, control)
+                    self._pending[request_id] = _Pending(
+                        future, result_type, control, execution, allow_missing
+                    )
                     registered = True
                     try:
                         await self._stream.send(encoded)
@@ -166,25 +212,30 @@ class RemoteAppClientV1:
                 self._counts[control] -= 1
             raise
         result = await asyncio.shield(future)
-        return cast(_Result, result)
+        return result
 
     async def _receive_responses(self) -> None:
         try:
             while not self._closed:
-                response = decode_response(await self._stream.receive())
+                payload = await self._stream.receive()
+                execution = self._execution_client is not None and is_execution_frame(payload)
+                response = decode_execution_response(payload) if execution else decode_response(payload)
                 pending = self._pending.get(response.request_id)
-                if pending is None:
+                if pending is None or pending.execution != execution:
                     raise InvalidAppMessageError()
                 result = response.result
                 if (
-                    type(result) is not AppFailureV1
+                    type(result) not in (AppFailureV1, ExecutionFailureV1)
                     and type(result) is not pending.result_type
+                    and not (pending.allow_missing and result is None)
                 ):
                     raise InvalidAppMessageError()
                 del self._pending[response.request_id]
                 self._counts[pending.control] -= 1
                 if type(result) is AppFailureV1:
                     pending.future.set_exception(AppServiceError(result.code))
+                elif type(result) is ExecutionFailureV1:
+                    pending.future.set_exception(ExecutionServiceErrorV1(result.code))
                 else:
                     pending.future.set_result(result)
         except asyncio.CancelledError:
@@ -320,7 +371,7 @@ class StdioAppClientV1(RemoteAppClientV1):
         super().__init__(stream, profile=AppConnectionProfileV1.STDIO, phase_timeout=phase_timeout)
 
 
-def _observe_future(future: asyncio.Future[AppResultPayloadV1]) -> None:
+def _observe_future(future: asyncio.Future[object]) -> None:
     if not future.cancelled():
         future.exception()
 

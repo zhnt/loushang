@@ -3,11 +3,13 @@ from __future__ import annotations
 import asyncio
 from dataclasses import replace
 from typing import cast
+from unittest.mock import create_autospec
 
 import pytest
 
 from loushang.appserver.client import AppClientV1
 from loushang.appserver.connection import AppServerConnectionV1
+from loushang.appserver.execution.client import ExecutionClientV1
 from loushang.appserver.framing import AppFramedStreamV1
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
@@ -26,6 +28,7 @@ from loushang.appserver.protocol import (
 from loushang.appserver.protocol.connection_profile import (
     AppConnectionProfileV1,
     connection_hello,
+    supports_execution,
 )
 from loushang.appserver.remote_client import RemoteAppClientV1
 
@@ -192,9 +195,14 @@ def test_G17_COMPAT_profile_mismatch_never_reaches_semantic_dispatch(
     async def scenario():
         left, right = _pair()
         discovery = _Discovery()
+        execution = None
+        if supports_execution(server_profile):
+            execution = create_autospec(ExecutionClientV1, instance=True)
+            execution.service_instance_id = "instance"
         server = AppServerConnectionV1(
             cast(AppClientV1, _SemanticClient()), AppFramedStreamV1(right),
             profile=server_profile, discovery=discovery, phase_timeout=0.2,
+            execution=execution,
         )
         client = RemoteAppClientV1(
             AppFramedStreamV1(left), profile=client_profile, phase_timeout=0.2,

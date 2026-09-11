@@ -20,6 +20,7 @@ from loushang.appservice.discovery_ports import (
     HostedSessionDiscoveryBindingV1,
     require_discovery_context,
 )
+from loushang.appservice.execution_service import HostedExecutionServiceBindingV1
 
 from .contracts import AppHostShutdownBudgetV1, AppHostShutdownReportV1
 
@@ -92,9 +93,12 @@ class HostedApplicationRequestV1:
     service_close_timeout_seconds: float = 10.0
     service_id_factory: Callable[[], str] | None = None
     discovery: HostedSessionDiscoveryBindingV1 | None = None
+    execution: HostedExecutionServiceBindingV1 | None = None
 
     def __post_init__(self) -> None:
         require_discovery_context(self.discovery, self.product_id, self.generation_id)
+        if self.execution is not None and type(self.execution) is not HostedExecutionServiceBindingV1:
+            raise TypeError("invalid execution activation")
         if type(self.activation) is not HostedApplicationActivationV1:
             raise TypeError("hosted application requires explicit activation")
         if _STABLE_ID.fullmatch(self.product_id) is None:
@@ -236,6 +240,10 @@ class HostedApplicationRuntimeV1:
         self.client  # Shares the legacy borrow/mode fence, even before first query.
         assert self._service is not None
         return self._service.discovery_client
+
+    @property
+    def execution_enabled(self) -> bool:
+        return self._service is not None and self._service._execution_registry is not None
 
     def enable_client_scopes(self) -> None:
         """Select scoped authority after recovery and before borrowing any client.
@@ -426,6 +434,7 @@ def create_hosted_application_runtime(
         id_factory=request.service_id_factory,
         close_timeout_seconds=request.service_close_timeout_seconds,
         discovery=request.discovery,
+        execution=request.execution,
     )
     return HostedApplicationRuntimeV1(
         request,

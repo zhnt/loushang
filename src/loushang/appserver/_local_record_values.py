@@ -16,6 +16,8 @@ MAX_LOCAL_RECORD_BYTES = 8192
 _VERSION = "loushang.appserver.local-record/v1"
 _CAPABILITIES = ("named_mux", "text_turns", "approvals")
 _DISCOVERY_CAPABILITIES = (*_CAPABILITIES, "session_discovery")
+_EXECUTION_CAPABILITIES = (*_CAPABILITIES, "session_execution")
+_COMBINED_CAPABILITIES = (*_DISCOVERY_CAPABILITIES, "session_execution")
 _ENDPOINT = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z")
 _STABLE_ID = re.compile(r"[a-z0-9][a-z0-9._-]{0,127}\Z")
 _HEX = re.compile(r"[0-9a-f]+\Z")
@@ -68,9 +70,10 @@ class LocalConnectionRecordV1:
     scopes: tuple[LocalRecordScopeV1, ...]
     key: bytes = field(repr=False)
     session_discovery: bool = False
+    session_execution: bool = False
 
     def __post_init__(self) -> None:
-        if type(self.session_discovery) is not bool:
+        if type(self.session_discovery) is not bool or type(self.session_execution) is not bool:
             raise TypeError("invalid discovery activation")
         require_endpoint(self.endpoint)
         if any(type(value) is not str or _STABLE_ID.fullmatch(value) is None
@@ -89,6 +92,9 @@ class LocalConnectionRecordV1:
 
     @property
     def semantic_profile(self) -> AppConnectionProfileV1:
+        if self.session_execution:
+            return (AppConnectionProfileV1.LOCAL_DISCOVERY_EXECUTION if self.session_discovery
+                    else AppConnectionProfileV1.LOCAL_EXECUTION)
         return (AppConnectionProfileV1.LOCAL_DISCOVERY if self.session_discovery
                 else AppConnectionProfileV1.LOCAL)
 
@@ -107,7 +113,11 @@ def _public(record: LocalConnectionRecordV1) -> dict[str, object]:
         "instance": record.instance, "port": record.port,
         "scopes": [{"scope": item.scope.value, "fingerprint": item.fingerprint}
                    for item in record.scopes],
-        "capabilities": list(_DISCOVERY_CAPABILITIES if record.session_discovery else _CAPABILITIES),
+        "capabilities": list(
+            (_COMBINED_CAPABILITIES if record.session_discovery else _EXECUTION_CAPABILITIES)
+            if record.session_execution else
+            (_DISCOVERY_CAPABILITIES if record.session_discovery else _CAPABILITIES)
+        ),
     }
 
 
@@ -143,7 +153,10 @@ def decode_connection_record(payload: bytes) -> LocalConnectionRecordV1:
         if (
             raw["schemaVersion"] != _VERSION or raw["profile"] != LOCAL_PROFILE_V1
             or raw["protocolVersion"] != APP_PROTOCOL_VERSION
-            or raw["capabilities"] not in (list(_CAPABILITIES), list(_DISCOVERY_CAPABILITIES))
+            or raw["capabilities"] not in (
+                list(_CAPABILITIES), list(_DISCOVERY_CAPABILITIES),
+                list(_EXECUTION_CAPABILITIES), list(_COMBINED_CAPABILITIES),
+            )
             or not _hex(raw["key"], 64)
         ):
             raise ValueError
@@ -157,7 +170,8 @@ def decode_connection_record(payload: bytes) -> LocalConnectionRecordV1:
             endpoint=raw["endpoint"], application_id=raw["applicationId"],
             product_id=raw["productId"], instance=raw["instance"], port=raw["port"],
             key=bytes.fromhex(raw["key"]),
-            session_discovery=raw["capabilities"] == list(_DISCOVERY_CAPABILITIES),
+            session_discovery=raw["capabilities"] in (list(_DISCOVERY_CAPABILITIES), list(_COMBINED_CAPABILITIES)),
+            session_execution=raw["capabilities"] in (list(_EXECUTION_CAPABILITIES), list(_COMBINED_CAPABILITIES)),
             scopes=tuple(LocalRecordScopeV1(SessionScopeV1(item["scope"]), item["fingerprint"])
                          for item in scopes),
         )
