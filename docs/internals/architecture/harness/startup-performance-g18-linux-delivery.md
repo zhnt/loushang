@@ -4,6 +4,9 @@
 
 Status: in progress; source candidate and paired installations frozen; exclusive-window
 inert A/A accepted, native stability and all A/B performance acceptance pending.
+Latest full warm A/A (`native-aa-warm-exclusive-04`) completed all 308 valid
+observations but is inconclusive: 12/41 metrics pass, 29/41 do not calibrate.
+Absent A/A and all A/B remain gated; no automatic repeat is authorized.
 Tracking: [G18 #578](https://github.com/zhnt/loushang/issues/578).
 Authority: [accepted G18 plan](startup-performance-plan.md), including its measurement,
 scheduling and facade-budget addenda. This record does not replace the thresholds.
@@ -1003,8 +1006,9 @@ the diagnostic document binds its reports and next-decision boundary.
 
 ### Post-cleanup exclusive warm A/A — reviewed execution decision
 
-Status: three-view pre-execution review passed with no P1/P2; final preflight is
-required before one full attempt only. The user requested
+Status: three-view pre-execution review passed with no P1/P2; the one authorized
+attempt subsequently completed inconclusively, as recorded below. The final
+preflight was required before launch. The user requested
 continuation of the complete Linux acceptance plan after the bounded diagnosis.
 The basis for a new attempt is an explicit restored measurement window, not the
 single-seed success: the previously observed active peer `loushang` PID 3081809
@@ -1048,6 +1052,99 @@ three-view evidence audit before acceptance. Only afterward may absent A/A be
 separately planned; all original A/A conditions must be accepted before required
 inert/native A/B. The full goal, no-push/no-merge boundary and pending native/A/B
 checklist are unchanged.
+
+### Exclusive-04 full result and gated local disposition
+
+Exec 52164 exited 0. The collector's single uninterrupted segment ran
+2026-09-11 03:34:47.254711–05:51:25.462175 UTC, observation range `[0, 308)`.
+Output: `.artifacts/g18-linux-delivery/native-aa-warm-exclusive-04/report.json`;
+SHA256 `36306c6d0c792624152c19da8c87a3b3b492dc8b335e8aa4aaacde4caedd6e2c`.
+Parent environment `/var/tmp/lg18-tests-WZbMdP`, retained scratch
+`/var/tmp/loushang-g18-native-263b4477`, and fixed slot
+`.artifacts/g18-slots/g18-slot-44cmbd5o` remain available. Nothing was deleted,
+reused from failed attempts, or mixed with earlier reports.
+
+All seven cases have 40 formal observations and four warmups: 280 formal plus
+28 warmup observations, all `valid=true` and `status=complete`. The final slot
+is idle and nonfailed. The report is `complete-record-only`, phase `aa`, with
+**inconclusive** comparison. The single-segment eligibility flag only removes
+the segmented-run restriction; it does not override the original statistical
+gates. Checkpoint support was enabled, but no pause or resume occurred. Neither
+seed-only diagnostic nor failure-tree instrumentation was enabled in this formal
+attempt. The measured sides both retain the frozen
+A wheel/source; no B candidate was timed.
+
+| Case | Passing metrics | Inconclusive metrics |
+| --- | ---: | ---: |
+| embedded | 3 | 2 |
+| foreground | 1 | 3 |
+| local-mux | 1 | 5 |
+| g14-stdio | 1 | 2 |
+| recovery-cwd | 1 | 4 |
+| recovery-global | 1 | 4 |
+| product-first-use | 4 | 9 |
+| Total | 12 | 29 |
+
+For example, foreground A-side ready-frame block medians are 6.834039 and
+7.827837 seconds (+14.54%); B-side medians are 6.786958 and 7.476630 seconds
+(+10.16%). Embedded and both recovery ready-frame medians also increase on both
+sides. Close A/B medians within this same-wheel run do not satisfy the original
+across-block/four-group calibration. No threshold, sample count, warmup exclusion,
+case order or comparator was changed to turn these observations into a pass.
+
+The final preflight receipt is
+`.artifacts/g18-linux-delivery/resource-native-warm-exclusive-04.json`:
+8,965,885,952 bytes available, affinity `[0]`, old active peer PID 3081809 absent,
+no competing test/build/collector/scanner observed. A persistent external
+`loushang` PID 1917339 remained and used two CPU ticks in the one-second check;
+this was not an OS-isolated machine. No task reviews/tests/builds or diagnostic
+samplers ran during formal timing; only the existing collection handle was polled.
+
+Already recorded formal-sample one-minute `load_before` medians increase from
+1.2021484375 in block 0 to 1.634765625 in block 1. This is a concurrent observation,
+not proof that load caused the timing drift, and it does not justify correcting
+or filtering samples. The post-collection receipt
+`.artifacts/g18-linux-delivery/resource-native-warm-exclusive-04-post.json`
+records 7,895,445,504 bytes available at 05:52:24 UTC. Read-only reviews had been
+dispatched after collection and before this snapshot; the snapshot is outside
+timing, not an uncontaminated measurement of the final sample or a causal diagnosis.
+
+Three independent read-only result audits completed with no P1/P2:
+
+- Architecture/provenance: both immutable sources/wheels, independent references
+  and observer, 1,202 helper entries, sample pins, exact order and complete
+  single-segment checkpoint match. No source/tool differences from `eaa082a4`.
+- Measurement/contract: independent exact-Fraction recomputation reproduces all
+  41 verdicts. Of 29 inconclusive metrics, 18 exceed a side's across-block median
+  boundary; nine more fail only the combined four-group median boundary while
+  each side is individually stable. The remaining two fail only within-block MAD
+  (`product-first-use` review/reattach detach settlement). In total, 27 metrics
+  fail four-group span and four fail MAD, with two in both sets. These overlapping
+  and sometimes cumulative metrics are not independent root causes.
+- Compatibility/ownership: all 310 raw observer records (308 observations plus
+  two seed preparations) agree with report contents and hashes; all 616 cache
+  evidence hashes match. Both recovery scopes retain one seed and restore counts
+  1 through 44. Retained-owner success checks and final slot/checkpoint state
+  show no recorded cleanup failure. A/A does not prove candidate compatibility
+  or a facade gain.
+
+The result audit also checked this disposition wording; the observation range and
+checkpoint-enabled versus actually-paused distinction were clarified. No Product
+or collector correction was identified by this audit. Documentation-only scope
+uses the lightweight documentation checks, not repeated Product suites.
+
+The disposition is to preserve this complete but unaccepted warm A/A,
+stop before absent A/A and all A/B, and retain
+the facade as performance-pending. Step 1's collection is complete, not its
+stability acceptance; steps 2 and 3 cannot start, and step 4 can close only this
+local evidence checkpoint, not final performance delivery. No push or merge.
+
+The next bounded investigation should use these existing receipts to distinguish
+within-block dispersion, across-block drift, four-group spread and side/order
+associations before proposing another measurement window. This does not authorize
+a fresh run, selective replay, pooling, threshold relaxation, or new Product or
+collector instrumentation. Any changed experimental design needs separate review;
+historical inconclusive evidence remains inconclusive.
 
 ## Bounded Order/Import Diagnosis — Pre-Execution Review
 
