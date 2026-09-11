@@ -802,6 +802,72 @@ two blocks and ten pairs: 280 formal observations plus 28 warmups, with all
 Native absent A/A and all inert/native A/B remain pending. No automatic retry or
 A/B is authorized by this acceptance, and G18 is not complete.
 
+### Native warm exclusive-window A/A — reviewed execution plan
+
+Following accepted exclusive-03 inert A/A, continue the user-confirmed Linux
+exclusive-window arrangement with one full native **warm A/A**, not candidate
+A/B. Preflight on 2026-09-11 at 01:08 UTC still shows one CPU and 1,676,332 KiB
+RAM, with 952,468 KiB available. Both one-second vmstat interval rows show no
+swap-in/out; memory PSI some/full avg10 is 0.97/0.60 and I/O is 3.45/2.72.
+These snapshots are descriptive, not a promise of pressure-free measurements.
+Finish review/checks and record a final prelaunch snapshot before timing.
+
+Architecture, evidence-contract and compatibility pre-execution review passed
+with no P1/P2, conditional on the final capacity check below. The plan preserves
+the unchanged native collector and original fixed-slot warm/cache/recovery/
+observer contracts:
+
+- New exclusive output:
+  `.artifacts/g18-linux-delivery/native-aa-warm-exclusive-02`.
+  Use `measure_g18_native.py --fixed-slot --cache-mode warm`, original A/A2
+  reference installations, independent `observer-a`, the same frozen A wheel
+  and A source on both sides, original offline CPython/private parent environment
+  and `/var/tmp` scratch parent. Use the original hashed dependency export at
+  `.artifacts/g18-baseline/requirements.txt` (SHA-256 recorded above).
+- Provision a fresh slot under `.artifacts/g18-slots` at the collector's one
+  canonical active prefix; neither copy nor resume an earlier slot. Preserve
+  same-filesystem switching, all pre/post installation and wheel/helper pins,
+  immutable per-scope recovery seeds, resets and independent observer ownership.
+  Do not rebuild the frozen reference installations or modify Product code.
+- Collect all original seven cases, two blocks and ten pairs per block: 280
+  formal observations and 28 declared warmups. Preserve original side alternation
+  and reverse case order in block 1. Setup, seed preparation, cache preparation
+  and identity verification are separate from the 308 timed observations.
+  Retain every raw observer/cache/seed/slot receipt and all 41 original metrics.
+- Keep original cache policy, argv, PTY/witness, deadlines, physical settlement
+  and exact comparator thresholds. No profiler, new sampling hook or unrelated
+  test/build/review runs alongside collection. Only observe the existing process
+  handle; do not restart after an observation timeout.
+- Retain all evidence and stop if collection, identity, cache, seed or owner
+  validation fails, or the complete 41-metric comparison is inconclusive. No
+  automatic retry, case selection, outlier removal, old/new pooling or A/B.
+  A passing warm result must be audited before separately planning absent A/A;
+  it cannot accept absent-cache behavior or any candidate performance benefit.
+
+Before launching, compare available space against the retained previous warm
+output, fixed slot and scratch footprint, including cache evidence. The initial
+filesystem reading is 2,108,660 KiB available; previous warm output alone uses
+887,276 KiB. Its slot and main scratch use 210,048 and 96,476 KiB, and the two
+recovery subjects/controls add 7,344 KiB: 1,201,144 KiB total, leaving an estimated
+907,516 KiB before transient overhead and new-path metadata growth. Account for
+atomic report replacement, seed restore copies and offline installation staging,
+not only the terminal footprint. Preserve old evidence and recheck actual usable
+runner/scratch capacity; do not delete old reports or change measurement behavior
+to save space. This estimate is not a storage upper bound or an acceptance gate.
+
+The outside-sandbox capacity check at 01:11:52 UTC records 2,101,424 KiB free,
+12,956,916 free inodes, a writable ext4 filesystem and no shell file-size limit.
+The prior report is 4,664,467 bytes and both seed directories together occupy
+1,212 KiB; temporary duplicates of these are small relative to the approximately
+879 MiB margin over the complete prior footprint. A full reference installation
+occupies approximately 183 MiB, leaving additional room for installation staging
+and pathname-related evidence growth. This supports one bounded warm collection,
+not a promise that subsequent absent/A/B runs also fit. The known sandbox
+`/tmp/.agents` mount failures occurred before those read commands executed and
+are not Product failures; actual collection uses the verified outside-sandbox
+runner with private `/var/tmp` state. Frozen wheels, requirements, all 1,200
+helpers and collector/probe/support hashes match their prior receipts.
+
 ## Bounded Order/Import Diagnosis — Pre-Execution Review
 
 Independent raw-data review reproduced all ten comparator results and verified
