@@ -18,6 +18,13 @@ runner = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(runner)
 
 
+@pytest.fixture(autouse=True)
+def _synthetic_collector_load(monkeypatch):
+    # Collector unit tests exercise synthetic receipts, not host performance.
+    # Windows has no getloadavg; keep the real collector's Linux-only boundary.
+    monkeypatch.setattr(runner.os, "getloadavg", lambda: (0.0, 0.0, 0.0), raising=False)
+
+
 def _wrapper_install(root):
     prefix = root / "install"
     scripts = prefix / "bin"

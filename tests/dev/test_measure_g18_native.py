@@ -18,6 +18,12 @@ runner = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(runner)
 
 
+@pytest.fixture(autouse=True)
+def _synthetic_collector_load(monkeypatch):
+    # Receipt/ownership tests do not sample the CI machine's Linux load average.
+    monkeypatch.setattr(runner.os, "getloadavg", lambda: (0.0, 0.0, 0.0), raising=False)
+
+
 @pytest.mark.skipif(
     sys.platform != "linux" or sys.version_info[:2] != (3, 11),
     reason="pinned Linux CPython 3.11 observer scope",
