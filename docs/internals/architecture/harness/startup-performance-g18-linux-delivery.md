@@ -874,6 +874,75 @@ stopped through the original SIGINT/owner path (session 61168 exit 130), retaini
 See the [checkpoint protocol](startup-performance-g18-checkpoints.md) for the new
 opt-in native tooling, legacy evidence hash and separate statistical qualification.
 
+### Checkpoint-enabled warm A/A continuation — pre-execution plan
+
+Status: three-view pre-execution review passed with no P1/P2; capacity clearance
+is required before launch. Architecture/lifecycle, evidence-contract and
+compatibility/resource reviewers independently confirmed the unchanged full
+acceptance scope and the prohibition on launching at current free capacity.
+The preceding goal turn made concrete progress: checkpoint tooling was committed
+as `d7545673`, the complete scoped collector regression passed 466 tests with four
+platform skips, and the installed warm smoke safely resumed from 3 to 8 valid
+observations without replacing its prefix, seeds or slot identities. These are
+functional receipts, not native stability or candidate performance acceptance.
+
+The next performance attempt retains the reviewed exclusive-window warm A/A
+plan above, with only the new opt-in collector protocol and a fresh output:
+`.artifacts/g18-linux-delivery/native-aa-warm-checkpoint-03`. Use the unchanged
+frozen A/A2 and observer installations, A wheel/source pair, requirements, private
+parent environment, `/var/tmp` scratch, fresh fixed slot, all seven cases, two
+blocks and ten pairs per block (308 observations, 41 metrics). Freeze current
+helper bytes before launch. Do not reuse either interrupted v2 slot or either
+checkpoint smoke slot. No Product, dispatch, lifecycle, timeout, cache-policy,
+sample-order or comparison-limit changes are authorized by this continuation.
+
+Add `--checkpoint`, but **no planned pause and no `--pause-after`**. The intended
+calibration remains one uninterrupted segment; enabling safe pause support does
+not itself add setup, warmups or a state reopen between observations. Ordinary
+safe-pause requests remain available. If a pause is actually needed, retain its
+generation and records, but do not automatically resume it for formal acceptance:
+declare and review a matching segmented A/A and A/B schedule first. Every resumed
+report's automatic-acceptance flag remains false. An uninterrupted result still
+requires the original full stability gates and independent evidence review.
+Any failure or inconclusive full comparison ends the attempt; no retry-until-green,
+case selection, sample pooling or automatic progression to A/B is permitted.
+
+Capacity preflight after checkpoint delivery found 1,518,804 KiB available on
+the shared ext4 filesystem (1.45 GiB). The previous complete warm output, slot,
+scratch and recovery controls occupy 1,201,144 KiB (1.15 GiB), leaving only
+317,660 KiB before installation staging, atomic report/checkpoint replacement,
+pathname growth and other machine writes. The real paused smoke checkpoint alone
+is 16,414,487 bytes; the previous reference install is approximately 183 MiB.
+These are observed sizes, not certified upper bounds. The previous launch had
+about 879 MiB headroom over retained terminal data; this continuation does not
+silently adopt a substantially tighter operating margin.
+
+Do not launch until actual free capacity is restored to at least 2.1 GiB for
+this one warm attempt, followed by an updated outside-sandbox capacity and
+resource receipt. Subsequent absent/A/B campaigns each require their own capacity
+clearance; roughly 6 GiB free is a planning allowance for the remaining campaign,
+not a proven storage bound or a replacement for per-attempt checks. Do not delete,
+rewrite, relocate or compress old measurement evidence/installation/slot state
+to meet this condition without a separately authorized retention plan. Disposable
+actionlint compiler caches observed here are only about 75 MiB and cannot by
+themselves restore the required headroom. Additional capacity or approved cleanup
+outside retained G18 evidence requires user coordination.
+
+The final read-only path check found the checkout and `/var/tmp` on the same
+filesystem with 1,517,760 KiB free; `/tmp` is a separate tmpfs with only
+167,648 KiB free. Changing to one of these existing scratch paths cannot supply
+the missing capacity. No new performance process was launched and no historical
+data was removed.
+
+Current read-only process inspection found no live G18 collector or task-owned
+new gate/compiler workload. Two historical blocked Harness gate process trees
+remain outside this continuation's cleanup scope. Resource readings still show
+some paging and I/O pressure; they are descriptive, not proof of a pressure-free
+exclusive window. Complete review/checks before timing, retain the original
+user-coordinated exclusive-window condition, and do not run new tests/builds or
+reviews alongside the eventual collector. Until capacity is cleared, do not
+start a new performance attempt or claim a verified wait on one.
+
 ## Bounded Order/Import Diagnosis — Pre-Execution Review
 
 Independent raw-data review reproduced all ten comparator results and verified

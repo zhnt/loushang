@@ -57,6 +57,13 @@
   new native absent A/A completed 308 valid observations, 28/41 metrics stable and
   13/41 inconclusive, with raw evidence audited and the comparison independently reproduced;
   native warm and absent stability remain unaccepted; all A/B remain pending;
+  safe-boundary native checkpoint support is committed as d7545673, with three-view
+  re-review, 466 scoped regression passes (four platform skips), and a real warm
+  pause/resume smoke retaining its original observation prefix and seed state;
+  the next full warm A/A is planned as checkpoint-enabled but uninterrupted,
+  with three-view pre-execution review passed and capacity clearance pending;
+  resumed segments do not
+  automatically qualify for performance acceptance;
   installed readiness/stability/performance acceptance pending; no push or merge;
   current progress: [Linux local delivery](startup-performance-g18-linux-delivery.md)
 - Authority: delivery plan; accepted runtime boundaries and public contracts take precedence
