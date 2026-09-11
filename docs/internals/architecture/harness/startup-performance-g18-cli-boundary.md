@@ -99,7 +99,7 @@ Full AppHost Make/release and native/cross-platform matrices are not claimed by
 these scoped checks. The initial selected-check invocation remains non-passing;
 its resolved invocation error is not a waiver of unrun release checks.
 
-## Next installed comparison
+## Installed comparison — 2026-09-11
 
 Use the structural baseline above and the frozen lazy candidate, not the older
 eager-Coding baseline. Both sides already include the prior Coding-facade
@@ -114,5 +114,70 @@ preserve partial evidence, and do not automatically retry or change thresholds.
 Follow the descriptive statistics and limitations in the
 [previous exploratory comparison](startup-performance-g18-exploratory-means.md),
 without pooling its measurements. Report every case, including slower outcomes;
-the small-sample comparator must remain `not-evaluated`. Installed measurement
-is still pending; no speedup is claimed for this candidate yet.
+the small-sample comparator must remain `not-evaluated`.
+
+### Frozen result
+
+Exec 5495 exited 0. Collection ran 08:26:54.251564–08:35:55.940348 UTC with
+private parent `/var/tmp/lg18-tests-8L8qmq` and retained scratch
+`/var/tmp/loushang-g18-baseline-7v3_eeql`. Baseline A is `cecb67d8...` above;
+candidate B is `c60887e6526b7144d4912a6bc5fcec8efff1d8e7`.
+
+- A wheel SHA256:
+  `c4d7749a88b1e3a0ad08f70685e185b2248093355dd7f2e9c5fd59e7438c4a2d`.
+- B wheel SHA256:
+  `e9dd6a4a553d346f4a5440aa97f154cef4d49950f46cbceef043290fff5dbb54`.
+- Report: `.artifacts/g18-cli-entry/inert-ab-exploratory-mean-01/report.json`;
+  SHA256 `424b4d013f660fac1e7ded70efd703c3de925abf0edc3362e64631128d62fcf7`.
+  The sibling `means.json` binds that hash and retains unrounded means, medians,
+  ranges, block means, CPU means, all paired differences and output hashes.
+
+All 160 observations are valid with exit 0 and no recorded failure. Independent
+reconstruction verifies exact case/block/pair/side order, including 120 measured
+observations and 40 declared warmups. Every case has identical stdout/stderr
+across both installations and all observations, including warmups. Helpers are
+unchanged; the collector's before/after installation checks pass. Both sides use
+Python 3.11.15, identical dependencies/entry targets/project/lock and 1305 package
+paths. Their production-source difference is only the two CLI loading modules;
+application code is unchanged. No tests, builds or diagnostics ran during timing.
+The machine was not OS-exclusive; its existing long-running user process was
+left untouched. These measurements are not pooled with earlier runs.
+
+Arithmetic means are seconds; positive reduction means B used less elapsed time.
+All six measured observations per side are included in each row.
+
+| Entry | A mean | B mean | Reduction | B faster pairs |
+| --- | ---: | ---: | ---: | ---: |
+| import-harness | 0.0543 | 0.0589 | -8.47% | 3/6 |
+| import-coding | 0.0557 | 0.0528 | 5.19% | 5/6 |
+| import-cli | 5.1046 | 0.0509 | 99.00% | 6/6 |
+| cli-help | 8.1599 | 8.1560 | 0.05% | 3/6 |
+| cli-version | 4.9936 | 0.1974 | 96.05% | 6/6 |
+| tui-help | 8.1093 | 8.1438 | -0.43% | 2/6 |
+| hosted-help | 4.1192 | 3.9307 | 4.58% | 5/6 |
+| hosted-tui-help | 2.7129 | 0.1834 | 93.24% | 6/6 |
+| mux-help | 2.8784 | 0.2837 | 90.14% | 6/6 |
+| plugin-help | 0.7450 | 0.6834 | 8.27% | 6/6 |
+
+The clear observed gains are import-cli (5.054 seconds saved), canonical
+`loushang --version` (4.796 seconds), hosted-tui-help (2.530 seconds), and
+mux-help (2.595 seconds). All four improve in both blocks and all six pairs.
+Their mean child CPU times also drop respectively from 4.5675 to 0.0452,
+4.5508 to 0.1806, 2.4141 to 0.1455, and 2.5510 to 0.2283 seconds. This supports
+a scoped loading-work reduction, not merely a wall-clock scheduling difference.
+
+Ordinary CLI help remains about 8.16 seconds, with only a 3.9 ms mean difference
+and three winning pairs; TUI help is slightly slower on average. Neither is an
+improvement claim. Keep the other rows as observations rather than assigning all
+changes to this optimization: even the unchanged short import-harness control is
+4.6 ms slower, while plugin-help has a favorable mean without a direct plugin
+implementation change. Small samples, installation paths and uncontrolled OS
+cache/load preclude universal or cross-platform conclusions.
+
+Status: implementation and exploratory installed comparison complete; original
+comparator remains `not-evaluated`, not formal acceptance. Loading work is
+avoided for the version-only path and deferred until needed on other paths; no
+claim is made for first turn, model/tool work, TUI readiness, recovery or cleanup
+latency. Full release checks remain separate as described above. No push/merge.
+The next optimization target is dynamic CLI help discovery, which must retain
+extension flags and its existing dispatch/output semantics.

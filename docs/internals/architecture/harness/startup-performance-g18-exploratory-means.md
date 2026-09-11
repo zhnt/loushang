@@ -113,3 +113,8 @@ lifecycle semantics.
 
 No full native A/B was run, no formal checklist was marked passed, no historical
 report was relabeled, and no push/merge was performed.
+
+Follow-up: the [CLI loading boundary and installed comparison](startup-performance-g18-cli-boundary.md)
+now records the next implementation and its separate paired measurements. Its
+baseline already includes this Coding-facade optimization; do not pool the two
+runs or treat their incremental percentages as one measured end-to-end result.
