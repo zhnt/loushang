@@ -125,6 +125,47 @@ class BytecodePolicy:
             raise ValueError("bytecode variant must be a or b")
         return self._roots[side]
 
+    def checkpoint(self):
+        slot = self._slot.checkpoint()
+        for root, expected in self._identities.items():
+            if _identity(root) != expected:
+                raise ValueError("checkpoint cache directory changed")
+        return dict(
+            root=str(self.root),
+            identities={
+                str(path): list(value) for path, value in self._identities.items()
+            },
+            inventories={
+                side: {
+                    "external": inventory(self.external(side)),
+                    "installed": inventory(
+                        self._slot.prefix
+                        if slot["receipt"]["active"] == side
+                        else self._slot.root / side,
+                        installation=True,
+                    ),
+                }
+                for side in ("a", "b")
+            },
+        )
+
+    @classmethod
+    def reopen(cls, slot, value):
+        subject = cls.__new__(cls)
+        subject._slot = slot
+        subject._slot_root = slot.root
+        subject._slot_identity = _identity(slot.root)
+        subject.root = Path(value["root"])
+        subject._roots = {side: subject.root / side for side in ("a", "b")}
+        subject._identities = {
+            Path(path): tuple(item) for path, item in value["identities"].items()
+        }
+        if set(subject._identities) != {subject.root, *subject._roots.values()}:
+            raise ValueError("invalid checkpoint cache roots")
+        if subject.checkpoint() != value:
+            raise ValueError("bytecode changed during pause")
+        return subject
+
     def _require_active(self, side):
         receipt = self._slot.receipt
         if not receipt["busy"] or receipt["failed"] or receipt["active"] != side:

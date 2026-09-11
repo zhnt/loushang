@@ -204,6 +204,58 @@ class RecoveryState:
             self._failed = True
             raise
 
+    def checkpoint(self):
+        self._idle()
+        receipt = self.receipt
+        if inventory(self.seed) != self._expected:
+            raise ValueError("recovery seed changed before checkpoint")
+        paths = {
+            name: getattr(self, name)
+            for name in ("arena", "subject", "control", "archive", "seed")
+        }
+        if any(path.resolve() != path for path in paths.values()):
+            raise ValueError("noncanonical recovery checkpoint path")
+        return dict(
+            receipt=receipt,
+            paths={name: str(path) for name, path in paths.items()},
+            identities={name: list(_identity(path)) for name, path in paths.items()},
+            subject_manifest=inventory(self.subject),
+        )
+
+    @classmethod
+    def reopen(cls, value):
+        if platform.system() != "Linux":
+            raise ValueError("Linux recovery state only")
+        subject = cls.__new__(cls)
+        for name in ("arena", "subject", "control", "archive", "seed"):
+            path = Path(value["paths"][name])
+            if (
+                path.resolve() != path
+                or list(_identity(path)) != value["identities"][name]
+            ):
+                raise ValueError("recovery checkpoint directory changed")
+            setattr(subject, name, path)
+        if (
+            subject.subject != subject.arena / "subject"
+            or subject.control != subject.arena / "control"
+            or subject.seed != subject.archive / "input"
+        ):
+            raise ValueError("invalid recovery checkpoint layout")
+        receipt = value["receipt"]
+        subject._arena_identity = tuple(value["identities"]["arena"])
+        subject._subject_identity = tuple(value["identities"]["subject"])
+        subject._expected = receipt["manifest"]
+        subject._created_at = receipt["created_at"]
+        subject._restores = receipt["restores"]
+        subject._busy = subject._failed = False
+        subject._thread = threading.get_ident()
+        if subject.receipt != receipt or inventory(subject.seed) != subject._expected:
+            raise ValueError("recovery checkpoint seed changed")
+        if inventory(subject.subject) != value["subject_manifest"]:
+            raise ValueError("recovery subject changed during pause")
+        subject._idle()
+        return subject
+
     def sample(self, operation):
         """Reset even the first/warmup sample, then invoke its retained owner."""
         with self._exclusive():

@@ -868,6 +868,12 @@ are not Product failures; actual collection uses the verified outside-sandbox
 runner with private `/var/tmp` state. Frozen wheels, requirements, all 1,200
 helpers and collector/probe/support hashes match their prior receipts.
 
+The user subsequently requested resumable collection. This native attempt was
+stopped through the original SIGINT/owner path (session 61168 exit 130), retaining
+24 valid observations and one interrupted attempt; it is not accepted or resumed.
+See the [checkpoint protocol](startup-performance-g18-checkpoints.md) for the new
+opt-in native tooling, legacy evidence hash and separate statistical qualification.
+
 ## Bounded Order/Import Diagnosis — Pre-Execution Review
 
 Independent raw-data review reproduced all ten comparator results and verified

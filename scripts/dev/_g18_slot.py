@@ -135,3 +135,41 @@ class InstallationSlot:
             failed=self._failed,
             identities={side: list(value) for side, value in self._identities.items()},
         )
+
+    def checkpoint(self):
+        """Explicit idle token; the ordinary diagnostic receipt is not resumable."""
+        if self._busy or self._failed or threading.get_ident() != self._thread:
+            raise RuntimeError("slot is not safely checkpointable")
+        self._paths()
+        return dict(receipt=self.receipt, root_identity=list(self._root_identity))
+
+    @classmethod
+    def reopen(cls, value):
+        if platform.system() != "Linux":
+            raise ValueError("Linux installation slot only")
+        receipt = value["receipt"]
+        if (
+            receipt["busy"]
+            or receipt["failed"]
+            or set(receipt["identities"]) != {"a", "b"}
+        ):
+            raise ValueError("cannot reopen an unsafe slot")
+        subject = cls.__new__(cls)
+        subject.root = Path(receipt["root"])
+        subject.prefix = Path(receipt["prefix"])
+        if (
+            subject.root.resolve() != subject.root
+            or subject.prefix != subject.root / "active"
+        ):
+            raise ValueError("slot checkpoint prefix changed")
+        subject._root_identity = tuple(value["root_identity"])
+        subject._identities = {
+            side: tuple(item) for side, item in receipt["identities"].items()
+        }
+        subject._active = receipt["active"]
+        if subject._active not in (None, "a", "b"):
+            raise ValueError("invalid checkpoint active side")
+        subject._busy = subject._failed = False
+        subject._thread = threading.get_ident()
+        subject._paths()
+        return subject

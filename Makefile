@@ -320,6 +320,7 @@ APPSERVICE_TEST_PATHS := \
 	tests/dev/test_g18_recovery.py \
 	tests/dev/test_g18_slot.py \
 	tests/dev/test_g18_bytecode.py \
+	tests/dev/test_g18_checkpoint.py \
 	tests/dev/test_g18_comparison.py \
 	tests/dev/test_measure_g18_startup.py \
 	tests/dev/test_measure_g18_native.py \
@@ -554,6 +555,7 @@ lint-appservice:
 	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/_g18_recovery.py
 	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/_g18_slot.py
 	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/_g18_bytecode.py
+	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/_g18_checkpoint.py
 	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/_g18_comparison.py
 	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/measure_g18_startup.py
 	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/measure_g18_native.py tests/coding/_g18_native_probe.py

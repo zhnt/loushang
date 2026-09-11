@@ -113,6 +113,7 @@ class ScopeTests(unittest.TestCase):
             ("scripts/dev/_g18_recovery.py", "tests/dev/test_g18_recovery.py"),
             ("scripts/dev/_g18_slot.py", "tests/dev/test_g18_slot.py"),
             ("scripts/dev/_g18_bytecode.py", "tests/dev/test_g18_bytecode.py"),
+            ("scripts/dev/_g18_checkpoint.py", "tests/dev/test_g18_checkpoint.py"),
             ("scripts/dev/_g18_comparison.py", "tests/dev/test_g18_comparison.py"),
             ("scripts/dev/measure_g18_startup.py", "tests/dev/test_measure_g18_startup.py"),
             ("scripts/dev/measure_g18_native.py", "tests/dev/test_measure_g18_native.py"),

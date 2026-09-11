@@ -859,20 +859,26 @@ def collect_fixed_native(
     path,
     *,
     temporary_parent=Path("/tmp"),
+    campaign=None,
 ):
     """Declared warmups and paired native cases at one pinned execution prefix."""
-    caches = bytecode_policy.BytecodePolicy(slot, output)
+    resumed = campaign is not None and campaign.resuming
+    caches = (
+        campaign.native[1] if resumed else bytecode_policy.BytecodePolicy(slot, output)
+    )
     cache_evidence = output / "cache-evidence"
-    cache_evidence.mkdir()
+    if not resumed:
+        cache_evidence.mkdir()
     report["cache_policy"] = dict(
         mode=cache_mode,
         external={side: str(caches.external(side)) for side in ("a", "b")},
         base="Python/stdlib shared as found",
         product_state="seed-preserved; never cleared",
     )
-    report["seed_setup"] = []
-    report["recovery_states"] = {}
-    states = {}
+    if not resumed:
+        report["seed_setup"] = []
+        report["recovery_states"] = {}
+    states = campaign.native[2] if resumed else {}
 
     def pin(prefix, side, control, label, attempt):
         identity = control / f"{label}-identity-{attempt['iteration']}"
@@ -896,7 +902,7 @@ def collect_fixed_native(
     # Setup is excluded from samples and timings. Each scope has one immutable
     # baseline seed for all warmups, blocks and variants in this collector run.
     for case in cases:
-        if not case.startswith("recovery-"):
+        if not case.startswith("recovery-") or resumed:
             continue
         state = recovery_state.RecoveryState(temporary_parent, output)
         states[case] = state
@@ -936,6 +942,8 @@ def collect_fixed_native(
         try:
             slot.run("a", prepare)
             attempt.update(status="complete", valid=True)
+            if campaign is not None:
+                attempt["receipt_sha256"] = inert.digest(Path(attempt["receipt"]))
             report["recovery_states"][case]["snapshot"] = state.receipt
         except BaseException as error:
             attempt.update(status="failed", failure=f"{type(error).__name__}: {error}")
@@ -944,13 +952,20 @@ def collect_fixed_native(
             report["slot"] = slot.receipt
             inert.write_report(path, report)
 
-    warmed = set()
+    warmed = {
+        (sample["block"], sample["case"], sample["side"])
+        for sample in report["samples"]
+        if sample["warmup"]
+    }
+    completed = len(report["samples"])
     number = 0
     for block in range(blocks):
         for pair in range(-1, pairs):
             for case in cases if block % 2 == 0 else reversed(cases):
                 for side in ("a", "b") if (block + pair) % 2 == 0 else ("b", "a"):
                     number += 1
+                    if number <= completed:
+                        continue
                     key = (block, case, side)
                     attempt = dict(
                         case=case,
@@ -1044,12 +1059,18 @@ def collect_fixed_native(
                                 before_launch=before_launch,
                                 defer_validation=True,
                             )
+                            if campaign is not None:
+                                attempt["receipt"] = str(root / "native.json")
                         write_cache(attempt, "after", caches.inspect(side))
                         pin(prefix, side, control, "post", attempt)
 
                     try:
                         slot.run(side, execute)
                         attempt.update(status="complete", valid=True)
+                        if campaign is not None:
+                            attempt["receipt_sha256"] = inert.digest(
+                                Path(attempt["receipt"])
+                            )
                         if pair == -1:
                             warmed.add(key)
                     except BaseException as error:
@@ -1076,10 +1097,85 @@ def collect_fixed_native(
                         f"{case} cache={cache_mode} block={block} pair={pair} side={side}: complete",
                         flush=True,
                     )
+                    if campaign is not None and campaign.wants_pause(report):
+                        resources = native_checkpoint(
+                            campaign, report, slot, caches, states
+                        )
+                        campaign.pause(report, resources)
+
+
+def native_checkpoint(campaign, report, slot, caches, states):
+    """Seal only after all native guards/owners and postchecks have returned."""
+    checkpoint = support("_g18_checkpoint")
+    if (
+        "helpers_before" in report
+        and inert.provenance_module().helper_manifest(inert.ROOT)
+        != report["helpers_before"]
+    ):
+        raise ValueError("trusted helpers changed before checkpoint")
+    installation_paths = [
+        Path(value["prefix"]) for value in report["installations"].values()
+    ] + [Path(report["observer_installation"]["prefix"])]
+    installation_paths += [
+        slot.prefix if slot.receipt["active"] == side else slot.root / side
+        for side in ("a", "b")
+    ]
+    return {
+        "slot": slot.checkpoint(),
+        "caches": caches.checkpoint(),
+        "recovery": {case: state.checkpoint() for case, state in states.items()},
+        "scratch_identity": checkpoint.identity(Path(report["scratch"])),
+        "trees": {
+            str(path): checkpoint.tree_manifest(path)
+            for path in [
+                *installation_paths,
+                campaign.output / "observer-bytecode",
+                *(state.archive for state in states.values()),
+            ]
+        },
+    }
+
+
+def reopen_native(campaign, report):
+    """All paused file state is checked before a new interpreter probe runs."""
+    checkpoint = support("_g18_checkpoint")
+    resources = campaign.resources
+    if checkpoint.identity(Path(report["scratch"])) != resources["scratch_identity"]:
+        raise ValueError("checkpoint scratch changed")
+    for path, expected in resources["trees"].items():
+        if checkpoint.tree_manifest(Path(path)) != expected:
+            raise ValueError("installation or observer cache changed during pause")
+    slot = installation_slot.InstallationSlot.reopen(resources["slot"])
+    caches = bytecode_policy.BytecodePolicy.reopen(slot, resources["caches"])
+    states = {
+        case: recovery_state.RecoveryState.reopen(value)
+        for case, value in resources["recovery"].items()
+    }
+    return slot, caches, states
 
 
 def main(argv=None):
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if len(argv) == 2 and argv[0] == "--request-pause":
+        support("_g18_checkpoint").request_pause(Path(argv[1]))
+        print("pause requested; wait for collector status=paused (not stopped yet)")
+        return 0
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--checkpoint",
+        action="store_true",
+        help="enable opt-in safe-boundary checkpoints (fixed-slot only)",
+    )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="resume a v3 safe pause using the same original arguments",
+    )
+    parser.add_argument(
+        "--pause-after",
+        type=int,
+        help="pause after this cumulative observation count, including warmups",
+    )
     parser.add_argument("--install-a", type=Path, required=True)
     parser.add_argument("--install-b", type=Path, required=True)
     parser.add_argument(
@@ -1148,6 +1244,20 @@ def main(argv=None):
         args.restored_recovery_preflight = True
     elif args.requirements is not None and not args.fixed_slot:
         parser.error("--requirements requires a fixed installation slot")
+    if args.pause_after is not None and args.pause_after < 1:
+        parser.error("--pause-after must be positive")
+    if args.checkpoint or args.resume or args.pause_after is not None:
+        if not args.fixed_slot:
+            parser.error("checkpoint/resume requires --fixed-slot")
+        checkpoint = support("_g18_checkpoint")
+        with checkpoint.Campaign(
+            args.output, resume=args.resume, pause_after=args.pause_after
+        ) as campaign:
+            return collect_main(args, parser, campaign)
+    return collect_main(args, parser)
+
+
+def collect_main(args, parser, campaign=None):
     if platform.system() != "Linux":
         parser.error("Linux native collection only")
     if (
@@ -1179,9 +1289,15 @@ def main(argv=None):
     if args.restored_recovery_preflight and mode != "aa":
         parser.error("restored recovery preflight requires the same baseline wheel")
     output = args.output.absolute()
-    output.mkdir(parents=True, exist_ok=False)
-    scratch = Path(
-        tempfile.mkdtemp(prefix="loushang-g18-native-", dir=args.scratch_parent)
+    resumed = campaign is not None and campaign.resuming
+    if campaign is None:
+        output.mkdir(parents=True, exist_ok=False)
+    scratch = (
+        Path(campaign.report["scratch"])
+        if resumed
+        else Path(
+            tempfile.mkdtemp(prefix="loushang-g18-native-", dir=args.scratch_parent)
+        )
     )
     report = {
         "schema_version": 2,
@@ -1233,19 +1349,55 @@ def main(argv=None):
         "installations": {},
     }
     path = output / "report.json"
+    if campaign is not None:
+        plan = {
+            key: report[key]
+            for key in (
+                "scope",
+                "source_receipts",
+                "helpers_before",
+                "runner_sha256",
+                "probe_sha256",
+                "condition",
+                "cases",
+                "blocks",
+                "pairs_per_block",
+            )
+        }
+        plan.update(
+            references={side: str(prefix) for side, prefix in prefixes.items()},
+            observer=str(observer_prefix),
+            scratch_parent=str(args.scratch_parent),
+            requirements=dict(
+                path=str(args.requirements.resolve()),
+                sha256=inert.digest(args.requirements),
+            ),
+        )
+        if resumed:
+            report = campaign.report
+        campaign.begin(report, plan)
+        if resumed:
+            campaign.native = reopen_native(campaign, report)
     inert.write_report(path, report)
     try:
-        observer_root = scratch / "observer-identity"
+        segment_prefix = f"resume-{campaign.value['segment']}-" if resumed else ""
+        observer_root = scratch / f"{segment_prefix}observer-identity"
         observer_root.mkdir()
-        report["observer_installation"] = inert.verify_pinned_install(
+        verified = inert.verify_pinned_install(
             observer_prefix, wheels["a"], observer_root, sources["a"]["wheel_sha256"]
         )
+        if resumed and verified != report["observer_installation"]:
+            raise ValueError("observer identity changed during pause")
+        report["observer_installation"] = verified
         for side, prefix in prefixes.items():
-            root = scratch / f"identity-{side}"
+            root = scratch / f"{segment_prefix}identity-{side}"
             root.mkdir()
-            report["installations"][side] = inert.verify_pinned_install(
+            verified = inert.verify_pinned_install(
                 prefix, wheels[side], root, sources[side]["wheel_sha256"]
             )
+            if resumed and verified != report["installations"][side]:
+                raise ValueError("reference installation changed during pause")
+            report["installations"][side] = verified
         left, right = report["installations"].values()
         for key in ("python", "dependencies", "entries"):
             if (
@@ -1254,14 +1406,18 @@ def main(argv=None):
             ):
                 raise ValueError(f"paired installation contract differs: {key}")
         if args.fixed_slot:
-            slot = provision_slot(
-                args.requirements,
-                wheels,
-                sources,
-                report["observer_installation"],
-                output,
-                report,
-                path,
+            slot = (
+                campaign.native[0]
+                if resumed
+                else provision_slot(
+                    args.requirements,
+                    wheels,
+                    sources,
+                    report["observer_installation"],
+                    output,
+                    report,
+                    path,
+                )
             )
             collect_fixed_native(
                 slot,
@@ -1276,6 +1432,7 @@ def main(argv=None):
                 report,
                 path,
                 temporary_parent=args.scratch_parent,
+                **({"campaign": campaign} if campaign is not None else {}),
             )
         elif args.restored_recovery_preflight:
             slot = (
@@ -1371,11 +1528,19 @@ def main(argv=None):
                 "requires all seven fixed-slot cases and exactly two blocks of ten pairs"
             )
         report["status"] = "complete-record-only"
+        if campaign is not None:
+            campaign.finish(report)
     except BaseException as error:
+        if campaign is not None and campaign.is_pause(error):
+            return 0
         report.update(status="failed", failure=f"{type(error).__name__}: {error}")
         raise
     finally:
-        inert.write_report(path, report)
+        if campaign is None or report["status"] not in {
+            "paused",
+            "complete-record-only",
+        }:
+            inert.write_report(path, report)
         print(f"evidence: {path}; scratch retained: {scratch}", flush=True)
         print(f"advisory comparison: {report['comparison']['verdict']}", flush=True)
     return 0
