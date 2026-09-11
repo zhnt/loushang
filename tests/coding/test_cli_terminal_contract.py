@@ -39,6 +39,11 @@ def test_real_cli_quit_restores_shared_terminal_modes() -> None:
             in strip_control_sequences(output),
             timeout=15,
         )
+        # Welcome is now first-frame, not a promise that Session is executable.
+        driver.read_until(
+            lambda output: "perm=" in strip_control_sequences(output),
+            timeout=15,
+        )
         driver.write("/quit\r")
         assert driver.wait(timeout=15) == 0
         output = driver.raw_output

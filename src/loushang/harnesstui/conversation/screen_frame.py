@@ -18,6 +18,7 @@ from loushang.tui import (
     PendingQueueView,
     PendingSection,
     StatusBar,
+    StatusField,
     WorkingLine,
 )
 
@@ -102,7 +103,9 @@ class ScreenFramePresentation:
         )
         component.pending_queue = self.pending_queue(state)
         component.status_bar = (
-            self.status_bar(state) if state.statusline_visible else None
+            self.status_bar(state)
+            if state.statusline_visible or state.startup_pending
+            else None
         )
         return component
 
@@ -151,6 +154,16 @@ class ScreenFramePresentation:
         return PendingQueueView(sections=tuple(sections))
 
     def status_bar(self, state: ScreenConversationState) -> StatusBar:
+        if state.startup_pending:
+            return StatusBar(
+                (
+                    StatusField(
+                        state.status_message or "Loading session",
+                        priority=100,
+                        token="message",
+                    ),
+                )
+            )
         settings = state.statusline_settings
         return StatusBar(
             status_line_fields(

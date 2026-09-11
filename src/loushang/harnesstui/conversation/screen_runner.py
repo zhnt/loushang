@@ -4,7 +4,7 @@ import asyncio
 import inspect
 import shutil
 from collections.abc import Awaitable, Callable
-from contextlib import AbstractContextManager
+from contextlib import AbstractContextManager, ExitStack, nullcontext
 from typing import Any, Protocol, TextIO, TypeAlias, assert_never
 
 from loushang.harnesstui.conversation.input import (
@@ -52,6 +52,24 @@ ShouldExit = Callable[[str], bool]
 LocalCommandPredicate = Callable[[str], bool]
 TerminalModeFactory = Callable[[TextIO, TextIO], AbstractContextManager[object]]
 TerminalSizeProvider = Callable[[], TerminalSize]
+
+
+class ConversationScreenLifecycle(Protocol):
+    """Optional owned preparation; contains no Product runtime or session."""
+
+    def start(self, wake: Callable[[], None]) -> None: ...
+
+    def poll(self) -> int | None: ...
+
+    @property
+    def wait_task(self) -> asyncio.Task[int] | None: ...
+
+    async def settle(
+        self,
+        exit_code: int,
+        active_task: asyncio.Task[int | None] | None,
+        dispose_router: Callable[[], None],
+    ) -> None: ...
 
 
 class ConversationRenderablePort(Protocol):
@@ -115,6 +133,7 @@ async def run_conversation_screen(
     cancellation_message: str,
     input_router_factory: ConversationInputRouterFactoryPort | None = None,
     input_chunk_reader: InputChunkReader | None = None,
+    lifecycle: ConversationScreenLifecycle | None = None,
 ) -> int:
     """Run one product-neutral interactive conversation screen.
 
@@ -176,15 +195,38 @@ async def run_conversation_screen(
         render_wakeup.set()
 
     app.render_requester = request_app_render
+    terminal_owner = ExitStack()
+    screen_exit_code = 0
+
+    def finish(*, runtime: TuiRuntime, stdout: TextIO, exit_code: int) -> int:
+        nonlocal screen_exit_code
+        screen_exit_code = exit_code
+        return _finish_tui_exit(runtime=runtime, stdout=stdout, exit_code=exit_code)
+
     try:
-        with mode_factory(stdin, stdout) as terminal_context:
+        mode = mode_factory(stdin, stdout)
+        # Startup settlement must finish while terminal ownership is still held.
+        terminal_mode = (
+            nullcontext(terminal_owner.enter_context(mode))
+            if lifecycle is not None
+            else mode
+        )
+        with terminal_mode as terminal_context:
             app.terminal_diagnostics_provider = lambda context=terminal_context: (
                 format_terminal_diagnostics(context)
             )
             configure_runtime_for_terminal_context(runtime, app, terminal_context)
             write_startup_welcome(app=app, runtime=runtime, stdout=stdout)
             runtime.render_now()
+            if lifecycle is not None:
+                lifecycle.start(render_wakeup.set)
             while True:
+                if lifecycle is not None:
+                    startup_exit = lifecycle.poll()
+                    if startup_exit is not None:
+                        return finish(
+                            runtime=runtime, stdout=stdout, exit_code=startup_exit
+                        )
                 if active_task is not None and active_task.done():
                     exit_code = await finish_active_task(
                         app=app,
@@ -196,7 +238,7 @@ async def run_conversation_screen(
                     active_prompt_started_at = None
                     runtime.render_now()
                     if exit_code is not None:
-                        return _finish_tui_exit(
+                        return finish(
                             runtime=runtime,
                             stdout=stdout,
                             exit_code=exit_code,
@@ -205,7 +247,11 @@ async def run_conversation_screen(
                 data = await read_input_chunk_or_render_tick(
                     stdin,
                     runtime=runtime,
-                    active_task=active_task,
+                    active_task=(
+                        active_task
+                        if active_task is not None or lifecycle is None
+                        else lifecycle.wait_task
+                    ),
                     input_chunk_reader=input_chunk_reader,
                     render_wakeup=render_wakeup,
                     pending_input_idle_ms=(
@@ -236,13 +282,13 @@ async def run_conversation_screen(
                             cancellation_message=cancellation_message,
                         )
                         runtime.render_now()
-                        return _finish_tui_exit(
+                        return finish(
                             runtime=runtime,
                             stdout=stdout,
                             exit_code=exit_code if exit_code is not None else 0,
                         )
                     runtime.render_now()
-                    return _finish_tui_exit(
+                    return finish(
                         runtime=runtime,
                         stdout=stdout,
                         exit_code=0,
@@ -258,7 +304,7 @@ async def run_conversation_screen(
                     result = router.handle(event)
                     if isinstance(result, ConversationExitResult):
                         runtime.render_now()
-                        return _finish_tui_exit(
+                        return finish(
                             runtime=runtime,
                             stdout=stdout,
                             exit_code=result.exit_code,
@@ -302,7 +348,7 @@ async def run_conversation_screen(
                             )
                             if exit_code is not None:
                                 runtime.render_now()
-                                return _finish_tui_exit(
+                                return finish(
                                     runtime=runtime,
                                     stdout=stdout,
                                     exit_code=exit_code,
@@ -316,7 +362,7 @@ async def run_conversation_screen(
                             )
                             if exit_code is not None:
                                 runtime.render_now()
-                                return _finish_tui_exit(
+                                return finish(
                                     runtime=runtime,
                                     stdout=stdout,
                                     exit_code=exit_code,
@@ -330,7 +376,7 @@ async def run_conversation_screen(
                             )
                             if exit_code is not None:
                                 runtime.render_now()
-                                return _finish_tui_exit(
+                                return finish(
                                     runtime=runtime,
                                     stdout=stdout,
                                     exit_code=exit_code,
@@ -343,7 +389,7 @@ async def run_conversation_screen(
                             )
                             if exit_code is not None:
                                 runtime.render_now()
-                                return _finish_tui_exit(
+                                return finish(
                                     runtime=runtime,
                                     stdout=stdout,
                                     exit_code=exit_code,
@@ -358,14 +404,33 @@ async def run_conversation_screen(
                         assert_never(result)
                     if result.render_requested:
                         _request_runtime_render(runtime, "input")
+    except BaseException as error:
+        screen_exit_code = (
+            130 if isinstance(error, (KeyboardInterrupt, asyncio.CancelledError)) else 1
+        )
+        raise
     finally:
-        dispose_router = getattr(router, "dispose", None)
-        if callable(dispose_router):
-            dispose_router()
-        app.surface_host = None
-        app.terminal_diagnostics_provider = previous_terminal_diagnostics_provider
-        app.terminal_capabilities = previous_terminal_capabilities
-        app.render_requester = previous_render_requester
+
+        def dispose_router() -> None:
+            dispose = getattr(router, "dispose", None)
+            if callable(dispose):
+                dispose()
+
+        try:
+            if lifecycle is not None:
+                await lifecycle.settle(screen_exit_code, active_task, dispose_router)
+            else:
+                dispose_router()
+        finally:
+            try:
+                terminal_owner.close()
+            finally:
+                app.surface_host = None
+                app.terminal_diagnostics_provider = (
+                    previous_terminal_diagnostics_provider
+                )
+                app.terminal_capabilities = previous_terminal_capabilities
+                app.render_requester = previous_render_requester
 
 
 async def finish_active_task(

@@ -510,6 +510,33 @@ async def run_cli(
             continuity_runner=continuity_runner,
         ),
     )
+    if (
+        tui_runner is run_coding_tui
+        and stream_is_tty(host_lifecycle.streams.stdin)
+        and stream_is_tty(host_lifecycle.streams.stdout)
+    ):
+        from io import StringIO
+
+        from loushang.coding.cli.screen_startup import (
+            run_screen_first_cli,
+            screen_startup_eligible,
+        )
+
+        candidate = _parse_application_args(raw_argv, StringIO(), None, True)
+        if candidate.args is not None and screen_startup_eligible(
+            candidate.args,
+            _cli_launch_plan(candidate.args),
+            stdin=host_lifecycle.streams.stdin,
+            stdout=host_lifecycle.streams.stdout,
+        ):
+            return await run_screen_first_cli(
+                raw_argv,
+                binding=binding,
+                host_binding=host_binding,
+                host_runners=host_runners,
+                project_root=Path(cwd or candidate.args.cwd or Path.cwd()).resolve(),
+                cwd=cwd,
+            )
     return await run_agent_cli_application(
         raw_argv,
         binding=binding,

@@ -51,6 +51,9 @@ def _run_cli_and_quit() -> str:
             in strip_control_sequences(output),
             timeout=15,
         )
+        driver.read_until(
+            lambda output: "perm=" in strip_control_sequences(output), timeout=15
+        )
         driver.write("/quit\r")
         assert driver.wait(timeout=15) == 0
         return driver.raw_output

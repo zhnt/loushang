@@ -2,7 +2,8 @@
 
 Only test-side Popen/PTY observation and a scoped G14 child watcher are added.
 Product argv, runtime deadlines,
-ready predicates and lifetime owners remain the existing G14/G16/G17 fixtures.
+Host lifetime owners remain the existing G14/G16/G17 fixtures. Embedded ready
+also requires the session status bar: the screen-first welcome is not readiness.
 """
 
 from __future__ import annotations
@@ -421,6 +422,7 @@ def ready(driver, embedded=False):
         lambda out: (
             (
                 "Welcome to Loushang CLI" in strip_control_sequences(out)
+                and "perm=" in strip_control_sequences(out)
                 and "\x1b[?2004h" in out
                 and "\x1b[?1004h" in out
             )
