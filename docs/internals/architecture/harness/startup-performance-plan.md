@@ -64,7 +64,11 @@
   A/A attempt exited 1 during first recovery seed preparation (original 35-second
   TUI ready timeout, zero observations); three-view read-only audit confirms this
   is execution failure, not accepted calibration or a resumable paused generation;
-  automatic full reruns/A/B stop pending a separately reviewed bounded diagnosis;
+  automatic full reruns/A/B stopped for a separately reviewed bounded diagnosis;
+  the reviewed single-seed diagnosis subsequently completed its two original CLI
+  workflows with zero formal observations and no failure-tree capture; this
+  non-reproduction result does not establish the old timeout cause or stability,
+  and automatic formal reruns remain stopped pending a reviewed condition decision;
   resumed segments do not automatically qualify for performance acceptance;
   installed readiness/stability/performance acceptance pending; no push or merge;
   current progress: [Linux local delivery](startup-performance-g18-linux-delivery.md)

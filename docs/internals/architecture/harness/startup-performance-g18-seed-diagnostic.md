@@ -2,7 +2,7 @@
 
 Status: design and implementation passed three-view review without P1/P2;
 final scoped collector regression passed 490 tests with four platform skips.
-No diagnostic Product invocation has run yet.
+The one approved diagnostic invocation completed; see its bounded result below.
 Authority: [G18 plan](startup-performance-plan.md) and the failed
 [checkpoint warm attempt](startup-performance-g18-linux-delivery.md).
 
@@ -80,3 +80,36 @@ The final unified result is retained as
 Changed-file Ruff checks and documentation invariants passed. This is scoped
 collector verification; it does not claim a new full Coding/AppService gate run
 or any installed/performance acceptance.
+
+## Single Invocation Result
+
+Tool commit `eaa082a4`; session **4403**, terminal **exit 0**. The preflight
+recorded about 8.43 GiB free, no running task collector/test/scan, and two vmstat
+intervals with 79%/89% idle and 16/0 KiB swap-in. These readings are descriptive,
+not a proof of isolation or a causal comparison with the previous failure.
+Resource receipt:
+`.artifacts/g18-linux-delivery/resource-seed-startup-diagnostic-01.json`.
+
+- Report: `.artifacts/g18-linux-delivery/seed-startup-diagnostic-01/report.json`;
+  SHA-256 `fc9c7e5b2ea6f3a075c154c4fdb4864b646476d71e38d76f0d3342a183095af8`.
+- Raw receipt: `/var/tmp/g18-recovery-pqxk3_a2/control/prepare-0.json`;
+  SHA-256 `500b4c7db8f9dd99675983a3f384265ef06d904f3a9567426081aa5c7438939e`.
+- Exactly one original seed preparation completed with two settled CLI workflows;
+  their whole-workflow durations were 30.351051 and 13.103257 seconds. These are
+  not individual ready latencies and must not be compared directly with the
+  35-second ready deadline.
+- Zero observations; comparator remains `not-evaluated`. The frozen A source is
+  used on both sides; all 1,202 helper entries match before/after, final original
+  installation checks completed, and the slot is idle/nonfailed. Recorded CLI
+  PIDs 3098082 and 3098124 were absent at the post-exit check.
+- No operation failed, so the failure-only tree snapshot was not triggered. The
+  diagnostic does not provide missing Python/descendant stacks for the old run.
+
+Parent `/var/tmp/lg18-tests-P7V9eO`, scratch
+`/var/tmp/loushang-g18-native-tjanzrb3`, slot `g18-slot-abw48a8i` and seed artifacts
+are retained. The prior failed report/slot are unchanged. This invocation did
+not reproduce the timeout; it does not identify or fix its cause, accept native
+stability or authorize automatic full A/A/A/B retries. A separately reviewed
+measurement-condition decision is still needed before another formal attempt.
+Independent read-only evidence audit verified both hashes, raw/report agreement,
+zero seed restores and this non-reproduction classification; no P1/P2 remained.

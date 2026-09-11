@@ -991,9 +991,15 @@ Hosted descendant rather than assuming the TUI's event-loop wait is the cause.
 Any new execution/instrumentation requires a separate reviewed diagnostic plan:
 new state, original argv/PTY/35-second ready and retained-owner deadlines,
 failure-only bounded evidence before cleanup, no Product edits, debugger attach,
-threshold changes or acceptance claims. No diagnostic rerun has been performed.
+threshold changes or acceptance claims. At that point no diagnostic rerun had
+been performed.
 The separately reviewed [single-seed diagnostic](startup-performance-g18-seed-diagnostic.md)
 defines that next execution and its explicit non-acceptance boundary.
+That one invocation subsequently exited 0: the original two seed CLI workflows
+settled, final pins passed, and no failure snapshot was triggered. It retained
+zero formal observations and did not evaluate a comparator. This is a
+non-reproduction result, not a root-cause finding or accepted native stability;
+the diagnostic document binds its reports and next-decision boundary.
 
 ## Bounded Order/Import Diagnosis — Pre-Execution Review
 
