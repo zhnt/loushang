@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import asyncio
 import sys
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from loushang.coding.cli.application import run_cli
+if TYPE_CHECKING:
+    from loushang.coding.cli.application import run_cli as run_cli
 
 
 def __getattr__(name: str) -> Any:
@@ -15,12 +15,33 @@ def __getattr__(name: str) -> Any:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
     from loushang.coding.cli import application
 
-    return getattr(application, name)
+    value = getattr(application, name)
+    if name == "run_cli":
+        globals()[name] = value
+    return value
+
+
+async def _run_entry(argv: list[str] | tuple[str, ...]) -> int:
+    # Only this exact invocation has no grammar/extension/dispatch decisions.
+    # Explicitly materialized or replaced run_cli bindings retain their behavior.
+    if tuple(argv) == ("--version",) and "run_cli" not in globals():
+        from importlib.metadata import PackageNotFoundError, version
+
+        try:
+            installed_version = version("loushang")
+        except PackageNotFoundError:
+            installed_version = "0.1.0"
+        sys.stdout.write(f"{installed_version}\n")
+        return 0
+    runner = globals()["run_cli"] if "run_cli" in globals() else __getattr__("run_cli")
+    return await runner(argv)
 
 
 def main(argv: list[str] | tuple[str, ...] | None = None) -> int:
+    import asyncio
+
     try:
-        return asyncio.run(run_cli(sys.argv[1:] if argv is None else argv))
+        return asyncio.run(_run_entry(sys.argv[1:] if argv is None else argv))
     except KeyboardInterrupt:
         sys.stderr.write("Interrupted.\n")
         return 130
