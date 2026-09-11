@@ -70,8 +70,11 @@ def test_coding_package_stays_within_wave_a_budget() -> None:
     groups = _partition_line_counts(line_counts)
     # Baseline 9bc69361494293595ae424be225c61e3226a9996 facade: 114 lines.
     # Preserve the non-facade allowance: 33_800 - 114 = 33_686.
-    # G18 explicitly adds 86 lines overall: 33_686 + 200 = 33_886.
-    assert sum(groups["core"].values()) <= 33_686, groups["core"]
+    # Approved G18 net additions outside the facade (relative to 9bc69361):
+    # CLI split/lazy entry and startup wiring 87; screen owner 185;
+    # UI attachment 16; continuity inode-ownership cleanup 11. No path is exempt.
+    g18_core_allowance = 87 + 185 + 16 + 11
+    assert sum(groups["core"].values()) <= 33_686 + g18_core_allowance, groups["core"]
     assert sum(groups["g10"].values()) <= 1_800, groups["g10"]
     assert sum(groups["g11"].values()) <= 400, groups["g11"]
     assert sum(groups["g12"].values()) <= 800, groups["g12"]

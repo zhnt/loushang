@@ -10,6 +10,9 @@ from types import SimpleNamespace
 
 import pytest
 
+if sys.platform != "linux":
+    pytest.skip("Linux checkpoint contract", allow_module_level=True)
+
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -24,11 +27,6 @@ def load(name):
 
 checkpoint = load("_g18_checkpoint")
 native = load("measure_g18_native")
-
-pytestmark = pytest.mark.skipif(
-    sys.platform != "linux", reason="Linux checkpoint contract"
-)
-
 
 def report():
     return dict(

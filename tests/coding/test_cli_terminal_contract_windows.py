@@ -41,7 +41,7 @@ def test_windows_cli_conpty_stream_ends_with_cursor_restoration() -> None:
             timeout=15,
         )
         driver.read_until(
-            lambda output: "perm=" in strip_control_sequences(output), timeout=15
+            lambda output: " | idle" in strip_control_sequences(output), timeout=15
         )
         driver.write("/quit\r")
         assert driver.wait(timeout=15) == 0

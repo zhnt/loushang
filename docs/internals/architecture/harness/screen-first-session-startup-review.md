@@ -69,3 +69,25 @@ runtime acquisition, suspended initialization remains editable, and one composer
 survives attachment. The pre-application import chain and synchronous bootstrap
 segments can still delay first frame/input; matched real-startup latency sampling
 and external macOS/Windows runs remain follow-up work.
+
+## Release gate follow-up
+
+PR #585 exposed three verification integration gaps:
+
+- `perm=` is an optional, low-priority status field. With the longer CI model
+  label at 80 columns it disappears even though attachment succeeded. Native
+  probes now await the idle runtime status instead; the regression includes
+  the compact CI status and still rejects the loading frame.
+- Linux checkpoint tests must skip at module level before importing `fcntl`
+  on Windows, not only mark collected test functions as Linux-only.
+- The non-facade Coding budget had not accounted for the accepted G18 changes.
+  Its explicit net addition relative to `9bc69361` is 299 lines: CLI split/lazy
+  entry/startup wiring 87, screen startup owner 185, UI attachment 16, and
+  continuity cleanup 11. All files remain counted, with the facade independently
+  bounded; there is no directory exclusion or unlimited allowance.
+
+The initial offline extension example failed with `TMPDIR` inside the checkout
+and passed with a new outside-checkout directory on the main filesystem.
+AI static/catalog/import checks and coverage passed (851 tests, 90.63% total
+coverage). Remaining release and platform checks are pending; these observations
+do not constitute final release acceptance.
