@@ -60,10 +60,12 @@
   safe-boundary native checkpoint support is committed as d7545673, with three-view
   re-review, 466 scoped regression passes (four platform skips), and a real warm
   pause/resume smoke retaining its original observation prefix and seed state;
-  the next full warm A/A is planned as checkpoint-enabled but uninterrupted,
-  with three-view pre-execution review passed and capacity clearance pending;
-  resumed segments do not
-  automatically qualify for performance acceptance;
+  after capacity was restored, the reviewed uninterrupted checkpoint-enabled warm
+  A/A attempt exited 1 during first recovery seed preparation (original 35-second
+  TUI ready timeout, zero observations); three-view read-only audit confirms this
+  is execution failure, not accepted calibration or a resumable paused generation;
+  automatic full reruns/A/B stop pending a separately reviewed bounded diagnosis;
+  resumed segments do not automatically qualify for performance acceptance;
   installed readiness/stability/performance acceptance pending; no push or merge;
   current progress: [Linux local delivery](startup-performance-g18-linux-delivery.md)
 - Authority: delivery plan; accepted runtime boundaries and public contracts take precedence

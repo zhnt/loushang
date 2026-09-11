@@ -943,6 +943,56 @@ user-coordinated exclusive-window condition, and do not run new tests/builds or
 reviews alongside the eventual collector. Until capacity is cleared, do not
 start a new performance attempt or claim a verified wait on one.
 
+### Checkpoint warm A/A attempt — seed preparation failed
+
+The user released capacity and requested continuation. At 2026-09-11 02:58 UTC,
+the launch receipt recorded 9,139,265,536 bytes available (8.51 GiB), satisfying
+the reviewed capacity condition. Known directory scans had exited; the old
+Harness pytest processes were no longer present. Frozen A wheel/requirements and
+the reviewed scripts/tests were unchanged. Resource snapshots still showed CPU,
+paging and I/O pressure; neither free disk nor scan exit proves a noise-free
+window. Preflight evidence is retained separately in
+`.artifacts/g18-linux-delivery/resource-native-warm-checkpoint-03-launch.json`.
+
+The single full-plan invocation, session **20062**, terminated with **exit 1**.
+Report: `.artifacts/g18-linux-delivery/native-aa-warm-checkpoint-03/report.json`,
+SHA-256 `ead6cb5f47aa8e6dd6e43506b636abfcc77a18845c8e4cc8c04f27389181bdf6`.
+It failed in the first `prepare:recovery-cwd` seed creator: the original 35-second
+ready predicate timed out with no PTY output, before any warmup or formal
+observation. `samples` is empty; comparison remains `not-evaluated`; report and
+checkpoint are `failed`. Slot `g18-slot-estjpxu2` is idle but poisoned. There is
+no paused generation to resume; do not clear its failed flag or reuse this slot.
+Parent `/var/tmp/lg18-tests-DcbnwX`, scratch
+`/var/tmp/loushang-g18-native-9cgdkxm3` and recovery state are retained.
+
+Raw preparation receipt: `/var/tmp/g18-recovery-toasum3t/control/prepare-0.json`,
+SHA-256 `b96266422c4d90fff34ad97f9df1f5ada5bc9a29372eddc8907a99ee18f65e9a`.
+Its failure-only snapshot records main-thread runtime 10.522051245 seconds,
+runqueue wait 12.637826324 seconds, `ep_poll` at capture, two process threads,
+and host CPU PSI `some avg10=94.38`. These cumulative/non-atomic readings do not
+identify a deadlock or establish the timeout's cause. The original controller
+completed its failure cleanup before raising; post-exit inspection found target
+PID 3091690 and the task-specific process paths absent. This is physical failure
+cleanup, not normal Product settlement or proof that no descendant needed cleanup.
+
+Three independent read-only audits found no evidence-classification P1/P2.
+Full versus successful short warm smoke uses identical source/installation/helper
+inputs and first seed-preparation path. Short-plan `foreground` observations
+occur after seed preparation, not as an extra warmup; the full plan's second
+recovery scope had not executed. Pause/seal/reopen had not been reached. Thus the
+failure is not specific to full-plan case order or demonstrated to be a checkpoint
+regression. The retained failed subject contains only an application lock file,
+not session/journal records; this is a limited filesystem observation, not proof
+of exactly where the process stopped.
+
+Stop automatic full collection/resume/A/B. The next bounded diagnostic should
+target first seed-creator startup before its first frame, including the owned
+Hosted descendant rather than assuming the TUI's event-loop wait is the cause.
+Any new execution/instrumentation requires a separate reviewed diagnostic plan:
+new state, original argv/PTY/35-second ready and retained-owner deadlines,
+failure-only bounded evidence before cleanup, no Product edits, debugger attach,
+threshold changes or acceptance claims. No diagnostic rerun has been performed.
+
 ## Bounded Order/Import Diagnosis — Pre-Execution Review
 
 Independent raw-data review reproduced all ten comparator results and verified
