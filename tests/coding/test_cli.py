@@ -1677,7 +1677,7 @@ def test_default_runtime_builder_rebuilds_project_bound_services_for_session_cwd
 def test_cwd_bound_services_factory_uses_sdk_services_creation(
     tmp_path, monkeypatch
 ) -> None:
-    import loushang.coding.cli.__main__ as cli_main
+    import loushang.coding.cli.application as cli_main
     from loushang.coding.bootstrap import create_services
     from loushang.harness.cli import cwd_bound_services_factory
 
@@ -1881,7 +1881,7 @@ def test_run_cli_shares_interactive_approval_resolver_with_tools_and_runtime(
     tmp_path,
     monkeypatch,
 ) -> None:
-    from loushang.coding.cli import __main__ as cli_main
+    from loushang.coding.cli import application as cli_main
     from loushang.harness.approval import InteractiveApprovalResolver
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
@@ -1962,7 +1962,7 @@ def test_cli_base_tool_owner_uses_settings_without_direct_registry_publication(
 
     import loushang.coding._base_plugin_owners as base_owners
     from loushang.coding.bootstrap import create_agent_session, create_services
-    from loushang.coding.cli import __main__ as cli_main
+    from loushang.coding.cli import application as cli_main
     from loushang.coding.control import ControlConfig, SettingsManager, ToolSettings
     from loushang.coding.session_manager import SessionManager
 
@@ -2020,7 +2020,7 @@ def test_cli_policy_settings_bind_to_an_explicit_execution_scope(
     tmp_path,
 ) -> None:
     from loushang.coding.bootstrap import create_agent_session, create_services
-    from loushang.coding.cli import __main__ as cli_main
+    from loushang.coding.cli import application as cli_main
     from loushang.coding.control import ControlConfig, SettingsManager, ToolSettings
     from loushang.coding.session_manager import SessionManager
     from loushang.harness.approval import InteractiveApprovalResolver
@@ -6758,7 +6758,7 @@ def test_run_cli_bare_resume_can_request_user_global_session_listing(
     tmp_path,
     monkeypatch,
 ) -> None:
-    from loushang.coding.cli import __main__ as cli_main
+    from loushang.coding.cli import application as cli_main
 
     runtime = FakeRuntime(FakeSession("placeholder"))
     bindings: list[dict[str, object]] = []
@@ -6811,7 +6811,7 @@ def test_run_cli_bare_resume_awaits_configured_continuity_composition(
     tmp_path,
     monkeypatch,
 ) -> None:
-    from loushang.coding.cli import __main__ as cli_main
+    from loushang.coding.cli import application as cli_main
 
     runtime = FakeRuntime(FakeSession("placeholder"))
     services = _fake_services(plugin_sources=("plugins/continuity",))
@@ -6870,7 +6870,7 @@ def test_run_cli_bare_resume_retries_partial_continuity_cleanup_on_bind_failure(
     tmp_path,
     monkeypatch,
 ) -> None:
-    from loushang.coding.cli import __main__ as cli_main
+    from loushang.coding.cli import application as cli_main
     from loushang.coding.continuity_bootstrap import (
         CodingContinuityBootstrapError,
     )
@@ -6916,7 +6916,7 @@ def test_run_cli_bare_resume_activates_selection_before_starting_main_tui(
     tmp_path,
     monkeypatch,
 ) -> None:
-    from loushang.coding.cli import __main__ as cli_main
+    from loushang.coding.cli import application as cli_main
     from loushang.harness.continuity import (
         CallbackPreparedActivationLease,
         ContinuityTarget,

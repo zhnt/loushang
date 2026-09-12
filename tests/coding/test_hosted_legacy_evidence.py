@@ -74,6 +74,7 @@ def _embedded(root):
         driver.read_until(
             lambda out: (
                 "Welcome to Loushang CLI" in strip_control_sequences(out)
+                and " | idle" in strip_control_sequences(out)
                 and "\x1b[?2004h" in out
                 and "\x1b[?1004h" in out
             ),

@@ -6,6 +6,8 @@ import asyncio
 import faulthandler
 import os
 
+from _hosted_boundary_trace import emit, install, text_shape
+
 from loushang.agent import synthetic_model_transport
 from loushang.agent.types import AgentToolResult
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
@@ -23,6 +25,8 @@ from loushang.harness.tools.execution import (
     CallableToolActionAdapter,
     PreparedToolAction,
 )
+
+install()
 
 
 async def _preview(action, context):
@@ -55,16 +59,18 @@ def _preview_tool() -> ToolDefinition:
 @synthetic_model_transport
 async def scripted_stream(model, context, options=None):
     latest = context.messages[-1]
-    user_text = ""
-    if latest.role == "user":
-        user_text = (
-            latest.content
-            if isinstance(latest.content, str)
-            else "".join(
-                part.text for part in latest.content if isinstance(part, TextPart)
-            )
+    latest_text = (
+        latest.content
+        if isinstance(latest.content, str)
+        else "".join(
+            part.text for part in latest.content if isinstance(part, TextPart)
         )
+    )
+    user_text = latest_text if latest.role == "user" else ""
     text = "waiting" if user_text == "hold" else "真实跨进程回复\nG14"
+    emit("model_input", roles=[message.role for message in context.messages[-8:]],
+         message_count=len(context.messages), latest=text_shape(latest_text),
+         latest_role=latest.role)
     if latest.role == "toolResult":
         text = "".join(
             part.text for part in latest.content if isinstance(part, TextPart)
@@ -107,7 +113,10 @@ async def scripted_stream(model, context, options=None):
         # Use the same public stream producer ownership as real providers.
         # Interrupt/EOF must cancel and settle this genuinely pending producer.
         async def parked_producer():
-            await asyncio.Event().wait()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                emit("producer_settled")
 
         stream.attach_task(asyncio.create_task(parked_producer()))
     else:

@@ -418,7 +418,7 @@ compatibility rather than silently widening the v1 wire union.
 | Session activation dependency | `src/loushang/harness/session/bootstrap_activation.py::standard_agent_session_activation_plan` | Treats `disabled_plugins` as a Resource-root and Extension activation input | Delete this dependency after those consumers read the desired-state projection |
 | Package/Resource projection chain | `src/loushang/harness/resources/packages/roots.py`, `src/loushang/harness/resources/packages/catalog.py`, `src/loushang/harness/resources/packages/projection.py`, and `src/loushang/harness/resources/packages/session.py` | Threads `disabled_plugins` through package catalog/root resolution and derives enabled mounts/entries | PLC9A migrates selection to exact desired revisions; retain Package/Resource projection while deleting the legacy veto input |
 | Coding Continuity compatibility caller | `src/loushang/coding/continuity_bootstrap.py::bind_coding_configured_continuity` | A1-3 reads legacy `disabled_plugins` only as one-time migration input, resolves tombstones by canonical Source identity even without a live binding, reconciles before fingerprint/empty-source/idempotent returns, maps early compatibility failures into the stable bootstrap error/status contract, restores the last ready status when a same-fingerprint retry reuses a healthy composition, and reconciles again after new migration or desired-state changes | Retain the migration input through the compatibility window; never reinspect an absent tombstone and delete the field only at PLC9E after finalization evidence |
-| Coding package-list fallback | `src/loushang/coding/cli/__main__.py::_run_list_packages` | Passes settings `disabled_plugins` into legacy catalog projection when the session query is unavailable | Delete the fallback after the common query port is mandatory and covered by startup diagnostics |
+| Coding package-list fallback | `src/loushang/coding/cli/application.py::_run_list_packages` | Passes settings `disabled_plugins` into legacy catalog projection when the session query is unavailable | Delete the fallback after the common query port is mandatory and covered by startup diagnostics |
 | Settings disable list | `src/loushang/harness/resources/plugins/authority.py::PluginResolutionAuthority.project_package` | Combines `source.enabled` with settings `disabled_plugins` | One-time migration to desired state; delete as runtime-selection input only after replay-safe migration proves explicit disabled/removed state is preserved |
 | Resolver projection veto | `src/loushang/harness/resources/plugins/resolver.py::PluginResolver.project_package` | Computes effective enabled from source and manifest flags | Retain inert descriptor projection only after it stops deciding runtime selection |
 | Preflight veto | `src/loushang/harness/resources/plugins/selection.py::PluginSelectionResolver.preflight` | Rejects selected packages when either `source.enabled` or `manifest.enabled` is false | Delete after desired state is the sole selection writer and Source Authority availability has a distinct diagnostic |
@@ -499,7 +499,7 @@ receive the same security-boundary review.
 
 | Entrypoint/owner group | Current exact owner | PLC9B target authority and gate |
 | --- | --- | --- |
-| Coding Package query | `src/loushang/coding/cli/__main__.py::_run_list_packages` | Read-only query may remain; a future Plugin-bound artifact action must use the common application gate and cannot construct a materializer |
+| Coding Package query | `src/loushang/coding/cli/application.py::_run_list_packages` | Read-only query may remain; a future Plugin-bound artifact action must use the common application gate and cannot construct a materializer |
 | CLI launch flags | `src/loushang/harness/cli/agent_args.py::agent_cli_argument_values` | Inert projection only; startup execution classifies before any side effect |
 | Shared CLI Package dispatch | `src/loushang/harness/cli/package_lifecycle.py::run_package_lifecycle` and `_invoke_source_operation` | Transport adapter calls the one PLC9B application port or returns stable refusal |
 | RPC Package transport | `src/loushang/harness/host/rpc/commands/packages.py::_PackageCapabilities`, `_DynamicPackageCapabilities`, and `RpcPackageCommands` | Transport capability cannot use dynamic fallback as authority; classify and route/refuse before Session/materializer mutation |
@@ -523,7 +523,7 @@ forwarding calls, module-level transport specifications, and dynamic strings.
 
 <!-- plc9b-entrypoint-inventory:start -->
 ```text
-src/loushang/coding/cli/__main__.py::_run_list_packages::get_packages = 5
+src/loushang/coding/cli/application.py::_run_list_packages::get_packages = 5
 src/loushang/harness/cli/agent_args.py::AgentCliArgs::check_package_updates = 1
 src/loushang/harness/cli/agent_args.py::AgentCliArgs::update_packages = 1
 src/loushang/harness/cli/agent_args.py::agent_cli_argument_values::check_package_updates = 2

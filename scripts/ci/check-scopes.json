@@ -29,6 +29,43 @@
   "rules": [
     {
       "paths": [
+        "scripts/dev/_g18_provenance.py",
+        "tests/dev/test_g18_provenance.py",
+        "scripts/dev/_g18_recovery.py",
+        "tests/dev/test_g18_recovery.py",
+        "scripts/dev/_g18_slot.py",
+        "tests/dev/test_g18_slot.py",
+        "scripts/dev/_g18_bytecode.py",
+        "tests/dev/test_g18_bytecode.py",
+        "scripts/dev/_g18_checkpoint.py",
+        "tests/dev/test_g18_checkpoint.py",
+        "scripts/dev/_g18_comparison.py",
+        "tests/dev/test_g18_comparison.py",
+        "scripts/dev/measure_g18_startup.py",
+        "tests/dev/test_measure_g18_startup.py",
+        "scripts/dev/measure_g18_native.py",
+        "tests/coding/_g18_native_probe.py",
+        "tests/dev/test_measure_g18_native.py",
+        "tests/coding/_interactive_startup_probe.py",
+        "tests/coding/_interactive_model_child.py",
+        "tests/coding/_interactive_seed.py",
+        "tests/dev/test_interactive_startup_probe.py",
+        "scripts/dev/_interactive_campaign.py",
+        "tests/dev/test_interactive_campaign.py",
+        "docs/internals/architecture/harness/startup-performance-g18-linux-aa-baseline.json",
+        "docs/internals/architecture/harness/startup-performance-g18-linux-native-warm-aa-baseline.json",
+        "docs/internals/architecture/harness/startup-performance-g18-linux-absent-aa-failure.json"
+      ],
+      "checks": ["appservice"],
+      "reason": "G18 installed startup evidence and collector regressions"
+    },
+    {
+      "paths": ["src/loushang/coding/__init__.py"],
+      "checks": ["coding_ui", "tui_native", "apphost", "appservice", "install"],
+      "reason": "Coding facade import activation reaches UI, native and installed consumers"
+    },
+    {
+      "paths": [
         ".github/**",
         "scripts/ci/**",
         "tests/ci/**",

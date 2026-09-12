@@ -33,6 +33,7 @@ from loushang.harnesstui.conversation.agent_application import (
     handle_agent_screen_approval,
 )
 from loushang.harnesstui.conversation.application_host import (
+    ActionHostScreenRunner,
     run_prepared_plain_conversation,
     run_prepared_screen_conversation,
 )
@@ -60,6 +61,8 @@ async def run_coding_tui(
     stderr: TextIO,
     verbose: bool = False,
     screen_run_profile: ConversationScreenRunProfile = CODING_SCREEN_RUN_PROFILE,
+    startup_app: ScreenCodingTuiApp | None = None,
+    prepared_screen_runner: ActionHostScreenRunner | None = None,
 ) -> int:
     return await run_tui_launch_shell(
         stdin=stdin,
@@ -75,6 +78,8 @@ async def run_coding_tui(
                 stderr=stderr,
                 verbose=verbose,
                 screen_run_profile=screen_run_profile,
+                startup_app=startup_app,
+                prepared_screen_runner=prepared_screen_runner,
             ),
             run_plain=partial(
                 _run_plain_tui,
@@ -100,6 +105,8 @@ async def _run_screen_interactive_tui(
     stderr: TextIO,
     verbose: bool,
     screen_run_profile: ConversationScreenRunProfile,
+    startup_app: ScreenCodingTuiApp | None = None,
+    prepared_screen_runner: ActionHostScreenRunner | None = None,
 ) -> int:
     current = current_agent_runtime_session(runtime, session)
     snapshot = await load_coding_tui_startup_view(runtime=runtime, session=session)
@@ -128,6 +135,8 @@ async def _run_screen_interactive_tui(
             screen_run_profile=screen_run_profile,
             continuity_reference=continuity_reference,
             startup_snapshot=snapshot,
+            startup_app=startup_app,
+            prepared_screen_runner=prepared_screen_runner,
         )
     finally:
         continuity_reference.release()
@@ -144,9 +153,11 @@ async def _run_bound_screen_interactive_tui(
     screen_run_profile: ConversationScreenRunProfile,
     continuity_reference: Any,
     startup_snapshot: Any,
+    startup_app: ScreenCodingTuiApp | None = None,
+    prepared_screen_runner: ActionHostScreenRunner | None = None,
 ) -> int:
     snapshot = startup_snapshot
-    app = ScreenCodingTuiApp(
+    app = startup_app or ScreenCodingTuiApp(
         model_label=snapshot.model_label,
         cwd=snapshot.cwd,
         branch=snapshot.branch,
@@ -156,6 +167,11 @@ async def _run_bound_screen_interactive_tui(
     completion_provider = await _load_completion_provider(
         session, base_path=Path(snapshot.cwd)
     )
+    if startup_app is not None:
+        app.state.model_label = snapshot.model_label
+        app.state.cwd = snapshot.cwd
+        app.state.branch = snapshot.branch
+        app.state.session_label = snapshot.session_label
     controller = build_coding_ui_controller(
         runtime=runtime,
         session=session,
@@ -240,7 +256,7 @@ async def _run_bound_screen_interactive_tui(
         prepared,
         stdin=stdin,
         stdout=stdout,
-        screen_runner=run_action_host_conversation_screen,
+        screen_runner=prepared_screen_runner or run_action_host_conversation_screen,
     )
 
 

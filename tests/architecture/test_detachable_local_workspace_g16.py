@@ -20,7 +20,7 @@ def test_G16_BOUNDARIES_owned_execution_stays_private_and_off_default_routes() -
     }
     for facade in (
         "src/loushang/appservice/__init__.py",
-        "src/loushang/coding/cli/__main__.py",
+        "src/loushang/coding/cli/__main__.py", "src/loushang/coding/cli/application.py",
         "src/loushang/coding/ui/cli.py",
     ):
         path = Path(facade)
@@ -113,7 +113,7 @@ def test_G16_BOUNDARIES_native_record_is_one_optional_stdlib_component() -> None
     for facade in (
         "src/loushang/appserver/__init__.py", "src/loushang/appserver/framing.py",
         "src/loushang/apphost/foreground.py", "src/loushang/coding/cli/hosted.py",
-        "src/loushang/coding/cli/__main__.py", "src/loushang/coding/ui/cli.py",
+        "src/loushang/coding/cli/__main__.py", "src/loushang/coding/cli/application.py", "src/loushang/coding/ui/cli.py",
     ):
         assert "local_record" not in Path(facade).read_text()
 
@@ -144,7 +144,7 @@ def test_G16_BOUNDARIES_native_io_is_confined_to_explicit_local_adapter() -> Non
     assert inspect.signature(AppServerConnectionV1).parameters["profile"].default is AppConnectionProfileV1.STDIO
     for name in (
         "src/loushang/appserver/__init__.py", "src/loushang/apphost/foreground.py",
-        "src/loushang/coding/cli/hosted.py", "src/loushang/coding/cli/__main__.py",
+        "src/loushang/coding/cli/hosted.py", "src/loushang/coding/cli/__main__.py", "src/loushang/coding/cli/application.py",
         "src/loushang/coding/ui/cli.py",
     ):
         assert "LocalAppServerV1" not in Path(name).read_text()
@@ -191,7 +191,7 @@ def test_G16_BOUNDARIES_product_bootstrap_is_shared_without_transport_or_default
     command = Path("src/loushang/coding/cli/mux.py").read_text()
     assert 'expected_product_id="coding"' in command
     assert '"stop_requested"' in command and '"--yes"' in command
-    for source in ("src/loushang/coding/cli/__main__.py", "src/loushang/coding/ui/cli.py",
+    for source in ("src/loushang/coding/cli/__main__.py", "src/loushang/coding/cli/application.py", "src/loushang/coding/ui/cli.py",
                    "src/loushang/coding/bootstrap.py", "src/loushang/coding/__init__.py"):
         text = Path(source).read_text()
         assert "hosted_bootstrap" not in text and "hosted_local" not in text

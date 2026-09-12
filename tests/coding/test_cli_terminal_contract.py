@@ -6,11 +6,20 @@ from pathlib import Path
 import pytest
 
 from loushang.tui import strip_control_sequences
+from tests.coding.test_hosted_legacy_evidence import _private_environment
 from tests.tui.terminal_process_support import (
     selected_backend_name,
     spawn_terminal_process,
     terminal_test_environment,
 )
+
+
+def _cli_sandbox(root: Path) -> tuple[Path, dict[str, str]]:
+    """Keep real CLI probes independent of developer config and project size."""
+    workspace = root / "p"
+    workspace.mkdir()
+    repo_root = Path(__file__).resolve().parents[2]
+    return workspace, terminal_test_environment(repo_root, base=_private_environment(root))
 
 pytestmark = [
     pytest.mark.tui_terminal_contract,
@@ -23,13 +32,12 @@ def _record_backend(record_testsuite_property) -> None:
     record_testsuite_property("terminal_backend", selected_backend_name())
 
 
-def test_real_cli_quit_restores_shared_terminal_modes() -> None:
-    repo_root = Path(__file__).resolve().parents[2]
-    env = terminal_test_environment(repo_root)
+def test_real_cli_quit_restores_shared_terminal_modes(tmp_path: Path) -> None:
+    workspace, env = _cli_sandbox(tmp_path)
 
     with spawn_terminal_process(
         [sys.executable, "-m", "loushang.coding.cli", "--tui"],
-        cwd=repo_root,
+        cwd=workspace,
         env=env,
         columns=80,
         rows=24,
@@ -37,6 +45,11 @@ def test_real_cli_quit_restores_shared_terminal_modes() -> None:
         driver.read_until(
             lambda output: "Welcome to Loushang CLI"
             in strip_control_sequences(output),
+            timeout=15,
+        )
+        # Welcome is now first-frame, not a promise that Session is executable.
+        driver.read_until(
+            lambda output: " | idle" in strip_control_sequences(output),
             timeout=15,
         )
         driver.write("/quit\r")

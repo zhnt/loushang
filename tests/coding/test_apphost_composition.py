@@ -560,7 +560,7 @@ def test_g9_omitted_owner_remains_current(_case: str) -> None:
         assert hosting.calls == 0
 
     _run(scenario())
-    for path in _CURRENT_ROOTS.values():
+    for path in (*_CURRENT_ROOTS.values(), Path("src/loushang/coding/cli/application.py")):
         assert "apphost_composition" not in path.read_text(encoding="utf-8")
 
 

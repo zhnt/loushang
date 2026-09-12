@@ -47,7 +47,7 @@ LEGACY_SKILL_BODY_PATH = Path(
     "src/loushang/harness/resources/_legacy_skill_body.py"
 )
 METHOD_LOADER_PATH = Path("src/loushang/method/loader.py")
-CODING_CLI_PATH = Path("src/loushang/coding/cli/__main__.py")
+CODING_CLI_PATH = Path("src/loushang/coding/cli/application.py")
 CODING_BOOTSTRAP_PATH = Path("src/loushang/coding/bootstrap.py")
 RESOURCE_REFRESH_PATH = Path("src/loushang/harness/session/resource_refresh.py")
 RESOURCE_OWNER_AUTHORITY_PATH = Path(
