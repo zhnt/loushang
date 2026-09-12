@@ -4,15 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import os
+import sys
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, TextIO, cast
 
-from loushang.coding.ui.mode import run_coding_tui
+from loushang.coding.cli.startup_route import screen_startup_eligible
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-from loushang.harness.cli import run_agent_cli_application
-from loushang.harness.cli.application import invoke_agent_cli_runtime_builder
-from loushang.harness.cli.launch import cli_static_error, resolve_effective_tui
 from loushang.harness.host.product_host import ProductHostLifecycle, stream_is_tty
 from loushang.harnesstui.conversation.startup_host import (
     ScreenConversationStartup,
@@ -20,6 +19,15 @@ from loushang.harnesstui.conversation.startup_host import (
     startup_failure_summary,
 )
 from loushang.tui import strip_control_sequences
+
+
+def _threaded_loading_supported(stdin: TextIO) -> bool:
+    if sys.platform != "linux":
+        return False
+    try:
+        return os.isatty(stdin.fileno())
+    except (AttributeError, OSError, ValueError):
+        return False
 
 
 class StartupOutput:
@@ -63,41 +71,20 @@ class StartupOutput:
         return strip_control_sequences(self._text).strip()[-1000:]
 
 
-def screen_startup_eligible(
-    args: Any, plan: Any, *, stdin: TextIO, stdout: TextIO
-) -> bool:
-    """Only ordinary embedded conversations may acquire the early screen."""
-
-    return bool(
-        stream_is_tty(stdin)
-        and stream_is_tty(stdout)
-        and not args.help
-        and not args.version
-        and args.resume is not True
-        and not plan.command_operation
-        and not plan.prompt_requested
-        and not plan.workflow_requested
-        and not plan.message_input
-        and not plan.file_input
-        and not plan.follow_up_input
-        and not plan.work_log_requested
-        and not plan.method_requested
-        and plan.mode == "text"
-        and cli_static_error(plan) is None
-        and resolve_effective_tui(plan, stdin_is_tty=True, stdout_is_tty=True)
-    )
-
-
 async def run_screen_first_cli(
     raw_argv: tuple[str, ...],
     *,
-    binding: Any,
-    host_binding: Any,
-    host_runners: Any,
+    binding: Any = None,
+    host_binding: Any = None,
+    host_runners: Any = None,
     project_root: Path,
     cwd: str | Path | None,
 ) -> int:
-    streams = binding.host_lifecycle.streams
+    streams = (
+        binding.host_lifecycle.streams
+        if binding is not None
+        else ProductHostLifecycle.resolve().streams
+    )
     output = StartupOutput(streams.stdout)
     errors = StartupOutput(streams.stderr)
     app = ScreenCodingTuiApp(
@@ -107,36 +94,59 @@ async def run_screen_first_cli(
         session_label=None,
     )
     owned_runtime: Any = None
-
-    async def build_runtime(**kwargs: Any) -> Any:
-        nonlocal owned_runtime
-        result = invoke_agent_cli_runtime_builder(binding.runtime_builder, **kwargs)
-        owned_runtime = await result if inspect.isawaitable(result) else result
-        return owned_runtime
+    threaded_startup: Any = None
 
     async def run_tui(**kwargs: Any) -> int:
+        if threaded_startup is not None:
+            await threaded_startup.before_product_ui()
+        from loushang.coding.ui.mode import run_coding_tui
+
         return await run_coding_tui(
             **kwargs,
             startup_app=app,
             prepared_screen_runner=startup.attach,
         )
 
+    async def run_prepared_binding(
+        binding: Any, host_binding: Any, host_runners: Any
+    ) -> int:
+        from loushang.harness.cli.application import (
+            invoke_agent_cli_runtime_builder,
+            run_agent_cli_application,
+        )
+
+        async def build_runtime(**kwargs: Any) -> Any:
+            nonlocal owned_runtime
+            result = invoke_agent_cli_runtime_builder(binding.runtime_builder, **kwargs)
+            owned_runtime = await result if inspect.isawaitable(result) else result
+            return owned_runtime
+
+        prepared_binding = replace(
+            binding,
+            runtime_builder=build_runtime,
+            host_lifecycle=ProductHostLifecycle.resolve(
+                stdin=streams.stdin,
+                stdout=cast(TextIO, output),
+                stderr=cast(TextIO, errors),
+            ),
+            run_host=host_binding.bind(replace(host_runners, tui=run_tui)),
+        )
+        return await run_agent_cli_application(
+            raw_argv, binding=prepared_binding, cwd=cwd
+        )
+
     async def prepare() -> int:
         primary_error: BaseException | None = None
         try:
-            prepared_binding = replace(
-                binding,
-                runtime_builder=build_runtime,
-                host_lifecycle=ProductHostLifecycle.resolve(
-                    stdin=streams.stdin,
-                    stdout=cast(TextIO, output),
-                    stderr=cast(TextIO, errors),
-                ),
-                run_host=host_binding.bind(replace(host_runners, tui=run_tui)),
-            )
-            return await run_agent_cli_application(
-                raw_argv, binding=prepared_binding, cwd=cwd
-            )
+            if binding is None:
+                from loushang.coding.cli.application import run_cli
+
+                return await run_cli(
+                    raw_argv,
+                    cwd=cwd,
+                    _prepared_screen_runner=run_prepared_binding,
+                )
+            return await run_prepared_binding(binding, host_binding, host_runners)
         except BaseException as error:
             primary_error = error
             raise
@@ -169,8 +179,15 @@ async def run_screen_first_cli(
         return detail or f"Session preparation failed (exit {exit_code})."
 
     startup = ScreenConversationStartup(app, prepare, failure_summary=failure_summary)
+    if _threaded_loading_supported(streams.stdin):
+        from loushang.harnesstui.conversation.threaded_startup import (
+            ThreadedScreenStartup,
+        )
+
+        threaded_startup = ThreadedScreenStartup(startup)
     try:
-        return await startup.run(stdin=streams.stdin, stdout=streams.stdout)
+        runner = threaded_startup if threaded_startup is not None else startup
+        return await runner.run(stdin=streams.stdin, stdout=streams.stdout)
     except (Exception, BaseExceptionGroup) as error:
         errors.write(f"Error: {startup_failure_summary(error)}\n")
         return 1

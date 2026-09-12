@@ -15,11 +15,15 @@ from loushang.harnesstui.conversation.host import (
     open_conversation_screen_runtime,
 )
 from loushang.harnesstui.conversation.input import (
-    ConversationExitResult,
-    ConversationInputHandled,
     ConversationInputResult,
     ConversationInputRouter,
     ConversationInputRouterPort,
+)
+from loushang.harnesstui.conversation.loading_input import (
+    LOADING_MESSAGE as LOADING_MESSAGE,
+)
+from loushang.harnesstui.conversation.loading_input import (
+    LoadingInputRouter as _LoadingRouter,
 )
 from loushang.harnesstui.conversation.screen_app import ScreenConversationApp
 from loushang.harnesstui.conversation.screen_runner import (
@@ -32,8 +36,6 @@ from loushang.harnesstui.conversation.screen_runner import (
 )
 from loushang.tui.input import InputEvent
 from loushang.tui.keybindings import KeybindingConfig, KeybindingManager
-
-LOADING_MESSAGE = "Loading session — you can type; submission is disabled"
 
 
 def startup_failure_summary(error: BaseException) -> str:
@@ -59,25 +61,6 @@ async def join_screen_settlement(task: asyncio.Task[None]) -> None:
         raise asyncio.CancelledError
 
 
-class _LoadingRouter(ConversationInputRouter):
-    def handle(self, event: InputEvent) -> ConversationInputResult:
-        if event.kind == "key" and event.event_type != "release":
-            if event.key in {"ctrl+c", "ctrl+d"}:
-                return ConversationExitResult(
-                    exit_code=130 if event.key == "ctrl+c" else 0
-                )
-            if self._keybindings().matches(
-                event.key, "tui.input.submit"
-            ) or event.key in {"ctrl+v", "alt+v", "tab"}:
-                # Gate BEFORE the normal submit path can clear draft or stage files.
-                if not (self.app.state.status_message or "").startswith(
-                    "Session unavailable"
-                ):
-                    self.app.state.status_message = LOADING_MESSAGE
-                return ConversationInputHandled()
-        return super().handle(event)
-
-
 class _StartupRouter:
     def __init__(self, startup: ScreenConversationStartup, **kwargs: Any) -> None:
         self.startup = startup
@@ -92,7 +75,20 @@ class _StartupRouter:
                 self.kwargs["width"] = event.columns
             if event.rows:
                 self.kwargs["height"] = event.rows
-        if self.ready is not None and not self.startup.closing:
+            if (
+                self.ready is not None
+                and not self.startup.submission_armed
+                and not self.startup.closing
+            ):
+                # Both routers exist during backlog admission. Keep their
+                # geometry aligned without enabling Product input submission.
+                assert self.startup.context is not None
+                self.startup.context.copy().run(self.ready.handle, event)
+        if (
+            self.ready is not None
+            and self.startup.submission_armed
+            and not self.startup.closing
+        ):
             assert self.startup.context is not None
             return self.startup.context.copy().run(self.ready.handle, event)
         return self.loading.handle(event)
@@ -131,6 +127,8 @@ class ScreenConversationStartup:
         self.context: Context | None = None
         self.closing = False
         self.attached = False
+        self.submission_armed = True
+        self._input_boundary: Callable[[], bool] | None = None
         self.preparation_settling = False
         self.exit_code = 0
         self.task: asyncio.Task[int] | None = None
@@ -139,6 +137,8 @@ class ScreenConversationStartup:
         self.handlers: dict[str, Callable[..., object] | None] = {}
         self._wake: Callable[[], None] = lambda: None
         self._observed = False
+        self._input_owner_ready = asyncio.Event()
+        self._resumed = False
         self.app.state.permission_profile = None
         self.app.state.startup_pending = True
         self.app.state.status_message = LOADING_MESSAGE
@@ -152,11 +152,49 @@ class ScreenConversationStartup:
             return await self.prepare()
 
         self.task = asyncio.create_task(prepare(), name="conversation-startup")
-        self.task.add_done_callback(lambda _task: wake())
+        self.task.add_done_callback(lambda _task: self._wake())
+
+    def resume(self, wake: Callable[[], None]) -> None:
+        """Bind the main runner after preparation began with a loading owner."""
+        if self.task is None or self._resumed or self.closing:
+            raise RuntimeError("invalid preparation continuation")
+        self._resumed = True
+        self._wake = wake
+
+    async def wait_for_input_owner(self) -> None:
+        await self._input_owner_ready.wait()
+        if self.closing:
+            raise asyncio.CancelledError
 
     def begin_cleanup(self) -> None:
         """The preparation owner has stopped acquiring and entered settlement."""
         self.preparation_settling = True
+
+    def defer_submission_until_input_boundary(
+        self, boundary: Callable[[], bool]
+    ) -> None:
+        """Install before preparation; only the main input owner may arm it."""
+        if self.attached or self.closing or self._input_boundary is not None:
+            raise RuntimeError("input admission must be configured before attachment")
+        self.submission_armed = False
+        self._input_boundary = boundary
+
+    def before_input_read(self, parser_has_pending: bool) -> None:
+        """Arm between complete event batches, after both input queues are empty."""
+        if (
+            self.submission_armed
+            or not self.attached
+            or self.closing
+            or parser_has_pending
+            or self._input_boundary is None
+        ):
+            return
+        if self._input_boundary():
+            self.submission_armed = True
+            self.app.state.startup_pending = False
+            self.app.state.status_message = None
+            self.app.request_render()
+            self._wake()
 
     @property
     def wait_task(self) -> asyncio.Task[int] | None:
@@ -188,6 +226,7 @@ class ScreenConversationStartup:
         if self.router is not None:
             raise RuntimeError("screen startup already has an input owner")
         self.router = _StartupRouter(self, **kwargs)
+        self._input_owner_ready.set()
         return self.router
 
     async def attach(
@@ -229,8 +268,9 @@ class ScreenConversationStartup:
             self.router.ready = (factory or ConversationInputRouter)(**kwargs)
             self.finished = asyncio.get_running_loop().create_future()
             self.attached = True
-            self.app.state.startup_pending = False
-            self.app.state.status_message = None
+            if self.submission_armed:
+                self.app.state.startup_pending = False
+                self.app.state.status_message = None
             self.app.request_render()
             self._wake()
             return await self.finished

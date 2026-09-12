@@ -207,6 +207,32 @@ assert calls == [['--version']]
     )
 
 
+def test_tty_application_runner_injection_preserves_original_call(tmp_path):
+    _probe(
+        tmp_path,
+        """
+import loushang.coding.cli.__main__ as entry
+class TTY(io.StringIO):
+    def isatty(self):
+        return True
+sys.stdin, sys.stdout, sys.stderr = TTY(), TTY(), TTY()
+original = []
+calls = []
+async def replacement(argv):
+    assert argv is original
+    calls.append(argv)
+    return 31
+application = types.ModuleType('loushang.coding.cli.application')
+application.run_cli = replacement
+sys.modules[application.__name__] = application
+assert entry.main(original) == 31
+assert calls == [original]
+assert entry.run_cli is replacement
+assert 'loushang.coding.cli.screen_startup' not in sys.modules
+""",
+    )
+
+
 def test_historical_function_reads_keep_actual_application_identity(tmp_path):
     _probe(
         tmp_path,
@@ -254,7 +280,7 @@ assert cli.parse_args is value and vars(cli)['parse_args'] is value
     )
 
 
-def test_entrypoint_project_imports_are_only_the_application_boundary():
+def test_entrypoint_project_imports_are_only_explicit_startup_boundaries():
     root = Path(__file__).resolve().parents[2]
     tree = ast.parse((root / "src/loushang/coding/cli/__main__.py").read_text())
     imports = {
@@ -262,4 +288,11 @@ def test_entrypoint_project_imports_are_only_the_application_boundary():
         for node in ast.walk(tree)
         if isinstance(node, ast.ImportFrom) and node.module.startswith("loushang.")
     }
-    assert imports == {"loushang.coding.cli", "loushang.coding.cli.application"}
+    # Early screen routing is a lightweight composition boundary, not permission
+    # for the entrypoint to import Product/bootstrap/provider implementations.
+    assert imports == {
+        "loushang.coding.cli",
+        "loushang.coding.cli.application",
+        "loushang.coding.cli.startup_route",
+        "loushang.coding.cli.screen_startup",
+    }

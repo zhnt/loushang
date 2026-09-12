@@ -147,6 +147,7 @@ async def read_input_chunk_or_render_tick(
     render_wakeup: asyncio.Event | None = None,
     pending_input_idle_ms: int | None = None,
     idle_wakeup_ms: int | None = None,
+    return_on_render_wakeup: bool = False,
 ) -> str | None:
     read_chunk = input_chunk_reader or read_input_chunk
     input_task = asyncio.create_task(read_chunk(stdin))
@@ -200,6 +201,12 @@ async def read_input_chunk_or_render_tick(
             if active_task is not None and active_task in done:
                 return None
             if render_wakeup_fired:
+                if return_on_render_wakeup:
+                    # A state transition may require input-owner admission work.
+                    # Collect a read completed while joining the render waiter.
+                    if input_task.done():
+                        return input_task.result()
+                    return None
                 continue
             if timeout_reason == "pending_input":
                 # A terminal tail can become readable on the same event-loop

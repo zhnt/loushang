@@ -127,10 +127,15 @@ class ScopeTests(unittest.TestCase):
             ("scripts/dev/_g18_comparison.py", "tests/dev/test_g18_comparison.py"),
             ("scripts/dev/measure_g18_startup.py", "tests/dev/test_measure_g18_startup.py"),
             ("scripts/dev/measure_g18_native.py", "tests/dev/test_measure_g18_native.py"),
+            ("tests/coding/_interactive_startup_probe.py", "tests/dev/test_interactive_startup_probe.py"),
+            ("scripts/dev/_interactive_campaign.py", "tests/dev/test_interactive_campaign.py"),
         ):
             with self.subTest(script=script, test=test):
                 for path in (script, test):
-                    self.assertEqual(self.selected(path), {"docs", "appservice", "host_runtime"})
+                    expected = {"docs", "appservice", "host_runtime"}
+                    if path == "tests/coding/_interactive_startup_probe.py":
+                        expected.add("coding")
+                    self.assertEqual(self.selected(path), expected)
                 self.assertIn(test, selector.make_paths()["APPSERVICE_TEST_PATHS"])
                 self.assertIn(f"ruff check {script}", lint)
         for evidence in (

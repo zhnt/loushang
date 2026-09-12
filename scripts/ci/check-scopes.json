@@ -46,6 +46,12 @@
         "scripts/dev/measure_g18_native.py",
         "tests/coding/_g18_native_probe.py",
         "tests/dev/test_measure_g18_native.py",
+        "tests/coding/_interactive_startup_probe.py",
+        "tests/coding/_interactive_model_child.py",
+        "tests/coding/_interactive_seed.py",
+        "tests/dev/test_interactive_startup_probe.py",
+        "scripts/dev/_interactive_campaign.py",
+        "tests/dev/test_interactive_campaign.py",
         "docs/internals/architecture/harness/startup-performance-g18-linux-aa-baseline.json",
         "docs/internals/architecture/harness/startup-performance-g18-linux-native-warm-aa-baseline.json",
         "docs/internals/architecture/harness/startup-performance-g18-linux-absent-aa-failure.json"

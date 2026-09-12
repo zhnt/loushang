@@ -5,11 +5,14 @@ from __future__ import annotations
 import importlib.metadata
 import importlib.util
 import json
+import os
+import stat
+import sys
 import urllib.parse
 import urllib.request
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from importlib.machinery import ModuleSpec
+from importlib.machinery import ModuleSpec, PathFinder
 from pathlib import Path
 from typing import Literal
 
@@ -22,6 +25,7 @@ InstalledPythonDistributionMode = Literal["record", "editable"]
 DistributionsReader = Callable[[str], tuple[object, ...]]
 PackagesDistributionsReader = Callable[[], Mapping[str, list[str]]]
 ModuleSpecReader = Callable[[str], ModuleSpec | None]
+_DEFAULT_PACKAGES_READER = importlib.metadata.packages_distributions
 
 
 def _installed_distributions(name: str) -> tuple[object, ...]:
@@ -224,10 +228,24 @@ class InstalledPythonDistributionEvidenceResolver:
                 "A locked Plugin dependency is unavailable",
                 code="plugin_dependency_distribution_unavailable",
             )
-        packages = _top_level_packages(
-            requested_name,
-            self._packages_distributions_reader,
-        )
+        packages = None
+        if (
+            self._distributions_reader is _installed_distributions
+            and self._packages_distributions_reader is _DEFAULT_PACKAGES_READER
+            and all(
+                finder is PathFinder
+                for finder in sys.meta_path
+                if callable(getattr(finder, "find_distributions", None))
+            )
+        ):
+            packages = _declared_top_level_packages(
+                installed_candidates, requested_name
+            )
+        if packages is None:
+            packages = _top_level_packages(
+                requested_name,
+                self._packages_distributions_reader,
+            )
         matching: list[InstalledPythonDistributionEvidence] = []
         saw_requested_name = False
         for installed in installed_candidates:
@@ -306,9 +324,14 @@ class InstalledPythonDistributionEvidenceResolver:
                 code="plugin_dependency_distribution_origin_unverifiable",
             )
         try:
+            # Cache only lexical prefix strings, never filesystem evidence.
+            prefixes: dict[Path, tuple[str, ...]] = {}
             recorded_paths = tuple(
                 sorted(
-                    {Path(str(locate_file(item))).resolve() for item in tuple(files)},
+                    {
+                        _resolve_record_path(Path(str(locate_file(item))), prefixes)
+                        for item in tuple(files)
+                    },
                     key=str,
                 )
             )
@@ -323,6 +346,31 @@ class InstalledPythonDistributionEvidenceResolver:
             top_level_packages=packages,
             _recorded_paths=recorded_paths,
         )
+
+
+def _resolve_record_path(path: Path, prefixes: dict[Path, tuple[str, ...]]) -> Path:
+    """Avoid repeated lexical work, but recheck every filesystem component.
+
+    Symlinks (including leaves), relative/parent paths and unsuccessful metadata
+    reads retain pathlib's non-strict resolution and error semantics. A locator
+    may replace a higher ancestor without changing a descendant's inode; no stat
+    result is cached, including directory results within the same candidate.
+    """
+    if os.name != "posix" or path.anchor != "/" or ".." in path.parts:
+        return path.resolve()
+    ancestors = prefixes.get(path.parent)
+    if ancestors is None:
+        ancestors = tuple(str(parent) for parent in reversed(path.parents))
+        prefixes[path.parent] = ancestors
+    try:
+        for directory in ancestors:
+            if not stat.S_ISDIR(os.lstat(directory).st_mode):
+                return path.resolve()
+        if stat.S_ISLNK(path.lstat().st_mode):
+            return path.resolve()
+    except OSError:
+        return path.resolve()
+    return path
 
 
 def _requested_distribution(
@@ -374,6 +422,36 @@ def _installed_distribution_version(installed: object) -> str:
             code="plugin_dependency_distribution_version_unverifiable",
         )
     return version
+
+
+def _declared_top_level_packages(
+    candidates: tuple[object, ...], distribution_name: str
+) -> tuple[str, ...] | None:
+    """Use fresh explicit declarations, never infer or cache origin evidence.
+
+    Include all same-name versions before version selection, as the global
+    mapping does. Missing/invalid declarations retain the original discovery
+    path. Unrelated installations are intentionally outside this fast path.
+    """
+    packages: set[str] = set()
+    try:
+        for installed in candidates:
+            if _installed_distribution_name(installed) != distribution_name:
+                return None
+            read_text = getattr(installed, "read_text", None)
+            if not callable(read_text):
+                return None
+            declaration = read_text("top_level.txt")
+            if not isinstance(declaration, str):
+                return None
+            declared = declaration.split()
+            if not declared or not all(_valid_top_level_package(p) for p in declared):
+                return None
+            packages.update(declared)
+    except Exception:
+        # The original reader remains authoritative for unsupported metadata.
+        return None
+    return tuple(sorted(packages))
 
 
 def _top_level_packages(

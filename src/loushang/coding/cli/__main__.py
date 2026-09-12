@@ -33,6 +33,21 @@ async def _run_entry(argv: list[str] | tuple[str, ...]) -> int:
             installed_version = "0.1.0"
         sys.stdout.write(f"{installed_version}\n")
         return 0
+    if (
+        "run_cli" not in globals()
+        and "loushang.coding.cli.application" not in sys.modules
+    ):
+        from loushang.coding.cli.startup_route import early_screen_project_root
+
+        project_root = early_screen_project_root(
+            tuple(argv), stdin=sys.stdin, stdout=sys.stdout
+        )
+        if project_root is not None:
+            from loushang.coding.cli.screen_startup import run_screen_first_cli
+
+            return await run_screen_first_cli(
+                tuple(argv), project_root=project_root, cwd=None
+            )
     runner = globals()["run_cli"] if "run_cli" in globals() else __getattr__("run_cli")
     return await runner(argv)
 

@@ -351,11 +351,12 @@ def embedded_main_frame(output, *, after):
     )
 
 
-def _replay_embedded_output(output):
+def _replay_embedded_output(output, *, screen=None):
     # FakeScreen consumes structured cursor operations, not raw cursor CSI.
     # Adapt only the sequences emitted by this existing inline terminal fixture;
     # reject unsupported screen mutations instead of inventing a successful view.
-    screen = FakeScreen.empty(TerminalSize(columns=100, rows=30))
+    if screen is None:
+        screen = FakeScreen.empty(TerminalSize(columns=100, rows=30))
     tokens = re.split(
         r"(\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\))", output
     )
@@ -381,6 +382,27 @@ def _replay_embedded_output(output):
                 continue
             if final in "nc":
                 continue  # Query response remains the real driver's concern.
+            if final == "r":
+                if not body:
+                    operation = TerminalOperation.reset_scroll_region()
+                else:
+                    margins = body.split(";")
+                    if len(margins) != 2 or not all(
+                        part.isdecimal() for part in margins
+                    ):
+                        raise ValueError("unsupported Embedded scroll margins")
+                    top, bottom = map(int, margins)
+                    if not 1 <= top < bottom <= screen.size.rows:
+                        raise ValueError("unsupported Embedded scroll margins")
+                    operation = TerminalOperation.set_scroll_region(
+                        top=top - 1, bottom=bottom - 1
+                    )
+                # DECSTBM homes the cursor; the abstract FakeScreen region
+                # operation deliberately does not imply that terminal side effect.
+                screen = screen.apply(
+                    (operation, TerminalOperation("move_cursor", row=0, column=0))
+                )
+                continue
             values = [int(value or "1") for value in body.split(";")]
             amount = values[0]
             if final in "Hf":

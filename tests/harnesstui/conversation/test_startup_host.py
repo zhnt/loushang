@@ -9,7 +9,11 @@ from types import SimpleNamespace
 import pytest
 
 from loushang.harnesstui.conversation.host import ConversationScreenRunProfile
-from loushang.harnesstui.conversation.input import ConversationInputRouter
+from loushang.harnesstui.conversation.input import (
+    ConversationInputHandled,
+    ConversationInputRouter,
+    ConversationPromptResult,
+)
 from loushang.harnesstui.conversation.screen_app import ScreenConversationApp
 from loushang.harnesstui.conversation.screen_frame import (
     ScreenFrameCopy,
@@ -19,6 +23,86 @@ from loushang.harnesstui.conversation.startup_host import ScreenConversationStar
 from loushang.tui.core import RenderLine, RenderResult
 from loushang.tui.input import InputEvent
 from loushang.tui.terminal import TerminalSize
+
+
+def test_attached_product_keeps_loading_gate_until_complete_input_boundary():
+    async def scenario():
+        screen = app()
+        product_context = ContextVar("resize_product", default="outside")
+
+        class Router(ConversationInputRouter):
+            def handle(self, event):
+                if event.kind == "resize":
+                    assert product_context.get() == "product"
+                return super().handle(event)
+
+        async def prepare():
+            return 0
+
+        class Host:
+            async def submit(self, action):
+                raise AssertionError("router result must not execute a Product action")
+
+            steer = follow_up = abort = submit
+
+        startup = ScreenConversationStartup(screen, prepare)
+        boundary_calls = []
+        empty = False
+
+        def boundary():
+            boundary_calls.append(empty)
+            return empty
+
+        startup.defer_submission_until_input_boundary(boundary)
+        router = startup.build_router(
+            app=screen,
+            should_exit=lambda _: False,
+            is_local_command=lambda _: False,
+            width=80,
+            height=24,
+        )
+        token = product_context.set("product")
+        attach = asyncio.create_task(
+            startup.attach(
+                app=screen,
+                stdin=StringIO(),
+                stdout=StringIO(),
+                action_host=Host(),
+                profile=ConversationScreenRunProfile(
+                    Router, "Interrupted", "Cancelled"
+                ),
+                should_exit=lambda _: False,
+            )
+        )
+        product_context.reset(token)
+        try:
+            await asyncio.sleep(0)
+            assert startup.attached and not startup.submission_armed
+            assert screen.state.startup_pending
+            router.handle(InputEvent(kind="paste", text="draft"))
+            router.handle(InputEvent(kind="resize", columns=111, rows=33))
+            assert (router.ready.width, router.ready.height) == (111, 33)
+            assert not startup.submission_armed
+            startup.before_input_read(False)
+            assert boundary_calls == [False]
+            assert isinstance(
+                router.handle(InputEvent(kind="key", key="enter")),
+                ConversationInputHandled,
+            )
+            assert screen.composer.value == "draft"
+            empty = True
+            startup.before_input_read(True)
+            assert boundary_calls == [False], "pending parser blocks admission"
+            startup.before_input_read(False)
+            assert startup.submission_armed and not screen.state.startup_pending
+            result = router.handle(InputEvent(kind="key", key="enter"))
+            assert isinstance(result, ConversationPromptResult)
+            assert result.text == "draft"
+        finally:
+            await startup.settle(0, None, router.dispose)
+            assert await attach == 0
+
+    asyncio.run(scenario())
 
 
 class App(ScreenConversationApp):

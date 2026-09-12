@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import math
 import shutil
+import time
 from collections.abc import Awaitable, Callable
 from contextlib import AbstractContextManager, ExitStack, nullcontext
+from dataclasses import dataclass, field
 from typing import Any, Protocol, TextIO, TypeAlias, assert_never
 
 from loushang.harnesstui.conversation.input import (
@@ -59,6 +62,8 @@ class ConversationScreenLifecycle(Protocol):
 
     def start(self, wake: Callable[[], None]) -> None: ...
 
+    def resume(self, wake: Callable[[], None]) -> None: ...
+
     def poll(self) -> int | None: ...
 
     @property
@@ -105,6 +110,31 @@ class ConversationScreenPort(ConversationScreenInputPort, Protocol):
 ConversationInputResultPort: TypeAlias = ConversationInputResult
 
 
+@dataclass
+class ConversationScreenContinuation:
+    """Single-use state borrowed after the previous screen owner has joined.
+
+    The caller retains the terminal lease through runner settlement. Creating
+    this value does not stop or join a previous owner; the caller must do that
+    before constructing it or accessing the application.
+    """
+
+    app: ConversationScreenPort
+    parser: InputReader
+    runtime: TuiRuntime
+    terminal_context: Any
+    input_chunk_reader: InputChunkReader
+    pending_idle_deadline: float | None = None
+    before_input_read: Callable[[bool], None] | None = None
+    resume_preparation: bool = False
+    _claimed: bool = field(default=False, init=False)
+
+    def claim(self, app: ConversationScreenPort) -> None:
+        if self._claimed or app is not self.app:
+            raise RuntimeError("invalid or already consumed screen continuation")
+        self._claimed = True
+
+
 _finish_tui_exit = _runner_utils.finish_tui_exit
 _flush_pending_input = _runner_utils.flush_pending_input
 _input_events_for_chunk = _runner_utils.input_events_for_chunk
@@ -134,6 +164,7 @@ async def run_conversation_screen(
     input_router_factory: ConversationInputRouterFactoryPort | None = None,
     input_chunk_reader: InputChunkReader | None = None,
     lifecycle: ConversationScreenLifecycle | None = None,
+    continuation: ConversationScreenContinuation | None = None,
 ) -> int:
     """Run one product-neutral interactive conversation screen.
 
@@ -143,58 +174,21 @@ async def run_conversation_screen(
     storage.
     """
 
-    reader = InputReader()
-    size_provider = terminal_size_provider or terminal_size
-    initial_size = size_provider()
-    local_predicate = is_local_command or (lambda _text: False)
-    if input_router_factory is None:
-        router: ConversationInputRouterPort = ConversationInputRouter(
-            app=app,
-            should_exit=should_exit,
-            is_local_command=local_predicate,
-            keybindings=keybindings,
-            width=initial_size.columns,
-            height=initial_size.rows,
-        )
-    else:
-        router = input_router_factory(
-            app=app,
-            should_exit=should_exit,
-            is_local_command=local_predicate,
-            keybindings=keybindings,
-            width=initial_size.columns,
-            height=initial_size.rows,
-        )
-    runtime = TuiRuntime(
-        render_loop=RenderLoop(app),
-        terminal=ProcessTerminalPort(
-            output=stdout,
-            size_provider=size_provider,
-            track_screen=False,
-        ),
-    )
-    app.surface_host = runtime.overlay_host()
-    promote_pending_page_surface(app)
-    mode_factory = terminal_mode_factory or (
-        lambda input_stream, output_stream: TerminalSession(
-            stdin=input_stream,
-            stdout=output_stream,
-        )
-    )
+    if continuation is not None:
+        if terminal_mode_factory is not None or input_chunk_reader is not None:
+            raise ValueError(
+                "screen continuation already owns terminal/input selection"
+            )
+        continuation.claim(app)
+        input_chunk_reader = continuation.input_chunk_reader
+    router: ConversationInputRouterPort | None = None
     active_task: asyncio.Task[int | None] | None = None
     active_prompt_started_at: float | None = None
-    render_wakeup = asyncio.Event()
+    previous_surface_host = app.surface_host
     previous_render_requester = app.render_requester
     previous_terminal_diagnostics_provider = app.terminal_diagnostics_provider
     previous_terminal_capabilities = app.terminal_capabilities
 
-    def request_app_render(kind: RenderRequestKind) -> None:
-        if previous_render_requester is not None:
-            previous_render_requester(kind)
-        runtime.request_render(kind)
-        render_wakeup.set()
-
-    app.render_requester = request_app_render
     terminal_owner = ExitStack()
     screen_exit_code = 0
 
@@ -204,7 +198,55 @@ async def run_conversation_screen(
         return _finish_tui_exit(runtime=runtime, stdout=stdout, exit_code=exit_code)
 
     try:
-        mode = mode_factory(stdin, stdout)
+        reader = continuation.parser if continuation is not None else InputReader()
+        pending_idle_deadline = (
+            continuation.pending_idle_deadline if continuation is not None else None
+        )
+        size_provider = terminal_size_provider or terminal_size
+        initial_size = size_provider()
+        local_predicate = is_local_command or (lambda _text: False)
+        router = (input_router_factory or ConversationInputRouter)(
+            app=app,
+            should_exit=should_exit,
+            is_local_command=local_predicate,
+            keybindings=keybindings,
+            width=initial_size.columns,
+            height=initial_size.rows,
+        )
+        runtime = (
+            continuation.runtime
+            if continuation is not None
+            else TuiRuntime(
+                render_loop=RenderLoop(app),
+                terminal=ProcessTerminalPort(
+                    output=stdout,
+                    size_provider=size_provider,
+                    track_screen=False,
+                ),
+            )
+        )
+        app.surface_host = runtime.overlay_host()
+        promote_pending_page_surface(app)
+        mode_factory = terminal_mode_factory or (
+            lambda input_stream, output_stream: TerminalSession(
+                stdin=input_stream,
+                stdout=output_stream,
+            )
+        )
+        render_wakeup = asyncio.Event()
+
+        def request_app_render(kind: RenderRequestKind) -> None:
+            if previous_render_requester is not None:
+                previous_render_requester(kind)
+            runtime.request_render(kind)
+            render_wakeup.set()
+
+        app.render_requester = request_app_render
+        mode = (
+            nullcontext(continuation.terminal_context)
+            if continuation is not None
+            else mode_factory(stdin, stdout)
+        )
         # Startup settlement must finish while terminal ownership is still held.
         terminal_mode = (
             nullcontext(terminal_owner.enter_context(mode))
@@ -215,11 +257,15 @@ async def run_conversation_screen(
             app.terminal_diagnostics_provider = lambda context=terminal_context: (
                 format_terminal_diagnostics(context)
             )
-            configure_runtime_for_terminal_context(runtime, app, terminal_context)
-            write_startup_welcome(app=app, runtime=runtime, stdout=stdout)
+            if continuation is None:
+                configure_runtime_for_terminal_context(runtime, app, terminal_context)
+                write_startup_welcome(app=app, runtime=runtime, stdout=stdout)
             runtime.render_now()
             if lifecycle is not None:
-                lifecycle.start(render_wakeup.set)
+                if continuation is not None and continuation.resume_preparation:
+                    lifecycle.resume(render_wakeup.set)
+                else:
+                    lifecycle.start(render_wakeup.set)
             while True:
                 if lifecycle is not None:
                     startup_exit = lifecycle.poll()
@@ -244,6 +290,13 @@ async def run_conversation_screen(
                             exit_code=exit_code,
                         )
 
+                if (
+                    continuation is not None
+                    and continuation.before_input_read is not None
+                ):
+                    # No read task exists here and all previous batch events have
+                    # been routed. Admission must never change halfway through a batch.
+                    continuation.before_input_read(reader.has_pending)
                 data = await read_input_chunk_or_render_tick(
                     stdin,
                     runtime=runtime,
@@ -254,8 +307,23 @@ async def run_conversation_screen(
                     ),
                     input_chunk_reader=input_chunk_reader,
                     render_wakeup=render_wakeup,
+                    return_on_render_wakeup=(
+                        continuation is not None
+                        and continuation.before_input_read is not None
+                    ),
                     pending_input_idle_ms=(
-                        ESCAPE_SEQUENCE_IDLE_TIMEOUT_MS if reader.has_pending else None
+                        (
+                            max(
+                                0,
+                                math.ceil(
+                                    (pending_idle_deadline - time.monotonic()) * 1000
+                                ),
+                            )
+                            if pending_idle_deadline is not None
+                            else ESCAPE_SEQUENCE_IDLE_TIMEOUT_MS
+                        )
+                        if reader.has_pending
+                        else None
                     ),
                     idle_wakeup_ms=_terminal_runtime_wakeup_ms(terminal_context),
                 )
@@ -263,6 +331,11 @@ async def run_conversation_screen(
                 if data is None:
                     _poll_terminal_runtime(terminal_context)
                     if not reader.has_pending:
+                        continue
+                    if (
+                        pending_idle_deadline is not None
+                        and time.monotonic() < pending_idle_deadline
+                    ):
                         continue
                     input_events = _flush_pending_input(
                         reader,
@@ -299,6 +372,12 @@ async def run_conversation_screen(
                         data,
                         terminal_context=terminal_context,
                     )
+
+                pending_idle_deadline = (
+                    time.monotonic() + ESCAPE_SEQUENCE_IDLE_TIMEOUT_MS / 1000
+                    if reader.has_pending
+                    else None
+                )
 
                 for event in input_events:
                     result = router.handle(event)
@@ -425,7 +504,7 @@ async def run_conversation_screen(
             try:
                 terminal_owner.close()
             finally:
-                app.surface_host = None
+                app.surface_host = previous_surface_host
                 app.terminal_diagnostics_provider = (
                     previous_terminal_diagnostics_provider
                 )

@@ -42,6 +42,7 @@ from loushang.coding.cli.args import (
 )
 from loushang.coding.cli.lsp import extract_lsp_argv, run_coding_lsp_command
 from loushang.coding.cli.multiagent import run_coding_multiagent_command
+from loushang.coding.cli.startup_route import _cli_launch_plan
 from loushang.coding.cli.workspace import (
     extract_workspace_argv,
     run_coding_workspace_command,
@@ -90,12 +91,10 @@ from loushang.harness.cli import (
     AgentCliApplicationBinding,
     AgentCliApplicationState,
     AgentCliHostRunners,
-    AgentCliLaunchOverlay,
     AgentCliSessionHostBinding,
     AgentCliStatePreparationContext,
     AgentCliStatePreparationPorts,
     CliBootstrapContext,
-    CliLaunchPlan,
     CliOperationInsertion,
     CliOperationStage,
     CliParseResult,
@@ -104,7 +103,6 @@ from loushang.harness.cli import (
     MethodListingError,
     MethodListingRequest,
     PreparedAgentCliHostInput,
-    agent_cli_launch_plan,
     agent_cli_output_mode,
     agent_image_auto_resize,
     agent_standard_cli_operation_request,
@@ -379,6 +377,7 @@ async def run_cli(
     lsp_runner=run_coding_lsp_command,
     machine_resource_runner=run_machine_resource_command,
     apphost_runner=run_coding_apphost_command,
+    _prepared_screen_runner: Any = None,
 ) -> int:
     raw_argv = tuple(argv or ())
     resolved_stderr = stderr or sys.stderr
@@ -510,6 +509,8 @@ async def run_cli(
             continuity_runner=continuity_runner,
         ),
     )
+    if _prepared_screen_runner is not None:
+        return await _prepared_screen_runner(binding, host_binding, host_runners)
     if (
         tui_runner is run_coding_tui
         and stream_is_tty(host_lifecycle.streams.stdin)
@@ -907,36 +908,6 @@ def _prepare_coding_host_input(
         stderr=bootstrap.stderr,
         format_error=_format_cli_error,
         format_preparation_error=_format_method_cli_error,
-    )
-
-
-def _cli_launch_plan(args: CliArgs) -> CliLaunchPlan:
-    product_command_operation = any(
-        (
-            args.list_methods,
-            args.show_method is not None,
-            args.show_method_plan is not None,
-            args.work_log_inspect is not None,
-        )
-    )
-    product_structured_operation = any(
-        (
-            args.list_methods and args.list_methods_format == "json",
-            args.show_method is not None and args.show_method_format == "json",
-            args.show_method_plan is not None
-            and args.show_method_plan_format == "json",
-        )
-    )
-    return agent_cli_launch_plan(
-        args,
-        overlay=AgentCliLaunchOverlay(
-            workflow_requested=args.prompt_steps is not None,
-            work_log_requested=args.work_log is not None,
-            method_requested=args.method is not None,
-            method_disabled=args.no_method,
-            command_operation=product_command_operation,
-            structured_operation_output=product_structured_operation,
-        ),
     )
 
 
