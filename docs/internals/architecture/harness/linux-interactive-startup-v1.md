@@ -1,11 +1,17 @@
 # Linux interactive startup performance — phase one
 
-Status: Linux startup candidate implemented; lifecycle and measurement components
-reviewed, required local correctness coverage completed. Source freeze and formal
-paired performance acceptance remain pending; this is not a performance claim.
+Status: phase-one implementation and required local correctness coverage complete;
+the formal Linux warm-start experiment passes all 20 frozen criteria, and final
+architecture, lifecycle and measurement reviews approve. Product and measurement
+helpers are frozen at `37d94131`; this record closes the local-only delivery.
 Tracking: G18 #578. Windows second-turn correctness remains separate in #587.
 Source baseline: `7f4b27f4832cb88426ce655d19ac230d13f1dad6`.
 Task branch: `harness/linux-interactive-startup-v1` in the isolated Harness lane.
+
+See [formal results](#formal-results-and-limitations) and the
+[final delivery audit](#final-three-view-review-and-delivery-audit) for the current
+conclusion. Intermediate sections retain their historical pending states and
+failed attempts; they are not the current delivery status.
 
 ## Objective and completion contract
 
@@ -1032,3 +1038,238 @@ platform jobs are still not claimed. The next local commit freezes source and
 measurement helpers only; installed pilot, immutable experiment plans, real
 pause/resume preflight, formal paired measurements and their final review remain
 required before this performance goal can be marked complete.
+
+## Committed installation pilots (excluded from formal acceptance)
+
+Local commit `37d941314a45e62329568def0f45cd23294832d5` freezes Product and
+measurement helpers. No push/merge was performed. The prebuilt candidate-03 wheel
+was verified against this immutable commit: all 1,328 packaged files match;
+package inventory SHA-256 is
+`0b06b97dbc2dd3ea559d305f8dc48e39922fec32e73d77102fb87f60f0c4a010`.
+The wheel SHA-256 remains the candidate-03 value recorded above.
+
+After all correctness processes exited, real installed pilots ran serially under
+`/var/tmp/loushang-interactive-v1.z5O6F5/committed-pilot-{side}-{case}-{iteration}`.
+The first new-edit A/B runs were followed by a reverse-order B/A run. All four
+new-edit attempts completed, with 100 writes/observed prefixes, no missing input
+and valid sender schedules. First candidate invocation had ready at 11.5603
+seconds; its next invocation had ready at 6.8819 seconds. Both are retained:
+neither selective reporting nor a cold/warm mixed comparison is acceptance.
+
+The following selected preflight observations identify next checks, not a formal
+paired estimate. New-edit uses iteration 02 (after iteration 01 on both sides);
+the other cases use iteration 01 and warm their previously unexercised paths.
+
+| Case | A/B first frame (s) | A/B initial echo (s) | A/B ready (s) | A/B synthetic first reply (s) |
+| --- | --- | --- | --- | --- |
+| new-edit | 4.5421 / 2.2899 | 1.9205 / 0.0118 | 7.2259 / 6.8819 | Not exercised |
+| resume-edit | 4.8310 / 2.0369 | 1.9921 / 0.0126 | 7.5653 / 6.9551 | Not exercised |
+| new-turn | 4.7194 / 2.0636 | 1.9748 / 0.0102 | 7.4159 / 6.9304 | 0.2200 / 0.1834 |
+| resume-turn | 4.2335 / 2.2050 | 2.0311 / 0.0067 | 7.0459 / 7.0176 | 0.2754 / 0.2571 |
+
+New-edit iteration 02 observed per-startup mean edit echo of 313.1 ms (A) versus
+10.4 ms (B), with maxima 2,009.5 ms versus 122.7 ms. These are 100 cumulative
+prefix observations within each startup, not 100 independent startup samples.
+Both synthetic cases completed prompt settlement and clean exit; new/resume
+spawn-through-reply observations were respectively 7.7733/7.2253 and
+7.6060/7.5499 seconds (A/B). Synthetic observations remain separate from ordinary
+console evidence.
+
+The input-phase observer maximum reached 50.94 ms in the A resume-edit warmup
+and 45.90 ms in the B resume-turn warmup. Thus a guessed 25-ms observer budget
+would not be supported by all current pilots. Baseline variability, the explicit
+observer validity budget and no-regression tolerances still need freezing before
+formal collection; no performance acceptance is inferred from these pilots.
+
+## Frozen calibration and real pause/resume preflight
+
+Twelve subsequent A-only warm calibration samples (three per case, reversing
+case order in round two) completed and passed workload validation. Their raw
+receipts are `calibration-a-{case}-{01,02,03}/report.json` under the same private
+experiment root. Before these samples, the tolerance rule was declared as
+`max(0.05 seconds, 0.10 * baseline mean, 2 * MAD)`, where MAD is the median absolute
+deviation from the median. The configuration retains all twelve receipt hashes,
+means, medians, MADs, ranges and resulting tolerances. This small calibration is
+an exploratory noise allowance, not a confidence interval or proof of zero cost.
+
+`interactive-plan-v1.json` freezes the two-block/four-case experiment. Its SHA-256
+is `e5485d113e51be9567f304de64fe2398aa65cc6b1976a86153d0a4c205dd41fe`.
+It binds commit/wheel/installations, dependencies, observer/helper identities,
+installation bytecode, workspace/seed and calibration receipts. Frozen criteria:
+
+- Ordinary new/resume first-frame means should each improve by at least 20%.
+- Candidate per-startup mean edit echo must be at most 100 ms and its slowest
+  observed edit at most 250 ms, with no missing input and valid sender pacing.
+- Input-phase observer maximum must be at most 100 ms. This was declared before
+  the A calibration, based on the prior approximately 51-ms maximum; exceeding
+  it invalidates an attempt rather than relaxing the budget or removing a row.
+- Readiness mean deltas may not exceed 0.698899/0.804113 seconds for new/resume
+  edit or 0.679682/0.694515 seconds for new/resume turn. Exact values are in JSON.
+- Synthetic first-reply and prompt-settlement mean deltas each have a 50-ms
+  allowance. Spawn-through-reply allowances are 0.714499/0.748671 seconds for
+  new/resume; exit allowances range from 0.098623 to 0.107054 seconds by case.
+
+The separate `interactive-preflight-plan-v1.json` exercises new-edit and
+resume-turn with one block/one pair, not performance acceptance. Its real
+installed campaign `interactive-preflight-v1` safely paused after the first two
+samples (a complete B/A warmup pair), then resumed to eight complete valid
+samples. Both invocations exited zero. Before/after raw hashes and complete
+sample records for the original prefix match; indices are exactly 1 through 8.
+All receipt hashes verify, both checkpoint/report are complete, and
+`segmented_acceptance.eligible_for_automatic_acceptance` is false. The two segment
+records preserve their boundaries. No sample was overwritten or silently retried.
+
+The subsequent formal campaign used a new output directory, four cases, two
+blocks, three measured pairs per case/block and one excluded warmup per
+side/case/block: 64 total attempts, of which 48 are measured startup observations.
+Preflight and calibration data are not pooled into that comparison.
+
+## Formal results and limitations
+
+The uninterrupted campaign ran on 2026-09-12, 11:03:32 through 11:24:57 UTC,
+after correctness checks and review workers had stopped. All 64 attempts are
+complete and valid; the declared 16 warmups are excluded, leaving six A/B pairs
+in each of `new-edit`, `resume-edit`, `new-turn` and `resume-turn`. Balanced
+ordering and both blocks match the frozen plan. No failed, slow or interrupted
+sample was removed or replaced. There is exactly one segment in this campaign;
+the separate eight-attempt pause/resume preflight is not acceptance data.
+
+Authoritative local artifacts are under
+`/var/tmp/loushang-interactive-v1.z5O6F5`:
+
+- `interactive-plan-v1.json`: the frozen plan and calibrated tolerances; SHA-256
+  `e5485d113e51be9567f304de64fe2398aa65cc6b1976a86153d0a4c205dd41fe`.
+- `interactive-formal-v1/report.json`: schedule, segment and raw-receipt index;
+  SHA-256 `b178310902df8b34cc845751c98c5f847384424d9dd34cd977bb70a863d3ba1b`.
+- `interactive-formal-v1/sample-NNNN/report.json`: all 64 original receipts.
+- `interactive-assessment-v1.json`: separate integrity and statistical assessment,
+  with per-case mean, median, range, all six paired deltas and all 20 checks.
+  Its verdict is `pass`, with no failed checks.
+
+The collector deliberately leaves `comparison.verdict` as `not-evaluated`:
+successful collection is not performance acceptance. Acceptance comes from the
+separate assessment, independently recomputed by the measurement reviewer.
+The one-off local assessment script is `.artifacts/interactive-assess-v1.py`,
+SHA-256 `32a87d71ee2cf9fdbf93e199454bade07ee086867d65da6c13cefc81c7f12852`.
+It verifies source/install/helper identities, raw hashes and workload validity,
+recomputes calibration and compares measured per-startup values with the frozen
+criteria. The script and full local artifacts are not Git-tracked; this document
+preserves their identities and the delivery results. Do not delete them as
+disposable performance scratch.
+
+Source identities remain A `7f4b27f4832cb88426ce655d19ac230d13f1dad6` and B
+`37d941314a45e62329568def0f45cd23294832d5`, with the independently verified wheels,
+CPython 3.11.15, 40 identical non-Product dependencies and synthetic resume seed
+recorded above. A later documentation-only commit does not change the measured
+source or observer identity and is not a new performance sample.
+
+### Ordinary installed console: screen and input
+
+Each entry below is based on six measured startups per side. First-frame values
+are seconds; edit values are milliseconds. The edit mean first averages the 100
+observed cumulative-prefix echoes within each startup, then averages across the
+six startups. Those 100 edits are not 100 independent startup observations.
+
+| Metric / scenario | A mean; median; range | B mean; median; range | Mean saving | B faster pairs |
+| --- | --- | --- | --- | --- |
+| First frame, new (s) | 3.901; 3.890; 3.741–4.102 | 1.824; 1.801; 1.698–1.978 | 2.078 s / 53.26% | 6/6 |
+| First frame, resume (s) | 4.089; 4.057; 3.787–4.612 | 1.723; 1.705; 1.656–1.860 | 2.366 s / 57.86% | 6/6 |
+| Startup mean edit echo, new (ms) | 322.77; 324.82; 278.82–361.27 | 11.56; 11.40; 10.05–14.11 | 311.21 ms / 96.42% | 6/6 |
+| Startup mean edit echo, resume (ms) | 401.34; 354.68; 317.64–557.08 | 10.76; 10.82; 9.71–12.12 | 390.58 ms / 97.32% | 6/6 |
+
+Initial draft echo means are 1,943.45 → 12.11 ms for new and
+2,046.45 → 6.29 ms for resume, with all six pairs faster in each scenario.
+The slowest individual edit across measured candidate startups is 200.23 ms
+(new) and 139.22 ms (resume), below the frozen 250-ms limit; baseline maxima
+were 2,180.91 and 2,775.11 ms. Every candidate startup's mean is below 100 ms.
+All edit attempts retain 100 sent/100 observed cumulative prefixes with no
+missing input. Maximum input observer processing is 78.50 ms and maximum sender
+lag is 7.18 ms; validity budgets hold without subtracting observer overhead.
+
+### Readiness, first turn and exit
+
+The table reports arithmetic means in seconds; delta is B minus A, so positive
+means slower. Exact medians, ranges and paired deltas for every metric are in
+the assessment. Ordinary edit cases establish uninstrumented console readiness;
+turn cases use the documented synthetic transport and settlement hook, not a
+real network model. Their spawn-through-reply is diagnostic and does not replace
+the ordinary executable startup claim.
+
+| Scenario / boundary | A mean | B mean | Delta | Frozen allowance | B faster pairs |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| new-edit ready | 6.6047 | 6.5496 | -0.0552 | 0.6989 | 2/6 |
+| resume-edit ready | 7.0087 | 6.2892 | -0.7195 | 0.8041 | 6/6 |
+| new-edit exit | 1.0691 | 1.0780 | +0.0090 | 0.0986 | 3/6 |
+| resume-edit exit | 1.0785 | 1.0862 | +0.0077 | 0.1002 | 4/6 |
+| new-turn ready | 6.9537 | 6.7878 | -0.1659 | 0.6797 | 5/6 |
+| new-turn first reply | 0.2483 | 0.2050 | -0.0432 | 0.0500 | 5/6 |
+| new-turn spawn through reply | 7.3486 | 7.1158 | -0.2328 | 0.7145 | 5/6 |
+| new-turn prompt settled | 0.3323 | 0.2957 | -0.0366 | 0.0500 | 5/6 |
+| new-turn exit | 1.0778 | 1.1026 | +0.0248 | 0.1052 | 3/6 |
+| resume-turn ready | 6.7196 | 6.4776 | -0.2420 | 0.6945 | 5/6 |
+| resume-turn first reply | 0.2841 | 0.2451 | -0.0390 | 0.0500 | 6/6 |
+| resume-turn spawn through reply | 7.2772 | 6.9697 | -0.3075 | 0.7487 | 5/6 |
+| resume-turn prompt settled | 0.3920 | 0.3454 | -0.0466 | 0.0500 | 6/6 |
+| resume-turn exit | 1.0692 | 1.1272 | +0.0580 | 0.1071 | 2/6 |
+
+Every synthetic turn receipt requires actual reply, idle, ordered
+`prompt_entered → model_input → prompt_returned`, exactly one model input,
+successful exit and terminal protocol closure. Resume additionally verifies
+the history sentinel and retained loading draft.
+
+These results satisfy the frozen mean-and-tolerance conditions, not a claim
+that every invocation or boundary improved. In particular:
+
+- New ordinary readiness has four of six slower pairs despite its 55-ms mean
+  improvement; backend preparation is not consistently faster.
+- The last new-turn pair is slower by 107 ms to first reply, 192 ms to prompt
+  settlement and approximately 1.000 second from spawn through reply.
+- Exit means increase in all four cases by approximately 8–58 ms. Resume-turn
+  has a 1.421-second candidate exit and a slowest paired increase of 301 ms.
+  These samples remain in the assessment; there is no zero-overhead claim.
+- This is an exploratory warm-cache Linux embedded result with six measured
+  startups per side/case and three A-only calibration samples per case. It is
+  not statistical equivalence, a strict cold-start result, a long-history or
+  many-plugin benchmark, or macOS/Windows/real-provider acceptance.
+- Timed input evidence concerns fixed-geometry cumulative text additions during
+  preparation and after readiness. Paste, image gating, resize, cancellation and
+  transient handoff correctness have deterministic regression evidence, not
+  corresponding latency claims or proof that every handoff instant was sampled.
+
+## Final three-view review and delivery audit
+
+All three independent final reviewers approve the frozen implementation and
+evidence, with no remaining must-fix findings:
+
+- Architecture/ownership: Product stays on the main owner; the joined worker
+  handles loading presentation/input only. Runner injection, lazy public ABI,
+  custom metadata readers/finders and fresh origin/fence checks remain intact.
+  Reviewer verified source identity and all 64 raw receipt hashes.
+- Interaction/lifecycle: reviewed real worker join, repeated cancellation,
+  cleanup/terminal restoration, resize, parser/UTF-8 transfer and image gating;
+  verified all 24 edit and 24 turn measured receipts, including settlement.
+- Measurement: independently recomputed 12 calibration receipts, all 64 raw
+  hashes, schedule/warmup exclusion, paired statistics and all 20 criteria;
+  verified wheel/helper/seed/bytecode identity and separate pause/resume evidence.
+
+Previously found ancestor-symlink, runner-injection, repeated-cancellation,
+unarmed-resize and collector-publication issues were fixed and re-reviewed as
+recorded above. Approval does not erase the documented failures or limitations.
+
+| Required deliverable | Completion evidence |
+| --- | --- |
+| 1. Baseline and real installed measurement | Initial 38-test baseline and source profile; independent A/B installed-byte receipts; frozen ordinary/synthetic witnesses; fixed 16-pair synthetic history; four-case 64-attempt campaign with 48 measured startups |
+| 2. Evidence-led production optimization | `37d94131`: early canonical CLI routing, lazy shared CLI exports, safe distribution-evidence work reduction, responsive loading worker and joined input handoff; ordinary first-frame and edit gains above |
+| 3. Interaction and lifecycle regressions | Loading surface/startup host/threaded coordinator, POSIX input handoff and Coding adapter tests cover text/split paste, blocked submit/image acquisition, resize, draft/history preservation, initialization failure, EOF/Ctrl-C, repeated cancellation, late attach rejection and cleanup failures |
+| 4. No first-turn transfer of cost | Frozen ready/first-reply/spawn-through-reply/settlement/exit tolerances pass; actual synthetic turn settlement is required; slower samples and instrumentation boundaries explicitly retained |
+| Durable resumable collection | 54 collector regressions; real pair-boundary pause after two samples, resume to eight, unchanged prefix hashes, no duplicate attempts; segmented preflight excluded from formal acceptance |
+| Required local gates and fixes | Recorded Coding 2,585, Coding UI 577, TUI units 1,258, Harness 4,522, AppService serial 1,788, Hosting 385, AppHost 1,373, Foundation 106 passes; HarnessTUI complete prefix/suffix coverage; focused collector/lifecycle/route checks, static checks, AI/Agent gates and CI validation recorded during implementation |
+| Terminal and hosted compatibility | Linux native terminal 12, platform 110 and render 179 passes; AppHost G8/G9/G10 evidence and local installed-console canary pass; G16 isolated and full serial AppService revalidation close the observed timeout without relaxing its watchdog |
+| Review and local delivery | All three final views approve; Product/helpers committed as `37d94131` with `Refs #578`; this documentation-only closeout preserves formal results, limitations and the per-requirement audit |
+
+Only documentation changed after source freeze; passing source/runtime suites
+need not be repeated. Final documentation governance passed all six checks and
+`git diff --check` passed; the refreshed check plan adds no previously unaccounted
+local gate category. Full remote platform/installation/LSP
+jobs remain explicitly deferred, Windows stays in #587, and no push, PR, merge
+or integration-lane refresh is part of this local-only goal.
