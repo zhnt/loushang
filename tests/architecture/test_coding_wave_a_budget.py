@@ -76,7 +76,14 @@ def test_coding_package_stays_within_wave_a_budget() -> None:
     # CLI split/lazy entry and startup wiring 87; screen owner 185;
     # UI attachment 16; continuity inode-ownership cleanup 11. No path is exempt.
     g18_core_allowance = 87 + 185 + 16 + 11
-    assert sum(groups["core"].values()) <= 33_686 + g18_core_allowance, groups["core"]
+    # Interactive startup delta from 7f4b27f4: entry +15, application -29,
+    # Linux screen adapter +17, canonical early route +98. Worker/terminal
+    # ownership remains in HarnessTUI/TUI; no new Coding path is exempt.
+    interactive_startup_allowance = 15 - 29 + 17 + 98
+    assert (
+        sum(groups["core"].values())
+        <= 33_686 + g18_core_allowance + interactive_startup_allowance
+    ), groups["core"]
     assert sum(groups["g10"].values()) <= 1_800, groups["g10"]
     # Preserve main's optional execution projection allowance.
     assert sum(groups["g11"].values()) <= 420, groups["g11"]

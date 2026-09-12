@@ -331,6 +331,8 @@ APPSERVICE_TEST_PATHS := \
 	tests/dev/test_g18_comparison.py \
 	tests/dev/test_measure_g18_startup.py \
 	tests/dev/test_measure_g18_native.py \
+	tests/dev/test_interactive_startup_probe.py \
+	tests/dev/test_interactive_campaign.py \
 	tests/dev/test_hosted_fixture_stdin.py \
 	tests/dev/test_hosted_debt_cleanup.py \
 	tests/dev/test_hosted_darwin_scenario.py \
@@ -575,6 +577,8 @@ lint-appservice:
 	uv --cache-dir .uv-cache run --extra dev ruff check tests/coding/_hosted_client_debt.py tests/coding/_hosted_start_cancel.py tests/coding/_hosted_recovery_cancel.py tests/coding/test_hosted_installed_evidence.py tests/coding/_hosted_terminal.py
 	uv --cache-dir .uv-cache run --extra dev ruff check tests/coding/_hosted_windows_api.py tests/coding/_hosted_windows_observer.py tests/coding/_hosted_windows_witness.py tests/coding/test_hosted_windows_evidence.py
 	uv --cache-dir .uv-cache run --extra dev ruff check $(APPSERVICE_SOURCES) $(APPSERVICE_TEST_PATHS) tests/coding/_hosted_product_child.py tests/coding/_local_product_child.py scripts/dev/run_g16_installed_evidence.py scripts/dev/verify_evidence_manifest.py tests/coding/test_mux_native_evidence.py tests/coding/test_mux_installed_evidence.py
+	uv --cache-dir .uv-cache run --extra dev ruff check tests/coding/_interactive_startup_probe.py tests/coding/_interactive_model_child.py tests/coding/_interactive_seed.py
+	uv --cache-dir .uv-cache run --extra dev ruff check scripts/dev/_interactive_campaign.py
 
 typecheck-appservice:
 	uv --cache-dir .uv-cache run --extra dev mypy --follow-imports=silent $(APPSERVICE_SOURCES)
