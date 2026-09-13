@@ -8,8 +8,8 @@
 - ID: `LMUX-M0`
 - Authority: normative — accepted limited Linux managed-profile contract
 - Design status: accepted
-- Review status: three-perspective storage/lifecycle/observer/handoff slice reviews passed; recovery admission pending
-- Implementation status: partial — storage, instance coordination, Linux exit observations and handoff binding; no activation
+- Review status: three-perspective storage/lifecycle/observer/handoff/native-launch slice reviews passed; recovery admission pending
+- Implementation status: partial — storage, instance coordination, Linux observations, handoff and native launch owner; no activation
 - Owner: AppHost managed deployment; sibling changes remain sibling-owned
 - Tracking objective: active Linux lmux goal, branch `harness/lmux-managed-service`
 
@@ -239,6 +239,7 @@ Mux 外壳只负责成员/连接组合。主题与终端能力在客户端组合
 | M2 代际协调 | per-service fence、持久 prepare/commit/abort/stop、三项结算事实及干净停止后换代 | native 启动交接、异常 retire/recovery admission、真实后台激活均未完成 |
 | M2 Linux 退出观察 | boot/PID/start-time/实际 UID/PID namespace 与保留 pidfd；26 项原生回归、三视角复审通过 | 原生 spawn/handoff、进程树结算及异常恢复准入仍待接线 |
 | M2 持久交接接线 | 继承通道 + exact instance/attempt journal port；共享协作 deadline、真实启动器退出和 EOF/CAS 竞争测试，三视角复审通过 | 生产 spawn/daemon 与应用 owner 清理尚未接入，不构成 SSH/后台交付 |
+| M2 Linux 创建 owner | 单次生产 Popen 创建、受管 FD/环境/工作区、复用 POSIX group 观察；真实父端退出和故障矩阵、三视角复审通过 | 身份持久登记、应用自持生命周期、异常恢复和 CLI 激活仍待完成 |
 | 一条命令/后台/全局名/多 Tab/stop | 仅 G16 既有显式能力 | M1–M3 全部接线 |
 | Session 唯一写入与默认历史 | 缺运行期跨进程合同实现 | writer lease + canonical catalog + 双进程测试 |
 | 完整共享 Harnesstui/Markdown | 草案与本文接缝 | M3 代码与 Embedded 非回退 |
@@ -422,5 +423,45 @@ ack 丢失、事务提交后错误对账、锁/SQL 预算耗尽、到期回滚�
 精确消费者清单未登记新 adapter；显式登记模块和唯一公共导入 symbol 后，
 对应失败节点复测 1 passed。不扩大对 Hosting 私有 launch profile 的准入。
 Hosting Ruff/mypy 28 模块、AppHost Ruff/mypy 107 模块、文档 6 项和依赖图
-新鲜度通过。较大范围 AppHost 主回归仍在执行；最终 native/installed 和
-完整 change-aware/远端门禁仍在整体交付前完成，不将本切片检查冒称全通过。
+新鲜度通过。较大范围 AppHost 主回归结束：1508 passed / 12 skipped，
+两处失败均为旧 G9/G10 精确依赖清单只登记 foreground launcher；现为
+managed handoff 单独登记唯一公共 Hosting 依赖，对应两个节点已在 §15
+聚焦 69 项回归中通过。
+最终 native/installed 和完整 change-aware/远端门禁仍在整体交付前完成，
+不将本切片检查冒称全通过。
+
+## 15. M2 Linux 原生创建接线
+
+`LinuxServiceProcessV1` 在 native effect 前先成为调用者持有的 owner；只允许
+一次创建，完整绝对 executable/argv/cwd/environment、独立 POSIX session、
+标准流 `/dev/null`、仅继承一个显式 startup socket。不接受 pipe/capture 的
+静默降级，不导入 Mux/AppServer，也不充当 H6 sealed plugin preparation
+失败后的 fallback。该 local-managed profile 启动受信任的已安装服务入口。
+
+采用同步 Popen 的专属 owner，避免父解释器关闭 asyncio transport 时终止
+服务。保留原 `_PosixProcess` 进程组机制，通过结构协议接入自己的 Popen；
+只有实际 reap 后才提供 returncode，不把 pidfd 的 exited 等同于已 reap。
+创建错误不产生“证明未创建”的收据，禁止重复 spawn；身份捕获失败仍保留
+已经附着的 Popen 与 scope。close 只回收父端句柄并封闭创建，不发信号。
+进程组退出、父端句柄回收、应用 lease-last 成功仍为三个独立观察；逃逸出
+受控 scope 的子资源需要自己的 owner，不扫描全机器猜测归属。
+
+真实 durable-handoff 测试改用该启动器，覆盖父端正常解释器退出与骤退；
+标准流/控制终端、完整环境、FD 白名单、close/spawn 竞争和 leader 退出而
+后代仍存活单独测试。本机制尚未接入 CLI、Product 应用 owner、身份持久
+登记与异常恢复准入；不是一键启动、真实 SSH 或完整 lmux 交付完成证据。
+
+机制依据：[Python Popen](https://docs.python.org/3/library/subprocess.html#subprocess.Popen)
+和 [setsid](https://man7.org/linux/man-pages/man2/setsid.2.html)。原生创建与 OS IO
+不能承诺被 Python timeout 抢占；外层启动预算到期不能抛弃仍持有的 owner。
+
+三视角复审通过。修复了 observer 关闭失败时跳过独立 socket 回收的问题：
+各自尝试关闭，保留失败 owner 与未完成状态，支持重试而不发信号。真实
+子进程测试补齐显式环境覆盖/空值/Unicode、父环境不继承及指定 cwd；取消
+发生于 capture 后时，也验证了关闭故障、socket 释放与随后重试。
+
+聚焦 69 passed，包含新启动器、既有 POSIX process、四种正常/骤退父端的
+持久交接，以及 G9/G10/H0/current inventory。完整 `check-hosting` 通过：
+457 passed / 48 skipped，Ruff 与 mypy 29 模块通过；文档 6 项与依赖图
+新鲜度通过。未重复未改动的整套 AppHost 1508 项通过用例；其两个旧清单
+失败已精准修复并复测。不将本机制结论扩展为完整 installed/SSH 验收。

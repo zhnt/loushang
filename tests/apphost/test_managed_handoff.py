@@ -8,6 +8,7 @@ import subprocess
 import sys
 import threading
 from dataclasses import replace
+from secrets import token_hex
 from time import monotonic
 
 import pytest
@@ -221,8 +222,9 @@ from loushang.apphost.managed.lifecycle import ManagedServiceJournalV1
 from loushang.apphost.managed.handoff import ManagedServiceHandoffPortV1
 from loushang.hosting.service_handoff import ServiceChildHandoffV1
 root = Path(sys.argv[1])
-control = socket.socket(fileno=int(sys.argv[2]))
+control = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 control.settimeout(8)
+control.connect('\0' + sys.argv[2])
 endpoint = socket.socket(fileno=int(sys.argv[3]))
 namespace = ManagedNamespaceV1(str(root / 'platform'), os.geteuid(), 'a' * 32)
 registry = ManagedRegistryV1(root / 'registry', namespace)
@@ -246,33 +248,40 @@ finally:
 '''
 
 _STARTER = r'''
-import json, os, socket, subprocess, sys
+import json, os, socket, sys
+from loushang.hosting.contracts import ProcessLaunchRequest, ProcessStreamSpec, ProcessStdinMode, ProcessStdoutMode, ProcessStderrMode
+from loushang.hosting.service_process import LinuxServiceProcessV1
 parent, child = socket.socketpair()
-control_fd = int(sys.argv[2])
 command = json.loads(sys.argv[1]) + [str(child.fileno())]
-process = subprocess.Popen(command, pass_fds=(child.fileno(), control_fd),
-                           stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                           stderr=subprocess.DEVNULL, start_new_session=True)
-child.close()
-os.close(control_fd)
-print(process.pid, flush=True)
+request = ProcessLaunchRequest(tuple(command), sys.argv[2], tuple(os.environ.items()),
+    ProcessStreamSpec(ProcessStdinMode.CLOSED, ProcessStdoutMode.DISCARD, ProcessStderrMode.DISCARD))
+owner = LinuxServiceProcessV1(request, child)
+identity = owner.spawn()
+print(identity.pid, flush=True)
 sys.stdin.buffer.read(1)
-os._exit(0)
+if sys.argv[3] == 'abrupt':
+    os._exit(0)
+owner.close()
+parent.close()
 '''
 
 
 @pytest.mark.parametrize("committed", [False, True])
-def test_real_starter_exit_obeys_durable_handoff(owners, tmp_path, committed):
+@pytest.mark.parametrize("exit_mode", ["normal", "abrupt"])
+def test_real_starter_exit_obeys_durable_handoff(owners, tmp_path, committed, exit_mode):
     journal, _, port = owners
-    control, inherited = socket.socketpair()
-    control.settimeout(8)
-    command = [sys.executable, "-c", _CHILD, str(tmp_path), str(inherited.fileno())]
+    listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    address = "lmux-handoff-test-" + token_hex(16)
+    listener.bind("\0" + address)
+    listener.listen(1)
+    listener.settimeout(8)
+    control = None
+    command = [sys.executable, "-c", _CHILD, str(tmp_path), address]
     starter = subprocess.Popen(
-        [sys.executable, "-c", _STARTER, json.dumps(command), str(inherited.fileno())],
-        pass_fds=(inherited.fileno(),), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+        [sys.executable, "-c", _STARTER, json.dumps(command), str(tmp_path), exit_mode],
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
-    inherited.close()
     observer = None
     try:
         assert starter.stdout is not None
@@ -280,6 +289,8 @@ def test_real_starter_exit_obeys_durable_handoff(owners, tmp_path, committed):
         poller.register(starter.stdout, select.POLLIN)
         assert poller.poll(5000), "starter failed to report child"
         observer = LinuxServiceObserverV1.capture(int(starter.stdout.readline()))
+        control, _ = listener.accept()
+        control.settimeout(8)
         assert control.recv(1) == b"R"
         if committed:
             control.sendall(b"C")
@@ -298,7 +309,9 @@ def test_real_starter_exit_obeys_durable_handoff(owners, tmp_path, committed):
         assert not journal.read().evidence.process_scope_settled
         assert not observer.exited()
     finally:
-        control.close()  # EOF is the test child's own exit protocol, no signals.
+        listener.close()
+        if control is not None:
+            control.close()  # EOF is the test child's own exit protocol, no signals.
         starter.communicate(timeout=5)
         if observer is not None:
             try:

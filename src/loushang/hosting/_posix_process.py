@@ -7,7 +7,7 @@ import os
 import signal
 import subprocess
 from collections.abc import Callable
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Protocol, cast
 
 from ._launch_preparation import _ManagedSpawnEffect
 from ._process_backend import _ProcessInheritance, _ProcessTransport
@@ -28,8 +28,32 @@ _SIGTERM = cast(signal.Signals, getattr(signal, "SIGTERM", 15))
 _SIGKILL = cast(signal.Signals, getattr(signal, "SIGKILL", 9))
 
 
+class _PosixChildProcess(Protocol):
+    """Owned child identity; returncode is set only after this child is reaped.
+
+    Both the asyncio transport and optional synchronous service launcher supply
+    this seam. A pidfd exit observation alone cannot implement returncode: an
+    exited but unreaped leader is not evidence that its numeric PID was reused.
+    """
+
+    @property
+    def pid(self) -> int: ...
+
+    @property
+    def returncode(self) -> int | None: ...
+
+    @property
+    def stdin(self) -> asyncio.StreamWriter | None: ...
+
+    @property
+    def stdout(self) -> asyncio.StreamReader | None: ...
+
+    @property
+    def stderr(self) -> asyncio.StreamReader | None: ...
+
+
 class _PosixProcess:
-    def __init__(self, process: asyncio.subprocess.Process) -> None:
+    def __init__(self, process: _PosixChildProcess) -> None:
         process_group_id = process.pid
         if type(process_group_id) is not int or process_group_id <= 0:
             raise RuntimeError("POSIX process has no valid process-group identity")

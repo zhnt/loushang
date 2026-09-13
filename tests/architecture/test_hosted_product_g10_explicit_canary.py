@@ -130,11 +130,13 @@ def test_dependency_graph_has_only_the_accepted_product_owned_edges(
     ):
         for path in package.rglob("*.py"):
             imports = _imports(path)
-            if path == Path("src/loushang/apphost/launcher.py"):
-                assert {name for name in imports if name.startswith("loushang.hosting")} == {
-                    "loushang.hosting.contracts",
-                }
-                imports = imports - {"loushang.hosting.contracts"}
+            accepted_hosting = {
+                Path("src/loushang/apphost/launcher.py"): {"loushang.hosting.contracts"},
+                Path("src/loushang/apphost/managed/handoff.py"): {"loushang.hosting.service_handoff"},
+            }.get(path)
+            if accepted_hosting is not None:
+                assert {name for name in imports if name.startswith("loushang.hosting")} == accepted_hosting
+                imports = imports - accepted_hosting
             assert not any(
                 name == prefix or name.startswith(f"{prefix}.")
                 for prefix in forbidden

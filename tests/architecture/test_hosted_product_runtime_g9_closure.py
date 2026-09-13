@@ -546,9 +546,10 @@ def test_g9_4_retains_apphost_core_and_current_inventory_fences() -> None:
             name for name in imports
             if name == "loushang.hosting" or name.startswith("loushang.hosting.")
         }
-        assert hosting_imports == (
-            {"loushang.hosting.contracts"} if path == APPHOST / "launcher.py" else set()
-        )
+        assert hosting_imports == {
+            APPHOST / "launcher.py": {"loushang.hosting.contracts"},
+            APPHOST / "managed/handoff.py": {"loushang.hosting.service_handoff"},
+        }.get(path, set())
     for path in APPHOST_CORE:
         source = _read(path)
         imports = _imports(path)

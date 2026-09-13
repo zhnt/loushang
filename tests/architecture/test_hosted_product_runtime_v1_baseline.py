@@ -42,6 +42,7 @@ CURRENT_SOURCE_SEAMS = (
     HOSTING_SOURCE / "_posix_process.py",
     HOSTING_SOURCE / "service.py",
     HOSTING_SOURCE / "service_handoff.py",
+    HOSTING_SOURCE / "service_process.py",
     HOSTING_SOURCE / "_windows_process.py",
     HOSTING_SOURCE / "_win32_process.py",
     HOSTING_SOURCE / "_endpoint_host.py",
