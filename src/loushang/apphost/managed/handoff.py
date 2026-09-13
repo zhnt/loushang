@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from loushang.hosting.service import LinuxServiceIdentityV1
 from loushang.hosting.service_handoff import ServiceHandoffPhaseV1
 
 from ._files import ManagedStorageError
@@ -22,16 +23,22 @@ class ManagedServiceHandoffPortV1:
 
     def __init__(
         self, journal: ManagedServiceJournalV1, instance: ManagedInstanceRefV1,
-        attempt_id: str,
+        attempt_id: str, *, native_identity: LinuxServiceIdentityV1 | None = None,
     ) -> None:
         if type(journal) is not ManagedServiceJournalV1 or type(instance) is not ManagedInstanceRefV1:
             raise ManagedContractError()
         _match(attempt_id, _HEX32)
+        if native_identity is not None and type(native_identity) is not LinuxServiceIdentityV1:
+            raise ManagedContractError()
         self._journal, self._instance, self._attempt = journal, instance, attempt_id
+        self._native = native_identity
 
     def _phase(self, state: ManagedServiceStateV1 | None) -> ServiceHandoffPhaseV1:
         if (state is None or state.handoff.instance != self._instance
                 or state.handoff.attempt_id != self._attempt):
+            return ServiceHandoffPhaseV1.UNKNOWN
+        if (self._native is not None and state.native_identity is not None
+                and self._native != state.native_identity):
             return ServiceHandoffPhaseV1.UNKNOWN
         return ServiceHandoffPhaseV1(state.handoff.phase.value)
 
@@ -48,7 +55,14 @@ class ManagedServiceHandoffPortV1:
             return self.observe(deadline)
 
     def commit(self, deadline: float | None = None) -> ServiceHandoffPhaseV1:
-        return self._mutate(lambda: self._journal.commit(self._instance, self._attempt, deadline=deadline), deadline)
+        # Query/starter-side ports deliberately have no commit capability.
+        if self._native is None:
+            return ServiceHandoffPhaseV1.UNKNOWN
+        return self._mutate(lambda: self._journal.commit(
+            self._instance, self._attempt, native_identity=self._native, deadline=deadline,
+        ), deadline)
 
     def abort(self, deadline: float | None = None) -> ServiceHandoffPhaseV1:
-        return self._mutate(lambda: self._journal.abort(self._instance, self._attempt, deadline=deadline), deadline)
+        return self._mutate(lambda: self._journal.abort(
+            self._instance, self._attempt, native_identity=self._native, deadline=deadline,
+        ), deadline)

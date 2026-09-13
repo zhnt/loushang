@@ -8,8 +8,8 @@
 - ID: `LMUX-M0`
 - Authority: normative — accepted limited Linux managed-profile contract
 - Design status: accepted
-- Review status: three-perspective storage/lifecycle/observer/handoff/native-launch slice reviews passed; recovery admission pending
-- Implementation status: partial — storage, instance coordination, Linux observations, handoff and native launch owner; no activation
+- Review status: three-perspective storage/lifecycle/observer/handoff/native-launch/native-binding slice reviews passed; recovery admission pending
+- Implementation status: partial — storage, instance coordination, Linux observations, native launch and durable birth binding; no activation
 - Owner: AppHost managed deployment; sibling changes remain sibling-owned
 - Tracking objective: active Linux lmux goal, branch `harness/lmux-managed-service`
 
@@ -240,6 +240,7 @@ Mux 外壳只负责成员/连接组合。主题与终端能力在客户端组合
 | M2 Linux 退出观察 | boot/PID/start-time/实际 UID/PID namespace 与保留 pidfd；26 项原生回归、三视角复审通过 | 原生 spawn/handoff、进程树结算及异常恢复准入仍待接线 |
 | M2 持久交接接线 | 继承通道 + exact instance/attempt journal port；共享协作 deadline、真实启动器退出和 EOF/CAS 竞争测试，三视角复审通过 | 生产 spawn/daemon 与应用 owner 清理尚未接入，不构成 SSH/后台交付 |
 | M2 Linux 创建 owner | 单次生产 Popen 创建、受管 FD/环境/工作区、复用 POSIX group 观察；真实父端退出和故障矩阵、三视角复审通过 | 身份持久登记、应用自持生命周期、异常恢复和 CLI 激活仍待完成 |
+| M2 birth binding | schema v3 原生身份登记、精确匹配的 commit/abort；117 项聚焦验证、三视角复审通过 | 应用自持 owner、异常退役恢复、Session writer lease 与完整前端接线仍待完成 |
 | 一条命令/后台/全局名/多 Tab/stop | 仅 G16 既有显式能力 | M1–M3 全部接线 |
 | Session 唯一写入与默认历史 | 缺运行期跨进程合同实现 | writer lease + canonical catalog + 双进程测试 |
 | 完整共享 Harnesstui/Markdown | 草案与本文接缝 | M3 代码与 Embedded 非回退 |
@@ -465,3 +466,35 @@ managed handoff 单独登记唯一公共 Hosting 依赖，对应两个节点已�
 457 passed / 48 skipped，Ruff 与 mypy 29 模块通过；文档 6 项与依赖图
 新鲜度通过。未重复未改动的整套 AppHost 1508 项通过用例；其两个旧清单
 失败已精准修复并复测。不将本机制结论扩展为完整 installed/SSH 验收。
+
+## 16. M2 持久原生身份与提交准入
+
+实例行升级为未激活 schema v3，新增有界、规范 JSON 编码的原生身份；
+v1/v2 库显式拒绝，不自动迁移。直接复用 Hosting 的不可变 Linux 身份值，
+不再复制一套 PID/start-time/boot/UID/namespace 字段协议。该依赖仅存在于
+可选 Linux managed lifecycle/handoff 两个模块，核心 contracts 与根 facade
+不增加 Hosting 依赖；架构清单按模块及 symbol 精确登记。
+
+可信启动 owner 捕获身份后，以同一 instance/attempt 登记。首次登记要求
+provisional 且没有 stop fence；同值重试幂等，不同值不得覆盖。commit 必须
+携带子端自己的 native identity，并与持久登记完全匹配；仅有实例号、PID
+文本或 ready 通知不足以提交。读到身份也不是 liveness、scope 结算或 signal
+权限，新客户端仍须用 Hosting 重新验证。干净换代在同一事务中清空旧身份，
+不会把旧原生观察沿用到新实例。
+
+未绑定 native 的 starter port 可观察和按精确 attempt 提出 abort，不能
+commit。绑定 native 的 child port 在登记出现后，observe/commit/abort 均
+要求匹配；其中 abort 前置检查与状态变更必须在同一 fence 事务中，不能
+先修改后再返回 UNKNOWN。登记前的 EOF 仍允许 provisional child 提出
+abort，之后迟到的登记被拒绝。正常/骤退父端的四种真实测试均使用生产
+launcher 的捕获值登记，子端独立捕获自身身份，验证两个观察与持久值一致。
+
+这仅完成 birth binding 与交接准入，不代表应用自持 owner、异常退役恢复、
+Session writer lease、公共发现/连接或 CLI 激活已经完成。
+
+三视角指出并修复了 wrong-native abort 的事后拒绝问题：原生匹配检查
+与修改在同一事务中完成，返回 UNKNOWN 不再掩盖已发生的状态修改。
+三视角复审通过；聚焦生命周期/交接/registry/file 及精确 G9/G10/C50/current
+inventory 共 117 passed，Ruff、managed 八模块 mypy、文档 6 项、依赖图
+新鲜度通过。没有重复未改动的 Hosting 原生实现与 Product/UI 广泛套件，
+完整 change-aware、真实安装/SSH/性能与最终三视角交付仍在整体目标内。

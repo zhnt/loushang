@@ -897,13 +897,23 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
         CODING_ROOT / "cli/hosted_client.py",
         APPHOST_ROOT / "launcher.py",
         APPHOST_ROOT / "managed/handoff.py",
+        APPHOST_ROOT / "managed/lifecycle.py",
     }
     assert {
         imported for imported in _imports(APPHOST_ROOT / "managed/handoff.py")
         if imported.startswith("loushang.hosting")
     } == {
+        "loushang.hosting.service",
+        "loushang.hosting.service.LinuxServiceIdentityV1",
         "loushang.hosting.service_handoff",
         "loushang.hosting.service_handoff.ServiceHandoffPhaseV1",
+    }
+    assert {
+        imported for imported in _imports(APPHOST_ROOT / "managed/lifecycle.py")
+        if imported.startswith("loushang.hosting")
+    } == {
+        "loushang.hosting.errors", "loushang.hosting.errors.HostingError",
+        "loushang.hosting.service", "loushang.hosting.service.LinuxServiceIdentityV1",
     }
     for consumer in hosting_consumers:
         assert not any(

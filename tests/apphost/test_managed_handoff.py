@@ -23,7 +23,7 @@ from loushang.apphost.managed.contracts import (
 from loushang.apphost.managed.handoff import ManagedServiceHandoffPortV1
 from loushang.apphost.managed.lifecycle import ManagedServiceJournalV1
 from loushang.apphost.managed.registry import ManagedMuxReservationV1, ManagedRegistryV1
-from loushang.hosting.service import LinuxServiceObserverV1
+from loushang.hosting.service import LinuxServiceIdentityV1, LinuxServiceObserverV1
 from loushang.hosting.service_handoff import (
     ServiceChildHandoffV1,
     ServiceParentHandoffV1,
@@ -34,14 +34,18 @@ pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux durable h
 
 
 @pytest.fixture
-def owners(tmp_path):
+def owners(tmp_path, request):
     namespace = ManagedNamespaceV1(str(tmp_path / "platform"), os.geteuid(), "a" * 32)
     service = ManagedServiceKeyV1("coding", "/workspace")
     registry = ManagedRegistryV1(tmp_path / "registry", namespace, create=True)
     registry.reserve_mux(ManagedMuxReservationV1("dev", service, "b" * 32))
     journal = ManagedServiceJournalV1(registry, namespace, service, tmp_path / "fence", create=True)
     state = journal.prepare("c" * 32, expected=None)
-    port = ManagedServiceHandoffPortV1(journal, state.handoff.instance, state.handoff.attempt_id)
+    native = None
+    if getattr(request, "param", True):
+        native = LinuxServiceIdentityV1(431, 100, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", os.geteuid(), 1, 1)
+        state = journal.register_native(state.handoff.instance, state.handoff.attempt_id, native)
+    port = ManagedServiceHandoffPortV1(journal, state.handoff.instance, state.handoff.attempt_id, native_identity=native)
     try:
         yield journal, state, port
     finally:
@@ -93,21 +97,63 @@ def test_stop_fence_is_not_a_fabricated_abort(owners):
     assert port.abort() is Phase.ABORTING
 
 
-@pytest.mark.parametrize("mismatch", ["namespace", "instance", "attempt"])
+@pytest.mark.parametrize("mismatch", ["namespace", "instance", "attempt", "native"])
 def test_binding_mismatch_cannot_observe_or_modify_current_attempt(owners, mismatch):
     journal, state, _ = owners
     reference, attempt = state.handoff.instance, state.handoff.attempt_id
+    native = state.native_identity
     if mismatch == "namespace":
         reference = replace(reference, namespace_key="d" * 64)
     elif mismatch == "instance":
         reference = replace(reference, instance_id="d" * 32)
-    else:
+    elif mismatch == "attempt":
         attempt = "d" * 32
-    port = ManagedServiceHandoffPortV1(journal, reference, attempt)
+    else:
+        native = replace(native, start_ticks=native.start_ticks + 1)
+    port = ManagedServiceHandoffPortV1(journal, reference, attempt, native_identity=native)
     assert port.observe() is Phase.UNKNOWN
     assert port.commit() is Phase.UNKNOWN
     assert port.abort() is Phase.UNKNOWN
     assert journal.read() == state
+
+
+def test_starter_port_cannot_commit_but_can_explicitly_abort(owners):
+    journal, state, _ = owners
+    starter = ManagedServiceHandoffPortV1(journal, state.handoff.instance, state.handoff.attempt_id)
+    assert starter.observe() is Phase.PROVISIONAL
+    assert starter.commit() is Phase.UNKNOWN
+    assert journal.read() == state
+    assert starter.abort() is Phase.ABORTING
+
+
+@pytest.mark.parametrize("owners", [False], indirect=True)
+def test_child_cannot_commit_until_starter_registers_matching_native(owners):
+    journal, state, _ = owners
+    native = LinuxServiceIdentityV1(431, 100, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", os.geteuid(), 1, 1)
+    child = ManagedServiceHandoffPortV1(
+        journal, state.handoff.instance, state.handoff.attempt_id, native_identity=native,
+    )
+    assert child.commit() is Phase.PROVISIONAL
+    assert journal.read() == state
+    journal.register_native(state.handoff.instance, state.handoff.attempt_id, native)
+    assert child.commit() is Phase.COMMITTED
+
+
+@pytest.mark.parametrize("owners", [False], indirect=True)
+def test_parent_eof_before_registration_still_allows_child_abort(owners):
+    journal, state, _ = owners
+    native = LinuxServiceIdentityV1(431, 100, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", os.geteuid(), 1, 1)
+    port = ManagedServiceHandoffPortV1(journal, state.handoff.instance, state.handoff.attempt_id, native_identity=native)
+    parent, endpoint = socket.socketpair()
+    child = ServiceChildHandoffV1(endpoint, port)
+    parent.close()
+    try:
+        assert child.poll_parent() is Phase.ABORTING
+        assert journal.read().native_identity is None
+        with pytest.raises(ManagedStorageError, match="conflict"):
+            journal.register_native(state.handoff.instance, state.handoff.attempt_id, native)
+    finally:
+        child.close()
 
 
 def test_delayed_old_port_never_controls_new_generation(owners):
@@ -221,16 +267,19 @@ from loushang.apphost.managed.registry import ManagedRegistryV1
 from loushang.apphost.managed.lifecycle import ManagedServiceJournalV1
 from loushang.apphost.managed.handoff import ManagedServiceHandoffPortV1
 from loushang.hosting.service_handoff import ServiceChildHandoffV1
+from loushang.hosting.service import LinuxServiceObserverV1
 root = Path(sys.argv[1])
 control = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 control.settimeout(8)
 control.connect('\0' + sys.argv[2])
+assert control.recv(1) == b'S'  # Test gate: starter has durably registered birth.
 endpoint = socket.socket(fileno=int(sys.argv[3]))
 namespace = ManagedNamespaceV1(str(root / 'platform'), os.geteuid(), 'a' * 32)
 registry = ManagedRegistryV1(root / 'registry', namespace)
 journal = ManagedServiceJournalV1(registry, namespace, ManagedServiceKeyV1('coding', '/workspace'), root / 'fence')
 state = journal.read()
-port = ManagedServiceHandoffPortV1(journal, state.handoff.instance, state.handoff.attempt_id)
+observer = LinuxServiceObserverV1.capture(os.getpid())
+port = ManagedServiceHandoffPortV1(journal, state.handoff.instance, state.handoff.attempt_id, native_identity=observer.identity)
 channel = ServiceChildHandoffV1(endpoint, port)
 try:
     control.sendall(b'R')
@@ -242,6 +291,7 @@ try:
         control.sendall(phase.value.encode() + b'\n')
 finally:
     channel.close()
+    observer.close()
     journal.close()
     registry.close()
     control.close()
@@ -251,23 +301,36 @@ _STARTER = r'''
 import json, os, socket, sys
 from loushang.hosting.contracts import ProcessLaunchRequest, ProcessStreamSpec, ProcessStdinMode, ProcessStdoutMode, ProcessStderrMode
 from loushang.hosting.service_process import LinuxServiceProcessV1
+from pathlib import Path
+from loushang.apphost.managed.contracts import ManagedNamespaceV1, ManagedServiceKeyV1
+from loushang.apphost.managed.registry import ManagedRegistryV1
+from loushang.apphost.managed.lifecycle import ManagedServiceJournalV1
+root = Path(sys.argv[2])
+namespace = ManagedNamespaceV1(str(root / 'platform'), os.geteuid(), 'a' * 32)
+registry = ManagedRegistryV1(root / 'registry', namespace)
+journal = ManagedServiceJournalV1(registry, namespace, ManagedServiceKeyV1('coding', '/workspace'), root / 'fence')
+state = journal.read()
 parent, child = socket.socketpair()
 command = json.loads(sys.argv[1]) + [str(child.fileno())]
 request = ProcessLaunchRequest(tuple(command), sys.argv[2], tuple(os.environ.items()),
     ProcessStreamSpec(ProcessStdinMode.CLOSED, ProcessStdoutMode.DISCARD, ProcessStderrMode.DISCARD))
 owner = LinuxServiceProcessV1(request, child)
 identity = owner.spawn()
+journal.register_native(state.handoff.instance, state.handoff.attempt_id, identity)
 print(identity.pid, flush=True)
 sys.stdin.buffer.read(1)
 if sys.argv[3] == 'abrupt':
     os._exit(0)
 owner.close()
 parent.close()
+journal.close()
+registry.close()
 '''
 
 
 @pytest.mark.parametrize("committed", [False, True])
 @pytest.mark.parametrize("exit_mode", ["normal", "abrupt"])
+@pytest.mark.parametrize("owners", [False], indirect=True)
 def test_real_starter_exit_obeys_durable_handoff(owners, tmp_path, committed, exit_mode):
     journal, _, port = owners
     listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -291,6 +354,7 @@ def test_real_starter_exit_obeys_durable_handoff(owners, tmp_path, committed, ex
         observer = LinuxServiceObserverV1.capture(int(starter.stdout.readline()))
         control, _ = listener.accept()
         control.settimeout(8)
+        control.sendall(b"S")
         assert control.recv(1) == b"R"
         if committed:
             control.sendall(b"C")
@@ -303,6 +367,7 @@ def test_real_starter_exit_obeys_durable_handoff(owners, tmp_path, committed, ex
         assert _line(control) == expected.value.encode() + b"\n"
         assert port.observe() is expected
         assert journal.read().handoff.phase is ManagedHandoffPhaseV1(expected.value)
+        assert journal.read().native_identity == observer.identity
         # The handshake does not fabricate application/scope cleanup facts, nor
         # stop the committed child. The test application owns its separate exit.
         assert not journal.read().evidence.application_cleanup_completed

@@ -2,16 +2,20 @@
 
 These records coordinate trusted owners. They neither discover live processes
 nor confer permission to kill one. A child-side owner alone proposes commit;
-the eventual Hosting integration supplies native identity and settlement facts.
+trusted Hosting callers supply native lookup values and settlement facts.
 """
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from secrets import token_hex
+
+from loushang.hosting.errors import HostingError
+from loushang.hosting.service import LinuxServiceIdentityV1
 
 from ._files import ManagedStorageError, PrivateManagedDirectory
 from .contracts import (
@@ -37,6 +41,7 @@ class ManagedServiceStateV1:
     revision: int
     handoff: ManagedHandoffV1
     evidence: ManagedStopEvidenceV1
+    native_identity: LinuxServiceIdentityV1 | None = None
 
     def __post_init__(self) -> None:
         if (
@@ -44,6 +49,8 @@ class ManagedServiceStateV1:
             or type(self.handoff) is not ManagedHandoffV1
             or type(self.evidence) is not ManagedStopEvidenceV1
             or self.handoff.instance != self.evidence.instance
+            or (self.native_identity is not None and type(self.native_identity) is not LinuxServiceIdentityV1)
+            or (self.handoff.phase is ManagedHandoffPhaseV1.COMMITTED and self.native_identity is None)
         ):
             raise ManagedContractError()
         if (
@@ -134,22 +141,70 @@ class ManagedServiceJournalV1:
             self._fence._check()
             return state
 
-    def commit(self, instance: ManagedInstanceRefV1, attempt_id: str, *, deadline: float | None = None) -> ManagedServiceStateV1:
-        """Persist the child's proposal; a stop fence or abort wins by refusing it."""
+    def register_native(
+        self, instance: ManagedInstanceRefV1, attempt_id: str, identity: LinuxServiceIdentityV1,
+        *, deadline: float | None = None,
+    ) -> ManagedServiceStateV1:
+        """Persist the trusted launch owner's capture, once per generation.
+
+        This value is a lookup record, not current liveness or signal authority.
+        Same-value retries are idempotent even after commit; identity replacement
+        or new registration after stop/abort is never admitted.
+        """
         _match(attempt_id, _HEX32)
+        self._require_native(identity)
 
         def update(current: ManagedServiceStateV1) -> ManagedServiceStateV1:
             if current.handoff.attempt_id != attempt_id:
+                raise ManagedStorageError("conflict")
+            if current.native_identity == identity:
+                return current
+            if (current.native_identity is not None
+                    or current.handoff.phase is not ManagedHandoffPhaseV1.PROVISIONAL
+                    or current.handoff.stop_requested):
+                raise ManagedStorageError("conflict")
+            return replace(current, native_identity=identity)
+
+        return self._update(instance, update, deadline=deadline)
+
+    def _require_native(self, identity: LinuxServiceIdentityV1 | None) -> None:
+        if type(identity) is not LinuxServiceIdentityV1 or identity.user_id != self._namespace.user_id:
+            raise ManagedContractError()
+
+    def commit(
+        self, instance: ManagedInstanceRefV1, attempt_id: str, *,
+        native_identity: LinuxServiceIdentityV1 | None = None, deadline: float | None = None,
+    ) -> ManagedServiceStateV1:
+        """Child proposal requires the durable native binding and no stop/abort."""
+        _match(attempt_id, _HEX32)
+        self._require_native(native_identity)
+
+        def update(current: ManagedServiceStateV1) -> ManagedServiceStateV1:
+            if current.handoff.attempt_id != attempt_id or current.native_identity != native_identity:
                 raise ManagedStorageError("conflict")
             return replace(current, handoff=current.handoff.commit())
 
         return self._update(instance, update, deadline=deadline)
 
-    def abort(self, instance: ManagedInstanceRefV1, attempt_id: str, *, deadline: float | None = None) -> ManagedServiceStateV1:
+    def abort(
+        self, instance: ManagedInstanceRefV1, attempt_id: str, *,
+        native_identity: LinuxServiceIdentityV1 | None = None, deadline: float | None = None,
+    ) -> ManagedServiceStateV1:
+        """Starter may abort by exact attempt; bound children must match birth.
+
+        Before birth registration, EOF still permits provisional child cleanup.
+        After registration, a child with a different native identity cannot
+        mutate the attempt. The check and transition share one transaction.
+        """
         _match(attempt_id, _HEX32)
+        if native_identity is not None:
+            self._require_native(native_identity)
 
         def update(current: ManagedServiceStateV1) -> ManagedServiceStateV1:
             if current.handoff.attempt_id != attempt_id:
+                raise ManagedStorageError("conflict")
+            if (native_identity is not None and current.native_identity is not None
+                    and native_identity != current.native_identity):
                 raise ManagedStorageError("conflict")
             return replace(current, handoff=current.handoff.abort())
 
@@ -214,19 +269,22 @@ class ManagedServiceJournalV1:
         if key != (service.product_id, service.workspace, service.profile):
             raise ManagedStorageError("conflict")
         row = connection.execute("SELECT revision, instance_id, attempt_id, phase, stop_requested, "
-                                 "process_exited, application_cleanup_completed, process_scope_settled "
+                                 "process_exited, application_cleanup_completed, process_scope_settled, native_identity "
                                  "FROM instances WHERE service_id=?", (service.service_id,)).fetchone()
         if row is None:
             return None
         try:
-            if any(type(value) is not int or value not in (0, 1) for value in row[4:]):
+            if any(type(value) is not int or value not in (0, 1) for value in row[4:8]):
                 raise ManagedContractError()
             instance = ManagedInstanceRefV1(self._namespace.namespace_key, service.service_id, row[1])
             handoff = ManagedHandoffV1(instance, row[2], ManagedHandoffPhaseV1(row[3]), bool(row[4]))
+            native = _decode_native(row[8])
+            if native is not None:
+                self._require_native(native)
             return ManagedServiceStateV1(row[0], handoff, ManagedStopEvidenceV1(
                 instance, bool(row[5]), bool(row[6]), bool(row[7]),
-            ))
-        except (ManagedContractError, ValueError, TypeError):
+            ), native)
+        except (ManagedContractError, HostingError, ValueError, TypeError):
             raise ManagedStorageError("invalid_record") from None
 
     def _save(self, connection: sqlite3.Connection, state: ManagedServiceStateV1, *, insert: bool) -> None:
@@ -234,15 +292,31 @@ class ManagedServiceJournalV1:
         values = (state.revision, handoff.instance.instance_id, handoff.attempt_id, handoff.phase.value,
                   int(handoff.stop_requested), int(evidence.process_exited),
                   int(evidence.application_cleanup_completed), int(evidence.process_scope_settled),
+                  _encode_native(state.native_identity),
                   self._service.service_id)
         if insert:
             connection.execute("INSERT INTO instances (revision, instance_id, attempt_id, phase, "
                                "stop_requested, process_exited, application_cleanup_completed, "
-                               "process_scope_settled, service_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", values)
+                               "process_scope_settled, native_identity, service_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", values)
         else:
             connection.execute("UPDATE instances SET revision=?, instance_id=?, attempt_id=?, phase=?, "
                                "stop_requested=?, process_exited=?, application_cleanup_completed=?, "
-                               "process_scope_settled=? WHERE service_id=?", values)
+                               "process_scope_settled=?, native_identity=? WHERE service_id=?", values)
+
+
+def _encode_native(identity: LinuxServiceIdentityV1 | None) -> str | None:
+    return None if identity is None else json.dumps(asdict(identity), sort_keys=True, separators=(",", ":"))
+
+
+def _decode_native(value: object) -> LinuxServiceIdentityV1 | None:
+    if value is None:
+        return None
+    if type(value) is not str or len(value) > 1024:
+        raise ManagedContractError()
+    identity = LinuxServiceIdentityV1(**json.loads(value))
+    if _encode_native(identity) != value:
+        raise ManagedContractError()
+    return identity
 
 
 def _next_revision(current: ManagedServiceStateV1 | None) -> int:

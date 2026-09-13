@@ -132,7 +132,8 @@ def test_dependency_graph_has_only_the_accepted_product_owned_edges(
             imports = _imports(path)
             accepted_hosting = {
                 Path("src/loushang/apphost/launcher.py"): {"loushang.hosting.contracts"},
-                Path("src/loushang/apphost/managed/handoff.py"): {"loushang.hosting.service_handoff"},
+                Path("src/loushang/apphost/managed/handoff.py"): {"loushang.hosting.service", "loushang.hosting.service_handoff"},
+                Path("src/loushang/apphost/managed/lifecycle.py"): {"loushang.hosting.errors", "loushang.hosting.service"},
             }.get(path)
             if accepted_hosting is not None:
                 assert {name for name in imports if name.startswith("loushang.hosting")} == accepted_hosting

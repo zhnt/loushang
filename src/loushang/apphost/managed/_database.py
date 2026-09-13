@@ -31,7 +31,7 @@ CONTROL_RESERVE = 6 * 1024 * 1024
 PAGE_SIZE = 4096
 _LOCK = "registry.lock"
 _APPLICATION_ID = 0x4C4D5558
-_VERSION = 2
+_VERSION = 3
 _SCHEMA = (
     "CREATE TABLE identity (namespace TEXT PRIMARY KEY NOT NULL) WITHOUT ROWID",
     "CREATE TABLE services (service_id TEXT PRIMARY KEY NOT NULL, "
@@ -44,7 +44,9 @@ _SCHEMA = (
     "revision INTEGER NOT NULL CHECK(revision>0), instance_id TEXT NOT NULL, "
     "attempt_id TEXT NOT NULL, phase TEXT NOT NULL, stop_requested INTEGER NOT NULL, "
     "process_exited INTEGER NOT NULL, application_cleanup_completed INTEGER NOT NULL, "
-    "process_scope_settled INTEGER NOT NULL) WITHOUT ROWID",
+    "process_scope_settled INTEGER NOT NULL, native_identity TEXT "
+    "CHECK(native_identity IS NULL OR (typeof(native_identity)='text' "
+    "AND length(native_identity)<=1024))) WITHOUT ROWID",
 )
 _SCHEMA_ROWS = tuple(sorted((
     ("table", "identity", "identity", _SCHEMA[0]),
