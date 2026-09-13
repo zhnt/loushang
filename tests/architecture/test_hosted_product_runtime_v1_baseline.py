@@ -40,6 +40,7 @@ CURRENT_SOURCE_SEAMS = (
     HOSTING_SOURCE / "_posix_launch_preparation.py",
     HOSTING_SOURCE / "_windows_launch_preparation.py",
     HOSTING_SOURCE / "_posix_process.py",
+    HOSTING_SOURCE / "service.py",
     HOSTING_SOURCE / "_windows_process.py",
     HOSTING_SOURCE / "_win32_process.py",
     HOSTING_SOURCE / "_endpoint_host.py",

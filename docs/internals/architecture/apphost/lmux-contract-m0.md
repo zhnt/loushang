@@ -8,8 +8,8 @@
 - ID: `LMUX-M0`
 - Authority: normative — accepted limited Linux managed-profile contract
 - Design status: accepted
-- Review status: three-perspective storage/registry/lifecycle slice reviews passed; recovery admission pending
-- Implementation status: partial — storage, name intents and clean instance generations; no activation
+- Review status: three-perspective storage/lifecycle/observer slice reviews passed; recovery admission pending
+- Implementation status: partial — storage, instance coordination and Linux exit observations; no activation
 - Owner: AppHost managed deployment; sibling changes remain sibling-owned
 - Tracking objective: active Linux lmux goal, branch `harness/lmux-managed-service`
 
@@ -236,7 +236,8 @@ Mux 外壳只负责成员/连接组合。主题与终端能力在客户端组合
 | M0 合同 | 三视角修订后通过；纯值/状态/路径 56 项测试、Ruff/mypy 通过 | native admission、持久 CAS、writer lease 等运行实现及验证 |
 | M1 私有文件 owner | 文件准入、稳定锁、记录 CAS 与故障清理；三视角复审通过；文件测试 31 项通过 | 配额和公共发现/连接协调仍待接线 |
 | M1 持久名称预留 | SQLite schema/namespace、名称与操作唯一、服务复用键、分页查询及崩溃恢复；三视角复审通过 | 操作结果对账与启动/停止编排尚未实现 |
-| M2 代际协调 | per-service fence、持久 prepare/commit/abort/stop、三项结算事实及干净停止后换代 | native 身份/启动交接、异常 retire/recovery admission、真实后台激活均未完成 |
+| M2 代际协调 | per-service fence、持久 prepare/commit/abort/stop、三项结算事实及干净停止后换代 | native 启动交接、异常 retire/recovery admission、真实后台激活均未完成 |
+| M2 Linux 退出观察 | boot/PID/start-time/实际 UID/PID namespace 与保留 pidfd；26 项原生回归、三视角复审通过 | 原生 spawn/handoff、进程树结算及异常恢复准入仍待接线 |
 | 一条命令/后台/全局名/多 Tab/stop | 仅 G16 既有显式能力 | M1–M3 全部接线 |
 | Session 唯一写入与默认历史 | 缺运行期跨进程合同实现 | writer lease + canonical catalog + 双进程测试 |
 | 完整共享 Harnesstui/Markdown | 草案与本文接缝 | M3 代码与 Embedded 非回退 |
@@ -352,3 +353,37 @@ retire/recovery admission 必须另行实现：区分干净停止成功与安全
 本次全部 managed 与两份精确架构清单共 137 passed，其中 lifecycle 12 项；
 Ruff、managed 七模块 mypy、文档 6 项与依赖图新鲜度通过。三视角允许当前
 未激活切片本地提交，异常恢复 P2 仍未关闭，不作为最终交付通过依据。
+
+## 13. M2 Linux 身份与退出观察
+
+可选 `hosting.service` 新增 `LinuxServiceIdentityV1` 与
+`LinuxServiceObserverV1.capture/reopen/exited/close`。身份值只是定位事实；
+reopen 必须重新验证 boot、PID/start-time、实际 UID、调用者 PID namespace，
+在 pidfd 获取前后双观察并绑定 fdinfo PID。`/proc` 缺失或 PID 记录存在均
+不能推断当前退出；只以保留 pidfd 的退出事件给出 leader/thread-group 事实。
+
+实际 UID 从保留 proc 目录 fd 下的 status 读取，不能由目录 owner 替代；
+该 same-user profile 要求 real/effective/saved/fs UID 一致且匹配调用者。
+本机 standalone uv Python 没有 `os.pidfd_open`，但 libc 支持同一 API；
+采用 Linux-only、lazy libc 适配，不猜系统调用号、不退回 PID 轮询。
+
+等待预算包含 mutex 获取与 poll；关闭先设置 fence 阻止新等待，未及时取得
+锁时保留句柄供重试。close 只关观察句柄，不发任何信号。主进程退出、后代
+继续持有资源时不得宣称 scope 或应用已结算。此模块无 AppHost/AppServer/
+Product 依赖，不从 Hosting 根 facade 激活，不改变既有 ProcessLease.close。
+
+三视角指出并修复：真实 UID 与目录 owner 的区别、超大整数 timeout 的
+封闭错误校验、mutex 等待预算及并发 close fence。26 项真实 Linux 测试
+通过，含独立新客户端 reopen、身份变化拒绝与 fd 回收、主进程退出但后代
+仍活、关闭不发信号、无效/巨大 timeout 和并发等待/关闭；Ruff/mypy 通过。
+这不是 SSH 断连验收、后台 spawn 或异常恢复 P2 的完成证据。
+
+原生语义依据：[pidfd_open](https://man7.org/linux/man-pages/man2/pidfd_open.2.html)、
+[proc stat](https://man7.org/linux/man-pages/man5/proc_pid_stat.5.html) 与
+[proc 所有者](https://man7.org/linux/man-pages/man5/proc_pid.5.html)。
+
+完整 Hosting 主测试 410 passed / 48 skipped，唯一失败为 H0 精确模块清单
+未登记可选 `service.py`。已显式补清单且新增不从根 facade 导入观察器的
+断言，H0 与交付清单聚焦复测 15 passed；Hosting Ruff/mypy 27 模块、
+文档 6 项与依赖图新鲜度通过。不将该聚焦修复标为完整 check-hosting 命令
+重跑成功。CI 计划选中的更广泛消费者/跨平台门禁仍是最终集成前置。
