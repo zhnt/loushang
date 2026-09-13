@@ -30,7 +30,7 @@ CONTROL_RESERVE = 6 * 1024 * 1024
 PAGE_SIZE = 4096
 _LOCK = "registry.lock"
 _APPLICATION_ID = 0x4C4D5558
-_VERSION = 1
+_VERSION = 2
 _SCHEMA = (
     "CREATE TABLE identity (namespace TEXT PRIMARY KEY NOT NULL) WITHOUT ROWID",
     "CREATE TABLE services (service_id TEXT PRIMARY KEY NOT NULL, "
@@ -39,11 +39,17 @@ _SCHEMA = (
     "CREATE TABLE muxes (name TEXT PRIMARY KEY NOT NULL, "
     "service_id TEXT NOT NULL REFERENCES services(service_id), "
     "operation_id TEXT NOT NULL UNIQUE) WITHOUT ROWID",
+    "CREATE TABLE instances (service_id TEXT PRIMARY KEY NOT NULL REFERENCES services(service_id), "
+    "revision INTEGER NOT NULL CHECK(revision>0), instance_id TEXT NOT NULL, "
+    "attempt_id TEXT NOT NULL, phase TEXT NOT NULL, stop_requested INTEGER NOT NULL, "
+    "process_exited INTEGER NOT NULL, application_cleanup_completed INTEGER NOT NULL, "
+    "process_scope_settled INTEGER NOT NULL) WITHOUT ROWID",
 )
 _SCHEMA_ROWS = tuple(sorted((
     ("table", "identity", "identity", _SCHEMA[0]),
     ("table", "services", "services", _SCHEMA[1]),
     ("table", "muxes", "muxes", _SCHEMA[2]),
+    ("table", "instances", "instances", _SCHEMA[3]),
 )))
 
 
@@ -246,3 +252,8 @@ class ManagedDatabase:
         """Call after idempotent lookup but before a bounded actual mutation."""
         self._admit_capacity(connection, self._directory._check(),
                              growth=128 * 1024, normal=True)
+
+    def admit_control(self, connection: sqlite3.Connection) -> None:
+        """Small existing-instance updates may consume the control headroom."""
+        self._admit_capacity(connection, self._directory._check(),
+                             growth=16 * 1024, normal=False)

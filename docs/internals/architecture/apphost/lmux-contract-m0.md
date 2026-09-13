@@ -8,8 +8,8 @@
 - ID: `LMUX-M0`
 - Authority: normative — accepted limited Linux managed-profile contract
 - Design status: accepted
-- Review status: three-perspective contract, private-file and name-registry slice reviews passed
-- Implementation status: partial — pure values, private-file owner and SQLite name intents; no activation
+- Review status: three-perspective storage/registry/lifecycle slice reviews passed; recovery admission pending
+- Implementation status: partial — storage, name intents and clean instance generations; no activation
 - Owner: AppHost managed deployment; sibling changes remain sibling-owned
 - Tracking objective: active Linux lmux goal, branch `harness/lmux-managed-service`
 
@@ -235,7 +235,8 @@ Mux 外壳只负责成员/连接组合。主题与终端能力在客户端组合
 | 独立分支与基线 | 分支已建立，30 个基线回归通过 | 后续增量相对基线验证 |
 | M0 合同 | 三视角修订后通过；纯值/状态/路径 56 项测试、Ruff/mypy 通过 | native admission、持久 CAS、writer lease 等运行实现及验证 |
 | M1 私有文件 owner | 文件准入、稳定锁、记录 CAS 与故障清理；三视角复审通过；文件测试 31 项通过 | 配额和公共发现/连接协调仍待接线 |
-| M1 持久名称预留 | SQLite schema/namespace、名称与操作唯一、服务复用键、分页查询及崩溃恢复；三视角复审通过 | 实例代际、操作结果对账与启动/停止编排尚未实现 |
+| M1 持久名称预留 | SQLite schema/namespace、名称与操作唯一、服务复用键、分页查询及崩溃恢复；三视角复审通过 | 操作结果对账与启动/停止编排尚未实现 |
+| M2 代际协调 | per-service fence、持久 prepare/commit/abort/stop、三项结算事实及干净停止后换代 | native 身份/启动交接、异常 retire/recovery admission、真实后台激活均未完成 |
 | 一条命令/后台/全局名/多 Tab/stop | 仅 G16 既有显式能力 | M1–M3 全部接线 |
 | Session 唯一写入与默认历史 | 缺运行期跨进程合同实现 | writer lease + canonical catalog + 双进程测试 |
 | 完整共享 Harnesstui/Markdown | 草案与本文接缝 | M3 代码与 Embedded 非回退 |
@@ -322,3 +323,32 @@ CI 计划提示的跨平台/host-runtime 验收仍不因这次本地切片而宣
 本次聚焦共 125 passed（其中登记库 19 项），Ruff、managed 六个模块 mypy、
 依赖图新鲜度通过。未重复将未改动的 Product/终端路径广泛套件算作本切片
 新证据；完整远端门禁仍是最终 PR 合并前置。
+
+## 12. M2 持久代际协调切片
+
+`ManagedServiceJournalV1` 借用 registry，拥有独立的每服务 lifecycle 目录；
+锁顺序固定为服务 fence → 短 registry 事务，数据库提交前再次验证服务锁
+身份。不持锁等待 RPC 或进程。组合入口必须保证同 namespace/service
+恒映射同一个稳定 lifecycle 根，不能由 runtime 覆盖改变此根。
+
+实例记录进入私有 SQLite schema v2；尚未激活的 v1 测试库显式拒绝，
+不静默迁移。格式版本与公共 `V1` API 版本分离。记录包含完整 instance/
+attempt、单调 revision、handoff phase、stop fence 和三项结算观察，不含
+PID 或连接 authority。prepare 需完整匹配旧观察；commit 回复丢失只能读取
+当前状态，不能因此重复 spawn 或 abort 已提交实例。迟到的旧实例请求不能
+修改新代；停止事实按同一实例单调汇合，控制更新可使用保留容量。
+
+三视角确认此事务/竞态切片通过，但生命周期评审保留一个 **P2 激活前置**：
+当前 prepare 只允许干净停止后的复用。真实崩溃后即使精确确认 leader/scope
+退出，也不能伪造 `application_cleanup_completed=True`。异常实例的
+retire/recovery admission 必须另行实现：区分干净停止成功与安全恢复准入，
+保留 unclean 诊断，取得旧资源及 Session 写入权安全回收证明后，才允许
+进入 G13 恢复。该工作属于原完整目标，不能因当前严格拒绝换代就删去。
+
+本切片不声称实现了 native 后台、服务崩溃后 start、真实 SSH 续存或进程
+终止权限。下一阶段需将 native handoff 和异常恢复准入共同接入，再执行
+父死/子死/后代存活/断连矩阵。
+
+本次全部 managed 与两份精确架构清单共 137 passed，其中 lifecycle 12 项；
+Ruff、managed 七模块 mypy、文档 6 项与依赖图新鲜度通过。三视角允许当前
+未激活切片本地提交，异常恢复 P2 仍未关闭，不作为最终交付通过依据。

@@ -717,6 +717,7 @@ def test_hosting_apphost_and_appserver_optional_modules_are_exact() -> None:
         "managed/_files.py",
         "managed/_database.py",
         "managed/registry.py",
+        "managed/lifecycle.py",
         "router.py",
         "runtime.py",
         "hosted.py",
