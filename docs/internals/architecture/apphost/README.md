@@ -51,8 +51,9 @@ and a later packaging decision.
 
 The accepted [lmux M0 contract](lmux-contract-m0.md) adds an optional Linux
 managed-deployment Target and shared-client/view boundaries. Pure identity,
-handoff-state, stop-evidence and layout values plus a Linux private-file owner
-are implemented in `apphost.managed`; native service control, managed discovery, Session writer
+handoff-state, stop-evidence and layout values, a Linux private-file owner and
+SQLite name reservations are implemented in `apphost.managed`; native service
+control, managed discovery/connection coordination, Session writer
 admission and the installed `lmux` entry remain unactivated. This does not
 change the existing foreground or explicit G16 lifecycle.
 

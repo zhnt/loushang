@@ -13,7 +13,7 @@
 - Design status: proposed
 - Review status: base and shared-client/Harnesstui reuse revision both passed
   three-perspective re-review as M0 design input, 2026-09-13
-- Implementation status: partial; M0 values and M1 private-file owner only, no activation
+- Implementation status: partial; M0 values, M1 private files and name intents, no activation
 - Owner: Loushang application architecture
 - Delivery objective: active local Linux lmux baseline; implementation tracked by LMUX-M0
 

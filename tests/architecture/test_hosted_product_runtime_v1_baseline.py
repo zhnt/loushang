@@ -76,6 +76,8 @@ CURRENT_SOURCE_SEAMS = (
     APPHOST_SOURCE / "managed/contracts.py",
     APPHOST_SOURCE / "managed/paths.py",
     APPHOST_SOURCE / "managed/_files.py",
+    APPHOST_SOURCE / "managed/_database.py",
+    APPHOST_SOURCE / "managed/registry.py",
     APPSERVER_SOURCE / "ports.py",
     HARNESS_SOURCE / "machine_resources/control_plane.py",
     Path("src/loushang/coding/cli/__main__.py"),
@@ -443,6 +445,8 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "managed/contracts.py",
         "managed/paths.py",
         "managed/_files.py",
+        "managed/_database.py",
+        "managed/registry.py",
     }
     assert {
         path.relative_to(APPSERVER_SOURCE).as_posix()

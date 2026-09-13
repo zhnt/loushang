@@ -8,14 +8,18 @@
 - ID: `LMUX-M0`
 - Authority: normative — accepted limited Linux managed-profile contract
 - Design status: accepted
-- Review status: three-perspective contract, pure-value and private-file slice reviews passed
-- Implementation status: partial — pure values and Linux private-file owner; no activation
+- Review status: three-perspective contract, private-file and name-registry slice reviews passed
+- Implementation status: partial — pure values, private-file owner and SQLite name intents; no activation
 - Owner: AppHost managed deployment; sibling changes remain sibling-owned
 - Tracking objective: active Linux lmux goal, branch `harness/lmux-managed-service`
 
 ## 1. 本地基线与推进记录
 
-起点 `1286348e`，保留已评审 lmux 草案；独立任务分支，不推送/合并。
+起点 `1286348e`，保留已评审 lmux 草案；独立任务分支。
+最初仅授权本地提交；用户后续明确授权：完整目标验收、三视角评审修复后，
+提交并推送任务分支、创建 PR，通过门禁后合并，最后同步本地 main 与
+harness lane。此授权替代初始“不自动推送或合并”限制，不提前发布未完成切片，
+不扩大 GUI、跨机器连接或非 Linux 自动后台范围。
 基线命令为 `uv run --no-sync python scripts/dev/run_pytest.py`，目标包括
 `tests/coding/test_mux_command.py`、`tests/coding/test_hosted_catalog.py`、
 `tests/harnesstui/test_hosted_mux_profile.py`、`tests/harnesstui/test_hosted_mux_shell.py`，
@@ -230,13 +234,15 @@ Mux 外壳只负责成员/连接组合。主题与终端能力在客户端组合
 | --- | --- | --- |
 | 独立分支与基线 | 分支已建立，30 个基线回归通过 | 后续增量相对基线验证 |
 | M0 合同 | 三视角修订后通过；纯值/状态/路径 56 项测试、Ruff/mypy 通过 | native admission、持久 CAS、writer lease 等运行实现及验证 |
-| M1 私有文件 owner | 文件准入、稳定锁、记录 CAS 与故障清理；三视角复审通过；文件测试 31 项通过 | SQLite、配额和公共发现端口尚未实现 |
+| M1 私有文件 owner | 文件准入、稳定锁、记录 CAS 与故障清理；三视角复审通过；文件测试 31 项通过 | 配额和公共发现/连接协调仍待接线 |
+| M1 持久名称预留 | SQLite schema/namespace、名称与操作唯一、服务复用键、分页查询及崩溃恢复；三视角复审通过 | 实例代际、操作结果对账与启动/停止编排尚未实现 |
 | 一条命令/后台/全局名/多 Tab/stop | 仅 G16 既有显式能力 | M1–M3 全部接线 |
 | Session 唯一写入与默认历史 | 缺运行期跨进程合同实现 | writer lease + canonical catalog + 双进程测试 |
 | 完整共享 Harnesstui/Markdown | 草案与本文接缝 | M3 代码与 Embedded 非回退 |
 | 真实安装/断连/性能/三视角代码评审 | 未执行本目标验收 | M4 完整矩阵与本地提交 |
 
-Goal 保持 active；没有推送、PR、合并或跨平台自动后台发布。
+Goal 保持 active；当前尚未推送、创建 PR 或合并。最终交付包含用户后续
+授权的推送、PR、合并及本地同步；跨平台自动后台仍不在范围内。
 
 ## 9. M0 具体合同与首个原子切片复审
 
@@ -285,3 +291,34 @@ Hosting 主测试 384 passed / 48 skipped，唯一失败同样为另一份精确
 `posix-process-group-v1`，不与上述计数混算。这是既有安装路径非回退证据，
 不是 lmux 自动后台或 SSH 断连验收。文档 6 项、依赖图新鲜度与静态检查通过；
 CI 计划提示的跨平台/host-runtime 验收仍不因这次本地切片而宣称完成。
+
+## 11. M1 SQLite 名称预留切片
+
+`ManagedRegistryV1` 接受已注入目录与 namespace，提供 `reserve_mux`、`resolve`
+和有界 `list_muxes`。返回值是创建意图，不是已创建的 Mux 或运行实例，
+不带 PID、连接凭据或 ready 状态。相同 operation 只可重查完整相同意图；
+其他操作抢占同名或复用同 operation 则拒绝。服务键与名称在一个事务提交，
+失败不留下孤儿服务记录。现有名称不因不可连接、进程退出或客户端 cwd 改变而删除。
+
+实现采用固定 schema、namespace 身份和 DELETE/FULL SQLite，拒绝未知表、
+索引、版本、关联损坏和未知/不安全 sidecar。服务 128、名称/意图 4096、分页
+64 的边界独立于数据库物理容量检查；增长前保守预留现有全部页 journal、
+新页、辅助与控制空间。不使用 WAL，也不把 journal_size_limit 当作运行期
+总配额。日志/tmp 预留、实例表与停止控制紧急事务尚未实现。
+
+普通观察以 `mode=ro` 打开数据库；需要 hot journal 恢复时失败且不改文件。
+显式可写 owner 在稳定锁内恢复。每次连接短寿命，SQL deadline 与内容/列/
+变量上限有界，不向公共客户端暴露 SQL。关闭失败保留 SQLite owner；检查
+债务、重试和目录关闭使用同一 mutex，支持串行化的跨线程重试。
+
+三视角复审修复并通过：满盘下相同意图仍可重查；连接关闭失败保留债务；
+并发 close 不跳过刚产生的债务。真实进程死亡测试强制缓存溢写，先验证
+主库确有未提交修改、只读观察不改 DB/journal，再证明显式恢复还原全部
+数据库字节和 21 个名称，不能用内存事务消失代替热日志恢复。
+
+此切片保持未组合/未安装，不修改旧 G16/G17 入口或现有 Session 读写。
+验证以新增数据库/登记库与已有 managed 文件/合同、两份精确架构清单为范围；
+后续完整运行接线仍须广泛门禁、真实 lmux 安装/断连与性能验收。
+本次聚焦共 125 passed（其中登记库 19 项），Ruff、managed 六个模块 mypy、
+依赖图新鲜度通过。未重复将未改动的 Product/终端路径广泛套件算作本切片
+新证据；完整远端门禁仍是最终 PR 合并前置。
