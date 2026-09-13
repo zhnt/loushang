@@ -59,6 +59,29 @@ def test_timeout_never_aborts_or_commits(channels):
     assert child.poll_parent() is Phase.PROVISIONAL
 
 
+@pytest.mark.parametrize("action", ["poll_parent", "commit"])
+def test_child_respects_absolute_deadline_despite_delayed_entry(channels, monkeypatch, action):
+    import loushang.hosting.service_handoff as module
+
+    _, child, port = channels
+    recorded = []
+    monkeypatch.setattr(module, "monotonic", lambda: 11.0)
+
+    def observe(deadline):
+        recorded.append(deadline)
+        return Phase.PROVISIONAL
+
+    monkeypatch.setattr(port, "observe", observe)
+    if action == "commit":
+        monkeypatch.setattr(port, "commit", lambda deadline: recorded.append(deadline) or Phase.COMMITTED)
+    # The caller computed a two-second relative budget earlier, at t=10.
+    getattr(child, action)(timeout=2, deadline=12)
+    assert recorded and set(recorded) == {12}
+    recorded.clear()
+    assert getattr(child, action)(timeout=2, deadline=10) is Phase.UNKNOWN
+    assert recorded == []
+
+
 def test_commit_survives_parent_close_and_late_abort(channels):
     parent, child, port = channels
     assert child.commit() is Phase.COMMITTED

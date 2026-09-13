@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
+import socket
 from collections.abc import Callable
+from time import monotonic
+from typing import Literal
 
+from loushang.hosting.errors import HostingError
 from loushang.hosting.service import LinuxServiceIdentityV1
-from loushang.hosting.service_handoff import ServiceHandoffPhaseV1
+from loushang.hosting.service_handoff import (
+    ServiceChildHandoffV1,
+    ServiceHandoffPhaseV1,
+)
 
 from ._files import ManagedStorageError
 from .contracts import _HEX32, ManagedContractError, ManagedInstanceRefV1, _match
@@ -66,3 +73,63 @@ class ManagedServiceHandoffPortV1:
         return self._mutate(lambda: self._journal.abort(
             self._instance, self._attempt, native_identity=self._native, deadline=deadline,
         ), deadline)
+
+
+class ManagedChildControlV1:
+    """Synchronous child control; exclusively used by one retained IO worker.
+
+    Owns the supplied startup channel after successful construction, borrows the
+    journal. Never launches, signals or closes an application. Returned state
+    includes the matching stop fence; phase-only hints are insufficient here.
+    """
+
+    def __init__(
+        self, journal: ManagedServiceJournalV1, instance: ManagedInstanceRefV1,
+        attempt_id: str, native_identity: LinuxServiceIdentityV1, endpoint: socket.socket,
+    ) -> None:
+        if type(native_identity) is not LinuxServiceIdentityV1:
+            raise ManagedContractError()
+        self._port = ManagedServiceHandoffPortV1(
+            journal, instance, attempt_id, native_identity=native_identity,
+        )
+        journal._require_native(native_identity)  # Pure admission before taking the socket.
+        self._journal, self._instance, self._attempt = journal, instance, attempt_id
+        self._native = native_identity
+        self._channel = ServiceChildHandoffV1(endpoint, self._port)
+
+    def observe(
+        self, action: Literal["read", "poll", "commit", "stop", "cleanup"], deadline: float,
+    ) -> ManagedServiceStateV1 | None:
+        """Mutate at most once, then reobserve; unknown never supplies authority."""
+        if action not in {"read", "poll", "commit", "stop", "cleanup"}:
+            raise ManagedContractError()
+        if type(deadline) not in (int, float) or not 0 < deadline <= 1e12:
+            raise ManagedContractError()
+        try:
+            remaining = max(0.0, min(2.0, deadline - monotonic()))
+            if remaining <= 0:
+                return None
+            if action == "poll":
+                self._channel.poll_parent(timeout=remaining, deadline=deadline)
+            elif action == "commit":
+                self._channel.commit(timeout=remaining, deadline=deadline)
+            elif action == "stop":
+                self._journal.request_child_stop(
+                    self._instance, self._attempt, self._native, deadline=deadline,
+                )
+            elif action == "cleanup":
+                self._journal.record_child_cleanup(
+                    self._instance, self._attempt, self._native, deadline=deadline,
+                )
+        except (ManagedStorageError, ManagedContractError, HostingError, OSError):
+            pass  # The write may already have committed; reobserve, never replay.
+        if monotonic() >= deadline:
+            return None
+        try:
+            state = self._journal.read(deadline=deadline)
+            return state if self._port._phase(state) is not ServiceHandoffPhaseV1.UNKNOWN else None
+        except (ManagedStorageError, ManagedContractError, OSError):
+            return None
+
+    def close(self) -> None:
+        self._channel.close()

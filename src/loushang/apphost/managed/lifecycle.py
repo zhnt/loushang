@@ -215,6 +215,50 @@ class ManagedServiceJournalV1:
             current, handoff=current.handoff.request_stop(),
         ))
 
+    def request_child_stop(
+        self, instance: ManagedInstanceRefV1, attempt_id: str, native_identity: LinuxServiceIdentityV1,
+        *, deadline: float | None = None,
+    ) -> ManagedServiceStateV1:
+        """Child's explicit stop, atomically bound to its attempt and birth.
+
+        Provisional stop includes abort, preventing a later handoff commit.
+        A committed service is stopped, never rewritten as an aborted startup.
+        Pre-registration stop remains possible if its starter died before birth.
+        """
+        _match(attempt_id, _HEX32)
+        self._require_native(native_identity)
+
+        def update(current: ManagedServiceStateV1) -> ManagedServiceStateV1:
+            self._match_child(current, attempt_id, native_identity)
+            handoff = current.handoff
+            if handoff.phase is ManagedHandoffPhaseV1.PROVISIONAL:
+                handoff = handoff.abort()
+            return replace(current, handoff=handoff.request_stop())
+
+        return self._update(instance, update, deadline=deadline)
+
+    def record_child_cleanup(
+        self, instance: ManagedInstanceRefV1, attempt_id: str, native_identity: LinuxServiceIdentityV1,
+        *, deadline: float | None = None,
+    ) -> ManagedServiceStateV1:
+        """Record only successful application cleanup, never child/process exit."""
+        _match(attempt_id, _HEX32)
+        self._require_native(native_identity)
+
+        def update(current: ManagedServiceStateV1) -> ManagedServiceStateV1:
+            self._match_child(current, attempt_id, native_identity)
+            if not current.handoff.stop_requested and current.handoff.phase is not ManagedHandoffPhaseV1.ABORTING:
+                raise ManagedStorageError("conflict")
+            return replace(current, evidence=replace(current.evidence, application_cleanup_completed=True))
+
+        return self._update(instance, update, deadline=deadline)
+
+    @staticmethod
+    def _match_child(current: ManagedServiceStateV1, attempt_id: str, native: LinuxServiceIdentityV1) -> None:
+        if (current.handoff.attempt_id != attempt_id
+                or current.native_identity is not None and current.native_identity != native):
+            raise ManagedStorageError("conflict")
+
     def record_stop_evidence(self, evidence: ManagedStopEvidenceV1) -> ManagedServiceStateV1:
         """Join monotonic facts from the trusted native/application observers."""
         if type(evidence) is not ManagedStopEvidenceV1:

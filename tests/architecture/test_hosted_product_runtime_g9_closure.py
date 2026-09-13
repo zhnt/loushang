@@ -548,7 +548,7 @@ def test_g9_4_retains_apphost_core_and_current_inventory_fences() -> None:
         }
         assert hosting_imports == {
             APPHOST / "launcher.py": {"loushang.hosting.contracts"},
-            APPHOST / "managed/handoff.py": {"loushang.hosting.service", "loushang.hosting.service_handoff"},
+            APPHOST / "managed/handoff.py": {"loushang.hosting.errors", "loushang.hosting.service", "loushang.hosting.service_handoff"},
             APPHOST / "managed/lifecycle.py": {"loushang.hosting.errors", "loushang.hosting.service"},
         }.get(path, set())
     for path in APPHOST_CORE:

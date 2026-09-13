@@ -67,13 +67,16 @@ class _HandoffChannel:
         self._mutex = RLock()
         self._closed = False
 
-    def _enter(self, timeout: float = 2.0) -> float:
+    def _enter(self, timeout: float = 2.0, deadline: float | None = None) -> float:
         if type(timeout) not in (int, float) or not 0 <= timeout <= 30:
             raise _error(HostingFailureCategory.INVALID_REQUEST)
-        deadline = monotonic() + timeout
+        if deadline is not None and (type(deadline) not in (int, float) or not 0 < deadline <= 1e12):
+            raise _error(HostingFailureCategory.INVALID_REQUEST)
+        now = monotonic()
+        deadline = min(now + timeout, deadline) if deadline is not None else now + timeout
         if self._closing.is_set():
             raise _error(HostingFailureCategory.HOST_CLOSED)
-        if not self._mutex.acquire(timeout=timeout):
+        if not self._mutex.acquire(timeout=max(0.0, deadline - now)):
             raise _error(HostingFailureCategory.CAPACITY_EXHAUSTED)
         if self._closing.is_set():
             self._mutex.release()
@@ -123,9 +126,9 @@ class ServiceChildHandoffV1(_HandoffChannel):
         # command; treat a broken startup channel like parent loss, then use CAS.
         return True
 
-    def poll_parent(self) -> ServiceHandoffPhaseV1:
+    def poll_parent(self, *, timeout: float = 2.0, deadline: float | None = None) -> ServiceHandoffPhaseV1:
         """Only ABORTING authorizes caller cleanup; UNKNOWN remains owned debt."""
-        deadline = self._enter()
+        deadline = self._enter(timeout, deadline)
         try:
             phase = self._call(self._port.observe, deadline)
             if phase is ServiceHandoffPhaseV1.PROVISIONAL and self._parent_lost():
@@ -134,13 +137,13 @@ class ServiceChildHandoffV1(_HandoffChannel):
         finally:
             self._mutex.release()
 
-    def commit(self) -> ServiceHandoffPhaseV1:
+    def commit(self, *, timeout: float = 2.0, deadline: float | None = None) -> ServiceHandoffPhaseV1:
         """After readiness, durable CAS wins even if EOF races the liveness peek.
 
         Parent death is not an instantaneous durable abort. Either CAS may win;
         a later EOF/notification loss never undoes the committed decision.
         """
-        deadline = self._enter()
+        deadline = self._enter(timeout, deadline)
         try:
             phase = self._call(self._port.observe, deadline)
             if phase is ServiceHandoffPhaseV1.PROVISIONAL:

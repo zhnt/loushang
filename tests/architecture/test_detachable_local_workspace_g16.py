@@ -217,8 +217,9 @@ def test_managed_staging_keeps_exact_optional_signatures_and_sync_fence():
         assert set(inspect.signature(owner.start).parameters) == {"self"}
         assert inspect.iscoroutinefunction(owner.prepare)
         assert inspect.iscoroutinefunction(owner.activate)
-    assert set(inspect.signature(HostedLocalRuntimeV1.fence).parameters) == {"self"}
-    assert not inspect.iscoroutinefunction(HostedLocalRuntimeV1.fence)
+    for owner in (HostedLocalRuntimeV1, CodingLocalCommandV1):
+        assert set(inspect.signature(owner.fence).parameters) == {"self"}
+        assert not inspect.iscoroutinefunction(owner.fence)
 
 
 def test_G16_BOUNDARIES_shell_borrows_only_semantics_and_owns_no_native_connection():

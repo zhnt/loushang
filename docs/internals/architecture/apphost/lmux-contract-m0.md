@@ -8,8 +8,8 @@
 - ID: `LMUX-M0`
 - Authority: normative — accepted limited Linux managed-profile contract
 - Design status: accepted
-- Review status: three-perspective storage/lifecycle/observer/handoff/native-launch/native-binding/application-staging slice reviews passed; recovery admission pending
-- Implementation status: partial — storage, instance coordination, Linux observations, native launch, durable birth binding and staged application startup; no managed activation
+- Review status: three-perspective storage/lifecycle/observer/handoff/native-launch/native-binding/application-staging/child-owner slice reviews passed; recovery admission pending
+- Implementation status: partial — storage, instance coordination, Linux observations, native launch, durable birth binding, staged application startup and child application owner; no managed CLI activation
 - Owner: AppHost managed deployment; sibling changes remain sibling-owned
 - Tracking objective: active Linux lmux goal, branch `harness/lmux-managed-service`
 
@@ -242,6 +242,7 @@ Mux 外壳只负责成员/连接组合。主题与终端能力在客户端组合
 | M2 Linux 创建 owner | 单次生产 Popen 创建、受管 FD/环境/工作区、复用 POSIX group 观察；真实父端退出和故障矩阵、三视角复审通过 | 身份持久登记、应用自持生命周期、异常恢复和 CLI 激活仍待完成 |
 | M2 birth binding | schema v3 原生身份登记、精确匹配的 commit/abort；117 项聚焦验证、三视角复审通过 | 应用自持 owner、异常退役恢复、Session writer lease 与完整前端接线仍待完成 |
 | M2 应用准备/激活 | 原 AppServer/AppHost/Coding owner 的两步启动、共享截止时间和同步 fence；真实 Product/认证回归，设计与代码三视角复审通过 | 受管 child owner 仍需在两步之间接入 durable commit；CLI 不自动启动 |
+| M2 子端应用 owner | 同一实际 Coding 应用的 prepare/commit/activate 接线、独立 IO/stop/cleanup owner；三视角复审通过 | installed child composition/真正父进程退出与异常恢复仍需整体验证，尚无 CLI 自动后台 |
 | 一条命令/后台/全局名/多 Tab/stop | 仅 G16 既有显式能力 | M1–M3 全部接线 |
 | Session 唯一写入与默认历史 | 缺运行期跨进程合同实现 | writer lease + canonical catalog + 双进程测试 |
 | 完整共享 Harnesstui/Markdown | 草案与本文接缝 | M3 代码与 Embedded 非回退 |
@@ -574,3 +575,94 @@ G16 两个既有源码行数门禁按架构复审确认的精确增量更新：�
 本切片不发布自动后台入口，未运行整个完整目标的 installed/SSH/首用性能
   矩阵，也不替代最终 change-aware/远端门禁。完整 child owner、异常退役、
   唯一 writer、公共协调器、配额与 Harnesstui 接线仍为 active goal 的后续工作。
+
+## 18. M2 受管子端应用 owner
+
+受管子进程采用 AppHost 可选 `managed.child` owner，注入同一份实际应用
+  的 prepare/activate/fence/close/wait_closed/cleanup_pending 中性端口，不导入
+  Coding、Harnesstui 或 CLI。Coding 原 command 增加同步 fence，复用 §17
+  同一 AppHost owner。原 foreground/G16 入口不选择本 owner。
+
+owner 在准备前已被 child composition 持有。一次运行保留 Product prepare、
+  activate、服务 wait_closed 和 cleanup 的精确任务；公开 run 的取消仅取消
+  waiter，不终止该服务，不取消阶段任务。公开 close 是 child 自身的明确
+  graceful-stop authority，不是 starter 取消或 client EOF 的传播入口。
+  该调用同步 fence 已拥有的应用，保留未完成任务及失败清理，显式有界
+  retry_timeout 才能更新已结束的 cleanup attempt 的预算。
+
+启动循环先验证绑定的 instance/attempt/native，再准备应用，同时轮询继承
+  通道。准备中确认 ABORTING 才因父端 EOF/启动取消回滚；UNKNOWN 时不另开
+  应用，不重新 spawn，也不丢弃已准备 owner。starter 等待/交接观察期限耗尽
+  只提出 abort，不能把超时变成已确认的 ABORTING。应用 prepare/activate
+  自身失败（含其独立启动期限耗尽）属于下述 child 自主故障，可以自行关闭；
+  不把原 §17 端口的自动清理错误解释成父端已获得 rollback authority。
+  prepare 成功且应用启动 deadline 未耗尽后子端提出 durable commit；
+  确认 COMMITTED 后才 activate，随后彻底忽略启动器通道 EOF。commit 后仍
+  观察该精确实例 stop fence 与应用的 wait_closed，不将未知观察当作停止。
+  应用 deadline 耗尽后不再新提 commit/activate；后续对账和 abort 使用单独
+  有界 IO 预算，但绝不续应用启动期限。commit 已落盘而确认到达太晚时，
+  子端按自身启动失败停止，不改写成父端回滚成功。
+
+应用内部失败和显式 child close 是服务自己的终止原因，与“启动器因为
+  未收到 ack 要回滚”分开。它们可同步 fence 自己的应用、执行 graceful
+  cleanup，同时提交该实例 stop/abort；数据库不可用不能阻塞实际已拥有
+  资源的安全关闭，但记录保持 unknown/unclean，不能返回已证明干净停止。
+  cleanup_pending 为假且完整应用 close 成功后才能提交 application cleanup
+  事实；子端绝不宣称自己已经 process_exited 或 scope_settled。记录失败
+  保留本地完成事实和精确 owner，重试只补交事实，不重跑已成功的清理。
+
+同步 channel/journal IO 由该 owner 持有的单工作线程串行执行，全部 job/future
+  被保留并 shield；一次最多一个任务，不建立无界队列。取消 waiter、到期
+  或 close 均不丢掉仍在 native IO 中的 future；仅在它完成后关闭 channel
+  并回收 executor，借用的 journal/registry 由外层 composition 最后关闭。
+  单次 absolute monotonic IO deadline 贯穿 channel、journal 与失败重查；
+  不承诺抢占 OS fsync。不存在 native IO 从 UI/应用事件循环同步执行的路径。
+  close 同步 fence 并立即启动应用自身 cleanup，不等待在途 journal job；
+  只有控制句柄/executor 回收与持久事实提交等待该 job 结算。应用超时且
+  journal unknown、commit 确认晚于应用 deadline 必须有单独负测。
+
+可选 managed control adapter 对 child 的 stop/cleanup 写入同样使用原子
+  native 匹配，不能先读匹配再按 instance-only 修改。登记前的同 attempt
+  abort/cleanup 保持可结算，登记后的错 native 不能污染事实；父端/外部
+  trusted stop observer 的旧 instance-only 方法保持原合同。
+
+验收需覆盖实际 Coding prepare→commit→activate/认证、准备中父端 EOF、
+  commit 后启动器退出与接受工作续行、stop/activate 竞争、未知提交后重查、
+  取消 run waiter、应用/记录清理失败及重试、原生 IO 挂起时关闭不丢 future。
+  本 owner 不等于公共 EnsureStarted、异常退役恢复或 CLI 激活；这些仍须
+  满足完整目标既定准入后再组合发布。
+
+设计与代码三视角复审通过。复审修复了内部调度异常绕过 cleanup、挂起
+  native IO 阻挡应用自主终止，以及清理失败阻挡 stop 水位提交的问题。
+  runner 保留异常边界；独立 observation task 与 prepare/activate/wait_closed/
+  deadline 并列观察，激活完成后立即建立应用终止任务，不等控制读取完成。
+  stop task 与应用 cleanup 独立启动，通过同一工作线程串行进入控制 IO，
+  不覆盖旧 job/future；明确的新预算仅在旧 stop job 完成后补交。成功应用
+  cleanup 不重跑，channel/executor 最后回收；journal/registry 仍由外层保留。
+
+`request_child_stop` 和 `record_child_cleanup` 是两个窄写入口：前者在
+  provisional 原子 abort+stop，committed 只 stop；后者只可写应用完成位，
+  原生与 attempt 检查和修改共用事务。登记前可以结算 abort，之后禁止迟到
+  登记；错 UID 在 control 接管 socket 前被拒绝。原 observer 的三事实接口
+  没有变成任意 child 可调用的进程退出声明。child channel 还接收原 absolute
+  deadline，防止计算 remaining 后的线程调度延长 commit 窗口；旧缺省调用
+  不变，过期不进行 port IO。
+
+当前验证：111 项 child/lifecycle/handoff/旧 Coding ownership 聚焦回归通过；
+  真实 Coding 认证及对应精确架构/inventory 回归 54 passed；补齐实际 Coding
+  自身超时且 journal unknown，以及绝对 deadline 后，相关回归 49 passed。
+  三视角另确认上述 deadline 小修。Ruff、11 模块 mypy 与依赖图新鲜度通过。
+  第一版真实 Coding fixture 缺少 attach 前置、超时 fixture 对 frozen attempt
+  实例 patch 方法而失败，均修正为合法协议/类方法故障注入后通过；不把
+  fixture 错误作为产品失败或隐藏跳过。末次 prebirth/错 UID 与持久状态聚焦
+  回归 68 passed，文档 6 项通过。以上是不同范围的分次回归，不相加宣称
+  全新覆盖量，也不是完整 change-aware 或最终 installed 门禁已经通过。
+
+真实 Coding 用受控 synthetic model 挂住已接纳请求，关闭继承 startup socket
+  与客户端连接，再以新认证连接读取同一 Session 的完成结果；模型调用
+  计数为一次，最后通过认证 stop 完成应用清理。这里实际运行的是 Product、
+  TCP 认证与 Session 工作 owner，但 application/controller 仍在测试解释器；
+  不能把 socket EOF 测试称为已完成独立 daemon/SSH 验收。先前 Popen 父死
+  原生用例也不能替代下一步实际 child entry 的组合验证。完整默认目录、
+  writer、异常退役、配额、公共协调器、CLI、完整 Harnesstui 与 installed/SSH/
+  性能矩阵仍在原 goal 内；本切片不提前 push/merge。

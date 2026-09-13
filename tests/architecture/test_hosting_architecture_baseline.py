@@ -719,6 +719,7 @@ def test_hosting_apphost_and_appserver_optional_modules_are_exact() -> None:
         "managed/registry.py",
         "managed/lifecycle.py",
         "managed/handoff.py",
+        "managed/child.py",
         "router.py",
         "runtime.py",
         "hosted.py",

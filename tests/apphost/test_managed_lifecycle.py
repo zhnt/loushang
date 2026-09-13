@@ -63,6 +63,23 @@ def test_prepare_is_durable_and_never_repeated_as_another_spawn(owners, tmp_path
         other.close()
 
 
+def test_child_can_settle_prebirth_abort_but_never_mint_process_exit(owners):
+    _, journal, _, _ = owners
+    prepared = journal.prepare("c" * 32, expected=None)
+    reference = prepared.handoff.instance
+    with pytest.raises(ManagedStorageError, match="conflict"):
+        journal.record_child_cleanup(reference, "c" * 32, _identity())
+    stopped = journal.request_child_stop(reference, "c" * 32, _identity())
+    assert stopped.handoff.phase is ManagedHandoffPhaseV1.ABORTING
+    assert stopped.handoff.stop_requested and stopped.native_identity is None
+    settled = journal.record_child_cleanup(reference, "c" * 32, _identity())
+    assert settled.evidence.application_cleanup_completed
+    assert not settled.evidence.process_exited and not settled.evidence.process_scope_settled
+    assert journal.record_child_cleanup(reference, "c" * 32, _identity()) == settled
+    with pytest.raises(ManagedStorageError, match="conflict"):
+        journal.register_native(reference, "c" * 32, _identity())
+
+
 def test_commit_ack_loss_is_observed_not_aborted(owners):
     _, journal, _, _ = owners
     prepared = journal.prepare("c" * 32, expected=None)

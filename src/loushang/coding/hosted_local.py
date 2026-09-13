@@ -242,11 +242,7 @@ class CodingLocalCommandV1:
             _require_budget(retry_timeout)
         if self._settled:
             return
-        self._closing = True
-        if self._local is not None:
-            # Fence lower-level activation before scheduling our close task.
-            # An already queued activate must not publish in the intervening turn.
-            self._local.fence()
+        self.fence()
         if self._deadline is None:
             self._deadline = asyncio.get_running_loop().time() + self._timeout
         task = self._close_task
@@ -255,6 +251,14 @@ class CodingLocalCommandV1:
                 self._deadline = asyncio.get_running_loop().time() + retry_timeout
             task = self._close_task = _spawn(self._close_once(retry_timeout))
         await asyncio.shield(task)
+
+    def fence(self) -> None:
+        """Revoke startup and client admission without creating a cleanup task."""
+        self._closing = True
+        if self._local is not None:
+            # Fence lower-level activation before scheduling our close task.
+            # An already queued activate must not publish in the intervening turn.
+            self._local.fence()
 
     async def _close_once(self, retry_timeout: float | None) -> None:
         assert self._deadline is not None
