@@ -8,8 +8,8 @@
 - ID: `LMUX-M0`
 - Authority: normative — accepted limited Linux managed-profile contract
 - Design status: accepted
-- Review status: three-perspective storage/lifecycle/observer slice reviews passed; recovery admission pending
-- Implementation status: partial — storage, instance coordination and Linux exit observations; no activation
+- Review status: three-perspective storage/lifecycle/observer/handoff slice reviews passed; recovery admission pending
+- Implementation status: partial — storage, instance coordination, Linux exit observations and handoff binding; no activation
 - Owner: AppHost managed deployment; sibling changes remain sibling-owned
 - Tracking objective: active Linux lmux goal, branch `harness/lmux-managed-service`
 
@@ -238,6 +238,7 @@ Mux 外壳只负责成员/连接组合。主题与终端能力在客户端组合
 | M1 持久名称预留 | SQLite schema/namespace、名称与操作唯一、服务复用键、分页查询及崩溃恢复；三视角复审通过 | 操作结果对账与启动/停止编排尚未实现 |
 | M2 代际协调 | per-service fence、持久 prepare/commit/abort/stop、三项结算事实及干净停止后换代 | native 启动交接、异常 retire/recovery admission、真实后台激活均未完成 |
 | M2 Linux 退出观察 | boot/PID/start-time/实际 UID/PID namespace 与保留 pidfd；26 项原生回归、三视角复审通过 | 原生 spawn/handoff、进程树结算及异常恢复准入仍待接线 |
+| M2 持久交接接线 | 继承通道 + exact instance/attempt journal port；共享协作 deadline、真实启动器退出和 EOF/CAS 竞争测试，三视角复审通过 | 生产 spawn/daemon 与应用 owner 清理尚未接入，不构成 SSH/后台交付 |
 | 一条命令/后台/全局名/多 Tab/stop | 仅 G16 既有显式能力 | M1–M3 全部接线 |
 | Session 唯一写入与默认历史 | 缺运行期跨进程合同实现 | writer lease + canonical catalog + 双进程测试 |
 | 完整共享 Harnesstui/Markdown | 草案与本文接缝 | M3 代码与 Embedded 非回退 |
@@ -387,3 +388,39 @@ Product 依赖，不从 Hosting 根 facade 激活，不改变既有 ProcessLease
 断言，H0 与交付清单聚焦复测 15 passed；Hosting Ruff/mypy 27 模块、
 文档 6 项与依赖图新鲜度通过。不将该聚焦修复标为完整 check-hosting 命令
 重跑成功。CI 计划选中的更广泛消费者/跨平台门禁仍是最终集成前置。
+
+## 14. M2 继承通道与持久交接接线
+
+可选 `hosting.service_handoff` 拥有继承的 Unix stream socket，借用中性
+handoff port；`apphost.managed.handoff` 将该端口绑定至精确 instance/attempt
+的 journal。子端准备完成后提出 commit，父端只观察或提出 abort；消息字节
+只用于唤醒，既不是 ready 证明，也不产生停止权限。父端退出后，子端仅在
+持久结果为 ABORTING 时才能进行启动收口；UNKNOWN 保留所有权及待对账义务。
+
+**竞争以持久 CAS 为准**：先看到 EOF 的子端提出 abort；存活检查后、CAS 前
+父端退出时，commit 与 abort 都可能先赢。不能将物理退出瞬间等同于已持久
+abort，不能因迟到 EOF 或丢失 ack 撤销 COMMITTED。stop fence 只阻止新的
+commit，不伪造 ABORTING；应用 owner 还需显式 abort 或处理已提交服务停止。
+
+三视角要求修复共享预算：同一 absolute monotonic deadline 贯穿 channel
+mutex、端口、service/registry mutex、SQL progress 与失败后重查，耗尽后不
+再开新 IO；timeout=0 返回 UNKNOWN 而不读库。已有同步 OS IO/fsync 不可由
+Python 抢占，这只是协作式预算，不承诺内核调用硬超时；不引入无人接管的
+后台线程，不因时间耗尽丢弃已接纳操作的结算责任。既有无 deadline 的存储
+API 保持原语义。应用/UI 接线必须由专属启动 owner 执行这些同步操作。
+
+测试分别覆盖：真实启动器退出前后，子进程在同一持久库确认 ABORTING 或
+COMMITTED；独立测试控制通道负责释放子进程，不借此伪称应用清理完成。
+确定性插入 EOF 到存活检查与 CAS 之间，覆盖两个 CAS 获胜顺序；另测错代、
+ack 丢失、事务提交后错误对账、锁/SQL 预算耗尽、到期回滚与并发 close fence。
+本切片仍不提供生产 spawn/daemon、公共连接协调、异常 recovery admission，
+更不是 SSH/完整产品交互的交付证据；§12 异常退役 P2 仍为激活前置。
+
+三视角复审通过；聚焦交接与受影响存储回归 102 passed。加固后的事务到期
+回滚用例同步控制两个时钟，并要求确实执行 `_save`，避免在写入前就超时
+产生假通过。Hosting 主回归 434 passed / 48 skipped，唯一失败为旧 PLC
+精确消费者清单未登记新 adapter；显式登记模块和唯一公共导入 symbol 后，
+对应失败节点复测 1 passed。不扩大对 Hosting 私有 launch profile 的准入。
+Hosting Ruff/mypy 28 模块、AppHost Ruff/mypy 107 模块、文档 6 项和依赖图
+新鲜度通过。较大范围 AppHost 主回归仍在执行；最终 native/installed 和
+完整 change-aware/远端门禁仍在整体交付前完成，不将本切片检查冒称全通过。

@@ -18,6 +18,7 @@ from time import monotonic
 from ._files import (
     ManagedStorageError,
     PrivateManagedDirectory,
+    _check_deadline,
     _close_preserving_primary,
 )
 
@@ -102,12 +103,12 @@ class ManagedDatabase:
 
     @contextmanager
     def _connection(
-        self, *, create: bool = False, read_only: bool = False,
+        self, *, create: bool = False, read_only: bool = False, deadline: float | None = None,
     ) -> Iterator[sqlite3.Connection]:
         directory = self._directory
         connection = None
         guard = None
-        with directory.lock(_LOCK, create=create), directory._operation() as parent:
+        with directory.lock(_LOCK, create=create, deadline=deadline), directory._operation(deadline=deadline) as parent:
             if self.cleanup_pending:
                 raise ManagedStorageError("busy")
             try:
@@ -130,8 +131,10 @@ class ManagedDatabase:
                 connection = sqlite3.connect(uri, uri=True, timeout=0, isolation_level=None,
                                              check_same_thread=False)
                 directory._check_named(DATABASE_NAME, identity)
-                deadline = monotonic() + 2.0
-                connection.set_progress_handler(lambda: int(monotonic() >= deadline), 1000)
+                sql_deadline = monotonic() + 2.0
+                if deadline is not None:
+                    sql_deadline = min(sql_deadline, deadline)
+                connection.set_progress_handler(lambda: int(monotonic() >= sql_deadline), 1000)
                 connection.setlimit(sqlite3.SQLITE_LIMIT_LENGTH, 16 * 1024)
                 connection.setlimit(sqlite3.SQLITE_LIMIT_SQL_LENGTH, 16 * 1024)
                 connection.setlimit(sqlite3.SQLITE_LIMIT_ATTACHED, 0)
@@ -170,6 +173,7 @@ class ManagedDatabase:
                 self._validate_schema(connection)
                 directory._check_named(DATABASE_NAME, identity)
                 self._admit_files(parent)
+                _check_deadline(deadline)
                 yield connection
                 directory._check_named(DATABASE_NAME, identity)
                 self._admit_files(parent)
@@ -237,8 +241,8 @@ class ManagedDatabase:
             raise ManagedStorageError("capacity")
 
     @contextmanager
-    def transaction(self, *, write: bool = False) -> Iterator[sqlite3.Connection]:
-        with self._connection(read_only=not write) as connection:
+    def transaction(self, *, write: bool = False, deadline: float | None = None) -> Iterator[sqlite3.Connection]:
+        with self._connection(read_only=not write, deadline=deadline) as connection:
             if write:
                 connection.execute("BEGIN IMMEDIATE")
             else:
@@ -246,6 +250,7 @@ class ManagedDatabase:
                 connection.execute("BEGIN")
             yield connection
             self._directory._check()
+            _check_deadline(deadline)
             connection.commit()
 
     def admit_growth(self, connection: sqlite3.Connection) -> None:

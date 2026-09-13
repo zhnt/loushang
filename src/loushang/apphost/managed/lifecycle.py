@@ -94,8 +94,8 @@ class ManagedServiceJournalV1:
     def close(self) -> None:
         self._fence.close()
 
-    def read(self) -> ManagedServiceStateV1 | None:
-        with self._fence.lock("lifecycle.lock"), self._database.transaction() as connection:
+    def read(self, *, deadline: float | None = None) -> ManagedServiceStateV1 | None:
+        with self._fence.lock("lifecycle.lock", deadline=deadline), self._database.transaction(deadline=deadline) as connection:
             result = self._read(connection)
             self._fence._check()
             return result
@@ -134,7 +134,7 @@ class ManagedServiceJournalV1:
             self._fence._check()
             return state
 
-    def commit(self, instance: ManagedInstanceRefV1, attempt_id: str) -> ManagedServiceStateV1:
+    def commit(self, instance: ManagedInstanceRefV1, attempt_id: str, *, deadline: float | None = None) -> ManagedServiceStateV1:
         """Persist the child's proposal; a stop fence or abort wins by refusing it."""
         _match(attempt_id, _HEX32)
 
@@ -143,9 +143,9 @@ class ManagedServiceJournalV1:
                 raise ManagedStorageError("conflict")
             return replace(current, handoff=current.handoff.commit())
 
-        return self._update(instance, update)
+        return self._update(instance, update, deadline=deadline)
 
-    def abort(self, instance: ManagedInstanceRefV1, attempt_id: str) -> ManagedServiceStateV1:
+    def abort(self, instance: ManagedInstanceRefV1, attempt_id: str, *, deadline: float | None = None) -> ManagedServiceStateV1:
         _match(attempt_id, _HEX32)
 
         def update(current: ManagedServiceStateV1) -> ManagedServiceStateV1:
@@ -153,7 +153,7 @@ class ManagedServiceJournalV1:
                 raise ManagedStorageError("conflict")
             return replace(current, handoff=current.handoff.abort())
 
-        return self._update(instance, update)
+        return self._update(instance, update, deadline=deadline)
 
     def request_stop(self, instance: ManagedInstanceRefV1) -> ManagedServiceStateV1:
         return self._update(instance, lambda current: replace(
@@ -181,9 +181,10 @@ class ManagedServiceJournalV1:
     def _update(
         self, instance: ManagedInstanceRefV1,
         update: Callable[[ManagedServiceStateV1], ManagedServiceStateV1],
+        *, deadline: float | None = None,
     ) -> ManagedServiceStateV1:
         self._require_instance(instance)
-        with self._fence.lock("lifecycle.lock"), self._database.transaction(write=True) as connection:
+        with self._fence.lock("lifecycle.lock", deadline=deadline), self._database.transaction(write=True, deadline=deadline) as connection:
             current = self._read(connection)
             if current is None or current.handoff.instance != instance:
                 raise ManagedStorageError("conflict")

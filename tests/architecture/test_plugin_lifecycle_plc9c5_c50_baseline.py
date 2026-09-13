@@ -896,6 +896,14 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
         CODING_APPHOST_CANARY,
         CODING_ROOT / "cli/hosted_client.py",
         APPHOST_ROOT / "launcher.py",
+        APPHOST_ROOT / "managed/handoff.py",
+    }
+    assert {
+        imported for imported in _imports(APPHOST_ROOT / "managed/handoff.py")
+        if imported.startswith("loushang.hosting")
+    } == {
+        "loushang.hosting.service_handoff",
+        "loushang.hosting.service_handoff.ServiceHandoffPhaseV1",
     }
     for consumer in hosting_consumers:
         assert not any(

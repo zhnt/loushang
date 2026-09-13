@@ -41,6 +41,7 @@ CURRENT_SOURCE_SEAMS = (
     HOSTING_SOURCE / "_windows_launch_preparation.py",
     HOSTING_SOURCE / "_posix_process.py",
     HOSTING_SOURCE / "service.py",
+    HOSTING_SOURCE / "service_handoff.py",
     HOSTING_SOURCE / "_windows_process.py",
     HOSTING_SOURCE / "_win32_process.py",
     HOSTING_SOURCE / "_endpoint_host.py",
@@ -80,6 +81,7 @@ CURRENT_SOURCE_SEAMS = (
     APPHOST_SOURCE / "managed/_database.py",
     APPHOST_SOURCE / "managed/registry.py",
     APPHOST_SOURCE / "managed/lifecycle.py",
+    APPHOST_SOURCE / "managed/handoff.py",
     APPSERVER_SOURCE / "ports.py",
     HARNESS_SOURCE / "machine_resources/control_plane.py",
     Path("src/loushang/coding/cli/__main__.py"),
@@ -450,6 +452,7 @@ def test_current_inventory_matches_source_and_retained_absences() -> None:
         "managed/_database.py",
         "managed/registry.py",
         "managed/lifecycle.py",
+        "managed/handoff.py",
     }
     assert {
         path.relative_to(APPSERVER_SOURCE).as_posix()

@@ -38,6 +38,7 @@ H6_PRIVATE_MODULES = {
 }
 OPTIONAL_MANAGED_SERVICE_MODULES = {
     HOSTING_ROOT / "service.py",
+    HOSTING_ROOT / "service_handoff.py",
 }
 FORBIDDEN_PUBLIC_TERMS = {
     "Approval",
@@ -95,6 +96,9 @@ def test_h0_public_surface_exposes_no_platform_or_caller_authority_types() -> No
     assert all(path.name not in public_surface for path in H1_PRIVATE_MODULES)
     assert "LinuxService" not in public_surface
     assert "from .service import" not in public_surface
+    assert "ServiceChildHandoff" not in public_surface
+    assert "ServiceParentHandoff" not in public_surface
+    assert "from .service_handoff import" not in public_surface
 
 
 def test_h0_observation_contract_has_no_arbitrary_payload_or_environment() -> None:

@@ -282,6 +282,14 @@ def test_concurrent_close_cannot_lose_new_connection_debt(registry, monkeypatch)
     failures = []
 
     class TrackedMutex:
+        def acquire(self, *args, **kwargs):
+            if threading.current_thread().name == "registry-closer":
+                close_waiting.set()
+            return original_mutex.acquire(*args, **kwargs)
+
+        def release(self):
+            original_mutex.release()
+
         def __enter__(self):
             if threading.current_thread().name == "registry-closer":
                 close_waiting.set()

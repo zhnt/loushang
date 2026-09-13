@@ -15,9 +15,11 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from importlib import import_module
+from math import isfinite
 from pathlib import Path
 from secrets import token_hex
 from threading import RLock
+from time import monotonic
 
 _NAME = re.compile(r"[a-z0-9][a-z0-9._-]{0,95}\Z")
 MAX_RECORD_BYTES = 16 * 1024
@@ -152,8 +154,14 @@ class PrivateManagedDirectory:
         return self._fd
 
     @contextmanager
-    def _operation(self) -> Iterator[int]:
-        with self._mutex:
+    def _operation(self, *, deadline: float | None = None) -> Iterator[int]:
+        _check_deadline(deadline)
+        acquired = (self._mutex.acquire() if deadline is None else
+                    self._mutex.acquire(timeout=max(0.0, min(30.0, deadline - monotonic()))))
+        if not acquired:
+            raise ManagedStorageError("busy")
+        try:
+            _check_deadline(deadline)
             try:
                 fd = self._check()
                 yield fd
@@ -162,6 +170,8 @@ class PrivateManagedDirectory:
                 raise _storage_error("not_found", error) from None
             except OSError as error:
                 raise _storage_error("unavailable", error) from None
+        finally:
+            self._mutex.release()
 
     def _open(self, name: str, flags: int, *, create: bool = False) -> int:
         _name(name)
@@ -217,12 +227,12 @@ class PrivateManagedDirectory:
                 _close_preserving_primary(fd)
 
     @contextmanager
-    def lock(self, name: str, *, create: bool = False) -> Iterator[None]:
+    def lock(self, name: str, *, create: bool = False, deadline: float | None = None) -> Iterator[None]:
         """Nonblocking stable flock; the caller never gains an unlink right."""
         _name(name)
         if type(create) is not bool or not name.endswith(".lock"):
             raise ManagedStorageError("invalid_record")
-        with self._operation():
+        with self._operation(deadline=deadline):
             if name in self._locks:
                 raise ManagedStorageError("busy")
             fd = self._open(name, os.O_RDWR | (os.O_CREAT if create else 0), create=create)
@@ -244,7 +254,6 @@ class PrivateManagedDirectory:
                 # unlink a lock on release or retry close after an uncertain error.
                 self._locks.pop(name, None)
                 _close_preserving_primary(fd)
-
     def write(self, name: str, content: bytes, *, expected: ManagedFileSnapshot | None) -> None:
         """Publish under a caller-held stable lock; fsync failure remains unknown.
 
@@ -363,6 +372,15 @@ class PrivateManagedDirectory:
 def _name(name: str) -> None:
     if type(name) is not str or _NAME.fullmatch(name) is None:
         raise ManagedStorageError("invalid_record")
+
+
+def _check_deadline(deadline: float | None) -> None:
+    if deadline is None:
+        return
+    if type(deadline) not in (int, float) or not 0 <= deadline <= 1e12 or not isfinite(deadline):
+        raise ManagedStorageError("invalid_record")
+    if monotonic() >= deadline:
+        raise ManagedStorageError("busy")
 
 
 def _close_preserving_primary(fd: int) -> None:
