@@ -8,8 +8,8 @@
 - ID: `LMUX-M0`
 - Authority: normative — accepted limited Linux managed-profile contract
 - Design status: accepted
-- Review status: three-perspective storage/lifecycle/observer/handoff/native-launch/native-binding slice reviews passed; recovery admission pending
-- Implementation status: partial — storage, instance coordination, Linux observations, native launch and durable birth binding; no activation
+- Review status: three-perspective storage/lifecycle/observer/handoff/native-launch/native-binding/application-staging slice reviews passed; recovery admission pending
+- Implementation status: partial — storage, instance coordination, Linux observations, native launch, durable birth binding and staged application startup; no managed activation
 - Owner: AppHost managed deployment; sibling changes remain sibling-owned
 - Tracking objective: active Linux lmux goal, branch `harness/lmux-managed-service`
 
@@ -241,6 +241,7 @@ Mux 外壳只负责成员/连接组合。主题与终端能力在客户端组合
 | M2 持久交接接线 | 继承通道 + exact instance/attempt journal port；共享协作 deadline、真实启动器退出和 EOF/CAS 竞争测试，三视角复审通过 | 生产 spawn/daemon 与应用 owner 清理尚未接入，不构成 SSH/后台交付 |
 | M2 Linux 创建 owner | 单次生产 Popen 创建、受管 FD/环境/工作区、复用 POSIX group 观察；真实父端退出和故障矩阵、三视角复审通过 | 身份持久登记、应用自持生命周期、异常恢复和 CLI 激活仍待完成 |
 | M2 birth binding | schema v3 原生身份登记、精确匹配的 commit/abort；117 项聚焦验证、三视角复审通过 | 应用自持 owner、异常退役恢复、Session writer lease 与完整前端接线仍待完成 |
+| M2 应用准备/激活 | 原 AppServer/AppHost/Coding owner 的两步启动、共享截止时间和同步 fence；真实 Product/认证回归，设计与代码三视角复审通过 | 受管 child owner 仍需在两步之间接入 durable commit；CLI 不自动启动 |
 | 一条命令/后台/全局名/多 Tab/stop | 仅 G16 既有显式能力 | M1–M3 全部接线 |
 | Session 唯一写入与默认历史 | 缺运行期跨进程合同实现 | writer lease + canonical catalog + 双进程测试 |
 | 完整共享 Harnesstui/Markdown | 草案与本文接缝 | M3 代码与 Embedded 非回退 |
@@ -498,3 +499,78 @@ Session writer lease、公共发现/连接或 CLI 激活已经完成。
 inventory 共 117 passed，Ruff、managed 八模块 mypy、文档 6 项、依赖图
 新鲜度通过。没有重复未改动的 Hosting 原生实现与 Product/UI 广泛套件，
 完整 change-aware、真实安装/SSH/性能与最终三视角交付仍在整体目标内。
+
+## 17. M2 应用准备与接客分离
+
+现有 `CodingLocalCommandV1.start()` 会恢复 Product、启用 client scopes 并发布
+可连接的服务，再由调用者宣告 ready。受管子端不能在这个已接客状态等待
+持久 handoff，否则交接前已经可能接受无法归属的请求。公共协调器只检查
+COMMITTED 也不够：旧显式连接入口仍可能直接读到 connection record。
+
+采用同一部署 owner 的可选两步启动，而不是新建第二套 Coding runtime：
+
+- AppServer 增加 `prepare()` 与 `activate()`：prepare 保留 endpoint reservation、
+  绑定原生 listener，但不生成/发布当前实例 record、不开始 serving；
+  activate 才生成认证 record、发布并开始 serving。原 `start()` 依次执行两步，
+  默认行为不变。准备期间可能存在旧崩溃实例的残留 record；不为“不可发现”
+  删除未知旧文件，旧 record 也不构成当前实例 ready 证明。
+- AppHost `HostedLocalRuntimeV1.prepare()` 先准备 listener，保持 client scopes
+  禁用；`activate()` 才启用 scopes 并激活 server。`accepting` 仅在 activate
+  完成后为真。保留启动/关闭的单 owner、任务保留、取消不遗弃、lease-last
+  和原有 G16 stop/EOF 语义。准备中的 stop 与 close 永远禁止迟到 activate。
+- Coding trusted composition 暴露相同 prepare/activate 接缝，仍由原 attempt
+  构造实际应用；旧 `start()/run()` 路径不需要调用者变更。两步共用一次启动
+  预算，不能在 activate 重置 30 秒预算；显式 close 重试仍遵循原合同。
+  Coding 在 Product 恢复前冻结 absolute monotonic deadline，原样向下传递为
+  共同上限（各层既有更紧 profile 上限可以缩短，不能延长）。prepare 与
+  activate 之间的外部交接时间计入预算；启用 scopes、发布、serving 前及
+  ready 返回前均检查 fence 与期限。OS IO 不能被该预算硬抢占。
+
+保留的是底层 prepare/activate 阶段任务，不是会在异常路径调用自身 close
+  的公共 start/prepare/activate waiter。close 等待前者并接管迟到资源，避免
+  环形等待；取消 waiter 不取消已拥有的阶段任务。API 顺序固定为一次
+  prepare、随后一次 activate；prepare 重复、未完成 prepare 就 activate、
+  重复 activate、prepare 后再 start、并发争用均拒绝后来的不合法调用，
+  不撤销先前合法阶段、不恢复第二份 Product、不重新发布。close 在任何
+  阶段均同步 fence；关闭后两步均拒绝，失败 owner 只能重试 cleanup。
+  一步 start 在首次 await 前保留两个阶段；外来 split activate 不能抢占
+  prepare 完成到原 start 恢复之间的窗口。绝对 deadline 只允许精确 int/float
+  且 `0 < deadline <= 1e12`，拒绝 bool、NaN、无穷和巨大整数，校验前无 IO。
+
+随后受管 child owner 将按“准备应用 → 子端精确身份的持久 commit → activate”
+  执行。COMMITTED 是寿命交接，尚不是可连接确认；协调器需要重新认证后才
+  返回连接 lease。提交与 activate 之间崩溃保留 committed/unclean，对账不得
+  重新 spawn。activate 失败是服务自己的启动故障，需 graceful close 和精确
+  stop 记录，而不是启动器因超时撤销 committed。准备期间 EOF/abort 时由该
+  应用 owner 关闭已准备的 listener 与 Product，完整完成后才记录应用清理。
+
+本接缝只实现两步应用启动，不宣称完整 child owner、公共协调器、writer lease
+  或异常退役 P2 已完成。验收包括真实 loopback 的 prepare 无当前 record/不可用
+  （同时测空目录和残留旧 record，旧地址/认证不能进入当前实例语义）、
+  activate 后认证连接与旧 start 等价，以及 prepare/activate/close 的取消、
+  故障、晚到结果、重复调用与共享预算。AppServer 仍不知道 managed/Hosting/
+  Mux 生命周期；它只实现通用显式发布时序。
+
+设计与代码分别三视角复审通过。代码复审修复三处 P2：一步 start 的第二
+  阶段被外来 activate 抢占、Coding close 排队期间未同步 fence 已接管服务、
+  巨大整数 deadline 的 float 转换异常。AppHost 新增纯同步 `fence()`，由
+  Coding 在建立 close task 前调用；它不转移 cleanup 所有权，不丢已有 stop
+  reply，也不自动创建任务。对应确定性竞争、task factory 失败和三层非法
+  deadline 负测均已补齐。修复后本地阶段/认证/生命周期聚焦 76 passed。
+
+G16 两个既有源码行数门禁按架构复审确认的精确增量更新：相对 `0351f8b0`，
+  AppServer local 从 392 到 463 行（旧上限 450 + 71），AppHost local 从
+  247 到 327 行（旧上限 300 + 80）。只计本次两阶段 owner/同步 fence 增量，
+  保持原余量，不作文件豁免；额外锁定 prepare/activate/fence 的公开签名。
+  既有依赖方向、native IO confinement、连接容量与默认入口断言全部保留。
+
+广泛协议、真实 Product/CLI、旧 Mux 外壳与架构回归结果为 406 passed /
+  10 skipped，两个失败仅为上述旧 G16 行数上限；更新后该文件连同新增
+  签名检查复测 9 passed。没有将该聚焦复测写成整条广泛命令重跑通过。
+  当前三份源文件 mypy、全部修改代码/测试 Ruff、文档 6 项与依赖图新鲜度
+  均通过。首次残留 record 测试因 fixture 使用非法空 scope 而失败，补合法
+  scope 后真实崩溃遗留/旧认证拒绝用例已包含在通过结果中。
+
+本切片不发布自动后台入口，未运行整个完整目标的 installed/SSH/首用性能
+  矩阵，也不替代最终 change-aware/远端门禁。完整 child owner、异常退役、
+  唯一 writer、公共协调器、配额与 Harnesstui 接线仍为 active goal 的后续工作。

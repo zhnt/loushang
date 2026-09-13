@@ -125,7 +125,9 @@ def test_G16_BOUNDARIES_native_io_is_confined_to_explicit_local_adapter() -> Non
 
     root = Path("src/loushang/appserver")
     source = (root / "local.py").read_text()
-    assert len(source.splitlines()) <= 450
+    # LMUX-M0 §17 reviewed two-stage owner delta from 0351f8b0: 392 -> 463.
+    # Preserve the previous allowance; no other file or native boundary is exempt.
+    assert len(source.splitlines()) <= 450 + 71
     assert len((root / "_local_peer.py").read_text().splitlines()) <= 240
     assert '_LOOPBACK = "127.0.0.1"' in source
     assert "MAX_LOCAL_CONNECTIONS = 8" in source
@@ -152,7 +154,8 @@ def test_G16_BOUNDARIES_native_io_is_confined_to_explicit_local_adapter() -> Non
 
 def test_G16_BOUNDARIES_local_apphost_edge_uses_public_application_capabilities() -> None:
     source = Path("src/loushang/apphost/local.py")
-    assert len(source.read_text().splitlines()) <= 300
+    # LMUX-M0 §17 reviewed staged startup/synchronous fence: 247 -> 327.
+    assert len(source.read_text().splitlines()) <= 300 + 80
     tree = ast.parse(source.read_text())
     external = {
         node.module for node in ast.walk(tree)
@@ -198,6 +201,24 @@ def test_G16_BOUNDARIES_product_bootstrap_is_shared_without_transport_or_default
         assert "coding.cli.mux" not in text
     scripts = tomllib.loads(Path("pyproject.toml").read_text())["project"]["scripts"]
     assert scripts["loushang-mux"] == "loushang.coding.cli.mux:main"
+
+
+def test_managed_staging_keeps_exact_optional_signatures_and_sync_fence():
+    from loushang.apphost.local import HostedLocalRuntimeV1
+    from loushang.appserver.local import LocalAppServerV1
+    from loushang.coding.hosted_local import CodingLocalCommandV1
+
+    for owner in (HostedLocalRuntimeV1, LocalAppServerV1, CodingLocalCommandV1):
+        parameters = inspect.signature(owner.prepare).parameters
+        assert set(parameters) == {"self", "deadline"}
+        assert parameters["deadline"].kind is inspect.Parameter.KEYWORD_ONLY
+        assert parameters["deadline"].default is None
+        assert set(inspect.signature(owner.activate).parameters) == {"self"}
+        assert set(inspect.signature(owner.start).parameters) == {"self"}
+        assert inspect.iscoroutinefunction(owner.prepare)
+        assert inspect.iscoroutinefunction(owner.activate)
+    assert set(inspect.signature(HostedLocalRuntimeV1.fence).parameters) == {"self"}
+    assert not inspect.iscoroutinefunction(HostedLocalRuntimeV1.fence)
 
 
 def test_G16_BOUNDARIES_shell_borrows_only_semantics_and_owns_no_native_connection():

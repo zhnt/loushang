@@ -111,6 +111,10 @@ class CodingLocalCommandV1:
         self._local: HostedLocalRuntimeV1 | None = None
         self._startup_timeout, self._timeout = startup_timeout, settlement_timeout
         self._start_task: asyncio.Task[None] | None = None
+        self._activate_task: asyncio.Task[None] | None = None
+        self._startup_deadline: float | None = None
+        self._prepared = False
+        self._one_step = False
         self._close_task: asyncio.Task[None] | None = None
         self._phases: dict[str, asyncio.Task[None]] = {}
         self._deadline: float | None = None
@@ -122,28 +126,49 @@ class CodingLocalCommandV1:
         return not self._settled
 
     async def start(self) -> None:
+        """Keep the original ready-on-return entrypoint."""
+        if self._one_step or self._closing or self._start_task is not None:
+            raise HostedApplicationError("coding_local_closed")
+        self._one_step = True
+        await self._prepare()
+        await self._activate()
+
+    async def prepare(self, *, deadline: float | None = None) -> None:
+        """Recover the actual Product and prepare transport without clients."""
+        if self._one_step:
+            raise HostedApplicationError("coding_local_closed")
+        await self._prepare(deadline=deadline)
+
+    async def _prepare(self, *, deadline: float | None = None) -> None:
         if self._closing or self._start_task is not None:
             raise HostedApplicationError("coding_local_closed")
-        self._start_task = _spawn(self._start_once())
+        if deadline is not None and (
+            type(deadline) not in (int, float) or not 0 < deadline <= 1e12
+        ):
+            raise ValueError("invalid local startup deadline")
+        self._startup_deadline = asyncio.get_running_loop().time() + self._startup_timeout
+        if deadline is not None:
+            self._startup_deadline = min(self._startup_deadline, deadline)
         try:
+            self._remaining_startup()
+            self._start_task = _spawn(self._start_once())
             done, _ = await asyncio.wait(
-                {self._start_task}, timeout=self._startup_timeout
+                {self._start_task}, timeout=self._remaining_startup()
             )
             if not done:
                 raise HostedApplicationError("coding_local_startup_timeout")
             await asyncio.shield(self._start_task)
-            if self._closing or self._local is None or not self._local.accepting:
+            self._remaining_startup()
+            if not self._prepared:
                 raise HostedApplicationError("coding_local_closed")
         except BaseException:
             await self.close()
             raise
 
     async def _start_once(self) -> None:
-        if self._closing:
-            raise HostedApplicationError("coding_local_closed")
+        self._remaining_startup()
         self._application = await self._attempt.open()
-        if self._closing:
-            raise HostedApplicationError("coding_local_closed")
+        self._remaining_startup()
         self._local = HostedLocalRuntimeV1(
             self._application,
             self._directory,
@@ -153,7 +178,49 @@ class CodingLocalCommandV1:
             session_discovery=self._launch.session_discovery,
         )
         self._application = None  # AppHost has adopted both application and directory.
-        await self._local.start()
+        await self._local.prepare(deadline=self._startup_deadline)
+        self._remaining_startup()
+        self._prepared = True
+
+    async def activate(self) -> None:
+        """Activate a prepared deployment; does not renew its startup budget."""
+        if self._one_step:
+            raise HostedApplicationError("coding_local_closed")
+        await self._activate()
+
+    async def _activate(self) -> None:
+        if (self._closing or not self._prepared or self._activate_task is not None
+                or self._start_task is None or not self._start_task.done() or _failed(self._start_task)):
+            raise HostedApplicationError("coding_local_closed")
+        try:
+            self._remaining_startup()
+            self._activate_task = _spawn(self._activate_once())
+            done, _ = await asyncio.wait(
+                {self._activate_task}, timeout=self._remaining_startup()
+            )
+            if not done:
+                raise HostedApplicationError("coding_local_startup_timeout")
+            await asyncio.shield(self._activate_task)
+            self._remaining_startup()
+            if self._local is None or not self._local.accepting:
+                raise HostedApplicationError("coding_local_closed")
+        except BaseException:
+            await self.close()
+            raise
+
+    async def _activate_once(self) -> None:
+        self._remaining_startup()
+        assert self._local is not None
+        await self._local.activate()
+        self._remaining_startup()
+
+    def _remaining_startup(self) -> float:
+        if self._closing or self._startup_deadline is None:
+            raise HostedApplicationError("coding_local_closed")
+        remaining = self._startup_deadline - asyncio.get_running_loop().time()
+        if remaining <= 0:
+            raise HostedApplicationError("coding_local_startup_timeout")
+        return remaining
 
     async def wait_closed(self) -> None:
         if self._local is None:
@@ -176,6 +243,10 @@ class CodingLocalCommandV1:
         if self._settled:
             return
         self._closing = True
+        if self._local is not None:
+            # Fence lower-level activation before scheduling our close task.
+            # An already queued activate must not publish in the intervening turn.
+            self._local.fence()
         if self._deadline is None:
             self._deadline = asyncio.get_running_loop().time() + self._timeout
         task = self._close_task
@@ -193,6 +264,8 @@ class CodingLocalCommandV1:
             await self._local.close(retry_timeout=retry_timeout)
         if self._start_task is not None:
             await _wait(self._start_task, self._deadline, ignore_failure=True)
+        if self._activate_task is not None:
+            await _wait(self._activate_task, self._deadline, ignore_failure=True)
         if self._local is None:
             self._directory.close()
             await self._phase(

@@ -111,7 +111,11 @@ class LocalAppServerV1:
         self._server: asyncio.Server | None = None
         self._peers: set[_LocalPeer] = set()
         self._start_task: asyncio.Task[None] | None = None
+        self._activate_task: asyncio.Task[None] | None = None
+        self._startup_deadline: float | None = None
         self._close_task: asyncio.Task[None] | None = None
+        self._prepared = False
+        self._one_step = False
         self._ready = False
         self._closed = False
         self._stop_requested = False
@@ -128,19 +132,78 @@ class LocalAppServerV1:
         return len(self._peers) - admitted, admitted
 
     async def start(self) -> None:
+        """Compatibility convenience: prepare then activate the same owner."""
+        if self._one_step or self._closed or self._start_task is not None:
+            raise AppConnectionClosedError()
+        self._one_step = True  # Reserve both stages before the first suspension.
+        await self._prepare()
+        await self._activate()
+
+    async def prepare(self, *, deadline: float | None = None) -> None:
+        """Reserve and bind, without publishing credentials or accepting peers.
+
+        An old instance's record may remain readable; it is not this instance's
+        readiness. Only activate publishes a fresh record. A supplied absolute
+        loop-clock deadline can shorten, never extend, the profile's budget.
+        """
+        if self._one_step:
+            raise AppConnectionClosedError()
+        await self._prepare(deadline=deadline)
+
+    async def _prepare(self, *, deadline: float | None = None) -> None:
         if self._closed or self._start_task is not None:
             raise AppConnectionClosedError()
-        task = self._start_task = _spawn(self._start_once())
-        task.add_done_callback(_observe)
+        if deadline is not None and (
+            type(deadline) not in (int, float) or not 0 < deadline <= 1e12
+        ):
+            raise ValueError("invalid local startup deadline")
+        self._startup_deadline = asyncio.get_running_loop().time() + self._timeout
+        if deadline is not None:
+            self._startup_deadline = min(self._startup_deadline, deadline)
         try:
-            await _join_close(task, self._timeout)
-            if self._closed or self._stop_requested or not self._ready:
+            self._remaining_startup()
+            task = self._start_task = _spawn(self._start_once())
+            task.add_done_callback(_observe)
+            await _join_close(task, self._remaining_startup())
+            self._remaining_startup()
+            if not self._prepared:
                 raise AppConnectionClosedError()
         except BaseException:
             await self.close()
             raise
 
+    async def activate(self) -> None:
+        """Publish once after completed preparation; close fences late results."""
+        if self._one_step:
+            raise AppConnectionClosedError()
+        await self._activate()
+
+    async def _activate(self) -> None:
+        if (self._closed or not self._prepared or self._activate_task is not None
+                or self._start_task is None or not self._start_task.done() or _failed(self._start_task)):
+            raise AppConnectionClosedError()
+        try:
+            self._remaining_startup()
+            task = self._activate_task = _spawn(self._activate_once())
+            task.add_done_callback(_observe)
+            await _join_close(task, self._remaining_startup())
+            self._remaining_startup()
+            if not self._ready:
+                raise AppConnectionClosedError()
+        except BaseException:
+            await self.close()
+            raise
+
+    def _remaining_startup(self) -> float:
+        if self._closed or self._stop_requested or self._startup_deadline is None:
+            raise AppConnectionClosedError()
+        remaining = self._startup_deadline - asyncio.get_running_loop().time()
+        if remaining <= 0:
+            raise AppConnectionClosedError()
+        return remaining
+
     async def _start_once(self) -> None:
+        self._remaining_startup()
         self._reservation = self._directory.acquire(self._endpoint)
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._socket.set_inheritable(False)
@@ -148,7 +211,6 @@ class LocalAppServerV1:
         if os.name == "nt":
             self._socket.setsockopt(socket.SOL_SOCKET, getattr(socket, "SO_EXCLUSIVEADDRUSE"), 1)
         self._socket.bind((_LOOPBACK, 0))
-        port = self._socket.getsockname()[1]
         self._server = await asyncio.start_server(
             self._accepted, sock=self._socket, backlog=16, limit=_READ_LIMIT,
             start_serving=False,
@@ -157,17 +219,23 @@ class LocalAppServerV1:
         if self._closed:
             self._server.close()
             raise AppConnectionClosedError()
+        self._remaining_startup()
+        self._prepared = True
+
+    async def _activate_once(self) -> None:
+        self._remaining_startup()
+        assert self._reservation is not None and self._server is not None
+        port = self._server.sockets[0].getsockname()[1]
         self._record = self._reservation.publish(
             application_id=self._application_id, product_id=self._product_id,
             port=port, scopes=self._scopes,
             session_discovery=self._discovery_factory is not None,
             session_execution=self._execution_factory is not None,
         )
+        self._remaining_startup()
         self._ready = True
         await self._server.start_serving()
-        if self._closed:
-            self._server.close()
-            raise AppConnectionClosedError()
+        self._remaining_startup()
 
     def _accepted(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         if (not self._ready or self._closed or self._stop_requested
@@ -228,8 +296,11 @@ class LocalAppServerV1:
             raise
 
     async def _close_once(self) -> None:
-        if self._start_task is not None:
-            await asyncio.gather(self._start_task, return_exceptions=True)
+        # Only join owned phases, not public waiters which themselves close on
+        # failure. A late listener/publication remains this owner's resource.
+        for task in (self._start_task, self._activate_task):
+            if task is not None:
+                await asyncio.gather(task, return_exceptions=True)
         if self._server is not None:
             self._server.close()
         peers = tuple(self._peers)

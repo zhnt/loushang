@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import subprocess
+import sys
 from contextlib import suppress
 from dataclasses import replace
 from typing import cast
@@ -60,6 +62,229 @@ async def _until(predicate):
     async with asyncio.timeout(3):
         while not predicate():
             await asyncio.sleep(0.001)
+
+
+@pytest.mark.parametrize("stale", [False, True])
+def test_managed_prepare_binds_without_publication_or_acceptance(tmp_path, stale):
+    root = tmp_path / "runtime"
+    if stale:
+        # A real crashed writer leaves its record but releases its native lock.
+        subprocess.run([sys.executable, "-c", """
+import os, socket, sys
+from pathlib import Path
+from loushang.appserver.local_record import LocalConnectionDirectoryV1, LocalRecordScopeV1
+from loushang.appserver.protocol import SessionScopeV1
+directory = LocalConnectionDirectoryV1(Path(sys.argv[1]))
+reservation = directory.acquire('workspace')
+sock = socket.socket()
+sock.bind(('127.0.0.1', 0))
+reservation.publish(application_id='old', product_id='coding',
+                    port=sock.getsockname()[1],
+                    scopes=(LocalRecordScopeV1(SessionScopeV1.CWD, 'a' * 64),))
+os._exit(0)
+""", str(root)], check=True, timeout=10)
+
+    async def scenario():
+        directory = LocalConnectionDirectoryV1(root)
+        old = directory.read("workspace") if stale else None
+        server, scopes = _server(directory)
+        client = LocalAppClientConnectionV1(directory, "workspace")
+        try:
+            await server.prepare()
+            assert not server._server.is_serving()
+            assert server._record is None and scopes == []
+            with pytest.raises(AppServiceError):
+                _ = server.record
+            if old is not None:
+                assert directory.read("workspace") == old
+            else:
+                with pytest.raises(LocalRecordError):
+                    directory.read("workspace")
+            # Even knowing the prepared native address cannot enter semantics.
+            addresses = [server._server.sockets[0].getsockname()]
+            if old is not None:
+                addresses.append(("127.0.0.1", old.port))
+            for address in addresses:
+                with pytest.raises(OSError):
+                    await asyncio.wait_for(asyncio.open_connection(*address), 1)
+            assert scopes == []
+            await server.activate()
+            if old is not None:
+                assert server.record.instance != old.instance
+                reader, writer = await asyncio.open_connection("127.0.0.1", server.record.port)
+                try:
+                    with pytest.raises(LocalAuthenticationError):
+                        await authenticate_local_client(
+                            AsyncioStreamTransportV1(reader, writer), old.authentication, timeout=1,
+                        )
+                finally:
+                    writer.close()
+                    await writer.wait_closed()
+                assert scopes == []
+            await client.start()
+            assert (await client.client.list_muxes()).mux_spaces == ()
+            assert len(scopes) == 1
+        finally:
+            await client.close()
+            await server.close()
+            directory.close()
+
+    asyncio.run(asyncio.wait_for(scenario(), 5))
+
+
+def test_managed_prepare_activate_call_order_never_restarts_or_republishes(tmp_path):
+    async def scenario():
+        directory = LocalConnectionDirectoryV1(tmp_path / "runtime")
+        server, _ = _server(directory)
+        try:
+            with pytest.raises(AppServiceError):
+                await server.activate()
+            assert server._start_task is None and not server._closed
+            await server.prepare()
+            original = server._server
+            for call in (server.prepare, server.start):
+                with pytest.raises(AppServiceError):
+                    await call()
+                assert not server._closed
+            await server.activate()
+            record = server.record
+            with pytest.raises(AppServiceError):
+                await server.activate()
+            assert server._server is original and server.record == record
+            await server.close()
+            for call in (server.prepare, server.activate, server.start):
+                with pytest.raises(AppServiceError):
+                    await call()
+        finally:
+            await server.close()
+            directory.close()
+    asyncio.run(scenario())
+
+
+def test_managed_activation_cannot_renew_expired_preparation_budget(tmp_path):
+    async def scenario():
+        directory = LocalConnectionDirectoryV1(tmp_path / "runtime")
+        server, scopes = _server(directory)
+        deadline = asyncio.get_running_loop().time() + 0.1
+        try:
+            await server.prepare(deadline=deadline)
+            assert server._startup_deadline == deadline
+            await asyncio.sleep(max(0, deadline - asyncio.get_running_loop().time()) + 0.01)
+            with pytest.raises(AppServiceError):
+                await server.activate()
+            assert server._startup_deadline == deadline
+            assert server._activate_task is None and scopes == []
+            assert not directory._leases
+            with pytest.raises(LocalRecordError):
+                directory.read("workspace")
+        finally:
+            await server.close()
+            directory.close()
+    asyncio.run(scenario())
+
+
+def test_managed_cancelled_activation_retains_late_serving_task(tmp_path, monkeypatch):
+    async def scenario():
+        directory = LocalConnectionDirectoryV1(tmp_path / "runtime")
+        server, scopes = _server(directory, close_timeout=0.05)
+        entered, release = asyncio.Event(), asyncio.Event()
+        try:
+            await server.prepare()
+            native = server._server
+            original = native.start_serving
+
+            async def delayed():
+                await original()
+                entered.set()
+                await release.wait()
+
+            monkeypatch.setattr(native, "start_serving", delayed)
+            activating = asyncio.create_task(server.activate())
+            await entered.wait()
+            owned = server._activate_task
+            with pytest.raises(AppServiceError):
+                await server.activate()
+            assert not server._closed  # Invalid second waiter did not fence the first.
+            activating.cancel()
+            with pytest.raises(AppServiceError):
+                await activating
+            assert not owned.done() and not owned.cancelled()
+            assert not native.is_serving() and scopes == []
+            release.set()
+            await server.close()
+            assert owned.done() and native.sockets == ()
+            assert not directory._leases
+        finally:
+            release.set()
+            await server.close()
+            directory.close()
+    asyncio.run(asyncio.wait_for(scenario(), 5))
+
+
+def test_managed_failed_publication_cleans_its_late_record(tmp_path, monkeypatch):
+    async def scenario():
+        directory = LocalConnectionDirectoryV1(tmp_path / "runtime")
+        server, scopes = _server(directory)
+        try:
+            await server.prepare()
+            original = server._reservation.publish
+
+            def publish_then_fail(**kwargs):
+                original(**kwargs)
+                raise RuntimeError("injected failure after publication")
+
+            monkeypatch.setattr(server._reservation, "publish", publish_then_fail)
+            with pytest.raises(RuntimeError, match="injected failure"):
+                await server.activate()
+            assert not server._server.is_serving() and scopes == []
+            assert not directory._leases
+            with pytest.raises(LocalRecordError):
+                directory.read("workspace")
+        finally:
+            await server.close()
+            directory.close()
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("deadline", [True, float("nan"), float("inf"), -float("inf"), 10**1000, -(10**1000), 0, -1])
+def test_managed_invalid_deadline_has_no_startup_effect(tmp_path, deadline):
+    async def scenario():
+        directory = LocalConnectionDirectoryV1(tmp_path / "runtime")
+        server, _ = _server(directory)
+        try:
+            with pytest.raises(ValueError):
+                await server.prepare(deadline=deadline)
+            assert server._start_task is None and server._startup_deadline is None
+            assert not (tmp_path / "runtime").exists() and not server._closed
+        finally:
+            await server.close()
+            directory.close()
+    asyncio.run(scenario())
+
+
+def test_one_step_start_reserves_activation_between_stages(tmp_path, monkeypatch):
+    async def scenario():
+        directory = LocalConnectionDirectoryV1(tmp_path / "runtime")
+        server, _ = _server(directory)
+        original = server._prepare
+
+        async def competing(**kwargs):
+            await original(**kwargs)
+            assert server._start_task.done() and server._prepared
+            for call in (server.start, server.prepare, server.activate):
+                with pytest.raises(AppServiceError):
+                    await call()
+            assert server._activate_task is None and not server._closed
+
+        monkeypatch.setattr(server, "_prepare", competing)
+        try:
+            await server.start()
+            assert server.record == directory.read("workspace")
+            assert server._server.is_serving()
+        finally:
+            await server.close()
+            directory.close()
+    asyncio.run(scenario())
 
 
 def test_G16_LOCAL_AUTH_expected_product_is_checked_on_admitted_record_before_io(tmp_path):

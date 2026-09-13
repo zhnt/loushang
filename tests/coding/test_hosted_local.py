@@ -9,7 +9,7 @@ import pytest
 from loushang.agent import synthetic_model_transport
 from loushang.ai.types import TextPart
 from loushang.appserver.local import LocalAppClientConnectionV1, LocalConnectionModeV1
-from loushang.appserver.local_record import LocalConnectionDirectoryV1
+from loushang.appserver.local_record import LocalConnectionDirectoryV1, LocalRecordError
 from loushang.appserver.protocol import (
     AppErrorCodeV1,
     AppServiceError,
@@ -112,7 +112,16 @@ def test_G16_PRODUCT_real_coding_retains_disconnected_work_and_recovers_both_sco
         old_key = None
         try:
             mark("first_start")
-            await command.start()
+            if discovery_enabled:
+                await command.prepare()
+                assert not command._local.accepting
+                assert not command._local._scopes_enabled
+                assert not command._local._server._server.is_serving()
+                with pytest.raises(LocalRecordError):
+                    directory.read(launch.endpoint)
+                await command.activate()
+            else:
+                await command.start()
             mark("first_ready_construct_and_interact")
             old_key = directory.read(launch.endpoint).key
             for connection, scope, name in zip(
