@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -21,6 +22,8 @@ def commands(
     scope: str, *, root: Path = ROOT, plan: dict | None = None
 ) -> list[list[str]]:
     python = sys.executable
+    if scope == "gui":
+        return [[shutil.which("pnpm") or "pnpm", "--dir", "gui", "run", "check"]]
     pytest = [python, "scripts/dev/run_pytest.py"]
     inventories = make_paths(root)
     coding_ui_paths = sorted(

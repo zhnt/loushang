@@ -30,6 +30,18 @@ runner = load_script("run_checks")
 
 
 class ScopeTests(unittest.TestCase):
+    def test_gui_code_and_tooling_select_only_gui_and_docs(self):
+        for path in ("gui/src/App.tsx", "gui/src-tauri/Cargo.lock", "gui/pnpm-lock.yaml", "scripts/gui/run.mjs"):
+            with self.subTest(path=path):
+                self.assertEqual(self.selected(path), {"docs", "gui"})
+                self.assertTrue(selector.select([path])["workflows"]["gui"])
+        self.assertEqual(self.selected("gui/README.md"), {"docs"})
+
+    def test_gui_runner_uses_the_package_check_without_make(self):
+        (command,) = runner.commands("gui")
+        self.assertEqual(command[1:], ["--dir", "gui", "run", "check"])
+        self.assertIn("pnpm", command[0])
+
     def selected(self, *paths):
         return {
             name
@@ -354,7 +366,9 @@ class GitRangeTests(unittest.TestCase):
 
     def test_rename_preserves_both_owners_and_unusual_filenames(self):
         old = "src/loushang/ai/旧 文件.py"
-        new = "docs/new\nname.md"
+        # Windows forbids control characters in filenames; retain spaces and
+        # Unicode there, while POSIX still exercises newline-delimited hazards.
+        new = "docs/new 名称.md" if os.name == "nt" else "docs/new\nname.md"
         self.commit_file(old, "same contents")
         base = self.git("rev-parse", "HEAD")
         (self.root / "docs").mkdir()

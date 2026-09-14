@@ -1,0 +1,56 @@
+name: HarnessGUI Quality
+
+on:
+  workflow_call:
+    inputs:
+      plan:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  gui:
+    if: ${{ fromJSON(inputs.plan).checks.gui }}
+    runs-on: windows-2022
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.19.0"
+      - run: npm install --global pnpm@11.19.0
+      - run: rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy
+      - run: rustup override set 1.98.1
+      - run: pnpm --dir gui install --frozen-lockfile
+      - name: Offline GUI checks
+        run: pnpm --dir gui run check
+      - name: Install layout playback browser
+        run: pnpm --dir gui run test:layout:install
+      - name: Browser layout playback
+        run: pnpm --dir gui run test:layout
+      - name: Preserve browser playback evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gui-layout-playback
+          path: |
+            gui/playwright-report
+            gui/test-results/layout
+          retention-days: 14
+      - name: Standalone fixture build
+        run: pnpm --dir gui run build:fixture-native
+
+  selected-checks:
+    name: Selected checks
+    if: always()
+    needs: [gui]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify selected jobs
+        env:
+          CI_PLAN: ${{ inputs.plan }}
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: python scripts/ci/verify_gate.py --jobs '{"gui":"gui"}'

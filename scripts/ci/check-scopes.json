@@ -1,5 +1,6 @@
 {
   "checks": [
+    "gui",
     "docs",
     "architecture",
     "ai",
@@ -28,6 +29,11 @@
   ],
   "rules": [
     {
+      "paths": ["gui/**", "scripts/gui/**"],
+      "checks": ["gui"],
+      "reason": "HarnessGUI presentation, fixture and native bridge"
+    },
+    {
       "paths": [
         ".github/**",
         "scripts/ci/**",
@@ -43,6 +49,7 @@
         "tests/**/conftest.py"
       ],
       "checks": [
+        "gui",
         "docs",
         "architecture",
         "ai",
@@ -504,6 +511,7 @@
     ]
   },
   "workflows": {
+    "gui": ["gui"],
     "architecture": [
       "docs",
       "architecture"

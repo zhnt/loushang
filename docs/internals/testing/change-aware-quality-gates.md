@@ -15,6 +15,7 @@ their results through `quality-gate`. Local development uses the same
 | Agent runtime | Agent regressions and affected consumer checks; no automatic AI full suite |
 | TUI components | TUI units, deterministic playback, HarnessTUI/Coding UI consumers |
 | HarnessTUI presentation | HarnessTUI core, Coding UI adapters, deterministic playback |
+| HarnessGUI source, fixtures, dependencies and `scripts/gui/**` | GUI TypeScript/web/playback and Rust checks; Windows Actions additionally builds the standalone fixture |
 | Coding UI adapters | Coding UI and deterministic playback, plus Coding checks where applicable |
 | Terminal lifecycle/platform code | TUI units, playback, platform units, native PTY/ConPTY, and tmux |
 | Hosting provider source | Hosting checks and its AppHost/AppService startup and settlement consumers |
@@ -76,6 +77,13 @@ Make. Local execution reports platform, installation, and real-LSP scopes that
 must run in Actions; a local success is not a substitute for that evidence.
 Existing offline and host-runtime selectors are preserved. Do not repeat a
 passed suite without relevant changes or an unresolved failure.
+
+The GUI scope invokes `pnpm --dir gui run check` directly, without Unix Make
+activation recipes. Provision the pinned GUI toolchain first; see the
+[GUI README](../../../gui/README.md). Its reusable
+[Windows workflow](../../../.github/workflows/gui-quality.yml) participates in
+the same fail-closed aggregate gate. Building the executable does not establish
+native visual acceptance.
 
 ## Actions and branch protection
 
