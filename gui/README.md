@@ -37,3 +37,11 @@ pnpm --dir gui run build
 
 `dev:web` starts only the browser shell. `dev` starts the native Tauri window.
 `build` creates a native executable without producing installers.
+
+During rapid GUI development, `check` is a lightweight presentation check.
+On this B0 baseline it runs TypeScript type checking; the B1 delivery adds its
+offline tests. `check:full` retains the toolchain doctor, web build and Rust
+checks for native/toolchain changes. Packaging and browser playback are
+on-demand acceptance work, not prerequisites for every presentation edit.
+The GUI workflow uses Node/pnpm only. GUI-only changes do not select TUI,
+Harness or provider suites; shared CI changes retain their existing gates.

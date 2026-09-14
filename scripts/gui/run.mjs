@@ -79,6 +79,10 @@ function buildWeb() {
 }
 
 function check() {
+  runPnpm(["exec", "tsc", "--noEmit"]);
+}
+
+function checkFull() {
   doctor();
   buildWeb();
   run(cargo, ["fmt", "--manifest-path", manifest, "--", "--check"]);
@@ -94,6 +98,8 @@ try {
     buildWeb();
   } else if (mode === "check") {
     check();
+  } else if (mode === "check-full") {
+    checkFull();
   } else {
     throw new Error(`unknown GUI command mode: ${mode ?? "<missing>"}`);
   }

@@ -16,6 +16,7 @@
     "dev": "tauri dev",
     "build:web": "node ../scripts/gui/run.mjs build-web",
     "check": "node ../scripts/gui/run.mjs check",
+    "check:full": "node ../scripts/gui/run.mjs check-full",
     "build": "tauri build --no-bundle",
     "preview": "vite preview",
     "tauri": "tauri"
