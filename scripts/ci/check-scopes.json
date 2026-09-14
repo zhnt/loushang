@@ -34,6 +34,12 @@
       "reason": "HarnessGUI presentation, fixture and native bridge"
     },
     {
+      "paths": [".github/workflows/gui-quality.yml"],
+      "checks": ["gui", "ci"],
+      "reason": "GUI-only workflow and routing syntax, not shared runtime gates"
+    },
+    {
+      "exclude_paths": [".github/workflows/gui-quality.yml"],
       "paths": [
         ".github/**",
         "scripts/ci/**",

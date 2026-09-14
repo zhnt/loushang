@@ -107,6 +107,11 @@ function runNative(command, fixtureBridge = false) {
 }
 
 function check() {
+  runPnpm(["exec", "tsc", "--noEmit"]);
+  runPnpm(["exec", "vitest", "run"]);
+}
+
+function checkFull() {
   doctor();
   buildWeb();
   runPnpm(["exec", "vitest", "run"]);
@@ -125,6 +130,8 @@ try {
     buildWeb();
   } else if (mode === "check") {
     check();
+  } else if (mode === "check-full") {
+    checkFull();
   } else if (mode === "dev-native") {
     runNative("dev");
   } else if (mode === "dev-fixture-native") {

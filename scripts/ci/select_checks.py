@@ -84,6 +84,8 @@ def select(paths: list[str], *, full: bool = False, root: Path = ROOT) -> dict:
             continue
         matched = False
         for rule in rules["rules"]:
+            if any(fnmatch.fnmatchcase(path, pattern) for pattern in rule.get("exclude_paths", [])):
+                continue
             if any(fnmatch.fnmatchcase(path, pattern) for pattern in rule["paths"]):
                 enable(rule["checks"], f"{path}: {rule['reason']}")
                 matched = True

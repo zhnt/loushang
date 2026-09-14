@@ -42,6 +42,20 @@ class ScopeTests(unittest.TestCase):
         self.assertEqual(command[1:], ["--dir", "gui", "run", "check"])
         self.assertIn("pnpm", command[0])
 
+    def test_gui_workflow_does_not_select_runtime_suites(self):
+        self.assertEqual(self.selected(".github/workflows/gui-quality.yml"), {"docs", "gui", "ci"})
+
+    def test_gui_does_not_hide_shared_or_mixed_changes(self):
+        self.assertEqual(self.selected("gui/src/App.tsx", "scripts/ci/select_checks.py"), set(selector.select([], full=True)["checks"]))
+        runtime = self.selected("src/loushang/harness/example.py")
+        self.assertEqual(self.selected("gui/src/App.tsx", "src/loushang/harness/example.py"), runtime | {"gui"})
+
+    def test_gui_default_workflow_stays_lightweight(self):
+        workflow = (ROOT / ".github/workflows/gui-quality.yml").read_text()
+        self.assertIn("pnpm --dir gui run check", workflow)
+        for heavy in ("rustup", "test:layout", "build:fixture-native", "check:full"):
+            self.assertNotIn(heavy, workflow)
+
     def selected(self, *paths):
         return {
             name

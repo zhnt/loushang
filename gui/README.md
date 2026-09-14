@@ -43,7 +43,12 @@ pnpm --dir gui run build
 ```
 
 `dev:web` starts only the browser shell. `dev` starts the native Tauri window.
-`test` runs reducer and React playback checks. `build` creates a native
+`test` runs reducer and React playback checks. During rapid B1 development,
+`check` runs only TypeScript type checking and these offline tests, without
+requiring Rust or building assets. Use `check:full` for Rust/native/toolchain
+changes; it retains the toolchain doctor, web build, tests and Rust checks.
+Layout playback and native packaging remain on-demand acceptance commands.
+`build` creates a native
 executable without producing installers. `dev:fixture-native` and
 `build:fixture-native` enable the B1-only Rust invoke/event canary; the command
 is absent from the default native build.
@@ -73,7 +78,7 @@ screenshots are evidence, not a pixel-difference baseline.
 
 The HTML report is in `gui/playwright-report/index.html`; screenshots, measured
 bounds and failure traces are in `gui/test-results/layout`. Generated evidence is
-ignored by Git and uploaded by the Windows GUI workflow for 14 days. Run this
+ignored by Git; keep or share them when doing layout acceptance. Run this
 suite separately from `check` (which does not install a browser). Pixel density
 is not Windows OS scaling; native titlebar/drag/resize acceptance remains manual.
 
@@ -137,13 +142,16 @@ Remaining acceptance work:
 
 - Verify the native layout at normal/maximized sizes and Windows 125%/150%
   scaling, including composer visibility with the Work Dock open.
-- Run the new Windows GUI workflow remotely after opening a PR.
+- Run the lightweight GUI workflow remotely after opening a PR.
 
 `gui/**` and `scripts/gui/**` now select the dedicated `gui` check, alongside
 documentation checks. Ordinary README changes remain documentation-only. The
-local gate invokes `pnpm --dir gui run check`; the Windows Actions workflow also
-builds the standalone fixture executable. Changes to shared gate infrastructure
-still intentionally select all checks.
+local gate and the Ubuntu GUI workflow invoke `pnpm --dir gui run check` only.
+They do not install browsers, run Rust checks or build a native executable.
+GUI-only workflow edits select GUI plus CI routing/syntax checks, not TUI or
+Harness checks. Changes to shared gate infrastructure still intentionally
+select all checks; adding GUI files to a mixed change never suppresses checks
+for its other owners.
 
 Do not treat passing DOM playback tests as native visual acceptance or as C1/B2
 real-service validation.

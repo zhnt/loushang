@@ -21,6 +21,7 @@
     "test:layout:install": "playwright install chromium --no-shell",
     "test:watch": "vitest",
     "check": "node ../scripts/gui/run.mjs check",
+    "check:full": "node ../scripts/gui/run.mjs check-full",
     "build": "node ../scripts/gui/run.mjs build-native",
     "build:fixture-native": "node ../scripts/gui/run.mjs build-fixture-native",
     "preview": "vite preview",

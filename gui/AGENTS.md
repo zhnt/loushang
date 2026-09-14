@@ -16,4 +16,9 @@ only the capability required by the current accepted slice.
 
 Use the package scripts documented in `README.md`. Keep Node, pnpm, Rust, Cargo,
 and pnpm lock files synchronized, and verify changes with `pnpm run check` from
-this directory.
+this directory. During rapid B1 development this command runs only TypeScript
+type checking and offline unit/playback tests. Run `pnpm run check:full` when
+changing Rust, native capabilities, or native toolchain configuration. Browser
+layout playback and standalone packaging are on-demand acceptance checks, not
+mandatory checks on every presentation edit. Do not run TUI or Harness suites
+for GUI-only changes; shared contracts and shared CI changes retain their gates.
