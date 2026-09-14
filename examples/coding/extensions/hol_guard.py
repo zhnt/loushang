@@ -6,7 +6,7 @@ from collections.abc import Mapping
 
 from loushang.harness.extensions.agent import ToolCallDecision
 
-_GUARDED_TOOLS = {"shell", "bash"}
+_GUARDED_TOOLS = {"shell"}
 _TIMEOUT_SECONDS = 10.0
 
 
