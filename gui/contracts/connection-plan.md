@@ -94,6 +94,9 @@ silently sharing one mux.
    is now composed into the file and authentication probes separately.
    Production transport and cancellation/timeout cleanup remain pending; the
    isolated probes are not the native adapter.
+   [Loopback lifecycle evidence](connection-lifecycle-evidence.md) additionally
+   composes them through hello and close with socket deadlines/cancellation;
+   production GUI ownership and ongoing RPC remain pending.
 3. **Pending attachment:** request/response codec parity, ownership conflicts,
    initial execution snapshots and stale-attempt isolation through a native port.
 4. **Pending acceptance:** real shared AppHost connection, read-only native GUI

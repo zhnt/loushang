@@ -25,7 +25,9 @@ Two compositions now have evidence:
    instance/key/public-record digest against Python's reference authenticator.
    This replaces the old arbitrary digest constants. It does not read live keys.
 
-These are still separate experiments, not one live native connection pipeline.
+These initial experiments are now followed by a composed
+[loopback connection experiment](connection-lifecycle-evidence.md), not a
+production GUI connection pipeline.
 The first also does not claim complete canonical-root admission, race injection,
 native cleanup-failure reporting or sensitive-buffer erasure guarantees.
 

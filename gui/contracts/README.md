@@ -13,7 +13,9 @@ The [Windows private-file experiment](windows-record-evidence.md) additionally
 validates native handle/ACL admission with synthetic local files.
 [Closed record decoding and composition](record-values-evidence.md) now cover
 the value/selection contract and its use by the native-file and authentication
-probes. A production connection remains pending.
+probes. A subsequent [Windows loopback lifecycle experiment](connection-lifecycle-evidence.md)
+now composes record admission, authentication, hello, deadlines and cancellation.
+A production GUI connection remains pending.
 
 ## Consolidation review: 2026-09-14
 

@@ -41,6 +41,9 @@ fn hex(value: &str, size: usize) -> bool {
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 impl Record {
+    pub fn port(&self) -> u16 {
+        self.port
+    }
     pub fn filename(endpoint: &str) -> Result<String, ()> {
         if !identifier(endpoint, 64, false) {
             return Err(());
