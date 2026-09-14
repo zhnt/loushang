@@ -1,4 +1,4 @@
-# C1 execution submit/failure/hello probe
+# C1 execution contract probes
 
 Status: **partial C1 evidence**, not a production adapter or accepted full codec.
 
@@ -61,11 +61,36 @@ Unknown versions, mismatched profiles, invalid instance IDs and unsupported
 recovery/retention claims fail closed. These declarations do not demonstrate
 runtime capabilities, authentication, actual recovery, or a profile registry.
 
+## Idle snapshot and content-event slice
+
+Model-generated samples use the identity in the existing accepted-response
+fixture, Python execution/source snapshot constructors, and all ten
+`SessionEventKindV1` values. The Python reference codec validates each sample
+before the independent Rust and TypeScript probes process it.
+
+Coverage is deliberately restricted to idle composite snapshots (null
+observation/active/latestTerminal and empty draft) and content-event batches.
+The source cursor/revision and content event cursor become lossless decimal
+strings in the candidate bridge. Execution-view revision remains a JS-safe
+number. Zero is allowed for source counters, but not for event cursors.
+
+Checks cover identity agreement, explicit nullable fields, interaction event
+IDs, absent execution IDs, unknown fields/kinds, 256-entry array limits, and
+the 65,536-character snapshot transcript budget. The execution codec limits
+all tuple decoding to 256 entries even though the base SessionSnapshot model
+allows more records. This probe follows that actual wire decoder limit.
+
+The process pipeline now explicitly sets Python stdout to UTF-8 on Windows.
+Literal assertions for Chinese titles/text and emoji prevent equally damaged
+expected/actual strings from masquerading as encoding fidelity. Earlier
+equality-only Unicode evidence is superseded by these explicit assertions.
+
 ## Explicit limits
 
 This probe checks hello value compatibility, not live handshake/profile selection,
 authentication,
-framing, requests other than submit, app_failure, snapshots, events, recovery,
+framing, requests other than submit, app_failure, running/terminal snapshots,
+execution metadata updates, stream ordering/gap recovery,
 Workspace/ChangeSet capabilities, live bridge IPC or GUI/TUI concurrency. It
 does not claim exhaustive parity for arbitrary Unicode/JSON inputs. Error
 presentation/retry policy and reverse bridge-to-wire encoding remain future
@@ -87,3 +112,7 @@ This is offline process-pipeline evidence, not native WebView/IPC evidence.
 The hello increment adds 30 vectors across the two profiles. Combined result:
 63 vectors (15 accepted, 48 rejected), including TypeScript bridge mutation
 checks. All other acceptance limits above remain unchanged.
+
+The idle snapshot/content-event increment adds 47 vectors. Current total:
+110 vectors (37 accepted, 73 rejected), plus bridge-only mutations and literal
+Unicode assertions. No real snapshot acquisition or event subscription occurs.

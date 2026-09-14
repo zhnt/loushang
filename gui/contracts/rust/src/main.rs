@@ -2,6 +2,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, value::RawValue, Value};
 use std::io::{self, BufRead};
+mod projection;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -61,7 +62,9 @@ fn bridge(kind: &str, wire: &str, profile: Option<&str>) -> Result<Value, ()> {
     if wire.len() > 1_048_576 {
         return Err(());
     }
-    if kind == "hello" {
+    if kind == "snapshot" || kind == "events" {
+        projection::bridge(kind, wire)
+    } else if kind == "hello" {
         let hello: Hello = serde_json::from_str(wire).map_err(|_| ())?;
         if hello.protocol_version != "loushang.app/v1"
             || hello.execution_version != "loushang.execution/v1"

@@ -224,3 +224,6 @@ def hello_vectors() -> None:
 if __name__ == "__main__":
     main()
     hello_vectors()
+    from projection_vectors import emit_projection_vectors
+
+    emit_projection_vectors()

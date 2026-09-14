@@ -1,6 +1,7 @@
 // C1 candidate bridge-value validator, deliberately not wired into HarnessGUI.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { validateProjection } from "./projection.ts";
 
 function object(value: unknown, fields: string[]): Record<string, unknown> {
   assert(value !== null && typeof value === "object" && !Array.isArray(value));
@@ -11,6 +12,10 @@ function identifier(value: unknown, max = 128) {
   assert(typeof value === "string" && value.length <= max && /^[A-Za-z0-9][A-Za-z0-9._~-]*$/.test(value));
 }
 function validate(kind: string, value: unknown, profile?: string) {
+  if (kind === "snapshot" || kind === "events") {
+    validateProjection(kind, value);
+    return;
+  }
   if (kind === "hello") {
     const hello = object(value, ["protocolVersion", "executionVersion", "profile", "serviceInstanceId", "restartRecovery", "submissionRetention"]);
     assert.equal(hello.protocolVersion, "loushang.app/v1");
@@ -60,6 +65,9 @@ for (const line of lines) {
   }
   validate(vector.kind, vector.bridge, vector.profile);
   assert.deepEqual(vector.bridge, vector.expected, vector.name);
+  if (vector.name === "official-submit") assert.equal(vector.bridge.payload.text, "你好");
+  if (vector.name === "idle") assert.equal(vector.bridge.result.source.source.title, "空闲会话");
+  if (vector.name.startsWith("content-")) assert.equal(vector.bridge.result.events[0].source.text, "你好🙂");
   if (vector.kind === "hello") {
     for (const [field, value] of Object.entries({protocolVersion: "loushang.app/v2", executionVersion: "unknown", profile: "unknown/v1", restartRecovery: true, submissionRetention: "forever", serviceInstanceId: "invalid id", unexpected: true})) {
       const changed = structuredClone(vector.bridge);
@@ -83,6 +91,18 @@ for (const line of lines) {
       lossy.payload.control.controllerGeneration = invalid;
       assert.throws(() => validate(vector.kind, lossy));
     }
+  } else if (vector.kind === "snapshot" || vector.kind === "events") {
+    const bad = structuredClone(vector.bridge);
+    if (vector.kind === "snapshot") {
+      bad.result.source.source.cursor = 0;
+      assert.throws(() => validate(vector.kind, bad));
+      bad.result.source.source.cursor = "0";
+      bad.result.executions.revision = "1";
+      assert.throws(() => validate(vector.kind, bad));
+    } else if (bad.result.events.length > 0) {
+      bad.result.events[0].source.cursor = 1;
+      assert.throws(() => validate(vector.kind, bad));
+    }
   } else {
     altered.protocolVersion = "loushang.execution/v1";
     altered.result.code = "unknown_error";
@@ -91,4 +111,4 @@ for (const line of lines) {
   accepted++;
 }
 assert(accepted > 0 && rejected > 0);
-console.log(`C1 submit/failure/hello probe: ${accepted} accepted, ${rejected} rejected; Python -> Rust -> TypeScript passed.`);
+console.log(`C1 contract probe: ${accepted} accepted, ${rejected} rejected; Python -> Rust -> TypeScript passed.`);
