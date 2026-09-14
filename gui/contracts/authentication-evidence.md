@@ -56,7 +56,7 @@ Rust units additionally cover adjacent frames, invalid framing, closed-state
 fencing and send sequence exhaustion. This is sampled interoperability, not
 exhaustive cryptographic, concurrency or native-platform assurance.
 
-## Native record admission remains pending
+## Native record admission follow-up
 
 Inspection of `_windows_local_record.py` establishes that a Rust native adapter
 cannot replace admission with `read_to_string` or trust JSON copied from React.
@@ -65,8 +65,9 @@ handle-based file/directory identity, rejection of reparse points and multiple
 file links, and root/path identity rechecks. Reading by an admitted handle and
 closing it safely are part of this obligation, not just parsing record fields.
 
-No implementation or native acceptance is claimed for those requirements here.
-Until that adapter and production IO cancellation have evidence, the GUI stays
+The subsequent [Windows private-file experiment](windows-record-evidence.md)
+implements handle/ACL admission and tests it on native fixtures. Complete
+service-record decoding and production IO cancellation remain pending. The GUI stays
 offline and this probe must not be promoted to a Tauri command. Subsequent
 attachment and composite-snapshot work still follows
 [the connection plan](connection-plan.md).

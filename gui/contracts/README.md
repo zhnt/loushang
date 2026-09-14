@@ -9,6 +9,9 @@ is implemented; native transport and connection acceptance remain pending.
 An additional [authentication pipe experiment](authentication-evidence.md) now
 checks the Rust client against the Python server, without enabling native GUI
 connections or reading private records.
+The [Windows private-file experiment](windows-record-evidence.md) additionally
+validates native handle/ACL admission with synthetic local files. Full service
+record decoding and a production connection are still pending.
 
 ## Consolidation review: 2026-09-14
 

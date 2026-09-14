@@ -13,3 +13,6 @@ serde_json = { version = "1", features = ["raw_value"] }
 hmac = "0.12.1"
 sha2 = "0.10.9"
 getrandom = "0.2.17"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_Threading"] }
