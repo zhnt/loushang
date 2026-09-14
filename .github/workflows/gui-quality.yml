@@ -1,0 +1,39 @@
+name: HarnessGUI Quality
+
+on:
+  workflow_call:
+    inputs:
+      plan:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  gui:
+    if: ${{ fromJSON(inputs.plan).checks.gui }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.19.0"
+      - run: npm install --global pnpm@11.19.0
+      - run: pnpm --dir gui install --frozen-lockfile
+      - name: Offline GUI checks
+        run: pnpm --dir gui run check
+
+  selected-checks:
+    name: Selected checks
+    if: always()
+    needs: [gui]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify selected jobs
+        env:
+          CI_PLAN: ${{ inputs.plan }}
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: python scripts/ci/verify_gate.py --jobs '{"gui":"gui"}'

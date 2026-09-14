@@ -15,6 +15,7 @@ their results through `quality-gate`. Local development uses the same
 | Agent runtime | Agent regressions and affected consumer checks; no automatic AI full suite |
 | TUI components | TUI units, deterministic playback, HarnessTUI/Coding UI consumers |
 | HarnessTUI presentation | HarnessTUI core, Coding UI adapters, deterministic playback |
+| HarnessGUI source, fixtures, dependencies and `scripts/gui/**` | Rapid-development GUI typecheck and offline unit/playback tests; native/full/layout checks run on demand |
 | Coding UI adapters | Coding UI and deterministic playback, plus Coding checks where applicable |
 | Terminal lifecycle/platform code | TUI units, playback, platform units, native PTY/ConPTY, and tmux |
 | Hosting provider source | Hosting checks and its AppHost/AppService startup and settlement consumers |
@@ -76,6 +77,19 @@ Make. Local execution reports platform, installation, and real-LSP scopes that
 must run in Actions; a local success is not a substitute for that evidence.
 Existing offline and host-runtime selectors are preserved. Do not repeat a
 passed suite without relevant changes or an unresolved failure.
+
+The GUI scope invokes `pnpm --dir gui run check` directly, without Unix Make
+activation recipes. The rapid-development default needs Node and pnpm, not
+Rust; see the
+[GUI README](../../../gui/README.md). Its reusable
+[lightweight workflow](../../../.github/workflows/gui-quality.yml) participates
+in the same fail-closed aggregate gate, without TUI/Harness suites or native
+packaging. Edits to that GUI-only workflow select GUI and CI routing/syntax
+checks. Shared routing/aggregate changes still select all affected checks.
+Use `check:full` for Rust/native/toolchain changes and run browser playback or
+packaging when needed for acceptance. Building the executable does not establish
+native visual acceptance. This temporary B1 policy must be reassessed for B2
+real-service integration and release acceptance.
 
 ## Actions and branch protection
 
