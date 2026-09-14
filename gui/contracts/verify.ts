@@ -10,7 +10,18 @@ function object(value: unknown, fields: string[]): Record<string, unknown> {
 function identifier(value: unknown, max = 128) {
   assert(typeof value === "string" && value.length <= max && /^[A-Za-z0-9][A-Za-z0-9._~-]*$/.test(value));
 }
-function validate(kind: string, value: unknown) {
+function validate(kind: string, value: unknown, profile?: string) {
+  if (kind === "hello") {
+    const hello = object(value, ["protocolVersion", "executionVersion", "profile", "serviceInstanceId", "restartRecovery", "submissionRetention"]);
+    assert.equal(hello.protocolVersion, "loushang.app/v1");
+    assert.equal(hello.executionVersion, "loushang.execution/v1");
+    assert.equal(hello.profile, profile);
+    assert(typeof profile === "string");
+    identifier(hello.serviceInstanceId);
+    assert.equal(hello.restartRecovery, false);
+    assert.equal(hello.submissionRetention, "service_instance_lifetime");
+    return;
+  }
   const root = object(value, kind === "submit"
     ? ["protocolVersion", "requestId", "operation", "payload"]
     : ["protocolVersion", "requestId", "resultType", "result"]);
@@ -47,8 +58,20 @@ for (const line of lines) {
     rejected++;
     continue;
   }
-  validate(vector.kind, vector.bridge);
+  validate(vector.kind, vector.bridge, vector.profile);
   assert.deepEqual(vector.bridge, vector.expected, vector.name);
+  if (vector.kind === "hello") {
+    for (const [field, value] of Object.entries({protocolVersion: "loushang.app/v2", executionVersion: "unknown", profile: "unknown/v1", restartRecovery: true, submissionRetention: "forever", serviceInstanceId: "invalid id", unexpected: true})) {
+      const changed = structuredClone(vector.bridge);
+      changed[field] = value;
+      assert.throws(() => validate("hello", changed, vector.profile));
+    }
+    const missing = structuredClone(vector.bridge);
+    delete missing.submissionRetention;
+    assert.throws(() => validate("hello", missing, vector.profile));
+    accepted++;
+    continue;
+  }
   const altered = structuredClone(vector.bridge);
   altered.protocolVersion = "loushang.execution/v2";
   assert.throws(() => validate(vector.kind, altered));
@@ -68,4 +91,4 @@ for (const line of lines) {
   accepted++;
 }
 assert(accepted > 0 && rejected > 0);
-console.log(`C1 submit/failure probe: ${accepted} accepted, ${rejected} rejected; Python -> Rust -> TypeScript passed.`);
+console.log(`C1 submit/failure/hello probe: ${accepted} accepted, ${rejected} rejected; Python -> Rust -> TypeScript passed.`);

@@ -1,4 +1,4 @@
-# C1 execution submit/failure probe
+# C1 execution submit/failure/hello probe
 
 Status: **partial C1 evidence**, not a production adapter or accepted full codec.
 
@@ -45,9 +45,26 @@ unknown protocol/operation/identifier and closed execution failure codes.
 `service_instance_changed` and other known failures are valid typed responses,
 not malformed transport frames or a retry instruction.
 
+## Hello compatibility slice
+
+The probe additionally checks `local-detachable-execution/v1` and
+`local-detachable-discovery-execution/v1` hello values against the profile the
+client explicitly expects. It preserves the reference codec's exact-byte
+comparison to `execution_hello`: whitespace, reordered keys, duplicate keys,
+and alternative JSON string escapes are rejected even when decoded values look
+equivalent. Rust checks the canonical wire representation; TypeScript receives
+and checks only the decoded bridge values, not the original wire bytes.
+
+The supported declarations are `loushang.app/v1`, `loushang.execution/v1`,
+`restartRecovery=false` and `submissionRetention=service_instance_lifetime`.
+Unknown versions, mismatched profiles, invalid instance IDs and unsupported
+recovery/retention claims fail closed. These declarations do not demonstrate
+runtime capabilities, authentication, actual recovery, or a profile registry.
+
 ## Explicit limits
 
-This probe does not implement handshake/profile negotiation, authentication,
+This probe checks hello value compatibility, not live handshake/profile selection,
+authentication,
 framing, requests other than submit, app_failure, snapshots, events, recovery,
 Workspace/ChangeSet capabilities, live bridge IPC or GUI/TUI concurrency. It
 does not claim exhaustive parity for arbitrary Unicode/JSON inputs. Error
@@ -66,3 +83,7 @@ No C1/B2 acceptance or real-service readiness follows from this probe passing.
 `check:contract` passed 33 vectors (13 accepted, 20 rejected), plus TypeScript
 bridge-only rejection assertions. Rust fmt/clippy and Python Ruff passed.
 This is offline process-pipeline evidence, not native WebView/IPC evidence.
+
+The hello increment adds 30 vectors across the two profiles. Combined result:
+63 vectors (15 accepted, 48 rejected), including TypeScript bridge mutation
+checks. All other acceptance limits above remain unchanged.

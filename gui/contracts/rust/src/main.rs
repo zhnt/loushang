@@ -1,5 +1,5 @@
 //! Offline C1 probe only: not a production transport, decoder or Tauri command.
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, value::RawValue, Value};
 use std::io::{self, BufRead};
 
@@ -39,6 +39,16 @@ struct Failure {
 struct FailureCode {
     code: String,
 }
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Hello {
+    protocol_version: String,
+    execution_version: String,
+    profile: String,
+    service_instance_id: String,
+    restart_recovery: bool,
+    submission_retention: String,
+}
 fn identifier(value: &str, max: usize) -> bool {
     !value.is_empty()
         && value.len() <= max
@@ -47,11 +57,29 @@ fn identifier(value: &str, max: usize) -> bool {
             .bytes()
             .all(|c| c.is_ascii_alphanumeric() || b"._~-".contains(&c))
 }
-fn bridge(kind: &str, wire: &str) -> Result<Value, ()> {
+fn bridge(kind: &str, wire: &str, profile: Option<&str>) -> Result<Value, ()> {
     if wire.len() > 1_048_576 {
         return Err(());
     }
-    if kind == "submit" {
+    if kind == "hello" {
+        let hello: Hello = serde_json::from_str(wire).map_err(|_| ())?;
+        if hello.protocol_version != "loushang.app/v1"
+            || hello.execution_version != "loushang.execution/v1"
+            || Some(hello.profile.as_str()) != profile
+            || !identifier(&hello.service_instance_id, 128)
+            || hello.restart_recovery
+            || hello.submission_retention != "service_instance_lifetime"
+        {
+            return Err(());
+        }
+        // Value's sorted map produces the same compact, ASCII-value hello
+        // representation as Python execution_hello. Whitespace is not ignored.
+        let value = serde_json::to_value(hello).map_err(|_| ())?;
+        if serde_json::to_vec(&value).map_err(|_| ())? != wire.as_bytes() {
+            return Err(());
+        }
+        Ok(value)
+    } else if kind == "submit" {
         let call: Submit = serde_json::from_str(wire).map_err(|_| ())?;
         let p = &call.payload;
         let c = &p.control;
@@ -109,6 +137,7 @@ fn main() {
         let result = bridge(
             case["kind"].as_str().unwrap(),
             case["wire"].as_str().unwrap(),
+            case["profile"].as_str(),
         );
         assert_eq!(
             result.is_ok(),
