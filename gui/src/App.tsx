@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
 import "./App.css";
+import { DesktopFrame, PanelIcon } from "./DesktopFrame";
 import { createMockAppClient } from "./client/mockAppClient";
 import { probeFixtureBridge, type BridgeProbe } from "./client/nativeFixtureBridge";
 import type {
   AgentRunProjection,
   ChangeSetProjection,
+  ClientEvent,
   FixturePlaybackPort,
   ReadonlyDocument,
   RunProjection,
@@ -12,7 +14,7 @@ import type {
   TaskProjection,
   WorkspaceSummary,
 } from "./client/model";
-import { emptyGuiState, guiReducer, type DockTab, type GuiState } from "./client/state";
+import { emptyGuiState, guiReducer, hasFixtureCapability, type DockTab, type GuiState } from "./client/state";
 
 interface HarnessGuiProps {
   readonly client: FixturePlaybackPort;
@@ -26,34 +28,91 @@ const dockTabs: readonly { id: DockTab; label: string; glyph: string }[] = [
 ];
 
 export function HarnessGui({ client }: HarnessGuiProps) {
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarWidth, setSidebarWidth] = useState(280);
+  const [environmentOpen, setEnvironmentOpen] = useState(true);
+  const [viewportWidth, setViewportWidth] = useState(window.innerWidth);
+  const [contentMetrics, setContentMetrics] = useState({ gutter: 24, scrollbar: 0 });
+  const conversationRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const resize = () => setViewportWidth(window.innerWidth);
+    window.addEventListener("resize", resize);
+    return () => window.removeEventListener("resize", resize);
+  }, []);
+  const sidebarDrag = useRef<{ x: number; width: number } | null>(null);
+  useEffect(() => {
+    const keydown = (event: KeyboardEvent) => {
+      if (event.ctrlKey && !event.altKey && !event.shiftKey && !event.isComposing && !event.repeat && event.key.toLowerCase() === "b") {
+        event.preventDefault(); setSidebarOpen((open) => !open);
+      }
+    };
+    window.addEventListener("keydown", keydown);
+    return () => window.removeEventListener("keydown", keydown);
+  }, []);
   const [state, dispatch] = useReducer(guiReducer, undefined, emptyGuiState);
   const [notice, setNotice] = useState("Loading fixture snapshot…");
+  const [syncing, setSyncing] = useState(true);
+  const refreshRef = useRef<(() => void) | null>(null);
+  const syncPendingRef = useRef(true);
   const [remainingSteps, setRemainingSteps] = useState(client.remainingFixtureSteps());
   const [bridgeProbe, setBridgeProbe] = useState<BridgeProbe>({
     status: "web-mock",
     label: "Web Mock",
   });
   const submissionCounter = useRef(1);
+  const transcriptRef = useRef<HTMLDivElement | null>(null);
   const quickLookTriggerRef = useRef<HTMLButtonElement | null>(null);
   const restoreQuickLookFocusRef = useRef(false);
 
   useEffect(() => {
     let active = true;
+    let pending = false;
+    let buffered: ClientEvent[] = [];
+    let overflow = false;
+    async function refresh(): Promise<void> {
+      if (!active || pending) return;
+      pending = true;
+      syncPendingRef.current = true;
+      buffered = [];
+      overflow = false;
+      setSyncing(true);
+      try {
+        const snapshot = await client.snapshot();
+        if (!active) return;
+        if (overflow) throw new Error("Snapshot event buffer exceeded its limit.");
+        dispatch({ type: "snapshot.installed", snapshot });
+        // The reducer ignores cursors already covered by the snapshot and freezes
+        // on any remaining gap. Never infer continuity from arrival timing.
+        for (const event of buffered) dispatch({ type: "event.received", event });
+        setRemainingSteps(client.remainingFixtureSteps());
+        setNotice("Fixture snapshot installed. No backend is running.");
+      } catch {
+        if (active) dispatch({ type: "sync.failed", message: "Fixture synchronization failed. Retry to load a fresh snapshot." });
+      } finally {
+        if (active) {
+          buffered = [];
+          pending = false;
+          syncPendingRef.current = false;
+          setSyncing(false);
+        }
+      }
+    }
+    refreshRef.current = () => { void refresh(); };
     const unsubscribe = client.subscribe((event) => {
-      dispatch({ type: "event.received", event });
-      setRemainingSteps(client.remainingFixtureSteps());
-    });
-    void client.snapshot().then((snapshot) => {
       if (!active) return;
-      dispatch({ type: "snapshot.installed", snapshot });
+      if (pending) {
+        if (buffered.length < 2048) buffered.push(event);
+        else overflow = true;
+      } else dispatch({ type: "event.received", event });
       setRemainingSteps(client.remainingFixtureSteps());
-      setNotice("Fixture snapshot installed. No backend is running.");
     });
+    void refresh();
     void probeFixtureBridge().then((probe) => {
       if (active) setBridgeProbe(probe);
     });
     return () => {
       active = false;
+      refreshRef.current = null;
       unsubscribe();
     };
   }, [client]);
@@ -66,7 +125,34 @@ export function HarnessGui({ client }: HarnessGuiProps) {
   }, [state.local.quickLookDocumentId]);
 
   const selectedId = state.local.selectedSessionId;
+  const panelOpen = state.local.dockOpen && state.local.dockTab !== "environment";
+  useEffect(() => { if (panelOpen) setEnvironmentOpen(false); }, [panelOpen]);
+  const rightVisible = environmentOpen || panelOpen;
+  const rightWidth = environmentOpen ? 330 : 380;
+  const remainingWidth = viewportWidth - (sidebarOpen && viewportWidth > 760 ? sidebarWidth : 0);
+  const stackedRight = rightVisible && remainingWidth < rightWidth + 360;
+  const tasksAvailable = hasFixtureCapability(state, "tasks");
+  const changesAvailable = hasFixtureCapability(state, "changes");
+  const mutationsAllowed = !syncing && (state.remote.connection === "fixture-offline" || state.remote.connection === "connected");
   const selected = selectedId ? state.remote.sessions[selectedId] : undefined;
+  useLayoutEffect(() => {
+    const pane = conversationRef.current;
+    const transcript = transcriptRef.current;
+    if (!pane || !transcript || typeof ResizeObserver === "undefined") return;
+    const measure = () => {
+      const scrollbar = Math.max(0, transcript.offsetWidth - transcript.clientWidth);
+      const gutter = Math.max(24, (pane.clientWidth - scrollbar - 760) / 2);
+      setContentMetrics((old) => old.gutter === gutter && old.scrollbar === scrollbar ? old : { gutter, scrollbar });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(pane);
+    observer.observe(transcript);
+    return () => observer.disconnect();
+  }, [selected?.id]);
+  useLayoutEffect(() => {
+    if (transcriptRef.current) transcriptRef.current.scrollTop = state.local.transcriptScrollTop;
+  }, [selected, state.local.transcriptScrollTop]);
   const selectedDocument = selected
     ? findSelectedDocument(selected, state.local.selectedDocuments[selected.id] ?? null)
     : undefined;
@@ -75,7 +161,7 @@ export function HarnessGui({ client }: HarnessGuiProps) {
   );
 
   async function submit(): Promise<void> {
-    if (!selected) return;
+    if (!selected || syncPendingRef.current || !mutationsAllowed || selected.status === "running") return;
     const text = state.local.drafts[selected.id] ?? "";
     if (!text.trim()) {
       setNotice("Enter a fixture prompt before sending.");
@@ -93,6 +179,7 @@ export function HarnessGui({ client }: HarnessGuiProps) {
   }
 
   async function advance(): Promise<void> {
+    if (syncPendingRef.current || !mutationsAllowed) return;
     const step = await client.advanceFixture();
     if (!step) {
       setNotice("No fixture event is waiting.");
@@ -103,7 +190,7 @@ export function HarnessGui({ client }: HarnessGuiProps) {
   }
 
   async function interrupt(): Promise<void> {
-    if (!selected) return;
+    if (!selected || syncPendingRef.current || !mutationsAllowed || selected.status !== "running") return;
     const receipt = await client.interrupt(selected.id);
     setRemainingSteps(client.remainingFixtureSteps());
     setNotice(
@@ -115,6 +202,7 @@ export function HarnessGui({ client }: HarnessGuiProps) {
 
   function openReview(documentId: string): void {
     if (!selected) return;
+    setEnvironmentOpen(false);
     restoreQuickLookFocusRef.current = false;
     dispatch({ type: "document.selected", sessionId: selected.id, documentId });
     dispatch({ type: "dock.opened", tab: "review" });
@@ -128,8 +216,9 @@ export function HarnessGui({ client }: HarnessGuiProps) {
 
   return (
     <div className="desktop-shell">
-      <NativeFrame />
-      <main className={`app-shell${state.local.dockOpen ? "" : " dock-closed"}`}>
+      <DesktopFrame sidebarOpen={sidebarOpen} onToggleSidebar={() => setSidebarOpen((open) => !open)} />
+      <main style={{ "--rail-width": `${sidebarOpen ? sidebarWidth : 0}px`, "--right-width": `${rightWidth}px` } as React.CSSProperties} className={`app-shell desktop-layout${sidebarOpen ? "" : " sidebar-closed"}${rightVisible ? " right-visible" : " dock-closed"}${stackedRight ? " right-stacked" : ""}`}>
+        <div className="sidebar-container" hidden={!sidebarOpen}>
         <Sidebar
           state={state}
           bridgeProbe={bridgeProbe}
@@ -137,18 +226,37 @@ export function HarnessGui({ client }: HarnessGuiProps) {
           onToggleWorkspace={(workspaceId) => dispatch({ type: "workspace.toggled", workspaceId })}
           onUnavailable={() => setNotice("New Session is unavailable in the offline fixture.")}
         />
+        <div className="sidebar-resizer" role="separator" aria-label="Sidebar width" aria-orientation="vertical" tabIndex={0}
+          aria-valuemin={200} aria-valuemax={420} aria-valuenow={sidebarWidth}
+          onDoubleClick={() => setSidebarWidth(280)}
+          onKeyDown={(event) => { if (event.key === "ArrowLeft" || event.key === "ArrowRight") { event.preventDefault(); setSidebarWidth((width) => Math.max(200, Math.min(420, width + (event.key === "ArrowLeft" ? -10 : 10)))); } }}
+          onPointerDown={(event) => { if (event.button !== 0) return; sidebarDrag.current = { x: event.clientX, width: sidebarWidth }; event.currentTarget.setPointerCapture(event.pointerId); }}
+          onPointerMove={(event) => { const drag = sidebarDrag.current; if (drag) setSidebarWidth(Math.max(200, Math.min(420, drag.width + event.clientX - drag.x))); }}
+          onPointerUp={() => { sidebarDrag.current = null; }} onPointerCancel={() => { sidebarDrag.current = null; }} onLostPointerCapture={() => { sidebarDrag.current = null; }} />
+        </div>
 
-        <section className="conversation-pane" aria-label="Session workspace">
+        <section ref={conversationRef} style={{ "--content-gutter": `${contentMetrics.gutter}px`, "--scrollbar-width": `${contentMetrics.scrollbar}px` } as React.CSSProperties} className="conversation-pane" aria-label="Session workspace">
+          {syncing || state.diagnostic || state.remote.connection === "disconnected" ? (
+            <div className="diagnostic" role="status">
+              <span>{syncing ? "Synchronizing fixture…" : state.diagnostic ?? "Disconnected. Load a fresh fixture snapshot."}</span>
+              <button type="button" disabled={syncing} onClick={() => refreshRef.current?.()}>Resynchronize fixture</button>
+            </div>
+          ) : null}
           {selected ? (
             <>
               <SessionHeader
                 session={selected}
                 connection={state.remote.connection}
-                dockOpen={state.local.dockOpen}
-                onOpenDock={() => dispatch({ type: "dock.opened", tab: state.local.dockTab })}
+                dockOpen={panelOpen}
+                environmentOpen={environmentOpen}
+                onEnvironment={() => { if (!environmentOpen) dispatch({ type: "dock.closed" }); setEnvironmentOpen((open) => !open); }}
+                onOpenDock={() => {
+                  setEnvironmentOpen(false);
+                  dispatch(panelOpen ? { type: "dock.closed" } : { type: "dock.opened", tab: state.local.dockTab === "environment" ? "tasks" : state.local.dockTab });
+                }}
               />
-              {state.diagnostic ? <div className="diagnostic" role="alert">{state.diagnostic}</div> : null}
-              <div className="transcript" aria-live="polite">
+              <div className="transcript" aria-label="Session transcript" aria-live="polite" ref={transcriptRef}
+                onScroll={(event) => dispatch({ type: "transcript.scrolled", sessionId: selected.id, scrollTop: event.currentTarget.scrollTop })}>
                 {selected.messages.map((message) => (
                   <article className={`message ${message.role}`} key={message.id} aria-label={`${message.role} message`}>
                     <div className="message-meta">
@@ -158,7 +266,7 @@ export function HarnessGui({ client }: HarnessGuiProps) {
                     <p>{message.content || "Waiting for fixture output…"}</p>
                   </article>
                 ))}
-                {selected.run ? (
+                {selected.run && tasksAvailable ? (
                   <RunActivity
                     run={selected.run}
                     expanded={Boolean(state.local.expandedActivities[selected.run.id])}
@@ -166,7 +274,7 @@ export function HarnessGui({ client }: HarnessGuiProps) {
                     onSelectTask={(taskId) => dispatch({ type: "task.selected", taskId })}
                   />
                 ) : null}
-                {selected.changeSet ? (
+                {selected.changeSet && changesAvailable ? (
                   <ChangeSetCard
                     changeSet={selected.changeSet}
                     onOpenFile={(documentId, trigger) => {
@@ -181,7 +289,7 @@ export function HarnessGui({ client }: HarnessGuiProps) {
                 ) : null}
               </div>
 
-              {quickLookDocument ? (
+              {quickLookDocument && changesAvailable ? (
                 <QuickLook
                   document={quickLookDocument}
                   onClose={closeQuickLook}
@@ -189,16 +297,20 @@ export function HarnessGui({ client }: HarnessGuiProps) {
                 />
               ) : null}
 
-              <div className="playback-strip" aria-label="Fixture playback controls">
+              <details className="playback-strip" aria-label="Fixture playback controls">
+                <summary>Fixture playback · {remainingSteps} queued events</summary>
+                <div className="playback-body">
                 <div>
                   <strong>Deterministic fixture</strong>
                   <span>{remainingSteps} queued event{remainingSteps === 1 ? "" : "s"}</span>
+                  <small>{bridgeProbe.label}</small>
                 </div>
-                <button type="button" onClick={() => void advance()}>Advance fixture</button>
-              </div>
+                <button type="button" disabled={!mutationsAllowed} onClick={() => void advance()}>Advance fixture</button>
+                </div>
+              </details>
 
               <div className="composer-stack">
-                {selected.run ? (
+                {selected.run && tasksAvailable ? (
                   <TaskProgressControl
                     run={selected.run}
                     open={state.local.taskListOpen}
@@ -213,36 +325,37 @@ export function HarnessGui({ client }: HarnessGuiProps) {
                     void submit();
                   }}
                 >
-                  <label htmlFor="message-input">Message for {selected.title}</label>
+                  <label className="visually-hidden" htmlFor="message-input">Message for {selected.title}</label>
                   <textarea
                     id="message-input"
-                    rows={3}
+                    rows={2}
                     value={state.local.drafts[selected.id] ?? ""}
                     placeholder="Type a fixture prompt…"
                     onChange={(event) =>
                       dispatch({ type: "draft.changed", sessionId: selected.id, value: event.currentTarget.value })
                     }
                     onKeyDown={(event) => {
-                      if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+                      if (!event.nativeEvent.isComposing && event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
                         event.preventDefault();
                         void submit();
                       }
                     }}
                   />
                   <div className="composer-actions">
-                    <button type="button" className="icon-button" aria-label="Attach fixture file">＋</button>
+                    <button type="button" className="icon-button" aria-label="Attach fixture file" title="Attachments unavailable in this fixture" disabled>＋</button>
                     <span className="permission-label">◉ Fixture access</span>
-                    <p role="status">{notice}</p>
+                    <p className="visually-hidden" role="status">{notice}</p>
+                    <button type="button" className="effort-selector" title="Model and effort selection require a backend" disabled>No model · Effort unavailable ⌄</button>
                     <button
-                      className="secondary-button"
-                      type="button"
-                      disabled={selected.status !== "running"}
-                      onClick={() => void interrupt()}
+                      className="composer-submit"
+                      type={selected.status === "running" ? "button" : "submit"}
+                      aria-label={selected.status === "running" ? "Interrupt" : "Send"}
+                      title={selected.status === "running" ? "Stop execution" : "Send (Ctrl+Enter)"}
+                      disabled={!mutationsAllowed || (selected.status !== "running" && !(state.local.drafts[selected.id] ?? "").trim())}
+                      onClick={selected.status === "running" ? () => void interrupt() : undefined}
                     >
-                      Interrupt
-                    </button>
-                    <button className="primary-button" type="submit" disabled={selected.status === "running"}>
-                      Send
+                      {selected.status === "running" ? <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1" fill="currentColor" /></svg>
+                        : <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 18V6m-5 5 5-5 5 5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>}
                     </button>
                   </div>
                 </form>
@@ -253,7 +366,15 @@ export function HarnessGui({ client }: HarnessGuiProps) {
           )}
         </section>
 
-        {state.local.dockOpen && selected ? (
+        {environmentOpen && selected ? <aside className="environment-popover" aria-label="Environment summary">
+          <header><span>Environment</span><button type="button" aria-label="Close environment" onClick={() => setEnvironmentOpen(false)}>×</button></header>
+          {hasFixtureCapability(state, "workspace") ? <EnvironmentPanel state={state} session={selected} /> : <UnavailablePanel label="workspace capability (missing, unavailable or incompatible)" />}
+          <div className="environment-links">
+            <button type="button" disabled={!changesAvailable || !selected.changeSet?.files.length} onClick={() => { const id = selected.changeSet?.files[0]?.documentId; if (id) openReview(id); }}>Changes →</button>
+            <button type="button" disabled={!hasFixtureCapability(state, "agents")} onClick={() => { setEnvironmentOpen(false); dispatch({ type: "dock.opened", tab: "agents" }); }}>Subagents →</button>
+          </div>
+        </aside> : null}
+        {!environmentOpen && panelOpen && selected ? (
           <WorkDock
             state={state}
             session={selected}
@@ -267,20 +388,6 @@ export function HarnessGui({ client }: HarnessGuiProps) {
         ) : null}
       </main>
     </div>
-  );
-}
-
-function NativeFrame() {
-  return (
-    <header className="native-frame" aria-label="Application menu">
-      <span className="window-glyph">▱</span>
-      <span className="history-glyph" aria-hidden="true">←</span>
-      <span className="history-glyph muted" aria-hidden="true">→</span>
-      <nav aria-label="Main menu">
-        <span>File</span><span>Edit</span><span>View</span><span>Help</span>
-      </nav>
-      <div className="window-controls" aria-hidden="true"><span>—</span><span>□</span><span>×</span></div>
-    </header>
   );
 }
 
@@ -305,7 +412,11 @@ function Sidebar({ state, bridgeProbe, onSelect, onToggleWorkspace, onUnavailabl
       <div className="fixture-banner"><span className="fixture-dot" />Fixture data · no backend</div>
 
       <nav className="workspace-scroll" aria-label="Workspaces">
-        {state.remote.workspaceOrder.map((workspaceId) => {
+        {!hasFixtureCapability(state, "workspace") ? <>
+          <UnavailablePanel label="workspace capability (missing, unavailable or incompatible)" />
+          {state.remote.sessionOrder.map((id) => <SessionButton key={id} session={state.remote.sessions[id]}
+            selected={id === state.local.selectedSessionId} unread={Boolean(state.local.unread[id])} onSelect={() => onSelect(id)} />)}
+        </> : state.remote.workspaceOrder.map((workspaceId) => {
           const workspace = state.remote.workspaces[workspaceId];
           const sessions = state.remote.sessionOrder
             .map((id) => state.remote.sessions[id])
@@ -356,7 +467,7 @@ function Sidebar({ state, bridgeProbe, onSelect, onToggleWorkspace, onUnavailabl
 
       <div className="rail-footer">
         <div className="user-avatar" aria-hidden="true">Z</div>
-        <div><strong>zhnt</strong><span>{bridgeProbe.label} · fixture</span></div>
+        <div><strong>zhnt</strong><span title={bridgeProbe.label}>Offline fixture</span></div>
         <span aria-hidden="true">⋯</span>
       </div>
     </aside>
@@ -398,7 +509,9 @@ function StatusMark({ status }: { readonly status: SessionSnapshot["status"] }) 
   );
 }
 
-function SessionHeader({ session, connection, dockOpen, onOpenDock }: {
+function SessionHeader({ session, connection, dockOpen, onOpenDock, environmentOpen, onEnvironment }: {
+  readonly environmentOpen: boolean;
+  readonly onEnvironment: () => void;
   readonly session: SessionSnapshot;
   readonly connection: string;
   readonly dockOpen: boolean;
@@ -415,7 +528,9 @@ function SessionHeader({ session, connection, dockOpen, onOpenDock }: {
       <div className="header-actions">
         <span className={`connection-chip ${connection}`}>{connectionLabel(connection)}</span>
         <button type="button" aria-label="Share unavailable" disabled>⇧ Share</button>
-        <button type="button" aria-label="Open Work Dock" aria-pressed={dockOpen} onClick={onOpenDock}>▥</button>
+        <button type="button" aria-label="Toggle environment" title="Environment" aria-pressed={environmentOpen} onClick={onEnvironment}><PanelIcon side="environment" /></button>
+        <button type="button" aria-label="Bottom panel unavailable" title="Bottom panel unavailable in this fixture" disabled><PanelIcon side="bottom" /></button>
+        <button type="button" aria-label="Open Work Dock" title="Toggle right panel" aria-pressed={dockOpen} onClick={onOpenDock}><PanelIcon side="right" /></button>
       </div>
     </header>
   );
@@ -532,30 +647,39 @@ interface WorkDockProps {
 
 function WorkDock(props: WorkDockProps) {
   const { state, session, selectedDocument, onClose, onTab, onSelectDocument, onSelectTask, onSelectAgent } = props;
+  const facet = state.local.dockTab === "environment" ? "workspace" : state.local.dockTab === "review" ? "changes" : state.local.dockTab;
+  const available = hasFixtureCapability(state, facet);
+  const visibleRun = session.run ? {
+    ...session.run,
+    tasks: hasFixtureCapability(state, "tasks") ? session.run.tasks : [],
+    agentRuns: hasFixtureCapability(state, "agents") ? session.run.agentRuns : [],
+  } : null;
   return (
-    <aside className="work-dock" aria-label="Work Dock">
+    <aside className={`work-dock${state.local.dockTab === "environment" ? " environment-card" : ""}`} aria-label="Work Dock">
       <header className="dock-header">
         <strong>{dockTabs.find((tab) => tab.id === state.local.dockTab)?.label}</strong>
         <button type="button" onClick={onClose} aria-label="Close Work Dock">×</button>
       </header>
       <nav className="dock-tabs" aria-label="Work Dock panels">
-        {dockTabs.map((tab) => (
+        {dockTabs.filter((tab) => tab.id !== "environment").map((tab) => (
           <button type="button" key={tab.id} aria-pressed={state.local.dockTab === tab.id} onClick={() => onTab(tab.id)}>
             <span aria-hidden="true">{tab.glyph}</span><span>{tab.label}</span>
           </button>
         ))}
       </nav>
       <div className="dock-content">
+        {!available ? <UnavailablePanel label={`${facet} capability (missing, unavailable or incompatible)`} /> : <>
         {state.local.dockTab === "environment" ? <EnvironmentPanel state={state} session={session} /> : null}
         {state.local.dockTab === "tasks" ? (
-          <TasksPanel run={session.run} selectedTaskId={state.local.selectedTaskId} onSelectTask={onSelectTask} onSelectAgent={onSelectAgent} />
+          <TasksPanel run={visibleRun} selectedTaskId={state.local.selectedTaskId} onSelectTask={onSelectTask} onSelectAgent={onSelectAgent} />
         ) : null}
         {state.local.dockTab === "agents" ? (
-          <AgentsPanel run={session.run} selectedAgentRunId={state.local.selectedAgentRunId} onSelectAgent={onSelectAgent} onSelectTask={onSelectTask} />
+          <AgentsPanel run={visibleRun} selectedAgentRunId={state.local.selectedAgentRunId} onSelectAgent={onSelectAgent} onSelectTask={onSelectTask} />
         ) : null}
         {state.local.dockTab === "review" ? (
           <ReviewPanel session={session} selectedDocument={selectedDocument} onSelectDocument={onSelectDocument} />
         ) : null}
+        </>}
       </div>
     </aside>
   );

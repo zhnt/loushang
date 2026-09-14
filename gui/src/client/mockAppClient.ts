@@ -9,6 +9,7 @@ import type {
   SubmitReceipt,
   SubmitTextInput,
 } from "./model";
+import { reduceSession } from "./state";
 
 interface ScriptedStep {
   readonly sessionId: string;
@@ -300,6 +301,7 @@ function session(
 }
 
 export class MockAppClient implements FixturePlaybackPort {
+  private currentSnapshot: ClientSnapshot = structuredClone(fixtureSnapshot);
   private readonly listeners = new Set<(event: ClientEvent) => void>();
   private readonly cursors = new Map<string, bigint>();
   private readonly activeMessages = new Map<string, string>();
@@ -312,7 +314,7 @@ export class MockAppClient implements FixturePlaybackPort {
   }
 
   async snapshot(): Promise<ClientSnapshot> {
-    return structuredClone(fixtureSnapshot);
+    return structuredClone(this.currentSnapshot);
   }
 
   subscribe(listener: (event: ClientEvent) => void): () => void {
@@ -614,7 +616,13 @@ export class MockAppClient implements FixturePlaybackPort {
   }
 
   private emit(event: ClientEvent): void {
-    for (const listener of this.listeners) listener(event);
+    this.currentSnapshot = {
+      ...this.currentSnapshot,
+      sessions: this.currentSnapshot.sessions.map((session) =>
+        session.id === event.sessionId ? reduceSession(session, event) : session,
+      ),
+    };
+    for (const listener of this.listeners) listener(structuredClone(event));
   }
 }
 

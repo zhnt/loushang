@@ -13,7 +13,8 @@
     "windows": [
       {
         "title": "HarnessGUI",
-        "width": 1120,
+        "decorations": false,
+        "width": 1440,
         "height": 720
       }
     ],

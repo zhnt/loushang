@@ -9,6 +9,35 @@ import type {
 
 export type DockTab = "environment" | "tasks" | "agents" | "review";
 
+type SessionView = Pick<LocalState, "selectedTaskId" | "selectedAgentRunId" | "dockTab" | "dockOpen" | "taskListOpen" | "transcriptScrollTop">;
+
+function viewKey(session: SessionSnapshot): string {
+  const context = session.context;
+  return JSON.stringify([session.workspaceId, context.project, context.rootLabel,
+    context.applicationId, context.muxId, context.memberId, context.sessionId, context.source, session.id]);
+}
+
+function sessionView(session: SessionSnapshot, previous?: SessionView): SessionView {
+  return {
+    transcriptScrollTop: previous?.transcriptScrollTop ?? 0,
+    dockTab: previous?.dockTab ?? "environment",
+    dockOpen: previous?.dockOpen ?? true,
+    taskListOpen: previous?.taskListOpen ?? false,
+    selectedTaskId: session.run?.tasks.some((task) => task.id === previous?.selectedTaskId)
+      ? previous!.selectedTaskId : session.run?.currentTaskId ?? null,
+    selectedAgentRunId: session.run?.agentRuns.some((agent) => agent.id === previous?.selectedAgentRunId)
+      ? previous!.selectedAgentRunId : session.run?.agentRuns[0]?.id ?? null,
+  };
+}
+
+// These versions describe the offline fixture only, not a negotiated App Contract.
+export function hasFixtureCapability(state: GuiState, name: ClientSnapshot["capabilities"][number]["name"]): boolean {
+  const version = name === "workspace" || name === "changes" ? "fixture/v2" : "fixture/v1";
+  return state.remote.capabilities.some((item) =>
+    item.name === name && item.availability === "fixture" && item.version === version,
+  );
+}
+
 export interface RemoteState {
   readonly generation: string;
   readonly connection: ConnectionState;
@@ -22,6 +51,8 @@ export interface RemoteState {
 }
 
 export interface LocalState {
+  readonly transcriptScrollTop: number;
+  readonly sessionViews: Readonly<Record<string, SessionView>>;
   readonly selectedSessionId: string | null;
   readonly drafts: Readonly<Record<string, string>>;
   readonly selectedDocuments: Readonly<Record<string, string | null>>;
@@ -43,6 +74,8 @@ export interface GuiState {
 }
 
 export type GuiAction =
+  | { readonly type: "sync.failed"; readonly message: string }
+  | { readonly type: "transcript.scrolled"; readonly sessionId: string; readonly scrollTop: number }
   | { readonly type: "snapshot.installed"; readonly snapshot: ClientSnapshot }
   | { readonly type: "session.selected"; readonly sessionId: string }
   | { readonly type: "workspace.toggled"; readonly workspaceId: string }
@@ -80,6 +113,8 @@ export function emptyGuiState(): GuiState {
       recentSessionIds: [],
     },
     local: {
+      transcriptScrollTop: 0,
+      sessionViews: {},
       selectedSessionId: null,
       drafts: {},
       selectedDocuments: {},
@@ -99,19 +134,27 @@ export function emptyGuiState(): GuiState {
 
 export function guiReducer(state: GuiState, action: GuiAction): GuiState {
   switch (action.type) {
+    case "sync.failed":
+      return requireResync(state, action.message);
+    case "transcript.scrolled":
+      if (action.sessionId !== state.local.selectedSessionId || !Number.isFinite(action.scrollTop)) return state;
+      return { ...state, local: { ...state.local, transcriptScrollTop: Math.max(0, action.scrollTop) } };
     case "snapshot.installed":
       return installSnapshot(state, action.snapshot);
     case "session.selected": {
       const session = state.remote.sessions[action.sessionId];
       if (!session) return state;
+      if (state.local.selectedSessionId === action.sessionId) return state;
+      const previous = state.local.selectedSessionId ? state.remote.sessions[state.local.selectedSessionId] : undefined;
+      const views = { ...state.local.sessionViews };
+      if (previous) views[viewKey(previous)] = sessionView(previous, state.local);
       return {
         ...state,
         local: {
           ...state.local,
+          ...sessionView(session, views[viewKey(session)]),
+          sessionViews: views,
           selectedSessionId: action.sessionId,
-          selectedTaskId: session.run?.currentTaskId ?? null,
-          selectedAgentRunId: session.run?.agentRuns[0]?.id ?? null,
-          taskListOpen: false,
           quickLookDocumentId: null,
           unread: { ...state.local.unread, [action.sessionId]: false },
         },
@@ -233,6 +276,13 @@ function installSnapshot(state: GuiState, snapshot: ClientSnapshot): GuiState {
         ? snapshot.selectedSessionId
         : (sessionIds[0] ?? null);
   const selectedSession = selectedSessionId ? sessions[selectedSessionId] : undefined;
+  const views = { ...state.local.sessionViews };
+  const previousSession = priorSelection ? state.remote.sessions[priorSelection] : undefined;
+  if (previousSession) views[viewKey(previousSession)] = sessionView(previousSession, state.local);
+  const retainedViews = Object.fromEntries(snapshot.sessions.flatMap((session) => {
+    const key = viewKey(session);
+    return views[key] ? [[key, sessionView(session, views[key])]] : [];
+  }));
 
   return {
     remote: {
@@ -248,13 +298,13 @@ function installSnapshot(state: GuiState, snapshot: ClientSnapshot): GuiState {
     },
     local: {
       ...state.local,
+      ...(selectedSession ? sessionView(selectedSession, retainedViews[viewKey(selectedSession)]) : {}),
+      sessionViews: retainedViews,
       selectedSessionId,
       drafts,
       selectedDocuments,
       unread,
       expandedWorkspaces,
-      selectedTaskId: selectedSession?.run?.currentTaskId ?? null,
-      selectedAgentRunId: selectedSession?.run?.agentRuns[0]?.id ?? null,
       quickLookDocumentId: null,
     },
     diagnostic: null,
@@ -262,6 +312,10 @@ function installSnapshot(state: GuiState, snapshot: ClientSnapshot): GuiState {
 }
 
 function applyEvent(state: GuiState, event: ClientEvent): GuiState {
+  // Only an authoritative snapshot can recover a disconnected or gapped stream.
+  if (state.remote.connection === "disconnected" || state.remote.connection === "resync-required") {
+    return state;
+  }
   if (event.generation !== state.remote.generation) {
     return requireResync(state, `Ignored event ${event.id}: stale generation.`);
   }
@@ -294,8 +348,8 @@ function applyEvent(state: GuiState, event: ClientEvent): GuiState {
     local: {
       ...state.local,
       selectedTaskId:
-        !isInactive && updated.run?.currentTaskId
-          ? updated.run.currentTaskId
+        !isInactive && !updated.run?.tasks.some((task) => task.id === state.local.selectedTaskId)
+          ? updated.run?.currentTaskId ?? null
           : state.local.selectedTaskId,
       unread: isInactive
         ? { ...state.local.unread, [event.sessionId]: true }
@@ -305,7 +359,8 @@ function applyEvent(state: GuiState, event: ClientEvent): GuiState {
   };
 }
 
-function reduceSession(session: SessionSnapshot, event: ClientEvent): SessionSnapshot {
+// Shared fixture projection fold: no UI-local state or service-side execution.
+export function reduceSession(session: SessionSnapshot, event: ClientEvent): SessionSnapshot {
   switch (event.type) {
     case "execution.accepted":
       return {

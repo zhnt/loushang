@@ -4,6 +4,35 @@ import type { ClientEvent } from "../src/client/model";
 import { emptyGuiState, guiReducer } from "../src/client/state";
 
 describe("GUI client state", () => {
+  it("restores Session dock choices and keeps inspected Tasks independent of progress", async () => {
+    const client = createMockAppClient();
+    const snapshot = await client.snapshot();
+    let state = guiReducer(emptyGuiState(), { type: "snapshot.installed", snapshot });
+    state = guiReducer(state, { type: "task.selected", taskId: "task-review" });
+    client.subscribe((event) => { state = guiReducer(state, { type: "event.received", event }); });
+    await client.advanceFixture();
+    await client.advanceFixture();
+    expect(state.remote.sessions["session-gui"].run?.currentTaskId).toBe("task-model");
+    expect(state.local.selectedTaskId).toBe("task-review");
+    state = guiReducer(state, { type: "session.selected", sessionId: "session-ontology" });
+    expect(state.local.dockTab).toBe("environment");
+    state = guiReducer(state, { type: "dock.closed" });
+    state = guiReducer(state, { type: "session.selected", sessionId: "session-gui" });
+    expect(state.local.dockTab).toBe("tasks");
+    expect(state.local.dockOpen).toBe(true);
+    expect(state.local.selectedTaskId).toBe("task-review");
+    state = guiReducer(state, { type: "snapshot.installed", snapshot });
+    expect(state.local.selectedTaskId).toBe("task-review");
+    state = guiReducer(state, { type: "session.selected", sessionId: "session-ontology" });
+    expect(state.local.dockOpen).toBe(false);
+    state = guiReducer(state, { type: "snapshot.installed", snapshot: {
+      ...snapshot, sessions: snapshot.sessions.map((session) => ({ ...session,
+        context: { ...session.context, applicationId: "replacement-application" },
+      })),
+    } });
+    expect(state.local.dockOpen).toBe(true);
+  });
+
   it("keeps local Workspace, draft, activity and review choices outside remote facts", async () => {
     const snapshot = await createMockAppClient().snapshot();
     let state = guiReducer(emptyGuiState(), { type: "snapshot.installed", snapshot });
@@ -64,6 +93,18 @@ describe("GUI client state", () => {
     const gapState = guiReducer(state, { type: "event.received", event: gap });
     expect(gapState.remote.connection).toBe("resync-required");
     expect(gapState.diagnostic).toContain("cursor gap");
+    const contiguous = { ...gap, cursor: (BigInt(taskUpdate!.cursor) + 1n).toString() };
+    expect(guiReducer(gapState, { type: "event.received", event: contiguous })).toBe(gapState);
+    const recovered = guiReducer(gapState, {
+      type: "snapshot.installed",
+      snapshot: { ...snapshot, sessions: snapshot.sessions.map((session) => state.remote.sessions[session.id]) },
+    });
+    expect(recovered.diagnostic).toBeNull();
+    expect(guiReducer(recovered, { type: "event.received", event: contiguous }).remote.sessions["session-gui"].cursor).toBe(contiguous.cursor);
+    const disconnected = guiReducer(state, {
+      type: "snapshot.installed", snapshot: { ...snapshot, connection: "disconnected" },
+    });
+    expect(guiReducer(disconnected, { type: "event.received", event: activity! })).toBe(disconnected);
 
     const invalid = { ...gap, id: "invalid", cursor: "not-a-number" } as ClientEvent;
     expect(guiReducer(state, { type: "event.received", event: invalid }).diagnostic).toContain("invalid cursor");
