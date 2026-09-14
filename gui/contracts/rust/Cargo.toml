@@ -3,9 +3,13 @@ name = "gui-c1-contract-probe"
 version = "0.1.0"
 edition = "2021"
 publish = false
+default-run = "gui-c1-contract-probe"
 
 [workspace]
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["raw_value"] }
+hmac = "0.12.1"
+sha2 = "0.10.9"
+getrandom = "0.2.17"

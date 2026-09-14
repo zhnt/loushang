@@ -25,6 +25,7 @@
     "check:contract": "tsc -p contracts/tsconfig.json && node ../scripts/gui/check-contract.mjs",
     "contract:generate": "uv run python ../scripts/gui/generate_contract_types.py --write",
     "contract:check-generated": "uv run python ../scripts/gui/generate_contract_types.py",
+    "check:auth-contract": "uv run python ../scripts/gui/check_auth_interop.py",
     "build": "node ../scripts/gui/run.mjs build-native",
     "build:fixture-native": "node ../scripts/gui/run.mjs build-fixture-native",
     "preview": "vite preview",

@@ -88,8 +88,10 @@ silently sharing one mux.
 
 1. **Implemented preparation:** generated candidate DTOs and drift check,
    independent existing value probes. No native socket or credentials involved.
-2. **Pending transport:** Rust framing/authentication plus Python interoperability
-   evidence, native record-admission tests and cancellation/timeout cleanup.
+2. **Partial transport evidence:** [Rust/Python authentication over pipes](authentication-evidence.md)
+   is implemented. Production transport, native record-admission tests and
+   cancellation/timeout cleanup remain pending; the blocking probe is not the
+   native adapter.
 3. **Pending attachment:** request/response codec parity, ownership conflicts,
    initial execution snapshots and stale-attempt isolation through a native port.
 4. **Pending acceptance:** real shared AppHost connection, read-only native GUI

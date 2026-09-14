@@ -6,6 +6,9 @@ The [contract generation and native connection plan](connection-plan.md) now
 records the selected reference inputs, generated candidate DTOs and the exact
 authentication/attachment/snapshot sequence. Only the type-generation preparation
 is implemented; native transport and connection acceptance remain pending.
+An additional [authentication pipe experiment](authentication-evidence.md) now
+checks the Rust client against the Python server, without enabling native GUI
+connections or reading private records.
 
 ## Consolidation review: 2026-09-14
 
