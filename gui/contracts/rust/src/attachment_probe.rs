@@ -155,7 +155,7 @@ pub fn run<R: Read, W: Write>(channel: &mut Channel<R, W>, instance: &str) -> Re
     let response = request(
         channel,
         "mux/attach",
-        "attach",
+        "1",
         json!({"selector":{"muxSpaceId":null,"name":"gui-fixture"},"mailboxCapacity":256}),
     )?;
     // Any attach error/conflict closes this attempt; never take over or retry.
@@ -167,7 +167,7 @@ pub fn run<R: Read, W: Write>(channel: &mut Channel<R, W>, instance: &str) -> Re
     let snapshots = (|| {
         let mut pending = Vec::new();
         for (index, session) in attachment.sessions.iter().enumerate() {
-            let id = format!("snapshot-{index}");
+            let id = (index + 2).to_string();
             let payload = Request {
                 protocol_version: "loushang.execution/v1",
                 request_id: &id,
@@ -205,7 +205,7 @@ pub fn run<R: Read, W: Write>(channel: &mut Channel<R, W>, instance: &str) -> Re
     let detached = request(
         channel,
         "mux/detach",
-        "detach",
+        &(attachment.sessions.len() + 2).to_string(),
         Detach {
             attachment_id: &attachment.attachment_id,
             controller_generation: &attachment.controller_generation,

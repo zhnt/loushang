@@ -79,6 +79,7 @@ async def scenario(root: Path, mode: str) -> None:
             assert await channel.receive() == hello
             call = decode_request(await channel.receive())
             assert call.operation is pm.AppOperationV1.MUX_ATTACH
+            assert call.request_id == "1"
             assert call.payload.selector.name == "gui-fixture"
             seen.append("attach")
             if mode == "already-attached":
@@ -106,6 +107,7 @@ async def scenario(root: Path, mode: str) -> None:
             for index, session in enumerate(attachment.sessions):
                 call = decode_call(await channel.receive())
                 assert call.operation is em.ExecutionOperationV1.SNAPSHOT
+                assert call.request_id == str(index + 2)
                 assert (
                     call.control.attachment_id == "attachment"
                     and call.control.controller_generation == GENERATION
@@ -149,6 +151,7 @@ async def scenario(root: Path, mode: str) -> None:
                 await channel.send(raw)
             call = decode_request(await channel.receive())
             assert call.operation is pm.AppOperationV1.MUX_DETACH
+            assert call.request_id == str(len(attachment.sessions) + 2)
             assert (
                 call.payload.attachment_id == "attachment"
                 and call.payload.controller_generation == GENERATION
