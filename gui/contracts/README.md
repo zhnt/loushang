@@ -68,8 +68,9 @@ fixture, Python execution/source snapshot constructors, and all ten
 `SessionEventKindV1` values. The Python reference codec validates each sample
 before the independent Rust and TypeScript probes process it.
 
-Coverage is deliberately restricted to idle composite snapshots (null
-observation/active/latestTerminal and empty draft) and content-event batches.
+The initial slice covers idle composite snapshots (null
+observation/active/latestTerminal and empty draft) and content-event batches;
+the state increment below extends this coverage.
 The source cursor/revision and content event cursor become lossless decimal
 strings in the candidate bridge. Execution-view revision remains a JS-safe
 number. Zero is allowed for source counters, but not for event cursors.
@@ -85,12 +86,33 @@ Literal assertions for Chinese titles/text and emoji prevent equally damaged
 expected/actual strings from masquerading as encoding fidelity. Earlier
 equality-only Unicode evidence is superseded by these explicit assertions.
 
+## State and metadata-update increment
+
+Snapshots now cover accepted/running executions and succeeded/failed/interrupted
+terminal states. A terminal state requires a matching outcome, only failure
+allows an errorCode, and legacyResult admits Ack or one of the existing closed
+AppFailure codes. Active slots cannot contain terminal states, and latestTerminal
+cannot contain active states. All nullable fields must still be explicit.
+
+Source observations cannot report `accepted`: that is an AppService admission
+state, not evidence that the Product has started. Running observations have no
+finalCursor; terminal observations require a JS-safe finalCursor no greater than
+the source cursor. Nonempty draft belongs only to running observation and is
+bounded to 16,384 characters. Quiescent observations cannot be running.
+
+Event batches can mix content events with execution metadata updates. Content
+cursors retain the decimal-string bridge; update revision, execution-state
+revision and finalCursor retain JS-safe numeric bounds. Update revision must be
+positive, whereas execution-state revision may be zero. These revisions have
+different scopes: the codec does not order them against each other. A vector
+explicitly preserves that distinction. These checks do not introduce stronger
+causal/order invariants than the reference model or perform a recovery algorithm.
+
 ## Explicit limits
 
 This probe checks hello value compatibility, not live handshake/profile selection,
 authentication,
-framing, requests other than submit, app_failure, running/terminal snapshots,
-execution metadata updates, stream ordering/gap recovery,
+framing, requests other than submit, top-level app_failure, stream ordering/gap recovery,
 Workspace/ChangeSet capabilities, live bridge IPC or GUI/TUI concurrency. It
 does not claim exhaustive parity for arbitrary Unicode/JSON inputs. Error
 presentation/retry policy and reverse bridge-to-wire encoding remain future
@@ -113,6 +135,11 @@ The hello increment adds 30 vectors across the two profiles. Combined result:
 63 vectors (15 accepted, 48 rejected), including TypeScript bridge mutation
 checks. All other acceptance limits above remain unchanged.
 
-The idle snapshot/content-event increment adds 47 vectors. Current total:
+The idle snapshot/content-event increment adds 47 vectors. Subtotal:
 110 vectors (37 accepted, 73 rejected), plus bridge-only mutations and literal
 Unicode assertions. No real snapshot acquisition or event subscription occurs.
+
+The state/metadata-update increment adds 66 vectors. Current total: 176 vectors
+(69 accepted, 107 rejected), plus TypeScript bridge mutations. Rust fmt/clippy,
+Python Ruff and the existing GUI engineering checks passed. No default CI gate
+was added; invoke this evidence with `pnpm --dir gui run check:contract`.

@@ -100,7 +100,8 @@ for (const line of lines) {
       bad.result.executions.revision = "1";
       assert.throws(() => validate(vector.kind, bad));
     } else if (bad.result.events.length > 0) {
-      bad.result.events[0].source.cursor = 1;
+      if ("source" in bad.result.events[0]) bad.result.events[0].source.cursor = 1;
+      else bad.result.events[0].revision = "1";
       assert.throws(() => validate(vector.kind, bad));
     }
   } else {

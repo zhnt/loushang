@@ -1,4 +1,4 @@
-"""Model-generated idle snapshot/content-event evidence; not runtime fixtures."""
+"""Model-checked snapshot/event evidence, including states; not runtime fixtures."""
 
 import copy
 import json
@@ -143,6 +143,9 @@ def emit_projection_vectors() -> None:
         else:
             source["unexpected"] = True
         add(name, "events", value, False)
+    from state_vectors import append_state_vectors
+
+    append_state_vectors(cases, base, event_batch())
     for name, kind, wire, valid in cases:
         try:
             expected = json.loads(encode_response(decode_response(wire.encode())))
@@ -152,7 +155,8 @@ def emit_projection_vectors() -> None:
                     source[field] = str(source[field])
             else:
                 for event in expected["result"]["events"]:
-                    event["source"]["cursor"] = str(event["source"]["cursor"])
+                    if "source" in event:
+                        event["source"]["cursor"] = str(event["source"]["cursor"])
             accepted = True
         except InvalidAppMessageError:
             expected, accepted = None, False
