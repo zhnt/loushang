@@ -60,6 +60,10 @@ window that expects a running localhost development server.
 
 ## Browser layout playback
 
+For the optional Python → Rust → TypeScript C1 execution contract slices,
+see [contract probe](contracts/README.md) and run `pnpm --dir gui run check:contract`.
+It is separate from default checks and does not connect the GUI to AppHost.
+
 From the repository root:
 
 ```text
