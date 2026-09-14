@@ -90,9 +90,10 @@ silently sharing one mux.
    independent existing value probes. No native socket or credentials involved.
 2. **Partial transport evidence:** [Rust/Python authentication over pipes](authentication-evidence.md)
    is implemented, as is [Windows private-file admission](windows-record-evidence.md)
-   with native fixtures. Complete service-record decoding, production transport
-   and cancellation/timeout cleanup remain pending; the isolated probes are not
-   the native adapter.
+   with native fixtures. [Closed service-record decoding](record-values-evidence.md)
+   is now composed into the file and authentication probes separately.
+   Production transport and cancellation/timeout cleanup remain pending; the
+   isolated probes are not the native adapter.
 3. **Pending attachment:** request/response codec parity, ownership conflicts,
    initial execution snapshots and stale-attempt isolation through a native port.
 4. **Pending acceptance:** real shared AppHost connection, read-only native GUI

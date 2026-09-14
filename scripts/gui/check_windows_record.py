@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ctypes as C
 import hashlib
+import json
 import os
 import subprocess
 import tempfile
@@ -11,7 +12,7 @@ from ctypes import wintypes as W
 from pathlib import Path
 
 from loushang.appserver._windows_local_record import _WindowsRecordFiles
-from loushang.appserver.local_record import LocalRecordError
+from loushang.appserver.local_record import LocalConnectionDirectoryV1, LocalRecordError
 
 ROOT = Path(__file__).resolve().parents[2]
 CRATE = ROOT / "gui/contracts/rust"
@@ -100,6 +101,63 @@ def scenario(parent: Path, kind: str) -> None:
         files.close()
 
 
+def combined_record(parent: Path, mode: str) -> None:
+    root = parent / f"combined-{mode}"
+    files = _WindowsRecordFiles(root)
+    selected_profile = "local-detachable-execution/v1"
+    payload = json.loads(
+        (ROOT / "gui/contracts/fixtures/local-record.json").read_bytes()
+    )
+    if mode == "endpoint":
+        payload["endpoint"] = "other"
+    elif mode == "profile":
+        selected_profile = "local-detachable/v1"
+    name = hashlib.sha256(b"workspace").hexdigest() + ".json"
+    try:
+        files.prepare(create=True)
+        fd = files.open(name, "new")
+        try:
+            raw = json.dumps(payload).encode()
+            assert os.write(fd, raw) == len(raw)
+        finally:
+            files.close_descriptor(fd)
+        if mode == "acl":
+            set_dacl(root / name, files.api, "world")
+        reader = LocalConnectionDirectoryV1(root)
+        expected = None
+        try:
+            record = reader.read("workspace")
+            if record.semantic_profile.value == selected_profile:
+                public = dict(payload)
+                del public["key"]
+                expected = {
+                    "public": public,
+                    "semanticProfile": selected_profile,
+                    "recordDigest": record.authentication.record_digest.hex(),
+                    "filename": name,
+                }
+        except LocalRecordError:
+            pass
+        finally:
+            reader.close()
+        assert (expected is not None) == (mode == "valid")
+        result = subprocess.run(
+            [str(EXE), "--decode-record", str(root), "workspace", selected_profile],
+            capture_output=True,
+            timeout=10,
+        )
+        if expected is not None:
+            assert result.returncode == 0 and not result.stderr
+            assert json.loads(result.stdout) == expected
+        else:
+            assert result.returncode == 1 and not result.stdout
+            assert result.stderr == b"record admission failed\n"
+    finally:
+        if mode == "acl":
+            set_dacl(root / name, files.api, "private")
+        files.close()
+
+
 def junction(parent: Path) -> None:
     target, link = parent / "valid", parent / "junction"
     command = Path(os.environ["SystemRoot"]) / "System32/cmd.exe"
@@ -154,4 +212,7 @@ if __name__ == "__main__":
             print(f"Windows record admission: {kind} passed", flush=True)
         junction(parent)
         print("Windows record admission: junction passed")
-    print("Native Rust/Python record admission: 11 scenarios passed")
+        for mode in ("valid", "endpoint", "profile", "acl"):
+            combined_record(parent, mode)
+            print(f"Combined record admission: {mode} passed")
+    print("Native Rust/Python record admission: 15 scenarios passed")

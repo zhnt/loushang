@@ -8,6 +8,9 @@ native record admission, socket connection or B2 acceptance.
 An isolated Rust binary `auth_probe` authenticates as a client against the
 existing Python `authenticate_local_server`, exchanging real framed bytes over
 child-process pipes. Both sides use public synthetic fixture credentials;
+the current experiment derives them from the same decoded
+[record fixture](fixtures/local-record.json), including the canonical public
+record digest, rather than using unrelated digest constants.
 the binary has no real-record or credential-input API. Client nonces use OS
 randomness. HMAC-SHA256 generation and constant-time verification use RustCrypto
 `hmac`/`sha2`, not a handwritten primitive. Dependencies are locked in the
@@ -66,8 +69,9 @@ file links, and root/path identity rechecks. Reading by an admitted handle and
 closing it safely are part of this obligation, not just parsing record fields.
 
 The subsequent [Windows private-file experiment](windows-record-evidence.md)
-implements handle/ACL admission and tests it on native fixtures. Complete
-service-record decoding and production IO cancellation remain pending. The GUI stays
+implements handle/ACL admission and tests it on native fixtures.
+[Record decoding](record-values-evidence.md) is also implemented in the probes;
+production connection composition and IO cancellation remain pending. The GUI stays
 offline and this probe must not be promoted to a Tauri command. Subsequent
 attachment and composite-snapshot work still follows
 [the connection plan](connection-plan.md).

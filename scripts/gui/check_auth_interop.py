@@ -14,15 +14,15 @@ from contextlib import suppress
 from pathlib import Path
 
 from loushang.appserver.framing import AppConnectionClosedError
-from loushang.appserver.local_auth import (
-    LocalAuthenticationV1,
-    authenticate_local_server,
-)
+from loushang.appserver.local_auth import authenticate_local_server
+from loushang.appserver.local_record import decode_connection_record
 
 ROOT = Path(__file__).resolve().parents[2]
 CRATE = ROOT / "gui/contracts/rust"
 EXE = CRATE / "target/debug" / ("auth_probe.exe" if os.name == "nt" else "auth_probe")
-CREDENTIALS = LocalAuthenticationV1("a" * 32, bytes(range(32, 64)), bytes(range(32)))
+CREDENTIALS = decode_connection_record(
+    (ROOT / "gui/contracts/fixtures/local-record.json").read_bytes()
+).authentication
 
 
 class PipeTransport:

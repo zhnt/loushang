@@ -4,6 +4,9 @@ use hmac::{Hmac, Mac};
 use serde::Deserialize;
 use sha2::Sha256;
 use std::io::{self, Read, Write};
+#[allow(dead_code)]
+#[path = "../record_value.rs"]
+mod record_value;
 
 const MESSAGE: usize = 1_048_576;
 type Mac256 = Hmac<Sha256>;
@@ -103,18 +106,21 @@ struct Channel<R, W> {
 impl<R: Read, W: Write> Channel<R, W> {
     // Public fixture material only. No record admission or real credential API.
     fn authenticate(mut frames: Frames<R, W>) -> Result<Self> {
+        let record =
+            record_value::Record::decode(include_bytes!("../../../fixtures/local-record.json"))?;
+        record.selected("workspace", "local-detachable-execution/v1")?;
         let challenge: Challenge = serde_json::from_slice(&frames.receive()?).map_err(|_| ())?;
         if challenge.profile != "local-detachable/v1"
             || challenge.protocol != "loushang.app/v1"
-            || challenge.instance != "a".repeat(32)
+            || challenge.instance != record.instance
         {
             return Err(());
         }
         let server_nonce = unhex(&challenge.server_nonce)?;
         let mut client_nonce = [0; 32];
         getrandom::getrandom(&mut client_nonce).map_err(|_| ())?;
-        let key: Vec<u8> = (0..32).collect();
-        let digest: Vec<u8> = (32..64).collect();
+        let key = record.key()?;
+        let digest = record.digest()?;
         let mut transcript = b"local-detachable/v1\0loushang.app/v1\0".to_vec();
         transcript.extend(&digest);
         transcript.extend(server_nonce);

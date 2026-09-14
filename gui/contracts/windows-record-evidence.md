@@ -11,6 +11,9 @@ The isolated `record_probe` binary follows the handle admission behavior in
 in `_local_record_files.py`. Its command accepts an explicit local-drive root
 and reads only the fixed synthetic filename `fixture-record`; it neither
 discovers endpoints nor accepts a record name supplied by the WebView.
+The subsequent [record-decoding composition](record-values-evidence.md) adds an
+explicit `--decode-record` probe mode using endpoint-derived filenames; this is
+not exposed as a native GUI operation.
 
 - Open directory/file with `FILE_FLAG_OPEN_REPARSE_POINT`; keep the directory
   handle open without delete sharing. Reject reparse points, wrong object kinds
@@ -48,10 +51,10 @@ it does not modify any existing service record or user permissions.
 
 ## Still pending
 
-This is **file admission**, not **service-record admission**. The synthetic
-payload need not even be JSON. Closed record fields, canonical public-record
-digest, endpoint name/path binding, capabilities/profile, instance, port, scope
-and key validation still need the complete record decoder before connecting.
+The original file-only mode still accepts synthetic payloads that need not be
+JSON. Closed record fields, canonical digest and endpoint/profile validation
+now have [separate and composed evidence](record-values-evidence.md), including
+four additional Windows cases (15 total). Production connection remains pending.
 
 The implementation has post-read identity checks, but this experiment does not
 yet inject concurrent replacement or ownership changes to prove all race paths.

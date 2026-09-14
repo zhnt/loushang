@@ -27,6 +27,7 @@
     "contract:check-generated": "uv run python ../scripts/gui/generate_contract_types.py",
     "check:auth-contract": "uv run python ../scripts/gui/check_auth_interop.py",
     "check:record-contract": "uv run python ../scripts/gui/check_windows_record.py",
+    "check:record-values": "uv run python ../scripts/gui/check_record_values.py",
     "build": "node ../scripts/gui/run.mjs build-native",
     "build:fixture-native": "node ../scripts/gui/run.mjs build-fixture-native",
     "preview": "vite preview",
