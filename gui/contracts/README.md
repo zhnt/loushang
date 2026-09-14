@@ -2,6 +2,50 @@
 
 Status: **partial C1 evidence**, not a production adapter or accepted full codec.
 
+## Consolidation review: 2026-09-14
+
+The four local probe slices are one offline compatibility work item, not four
+production integration milestones. Their scope is measured against
+[bootstrap plan section 6](../../docs/internals/architecture/drafts/gui-engineering-bootstrap-plan.md#6-appclient-跨语言接入与生命周期).
+The GUI still uses fixtures; these validators are not imported by its runtime.
+
+| Obligation | Evidence retained | Remaining work before claiming coverage |
+| --- | --- | --- |
+| Submit and execution failures | Closed shapes, counter boundaries, known error codes | Other requests/responses, top-level AppFailure, reverse encoding |
+| Hello/profile compatibility | Exact canonical bytes and two expected execution profiles | Service-record capabilities, authenticated negotiation; no silent fallback |
+| Snapshots and events | Idle/active/terminal values, content/update batches, identity and bounds | Actual acquisition, ordering, deduplication, gaps and snapshot barriers |
+| Rust-to-TypeScript values | Lossless decimal source counters/generations; safe numeric execution counters; literal Unicode | Accepted bridge contract, production IPC, complete generated types |
+| Transport and trust | None; process pipes only | Framing, private-record validation, mutual authentication, sequence integrity, timeouts and bounded concurrent requests |
+| Attachment and recovery | None; values are independently validated | Controller ownership, stale-generation isolation, missing-submit-response lookup, instance changes and cleanup |
+| Workspace/ChangeSet facets | B1 fixture presentation only, not evidence from this probe | Accepted capability/value contracts, identity/source revision, limits and errors |
+| Native/shared-service acceptance | None from these probes | Real GUI connection and coexistence with Hosted Mux, plus native manual acceptance |
+
+Passing vectors establish sampled value compatibility, not state-transition or
+transport correctness. Keep the existing boundary/negative vectors and Unicode
+assertions; do not expand case counts merely to suggest readiness.
+
+### Next delivery boundary
+
+1. Resolve the complete versioned contract source and generation path with the
+   AppServer protocol owner. The handwritten probe validators remain test-only;
+   do not copy them into a production adapter as a complete schema.
+2. Extend compatibility evidence only for the operations and trust/lifecycle
+   obligations required by the first connection. Add reverse encoding evidence,
+   rather than relying on Python-to-Rust-to-TypeScript projection alone.
+3. Then implement a bounded B2 connection slice through the existing AppHost
+   application: explicit profile, authenticated connection, attachment and initial
+   snapshot, followed by safe detach. Keep submit/recovery acceptance separate;
+   do not expose a live Send button on connection success alone.
+
+Workspace/ChangeSet integration remains pending its own accepted contracts;
+execution connectivity must not silently turn fixture repository data into live
+data. No service ownership or shared runtime API change is accepted by this
+review. C1 remains partial and B2 is not declared ready.
+
+This work keeps `check:contract` opt-in. It adds no default CI, TUI, Harness,
+browser or native-packaging gate. Reuse passing evidence when its relevant
+implementation has not changed; native manual acceptance remains distinct.
+
 Run from the repository root:
 
 ```text
@@ -127,19 +171,18 @@ No C1/B2 acceptance or real-service readiness follows from this probe passing.
 ## Recorded result
 
 2026-09-14, Windows x86_64, Node 24.19.0 / Rust 1.98.1:
-`check:contract` passed 33 vectors (13 accepted, 20 rejected), plus TypeScript
-bridge-only rejection assertions. Rust fmt/clippy and Python Ruff passed.
-This is offline process-pipeline evidence, not native WebView/IPC evidence.
+`check:contract` passed **176 vectors (69 accepted, 107 rejected)**, plus
+TypeScript bridge mutations and literal Unicode assertions. Rust fmt/clippy,
+Python Ruff and the existing GUI engineering checks passed in the implementation
+turns. This documentation consolidation does not represent a new execution of
+those checks or native WebView/IPC acceptance.
 
-The hello increment adds 30 vectors across the two profiles. Combined result:
-63 vectors (15 accepted, 48 rejected), including TypeScript bridge mutation
-checks. All other acceptance limits above remain unchanged.
+| Local implementation commit | Increment | Cumulative vectors |
+| --- | --- | --- |
+| `05e955c0` | Submit/failure: 33 | 33 |
+| `88b2885b` | Hello: 30 | 63 |
+| `faa0fabd` | Idle snapshot/content: 47 | 110 |
+| `32a346d0` | State/metadata: 66 | 176 |
 
-The idle snapshot/content-event increment adds 47 vectors. Subtotal:
-110 vectors (37 accepted, 73 rejected), plus bridge-only mutations and literal
-Unicode assertions. No real snapshot acquisition or event subscription occurs.
-
-The state/metadata-update increment adds 66 vectors. Current total: 176 vectors
-(69 accepted, 107 rejected), plus TypeScript bridge mutations. Rust fmt/clippy,
-Python Ruff and the existing GUI engineering checks passed. No default CI gate
-was added; invoke this evidence with `pnpm --dir gui run check:contract`.
+No real snapshot acquisition, subscription or service authentication occurs.
+Reproduce this offline evidence with `pnpm --dir gui run check:contract`.
