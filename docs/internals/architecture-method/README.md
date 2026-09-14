@@ -44,6 +44,9 @@ Start with the relevant route:
 - [Change Tailoring](change-tailoring.md): select the necessary work for this change;
 - [Requirement artifacts](#85-requirement-artifacts-and-change-management): manage
   scope requirements, stable identities, acceptance and verification;
+- [Human-facing interface specifications](design-guidance.md#turn-reference-interfaces-into-verifiable-specifications):
+  turn user outcomes and reference evidence into observable navigation, state,
+  action, accessibility and degradation contracts;
 - [Architecture Decisions](architecture-decisions.md): record background,
   options, rationale and acceptance in one ARD;
 - [Key Designs](key-designs.md): select significant concerns and explain their
@@ -318,6 +321,17 @@ A specification freezes observable behavior: public APIs, protocols, state
 transitions, error and cancellation behavior, serialization, interaction
 contracts, and compatibility rules. Architecture assigns responsibility;
 specification makes a selected boundary precise.
+
+A human-facing interface specification is the same artifact class applied to a
+GUI, TUI, CLI, web or multimodal surface. It can freeze information hierarchy,
+navigation, placement, visible states and actions, focus, keyboard,
+accessibility, responsive behavior and capability degradation. It must link
+each dynamic value or command to its fact/capability owner and must not infer
+backend identity or authority from visual placement. Reference screenshots and
+external product documentation remain descriptive evidence until a local
+requirement or specification adopts a behavior. Use the
+[interface specification guidance](design-guidance.md#turn-reference-interfaces-into-verifiable-specifications)
+and [template](templates/interface-specification.md) for a substantial surface.
 
 This distinction applies at every scope, not only across an external/internal
 divide. An external API can have a specification; an internal component can

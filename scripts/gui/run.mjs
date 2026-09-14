@@ -1,13 +1,32 @@
 import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const guiDir = path.resolve(scriptDir, "..", "..", "gui");
 const manifest = path.join(guiDir, "src-tauri", "Cargo.toml");
-const cargo = process.platform === "win32" ? "cargo.exe" : "cargo";
-const rustc = process.platform === "win32" ? "rustc.exe" : "rustc";
+const cargo = rustTool("cargo");
+const rustc = rustTool("rustc");
 const pnpmEntry = process.env.npm_execpath;
+const childEnv = path.isAbsolute(cargo)
+  ? {
+      ...process.env,
+      PATH: `${path.dirname(cargo)}${path.delimiter}${process.env.PATH ?? ""}`,
+    }
+  : process.env;
+
+function rustTool(name) {
+  const executable = process.platform === "win32" ? `${name}.exe` : name;
+  const userRoot = process.platform === "win32"
+    ? process.env.USERPROFILE
+    : process.env.HOME;
+  if (userRoot) {
+    const userInstall = path.join(userRoot, ".cargo", "bin", executable);
+    if (existsSync(userInstall)) return userInstall;
+  }
+  return executable;
+}
 
 if (!pnpmEntry) {
   process.stderr.write("Run this script through a pnpm package command.\n");
@@ -27,6 +46,7 @@ function run(command, args) {
   process.stdout.write(`> ${rendered}\n`);
   const result = spawnSync(command, args, {
     cwd: guiDir,
+    env: childEnv,
     stdio: "inherit",
   });
   if (result.error) {
@@ -41,6 +61,7 @@ function run(command, args) {
 function capture(command, args) {
   const result = spawnSync(command, args, {
     cwd: guiDir,
+    env: childEnv,
     encoding: "utf8",
   });
   if (result.error || result.status !== 0) {
@@ -78,16 +99,27 @@ function buildWeb() {
   runPnpm(["exec", "vite", "build"]);
 }
 
+function runNative(command, fixtureBridge = false) {
+  const args = ["exec", "tauri", command];
+  if (command === "build") args.push("--no-bundle");
+  if (fixtureBridge) args.push("--features", "fixture-bridge");
+  runPnpm(args);
+}
+
 function check() {
   runPnpm(["exec", "tsc", "--noEmit"]);
+  runPnpm(["exec", "vitest", "run"]);
 }
 
 function checkFull() {
   doctor();
   buildWeb();
+  runPnpm(["exec", "vitest", "run"]);
   run(cargo, ["fmt", "--manifest-path", manifest, "--", "--check"]);
   run(cargo, ["clippy", "--locked", "--manifest-path", manifest, "--all-targets", "--", "-D", "warnings"]);
+  run(cargo, ["clippy", "--locked", "--manifest-path", manifest, "--all-targets", "--features", "fixture-bridge", "--", "-D", "warnings"]);
   run(cargo, ["check", "--locked", "--manifest-path", manifest]);
+  run(cargo, ["check", "--locked", "--manifest-path", manifest, "--features", "fixture-bridge"]);
 }
 
 const mode = process.argv[2];
@@ -100,6 +132,14 @@ try {
     check();
   } else if (mode === "check-full") {
     checkFull();
+  } else if (mode === "dev-native") {
+    runNative("dev");
+  } else if (mode === "dev-fixture-native") {
+    runNative("dev", true);
+  } else if (mode === "build-native") {
+    runNative("build");
+  } else if (mode === "build-fixture-native") {
+    runNative("build", true);
   } else {
     throw new Error(`unknown GUI command mode: ${mode ?? "<missing>"}`);
   }

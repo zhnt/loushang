@@ -13,6 +13,7 @@
 - Execution contract update: `d89c4c9f` on `main` (PR #580), inspected 2026-09-09
 - Target architecture: [Loushang Future Target Architecture V3.1](future-loushang-architecture-v3.1.md)
 - Reference evidence: [GUI reference system inventory](gui-reference-system-inventory.md)
+- Interface specification: [HarnessGUI interface specification](gui-interface-specification.md)
 - Design stage: black-box framing; component discovery follows separately
 
 本文承接 [GUI 需求](gui-requirements.md)，完成逻辑上下文、物理上下文、职责与
@@ -31,8 +32,10 @@
 仍需父级 placement decision 接受后登记；`gui/` 是工程建议，不能替代该决策。
 
 首期覆盖 GUI-B0/B1/C1/B2/B3；浏览器插件执行、富产物协议扩展、公开发行和
-远程服务连接是后续交付。本文不提前冻结内部组件、React 状态库、Rust 模块、
-桌面布局或自动化 driver。工程启动方案中的目录和责任簇仍是设计输入。
+远程服务连接是后续交付。本文不提前冻结内部组件、React 状态库、Rust 模块或
+自动化 driver；桌面布局由独立的
+[界面规约](gui-interface-specification.md) 管理，不能反向改变本文的 authority
+与寿命边界。工程启动方案中的目录和责任簇仍是设计输入。
 
 | 术语 | 本合同的含义及权威来源 |
 | --- | --- |
@@ -41,6 +44,10 @@
 | 会话页 | 一个 mux member 所引用的 Product Session 的展示；member identity 与 Session identity 均须保留 |
 | turn / 执行轮次 | 一次输入触发的一轮 Agent 工作，可包含多次模型调用、工具调用和审批；不是单个消息或单次模型请求 |
 | execution | 一次用户提交的完整执行，可包含无模型输出的命令；AppService 登记身份，Product 提供执行结果与清理完成事实，不与单个模型 turn 等同 |
+| Run | GUI 对一次用户提交和对应 execution/turn 事实的可见聚合；必须保留权威 execution identity 与来源，不能仅按相邻消息猜测 |
+| Task | Run 内由公开投影提供的工作项，可有顺序、依赖或父子关系；`第 1/4 步` 是它的界面表达，不是 Session 序号 |
+| Activity | Task/Run 内的读取、命令、工具、等待和结果记录；展开/收起属于 GUI 本地状态，不重放执行 |
+| AgentRun | 根 Agent 或 Subagent 的一次执行分配；它是 Task 的执行者投影，不与 Task identity 合并 |
 | start_turn | 既有等待完成操作；与新 `submit_execution` 分开，具体以 BC-004 为准 |
 | AppClient / ExecutionClient | [既有语义端口](../../../../src/loushang/appserver/client.py) 与 [可选执行端口](../../../../src/loushang/appserver/execution/client.py)；Rust 实现其跨语言等价合同，不直接导入 Python 对象 |
 | attachment / controller generation | AppService 发放的控制上下文；不可由选中页签、客户端自增编号或持有旧 token 替代 |
@@ -212,6 +219,12 @@ interrupt、close 或重开 Session。
 不能推出上次任务成功；没有终态证据时显示空闲或未知。断线后各状态标陈旧，
 不能对未 attach 的 mux 伪造实时订阅。后续系统通知依此投影生成，去重后送达，
 点击仅导航并重新核验当前事实；不得自动答复审批或重试任务。
+
+左栏 active Session 标志、中央 Task 步骤、可展开 Activity 和右侧
+Task/Subagent 面板必须投影同一 Run/Task/AgentRun identity。折叠、展开、选择
+Task 或切换面板只改变 GUI 本地展示。没有公开 Task/AgentRun capability 时，
+真实模式显示 Run 的已知状态和 unavailable，不解析模型文本、工具描述或日志
+补造 Task graph；fixture 必须显式标记且不能混入真实快照。
 
 ### GUI-BC-002：显式连接、认证与准入
 
@@ -419,6 +432,7 @@ Rust↔TypeScript 的 cursor/revision/generation 使用经 C1 冻结的无损表
 | --- | --- | --- |
 | 连接并发送 | 用户连接 → profile/版本与认证准入 → list/attach → 安装复合屏障 → 保存提交身份并 submit → 执行记录 → 状态/内容与终态 | 屏障未完成不可发送；响应丢失按 submission 查询；查无记录不自动重试；迟到 accepted 不覆盖新状态 |
 | 长任务中断 | 服务运行事件 → GUI 显示运行 → 用户中断 → 独立控制请求 → 服务确认状态变化 | 普通请求满时仍可请求中断；中断请求失败不标记已停止 |
+| Task 与多 Agent 可见性 | Run 启动 → 左栏标活动 → 安装 Task/AgentRun 投影 → 中央显示当前步骤与 Activity → 右侧关联 Task 和 Subagent → 终态 | capability 缺失/撤销时不从文本补造；并行 Task 不伪装串行分母；展开详情不重放 Activity；旧 generation 全部标陈旧 |
 | 会话页切换 | 保存 A 草稿/阅读位置 → 选择 B → 输入绑定 B；A 事件继续投影到 A | A 的迟到请求完成不能清除 B 草稿；切换页不释放整个 mux 控制 |
 | 重连或事件缺口 | 隔离旧异步结果 → 标陈旧并冻结操作 → 重认证或显式 attach 刷新 → 原子安装新屏障 → 恢复操作 | 不混装成员与快照；旧审批撤销；未决 mutation 不重放 |
 | 审批与断线竞争 | 当前交互 → 用户答复 → 服务校验/接收 → 完成或撤销反馈 | 断线不回滚已接收答复；新连接不能用旧 token 授权 |
@@ -465,6 +479,7 @@ Rust↔TypeScript 的 cursor/revision/generation 使用经 C1 冻结的无损表
 | GUI-BV-012 | NFR-012；CON-004 | §5、BC-008/009 | 后续设计与 B1/B2：依赖审查、Mock/真实合同共用场景、正常产物无测试入口、回放不重跑工具/浏览器 |
 | GUI-BV-013 | FR-014；NFR-004、NFR-009 | BC-001/005/006 | B1/B2：非活动会话的运行、有效交互、未读更新可定位；断线标陈旧，空闲不误报成功，旧交互不重新激活 |
 | GUI-BV-014 | FR-004、FR-005、FR-009、FR-014；NFR-004、NFR-005、NFR-011；CON-002 | BC-002/004/006 | C1/B1/B2：profile/版本拒绝、无输出 running、相同提交去重与文本冲突、响应丢失查询及显式重试、事件先于响应、实例变化不重放；等待取消仍可查询，清理后终态及中断竞争；JSON 样例和 Python 测试须取得独立 Rust/TS/原生证据 |
+| GUI-BV-015 | FR-004、FR-014、FR-020；NFR-002、NFR-004、NFR-011 | BC-001/006 | B1：四 Task、一个派生 Agent fixture 验证左栏 active Run、中央步骤、Activity 展开及 Task/AgentRun 互定位；C1/B2：缺失、撤销、不相容、并行、事件 gap 与 fresh snapshot 的真实合同证据 |
 
 GUI-BV-002 同时验证已知项目上下文、mux 与 Session 归属分别可辨认；GUI-BV-006
 同时验证文档阅读时控制可达、来源/读取版本可辨认。后续候选的设计落点为：
@@ -491,6 +506,7 @@ GUI-FUT-003 → BC-001、GUI-BG-010。其运行证据尚未建设，不计入首
 | GUI-BG-008 | 三平台原生回放与 GUI 专属门禁尚未建设 | 只定义证据层次，不指定未经本仓验证的 driver 组合 | GUI/CI owners：B0/B1 锁定可运行组合，增补 GUI 变更选路；文档改动只做文档检查，原生证据按平台分别取得 |
 | GUI-BG-009 | execution 身份、查询与启动/完成分离已交付；消息/工具条目身份与富条目投影仍缺失 | 首期采用 BC-004/006 的 execution 合同；GUI-FUT-001 的富条目展示继续作为后续候选 | GUI owner 完成 C1/B2 执行接入；Product/AppService/AppServer owners 后续定义消息/工具条目及引用，不能将 execution ID 当作每条消息的身份 |
 | GUI-BG-010 | 系统通知、行级反馈与长期项目管理尚无完整合同 | 首期状态总览与只读内容先行，后续候选不扩大首期范围 | GUI owner 主责通知的三平台权限/隐私；Coding owner 主责反馈执行与项目配置；各能力进入设计时固定合同与验收场景 |
+| GUI-BG-011 | Run 内 Task、Activity 与 AgentRun 的跨语言值合同和 capability discovery 尚不存在 | B1 只使用显式 fixture，并按界面规约验证 identity、状态和降级；真实模式只显示已有 execution 状态 | Product/Harness/AppService/AppContract owners 定义 Task/Activity/AgentRun identity、顺序/依赖、事件、容量、权限、失效和恢复合同；GUI owner 在 C1/B2 取得独立证据 |
 
 用户已选定的技术方向、独立浏览器窗口、三平台协作保持不变。正式架构接受、
 组件设计、GUI 初始化、C1 协议准备和运行验收都是后续工作；它们的未完成不应

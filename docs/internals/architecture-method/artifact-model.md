@@ -92,6 +92,15 @@ Requirements and specifications can both exist at external boundaries and
 within internal scopes. Distinguish needed outcomes from precise contracts,
 linking component-level obligations to their source requirements.
 
+Human-facing interface specifications are specifications, not implementation
+mockups or component models. They may define information hierarchy, navigation,
+placement, visible states and actions, focus, accessibility, responsive
+behavior and capability degradation. Keep reference evidence and local
+decisions distinguishable, preserve canonical domain identities and fact
+owners, and verify transitions and failures in addition to screenshots. See the
+[interface specification guidance](design-guidance.md#turn-reference-interfaces-into-verifiable-specifications)
+and [template](templates/interface-specification.md).
+
 ### Domain And Data Models
 
 Domain models express concepts, identity, behavior, relationships and invariants.

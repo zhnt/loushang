@@ -9,10 +9,16 @@ Do not read Git repositories directly from the GUI. Workspace, worktree,
 branch, change, and Diff values must arrive through accepted HarnessClient
 facets. Do not expose authentication material to the WebView.
 
-The B0 shell remains offline. Mock AppClient and playback belong to B1;
-cross-language value contracts belong to C1; the real G16 connection belongs to
-B2. Add only the capability required by the current accepted slice.
+The B1 shell remains offline and its sample data must stay visibly labelled as a
+fixture. Cross-language value contracts belong to C1; the real G16 connection
+belongs to B2. Keep deterministic fixture controls out of the AppService and add
+only the capability required by the current accepted slice.
 
 Use the package scripts documented in `README.md`. Keep Node, pnpm, Rust, Cargo,
 and pnpm lock files synchronized, and verify changes with `pnpm run check` from
-this directory.
+this directory. During rapid B1 development this command runs only TypeScript
+type checking and offline unit/playback tests. Run `pnpm run check:full` when
+changing Rust, native capabilities, or native toolchain configuration. Browser
+layout playback and standalone packaging are on-demand acceptance checks, not
+mandatory checks on every presentation edit. Do not run TUI or Harness suites
+for GUI-only changes; shared contracts and shared CI changes retain their gates.
