@@ -33,16 +33,13 @@ button:focus-visible, textarea:focus-visible { outline: 2px solid rgba(117, 85, 
 .desktop-shell { font-size: 14px; min-height: 100vh; background: var(--paper); }
 .native-frame { height: 32px; display: flex; align-items: center; gap: 15px; padding: 0 9px; border-bottom: 1px solid #ededeb; color: #777a7e; background: #fbfbfa; font-size: 13px; user-select: none; }
 .native-frame nav { display: flex; gap: 21px; }
-.window-glyph { font-size: 16px; color: #676a6d; }
-.history-glyph { font-size: 16px; }
-.history-glyph.muted { color: #c7c8c8; }
 .window-controls { display: flex; align-self: stretch; margin-left: auto; }
-.window-controls span { width: 46px; display: grid; place-items: center; color: #4d4f51; }
 .frame-icon { display: grid; place-items: center; padding: 3px; border: 0; border-radius: 5px; background: transparent; color: inherit; }
 .frame-icon[aria-pressed="true"], .header-actions button[aria-pressed="true"] { background: #ececeb; }
 .window-drag-region { align-self: stretch; flex: 1; min-width: 20px; }
 .native-frame { gap: 10px; padding-right: 0; }
-.window-controls button { width: 46px; border: 0; background: transparent; color: #444; }
+.window-controls button { width: 46px; flex: 0 0 46px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 0; background: transparent; color: #444; }
+.window-controls button svg { display: block; width: 12px; height: 12px; pointer-events: none; }
 .window-controls button:hover { background: #e5e5e5; }
 .window-controls .window-close:hover { color: white; background: #c42b1c; }
 .window-error { position: fixed; z-index: 50; top: 32px; right: 10px; background: #fff0ee; padding: 8px; }
@@ -60,9 +57,19 @@ button:focus-visible, textarea:focus-visible { outline: 2px solid rgba(117, 85, 
 .app-shell.dock-closed { grid-template-columns: 280px minmax(520px, 1fr); }
 
 .session-rail { min-width: 0; min-height: 0; display: flex; flex-direction: column; border-right: 1px solid var(--line); background: var(--sidebar); }
-.brand-row { height: 49px; display: grid; grid-template-columns: auto auto 1fr; align-items: center; gap: 6px; padding: 0 14px; border-bottom: 1px solid var(--line); }
+.brand-row { height: 49px; flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 0 14px; border-bottom: 1px solid var(--line); }
 .brand-row strong { font-size: 16px; }
-.brand-tools { justify-self: end; color: #8b8e91; font-size: 16px; }
+.ui-icon { display: block; flex: 0 0 18px; width: 18px; height: 18px; pointer-events: none; }
+.brand-name { display: inline-flex; align-items: center; gap: 3px; }
+.brand-name .ui-icon { color: #85888b; }
+.brand-search { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: #85888b; }
+.brand-search:disabled { opacity: 1; }
+.sidebar-shortcuts { flex-shrink: 0; display: grid; margin: 0 8px 8px; }
+.sidebar-shortcuts button { height: 32px; display: grid; grid-template-columns: 24px 1fr; align-items: center; padding: 0 9px; border: 0; border-radius: 8px; background: transparent; color: #343638; text-align: left; }
+.new-session { flex-shrink: 0; }
+.environment-popover > header { align-items: center; }
+.desktop-shell button.icon-close { display: grid; place-items: center; flex: 0 0 28px; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: #777a7e; }
+.desktop-shell button.icon-close:hover { background: #ececeb; color: #343638; }
 .new-session { height: 41px; display: grid; grid-template-columns: 24px 1fr auto; align-items: center; margin: 7px 8px 3px; padding: 0 9px; border: 0; border-radius: 8px; color: #343638; background: transparent; text-align: left; font-size: 14px; }
 .new-session:hover { background: #ebebea; }
 .new-session kbd { display: grid; width: 18px; height: 18px; place-items: center; border: 1px solid #d8d8d5; border-radius: 50%; color: #6e7174; background: #fff; font-size: 12px; }

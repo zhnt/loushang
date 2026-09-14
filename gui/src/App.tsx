@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
 import "./App.css";
+import { UiIcon } from "./UiIcon";
 import { DesktopFrame, PanelIcon } from "./DesktopFrame";
 import { createMockAppClient } from "./client/mockAppClient";
 import { probeFixtureBridge, type BridgeProbe } from "./client/nativeFixtureBridge";
@@ -367,7 +368,7 @@ export function HarnessGui({ client }: HarnessGuiProps) {
         </section>
 
         {environmentOpen && selected ? <aside className="environment-popover" aria-label="Environment summary">
-          <header><span>Environment</span><button type="button" aria-label="Close environment" onClick={() => setEnvironmentOpen(false)}>×</button></header>
+          <header><span>Environment</span><button type="button" className="icon-close" aria-label="Close environment" onClick={() => setEnvironmentOpen(false)}><UiIcon name="close" /></button></header>
           {hasFixtureCapability(state, "workspace") ? <EnvironmentPanel state={state} session={selected} /> : <UnavailablePanel label="workspace capability (missing, unavailable or incompatible)" />}
           <div className="environment-links">
             <button type="button" disabled={!changesAvailable || !selected.changeSet?.files.length} onClick={() => { const id = selected.changeSet?.files[0]?.documentId; if (id) openReview(id); }}>Changes →</button>
@@ -403,12 +404,17 @@ function Sidebar({ state, bridgeProbe, onSelect, onToggleWorkspace, onUnavailabl
   return (
     <aside className="session-rail" aria-label="Workspace and Session navigation">
       <div className="brand-row">
-        <strong>HarnessGUI</strong><span aria-hidden="true">⌄</span>
-        <span className="brand-tools" aria-hidden="true">⌕　♢</span>
+        <span className="brand-name"><strong>HarnessGUI</strong><UiIcon name="chevron-down" /></span>
+        <button className="brand-search" type="button" aria-label="Search unavailable" title="Search is unavailable in the offline fixture" disabled><UiIcon name="search" /></button>
       </div>
       <button className="new-session" type="button" onClick={onUnavailable}>
-        <span aria-hidden="true">□＋</span> New Session <kbd>+</kbd>
+        <UiIcon name="new-session" /> New Session <kbd aria-hidden="true">+</kbd>
       </button>
+      <nav className="sidebar-shortcuts" aria-label="Application shortcuts">
+        <button type="button" disabled title="Pull requests are unavailable in the offline fixture"><UiIcon name="pull-request" /><span>Pull requests</span></button>
+        <button type="button" disabled title="Scheduling is unavailable in the offline fixture"><UiIcon name="scheduled" /><span>Scheduled</span></button>
+        <button type="button" disabled title="Plugins are unavailable in the offline fixture"><UiIcon name="plugins" /><span>Plugins</span></button>
+      </nav>
       <div className="fixture-banner"><span className="fixture-dot" />Fixture data · no backend</div>
 
       <nav className="workspace-scroll" aria-label="Workspaces">
@@ -430,10 +436,10 @@ function Sidebar({ state, bridgeProbe, onSelect, onToggleWorkspace, onUnavailabl
                 aria-expanded={expanded}
                 onClick={() => onToggleWorkspace(workspace.id)}
               >
-                <span className="folder-glyph" aria-hidden="true">▱</span>
+                <span className="folder-glyph"><UiIcon name="folder" /></span>
                 <span>{workspace.title}</span>
                 <VcsBadge workspace={workspace} />
-                <span aria-hidden="true">{expanded ? "⌃" : "⌄"}</span>
+                <UiIcon name={expanded ? "chevron-up" : "chevron-down"} />
               </button>
               {expanded ? (
                 <div className="session-list">
@@ -521,7 +527,7 @@ function SessionHeader({ session, connection, dockOpen, onOpenDock, environmentO
   return (
     <header className="conversation-header">
       <div className="session-heading">
-        <span aria-hidden="true">▱</span>
+        <UiIcon name="folder" />
         <div><h1>{session.title}</h1><p>{currentWorkspace} · {session.context.muxId}</p></div>
         <button type="button" aria-label="Session actions">•••</button>
       </div>
@@ -627,7 +633,7 @@ function QuickLook({ document, onClose, onOpenReview }: {
 }) {
   return (
     <aside className="quick-look" aria-label={`Quick look ${document.title}`}>
-      <header><strong>{document.title}</strong><button type="button" onClick={onClose} aria-label="Close quick look">×</button></header>
+      <header><strong>{document.title}</strong><button type="button" className="icon-close" onClick={onClose} aria-label="Close quick look"><UiIcon name="close" /></button></header>
       <DocumentView document={document} compact />
       <footer><button type="button" onClick={onOpenReview}>Open full review →</button></footer>
     </aside>
@@ -658,7 +664,7 @@ function WorkDock(props: WorkDockProps) {
     <aside className={`work-dock${state.local.dockTab === "environment" ? " environment-card" : ""}`} aria-label="Work Dock">
       <header className="dock-header">
         <strong>{dockTabs.find((tab) => tab.id === state.local.dockTab)?.label}</strong>
-        <button type="button" onClick={onClose} aria-label="Close Work Dock">×</button>
+        <button type="button" className="icon-close" onClick={onClose} aria-label="Close Work Dock"><UiIcon name="close" /></button>
       </header>
       <nav className="dock-tabs" aria-label="Work Dock panels">
         {dockTabs.filter((tab) => tab.id !== "environment").map((tab) => (

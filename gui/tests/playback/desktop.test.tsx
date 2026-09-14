@@ -7,6 +7,25 @@ import config from "../../src-tauri/tauri.conf.json";
 import capability from "../../src-tauri/capabilities/default.json";
 
 describe("desktop frame", () => {
+  it("uses shared icons and exposes unimplemented sidebar entries as unavailable", async () => {
+    const user = userEvent.setup();
+    render(<HarnessGui client={createMockAppClient()} />);
+    await screen.findByRole("heading", { name: "GUI development" });
+    for (const name of ["Search unavailable", "Pull requests", "Scheduled", "Plugins", "Back", "Forward"]) {
+      const button = screen.getByRole("button", { name });
+      expect(button).toBeDisabled();
+      expect(button.querySelector("svg")).toHaveAttribute("viewBox", "0 0 24 24");
+    }
+    const rail = screen.getByLabelText("Workspace and Session navigation");
+    expect(rail.textContent).not.toMatch(/[♢▱⌕]/);
+    expect(rail.querySelectorAll('[data-icon="folder"]')).toHaveLength(3);
+    expect(rail.querySelector('.brand-name [data-icon="chevron-down"]')).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Open Work Dock" }));
+    const close = screen.getByRole("button", { name: "Close Work Dock" });
+    expect(close.querySelector('[data-icon="close"]')).toBeInTheDocument();
+    await user.click(close);
+    expect(screen.queryByLabelText("Work Dock")).not.toBeInTheDocument();
+  });
   const originalWidth = window.innerWidth;
   afterEach(() => { vi.unstubAllGlobals(); Object.defineProperty(window, "innerWidth", { configurable: true, value: originalWidth }); });
   it("shares measured content margins including a native scrollbar", async () => {
