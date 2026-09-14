@@ -9,5 +9,5 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["verify.ts"]
+  "include": ["verify.ts", "generated/bridge.ts"]
 }

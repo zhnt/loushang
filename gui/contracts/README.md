@@ -2,6 +2,11 @@
 
 Status: **partial C1 evidence**, not a production adapter or accepted full codec.
 
+The [contract generation and native connection plan](connection-plan.md) now
+records the selected reference inputs, generated candidate DTOs and the exact
+authentication/attachment/snapshot sequence. Only the type-generation preparation
+is implemented; native transport and connection acceptance remain pending.
+
 ## Consolidation review: 2026-09-14
 
 The four local probe slices are one offline compatibility work item, not four

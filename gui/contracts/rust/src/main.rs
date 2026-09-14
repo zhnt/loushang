@@ -3,6 +3,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, value::RawValue, Value};
 use std::io::{self, BufRead};
 mod projection;
+// Compile the generated candidate DTOs without treating them as wire decoders.
+#[allow(dead_code)]
+#[rustfmt::skip]
+#[path = "../../generated/bridge.rs"]
+mod generated;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

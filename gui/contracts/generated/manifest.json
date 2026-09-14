@@ -1,0 +1,39 @@
+{
+  "decimalFields": [
+    "MuxAttachmentV1.controller_generation",
+    "MuxDetachV1.controller_generation",
+    "MuxSpaceMemberV1.position",
+    "MuxSpaceV1.revision",
+    "SessionEventV1.cursor",
+    "SessionSnapshotRequestV1.controller_generation",
+    "SessionSnapshotV1.cursor",
+    "SessionSnapshotV1.revision"
+  ],
+  "format": "gui-bridge-shapes/v1",
+  "modelOnlyTypes": [
+    "AttachedSessionV1",
+    "MuxAttachV1",
+    "MuxAttachmentV1",
+    "MuxDetachV1",
+    "MuxSelectorV1",
+    "MuxSpaceMemberV1",
+    "MuxSpaceV1"
+  ],
+  "safeNumericFields": [
+    "ExecutionObservationV1.final_cursor",
+    "ExecutionSessionViewV1.revision",
+    "ExecutionStateV1.revision",
+    "ExecutionUpdateV1.revision",
+    "MuxAttachV1.mailbox_capacity"
+  ],
+  "scope": "execution nested values plus attachment model shapes; not complete envelopes or auth",
+  "sourceDigest": "88b25eef9f3dfd29c07c41600429d040c06e1040b6ee9851de4fbba4c757145c",
+  "sources": {
+    "src/loushang/appserver/execution/codec.py": "fbf52b8a3735eeee3fca11354fa47f28d91b0cba11035c93ff7e94c79797dd24",
+    "src/loushang/appserver/execution/model.py": "56464fc5125d600f4371e2bf10c36026de689defae63187e3eee8c8229beb00c",
+    "src/loushang/appserver/protocol/codec.py": "168f8060420554e679884b25ba601d3f1659f54b228501681493e5bef23a0c78",
+    "src/loushang/appserver/protocol/errors.py": "2bcd449c98cecc7a191ad813f6fd047dc27895825c0cddc4cb80900f9ca7b6a4",
+    "src/loushang/appserver/protocol/model.py": "ed555352d0084fe1652f7ea077820691f6aae7f21761a75a979a8700cf774a1d"
+  },
+  "status": "candidate"
+}
