@@ -12,6 +12,7 @@ dist
 dist-ssr
 playwright-report/
 test-results/
+contracts/rust/target/
 *.local
 
 # Editor directories and files

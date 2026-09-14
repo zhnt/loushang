@@ -22,6 +22,7 @@
     "test:watch": "vitest",
     "check": "node ../scripts/gui/run.mjs check",
     "check:full": "node ../scripts/gui/run.mjs check-full",
+    "check:contract": "tsc -p contracts/tsconfig.json && node ../scripts/gui/check-contract.mjs",
     "build": "node ../scripts/gui/run.mjs build-native",
     "build:fixture-native": "node ../scripts/gui/run.mjs build-fixture-native",
     "preview": "vite preview",
