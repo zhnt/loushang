@@ -3,6 +3,13 @@
   "milestone": "GUI-B1-workspace-task-review-slice",
   "cases": [
     {
+      "id": "GUI-B1-L1-BROWSER-LAYOUT",
+      "level": "L1",
+      "command": "pnpm run test:layout",
+      "requiredOn": ["windows"],
+      "intent": "Measure reading-column alignment, right-panel separation, sidebar dragging and action hit targets in real Chromium; retain screenshots and failure traces. Not native window or Windows display-scaling evidence."
+    },
+    {
       "id": "GUI-B1-L0-STATE",
       "level": "L0",
       "command": "pnpm run test",

@@ -17,6 +17,8 @@
     "dev:fixture-native": "node ../scripts/gui/run.mjs dev-fixture-native",
     "build:web": "node ../scripts/gui/run.mjs build-web",
     "test": "vitest run",
+    "test:layout": "playwright test",
+    "test:layout:install": "playwright install chromium --no-shell",
     "test:watch": "vitest",
     "check": "node ../scripts/gui/run.mjs check",
     "build": "node ../scripts/gui/run.mjs build-native",
@@ -30,6 +32,7 @@
     "@tauri-apps/api": "^2"
   },
   "devDependencies": {
+    "@playwright/test": "1.63.0",
     "@testing-library/jest-dom": "6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
