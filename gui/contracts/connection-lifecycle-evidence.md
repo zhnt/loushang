@@ -59,8 +59,8 @@ yet be interrupted; the deadline is checked after it returns. Cancellation
 during TCP connect, close-failure reporting and sensitive-buffer cleanup do not
 have production guarantees from this experiment.
 
-There is no attachment or request dispatcher after hello: success currently
-closes immediately. Next implement the bounded read-only attachment/snapshot
-slice and its cleanup ownership, then connect it to a native GUI port and test
-against the shared AppHost application. Do not expose a Send button or label
-the fixture UI live based on these tests alone.
+The original hello-only mode closes immediately. The subsequent
+[attachment mode](attachment-lifecycle-evidence.md) adds sequential member
+snapshots and detach with a scripted peer. An ongoing request dispatcher,
+native GUI port and shared AppHost integration remain pending. Do not expose
+a Send button or label the fixture UI live based on these tests alone.

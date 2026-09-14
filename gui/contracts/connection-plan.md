@@ -97,8 +97,9 @@ silently sharing one mux.
    [Loopback lifecycle evidence](connection-lifecycle-evidence.md) additionally
    composes them through hello and close with socket deadlines/cancellation;
    production GUI ownership and ongoing RPC remain pending.
-3. **Pending attachment:** request/response codec parity, ownership conflicts,
-   initial execution snapshots and stale-attempt isolation through a native port.
+3. **Partial attachment evidence:** [scripted loopback attachment/snapshot/detach](attachment-lifecycle-evidence.md)
+   is implemented. Real ownership arbitration, ongoing membership/event barriers
+   and stale-attempt isolation through a native port remain pending.
 4. **Pending acceptance:** real shared AppHost connection, read-only native GUI
    presentation and safe detach while another Hosted Mux client remains usable.
 

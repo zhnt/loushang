@@ -16,6 +16,9 @@ the value/selection contract and its use by the native-file and authentication
 probes. A subsequent [Windows loopback lifecycle experiment](connection-lifecycle-evidence.md)
 now composes record admission, authentication, hello, deadlines and cancellation.
 A production GUI connection remains pending.
+The [read-only attachment experiment](attachment-lifecycle-evidence.md) now
+extends the loopback probe through member snapshots and detach; shared AppHost
+ownership and live GUI publication remain unverified.
 
 ## Consolidation review: 2026-09-14
 

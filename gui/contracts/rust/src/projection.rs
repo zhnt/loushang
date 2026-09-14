@@ -334,3 +334,28 @@ pub fn bridge(kind: &str, wire: &str) -> Result<Value, ()> {
         )
     }
 }
+
+#[allow(dead_code)] // Used by the attachment binary, not the value-only binary.
+pub fn source_value(wire: &str) -> Result<Value, ()> {
+    let source: Source = serde_json::from_str(wire).map_err(|_| ())?;
+    if !source.identity.valid()
+        || source.title.trim().is_empty()
+        || source.title.chars().count() > 256
+        || source.records.len() > 4096
+        || source.records.iter().any(|record| {
+            !["user", "assistant", "status", "error"].contains(&record.kind.as_str())
+                || record.text.chars().count() > 262_144
+        })
+    {
+        return Err(());
+    }
+    serde_json::to_value(source).map_err(|_| ())
+}
+#[allow(dead_code)] // Used by the attachment binary, not the value-only binary.
+pub fn identity_value(wire: &str) -> Result<Value, ()> {
+    let identity: Identity = serde_json::from_str(wire).map_err(|_| ())?;
+    if !identity.valid() {
+        return Err(());
+    }
+    serde_json::to_value(identity).map_err(|_| ())
+}

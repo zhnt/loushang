@@ -1,5 +1,8 @@
 //! Windows connection-lifecycle experiment, not a Tauri command or RPC client.
 #[cfg(windows)]
+#[path = "../attachment_probe.rs"]
+mod attachment_probe;
+#[cfg(windows)]
 #[path = "../record_native.rs"]
 mod record_native;
 #[cfg(windows)]
@@ -69,7 +72,12 @@ mod connection {
         submission_retention: String,
         restart_recovery: bool,
     }
-    pub fn run(root: &Path, timeout: Duration, cancel: Option<Duration>) -> Result<String, ()> {
+    pub fn run(
+        root: &Path,
+        timeout: Duration,
+        cancel: Option<Duration>,
+        attach: bool,
+    ) -> Result<String, ()> {
         let deadline = Instant::now() + timeout;
         let name = transport_auth::record_value::Record::filename("workspace")?;
         let record =
@@ -133,6 +141,9 @@ mod connection {
             return Err(());
         }
         channel.send(&bytes)?;
+        if attach {
+            super::attachment_probe::run(&mut channel, &hello.service_instance_id)?;
+        }
         // Authentication instance and service instance are distinct identities.
         stream.shutdown(Shutdown::Both).map_err(|_| ())?;
         Ok(hello.service_instance_id)
@@ -143,7 +154,7 @@ mod connection {
 fn main() {
     let args: Vec<_> = std::env::args_os().collect();
     let outcome = (|| {
-        if args.len() != 4 {
+        if args.len() != 4 && !(args.len() == 5 && args[4] == "--attach") {
             return Err(());
         }
         let timeout: u64 = args[2].to_str().ok_or(())?.parse().map_err(|_| ())?;
@@ -155,10 +166,17 @@ fn main() {
             std::path::Path::new(&args[1]),
             std::time::Duration::from_millis(timeout),
             (cancel >= 0).then(|| std::time::Duration::from_millis(cancel as u64)),
+            args.len() == 5,
         )
     })();
     match outcome {
-        Ok(instance) => println!("hello verified; connection closed; instance={instance}"),
+        Ok(instance) => {
+            if args.len() == 5 {
+                println!("attachment snapshots verified; detached; connection closed; instance={instance}");
+            } else {
+                println!("hello verified; connection closed; instance={instance}");
+            }
+        }
         Err(()) => {
             eprintln!("connection probe failed");
             std::process::exit(1);
