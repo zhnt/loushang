@@ -187,6 +187,9 @@ async def scenario(root: Path, mode: str) -> None:
                 "event-request",
                 "second-batch-replay",
                 "late-member-change",
+                "per-request-budget",
+                "request-stall",
+                "request-slow-frame",
             }:
                 await barrier()
                 for offset, session in enumerate(attachment.sessions * 2):
@@ -201,6 +204,21 @@ async def scenario(root: Path, mode: str) -> None:
                     assert call.control.member_id == session.member.member_id
                     assert call.expected_instance_id == "service-fixture"
                     seen.append(f"events-{index}")
+                    if mode == "request-stall":
+                        assert await reader.read() == b""
+                        return
+                    if mode == "request-slow-frame":
+                        try:
+                            for byte in b"\x00\x00\x00\x40" + b"x" * 16:
+                                writer.write(bytes([byte]))
+                                await writer.drain()
+                                await asyncio.sleep(0.1)
+                            assert await reader.read() == b""
+                        except ConnectionError:
+                            pass
+                        return
+                    if mode == "per-request-budget":
+                        await asyncio.sleep(0.4)
                     event = em.ExecutionContentEventV1(
                         pm.SessionEventV1(
                             session.member.session.session_id,
@@ -254,7 +272,11 @@ async def scenario(root: Path, mode: str) -> None:
                 "must close after detach, not stop application"
             )
         finally:
-            await transport.close()
+            try:
+                await transport.close()
+            except ConnectionError:
+                if mode != "request-slow-frame":
+                    raise
 
     server = await asyncio.start_server(
         lambda r, w: tasks.append(asyncio.create_task(peer(r, w))), "127.0.0.1", 0
@@ -271,7 +293,9 @@ async def scenario(root: Path, mode: str) -> None:
         process = await asyncio.create_subprocess_exec(
             str(EXE),
             str(root),
-            "3000",
+            "1000"
+            if mode in {"per-request-budget", "request-stall", "request-slow-frame"}
+            else "3000",
             "-1",
             "--attach",
             stdout=asyncio.subprocess.PIPE,
@@ -280,7 +304,7 @@ async def scenario(root: Path, mode: str) -> None:
         async with asyncio.timeout(6):
             stdout, stderr = await process.communicate()
             await asyncio.gather(*tasks)
-        if mode == "valid":
+        if mode in {"valid", "per-request-budget"}:
             assert process.returncode == 0 and not stderr
             assert (
                 stdout
@@ -290,7 +314,9 @@ async def scenario(root: Path, mode: str) -> None:
             assert process.returncode == 1 and not stdout
             assert stderr == b"connection probe failed\n"
         assert seen == (
-            ["attach"]
+            ["attach", "snapshot-0", "snapshot-1", "barrier", "events-0"]
+            if mode in {"request-stall", "request-slow-frame"}
+            else ["attach"]
             if mode in {"already-attached", "bad-attachment"}
             else ["attach", "snapshot-0", "snapshot-1"]
             + (
@@ -301,7 +327,7 @@ async def scenario(root: Path, mode: str) -> None:
                 else ["barrier", "events-0", "events-1", "barrier"]
                 if mode == "late-member-change"
                 else ["barrier"] + ["events-0", "events-1", "barrier"] * 2
-                if mode in {"valid", "detach-failed"}
+                if mode in {"valid", "detach-failed", "per-request-budget"}
                 else ["barrier"]
                 if mode.startswith("member-")
                 else []
@@ -339,6 +365,9 @@ async def run(parent):
         "member-revision",
         "member-order",
         "late-member-change",
+        "per-request-budget",
+        "request-stall",
+        "request-slow-frame",
     )
     for mode in modes:
         await scenario(parent / mode, mode)

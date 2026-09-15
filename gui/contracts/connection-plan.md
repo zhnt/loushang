@@ -119,8 +119,11 @@ connection control. No live connection readiness is claimed by checkpoint 1.
 Keep these checks opt-in and scoped to the changed GUI adapter; do not add TUI or
 Harness suites solely because the GUI consumes their application contracts.
 
-Before adding a persistent desktop driver, separate the initial connection
-deadline from per-request deadlines. Do not renew a deadline on every byte read;
-slow frames must still time out. The current probe intentionally retains its
-absolute startup/lifetime deadline. A long-lived scheduler, cancellation/join
-ownership and GUI state publication are still pending.
+The probe now separates initial connection and per-request deadlines. Admission,
+authentication, hello, attachment, snapshots and the first membership recheck
+share one absolute startup deadline. Only successful initialization enables a
+fresh deadline at each subsequent request send, covering the complete write and
+response frame. Byte reads never renew it. Expired or invalid frames fence the
+channel; a fresh budget cannot reopen it. This policy assumes sequential RPC,
+not concurrent outstanding calls. A long-lived desktop scheduler, cancellation/
+join ownership and GUI state publication are still pending.

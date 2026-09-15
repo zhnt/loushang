@@ -403,10 +403,12 @@ pub fn run<R: Read, W: Write>(
     channel: &mut Channel<R, W>,
     instance: &str,
     attempt: &super::connection_epoch::Attempt,
+    deadline: &super::request_deadline::RequestDeadline,
 ) -> Result<usize, ()> {
     let mut session = ReadSession::attach(channel, instance, attempt)?;
     let outcome = (|| {
         let count = session.initialize(channel, attempt)?;
+        deadline.enter_session()?;
         // Only the bounded evidence driver selects two rounds.
         for _ in 0..2 {
             session.poll(channel, attempt)?;

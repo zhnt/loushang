@@ -9,12 +9,16 @@ mod connection_epoch;
 #[path = "../record_native.rs"]
 mod record_native;
 #[cfg(windows)]
+#[path = "../request_deadline.rs"]
+mod request_deadline;
+#[cfg(windows)]
 #[allow(dead_code)]
 #[path = "../transport_auth.rs"]
 mod transport_auth;
 
 #[cfg(windows)]
 mod connection {
+    use super::request_deadline::RequestDeadline;
     use super::{record_native, transport_auth};
     use serde::{Deserialize, Serialize};
     use std::io::{self, Read, Write};
@@ -22,29 +26,23 @@ mod connection {
     use std::path::Path;
     use std::sync::mpsc::{self, Sender};
     use std::thread::{self, JoinHandle};
-    use std::time::{Duration, Instant};
+    use std::time::Duration;
 
     struct DeadlineStream {
         stream: TcpStream,
-        deadline: Instant,
-    }
-    fn remaining(deadline: Instant) -> io::Result<Duration> {
-        deadline
-            .checked_duration_since(Instant::now())
-            .filter(|time| !time.is_zero())
-            .ok_or_else(|| io::Error::new(io::ErrorKind::TimedOut, "connection deadline"))
+        deadline: RequestDeadline,
     }
     impl Read for DeadlineStream {
         fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
             self.stream
-                .set_read_timeout(Some(remaining(self.deadline)?))?;
+                .set_read_timeout(Some(self.deadline.remaining()?))?;
             self.stream.read(buffer)
         }
     }
     impl Write for DeadlineStream {
         fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
             self.stream
-                .set_write_timeout(Some(remaining(self.deadline)?))?;
+                .set_write_timeout(Some(self.deadline.remaining()?))?;
             self.stream.write(buffer)
         }
         fn flush(&mut self) -> io::Result<()> {
@@ -82,7 +80,7 @@ mod connection {
         cancel: Option<Duration>,
         attach: bool,
     ) -> Result<String, ()> {
-        let deadline = Instant::now() + timeout;
+        let deadline = RequestDeadline::new(timeout)?;
         let attempt = owner.begin()?;
         let name = transport_auth::record_value::Record::filename("workspace")?;
         let record =
@@ -93,7 +91,7 @@ mod connection {
             return Err(());
         }
         let address = SocketAddr::from((Ipv4Addr::LOCALHOST, record.port()));
-        let stream = TcpStream::connect_timeout(&address, remaining(deadline).map_err(|_| ())?)
+        let stream = TcpStream::connect_timeout(&address, deadline.remaining().map_err(|_| ())?)
             .map_err(|_| ())?;
         let (finish, receiver) = mpsc::channel();
         let worker = if let Some(delay) = cancel {
@@ -114,16 +112,18 @@ mod connection {
         };
         let reader = DeadlineStream {
             stream: stream.try_clone().map_err(|_| ())?,
-            deadline,
+            deadline: deadline.clone(),
         };
         let writer = DeadlineStream {
             stream: stream.try_clone().map_err(|_| ())?,
-            deadline,
+            deadline: deadline.clone(),
         };
         let mut channel = transport_auth::Channel::authenticate(
             transport_auth::Frames::new(reader, writer),
             &record,
         )?;
+        let send_deadline = deadline.clone();
+        channel.before_send(move || send_deadline.before_send());
         channel.send(b"app")?;
         let bytes = channel.receive()?;
         let hello: Hello = serde_json::from_slice(&bytes).map_err(|_| ())?;
@@ -149,7 +149,12 @@ mod connection {
         }
         channel.send(&bytes)?;
         if attach {
-            super::attachment_probe::run(&mut channel, &hello.service_instance_id, &attempt)?;
+            super::attachment_probe::run(
+                &mut channel,
+                &hello.service_instance_id,
+                &attempt,
+                &deadline,
+            )?;
         }
         // Authentication instance and service instance are distinct identities.
         stream.shutdown(Shutdown::Both).map_err(|_| ())?;

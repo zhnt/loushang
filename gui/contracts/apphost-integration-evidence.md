@@ -35,7 +35,7 @@ on one connection. The real server closed the connection before replying.
 
 The bounded Rust sequence uses `1` for attach, followed by increasing decimal IDs
 for snapshots, event reads and detach (including failure cleanup).
-The sixteen scripted attachment scenarios also assert these
+The nineteen scripted attachment scenarios also assert these
 IDs. Raw controller-generation serialization remains unchanged and lossless.
 No server contract or runtime implementation was changed to accommodate GUI.
 
