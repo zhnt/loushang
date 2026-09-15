@@ -98,10 +98,12 @@ silently sharing one mux.
    composes them through hello and close with socket deadlines/cancellation;
    production GUI ownership and ongoing RPC remain pending.
 3. **Partial attachment evidence:** [scripted loopback attachment/snapshot/detach](attachment-lifecycle-evidence.md)
-   is implemented. Real ownership arbitration, ongoing membership/event barriers
-   and stale-attempt isolation through a native port remain pending.
-4. **Pending acceptance:** real shared AppHost connection, read-only native GUI
-   presentation and safe detach while another Hosted Mux client remains usable.
+   is implemented, including one bounded execution-event batch per member.
+   [Real AppHost integration](apphost-integration-evidence.md) verifies ownership
+   arbitration, idle event reads and cleanup with an independent mux client.
+   Ongoing membership/event barriers and stale-attempt isolation remain pending.
+4. **Pending acceptance:** persistent read-only native GUI connection and
+   presentation. The probe's idle connection evidence is not GUI acceptance.
 
 Transport and attachment must pass their own evidence before enabling the GUI
 connection control. No live connection readiness is claimed by checkpoint 1.

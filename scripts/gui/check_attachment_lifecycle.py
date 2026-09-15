@@ -149,9 +149,52 @@ async def scenario(root: Path, mode: str) -> None:
                         value["result"]["source"]["source"]["cursor"] = True
                     raw = json.dumps(value).encode()
                 await channel.send(raw)
+            next_id = len(attachment.sessions) + 2
+            if mode in {
+                "valid",
+                "detach-failed",
+                "event-gap",
+                "event-identity",
+                "event-request",
+            }:
+                for index, session in enumerate(attachment.sessions):
+                    call = decode_call(await channel.receive())
+                    assert call.operation is em.ExecutionOperationV1.EVENTS
+                    assert call.request_id == str(next_id)
+                    next_id += 1
+                    assert call.control.attachment_id == "attachment"
+                    assert call.control.controller_generation == GENERATION
+                    assert call.control.member_id == session.member.member_id
+                    assert call.expected_instance_id == "service-fixture"
+                    seen.append(f"events-{index}")
+                    event = em.ExecutionContentEventV1(
+                        pm.SessionEventV1(
+                            session.member.session.session_id,
+                            session.snapshot.cursor + (2 if mode == "event-gap" else 1),
+                            pm.SessionEventKindV1.STATUS,
+                            "读取事件🙂",
+                        )
+                    )
+                    raw = execution_response(
+                        em.ExecutionResponseV1(
+                            call.request_id, em.ExecutionEventsV1((event,))
+                        )
+                    )
+                    if mode in {"event-identity", "event-request"}:
+                        value = json.loads(raw)
+                        if mode == "event-identity":
+                            value["result"]["events"][0]["source"]["sessionId"] = (
+                                "other-session"
+                            )
+                        else:
+                            value["requestId"] = "999"
+                        raw = json.dumps(value).encode()
+                    await channel.send(raw)
+                    if mode.startswith("event-"):
+                        break
             call = decode_request(await channel.receive())
             assert call.operation is pm.AppOperationV1.MUX_DETACH
-            assert call.request_id == str(len(attachment.sessions) + 2)
+            assert call.request_id == str(next_id)
             assert (
                 call.payload.attachment_id == "attachment"
                 and call.payload.controller_generation == GENERATION
@@ -207,7 +250,15 @@ async def scenario(root: Path, mode: str) -> None:
         assert seen == (
             ["attach"]
             if mode in {"already-attached", "bad-attachment"}
-            else ["attach", "snapshot-0", "snapshot-1", "detach"]
+            else ["attach", "snapshot-0", "snapshot-1"]
+            + (
+                ["events-0"]
+                if mode.startswith("event-")
+                else ["events-0", "events-1"]
+                if mode in {"valid", "detach-failed"}
+                else []
+            )
+            + ["detach"]
         )
         assert server.is_serving()
     finally:
@@ -233,11 +284,14 @@ async def run(parent):
         "wrong-request",
         "bad-snapshot",
         "detach-failed",
+        "event-gap",
+        "event-identity",
+        "event-request",
     )
     for mode in modes:
         await scenario(parent / mode, mode)
         print(f"Attachment lifecycle: {mode} passed", flush=True)
-    print("Windows attachment lifecycle: 9 scenarios passed")
+    print(f"Windows attachment lifecycle: {len(modes)} scenarios passed")
 
 
 if __name__ == "__main__":

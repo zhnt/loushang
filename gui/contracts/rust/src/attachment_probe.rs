@@ -164,10 +164,12 @@ pub fn run<R: Read, W: Write>(channel: &mut Channel<R, W>, instance: &str) -> Re
     }
     let attachment: Attachment = serde_json::from_str(response.result.get()).map_err(|_| ())?;
     attachment.validate()?;
+    let mut next_id = 2usize;
     let snapshots = (|| {
         let mut pending = Vec::new();
-        for (index, session) in attachment.sessions.iter().enumerate() {
-            let id = (index + 2).to_string();
+        for session in &attachment.sessions {
+            let id = next_id.to_string();
+            next_id += 1;
             let payload = Request {
                 protocol_version: "loushang.execution/v1",
                 request_id: &id,
@@ -199,13 +201,42 @@ pub fn run<R: Read, W: Write>(channel: &mut Channel<R, W>, instance: &str) -> Re
             }
             pending.push(snapshot);
         }
+        // Snapshot capture installs the server-side subscription. Read one bounded
+        // batch per member; this is not yet a persistent reader or GUI publication.
+        for (session, snapshot) in attachment.sessions.iter().zip(&pending) {
+            let id = next_id.to_string();
+            next_id += 1;
+            channel.send(
+                &serde_json::to_vec(&Request {
+                    protocol_version: "loushang.execution/v1",
+                    request_id: &id,
+                    operation: "execution/read_events",
+                    payload: SnapshotRequest {
+                        control: Control {
+                            attachment_id: &attachment.attachment_id,
+                            controller_generation: &attachment.controller_generation,
+                            member_id: &session.member.member_id,
+                        },
+                        expected_instance_id: instance,
+                    },
+                })
+                .map_err(|_| ())?,
+            )?;
+            let bytes = channel.receive()?;
+            let events =
+                projection::bridge("events", std::str::from_utf8(&bytes).map_err(|_| ())?)?;
+            if events["requestId"] != id {
+                return Err(());
+            }
+            validate_events(snapshot, &events)?;
+        }
         Ok(pending.len())
     })();
-    // Once ownership is validated, attempt detach even if a snapshot is rejected.
+    // Once ownership is validated, attempt detach even if a snapshot/batch is rejected.
     let detached = request(
         channel,
         "mux/detach",
-        &(attachment.sessions.len() + 2).to_string(),
+        &next_id.to_string(),
         Detach {
             attachment_id: &attachment.attachment_id,
             controller_generation: &attachment.controller_generation,
@@ -218,4 +249,78 @@ pub fn run<R: Read, W: Write>(channel: &mut Channel<R, W>, instance: &str) -> Re
         return Err(());
     }
     Ok(count)
+}
+
+fn successor(decimal: &str) -> String {
+    let mut bytes = decimal.as_bytes().to_vec();
+    for digit in bytes.iter_mut().rev() {
+        if *digit < b'9' {
+            *digit += 1;
+            return String::from_utf8(bytes).expect("decimal input");
+        }
+        *digit = b'0';
+    }
+    bytes.insert(0, b'1');
+    String::from_utf8(bytes).expect("decimal input")
+}
+
+// Inputs have passed the independent wire validators. Keep content and metadata
+// watermarks separate, and never coerce arbitrary-size source cursors to floats.
+fn validate_events(snapshot: &Value, events: &Value) -> Result<(), ()> {
+    let source = &snapshot["result"]["source"]["source"];
+    let mut cursor = source["cursor"].as_str().ok_or(())?.to_owned();
+    let mut revision = snapshot["result"]["executions"]["revision"]
+        .as_u64()
+        .ok_or(())?;
+    for event in events["result"]["events"].as_array().ok_or(())? {
+        if event.get("source").is_some() {
+            let content = &event["source"];
+            if content["sessionId"] != source["identity"]["sessionId"]
+                || content["cursor"].as_str() != Some(successor(&cursor).as_str())
+            {
+                return Err(());
+            }
+            cursor = content["cursor"].as_str().ok_or(())?.to_owned();
+        } else {
+            let next = event["revision"].as_u64().ok_or(())?;
+            if revision.checked_add(1) != Some(next) {
+                return Err(());
+            }
+            revision = next;
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn decimal_successor_is_lossless() {
+        assert_eq!(successor("0"), "1");
+        assert_eq!(
+            successor("99999999999999999999999999999"),
+            "100000000000000000000000000000"
+        );
+    }
+    #[test]
+    fn content_and_metadata_have_separate_contiguous_watermarks() {
+        let snapshot = json!({"result":{"source":{"source":{"cursor":"999999999999999999999", "identity":{"sessionId":"s"}}},"executions":{"revision":7}}});
+        let content = json!({"source":{"sessionId":"s","cursor":"1000000000000000000000"}});
+        let batch = |items: Vec<Value>| json!({"result":{"events":items}});
+        assert!(validate_events(
+            &snapshot,
+            &batch(vec![content.clone(), json!({"revision":8})])
+        )
+        .is_ok());
+        assert!(validate_events(&snapshot, &batch(vec![content.clone(), content])).is_err());
+        assert!(validate_events(&snapshot, &batch(vec![json!({"revision":9})])).is_err());
+        assert!(validate_events(
+            &snapshot,
+            &batch(vec![
+                json!({"source":{"sessionId":"other","cursor":"1000000000000000000000"}})
+            ])
+        )
+        .is_err());
+    }
 }

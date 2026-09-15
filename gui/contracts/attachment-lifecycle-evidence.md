@@ -1,13 +1,13 @@
 # Read-only attachment and initial snapshot experiment
 
-Status: partial C1/B2 preparation, 2026-09-14. Not shared AppHost integration,
-an ongoing RPC client or live GUI publication.
+Status: partial C1/B2 preparation, updated 2026-09-15. This scripted check is not
+shared AppHost integration, an ongoing RPC client or live GUI publication.
 
 The Windows connection probe now has an opt-in `--attach` mode after its existing
 record/auth/hello sequence. It selects the explicit `gui-fixture` mux, validates
-the returned attachment, reads each member's execution composite snapshot, then
-detaches and closes. It never creates a mux/session, takes over a controller,
-submits work or sends service STOP.
+the returned attachment, reads each member's execution composite snapshot and
+one execution-event batch, then detaches and closes. It never creates a
+mux/session, takes over a controller, submits work or sends service STOP.
 
 The attachment validator checks closed fields, positive lossless generations
 and mux revision, ordered/unique members, member/session identity agreement,
@@ -36,12 +36,19 @@ The existing numeric wire contract is unchanged; no float or string is sent.
 pnpm --dir gui run check:attachment-contract
 ```
 
-Nine Windows loopback scenarios pass: two-member success, already-attached,
+Twelve Windows loopback scenarios pass: two-member success, already-attached,
 malformed attachment, second-snapshot instance change, identity change, cursor
-regression, wrong request ID, invalid snapshot and detach failure. Python uses
+regression, wrong request ID, invalid snapshot, detach failure, event cursor gap,
+event identity mismatch and event response ID mismatch. Python uses
 the reference request/response codecs, verifies the exact operation sequence and
 observes connection closure while its listener stays active. Fixture records and
 listener are temporary; no existing service or provider is involved.
+
+The first event batch is validated against each member's snapshot: source cursors
+are incremented losslessly as decimal strings, while execution metadata revisions
+use a separate bounded counter. Wrong identity, duplicate or non-contiguous
+positions reject the attempt; no incomplete state is published. Request IDs are
+positive increasing decimal numbers across snapshots, event reads and cleanup.
 
 The reference peer is a scripted contract fixture, not AppService. Therefore
 these checks do not demonstrate actual controller arbitration/release or a
@@ -56,6 +63,6 @@ Snapshots are discarded after validation, not installed in a GUI reducer. Do
 not infer that a consistent live snapshot can be published during concurrent
 membership changes from this experiment alone.
 
-Next connect this slice to the existing AppHost/AppService composition and test
-real attachment ownership, then expose the read-only native port with correct
+The separate [real AppHost integration](apphost-integration-evidence.md) now tests
+actual ownership and idle event reads. Next expose the read-only native port with correct
 event/barrier and cleanup ownership. Keep fixture UI and live facts separate.

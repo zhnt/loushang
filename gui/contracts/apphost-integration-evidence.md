@@ -17,7 +17,7 @@ model streaming is explicitly forbidden and no work is submitted. It does not
 connect to an existing user application, read user settings, or start a TUI.
 
 The existing Rust connection probe authenticates to that actual server and
-reads a real execution snapshot before detaching. A Python AppClient controls a
+reads a real execution snapshot and its first event batch before detaching. A Python AppClient controls a
 different mux in the same application and remains usable afterwards. Another
 client's ownership of the selected GUI mux rejects the Rust contender; that
 owner can still read its snapshot, then detach and permit Rust to reconnect.
@@ -33,20 +33,23 @@ The isolated probe previously sent textual request IDs (`attach`, `snapshot-0`,
 requires positive decimal request IDs increasing across both protocol families
 on one connection. The real server closed the connection before replying.
 
-The bounded Rust sequence now uses `1` for attach, `2..N+1` for snapshots and
-`N+2` for detach. Existing nine scripted attachment scenarios also assert these
+The bounded Rust sequence uses `1` for attach, followed by increasing decimal IDs
+for snapshots, initial event reads and detach (including failure cleanup).
+The twelve scripted attachment scenarios also assert these
 IDs. Raw controller-generation serialization remains unchanged and lossless.
 No server contract or runtime implementation was changed to accommodate GUI.
 
 ## Limits and next slice
 
 - This is a native probe, not a connected React/Tauri screen.
-- It verifies idle snapshots, real controller arbitration, graceful client EOF
+- It verifies idle snapshots and empty event batches, real controller arbitration, graceful client EOF
   cleanup and explicit deployment settlement. It does not prove hard process
   termination cleanup or every failed-snapshot/disconnect race in the real host.
 - No ongoing event reader, membership barrier, epoch isolation, atomic GUI
   snapshot publication, submission, approval or takeover capability is added.
 - Model-free real Coding sessions do not establish live provider execution.
+- Nonempty contiguous event batches and invalid batches are covered by the scripted
+  fixture; metadata/content watermark separation is additionally unit tested in Rust.
 - This remains an opt-in GUI integration check, not a TUI/Harness default gate.
 
 Next implement the native read-only connection owner and event/barrier handling
