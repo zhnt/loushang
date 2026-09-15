@@ -87,13 +87,13 @@ async def forbidden_stream(*args, **kwargs):
     yield  # pragma: no cover -- preserve the streaming interface
 
 
-async def probe(root, *, succeeds):
+async def probe(root, *, succeeds, watch=False):
     process = await asyncio.create_subprocess_exec(
         str(EXE),
         str(root),
         "5000",
-        "-1",
-        "--attach",
+        "1500" if watch else "-1",
+        "--watch" if watch else "--attach",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -106,7 +106,9 @@ async def probe(root, *, succeeds):
     if succeeds:
         assert process.returncode == 0, (stdout, stderr)
         assert stdout.startswith(
-            b"attachment snapshots verified; detached; connection closed;"
+            b"watch stopped; detached; connection closed;"
+            if watch
+            else b"attachment snapshots verified; detached; connection closed;"
         )
         assert not stderr
     else:
@@ -256,6 +258,9 @@ async def run(root):
             "Real AppHost: controller conflict and subsequent reacquisition passed",
             flush=True,
         )
+        await probe(root / "connection", succeeds=True, watch=True)
+        assert local.accepting
+        print("Real AppHost: continuous idle reads stopped and detached", flush=True)
         held = await competing.client.attach_mux(
             MuxAttachV1(MuxSelectorV1(name="gui-fixture"))
         )

@@ -150,6 +150,54 @@ async def scenario(root: Path, mode: str) -> None:
                     raw = json.dumps(value).encode()
                 await channel.send(raw)
             next_id = len(attachment.sessions) + 2
+            if mode == "watch":
+                while True:
+                    raw_call = await channel.receive()
+                    operation = json.loads(raw_call)["operation"]
+                    call = (
+                        decode_call(raw_call)
+                        if operation == "execution/read_events"
+                        else decode_request(raw_call)
+                    )
+                    assert call.request_id == str(next_id)
+                    next_id += 1
+                    if operation == "execution/read_events":
+                        assert call.control.attachment_id == "attachment"
+                        assert call.control.controller_generation == GENERATION
+                        assert call.expected_instance_id == "service-fixture"
+                        assert call.control.member_id in {
+                            s.member.member_id for s in attachment.sessions
+                        }
+                        seen.append("watch-events")
+                        await channel.send(
+                            execution_response(
+                                em.ExecutionResponseV1(
+                                    call.request_id, em.ExecutionEventsV1(())
+                                )
+                            )
+                        )
+                    elif operation == "mux/read":
+                        assert (
+                            call.payload.selector.mux_space_id
+                            == attachment.mux_space.mux_space_id
+                        )
+                        await channel.send(
+                            encode_response(
+                                pm.AppResponseV1(call.request_id, attachment.mux_space)
+                            )
+                        )
+                    else:
+                        assert operation == "mux/detach"
+                        assert call.payload.attachment_id == "attachment"
+                        assert call.payload.controller_generation == GENERATION
+                        seen.append("detach")
+                        await channel.send(
+                            encode_response(
+                                pm.AppResponseV1(call.request_id, pm.AckV1())
+                            )
+                        )
+                        assert await reader.read() == b""
+                        return
 
             async def barrier():
                 nonlocal next_id
@@ -296,14 +344,25 @@ async def scenario(root: Path, mode: str) -> None:
             "1000"
             if mode in {"per-request-budget", "request-stall", "request-slow-frame"}
             else "3000",
-            "-1",
-            "--attach",
+            "1500" if mode == "watch" else "-1",
+            "--watch" if mode == "watch" else "--attach",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
         async with asyncio.timeout(6):
             stdout, stderr = await process.communicate()
             await asyncio.gather(*tasks)
+        if mode == "watch":
+            assert process.returncode == 0 and not stderr
+            assert (
+                stdout
+                == b"watch stopped; detached; connection closed; instance=service-fixture\n"
+            )
+            assert seen.count("watch-events") >= 6, (
+                "must read beyond the old two-round limit"
+            )
+            assert seen[-1] == "detach" and server.is_serving()
+            return
         if mode in {"valid", "per-request-budget"}:
             assert process.returncode == 0 and not stderr
             assert (
@@ -368,6 +427,7 @@ async def run(parent):
         "per-request-budget",
         "request-stall",
         "request-slow-frame",
+        "watch",
     )
     for mode in modes:
         await scenario(parent / mode, mode)

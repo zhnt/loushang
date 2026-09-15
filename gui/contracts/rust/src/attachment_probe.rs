@@ -308,7 +308,8 @@ impl ReadSession {
         &mut self,
         channel: &mut Channel<R, W>,
         attempt: &super::connection_epoch::Attempt,
-    ) -> Result<(), ()> {
+        stop: Option<&super::read_stop::ReadStop>,
+    ) -> Result<bool, ()> {
         if self.closed {
             return Err(());
         }
@@ -316,6 +317,9 @@ impl ReadSession {
             attempt.apply(|| Ok(()))?;
             let mut next = self.readers.as_ref().ok_or(())?.clone();
             for (session, reader) in self.attachment.sessions.iter().zip(&mut next) {
+                if stop.map(|s| s.requested()).transpose()?.unwrap_or(false) {
+                    return Ok(false);
+                }
                 let id = take_request_id(&mut self.next_id)?;
                 channel.send(
                     &serde_json::to_vec(&Request {
@@ -341,6 +345,9 @@ impl ReadSession {
                 }
                 attempt.apply(|| reader.apply(&events))?;
             }
+            if stop.map(|s| s.requested()).transpose()?.unwrap_or(false) {
+                return Ok(false);
+            }
             membership_barrier(
                 channel,
                 &self.attachment.mux_space,
@@ -349,7 +356,7 @@ impl ReadSession {
             )?;
             attempt.apply(|| {
                 self.readers = Some(next);
-                Ok(())
+                Ok(true)
             })
         })();
         if result.is_err() {
@@ -404,14 +411,26 @@ pub fn run<R: Read, W: Write>(
     instance: &str,
     attempt: &super::connection_epoch::Attempt,
     deadline: &super::request_deadline::RequestDeadline,
+    stop: Option<&super::read_stop::ReadStop>,
 ) -> Result<usize, ()> {
     let mut session = ReadSession::attach(channel, instance, attempt)?;
     let outcome = (|| {
         let count = session.initialize(channel, attempt)?;
         deadline.enter_session()?;
-        // Only the bounded evidence driver selects two rounds.
-        for _ in 0..2 {
-            session.poll(channel, attempt)?;
+        if let Some(stop) = stop {
+            while !stop.requested()? {
+                if !session.poll(channel, attempt, Some(stop))? {
+                    break;
+                }
+                if stop.wait(std::time::Duration::from_millis(100))? {
+                    break;
+                }
+            }
+        } else {
+            // Only the bounded evidence driver selects two rounds.
+            for _ in 0..2 {
+                session.poll(channel, attempt, None)?;
+            }
         }
         Ok(count)
     })();

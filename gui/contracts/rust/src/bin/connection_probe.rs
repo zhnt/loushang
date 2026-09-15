@@ -6,6 +6,9 @@ mod attachment_probe;
 #[path = "../connection_epoch.rs"]
 mod connection_epoch;
 #[cfg(windows)]
+#[path = "../read_stop.rs"]
+mod read_stop;
+#[cfg(windows)]
 #[path = "../record_native.rs"]
 mod record_native;
 #[cfg(windows)]
@@ -79,9 +82,11 @@ mod connection {
         timeout: Duration,
         cancel: Option<Duration>,
         attach: bool,
+        watch: bool,
     ) -> Result<String, ()> {
         let deadline = RequestDeadline::new(timeout)?;
         let attempt = owner.begin()?;
+        let stop = watch.then(super::read_stop::ReadStop::default);
         let name = transport_auth::record_value::Record::filename("workspace")?;
         let record =
             transport_auth::record_value::Record::decode(&record_native::read(root, &name)?)?;
@@ -97,10 +102,15 @@ mod connection {
         let worker = if let Some(delay) = cancel {
             let socket = stream.try_clone().map_err(|_| ())?;
             let fence = attempt.cancellation();
+            let stop = stop.clone();
             Some(thread::spawn(move || {
                 if receiver.recv_timeout(delay).is_err() {
-                    fence.invalidate();
-                    let _ = socket.shutdown(Shutdown::Both);
+                    if let Some(stop) = stop {
+                        stop.request();
+                    } else {
+                        fence.invalidate();
+                        let _ = socket.shutdown(Shutdown::Both);
+                    }
                 }
             }))
         } else {
@@ -154,6 +164,7 @@ mod connection {
                 &hello.service_instance_id,
                 &attempt,
                 &deadline,
+                stop.as_ref(),
             )?;
         }
         // Authentication instance and service instance are distinct identities.
@@ -166,12 +177,17 @@ mod connection {
 fn main() {
     let args: Vec<_> = std::env::args_os().collect();
     let outcome = (|| {
-        if args.len() != 4 && !(args.len() == 5 && args[4] == "--attach") {
+        if args.len() != 4 && !(args.len() == 5 && (args[4] == "--attach" || args[4] == "--watch"))
+        {
             return Err(());
         }
         let timeout: u64 = args[2].to_str().ok_or(())?.parse().map_err(|_| ())?;
         let cancel: i64 = args[3].to_str().ok_or(())?.parse().map_err(|_| ())?;
         if !(1..=5000).contains(&timeout) || !(-1..=5000).contains(&cancel) {
+            return Err(());
+        }
+        let watch = args.len() == 5 && args[4] == "--watch";
+        if watch && cancel <= 0 {
             return Err(());
         }
         connection::run(
@@ -180,11 +196,14 @@ fn main() {
             std::time::Duration::from_millis(timeout),
             (cancel >= 0).then(|| std::time::Duration::from_millis(cancel as u64)),
             args.len() == 5,
+            watch,
         )
     })();
     match outcome {
         Ok(instance) => {
-            if args.len() == 5 {
+            if args.len() == 5 && args[4] == "--watch" {
+                println!("watch stopped; detached; connection closed; instance={instance}");
+            } else if args.len() == 5 {
                 println!("attachment snapshots verified; detached; connection closed; instance={instance}");
             } else {
                 println!("hello verified; connection closed; instance={instance}");

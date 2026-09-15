@@ -36,13 +36,13 @@ The existing numeric wire contract is unchanged; no float or string is sent.
 pnpm --dir gui run check:attachment-contract
 ```
 
-Nineteen Windows loopback scenarios pass: two-member success, already-attached,
+Twenty Windows loopback scenarios pass: two-member success, already-attached,
 malformed attachment, second-snapshot instance change, identity change, cursor
 regression, wrong request ID, invalid snapshot, detach failure, event cursor gap,
 event identity mismatch, event response ID mismatch, second-batch replay,
 mux revision change, member order change, a change after the first event round,
 cumulative request duration exceeding startup budget, stalled event response and
-slow response-frame bytes. Python uses
+slow response-frame bytes and continuous idle polling with cooperative stop. Python uses
 the reference request/response codecs, verifies the exact operation sequence and
 observes connection closure while its listener stays active. Fixture records and
 listener are temporary; no existing service or provider is involved.
@@ -69,6 +69,11 @@ request budget: it succeeds despite exceeding the old total connection budget.
 The stalled and slow-byte cases close the connection without a successful
 detach claim. Startup deadlines remain absolute. Unit tests separately verify
 that reads cannot renew a deadline and expired startup cannot activate session mode.
+The continuous case runs `--watch` with a 1500 ms stop timer and verifies at least
+six member event reads (beyond the old two-round limit), followed by exact detach
+and EOF while the listener remains active. The native stop timer is joined by
+its owner; no thread is intentionally detached. The stop signal test covers
+sticky stop and wake-up. This remains a CLI driver, not the desktop UI lifecycle.
 
 After all snapshots and after each event round, the probe reads the selected mux
 by its exact ID. It requires the same revision (lossless raw decimal), name,

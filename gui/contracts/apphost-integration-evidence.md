@@ -35,7 +35,7 @@ on one connection. The real server closed the connection before replying.
 
 The bounded Rust sequence uses `1` for attach, followed by increasing decimal IDs
 for snapshots, event reads and detach (including failure cleanup).
-The nineteen scripted attachment scenarios also assert these
+The twenty scripted attachment scenarios also assert these
 IDs. Raw controller-generation serialization remains unchanged and lossless.
 No server contract or runtime implementation was changed to accommodate GUI.
 
@@ -46,7 +46,8 @@ No server contract or runtime implementation was changed to accommodate GUI.
   cleanup and explicit deployment settlement. It does not prove hard process
   termination cleanup or every failed-snapshot/disconnect race in the real host.
 - Bounded membership rechecks and local attempt fencing now run in the probe.
-  No ongoing desktop event reader, atomic GUI snapshot publication, submission,
+  A native CLI continuous-idle-read case also verifies cooperative stop and
+  detach against the real AppHost. No desktop event reader, atomic GUI snapshot publication, submission,
   approval or takeover capability is added.
 - Model-free real Coding sessions do not establish live provider execution.
 - Nonempty contiguous event batches and invalid batches are covered by the scripted

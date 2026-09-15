@@ -125,5 +125,12 @@ share one absolute startup deadline. Only successful initialization enables a
 fresh deadline at each subsequent request send, covering the complete write and
 response frame. Byte reads never renew it. Expired or invalid frames fence the
 channel; a fresh budget cannot reopen it. This policy assumes sequential RPC,
-not concurrent outstanding calls. A long-lived desktop scheduler, cancellation/
-join ownership and GUI state publication are still pending.
+not concurrent outstanding calls. The native `--watch` evidence driver now polls
+until a cooperative stop signal, waiting up to 100 ms between rounds with a
+wakeable condition variable. It checks stop between requests, abandons an
+incomplete round and attempts exact detach. In-flight IO remains subject to its
+request deadline; it is not forcibly interrupted by cooperative stop. The
+separate existing hard-cancel path still invalidates and shuts down the socket.
+The CLI requires a bounded positive stop timer for `--watch`; the reusable stop
+signal itself is not timer-dependent. Desktop worker ownership and GUI state
+publication are still pending; the CLI loop is not a Tauri background worker.
