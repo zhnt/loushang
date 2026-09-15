@@ -148,5 +148,20 @@ The supplied operation must honor cooperative stop and bounded IO; the wrapper
 cannot forcibly terminate an uncooperative thread. Unit tests cover completion,
 failure/panic reporting, stop-before-cleanup and Drop joining. The existing real
 AppHost and scripted lifecycle evidence now exercise the worker-backed driver.
-Desktop state ownership, nonblocking window-exit handling and GUI publication
-are still pending. No live Tauri invoke or desktop connection is enabled here.
+The desktop now manages a native `ConnectionLifecycle` and handles normal
+`ExitRequested`: idle exits immediately; an owned reader receives stop, moves
+to Closing, and is joined on Tauri's blocking pool. Repeated requests while
+Closing are prevented without starting another join. Completion is retained,
+then exit is requested again; failed cleanup emits a fixed redacted diagnostic
+and requests exit code 1. Starting during reading or after exit has begun is
+rejected. No runtime STOP request is introduced.
+
+Seven native unit tests cover worker and lifecycle behavior, including a
+deliberately blocked cleanup, repeated exit and retained failure. This is not
+yet native-window acceptance with a live connection: `start` is native-only and
+currently has no desktop caller. The default fixture takes the idle exit path.
+No live Tauri invoke or GUI snapshot publication is enabled here. Forced process
+termination and Tauri restart (whose exit prevention is ignored by Tauri) are
+outside this graceful-exit guarantee; no restart action is exposed. Before any
+restart feature, it must explicitly settle the connection first. The operation
+still must obey its bounded IO and cooperative-stop contract.
