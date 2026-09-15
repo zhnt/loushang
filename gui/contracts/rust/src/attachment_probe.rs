@@ -151,7 +151,11 @@ fn request<R: Read, W: Write, P: Serialize>(
     }
     Ok(envelope)
 }
-pub fn run<R: Read, W: Write>(channel: &mut Channel<R, W>, instance: &str) -> Result<usize, ()> {
+pub fn run<R: Read, W: Write>(
+    channel: &mut Channel<R, W>,
+    instance: &str,
+    attempt: &super::connection_epoch::Attempt,
+) -> Result<usize, ()> {
     let response = request(
         channel,
         "mux/attach",
@@ -163,7 +167,7 @@ pub fn run<R: Read, W: Write>(channel: &mut Channel<R, W>, instance: &str) -> Re
         return Err(());
     }
     let attachment: Attachment = serde_json::from_str(response.result.get()).map_err(|_| ())?;
-    attachment.validate()?;
+    attempt.apply(|| attachment.validate())?;
     let mut next_id = 2usize;
     let snapshots = (|| {
         let mut pending = Vec::new();
@@ -199,7 +203,10 @@ pub fn run<R: Read, W: Write>(channel: &mut Channel<R, W>, instance: &str) -> Re
             {
                 return Err(());
             }
-            pending.push(snapshot);
+            attempt.apply(|| {
+                pending.push(snapshot);
+                Ok(())
+            })?;
         }
         // Exercise multiple batches without resetting watermarks to the snapshot.
         // Lifetime is still bounded by the connection deadline, not a GUI owner.
@@ -233,11 +240,14 @@ pub fn run<R: Read, W: Write>(channel: &mut Channel<R, W>, instance: &str) -> Re
                 if events["requestId"] != id {
                     return Err(());
                 }
-                reader.apply(&events)?;
+                attempt.apply(|| reader.apply(&events))?;
             }
         }
         Ok(pending.len())
     })();
+    if snapshots.is_err() {
+        attempt.cancellation().invalidate();
+    }
     // Once ownership is validated, attempt detach even if a snapshot/batch is rejected.
     let detached = request(
         channel,

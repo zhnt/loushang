@@ -3,6 +3,9 @@
 #[path = "../attachment_probe.rs"]
 mod attachment_probe;
 #[cfg(windows)]
+#[path = "../connection_epoch.rs"]
+mod connection_epoch;
+#[cfg(windows)]
 #[path = "../record_native.rs"]
 mod record_native;
 #[cfg(windows)]
@@ -73,12 +76,14 @@ mod connection {
         restart_recovery: bool,
     }
     pub fn run(
+        owner: &super::connection_epoch::ConnectionOwner,
         root: &Path,
         timeout: Duration,
         cancel: Option<Duration>,
         attach: bool,
     ) -> Result<String, ()> {
         let deadline = Instant::now() + timeout;
+        let attempt = owner.begin()?;
         let name = transport_auth::record_value::Record::filename("workspace")?;
         let record =
             transport_auth::record_value::Record::decode(&record_native::read(root, &name)?)?;
@@ -93,8 +98,10 @@ mod connection {
         let (finish, receiver) = mpsc::channel();
         let worker = if let Some(delay) = cancel {
             let socket = stream.try_clone().map_err(|_| ())?;
+            let fence = attempt.cancellation();
             Some(thread::spawn(move || {
                 if receiver.recv_timeout(delay).is_err() {
+                    fence.invalidate();
                     let _ = socket.shutdown(Shutdown::Both);
                 }
             }))
@@ -142,11 +149,11 @@ mod connection {
         }
         channel.send(&bytes)?;
         if attach {
-            super::attachment_probe::run(&mut channel, &hello.service_instance_id)?;
+            super::attachment_probe::run(&mut channel, &hello.service_instance_id, &attempt)?;
         }
         // Authentication instance and service instance are distinct identities.
         stream.shutdown(Shutdown::Both).map_err(|_| ())?;
-        Ok(hello.service_instance_id)
+        attempt.apply(|| Ok(hello.service_instance_id))
     }
 }
 
@@ -163,6 +170,7 @@ fn main() {
             return Err(());
         }
         connection::run(
+            &connection_epoch::ConnectionOwner::default(),
             std::path::Path::new(&args[1]),
             std::time::Duration::from_millis(timeout),
             (cancel >= 0).then(|| std::time::Duration::from_millis(cancel as u64)),
