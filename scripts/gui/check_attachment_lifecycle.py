@@ -150,6 +150,35 @@ async def scenario(root: Path, mode: str) -> None:
                     raw = json.dumps(value).encode()
                 await channel.send(raw)
             next_id = len(attachment.sessions) + 2
+
+            async def barrier():
+                nonlocal next_id
+                call = decode_request(await channel.receive())
+                assert call.operation is pm.AppOperationV1.MUX_READ
+                assert call.request_id == str(next_id)
+                assert (
+                    call.payload.selector.mux_space_id
+                    == attachment.mux_space.mux_space_id
+                )
+                assert call.payload.selector.name is None
+                next_id += 1
+                seen.append("barrier")
+                raw = encode_response(
+                    pm.AppResponseV1(call.request_id, attachment.mux_space)
+                )
+                if mode in {"member-revision", "member-order"} or (
+                    mode == "late-member-change" and seen.count("barrier") == 2
+                ):
+                    value = json.loads(raw)
+                    if mode in {"member-revision", "late-member-change"}:
+                        value["result"]["revision"] += 1
+                    else:
+                        value["result"]["members"].reverse()
+                    raw = json.dumps(value).encode()
+                await channel.send(raw)
+
+            if mode.startswith("member-"):
+                await barrier()
             if mode in {
                 "valid",
                 "detach-failed",
@@ -157,7 +186,9 @@ async def scenario(root: Path, mode: str) -> None:
                 "event-identity",
                 "event-request",
                 "second-batch-replay",
+                "late-member-change",
             }:
+                await barrier()
                 for offset, session in enumerate(attachment.sessions * 2):
                     index = offset % len(attachment.sessions)
                     round_number = offset // len(attachment.sessions)
@@ -199,6 +230,10 @@ async def scenario(root: Path, mode: str) -> None:
                         mode == "second-batch-replay" and round_number == 1
                     ):
                         break
+                    if index == len(attachment.sessions) - 1:
+                        await barrier()
+                        if mode == "late-member-change":
+                            break
             call = decode_request(await channel.receive())
             assert call.operation is pm.AppOperationV1.MUX_DETACH
             assert call.request_id == str(next_id)
@@ -259,12 +294,16 @@ async def scenario(root: Path, mode: str) -> None:
             if mode in {"already-attached", "bad-attachment"}
             else ["attach", "snapshot-0", "snapshot-1"]
             + (
-                ["events-0"]
+                ["barrier", "events-0"]
                 if mode.startswith("event-")
-                else ["events-0", "events-1", "events-0"]
+                else ["barrier", "events-0", "events-1", "barrier", "events-0"]
                 if mode == "second-batch-replay"
-                else ["events-0", "events-1"] * 2
+                else ["barrier", "events-0", "events-1", "barrier"]
+                if mode == "late-member-change"
+                else ["barrier"] + ["events-0", "events-1", "barrier"] * 2
                 if mode in {"valid", "detach-failed"}
+                else ["barrier"]
+                if mode.startswith("member-")
                 else []
             )
             + ["detach"]
@@ -297,6 +336,9 @@ async def run(parent):
         "event-identity",
         "event-request",
         "second-batch-replay",
+        "member-revision",
+        "member-order",
+        "late-member-change",
     )
     for mode in modes:
         await scenario(parent / mode, mode)

@@ -103,8 +103,9 @@ silently sharing one mux.
    [Real AppHost integration](apphost-integration-evidence.md) verifies ownership
    arbitration, idle event reads and cleanup with an independent mux client.
    [Local attempt fencing](connection-epoch-evidence.md) now guards probe state
-   updates and cancellation. Ongoing membership/event barriers and integration
-   of a reusable owner into the desktop connection remain pending.
+   updates and cancellation. Bounded mux membership rechecks reject a changed
+   revision or member set after snapshots and event rounds. Continuous detection
+   and integration of a reusable owner into the desktop connection remain pending.
 4. **Pending acceptance:** persistent read-only native GUI connection and
    presentation. The probe's idle connection evidence is not GUI acceptance.
 

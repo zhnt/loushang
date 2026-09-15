@@ -28,8 +28,9 @@ or stop the shared application. Final successful completion is also guarded.
   integrated guard; real AppHost idle snapshot/event reads remain compatible.
 - The current CLI performs one connection per process. Reconnection using the
   same owner is covered by unit tests, not by a persistent desktop client.
-- Member changes still require an explicit membership barrier and fresh snapshots.
-  This module provides invalidation, not automatic member-change detection.
+- The attachment probe now rechecks mux membership after snapshots and event
+  rounds. This module supplies invalidation on mismatch, not continuous detection
+  or automatic reacquisition of fresh snapshots.
 - No GUI state is published and no authentication data is exposed to React.
 
 Next reuse a long-lived owner in the native adapter, connect disconnect/resync

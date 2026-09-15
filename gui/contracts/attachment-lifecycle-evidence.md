@@ -36,10 +36,11 @@ The existing numeric wire contract is unchanged; no float or string is sent.
 pnpm --dir gui run check:attachment-contract
 ```
 
-Thirteen Windows loopback scenarios pass: two-member success, already-attached,
+Sixteen Windows loopback scenarios pass: two-member success, already-attached,
 malformed attachment, second-snapshot instance change, identity change, cursor
 regression, wrong request ID, invalid snapshot, detach failure, event cursor gap,
-event identity mismatch, event response ID mismatch and second-batch replay. Python uses
+event identity mismatch, event response ID mismatch, second-batch replay,
+mux revision change, member order change and a change after the first event round. Python uses
 the reference request/response codecs, verifies the exact operation sequence and
 observes connection closure while its listener stays active. Fixture records and
 listener are temporary; no existing service or provider is involved.
@@ -55,6 +56,15 @@ tests cover partial advancement failure, refusal of later/empty batches after
 failure, and rejection of a later batch by a fresh snapshot baseline.
 Request IDs are
 positive increasing decimal numbers across snapshots, event reads and cleanup.
+
+After all snapshots and after each event round, the probe reads the selected mux
+by its exact ID. It requires the same revision (lossless raw decimal), name,
+ordered members, complete member identities, positions and titles. A mismatch
+fences the attempt and enters best-effort detach without reporting success.
+This is an optimistic membership recheck, not a server transaction or proof of
+ongoing controller ownership: mux/read is not an authorization renewal. Changes
+after a successful recheck still require detection by the next authorized read
+or a future continuous reader. No GUI publication is enabled by this check.
 
 The reference peer is a scripted contract fixture, not AppService. Therefore
 these checks do not demonstrate actual controller arbitration/release or a

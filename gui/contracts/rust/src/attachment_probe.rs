@@ -59,6 +59,23 @@ struct Mux {
     revision: Box<RawValue>,
     members: Vec<Member>,
 }
+impl Mux {
+    fn matches(&self, current: &Self) -> Result<(), ()> {
+        if self.mux_space_id != current.mux_space_id
+            || self.name != current.name
+            || self.revision.get() != current.revision.get()
+            || self.members.len() != current.members.len()
+        {
+            return Err(());
+        }
+        for (before, after) in self.members.iter().zip(&current.members) {
+            if before.value()? != after.value()? {
+                return Err(());
+            }
+        }
+        Ok(())
+    }
+}
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Session {
@@ -151,6 +168,27 @@ fn request<R: Read, W: Write, P: Serialize>(
     }
     Ok(envelope)
 }
+fn membership_barrier<R: Read, W: Write>(
+    channel: &mut Channel<R, W>,
+    expected: &Mux,
+    next_id: &mut usize,
+    attempt: &super::connection_epoch::Attempt,
+) -> Result<(), ()> {
+    let id = next_id.to_string();
+    *next_id += 1;
+    let response = request(
+        channel,
+        "mux/read",
+        &id,
+        json!({"selector":{"muxSpaceId":expected.mux_space_id,"name":null}}),
+    )?;
+    if response.result_type != "mux" {
+        return Err(());
+    }
+    let current: Mux = serde_json::from_str(response.result.get()).map_err(|_| ())?;
+    attempt.apply(|| expected.matches(&current))
+}
+
 pub fn run<R: Read, W: Write>(
     channel: &mut Channel<R, W>,
     instance: &str,
@@ -208,6 +246,7 @@ pub fn run<R: Read, W: Write>(
                 Ok(())
             })?;
         }
+        membership_barrier(channel, &attachment.mux_space, &mut next_id, attempt)?;
         // Exercise multiple batches without resetting watermarks to the snapshot.
         // Lifetime is still bounded by the connection deadline, not a GUI owner.
         let mut readers = pending
@@ -242,6 +281,7 @@ pub fn run<R: Read, W: Write>(
                 }
                 attempt.apply(|| reader.apply(&events))?;
             }
+            membership_barrier(channel, &attachment.mux_space, &mut next_id, attempt)?;
         }
         Ok(pending.len())
     })();
