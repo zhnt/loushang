@@ -56,6 +56,11 @@ tests cover partial advancement failure, refusal of later/empty batches after
 failure, and rejection of a later batch by a fresh snapshot baseline.
 Request IDs are
 positive increasing decimal numbers across snapshots, event reads and cleanup.
+The reusable read session additionally stages the entire round's member
+watermarks: no member commits until all members and the mux recheck succeed.
+Failure clears the session's readable state while retaining exact authority for
+one detach attempt. Reading before initialization or after detach is rejected.
+The signed-63-bit request number limit is checked without wraparound.
 
 After all snapshots and after each event round, the probe reads the selected mux
 by its exact ID. It requires the same revision (lossless raw decimal), name,

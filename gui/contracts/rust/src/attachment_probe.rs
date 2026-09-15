@@ -168,14 +168,22 @@ fn request<R: Read, W: Write, P: Serialize>(
     }
     Ok(envelope)
 }
+fn take_request_id(next: &mut u64) -> Result<String, ()> {
+    if *next == 0 || *next > i64::MAX as u64 {
+        return Err(());
+    }
+    let id = next.to_string();
+    *next += 1;
+    Ok(id)
+}
+
 fn membership_barrier<R: Read, W: Write>(
     channel: &mut Channel<R, W>,
     expected: &Mux,
-    next_id: &mut usize,
+    next_id: &mut u64,
     attempt: &super::connection_epoch::Attempt,
 ) -> Result<(), ()> {
-    let id = next_id.to_string();
-    *next_id += 1;
+    let id = take_request_id(next_id)?;
     let response = request(
         channel,
         "mux/read",
@@ -189,74 +197,126 @@ fn membership_barrier<R: Read, W: Write>(
     attempt.apply(|| expected.matches(&current))
 }
 
-pub fn run<R: Read, W: Write>(
-    channel: &mut Channel<R, W>,
-    instance: &str,
-    attempt: &super::connection_epoch::Attempt,
-) -> Result<usize, ()> {
-    let response = request(
-        channel,
-        "mux/attach",
-        "1",
-        json!({"selector":{"muxSpaceId":null,"name":"gui-fixture"},"mailboxCapacity":256}),
-    )?;
-    // Any attach error/conflict closes this attempt; never take over or retry.
-    if response.result_type != "attachment" {
-        return Err(());
-    }
-    let attachment: Attachment = serde_json::from_str(response.result.get()).map_err(|_| ())?;
-    attempt.apply(|| attachment.validate())?;
-    let mut next_id = 2usize;
-    let snapshots = (|| {
-        let mut pending = Vec::new();
-        for session in &attachment.sessions {
-            let id = next_id.to_string();
-            next_id += 1;
-            let payload = Request {
-                protocol_version: "loushang.execution/v1",
-                request_id: &id,
-                operation: "execution/snapshot",
-                payload: SnapshotRequest {
-                    control: Control {
-                        attachment_id: &attachment.attachment_id,
-                        controller_generation: &attachment.controller_generation,
-                        member_id: &session.member.member_id,
-                    },
-                    expected_instance_id: instance,
-                },
-            };
-            channel.send(&serde_json::to_vec(&payload).map_err(|_| ())?)?;
-            let bytes = channel.receive()?;
-            let snapshot =
-                projection::bridge("snapshot", std::str::from_utf8(&bytes).map_err(|_| ())?)?;
-            let source = &snapshot["result"]["source"]["source"];
-            let before = projection::source_value(session.snapshot.get())?;
-            let old = before["cursor"].as_str().ok_or(())?;
-            let new = source["cursor"].as_str().ok_or(())?;
-            if snapshot["requestId"] != id
-                || snapshot["result"]["serviceInstanceId"] != instance
-                || source["identity"] != before["identity"]
-                || new.len() < old.len()
-                || (new.len() == old.len() && new < old)
-            {
-                return Err(());
-            }
-            attempt.apply(|| {
-                pending.push(snapshot);
-                Ok(())
-            })?;
+/// Owns validated attachment authority and per-member read state, not the socket.
+/// The caller must attempt detach before discarding an attached session.
+pub(crate) struct ReadSession {
+    attachment: Attachment,
+    instance: String,
+    next_id: u64,
+    readers: Option<Vec<EventReader>>,
+    closed: bool,
+}
+impl ReadSession {
+    pub(crate) fn attach<R: Read, W: Write>(
+        channel: &mut Channel<R, W>,
+        instance: &str,
+        attempt: &super::connection_epoch::Attempt,
+    ) -> Result<Self, ()> {
+        let response = request(
+            channel,
+            "mux/attach",
+            "1",
+            json!({"selector":{"muxSpaceId":null,"name":"gui-fixture"},"mailboxCapacity":256}),
+        )?;
+        if response.result_type != "attachment" {
+            return Err(());
         }
-        membership_barrier(channel, &attachment.mux_space, &mut next_id, attempt)?;
-        // Exercise multiple batches without resetting watermarks to the snapshot.
-        // Lifetime is still bounded by the connection deadline, not a GUI owner.
-        let mut readers = pending
-            .iter()
-            .map(EventReader::new)
-            .collect::<Result<Vec<_>, _>>()?;
-        for _round in 0..2 {
-            for (session, reader) in attachment.sessions.iter().zip(&mut readers) {
-                let id = next_id.to_string();
-                next_id += 1;
+        let attachment: Attachment = serde_json::from_str(response.result.get()).map_err(|_| ())?;
+        attempt.apply(|| attachment.validate())?;
+        Ok(Self {
+            attachment,
+            instance: instance.to_owned(),
+            next_id: 2,
+            readers: None,
+            closed: false,
+        })
+    }
+
+    pub(crate) fn initialize<R: Read, W: Write>(
+        &mut self,
+        channel: &mut Channel<R, W>,
+        attempt: &super::connection_epoch::Attempt,
+    ) -> Result<usize, ()> {
+        if self.closed || self.readers.is_some() {
+            return Err(());
+        }
+        let result = (|| {
+            attempt.apply(|| Ok(()))?;
+            let mut pending = Vec::new();
+            for session in &self.attachment.sessions {
+                let id = take_request_id(&mut self.next_id)?;
+                channel.send(
+                    &serde_json::to_vec(&Request {
+                        protocol_version: "loushang.execution/v1",
+                        request_id: &id,
+                        operation: "execution/snapshot",
+                        payload: SnapshotRequest {
+                            control: Control {
+                                attachment_id: &self.attachment.attachment_id,
+                                controller_generation: &self.attachment.controller_generation,
+                                member_id: &session.member.member_id,
+                            },
+                            expected_instance_id: &self.instance,
+                        },
+                    })
+                    .map_err(|_| ())?,
+                )?;
+                let bytes = channel.receive()?;
+                let snapshot =
+                    projection::bridge("snapshot", std::str::from_utf8(&bytes).map_err(|_| ())?)?;
+                let source = &snapshot["result"]["source"]["source"];
+                let before = projection::source_value(session.snapshot.get())?;
+                let old = before["cursor"].as_str().ok_or(())?;
+                let new = source["cursor"].as_str().ok_or(())?;
+                if snapshot["requestId"] != id
+                    || snapshot["result"]["serviceInstanceId"] != self.instance
+                    || source["identity"] != before["identity"]
+                    || new.len() < old.len()
+                    || (new.len() == old.len() && new < old)
+                {
+                    return Err(());
+                }
+                attempt.apply(|| {
+                    pending.push(snapshot);
+                    Ok(())
+                })?;
+            }
+            membership_barrier(
+                channel,
+                &self.attachment.mux_space,
+                &mut self.next_id,
+                attempt,
+            )?;
+            let readers = pending
+                .iter()
+                .map(EventReader::new)
+                .collect::<Result<Vec<_>, _>>()?;
+            attempt.apply(|| {
+                self.readers = Some(readers);
+                Ok(pending.len())
+            })
+        })();
+        if result.is_err() {
+            self.fail(attempt);
+        }
+        result
+    }
+
+    /// One complete round, with no hard-coded lifetime or round count.
+    /// No partial per-member cursor changes survive a failed round.
+    pub(crate) fn poll<R: Read, W: Write>(
+        &mut self,
+        channel: &mut Channel<R, W>,
+        attempt: &super::connection_epoch::Attempt,
+    ) -> Result<(), ()> {
+        if self.closed {
+            return Err(());
+        }
+        let result = (|| {
+            attempt.apply(|| Ok(()))?;
+            let mut next = self.readers.as_ref().ok_or(())?.clone();
+            for (session, reader) in self.attachment.sessions.iter().zip(&mut next) {
+                let id = take_request_id(&mut self.next_id)?;
                 channel.send(
                     &serde_json::to_vec(&Request {
                         protocol_version: "loushang.execution/v1",
@@ -264,11 +324,11 @@ pub fn run<R: Read, W: Write>(
                         operation: "execution/read_events",
                         payload: SnapshotRequest {
                             control: Control {
-                                attachment_id: &attachment.attachment_id,
-                                controller_generation: &attachment.controller_generation,
+                                attachment_id: &self.attachment.attachment_id,
+                                controller_generation: &self.attachment.controller_generation,
                                 member_id: &session.member.member_id,
                             },
-                            expected_instance_id: instance,
+                            expected_instance_id: &self.instance,
                         },
                     })
                     .map_err(|_| ())?,
@@ -281,29 +341,81 @@ pub fn run<R: Read, W: Write>(
                 }
                 attempt.apply(|| reader.apply(&events))?;
             }
-            membership_barrier(channel, &attachment.mux_space, &mut next_id, attempt)?;
+            membership_barrier(
+                channel,
+                &self.attachment.mux_space,
+                &mut self.next_id,
+                attempt,
+            )?;
+            attempt.apply(|| {
+                self.readers = Some(next);
+                Ok(())
+            })
+        })();
+        if result.is_err() {
+            self.fail(attempt);
         }
-        Ok(pending.len())
-    })();
-    if snapshots.is_err() {
+        result
+    }
+
+    fn fail(&mut self, attempt: &super::connection_epoch::Attempt) {
+        self.readers = None;
         attempt.cancellation().invalidate();
     }
-    // Once ownership is validated, attempt detach even if a snapshot/batch is rejected.
-    let detached = request(
-        channel,
-        "mux/detach",
-        &next_id.to_string(),
-        Detach {
-            attachment_id: &attachment.attachment_id,
-            controller_generation: &attachment.controller_generation,
-        },
-    );
-    let count = snapshots?;
-    let detached = detached?;
-    if detached.result_type != "ack" || serde_json::from_str::<Ack>(detached.result.get()).is_err()
-    {
-        return Err(());
+
+    pub(crate) fn detach<R: Read, W: Write>(
+        &mut self,
+        channel: &mut Channel<R, W>,
+        attempt: &super::connection_epoch::Attempt,
+    ) -> Result<(), ()> {
+        if self.closed {
+            return Err(());
+        }
+        self.closed = true;
+        self.readers = None;
+        // Keep cleanup possible after local invalidation; use exact owned authority.
+        let result = (|| {
+            let id = take_request_id(&mut self.next_id)?;
+            let response = request(
+                channel,
+                "mux/detach",
+                &id,
+                Detach {
+                    attachment_id: &self.attachment.attachment_id,
+                    controller_generation: &self.attachment.controller_generation,
+                },
+            )?;
+            if response.result_type != "ack"
+                || serde_json::from_str::<Ack>(response.result.get()).is_err()
+            {
+                return Err(());
+            }
+            Ok(())
+        })();
+        if result.is_err() {
+            attempt.cancellation().invalidate();
+        }
+        result
     }
+}
+
+pub fn run<R: Read, W: Write>(
+    channel: &mut Channel<R, W>,
+    instance: &str,
+    attempt: &super::connection_epoch::Attempt,
+) -> Result<usize, ()> {
+    let mut session = ReadSession::attach(channel, instance, attempt)?;
+    let outcome = (|| {
+        let count = session.initialize(channel, attempt)?;
+        // Only the bounded evidence driver selects two rounds.
+        for _ in 0..2 {
+            session.poll(channel, attempt)?;
+        }
+        Ok(count)
+    })();
+    let detached = session.detach(channel, attempt);
+    let count = outcome?;
+    detached?;
     Ok(count)
 }
 
@@ -378,6 +490,13 @@ impl EventReader {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn request_numbers_fail_closed_without_wrapping() {
+        let mut next = i64::MAX as u64;
+        assert_eq!(take_request_id(&mut next).unwrap(), i64::MAX.to_string());
+        assert!(take_request_id(&mut next).is_err());
+        assert!(take_request_id(&mut 0).is_err());
+    }
     fn validate_events(snapshot: &Value, events: &Value) -> Result<(), ()> {
         EventReader::new(snapshot)?.apply(events)
     }

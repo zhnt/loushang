@@ -106,6 +106,11 @@ silently sharing one mux.
    updates and cancellation. Bounded mux membership rechecks reject a changed
    revision or member set after snapshots and event rounds. Continuous detection
    and integration of a reusable owner into the desktop connection remain pending.
+   The attachment reader is now a reusable `ReadSession` with separate attach,
+   initialize, poll and detach operations. The evidence driver alone chooses
+   two rounds; the session does not own a loop or socket. Each poll commits all
+   member watermarks only after its membership recheck. Request IDs fail closed
+   at the existing signed-63-bit connection limit instead of wrapping.
 4. **Pending acceptance:** persistent read-only native GUI connection and
    presentation. The probe's idle connection evidence is not GUI acceptance.
 
@@ -113,3 +118,9 @@ Transport and attachment must pass their own evidence before enabling the GUI
 connection control. No live connection readiness is claimed by checkpoint 1.
 Keep these checks opt-in and scoped to the changed GUI adapter; do not add TUI or
 Harness suites solely because the GUI consumes their application contracts.
+
+Before adding a persistent desktop driver, separate the initial connection
+deadline from per-request deadlines. Do not renew a deadline on every byte read;
+slow frames must still time out. The current probe intentionally retains its
+absolute startup/lifetime deadline. A long-lived scheduler, cancellation/join
+ownership and GUI state publication are still pending.
