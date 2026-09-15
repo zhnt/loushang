@@ -6,7 +6,7 @@ shared AppHost integration, an ongoing RPC client or live GUI publication.
 The Windows connection probe now has an opt-in `--attach` mode after its existing
 record/auth/hello sequence. It selects the explicit `gui-fixture` mux, validates
 the returned attachment, reads each member's execution composite snapshot and
-one execution-event batch, then detaches and closes. It never creates a
+two rounds of execution-event batches, then detaches and closes. It never creates a
 mux/session, takes over a controller, submits work or sends service STOP.
 
 The attachment validator checks closed fields, positive lossless generations
@@ -36,18 +36,24 @@ The existing numeric wire contract is unchanged; no float or string is sent.
 pnpm --dir gui run check:attachment-contract
 ```
 
-Twelve Windows loopback scenarios pass: two-member success, already-attached,
+Thirteen Windows loopback scenarios pass: two-member success, already-attached,
 malformed attachment, second-snapshot instance change, identity change, cursor
 regression, wrong request ID, invalid snapshot, detach failure, event cursor gap,
-event identity mismatch and event response ID mismatch. Python uses
+event identity mismatch, event response ID mismatch and second-batch replay. Python uses
 the reference request/response codecs, verifies the exact operation sequence and
 observes connection closure while its listener stays active. Fixture records and
 listener are temporary; no existing service or provider is involved.
 
-The first event batch is validated against each member's snapshot: source cursors
+Event reading starts from each member's snapshot: source cursors
 are incremented losslessly as decimal strings, while execution metadata revisions
 use a separate bounded counter. Wrong identity, duplicate or non-contiguous
-positions reject the attempt; no incomplete state is published. Request IDs are
+positions reject the attempt; no incomplete state is published. Watermarks persist
+across batches. Each batch advances a temporary copy and commits only after full
+validation; failure leaves the previous watermarks unchanged and permanently
+invalidates that reader. Rebuilding requires a new validated snapshot. Rust unit
+tests cover partial advancement failure, refusal of later/empty batches after
+failure, and rejection of a later batch by a fresh snapshot baseline.
+Request IDs are
 positive increasing decimal numbers across snapshots, event reads and cleanup.
 
 The reference peer is a scripted contract fixture, not AppService. Therefore

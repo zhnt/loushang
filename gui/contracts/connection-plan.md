@@ -98,7 +98,8 @@ silently sharing one mux.
    composes them through hello and close with socket deadlines/cancellation;
    production GUI ownership and ongoing RPC remain pending.
 3. **Partial attachment evidence:** [scripted loopback attachment/snapshot/detach](attachment-lifecycle-evidence.md)
-   is implemented, including one bounded execution-event batch per member.
+   is implemented, including two bounded execution-event rounds per member with
+   persistent watermarks and atomic batch validation.
    [Real AppHost integration](apphost-integration-evidence.md) verifies ownership
    arbitration, idle event reads and cleanup with an independent mux client.
    Ongoing membership/event barriers and stale-attempt isolation remain pending.

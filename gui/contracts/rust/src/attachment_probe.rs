@@ -201,34 +201,40 @@ pub fn run<R: Read, W: Write>(channel: &mut Channel<R, W>, instance: &str) -> Re
             }
             pending.push(snapshot);
         }
-        // Snapshot capture installs the server-side subscription. Read one bounded
-        // batch per member; this is not yet a persistent reader or GUI publication.
-        for (session, snapshot) in attachment.sessions.iter().zip(&pending) {
-            let id = next_id.to_string();
-            next_id += 1;
-            channel.send(
-                &serde_json::to_vec(&Request {
-                    protocol_version: "loushang.execution/v1",
-                    request_id: &id,
-                    operation: "execution/read_events",
-                    payload: SnapshotRequest {
-                        control: Control {
-                            attachment_id: &attachment.attachment_id,
-                            controller_generation: &attachment.controller_generation,
-                            member_id: &session.member.member_id,
+        // Exercise multiple batches without resetting watermarks to the snapshot.
+        // Lifetime is still bounded by the connection deadline, not a GUI owner.
+        let mut readers = pending
+            .iter()
+            .map(EventReader::new)
+            .collect::<Result<Vec<_>, _>>()?;
+        for _round in 0..2 {
+            for (session, reader) in attachment.sessions.iter().zip(&mut readers) {
+                let id = next_id.to_string();
+                next_id += 1;
+                channel.send(
+                    &serde_json::to_vec(&Request {
+                        protocol_version: "loushang.execution/v1",
+                        request_id: &id,
+                        operation: "execution/read_events",
+                        payload: SnapshotRequest {
+                            control: Control {
+                                attachment_id: &attachment.attachment_id,
+                                controller_generation: &attachment.controller_generation,
+                                member_id: &session.member.member_id,
+                            },
+                            expected_instance_id: instance,
                         },
-                        expected_instance_id: instance,
-                    },
-                })
-                .map_err(|_| ())?,
-            )?;
-            let bytes = channel.receive()?;
-            let events =
-                projection::bridge("events", std::str::from_utf8(&bytes).map_err(|_| ())?)?;
-            if events["requestId"] != id {
-                return Err(());
+                    })
+                    .map_err(|_| ())?,
+                )?;
+                let bytes = channel.receive()?;
+                let events =
+                    projection::bridge("events", std::str::from_utf8(&bytes).map_err(|_| ())?)?;
+                if events["requestId"] != id {
+                    return Err(());
+                }
+                reader.apply(&events)?;
             }
-            validate_events(snapshot, &events)?;
         }
         Ok(pending.len())
     })();
@@ -266,35 +272,80 @@ fn successor(decimal: &str) -> String {
 
 // Inputs have passed the independent wire validators. Keep content and metadata
 // watermarks separate, and never coerce arbitrary-size source cursors to floats.
-fn validate_events(snapshot: &Value, events: &Value) -> Result<(), ()> {
-    let source = &snapshot["result"]["source"]["source"];
-    let mut cursor = source["cursor"].as_str().ok_or(())?.to_owned();
-    let mut revision = snapshot["result"]["executions"]["revision"]
-        .as_u64()
-        .ok_or(())?;
-    for event in events["result"]["events"].as_array().ok_or(())? {
-        if event.get("source").is_some() {
-            let content = &event["source"];
-            if content["sessionId"] != source["identity"]["sessionId"]
-                || content["cursor"].as_str() != Some(successor(&cursor).as_str())
-            {
-                return Err(());
-            }
-            cursor = content["cursor"].as_str().ok_or(())?.to_owned();
-        } else {
-            let next = event["revision"].as_u64().ok_or(())?;
-            if revision.checked_add(1) != Some(next) {
-                return Err(());
-            }
-            revision = next;
-        }
+#[derive(Clone)]
+struct EventReader {
+    session_id: Value,
+    cursor: String,
+    revision: u64,
+    valid: bool,
+}
+impl EventReader {
+    fn new(snapshot: &Value) -> Result<Self, ()> {
+        let source = &snapshot["result"]["source"]["source"];
+        Ok(Self {
+            session_id: source["identity"]["sessionId"].clone(),
+            cursor: source["cursor"].as_str().ok_or(())?.to_owned(),
+            revision: snapshot["result"]["executions"]["revision"]
+                .as_u64()
+                .ok_or(())?,
+            valid: true,
+        })
     }
-    Ok(())
+    fn apply(&mut self, events: &Value) -> Result<(), ()> {
+        if !self.valid {
+            return Err(());
+        }
+        let mut next = self.clone();
+        if next.advance(events).is_err() {
+            self.valid = false;
+            return Err(());
+        }
+        *self = next;
+        Ok(())
+    }
+    fn advance(&mut self, events: &Value) -> Result<(), ()> {
+        for event in events["result"]["events"].as_array().ok_or(())? {
+            if event.get("source").is_some() {
+                let content = &event["source"];
+                if content["sessionId"] != self.session_id
+                    || content["cursor"].as_str() != Some(successor(&self.cursor).as_str())
+                {
+                    return Err(());
+                }
+                self.cursor = content["cursor"].as_str().ok_or(())?.to_owned();
+            } else {
+                let next = event["revision"].as_u64().ok_or(())?;
+                if self.revision.checked_add(1) != Some(next) {
+                    return Err(());
+                }
+                self.revision = next;
+            }
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn validate_events(snapshot: &Value, events: &Value) -> Result<(), ()> {
+        EventReader::new(snapshot)?.apply(events)
+    }
+    #[test]
+    fn batches_are_atomic_and_failures_fence_the_reader() {
+        let snapshot = json!({"result":{"source":{"source":{"cursor":"9", "identity":{"sessionId":"s"}}},"executions":{"revision":7}}});
+        let batch = |cursors: &[&str]| json!({"result":{"events":cursors.iter().map(|c| json!({"source":{"sessionId":"s","cursor":c}})).collect::<Vec<_>>()}});
+        let mut reader = EventReader::new(&snapshot).unwrap();
+        reader.apply(&batch(&["10"])).unwrap();
+        reader.apply(&batch(&["11"])).unwrap();
+        assert_eq!(reader.cursor, "11");
+        assert!(reader.apply(&batch(&["12", "14"])).is_err());
+        assert_eq!(reader.cursor, "11"); // No partial advancement.
+        assert!(reader.apply(&batch(&["12"])).is_err());
+        assert!(reader.apply(&batch(&[])).is_err());
+        let mut fresh = EventReader::new(&snapshot).unwrap();
+        assert!(fresh.apply(&batch(&["11"])).is_err()); // Cannot reuse a later batch.
+    }
     #[test]
     fn decimal_successor_is_lossless() {
         assert_eq!(successor("0"), "1");

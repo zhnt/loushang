@@ -17,7 +17,7 @@ model streaming is explicitly forbidden and no work is submitted. It does not
 connect to an existing user application, read user settings, or start a TUI.
 
 The existing Rust connection probe authenticates to that actual server and
-reads a real execution snapshot and its first event batch before detaching. A Python AppClient controls a
+reads a real execution snapshot and two event batches before detaching. A Python AppClient controls a
 different mux in the same application and remains usable afterwards. Another
 client's ownership of the selected GUI mux rejects the Rust contender; that
 owner can still read its snapshot, then detach and permit Rust to reconnect.
@@ -34,8 +34,8 @@ requires positive decimal request IDs increasing across both protocol families
 on one connection. The real server closed the connection before replying.
 
 The bounded Rust sequence uses `1` for attach, followed by increasing decimal IDs
-for snapshots, initial event reads and detach (including failure cleanup).
-The twelve scripted attachment scenarios also assert these
+for snapshots, event reads and detach (including failure cleanup).
+The thirteen scripted attachment scenarios also assert these
 IDs. Raw controller-generation serialization remains unchanged and lossless.
 No server contract or runtime implementation was changed to accommodate GUI.
 

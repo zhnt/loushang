@@ -156,8 +156,11 @@ async def scenario(root: Path, mode: str) -> None:
                 "event-gap",
                 "event-identity",
                 "event-request",
+                "second-batch-replay",
             }:
-                for index, session in enumerate(attachment.sessions):
+                for offset, session in enumerate(attachment.sessions * 2):
+                    index = offset % len(attachment.sessions)
+                    round_number = offset // len(attachment.sessions)
                     call = decode_call(await channel.receive())
                     assert call.operation is em.ExecutionOperationV1.EVENTS
                     assert call.request_id == str(next_id)
@@ -170,7 +173,9 @@ async def scenario(root: Path, mode: str) -> None:
                     event = em.ExecutionContentEventV1(
                         pm.SessionEventV1(
                             session.member.session.session_id,
-                            session.snapshot.cursor + (2 if mode == "event-gap" else 1),
+                            session.snapshot.cursor
+                            + (2 if mode == "event-gap" else 1)
+                            + (0 if mode == "second-batch-replay" else round_number),
                             pm.SessionEventKindV1.STATUS,
                             "读取事件🙂",
                         )
@@ -190,7 +195,9 @@ async def scenario(root: Path, mode: str) -> None:
                             value["requestId"] = "999"
                         raw = json.dumps(value).encode()
                     await channel.send(raw)
-                    if mode.startswith("event-"):
+                    if mode.startswith("event-") or (
+                        mode == "second-batch-replay" and round_number == 1
+                    ):
                         break
             call = decode_request(await channel.receive())
             assert call.operation is pm.AppOperationV1.MUX_DETACH
@@ -254,7 +261,9 @@ async def scenario(root: Path, mode: str) -> None:
             + (
                 ["events-0"]
                 if mode.startswith("event-")
-                else ["events-0", "events-1"]
+                else ["events-0", "events-1", "events-0"]
+                if mode == "second-batch-replay"
+                else ["events-0", "events-1"] * 2
                 if mode in {"valid", "detach-failed"}
                 else []
             )
@@ -287,6 +296,7 @@ async def run(parent):
         "event-gap",
         "event-identity",
         "event-request",
+        "second-batch-replay",
     )
     for mode in modes:
         await scenario(parent / mode, mode)
