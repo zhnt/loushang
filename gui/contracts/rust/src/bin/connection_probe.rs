@@ -6,8 +6,12 @@ mod attachment_probe;
 #[path = "../connection_epoch.rs"]
 mod connection_epoch;
 #[cfg(windows)]
-#[path = "../read_stop.rs"]
+#[path = "../../../../src-tauri/src/read_stop.rs"]
 mod read_stop;
+#[cfg(windows)]
+#[allow(dead_code)] // Nonblocking collection is for the future desktop lifecycle.
+#[path = "../../../../src-tauri/src/read_worker.rs"]
+mod read_worker;
 #[cfg(windows)]
 #[path = "../record_native.rs"]
 mod record_native;
@@ -82,11 +86,10 @@ mod connection {
         timeout: Duration,
         cancel: Option<Duration>,
         attach: bool,
-        watch: bool,
+        stop: Option<super::read_stop::ReadStop>,
     ) -> Result<String, ()> {
         let deadline = RequestDeadline::new(timeout)?;
         let attempt = owner.begin()?;
-        let stop = watch.then(super::read_stop::ReadStop::default);
         let name = transport_auth::record_value::Record::filename("workspace")?;
         let record =
             transport_auth::record_value::Record::decode(&record_native::read(root, &name)?)?;
@@ -190,14 +193,21 @@ fn main() {
         if watch && cancel <= 0 {
             return Err(());
         }
-        connection::run(
-            &connection_epoch::ConnectionOwner::default(),
-            std::path::Path::new(&args[1]),
-            std::time::Duration::from_millis(timeout),
-            (cancel >= 0).then(|| std::time::Duration::from_millis(cancel as u64)),
-            args.len() == 5,
-            watch,
-        )
+        let root = std::path::PathBuf::from(&args[1]);
+        let attach = args.len() == 5;
+        read_worker::ReadWorker::spawn(move |stop| {
+            connection::run(
+                &connection_epoch::ConnectionOwner::default(),
+                &root,
+                std::time::Duration::from_millis(timeout),
+                (cancel >= 0).then(|| std::time::Duration::from_millis(cancel as u64)),
+                attach,
+                watch.then_some(stop),
+            )
+        })
+        .map_err(|_| ())?
+        .wait()
+        .map_err(|_| ())
     })();
     match outcome {
         Ok(instance) => {

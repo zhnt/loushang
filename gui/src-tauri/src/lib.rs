@@ -1,3 +1,10 @@
+// Compiled here and exercised by the native integration driver. No live invoke
+// is registered yet; desktop shutdown must schedule blocking joins off the UI.
+#[allow(dead_code)]
+mod read_stop;
+#[allow(dead_code)]
+mod read_worker;
+
 #[cfg(feature = "fixture-bridge")]
 use serde::Serialize;
 #[cfg(feature = "fixture-bridge")]

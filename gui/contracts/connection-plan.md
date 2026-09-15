@@ -132,5 +132,21 @@ incomplete round and attempts exact detach. In-flight IO remains subject to its
 request deadline; it is not forcibly interrupted by cooperative stop. The
 separate existing hard-cancel path still invalidates and shuts down the socket.
 The CLI requires a bounded positive stop timer for `--watch`; the reusable stop
-signal itself is not timer-dependent. Desktop worker ownership and GUI state
-publication are still pending; the CLI loop is not a Tauri background worker.
+signal itself is not timer-dependent.
+
+The stop signal and `ReadWorker` now live in `gui/src-tauri/src` and are compiled
+by both the desktop crate and the evidence driver. The driver runs admission,
+authentication, reads and cleanup inside that owned worker and joins it before
+reporting success. `request_stop` only requests cancellation; it does not mean
+detach or cleanup has finished. `try_join` observes completion without waiting;
+explicit `wait`/`shutdown` distinguish operation failure and worker panic from
+successful completion. Dropping an uncollected worker requests stop and joins as
+a fallback, but discards the outcome and is not evidence of successful cleanup.
+
+Both explicit blocking joins and that fallback Drop must run off the UI thread.
+The supplied operation must honor cooperative stop and bounded IO; the wrapper
+cannot forcibly terminate an uncooperative thread. Unit tests cover completion,
+failure/panic reporting, stop-before-cleanup and Drop joining. The existing real
+AppHost and scripted lifecycle evidence now exercise the worker-backed driver.
+Desktop state ownership, nonblocking window-exit handling and GUI publication
+are still pending. No live Tauri invoke or desktop connection is enabled here.
