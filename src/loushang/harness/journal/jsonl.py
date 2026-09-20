@@ -31,6 +31,7 @@ from loushang.harness.journal.types import (
     JournalLoadPolicy,
     JsonlSnapshot,
 )
+from loushang.harness.private_directory import create_private_directory_chain
 
 H = TypeVar("H")
 R = TypeVar("R")
@@ -95,7 +96,7 @@ def journal_file_lock(
         raise TypeError("Journal lock creation mode must be a built-in bool")
     lock_path = path.with_name(f"{path.name}{lock_suffix}")
     if create:
-        lock_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        create_private_directory_chain(lock_path.parent)
     with _open_lock_file(lock_path, create=create) as handle:
         if create:
             _fchmod_private(handle.fileno())
@@ -283,7 +284,7 @@ def append_jsonl_record(
         durability=durability,
         lock_factory=lock_factory,
     ):
-        target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        create_private_directory_chain(target.parent)
         existed = target.exists()
         with target.open("a", encoding=format_profile.encoding) as handle:
             _fchmod_private(handle.fileno())
@@ -320,7 +321,7 @@ def append_jsonl_records(
         durability=durability,
         lock_factory=lock_factory,
     ):
-        target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        create_private_directory_chain(target.parent)
         existed = target.exists()
         with target.open("a", encoding=format_profile.encoding) as handle:
             _fchmod_private(handle.fileno())
@@ -791,7 +792,7 @@ def _replace_text_unlocked(
     encoding: str,
     durability: JournalDurabilityProfile,
 ) -> None:
-    target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    create_private_directory_chain(target.parent)
     temp_path = target.with_name(f".{target.name}.{os.getpid()}.tmp")
     try:
         with temp_path.open("w", encoding=encoding) as handle:

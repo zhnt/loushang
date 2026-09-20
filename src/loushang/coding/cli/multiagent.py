@@ -31,6 +31,7 @@ from loushang.harness.cli.multiagent import (
     write_multiagent_recipe_result,
 )
 from loushang.harness.environment import resolve_platform_paths
+from loushang.harness.machine_resources import prepare_private_directory_chain
 from loushang.harness.multiagent import (
     ImmediateRecipeExecutor,
     RecipeRunRequest,
@@ -149,7 +150,7 @@ async def run_coding_multiagent_command(
         )
         platform_sessions = resolve_platform_paths().data / "sessions"
         if session_dir == platform_sessions:
-            platform_sessions.mkdir(mode=0o700, parents=True, exist_ok=True)
+            prepare_private_directory_chain(platform_sessions)
             platform_sessions.chmod(0o700)
         tool_registry = build_tool_registry(
             diagnostics_service=getattr(
