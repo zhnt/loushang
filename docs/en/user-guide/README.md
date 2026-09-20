@@ -36,6 +36,9 @@ loushang -p "Summarize the current project."
 
 For building terminal UI applications with `loushang.tui`, see [Building TUI Apps](tui.md).
 
+For the Linux background named-Mux development preview, see the [lmux guide](lmux.md),
+including storage, reconnection, and upgrade limitations.
+
 ### Explicit Hosted Application
 
 `loushang-hosted` is an opt-in foreground stdio server for an application

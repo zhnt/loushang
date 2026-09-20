@@ -34,6 +34,8 @@ loushang -p "Summarize the current project."
 
 如果要用 `loushang.tui` 构建终端 UI 应用，见 [构建 TUI 应用](tui.md)。
 
+Linux 后台命名 Mux 开发预览见 [lmux 使用说明](lmux.md)，包含目录、重连及升级限制。
+
 ### 显式 Hosted Application
 
 `loushang-hosted` 是供应用启动器连接的前台 stdio 服务，不是新的交互式 prompt loop；
