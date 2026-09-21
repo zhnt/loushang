@@ -58,7 +58,7 @@ class CapabilityProviderSpec:
     disposer: str | None
 
     def __post_init__(self) -> None:
-        if not isinstance(self.capability, str):
+        if type(self.capability) is not str:
             raise TypeError("Capability Provider owner reference must be a string")
 
     def _apply(self, builder: PluginDeclarationBuilder) -> PluginDeclaration:
@@ -102,7 +102,7 @@ class ResourceItemSpec:
     actions: tuple[ManagedSkillActionDeclaration, ...] = ()
 
     def __post_init__(self) -> None:
-        if not isinstance(self.owner_namespace, str):
+        if type(self.owner_namespace) is not str:
             raise TypeError("Resource owner reference must be a string")
         actions = tuple(self.actions)
         if any(not isinstance(item, ManagedSkillActionDeclaration) for item in actions):

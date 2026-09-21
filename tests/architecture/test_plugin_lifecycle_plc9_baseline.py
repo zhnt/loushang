@@ -39,6 +39,9 @@ PLUGIN_MANAGER = Path("src/loushang/harness/resources/plugins/manager.py")
 PLUGIN_AUTHORITY = Path("src/loushang/harness/resources/plugins/authority.py")
 PLUGIN_RESOLVER = Path("src/loushang/harness/resources/plugins/resolver.py")
 PLUGIN_SELECTION = Path("src/loushang/harness/resources/plugins/selection.py")
+CONTRIBUTION_TYPES = Path(
+    "src/loushang/harness/resources/plugins/contribution_types.py"
+)
 DECLARATIONS = Path("src/loushang/harness/resources/plugins/declarations.py")
 PACKAGE_MATERIALIZER = Path("src/loushang/harness/resources/packages/materializer.py")
 PLUGIN_REVISIONS = Path("src/loushang/harness/resources/plugins/revisions.py")
@@ -738,6 +741,7 @@ def test_plc9_inventory_names_existing_owner_and_peer_source_sites() -> None:
         "src/loushang/harness/resources/packages/materializer.py",
         "src/loushang/harness/resources/plugins/revisions.py",
         "src/loushang/harness/resources/plugins/dependencies.py",
+        "src/loushang/harness/resources/plugins/contribution_types.py",
         "src/loushang/harness/resources/plugins/declarations.py",
         "src/loushang/harness/workspace/process/host.py",
         "src/loushang/harness/tools/process_hosting.py",
@@ -1211,7 +1215,9 @@ def test_plc9_tracks_implemented_local_worker_without_claiming_remote_topology()
         "document",
         "in_process",
     )
-    assert _literal_members(DECLARATIONS, "PluginContributionExecutionModel") == (
+    assert _literal_members(
+        CONTRIBUTION_TYPES, "PluginContributionExecutionModel"
+    ) == (
         "data_only",
         "in_process",
         "local_worker",

@@ -24,6 +24,23 @@ from loushang.harness.resources.plugins.declarations import (
 )
 from loushang.plugin import CapabilityProviderSpec, ResourceItemSpec
 
+CONTRIBUTION_TYPES = Path(
+    "src/loushang/harness/resources/plugins/contribution_types.py"
+)
+
+
+def _assigned_names(path: Path) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    names: set[str] = set()
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            names.update(
+                target.id for target in node.targets if isinstance(target, ast.Name)
+            )
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            names.add(node.target.id)
+    return names
+
 
 def test_contribution_kinds_have_one_canonical_closed_definition() -> None:
     assert declarations.PluginContributionKind is PluginContributionKind
@@ -31,20 +48,26 @@ def test_contribution_kinds_have_one_canonical_closed_definition() -> None:
     assert set(get_args(PluginContributionKind)) == PLUGIN_CONTRIBUTION_KINDS
     assert set(get_args(PluginOwnerContributionKind)) == PLUGIN_OWNER_CONTRIBUTION_KINDS
 
+    definitions = tuple(
+        path
+        for path in Path("src/loushang").rglob("*.py")
+        if "PluginContributionKind" in _assigned_names(path)
+    )
+    assert definitions == (CONTRIBUTION_TYPES,)
+
     for path in (
-        Path("src/loushang/harness/resources/plugins/declarations.py"),
-        Path("src/loushang/harness/capabilities/contribution_admission.py"),
+        Path("src/loushang/harness/session/product_composition_assembly.py"),
+        Path("src/loushang/coding/_resource_catalog_shadow.py"),
     ):
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        definitions = {
-            node.target.id
-            for node in ast.walk(tree)
-            if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name)
-        }
-        assert "PluginContributionKind" not in definitions
+        source = path.read_text(encoding="utf-8")
+        assert "_EXTERNAL_CONTRIBUTION_KINDS" not in source
+        assert "PLUGIN_OWNER_CONTRIBUTION_KINDS" in source
 
 
 def test_wire_owner_is_only_an_inert_exact_id_and_records_reject_locator_fields() -> None:
+    class LiveString(str):
+        pass
+
     source = PluginDeclarationSource.in_process("definition.py:declare")
     with pytest.raises(ValueError, match="Invalid contribution owner"):
         PluginContributionReservation(
@@ -54,6 +77,31 @@ def test_wire_owner_is_only_an_inert_exact_id_and_records_reject_locator_fields(
             declaration_source=source,
             contribution_execution_model="in_process",
             requested_authorities=(),
+        )
+
+    owner = LiveString("example.echo")
+    owner.registry = object()
+    with pytest.raises(ValueError, match="Invalid contribution owner"):
+        PluginContributionReservation(
+            contribution_id="provider",
+            kind="capability_provider",
+            owner=owner,
+            declaration_source=source,
+            contribution_execution_model="in_process",
+            requested_authorities=(),
+        )
+
+    label = LiveString("safe-text")
+    label.service_locator = object()
+    with pytest.raises(ValueError, match="only JSON values"):
+        PluginContributionReservation(
+            contribution_id="provider",
+            kind="capability_provider",
+            owner="example.echo",
+            declaration_source=source,
+            contribution_execution_model="in_process",
+            requested_authorities=(),
+            configuration={"label": label},
         )
 
     document: dict[str, object] = {
@@ -78,6 +126,9 @@ def test_wire_owner_is_only_an_inert_exact_id_and_records_reject_locator_fields(
 
 
 def test_public_authoring_specs_carry_data_references_without_live_owner_access() -> None:
+    class LiveString(str):
+        pass
+
     forbidden_fields = {"owner", "registry", "service_locator", "services", "context"}
     for spec in (CapabilityProviderSpec, ResourceItemSpec):
         assert forbidden_fields.isdisjoint(field.name for field in fields(spec))
@@ -106,6 +157,17 @@ def test_public_authoring_specs_carry_data_references_without_live_owner_access(
             locator_kind="file",
             media_type="text/markdown",
             owner_namespace=object(),  # type: ignore[arg-type]
+            resource_kind="skill",
+            schema_id="loushang.resource.skill",
+            schema_version=1,
+        )
+    with pytest.raises(TypeError, match="owner reference must be a string"):
+        ResourceItemSpec(
+            contribution_id="resource",
+            locator="SKILL.md",
+            locator_kind="file",
+            media_type="text/markdown",
+            owner_namespace=LiveString("resources.skill"),
             resource_kind="skill",
             schema_id="loushang.resource.skill",
             schema_version=1,

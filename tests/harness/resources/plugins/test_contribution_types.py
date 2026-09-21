@@ -55,7 +55,20 @@ def test_each_schema_closes_kind_execution_and_authority_combinations() -> None:
         for kind, rule in PLUGIN_CONTRIBUTION_SCHEMA_V3.rules.items()
     } == expected_v3
     assert {
+        kind: rule.requested_authority_execution_models
+        for kind, rule in PLUGIN_CONTRIBUTION_SCHEMA_V3.rules.items()
+    } == {
+        "capability_provider": frozenset({"in_process"}),
+        "command_pack": frozenset(),
+        "continuity_provider": frozenset({"in_process"}),
+        "resource_item": frozenset(),
+        "tool_pack": frozenset(),
+    }
+    assert {
         kind
         for kind, rule in PLUGIN_CONTRIBUTION_SCHEMA_V3.rules.items()
-        if not rule.permits_requested_authorities
+        if not rule.requested_authority_execution_models
     } == PLUGIN_OWNER_CONTRIBUTION_KINDS
+    capability_rule = PLUGIN_CONTRIBUTION_SCHEMA_V3.rules["capability_provider"]
+    assert capability_rule.permits_requested_authorities("in_process")
+    assert not capability_rule.permits_requested_authorities("local_worker")

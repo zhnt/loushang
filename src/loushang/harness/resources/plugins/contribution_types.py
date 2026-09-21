@@ -46,7 +46,15 @@ class PluginContributionTypeRule:
 
     kind: PluginContributionKind
     execution_models: frozenset[PluginContributionExecutionModel]
-    permits_requested_authorities: bool
+    requested_authority_execution_models: frozenset[
+        PluginContributionExecutionModel
+    ]
+
+    def permits_requested_authorities(self, execution_model: object) -> bool:
+        return (
+            type(execution_model) is str
+            and execution_model in self.requested_authority_execution_models
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,7 +73,13 @@ class PluginContributionSchema:
         if frozenset(self.rules) != PLUGIN_CONTRIBUTION_KINDS:
             raise ValueError("Plugin contribution schema must define every closed kind")
         for kind, rule in self.rules.items():
-            if kind != rule.kind or not rule.execution_models:
+            if (
+                kind != rule.kind
+                or not rule.execution_models
+                or not rule.requested_authority_execution_models.issubset(
+                    rule.execution_models
+                )
+            ):
                 raise ValueError("Invalid Plugin contribution type rule")
         object.__setattr__(self, "rules", MappingProxyType(dict(self.rules)))
 
@@ -80,7 +94,7 @@ class PluginContributionSchema:
         )
 
     def rule_for(self, kind: object) -> PluginContributionTypeRule | None:
-        if not isinstance(kind, str):
+        if type(kind) is not str:
             return None
         return self.rules.get(cast(PluginContributionKind, kind))
 
@@ -92,12 +106,16 @@ class PluginContributionSchema:
 def _rule(
     kind: PluginContributionKind,
     *execution_models: PluginContributionExecutionModel,
-    permits_requested_authorities: bool = False,
+    requested_authority_execution_models: tuple[
+        PluginContributionExecutionModel, ...
+    ] = (),
 ) -> PluginContributionTypeRule:
     return PluginContributionTypeRule(
         kind=kind,
         execution_models=frozenset(execution_models),
-        permits_requested_authorities=permits_requested_authorities,
+        requested_authority_execution_models=frozenset(
+            requested_authority_execution_models
+        ),
     )
 
 
@@ -109,13 +127,13 @@ PLUGIN_CONTRIBUTION_SCHEMA_V2 = PluginContributionSchema(
         "capability_provider": _rule(
             "capability_provider",
             "in_process",
-            permits_requested_authorities=True,
+            requested_authority_execution_models=("in_process",),
         ),
         "command_pack": _rule("command_pack", "data_only"),
         "continuity_provider": _rule(
             "continuity_provider",
             "in_process",
-            permits_requested_authorities=True,
+            requested_authority_execution_models=("in_process",),
         ),
         "resource_item": _rule("resource_item", "data_only"),
         "tool_pack": _rule("tool_pack", "data_only"),
@@ -131,13 +149,13 @@ PLUGIN_CONTRIBUTION_SCHEMA_V3 = PluginContributionSchema(
             "capability_provider",
             "in_process",
             "local_worker",
-            permits_requested_authorities=True,
+            requested_authority_execution_models=("in_process",),
         ),
         "command_pack": _rule("command_pack", "data_only"),
         "continuity_provider": _rule(
             "continuity_provider",
             "in_process",
-            permits_requested_authorities=True,
+            requested_authority_execution_models=("in_process",),
         ),
         "resource_item": _rule("resource_item", "data_only"),
         "tool_pack": _rule("tool_pack", "data_only"),
@@ -159,13 +177,13 @@ PLUGIN_CONTRIBUTION_SCHEMAS_BY_IR_VERSION = MappingProxyType(
 
 
 def plugin_contribution_schema_for_index(version: object) -> PluginContributionSchema | None:
-    if not isinstance(version, int) or isinstance(version, bool):
+    if type(version) is not int:
         return None
     return PLUGIN_CONTRIBUTION_SCHEMAS.get(version)
 
 
 def plugin_contribution_schema_for_ir(version: object) -> PluginContributionSchema | None:
-    if not isinstance(version, int) or isinstance(version, bool):
+    if type(version) is not int:
         return None
     return PLUGIN_CONTRIBUTION_SCHEMAS_BY_IR_VERSION.get(version)
 
