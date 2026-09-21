@@ -75,6 +75,28 @@ ChangeSet, Tasks and Subagents remain unavailable until their own accepted live
 contracts are implemented. Closing the window cooperatively detaches and joins
 the reader without stopping the shared AppHost.
 
+For an opt-in desktop acceptance run, first build the release executable and
+then launch an isolated real AppHost plus two real mux/session projections:
+
+```text
+pnpm --dir gui run build
+pnpm --dir gui run accept:live-native
+```
+
+The second command opens a visible HarnessGUI window and keeps the shared
+AppHost alive until that window is closed. Inspect the live/read-only labels,
+real Session projection, disabled mutation controls and normal/maximized layout,
+then close the window. The launcher verifies that the GUI released its mux
+controller, the AppHost is still accepting, and an independent peer Session is
+still snapshot-readable. Non-secret lifecycle evidence is written under
+`gui/test-results/live-apphost-desktop/`; this opt-in helper is not part of the
+rapid GUI gate and does not invoke a model.
+
+The first observed live desktop run is recorded in
+[Windows live AppHost acceptance](tests/playback/windows-live-apphost-acceptance.md).
+It proves the initial read-only projection and cooperative desktop-exit
+lifecycle, not ongoing event publication, mutation, or Windows scaling.
+
 For a standalone offline executable, use `pnpm --dir gui run build:fixture-native`
 from the repository root. Do not substitute a plain `cargo build`: that bypasses
 the Tauri frontend build and production protocol configuration and can produce a

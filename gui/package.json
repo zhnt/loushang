@@ -32,6 +32,7 @@
     "check:attachment-contract": "uv run python ../scripts/gui/check_attachment_lifecycle.py",
     "build": "node ../scripts/gui/run.mjs build-native",
     "build:fixture-native": "node ../scripts/gui/run.mjs build-fixture-native",
+    "accept:live-native": "uv run python ../scripts/gui/run_live_apphost_acceptance.py",
     "preview": "vite preview",
     "tauri": "tauri"
   },
