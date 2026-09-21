@@ -43,7 +43,7 @@ export interface ContextIdentity {
   readonly muxId: string;
   readonly memberId: string;
   readonly sessionId: string;
-  readonly source: "fixture";
+  readonly source: "fixture" | "live";
 }
 
 export interface ConversationMessage {
@@ -137,13 +137,21 @@ export interface SessionSnapshot {
 export interface CapabilitySummary {
   readonly name: "workspace" | "changes" | "artifacts" | "tasks" | "agents";
   readonly version: string | null;
-  readonly availability: "fixture" | "unavailable";
+  readonly availability: "fixture" | "live" | "unavailable";
 }
+
+export type ClientSource =
+  | { readonly kind: "fixture"; readonly label: string }
+  | {
+      readonly kind: "live";
+      readonly serviceInstanceId: string;
+      readonly muxSpaceId: string;
+    };
 
 export interface ClientSnapshot {
   readonly generation: string;
   readonly connection: ConnectionState;
-  readonly fixtureLabel: string;
+  readonly source: ClientSource;
   readonly capabilities: readonly CapabilitySummary[];
   readonly workspaces: readonly WorkspaceSummary[];
   readonly sessions: readonly SessionSnapshot[];

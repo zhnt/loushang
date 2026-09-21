@@ -1,6 +1,6 @@
 //! Synthetic JSONL vectors only. Never output keys or original records.
 #[allow(dead_code)]
-#[path = "../record_value.rs"]
+#[path = "../../../../src-tauri/src/app_client/record_value.rs"]
 mod record_value;
 use serde::Deserialize;
 use std::io::{self, BufRead};

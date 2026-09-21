@@ -1,4 +1,4 @@
-//! Sequential read-only attachment experiment, not an ongoing RPC dispatcher.
+//! Sequential read-only attachment and membership-barrier implementation.
 use super::transport_auth::Channel;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, value::RawValue, Value};
@@ -75,6 +75,20 @@ impl Mux {
         }
         Ok(())
     }
+
+    fn bridge_value(&self) -> Result<Value, ()> {
+        Ok(json!({
+            "muxSpaceId": self.mux_space_id,
+            "name": self.name,
+            "revision": self.revision.get(),
+            "members": self.members.iter().map(|member| Ok(json!({
+                "memberId": member.member_id,
+                "session": projection::identity_value(member.session.get())?,
+                "title": member.title,
+                "position": member.position.to_string(),
+            }))).collect::<Result<Vec<_>, ()>>()?,
+        }))
+    }
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -91,12 +105,12 @@ struct Attachment {
     sessions: Vec<Session>,
 }
 impl Attachment {
-    fn validate(&self) -> Result<(), ()> {
+    fn validate(&self, expected_name: &str) -> Result<(), ()> {
         let mux = &self.mux_space;
         if !identifier(&self.attachment_id, 512)
             || !positive(&self.controller_generation)
             || !identifier(&mux.mux_space_id, 512)
-            || mux.name != "gui-fixture"
+            || mux.name != expected_name
             || !positive(&mux.revision)
             || mux.members.len() > 128
             || mux.members.len() != self.sessions.len()
@@ -206,23 +220,31 @@ pub(crate) struct ReadSession {
     readers: Option<Vec<EventReader>>,
     closed: bool,
 }
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct InitialSnapshot {
+    pub(crate) mux_space: Value,
+    pub(crate) sessions: Vec<Value>,
+}
 impl ReadSession {
     pub(crate) fn attach<R: Read, W: Write>(
         channel: &mut Channel<R, W>,
         instance: &str,
+        mux_name: &str,
         attempt: &super::connection_epoch::Attempt,
     ) -> Result<Self, ()> {
         let response = request(
             channel,
             "mux/attach",
             "1",
-            json!({"selector":{"muxSpaceId":null,"name":"gui-fixture"},"mailboxCapacity":256}),
+            json!({"selector":{"muxSpaceId":null,"name":mux_name},"mailboxCapacity":256}),
         )?;
         if response.result_type != "attachment" {
             return Err(());
         }
         let attachment: Attachment = serde_json::from_str(response.result.get()).map_err(|_| ())?;
-        attempt.apply(|| attachment.validate())?;
+        attempt.apply(|| attachment.validate(mux_name))?;
         Ok(Self {
             attachment,
             instance: instance.to_owned(),
@@ -236,7 +258,7 @@ impl ReadSession {
         &mut self,
         channel: &mut Channel<R, W>,
         attempt: &super::connection_epoch::Attempt,
-    ) -> Result<usize, ()> {
+    ) -> Result<InitialSnapshot, ()> {
         if self.closed || self.readers.is_some() {
             return Err(());
         }
@@ -291,9 +313,16 @@ impl ReadSession {
                 .iter()
                 .map(EventReader::new)
                 .collect::<Result<Vec<_>, _>>()?;
+            let initial = InitialSnapshot {
+                mux_space: self.attachment.mux_space.bridge_value()?,
+                sessions: pending
+                    .iter()
+                    .map(|value| value["result"].clone())
+                    .collect(),
+            };
             attempt.apply(|| {
                 self.readers = Some(readers);
-                Ok(pending.len())
+                Ok(initial)
             })
         })();
         if result.is_err() {
@@ -308,7 +337,7 @@ impl ReadSession {
         &mut self,
         channel: &mut Channel<R, W>,
         attempt: &super::connection_epoch::Attempt,
-        stop: Option<&super::read_stop::ReadStop>,
+        stop: Option<&crate::read_stop::ReadStop>,
     ) -> Result<bool, ()> {
         if self.closed {
             return Err(());
@@ -404,40 +433,6 @@ impl ReadSession {
         }
         result
     }
-}
-
-pub fn run<R: Read, W: Write>(
-    channel: &mut Channel<R, W>,
-    instance: &str,
-    attempt: &super::connection_epoch::Attempt,
-    deadline: &super::request_deadline::RequestDeadline,
-    stop: Option<&super::read_stop::ReadStop>,
-) -> Result<usize, ()> {
-    let mut session = ReadSession::attach(channel, instance, attempt)?;
-    let outcome = (|| {
-        let count = session.initialize(channel, attempt)?;
-        deadline.enter_session()?;
-        if let Some(stop) = stop {
-            while !stop.requested()? {
-                if !session.poll(channel, attempt, Some(stop))? {
-                    break;
-                }
-                if stop.wait(std::time::Duration::from_millis(100))? {
-                    break;
-                }
-            }
-        } else {
-            // Only the bounded evidence driver selects two rounds.
-            for _ in 0..2 {
-                session.poll(channel, attempt, None)?;
-            }
-        }
-        Ok(count)
-    })();
-    let detached = session.detach(channel, attempt);
-    let count = outcome?;
-    detached?;
-    Ok(count)
 }
 
 fn successor(decimal: &str) -> String {

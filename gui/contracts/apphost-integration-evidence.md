@@ -26,6 +26,12 @@ observer reacquires with a higher generation, detaches, and Rust connects again.
 The shared host remains accepting. Finally the explicit test owner closes the
 deployment and verifies that its cleanup is settled.
 
+The check also runs `snapshot_probe`, which consumes the exact native adapter
+compiled by Tauri. It verifies the emitted service instance, Mux identity,
+ordered member/Session identity and one execution snapshot against the real
+AppHost. The serialized publication contains neither `attachmentId` nor
+`controllerGeneration`; those controller capabilities remain native.
+
 ## Integration defect found
 
 The isolated probe previously sent textual request IDs (`attach`, `snapshot-0`,
@@ -41,19 +47,20 @@ No server contract or runtime implementation was changed to accommodate GUI.
 
 ## Limits and next slice
 
-- This is a native probe, not a connected React/Tauri screen.
+- This is native adapter evidence, not yet connected-window acceptance.
 - It verifies idle snapshots and empty event batches, real controller arbitration, graceful client EOF
   cleanup and explicit deployment settlement. It does not prove hard process
   termination cleanup or every failed-snapshot/disconnect race in the real host.
 - Bounded membership rechecks and local attempt fencing now run in the probe.
   A native CLI continuous-idle-read case also verifies cooperative stop and
-  detach against the real AppHost. No desktop event reader, atomic GUI snapshot publication, submission,
-  approval or takeover capability is added.
+  detach against the real AppHost. The desktop uses that same reader and can
+  publish the barriered initial snapshot; ongoing event publication, submission,
+  approval and takeover are not added.
 - Model-free real Coding sessions do not establish live provider execution.
 - Nonempty contiguous event batches and invalid batches are covered by the scripted
   fixture; metadata/content watermark separation is additionally unit tested in Rust.
 - This remains an opt-in GUI integration check, not a TUI/Harness default gate.
 
-Next implement the native read-only connection owner and event/barrier handling
-before installing complete validated snapshots into the GUI reducer. Keep live
-facts separate from offline fixtures.
+Next verify the native window against a real launched host, then publish complete
+validated event rounds with gap-triggered resynchronization. Keep live facts
+separate from offline fixtures.

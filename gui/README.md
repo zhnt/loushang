@@ -3,17 +3,19 @@
 This directory contains the Product-neutral native HarnessGUI shell accepted by
 [GUI-B0 issue #582](https://github.com/zhnt/loushang/issues/582). React and
 TypeScript own presentation and UI-local state; Tauri/Rust owns desktop
-integration and will later adapt the accepted App Contract. The GUI does not
+integration and adapts the accepted read-only App Contract slice. The GUI does not
 own Product, Harness, AppService, or AppHost runtimes.
 
-The current B1 slice is deliberately offline. It provides a Product-neutral UI
+The default B1 launch is deliberately offline. It provides a Product-neutral UI
 port and a deterministic Mock AppClient with three Workspace kinds, grouped
 Sessions, isolated per-Session drafts, active Run and Task progress, expandable
 Activity details, distinct root/subagent AgentRuns, and read-only ChangeSet
 review through a central Quick Look and the Work Dock. Every sample value is
 labelled as fixture data. It does not read a repository, start a Python backend,
-request a model, or connect to G16. Cross-language and real-service work remain
-in C1 and B2 as described in the
+or request a model. An opt-in B2 Windows launch can attach read-only to an
+existing AppHost, install one barriered initial Session snapshot, and retain the
+connection until desktop exit; it does not publish later events or enable any
+mutation. Further cross-language and real-service work remains in C1/B2 as described in the
 [engineering plan](../docs/internals/architecture/drafts/gui-engineering-bootstrap-plan.md).
 
 ## Toolchain
@@ -52,6 +54,48 @@ Layout playback and native packaging remain on-demand acceptance commands.
 executable without producing installers. `dev:fixture-native` and
 `build:fixture-native` enable the B1-only Rust invoke/event canary; the command
 is absent from the default native build.
+
+## Read-only live launch
+
+The AppHost/desktop launcher may start the built executable with both native
+arguments below. Omitting both keeps the offline fixture. Partial, duplicate or
+unknown arguments disable live availability rather than falling back with
+ambiguous authority.
+
+```text
+gui/src-tauri/target/release/harness-gui.exe --loushang-app-record-root C:\path\to\admitted\connection --loushang-mux-name GUI-work
+```
+
+The record root and Mux selection are parsed and retained by Rust; the WebView
+cannot provide or read them. Native admission still validates the private record
+directory and file before authentication. The published payload contains no
+attachment ID, controller generation or authentication key. Live snapshots are
+visibly labelled read-only; fixture playback, Send, Interrupt, Workspace,
+ChangeSet, Tasks and Subagents remain unavailable until their own accepted live
+contracts are implemented. Closing the window cooperatively detaches and joins
+the reader without stopping the shared AppHost.
+
+For an opt-in desktop acceptance run, first build the release executable and
+then launch an isolated real AppHost plus two real mux/session projections:
+
+```text
+pnpm --dir gui run build
+pnpm --dir gui run accept:live-native
+```
+
+The second command opens a visible HarnessGUI window and keeps the shared
+AppHost alive until that window is closed. Inspect the live/read-only labels,
+real Session projection, disabled mutation controls and normal/maximized layout,
+then close the window. The launcher verifies that the GUI released its mux
+controller, the AppHost is still accepting, and an independent peer Session is
+still snapshot-readable. Non-secret lifecycle evidence is written under
+`gui/test-results/live-apphost-desktop/`; this opt-in helper is not part of the
+rapid GUI gate and does not invoke a model.
+
+The first observed live desktop run is recorded in
+[Windows live AppHost acceptance](tests/playback/windows-live-apphost-acceptance.md).
+It proves the initial read-only projection and cooperative desktop-exit
+lifecycle, not ongoing event publication, mutation, or Windows scaling.
 
 For a standalone offline executable, use `pnpm --dir gui run build:fixture-native`
 from the repository root. Do not substitute a plain `cargo build`: that bypasses

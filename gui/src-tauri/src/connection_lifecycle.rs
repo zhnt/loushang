@@ -23,7 +23,6 @@ pub(crate) enum ExitAction {
 
 impl ConnectionLifecycle {
     // Kept native-only until admission and snapshot publication are wired.
-    #[allow(dead_code)]
     pub(crate) fn start(
         &self,
         work: impl FnOnce(ReadStop) -> Result<(), ()> + Send + 'static,

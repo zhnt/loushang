@@ -1,4 +1,4 @@
-//! Native Windows file admission mechanics shared by isolated experiments.
+//! Native Windows private-file admission for the adapter and its evidence probes.
 use std::collections::BTreeSet;
 use std::ffi::c_void;
 use std::fs::{File, OpenOptions};

@@ -122,6 +122,36 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(screen.getByRole("button", { name: "Advance fixture" })).toBeDisabled();
   });
 
+  it("keeps a live snapshot visibly read-only and hides fixture controls", async () => {
+    const fixture = createMockAppClient();
+    const snapshot = await fixture.snapshot();
+    render(<HarnessGui client={{
+      snapshot: async () => ({
+        ...snapshot,
+        connection: "connected",
+        source: { kind: "live", serviceInstanceId: "service-live", muxSpaceId: "mux-live" },
+        capabilities: snapshot.capabilities.map((capability) => ({
+          ...capability,
+          availability: capability.name === "tasks" || capability.name === "agents" ? "live" : "unavailable",
+          version: capability.name === "tasks" || capability.name === "agents" ? "loushang.execution/v1" : null,
+        })),
+        sessions: snapshot.sessions.map((session) => ({
+          ...session,
+          context: { ...session.context, source: "live" },
+          changeSet: null,
+          documents: [],
+        })),
+      }),
+      subscribe: () => () => undefined,
+      submitText: async (input) => ({ submissionId: input.submissionId, accepted: false }),
+      interrupt: async () => ({ accepted: false }),
+    }} />);
+    await screen.findByText("Live AppHost · read-only");
+    expect(screen.queryByLabelText("Fixture playback controls")).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Message for GUI development" })).toBeDisabled();
+    expect(screen.getByText("Live · read-only")).toBeVisible();
+  });
+
   it("navigates three Workspace kinds and preserves per-Session drafts", async () => {
     const user = userEvent.setup();
     render(<HarnessGui client={createMockAppClient()} />);

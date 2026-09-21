@@ -1,4 +1,4 @@
-//! Offline snapshot and content/metadata-event contract projection, not a live client.
+//! Closed execution snapshot and content/metadata-event wire projection.
 use super::identifier;
 use serde::{Deserialize, Serialize};
 use serde_json::{value::RawValue, Value};

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import subprocess
 import tempfile
@@ -57,6 +58,7 @@ from loushang.harness.config.agent import SettingsManager
 ROOT = Path(__file__).resolve().parents[2]
 CRATE = ROOT / "gui/contracts/rust"
 EXE = CRATE / "target/debug/connection_probe.exe"
+SNAPSHOT_EXE = CRATE / "target/debug/snapshot_probe.exe"
 
 
 class InstalledPin:
@@ -114,6 +116,24 @@ async def probe(root, *, succeeds, watch=False):
     else:
         assert process.returncode == 1 and not stdout
         assert stderr == b"connection probe failed\n"
+
+
+async def initial_snapshot(root):
+    process = await asyncio.create_subprocess_exec(
+        str(SNAPSHOT_EXE),
+        str(root),
+        "5000",
+        "gui-fixture",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await asyncio.wait_for(process.communicate(), 8)
+    assert process.returncode == 0 and not stderr, (stdout, stderr)
+    snapshot = json.loads(stdout)
+    encoded = stdout.decode("utf-8")
+    assert "attachmentId" not in encoded
+    assert "controllerGeneration" not in encoded
+    return snapshot
 
 
 async def run(root):
@@ -219,6 +239,14 @@ async def run(root):
             MuxAttachV1(MuxSelectorV1(name="mux-peer"))
         )
         await probe(root / "connection", succeeds=True)
+        published = await initial_snapshot(root / "connection")
+        assert published["serviceInstanceId"] == execution.service_instance_id
+        assert published["muxSpace"]["name"] == "gui-fixture"
+        assert len(published["sessions"]) == 1
+        assert (
+            published["sessions"][0]["source"]["source"]["identity"]["sessionId"]
+            == published["muxSpace"]["members"][0]["session"]["sessionId"]
+        )
         assert local.accepting
         # A distinct mux controller remains usable after Rust detached/closed.
         assert owner.execution_client is not None
@@ -318,6 +346,8 @@ if __name__ == "__main__":
             str(CRATE / "Cargo.toml"),
             "--bin",
             "connection_probe",
+            "--bin",
+            "snapshot_probe",
         ],
         check=True,
         cwd=ROOT,

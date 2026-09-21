@@ -1,5 +1,10 @@
+#[cfg(windows)]
+#[allow(dead_code)]
+mod app_client;
 mod connection_lifecycle;
-// No live invoke is registered yet. Exit joins run on the blocking pool.
+#[cfg(windows)]
+mod live_bridge;
+// Exit joins run on the blocking pool.
 #[allow(dead_code)]
 mod read_stop;
 #[allow(dead_code)]
@@ -39,7 +44,22 @@ fn fixture_bridge_handshake(app: tauri::AppHandle) -> Result<FixtureBridgeReceip
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default().manage(Arc::new(ConnectionLifecycle::default()));
-    #[cfg(feature = "fixture-bridge")]
+    #[cfg(windows)]
+    let builder = builder.manage(live_bridge::LiveLaunchState::from_process());
+    #[cfg(all(windows, feature = "fixture-bridge"))]
+    let builder = builder.invoke_handler(tauri::generate_handler![
+        fixture_bridge_handshake,
+        live_bridge::live_readonly_available,
+        live_bridge::start_live_readonly,
+        live_bridge::stop_live_readonly
+    ]);
+    #[cfg(all(windows, not(feature = "fixture-bridge")))]
+    let builder = builder.invoke_handler(tauri::generate_handler![
+        live_bridge::live_readonly_available,
+        live_bridge::start_live_readonly,
+        live_bridge::stop_live_readonly
+    ]);
+    #[cfg(all(not(windows), feature = "fixture-bridge"))]
     let builder = builder.invoke_handler(tauri::generate_handler![fixture_bridge_handshake]);
     builder
         .build(tauri::generate_context!())

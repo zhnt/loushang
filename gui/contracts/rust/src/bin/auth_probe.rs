@@ -1,5 +1,5 @@
 //! Pipe-only interoperability entrypoint using public fixture credentials.
-#[path = "../transport_auth.rs"]
+#[path = "../../../../src-tauri/src/app_client/transport_auth.rs"]
 mod transport_auth;
 use std::io;
 fn run() -> Result<(), ()> {
