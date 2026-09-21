@@ -23,6 +23,31 @@ or MCP behavior.
 Source implementation is tracked by
 [#481](https://github.com/zhnt/loushang/issues/481).
 
+## Closed Contribution Type System
+
+`loushang.harness.resources.plugins.contribution_types` is the sole authority
+for the contribution-kind union and its compatible Index, declaration IR,
+document, execution-model, and requested-authority rules. Type-system version
+1 contains exactly these five arms: `capability_provider`,
+`continuity_provider`, `resource_item`, `tool_pack`, and `command_pack`.
+Adding an arm or changing an allowed execution model requires a new reviewed
+schema version; a decoder, builder, or owner bridge must not grow a private
+string arm.
+
+The wire `owner` field is an inert canonical identifier that names the exact
+host-owned admission boundary. It is not an owner object, registry, service
+locator, callback, or live context, and it grants no authority. The exact-field
+codec rejects any peer locator field and rejects a structured value in
+`owner`. Public authoring specs may carry identifiers such as `capability` or
+`owner_namespace`; only the Host resolves those references after selection and
+passes inert candidate data to the matching owner. A contribution never
+receives the owner, Graph, registry, or service locator itself.
+
+Index/IR v2 permits `in_process` only for Capability and Continuity providers
+and `data_only` only for Resource, Tool, and Command contributions. Index/IR v3
+adds `local_worker` only to the Capability Provider arm. Resource, Tool, and
+Command arms remain authority-free in every supported schema.
+
 ## Identity Layers And The No-Self-Reference Rule
 
 Declaration source identity has three layers:
