@@ -1,12 +1,14 @@
 # C1 execution contract probes
 
-Status: **partial C1 evidence**, not a production adapter or accepted full codec.
+Status: **partial C1 contract coverage plus the first B2 read-only native adapter**;
+not an accepted full codec or mutable client.
 
 The [contract generation and native connection plan](connection-plan.md) now
 records the selected reference inputs, generated candidate DTOs and the exact
 authentication/attachment/snapshot sequence. Type-generation preparation and
-isolated native probes are implemented; production GUI connection acceptance
-remains pending. See the real AppHost integration follow-up below.
+independent validators are implemented. The desktop now consumes the same native
+adapter as the probes for authenticated attachment and one atomic initial
+snapshot. Native-window acceptance and live event publication remain pending.
 An additional [authentication pipe experiment](authentication-evidence.md) now
 checks the Rust client against the Python server, without enabling native GUI
 connections or reading private records.
@@ -16,17 +18,19 @@ validates native handle/ACL admission with synthetic local files.
 the value/selection contract and its use by the native-file and authentication
 probes. A subsequent [Windows loopback lifecycle experiment](connection-lifecycle-evidence.md)
 now composes record admission, authentication, hello, deadlines and cancellation.
-A production GUI connection remains pending.
+The bounded connection implementation is now shared with the Tauri host.
 The [read-only attachment experiment](attachment-lifecycle-evidence.md) now
-extends the loopback probe through member snapshots and detach; shared AppHost
-ownership and live GUI publication remain unverified.
+extends the loopback probe through member snapshots and detach; real AppHost
+snapshot publication is verified below, while native-window acceptance remains.
 
 ## Consolidation review: 2026-09-14
 
 The four local probe slices are one offline compatibility work item, not four
 production integration milestones. Their scope is measured against
 [bootstrap plan section 6](../../docs/internals/architecture/drafts/gui-engineering-bootstrap-plan.md#6-appclient-跨语言接入与生命周期).
-The GUI still uses fixtures; these validators are not imported by its runtime.
+The default GUI still uses fixtures. A Windows launch with both admitted native
+arguments selects the read-only live client; protocol validators now live under
+`src-tauri` and the probes consume that same implementation.
 
 | Obligation | Evidence retained | Remaining work before claiming coverage |
 | --- | --- | --- |
@@ -51,10 +55,10 @@ assertions; do not expand case counts merely to suggest readiness.
 2. Extend compatibility evidence only for the operations and trust/lifecycle
    obligations required by the first connection. Add reverse encoding evidence,
    rather than relying on Python-to-Rust-to-TypeScript projection alone.
-3. Then implement a bounded B2 connection slice through the existing AppHost
-   application: explicit profile, authenticated connection, attachment and initial
-   snapshot, followed by safe detach. Keep submit/recovery acceptance separate;
-   do not expose a live Send button on connection success alone.
+3. The bounded B2 connection slice now reaches explicit profile negotiation,
+   authenticated attachment, a membership-barriered initial snapshot and owned
+   cleanup. Keep submit/recovery acceptance separate; live Send and Interrupt
+   remain disabled.
 
 Workspace/ChangeSet integration remains pending its own accepted contracts;
 execution connectivity must not silently turn fixture repository data into live

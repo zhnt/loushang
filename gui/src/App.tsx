@@ -3,6 +3,7 @@ import "./App.css";
 import { UiIcon } from "./UiIcon";
 import { DesktopFrame, PanelIcon } from "./DesktopFrame";
 import { createMockAppClient } from "./client/mockAppClient";
+import { createNativeLiveClient, nativeLiveAvailable } from "./client/nativeLiveClient";
 import { probeFixtureBridge, type BridgeProbe } from "./client/nativeFixtureBridge";
 import type {
   AgentRunProjection,
@@ -59,7 +60,7 @@ export function HarnessGui({ client }: HarnessGuiProps) {
     return () => window.removeEventListener("keydown", keydown);
   }, []);
   const [state, dispatch] = useReducer(guiReducer, undefined, emptyGuiState);
-  const [notice, setNotice] = useState("Loading fixture snapshot…");
+  const [notice, setNotice] = useState("Loading snapshot…");
   const [syncing, setSyncing] = useState(true);
   const refreshRef = useRef<(() => void) | null>(null);
   const syncPendingRef = useRef(true);
@@ -98,7 +99,12 @@ export function HarnessGui({ client }: HarnessGuiProps) {
           ? "Fixture snapshot installed. No backend is running."
           : "Read-only live snapshot installed.");
       } catch {
-        if (active) dispatch({ type: "sync.failed", message: "Fixture synchronization failed. Retry to load a fresh snapshot." });
+        if (active) dispatch({
+          type: "sync.failed",
+          message: fixture
+            ? "Fixture synchronization failed. Retry to load a fresh snapshot."
+            : "Live snapshot synchronization failed. Restart the native connection.",
+        });
       } finally {
         if (active) {
           buffered = [];
@@ -235,7 +241,7 @@ export function HarnessGui({ client }: HarnessGuiProps) {
           bridgeProbe={bridgeProbe}
           onSelect={(sessionId) => dispatch({ type: "session.selected", sessionId })}
           onToggleWorkspace={(workspaceId) => dispatch({ type: "workspace.toggled", workspaceId })}
-          onUnavailable={() => setNotice("New Session is unavailable in the offline fixture.")}
+          onUnavailable={() => setNotice("New Session is unavailable in this read-only slice.")}
         />
         <div className="sidebar-resizer" role="separator" aria-label="Sidebar width" aria-orientation="vertical" tabIndex={0}
           aria-valuemin={200} aria-valuemax={420} aria-valuenow={sidebarWidth}
@@ -249,8 +255,8 @@ export function HarnessGui({ client }: HarnessGuiProps) {
         <section ref={conversationRef} style={{ "--content-gutter": `${contentMetrics.gutter}px`, "--scrollbar-width": `${contentMetrics.scrollbar}px` } as React.CSSProperties} className="conversation-pane" aria-label="Session workspace">
           {syncing || state.diagnostic || state.remote.connection === "disconnected" ? (
             <div className="diagnostic" role="status">
-              <span>{syncing ? "Synchronizing fixture…" : state.diagnostic ?? "Disconnected. Load a fresh fixture snapshot."}</span>
-              <button type="button" disabled={syncing} onClick={() => refreshRef.current?.()}>Resynchronize fixture</button>
+              <span>{syncing ? (fixture ? "Synchronizing fixture…" : "Connecting read-only…") : state.diagnostic ?? "Disconnected."}</span>
+              {fixture ? <button type="button" disabled={syncing} onClick={() => refreshRef.current?.()}>Resynchronize fixture</button> : null}
             </div>
           ) : null}
           {selected ? (
@@ -274,7 +280,7 @@ export function HarnessGui({ client }: HarnessGuiProps) {
                       <strong>{message.role === "user" ? "You" : "Harness"}</strong>
                       <span>{message.phase}</span>
                     </div>
-                    <p>{message.content || "Waiting for fixture output…"}</p>
+                    <p>{message.content || "Waiting for output…"}</p>
                   </article>
                 ))}
                 {selected.run && tasksAvailable ? (
@@ -354,7 +360,7 @@ export function HarnessGui({ client }: HarnessGuiProps) {
                     }}
                   />
                   <div className="composer-actions">
-                    <button type="button" className="icon-button" aria-label="Attach fixture file" title="Attachments unavailable in this fixture" disabled>＋</button>
+                    <button type="button" className="icon-button" aria-label="Attach file unavailable" title="Attachments are unavailable" disabled>＋</button>
                     <span className="permission-label">◉ {state.remote.source.kind === "fixture" ? "Fixture access" : "Read-only"}</span>
                     <p className="visually-hidden" role="status">{notice}</p>
                     <button type="button" className="effort-selector" title="Model and effort selection require a backend" disabled>No model · Effort unavailable ⌄</button>
@@ -840,7 +846,7 @@ function ReviewPanel({ session, selectedDocument, onSelectDocument }: {
 }
 
 function UnavailablePanel({ label }: { readonly label: string }) {
-  return <div className="unavailable-panel"><strong>{label} unavailable</strong><p>This Session has no accepted fixture value. The GUI does not infer one from transcript text.</p></div>;
+  return <div className="unavailable-panel"><strong>{label} unavailable</strong><p>This Session has no accepted value. The GUI does not infer one from transcript text.</p></div>;
 }
 
 function DocumentView({ document, compact = false }: { readonly document: ReadonlyDocument; readonly compact?: boolean }) {
@@ -884,8 +890,20 @@ function connectionLabel(connection: string): string {
 }
 
 function App() {
-  const client = useMemo(() => createMockAppClient(), []);
-  return <HarnessGui client={client} />;
+  const fixture = useMemo(() => createMockAppClient(), []);
+  const [client, setClient] = useState<HarnessClientUiPort | FixturePlaybackPort | null>(null);
+  useEffect(() => {
+    let active = true;
+    void nativeLiveAvailable()
+      .then((available) => {
+        if (active) setClient(available ? createNativeLiveClient() : fixture);
+      })
+      .catch(() => {
+        if (active) setClient(fixture);
+      });
+    return () => { active = false; };
+  }, [fixture]);
+  return client ? <HarnessGui client={client} /> : <div className="empty-state">Opening HarnessGUI…</div>;
 }
 
 export default App;

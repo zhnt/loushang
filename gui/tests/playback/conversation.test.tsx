@@ -143,7 +143,7 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
         })),
       }),
       subscribe: () => () => undefined,
-      submitText: async () => ({ accepted: false }),
+      submitText: async (input) => ({ submissionId: input.submissionId, accepted: false }),
       interrupt: async () => ({ accepted: false }),
     }} />);
     await screen.findByText("Live AppHost · read-only");

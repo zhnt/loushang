@@ -92,11 +92,11 @@ silently sharing one mux.
    is implemented, as is [Windows private-file admission](windows-record-evidence.md)
    with native fixtures. [Closed service-record decoding](record-values-evidence.md)
    is now composed into the file and authentication probes separately.
-   Production transport and cancellation/timeout cleanup remain pending; the
-   isolated probes are not the native adapter.
+   These mechanics now compose the shared native adapter; complete protocol
+   coverage and asynchronous mutable requests remain pending.
    [Loopback lifecycle evidence](connection-lifecycle-evidence.md) additionally
    composes them through hello and close with socket deadlines/cancellation;
-   production GUI ownership and ongoing RPC remain pending.
+   desktop ownership and ongoing read-only RPC now reuse that implementation.
 3. **Partial attachment evidence:** [scripted loopback attachment/snapshot/detach](attachment-lifecycle-evidence.md)
    is implemented, including two bounded execution-event rounds per member with
    persistent watermarks and atomic batch validation.
@@ -105,14 +105,16 @@ silently sharing one mux.
    [Local attempt fencing](connection-epoch-evidence.md) now guards probe state
    updates and cancellation. Bounded mux membership rechecks reject a changed
    revision or member set after snapshots and event rounds. Continuous detection
-   and integration of a reusable owner into the desktop connection remain pending.
+   and reusable desktop ownership are implemented for the read-only slice.
    The attachment reader is now a reusable `ReadSession` with separate attach,
    initialize, poll and detach operations. The evidence driver alone chooses
    two rounds; the session does not own a loop or socket. Each poll commits all
    member watermarks only after its membership recheck. Request IDs fail closed
    at the existing signed-63-bit connection limit instead of wrapping.
-4. **Pending acceptance:** persistent read-only native GUI connection and
-   presentation. The probe's idle connection evidence is not GUI acceptance.
+4. **Implemented first publication slice:** the Tauri host can start the shared
+   read-only adapter from native-only launch facts and publish one atomic initial
+   snapshot. React distinguishes live data from fixtures and disables mutation.
+   Native-window acceptance and ongoing event publication remain pending.
 
 Transport and attachment must pass their own evidence before enabling the GUI
 connection control. No live connection readiness is claimed by checkpoint 1.
@@ -156,12 +158,22 @@ then exit is requested again; failed cleanup emits a fixed redacted diagnostic
 and requests exit code 1. Starting during reading or after exit has begun is
 rejected. No runtime STOP request is introduced.
 
-Seven native unit tests cover worker and lifecycle behavior, including a
-deliberately blocked cleanup, repeated exit and retained failure. This is not
-yet native-window acceptance with a live connection: `start` is native-only and
-currently has no desktop caller. The default fixture takes the idle exit path.
-No live Tauri invoke or GUI snapshot publication is enabled here. Forced process
-termination and Tauri restart (whose exit prevention is ignored by Tauri) are
+Native tests cover worker and lifecycle behavior, including a deliberately
+blocked cleanup, repeated exit and retained failure. The desktop caller now
+starts only when both `--loushang-app-record-root` and `--loushang-mux-name`
+are present; partial, duplicate or unknown native arguments fail closed. Neither
+fact comes from the WebView. After authentication, attachment, every execution
+snapshot and the mux membership barrier succeed, one redacted snapshot is handed
+through a native event. Attachment/controller authority is never serialized.
+The connection then continues validated read-only polling until desktop
+stop/exit; this slice deliberately does not publish those event batches.
+
+The React client validates service-instance and membership identity, installs
+the snapshot atomically, exposes no Workspace/ChangeSet capabilities, and keeps
+Send/Interrupt disabled. An invalid or timed-out handoff asks native ownership
+to stop and join. The default launch remains the offline fixture. This is still
+not native-window acceptance with a real host. Forced process termination and
+Tauri restart (whose exit prevention is ignored by Tauri) are
 outside this graceful-exit guarantee; no restart action is exposed. Before any
 restart feature, it must explicitly settle the connection first. The operation
 still must obey its bounded IO and cooperative-stop contract.

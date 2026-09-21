@@ -1,4 +1,4 @@
-//! Closed record-value experiment. File admission remains a separate obligation.
+//! Closed service-record value decoder; native file admission stays separate.
 use serde::Deserialize;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};

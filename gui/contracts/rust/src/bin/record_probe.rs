@@ -1,10 +1,10 @@
 //! Native fixture-file admission experiment. No endpoint discovery or connection.
 #[cfg(windows)]
-#[path = "../record_native.rs"]
+#[path = "../../../../src-tauri/src/app_client/record_native.rs"]
 mod native;
 #[cfg(windows)]
 #[allow(dead_code)]
-#[path = "../record_value.rs"]
+#[path = "../../../../src-tauri/src/app_client/record_value.rs"]
 mod record_value;
 
 #[cfg(windows)]
