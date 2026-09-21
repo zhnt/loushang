@@ -45,6 +45,9 @@ from loushang.harness.resources._catalog_input_receipt import (
 )
 from loushang.harness.resources.builtin import BuiltInResourcePackage
 from loushang.harness.resources.packages.mounts import PackageResourceMount
+from loushang.harness.resources.plugins.contribution_types import (
+    PLUGIN_OWNER_CONTRIBUTION_KINDS,
+)
 from loushang.harness.resources.plugins.locators import (
     canonical_plugin_relative_path,
 )
@@ -883,7 +886,7 @@ def complete_coding_package_plugin_selection_seed(
     candidates = tuple(
         prepare_owner_contribution_candidate(selection, item)
         for item in selection.candidates
-        if item.declaration.kind in {"resource_item", "tool_pack", "command_pack"}
+        if item.declaration.kind in PLUGIN_OWNER_CONTRIBUTION_KINDS
     )
     owner_collections: dict[tuple[str, OwnerContributionKind], set[str]] = {}
     owner_trust_classes: dict[tuple[str, OwnerContributionKind], set[str]] = {}
@@ -906,11 +909,7 @@ def complete_coding_package_plugin_selection_seed(
     ] = {}
     for binding in seed.owner_bindings:
         owner_id, raw_contribution_kind, _ = binding.owner_key
-        if raw_contribution_kind not in {
-            "resource_item",
-            "tool_pack",
-            "command_pack",
-        }:
+        if raw_contribution_kind not in PLUGIN_OWNER_CONTRIBUTION_KINDS:
             raise CodingResourceCatalogAdmissionError(
                 ("invalid_product_owner_binding_kind",)
             )

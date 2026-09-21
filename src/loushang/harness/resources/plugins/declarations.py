@@ -12,19 +12,28 @@ from loushang.harness.resources.plugins._strict_json import (
     PluginJsonCodecError,
     StrictPluginJsonCodec,
 )
+from loushang.harness.resources.plugins.contribution_types import (
+    PLUGIN_CONTRIBUTION_INDEX_VERSION,
+    PLUGIN_CONTRIBUTION_KINDS,
+    PLUGIN_CONTRIBUTION_SCHEMAS,
+    PLUGIN_CONTRIBUTION_SCHEMAS_BY_IR_VERSION,
+    PLUGIN_DECLARATION_DOCUMENT_VERSION,
+    PLUGIN_DECLARATION_IR_VERSION,
+    PLUGIN_LOCAL_WORKER_CONTRIBUTION_INDEX_VERSION,
+    PLUGIN_LOCAL_WORKER_DECLARATION_DOCUMENT_VERSION,
+    PLUGIN_LOCAL_WORKER_DECLARATION_IR_VERSION,
+    PluginContributionExecutionModel,
+    PluginContributionKind,
+    plugin_contribution_schema_for_index,
+    plugin_contribution_schema_for_ir,
+)
 from loushang.harness.resources.plugins.locators import (
     canonical_plugin_relative_path,
     parse_plugin_entrypoint,
 )
 
 PLUGIN_DECLARATION_SOURCE_VERSION = 1
-PLUGIN_CONTRIBUTION_INDEX_VERSION = 2
-PLUGIN_DECLARATION_IR_VERSION = 2
-PLUGIN_DECLARATION_DOCUMENT_VERSION = 1
 PLUGIN_LOCAL_WORKER_CONFIGURATION_VERSION = 1
-PLUGIN_LOCAL_WORKER_CONTRIBUTION_INDEX_VERSION = 3
-PLUGIN_LOCAL_WORKER_DECLARATION_IR_VERSION = 3
-PLUGIN_LOCAL_WORKER_DECLARATION_DOCUMENT_VERSION = 2
 PLUGIN_DECLARATION_DOCUMENT_MEDIA_TYPE = (
     "application/vnd.loushang.plugin-declarations+json"
 )
@@ -32,49 +41,16 @@ PLUGIN_DECLARATION_DOCUMENT_SCHEMA_ID = "loushang.plugin-declaration-document"
 MAX_PLUGIN_DECLARATION_DOCUMENT_BYTES = 4_194_304
 MAX_PLUGIN_DECLARATIONS_PER_DOCUMENT = 1_024
 
-PluginContributionKind = Literal[
-    "capability_provider",
-    "command_pack",
-    "continuity_provider",
-    "resource_item",
-    "tool_pack",
-]
-PluginContributionExecutionModel = Literal["data_only", "in_process", "local_worker"]
 PluginDeclarationSourceKind = Literal["document", "in_process"]
 
-_SUPPORTED_CONTRIBUTION_KINDS = frozenset(
-    {
-        "capability_provider",
-        "command_pack",
-        "continuity_provider",
-        "resource_item",
-        "tool_pack",
-    }
-)
-_LEGACY_EXECUTION_MODELS = frozenset({"data_only", "in_process"})
-_SUPPORTED_EXECUTION_MODELS = frozenset({*_LEGACY_EXECUTION_MODELS, "local_worker"})
-_SUPPORTED_CONTRIBUTION_INDEX_VERSIONS = frozenset(
-    {
-        PLUGIN_CONTRIBUTION_INDEX_VERSION,
-        PLUGIN_LOCAL_WORKER_CONTRIBUTION_INDEX_VERSION,
-    }
-)
+_SUPPORTED_CONTRIBUTION_INDEX_VERSIONS = frozenset(PLUGIN_CONTRIBUTION_SCHEMAS)
 _SUPPORTED_DECLARATION_IR_VERSIONS = frozenset(
-    {PLUGIN_DECLARATION_IR_VERSION, PLUGIN_LOCAL_WORKER_DECLARATION_IR_VERSION}
+    PLUGIN_CONTRIBUTION_SCHEMAS_BY_IR_VERSION
 )
 _SUPPORTED_DECLARATION_DOCUMENT_VERSIONS = frozenset(
-    {
-        PLUGIN_DECLARATION_DOCUMENT_VERSION,
-        PLUGIN_LOCAL_WORKER_DECLARATION_DOCUMENT_VERSION,
-    }
+    schema.declaration_document_version
+    for schema in PLUGIN_CONTRIBUTION_SCHEMAS.values()
 )
-_IN_PROCESS_CONTRIBUTION_KINDS = frozenset(
-    {"capability_provider", "continuity_provider"}
-)
-_DATA_ONLY_CONTRIBUTION_KINDS = frozenset(
-    {"command_pack", "resource_item", "tool_pack"}
-)
-_LOCAL_WORKER_CONTRIBUTION_KINDS = frozenset({"capability_provider"})
 _IDENTIFIER = re.compile(r"[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?")
 _MAX_LOCAL_WORKER_IDENTIFIER_LENGTH = 128
 
@@ -104,11 +80,7 @@ class PluginLocalWorkerConfiguration:
         _require_identifier(self.protocol, name="Worker protocol")
         if len(self.protocol) > _MAX_LOCAL_WORKER_IDENTIFIER_LENGTH:
             raise ValueError("Worker protocol must be a bounded identifier")
-        if (
-            isinstance(self.protocol_version, bool)
-            or not isinstance(self.protocol_version, int)
-            or self.protocol_version < 1
-        ):
+        if type(self.protocol_version) is not int or self.protocol_version < 1:
             raise ValueError("Plugin local Worker protocol version must be positive")
         object.__setattr__(self, "entrypoint", path.as_posix())
 
@@ -179,13 +151,21 @@ class PluginDeclarationSource:
     source_version: int = PLUGIN_DECLARATION_SOURCE_VERSION
 
     def __post_init__(self) -> None:
-        if self.source_version != PLUGIN_DECLARATION_SOURCE_VERSION:
+        if (
+            type(self.source_version) is not int
+            or self.source_version != PLUGIN_DECLARATION_SOURCE_VERSION
+        ):
             raise ValueError("Unsupported Plugin declaration source version")
+        if type(self.kind) is not str:
+            raise ValueError("Unsupported Plugin declaration source kind")
         if self.kind == "document":
             if (
                 self.entrypoint is not None
+                or type(self.media_type) is not str
                 or self.media_type != PLUGIN_DECLARATION_DOCUMENT_MEDIA_TYPE
+                or type(self.schema_id) is not str
                 or self.schema_id != PLUGIN_DECLARATION_DOCUMENT_SCHEMA_ID
+                or type(self.schema_version) is not int
                 or self.schema_version not in _SUPPORTED_DECLARATION_DOCUMENT_VERSIONS
             ):
                 raise ValueError("Invalid document Plugin declaration source")
@@ -358,43 +338,38 @@ class PluginContributionReservation:
     def __post_init__(self) -> None:
         _require_identifier(self.contribution_id, name="contribution id")
         _require_identifier(self.owner, name="contribution owner")
-        if self.kind not in _SUPPORTED_CONTRIBUTION_KINDS:
+        schema = plugin_contribution_schema_for_index(self.index_version)
+        if type(self.kind) is not str or self.kind not in PLUGIN_CONTRIBUTION_KINDS:
             raise ValueError("Unsupported Plugin contribution kind")
-        if not isinstance(self.declaration_source, PluginDeclarationSource):
+        if type(self.declaration_source) is not PluginDeclarationSource:
             raise TypeError("Plugin contribution requires a declaration source")
-        if self.index_version not in _SUPPORTED_CONTRIBUTION_INDEX_VERSIONS:
+        if schema is None:
             raise ValueError("Unsupported Plugin contribution index version")
-        supported_execution_models = (
-            _LEGACY_EXECUTION_MODELS
-            if self.index_version == PLUGIN_CONTRIBUTION_INDEX_VERSION
-            else _SUPPORTED_EXECUTION_MODELS
-        )
-        if self.contribution_execution_model not in supported_execution_models:
+        if (
+            type(self.contribution_execution_model) is not str
+            or self.contribution_execution_model not in schema.execution_models
+        ):
             raise ValueError("Unsupported Plugin contribution execution model")
         if self.declaration_source.kind == "document":
-            expected_document_version = (
-                PLUGIN_DECLARATION_DOCUMENT_VERSION
-                if self.index_version == PLUGIN_CONTRIBUTION_INDEX_VERSION
-                else PLUGIN_LOCAL_WORKER_DECLARATION_DOCUMENT_VERSION
-            )
+            expected_document_version = schema.declaration_document_version
             if self.declaration_source.schema_version != expected_document_version:
                 raise ValueError(
                     f"Plugin contribution index v{self.index_version} requires "
                     f"declaration document v{expected_document_version}"
                 )
-        if (
-            self.kind in _IN_PROCESS_CONTRIBUTION_KINDS
-            and self.contribution_execution_model not in {"in_process", "local_worker"}
-        ):
+        rule = schema.rule_for(self.kind)
+        assert rule is not None
+        if self.contribution_execution_model not in rule.execution_models:
+            if self.contribution_execution_model == "local_worker":
+                raise ValueError(
+                    "Plugin local Worker is not supported for this contribution kind"
+                )
+            if rule.execution_models == frozenset({"data_only"}):
+                raise ValueError(f"{self.kind} contribution must be data-only")
             raise ValueError(
                 f"{self.kind} contribution must be in-process or an admitted local Worker"
             )
-        if (
-            self.kind in _DATA_ONLY_CONTRIBUTION_KINDS
-            and self.contribution_execution_model != "data_only"
-        ):
-            raise ValueError(f"{self.kind} contribution must be data-only")
-        if any(not isinstance(item, str) for item in self.requested_authorities):
+        if any(type(item) is not str for item in self.requested_authorities):
             raise TypeError("Plugin requested authorities must be strings")
         if tuple(sorted(self.requested_authorities)) != self.requested_authorities:
             raise ValueError("Plugin requested authorities must be sorted")
@@ -402,18 +377,21 @@ class PluginContributionReservation:
             raise ValueError("Plugin requested authorities must be unique")
         for authority in self.requested_authorities:
             _require_identifier(authority, name="requested authority")
-        if (
-            self.kind in _DATA_ONLY_CONTRIBUTION_KINDS
-            and self.requested_authorities
+        if self.requested_authorities and not rule.permits_requested_authorities(
+            self.contribution_execution_model
         ):
+            if self.contribution_execution_model == "local_worker":
+                raise ValueError(
+                    "Plugin local Worker cannot receive ambient requested authorities"
+                )
             raise ValueError(f"{self.kind} contribution cannot request authorities")
         object.__setattr__(self, "configuration", _freeze_json_mapping(self.configuration))
-        if not isinstance(self.required, bool):
+        if type(self.required) is not bool:
             raise TypeError("Plugin contribution required must be a boolean")
         if self.contribution_execution_model == "local_worker":
             if self.index_version != PLUGIN_LOCAL_WORKER_CONTRIBUTION_INDEX_VERSION:
                 raise ValueError("Plugin local Worker requires contribution index v3")
-            if self.kind not in _LOCAL_WORKER_CONTRIBUTION_KINDS:
+            if "local_worker" not in rule.execution_models:
                 raise ValueError(
                     "Plugin local Worker is not supported for this contribution kind"
                 )
@@ -425,15 +403,9 @@ class PluginContributionReservation:
                 raise ValueError(
                     "Plugin local Worker requires a declaration document v2 source"
                 )
-            if not isinstance(
-                self.worker_configuration, PluginLocalWorkerConfiguration
-            ):
+            if type(self.worker_configuration) is not PluginLocalWorkerConfiguration:
                 raise TypeError(
                     "Plugin local Worker requires a typed Worker configuration"
-                )
-            if self.requested_authorities:
-                raise ValueError(
-                    "Plugin local Worker cannot receive ambient requested authorities"
                 )
             if self.configuration:
                 raise ValueError(
@@ -488,7 +460,10 @@ class PluginContributionReservation:
         index_version: int = PLUGIN_CONTRIBUTION_INDEX_VERSION,
     ) -> PluginContributionReservation:
         document = _require_object(value, name="Plugin contribution reservation")
-        if index_version not in _SUPPORTED_CONTRIBUTION_INDEX_VERSIONS:
+        if (
+            type(index_version) is not int
+            or index_version not in _SUPPORTED_CONTRIBUTION_INDEX_VERSIONS
+        ):
             _raise_codec(
                 "unsupported_plugin_contribution_index_version",
                 "Unsupported Plugin contribution index version",
@@ -514,18 +489,16 @@ class PluginContributionReservation:
         kind = _require_union_tag(
             document,
             key="kind",
-            supported=_SUPPORTED_CONTRIBUTION_KINDS,
+            supported=PLUGIN_CONTRIBUTION_KINDS,
             code="unsupported_plugin_contribution_kind",
         )
         owner = _require_string(document["owner"], name="contribution owner")
+        schema = plugin_contribution_schema_for_index(index_version)
+        assert schema is not None
         execution_model = _require_union_tag(
             document,
             key="contributionExecutionModel",
-            supported=(
-                _LEGACY_EXECUTION_MODELS
-                if index_version == PLUGIN_CONTRIBUTION_INDEX_VERSION
-                else _SUPPORTED_EXECUTION_MODELS
-            ),
+            supported=schema.execution_models,
             code="unsupported_plugin_contribution_execution_model",
         )
         authorities = _require_sorted_unique_strings(
@@ -538,25 +511,34 @@ class PluginContributionReservation:
                 "Plugin contribution configuration must be an object",
             )
         required = document["required"]
-        if not isinstance(required, bool):
+        if type(required) is not bool:
             _raise_codec(
                 "plugin_declaration_field_type_mismatch",
                 "Plugin contribution required must be a boolean",
             )
-        if kind in _IN_PROCESS_CONTRIBUTION_KINDS and execution_model not in {
-            "in_process",
-            "local_worker",
-        }:
+        rule = schema.rule_for(kind)
+        assert rule is not None
+        if execution_model not in rule.execution_models:
+            if execution_model == "local_worker":
+                _raise_codec(
+                    "plugin_declaration_field_value_mismatch",
+                    "Plugin local Worker is not supported for this contribution kind",
+                )
+            expected = (
+                "data_only"
+                if rule.execution_models == frozenset({"data_only"})
+                else "in_process or local_worker"
+            )
             _raise_codec(
                 "unsupported_plugin_contribution_execution_model",
-                f"{kind} contribution must use in_process or local_worker",
+                f"{kind} contribution must use {expected}",
             )
-        if kind in _DATA_ONLY_CONTRIBUTION_KINDS and execution_model != "data_only":
-            _raise_codec(
-                "unsupported_plugin_contribution_execution_model",
-                f"{kind} contribution must use data_only",
-            )
-        if kind in _DATA_ONLY_CONTRIBUTION_KINDS and authorities:
+        if authorities and not rule.permits_requested_authorities(execution_model):
+            if execution_model == "local_worker":
+                _raise_codec(
+                    "plugin_declaration_field_value_mismatch",
+                    "Plugin local Worker cannot receive ambient requested authorities",
+                )
             _raise_codec(
                 "plugin_declaration_field_value_mismatch",
                 f"{kind} contribution cannot request authorities",
@@ -600,7 +582,10 @@ class PluginContributionIndex:
     version: int = PLUGIN_CONTRIBUTION_INDEX_VERSION
 
     def __post_init__(self) -> None:
-        if self.version not in _SUPPORTED_CONTRIBUTION_INDEX_VERSIONS:
+        if (
+            type(self.version) is not int
+            or self.version not in _SUPPORTED_CONTRIBUTION_INDEX_VERSIONS
+        ):
             raise ValueError("Unsupported Plugin contribution index version")
         if any(
             not isinstance(item, PluginContributionReservation) for item in self.items
@@ -695,11 +680,15 @@ class PluginDeclaration:
         _require_identifier(self.plugin_id, name="Plugin id")
         _require_identifier(self.contribution_id, name="contribution id")
         _require_identifier(self.owner, name="contribution owner")
-        if self.kind not in _SUPPORTED_CONTRIBUTION_KINDS:
+        if type(self.kind) is not str or self.kind not in PLUGIN_CONTRIBUTION_KINDS:
             raise ValueError("Unsupported Plugin declaration kind")
-        if self.ir_version not in _SUPPORTED_DECLARATION_IR_VERSIONS:
+        schema = plugin_contribution_schema_for_ir(self.ir_version)
+        if schema is None:
             raise ValueError("Unsupported Plugin declaration IR version")
-        if self.source_kind not in {"document", "in_process"}:
+        if type(self.source_kind) is not str or self.source_kind not in {
+            "document",
+            "in_process",
+        }:
             raise ValueError("Unsupported Plugin declaration source kind")
         _require_sha256(self.reservation_fingerprint, name="reservation fingerprint")
         _require_sha256(
@@ -715,36 +704,33 @@ class PluginDeclaration:
                     "Plugin declaration IR v2 cannot carry execution topology"
                 )
             return
-        if self.contribution_execution_model not in _SUPPORTED_EXECUTION_MODELS:
+        if (
+            type(self.contribution_execution_model) is not str
+            or self.contribution_execution_model not in schema.execution_models
+        ):
             raise ValueError(
                 "Plugin declaration IR v3 requires a supported execution model"
             )
-        if (
-            self.kind in _IN_PROCESS_CONTRIBUTION_KINDS
-            and self.contribution_execution_model not in {"in_process", "local_worker"}
-        ):
+        rule = schema.rule_for(self.kind)
+        assert rule is not None
+        if self.contribution_execution_model not in rule.execution_models:
+            if self.contribution_execution_model == "local_worker":
+                raise ValueError(
+                    "Plugin local Worker declaration kind is not supported"
+                )
+            if rule.execution_models == frozenset({"data_only"}):
+                raise ValueError(f"{self.kind} declaration must be data-only")
             raise ValueError(
                 f"{self.kind} declaration must be in-process or an admitted local Worker"
             )
-        if (
-            self.kind in _DATA_ONLY_CONTRIBUTION_KINDS
-            and self.contribution_execution_model != "data_only"
-        ):
-            raise ValueError(f"{self.kind} declaration must be data-only")
         if self.contribution_execution_model == "local_worker":
-            if not isinstance(
-                self.worker_configuration, PluginLocalWorkerConfiguration
-            ):
+            if type(self.worker_configuration) is not PluginLocalWorkerConfiguration:
                 raise TypeError(
                     "Plugin local Worker declaration requires Worker configuration"
                 )
             if self.source_kind != "document":
                 raise ValueError(
                     "Plugin local Worker declaration must be document sourced"
-                )
-            if self.kind not in _LOCAL_WORKER_CONTRIBUTION_KINDS:
-                raise ValueError(
-                    "Plugin local Worker declaration kind is not supported"
                 )
         elif self.worker_configuration is not None:
             raise ValueError(
@@ -809,7 +795,7 @@ class PluginDeclaration:
         kind = _require_union_tag(
             document,
             key="kind",
-            supported=_SUPPORTED_CONTRIBUTION_KINDS,
+            supported=PLUGIN_CONTRIBUTION_KINDS,
             code="unsupported_plugin_contribution_kind",
         )
         source_kind = _require_union_tag(
@@ -827,10 +813,12 @@ class PluginDeclaration:
         execution_model = None
         worker_configuration = None
         if ir_version == PLUGIN_LOCAL_WORKER_DECLARATION_IR_VERSION:
+            schema = plugin_contribution_schema_for_ir(ir_version)
+            assert schema is not None
             execution_model = _require_union_tag(
                 document,
                 key="contributionExecutionModel",
-                supported=_SUPPORTED_EXECUTION_MODELS,
+                supported=schema.execution_models,
                 code="unsupported_plugin_contribution_execution_model",
             )
             worker_value = document["workerConfiguration"]
@@ -880,7 +868,10 @@ class PluginDeclarationDocument:
     document_version: int = PLUGIN_DECLARATION_DOCUMENT_VERSION
 
     def __post_init__(self) -> None:
-        if self.document_version not in _SUPPORTED_DECLARATION_DOCUMENT_VERSIONS:
+        if (
+            type(self.document_version) is not int
+            or self.document_version not in _SUPPORTED_DECLARATION_DOCUMENT_VERSIONS
+        ):
             raise ValueError("Unsupported Plugin declaration document version")
         if not self.declarations:
             raise ValueError("Plugin declaration document must not be empty")
@@ -1025,13 +1016,13 @@ class PluginDeclarationDocumentCodec:
 
 
 def _require_identifier(value: object, *, name: str) -> None:
-    if not isinstance(value, str) or not _IDENTIFIER.fullmatch(value):
+    if type(value) is not str or not _IDENTIFIER.fullmatch(value):
         raise ValueError(f"Invalid {name}")
 
 
 def _require_sha256(value: object, *, name: str) -> None:
     if (
-        not isinstance(value, str)
+        type(value) is not str
         or len(value) != 64
         or any(character not in "0123456789abcdef" for character in value)
     ):
@@ -1044,7 +1035,7 @@ def _freeze_json_mapping(value: Mapping[str, object]) -> Mapping[str, object]:
     frozen = {
         key: _freeze_json_value(item)
         for key, item in value.items()
-        if isinstance(key, str)
+        if type(key) is str
     }
     if len(frozen) != len(value):
         raise ValueError("Plugin declaration object keys must be strings")
@@ -1053,7 +1044,7 @@ def _freeze_json_mapping(value: Mapping[str, object]) -> Mapping[str, object]:
 
 
 def _freeze_json_value(value: object) -> object:
-    if value is None or isinstance(value, str | bool | int | float):
+    if value is None or type(value) in {str, bool, int, float}:
         StrictPluginJsonCodec.encode(value)
         return value
     if isinstance(value, Mapping):
@@ -1117,7 +1108,7 @@ def _require_version(
     if key not in document:
         _raise_codec(code, f"{key} is missing or unsupported")
     version = document[key]
-    if not isinstance(version, int) or isinstance(version, bool):
+    if type(version) is not int:
         _raise_codec(
             "plugin_declaration_field_type_mismatch", f"{key} must be an integer"
         )
@@ -1135,7 +1126,7 @@ def _require_supported_version(
     if key not in document:
         _raise_codec(code, f"{key} is missing or unsupported")
     version = document[key]
-    if not isinstance(version, int) or isinstance(version, bool):
+    if type(version) is not int:
         _raise_codec(
             "plugin_declaration_field_type_mismatch", f"{key} must be an integer"
         )
@@ -1154,7 +1145,7 @@ def _require_union_tag(
     if key not in document:
         _raise_codec("plugin_declaration_exact_field_mismatch", f"{key} is required")
     value = document[key]
-    if not isinstance(value, str):
+    if type(value) is not str:
         _raise_codec(
             "plugin_declaration_field_type_mismatch", f"{key} must be a string"
         )
@@ -1164,7 +1155,7 @@ def _require_union_tag(
 
 
 def _require_string(value: object, *, name: str) -> str:
-    if not isinstance(value, str):
+    if type(value) is not str:
         _raise_codec(
             "plugin_declaration_field_type_mismatch", f"{name} must be a string"
         )
@@ -1172,7 +1163,7 @@ def _require_string(value: object, *, name: str) -> str:
 
 
 def _require_integer(value: object, *, name: str) -> int:
-    if not isinstance(value, int) or isinstance(value, bool):
+    if type(value) is not int:
         _raise_codec(
             "plugin_declaration_field_type_mismatch", f"{name} must be an integer"
         )
@@ -1180,7 +1171,7 @@ def _require_integer(value: object, *, name: str) -> int:
 
 
 def _require_sorted_unique_strings(value: object, *, name: str) -> tuple[str, ...]:
-    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+    if not isinstance(value, list) or not all(type(item) is str for item in value):
         _raise_codec(
             "plugin_declaration_field_type_mismatch",
             f"{name} must be a string list",

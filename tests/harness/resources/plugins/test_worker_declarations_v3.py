@@ -243,6 +243,49 @@ def test_worker_topology_never_carries_ambient_authority_or_unversioned_config()
         )
 
 
+def test_local_worker_rejection_names_the_unsupported_continuity_kind() -> None:
+    common = {
+        "contribution_id": "continuity",
+        "kind": "continuity_provider",
+        "owner": "harness.continuity",
+        "declaration_source": PluginDeclarationSource.document(
+            "declarations/continuity.json",
+            schema_version=PLUGIN_LOCAL_WORKER_DECLARATION_DOCUMENT_VERSION,
+        ),
+        "contribution_execution_model": "local_worker",
+        "requested_authorities": (),
+        "worker_configuration": _worker_configuration(),
+        "index_version": PLUGIN_LOCAL_WORKER_CONTRIBUTION_INDEX_VERSION,
+    }
+    with pytest.raises(ValueError, match="not supported for this contribution kind"):
+        PluginContributionReservation(**common)
+
+    wire = _worker_reservation().to_dict()
+    wire["kind"] = "continuity_provider"
+    with pytest.raises(PluginDeclarationCodecError) as caught:
+        PluginContributionReservation.from_dict(
+            wire,
+            index_version=PLUGIN_LOCAL_WORKER_CONTRIBUTION_INDEX_VERSION,
+        )
+    assert caught.value.code == "plugin_declaration_field_value_mismatch"
+    assert "not supported for this contribution kind" in str(caught.value)
+
+    with pytest.raises(ValueError, match="declaration kind is not supported"):
+        PluginDeclaration(
+            plugin_id="review-pack",
+            contribution_id="continuity",
+            kind="continuity_provider",
+            owner="harness.continuity",
+            reservation_fingerprint="a" * 64,
+            source_descriptor_fingerprint="b" * 64,
+            source_kind="document",
+            payload={},
+            ir_version=PLUGIN_LOCAL_WORKER_DECLARATION_IR_VERSION,
+            contribution_execution_model="local_worker",
+            worker_configuration=_worker_configuration(),
+        )
+
+
 def test_index_document_versions_and_v3_execution_topology_are_exact() -> None:
     with pytest.raises(ValueError, match="configuration version"):
         PluginLocalWorkerConfiguration(
