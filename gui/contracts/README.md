@@ -4,8 +4,9 @@ Status: **partial C1 evidence**, not a production adapter or accepted full codec
 
 The [contract generation and native connection plan](connection-plan.md) now
 records the selected reference inputs, generated candidate DTOs and the exact
-authentication/attachment/snapshot sequence. Only the type-generation preparation
-is implemented; native transport and connection acceptance remain pending.
+authentication/attachment/snapshot sequence. Type-generation preparation and
+isolated native probes are implemented; production GUI connection acceptance
+remains pending. See the real AppHost integration follow-up below.
 An additional [authentication pipe experiment](authentication-evidence.md) now
 checks the Rust client against the Python server, without enabling native GUI
 connections or reading private records.
@@ -202,5 +203,12 @@ those checks or native WebView/IPC acceptance.
 | `faa0fabd` | Idle snapshot/content: 47 | 110 |
 | `32a346d0` | State/metadata: 66 | 176 |
 
-No real snapshot acquisition, subscription or service authentication occurs.
+The offline value probe does not acquire real snapshots, subscribe or authenticate.
 Reproduce this offline evidence with `pnpm --dir gui run check:contract`.
+
+## Real AppHost integration follow-up
+
+The first real AppHost/AppService read-only integration and its request-ID fix
+are documented in [AppHost integration evidence](apphost-integration-evidence.md).
+Run `uv run python scripts/gui/check_apphost_integration.py` explicitly on Windows;
+this does not enable live GUI publication or add a default gate.

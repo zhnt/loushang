@@ -16,6 +16,7 @@ pub(crate) struct Frames<R, W> {
     writer: W,
     limit: usize,
     closed: bool,
+    before_send: Option<Box<dyn FnMut() -> Result<()> + Send>>,
 }
 impl<R: Read, W: Write> Frames<R, W> {
     pub(crate) fn new(reader: R, writer: W) -> Self {
@@ -24,6 +25,7 @@ impl<R: Read, W: Write> Frames<R, W> {
             writer,
             limit: 2048,
             closed: false,
+            before_send: None,
         }
     }
 
@@ -49,6 +51,9 @@ impl<R: Read, W: Write> Frames<R, W> {
         let result = (|| {
             if self.closed || body.is_empty() || body.len() > self.limit {
                 return Err(());
+            }
+            if let Some(before_send) = self.before_send.as_mut() {
+                before_send()?;
             }
             self.writer
                 .write_all(&(body.len() as u32).to_be_bytes())
@@ -112,6 +117,10 @@ pub(crate) struct Channel<R, W> {
     receive_sequence: Option<u64>,
 }
 impl<R: Read, W: Write> Channel<R, W> {
+    #[allow(dead_code)] // Pipe-only auth probe does not install a socket deadline.
+    pub(crate) fn before_send(&mut self, callback: impl FnMut() -> Result<()> + Send + 'static) {
+        self.frames.before_send = Some(Box::new(callback));
+    }
     pub(crate) fn authenticate(
         mut frames: Frames<R, W>,
         record: &record_value::Record,
@@ -205,6 +214,7 @@ mod tests {
                 writer: Vec::new(),
                 limit: 2048,
                 closed: false,
+                before_send: None,
             };
             assert!(frames.receive().is_err());
             assert!(frames.closed);
@@ -218,6 +228,7 @@ mod tests {
             writer: Vec::new(),
             limit: 2048,
             closed: false,
+            before_send: None,
         };
         assert_eq!(frames.receive(), Ok(vec![65]));
         assert_eq!(frames.receive(), Ok(vec![66]));
@@ -232,6 +243,7 @@ mod tests {
                 writer: Vec::new(),
                 limit: MESSAGE + 40,
                 closed: false,
+                before_send: None,
             },
             send_key: [1; 32],
             receive_key: [2; 32],

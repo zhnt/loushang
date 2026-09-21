@@ -98,12 +98,70 @@ silently sharing one mux.
    composes them through hello and close with socket deadlines/cancellation;
    production GUI ownership and ongoing RPC remain pending.
 3. **Partial attachment evidence:** [scripted loopback attachment/snapshot/detach](attachment-lifecycle-evidence.md)
-   is implemented. Real ownership arbitration, ongoing membership/event barriers
-   and stale-attempt isolation through a native port remain pending.
-4. **Pending acceptance:** real shared AppHost connection, read-only native GUI
-   presentation and safe detach while another Hosted Mux client remains usable.
+   is implemented, including two bounded execution-event rounds per member with
+   persistent watermarks and atomic batch validation.
+   [Real AppHost integration](apphost-integration-evidence.md) verifies ownership
+   arbitration, idle event reads and cleanup with an independent mux client.
+   [Local attempt fencing](connection-epoch-evidence.md) now guards probe state
+   updates and cancellation. Bounded mux membership rechecks reject a changed
+   revision or member set after snapshots and event rounds. Continuous detection
+   and integration of a reusable owner into the desktop connection remain pending.
+   The attachment reader is now a reusable `ReadSession` with separate attach,
+   initialize, poll and detach operations. The evidence driver alone chooses
+   two rounds; the session does not own a loop or socket. Each poll commits all
+   member watermarks only after its membership recheck. Request IDs fail closed
+   at the existing signed-63-bit connection limit instead of wrapping.
+4. **Pending acceptance:** persistent read-only native GUI connection and
+   presentation. The probe's idle connection evidence is not GUI acceptance.
 
 Transport and attachment must pass their own evidence before enabling the GUI
 connection control. No live connection readiness is claimed by checkpoint 1.
 Keep these checks opt-in and scoped to the changed GUI adapter; do not add TUI or
 Harness suites solely because the GUI consumes their application contracts.
+
+The probe now separates initial connection and per-request deadlines. Admission,
+authentication, hello, attachment, snapshots and the first membership recheck
+share one absolute startup deadline. Only successful initialization enables a
+fresh deadline at each subsequent request send, covering the complete write and
+response frame. Byte reads never renew it. Expired or invalid frames fence the
+channel; a fresh budget cannot reopen it. This policy assumes sequential RPC,
+not concurrent outstanding calls. The native `--watch` evidence driver now polls
+until a cooperative stop signal, waiting up to 100 ms between rounds with a
+wakeable condition variable. It checks stop between requests, abandons an
+incomplete round and attempts exact detach. In-flight IO remains subject to its
+request deadline; it is not forcibly interrupted by cooperative stop. The
+separate existing hard-cancel path still invalidates and shuts down the socket.
+The CLI requires a bounded positive stop timer for `--watch`; the reusable stop
+signal itself is not timer-dependent.
+
+The stop signal and `ReadWorker` now live in `gui/src-tauri/src` and are compiled
+by both the desktop crate and the evidence driver. The driver runs admission,
+authentication, reads and cleanup inside that owned worker and joins it before
+reporting success. `request_stop` only requests cancellation; it does not mean
+detach or cleanup has finished. `try_join` observes completion without waiting;
+explicit `wait`/`shutdown` distinguish operation failure and worker panic from
+successful completion. Dropping an uncollected worker requests stop and joins as
+a fallback, but discards the outcome and is not evidence of successful cleanup.
+
+Both explicit blocking joins and that fallback Drop must run off the UI thread.
+The supplied operation must honor cooperative stop and bounded IO; the wrapper
+cannot forcibly terminate an uncooperative thread. Unit tests cover completion,
+failure/panic reporting, stop-before-cleanup and Drop joining. The existing real
+AppHost and scripted lifecycle evidence now exercise the worker-backed driver.
+The desktop now manages a native `ConnectionLifecycle` and handles normal
+`ExitRequested`: idle exits immediately; an owned reader receives stop, moves
+to Closing, and is joined on Tauri's blocking pool. Repeated requests while
+Closing are prevented without starting another join. Completion is retained,
+then exit is requested again; failed cleanup emits a fixed redacted diagnostic
+and requests exit code 1. Starting during reading or after exit has begun is
+rejected. No runtime STOP request is introduced.
+
+Seven native unit tests cover worker and lifecycle behavior, including a
+deliberately blocked cleanup, repeated exit and retained failure. This is not
+yet native-window acceptance with a live connection: `start` is native-only and
+currently has no desktop caller. The default fixture takes the idle exit path.
+No live Tauri invoke or GUI snapshot publication is enabled here. Forced process
+termination and Tauri restart (whose exit prevention is ignored by Tauri) are
+outside this graceful-exit guarantee; no restart action is exposed. Before any
+restart feature, it must explicitly settle the connection first. The operation
+still must obey its bounded IO and cooperative-stop contract.

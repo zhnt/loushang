@@ -1,3 +1,14 @@
+mod connection_lifecycle;
+// No live invoke is registered yet. Exit joins run on the blocking pool.
+#[allow(dead_code)]
+mod read_stop;
+#[allow(dead_code)]
+mod read_worker;
+
+use connection_lifecycle::{ConnectionLifecycle, ExitAction};
+use std::sync::Arc;
+use tauri::Manager;
+
 #[cfg(feature = "fixture-bridge")]
 use serde::Serialize;
 #[cfg(feature = "fixture-bridge")]
@@ -27,10 +38,31 @@ fn fixture_bridge_handshake(app: tauri::AppHandle) -> Result<FixtureBridgeReceip
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let builder = tauri::Builder::default();
+    let builder = tauri::Builder::default().manage(Arc::new(ConnectionLifecycle::default()));
     #[cfg(feature = "fixture-bridge")]
     let builder = builder.invoke_handler(tauri::generate_handler![fixture_bridge_handshake]);
     builder
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            if let tauri::RunEvent::ExitRequested { api, code, .. } = event {
+                let owner = app.state::<Arc<ConnectionLifecycle>>().inner().clone();
+                match owner.begin_exit() {
+                    ExitAction::Ready => (),
+                    ExitAction::Pending => api.prevent_exit(),
+                    ExitAction::Join(worker) => {
+                        api.prevent_exit();
+                        let app = app.clone();
+                        tauri::async_runtime::spawn_blocking(move || {
+                            owner.finish_exit(worker.wait());
+                            let failed = owner.cleanup_failed();
+                            if failed {
+                                eprintln!("GUI connection cleanup failed; ownership release is unconfirmed");
+                            }
+                            app.exit(if failed { 1 } else { code.unwrap_or(0) });
+                        });
+                    }
+                }
+            }
+        });
 }
