@@ -30,18 +30,25 @@ function sessionView(session: SessionSnapshot, previous?: SessionView): SessionV
   };
 }
 
-// These versions describe the offline fixture only, not a negotiated App Contract.
-export function hasFixtureCapability(state: GuiState, name: ClientSnapshot["capabilities"][number]["name"]): boolean {
-  const version = name === "workspace" || name === "changes" ? "fixture/v2" : "fixture/v1";
+export function hasCapability(state: GuiState, name: ClientSnapshot["capabilities"][number]["name"]): boolean {
+  const expected = state.remote.source.kind === "fixture"
+    ? (name === "workspace" || name === "changes" ? "fixture/v2" : "fixture/v1")
+    : ({
+        workspace: "loushang.workspace/v1",
+        changes: "loushang.changes/v1",
+        artifacts: "loushang.artifacts/v1",
+        tasks: "loushang.execution/v1",
+        agents: "loushang.execution/v1",
+      } as const)[name];
   return state.remote.capabilities.some((item) =>
-    item.name === name && item.availability === "fixture" && item.version === version,
+    item.name === name && item.availability === state.remote.source.kind && item.version === expected,
   );
 }
 
 export interface RemoteState {
   readonly generation: string;
   readonly connection: ConnectionState;
-  readonly fixtureLabel: string;
+  readonly source: ClientSnapshot["source"];
   readonly capabilities: ClientSnapshot["capabilities"];
   readonly workspaces: Readonly<Record<string, WorkspaceSummary>>;
   readonly workspaceOrder: readonly string[];
@@ -104,7 +111,7 @@ export function emptyGuiState(): GuiState {
     remote: {
       generation: "",
       connection: "disconnected",
-      fixtureLabel: "",
+      source: { kind: "fixture", label: "Fixture not loaded" },
       capabilities: [],
       workspaces: {},
       workspaceOrder: [],
@@ -288,7 +295,7 @@ function installSnapshot(state: GuiState, snapshot: ClientSnapshot): GuiState {
     remote: {
       generation: snapshot.generation,
       connection: snapshot.connection,
-      fixtureLabel: snapshot.fixtureLabel,
+      source: snapshot.source,
       capabilities: snapshot.capabilities,
       workspaces,
       workspaceOrder: workspaceIds,

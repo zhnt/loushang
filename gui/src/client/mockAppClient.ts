@@ -148,7 +148,7 @@ const boundaryDiff = {
 const fixtureSnapshot: ClientSnapshot = {
   generation: "9007199254740993",
   connection: "fixture-offline",
-  fixtureLabel: "Offline fixture · no AppService, repository access or model",
+  source: { kind: "fixture", label: "Offline fixture · no AppService, repository access or model" },
   capabilities: [
     { name: "workspace", version: "fixture/v2", availability: "fixture" },
     { name: "changes", version: "fixture/v2", availability: "fixture" },
