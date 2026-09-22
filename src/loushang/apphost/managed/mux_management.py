@@ -601,6 +601,7 @@ class _ManagedMuxFence:
         self._context: AbstractContextManager[None] | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: int | None = None
+        self._fence_entry_busy = False
         self._attempted = self._entered = self._exit_attempted = self._closed = False
 
     def _bind(self) -> None:
@@ -628,8 +629,11 @@ class _ManagedMuxFence:
                 await self._read_once(deadline)
                 return
             except ManagedStorageError as error:
+                cleanup_pending = journal._fence.cleanup_pending or (
+                    not self._fence_entry_busy and journal._database.cleanup_pending
+                )
                 if (error.code != "busy" or self._exit_attempted
-                        or journal._fence.cleanup_pending or journal._database.cleanup_pending):
+                        or cleanup_pending):
                     raise
                 # No check_*/ADMIT/CAS/Session effect has occurred. Release
                 # this exact read context; never retry an uncertain release.
@@ -638,7 +642,10 @@ class _ManagedMuxFence:
                     self._exit_attempted = True
                     self._context.__exit__(None, None, None)
                     self._entered = False
-                if journal._fence.cleanup_pending or journal._database.cleanup_pending:
+                cleanup_pending = journal._fence.cleanup_pending or (
+                    not self._fence_entry_busy and journal._database.cleanup_pending
+                )
+                if cleanup_pending:
                     raise ManagedStorageError("unavailable") from None
                 self._context = None
                 self._discard_permission()
@@ -649,8 +656,14 @@ class _ManagedMuxFence:
     async def _read_once(self, deadline: float) -> None:
         journal = self._manager._journal
         journal._require_open()
+        self._fence_entry_busy = False
         self._context = journal._fence.lock("lifecycle.lock", deadline=deadline)
-        self._context.__enter__()
+        try:
+            self._context.__enter__()
+        except ManagedStorageError as error:
+            if error.code == "busy":
+                self._fence_entry_busy = True
+            raise
         self._entered = True
         with journal._database.transaction(deadline=deadline) as connection:
             self._read_permission(connection)

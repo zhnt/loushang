@@ -584,6 +584,45 @@ def test_startup_retries_clean_read_contention_on_original_owner(owners, monkeyp
     asyncio.run(scenario())
 
 
+def test_startup_fence_contention_ignores_unrelated_transient_database_close(owners, monkeypatch):
+    async def scenario():
+        manager = successor(owners)
+        fence = owners[1]._fence
+        database_directory = owners[0]._database._directory
+        original = fence.lock
+        calls = 0
+        transient_descriptor = -1
+
+        @contextmanager
+        def contended(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                database_directory._uncertain_closes.add(transient_descriptor)
+                raise ManagedStorageError("busy")
+            with original(*args, **kwargs) as result:
+                yield result
+
+        async def settle_unrelated_close(_):
+            database_directory._uncertain_closes.remove(transient_descriptor)
+
+        monkeypatch.setattr(fence, "lock", contended)
+        monkeypatch.setattr(asyncio, "sleep", settle_unrelated_close)
+        service = None
+        attempt = recovery(manager, _MemoryLease())
+        try:
+            service = await attempt.open()
+            assert calls == 2
+            assert manager._recovery_admitted
+        finally:
+            database_directory._uncertain_closes.discard(transient_descriptor)
+            if service is not None:
+                await service.close()
+            await attempt.close()
+
+    asyncio.run(scenario())
+
+
 async def _permission_case(owners, mode):
     if mode == "recovery":
         manager = successor(owners)
