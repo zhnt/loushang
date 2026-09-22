@@ -1,7 +1,7 @@
 # lmux shared conversation capability projection
 
-Status: accepted implementation slice after three-perspective design review;
-implementation and its code review pending.
+Status: implemented and accepted; final goal-wide review completed on
+2026-09-22 with no unresolved P0/P1/P2 finding.
 Authority: implementation plan under the accepted
 [lmux design](../drafts/lmux-managed-service-design.md#63-复用单元完整-harnesstui-会话视图不只是-tui-控件).
 
@@ -114,4 +114,16 @@ and an explicit unavailable entry; no additional authorization is inferred.
 Interaction: split approval details, approve and deny, preserving their different
 presentation-receipt requirements. Lifecycle: same-binding eligibility changes
 invalidate prior observations, not merely attachment replacement. These local
-design findings are resolved above; runtime and final goal acceptance remain open.
+design findings are resolved above.
+
+## Final acceptance
+
+The implementation now projects the closed operation matrix through the shared
+conversation state, keeps Embedded fallback behavior, and derives Hosted help,
+suggestions and action eligibility from the same current binding facts. Runtime
+tests cover same-binding invalidation, approval detail/approve/deny distinctions,
+stale receipts, attachment and Session replacement, and unsupported image/Product
+operations. The final lmux/G18 suite (1256 passed, 4 skipped) and AppHost suite
+(2746 passed, 12 skipped) passed with AppHost/Harness Ruff and mypy. This accepts
+the projection slice inside the local Linux lmux profile; it adds no image
+transport, Product authority, GUI, or remote connection capability.

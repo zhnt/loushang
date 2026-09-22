@@ -1,7 +1,8 @@
 # lmux 无目标连接：公共只读探测接线
 
-状态：公共 operation 首版及 CLI 接线已实现，定向验证/复核中，尚未验收。补足既有 managed-service 设计中的
-“多候选中唯一在线 Mux 自动进入”，不替代完整交付验收。
+状态：已实现并验收（2026-09-22）。补足既有 managed-service 设计中的
+“多候选中唯一在线 Mux 自动进入”；最终完整交付验收见
+[M0 合同 §97](lmux-contract-m0.md#97-m0m4-正式验收收口2026-09-22)。
 
 ## 边界
 
@@ -82,4 +83,14 @@ revision 恰增加一，其余完整 state 不变。停止、身份变化、其�
 - 首项耗尽期限后后续服务零原生准入；取消 prepare/close waiter 不丢原
   任务；全部值已产生但末项 close 失败仍禁止进入选择器或最终 Runner。
 - 最终认证失败不换目标；新旧入口、单候选流程和非 TTY 前置拒绝不回退。
-- 设计/实现复核后，再以真实安装环境验证额外认证的首用成本。
+- 真实安装环境已验证额外认证的首用成本；结果受 ARD-004 判定范围约束。
+
+## 最终验收记录
+
+公共 probe、CLI 两阶段清理及最终重新认证已进入正式安装证据。单候选从
+不同 cwd 重连、同服务多 Mux 共用认证、多候选/pending/unknown 不误选、
+候选变化、期限耗尽、取消与 close 失回执、最终认证失败不改选均有回归覆盖。
+正式 first-use 与 history restore 各 44/44 valid 并通过比较；AppHost 全套
+2746 passed、12 skipped，AppHost/Harness Ruff 与 mypy 通过。最终复核确认
+probe 仍只返回只读事实，不 attach、不启动、不恢复、不修改登记，也不把
+`authenticated_present` 当成控制权或未来在线保证。

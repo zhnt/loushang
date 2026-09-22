@@ -4147,3 +4147,42 @@ first-use 尚无正式 A/A（建议新合同生效后再启动，避免白跑一
 **V10 影响：** 三个阻塞中的两个（长历史、managed-mux）在新合同下有有效结论；
 剩余 ① restore 的 `startup_failed`（已交产品侧）② first-use 尚无正式 A/A
 （建议在新合同生效后启动，避免再跑一次注定 inconclusive 的采集）。
+
+### 110900 M3/M4 最终收口：restore 缺陷修复，first-use 与 restore 正式通过
+
+本节是 [#607](https://github.com/zhnt/loushang/issues/607) 的最终状态，覆盖并
+关闭 110815 所列两个剩余阻塞；前述失败报告及其当时结论保持原样。
+
+restore 在第 22 个样本出现的 `startup_failed` 已复现到 Product：另一原生
+操作正在完成 registry 数据库目录的描述符关闭时，`_ManagedMuxFence` 取得
+lifecycle fence 后会遇到 database `busy`，随后把该短窗口误判为持久清理债。
+修复先由原 owner 精确释放已进入的 fence，并只允许数据库目录关闭结算一次、
+最多 10 ms；持续债务、lifecycle fence 债务、未知 release、关闭和 deadline
+仍立即失败。回归先在旧提交稳定失败，修复后覆盖 fence/transaction 两个
+争用源；持续 cleanup 只观察一次让步后仍失败，不存在无限重试或第二 owner。
+
+最终 wheel：`.artifacts/lmux-acceptance-607-v4/loushang-0.1.0-py3-none-any.whl`，
+SHA-256 `ca27bba3f76c46ff1825c2c9419617bf2d4807ebe431c6f3e2c39f2654cf90f3`，
+source commit `16c482e551859db89346b49c9a548adb128535c3`。A/B 两侧及 observer
+均为独立 CPython 3.11.15 安装，依赖锁、入口、origin、源提交与 wheel 字节
+核验通过。
+
+- `.artifacts/lmux-acceptance-607-v4/formal-first-use/report.json`：
+  `complete-record-only`，44/44 valid（4 warmup + 40 measured），comparison
+  pass；单进程连续采集，无 checkpoint/resume/pause。
+- `.artifacts/lmux-acceptance-607-v4/formal-history-restore/report.json`：
+  同为 44/44 valid 和 pass，跨过旧固定失败点；每个样本保留旧/新代精确
+  identity、完整历史、终端、stop 和外层 owner 结算证据。
+
+110815 已发布的两个 ARD-004 重评继续有效：`managed-mux` 与长历史 warm
+均为 pass，且 `claims.is_new_measurement=false`、
+`claims.is_performance_acceptance=false`。不得把判据变更写成重采或证明无
+回归；30% 以下的回归仍不可检出。新 first-use/restore A/A 也只验证测量
+稳定性与同 wheel 等价性，不是性能提升声明。
+
+最终回归：lmux/G18 1256 passed、4 skipped；AppHost 2746 passed、12 skipped；
+定向 managed mux 107 passed；AppHost/Harness Ruff 与 mypy 全绿。架构、
+生命周期/安全、Product/验收三视角无未解决 P0/P1/P2。安装入口、跨 cwd
+重连、只读 probe、审批、真实 PTY 断连/中断、历史换代、精确 stop 和清理
+门禁均由正式或既有冻结安装证据覆盖；诊断 `valid=false` 记录没有被升级为
+正式样本。M0–M4 在限定 Linux 本地 managed profile 内验收完成。

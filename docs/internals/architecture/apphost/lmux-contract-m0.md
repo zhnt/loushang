@@ -8,18 +8,15 @@
 - ID: `LMUX-M0`
 - Authority: normative — accepted limited Linux managed-profile contract
 - Design status: accepted
-- Review status: three-perspective slice reviews passed through recovery/close and shared deferred input; final goal-wide review pending
-- Implementation status: partial — managed CLI preview, Linux launch/lifetime, owned transcripts, discovery, exact-instance connections, close and shared Markdown/action/input binding; full M3/M4 acceptance pending
+- Review status: accepted — final architecture, lifecycle/security and Product/acceptance review completed on 2026-09-22 with no unresolved P0/P1/P2 finding
+- Implementation status: complete for the accepted limited Linux managed-profile M0–M4 scope; the managed CLI remains a preview product surface
 - Owner: AppHost managed deployment; sibling changes remain sibling-owned
-- Tracking objective: active Linux lmux goal, branch `harness/lmux-managed-service`
-- Evidence scope: this document is a working-tree snapshot of an in-flight goal.
-  Its per-slice implementation and pass records describe the authoring working
-  tree, not this commit's tree. Most referenced implementation
-  (`apphost.managed.*`, `transcript/writer_lease.py`, `journal/_rooted_io.py`,
-  `coding/cli/lmux*.py`, `appserver/managed_mux.py`) and the G18 reevaluation
-  tooling were still uncommitted when this snapshot was taken, so those claims
-  cannot be reproduced from this commit alone. Treat `已实现`/`已接线`/`passed`
-  below as working-tree observations until the matching code slice lands.
+- Tracking objective: [#607](https://github.com/zhnt/loushang/issues/607), lmux M3/M4 acceptance closure
+- Evidence scope: sections 1–96 are the chronological implementation record and
+  retain their then-current wording. Section 97 is the final status and evidence
+  index for the delivered implementation. Earlier “pending”, “partial” and
+  working-tree qualifications are historical observations, not the current
+  acceptance status.
 
 ## 1. 本地基线与推进记录
 
@@ -4700,3 +4697,59 @@ unchanged from that wheel. Independent review confirms that CLI only presents
 and inspects the original operation, obtains confirmation and revalidates exact
 identity through the existing creation owner. Durable history and authorization
 remain in AppHost. Retain the exact seven-file group and boundary scans.
+
+## 97. M0–M4 正式验收收口（2026-09-22）
+
+[#607](https://github.com/zhnt/loushang/issues/607) 只关闭既有 Linux 本地
+managed profile 的验收缺口，没有增加协议、权限、远程/SSH 能力或新 Product。
+正式 restore 在第 22 个样本稳定暴露的 `startup_failed` 已定位为 registry
+数据库目录的描述符关闭处于“已保留、尚未确认”短窗口时，启动 fence 将同一
+目录的 `cleanup_pending` 当成持久债务。修复仍由原 `_ManagedMuxFence`、原
+journal 和原期限保管操作：先精确释放已经进入的 lifecycle fence；lifecycle
+fence 有任何清理债立即失败；仅对数据库目录的瞬时关闭窗口让出一次、最多
+10 ms；再次观察到债务、未知释放、关闭或期限耗尽均 fail closed。未重建 owner，
+未重放已经产生效果的操作，也未放宽 registry、Session 或认证准入。
+
+最终冻结来源为 `16c482e551859db89346b49c9a548adb128535c3`，wheel 为
+`.artifacts/lmux-acceptance-607-v4/loushang-0.1.0-py3-none-any.whl`，SHA-256
+`ca27bba3f76c46ff1825c2c9419617bf2d4807ebe431c6f3e2c39f2654cf90f3`。
+两个新正式 campaign 均为单进程不间断采集，没有 checkpoint、pause 或 resume：
+
+| case | report | 完整性 | verdict |
+| --- | --- | --- | --- |
+| `managed-product-first-use` | `.artifacts/lmux-acceptance-607-v4/formal-first-use/report.json`（SHA-256 `5da32135…`） | 44/44 valid；4 warmup + 40 measured | pass |
+| `managed-product-history-restore` | `.artifacts/lmux-acceptance-607-v4/formal-history-restore/report.json`（SHA-256 `cbf45823…`） | 44/44 valid；4 warmup + 40 measured | pass |
+
+两侧 source commit 与 wheel 哈希完全相同，三套 CPython 3.11.15 隔离安装的
+依赖、入口和来源核验通过。first-use 覆盖首条回复、审批待办/详情/批准后唯一
+工具效果、中断后 producer 结算及下一轮唯一回复；restore 覆盖 128 轮历史、
+旧代精确停止、换代启动、完整历史帧及新代精确停止。两者都跨过此前的固定
+失败点，并保留原实例、Session、终端和外层 owner 的结算门禁。
+
+既有 `managed-mux` 和 `managed-product-history-warm` 报告没有改写或重采；
+其 ARD-004 重评文件分别绑定原报告 SHA-256 `d6e243ef…` 与 `446af8f1…`，
+verdict 均为 pass。它们明确记录 `claims.is_new_measurement=false`、
+`claims.is_performance_acceptance=false`：结论只表示按已接受的 25% 稳定性 /
+30% 回归判据未检出超限回归，不证明无回归，也不能检出 30% 以下回归。新正式
+first-use/restore 报告同样不构成性能提升声明。
+
+最终回归门禁：lmux/G18 开发集 1256 passed、4 skipped；AppHost 全套
+2746 passed、12 skipped；AppHost 与 Harness 的 Ruff、mypy 全部通过。
+定向 managed mux 创建/恢复/关闭组 107 passed。新增反例覆盖 lifecycle fence
+与 database transaction 两种争用源、瞬时关闭结算、持续清理债只等待一次、
+未知释放不重试、原期限不续期；只读快照测试也先等待已有异步诊断写入完成，
+不再把合法后台写入误报为查询副作用。
+
+最终三视角结论：
+
+- 架构：AppHost/AppService 仍持有部署与生命周期 authority，Coding 与
+  Harnesstui 只做组合和呈现；没有新增反向依赖、跨层授权或 RPC 内持锁。
+- 生命周期与安全：原 owner、原身份、原 deadline、精确 stop 和未知清理
+  fail-closed 均保留；一次有界让步不能跨越持续债务或未知 release。
+- Product 与验收：安装入口、无目标只读探测、跨 cwd 重连、审批、断连/中断、
+  历史恢复和完整清理均由既有真实 PTY/installed 证据及本轮正式报告覆盖；
+  诊断记录没有被冒充为正式样本。
+
+因此 M0–M4 在本文限定的 Linux 本地 managed profile 内验收完成，未留
+P0/P1/P2。上文 “Shared data-root admission delta” 仍是独立候选安全合同，
+不属于 lmux 验收结果，也不因本节获得实现或接受状态。
