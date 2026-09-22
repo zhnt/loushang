@@ -27,7 +27,6 @@ from loushang.harness.machine_resources import (
 from loushang.harness.machine_resources import control_plane as control_plane_module
 from loushang.harness.transcript import AGENT_MESSAGE_KIND, SessionImagePart
 from loushang.harness.transcript.jsonl_file import write_agent_transcript_export
-from loushang.harness.transcript.lifecycle import delete_agent_transcript_jsonl
 
 
 def _paths(tmp_path: Path) -> PlatformPaths:
@@ -157,9 +156,11 @@ def test_clean_preview_is_non_mutating_and_apply_removes_only_managed_archives(
 def test_orphan_asset_cleanup_preserves_every_transcript_claimed_authority(
     tmp_path: Path,
 ) -> None:
+    from tests.harness.transcript._maintenance import delete_with_maintenance
+
     paths = _paths(tmp_path)
     sessions = paths.data / "sessions"
-    sessions.mkdir(parents=True)
+    prepare_private_directory_chain(sessions)
     write_agent_transcript_export(
         sessions / "live.jsonl",
         _header("live"),
@@ -185,7 +186,7 @@ def test_orphan_asset_cleanup_preserves_every_transcript_claimed_authority(
         _header("orphan"),
         [],
     )
-    assert asyncio.run(delete_agent_transcript_jsonl(orphan_transcript)) is True
+    assert asyncio.run(delete_with_maintenance(orphan_transcript)) is True
     layout = resolve_machine_resource_layout(platform_paths=paths, cwd=tmp_path)
 
     result = clean_machine_resources(

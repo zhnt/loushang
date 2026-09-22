@@ -119,6 +119,7 @@ from loushang.harness.transcript import (
     CompactionResult,
 )
 from loushang.harness.workspace.exec import ExecService
+from loushang.harness.workspace.exec.capture_lease import ExecCaptureFactory
 
 SessionEventListener = Callable[[AgentSessionEvent], Awaitable[None] | None]
 # project_runtime_event_to_session_event remains an external migration label.
@@ -199,6 +200,7 @@ class AgentSession(AgentProductSession):
         api_registry: APIRegistry | None = None,
         footer_data_provider: FooterDataProvider | None = None,
         exec_service: ExecService | None = None,
+        output_capture_factory: ExecCaptureFactory | None = None,
         approval_resolver: InteractiveApprovalResolver | None = None,
         tool_policy_evaluator: PolicyEvaluator | None = None,
         capability_runtime: StagedResourceCompositionCandidate | None = None,
@@ -491,6 +493,7 @@ class AgentSession(AgentProductSession):
                 session_start_event=session_start_event,
                 api_registry=api_registry,
                 exec_service=exec_service,
+                output_capture_factory=output_capture_factory,
                 tool_exec_service=(
                     None
                     if coding_base_plugin_session_assembly is not None

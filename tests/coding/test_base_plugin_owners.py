@@ -110,6 +110,90 @@ def test_base_process_operations_execute_only_through_captured_launcher() -> Non
     asyncio.run(_base_process_operations_execute_only_through_captured_launcher())
 
 
+@pytest.mark.parametrize("fail", [False, True, "stop_callback"])
+def test_explicit_authorized_capture_is_bounded_and_supervises_failure(monkeypatch, fail):
+    from loushang.harness.workspace.exec import service as module
+
+    monkeypatch.setattr(module.tempfile, "mkstemp", lambda *a, **k: pytest.fail("old artifact path"))
+    handle = _ProcessHandle(stdout=[b"x" * 16384] * 20 + [b""],
+                            stderr=[b"y" * 16384] * 20 + [b""], wait_forever=fail)
+    reads = []
+    for name in ("read_stdout", "read_stderr"):
+        original = getattr(_ProcessHandle, name)
+
+        async def read(self, max_bytes=65536, original=original):
+            reads.append(max_bytes)
+            assert max_bytes == 16384
+            return await original(self, max_bytes)
+
+        monkeypatch.setattr(_ProcessHandle, name, read)
+
+    class Sink:
+        stopped = False
+        total = 0
+
+        async def append(self, chunk):
+            if not self.stopped:
+                if fail:
+                    raise ValueError("capture contract failure")
+                assert len(chunk.text) <= 16384
+                self.total += len(chunk.text.encode())
+
+        def stop_accepting(self):
+            self.stopped = True
+            if fail == "stop_callback":
+                raise RuntimeError("broken stop callback")
+
+    async def scenario():
+        sink = Sink()
+        capability = ExecService(backend=AuthorizedProcessExecBackend(_CapturedLauncher(handle))).capture_executor()
+        assert capability is not None
+        operation = capability.execute(ExecRequest(("/bin/example",), cwd="/workspace",
+            rolling_max_bytes=10**9, preview_max_bytes=10**9), capture=sink)
+        if fail:
+            with pytest.raises(ValueError, match="capture contract failure"):
+                await asyncio.wait_for(operation, 1)
+            assert sink.stopped and handle.terminated
+        else:
+            result = await operation
+            assert result.exit_code == 7 and result.stdio_complete and not handle.terminated
+            assert sink.total == 40 * 16384
+            assert len(result.stdout.encode()) <= 100 * 1024
+            assert len(result.stderr.encode()) <= 100 * 1024
+            assert sum(len(chunk.text.encode()) for chunk in result.output_chunks) <= 100 * 1024
+            assert result.stdout_artifact_path is result.stderr_artifact_path is None
+        assert reads and handle.closed
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("capture_full_output", [True, False])
+def test_authorized_output_without_retention_never_creates_files(monkeypatch, capture_full_output):
+    from loushang.harness.workspace.exec import service as service_module
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("disabled retention created an output file")
+
+    monkeypatch.setattr(service_module.tempfile, "mkstemp", forbidden)
+    payload = ("字" * 2000 + "\nlast\n").encode()
+    handle = _ProcessHandle(stdout=[payload, b""], stderr=[payload, b""])
+    operations = ExecService(backend=AuthorizedProcessExecBackend(_CapturedLauncher(handle)))
+
+    async def scenario():
+        result = await operations.execute(ExecRequest(command=("/bin/example",), cwd="/workspace",
+            capture_full_output=capture_full_output, retain_output_artifacts=False, rolling_max_bytes=512,
+            preview_max_lines=1, preview_max_bytes=128))
+        assert result.exit_code == 7 and handle.closed and not handle.terminated
+        assert result.stdout_artifact_path is result.stderr_artifact_path is None
+        assert result.stdout_preview == result.stderr_preview == "last\n"
+        assert result.stdout_truncated and result.stderr_truncated
+        if not capture_full_output:
+            assert len(result.stdout.encode()) <= 512 and len(result.stderr.encode()) <= 512
+            assert sum(len(chunk.text.encode()) for chunk in result.output_chunks) <= 512
+
+    asyncio.run(scenario())
+
+
 async def _base_process_operations_execute_only_through_captured_launcher() -> None:
     handle = _ProcessHandle()
     launcher = _CapturedLauncher(handle)

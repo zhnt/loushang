@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import secrets
+import sys
 import threading
 import time
 from collections.abc import Callable, Iterable, Mapping
@@ -111,6 +112,7 @@ from loushang.coding.session import AgentSession
 from loushang.coding.session_manager import SessionManager
 from loushang.coding.tool_pack import coding_default_active_tool_names
 from loushang.coding.workspace_operations import CodingWorkspaceOperations
+from loushang.foundation.platform_paths import resolve_platform_home
 from loushang.harness.approval import (
     InteractiveApprovalResolver,
     approval_actor_id,
@@ -187,6 +189,7 @@ from loushang.harness.tools.process_hosting import ProcessExecutionScope
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.harness.transcript import context_items_to_model_messages
 from loushang.harness.workspace.exec import ExecService
+from loushang.harness.workspace.exec.capture_lease import ExecCaptureFactory
 from loushang.harness.workspace.operations import LOCAL_TOOL_OPERATIONS
 
 _SESSION_MANAGER_PLUGIN_OWNER_LOCK = threading.Lock()
@@ -493,6 +496,7 @@ def _create_agent_session(
     active_tool_names: list[str] | None = None,
     no_tools: NoToolsMode | bool | None = None,
     services: BootstrapServices | None = None,
+    output_capture_factory: ExecCaptureFactory | None = None,
     agent_factory: AgentFactory = Agent,
     session_start_event: SessionStartEvent | None = None,
     package_materializer: PackageMaterializer | None = None,
@@ -1390,6 +1394,7 @@ def _create_agent_session(
                 package_product_inventory=package_product_inventory,
                 package_product_lifecycle_mode=package_product_lifecycle_mode,
                 exec_service=sandbox_runtime.exec_service,
+                output_capture_factory=output_capture_factory,
                 approval_resolver=approval_resolver,
                 tool_policy_evaluator=tool_policy_evaluator,
                 capability_runtime=capability_runtime,
@@ -1634,6 +1639,7 @@ def create_agent_session(
     no_tools: NoToolsMode | bool | None = None,
     composition_set: CodingCompositionSetId | None = None,
     services: BootstrapServices | None = None,
+    output_capture_factory: ExecCaptureFactory | None = None,
     agent_factory: AgentFactory = Agent,
     session_start_event: SessionStartEvent | None = None,
     package_materializer: PackageMaterializer | None = None,
@@ -1662,6 +1668,7 @@ def create_agent_session(
             "coding-standard" if composition_set is None else composition_set
         ),
         services=services,
+        output_capture_factory=output_capture_factory,
         agent_factory=agent_factory,
         session_start_event=session_start_event,
         package_materializer=package_materializer,
@@ -1913,7 +1920,12 @@ def _create_agent_session_runtime(
     )
     return build_agent_product_session_runtime(
         session_dir=Path(session_dir),
-        runtime_factory=AgentSessionRuntime,
+        runtime_factory=partial(
+            AgentSessionRuntime,
+            owned_transcripts=sys.platform == "linux",
+            store_state_root=(resolve_platform_home() / "state/session-stores"
+                              if sys.platform == "linux" else None),
+        ),
         fixed_services=fixed_services,
         build_session=lambda session_manager, session_services, start_event: (
             _create_agent_session(
