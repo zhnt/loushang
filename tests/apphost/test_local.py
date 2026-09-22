@@ -28,6 +28,20 @@ from .test_continuity import _attempt, _Lease, _record, _Session
 SCOPES = (LocalRecordScopeV1(SessionScopeV1.CWD, "a" * 64),)
 
 
+@pytest.mark.parametrize("binding_instance,connection_instance", ((None, "a" * 32), ("a" * 32, None), ("a" * 32, "b" * 32)))
+def test_managed_listener_rejects_unbound_or_wrong_instance_before_io(monkeypatch, binding_instance, connection_instance):
+    from types import SimpleNamespace
+
+    from loushang.apphost import local as module
+
+    monkeypatch.setattr(module, "LocalAppServerV1", lambda *a, **k: pytest.fail("invalid activation constructed listener"))
+    with pytest.raises(ValueError, match="admitted application instance"):
+        HostedLocalRuntimeV1(
+            SimpleNamespace(managed_mux_instance=binding_instance), object(), "workspace", scopes=SCOPES,
+            mux_management=True, connection_instance=connection_instance,
+        )
+
+
 class _Application:
     application_id = "coding.default"
     product_id = "coding"

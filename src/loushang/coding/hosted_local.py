@@ -6,6 +6,7 @@ import asyncio
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Protocol
 
 from loushang.agent.types import StreamFn
 from loushang.ai.model import Model, ModelSelection
@@ -22,6 +23,23 @@ from loushang.appserver.protocol.connection_profile import AppConnectionProfileV
 from loushang.harness.tools.core import ToolDefinition
 
 from .hosted_bootstrap import CodingHostedLaunchV1, create_coding_hosted_attempt
+from .hosted_continuity import CodingHostedContinuityAttemptV1
+
+
+class _LocalLaunchFacts(Protocol):
+    """Only facts consumed by the shared local application lifetime."""
+
+    @property
+    def connection_root(self) -> Path: ...
+
+    @property
+    def endpoint(self) -> str: ...
+
+    @property
+    def session_discovery(self) -> bool: ...
+
+    @property
+    def scopes(self) -> tuple[LocalRecordScopeV1, ...]: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,7 +107,7 @@ class CodingLocalCommandV1:
 
     def __init__(
         self,
-        launch: CodingLocalLaunchV1,
+        launch: _LocalLaunchFacts,
         *,
         model: Model | ModelSelection | None = None,
         stream_fn: StreamFn | None = None,
@@ -97,16 +115,12 @@ class CodingLocalCommandV1:
         startup_timeout: float = 30.0,
         settlement_timeout: float = 30.0,
     ) -> None:
-        if type(launch) is not CodingLocalLaunchV1:
-            raise TypeError("local command requires admitted launch facts")
+        self._validate_launch(launch)
         for timeout in (startup_timeout, settlement_timeout):
             _require_budget(timeout)
         self._launch = launch
         self._directory = LocalConnectionDirectoryV1(launch.connection_root)
-        self._attempt = create_coding_hosted_attempt(
-            launch.application, model=model, stream_fn=stream_fn, tools=tools,
-            session_discovery=launch.session_discovery,
-        )
+        self._attempt = self._create_attempt(launch, model=model, stream_fn=stream_fn, tools=tools)
         self._application: HostedApplicationContinuityRuntimeV1 | None = None
         self._local: HostedLocalRuntimeV1 | None = None
         self._startup_timeout, self._timeout = startup_timeout, settlement_timeout
@@ -120,6 +134,26 @@ class CodingLocalCommandV1:
         self._deadline: float | None = None
         self._closing = False
         self._settled = False
+
+    def _validate_launch(self, launch: _LocalLaunchFacts) -> None:
+        if type(launch) is not CodingLocalLaunchV1:
+            raise TypeError("local command requires admitted launch facts")
+
+    def _connection_instance(self) -> str | None:
+        return None
+
+    def _mux_management(self) -> bool:
+        return False
+
+    def _create_attempt(
+        self, launch: _LocalLaunchFacts, *, model: Model | ModelSelection | None,
+        stream_fn: StreamFn | None, tools: list[ToolDefinition] | None,
+    ) -> CodingHostedContinuityAttemptV1:
+        assert type(launch) is CodingLocalLaunchV1
+        return create_coding_hosted_attempt(
+            launch.application, model=model, stream_fn=stream_fn, tools=tools,
+            session_discovery=launch.session_discovery,
+        )
 
     @property
     def cleanup_pending(self) -> bool:
@@ -176,6 +210,8 @@ class CodingLocalCommandV1:
             scopes=self._launch.scopes,
             settlement_timeout=self._timeout,
             session_discovery=self._launch.session_discovery,
+            connection_instance=self._connection_instance(),
+            mux_management=self._mux_management(),
         )
         self._application = None  # AppHost has adopted both application and directory.
         await self._local.prepare(deadline=self._startup_deadline)
