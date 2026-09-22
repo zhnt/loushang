@@ -243,6 +243,8 @@ def build_agent_product_session_runtime_ports(
         persist=persist,
         create_transcript=transcript.create,
         restore_transcript=transcript.restore,
+        prepare_import_transcript=transcript.prepare_import,
+        mark_import_delivered=transcript.mark_import_delivered,
         fork_transcript=transcript.fork,
         dispose_transcript=transcript.dispose,
         transcript_for_session=lambda session: cast(
