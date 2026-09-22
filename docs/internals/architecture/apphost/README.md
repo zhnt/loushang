@@ -15,6 +15,7 @@
 [G15 Foreground Hosted TUI Design](foreground-hosted-tui-g15.md) ·
 [G17 Explicit Hosted Session Workflow](hosted-session-workflow-g17.md) ·
 [lmux Managed Contract M0](lmux-contract-m0.md) ·
+[ARD-004 A/A Stability Gate vs Interactive Metric Scale (accepted)](decisions/accepted/ARD-004-aa-stability-gate-vs-interactive-metric-scale.md) ·
 [Hosted Product Runtime V1 Plan](../drafts/hosted-product-runtime-v1-plan.md)
 
 ## Status

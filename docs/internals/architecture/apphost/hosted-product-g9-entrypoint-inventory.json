@@ -2,6 +2,16 @@
   "decision": "RETAIN",
   "entries": [
     {
+      "disposition": "explicit-managed-linux-preview",
+      "entrypointId": "coding.lmux.command",
+      "importsComposition": false,
+      "omissionOwner": null,
+      "packagingBinding": "project.scripts.lmux",
+      "source": "src/loushang/coding/cli/lmux.py",
+      "supportStatus": "installed-preview",
+      "surface": "mux"
+    },
+    {
       "disposition": "explicit-owned-foreground-tui",
       "entrypointId": "coding.hosted-tui.command",
       "importsComposition": false,
@@ -142,5 +152,5 @@
       "surface": "mux"
     }
   ],
-  "inventoryVersion": 6
+  "inventoryVersion": 7
 }

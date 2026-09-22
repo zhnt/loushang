@@ -898,7 +898,54 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
         APPHOST_ROOT / "launcher.py",
         APPHOST_ROOT / "managed/handoff.py",
         APPHOST_ROOT / "managed/lifecycle.py",
+        APPHOST_ROOT / "managed/bootstrap.py",
+        APPHOST_ROOT / "managed/starter.py",
+        APPHOST_ROOT / "managed/stopper.py",
+        APPHOST_ROOT / "managed/defaults.py",
+        APPHOST_ROOT / "managed/connection.py",
+        APPHOST_ROOT / "managed/mux_management.py",
+        CODING_ROOT / "managed_process.py",
     }
+    # LMUX composition consumes public Hosting contracts only. Keep the reviewed
+    # module and symbol edges exact rather than exempting the managed package.
+    managed_edges = {
+        APPHOST_ROOT / "managed/starter.py": {
+            "contracts": {"ProcessLaunchRequest"},
+            "service_process": {"LinuxServiceProcessV1"},
+        },
+        APPHOST_ROOT / "managed/stopper.py": {
+            "service": {"LinuxServiceObserverV1"},
+            "service_group": {"LinuxServiceGroupObservationV1"},
+        },
+        APPHOST_ROOT / "managed/defaults.py": {
+            "errors": {"HostingError", "HostingFailureCategory"},
+            "machine_identity": {"linux_machine_key"},
+        },
+        APPHOST_ROOT / "managed/connection.py": {
+            "service": {"LinuxServiceObserverV1"},
+        },
+        APPHOST_ROOT / "managed/mux_management.py": {
+            "service": {"LinuxServiceIdentityV1"},
+        },
+        CODING_ROOT / "managed_process.py": {
+            "contracts": {
+                "ProcessLaunchRequest", "ProcessStreamSpec", "ProcessStdinMode",
+                "ProcessStdoutMode", "ProcessStderrMode",
+            },
+        },
+    }
+    for path, modules in managed_edges.items():
+        expected = {
+            name
+            for module, symbols in modules.items()
+            for name in (
+                f"loushang.hosting.{module}",
+                *(f"loushang.hosting.{module}.{symbol}" for symbol in symbols),
+            )
+        }
+        assert {
+            name for name in _imports(path) if name.startswith("loushang.hosting")
+        } == expected, path
     assert {
         imported for imported in _imports(APPHOST_ROOT / "managed/handoff.py")
         if imported.startswith("loushang.hosting")
@@ -916,6 +963,12 @@ def test_c50_keeps_private_profiles_confined_and_product_layers_clean() -> None:
     } == {
         "loushang.hosting.errors", "loushang.hosting.errors.HostingError",
         "loushang.hosting.service", "loushang.hosting.service.LinuxServiceIdentityV1",
+    }
+    assert {
+        imported for imported in _imports(APPHOST_ROOT / "managed/bootstrap.py")
+        if imported.startswith("loushang.hosting")
+    } == {
+        "loushang.hosting.service", "loushang.hosting.service.LinuxServiceObserverV1",
     }
     for consumer in hosting_consumers:
         assert not any(

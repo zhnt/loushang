@@ -54,7 +54,9 @@
         "tests/dev/test_interactive_campaign.py",
         "docs/internals/architecture/harness/startup-performance-g18-linux-aa-baseline.json",
         "docs/internals/architecture/harness/startup-performance-g18-linux-native-warm-aa-baseline.json",
-        "docs/internals/architecture/harness/startup-performance-g18-linux-absent-aa-failure.json"
+        "docs/internals/architecture/harness/startup-performance-g18-linux-absent-aa-failure.json",
+        "tests/dev/test_reevaluate_g18_comparison.py",
+        "scripts/dev/reevaluate_g18_comparison.py"
       ],
       "checks": ["appservice"],
       "reason": "G18 installed startup evidence and collector regressions"

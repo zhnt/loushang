@@ -37,6 +37,10 @@ H6_PRIVATE_MODULES = {
     HOSTING_ROOT / "_windows_launch_preparation.py",
 }
 OPTIONAL_MANAGED_SERVICE_MODULES = {
+    # Linux lookup/observation only; still subject to the standard-library and
+    # product-neutral import checks below, not added to the public surface.
+    HOSTING_ROOT / "machine_identity.py",
+    HOSTING_ROOT / "service_group.py",
     HOSTING_ROOT / "service.py",
     HOSTING_ROOT / "service_handoff.py",
     HOSTING_ROOT / "service_process.py",

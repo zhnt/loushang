@@ -311,7 +311,7 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
 
     inventory = json.loads(_read(G9_ENTRYPOINTS))
     assert set(inventory) == {"inventoryVersion", "decision", "entries"}
-    assert inventory["inventoryVersion"] == 6
+    assert inventory["inventoryVersion"] == 7
     assert inventory["decision"] == "RETAIN"
     rows = {row["entrypointId"]: row for row in inventory["entries"]}
     assert set(rows) == {
@@ -325,6 +325,7 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
         "coding.hosted.command",
         "coding.hosted-tui.command",
         "coding.mux.command",
+        "coding.lmux.command",
         "coding.sdk",
         "coding.tui",
         "harnesstui.named-mux",
@@ -410,6 +411,7 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
         "coding.hosted.command": ("hosted", "installed"),
         "coding.hosted-tui.command": ("hosted", "installed"),
         "coding.mux.command": ("mux", "installed"),
+        "coding.lmux.command": ("mux", "installed-preview"),
         "coding.sdk": ("sdk", "supported-library"),
         "coding.tui": ("tui", "installed"),
         "harnesstui.named-mux": ("mux", "client-library"),
@@ -423,6 +425,7 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
         "loushang-hosted": "loushang.coding.cli.hosted:main",
         "loushang-hosted-tui": "loushang.coding.cli.hosted_client:main",
         "loushang-mux": "loushang.coding.cli.mux:main",
+        "lmux": "loushang.coding.cli.lmux:main",
         "loushang-plugin": "loushang.plugin.__main__:main",
         "loushang-tui": "loushang.coding.ui.cli:main",
     }
@@ -436,6 +439,7 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
         "project.scripts.loushang-hosted": "coding.hosted.command",
         "project.scripts.loushang-hosted-tui": "coding.hosted-tui.command",
         "project.scripts.loushang-mux": "coding.mux.command",
+        "project.scripts.lmux": "coding.lmux.command",
         "project.scripts.loushang-plugin": "plugin.cli",
         "project.scripts.loushang-tui": "coding.tui",
     }
@@ -465,6 +469,9 @@ def test_g9_3_inventory_disposes_every_supported_surface_and_retains_current() -
         "_windows_local_record.py",
         "ports.py",
         "remote_client.py",
+        "managed_mux.py",
+        "managed_mux_wire.py",
+        "managed_mux_close.py",
         "stdio.py",
     }
     assert (Path("src/loushang/harnesstui/mux/profile.py")).is_file()
@@ -550,7 +557,15 @@ def test_g9_4_retains_apphost_core_and_current_inventory_fences() -> None:
             APPHOST / "launcher.py": {"loushang.hosting.contracts"},
             APPHOST / "managed/handoff.py": {"loushang.hosting.errors", "loushang.hosting.service", "loushang.hosting.service_handoff"},
             APPHOST / "managed/lifecycle.py": {"loushang.hosting.errors", "loushang.hosting.service"},
-        }.get(path, set())
+            APPHOST / "managed/bootstrap.py": {"loushang.hosting.service"},
+            # Managed startup/continuation compares the original native value;
+            # process creation and cleanup remain with their existing owners.
+            APPHOST / "managed/mux_management.py": {"loushang.hosting.service"},
+            APPHOST / "managed/starter.py": {"loushang.hosting.contracts", "loushang.hosting.service_process"},
+            APPHOST / "managed/stopper.py": {"loushang.hosting.service", "loushang.hosting.service_group"},
+            APPHOST / "managed/connection.py": {"loushang.hosting.service"},
+            APPHOST / "managed/defaults.py": {"loushang.hosting.errors", "loushang.hosting.machine_identity"},
+        }.get(path, set()), str(path)
     for path in APPHOST_CORE:
         source = _read(path)
         imports = _imports(path)

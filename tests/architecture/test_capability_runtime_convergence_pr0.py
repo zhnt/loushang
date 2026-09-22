@@ -5,8 +5,21 @@ import re
 import subprocess
 import sys
 from collections import defaultdict
+from collections.abc import Iterator
 from functools import cache
 from pathlib import Path
+
+import pytest
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _release_source_cache() -> Iterator[None]:
+    """Keep repeated scans cheap without retaining the full AST across modules."""
+    try:
+        yield
+    finally:
+        _python_trees.cache_clear()
+
 
 BASELINE_PATH = Path(
     "docs/internals/architecture/harness/capability-runtime-convergence-pr0-baseline.md"

@@ -646,6 +646,9 @@ def test_shared_transcript_style_does_not_own_screen_product_policy() -> None:
         )
     )
     screen = Path("src/loushang/coding/ui/screen_app.py").read_text(encoding="utf-8")
+    theme = Path("src/loushang/harnesstui/conversation/theme.py").read_text(
+        encoding="utf-8"
+    )
 
     for token in (
         "loushang.coding",
@@ -670,7 +673,8 @@ def test_shared_transcript_style_does_not_own_screen_product_policy() -> None:
     assert "compact_absolute_display_paths" in screen
     assert "_compact_display_paths" not in screen
     assert "_collapse_coding_tool_preview" in screen
-    assert '"transcript.tool.marker": {"color": "bright_cyan"' in screen
+    assert "terminal_transcript_theme" in screen
+    assert '"transcript.tool.marker": {"color": "bright_cyan"' in theme
 
 
 def test_shared_performance_probe_does_not_load_coding_sessions() -> None:
@@ -1361,6 +1365,9 @@ def test_tui_owns_transcript_region_while_coding_owns_presentation_policy() -> N
         for module in ("transcript_display", "transcript_presentation")
     )
     coding = Path("src/loushang/coding/ui/screen_app.py").read_text(encoding="utf-8")
+    theme = Path("src/loushang/harnesstui/conversation/theme.py").read_text(
+        encoding="utf-8"
+    )
 
     assert "class _ScreenTranscriptRegion" not in coding
     for token in (
@@ -1369,11 +1376,14 @@ def test_tui_owns_transcript_region_while_coding_owns_presentation_policy() -> N
         "_project_coding_tool_output",
         "_collapse_coding_tool_preview",
         "DEFAULT_TOOL_PREVIEW_SCREEN_ROWS",
-        "bright_cyan",
     ):
         assert token not in engine
         assert token not in shared
         assert token in coding
+    assert "bright_cyan" not in engine
+    assert "bright_cyan" not in shared
+    assert "bright_cyan" not in coding
+    assert "bright_cyan" in theme
     assert "ProfiledConversationTranscriptPresentation" in shared
     assert "TranscriptDisplayProjectionProfile" in shared
     assert "TranscriptDisplayProjectionProfile" in coding
