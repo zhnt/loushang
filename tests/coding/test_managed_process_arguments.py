@@ -21,7 +21,7 @@ from loushang.coding import managed_local
 from loushang.coding import managed_process as module
 
 
-@pytest.mark.parametrize("frontend", [False])
+@pytest.mark.parametrize("frontend", [False, True])
 def test_launch_material_does_not_import_backend(tmp_path, frontend):
     selected = invocation(tmp_path)
     script = """
