@@ -427,7 +427,12 @@ def test_concurrent_start_and_warm_reuse_use_one_production_child(production_own
             assert first.instance == second.instance
             from loushang.apphost.managed.mux_management import ManagedMuxManagerV1
 
-            registry.open(deadline=deadline)
+            # The just-started service may still be completing a bounded
+            # registry transaction. Join that exact lock instead of turning
+            # scheduler timing into a false concurrent-start failure.
+            await asyncio.to_thread(
+                registry.open, deadline=deadline, wait_for_lock=True,
+            )
             manager_journal = ManagedServiceJournalV1(
                 registry, namespace, service, Path(paths.lifecycle), defer_open=True,
             )
