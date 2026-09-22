@@ -268,7 +268,7 @@ function installSnapshot(state: GuiState, snapshot: ClientSnapshot): GuiState {
   );
   const sessionIds = snapshot.sessions.map((session) => session.id);
   const drafts = retainKeys(state.local.drafts, sessionIds, "");
-  const unread = retainKeys(state.local.unread, sessionIds, false);
+  const unread: Record<string, boolean> = { ...retainKeys(state.local.unread, sessionIds, false) };
   const expandedWorkspaces = Object.fromEntries(
     workspaceIds.map((workspaceId) => [
       workspaceId,
@@ -290,6 +290,14 @@ function installSnapshot(state: GuiState, snapshot: ClientSnapshot): GuiState {
         ? snapshot.selectedSessionId
         : (sessionIds[0] ?? null);
   const selectedSession = selectedSessionId ? sessions[selectedSessionId] : undefined;
+  for (const session of snapshot.sessions) {
+    const previous = state.remote.sessions[session.id];
+    if (session.id !== selectedSessionId && previous && viewKey(previous) === viewKey(session)
+      && sessionChanged(previous, session)) {
+      unread[session.id] = true;
+    }
+  }
+  if (selectedSessionId) unread[selectedSessionId] = false;
   const views = { ...state.local.sessionViews };
   const previousSession = priorSelection ? state.remote.sessions[priorSelection] : undefined;
   if (previousSession) views[viewKey(previousSession)] = sessionView(previousSession, state.local);
@@ -323,6 +331,13 @@ function installSnapshot(state: GuiState, snapshot: ClientSnapshot): GuiState {
     },
     diagnostic: null,
   };
+}
+
+function sessionChanged(before: SessionSnapshot, after: SessionSnapshot): boolean {
+  return before.cursor !== after.cursor
+    || before.status !== after.status
+    || before.execution?.id !== after.execution?.id
+    || before.execution?.revision !== after.execution?.revision;
 }
 
 function applyEvent(state: GuiState, event: ClientEvent): GuiState {

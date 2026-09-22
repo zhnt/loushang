@@ -53,6 +53,16 @@ export interface ConversationMessage {
   readonly phase: MessagePhase;
 }
 
+export interface ExecutionProjection {
+  readonly id: string;
+  readonly status: "accepted" | "running" | "succeeded" | "failed" | "interrupted";
+  readonly revision: number;
+  readonly interruptRequested: boolean;
+  readonly sourceStatus: "running" | "succeeded" | "failed" | "interrupted" | null;
+  readonly finalCursor: number | null;
+  readonly truncated: boolean;
+}
+
 export interface ActivityProjection {
   readonly id: string;
   readonly taskId: string;
@@ -129,6 +139,7 @@ export interface SessionSnapshot {
   readonly cursor: string;
   readonly context: ContextIdentity;
   readonly messages: readonly ConversationMessage[];
+  readonly execution?: ExecutionProjection | null;
   readonly documents: readonly ReadonlyDocument[];
   readonly run: RunProjection | null;
   readonly changeSet: ChangeSetProjection | null;

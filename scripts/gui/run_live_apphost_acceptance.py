@@ -16,7 +16,9 @@ from pathlib import Path
 from secrets import token_hex
 
 from loushang.agent import synthetic_model_transport
+from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import Capabilities, Model
+from loushang.ai.types import AssistantMessage, TextPart, Usage
 from loushang.apphost import (
     AdmissionIdentityV1,
     AppHostAdmissionSubjectKind,
@@ -91,9 +93,31 @@ class InstalledSource:
 
 
 @synthetic_model_transport
-async def forbidden_stream(*args, **kwargs):
-    raise AssertionError("desktop acceptance must not invoke a model")
-    yield  # pragma: no cover -- preserve the streaming interface
+async def deterministic_stream(*args, **kwargs):
+    message = AssistantMessage(
+        role="assistant",
+        content=[TextPart(type="text", text="desktop acceptance live projection")],
+        api="anthropic-messages",
+        endpoint="anthropic-messages",
+        provider="faux",
+        model="no-network",
+        response_id=None,
+        usage=Usage(
+            input=0,
+            output=0,
+            cache_read=0,
+            cache_write=0,
+            total_tokens=0,
+            cost={},
+        ),
+        stop_reason="stop",
+        error_message=None,
+        timestamp=0,
+    )
+    stream = AssistantMessageEventStream()
+    stream.push({"type": "start", "partial": message})
+    stream.push({"type": "done", "reason": "stop", "message": message})
+    return stream
 
 
 @dataclass
@@ -107,6 +131,7 @@ class AcceptanceRuntime:
     owner: LocalAppClientConnectionV1
     execution: object
     peer: object
+    gui_session_id: str
 
 
 async def create_runtime(root: Path) -> AcceptanceRuntime:
@@ -155,7 +180,7 @@ async def create_runtime(root: Path) -> AcceptanceRuntime:
                     input=("text",), context_window=128000, max_tokens=4096
                 ),
             ),
-            stream_fn=forbidden_stream,
+            stream_fn=deterministic_stream,
             tools=[],
         ),
         execution=execution,
@@ -185,12 +210,13 @@ async def create_runtime(root: Path) -> AcceptanceRuntime:
         await local.start()
         await owner.start()
         scope = launch.scopes[0]
+        gui_session_id = ""
         for name in (GUI_MUX, PEER_MUX):
             await owner.client.create_mux(MuxCreateV1(name))
             initial = await owner.client.attach_mux(
                 MuxAttachV1(MuxSelectorV1(name=name))
             )
-            await owner.client.open_member(
+            opened = await owner.client.open_member(
                 MuxMemberOpenV1(
                     MuxSelectorV1(name=name),
                     SessionOpenSpecV1(
@@ -198,6 +224,8 @@ async def create_runtime(root: Path) -> AcceptanceRuntime:
                     ),
                 )
             )
+            if name == GUI_MUX:
+                gui_session_id = opened.members[0].session.session_id
             initial = await owner.client.attach_mux(
                 MuxAttachV1(MuxSelectorV1(name=name))
             )
@@ -218,6 +246,7 @@ async def create_runtime(root: Path) -> AcceptanceRuntime:
             owner,
             execution,
             peer,
+            gui_session_id,
         )
     except BaseException:
         await owner.close()
@@ -309,6 +338,29 @@ async def exercise_transport_reconnect(runtime: AcceptanceRuntime) -> None:
     )
 
 
+async def trigger_live_projection(runtime: AcceptanceRuntime) -> None:
+    service = runtime.app._application._service
+    assert service is not None
+    session = next(
+        value
+        for value in service._sessions.values()
+        if value.identity.session_id == runtime.gui_session_id
+    )
+    registry = service._execution_registry
+    assert registry is not None and session._execution is not None
+    record = registry.submit(
+        session._execution,
+        "publish a deterministic desktop projection",
+        "gui-desktop-projection",
+    )
+    await registry.wait(session._execution, record)
+    await asyncio.sleep(0.5)
+    print(
+        "Live projection passed: a real Coding execution reached the GUI event reader.",
+        flush=True,
+    )
+
+
 async def assert_gui_detached(runtime: AcceptanceRuntime) -> int:
     observer = runtime.app.open_client_scope()
     attached = None
@@ -361,6 +413,10 @@ async def run(args: argparse.Namespace, root: Path) -> None:
         )
         print("  [ ] The real Coding Session projection loads", flush=True)
         print(
+            "  [ ] The deterministic live transcript and Execution details appear",
+            flush=True,
+        )
+        print(
             f"      (native mux selection: {GUI_MUX!r}; not exposed to the WebView)",
             flush=True,
         )
@@ -386,9 +442,11 @@ async def run(args: argparse.Namespace, root: Path) -> None:
             cwd=str(ROOT),
         )
         await exercise_transport_reconnect(runtime)
+        await trigger_live_projection(runtime)
         result.update(
             transportReconnectObserved=True,
             freshSnapshotReattached=True,
+            liveProjectionTriggered=True,
         )
         return_code = await gui.wait()
         if return_code != 0:

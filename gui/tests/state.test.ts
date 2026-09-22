@@ -59,6 +59,35 @@ describe("GUI client state", () => {
     expect(state.remote.sessions["session-gui"].run?.tasks).toHaveLength(4);
   });
 
+  it("marks only inactive Sessions unread when authoritative live snapshots advance", async () => {
+    const snapshot = await createMockAppClient().snapshot();
+    let state = guiReducer(emptyGuiState(), { type: "snapshot.installed", snapshot });
+    const replacement = {
+      ...snapshot,
+      connection: "connected" as const,
+      sessions: snapshot.sessions.map((session) => session.id === "session-ontology" ? {
+        ...session,
+        cursor: (BigInt(session.cursor) + 1n).toString(),
+        status: "running" as const,
+        execution: {
+          id: "execution-ontology",
+          status: "running" as const,
+          revision: 1,
+          interruptRequested: false,
+          sourceStatus: "running" as const,
+          finalCursor: null,
+          truncated: false,
+        },
+      } : session),
+    };
+    state = guiReducer(state, { type: "snapshot.installed", snapshot: replacement });
+    expect(state.local.selectedSessionId).toBe("session-gui");
+    expect(state.local.unread["session-ontology"]).toBe(true);
+    expect(state.local.unread["session-gui"]).toBe(false);
+    state = guiReducer(state, { type: "session.selected", sessionId: "session-ontology" });
+    expect(state.local.unread["session-ontology"]).toBe(false);
+  });
+
   it("advances Task facts while rejecting duplicate, invalid, gapped and stale event sequences", async () => {
     const client = createMockAppClient();
     const snapshot = await client.snapshot();

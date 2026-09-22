@@ -1,10 +1,18 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { ExecutionSessionSnapshotV1, MuxSpaceV1, SessionIdentityV1 } from "../../contracts/generated/bridge";
+import type {
+  ExecutionObservationV1,
+  ExecutionSessionSnapshotV1,
+  ExecutionStateV1,
+  ExecutionStatusV1,
+  MuxSpaceV1,
+  SessionIdentityV1,
+} from "../../contracts/generated/bridge";
 import type {
   ClientEvent,
   ClientSnapshot,
   ConversationMessage,
+  ExecutionProjection,
   HarnessClientUiPort,
   SessionSnapshot,
 } from "./model";
@@ -30,6 +38,17 @@ interface NativeConnectionState {
 const EVENT_KINDS = new Set([
   "turn_started", "user_message", "assistant_delta", "assistant_message", "status", "error",
   "turn_completed", "turn_interrupted", "interaction_requested", "interaction_dismissed",
+]);
+const EXECUTION_STATUSES = new Set<ExecutionStatusV1>([
+  "accepted", "running", "succeeded", "failed", "interrupted",
+]);
+const TERMINAL_EXECUTION_STATUSES = new Set<ExecutionStatusV1>([
+  "succeeded", "failed", "interrupted",
+]);
+const APP_ERROR_CODES = new Set([
+  "invalid_request", "not_found", "already_exists", "already_attached", "product_mismatch",
+  "revision_conflict", "snapshot_required", "stale_attachment", "attachment_lagged",
+  "session_unavailable", "operation_unavailable", "cleanup_incomplete", "service_closed",
 ]);
 
 export async function nativeLiveAvailable(): Promise<boolean> {
@@ -217,11 +236,31 @@ function validateInitialSnapshot(value: unknown): NativeInitialSnapshot {
     const sourceSnapshot = object(source.source);
     const sourceIdentity = identity(sourceSnapshot.identity);
     if (sourceIdentity.sessionId !== members[index].session.sessionId) throw new Error("identity");
-    decimal(sourceSnapshot.cursor);
+    const cursor = decimal(sourceSnapshot.cursor);
     decimal(sourceSnapshot.revision);
-    if (typeof sourceSnapshot.running !== "boolean" || !Array.isArray(sourceSnapshot.records)) throw new Error("source");
+    text(sourceSnapshot.title, 256);
+    if (typeof sourceSnapshot.running !== "boolean" || !Array.isArray(sourceSnapshot.records)
+      || sourceSnapshot.records.length > 4096) throw new Error("source");
+    let transcriptLength = 0;
+    for (const rawRecord of sourceSnapshot.records) {
+      const record = object(rawRecord);
+      if (!["user", "assistant", "status", "error"].includes(String(record.kind))) throw new Error("record kind");
+      transcriptLength += [...boundedString(record.text, 262_144, true)].length;
+    }
+    if (transcriptLength > 65_536) throw new Error("transcript budget");
+    const observation = validateObservation(source.observation);
+    const draft = boundedString(source.draft, 16_384, true);
+    if (typeof source.truncated !== "boolean" || (draft && observation.status !== "running")) throw new Error("source projection");
+    if (observation.finalCursor !== null && compareDecimal(cursor, String(observation.finalCursor)) < 0) throw new Error("final cursor");
     const executions = object(session.executions);
     safeCounter(executions.revision);
+    if (!sameIdentity(identity(executions.identity), sourceIdentity)) throw new Error("execution identity");
+    const quiescent = validateObservation(executions.quiescent);
+    if (quiescent.status === "running") throw new Error("quiescent observation");
+    const active = executions.active === null ? null : validateExecutionState(executions.active);
+    const latestTerminal = executions.latestTerminal === null ? null : validateExecutionState(executions.latestTerminal);
+    if (active && TERMINAL_EXECUTION_STATUSES.has(active.status)) throw new Error("active execution");
+    if (latestTerminal && !TERMINAL_EXECUTION_STATUSES.has(latestTerminal.status)) throw new Error("terminal execution");
     return raw as ExecutionSessionSnapshotV1;
   });
   return {
@@ -265,16 +304,22 @@ function validateEventRound(
       const event = object(rawEvent);
       if ("source" in event) {
         const source = object(event.source);
-        if (identifier(source.sessionId) !== sessionId || !EVENT_KINDS.has(String(source.kind))) {
+        const kind = String(source.kind);
+        if (identifier(source.sessionId) !== sessionId || !EVENT_KINDS.has(kind)) {
           throw new Error("content event");
         }
+        if (source.text !== null) boundedString(source.text, 262_144, true);
+        const interactionId = source.interactionId === null ? null : identifier(source.interactionId);
+        const interactionKind = kind === "interaction_requested" || kind === "interaction_dismissed";
+        if (interactionKind !== (interactionId !== null)) throw new Error("interaction event");
+        if (event.executionId !== null) identifier(event.executionId);
         const cursor = positiveDecimal(source.cursor);
         if (cursor !== successor(contentCursors.get(sessionId) ?? "0")) throw new Error("content cursor");
         contentCursors.set(sessionId, cursor);
       } else {
         const revision = safeCounter(event.revision);
         if (revision !== (executionRevisions.get(sessionId) ?? 0) + 1) throw new Error("execution revision");
-        object(event.execution);
+        validateExecutionState(event.execution);
         executionRevisions.set(sessionId, revision);
       }
     }
@@ -370,9 +415,14 @@ function projectSession(
     });
   }
   const terminal = snapshot.executions.latestTerminal?.status;
-  const status = source.running || snapshot.executions.active
+  const observed = snapshot.source.observation.status;
+  const status = source.running || snapshot.executions.active || observed === "running"
     ? "running"
-    : terminal === "failed" ? "failed" : terminal === "interrupted" ? "interrupted" : "idle";
+    : observed === "failed" || terminal === "failed"
+      ? "failed"
+      : observed === "interrupted" || terminal === "interrupted"
+        ? "interrupted"
+        : "idle";
   return {
     id: source.identity.sessionId,
     workspaceId: `live-mux-${initial.muxSpace.muxSpaceId}`,
@@ -389,9 +439,28 @@ function projectSession(
       source: "live",
     },
     messages,
+    execution: projectExecution(snapshot),
     documents: [],
     run: null,
     changeSet: null,
+  };
+}
+
+function projectExecution(snapshot: ExecutionSessionSnapshotV1): ExecutionProjection | null {
+  const state = snapshot.executions.active ?? snapshot.executions.latestTerminal;
+  const observation = snapshot.source.observation;
+  const id = state?.executionId ?? observation.executionId;
+  if (!id) return null;
+  const status = state?.status ?? observation.status;
+  if (!status) return null;
+  return {
+    id,
+    status,
+    revision: state?.revision ?? 0,
+    interruptRequested: state?.interruptRequested ?? false,
+    sourceStatus: observation.status === "accepted" ? null : observation.status,
+    finalCursor: observation.finalCursor,
+    truncated: snapshot.source.truncated,
   };
 }
 
@@ -416,6 +485,43 @@ function safeCounter(value: unknown): number {
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) throw new Error("counter");
   return value;
 }
+function executionStatus(value: unknown): ExecutionStatusV1 {
+  if (typeof value !== "string" || !EXECUTION_STATUSES.has(value as ExecutionStatusV1)) throw new Error("execution status");
+  return value as ExecutionStatusV1;
+}
+function validateObservation(value: unknown): ExecutionObservationV1 {
+  const item = object(value);
+  if (item.executionId === null) {
+    if (item.status !== null || item.finalCursor !== null) throw new Error("idle observation");
+    return item as unknown as ExecutionObservationV1;
+  }
+  identifier(item.executionId);
+  const status = executionStatus(item.status);
+  if (status === "accepted") throw new Error("observation status");
+  if (TERMINAL_EXECUTION_STATUSES.has(status)) safeCounter(item.finalCursor);
+  else if (item.finalCursor !== null) throw new Error("active final cursor");
+  return item as unknown as ExecutionObservationV1;
+}
+function validateExecutionState(value: unknown): ExecutionStateV1 {
+  const item = object(value);
+  identifier(item.executionId);
+  const status = executionStatus(item.status);
+  safeCounter(item.revision);
+  if (typeof item.interruptRequested !== "boolean") throw new Error("interrupt state");
+  if (TERMINAL_EXECUTION_STATUSES.has(status)) {
+    const outcome = object(item.outcome);
+    if (executionStatus(outcome.status) !== status) throw new Error("outcome status");
+    if ((status === "failed") !== (outcome.errorCode !== null)) throw new Error("outcome error");
+    if (outcome.errorCode !== null) identifier(outcome.errorCode);
+    const legacy = object(outcome.legacyResult);
+    if (Object.keys(legacy).length !== 0) {
+      if (Object.keys(legacy).length !== 1 || !APP_ERROR_CODES.has(String(legacy.code))) throw new Error("legacy result");
+    }
+  } else if (item.outcome !== null) {
+    throw new Error("active outcome");
+  }
+  return item as unknown as ExecutionStateV1;
+}
 function successor(value: string): string {
   const digits = [...decimal(value)];
   for (let index = digits.length - 1; index >= 0; index -= 1) {
@@ -435,6 +541,17 @@ function compareDecimal(left: string, right: string): number {
 function text(value: unknown, maximum: number): string {
   if (typeof value !== "string" || !value.trim() || [...value].length > maximum) throw new Error("text");
   return value;
+}
+function boundedString(value: unknown, maximum: number, empty: boolean): string {
+  if (typeof value !== "string" || (!empty && !value.trim()) || [...value].length > maximum) throw new Error("bounded string");
+  return value;
+}
+function sameIdentity(left: SessionIdentityV1, right: SessionIdentityV1): boolean {
+  return left.productId === right.productId
+    && left.continuityId === right.continuityId
+    && left.sessionId === right.sessionId
+    && left.scope === right.scope
+    && left.scopeFingerprint === right.scopeFingerprint;
 }
 function identity(value: unknown): SessionIdentityV1 {
   const item = object(value);
