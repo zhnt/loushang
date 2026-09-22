@@ -52,15 +52,21 @@ class AgentSessionRuntime(
         session_index_flush_delay: float = 0.25,
         owned_transcripts: bool = False,
         store_state_root: Path | None = None,
+        enroll_legacy_shared_store: bool = False,
     ) -> None:
-        if type(owned_transcripts) is not bool:
+        if type(owned_transcripts) is not bool or type(enroll_legacy_shared_store) is not bool:
             raise TypeError("invalid owned transcript activation")
         if owned_transcripts and current_session is not None:
             raise ValueError("owned runtime must construct its own initial Session")
         if store_state_root is not None and not owned_transcripts:
             raise ValueError("store admission requires owned transcripts")
+        if enroll_legacy_shared_store and store_state_root is None:
+            raise ValueError("legacy store enrollment requires store admission")
         self._owned_transcript_factory = (
-            _create_owned_session_factory(store_state_root=store_state_root) if owned_transcripts else None
+            _create_owned_session_factory(
+                store_state_root=store_state_root,
+                enroll_legacy_shared_store=enroll_legacy_shared_store,
+            ) if owned_transcripts else None
         )
         transcript_type = (
             _bind_owned_session_manager(self._owned_transcript_factory)

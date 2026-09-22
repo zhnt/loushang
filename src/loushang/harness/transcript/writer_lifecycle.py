@@ -72,6 +72,7 @@ class TranscriptWriterPreparation(Generic[InputT, ProductT]):
         store_state_root: Path | None = None,
         initialize_store: bool = False,
         store_root_observed: Event | None = None,
+        enroll_legacy_shared_store: bool = False,
     ) -> None:
         if (type(context) is not AgentTranscriptLifecycleContext or not context.persist
                 or context.session_file is None or context.session_file.parent != context.session_dir
@@ -82,13 +83,17 @@ class TranscriptWriterPreparation(Generic[InputT, ProductT]):
             raise TranscriptWriterError("invalid")
         if writer is not None and (expected_root_identity is not None or expected_parent_identity is not None):
             raise TranscriptWriterError("invalid")
-        if (type(initialize_store) is not bool or (initialize_store and store_state_root is None)
+        if (type(initialize_store) is not bool
+                or type(enroll_legacy_shared_store) is not bool
+                or (enroll_legacy_shared_store and store_state_root is None)
+                or (initialize_store and store_state_root is None)
                 or (store_state_root is not None and (writer is not None or create_root
                     or expected_root_identity is not None or expected_parent_identity is not None))):
             raise TranscriptWriterError("invalid")
         self._store_admission = (TranscriptStoreAdmission(
             context.session_dir, state_root=store_state_root, create_if_missing=initialize_store,
             root_observed=store_root_observed,
+            enroll_legacy_shared_store=enroll_legacy_shared_store,
         ) if store_state_root is not None else None)
         self._admission_cleanup_task: asyncio.Task[None] | None = None
         self._context = deepcopy(context)

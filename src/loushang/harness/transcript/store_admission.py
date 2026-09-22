@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import stat
 from dataclasses import dataclass
 from pathlib import Path
 from secrets import token_hex
@@ -114,9 +115,12 @@ class TranscriptStoreAdmission:
     """
 
     def __init__(self, root: Path, *, state_root: Path, create_if_missing: bool = False,
-                 root_observed: Event | None = None) -> None:
+                 root_observed: Event | None = None,
+                 enroll_legacy_shared_store: bool = False) -> None:
         root, state_root = Path(root), Path(state_root)
-        if type(create_if_missing) is not bool or (root_observed is not None and type(root_observed) is not Event):
+        if (type(create_if_missing) is not bool
+                or type(enroll_legacy_shared_store) is not bool
+                or (root_observed is not None and type(root_observed) is not Event)):
             raise TranscriptWriterError("invalid")
         for path in (root, state_root):
             if (not path.is_absolute() or path == path.parent or ".." in path.parts
@@ -129,6 +133,7 @@ class TranscriptStoreAdmission:
         key = hashlib.sha256(f"{_VERSION}\0{os.geteuid()}\0{root}".encode()).hexdigest()
         self.root, self.witness_root = root, state_root / key
         self._key, self._create = key, create_if_missing
+        self._enroll_legacy_shared_store = enroll_legacy_shared_store
         self._root_observed = root_observed
         self._existing = _WitnessLease(self.witness_root, _VERSION, key, create_lock=False)
         self._fresh = _WitnessLease(self.witness_root, _VERSION, key,
@@ -211,7 +216,8 @@ class TranscriptStoreAdmission:
                     self._reject_residue()
                     if not _missing(self.root / ".transcript-writers"):
                         raise TranscriptWriterError("conflict")
-                    self._family.inspect_state_evidence(allow_legacy=True)
+                    if not self._enroll_legacy_shared_store:
+                        self._family.inspect_state_evidence(allow_legacy=True)
                 self._witness = self._fresh
             self._witness.acquire()
             if self._witness._canonical != self.witness_root:
@@ -259,8 +265,33 @@ class TranscriptStoreAdmission:
             raise TranscriptWriterError("unavailable") from None
 
     def _reject_residue(self) -> None:
-        if any(os.path.lexists(self.root.parent / name) for name in ("session-assets", ".session-blob-writers")):
+        assets = self.root.parent / "session-assets"
+        writers = self.root.parent / ".session-blob-writers"
+        if not self._enroll_legacy_shared_store:
+            if any(os.path.lexists(path) for path in (assets, writers)):
+                raise TranscriptWriterError("conflict")
+            return
+        # This explicit compatibility grant is only for the pre-family layout.
+        # A blob-writer root is evidence that family-era initialization ran.
+        if os.path.lexists(writers):
             raise TranscriptWriterError("conflict")
+        for path in (assets, assets / ".locks"):
+            if not os.path.lexists(path):
+                continue
+            fd = os.open(
+                path,
+                os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+            )
+            try:
+                info = os.fstat(fd)
+                current = os.stat(path, follow_symlinks=False)
+                if (not os.path.samestat(info, current)
+                        or not stat.S_ISDIR(info.st_mode)
+                        or info.st_uid != os.geteuid()
+                        or stat.S_IMODE(info.st_mode) != 0o700):
+                    raise TranscriptWriterError("conflict")
+            finally:
+                os.close(fd)
 
     def check(self) -> None:
         """Revalidate the original known observation, granting no write rights."""

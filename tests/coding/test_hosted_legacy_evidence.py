@@ -54,7 +54,7 @@ def _private_environment(root):
     # Bootstrap model/config lookup needs an OS home even for cwd sessions.
     # Do not read the actual user's home via POSIX pwd or Windows USERPROFILE.
     home = root / "user-home"
-    home.mkdir(exist_ok=True)
+    home.mkdir(mode=0o700, exist_ok=True)
     environment.update(HOME=str(home), USERPROFILE=str(home))
     return environment
 
@@ -102,7 +102,7 @@ def test_G17_TERMINAL_LEGACY_installed_profiles_and_embedded_startup(
     record_testsuite_property("native_platform", sys.platform)
     roots = {name: tmp_path / name for name in ("local", "g14", "embedded")}
     for root in roots.values():
-        root.mkdir()
+        root.mkdir(mode=0o700)
     with patch.dict(os.environ, _private_environment(roots["local"]), clear=True):
         _local(roots["local"], record_testsuite_property)
     # G14's older helper inherits cwd/environment; confine it without changing

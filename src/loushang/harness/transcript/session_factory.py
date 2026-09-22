@@ -109,6 +109,7 @@ class AgentTranscriptSessionFactory(Generic[BindingInputT, ProductBindingT]):
         index_writable: bool = True,
         store_state_root: Path | None = None,
         store_root_observed: Event | None = None,
+        enroll_legacy_shared_store: bool = False,
     ) -> None:
         if type(index_writable) is not bool:
             raise TypeError("index_writable must be a built-in bool")
@@ -130,10 +131,15 @@ class AgentTranscriptSessionFactory(Generic[BindingInputT, ProductBindingT]):
         self._clock = clock or _utc_now
         self._conversation_id_factory = conversation_id_factory or _default_id
         self._owned_product_id = owned_product_id
+        if type(enroll_legacy_shared_store) is not bool:
+            raise TypeError("legacy store enrollment must be a built-in bool")
         if store_state_root is not None and owned_product_id is None:
             raise ValueError("store admission requires an owned persistent factory")
+        if enroll_legacy_shared_store and store_state_root is None:
+            raise ValueError("legacy store enrollment requires store admission")
         self._store_state_root = store_state_root
         self._store_root_observed = store_root_observed
+        self._enroll_legacy_shared_store = enroll_legacy_shared_store
         self._pending: dict[TranscriptWriterPreparation[BindingInputT, ProductBindingT], None] = {}
         self._loop: asyncio.AbstractEventLoop | None = None
         self._closing = False
@@ -223,6 +229,7 @@ class AgentTranscriptSessionFactory(Generic[BindingInputT, ProductBindingT]):
             store_state_root=self._store_state_root,
             initialize_store=initialize_store and self._store_state_root is not None,
             store_root_observed=self._store_root_observed,
+            enroll_legacy_shared_store=self._enroll_legacy_shared_store,
         )
         self._pending[owner] = None
         return owner

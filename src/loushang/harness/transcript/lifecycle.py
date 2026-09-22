@@ -303,6 +303,7 @@ class AgentTranscriptLifecycle(Generic[BindingInputT, ProductBindingT]):
         store_state_root: Path | None = None,
         initialize_store: bool = False,
         store_root_observed: Event | None = None,
+        enroll_legacy_shared_store: bool = False,
     ) -> TranscriptWriterPreparation[BindingInputT, ProductBindingT]:
         """Purely prepare acquisition; callers retain this before the first await.
 
@@ -323,6 +324,7 @@ class AgentTranscriptLifecycle(Generic[BindingInputT, ProductBindingT]):
             expected_root_identity=expected_root_identity, expected_parent_identity=expected_parent_identity,
             store_state_root=store_state_root, initialize_store=initialize_store,
             store_root_observed=store_root_observed,
+            enroll_legacy_shared_store=enroll_legacy_shared_store,
         )
 
     def prepare_writer(
