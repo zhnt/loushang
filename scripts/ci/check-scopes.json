@@ -29,6 +29,19 @@
   ],
   "rules": [
     {
+      "paths": [
+        "docs/internals/architecture/appserver/app-protocol-*.schema.json"
+      ],
+      "checks": [
+        "gui",
+        "architecture",
+        "coding",
+        "apphost",
+        "appservice"
+      ],
+      "reason": "App Protocol shared contract and direct consumers"
+    },
+    {
       "paths": ["gui/**", "scripts/gui/**"],
       "checks": ["gui"],
       "reason": "HarnessGUI presentation, fixture and native bridge"
