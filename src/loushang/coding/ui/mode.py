@@ -225,6 +225,22 @@ async def _run_bound_screen_interactive_tui(
             exc=error,
         )
 
+    capability_session: object | None = None
+    capability_generation = 0
+
+    def current_capabilities():
+        from .screen_input import project_coding_capabilities
+
+        nonlocal capability_session, capability_generation
+        active = current_session()
+        if active is not capability_session:
+            capability_session = active
+            capability_generation += 1
+        return project_coding_capabilities(
+            ("coding", str(id(app)), str(capability_generation)), controller.get_operations,
+            clipboard_declared=screen_run_profile is CODING_SCREEN_RUN_PROFILE,
+        )
+
     prepared = AgentScreenConversationApplicationBinding(
         session=session,
         app=app,
@@ -241,6 +257,7 @@ async def _run_bound_screen_interactive_tui(
         stdout=stdout,
         now=time.monotonic,
         completion_provider=completion_provider,
+        capability_provider=current_capabilities,
         resume_command_prefix=("loushang", "--resume"),
         session_provider=lambda: current_agent_runtime_session(runtime, session),
         get_operations=controller.get_operations,

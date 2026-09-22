@@ -20,7 +20,6 @@ from loushang.harness.transcript import (
     AgentTranscriptRuntimeBinding,
     ModelSelectionSnapshot,
     create_agent_transcript_file_store,
-    delete_agent_transcript_jsonl,
     write_agent_transcript_export,
 )
 
@@ -345,14 +344,15 @@ def test_lifecycle_releases_binding_after_create_failure_and_protects_active_fil
         assert disposed == ["failed"]
 
         source = tmp_path / "deletable.jsonl"
+        from ._maintenance import delete_with_maintenance
         write_agent_transcript_export(source, _header(), [_record("record-1")])
         with pytest.raises(ValueError, match="currently active"):
-            await delete_agent_transcript_jsonl(
+            await delete_with_maintenance(
                 source,
                 current_session_file=source,
             )
-        assert await delete_agent_transcript_jsonl(source)
+        assert await delete_with_maintenance(source)
         assert not source.exists()
-        assert not await delete_agent_transcript_jsonl(source)
+        assert not await delete_with_maintenance(source)
 
     asyncio.run(scenario())

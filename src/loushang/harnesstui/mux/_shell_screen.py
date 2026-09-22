@@ -10,6 +10,7 @@ from loushang.tui import Composer
 from loushang.tui.cell_width import strip_control_sequences, truncate_to_width
 from loushang.tui.core import RenderConstraints, RenderLine, RenderResult
 from loushang.tui.input import InputEvent
+from loushang.tui.theme import ThemeResolver
 from loushang.tui.ui_parts.text_pager import TextPager
 
 from ..conversation.screen_app import ScreenConversationApp
@@ -21,11 +22,13 @@ from .projection import project_active_conversation
 if TYPE_CHECKING:
     from .shell import HostedMuxShellV1
 
-_HELP = """Enter sends a turn. // sends text beginning with a literal slash.
+_HELP = """Enter sends a turn when idle, or steers when running; Alt+Enter queues a follow-up while running.
+Shift+Enter inserts a newline. // sends text beginning with a literal slash.
 Tab / Shift+Tab or Ctrl+B n/p selects another Session window.
 Ctrl+B 1..9 selects a window. Each window retains its own local draft.
 PageUp / PageDown scrolls history, or the open read-only details.
 F1 or /help opens this help. Esc closes details without changing a draft.
+Details and the picker consume ordinary keys; Ctrl+B remains a mux shortcut.
 F2 or /question opens the current approval details.
 F3 or /sessions [cwd|user_home|global] discovers saved Sessions.
 In the picker: Tab scope, arrows select, n next page, r refresh, Enter resume.
@@ -63,19 +66,21 @@ class _HostedFramePresentation(ScreenFramePresentation):
 
 
 class HostedMuxScreenV1(ScreenConversationApp):
-    def __init__(self, shell: HostedMuxShellV1) -> None:
+    def __init__(self, shell: HostedMuxShellV1, *, transcript_theme: ThemeResolver | None = None) -> None:
         self.shell = shell
         self._view_key: object = None
         self._view_revision = 0
         self._detail: TextPager | None = None
         self._detail_key: tuple[object, ...] | None = None
         self._reviewed_key: tuple[object, ...] | None = None
+        self._help_capabilities: object = None
         super().__init__(
             model_label="Hosted",
             cwd="",
             branch=None,
             session_label=None,
             composer=Composer(max_undo_depth=16),
+            transcript_theme=transcript_theme,
         )
 
     def _create_frame_presentation(self) -> ScreenFramePresentation:
@@ -116,11 +121,19 @@ class HostedMuxScreenV1(ScreenConversationApp):
         management_help = (
             "--mux selects a named mux; this foreground application has no background management endpoint."
             if self.shell.exit_ends_application else
-            "The installed create/list/attach/close/stop commands manage named muxes."
+            "Use lmux new -s NAME, lmux ls, lmux attach -t NAME, "
+            "lmux close -t NAME and lmux stop --server NAME for management. "
+            "lmux create --continue explicitly resumes an original create operation."
         )
-        self._detail, self._detail_key = TextPager("Hosted help", _HELP.format(exit_help=exit_help, management_help=management_help)), None
+        capabilities = self.shell.current_capabilities()
+        summary = "\n\nCurrent capabilities (presentation, not permission):\n" + "\n".join(
+            f"{entry.operation}: {entry.availability} ({entry.reason})" for entry in capabilities.entries
+        )
+        self._help_capabilities = capabilities
+        self._detail, self._detail_key = TextPager("Hosted help", _HELP.format(exit_help=exit_help, management_help=management_help) + summary), None
 
     def show_approval(self) -> None:
+        self._help_capabilities = None
         key = self._approval_key()
         if key is None:
             raise ValueError("no current approval details")
@@ -130,13 +143,22 @@ class HostedMuxScreenV1(ScreenConversationApp):
         self._detail_key = key
 
     def approval_presented(self) -> bool:
+        self._sync_details()
         key = self._approval_key()
         return key is not None and key == self._reviewed_key
 
     def dismiss_details(self) -> None:
+        self._help_capabilities = None
         self._detail, self._detail_key = None, None
 
+    def invalidate_binding(self) -> None:
+        """Explicit rebind/refresh revokes presentation, unlike ordinary Esc."""
+        self.dismiss_details()
+        self._reviewed_key = None
+
     def _sync_details(self) -> None:
+        if self._reviewed_key is not None and self._reviewed_key != self._approval_key():
+            self._reviewed_key = None
         if self._detail_key is not None and self._detail_key != self._approval_key():
             self._detail = TextPager(
                 "Approval expired",
@@ -156,6 +178,10 @@ class HostedMuxScreenV1(ScreenConversationApp):
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
         mux = self.shell.state
+        capabilities = self.shell.current_capabilities()
+        self.shell.refresh_capability_completions()
+        if self._help_capabilities is not None and self._help_capabilities != capabilities:
+            self.show_help()
         window = mux.active_window
         key = (
             mux.attachment_id,
@@ -163,7 +189,7 @@ class HostedMuxScreenV1(ScreenConversationApp):
             mux.active_index,
             None
             if window is None
-            else (window.last_cursor, window.scroll_anchor, window.title),
+            else (window.last_cursor, window.scroll_anchor, window.title, window.request_presentation),
         )
         if key != self._view_key:
             self._view_key = key
@@ -206,6 +232,8 @@ class HostedMuxScreenV1(ScreenConversationApp):
                 self.state.status_message = (
                     "Approval pending: F2 details; /approve /deny"
                 )
+        # Eligibility can change without a transcript/cache-key change.
+        self.state.capabilities = capabilities
         footer = (
             safe_text(mux.mux_name)
             + " | "

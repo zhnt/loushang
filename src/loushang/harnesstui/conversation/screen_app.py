@@ -7,6 +7,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field, replace
 from typing import Any
 
+from loushang.harnesstui.conversation.input_policy import ConversationCapabilities
 from loushang.harnesstui.conversation.reader import TranscriptReaderSurface
 from loushang.harnesstui.conversation.screen_frame import ScreenFramePresentation
 from loushang.harnesstui.conversation.screen_state import (
@@ -72,6 +73,7 @@ class ScreenConversationApp:
     now: Callable[[], float] = time.monotonic
     composer: Composer = field(default_factory=Composer)
     state: ScreenConversationState = field(init=False)
+    capability_provider: Callable[[], ConversationCapabilities] | None = field(default=None, kw_only=True)
     active_surface: Any | None = None
     surface_host: SurfaceHost | None = None
     transcript_theme: ThemeResolver | None = None
@@ -368,6 +370,11 @@ class ScreenConversationApp:
         return min(active_due_ms, completion_due_ms)
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
+        if self.capability_provider is not None:
+            current = self.capability_provider()
+            if type(current) is not ConversationCapabilities:
+                raise ValueError("invalid conversation capability projection")
+            self.state.capabilities = current
         self._refresh_context_usage()
         visible_height = constraints.visible_height or constraints.max_height
         editor_height = self._bottom_frame_height(visible_height)

@@ -3,6 +3,7 @@ from __future__ import annotations
 import codecs
 import errno
 import fcntl
+import math
 import os
 import pty
 import select
@@ -13,7 +14,7 @@ import termios
 import threading
 import time
 from collections.abc import Mapping, Sequence
-from contextlib import suppress
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Self
 
@@ -39,6 +40,7 @@ class PosixPtyDriver(BufferedTerminalDriver):
             args, cwd=cwd, env=env, columns=columns, rows=rows
         )
         self._master_fd = master_fd
+        self._transport_state = "open"
         self._process = process
         self._stop_reader = threading.Event()
         self._reader = threading.Thread(
@@ -91,6 +93,10 @@ class PosixPtyDriver(BufferedTerminalDriver):
 
     def write(self, text: str) -> None:
         with self._writer_lock:
+            if self._transport_state != "open":
+                if threading.current_thread() is self._reader:
+                    return  # No terminal query replies after the transport fence.
+                raise RuntimeError("terminal transport is fenced")
             if self._closed:
                 raise RuntimeError("terminal driver is closed")
             payload = text.encode("utf-8")
@@ -99,13 +105,55 @@ class PosixPtyDriver(BufferedTerminalDriver):
                 offset += os.write(self._master_fd, payload[offset:])
 
     def resize(self, *, columns: int, rows: int) -> None:
-        _set_window_size(self._master_fd, columns=columns, rows=rows)
-        self._columns = columns
-        self._rows = rows
-        self._responder.columns = columns
-        self._responder.rows = rows
-        with _ignore_process_lookup():
-            os.killpg(self._process.pid, signal.SIGWINCH)
+        with self._writer_lock:
+            if self._transport_state != "open":
+                raise RuntimeError("terminal transport is fenced")
+            _set_window_size(self._master_fd, columns=columns, rows=rows)
+            self._columns = columns
+            self._rows = rows
+            self._responder.columns = columns
+            self._responder.rows = rows
+            with _ignore_process_lookup():
+                os.killpg(self._process.pid, signal.SIGWINCH)
+
+    def hangup_transport(self, *, timeout: float) -> int:
+        """Close the last PTY master, then wait for the original client, without signals.
+
+        This is EOF/EIO transport loss, not a claim that SIGHUP was delivered.
+        A failed wait remains a failed observation; close retains its usual cleanup duty.
+        """
+        deadline = _deadline(timeout)
+        with _timed_lock(self._close_lock, deadline):
+            if self._closed:
+                raise RuntimeError("terminal driver is closed")
+            if self._transport_state == "unknown":
+                raise RuntimeError("PTY master close outcome unknown")
+            if self._transport_state != "closed":
+                with _timed_lock(self._writer_lock, deadline):
+                    if self._transport_state == "open" and not self.is_alive():
+                        raise RuntimeError("client exited before transport hangup")
+                    self._transport_state = "fenced"
+                    self._stop_reader.set()
+                # The reader may be in write(query_reply); never join under its lock.
+                self._reader.join(timeout=_remaining(deadline))
+                if self._reader.is_alive():
+                    raise TimeoutError("PTY reader did not settle before hangup")
+                with _timed_lock(self._writer_lock, deadline):
+                    _remaining(deadline)
+                    self._close_master_once()
+            if self._reader_error is not None:
+                raise RuntimeError("PTY reader failed before hangup") from self._reader_error
+            status = self.wait(timeout=_remaining(deadline))
+            _remaining(deadline)
+            return status
+
+    def _close_master_once(self) -> None:
+        if self._transport_state == "unknown":
+            raise RuntimeError("PTY master close outcome unknown")
+        if self._transport_state != "closed":
+            self._transport_state = "unknown"
+            os.close(self._master_fd)
+            self._transport_state = "closed"
 
     def is_alive(self) -> bool:
         return self._process.poll() is None
@@ -143,24 +191,31 @@ class PosixPtyDriver(BufferedTerminalDriver):
             ) from error
 
     def close(self, *, timeout: float = 5.0) -> None:
-        with self._close_lock:
+        deadline = _deadline(timeout)
+        with _timed_lock(self._close_lock, deadline):
             if self._closed:
                 return
-            deadline = time.monotonic() + max(0.0, timeout)
             try:
                 if self.is_alive():
-                    self.terminate_tree(timeout=max(0.01, deadline - time.monotonic()))
+                    self.terminate_tree(timeout=_remaining(deadline))
                 self._wait_for_idle_output(
-                    timeout=max(0.01, min(0.5, deadline - time.monotonic()))
+                    timeout=min(0.5, _remaining(deadline))
                 )
             finally:
-                self._stop_reader.set()
-                with suppress(OSError):
-                    os.close(self._master_fd)
-                self._reader.join(timeout=max(0.0, deadline - time.monotonic()))
+                with _timed_lock(self._writer_lock, deadline):
+                    if self._transport_state == "open":
+                        self._transport_state = "fenced"
+                    self._stop_reader.set()
+                self._reader.join(timeout=_remaining(deadline))
+                if self._reader.is_alive():
+                    raise TimeoutError(f"POSIX PTY reader did not stop:\n{self.diagnostics}")
+                with _timed_lock(self._writer_lock, deadline):
+                    _remaining(deadline)
+                    self._close_master_once()
+                if self.is_alive():
+                    raise TimeoutError("POSIX PTY process did not settle")
+                _remaining(deadline)
                 self._closed = True
-            if self._reader.is_alive():
-                raise TimeoutError(f"POSIX PTY reader did not stop:\n{self.diagnostics}")
 
     @property
     def diagnostics(self) -> TerminalProcessDiagnostics:
@@ -196,6 +251,30 @@ class PosixPtyDriver(BufferedTerminalDriver):
             self._record_reader_error(error)
         finally:
             self._record_reader_done()
+
+
+def _deadline(timeout: float) -> float:
+    if not math.isfinite(timeout) or timeout < 0:
+        raise ValueError("terminal timeout must be finite and nonnegative")
+    return time.monotonic() + timeout
+
+
+def _remaining(deadline: float) -> float:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError("terminal cleanup deadline expired")
+    return remaining
+
+
+@contextmanager
+def _timed_lock(lock, deadline):
+    if not lock.acquire(timeout=_remaining(deadline)):
+        raise TimeoutError("terminal cleanup lock deadline expired")
+    try:
+        _remaining(deadline)
+        yield
+    finally:
+        lock.release()
 
 
 def _set_window_size(fd: int, *, columns: int, rows: int) -> None:

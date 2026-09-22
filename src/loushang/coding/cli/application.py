@@ -138,7 +138,10 @@ from loushang.harness.diagnostics.observability_runtime import (
 )
 from loushang.harness.host.product_host import ProductHostLifecycle, stream_is_tty
 from loushang.harness.host.rpc import run_rpc_host
-from loushang.harness.machine_resources import resolve_machine_resource_layout
+from loushang.harness.machine_resources import (
+    prepare_private_directory_chain,
+    resolve_machine_resource_layout,
+)
 from loushang.harness.policy_engine import PolicyEngine
 from loushang.harness.resources.packages import (
     record_package_source_policy_denial,
@@ -312,7 +315,7 @@ def default_runtime_builder(
     resource_layout = resolve_machine_resource_layout(cwd=cwd)
     platform_sessions = resource_layout.sessions
     if session_dir.expanduser().resolve(strict=False) == platform_sessions:
-        platform_sessions.mkdir(mode=0o700, parents=True, exist_ok=True)
+        prepare_private_directory_chain(platform_sessions)
         platform_sessions.chmod(0o700)
         set_authority = getattr(runtime, "set_session_authority_source", None)
         if callable(set_authority):

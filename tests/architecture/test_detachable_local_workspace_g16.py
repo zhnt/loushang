@@ -50,9 +50,12 @@ def test_G16_BOUNDARIES_optional_scopes_have_separate_reviewable_budgets() -> No
             node.module for node in ast.walk(ast.parse(source.read_text()))
             if isinstance(node, ast.ImportFrom) and node.module
         }
-        assert {name for name in imports if name.startswith("loushang.")} == {
-            "loushang.appserver.protocol"
-        }
+        expected = {"loushang.appserver.protocol"}
+        if name == "client_scope.py":
+            expected.add("loushang.appserver.managed_mux")
+            # LMUX §78: the same accepted-work scope owns optional close calls.
+            expected.add("loushang.appserver.managed_mux_close")
+        assert {name for name in imports if name.startswith("loushang.")} == expected
     # Explicit optional construction is not activation of G14 or a CLI.
     for name in (
         "src/loushang/appservice/__init__.py",
@@ -89,7 +92,10 @@ def test_G16_BOUNDARIES_authentication_is_stdlib_only_and_off_default_routes() -
 def test_G16_BOUNDARIES_native_record_is_one_optional_stdlib_component() -> None:
     root = Path("src/loushang/appserver")
     budgets = {
-        "local_record.py": 200, "_local_record_values.py": 180,
+        # The reviewed optional managed-mux capability adds closed record fields;
+        # keep the aggregate budget and native-only dependency fence unchanged.
+        # LMUX §78 adds the closed mux_closure capability; aggregate unchanged.
+        "local_record.py": 200, "_local_record_values.py": 201,
         "_local_record_files.py": 300, "_posix_local_record.py": 130,
         "_windows_local_record.py": 380,
     }
@@ -125,8 +131,11 @@ def test_G16_BOUNDARIES_native_io_is_confined_to_explicit_local_adapter() -> Non
 
     root = Path("src/loushang/appserver")
     source = (root / "local.py").read_text()
-    assert len(source.splitlines()) <= 450
-    assert len((root / "_local_peer.py").read_text().splitlines()) <= 240
+    # LMUX-M0 §17 reviewed two-stage owner delta from 0351f8b0: 392 -> 463.
+    # Preserve the previous allowance; no other file or native boundary is exempt.
+    assert len(source.splitlines()) <= 450 + 71
+    # LMUX §78 routes the close-control family through the original peer owner.
+    assert len((root / "_local_peer.py").read_text().splitlines()) <= 244
     assert '_LOOPBACK = "127.0.0.1"' in source
     assert "MAX_LOCAL_CONNECTIONS = 8" in source
     assert "MAX_LOCAL_APP_CONNECTIONS = 7" in source
@@ -152,7 +161,8 @@ def test_G16_BOUNDARIES_native_io_is_confined_to_explicit_local_adapter() -> Non
 
 def test_G16_BOUNDARIES_local_apphost_edge_uses_public_application_capabilities() -> None:
     source = Path("src/loushang/apphost/local.py")
-    assert len(source.read_text().splitlines()) <= 300
+    # LMUX-M0 §17 reviewed staged startup/synchronous fence: 247 -> 327.
+    assert len(source.read_text().splitlines()) <= 300 + 80
     tree = ast.parse(source.read_text())
     external = {
         node.module for node in ast.walk(tree)
@@ -200,14 +210,43 @@ def test_G16_BOUNDARIES_product_bootstrap_is_shared_without_transport_or_default
     assert scripts["loushang-mux"] == "loushang.coding.cli.mux:main"
 
 
+def test_managed_staging_keeps_exact_optional_signatures_and_sync_fence():
+    from loushang.apphost.local import HostedLocalRuntimeV1
+    from loushang.appserver.local import LocalAppServerV1
+    from loushang.coding.hosted_local import CodingLocalCommandV1
+
+    for owner in (HostedLocalRuntimeV1, LocalAppServerV1, CodingLocalCommandV1):
+        parameters = inspect.signature(owner.prepare).parameters
+        assert set(parameters) == {"self", "deadline"}
+        assert parameters["deadline"].kind is inspect.Parameter.KEYWORD_ONLY
+        assert parameters["deadline"].default is None
+        assert set(inspect.signature(owner.activate).parameters) == {"self"}
+        assert set(inspect.signature(owner.start).parameters) == {"self"}
+        assert inspect.iscoroutinefunction(owner.prepare)
+        assert inspect.iscoroutinefunction(owner.activate)
+    for owner in (HostedLocalRuntimeV1, CodingLocalCommandV1):
+        assert set(inspect.signature(owner.fence).parameters) == {"self"}
+        assert not inspect.iscoroutinefunction(owner.fence)
+
+
 def test_G16_BOUNDARIES_shell_borrows_only_semantics_and_owns_no_native_connection():
     root = Path("src/loushang/harnesstui/mux")
     paths = [root / name for name in ("shell.py", "terminal.py", "_shell_tasks.py", "_shell_screen.py")]
-    # G17 reviewed presentation supplement; the semantic controller cap stays 600.
-    assert sum(len(path.read_text().splitlines()) for path in paths) <= 950
+    # LMUX reviewed capability help/completion and stale-result fencing:
+    # shell +72, screen +22 versus da820585; same four owners and import guards.
+    assert sum(len(path.read_text().splitlines()) for path in paths) <= 950 + 72 + 22
     picker = root / "session_picker.py"
     assert len(picker.read_text().splitlines()) <= 450
     paths.append(picker)
+    # LMUX M3 reviewed action-port adapter; retain separate caps and apply
+    # the same dependency prohibitions to the new, explicitly counted binding.
+    binding = root / "conversation_binding.py"
+    assert len(binding.read_text().splitlines()) <= 150
+    paths.append(binding)
+    for name in ("request_presentation.py", "theme.py"):
+        neutral = root.parent / "conversation" / name
+        assert len(neutral.read_text().splitlines()) <= 60
+        paths.append(neutral)
     for path in paths:
         source = path.read_text()
         for node in ast.walk(ast.parse(source)):

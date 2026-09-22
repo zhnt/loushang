@@ -128,6 +128,20 @@ def select(paths: list[str], *, full: bool = False, root: Path = ROOT) -> dict:
     }
 
 
+def workflow_plan(plan: dict) -> dict:
+    """Return only the plan fields consumed by downstream workflows.
+
+    Selection reasons can repeat every changed path across many checks.  Keeping
+    them in the job output makes large pull requests exceed the runner's
+    per-environment-variable size limit when reusable workflows bind the plan to
+    ``CI_PLAN``.  The complete plan is still printed in the selector log; jobs
+    receive only the executable portion.
+    """
+    return {
+        key: plan[key] for key in ("version", "paths", "checks", "workflows")
+    }
+
+
 def event_paths(
     event_name: str, event: dict, *, root: Path = ROOT
 ) -> tuple[list[str], bool]:
@@ -180,7 +194,11 @@ def main() -> None:
     if args.event:
         # Never put filenames in output keys or executable shell text.
         with Path(os.environ["GITHUB_OUTPUT"]).open("a") as stream:
-            stream.write("plan=" + json.dumps(plan, separators=(",", ":")) + "\n")
+            stream.write(
+                "plan="
+                + json.dumps(workflow_plan(plan), separators=(",", ":"))
+                + "\n"
+            )
         with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a") as stream:
             stream.write("## Selected checks\n\n")
             for check, enabled in plan["checks"].items():

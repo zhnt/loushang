@@ -36,6 +36,15 @@ H6_PRIVATE_MODULES = {
     HOSTING_ROOT / "_posix_launch_preparation.py",
     HOSTING_ROOT / "_windows_launch_preparation.py",
 }
+OPTIONAL_MANAGED_SERVICE_MODULES = {
+    # Linux lookup/observation only; still subject to the standard-library and
+    # product-neutral import checks below, not added to the public surface.
+    HOSTING_ROOT / "machine_identity.py",
+    HOSTING_ROOT / "service_group.py",
+    HOSTING_ROOT / "service.py",
+    HOSTING_ROOT / "service_handoff.py",
+    HOSTING_ROOT / "service_process.py",
+}
 FORBIDDEN_PUBLIC_TERMS = {
     "Approval",
     "Authorization",
@@ -66,6 +75,7 @@ def test_hosting_package_is_standard_library_only_and_product_neutral() -> None:
         | H3_PRIVATE_MODULES
         | H4_PRIVATE_MODULES
         | H6_PRIVATE_MODULES
+        | OPTIONAL_MANAGED_SERVICE_MODULES
     )
     assert {path for path in HOSTING_ROOT.rglob("*.py")} == modules
 
@@ -89,6 +99,13 @@ def test_h0_public_surface_exposes_no_platform_or_caller_authority_types() -> No
         assert forbidden not in public_surface
 
     assert all(path.name not in public_surface for path in H1_PRIVATE_MODULES)
+    assert "LinuxService" not in public_surface
+    assert "from .service import" not in public_surface
+    assert "ServiceChildHandoff" not in public_surface
+    assert "ServiceParentHandoff" not in public_surface
+    assert "from .service_handoff import" not in public_surface
+    assert "LinuxServiceProcess" not in public_surface
+    assert "from .service_process import" not in public_surface
 
 
 def test_h0_observation_contract_has_no_arbitrary_payload_or_environment() -> None:

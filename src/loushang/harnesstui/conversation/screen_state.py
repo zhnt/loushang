@@ -4,7 +4,11 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 from loushang.harnesstui.conversation.input_policy import (
+    ConversationCapabilities,
     ConversationInputCapabilities,
+)
+from loushang.harnesstui.conversation.request_presentation import (
+    ConversationRequestPresentation,
 )
 from loushang.harnesstui.status.line import StatusLineSettings
 from loushang.tui.transcript import (
@@ -41,8 +45,10 @@ class ScreenConversationState:
     input_capabilities: ConversationInputCapabilities = field(
         default_factory=ConversationInputCapabilities
     )
+    capabilities: ConversationCapabilities | None = field(default=None, kw_only=True)
     interruption_message: str | None = None
     status_message: str | None = None
+    request_presentation: ConversationRequestPresentation | None = field(default=None, kw_only=True)
     startup_pending: bool = False
     model_label: str | None = None
     cwd: str = ""
@@ -57,6 +63,12 @@ class ScreenConversationState:
     )
     _tool_record_indices: dict[str, int] = field(default_factory=dict, repr=False)
     _pending_user_echo: str | None = field(default=None, init=False, repr=False)
+
+    @property
+    def presentation_status_message(self) -> str | None:
+        if self.request_presentation is None:
+            return self.status_message
+        return self.request_presentation.message + ("; " + self.status_message if self.status_message else "")
 
     @property
     def running(self) -> bool:

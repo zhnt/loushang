@@ -30,6 +30,14 @@
   - `src/loushang/harness/session/facade.py`
   - `src/loushang/harness/session/operations.py`
 
+2026-09-13 reading note: the prerequisite snapshot and roadmap below are
+historical. G16 detachable local deployment and G17 explicit hosted workflow
+are now delivered; consult the canonical [AppHost status](../apphost/README.md).
+The new [lmux managed-service proposal](lmux-managed-service-design.md) covers
+the remaining short entrypoint, cross-workspace name discovery, automatic
+background ownership and default directory policy. It does not claim these
+new capabilities are implemented or replace this draft's member/window model.
+
 This draft defines a small terminal-multiplexer-style hosted profile for
 Loushang. It adds multiple named attach targets, multiple concurrently live
 Sessions, a long-lived AppHost profile, and a Harnesstui window shell. It

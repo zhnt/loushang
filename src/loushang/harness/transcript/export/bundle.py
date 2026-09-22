@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import os
 import re
@@ -194,8 +195,25 @@ def read_agent_transcript_bundle(
     )
     if metadata.st_size > max_archive_bytes:
         raise ArtifactStoreQuotaExceeded("bundle archive exceeds its size limit")
+    return _read_bundle_archive(target, policy=policy)
+
+
+def decode_agent_transcript_bundle(
+    content: bytes,
+    *,
+    policy: SessionBlobPolicy = DEFAULT_TRANSCRIPT_BUNDLE_POLICY,
+) -> AgentTranscriptBundle:
+    """Decode an already frozen source without reopening its pathname."""
+    if len(content) > policy.max_total_bytes + 16 * 1024 * 1024 + policy.max_blobs * 1024:
+        raise ArtifactStoreQuotaExceeded("bundle archive exceeds its size limit")
+    return _read_bundle_archive(io.BytesIO(content), policy=policy)
+
+
+def _read_bundle_archive(
+    source: Path | io.BytesIO, *, policy: SessionBlobPolicy,
+) -> AgentTranscriptBundle:
     try:
-        with zipfile.ZipFile(target, "r") as archive:
+        with zipfile.ZipFile(source, "r") as archive:
             members = archive.infolist()
             if len(members) > policy.max_blobs + 2:
                 raise ArtifactStoreQuotaExceeded("bundle member count exceeds its limit")

@@ -90,6 +90,9 @@ def test_agent_screen_application_binding_prepares_shared_state() -> None:
     app = App()
     statuses: list[object] = []
     traces: list[tuple[str, dict[str, object]]] = []
+    def capabilities():
+        raise AssertionError("prepare must not sample live presentation eligibility")
+
     binding = AgentScreenConversationApplicationBinding(
         session=session,
         app=cast(Any, app),
@@ -106,11 +109,13 @@ def test_agent_screen_application_binding_prepares_shared_state() -> None:
         stdout=cast(Any, SimpleNamespace(write=lambda _value: None)),
         now=lambda: 1.0,
         resume_command_prefix=("research", "--resume"),
+        capability_provider=capabilities,
     )
 
     prepared = binding.prepare()
 
     assert prepared.app is app
+    assert prepared.capability_provider is capabilities
     assert prepared.event_source is session
     assert prepared.history_records == ()
     assert prepared.should_exit("/quit") is True

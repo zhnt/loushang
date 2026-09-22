@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from loushang.ai.types import AssistantMessage, ToolResultMessage, UserMessage
 from loushang.harness.artifacts import (
@@ -23,6 +23,9 @@ from loushang.harness.transcript.types import (
     DecodedAgentTranscriptPayload,
     SessionImagePart,
 )
+
+if TYPE_CHECKING:
+    from loushang.harness.journal._rooted_io import RootedFileIO
 
 
 class SessionBlobOwnershipError(ValueError):
@@ -61,6 +64,8 @@ def inspect_agent_transcript_session_blobs(
     records: Sequence[AgentTranscriptRecord],
     verify_content: bool = True,
     max_references: int | None = None,
+    file_io: RootedFileIO | None = None,
+    read_only: bool = False,
 ) -> tuple[SessionBlobHealth, ...]:
     """Return availability diagnostics while leaving transcript resume usable."""
 
@@ -73,14 +78,16 @@ def inspect_agent_transcript_session_blobs(
         raise ValueError("session blob preview reference limit exceeded")
     if not references:
         return ()
-    data_root = resolve_session_blob_data_root(session_dir)
+    data_root = Path(session_dir).parent if file_io is not None else resolve_session_blob_data_root(session_dir)
     try:
-        store = SessionBlobStore(data_root, authority_id)
+        store = SessionBlobStore(data_root, authority_id, file_io=file_io, read_only=read_only)
         return (
             store.inspect(references)
             if verify_content
             else store.inspect_metadata(references)
         )
+    except BlockingIOError:
+        raise
     except (OSError, ValueError) as error:
         return tuple(
             SessionBlobHealth(blob, "corrupt", str(error)) for blob in references

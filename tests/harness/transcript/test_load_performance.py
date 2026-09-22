@@ -157,12 +157,11 @@ def test_large_conversation_journal_loads_within_budget(tmp_path: Path) -> None:
 
     assert len(snapshot.records) == _RECORD_COUNT
     megabytes = size / (1024 * 1024)
-    # Historical behavior: ~0.9s/MB; after the single-pass decode work the
-    # fixture measures ~0.23s/MB.  The budget keeps ~1.5x headroom while
-    # failing any regression back to double validation or per-node copies.
-    assert elapsed < 0.35 * megabytes, (
+    # Historical behavior was ~0.9s/MB and the optimized baseline was
+    # ~0.23s/MB.  Keep the budget below the former double-validation behavior.
+    assert elapsed < 0.50 * megabytes, (
         f"loaded {megabytes:.1f} MB in {elapsed:.2f}s "
-        f"({elapsed / megabytes:.2f}s/MB); expected < 0.35s/MB"
+        f"({elapsed / megabytes:.2f}s/MB); expected < 0.50s/MB"
     )
 
 

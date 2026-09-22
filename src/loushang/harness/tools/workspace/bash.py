@@ -109,6 +109,7 @@ class BashToolDetails(TypedDict, total=False):
     stdout_blob: dict[str, object]
     stderr_blob: dict[str, object]
     artifact_retention_error: str
+    artifact_cleanup_error: str
 
 
 class BashOperations(Protocol):
@@ -725,6 +726,11 @@ def _exec_result_to_tool_result(result: ExecResult) -> AgentToolResult[dict[str,
             **(
                 {"artifact_retention_error": result.artifact_retention_error}
                 if result.artifact_retention_error is not None
+                else {}
+            ),
+            **(
+                {"artifact_cleanup_error": result.artifact_cleanup_error}
+                if result.artifact_cleanup_error is not None
                 else {}
             ),
             "timed_out": result.timed_out,

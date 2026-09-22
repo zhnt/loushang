@@ -10,6 +10,25 @@ import math
 import statistics
 from fractions import Fraction
 
+# Accepted A/A judgement contract (ARD-004, accepted 2026-09-18).
+#
+# These two constants have different meanings and must stay jointly calibrated:
+#   STABILITY_RATIO bounds the dispersion we accept as "this measurement is
+#   precise enough to compare" (relative MAD, plus the absolute floors below).
+#   REGRESSION_RATIO bounds the smallest true regression the verdict can claim
+#   to detect. A meaningful pass needs REGRESSION_RATIO clearly above
+#   STABILITY_RATIO; when both were 1/10 the threshold-level detection power
+#   was ~0.5%, so the verdict carried no information.
+#
+# Relaxing only the stability side would invert that relation and make the
+# verdict less meaningful. Measured outcome of the accepted pair: all 22
+# side/block groups across the frozen history and managed-mux campaigns are
+# stable, and a true 30% regression is detected ~46-52% of the time
+# (previously ~0.5%). Detail and limits: docs/internals/architecture/apphost/
+# decisions/accepted/ARD-004-aa-stability-gate-vs-interactive-metric-scale.md
+STABILITY_RATIO = Fraction(1, 4)
+REGRESSION_RATIO = Fraction(3, 10)
+
 PRIORITY_HELP = {"cli-help", "hosted-tui-help"}
 A_ELAPSED_CASES = {
     "import-harness",
@@ -84,6 +103,21 @@ NATIVE_METRICS = {
 }
 
 
+MANAGED_METRICS = {
+    "managed-mux": (
+        "cold_frame_seconds",
+        "first_completion_seconds",
+        "first_member_ready_seconds",
+        "cold_through_first_member_seconds",
+        "warm_member_ready_seconds",
+        "detach_settlement_seconds",
+        "warm_attach_frame_seconds",
+        "reattach_detach_settlement_seconds",
+        "stop_settlement_seconds",
+    ),
+}
+
+
 def compare_case(
     samples,
     *,
@@ -117,6 +151,60 @@ def compare_case(
 
 def compare_native(samples, *, cache_mode, phase="ab", blocks=2, pairs_per_block=10):
     """All native cases/metrics in one condition, after caller provenance gates."""
+    return _compare_native_inventory(
+        samples, inventory=NATIVE_METRICS, cache_mode=cache_mode,
+        phase=phase, blocks=blocks, pairs_per_block=pairs_per_block,
+    )
+
+
+MANAGED_PRODUCT_METRICS = {
+    "managed-product-first-use": (
+        "fixed_entry_through_visible_reply_seconds", "visible_reply_seconds",
+        "approval_pending_seconds", "approval_details_seconds", "approved_tool_reply_seconds",
+        "interrupt_through_idle_and_producer_seconds", "next_reply_seconds",
+        "interrupt_through_next_reply_seconds",
+    ),
+}
+
+
+HISTORY_METRICS = {
+    "managed-product-history-warm": ("history_frame_seconds", "history_completion_seconds"),
+    "managed-product-history-restore": ("restored_history_frame_seconds",),
+}
+
+
+def compare_managed_history(samples, *, case, cache_mode, phase="ab", blocks=2, pairs_per_block=10):
+    """Explicit history campaigns retain the original pairing/statistical policy."""
+    if type(case) is not str or case not in HISTORY_METRICS:
+        raise ValueError("unknown managed history comparison case")
+    return _compare_native_inventory(
+        samples, inventory={case: HISTORY_METRICS[case]}, cache_mode=cache_mode,
+        phase=phase, blocks=blocks, pairs_per_block=pairs_per_block,
+    )
+
+
+def compare_managed_product(samples, *, cache_mode, phase="ab", blocks=2, pairs_per_block=10):
+    """Use the existing statistical policy for the explicit fresh Product case."""
+    return _compare_native_inventory(
+        samples, inventory=MANAGED_PRODUCT_METRICS, cache_mode=cache_mode,
+        phase=phase, blocks=blocks, pairs_per_block=pairs_per_block,
+    )
+
+
+def compare_managed(samples, *, cache_mode, phase="ab", blocks=2, pairs_per_block=10):
+    """Opt-in managed short-entry policy, not full LMUX acceptance.
+
+    The collector must verify installation, exact live instance and physical
+    settlement before marking a sample complete. Pure timings cannot prove them.
+    This never adds optional cases to the original seven-case native policy.
+    """
+    return _compare_native_inventory(
+        samples, inventory=MANAGED_METRICS, cache_mode=cache_mode,
+        phase=phase, blocks=blocks, pairs_per_block=pairs_per_block,
+    )
+
+
+def _compare_native_inventory(samples, *, inventory, cache_mode, phase, blocks, pairs_per_block):
     if (
         type(blocks) is not int
         or type(pairs_per_block) is not int
@@ -133,17 +221,17 @@ def compare_native(samples, *, cache_mode, phase="ab", blocks=2, pairs_per_block
         milestones = sample.get("milestones")
         if (
             type(case) is not str
-            or case not in NATIVE_METRICS
+            or case not in inventory
             or sample.get("cache_mode") != cache_mode
             or sample.get("status") != "complete"
             or type(milestones) is not dict
-            or set(milestones) != set(NATIVE_METRICS[case])
+            or set(milestones) != set(inventory[case])
         ):
             raise ValueError(
                 "incomplete native case, cache condition or metric inventory"
             )
     results = {}
-    for case, metrics in NATIVE_METRICS.items():
+    for case, metrics in inventory.items():
         results[case] = {}
         for metric in metrics:
             projected = [
@@ -226,9 +314,9 @@ def _compare(samples, *, case, metric, blocks, pairs_per_block, phase, required_
             for group, median in zip(groups, medians, strict=True)
         ]
         stable = max(medians) - min(medians) <= max(
-            min(medians) / 10, Fraction(1, 50)
+            min(medians) * STABILITY_RATIO, Fraction(1, 50)
         ) and all(
-            mad <= max(median / 10, Fraction(1, 100))
+            mad <= max(median * STABILITY_RATIO, Fraction(1, 100))
             for mad, median in zip(mads, medians, strict=True)
         )
         ordered = sorted(item for group in groups for item in group)
@@ -236,6 +324,7 @@ def _compare(samples, *, case, metric, blocks, pairs_per_block, phase, required_
             "stable": stable,
             "block_medians": medians,
             "block_mads": mads,
+            "mean_seconds_descriptive": sum(ordered) / len(ordered),
             "median_seconds": statistics.median(ordered),
             "p95_seconds_descriptive": ordered[(95 * len(ordered) + 99) // 100 - 1],
             "samples": len(ordered),
@@ -243,12 +332,12 @@ def _compare(samples, *, case, metric, blocks, pairs_per_block, phase, required_
     baseline = variants["a"]["median_seconds"]
     candidate = variants["b"]["median_seconds"]
     improvement = 1 - candidate / baseline
-    regression_limit = max(baseline / 10, Fraction(1, 50))
+    regression_limit = max(baseline * REGRESSION_RATIO, Fraction(1, 50))
     all_medians = [
         value for variant in variants.values() for value in variant["block_medians"]
     ]
     calibrated = max(all_medians) - min(all_medians) <= max(
-        min(all_medians) / 10, Fraction(1, 50)
+        min(all_medians) * STABILITY_RATIO, Fraction(1, 50)
     )
     if not all(variant["stable"] for variant in variants.values()) or (
         phase == "aa" and not calibrated

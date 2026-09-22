@@ -80,10 +80,30 @@ graph and responsibility table.
 
 ## Future Service Instance Controller
 
-`hosting.service` is a candidate namespace, not an accepted package or sixth
-baseline component. It becomes eligible only when a named local service must
-outlive its launching client and requires independent start, stop, restart, or
-reconcile operations.
+The [accepted lmux M0 contract](../../apphost/lmux-contract-m0.md) now selects
+one limited Linux managed-service Target from this candidate: independent
+post-handoff lifetime, exact-instance/scope observations and explicit
+graceful-only consumer stop. It supplies scope/context, responsibility
+discovery, inputs, handoff and validation requirements. Consumer-side storage,
+name and clean-instance coordination plus the optional Linux identity/exit
+observer are implemented. Native spawn/handoff/tree ownership and abnormal
+recovery admission remain unimplemented; the managed profile is inactive.
+The general controller (automatic restart, system installation and other
+platforms) below remains a candidate, not implicitly promoted with lmux.
+
+For this profile, control paths are injected narrow leaves of the accepted
+lmux layout rather than independently derived from `PlatformPaths.state`.
+User stop does not automatically escalate to terminate/kill. Failed-start
+rollback retains exact provisional ownership and separate scope settlement;
+committed/unknown instances cannot be reclaimed on a missing acknowledgement.
+The existing Process/ChildSession close contract is unchanged. Hosting still
+owns no application registry, authentication, Session state or log retention.
+
+`hosting.service` now contains only the accepted optional Linux identity and
+pidfd exit observer. It is not a sixth baseline component or a general Service
+Instance Controller. Closing an observer only releases its fd: it neither
+signals a process nor asserts process-tree/application settlement. The broader
+controller below remains a candidate beyond the limited lmux Target.
 
 The candidate Service Instance Controller would own:
 

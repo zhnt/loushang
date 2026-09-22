@@ -55,6 +55,8 @@ class CodingHostedContinuityRequestV1:
             raise TypeError("invalid Coding foreground application request")
         if _STABLE_ID.fullmatch(self.application_id) is None:
             raise ValueError("invalid Coding hosted continuity application identity")
+        if self.foreground.managed_mux is not None and self.foreground.managed_mux.application_id != self.application_id:
+            raise ValueError("managed Mux application identity mismatch")
         if _OPAQUE_TOKEN.fullmatch(self.owner_epoch) is None:
             raise ValueError("invalid Coding hosted continuity owner epoch")
         for name in ("acquire", "list_applications"):
@@ -95,7 +97,7 @@ class CodingHostedContinuityAttemptV1:
             raise TypeError("invalid Coding hosted continuity request")
         self._request = request
         self._product_factory = CodingForegroundProductFactoryV1(
-            request.foreground.session_factory
+            request.foreground.session_factory, session_owner=request.foreground.session_owner,
         )
         self._catalog: AppHostCatalogV1 | None = None
         self._runtime: AppHostRuntimeV1 | None = None
@@ -185,6 +187,7 @@ class CodingHostedContinuityAttemptV1:
                 operation_id_factory=request.operation_id_factory,
                 admitted_scopes=request.admitted_scopes,
                 execution=request.execution is not None,
+                managed_selection=request.managed_selection,
             )
             application = _coding_hosted_application_request(
                 request,

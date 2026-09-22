@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import pytest
@@ -83,6 +83,232 @@ class _Store:
 
     def get_leaf_entry_id(self, session: _Session) -> str:
         return session.leaf_id
+
+
+def test_prepared_abort_retries_failed_original_cleanup(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        calls = 0
+
+        async def dispose(session: _Session) -> None:
+            nonlocal calls
+            assert session.ref == "saved.jsonl"
+            calls += 1
+            if calls == 1:
+                raise RuntimeError("cleanup failed")
+
+        lifecycle = SessionLifecycleRuntime[_Session, str](
+            store=_Store(restored_cwd=str(tmp_path)),
+            hooks=SessionLifecycleHooks(dispose_session=dispose),
+        )
+        prepared = await lifecycle.prepare_restore("saved.jsonl")
+        with pytest.raises(RuntimeError, match="cleanup failed"):
+            await prepared.abort()
+        await prepared.close()
+        await prepared.close()
+        assert calls == 2
+
+    asyncio.run(scenario())
+
+
+def test_prepared_abort_cancelled_waiter_rejoins_cleanup(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        entered = asyncio.Event()
+        release = asyncio.Event()
+        calls = 0
+        finished = False
+
+        async def dispose(_session: _Session) -> None:
+            nonlocal calls, finished
+            calls += 1
+            entered.set()
+            await release.wait()
+            finished = True
+
+        lifecycle = SessionLifecycleRuntime[_Session, str](
+            store=_Store(restored_cwd=str(tmp_path)),
+            hooks=SessionLifecycleHooks(dispose_session=dispose),
+        )
+        prepared = await lifecycle.prepare_restore("saved.jsonl")
+        waiter = asyncio.create_task(prepared.abort())
+        await entered.wait()
+        waiter.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiter
+        release.set()
+        await asyncio.gather(prepared.close(), prepared.close())
+        assert finished
+        assert calls == 1
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("close_on_failure", [False, True])
+def test_prepared_consume_cleanup_can_acquire_transition_lock(
+    tmp_path: Path, close_on_failure: bool,
+) -> None:
+    async def scenario() -> None:
+        cleaned = False
+
+        def reject(*_args) -> None:
+            raise RuntimeError("replacement failed")
+
+        async def dispose(_session: _Session) -> None:
+            nonlocal cleaned
+            async with lifecycle.transition_host.transition():
+                cleaned = True
+
+        async def failure(*_args) -> None:
+            if close_on_failure:
+                await prepared.close()
+
+        lifecycle = SessionLifecycleRuntime[_Session, str](
+            store=_Store(restored_cwd=str(tmp_path)),
+            hooks=SessionLifecycleHooks(
+                dispose_session=dispose, prepare_session=reject, on_failure=failure,
+            ),
+        )
+        prepared = await lifecycle.prepare_restore("saved.jsonl")
+        with pytest.raises(RuntimeError, match="replacement failed"):
+            await asyncio.wait_for(prepared.consume(), timeout=2)
+        assert cleaned
+
+    asyncio.run(scenario())
+
+
+def test_stale_prepared_cleanup_runs_after_transition_unlock(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        disposed: list[str] = []
+
+        async def dispose(session: _Session) -> None:
+            async with lifecycle.transition_host.transition():
+                disposed.append(session.ref)
+
+        async def failure(*_args) -> None:
+            await prepared.close()
+
+        lifecycle = SessionLifecycleRuntime[_Session, str](
+            store=_Store(restored_cwd=str(tmp_path)),
+            hooks=SessionLifecycleHooks(dispose_session=dispose, on_failure=failure),
+        )
+        prepared = await lifecycle.prepare_restore("saved.jsonl")
+        replacement = _Session("replacement", str(tmp_path))
+        await lifecycle.replace(replacement)
+        with pytest.raises(PreparedSessionOperationStateError, match="active session changed"):
+            await asyncio.wait_for(prepared.consume(), timeout=2)
+        assert lifecycle.current_session is replacement
+        assert disposed == ["saved.jsonl"]
+        await prepared.close()
+        assert disposed == ["saved.jsonl"]
+
+    asyncio.run(scenario())
+
+
+def test_prepared_consume_failure_keeps_cleanup_retry(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        calls = 0
+
+        def reject(*_args) -> None:
+            raise RuntimeError("replacement failed")
+
+        async def dispose(_session: _Session) -> None:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise RuntimeError("cleanup failed")
+
+        lifecycle = SessionLifecycleRuntime[_Session, str](
+            store=_Store(restored_cwd=str(tmp_path)),
+            hooks=SessionLifecycleHooks(dispose_session=dispose, prepare_session=reject),
+        )
+        prepared = await lifecycle.prepare_restore("saved.jsonl")
+        with pytest.raises(RuntimeError, match="cleanup failed"):
+            await prepared.consume()
+        await prepared.close()
+        await prepared.close()
+        assert calls == 2
+        assert not prepared.consumed
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("phase", ["activate_session", "after_commit"])
+def test_prepared_delivered_hook_failure_never_rolls_back(tmp_path: Path, phase: str) -> None:
+    async def scenario() -> None:
+        disposed: list[str] = []
+
+        def reject(*_args) -> None:
+            raise RuntimeError("delivered hook failed")
+
+        hooks = SessionLifecycleHooks(dispose_session=lambda session: disposed.append(session.ref))
+        hooks = replace(hooks, **{phase: reject})
+        lifecycle = SessionLifecycleRuntime[_Session, str](
+            store=_Store(restored_cwd=str(tmp_path)), hooks=hooks,
+        )
+        prepared = await lifecycle.prepare_restore("saved.jsonl")
+        with pytest.raises(RuntimeError, match="delivered hook failed"):
+            await prepared.consume()
+        assert prepared.consumed
+        await prepared.close()
+        assert disposed == []
+        assert lifecycle.current_session is not None
+        assert lifecycle.current_session.ref == "saved.jsonl"
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("prepared_mode", [False, True])
+def test_delivery_marker_precedes_product_activation(tmp_path: Path, prepared_mode: bool) -> None:
+    async def scenario() -> None:
+        events: list[str] = []
+        lifecycle = SessionLifecycleRuntime[_Session, str](
+            store=_Store(restored_cwd=str(tmp_path)),
+            hooks=SessionLifecycleHooks(
+                dispose_session=lambda _session: None,
+                activate_session=lambda *_args: events.append("activate"),
+            ),
+            mark_candidate_delivered=lambda session: events.append(f"delivered:{session.ref}"),
+        )
+        if prepared_mode:
+            prepared = await lifecycle.prepare_restore("saved.jsonl")
+            assert events == []
+            await prepared.consume()
+        else:
+            await lifecycle.restore("saved.jsonl")
+        assert events == ["delivered:saved.jsonl", "activate"]
+
+    asyncio.run(scenario())
+
+
+def test_prepared_legacy_import_retains_file_until_cleanup_settles(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        source = tmp_path / "source.jsonl"
+        source.write_text("original transcript", encoding="utf-8")
+        destination = tmp_path / "imported"
+        attempts = 0
+
+        async def dispose(session: _Session) -> None:
+            nonlocal attempts
+            assert Path(session.ref).read_text(encoding="utf-8") == "original transcript"
+            attempts += 1
+            if attempts == 1:
+                raise RuntimeError("cleanup failed")
+
+        lifecycle = SessionLifecycleRuntime[_Session, str](
+            store=_Store(restored_cwd=str(tmp_path)),
+            hooks=SessionLifecycleHooks(dispose_session=dispose),
+        )
+        prepared = await lifecycle.prepare_import_file(source, destination_dir=destination)
+        imported = destination / source.name
+        assert imported.exists()
+        with pytest.raises(RuntimeError, match="cleanup failed"):
+            await prepared.abort()
+        assert imported.read_bytes() == source.read_bytes()
+        await prepared.close()
+        assert not imported.exists()
+        assert source.read_text(encoding="utf-8") == "original transcript"
+        assert attempts == 2
+
+    asyncio.run(scenario())
 
 
 def test_lifecycle_default_profile_forks_at_selected_entry(

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from functools import partial
+from pathlib import Path
 
 from loushang.coding.product_plan import (
     CODING_CAPABILITY_PROFILE,
@@ -21,6 +23,12 @@ from loushang.harness.transcript import (
     AgentTranscriptLifecycle,
     AgentTranscriptSessionFactory,
     ProductTranscriptSession,
+    SessionSummary,
+    TranscriptDeletionOwner,
+)
+from loushang.harness.transcript.jsonl_file import (
+    load_agent_transcript_file,
+    load_agent_transcript_header,
 )
 
 _LIFECYCLE = AgentTranscriptLifecycle(
@@ -144,6 +152,76 @@ class SessionManager(
 
     def get_runtime_capability(self, slot: str) -> object | tuple[object, ...]:
         return self._lifecycle_session.product_binding.value(slot)
+
+
+def _create_owned_session_factory(*, store_state_root: Path | None = None) -> AgentTranscriptSessionFactory[
+    ResolvedRuntimeProfile, RuntimeProfileBinding,
+]:
+    """Create an application-owned factory; never replace the legacy singleton."""
+    lifecycle = AgentTranscriptLifecycle(
+        bind_runtime=CODING_TRANSCRIPT_RUNTIME.bind_lifecycle,
+        bind_runtime_owned=CODING_TRANSCRIPT_RUNTIME.bind_lifecycle_owned,
+    )
+    return AgentTranscriptSessionFactory(
+        lifecycle=lifecycle,
+        resolve_binding_input=_resolve_coding_binding_input,
+        header_metadata=_coding_header_metadata,
+        validate_restored_header=_validate_coding_restored_header,
+        session_file_factory=lifecycle.default_jsonl_session_file,
+        owned_product_id=CODING_PRODUCT_ID,
+        store_state_root=store_state_root,
+    )
+
+
+def _bind_owned_session_manager(
+    factory: AgentTranscriptSessionFactory[ResolvedRuntimeProfile, RuntimeProfileBinding],
+) -> type[SessionManager]:
+    """Reference the runtime's factory, with non-mutating disk preview loaders."""
+    transient = AgentTranscriptSessionFactory(
+        lifecycle=AgentTranscriptLifecycle(
+            bind_runtime=CODING_TRANSCRIPT_RUNTIME.bind_lifecycle,
+            header_loader=partial(load_agent_transcript_header, read_only=True),
+            snapshot_loader=partial(load_agent_transcript_file, read_only=True),
+        ),
+        index_writable=False,
+        resolve_binding_input=_resolve_coding_binding_input,
+        header_metadata=_coding_header_metadata,
+        validate_restored_header=_validate_coding_restored_header,
+    )
+
+    class ApplicationSessionManager(SessionManager):
+        @classmethod
+        def _factory_for_persistence(
+            cls, persist: bool,
+        ) -> AgentTranscriptSessionFactory[ResolvedRuntimeProfile, RuntimeProfileBinding]:
+            # The runtime owns admission/cleanup; this class is only a binding.
+            factory._accepting()
+            return factory if persist else transient
+
+        @classmethod
+        async def rename_session(cls, session_file: str | Path, name: str | None) -> SessionSummary:
+            factory._accepting()
+            context = factory._discover_owned_context(session_file)
+            async with factory._owned_source(context) as source:
+                manager = cls(lifecycle_session=source)
+                await manager.append_session_info(name)
+                return manager.get_session_summary()
+
+        @classmethod
+        async def delete_session(
+            cls, session_file: str | Path, *, current_session_file: str | Path | None = None,
+            maintenance_owner: TranscriptDeletionOwner | None = None,
+        ) -> bool:
+            # Transcript deletion is writer-owned. Attachments remain recoverable
+            # for explicit maintenance, never deleted through a pathname fallback.
+            if maintenance_owner is not None and maintenance_owner is not factory:
+                raise ValueError("application transcript maintenance belongs to its original factory")
+            return await factory.delete_transcript(session_file, current_session_file=current_session_file)
+
+        async def create_branched_session(self, leaf_id: str) -> Path | None:
+            raise ValueError("owned branching requires the Session-returning fork API")
+
+    return ApplicationSessionManager
 
 
 __all__ = ["SessionManager"]

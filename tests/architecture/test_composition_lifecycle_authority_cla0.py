@@ -5,8 +5,22 @@ import re
 import subprocess
 import sys
 from collections import Counter
+from collections.abc import Iterator
 from functools import cache
 from pathlib import Path
+
+import pytest
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _release_source_caches() -> Iterator[None]:
+    """Release derived indexes before the module's full source AST cache."""
+    try:
+        yield
+    finally:
+        _tracked_call_sites.cache_clear()
+        _source_trees.cache_clear()
+
 
 BASELINE_PATH = Path(
     "docs/internals/architecture/harness/"

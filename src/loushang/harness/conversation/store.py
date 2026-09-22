@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -39,6 +40,12 @@ class ConversationKey:
     def __post_init__(self) -> None:
         _require_text(self.namespace, name="conversation namespace")
         _require_text(self.conversation_id, name="conversation id")
+
+
+# A namespace target grants query lifetime only, never another key's writes.
+ConversationOperationScope = Callable[
+    [ConversationKey | str], AbstractAsyncContextManager[None]
+]
 
 
 @dataclass(frozen=True)

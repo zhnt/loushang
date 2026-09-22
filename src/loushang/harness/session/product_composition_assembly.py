@@ -38,6 +38,9 @@ from loushang.harness.plugin_authoring.contribution_admission import (
 from loushang.harness.plugin_authoring.provider_admission import (
     prepare_capability_provider_candidate,
 )
+from loushang.harness.resources.plugins.contribution_types import (
+    PLUGIN_OWNER_CONTRIBUTION_KINDS,
+)
 from loushang.harness.resources.plugins.selection import (
     PluginSelection,
     PluginSelectionPlanV2,
@@ -61,9 +64,6 @@ ProductCapabilityProviderSelector = Callable[
     [tuple[CapabilityProviderAdmissionRecord, ...]],
     tuple[ProductCapabilityProviderChoice, ...],
 ]
-_EXTERNAL_CONTRIBUTION_KINDS = frozenset({"resource_item", "tool_pack", "command_pack"})
-
-
 class ProductCompositionAssemblyError(RuntimeError):
     """Stable Product-visible failure before contribution admission completes."""
 
@@ -580,7 +580,7 @@ def assemble_product_composition(
     candidates = tuple(
         prepare_owner_contribution_candidate(selection, item)
         for item in selection.candidates
-        if item.declaration.kind in _EXTERNAL_CONTRIBUTION_KINDS
+        if item.declaration.kind in PLUGIN_OWNER_CONTRIBUTION_KINDS
     )
     bindings_by_key = {item.owner_key: item for item in request.owner_bindings}
     required_keys = {

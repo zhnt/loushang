@@ -8,8 +8,10 @@ without selecting a store, transcript binding, Product hooks, or presentation.
 
 from __future__ import annotations
 
+import asyncio
 import errno
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from inspect import isawaitable
 from pathlib import Path
@@ -24,6 +26,7 @@ from loushang.harness.diagnostics.types import (
 from loushang.harness.runtime import SessionOperationResult
 from loushang.harness.session.diagnostics import SessionDiagnosticsRuntime
 from loushang.harness.session.lifecycle import (
+    ImportCandidate,
     MissingCwdPolicy,
     MissingSessionCwdError,
     PreparedSessionLifecycleOperation,
@@ -59,6 +62,9 @@ TranscriptSessionBuilder = Callable[
     SessionT | Awaitable[SessionT],
 ]
 TranscriptSessionValidator = Callable[[TranscriptSessionT], None | Awaitable[None]]
+TranscriptImportFactory = Callable[
+    [Path, Path, str | None, str | None], Callable[[], Awaitable[TranscriptSessionT]] | None
+]
 
 
 @dataclass(frozen=True)
@@ -92,6 +98,8 @@ class ProductTranscriptSessionLifecyclePorts(Generic[TranscriptSessionT, Session
     transcript_cwd: Callable[[TranscriptSessionT], str]
     transcript_session_ref: Callable[[TranscriptSessionT], str | None]
     transcript_leaf_entry_id: Callable[[TranscriptSessionT], str | None]
+    prepare_import_transcript: TranscriptImportFactory[TranscriptSessionT] | None = None
+    mark_import_delivered: Callable[[TranscriptSessionT], None] | None = None
 
 
 @dataclass(frozen=True)
@@ -102,6 +110,33 @@ class ProductTranscriptSessionBinding(Generic[ProductTranscriptSessionT]):
     session_dir: Path
     persist: bool
     resolve_cwd_override: Callable[[str | Path], str]
+
+    def prepare_import(
+        self, source: Path, destination: Path, cwd_override: str | None, fingerprint: str | None,
+    ) -> Callable[[], Awaitable[ProductTranscriptSessionT]] | None:
+        # Resolve a capability before any destination IO, without constructing
+        # an unawaited coroutine when the original transition hook cancels.
+        factory = self.session_type._factory_for_persistence(self.persist)
+        if not factory.owns_persistent_sessions:
+            return None
+        if destination.expanduser().absolute() != self.session_dir.expanduser().absolute():
+            raise ValueError("owned import destination differs from the bound Session root")
+
+        async def import_transcript() -> ProductTranscriptSessionT:
+            return await self.session_type.import_transcript(
+                source, session_dir=self.session_dir,
+                cwd_override=(self.resolve_cwd_override(cwd_override)
+                              if cwd_override is not None else None),
+                expected_source_fingerprint=fingerprint,
+                _validate_cwd=lambda cwd: self._validate_cwd(cwd, str(source)),
+                _unpublished=True,
+            )
+
+        return import_transcript
+
+    @staticmethod
+    def mark_import_delivered(transcript: ProductTranscriptSessionT) -> None:
+        transcript._mark_import_delivered()
 
     async def create(
         self,
@@ -159,6 +194,8 @@ class ProductTranscriptSessionBinding(Generic[ProductTranscriptSessionT]):
     @staticmethod
     async def dispose(transcript: ProductTranscriptSessionT) -> None:
         await transcript.dispose_runtime_profile()
+        if not transcript.runtime_disposed:
+            raise RuntimeError("transcript runtime cleanup remains pending")
 
     async def rename(
         self,
@@ -180,14 +217,20 @@ class ProductTranscriptSessionBinding(Generic[ProductTranscriptSessionT]):
     @staticmethod
     def validate_available_cwd(transcript: ProductTranscriptSessionT) -> None:
         session_cwd = transcript.get_cwd()
+        session_file = transcript.get_session_file()
+        ProductTranscriptSessionBinding._validate_cwd(
+            session_cwd, str(session_file) if session_file is not None else None,
+        )
+
+    @staticmethod
+    def _validate_cwd(session_cwd: str, session_ref: str | None) -> None:
         candidate = Path(session_cwd).expanduser()
         if candidate.exists() and candidate.is_dir():
             return
-        session_file = transcript.get_session_file()
         raise MissingSessionCwdError(
             SessionCwdIssue(
                 session_cwd=session_cwd,
-                session_ref=str(session_file) if session_file is not None else None,
+                session_ref=session_ref,
             )
         )
 
@@ -213,6 +256,58 @@ class ProductTranscriptSessionLifecycleStore(Generic[TranscriptSessionT, Session
         self._build_session = build_session
         self._validate_restored_transcript = validate_restored_transcript
         self._transcripts_by_session_id: dict[int, TranscriptSessionT] = {}
+        self._pending_transcripts: dict[int, TranscriptSessionT] = {}
+        self._closing = False
+        self._active = 0
+        self._idle = asyncio.Event()
+        self._idle.set()
+        self._cleanup_lock = asyncio.Lock()
+
+    @property
+    def pending_transcripts(self) -> tuple[TranscriptSessionT, ...]:
+        return tuple(self._pending_transcripts.values())
+
+    def fence(self) -> None:
+        self._closing = True
+
+    @contextmanager
+    def _admission(self) -> Iterator[None]:
+        if self._closing:
+            raise RuntimeError("transcript lifecycle store is closed")
+        self._active += 1
+        self._idle.clear()
+        try:
+            yield
+        finally:
+            self._active -= 1
+            if not self._active:
+                self._idle.set()
+
+    async def _discard(self, transcript: TranscriptSessionT) -> None:
+        async with self._cleanup_lock:
+            if id(transcript) not in self._pending_transcripts:
+                return
+            await _maybe_await(self._ports.dispose_transcript(transcript))
+            self._pending_transcripts.pop(id(transcript))
+
+    async def _discard_failed(self, transcript: TranscriptSessionT, error: BaseException) -> None:
+        try:
+            await self._discard(transcript)
+        except BaseException as cleanup:
+            error.add_note(f"transcript lifecycle cleanup retained: {type(cleanup).__name__}")
+
+    async def close(self) -> None:
+        """Join admitted construction and settle only undelivered transcripts."""
+        self.fence()
+        await self._idle.wait()
+        failures: list[Exception] = []
+        for transcript in self.pending_transcripts:
+            try:
+                await self._discard(transcript)
+            except Exception as error:
+                failures.append(error)
+        if failures:
+            raise failures[0]
 
     async def create(
         self,
@@ -222,10 +317,35 @@ class ProductTranscriptSessionLifecycleStore(Generic[TranscriptSessionT, Session
         cwd: str,
         parent_session_ref: str | None,
     ) -> SessionT:
-        transcript = await _maybe_await(
-            self._ports.create_transcript(cwd, parent_session_ref)
-        )
-        return await self._build_or_dispose(transcript, current_session, transition)
+        with self._admission():
+            transcript = await _maybe_await(
+                self._ports.create_transcript(cwd, parent_session_ref)
+            )
+            return await self._build_or_dispose(transcript, current_session, transition)
+
+    def prepare_import(
+        self, source: Path, destination: Path, cwd_override: str | None, fingerprint: str | None,
+    ) -> ImportCandidate[SessionT] | None:
+        factory = self._ports.prepare_import_transcript
+        if factory is None:
+            return None
+        operation = factory(source, destination, cwd_override, fingerprint)
+        if operation is None:
+            return None
+
+        async def build(current: SessionT | None, transition: SessionLifecycleTransition) -> SessionT:
+            with self._admission():
+                transcript = await operation()
+                self._pending_transcripts[id(transcript)] = transcript
+                try:
+                    if self._validate_restored_transcript is not None:
+                        await _maybe_await(self._validate_restored_transcript(transcript))
+                except BaseException as error:
+                    await self._discard_failed(transcript, error)
+                    raise
+                return await self._build_or_dispose(transcript, current, transition)
+
+        return build
 
     async def restore(
         self,
@@ -235,16 +355,18 @@ class ProductTranscriptSessionLifecycleStore(Generic[TranscriptSessionT, Session
         *,
         cwd_override: str | None = None,
     ) -> SessionT:
-        transcript = await _maybe_await(
-            self._ports.restore_transcript(session_ref, cwd_override)
-        )
-        try:
-            if self._validate_restored_transcript is not None:
-                await _maybe_await(self._validate_restored_transcript(transcript))
-        except BaseException:
-            await _maybe_await(self._ports.dispose_transcript(transcript))
-            raise
-        return await self._build_or_dispose(transcript, current_session, transition)
+        with self._admission():
+            transcript = await _maybe_await(
+                self._ports.restore_transcript(session_ref, cwd_override)
+            )
+            self._pending_transcripts[id(transcript)] = transcript
+            try:
+                if self._validate_restored_transcript is not None:
+                    await _maybe_await(self._validate_restored_transcript(transcript))
+            except BaseException as error:
+                await self._discard_failed(transcript, error)
+                raise
+            return await self._build_or_dispose(transcript, current_session, transition)
 
     async def fork(
         self,
@@ -252,15 +374,20 @@ class ProductTranscriptSessionLifecycleStore(Generic[TranscriptSessionT, Session
         transition: SessionLifecycleTransition,
         target_entry_id: str | None,
     ) -> SessionT:
-        transcript = await _maybe_await(
-            self._ports.fork_transcript(
-                self._transcript_for_session(session), target_entry_id
+        with self._admission():
+            transcript = await _maybe_await(
+                self._ports.fork_transcript(
+                    self._transcript_for_session(session), target_entry_id
+                )
             )
-        )
-        return await self._build_or_dispose(transcript, session, transition)
+            return await self._build_or_dispose(transcript, session, transition)
 
     def get_cwd(self, session: SessionT) -> str:
         return self._ports.transcript_cwd(self._transcript_for_session(session))
+
+    def mark_import_delivered(self, session: SessionT) -> None:
+        if self._ports.mark_import_delivered is not None:
+            self._ports.mark_import_delivered(self._transcript_for_session(session))
 
     def get_session_ref(self, session: SessionT) -> str | None:
         return self._ports.transcript_session_ref(self._transcript_for_session(session))
@@ -276,14 +403,18 @@ class ProductTranscriptSessionLifecycleStore(Generic[TranscriptSessionT, Session
         current_session: SessionT | None,
         transition: SessionLifecycleTransition,
     ) -> SessionT:
+        self._pending_transcripts[id(transcript)] = transcript
         try:
+            if self._closing:
+                raise RuntimeError("transcript lifecycle store is closed")
             session = await _maybe_await(
                 self._build_session(transcript, current_session, transition)
             )
-        except BaseException:
-            await _maybe_await(self._ports.dispose_transcript(transcript))
+        except BaseException as error:
+            await self._discard_failed(transcript, error)
             raise
         self._transcripts_by_session_id[id(session)] = transcript
+        self._pending_transcripts.pop(id(transcript))
         return session
 
     def _transcript_for_session(self, session: SessionT) -> TranscriptSessionT:

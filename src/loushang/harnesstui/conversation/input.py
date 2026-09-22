@@ -228,6 +228,9 @@ class ConversationInputRouter:
     height: int = 12
     prompt_image_stager: PromptImageAttachmentStager | None = None
     clipboard_outcome_presenter: ClipboardOutcomePresenter | None = None
+    # Deferred is a text-only intent port: its caller accepts the action before
+    # clearing/history presentation. It never consumes remote display queues.
+    submission_presentation: Literal["optimistic", "deferred"] = "optimistic"
     _jump_mode: PromptJumpDirection | None = None
     draft_store: DraftStore = field(
         default_factory=DraftStore,
@@ -241,6 +244,9 @@ class ConversationInputRouter:
     _composer_target: ComposerInputTarget = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
+        if self.submission_presentation not in {"optimistic", "deferred"}:
+            raise ValueError("invalid submission presentation")
+        self._check_deferred_attachments()
         self.keybindings = conversation_keybinding_manager(self.keybindings)
         self._composer_target = ComposerInputTarget(self.app.composer)
 
@@ -249,6 +255,7 @@ class ConversationInputRouter:
 
         self.app = app
         self._composer_target = ComposerInputTarget(app.composer)
+        self._jump_mode = None
 
     def dispose(self) -> None:
         """Idempotently release draft-owned resources on every runner exit."""
@@ -299,6 +306,8 @@ class ConversationInputRouter:
                 return ConversationInputHandled()
             self._jump_mode = None
         if keybindings.matches(event.key, CONVERSATION_QUEUE_EDIT_LAST_ACTION):
+            if self.submission_presentation == "deferred":
+                return ConversationInputIgnored()
             self._restore_queued_messages()
             return ConversationInputHandled()
         if keybindings.matches(event.key, "tui.transcript.open"):
@@ -374,6 +383,8 @@ class ConversationInputRouter:
     def _abort_or_clear(self) -> ConversationInputResult:
         if self.app.state.running:
             return ConversationAbortResult()
+        if self.submission_presentation == "deferred":
+            return ConversationInputIgnored()
         if self.app.state.pending_steers:
             pending_steer = self.app.state.pending_steers.pop(0)
             return ConversationSteerResult(text=pending_steer)
@@ -389,16 +400,19 @@ class ConversationInputRouter:
             self.app.composer.set_text(text)
 
     def _submit(self) -> ConversationInputResult:
+        self._check_deferred_attachments()
         text = self.app.composer.value
         if not text.strip():
             return ConversationInputIgnored()
         if self.should_exit(text.strip()):
-            self.app.composer.clear()
-            self._clear_prompt_attachments()
+            if self.submission_presentation == "optimistic":
+                self.app.composer.clear()
+                self._clear_prompt_attachments()
             return ConversationExitResult(exit_code=0)
         if self.is_local_command(text.strip()):
-            self.app.composer.clear()
-            self._clear_prompt_attachments()
+            if self.submission_presentation == "optimistic":
+                self.app.composer.clear()
+                self._clear_prompt_attachments()
             return ConversationLocalResult(text=text.strip())
         if self.app.state.running:
             mode = self.policy.resolve_running_submit(self.app.state.input_capabilities)
@@ -407,6 +421,8 @@ class ConversationInputRouter:
                 if mode is None
                 else self._submit_running(mode=mode)
             )
+        if self.submission_presentation == "deferred":
+            return ConversationPromptResult(text=text)
         attachments = self._take_prompt_attachments_for_text(text)
         self.app.start_prompt(text)
         return ConversationPromptResult(
@@ -419,11 +435,15 @@ class ConversationInputRouter:
         *,
         mode: RunningSubmitMode,
     ) -> ConversationInputResult:
+        self._check_deferred_attachments()
         if not self.app.state.input_capabilities.supports(mode):
             return ConversationInputIgnored()
         text = self.app.composer.value
         if not text.strip():
             return ConversationInputIgnored()
+        if self.submission_presentation == "deferred":
+            return (ConversationFollowupResult(text=text) if mode == "follow_up"
+                    else ConversationSteerResult(text=text))
         attachments = self._take_prompt_attachments_for_text(text)
         self.app.composer.add_history(text)
         self.app.composer.clear()
@@ -478,6 +498,7 @@ class ConversationInputRouter:
         return ConversationInputHandled()
 
     def _paste_clipboard_image(self) -> ConversationInputResult:
+        self._check_deferred_attachments()
         if self.prompt_image_stager is None:
             return ConversationInputIgnored()
         outcome = self.prompt_image_stager()
@@ -521,6 +542,10 @@ class ConversationInputRouter:
 
     def _clear_prompt_attachments(self) -> None:
         self.draft_store.clear()
+
+    def _check_deferred_attachments(self) -> None:
+        if self.submission_presentation == "deferred" and (self.prompt_image_stager is not None or self.draft_store):
+            raise ValueError("deferred input requires an empty attachment store and no image stager")
 
 
 def bind_clipboard_image_input_router(

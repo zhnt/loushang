@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from loushang.foundation.json import JSONValue
 from loushang.harness.conversation import (
@@ -20,6 +20,7 @@ from loushang.harness.conversation import (
     ConversationStore,
     MemoryConversationStore,
 )
+from loushang.harness.conversation.store import ConversationOperationScope
 from loushang.harness.runtime import (
     ProductRuntimePlan,
     ResolvedRuntimeProfile,
@@ -43,15 +44,27 @@ from loushang.harness.transcript.jsonl_file import (
     create_agent_transcript_file_store,
 )
 from loushang.harness.transcript.lifecycle import (
+    AgentTranscriptBindingOwner,
     AgentTranscriptLifecycleContext,
     AgentTranscriptRuntimeBinding,
+    AsyncDisposer,
 )
 from loushang.harness.transcript.profile import AgentTranscriptProfile
 from loushang.harness.transcript.types import AgentTranscriptRecord
 
+if TYPE_CHECKING:
+    from loushang.harness.journal._rooted_io import RootedFileIO
+
 _STORE_SLOT = "conversation.store"
 _TRANSCRIPT_SLOT = "agent.transcript_profile"
 _COMPACTION_SLOT = "context.compaction"
+
+
+@dataclass(frozen=True)
+class _ScopedTranscriptContext:
+    context: AgentTranscriptLifecycleContext
+    operation_scope: ConversationOperationScope
+    file_io: RootedFileIO | None
 
 
 @dataclass(frozen=True)
@@ -247,12 +260,44 @@ class AgentTranscriptProfileRuntime:
         profile: ResolvedRuntimeProfile,
     ) -> AgentTranscriptRuntimeBinding[RuntimeProfileBinding]:
         binding = await self._binder.bind(profile, context=context)
+        return self._project_lifecycle(context, profile, binding, lambda: self._binder.dispose(binding))
+
+    async def bind_lifecycle_owned(
+        self,
+        context: AgentTranscriptLifecycleContext,
+        profile: ResolvedRuntimeProfile,
+        retain_disposer: AgentTranscriptBindingOwner,
+    ) -> AgentTranscriptRuntimeBinding[RuntimeProfileBinding]:
+        """Transfer binding cleanup before factories or transcript projection.
+
+        The trusted construction owner supplies a synchronous, non-throwing
+        retention callback and keeps it alive for this invocation. The same
+        disposer is used by the projected binding; no competing cleanup owner
+        is created. Each factory still owns resources it has not returned.
+        """
+        scoped_context = _ScopedTranscriptContext(context, retain_disposer.operation_scope, retain_disposer.file_io)
+        binding = self._binder.prepare_binding(profile, context=scoped_context)
+
+        async def dispose() -> None:
+            await self._binder.dispose(binding)
+
+        retain_disposer(dispose)
+        await self._binder.bind_prepared(binding)
+        return self._project_lifecycle(context, profile, binding, dispose)
+
+    def _project_lifecycle(
+        self,
+        context: AgentTranscriptLifecycleContext,
+        profile: ResolvedRuntimeProfile,
+        binding: RuntimeProfileBinding,
+        dispose: AsyncDisposer,
+    ) -> AgentTranscriptRuntimeBinding[RuntimeProfileBinding]:
         return AgentTranscriptRuntimeBinding(
             store=self.selected_store(binding),
             key=self.conversation_key(context),
             profile=self.selected_transcript_profile(binding),
             product_binding=binding,
-            dispose=lambda: self._binder.dispose(binding),
+            dispose=dispose,
             runtime_profile_snapshot=profile.snapshot(),
             get_compaction_capability=lambda: self.selected_compaction_capability(
                 binding
@@ -363,12 +408,18 @@ class AgentTranscriptProfileRuntime:
                 f"the {self.spec.product_name} file store requires a persistent "
                 "session context"
             )
-        layout = AgentTranscriptFileLayout(lifecycle_context.session_dir)
+        layout = AgentTranscriptFileLayout(
+            lifecycle_context.session_dir,
+            file_io=context.file_io if isinstance(context, _ScopedTranscriptContext) else None,
+        )
         layout.bind_create_path(
             self.conversation_key(lifecycle_context),
             lifecycle_context.session_file,
         )
-        return create_agent_transcript_file_store(layout)
+        return create_agent_transcript_file_store(
+            layout,
+            operation_scope=context.operation_scope if isinstance(context, _ScopedTranscriptContext) else None,
+        )
 
     @staticmethod
     def _create_transcript_profile(
@@ -394,6 +445,8 @@ class AgentTranscriptProfileRuntime:
     def _require_context(
         context: object | None,
     ) -> AgentTranscriptLifecycleContext:
+        if isinstance(context, _ScopedTranscriptContext):
+            return context.context
         if not isinstance(context, AgentTranscriptLifecycleContext):
             raise TypeError(
                 "Agent transcript runtime factories require "
