@@ -238,7 +238,9 @@ def test_managed_activation_cannot_renew_expired_preparation_budget(tmp_path):
 def test_managed_cancelled_activation_retains_late_serving_task(tmp_path, monkeypatch):
     async def scenario():
         directory = LocalConnectionDirectoryV1(tmp_path / "runtime")
-        server, scopes = _server(directory, close_timeout=0.05)
+        # Keep the injected close delay comfortably above cross-platform event
+        # loop jitter; this test asserts ownership, not a 50 ms latency bound.
+        server, scopes = _server(directory, close_timeout=1)
         entered, release = asyncio.Event(), asyncio.Event()
         try:
             await server.prepare()
@@ -506,7 +508,9 @@ def test_G16_LOCAL_STOP_reserved_slot_and_reply_barrier_avoid_requester_self_wai
 def test_G16_LOCAL_CLEANUP_debt_keeps_capacity_until_exact_scope_settles(tmp_path):
     async def scenario():
         directory = LocalConnectionDirectoryV1(tmp_path / "runtime")
-        server, scopes = _server(directory, close_timeout=0.05)
+        # The same bound covers startup and cleanup.  Leave startup enough room
+        # on loaded Windows runners while still forcing bounded cleanup debt.
+        server, scopes = _server(directory, close_timeout=1)
         client = LocalAppClientConnectionV1(directory, "workspace")
         try:
             await server.start()
