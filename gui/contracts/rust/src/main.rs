@@ -2,6 +2,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, value::RawValue, Value};
 use std::io::{self, BufRead};
+#[allow(dead_code)]
 #[path = "../../../src-tauri/src/app_client/projection.rs"]
 mod projection;
 // Compile the generated candidate DTOs without treating them as wire decoders.

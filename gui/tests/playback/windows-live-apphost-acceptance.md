@@ -1,6 +1,7 @@
 # Windows live AppHost desktop acceptance
 
-Date: 2026-09-22. Status: **read-only events and reconnect desktop slice passed**.
+Date: 2026-09-22. Status: **events and reconnect desktop slice passed; controlled
+composer automation passed, visible control acceptance pending**.
 
 This record is narrower than the B1 fixture checklist in
 [windows-acceptance.md](windows-acceptance.md). It covers one visible Windows
@@ -80,6 +81,14 @@ The result evidence records `transportReconnectObserved` and
 `liveProjectionTriggered` after one deterministic real Coding execution. No
 send, approval or other mutation is automatically replayed.
 
+The subsequent controlled-composer implementation keeps the attachment,
+controller generation and member identity in native Rust. Send and Interrupt
+are serialized through the same authenticated connection that owns the
+attachment. Automated real-AppHost integration verifies that a desktop submit
+reaches the real Coding `AgentSession` and its deterministic response streams
+back. The original human-observed run above remains read-only evidence; a new
+visible run is still required before marking the composer interaction accepted.
+
 ## Live presentation projection
 
 Validated authoritative snapshots are projected into transcript records, one
@@ -97,5 +106,6 @@ transcript/execution rejection.
 - Native interaction at Windows 125% and 150% display scaling.
 - Normal/maximized/restore and sidebar-drag interaction coverage beyond the
   single observed wide window.
-- Accepted live contracts for Workspace, Changes, Tasks, Subagents and all
-  mutation controls.
+- Visible Send/Interrupt interaction against the deterministic AppHost launcher.
+- Accepted live contracts for Workspace, Changes, Tasks, Subagents, New Session,
+  approvals and attachments.

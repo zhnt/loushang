@@ -3,7 +3,7 @@
 This directory contains the Product-neutral native HarnessGUI shell accepted by
 [GUI-B0 issue #582](https://github.com/zhnt/loushang/issues/582). React and
 TypeScript own presentation and UI-local state; Tauri/Rust owns desktop
-integration and adapts the accepted read-only App Contract slice. The GUI does not
+integration and adapts the accepted App Contract slice. The GUI does not
 own Product, Harness, AppService, or AppHost runtimes.
 
 The default B1 launch is deliberately offline. It provides a Product-neutral UI
@@ -12,11 +12,12 @@ Sessions, isolated per-Session drafts, active Run and Task progress, expandable
 Activity details, distinct root/subagent AgentRuns, and read-only ChangeSet
 review through a central Quick Look and the Work Dock. Every sample value is
 labelled as fixture data. It does not read a repository, start a Python backend,
-or request a model. An opt-in B2 Windows launch can attach read-only to an
+or request a model. An opt-in B2 Windows launch can attach to an
 existing AppHost, install one barriered initial Session snapshot, publish
 validated ongoing event rounds with authoritative replacement snapshots, and
-reconnect through a fresh snapshot after transport loss or an event gap. It
-does not enable any mutation. Further cross-language and real-service work
+reconnect through a fresh snapshot after transport loss or an event gap. It can
+submit text and interrupt the current execution in that existing Session over
+the same authenticated controller connection. Further cross-language and real-service work
 remains in C1/B2 as described in the
 [engineering plan](../docs/internals/architecture/drafts/gui-engineering-bootstrap-plan.md).
 
@@ -57,7 +58,7 @@ executable without producing installers. `dev:fixture-native` and
 `build:fixture-native` enable the B1-only Rust invoke/event canary; the command
 is absent from the default native build.
 
-## Read-only live launch
+## Controlled live launch
 
 The AppHost/desktop launcher may start the built executable with both native
 arguments below. Omitting both keeps the offline fixture. Partial, duplicate or
@@ -72,14 +73,17 @@ The record root and Mux selection are parsed and retained by Rust; the WebView
 cannot provide or read them. Native admission still validates the private record
 directory and file before authentication. The published payload contains no
 attachment ID, controller generation or authentication key. Live snapshots are
-visibly labelled read-only; fixture playback, Send, Interrupt, Workspace,
-ChangeSet, Tasks and Subagents remain unavailable until their own accepted live
-contracts are implemented. Closing the window cooperatively detaches and joins
+visibly labelled as AppHost-controlled. Send and Interrupt use controller facts
+kept only in Rust; fixture playback, Workspace, ChangeSet, Tasks and Subagents
+remain unavailable until their own accepted live contracts are implemented. Closing the window cooperatively detaches and joins
 the reader without stopping the shared AppHost. Each connection attempt has a
 new epoch. A failed transport or invalid round marks live facts
 disconnected/resync-required; the native adapter rereads the private record,
 authenticates and attaches again, and the WebView resumes only after a complete
-fresh snapshot and membership barrier. Unknown mutations are never replayed.
+fresh snapshot and membership barrier. A submit with an uncertain response is
+looked up by its stable submission ID after reconnect and is never replayed
+automatically. The draft is cleared only after acceptance is known; commands are
+blocked until the resulting authoritative event or snapshot advances the Session.
 
 For an opt-in desktop acceptance run, first build the release executable and
 then launch an isolated real AppHost plus two real mux/session projections:
@@ -92,8 +96,8 @@ pnpm --dir gui run accept:live-native
 The second command opens a visible HarnessGUI window and keeps the shared
 AppHost alive until that window is closed. It also rotates the real local
 listener and connection record, and waits for the GUI to reconnect and accept a
-fresh authoritative snapshot. Inspect the final connected/read-only labels,
-real Session projection, disabled mutation controls and normal/maximized layout,
+fresh authoritative snapshot. Inspect the final connected labels, real Session
+projection, Send/Interrupt behavior and normal/maximized layout,
 then close the window. The launcher verifies the reconnect, that the GUI
 released its mux controller, that the AppHost is still accepting, and that an
 independent peer Session is still snapshot-readable. Non-secret lifecycle evidence is written under
@@ -102,9 +106,10 @@ rapid GUI gate and does not invoke a model.
 
 The first observed live desktop run is recorded in
 [Windows live AppHost acceptance](tests/playback/windows-live-apphost-acceptance.md).
-It records the initial read-only projection, ongoing event integration,
-disconnect/resynchronization and cooperative desktop-exit lifecycle. Mutation
-and Windows display scaling remain outside this slice.
+It records the initial projection, ongoing event integration,
+disconnect/resynchronization and cooperative desktop-exit lifecycle. The
+automated integration check additionally submits through the production desktop
+control bridge. Windows display scaling remains outside this slice.
 
 For a standalone offline executable, use `pnpm --dir gui run build:fixture-native`
 from the repository root. Do not substitute a plain `cargo build`: that bypasses

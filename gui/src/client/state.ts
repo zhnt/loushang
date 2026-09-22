@@ -101,6 +101,11 @@ export type GuiAction =
       readonly value: string;
     }
   | {
+      readonly type: "draft.submitted";
+      readonly sessionId: string;
+      readonly expected: string;
+    }
+  | {
       readonly type: "document.selected";
       readonly sessionId: string;
       readonly documentId: string;
@@ -240,6 +245,15 @@ export function guiReducer(state: GuiState, action: GuiAction): GuiState {
         local: {
           ...state.local,
           drafts: { ...state.local.drafts, [action.sessionId]: action.value },
+        },
+      };
+    case "draft.submitted":
+      if (state.local.drafts[action.sessionId] !== action.expected) return state;
+      return {
+        ...state,
+        local: {
+          ...state.local,
+          drafts: { ...state.local.drafts, [action.sessionId]: "" },
         },
       };
     case "document.selected":

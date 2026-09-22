@@ -200,10 +200,22 @@ export function createNativeLiveClient(): HarnessClientUiPort {
       await invoke("resync_live_readonly");
     },
     async submitText(input) {
-      return { submissionId: input.submissionId, accepted: false };
+      const receipt = await invoke<{ accepted: boolean; reason?: string | null }>("live_submit_text", { input });
+      return {
+        submissionId: input.submissionId,
+        accepted: receipt.accepted,
+        reason: receipt.reason ?? undefined,
+      };
     },
-    async interrupt() {
-      return { accepted: false, reason: "The live connection is read-only." };
+    async interrupt(sessionId) {
+      const executionId = current
+        ? projectSnapshot(current).sessions.find((session) => session.id === sessionId)?.execution?.id
+        : null;
+      if (!executionId) return { accepted: false, reason: "No active execution is available." };
+      const receipt = await invoke<{ accepted: boolean; reason?: string | null }>("live_interrupt", {
+        input: { sessionId, executionId },
+      });
+      return { accepted: receipt.accepted, reason: receipt.reason ?? undefined };
     },
   };
 }

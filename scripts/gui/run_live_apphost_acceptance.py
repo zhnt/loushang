@@ -408,7 +408,7 @@ async def run(args: argparse.Namespace, root: Path) -> None:
         )
         print("Manual acceptance checklist:", flush=True)
         print(
-            "  [ ] Header/sidebar show Live AppHost · read-only (not fixture data)",
+            "  [ ] Header/sidebar show Live AppHost · controlled (not fixture data)",
             flush=True,
         )
         print("  [ ] The real Coding Session projection loads", flush=True)
@@ -421,9 +421,11 @@ async def run(args: argparse.Namespace, root: Path) -> None:
             flush=True,
         )
         print(
-            "  [ ] Composer, Send/Interrupt and fixture playback are disabled",
+            "  [ ] Type a prompt; Send is enabled and the deterministic assistant reply appears",
             flush=True,
         )
+        print("  [ ] While running, the same control becomes Interrupt", flush=True)
+        print("  [ ] Fixture playback remains unavailable", flush=True)
         print("  [ ] Workspace/Changes/Tasks/Subagents remain unavailable", flush=True)
         print(
             "  [ ] Normal/maximized resize does not cover transcript or composer",

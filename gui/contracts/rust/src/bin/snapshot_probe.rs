@@ -1,5 +1,6 @@
 //! Redacted initial-snapshot evidence consuming the desktop AppClient adapter.
 #[cfg(windows)]
+#[allow(dead_code, unused_imports)]
 #[path = "../../../../src-tauri/src/app_client/mod.rs"]
 mod app_client;
 #[cfg(windows)]
@@ -33,6 +34,7 @@ fn main() {
                     attach: true,
                     mux_name: &mux_name,
                     stop: None,
+                    control_commands: None,
                 },
                 &mut |snapshot| publish.send(snapshot).map_err(|_| ()),
             )

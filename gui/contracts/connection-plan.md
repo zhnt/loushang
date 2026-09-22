@@ -54,7 +54,8 @@ Use the existing shared AppHost application; do not start a second GUI service.
 | Negotiate | Send authenticated APP mode, verify expected execution profile/instance and exact hello, then echo hello; see `remote_client.py` | Hello is not controller ownership or UI readiness |
 | Attach | Explicit mux selector, `mux/attach`, retain attachment ID and lossless controller generation | Do not silently take over an already-controlled mux |
 | Initial snapshot | Validate attachment membership/identity and obtain each member's execution composite snapshot using the negotiated instance | Do not mix fixture values or partial member snapshots into live state |
-| Publish | Atomically install validated member snapshots and cursor barriers; expose an explicit read-only connected state | Send/approval/retry remain unavailable in this first slice |
+| Publish | Atomically install validated member snapshots and cursor barriers; expose an explicit connected state | Do not enable capabilities that were not negotiated |
+| Control | Submit or interrupt through the attachment-owning connection with exact instance, member and generation facts | Never transfer controller authority to the WebView or replay an uncertain submit |
 | Detach | Use current attachment/generation to detach, stop readers and close the borrowed connection | Never send STOP mode or shut down the shared application |
 
 Authentication uses the existing G16 transport profile even when the semantic
@@ -81,8 +82,9 @@ silently sharing one mux.
   barrier before publication. Do not synthesize missing events from UI history.
 - Keep a single writer and ongoing response reader with bounded pending work;
   control/cleanup requests must not wait behind a long-running request lock.
-- Disconnect cannot automatically replay submit, approval or mutation. This
-  slice does not implement any of those operations.
+- Disconnect cannot automatically replay submit, approval or mutation. The
+  existing-Session slice may query a stable submission ID after reconnect, but
+  only a confirmed missing result permits the user to decide whether to retry.
 
 ## Delivery checkpoints, not new default gates
 
@@ -105,18 +107,20 @@ silently sharing one mux.
    [Local attempt fencing](connection-epoch-evidence.md) now guards probe state
    updates and cancellation. Bounded mux membership rechecks reject a changed
    revision or member set after snapshots and event rounds. Continuous detection
-   and reusable desktop ownership are implemented for the read-only slice.
+   and reusable desktop ownership are implemented for the live slice.
    The attachment reader is now a reusable `ReadSession` with separate attach,
    initialize, poll and detach operations. The evidence driver alone chooses
    two rounds; the session does not own a loop or socket. Each poll commits all
    member watermarks only after its membership recheck. Request IDs fail closed
    at the existing signed-63-bit connection limit instead of wrapping.
-4. **Implemented read-only publication slice:** the Tauri host starts the shared
+4. **Implemented publication and existing-Session control slice:** the Tauri host starts the shared
    adapter from native-only launch facts, publishes one atomic initial snapshot
    and complete ongoing event rounds, and reconnects with a fresh epoch and
    snapshot after transport loss or a rejected round. React distinguishes live
-   data from fixtures and disables mutation. Native-window lifecycle acceptance
-   covers listener/record rotation, reattachment and cooperative exit.
+   data from fixtures. Submit and interrupt are serialized onto that same owned
+   connection; a lost submit response is reconciled by stable submission ID
+   after a fresh attachment. Native-window lifecycle acceptance covers listener/
+   record rotation, reattachment and cooperative exit.
 
 Transport and attachment must pass their own evidence before enabling the GUI
 connection control. No live connection readiness is claimed by checkpoint 1.
@@ -167,12 +171,13 @@ are present; partial, duplicate or unknown native arguments fail closed. Neither
 fact comes from the WebView. After authentication, attachment, every execution
 snapshot and the mux membership barrier succeed, one redacted snapshot is handed
 through a native event. Attachment/controller authority is never serialized.
-The connection then continues validated read-only polling until desktop
-stop/exit; this slice deliberately does not publish those event batches.
+The connection then continues validated polling until desktop stop/exit and
+publishes complete event rounds followed by authoritative replacement snapshots.
 
 The React client validates service-instance and membership identity, installs
-the snapshot atomically, exposes no Workspace/ChangeSet capabilities, and keeps
-Send/Interrupt disabled. An invalid or timed-out handoff asks native ownership
+the snapshot atomically, and exposes no Workspace/ChangeSet capabilities. Send
+and Interrupt call native commands only while connected; they are blocked until
+the resulting authoritative publication advances the Session. An invalid or timed-out handoff asks native ownership
 to stop and join. The default launch remains the offline fixture. This is still
 not native-window acceptance with a real host. Forced process termination and
 Tauri restart (whose exit prevention is ignored by Tauri) are

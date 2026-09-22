@@ -1,5 +1,6 @@
 //! Windows lifecycle evidence consuming the same native adapter as Tauri.
 #[cfg(windows)]
+#[allow(dead_code, unused_imports)]
 #[path = "../../../../src-tauri/src/app_client/mod.rs"]
 mod app_client;
 #[cfg(windows)]
@@ -38,6 +39,7 @@ fn main() {
                     attach,
                     mux_name: "gui-fixture",
                     stop: watch.then_some(stop),
+                    control_commands: None,
                 },
                 &mut |_| Ok(()),
             )

@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { HarnessGui } from "../../src/App";
 import { createMockAppClient } from "../../src/client/mockAppClient";
 import type { ClientSnapshot, FixturePlaybackPort } from "../../src/client/model";
@@ -124,10 +124,14 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(screen.getByRole("button", { name: "Advance fixture" })).toBeDisabled();
   });
 
-  it("keeps a live snapshot visibly read-only and hides fixture controls", async () => {
+  it("enables controlled live submission and hides fixture controls", async () => {
     const user = userEvent.setup();
     const fixture = createMockAppClient();
     const snapshot = await fixture.snapshot();
+    const submitText = vi.fn(async (input: { submissionId: string }) => ({
+      submissionId: input.submissionId,
+      accepted: true,
+    }));
     render(<HarnessGui client={{
       snapshot: async () => ({
         ...snapshot,
@@ -138,33 +142,33 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
           availability: "unavailable",
           version: null,
         })),
-        sessions: snapshot.sessions.map((session, index) => ({
+        sessions: snapshot.sessions.map((session) => ({
           ...session,
           context: { ...session.context, source: "live" },
           changeSet: null,
           documents: [],
           run: null,
-          execution: index === 0 ? {
-            id: "execution-live-1",
-            status: "running" as const,
-            revision: 3,
-            interruptRequested: false,
-            sourceStatus: "running" as const,
-            finalCursor: null,
-            truncated: false,
-          } : null,
+          status: "idle" as const,
+          execution: null,
         })),
       }),
       subscribe: () => () => undefined,
-      submitText: async (input) => ({ submissionId: input.submissionId, accepted: false }),
+      submitText,
       interrupt: async () => ({ accepted: false }),
     }} />);
-    await screen.findByText("Live AppHost · read-only");
+    await screen.findByText("Live AppHost · controlled");
     expect(screen.queryByLabelText("Fixture playback controls")).not.toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "Message for GUI development" })).toBeDisabled();
-    expect(screen.getByText("Live · read-only")).toBeVisible();
-    await user.click(screen.getByText("Execution running"));
-    expect(screen.getByText("execution-live-1")).toBeVisible();
+    const input = screen.getByRole("textbox", { name: "Message for GUI development" });
+    expect(input).toBeEnabled();
+    expect(screen.getByText("Live · AppHost")).toBeVisible();
+    await user.type(input, "Talk to the real Agent");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    expect(submitText).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: "session-gui",
+      text: "Talk to the real Agent",
+    }));
+    expect(input).toHaveValue("");
+    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
     expect(screen.queryByRole("button", { name: /Step 1/ })).not.toBeInTheDocument();
   });
 

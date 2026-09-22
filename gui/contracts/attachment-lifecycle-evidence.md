@@ -98,5 +98,6 @@ not infer that a consistent live snapshot can be published during concurrent
 membership changes from this experiment alone.
 
 The separate [real AppHost integration](apphost-integration-evidence.md) now tests
-actual ownership and idle event reads. Next expose the read-only native port with correct
-event/barrier and cleanup ownership. Keep fixture UI and live facts separate.
+actual ownership, idle event reads and the desktop control path. The native port
+now retains control authority on the connection that acquired it, publishes
+complete event rounds and owns cleanup. Keep fixture UI and live facts separate.

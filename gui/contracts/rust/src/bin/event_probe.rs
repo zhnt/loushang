@@ -1,5 +1,6 @@
 //! Observe one validated live event round through the desktop AppClient adapter.
 #[cfg(windows)]
+#[allow(dead_code, unused_imports)]
 #[path = "../../../../src-tauri/src/app_client/mod.rs"]
 mod app_client;
 #[cfg(windows)]
@@ -37,6 +38,7 @@ fn main() {
                             attach: true,
                             mux_name: &mux_name,
                             stop: Some(stop),
+                            control_commands: None,
                         },
                         1,
                         &mut |snapshot| {
@@ -60,6 +62,7 @@ fn main() {
                             }
                             Ok(())
                         },
+                        &mut |_| Ok(()),
                         &mut || Ok(true),
                     )
                     .map(|_| ())

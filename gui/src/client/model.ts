@@ -235,6 +235,7 @@ export interface SubmitTextInput {
 export interface SubmitReceipt {
   readonly submissionId: string;
   readonly accepted: boolean;
+  readonly reason?: string;
 }
 
 export interface ControlReceipt {

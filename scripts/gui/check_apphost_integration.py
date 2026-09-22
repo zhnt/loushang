@@ -62,6 +62,7 @@ CRATE = ROOT / "gui/contracts/rust"
 EXE = CRATE / "target/debug/connection_probe.exe"
 SNAPSHOT_EXE = CRATE / "target/debug/snapshot_probe.exe"
 EVENT_EXE = CRATE / "target/debug/event_probe.exe"
+CONTROL_EXE = CRATE / "target/debug/control_probe.exe"
 
 
 class InstalledPin:
@@ -191,6 +192,48 @@ async def event_round(root, trigger):
         stdout, stderr = await asyncio.wait_for(process.communicate(), 8)
         assert process.returncode == 0 and not stdout and not stderr, (stdout, stderr)
         return initial["payload"], rounds
+    finally:
+        if process.returncode is None:
+            process.kill()
+            await process.wait()
+
+
+async def control_round(root, session_id):
+    process = await asyncio.create_subprocess_exec(
+        str(CONTROL_EXE),
+        str(root),
+        "5000",
+        "gui-fixture",
+        session_id,
+        "gui-native-control",
+        "submit through the desktop control bridge",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    assert process.stdout is not None
+    assert process.stderr is not None
+    try:
+        line = await asyncio.wait_for(process.stdout.readline(), 8)
+        if not line:
+            stdout, stderr = await process.communicate()
+            raise AssertionError((process.returncode, stdout, stderr))
+        control = json.loads(line)
+        assert control == {"accepted": True, "reason": None, "type": "control"}, control
+        rounds = []
+        async with asyncio.timeout(8):
+            while True:
+                value = json.loads(await process.stdout.readline())
+                assert value["type"] == "round"
+                rounds.append(value["payload"])
+                if any(
+                    event.get("source", {}).get("kind") == "turn_completed"
+                    for member in value["payload"]["members"]
+                    for event in member["events"]
+                ):
+                    break
+        stdout, stderr = await asyncio.wait_for(process.communicate(), 8)
+        assert process.returncode == 0 and not stdout and not stderr, (stdout, stderr)
+        return rounds
     finally:
         if process.returncode is None:
             process.kill()
@@ -369,6 +412,22 @@ async def run(root):
             "Real AppHost: validated event round and authoritative snapshot passed",
             flush=True,
         )
+        gui_session_id = published["sessions"][0]["source"]["source"]["identity"][
+            "sessionId"
+        ]
+        controlled = await control_round(root / "connection", gui_session_id)
+        controlled_kinds = {
+            event["source"]["kind"]
+            for value in controlled
+            for member in value["members"]
+            for event in member["events"]
+            if "source" in event
+        }
+        assert {"user_message", "assistant_message", "turn_completed"} <= controlled_kinds
+        print(
+            "Real AppHost: desktop submit reached Coding AgentSession and streamed back",
+            flush=True,
+        )
         competing = LocalAppClientConnectionV1(directory, "workspace")
         connections.append(competing)
         await competing.start()
@@ -458,6 +517,8 @@ if __name__ == "__main__":
             "snapshot_probe",
             "--bin",
             "event_probe",
+            "--bin",
+            "control_probe",
         ],
         check=True,
         cwd=ROOT,

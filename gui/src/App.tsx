@@ -65,6 +65,12 @@ export function HarnessGui({ client }: HarnessGuiProps) {
   const refreshRef = useRef<(() => void) | null>(null);
   const syncPendingRef = useRef(true);
   const [remainingSteps, setRemainingSteps] = useState(fixture?.remainingFixtureSteps() ?? 0);
+  const [controlPending, setControlPending] = useState<"submit" | "interrupt" | null>(null);
+  const controlPendingRef = useRef(false);
+  const [awaitingPublication, setAwaitingPublication] = useState<{
+    readonly sessionId: string;
+    readonly cursor: string;
+  } | null>(null);
   const [bridgeProbe, setBridgeProbe] = useState<BridgeProbe>({
     status: "web-mock",
     label: "Web Mock",
@@ -97,7 +103,7 @@ export function HarnessGui({ client }: HarnessGuiProps) {
         setRemainingSteps(fixture?.remainingFixtureSteps() ?? 0);
         setNotice(snapshot.source.kind === "fixture"
           ? "Fixture snapshot installed. No backend is running."
-          : "Read-only live snapshot installed.");
+          : "Live AppHost connection installed.");
       } catch {
         if (active) dispatch({
           type: "sync.failed",
@@ -126,7 +132,7 @@ export function HarnessGui({ client }: HarnessGuiProps) {
     const unsubscribeSnapshots = client.subscribeSnapshots?.((snapshot) => {
       if (!active) return;
       dispatch({ type: "snapshot.installed", snapshot });
-      setNotice("Read-only live event round installed.");
+      setNotice("Live AppHost event round installed.");
       setSyncing(false);
     }) ?? (() => undefined);
     const unsubscribeConnection = client.subscribeConnection?.((connection) => {
@@ -186,8 +192,18 @@ export function HarnessGui({ client }: HarnessGuiProps) {
   const stackedRight = rightVisible && remainingWidth < rightWidth + 360;
   const tasksAvailable = hasCapability(state, "tasks");
   const changesAvailable = hasCapability(state, "changes");
-  const mutationsAllowed = !syncing && state.remote.source.kind === "fixture" && state.remote.connection === "fixture-offline";
   const selected = selectedId ? state.remote.sessions[selectedId] : undefined;
+  useEffect(() => {
+    if (!awaitingPublication) return;
+    const session = state.remote.sessions[awaitingPublication.sessionId];
+    if (state.remote.connection !== "connected" || !session || session.cursor !== awaitingPublication.cursor) {
+      setAwaitingPublication(null);
+    }
+  }, [awaitingPublication, state.remote.connection, state.remote.sessions]);
+  const mutationsAllowed = !syncing && !controlPending && !awaitingPublication && (
+    (state.remote.source.kind === "fixture" && state.remote.connection === "fixture-offline")
+    || (state.remote.source.kind === "live" && state.remote.connection === "connected")
+  );
   useLayoutEffect(() => {
     const pane = conversationRef.current;
     const transcript = transcriptRef.current;
@@ -214,21 +230,37 @@ export function HarnessGui({ client }: HarnessGuiProps) {
   );
 
   async function submit(): Promise<void> {
-    if (!selected || syncPendingRef.current || !mutationsAllowed || selected.status === "running") return;
+    if (!selected || syncPendingRef.current || controlPendingRef.current || !mutationsAllowed || selected.status === "running") return;
     const text = state.local.drafts[selected.id] ?? "";
     if (!text.trim()) {
       setNotice("Enter a fixture prompt before sending.");
       return;
     }
-    const submissionId = `gui-fixture-submission-${submissionCounter.current++}`;
-    const receipt = await client.submitText({ sessionId: selected.id, submissionId, text });
-    if (!receipt.accepted) {
-      setNotice("The fixture rejected this submission.");
-      return;
+    const submissionId = fixture
+      ? `gui-fixture-submission-${submissionCounter.current++}`
+      : `gui-${crypto.randomUUID()}`;
+    controlPendingRef.current = true;
+    setControlPending("submit");
+    try {
+      const receipt = await client.submitText({ sessionId: selected.id, submissionId, text });
+      if (!receipt.accepted) {
+        setNotice(receipt.reason === "submission_outcome_unknown"
+          ? "Submission outcome is unknown. The draft was preserved; resynchronize before retrying."
+          : `Submission rejected${receipt.reason ? `: ${receipt.reason}` : "."}`);
+        return;
+      }
+      dispatch({ type: "draft.submitted", sessionId: selected.id, expected: text });
+      if (!fixture) setAwaitingPublication({ sessionId: selected.id, cursor: selected.cursor });
+      setRemainingSteps(fixture?.remainingFixtureSteps() ?? 0);
+      setNotice(fixture
+        ? "Fixture accepted the prompt. Advance it step by step."
+        : "AppHost accepted the prompt.");
+    } catch {
+      setNotice("Submit failed before its outcome could be confirmed. The draft was preserved.");
+    } finally {
+      controlPendingRef.current = false;
+      setControlPending(null);
     }
-    dispatch({ type: "draft.changed", sessionId: selected.id, value: "" });
-    setRemainingSteps(fixture?.remainingFixtureSteps() ?? 0);
-    setNotice("Fixture accepted the prompt. Advance it step by step.");
   }
 
   async function advance(): Promise<void> {
@@ -243,14 +275,21 @@ export function HarnessGui({ client }: HarnessGuiProps) {
   }
 
   async function interrupt(): Promise<void> {
-    if (!selected || syncPendingRef.current || !mutationsAllowed || selected.status !== "running") return;
-    const receipt = await client.interrupt(selected.id);
-    setRemainingSteps(fixture?.remainingFixtureSteps() ?? 0);
-    setNotice(
-      receipt.accepted
-        ? "Fixture execution interrupted."
-        : (receipt.reason ?? "Interrupt was not accepted."),
-    );
+    if (!selected || syncPendingRef.current || controlPendingRef.current || !mutationsAllowed || selected.status !== "running") return;
+    controlPendingRef.current = true;
+    setControlPending("interrupt");
+    try {
+      const receipt = await client.interrupt(selected.id);
+      setRemainingSteps(fixture?.remainingFixtureSteps() ?? 0);
+      setNotice(receipt.accepted
+        ? (fixture ? "Fixture execution interrupted." : "Interrupt requested.")
+        : (receipt.reason ?? "Interrupt was not accepted."));
+    } catch {
+      setNotice("Interrupt failed. Resynchronize before retrying.");
+    } finally {
+      controlPendingRef.current = false;
+      setControlPending(null);
+    }
   }
 
   function openReview(documentId: string): void {
@@ -277,7 +316,7 @@ export function HarnessGui({ client }: HarnessGuiProps) {
           bridgeProbe={bridgeProbe}
           onSelect={(sessionId) => dispatch({ type: "session.selected", sessionId })}
           onToggleWorkspace={(workspaceId) => dispatch({ type: "workspace.toggled", workspaceId })}
-          onUnavailable={() => setNotice("New Session is unavailable in this read-only slice.")}
+          onUnavailable={() => setNotice("New Session is unavailable in this existing-Session slice.")}
         />
         <div className="sidebar-resizer" role="separator" aria-label="Sidebar width" aria-orientation="vertical" tabIndex={0}
           aria-valuemin={200} aria-valuemax={420} aria-valuenow={sidebarWidth}
@@ -291,7 +330,7 @@ export function HarnessGui({ client }: HarnessGuiProps) {
         <section ref={conversationRef} style={{ "--content-gutter": `${contentMetrics.gutter}px`, "--scrollbar-width": `${contentMetrics.scrollbar}px` } as React.CSSProperties} className="conversation-pane" aria-label="Session workspace">
           {syncing || state.diagnostic || state.remote.connection === "disconnected" ? (
             <div className="diagnostic" role="status">
-              <span>{syncing ? (fixture ? "Synchronizing fixture…" : "Connecting read-only…") : state.diagnostic ?? "Disconnected."}</span>
+              <span>{syncing ? (fixture ? "Synchronizing fixture…" : "Connecting to AppHost…") : state.diagnostic ?? "Disconnected."}</span>
               {fixture ? <button type="button" disabled={syncing} onClick={() => refreshRef.current?.()}>Resynchronize fixture</button> : null}
             </div>
           ) : null}
@@ -384,8 +423,7 @@ export function HarnessGui({ client }: HarnessGuiProps) {
                     id="message-input"
                     rows={2}
                     value={state.local.drafts[selected.id] ?? ""}
-                    placeholder={state.remote.source.kind === "fixture" ? "Type a fixture prompt…" : "Read-only live connection"}
-                    disabled={state.remote.source.kind === "live"}
+                    placeholder={state.remote.source.kind === "fixture" ? "Type a fixture prompt…" : "Message the live Agent…"}
                     onChange={(event) =>
                       dispatch({ type: "draft.changed", sessionId: selected.id, value: event.currentTarget.value })
                     }
@@ -398,7 +436,7 @@ export function HarnessGui({ client }: HarnessGuiProps) {
                   />
                   <div className="composer-actions">
                     <button type="button" className="icon-button" aria-label="Attach file unavailable" title="Attachments are unavailable" disabled>＋</button>
-                    <span className="permission-label">◉ {state.remote.source.kind === "fixture" ? "Fixture access" : "Read-only"}</span>
+                    <span className="permission-label">◉ {state.remote.source.kind === "fixture" ? "Fixture access" : "AppHost control"}</span>
                     <p className="visually-hidden" role="status">{notice}</p>
                     <button type="button" className="effort-selector" title="Model and effort selection require a backend" disabled>No model · Effort unavailable ⌄</button>
                     <button
@@ -469,7 +507,7 @@ function Sidebar({ state, bridgeProbe, onSelect, onToggleWorkspace, onUnavailabl
         <button type="button" disabled title="Scheduling is unavailable in the offline fixture"><UiIcon name="scheduled" /><span>Scheduled</span></button>
         <button type="button" disabled title="Plugins are unavailable in the offline fixture"><UiIcon name="plugins" /><span>Plugins</span></button>
       </nav>
-      <div className="fixture-banner"><span className="fixture-dot" />{state.remote.source.kind === "fixture" ? "Fixture data · no backend" : "Live AppHost · read-only"}</div>
+      <div className="fixture-banner"><span className="fixture-dot" />{state.remote.source.kind === "fixture" ? "Fixture data · no backend" : "Live AppHost · controlled"}</div>
 
       <nav className="workspace-scroll" aria-label="Workspaces">
         {!hasCapability(state, "workspace") ? <>
@@ -528,7 +566,7 @@ function Sidebar({ state, bridgeProbe, onSelect, onToggleWorkspace, onUnavailabl
 
       <div className="rail-footer">
         <div className="user-avatar" aria-hidden="true">Z</div>
-        <div><strong>zhnt</strong><span title={state.remote.source.kind === "fixture" ? bridgeProbe.label : state.remote.source.serviceInstanceId}>{state.remote.source.kind === "fixture" ? "Offline fixture" : "Live · read-only"}</span></div>
+        <div><strong>zhnt</strong><span title={state.remote.source.kind === "fixture" ? bridgeProbe.label : state.remote.source.serviceInstanceId}>{state.remote.source.kind === "fixture" ? "Offline fixture" : "Live · AppHost"}</span></div>
         <span aria-hidden="true">⋯</span>
       </div>
     </aside>

@@ -2,7 +2,7 @@
 use super::transport_auth::Channel;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, value::RawValue, Value};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::{Read, Write};
 #[path = "projection.rs"]
 mod projection;
@@ -221,6 +221,20 @@ pub(crate) struct ReadSession {
     closed: bool,
 }
 
+#[derive(Clone)]
+pub(crate) struct ControlAuthority {
+    attachment_id: String,
+    controller_generation: String,
+    instance: String,
+    members: BTreeMap<String, String>,
+}
+
+pub(crate) enum ControlResult {
+    Accepted,
+    Missing,
+    Rejected(String),
+}
+
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct InitialSnapshot {
@@ -307,6 +321,36 @@ impl ReadSession {
             self.fail(attempt);
         }
         result
+    }
+
+    pub(crate) fn control_authority(&self) -> Result<ControlAuthority, ()> {
+        if self.closed {
+            return Err(());
+        }
+        let mut members = BTreeMap::new();
+        for session in &self.attachment.sessions {
+            let identity = projection::identity_value(session.member.session.get())?;
+            let session_id = identity["sessionId"].as_str().ok_or(())?.to_owned();
+            if members
+                .insert(session_id, session.member.member_id.clone())
+                .is_some()
+            {
+                return Err(());
+            }
+        }
+        Ok(ControlAuthority {
+            attachment_id: self.attachment.attachment_id.clone(),
+            controller_generation: self.attachment.controller_generation.get().to_owned(),
+            instance: self.instance.clone(),
+            members,
+        })
+    }
+
+    pub(crate) fn next_control_request_id(&mut self) -> Result<String, ()> {
+        if self.closed {
+            return Err(());
+        }
+        take_request_id(&mut self.next_id)
     }
 
     /// One complete round, with no hard-coded lifetime or round count.
@@ -473,6 +517,142 @@ impl ReadSession {
         }
         result
     }
+}
+
+impl ControlAuthority {
+    fn payload(&self, session_id: &str) -> Result<Value, ()> {
+        let member_id = self.members.get(session_id).ok_or(())?;
+        let generation: Value =
+            serde_json::from_str(&self.controller_generation).map_err(|_| ())?;
+        Ok(json!({
+            "control": {
+                "attachmentId": self.attachment_id,
+                "controllerGeneration": generation,
+                "memberId": member_id,
+            },
+            "expectedInstanceId": self.instance,
+        }))
+    }
+
+    pub(crate) fn submit<R: Read, W: Write>(
+        &self,
+        channel: &mut Channel<R, W>,
+        session_id: &str,
+        submission_id: &str,
+        text: &str,
+        request_id: &str,
+    ) -> Result<ControlResult, ()> {
+        if !identifier(submission_id, 128)
+            || text.trim().is_empty()
+            || text.chars().count() > 262_144
+        {
+            return Err(());
+        }
+        let mut payload = self.payload(session_id)?;
+        payload["submissionId"] = Value::String(submission_id.to_owned());
+        payload["text"] = Value::String(text.to_owned());
+        let result = execution_request(channel, "execution/submit", request_id, payload)?;
+        self.record_result(result, session_id, Some(submission_id))
+    }
+
+    pub(crate) fn find_submission<R: Read, W: Write>(
+        &self,
+        channel: &mut Channel<R, W>,
+        session_id: &str,
+        submission_id: &str,
+        request_id: &str,
+    ) -> Result<ControlResult, ()> {
+        if !identifier(submission_id, 128) {
+            return Err(());
+        }
+        let mut payload = self.payload(session_id)?;
+        payload["submissionId"] = Value::String(submission_id.to_owned());
+        let result = execution_request(channel, "execution/find_submission", request_id, payload)?;
+        if result["resultType"] == "not_found" {
+            projection::control_bridge("not_found", &result.to_string())?;
+            return Ok(ControlResult::Missing);
+        }
+        self.record_result(result, session_id, Some(submission_id))
+    }
+
+    pub(crate) fn interrupt<R: Read, W: Write>(
+        &self,
+        channel: &mut Channel<R, W>,
+        session_id: &str,
+        execution_id: &str,
+        request_id: &str,
+    ) -> Result<ControlResult, ()> {
+        if !identifier(execution_id, 128) {
+            return Err(());
+        }
+        let mut payload = self.payload(session_id)?;
+        payload["executionId"] = Value::String(execution_id.to_owned());
+        let result = execution_request(channel, "execution/interrupt", request_id, payload)?;
+        if let Some(rejected) = rejected_result(&result)? {
+            return Ok(ControlResult::Rejected(rejected));
+        }
+        let checked = projection::control_bridge("interrupt", &result.to_string())?;
+        let record = &checked["result"]["record"];
+        if record["serviceInstanceId"] != self.instance
+            || record["identity"]["sessionId"] != session_id
+            || record["state"]["executionId"] != execution_id
+        {
+            return Err(());
+        }
+        Ok(ControlResult::Accepted)
+    }
+
+    fn record_result(
+        &self,
+        result: Value,
+        session_id: &str,
+        submission_id: Option<&str>,
+    ) -> Result<ControlResult, ()> {
+        if let Some(rejected) = rejected_result(&result)? {
+            return Ok(ControlResult::Rejected(rejected));
+        }
+        let checked = projection::control_bridge("record", &result.to_string())?;
+        let record = &checked["result"];
+        if record["serviceInstanceId"] != self.instance
+            || record["identity"]["sessionId"] != session_id
+            || submission_id.is_some_and(|value| record["submissionId"] != value)
+        {
+            return Err(());
+        }
+        Ok(ControlResult::Accepted)
+    }
+}
+
+fn execution_request<R: Read, W: Write>(
+    channel: &mut Channel<R, W>,
+    operation: &str,
+    id: &str,
+    payload: Value,
+) -> Result<Value, ()> {
+    let request = serde_json::to_vec(&json!({
+        "protocolVersion": "loushang.execution/v1",
+        "requestId": id,
+        "operation": operation,
+        "payload": payload,
+    }))
+    .map_err(|_| ())?;
+    channel.send(&request)?;
+    let value: Value = serde_json::from_slice(&channel.receive()?).map_err(|_| ())?;
+    if value["requestId"] != id {
+        return Err(());
+    }
+    Ok(value)
+}
+
+fn rejected_result(value: &Value) -> Result<Option<String>, ()> {
+    let kind = value["resultType"].as_str().ok_or(())?;
+    if kind != "failure" && kind != "app_failure" {
+        return Ok(None);
+    }
+    let checked = projection::control_bridge(kind, &value.to_string())?;
+    Ok(Some(
+        checked["result"]["code"].as_str().ok_or(())?.to_owned(),
+    ))
 }
 
 fn successor(decimal: &str) -> String {
