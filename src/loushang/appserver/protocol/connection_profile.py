@@ -19,6 +19,14 @@ class AppConnectionProfileV1(str, Enum):
     LOCAL_DISCOVERY = "local-detachable-discovery/v1"
     LOCAL_EXECUTION = "local-detachable-execution/v1"
     LOCAL_DISCOVERY_EXECUTION = "local-detachable-discovery-execution/v1"
+    LOCAL_MANAGED = "local-detachable-managed/v1"
+    LOCAL_DISCOVERY_MANAGED = "local-detachable-discovery-managed/v1"
+    LOCAL_EXECUTION_MANAGED = "local-detachable-execution-managed/v1"
+    LOCAL_DISCOVERY_EXECUTION_MANAGED = "local-detachable-discovery-execution-managed/v1"
+    LOCAL_MANAGED_CLOSE = "local-detachable-managed/v2"
+    LOCAL_DISCOVERY_MANAGED_CLOSE = "local-detachable-discovery-managed/v2"
+    LOCAL_EXECUTION_MANAGED_CLOSE = "local-detachable-execution-managed/v2"
+    LOCAL_DISCOVERY_EXECUTION_MANAGED_CLOSE = "local-detachable-discovery-execution-managed/v2"
 
 
 _HELLOS = {
@@ -29,6 +37,18 @@ _HELLOS = {
     ),
     AppConnectionProfileV1.LOCAL_DISCOVERY: (
         b'{"profile":"local-detachable-discovery/v1","protocolVersion":"loushang.app/v1"}'
+    ),
+    AppConnectionProfileV1.LOCAL_MANAGED: (
+        b'{"profile":"local-detachable-managed/v1","protocolVersion":"loushang.app/v1"}'
+    ),
+    AppConnectionProfileV1.LOCAL_DISCOVERY_MANAGED: (
+        b'{"profile":"local-detachable-discovery-managed/v1","protocolVersion":"loushang.app/v1"}'
+    ),
+    AppConnectionProfileV1.LOCAL_MANAGED_CLOSE: (
+        b'{"profile":"local-detachable-managed/v2","protocolVersion":"loushang.app/v1"}'
+    ),
+    AppConnectionProfileV1.LOCAL_DISCOVERY_MANAGED_CLOSE: (
+        b'{"profile":"local-detachable-discovery-managed/v2","protocolVersion":"loushang.app/v1"}'
     ),
 }
 
@@ -55,6 +75,10 @@ def supports_execution(profile: AppConnectionProfileV1) -> bool:
     return profile in {
         AppConnectionProfileV1.LOCAL_EXECUTION,
         AppConnectionProfileV1.LOCAL_DISCOVERY_EXECUTION,
+        AppConnectionProfileV1.LOCAL_EXECUTION_MANAGED,
+        AppConnectionProfileV1.LOCAL_DISCOVERY_EXECUTION_MANAGED,
+        AppConnectionProfileV1.LOCAL_EXECUTION_MANAGED_CLOSE,
+        AppConnectionProfileV1.LOCAL_DISCOVERY_EXECUTION_MANAGED_CLOSE,
     }
 
 
@@ -65,6 +89,32 @@ def supports_session_discovery(profile: AppConnectionProfileV1) -> bool:
         AppConnectionProfileV1.STDIO_DISCOVERY,
         AppConnectionProfileV1.LOCAL_DISCOVERY,
         AppConnectionProfileV1.LOCAL_DISCOVERY_EXECUTION,
+        AppConnectionProfileV1.LOCAL_DISCOVERY_MANAGED,
+        AppConnectionProfileV1.LOCAL_DISCOVERY_EXECUTION_MANAGED,
+        AppConnectionProfileV1.LOCAL_DISCOVERY_MANAGED_CLOSE,
+        AppConnectionProfileV1.LOCAL_DISCOVERY_EXECUTION_MANAGED_CLOSE,
+    }
+
+
+def supports_managed_mux(profile: AppConnectionProfileV1) -> bool:
+    if type(profile) is not AppConnectionProfileV1:
+        raise ValueError("invalid application connection profile")
+    return supports_managed_mux_close(profile) or profile in {
+        AppConnectionProfileV1.LOCAL_MANAGED,
+        AppConnectionProfileV1.LOCAL_DISCOVERY_MANAGED,
+        AppConnectionProfileV1.LOCAL_EXECUTION_MANAGED,
+        AppConnectionProfileV1.LOCAL_DISCOVERY_EXECUTION_MANAGED,
+    }
+
+
+def supports_managed_mux_close(profile: AppConnectionProfileV1) -> bool:
+    if type(profile) is not AppConnectionProfileV1:
+        raise ValueError("invalid application connection profile")
+    return profile in {
+        AppConnectionProfileV1.LOCAL_MANAGED_CLOSE,
+        AppConnectionProfileV1.LOCAL_DISCOVERY_MANAGED_CLOSE,
+        AppConnectionProfileV1.LOCAL_EXECUTION_MANAGED_CLOSE,
+        AppConnectionProfileV1.LOCAL_DISCOVERY_EXECUTION_MANAGED_CLOSE,
     }
 
 
@@ -76,4 +126,6 @@ def require_profile_operation(
         raise ValueError("invalid application operation")
     discovery = supports_session_discovery(profile)
     if operation is AppOperationV1.SESSIONS_LIST and not discovery:
+        raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+    if supports_managed_mux(profile) and operation in {AppOperationV1.MUX_CREATE, AppOperationV1.MUX_CLOSE}:
         raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)

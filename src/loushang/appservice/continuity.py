@@ -4,11 +4,16 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Protocol, cast
 
+from loushang.appserver.managed_mux import ManagedMuxCreatedV1
+from loushang.appserver.managed_mux_close import (
+    ManagedMuxClosePhaseV1,
+    ManagedMuxCloseStateV1,
+)
 from loushang.appserver.protocol import (
     MAX_MEMBERS,
     MAX_MUX_SPACES,
@@ -17,6 +22,10 @@ from loushang.appserver.protocol import (
 )
 
 APPLICATION_CONTINUITY_VERSION = "loushang.appservice.continuity/v1"
+MANAGED_CONTINUITY_VERSION = "loushang.appservice.continuity/v2"
+MANAGED_CLOSE_CONTINUITY_VERSION = "loushang.appservice.continuity/v3"
+MAX_MANAGED_CREATIONS = 4096
+MAX_MANAGED_CLOSURES = 4096
 MAX_CONTINUITY_RECORD_BYTES = 1_048_576
 MAX_APPLICATION_RECORDS = 256
 
@@ -99,13 +108,33 @@ class ApplicationContinuityRecordV1:
     record_revision: int
     mux_spaces: tuple[MuxSpaceContinuityV1, ...] = ()
     contract_version: str = APPLICATION_CONTINUITY_VERSION
+    managed_service_id: str | None = None
+    managed_creations: tuple[ManagedMuxCreatedV1, ...] = ()
+    managed_closures: tuple[ManagedMuxCloseStateV1, ...] = field(default=(), kw_only=True)
 
     def __post_init__(self) -> None:
         _require_stable_id(self.application_id, "application identity")
         _require_stable_id(self.product_id, "Product identity")
         _require_positive(self.record_revision, "record revision")
-        if self.contract_version != APPLICATION_CONTINUITY_VERSION:
+        if self.contract_version not in (
+            APPLICATION_CONTINUITY_VERSION, MANAGED_CONTINUITY_VERSION, MANAGED_CLOSE_CONTINUITY_VERSION,
+        ):
             raise ValueError("unsupported continuity record")
+        if self.contract_version == APPLICATION_CONTINUITY_VERSION:
+            if self.managed_service_id is not None or self.managed_creations != ():
+                raise ValueError("legacy continuity has no managed authority")
+        elif (
+            type(self.managed_service_id) is not str
+            or re.fullmatch(r"[0-9a-f]{64}", self.managed_service_id) is None
+            or type(self.managed_creations) is not tuple
+            or len(self.managed_creations) > MAX_MANAGED_CREATIONS
+            or any(type(item) is not ManagedMuxCreatedV1 for item in self.managed_creations)
+            or len({item.operation_id for item in self.managed_creations})
+            != len(self.managed_creations)
+            or len({item.mux_space_id for item in self.managed_creations})
+            != len(self.managed_creations)
+        ):
+            raise ValueError("invalid managed continuity receipts")
         if (
             not isinstance(self.mux_spaces, tuple)
             or len(self.mux_spaces) > MAX_MUX_SPACES
@@ -115,6 +144,15 @@ class ApplicationContinuityRecordV1:
             or len({item.name for item in self.mux_spaces}) != len(self.mux_spaces)
         ):
             raise ValueError("invalid continuity MuxSpace registry")
+        if self.contract_version != APPLICATION_CONTINUITY_VERSION:
+            receipts = {item.mux_space_id: item for item in self.managed_creations}
+            if any(
+                mux.mux_space_id not in receipts
+                or receipts[mux.mux_space_id].name != mux.name
+                for mux in self.mux_spaces
+            ):
+                raise ValueError("managed MuxSpace has no matching creation receipt")
+        self._validate_closures()
         sessions = tuple(
             member.session.session_id
             for mux in self.mux_spaces
@@ -129,10 +167,36 @@ class ApplicationContinuityRecordV1:
         ):
             raise ValueError("continuity Product identity mismatch")
 
+    def _validate_closures(self) -> None:
+        closures = self.managed_closures
+        if self.contract_version != MANAGED_CLOSE_CONTINUITY_VERSION:
+            if type(closures) is not tuple or closures:
+                raise ValueError("previous continuity has no managed close authority")
+            return
+        if (
+            type(closures) is not tuple or len(closures) > MAX_MANAGED_CLOSURES
+            or any(type(item) is not ManagedMuxCloseStateV1 for item in closures)
+            or len({item.operation_id for item in closures}) != len(closures)
+            or len({item.creation_operation_id for item in closures}) != len(closures)
+            or len({item.mux_space_id for item in closures}) != len(closures)
+        ):
+            raise ValueError("invalid managed closure history")
+        creations = {item.operation_id: item for item in self.managed_creations}
+        muxes = {item.mux_space_id: item for item in self.mux_spaces}
+        for closure in closures:
+            creation = creations.get(closure.creation_operation_id)
+            if (
+                closure.operation_id in creations or creation is None
+                or creation.name != closure.name or creation.mux_space_id != closure.mux_space_id
+                or ((closure.phase is ManagedMuxClosePhaseV1.CLEANUP_PENDING)
+                    != (closure.mux_space_id in muxes))
+            ):
+                raise ValueError("managed closure has no matching durable target")
+
 
 @dataclass(frozen=True, slots=True)
 class ApplicationContinuitySummaryV1:
-    """Bounded inert listing fact; never service-liveness evidence."""
+    """Bounded retained-state counts, including cleanup debt; not active Muxes."""
 
     application_id: str
     product_id: str
@@ -200,13 +264,31 @@ def encode_application_continuity_record(
 
     if type(record) is not ApplicationContinuityRecordV1:
         raise TypeError("invalid continuity record")
-    payload = {
+    payload: _Object = {
         "applicationId": record.application_id,
         "contractVersion": record.contract_version,
         "muxSpaces": [_encode_mux(mux) for mux in record.mux_spaces],
         "productId": record.product_id,
         "recordRevision": record.record_revision,
     }
+    if record.contract_version != APPLICATION_CONTINUITY_VERSION:
+        payload["managedServiceId"] = record.managed_service_id
+        payload["managedCreations"] = [
+            {
+                "operationId": item.operation_id,
+                "instanceId": item.instance_id,
+                "name": item.name,
+                "muxSpaceId": item.mux_space_id,
+            }
+            for item in record.managed_creations
+        ]
+    if record.contract_version == MANAGED_CLOSE_CONTINUITY_VERSION:
+        payload["managedClosures"] = [
+            {"operationId": item.operation_id, "instanceId": item.instance_id,
+             "creationOperationId": item.creation_operation_id, "name": item.name,
+             "muxSpaceId": item.mux_space_id, "phase": item.phase.value}
+            for item in record.managed_closures
+        ]
     encoded = json.dumps(
         payload,
         ensure_ascii=False,
@@ -236,10 +318,16 @@ def decode_application_continuity_record(
             object_pairs_hook=_pairs,
             parse_constant=lambda _value: (_ for _ in ()).throw(ValueError()),
         )
-        root = _object(
-            value,
-            {"applicationId", "contractVersion", "muxSpaces", "productId", "recordRevision"},
+        fields = {"applicationId", "contractVersion", "muxSpaces", "productId", "recordRevision"}
+        managed = type(value) is dict and value.get("contractVersion") in (
+            MANAGED_CONTINUITY_VERSION, MANAGED_CLOSE_CONTINUITY_VERSION,
         )
+        managed_close = type(value) is dict and value.get("contractVersion") == MANAGED_CLOSE_CONTINUITY_VERSION
+        if managed:
+            fields |= {"managedServiceId", "managedCreations"}
+        if managed_close:
+            fields.add("managedClosures")
+        root = _object(value, fields)
         mux_values = _array(root["muxSpaces"], maximum=MAX_MUX_SPACES)
         return ApplicationContinuityRecordV1(
             application_id=_string(root["applicationId"]),
@@ -247,6 +335,15 @@ def decode_application_continuity_record(
             record_revision=_integer(root["recordRevision"]),
             mux_spaces=tuple(_decode_mux(item) for item in mux_values),
             contract_version=_string(root["contractVersion"]),
+            managed_service_id=_string(root["managedServiceId"]) if managed else None,
+            managed_creations=tuple(
+                _decode_creation(item)
+                for item in _array(root["managedCreations"], maximum=MAX_MANAGED_CREATIONS)
+            ) if managed else (),
+            managed_closures=tuple(
+                _decode_closure(item)
+                for item in _array(root["managedClosures"], maximum=MAX_MANAGED_CLOSURES)
+            ) if managed_close else (),
         )
     except ApplicationContinuityError:
         raise
@@ -339,6 +436,22 @@ def _decode_member(value: object) -> MuxMemberContinuityV1:
             scope=SessionScopeV1(_string(session["scope"])),
             scope_fingerprint=_string(session["scopeFingerprint"]),
         ),
+    )
+
+
+def _decode_creation(value: object) -> ManagedMuxCreatedV1:
+    raw = _object(value, {"operationId", "instanceId", "name", "muxSpaceId"})
+    return ManagedMuxCreatedV1(
+        _string(raw["operationId"]), _string(raw["instanceId"]),
+        _string(raw["name"]), _string(raw["muxSpaceId"]),
+    )
+
+
+def _decode_closure(value: object) -> ManagedMuxCloseStateV1:
+    raw = _object(value, {"operationId", "instanceId", "creationOperationId", "name", "muxSpaceId", "phase"})
+    return ManagedMuxCloseStateV1(
+        _string(raw["operationId"]), _string(raw["instanceId"]), _string(raw["creationOperationId"]),
+        _string(raw["name"]), _string(raw["muxSpaceId"]), ManagedMuxClosePhaseV1(_string(raw["phase"])),
     )
 
 

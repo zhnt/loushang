@@ -169,7 +169,7 @@ def test_failed_cleanup_record_retries_fact_not_successful_application_close(bin
 
     async def scenario():
         application = Application()
-        owner = ManagedChildApplicationV1(application, control)
+        owner = ManagedChildApplicationV1(application, control, settlement_timeout=0.2)
         waiter = asyncio.create_task(owner.run())
         await until(lambda: owner.accepting)
         original = journal.record_child_cleanup
@@ -181,8 +181,14 @@ def test_failed_cleanup_record_retries_fact_not_successful_application_close(bin
         with pytest.raises(ManagedChildError, match="cleanup_incomplete"):
             await owner.close()
         assert application.closes == 1 and owner.cleanup_pending
-        assert not journal.read().evidence.application_cleanup_completed
+        # The retained control observation may still own the native fence after
+        # the close waiter's deadline. Inspect without blocking the app loop.
+        observed = await asyncio.to_thread(journal.read, deadline=monotonic() + 2, wait_for_lock=True)
+        assert not observed.evidence.application_cleanup_completed
         monkeypatch.setattr(journal, "record_child_cleanup", original)
+        # A timed-out public wait does not cancel the original receipt loop.
+        # Join that exact attempt before granting a subsequent retry budget.
+        await asyncio.gather(owner._close_task, return_exceptions=True)
         await owner.close(retry_timeout=2)
         await asyncio.gather(waiter, return_exceptions=True)
         assert application.closes == 1 and not owner.cleanup_pending
@@ -313,7 +319,7 @@ def test_hung_io_does_not_block_autonomous_terminal_observation(binding, monkeyp
     asyncio.run(asyncio.wait_for(scenario(), 10))
 
 
-@pytest.mark.parametrize("failure", ["submit", "wait_task"])
+@pytest.mark.parametrize("failure", ["submit", "submitted", "wait_task"])
 def test_internal_scheduling_failure_fences_and_settles_owned_application(binding, monkeypatch, failure):
     _, _, _, _, control = binding
 
@@ -344,6 +350,8 @@ def test_internal_scheduling_failure_fences_and_settles_owned_application(bindin
                 nonlocal injected
                 if not injected:
                     injected = True
+                    if failure == "submitted":
+                        original_submit(self, *args, **kwargs)
                     raise RuntimeError("private submit failure")
                 return original_submit(self, *args, **kwargs)
 
@@ -352,6 +360,78 @@ def test_internal_scheduling_failure_fences_and_settles_owned_application(bindin
             await owner.run()
         assert injected and application.fenced and application.closes == 1
         assert not owner.cleanup_pending and owner._failure is not None
+    asyncio.run(asyncio.wait_for(scenario(), 10))
+
+
+def test_control_submit_lost_receipt_has_no_native_effect(binding, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+
+    _, _, _, _, control = binding
+    original = ThreadPoolExecutor.submit
+    queued = []
+    effects = []
+
+    def lose_receipt(executor, function):
+        queued.append(original(executor, function))
+        raise RuntimeError("lost receipt")
+
+    async def scenario():
+        owner = ManagedChildApplicationV1(Application(), control)
+        try:
+            with monkeypatch.context() as patch:
+                patch.setattr(ThreadPoolExecutor, "submit", lose_receipt)
+                with pytest.raises(RuntimeError, match="lost receipt"):
+                    await owner._io(lambda: effects.append("unauthorized"))
+            await asyncio.wrap_future(queued[0])
+            assert effects == [] and owner._pending_io is None
+            await owner.close()
+        finally:
+            if owner._worker is not None:
+                owner._worker.shutdown(wait=True)
+
+    asyncio.run(asyncio.wait_for(scenario(), 10))
+
+
+@pytest.mark.parametrize("native_failure", [False, True])
+def test_control_cancelled_internal_waiter_retains_native_receipt(binding, native_failure):
+    _, _, _, _, control = binding
+    entered, release = threading.Event(), threading.Event()
+
+    def operation():
+        entered.set()
+        assert release.wait(5)
+        if native_failure:
+            raise asyncio.CancelledError()
+
+    async def scenario():
+        owner = ManagedChildApplicationV1(Application(), control)
+        waiter = asyncio.create_task(owner._io(operation))
+        closer = None
+        try:
+            await until(entered.is_set)
+            receipt = owner._pending_io
+            assert receipt is not None and not receipt.cancel()
+            waiter.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await waiter
+            closer = asyncio.create_task(owner.close())
+            await asyncio.sleep(0.02)
+            assert not closer.done() and owner.cleanup_pending
+            assert owner._pending_io is receipt and not receipt.done()
+        finally:
+            release.set()
+            if closer is not None:
+                if native_failure:
+                    with pytest.raises(ManagedChildError):
+                        await closer
+                    assert owner._pending_io is None
+                    await owner.close()
+                else:
+                    await closer
+            else:
+                await owner.close()
+        assert receipt.done() and not owner.cleanup_pending
+
     asyncio.run(asyncio.wait_for(scenario(), 10))
 
 

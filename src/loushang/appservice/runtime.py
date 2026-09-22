@@ -4,13 +4,19 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from collections.abc import Awaitable, Callable
-from contextlib import suppress
-from dataclasses import dataclass
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager, suppress
+from dataclasses import dataclass, replace
 from hashlib import sha256
 from secrets import token_hex
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, TypeVar, cast
 
+from loushang.appserver.managed_mux import ManagedMuxCreatedV1, ManagedMuxCreateV1
+from loushang.appserver.managed_mux_close import (
+    ManagedMuxClosePhaseV1,
+    ManagedMuxCloseStateV1,
+    ManagedMuxCloseV1,
+)
 from loushang.appserver.protocol import (
     MAX_MEMBERS,
     MAX_MUX_SPACES,
@@ -41,12 +47,18 @@ from loushang.appserver.protocol import (
 )
 
 from .continuity import (
+    APPLICATION_CONTINUITY_VERSION,
+    MANAGED_CLOSE_CONTINUITY_VERSION,
+    MANAGED_CONTINUITY_VERSION,
+    MAX_MANAGED_CLOSURES,
+    MAX_MANAGED_CREATIONS,
     ApplicationContinuityError,
     ApplicationContinuityErrorCodeV1,
     ApplicationContinuityLeaseV1,
     ApplicationContinuityRecordV1,
     MuxMemberContinuityV1,
     MuxSpaceContinuityV1,
+    encode_application_continuity_record,
 )
 from .discovery_ports import HostedSessionDiscoveryBindingV1
 from .execution_registry import (
@@ -56,6 +68,8 @@ from .execution_registry import (
     ExecutionServiceErrorV1,
 )
 from .execution_service import HostedExecutionServiceBindingV1
+from .managed_mux import ManagedMuxAdmissionV1, ManagedMuxServiceBindingV1
+from .managed_mux_close import ManagedMuxCloseAdmissionV1, ManagedMuxCloseUseV1
 from .ports import (
     HostedSessionPortV1,
     HostedSessionResolutionErrorV1,
@@ -417,6 +431,14 @@ class _MuxOwner:
         return attachments
 
 
+@dataclass(slots=True)
+class _PendingMuxClose:
+    request: ManagedMuxCloseV1
+    snapshot: MuxSpaceContinuityV1
+    sessions: tuple[_SessionOwner, ...]
+    task: asyncio.Task[None] | None = None
+
+
 class AppServiceV1:
     """In-process hosted application boundary with no transport authority."""
 
@@ -434,6 +456,13 @@ class AppServiceV1:
         "_continuity_owner_epoch",
         "_continuity_revision",
         "_id_factory",
+        "_managed_mux",
+        "_managed_creations",
+        "_managed_admission",
+        "_managed_uncertain",
+        "_managed_closures",
+        "_managed_closing_muxes",
+        "_managed_shutdown",
         "_mux_by_id",
         "_mux_by_name",
         "_resolver",
@@ -451,6 +480,7 @@ class AppServiceV1:
         close_timeout_seconds: float = 10.0,
         discovery: HostedSessionDiscoveryBindingV1 | None = None,
         execution: HostedExecutionServiceBindingV1 | None = None,
+        managed_mux: ManagedMuxServiceBindingV1 | None = None,
     ) -> None:
         if not product_id:
             raise ValueError("product_id must be non-empty")
@@ -464,6 +494,15 @@ class AppServiceV1:
         ):
             raise ValueError("close_timeout_seconds must be in (0, 60]")
         self.product_id = product_id
+        if managed_mux is not None and type(managed_mux) is not ManagedMuxServiceBindingV1:
+            raise TypeError("invalid managed Mux service binding")
+        self._managed_mux = managed_mux
+        self._managed_creations: dict[str, ManagedMuxCreatedV1] = {}
+        self._managed_admission: ManagedMuxAdmissionV1 | ManagedMuxCloseAdmissionV1 | None = None
+        self._managed_uncertain = False
+        self._managed_closures: dict[str, ManagedMuxCloseStateV1] = {}
+        self._managed_closing_muxes: dict[str, _PendingMuxClose] = {}
+        self._managed_shutdown = False
         if execution is not None and type(execution) is not HostedExecutionServiceBindingV1:
             raise TypeError("invalid execution service configuration")
         self._execution_config = execution
@@ -548,6 +587,7 @@ class AppServiceV1:
         if record is not None and (
             record.application_id != application_id
             or record.product_id != self.product_id
+            or any(item.phase is ManagedMuxClosePhaseV1.CLEANUP_PENDING for item in record.managed_closures)
         ):
             raise ValueError("AppService continuity identity mismatch")
         mux_by_id: dict[str, _MuxOwner] = {}
@@ -580,8 +620,274 @@ class AppServiceV1:
         self._mux_by_id = mux_by_id
         self._mux_by_name = mux_by_name
         self._sessions = dict(sessions)
+        self._managed_creations = {
+            item.operation_id: item
+            for item in (() if record is None else record.managed_creations)
+        }
+        self._managed_closures = {
+            item.operation_id: item
+            for item in (() if record is None else record.managed_closures)
+        }
+
+    def _require_legacy_mux_mutation(self) -> None:
+        if self._managed_mux is not None:
+            raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+
+    async def create_managed_mux(self, request: ManagedMuxCreateV1) -> ManagedMuxCreatedV1:
+        """Commit one admitted creation and its immutable receipt atomically.
+
+        The original admission spans settled native commit and in-memory
+        publication, including cancellation. It is never reconstructed for
+        cleanup. Unknown commit outcome fences subsequent operations.
+        """
+        self._require_request(request, ManagedMuxCreateV1)
+        async with self._state_lock:
+            self._require_open()
+            binding = self._managed_mux
+            if (
+                binding is None or self._continuity_lease is None
+                or request.service_id != binding.service_id
+                or request.instance_id != binding.instance_id
+            ):
+                raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+            try:
+                admission = binding.prepare(request)
+            except Exception:
+                raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE) from None
+            self._managed_admission = admission
+            primary: BaseException | None = None
+            try:
+                cancellation = await _join_continuity_commit(
+                    _start_continuity_io(admission.acquire)
+                )
+                if cancellation is not None:
+                    raise cancellation
+                previous = self._managed_creations.get(request.operation_id)
+                try:
+                    admission.check_creation(previous)
+                except Exception:
+                    raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE) from None
+                if previous is not None:
+                    if previous.name != request.name:
+                        raise _error(AppErrorCodeV1.REVISION_CONFLICT)
+                    return previous
+                if request.name in self._mux_by_name or any(
+                    item.snapshot.name == request.name for item in self._managed_closing_muxes.values()
+                ):
+                    raise _error(AppErrorCodeV1.ALREADY_EXISTS)
+                if request.operation_id in self._managed_closures:
+                    raise _error(AppErrorCodeV1.REVISION_CONFLICT)
+                if (
+                    len(self._mux_by_id) >= (32 if self._client_scopes is not None else MAX_MUX_SPACES)
+                    or len(self._managed_creations) >= MAX_MANAGED_CREATIONS
+                ):
+                    raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+                mux_id = self._new_id()
+                if mux_id in self._mux_by_id or any(
+                    item.mux_space_id == mux_id for item in self._managed_creations.values()
+                ):
+                    raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+                mux = _MuxOwner(mux_id, request.name)
+                result = ManagedMuxCreatedV1(
+                    request.operation_id, request.instance_id, request.name, mux_id,
+                )
+                cancellation = await self._commit_continuity(
+                    self._next_continuity_record(add_mux=mux, creation=result)
+                )
+                self._mux_by_id[mux_id] = mux
+                self._mux_by_name[mux.name] = mux
+                self._managed_creations[result.operation_id] = result
+                if cancellation is not None:
+                    raise cancellation
+                return result
+            except BaseException as error:
+                primary = error
+                raise
+            finally:
+                try:
+                    cancellation = await self._release_managed_admission()
+                    if cancellation is not None and primary is None:
+                        raise cancellation
+                except BaseException:
+                    if primary is None:
+                        raise
+                    primary.add_note("managed admission cleanup incomplete")
+
+    async def _release_managed_admission(self) -> asyncio.CancelledError | None:
+        admission = self._managed_admission
+        if admission is None:
+            return None
+        try:
+            cancellation = await _join_continuity_commit(
+                _start_continuity_io(admission.close)
+            )
+        except BaseException:
+            raise _error(AppErrorCodeV1.CLEANUP_INCOMPLETE) from None
+        self._managed_admission = None
+        return cancellation
+
+    def _managed_close_target(
+        self, request: ManagedMuxCloseV1,
+    ) -> tuple[ManagedMuxCreatedV1, ManagedMuxCloseStateV1 | None]:
+        self._require_request(request, ManagedMuxCloseV1)
+        binding = self._managed_mux
+        if (binding is None or binding.closing is None or self._continuity_lease is None
+                or request.service_id != binding.service_id or request.instance_id != binding.instance_id):
+            raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        creation = self._managed_creations.get(request.creation_operation_id)
+        previous = self._managed_closures.get(request.operation_id)
+        if (creation is None or creation.name != request.name or creation.mux_space_id != request.mux_space_id
+                or request.operation_id in self._managed_creations
+                or (previous is not None and (previous.creation_operation_id != creation.operation_id
+                    or previous.name != request.name or previous.mux_space_id != request.mux_space_id))
+                or any(item.creation_operation_id == creation.operation_id
+                       and item.operation_id != request.operation_id for item in self._managed_closures.values())):
+            raise _error(AppErrorCodeV1.REVISION_CONFLICT)
+        return creation, previous
+
+    @asynccontextmanager
+    async def _managed_close_permission(
+        self, request: ManagedMuxCloseV1, use: ManagedMuxCloseUseV1,
+        *, release_cancellations: list[asyncio.CancelledError] | None = None,
+    ) -> AsyncIterator[tuple[ManagedMuxCloseStateV1 | None, str]]:
+        creation, previous = self._managed_close_target(request)
+        assert self._managed_mux is not None and self._managed_mux.closing is not None
+        try:
+            admission = self._managed_mux.closing.prepare(request, use)
+        except Exception:
+            raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE) from None
+        self._managed_admission = admission
+        primary: BaseException | None = None
+        try:
+            cancellation = await _join_continuity_commit(_start_continuity_io(admission.acquire))
+            if cancellation is not None:
+                raise cancellation
+            try:
+                origin = admission.check_closure(creation, previous)
+            except Exception:
+                raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE) from None
+            yield previous, origin
+        except BaseException as error:
+            primary = error
+            raise
+        finally:
+            try:
+                cancellation = await self._release_managed_admission()
+                if cancellation is not None and primary is None:
+                    if release_cancellations is None:
+                        raise cancellation
+                    release_cancellations.append(cancellation)
+            except BaseException:
+                if primary is None:
+                    raise
+                primary.add_note("managed admission cleanup incomplete")
+
+    async def read_managed_mux_close(self, request: ManagedMuxCloseV1) -> ManagedMuxCloseStateV1 | None:
+        async with self._state_lock:
+            self._require_open()
+            async with self._managed_close_permission(request, ManagedMuxCloseUseV1.OBSERVE) as (previous, _origin):
+                return previous
+
+    async def close_managed_mux(self, request: ManagedMuxCloseV1) -> ManagedMuxCloseStateV1:
+        cancellation: asyncio.CancelledError | None = None
+        release_cancellations: list[asyncio.CancelledError] = []
+        async with self._state_lock:
+            self._require_open()
+            async with self._managed_close_permission(
+                request, ManagedMuxCloseUseV1.ADMIT, release_cancellations=release_cancellations,
+            ) as (previous, origin):
+                if previous is None:
+                    if len(self._managed_closures) >= MAX_MANAGED_CLOSURES:
+                        raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+                    mux = self._mux_by_id.get(request.mux_space_id)
+                    if mux is None or mux.name != request.name:
+                        raise _error(AppErrorCodeV1.NOT_FOUND)
+                    async with mux.lock:
+                        self._require_mux_open(mux)
+                        state = ManagedMuxCloseStateV1(
+                            request.operation_id, origin, request.creation_operation_id,
+                            request.name, request.mux_space_id, ManagedMuxClosePhaseV1.CLEANUP_PENDING,
+                        )
+                        pending = _PendingMuxClose(request, self._continuity_mux(mux),
+                                                   tuple(member.session for member in mux.members))
+                        cancellation = await self._commit_continuity(self._next_continuity_record(closure=state))
+                        self._managed_closures[state.operation_id] = state
+                        self._managed_closing_muxes[state.operation_id] = pending
+                        self._cleanup_debt.update(pending.sessions)
+                        members = tuple(mux.members)
+                        attachments = mux.take_attachments()
+                        mux.closed = True
+                        mux.members.clear()
+                        self._mux_by_id.pop(mux.mux_space_id)
+                        self._mux_by_name.pop(mux.name)
+                        for session in pending.sessions:
+                            self._sessions.pop(session.identity.session_id, None)
+                        for attachment in attachments:
+                            self._attachments.pop(attachment.attachment_id, None)
+                        self._settle_attachments(attachments, members)
+            # Native permission must be fully released before cleanup starts.
+            if previous is not None and previous.phase is ManagedMuxClosePhaseV1.CLOSED:
+                if release_cancellations:
+                    raise release_cancellations[0]
+                return previous
+            pending = self._managed_closing_muxes[request.operation_id]
+            task = self._start_managed_close(pending)
+        if cancellation is not None:
+            raise cancellation
+        if release_cancellations:
+            raise release_cancellations[0]
+        await asyncio.shield(task)
+        return self._managed_closures[request.operation_id]
+
+    def _start_managed_close(self, pending: _PendingMuxClose) -> asyncio.Task[None]:
+        task = pending.task
+        if task is None or (task.done() and (task.cancelled() or task.exception() is not None)):
+            task = _start_continuity_io(lambda: self._settle_managed_close(pending))
+            pending.task = task
+            task.add_done_callback(_observe_managed_close)
+        return task
+
+    async def _settle_managed_close(self, pending: _PendingMuxClose) -> None:
+        await self._close_sessions(pending.sessions)
+        async with self._state_lock:
+            if self._closed or self._managed_uncertain or self._managed_admission is not None:
+                raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+            request = pending.request
+            async with self._managed_close_permission(request, ManagedMuxCloseUseV1.SETTLE) as (previous, _origin):
+                if (previous is None or previous.phase is not ManagedMuxClosePhaseV1.CLEANUP_PENDING
+                        or self._managed_closing_muxes.get(request.operation_id) is not pending):
+                    raise _error(AppErrorCodeV1.REVISION_CONFLICT)
+                state = replace(previous, phase=ManagedMuxClosePhaseV1.CLOSED)
+                cancellation = await self._commit_continuity(self._next_continuity_record(closure=state))
+                self._managed_closures[state.operation_id] = state
+                self._managed_closing_muxes.pop(state.operation_id)
+                if cancellation is not None:
+                    raise cancellation
+
+    async def _drain_managed_closes(self) -> None:
+        deadline = asyncio.get_running_loop().time() + self._close_timeout_seconds
+        # Join before retrying or releasing any original admission. No Session
+        # owner is handed to generic service shutdown while this task can use it.
+        for retry in (False, True):
+            async with self._state_lock:
+                if self._managed_uncertain:
+                    raise _error(AppErrorCodeV1.CLEANUP_INCOMPLETE)
+                if retry:
+                    await self._release_managed_admission()
+                    for pending in self._managed_closing_muxes.values():
+                        if asyncio.get_running_loop().time() >= deadline:
+                            raise _error(AppErrorCodeV1.CLEANUP_INCOMPLETE)
+                        self._start_managed_close(pending)
+                tasks = {item.task for item in self._managed_closing_muxes.values() if item.task is not None}
+            if tasks:
+                _done, unsettled = await asyncio.wait(tasks, timeout=max(0.0, deadline - asyncio.get_running_loop().time()))
+                if unsettled:
+                    raise _error(AppErrorCodeV1.CLEANUP_INCOMPLETE)
+        if self._managed_closing_muxes or self._managed_uncertain:
+            raise _error(AppErrorCodeV1.CLEANUP_INCOMPLETE)
 
     async def create_mux(self, request: MuxCreateV1) -> MuxSpaceV1:
+        self._require_legacy_mux_mutation()
         if type(request) is not MuxCreateV1:
             raise _error(AppErrorCodeV1.INVALID_REQUEST)
         async with self._state_lock:
@@ -696,6 +1002,7 @@ class AppServiceV1:
         return AckV1()
 
     async def close_mux(self, request: MuxCloseV1) -> AckV1:
+        self._require_legacy_mux_mutation()
         self._require_request(request, MuxCloseV1)
         mux = await self._resolve_mux(request.selector)
         async with self._state_lock:
@@ -766,6 +1073,9 @@ class AppServiceV1:
                 if session.identity.session_id in self._sessions or any(
                     item.identity.session_id == session.identity.session_id
                     for item in self._cleanup_debt
+                ) or any(
+                    member.session.session_id == session.identity.session_id
+                    for pending in self._managed_closing_muxes.values() for member in pending.snapshot.members
                 ):
                     raise _error(AppErrorCodeV1.ALREADY_EXISTS)
                 async with mux.lock:
@@ -924,16 +1234,27 @@ class AppServiceV1:
 
     async def close(self) -> None:
         scope_failure = False
+        managed_failure = False
+        managed_cancellation: asyncio.CancelledError | None = None
         if self._execution_registry is not None:
             self._execution_registry.fence()
         if self._discovery is not None:
             self._discovery.fence()
+        if self._managed_mux is not None and self._managed_mux.closing is not None:
+            self._managed_shutdown = True
+            if self._client_scopes is not None:
+                self._client_scopes.fence()
+            await self._drain_managed_closes()
         if self._client_scopes is not None:
             try:
                 await self._client_scopes.close()
             except AppServiceError:
                 scope_failure = True
         async with self._state_lock:
+            try:
+                managed_cancellation = await self._release_managed_admission()
+            except AppServiceError:
+                managed_failure = True
             if self._closed:
                 muxes: tuple[_MuxOwner, ...] = ()
                 attachments: tuple[_Attachment, ...] = ()
@@ -959,8 +1280,10 @@ class AppServiceV1:
         if self._discovery is not None:
             await self._discovery.close()
         await self._close_sessions(sessions)
-        if scope_failure:
+        if scope_failure or managed_failure:
             raise _error(AppErrorCodeV1.CLEANUP_INCOMPLETE)
+        if managed_cancellation is not None:
+            raise managed_cancellation
 
     async def _resolve_mux(self, selector: MuxSelectorV1) -> _MuxOwner:
         async with self._state_lock:
@@ -1105,6 +1428,8 @@ class AppServiceV1:
         replace_mux: _MuxOwner | None = None,
         members: tuple[_Member, ...] | None = None,
         mux_revision: int | None = None,
+        creation: ManagedMuxCreatedV1 | None = None,
+        closure: ManagedMuxCloseStateV1 | None = None,
     ) -> ApplicationContinuityRecordV1 | None:
         if self._continuity_lease is None:
             return None
@@ -1126,6 +1451,11 @@ class AppServiceV1:
                 retained.append(self._continuity_mux(mux))
         if add_mux is not None:
             retained.append(self._continuity_mux(add_mux))
+        retained.extend(
+            item.snapshot for operation, item in self._managed_closing_muxes.items()
+            if closure is None or closure.operation_id != operation
+            or closure.phase is not ManagedMuxClosePhaseV1.CLOSED
+        )
         retained.sort(key=lambda item: (item.name, item.mux_space_id))
         application_id = self._continuity_application_id
         if application_id is None:
@@ -1138,6 +1468,20 @@ class AppServiceV1:
             product_id=self.product_id,
             record_revision=revision,
             mux_spaces=tuple(retained),
+            contract_version=(APPLICATION_CONTINUITY_VERSION if self._managed_mux is None
+                              else MANAGED_CONTINUITY_VERSION if self._managed_mux.closing is None
+                              else MANAGED_CLOSE_CONTINUITY_VERSION),
+            managed_service_id=(None if self._managed_mux is None
+                                else self._managed_mux.service_id),
+            managed_creations=(
+                *self._managed_creations.values(),
+                *((creation,) if creation is not None else ()),
+            ),
+            managed_closures=(
+                *(item for operation, item in self._managed_closures.items()
+                  if closure is None or operation != closure.operation_id),
+                *((closure,) if closure is not None else ()),
+            ),
         )
 
     @staticmethod
@@ -1172,13 +1516,25 @@ class AppServiceV1:
         lease = self._continuity_lease
         if lease is None:
             raise RuntimeError("continuity record has no lease")
-        task = asyncio.create_task(
-            lease.commit(
-                expected_revision=self._continuity_revision,
-                record=record,
-            )
-        )
-        cancellation = await _join_continuity_commit(task)
+        if self._managed_mux is not None:
+            try:
+                encode_application_continuity_record(record)
+            except ApplicationContinuityError:
+                # Capacity rejection before any commit IO is not an unknown
+                # write outcome. Existing service operations remain available.
+                raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE) from None
+        try:
+            task = _start_continuity_io(lambda: lease.commit(
+                expected_revision=self._continuity_revision, record=record,
+            ))
+            cancellation = await _join_continuity_commit(task)
+        except BaseException:
+            if self._managed_mux is not None:
+                # A failed receipt can follow replace/fsync. Never retry a new
+                # mutation against stale in-memory state or claim durability
+                # from a read alone. Recovery uses the original stored record.
+                self._managed_uncertain = True
+            raise
         self._continuity_revision = record.record_revision
         return cancellation
 
@@ -1210,8 +1566,10 @@ class AppServiceV1:
         return value
 
     def _require_open(self) -> None:
-        if self._closed:
+        if self._closed or self._managed_shutdown:
             raise _error(AppErrorCodeV1.SERVICE_CLOSED)
+        if self._managed_uncertain or self._managed_admission is not None:
+            raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
 
     @staticmethod
     def _require_request(request: object, expected: type[object]) -> None:
@@ -1222,6 +1580,37 @@ class AppServiceV1:
     def _require_mux_open(mux: _MuxOwner) -> None:
         if mux.closed:
             raise _error(AppErrorCodeV1.NOT_FOUND)
+
+
+def _observe_managed_close(task: asyncio.Task[None]) -> None:
+    if not task.cancelled():
+        task.exception()
+
+
+_ContinuityResult = TypeVar("_ContinuityResult")
+
+
+def _start_continuity_io(operation: Callable[[], Awaitable[_ContinuityResult]]) -> asyncio.Task[_ContinuityResult]:
+    """Publish before effects, including task-factory receipt failure.
+
+    Same publication gate as scoped _OwnedAppOperations: the factory can run
+    the wrapper eagerly, but it cannot enter the actual operation until the
+    original Task has been returned to its joining owner.
+    """
+    published = asyncio.get_running_loop().create_future()
+
+    async def invoke() -> _ContinuityResult:
+        await published
+        return await operation()
+
+    invocation = invoke()
+    try:
+        task = asyncio.create_task(invocation)
+    except BaseException:
+        invocation.close()
+        raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE) from None
+    published.set_result(None)
+    return task
 
 
 async def _join_continuity_commit(

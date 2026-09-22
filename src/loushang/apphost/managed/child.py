@@ -1,23 +1,29 @@
 """Optional child-side application owner; no CLI, Product selection or spawn.
 
 The trusted child composition publishes this owner before run and retains it
-through cleanup. Run waiters are not service-lifetime owners. A single retained
-worker executes synchronous control IO without blocking the application loop.
+through cleanup. Run waiters are not service-lifetime owners. One retained pool
+serializes control IO; optional diagnostics get one independent execution slot.
 """
 
 from __future__ import annotations
 
 import asyncio
+from collections import deque
 from collections.abc import Callable, Coroutine
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import suppress
+from functools import partial
+from threading import Event
 from typing import Any, Literal, Protocol, TypeVar
 
 from .contracts import ManagedHandoffPhaseV1
 from .handoff import ManagedChildControlV1
 from .lifecycle import ManagedServiceStateV1
+from .trace_buffer import ManagedTraceBuffer
 
 _T = TypeVar("_T")
+_DiagnosticEvent = Literal["starting", "ready", "stopping", "stopped", "failed"]
+_DiagnosticCode = Literal["startup_failed", "application_failed", "cleanup_incomplete", "stop_requested"]
 
 
 class ManagedChildError(RuntimeError):
@@ -55,6 +61,10 @@ class ManagedChildApplicationV1:
     def __init__(
         self, application: ManagedChildApplicationPortV1, control: ManagedChildControlV1,
         *, startup_timeout: float = 30.0, settlement_timeout: float = 30.0,
+        diagnostic: Callable[[_DiagnosticEvent, _DiagnosticCode | None], None] | None = None,
+        trace_buffer: ManagedTraceBuffer | None = None,
+        trace_write: Callable[[bytes, float], None] | None = None,
+        trace_initialize: Callable[[], None] | None = None,
     ) -> None:
         for value in (startup_timeout, settlement_timeout):
             _budget(value)
@@ -63,14 +73,33 @@ class ManagedChildApplicationV1:
             for name in ("prepare", "activate", "fence", "close", "wait_closed")
         ):
             raise TypeError("invalid managed child owner")
+        if diagnostic is not None and not callable(diagnostic):
+            raise TypeError("invalid managed diagnostic")
+        if ((trace_buffer is None) != (trace_write is None)
+                or trace_buffer is not None and type(trace_buffer) is not ManagedTraceBuffer
+                or trace_write is not None and not callable(trace_write)):
+            raise TypeError("invalid managed trace binding")
+        if trace_initialize is not None and (trace_buffer is None or not callable(trace_initialize)):
+            raise TypeError("invalid managed trace initializer")
         self._application, self._control = application, control
+        self._diagnostic = diagnostic
+        self._trace_buffer, self._trace_write = trace_buffer, trace_write
+        self._trace_disabled = False
+        self._trace_initialize = trace_initialize
+        self._trace_initialized = trace_initialize is None
+        self._diagnostic_queue: deque[tuple[_DiagnosticEvent, _DiagnosticCode | None]] = deque()
+        self._diagnostic_seen: set[_DiagnosticEvent] = set()
+        self._diagnostic_task: asyncio.Task[None] | None = None
+        self._pending_log: Future[bool] | None = None
+        self._log_gate: Future[bool] | None = None
+        self._log_done: Event | None = None
+        self._diagnostics_disabled = self._diagnostics_closed = False
         self._startup_timeout, self._timeout = startup_timeout, settlement_timeout
         self._worker: ThreadPoolExecutor | None = None
         self._io_lock = asyncio.Lock()
         self._pending_io: Future[Any] | None = None
         self._observation_task: asyncio.Task[ManagedServiceStateV1 | None] | None = None
         self._stop_task: asyncio.Task[ManagedServiceStateV1 | None] | None = None
-        self._stop_deadline: float | None = None
         self._run_task: asyncio.Task[None] | None = None
         self._prepare_task: asyncio.Task[None] | None = None
         self._activate_task: asyncio.Task[None] | None = None
@@ -80,6 +109,7 @@ class ManagedChildApplicationV1:
         self._startup_deadline: float | None = None
         self._close_deadline: float | None = None
         self._application_settled = False
+        self._control_settled = False
         self._committed = False
         self._closing = False
         self._settled = False
@@ -109,6 +139,7 @@ class ManagedChildApplicationV1:
             await self._drive()
         except BaseException as error:
             self._failure = error
+            self._emit("failed", "application_failed" if self._committed else "startup_failed")
             try:
                 await self.close()
             except BaseException:
@@ -123,6 +154,7 @@ class ManagedChildApplicationV1:
         assert self._startup_deadline is not None
         failure: str | None = None
         while not self._closing:
+            self._poll_trace()
             if (not self.accepting and asyncio.get_running_loop().time() >= self._startup_deadline):
                 failure = "startup_failed"
                 break  # Application's own startup budget, not a starter timeout.
@@ -135,10 +167,11 @@ class ManagedChildApplicationV1:
             if state is not None:
                 if state.handoff.stop_requested or state.handoff.phase is ManagedHandoffPhaseV1.ABORTING:
                     break
-                if self._prepare_task is None:
+                if self._prepare_task is None and state.native_identity is not None:
                     if state.handoff.phase is not ManagedHandoffPhaseV1.PROVISIONAL:
                         failure = "startup_failed"
                         break
+                    self._emit("starting")
                     self._prepare_task = _spawn(self._application.prepare(deadline=self._startup_deadline))
                 if state.handoff.phase is ManagedHandoffPhaseV1.COMMITTED:
                     self._committed = True
@@ -162,7 +195,7 @@ class ManagedChildApplicationV1:
                     if asyncio.get_running_loop().time() >= self._startup_deadline:
                         failure = "startup_failed"
                         break
-                    self._activate_task = _spawn(self._application.activate())
+                    self._activate_task = _spawn(self._activate())
             if self._activate_task is not None and self._activate_task.done():
                 if _failed(self._activate_task):
                     failure = "activation_failed"
@@ -179,6 +212,11 @@ class ManagedChildApplicationV1:
         if failure is not None:
             raise ManagedChildError(failure)
 
+    async def _activate(self) -> None:
+        await self._application.activate()
+        if self._committed and not self._closing:
+            self._emit("ready")
+
     async def _observe_running(
         self, action: Literal["read", "poll", "commit"], *, deadline: float | None = None,
     ) -> ManagedServiceStateV1 | None:
@@ -186,6 +224,7 @@ class ManagedChildApplicationV1:
         # noticing application failure/deadline or explicit local stop.
         task = self._observation_task = _spawn(self._observe(action, deadline=deadline))
         while True:
+            self._poll_trace()
             if self._closing:
                 return None
             if (self._activate_task is not None and self._activate_task.done()
@@ -220,13 +259,38 @@ class ManagedChildApplicationV1:
             # native job disappear or admit a second queued job over it.
             prior = self._pending_io
             if prior is not None:
-                with suppress(Exception):
-                    await asyncio.shield(asyncio.wrap_future(prior))
-                self._pending_io = None
-            if self._worker is None:
-                self._worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="lmux-control")
-            future = self._worker.submit(operation)
+                try:
+                    with suppress(Exception):
+                        await asyncio.shield(asyncio.wrap_future(prior))
+                finally:
+                    if prior.done():
+                        self._pending_io = None
+            gate: Future[bool] = Future()
+            # This receipt belongs to the callable, not to the executor or an
+            # asyncio waiter. Cancellation cannot turn admitted native IO into
+            # an apparently finished job.
+            future: Future[_T] = Future()
+            future.set_running_or_notify_cancel()
+
+            def deliver_control() -> None:
+                if not gate.result():
+                    return
+                try:
+                    result = operation()
+                except BaseException as error:
+                    future.set_exception(error)
+                else:
+                    future.set_result(result)
+
+            try:
+                self._executor().submit(deliver_control)
+            except BaseException:
+                # submit may enqueue before losing its return receipt. Such a
+                # wrapper must never touch the borrowed control dependencies.
+                gate.set_result(False)
+                raise
             self._pending_io = future
+            gate.set_result(True)
             try:
                 return await asyncio.shield(asyncio.wrap_future(future))
             finally:
@@ -235,12 +299,154 @@ class ManagedChildApplicationV1:
                 if future.done():
                     self._pending_io = None
 
+    def _executor(self) -> ThreadPoolExecutor:
+        if self._worker is None:
+            self._worker = ThreadPoolExecutor(max_workers=2 if self._diagnostic is not None or self._trace_buffer is not None else 1,
+                                              thread_name_prefix="lmux-control")
+        return self._worker
+
+    def _emit(self, event: _DiagnosticEvent, code: _DiagnosticCode | None = None) -> None:
+        if (self._diagnostic is None or self._diagnostics_disabled or self._diagnostics_closed
+                or event in self._diagnostic_seen):
+            return
+        self._diagnostic_seen.add(event)
+        self._diagnostic_queue.append((event, code))
+        if self._diagnostic_task is None or self._diagnostic_task.done():
+            try:
+                self._diagnostic_task = _spawn(self._drain_diagnostics())
+            except BaseException:
+                self._diagnostics_disabled = True
+                self._diagnostic_queue.clear()
+
+    async def _drain_diagnostics(self) -> None:
+        operation: Callable[[], None]
+        while not self._diagnostics_disabled:
+            is_trace = False
+            initializing = False
+            if self._diagnostic_queue:
+                event, code = self._diagnostic_queue.popleft()
+                assert self._diagnostic is not None
+                operation = partial(self._diagnostic, event, code)
+            elif self._trace_buffer is not None and not self._trace_disabled:
+                is_trace = True
+                if not self._trace_initialized:
+                    if not self._committed:
+                        break  # Native birth/commit must precede application facts.
+                    assert self._trace_initialize is not None
+                    operation = self._trace_initialize
+                    initializing = True
+                else:
+                    frame = self._trace_buffer.take()
+                    if frame is None:
+                        break
+                    assert self._trace_write is not None
+                    operation = partial(self._trace_write, frame, self._trace_buffer.deadline)
+            else:
+                break
+            gate: Future[bool] = Future()
+            done = Event()
+            self._log_gate, self._log_done = gate, done
+
+            def deliver(operation: Callable[[], None] = operation,
+                        gate: Future[bool] = gate, done: Event = done) -> bool:
+                try:
+                    if not gate.result():
+                        return False
+                    operation()
+                    return True
+                except BaseException:
+                    return False  # No arbitrary exception enters the control plane.
+                finally:
+                    done.set()
+
+            try:
+                future = self._executor().submit(deliver)
+            except BaseException:
+                # submit may have queued a wrapper before raising. Without a
+                # receipt that wrapper may not enter journal or log IO.
+                gate.set_result(False)
+                # No native work was authorized. A queued wrapper can only
+                # return without touching dependencies; a never-queued one
+                # cannot supply a done receipt. Both belong to pool shutdown.
+                self._log_gate = self._log_done = None
+                self._disable_diagnostic(is_trace)
+                if is_trace:
+                    continue
+                return
+            self._pending_log = future
+            gate.set_result(True)
+            try:
+                succeeded = await asyncio.shield(asyncio.wrap_future(future))
+            except BaseException:
+                self._diagnostics_disabled = True
+                self._diagnostic_queue.clear()
+                raise
+            finally:
+                if future.done():
+                    self._pending_log = None
+                    self._log_gate = self._log_done = None
+            if not succeeded:
+                self._disable_diagnostic(is_trace)
+            elif initializing:
+                self._trace_initialized = True
+            await asyncio.sleep(0)  # Reconsider lifecycle priority between frames.
+
+    def _disable_diagnostic(self, is_trace: bool) -> None:
+        if is_trace:
+            self._trace_disabled = True
+            assert self._trace_buffer is not None
+            self._trace_buffer.discard()
+        else:
+            self._diagnostics_disabled = True
+            self._diagnostic_queue.clear()
+
+    def _poll_trace(self) -> None:
+        if (self._trace_buffer is None or self._trace_disabled or self._closing
+                or self._diagnostics_closed or self._diagnostics_disabled):
+            return
+        if self._diagnostic_task is None or self._diagnostic_task.done():
+            try:
+                self._diagnostic_task = _spawn(self._drain_diagnostics())
+            except BaseException:
+                self._disable_diagnostic(True)
+
+    async def _settle_diagnostics(self, deadline: float) -> None:
+        # With trace-only composition, no lifecycle event schedules the final
+        # drain. Fence has already stopped producers; settle this finite tail.
+        if (self._trace_buffer is not None and not self._trace_disabled
+                and not self._diagnostics_disabled
+                and (self._diagnostic_task is None or self._diagnostic_task.done())):
+            try:
+                self._diagnostic_task = _spawn(self._drain_diagnostics())
+            except BaseException:
+                # _spawn's publication gate prevents this new drain from
+                # entering native IO. Existing receipts below still settle.
+                self._disable_diagnostic(True)
+        self._diagnostics_closed = True  # No enqueue can race final settlement.
+        if self._diagnostic_task is not None:
+            await _wait(self._diagnostic_task, deadline, ignore_failure=True)
+        future = self._pending_log
+        if future is not None:
+            wrapped = asyncio.wrap_future(future)
+            await asyncio.wait({wrapped}, timeout=max(0, deadline - asyncio.get_running_loop().time()))
+            if not wrapped.done():
+                raise ManagedChildError("cleanup_incomplete")
+            with suppress(BaseException):
+                wrapped.result()
+            self._pending_log = None
+        if self._log_done is not None and not self._log_done.is_set():
+            raise ManagedChildError("cleanup_incomplete")
+        self._log_gate = self._log_done = None
+
     async def close(self, *, retry_timeout: float | None = None) -> None:
         if retry_timeout is not None:
             _budget(retry_timeout)
         if self._settled:
             return
         self._closing = True
+        if self._trace_buffer is not None:
+            self._trace_buffer.fence()
+        self._emit("stopping")
         self._application.fence()
         self._wakeup.set()
         if self._close_deadline is None:
@@ -271,27 +477,43 @@ class ManagedChildApplicationV1:
                 if owned is not None:
                     await _wait(owned, deadline, ignore_failure=True)
             self._application_settled = True
+            self._emit("stopped")  # Application stopped, not process/group exit.
+        if self._control_settled:
+            await self._finish_settlement(deadline)
+            return
         self._start_stop(deadline)
         if self._observation_task is not None:
             await _wait(self._observation_task, deadline, ignore_failure=True)
-        assert self._stop_task is not None
-        await _wait(self._stop_task, deadline)
-        state = self._stop_task.result()
-        if (state is None and self._stop_deadline is not None and self._stop_deadline < deadline):
-            # A retained request from an older, expired attempt just settled.
-            # Use the explicitly granted retry budget only after that exact job
-            # completes; never replace it or enqueue a second native operation.
-            self._start_stop(deadline)
+        while True:
+            assert self._stop_task is not None
             await _wait(self._stop_task, deadline)
             state = self._stop_task.result()
-        if state is None or not state.handoff.stop_requested:
-            raise ManagedChildError("cleanup_incomplete")
-        state = await self._observe("cleanup", deadline=deadline)
-        if state is None or not state.evidence.application_cleanup_completed:
-            raise ManagedChildError("cleanup_incomplete")
+            if state is not None and state.handoff.stop_requested:
+                break
+            # A completed observation may have met only transient contention.
+            # Retain the same worker and budget; never replace an in-flight job
+            # or repeat successful application cleanup for a missing receipt.
+            if asyncio.get_running_loop().time() >= deadline:
+                raise ManagedChildError("cleanup_incomplete")
+            await asyncio.sleep(0.01)
+            self._start_stop(deadline)
+        while True:
+            if asyncio.get_running_loop().time() >= deadline:
+                raise ManagedChildError("cleanup_incomplete")
+            state = await self._observe("cleanup", deadline=deadline)
+            if state is not None and state.evidence.application_cleanup_completed:
+                break
+            if asyncio.get_running_loop().time() >= deadline:
+                raise ManagedChildError("cleanup_incomplete")
+            await asyncio.sleep(0.01)
         if asyncio.get_running_loop().time() >= deadline:
             raise ManagedChildError("cleanup_incomplete")
         await self._io(self._control.close)
+        self._control_settled = True
+        await self._finish_settlement(deadline)
+
+    async def _finish_settlement(self, deadline: float) -> None:
+        await self._settle_diagnostics(deadline)
         assert self._worker is not None and self._pending_io is None
         # All jobs have finished; never join a native thread on the app loop.
         self._worker.shutdown(wait=False)
@@ -308,9 +530,8 @@ class ManagedChildApplicationV1:
         if asyncio.get_running_loop().time() >= deadline:
             raise ManagedChildError("cleanup_incomplete")
         # Independent of successful application cleanup, but serialized behind
-        # any exact in-flight native job by the same single-worker IO owner.
+        # any exact in-flight control job by the original single-flight IO owner.
         self._stop_task = _spawn(self._observe("stop", deadline=deadline))
-        self._stop_deadline = deadline
 
 
 def _budget(value: float) -> None:

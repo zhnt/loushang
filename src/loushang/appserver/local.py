@@ -21,11 +21,13 @@ from ._local_peer import (
     OwnedLocalClientScopeV1,
     OwnedLocalDiscoveryScopeV1,
     OwnedLocalExecutionScopeV1,
+    OwnedLocalManagedMuxScopeV1,
     _failed,
     _LocalPeer,
     _observe,
     _spawn,
 )
+from ._local_record_values import _hex
 from .client import AppClientV1, SessionDiscoveryClientV1
 from .execution.client import ExecutionClientV1
 from .framing import AppConnectionClosedError, AsyncioStreamTransportV1, require_timeout
@@ -36,6 +38,8 @@ from .local_record import (
     LocalEndpointReservationV1,
     LocalRecordScopeV1,
 )
+from .managed_mux import ManagedMuxCreationClientV1
+from .managed_mux_close import ManagedMuxCloseClientV1
 from .protocol import AppErrorCodeV1, AppServiceError
 from .remote_client import RemoteAppClientV1
 
@@ -86,6 +90,9 @@ class LocalAppServerV1:
         auth_timeout: float = 5.0, close_timeout: float = 10.0,
         discovery_scope_factory: Callable[[], OwnedLocalDiscoveryScopeV1] | None = None,
         execution_scope_factory: Callable[[], OwnedLocalExecutionScopeV1] | None = None,
+        managed_mux_scope_factory: Callable[[], OwnedLocalManagedMuxScopeV1] | None = None,
+        mux_closure: bool = False,
+        instance: str | None = None,
     ) -> None:
         require_timeout(auth_timeout)
         require_timeout(close_timeout)
@@ -95,15 +102,22 @@ class LocalAppServerV1:
             raise TypeError("invalid discovery scope factory")
         if execution_scope_factory is not None and not callable(execution_scope_factory):
             raise TypeError("invalid execution scope factory")
+        if managed_mux_scope_factory is not None and not callable(managed_mux_scope_factory):
+            raise TypeError("invalid managed Mux scope factory")
+        if type(mux_closure) is not bool or mux_closure and managed_mux_scope_factory is None:
+            raise ValueError("close requires an explicit managed scope factory")
+        self._mux_closure = mux_closure
         # Validate all record facts before obtaining a lock or opening IO.
         LocalConnectionRecordV1(endpoint=endpoint, application_id=application_id,
                                 product_id=product_id, scopes=scopes, port=1,
-                                instance="0" * 32, key=bytes(32))
+                                instance="0" * 32 if instance is None else instance, key=bytes(32))
+        self._instance = instance
         self._directory, self._endpoint = directory, endpoint
         self._application_id, self._product_id, self._scopes = application_id, product_id, scopes
         self._scope_factory, self._request_stop = scope_factory, request_stop
         self._discovery_factory = discovery_scope_factory
         self._execution_factory = execution_scope_factory
+        self._managed_mux_factory = managed_mux_scope_factory
         self._auth_timeout, self._timeout = auth_timeout, close_timeout
         self._reservation: LocalEndpointReservationV1 | None = None
         self._record: LocalConnectionRecordV1 | None = None
@@ -231,6 +245,9 @@ class LocalAppServerV1:
             port=port, scopes=self._scopes,
             session_discovery=self._discovery_factory is not None,
             session_execution=self._execution_factory is not None,
+            mux_management=self._managed_mux_factory is not None,
+            mux_closure=self._mux_closure,
+            instance=self._instance,
         )
         self._remaining_startup()
         self._ready = True
@@ -252,6 +269,8 @@ class LocalAppServerV1:
                 profile=self._record.semantic_profile,
                 discovery_scope_factory=self._discovery_factory,
                 execution_scope_factory=self._execution_factory,
+                managed_mux_scope_factory=self._managed_mux_factory,
+                mux_closure=self._mux_closure,
             )
         except Exception:
             writer.transport.abort()
@@ -328,6 +347,7 @@ class LocalAppClientConnectionV1:
         self, directory: LocalConnectionDirectoryV1, endpoint: str, *,
         mode: LocalConnectionModeV1 = LocalConnectionModeV1.APP, timeout: float = 10.0,
         expected_product_id: str | None = None,
+        expected_instance: str | None = None,
     ) -> None:
         require_timeout(timeout)
         if timeout > 30 or type(mode) is not LocalConnectionModeV1:
@@ -336,14 +356,18 @@ class LocalAppClientConnectionV1:
             type(expected_product_id) is not str or not 1 <= len(expected_product_id) <= 128
         ):
             raise ValueError("invalid expected local Product")
+        if expected_instance is not None and not _hex(expected_instance, 32):
+            raise ValueError("invalid expected local instance")
         self._directory, self._endpoint = directory, endpoint
         self._expected_product_id = expected_product_id
+        self._expected_instance = expected_instance
         self._mode, self._timeout = mode, timeout
         self._socket: socket.socket | None = None
         self._writer: asyncio.StreamWriter | None = None
         self._transport: _LocalTransport | None = None
         self._client: RemoteAppClientV1 | None = None
         self._scopes: tuple[LocalRecordScopeV1, ...] = ()
+        self._authenticated_application_id: str | None = None
         self._start_task: asyncio.Task[None] | None = None
         self._close_task: asyncio.Task[None] | None = None
         self._closed = False
@@ -367,6 +391,25 @@ class LocalAppClientConnectionV1:
         if not self._ready or self._closed or self._client is None:
             return None
         return self._client.execution_client
+
+    @property
+    def managed_mux_client(self) -> ManagedMuxCreationClientV1 | None:
+        if not self._ready or self._closed or self._client is None:
+            return None
+        return self._client.managed_mux_client
+
+    @property
+    def managed_mux_close_client(self) -> ManagedMuxCloseClientV1 | None:
+        if not self._ready or self._closed or self._client is None:
+            return None
+        return self._client.managed_mux_close_client
+
+    @property
+    def application_id(self) -> str:
+        """Identity from this exact authenticated record, never a fresh lookup."""
+        if not self._ready or self._closed or self._authenticated_application_id is None:
+            raise AppConnectionClosedError()
+        return self._authenticated_application_id
 
     @property
     def stop_requested(self) -> bool:
@@ -396,6 +439,8 @@ class LocalAppClientConnectionV1:
         record = self._directory.read(self._endpoint)
         if self._expected_product_id is not None and record.product_id != self._expected_product_id:
             raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        if self._expected_instance is not None and record.instance != self._expected_instance:
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
         async with asyncio.timeout(self._timeout):
             self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self._socket.set_inheritable(False)
@@ -417,6 +462,7 @@ class LocalAppClientConnectionV1:
                 )
                 await self._client.start()
                 self._scopes = record.scopes
+                self._authenticated_application_id = record.application_id
             else:
                 if await frames.receive() != LOCAL_STOP_ACK:
                     raise AppConnectionClosedError()

@@ -43,7 +43,7 @@ class _Scope:
         self.closed = True
 
 
-def _server(directory, *, auth_timeout=1, close_timeout=1, request_stop=None):
+def _server(directory, *, auth_timeout=1, close_timeout=1, request_stop=None, instance=None):
     scopes = []
     def factory():
         scope = _Scope()
@@ -54,8 +54,57 @@ def _server(directory, *, auth_timeout=1, close_timeout=1, request_stop=None):
         scopes=(LocalRecordScopeV1(SessionScopeV1.CWD, "a" * 64),), scope_factory=factory,
         request_stop=request_stop or (lambda _: pytest.fail("unexpected application stop")),
         auth_timeout=auth_timeout, close_timeout=close_timeout,
+        instance=instance,
     )
     return server, scopes
+
+
+def test_managed_instance_is_published_and_stale_client_rejects_before_socket(tmp_path, monkeypatch):
+    from loushang.appserver import local as module
+
+    async def scenario():
+        directory = LocalConnectionDirectoryV1(tmp_path / "runtime")
+        server, scopes = _server(directory, instance="c" * 32)
+        stale = LocalAppClientConnectionV1(directory, "workspace", expected_instance="d" * 32)
+        current = LocalAppClientConnectionV1(directory, "workspace", expected_instance="c" * 32)
+        try:
+            with pytest.raises(AppServiceError):
+                _ = current.application_id
+            await server.start()
+            assert directory.read("workspace").instance == "c" * 32
+            with monkeypatch.context() as patch:
+                patch.setattr(module.socket, "socket", lambda *a, **k: pytest.fail("stale reference opened socket"))
+                with pytest.raises(AppServiceError):
+                    await stale.start()
+            assert not scopes
+            await current.start()
+            assert current.application_id == "application"
+            with monkeypatch.context() as patch:
+                patch.setattr(directory, "read", lambda *_: pytest.fail("authenticated identity reread mutable record"))
+                assert current.application_id == "application"
+            assert await current.client.list_muxes() == MuxListResultV1(())
+        finally:
+            await asyncio.gather(stale.close(), current.close())
+            with pytest.raises(AppServiceError):
+                _ = current.application_id
+            await server.close()
+            directory.close()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("value", ["", "C" * 32, "c" * 31, True, 7])
+def test_invalid_managed_instance_rejected_before_record_or_socket(tmp_path, value):
+    root = tmp_path / "runtime"
+    directory = LocalConnectionDirectoryV1(root)
+    try:
+        with pytest.raises(ValueError):
+            _server(directory, instance=value)
+        with pytest.raises(ValueError):
+            LocalAppClientConnectionV1(directory, "workspace", expected_instance=value)
+        assert not root.exists()
+    finally:
+        directory.close()
 
 
 async def _until(predicate):
