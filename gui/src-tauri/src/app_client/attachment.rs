@@ -2,7 +2,7 @@
 use super::transport_auth::Channel;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, value::RawValue, Value};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::{Read, Write};
 #[path = "projection.rs"]
 mod projection;
@@ -221,6 +221,25 @@ pub(crate) struct ReadSession {
     closed: bool,
 }
 
+#[derive(Clone)]
+pub(crate) struct ControlAuthority {
+    attachment_id: String,
+    controller_generation: String,
+    instance: String,
+    members: BTreeMap<String, String>,
+}
+
+pub(crate) enum ControlResult {
+    Accepted,
+    Missing,
+    Rejected(String),
+}
+
+pub(crate) enum ModelControlResult {
+    Accepted(Value),
+    Rejected(String),
+}
+
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct InitialSnapshot {
@@ -307,6 +326,36 @@ impl ReadSession {
             self.fail(attempt);
         }
         result
+    }
+
+    pub(crate) fn control_authority(&self) -> Result<ControlAuthority, ()> {
+        if self.closed {
+            return Err(());
+        }
+        let mut members = BTreeMap::new();
+        for session in &self.attachment.sessions {
+            let identity = projection::identity_value(session.member.session.get())?;
+            let session_id = identity["sessionId"].as_str().ok_or(())?.to_owned();
+            if members
+                .insert(session_id, session.member.member_id.clone())
+                .is_some()
+            {
+                return Err(());
+            }
+        }
+        Ok(ControlAuthority {
+            attachment_id: self.attachment.attachment_id.clone(),
+            controller_generation: self.attachment.controller_generation.get().to_owned(),
+            instance: self.instance.clone(),
+            members,
+        })
+    }
+
+    pub(crate) fn next_control_request_id(&mut self) -> Result<String, ()> {
+        if self.closed {
+            return Err(());
+        }
+        take_request_id(&mut self.next_id)
     }
 
     /// One complete round, with no hard-coded lifetime or round count.
@@ -475,6 +524,222 @@ impl ReadSession {
     }
 }
 
+impl ControlAuthority {
+    fn app_payload(&self, session_id: &str) -> Result<Value, ()> {
+        let member_id = self.members.get(session_id).ok_or(())?;
+        let generation: Value =
+            serde_json::from_str(&self.controller_generation).map_err(|_| ())?;
+        Ok(json!({
+            "attachmentId": self.attachment_id,
+            "controllerGeneration": generation,
+            "memberId": member_id,
+        }))
+    }
+
+    pub(crate) fn models<R: Read, W: Write>(
+        &self,
+        channel: &mut Channel<R, W>,
+        session_id: &str,
+        request_id: &str,
+    ) -> Result<ModelControlResult, ()> {
+        self.model_request(channel, "session/models", session_id, None, request_id)
+    }
+
+    pub(crate) fn select_model<R: Read, W: Write>(
+        &self,
+        channel: &mut Channel<R, W>,
+        session_id: &str,
+        model_id: &str,
+        request_id: &str,
+    ) -> Result<ModelControlResult, ()> {
+        if model_id.trim().is_empty() || model_id.chars().count() > 512 {
+            return Err(());
+        }
+        self.model_request(
+            channel,
+            "session/model/select",
+            session_id,
+            Some(model_id),
+            request_id,
+        )
+    }
+
+    fn model_request<R: Read, W: Write>(
+        &self,
+        channel: &mut Channel<R, W>,
+        operation: &str,
+        session_id: &str,
+        model_id: Option<&str>,
+        request_id: &str,
+    ) -> Result<ModelControlResult, ()> {
+        let mut payload = self.app_payload(session_id)?;
+        if let Some(model_id) = model_id {
+            payload["modelId"] = Value::String(model_id.to_owned());
+        }
+        let response = request(channel, operation, request_id, payload)?;
+        decode_model_result(&response.result_type, &response.result)
+    }
+
+    fn payload(&self, session_id: &str) -> Result<Value, ()> {
+        let member_id = self.members.get(session_id).ok_or(())?;
+        let generation: Value =
+            serde_json::from_str(&self.controller_generation).map_err(|_| ())?;
+        Ok(json!({
+            "control": {
+                "attachmentId": self.attachment_id,
+                "controllerGeneration": generation,
+                "memberId": member_id,
+            },
+            "expectedInstanceId": self.instance,
+        }))
+    }
+
+    pub(crate) fn submit<R: Read, W: Write>(
+        &self,
+        channel: &mut Channel<R, W>,
+        session_id: &str,
+        submission_id: &str,
+        text: &str,
+        request_id: &str,
+    ) -> Result<ControlResult, ()> {
+        if !identifier(submission_id, 128)
+            || text.trim().is_empty()
+            || text.chars().count() > 262_144
+        {
+            return Err(());
+        }
+        let mut payload = self.payload(session_id)?;
+        payload["submissionId"] = Value::String(submission_id.to_owned());
+        payload["text"] = Value::String(text.to_owned());
+        let result = execution_request(channel, "execution/submit", request_id, payload)?;
+        self.record_result(result, session_id, Some(submission_id))
+    }
+
+    pub(crate) fn find_submission<R: Read, W: Write>(
+        &self,
+        channel: &mut Channel<R, W>,
+        session_id: &str,
+        submission_id: &str,
+        request_id: &str,
+    ) -> Result<ControlResult, ()> {
+        if !identifier(submission_id, 128) {
+            return Err(());
+        }
+        let mut payload = self.payload(session_id)?;
+        payload["submissionId"] = Value::String(submission_id.to_owned());
+        let result = execution_request(channel, "execution/find_submission", request_id, payload)?;
+        if result["resultType"] == "not_found" {
+            projection::control_bridge("not_found", &result.to_string())?;
+            return Ok(ControlResult::Missing);
+        }
+        self.record_result(result, session_id, Some(submission_id))
+    }
+
+    pub(crate) fn interrupt<R: Read, W: Write>(
+        &self,
+        channel: &mut Channel<R, W>,
+        session_id: &str,
+        execution_id: &str,
+        request_id: &str,
+    ) -> Result<ControlResult, ()> {
+        if !identifier(execution_id, 128) {
+            return Err(());
+        }
+        let mut payload = self.payload(session_id)?;
+        payload["executionId"] = Value::String(execution_id.to_owned());
+        let result = execution_request(channel, "execution/interrupt", request_id, payload)?;
+        if let Some(rejected) = rejected_result(&result)? {
+            return Ok(ControlResult::Rejected(rejected));
+        }
+        let checked = projection::control_bridge("interrupt", &result.to_string())?;
+        let record = &checked["result"]["record"];
+        if record["serviceInstanceId"] != self.instance
+            || record["identity"]["sessionId"] != session_id
+            || record["state"]["executionId"] != execution_id
+        {
+            return Err(());
+        }
+        Ok(ControlResult::Accepted)
+    }
+
+    fn record_result(
+        &self,
+        result: Value,
+        session_id: &str,
+        submission_id: Option<&str>,
+    ) -> Result<ControlResult, ()> {
+        if let Some(rejected) = rejected_result(&result)? {
+            return Ok(ControlResult::Rejected(rejected));
+        }
+        let checked = projection::control_bridge("record", &result.to_string())?;
+        let record = &checked["result"];
+        if record["serviceInstanceId"] != self.instance
+            || record["identity"]["sessionId"] != session_id
+            || submission_id.is_some_and(|value| record["submissionId"] != value)
+        {
+            return Err(());
+        }
+        Ok(ControlResult::Accepted)
+    }
+}
+
+fn decode_model_result(result_type: &str, result: &RawValue) -> Result<ModelControlResult, ()> {
+    if result_type == "error" {
+        let error: Value = serde_json::from_str(result.get()).map_err(|_| ())?;
+        let code = error.get("code").and_then(Value::as_str).ok_or(())?;
+        if !identifier(code, 128) {
+            return Err(());
+        }
+        return Ok(ModelControlResult::Rejected(code.to_owned()));
+    }
+    if result_type != "sessionModels" {
+        return Err(());
+    }
+    let value: Value = serde_json::from_str(result.get()).map_err(|_| ())?;
+    let root = value.as_object().ok_or(())?;
+    if root.len() != 2 || !root.contains_key("currentId") || !root.contains_key("models") {
+        return Err(());
+    }
+    if !root["models"].is_array()
+        || (!root["currentId"].is_null() && !root["currentId"].is_string())
+    {
+        return Err(());
+    }
+    Ok(ModelControlResult::Accepted(value))
+}
+
+fn execution_request<R: Read, W: Write>(
+    channel: &mut Channel<R, W>,
+    operation: &str,
+    id: &str,
+    payload: Value,
+) -> Result<Value, ()> {
+    let request = serde_json::to_vec(&json!({
+        "protocolVersion": "loushang.execution/v1",
+        "requestId": id,
+        "operation": operation,
+        "payload": payload,
+    }))
+    .map_err(|_| ())?;
+    channel.send(&request)?;
+    let value: Value = serde_json::from_slice(&channel.receive()?).map_err(|_| ())?;
+    if value["requestId"] != id {
+        return Err(());
+    }
+    Ok(value)
+}
+
+fn rejected_result(value: &Value) -> Result<Option<String>, ()> {
+    let kind = value["resultType"].as_str().ok_or(())?;
+    if kind != "failure" && kind != "app_failure" {
+        return Ok(None);
+    }
+    let checked = projection::control_bridge(kind, &value.to_string())?;
+    Ok(Some(
+        checked["result"]["code"].as_str().ok_or(())?.to_owned(),
+    ))
+}
+
 fn successor(decimal: &str) -> String {
     let mut bytes = decimal.as_bytes().to_vec();
     for digit in bytes.iter_mut().rev() {
@@ -546,6 +811,16 @@ impl EventReader {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn model_capability_rejection_is_semantic_not_transport_failure() {
+        let raw = RawValue::from_string(r#"{"code":"operation_unavailable"}"#.to_owned()).unwrap();
+        match decode_model_result("error", &raw).unwrap() {
+            ModelControlResult::Rejected(code) => assert_eq!(code, "operation_unavailable"),
+            ModelControlResult::Accepted(_) => panic!("error response was accepted"),
+        }
+        assert!(decode_model_result("unexpected", &raw).is_err());
+    }
+
     #[test]
     fn request_numbers_fail_closed_without_wrapping() {
         let mut next = i64::MAX as u64;

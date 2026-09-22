@@ -15,6 +15,7 @@ import type {
   ExecutionProjection,
   HarnessClientUiPort,
   SessionSnapshot,
+  SessionModels,
 } from "./model";
 
 interface NativeInitialSnapshot {
@@ -200,12 +201,50 @@ export function createNativeLiveClient(): HarnessClientUiPort {
       await invoke("resync_live_readonly");
     },
     async submitText(input) {
-      return { submissionId: input.submissionId, accepted: false };
+      const receipt = await invoke<{ accepted: boolean; reason?: string | null }>("live_submit_text", { input });
+      return {
+        submissionId: input.submissionId,
+        accepted: receipt.accepted,
+        reason: receipt.reason ?? undefined,
+      };
     },
-    async interrupt() {
-      return { accepted: false, reason: "The live connection is read-only." };
+    async interrupt(sessionId) {
+      const executionId = current
+        ? projectSnapshot(current).sessions.find((session) => session.id === sessionId)?.execution?.id
+        : null;
+      if (!executionId) return { accepted: false, reason: "No active execution is available." };
+      const receipt = await invoke<{ accepted: boolean; reason?: string | null }>("live_interrupt", {
+        input: { sessionId, executionId },
+      });
+      return { accepted: receipt.accepted, reason: receipt.reason ?? undefined };
+    },
+    async sessionModels(sessionId) {
+      return validateSessionModels(await invoke("live_session_models", { input: { sessionId } }));
+    },
+    async selectModel(sessionId, modelId) {
+      return validateSessionModels(await invoke("live_select_model", { input: { sessionId, modelId } }));
     },
   };
+}
+
+function validateSessionModels(value: unknown): SessionModels {
+  const root = object(value);
+  if (!Array.isArray(root.models) || (root.currentId !== null && typeof root.currentId !== "string")) {
+    throw new Error("session models");
+  }
+  const models = root.models.map((raw) => {
+    const item = object(raw);
+    if (typeof item.id !== "string" || typeof item.provider !== "string"
+      || typeof item.endpointId !== "string" || typeof item.modelId !== "string"
+      || typeof item.label !== "string" || typeof item.supportsThinking !== "boolean") {
+      throw new Error("session model");
+    }
+    return item as unknown as SessionModels["models"][number];
+  });
+  if (root.currentId !== null && !models.some((model) => model.id === root.currentId)) {
+    throw new Error("current session model");
+  }
+  return { currentId: root.currentId as string | null, models };
 }
 
 function validateInitialSnapshot(value: unknown): NativeInitialSnapshot {

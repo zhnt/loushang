@@ -66,9 +66,9 @@ def test_coding_package_stays_within_wave_a_budget() -> None:
 
     assert sum(core_line_counts.values()) <= 33_800, core_line_counts
     assert sum(g10_line_counts.values()) <= 1_800, g10_line_counts
-    # Optional execution needs omission metadata and one synchronous projection
-    # observation seam; legacy protocol and default composition remain intact.
-    assert sum(g11_line_counts.values()) <= 420, g11_line_counts
+    # The AppService adapter owns the hosted execution seam plus the redacted,
+    # session-local model catalog and selection bridge used by attached clients.
+    assert sum(g11_line_counts.values()) <= 470, g11_line_counts
     assert sum(g12_line_counts.values()) <= 800, g12_line_counts
     assert sum(g13_line_counts.values()) <= 350, g13_line_counts
     assert sum(g14_line_counts.values()) <= 1_300, g14_line_counts

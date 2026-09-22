@@ -1,7 +1,7 @@
 # C1 execution contract probes
 
-Status: **partial C1 contract coverage plus the first B2 read-only native adapter**;
-not an accepted full codec or mutable client.
+Status: **partial C1 contract coverage plus a bounded B2 existing-Session control adapter**;
+not an accepted full codec or general mutable client.
 
 The [contract generation and native connection plan](connection-plan.md) now
 records the selected reference inputs, generated candidate DTOs and the exact
@@ -19,7 +19,7 @@ the value/selection contract and its use by the native-file and authentication
 probes. A subsequent [Windows loopback lifecycle experiment](connection-lifecycle-evidence.md)
 now composes record admission, authentication, hello, deadlines and cancellation.
 The bounded connection implementation is now shared with the Tauri host.
-The [read-only attachment experiment](attachment-lifecycle-evidence.md) now
+The [attachment experiment](attachment-lifecycle-evidence.md) now
 extends the loopback probe through member snapshots and detach; real AppHost
 snapshot publication is verified below, while native-window acceptance remains.
 
@@ -29,7 +29,7 @@ The four local probe slices are one offline compatibility work item, not four
 production integration milestones. Their scope is measured against
 [bootstrap plan section 6](../../docs/internals/architecture/drafts/gui-engineering-bootstrap-plan.md#6-appclient-跨语言接入与生命周期).
 The default GUI still uses fixtures. A Windows launch with both admitted native
-arguments selects the read-only live client; protocol validators now live under
+arguments selects the controlled live client; protocol validators now live under
 `src-tauri` and the probes consume that same implementation.
 
 | Obligation | Evidence retained | Remaining work before claiming coverage |
@@ -56,9 +56,10 @@ assertions; do not expand case counts merely to suggest readiness.
    obligations required by the first connection. Add reverse encoding evidence,
    rather than relying on Python-to-Rust-to-TypeScript projection alone.
 3. The bounded B2 connection slice now reaches explicit profile negotiation,
-   authenticated attachment, a membership-barriered initial snapshot and owned
-   cleanup. Keep submit/recovery acceptance separate; live Send and Interrupt
-   remain disabled.
+   authenticated attachment, a membership-barriered initial snapshot, ongoing
+   event publication, submit/interrupt control and owned cleanup. Control stays
+   on the attachment-owning connection. An uncertain submit is queried by stable
+   submission ID after reconnect and is never sent a second time automatically.
 
 Workspace/ChangeSet integration remains pending its own accepted contracts;
 execution connectivity must not silently turn fixture repository data into live
@@ -212,7 +213,7 @@ Reproduce this offline evidence with `pnpm --dir gui run check:contract`.
 
 ## Real AppHost integration follow-up
 
-The first real AppHost/AppService read-only integration and its request-ID fix
+The real AppHost/AppService integration, desktop control path and request-ID fix
 are documented in [AppHost integration evidence](apphost-integration-evidence.md).
 Run `uv run python scripts/gui/check_apphost_integration.py` explicitly on Windows;
-this does not enable live GUI publication or add a default gate.
+this remains an opt-in GUI integration check and adds no default gate.

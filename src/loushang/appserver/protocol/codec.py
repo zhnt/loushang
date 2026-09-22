@@ -43,6 +43,9 @@ from .model import (
     SessionIdentityV1,
     SessionListResultV1,
     SessionListV1,
+    SessionModelChoiceV1,
+    SessionModelSelectV1,
+    SessionModelsV1,
     SessionOpenSpecV1,
     SessionScopeV1,
     SessionSnapshotRequestV1,
@@ -196,6 +199,21 @@ def encode_response(response: AppResponseV1) -> bytes:
         result_type, value = "attachment", _encode_attachment(result)
     elif type(result) is SessionSnapshotV1:
         result_type, value = "snapshot", _encode_snapshot(result)
+    elif type(result) is SessionModelsV1:
+        result_type, value = "sessionModels", {
+            "currentId": result.current_id,
+            "models": [
+                {
+                    "id": item.id,
+                    "provider": item.provider,
+                    "endpointId": item.endpoint_id,
+                    "modelId": item.model_id,
+                    "label": item.label,
+                    "supportsThinking": item.supports_thinking,
+                }
+                for item in result.models
+            ],
+        }
     elif type(result) is SessionListResultV1:
         result_type, value = "sessionList", _encode_session_list(result)
     elif type(result) is AttachmentEventsV1:
@@ -248,6 +266,30 @@ def decode_response(payload: bytes) -> AppResponseV1:
         result = _decode_attachment(raw)
     elif result_type == "snapshot":
         result = _decode_snapshot(raw)
+    elif result_type == "sessionModels":
+        value = _object(raw, {"currentId", "models"})
+        models = value["models"]
+        if type(models) is not list or len(models) > 256:
+            raise InvalidAppMessageError()
+        result = _construct(
+            SessionModelsV1,
+            current_id=_optional_string(value["currentId"]),
+            models=tuple(
+                _construct(
+                    SessionModelChoiceV1,
+                    id=_string(item_value["id"]),
+                    provider=_string(item_value["provider"]),
+                    endpoint_id=_string(item_value["endpointId"]),
+                    model_id=_string(item_value["modelId"]),
+                    label=_string(item_value["label"]),
+                    supports_thinking=_boolean(item_value["supportsThinking"]),
+                )
+                for item_value in (
+                    _object(item, {"id", "provider", "endpointId", "modelId", "label", "supportsThinking"})
+                    for item in models
+                )
+            ),
+        )
     elif result_type == "sessionList":
         result = _decode_session_list(raw)
     elif result_type == "events":
@@ -371,8 +413,11 @@ def _encode_request_payload(request: AppRequestV1) -> _Object:
             "memberId": close_value.member_id,
             "selector": _encode_selector(close_value.selector),
         }
-    if operation is AppOperationV1.SESSION_SNAPSHOT:
+    if operation in {AppOperationV1.SESSION_SNAPSHOT, AppOperationV1.SESSION_MODELS}:
         return _encode_member_operation(cast(SessionSnapshotRequestV1, payload))
+    if operation is AppOperationV1.SESSION_MODEL_SELECT:
+        selection = cast(SessionModelSelectV1, payload)
+        return {**_encode_member_operation(selection), "modelId": selection.model_id}
     if operation in {
         AppOperationV1.TURN_START,
         AppOperationV1.TURN_STEER,
@@ -452,8 +497,10 @@ def _decode_request_payload(operation: AppOperationV1, raw: object) -> object:
             member_id=_string(value["memberId"]),
             close_session=_boolean(value["closeSession"]),
         )
-    if operation is AppOperationV1.SESSION_SNAPSHOT:
+    if operation in {AppOperationV1.SESSION_SNAPSHOT, AppOperationV1.SESSION_MODELS}:
         return _decode_member_operation(SessionSnapshotRequestV1, raw, set())
+    if operation is AppOperationV1.SESSION_MODEL_SELECT:
+        return _decode_member_operation(SessionModelSelectV1, raw, {"modelId"})
     if operation in {
         AppOperationV1.TURN_START,
         AppOperationV1.TURN_STEER,
@@ -500,6 +547,8 @@ def _decode_member_operation(
     }
     if "text" in extra_fields:
         arguments["text"] = _string(value["text"])
+    if "modelId" in extra_fields:
+        arguments["model_id"] = _string(value["modelId"])
     return _construct(factory, **arguments)
 
 

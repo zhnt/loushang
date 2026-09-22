@@ -221,6 +221,25 @@ struct Snapshot {
 }
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RecordEnvelope {
+    service_instance_id: String,
+    identity: Identity,
+    submission_id: Box<RawValue>,
+    state: State,
+}
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct InterruptResult {
+    record: RecordEnvelope,
+    disposition: String,
+}
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct Failure {
+    code: String,
+}
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Event {
     session_id: String,
     cursor: Counter,
@@ -333,6 +352,86 @@ pub fn bridge(kind: &str, wire: &str) -> Result<Value, ()> {
             "resultType": e.result_type, "result": {"events": projected}}),
         )
     }
+}
+
+pub fn control_bridge(kind: &str, wire: &str) -> Result<Value, ()> {
+    if kind == "record" {
+        let parsed: Envelope<RecordEnvelope> = serde_json::from_str(wire).map_err(|_| ())?;
+        let submission = optional_string(&parsed.result.submission_id)?;
+        if !envelope(&parsed, "record")
+            || !identifier(&parsed.result.service_instance_id, 128)
+            || !parsed.result.identity.valid()
+            || submission
+                .as_ref()
+                .is_some_and(|value| !identifier(value, 128))
+            || !parsed.result.state.valid()
+        {
+            return Err(());
+        }
+        return serde_json::to_value(parsed).map_err(|_| ());
+    }
+    if kind == "interrupt" {
+        let parsed: Envelope<InterruptResult> = serde_json::from_str(wire).map_err(|_| ())?;
+        let record = &parsed.result.record;
+        let submission = optional_string(&record.submission_id)?;
+        if !envelope(&parsed, "interrupt")
+            || !identifier(&record.service_instance_id, 128)
+            || !record.identity.valid()
+            || submission
+                .as_ref()
+                .is_some_and(|item| !identifier(item, 128))
+            || !record.state.valid()
+            || !["requested", "already_terminal"].contains(&parsed.result.disposition.as_str())
+            || (parsed.result.disposition == "requested" && !record.state.interrupt_requested)
+            || (parsed.result.disposition == "already_terminal" && !terminal(&record.state.status))
+        {
+            return Err(());
+        }
+        return serde_json::to_value(parsed).map_err(|_| ());
+    }
+    if kind == "not_found" {
+        let parsed: Envelope<Box<RawValue>> = serde_json::from_str(wire).map_err(|_| ())?;
+        if !envelope(&parsed, "not_found") || parsed.result.get() != "null" {
+            return Err(());
+        }
+        return serde_json::to_value(parsed).map_err(|_| ());
+    }
+    if kind == "failure" || kind == "app_failure" {
+        let parsed: Envelope<Failure> = serde_json::from_str(wire).map_err(|_| ())?;
+        let allowed = if kind == "failure" {
+            [
+                "service_instance_changed",
+                "submission_conflict",
+                "submission_ledger_full",
+                "execution_busy",
+                "execution_not_retained",
+                "execution_unsupported",
+            ]
+            .contains(&parsed.result.code.as_str())
+        } else {
+            [
+                "invalid_request",
+                "not_found",
+                "already_exists",
+                "already_attached",
+                "product_mismatch",
+                "revision_conflict",
+                "snapshot_required",
+                "stale_attachment",
+                "attachment_lagged",
+                "session_unavailable",
+                "operation_unavailable",
+                "cleanup_incomplete",
+                "service_closed",
+            ]
+            .contains(&parsed.result.code.as_str())
+        };
+        if !envelope(&parsed, kind) || !allowed {
+            return Err(());
+        }
+        return serde_json::to_value(parsed).map_err(|_| ());
+    }
+    Err(())
 }
 
 #[allow(dead_code)] // Used by the attachment binary, not the value-only binary.

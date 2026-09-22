@@ -4,13 +4,14 @@ mod connection_epoch;
 mod record_native;
 mod request_deadline;
 mod transport_auth;
+pub(crate) use attachment::{ControlAuthority, ControlResult, ModelControlResult};
 
 use request_deadline::RequestDeadline;
 use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 use std::net::{Ipv4Addr, Shutdown, SocketAddr, TcpStream};
 use std::path::Path;
-use std::sync::mpsc::{self, Sender};
+use std::sync::mpsc::{self, Receiver, Sender, SyncSender, TryRecvError};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
@@ -32,6 +33,34 @@ pub(crate) struct LiveEventRound {
     pub(crate) mux_space_id: serde_json::Value,
     pub(crate) members: Vec<attachment::MemberEvents>,
     pub(crate) sessions: Vec<serde_json::Value>,
+}
+
+pub(crate) enum ControlCommand {
+    Submit {
+        session_id: String,
+        submission_id: String,
+        text: String,
+        reply: SyncSender<Result<ControlResult, ()>>,
+    },
+    FindSubmission {
+        session_id: String,
+        submission_id: String,
+        reply: SyncSender<Result<ControlResult, ()>>,
+    },
+    Interrupt {
+        session_id: String,
+        execution_id: String,
+        reply: SyncSender<Result<ControlResult, ()>>,
+    },
+    ListModels {
+        session_id: String,
+        reply: SyncSender<Result<ModelControlResult, ()>>,
+    },
+    SelectModel {
+        session_id: String,
+        model_id: String,
+        reply: SyncSender<Result<ModelControlResult, ()>>,
+    },
 }
 
 struct DeadlineStream {
@@ -91,6 +120,7 @@ pub(crate) struct ConnectionOptions<'a> {
     pub(crate) attach: bool,
     pub(crate) mux_name: &'a str,
     pub(crate) stop: Option<super::read_stop::ReadStop>,
+    pub(crate) control_commands: Option<&'a Receiver<ControlCommand>>,
 }
 
 fn run_attempt(
@@ -99,6 +129,7 @@ fn run_attempt(
     connection_epoch: u64,
     publish_initial: &mut dyn FnMut(LiveInitialSnapshot) -> Result<(), ()>,
     publish_round: &mut dyn FnMut(LiveEventRound) -> Result<(), ()>,
+    publish_control: &mut dyn FnMut(Option<attachment::ControlAuthority>) -> Result<(), ()>,
     continue_reading: &mut dyn FnMut() -> Result<bool, ()>,
 ) -> Result<String, ()> {
     let ConnectionOptions {
@@ -108,6 +139,7 @@ fn run_attempt(
         attach,
         mux_name,
         stop,
+        control_commands,
     } = options;
     let deadline = RequestDeadline::new(timeout)?;
     let attempt = owner.begin()?;
@@ -186,7 +218,13 @@ fn run_attempt(
             attachment::ReadSession::attach(&mut channel, instance, mux_name, &attempt)?;
         let outcome = (|| {
             let initial = session.initialize(&mut channel, &attempt)?;
+            let authority = session.control_authority()?;
+            let control_authority = authority.clone();
             let mux_space_id = initial.mux_space["muxSpaceId"].clone();
+            attempt.apply(|| publish_control(Some(authority)))?;
+            if let Some(commands) = control_commands {
+                process_controls(&mut session, &control_authority, &mut channel, commands)?;
+            }
             attempt.apply(|| {
                 publish_initial(LiveInitialSnapshot {
                     connection_epoch: connection_epoch.to_string(),
@@ -199,6 +237,9 @@ fn run_attempt(
             let mut sequence = 0_u64;
             if let Some(stop) = stop.as_ref() {
                 while !stop.requested()? && continue_reading()? {
+                    if let Some(commands) = control_commands {
+                        process_controls(&mut session, &control_authority, &mut channel, commands)?;
+                    }
                     let Some(round) = session.poll(&mut channel, &attempt, Some(stop))? else {
                         if stop.requested()? {
                             break;
@@ -234,8 +275,10 @@ fn run_attempt(
             Ok(())
         })();
         let detached = session.detach(&mut channel, &attempt);
+        let control_released = publish_control(None);
         outcome?;
         detached?;
+        control_released?;
     }
     stream.shutdown(Shutdown::Both).map_err(|_| ())?;
     attempt.apply(|| Ok(hello.service_instance_id))
@@ -257,6 +300,7 @@ impl AppClient {
             1,
             publish,
             &mut |_| unreachable!(),
+            &mut |_| Ok(()),
             &mut || Ok(true),
         )
     }
@@ -268,6 +312,7 @@ impl AppClient {
         connection_epoch: u64,
         publish_initial: &mut dyn FnMut(LiveInitialSnapshot) -> Result<(), ()>,
         publish_round: &mut dyn FnMut(LiveEventRound) -> Result<(), ()>,
+        publish_control: &mut dyn FnMut(Option<attachment::ControlAuthority>) -> Result<(), ()>,
         continue_reading: &mut dyn FnMut() -> Result<bool, ()>,
     ) -> Result<String, ()> {
         run_attempt(
@@ -276,8 +321,79 @@ impl AppClient {
             connection_epoch,
             publish_initial,
             publish_round,
+            publish_control,
             continue_reading,
         )
+    }
+}
+
+fn process_controls<R: Read, W: Write>(
+    session: &mut attachment::ReadSession,
+    authority: &ControlAuthority,
+    channel: &mut transport_auth::Channel<R, W>,
+    commands: &Receiver<ControlCommand>,
+) -> Result<(), ()> {
+    loop {
+        let command = match commands.try_recv() {
+            Ok(command) => command,
+            Err(TryRecvError::Empty) => return Ok(()),
+            Err(TryRecvError::Disconnected) => return Err(()),
+        };
+        let request_id = session.next_control_request_id()?;
+        let failed = match command {
+            ControlCommand::Submit {
+                session_id,
+                submission_id,
+                text,
+                reply,
+            } => {
+                let result =
+                    authority.submit(channel, &session_id, &submission_id, &text, &request_id);
+                let failed = result.is_err();
+                let _ = reply.send(result);
+                failed
+            }
+            ControlCommand::FindSubmission {
+                session_id,
+                submission_id,
+                reply,
+            } => {
+                let result =
+                    authority.find_submission(channel, &session_id, &submission_id, &request_id);
+                let failed = result.is_err();
+                let _ = reply.send(result);
+                failed
+            }
+            ControlCommand::Interrupt {
+                session_id,
+                execution_id,
+                reply,
+            } => {
+                let result = authority.interrupt(channel, &session_id, &execution_id, &request_id);
+                let failed = result.is_err();
+                let _ = reply.send(result);
+                failed
+            }
+            ControlCommand::ListModels { session_id, reply } => {
+                let result = authority.models(channel, &session_id, &request_id);
+                let failed = result.is_err();
+                let _ = reply.send(result);
+                failed
+            }
+            ControlCommand::SelectModel {
+                session_id,
+                model_id,
+                reply,
+            } => {
+                let result = authority.select_model(channel, &session_id, &model_id, &request_id);
+                let failed = result.is_err();
+                let _ = reply.send(result);
+                failed
+            }
+        };
+        if failed {
+            return Err(());
+        }
     }
 }
 

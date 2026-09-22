@@ -4,6 +4,27 @@ import type { ClientEvent } from "../src/client/model";
 import { emptyGuiState, guiReducer } from "../src/client/state";
 
 describe("GUI client state", () => {
+  it("clears only the draft that was actually submitted", async () => {
+    const snapshot = await createMockAppClient().snapshot();
+    let state = guiReducer(emptyGuiState(), { type: "snapshot.installed", snapshot });
+    state = guiReducer(state, { type: "draft.changed", sessionId: "session-gui", value: "submitted text" });
+    state = guiReducer(state, { type: "draft.changed", sessionId: "session-gui", value: "edited while pending" });
+
+    const preserved = guiReducer(state, {
+      type: "draft.submitted",
+      sessionId: "session-gui",
+      expected: "submitted text",
+    });
+    expect(preserved.local.drafts["session-gui"]).toBe("edited while pending");
+
+    const cleared = guiReducer(preserved, {
+      type: "draft.submitted",
+      sessionId: "session-gui",
+      expected: "edited while pending",
+    });
+    expect(cleared.local.drafts["session-gui"]).toBe("");
+  });
+
   it("restores Session dock choices and keeps inspected Tasks independent of progress", async () => {
     const client = createMockAppClient();
     const snapshot = await client.snapshot();

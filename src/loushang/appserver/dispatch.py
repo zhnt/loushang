@@ -22,6 +22,7 @@ from .protocol import (
     MuxMemberOpenV1,
     MuxReadV1,
     SessionListV1,
+    SessionModelSelectV1,
     SessionSnapshotRequestV1,
     TurnInterruptV1,
     TurnTextV1,
@@ -56,6 +57,10 @@ async def dispatch_request(
             return await client.close_member(cast(MuxMemberCloseV1, value))
         case AppOperationV1.SESSION_SNAPSHOT:
             return await client.snapshot_session(cast(SessionSnapshotRequestV1, value))
+        case AppOperationV1.SESSION_MODELS:
+            return await client.list_session_models(cast(SessionSnapshotRequestV1, value))
+        case AppOperationV1.SESSION_MODEL_SELECT:
+            return await client.select_session_model(cast(SessionModelSelectV1, value))
         case AppOperationV1.TURN_START:
             return await client.start_turn(cast(TurnTextV1, value))
         case AppOperationV1.TURN_STEER:

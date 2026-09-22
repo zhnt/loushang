@@ -28,6 +28,8 @@ from loushang.appserver.protocol import (
     MuxReadV1,
     MuxSelectorV1,
     MuxSpaceV1,
+    SessionModelSelectV1,
+    SessionModelsV1,
     SessionSnapshotRequestV1,
     SessionSnapshotV1,
     TurnInterruptV1,
@@ -436,6 +438,28 @@ class AppClientScopeV1:
             request.attachment_id, request.controller_generation, request.member_id
         )
         value = await session.snapshot()
+        self._attachment(request.attachment_id, request.controller_generation)
+        return value
+
+    async def list_session_models(
+        self, request: SessionSnapshotRequestV1,
+    ) -> SessionModelsV1:
+        self._service._require_request(request, SessionSnapshotRequestV1)
+        session = await self._session(
+            request.attachment_id, request.controller_generation, request.member_id
+        )
+        value = await session.list_models()
+        self._attachment(request.attachment_id, request.controller_generation)
+        return value
+
+    async def select_session_model(
+        self, request: SessionModelSelectV1,
+    ) -> SessionModelsV1:
+        self._service._require_request(request, SessionModelSelectV1)
+        session = await self._session(
+            request.attachment_id, request.controller_generation, request.member_id
+        )
+        value = await session.select_model(request.model_id)
         self._attachment(request.attachment_id, request.controller_generation)
         return value
 

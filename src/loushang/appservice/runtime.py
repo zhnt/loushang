@@ -34,6 +34,8 @@ from loushang.appserver.protocol import (
     MuxSpaceV1,
     SessionEventV1,
     SessionIdentityV1,
+    SessionModelSelectV1,
+    SessionModelsV1,
     SessionSnapshotRequestV1,
     SessionSnapshotV1,
     TurnInterruptV1,
@@ -248,6 +250,27 @@ class _SessionOwner:
         if type(value) is not SessionSnapshotV1 or value.identity != self.identity:
             raise _error(AppErrorCodeV1.SESSION_UNAVAILABLE)
         self._latest_cursor = max(self._latest_cursor, value.cursor)
+        return value
+
+    async def list_models(self) -> SessionModelsV1:
+        callback = getattr(self._port, "list_models", None)
+        if not callable(callback):
+            raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        value = await self._invoke_async(callback)
+        if type(value) is not SessionModelsV1:
+            raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        return value
+
+    async def select_model(self, model_id: str) -> SessionModelsV1:
+        callback = getattr(self._port, "select_model", None)
+        if not callable(callback):
+            raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        snapshot = await self.snapshot()
+        if snapshot.running:
+            raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        value = await self._invoke_async(callback, model_id)
+        if type(value) is not SessionModelsV1 or value.current_id != model_id:
+            raise _error(AppErrorCodeV1.OPERATION_UNAVAILABLE)
         return value
 
     async def start_turn(self, text: str) -> None:
@@ -855,6 +878,24 @@ class AppServiceV1:
             request.member_id,
         )
         return await session.snapshot()
+
+    async def list_session_models(
+        self, request: SessionSnapshotRequestV1,
+    ) -> SessionModelsV1:
+        self._require_request(request, SessionSnapshotRequestV1)
+        session = await self._resolve_member_session(
+            request.attachment_id, request.controller_generation, request.member_id
+        )
+        return await session.list_models()
+
+    async def select_session_model(
+        self, request: SessionModelSelectV1,
+    ) -> SessionModelsV1:
+        self._require_request(request, SessionModelSelectV1)
+        session = await self._resolve_member_session(
+            request.attachment_id, request.controller_generation, request.member_id
+        )
+        return await session.select_model(request.model_id)
 
     async def start_turn(self, request: TurnTextV1) -> AckV1:
         self._require_request(request, TurnTextV1)

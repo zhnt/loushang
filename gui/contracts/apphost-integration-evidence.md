@@ -1,6 +1,7 @@
-# Real AppHost read-only integration
+# Real AppHost integration
 
-Status: B2 read-only event and resynchronization evidence, updated 2026-09-22.
+Status: B2 event, resynchronization and existing-Session control evidence,
+updated 2026-09-22.
 
 Run from the repository root on Windows:
 
@@ -11,8 +12,9 @@ uv run python scripts/gui/check_apphost_integration.py
 This opt-in script constructs the real Coding continuity attempt, AppHost
 catalog/runtime, AppService, HostedLocalRuntimeV1, authenticated LocalAppServer,
 and real Coding session factory. It uses temporary private connection records,
-continuity and session stores. Installed-code admission pins are test-owned;
-model streaming is explicitly forbidden and no work is submitted. It does not
+continuity and session stores. Installed-code admission pins are test-owned.
+The control case uses a deterministic process-local model transport and submits
+one prompt; it makes no network provider call. It does not
 connect to an existing user application, read user settings, or start a TUI.
 
 The existing Rust connection probe authenticates to that actual server and
@@ -35,6 +37,15 @@ ordered member/Session identity and one execution snapshot against the real
 AppHost. The serialized publication contains neither `attachmentId` nor
 `controllerGeneration`; those controller capabilities remain native.
 
+The `control_probe` then uses that same production Rust adapter to attach and
+submit on one authenticated connection. AppHost routes the prompt into the real
+Coding `AgentSession`; the deterministic assistant stream returns through the
+normal execution event and snapshot path. The probe verifies acceptance plus
+nonempty event publication. This caught three integration errors that isolated
+codecs could not: controller authority is connection-bound, controller
+generation is numeric on the wire, and request IDs increase across snapshot,
+control and event operations on the connection.
+
 ## Integration defect found
 
 The isolated probe previously sent textual request IDs (`attach`, `snapshot-0`,
@@ -50,8 +61,9 @@ No server contract or runtime implementation was changed to accommodate GUI.
 
 ## Limits and next slice
 
-- The native adapter and connected-window lifecycle are accepted for this
-  read-only slice; display scaling and mutation remain separate work.
+- The native adapter, connected-window lifecycle and bounded existing-Session
+  submit/interrupt path are covered; display scaling and broader mutation remain
+  separate work.
 - It verifies idle snapshots and empty event batches, real controller arbitration, graceful client EOF
   cleanup and explicit deployment settlement. It does not prove hard process
   termination cleanup or every failed-snapshot/disconnect race in the real host.
@@ -60,12 +72,25 @@ No server contract or runtime implementation was changed to accommodate GUI.
   detach against the real AppHost. The desktop uses that same reader to publish
   the barriered initial snapshot and complete validated event rounds. On a
   transport failure or rejected round it establishes a fresh connection epoch
-  and replaces state from a new authoritative snapshot. Submission, approval
-  and takeover are not added.
-- Model-free real Coding sessions do not establish live provider execution.
+  and replaces state from a new authoritative snapshot. Approval and takeover
+  are not added. Submit is never automatically replayed; after a response loss,
+  the adapter queries the stable submission ID on a new attachment.
+- The deterministic Coding session proves AgentSession routing and streaming,
+  not authentication to or behavior of a network AI provider.
 - Nonempty contiguous event batches and invalid batches are covered by the scripted
   fixture; metadata/content watermark separation is additionally unit tested in Rust.
 - This remains an opt-in GUI integration check, not a TUI/Harness default gate.
 
-Next add accepted live mutation contracts independently. Keep live facts
-separate from offline fixtures and never infer mutation results across reconnect.
+Next record a completed provider-backed desktop run, then add the separate New
+Session, approval and attachment contracts. Keep live facts separate from
+offline fixtures and never infer mutation results across reconnect.
+
+## Opt-in provider desktop acceptance
+
+`pnpm --dir gui run accept:live-provider` uses the same isolated AppHost and
+desktop control bridge but resolves the saved Coding `default_model` through the
+standard layered ModelRegistry and settings path. Credentials remain in the AI
+runtime; they are not serialized to Rust or the WebView. The helper disables
+tools, sends one bounded acceptance prompt, and records only the selected model
+identity and lifecycle facts under `gui/test-results/live-provider-desktop/`.
+It is intentionally interactive, network-using and outside every default gate.
