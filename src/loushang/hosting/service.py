@@ -128,15 +128,18 @@ class LinuxServiceObserverV1:
             if self._closing.is_set() or self._fd is None:
                 raise _error(HostingFailureCategory.HOST_CLOSED)
             try:
-                poller = select.poll()
-                poller.register(self._fd, select.POLLIN)
+                poller = getattr(select, "poll")()
+                poll_in = getattr(select, "POLLIN")
+                poller.register(self._fd, poll_in)
                 events = poller.poll(math.floor(max(0.0, deadline - monotonic()) * 1000))
             except OSError:
                 raise _error(HostingFailureCategory.PREPARATION_FAILED) from None
             for _, event in events:
-                if event & (select.POLLERR | select.POLLNVAL):
+                if event & (
+                    getattr(select, "POLLERR") | getattr(select, "POLLNVAL")
+                ):
                     raise _error(HostingFailureCategory.PREPARATION_FAILED)
-                if event & (select.POLLIN | select.POLLHUP):
+                if event & (poll_in | getattr(select, "POLLHUP")):
                     return True
             return False
         finally:
@@ -165,13 +168,20 @@ def _observe(pid: int) -> LinuxServiceIdentityV1:
     _parse_start_ticks(self_stat, os.getpid())
     boot = _read_file("/proc/sys/kernel/random/boot_id", limit=64).strip().decode("ascii")
     namespace = os.stat("/proc/self/ns/pid")
-    directory = os.open(f"/proc/{pid}", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    directory = os.open(
+        f"/proc/{pid}",
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY")
+        | getattr(os, "O_NOFOLLOW")
+        | getattr(os, "O_CLOEXEC"),
+    )
     primary: BaseException | None = None
     try:
-        if os.fstat(directory).st_uid != os.geteuid():
+        effective_user_id = getattr(os, "geteuid")()
+        if os.fstat(directory).st_uid != effective_user_id:
             raise _error(HostingFailureCategory.PREPARATION_REJECTED)
         uid = _parse_uid(_read_file("status", parent=directory, limit=16 * 1024))
-        if uid != os.geteuid():
+        if uid != effective_user_id:
             raise _error(HostingFailureCategory.PREPARATION_REJECTED)
         ticks = _parse_start_ticks(_read_file("stat", parent=directory), pid)
         return LinuxServiceIdentityV1(pid, ticks, boot, uid, namespace.st_dev, namespace.st_ino)
@@ -249,7 +259,11 @@ def _open_pidfd(pid: int) -> int:
 
 
 def _read_file(path: str, *, parent: int | None = None, limit: int = _PROC_LIMIT) -> bytes:
-    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=parent)
+    descriptor = os.open(
+        path,
+        os.O_RDONLY | getattr(os, "O_NOFOLLOW") | getattr(os, "O_CLOEXEC"),
+        dir_fd=parent,
+    )
     primary: BaseException | None = None
     try:
         content = bytearray()

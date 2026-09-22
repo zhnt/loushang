@@ -5,13 +5,14 @@ import errno
 import os
 import sys
 import threading
+from typing import TYPE_CHECKING
 
 import pytest
 
-if sys.platform != "linux":
-    pytest.skip("Linux PTY hangup", allow_module_level=True)
+if TYPE_CHECKING or sys.platform == "linux":
+    from tests.tui.terminal_process_support.posix_pty import PosixPtyDriver
 
-from tests.tui.terminal_process_support.posix_pty import PosixPtyDriver  # noqa: I001
+pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux PTY hangup")
 
 
 EOF_READER = """

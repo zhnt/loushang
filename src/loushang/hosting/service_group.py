@@ -26,7 +26,7 @@ class LinuxServiceGroupObservationV1:
     def _context(self) -> None:
         identity = self._observer.identity
         namespace = os.stat("/proc/self/ns/pid")
-        if (os.geteuid() != identity.user_id
+        if (getattr(os, "geteuid")() != identity.user_id
                 or (namespace.st_dev, namespace.st_ino) != (
                     identity.pid_namespace_device, identity.pid_namespace_inode)):
             raise _error(HostingFailureCategory.PREPARATION_STALE)
@@ -40,7 +40,12 @@ class LinuxServiceGroupObservationV1:
                 raise _error(HostingFailureCategory.INVALID_REQUEST)
             self._context()
             pid = observer.identity.pid
-            if observer.exited() or os.getpgid(pid) != pid or os.getsid(pid) != pid or observer.exited():
+            if (
+                observer.exited()
+                or getattr(os, "getpgid")(pid) != pid
+                or getattr(os, "getsid")(pid) != pid
+                or observer.exited()
+            ):
                 raise _error(HostingFailureCategory.PREPARATION_STALE)
             self._admitted = True
         except OSError:
@@ -59,7 +64,7 @@ class LinuxServiceGroupObservationV1:
             if not observer.exited():
                 return False
             try:
-                os.killpg(observer.identity.pid, 0)
+                getattr(os, "killpg")(observer.identity.pid, 0)
             except ProcessLookupError:
                 return True
             except PermissionError:
