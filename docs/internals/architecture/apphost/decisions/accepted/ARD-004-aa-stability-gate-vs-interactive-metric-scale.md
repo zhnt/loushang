@@ -7,8 +7,10 @@
 - Parent: `loushang`
 - Authority: normative — 已接受的 AppHost 判定合同变更
 - Design status: accepted
-- Implementation status: implemented — `_g18_comparison.py` 已改用具名常量对，
-  既有 campaign 的重评以独立文件发布
+- Implementation status: accepted decision; implementation observed only in the
+  authoring working tree — `_g18_comparison.py` 的具名常量对与重评工具
+  （`scripts/dev/reevaluate_g18_comparison.py`）在本文档入库时仍未提交，
+  无法从本提交复现。以「已实现」描述时请视为 working-tree observation。
 - Owner: Loushang AppHost architecture
 - Accepted: 2026-09-18，由本任务 owner 接受（用户明确指示“可以接受”）
 - Accepted scope: 稳定性门禁 `N=25%`、回归阈值 `R=30%`，统一适用于

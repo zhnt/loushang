@@ -3,7 +3,9 @@
 English | [中文](../../zh-CN/user-guide/lmux.md)
 
 This guide describes the current development branch, not completed delivery
-acceptance. Check `lmux --help` against your installed version. Automatic
+acceptance. The `lmux` command it documents was still uncommitted when this
+guide landed, so a build from this commit has no `lmux` entrypoint yet; treat
+the commands below as the intended interface, not a shipped one. Check `lmux --help` against your installed version. Automatic
 background services currently target Linux only; GUI and cross-machine access
 are not included. Managed scratch quotas, full Harnesstui parity, and final
 installed/disconnection/performance acceptance remain in progress.

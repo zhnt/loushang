@@ -12,6 +12,14 @@
 - Implementation status: partial — managed CLI preview, Linux launch/lifetime, owned transcripts, discovery, exact-instance connections, close and shared Markdown/action/input binding; full M3/M4 acceptance pending
 - Owner: AppHost managed deployment; sibling changes remain sibling-owned
 - Tracking objective: active Linux lmux goal, branch `harness/lmux-managed-service`
+- Evidence scope: this document is a working-tree snapshot of an in-flight goal.
+  Its per-slice implementation and pass records describe the authoring working
+  tree, not this commit's tree. Most referenced implementation
+  (`apphost.managed.*`, `transcript/writer_lease.py`, `journal/_rooted_io.py`,
+  `coding/cli/lmux*.py`, `appserver/managed_mux.py`) and the G18 reevaluation
+  tooling were still uncommitted when this snapshot was taken, so those claims
+  cannot be reproduced from this commit alone. Treat `已实现`/`已接线`/`passed`
+  below as working-tree observations until the matching code slice lands.
 
 ## 1. 本地基线与推进记录
 
