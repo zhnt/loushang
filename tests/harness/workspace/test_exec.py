@@ -533,7 +533,14 @@ def test_exec_service_rolls_capture_without_losing_artifact(tmp_path: Path) -> N
 def test_exec_service_discards_unretained_output_artifacts(
     tmp_path: Path,
     capture_full_output: bool,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from loushang.harness.workspace.exec import service as service_module
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("disabled output retention created a temporary file")
+
+    monkeypatch.setattr(service_module.tempfile, "mkstemp", forbidden)
     artifact_dir = tmp_path / "artifacts"
     artifact_dir.mkdir()
 
