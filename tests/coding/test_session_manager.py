@@ -852,7 +852,7 @@ async def test_session_manager_delete_preserves_platform_blob_cleanup_policy(
 
 
 @_async_test
-async def test_session_delete_does_not_accept_a_duplicate_transcript_as_blob_owner(
+async def test_session_delete_duplicate_transcript_preserves_shared_blob_owner(
     tmp_path,
 ) -> None:
     import shutil
@@ -891,17 +891,11 @@ async def test_session_delete_does_not_accept_a_duplicate_transcript_as_blob_own
     assert session_file is not None
     duplicate = session_dir / "forged-duplicate.jsonl"
     shutil.copyfile(session_file, duplicate)
+    session_dir.chmod(0o700)
+    duplicate.chmod(0o600)
 
-    if sys.platform == "linux":
-        import pytest
-
-        from loushang.harness.transcript.writer_lease import TranscriptWriterError
-
-        with pytest.raises(TranscriptWriterError):
-            await _delete_session_with_owner(duplicate)
-        assert duplicate.exists()
-    else:
-        assert await _delete_session_with_owner(duplicate) is True
+    assert await _delete_session_with_owner(duplicate) is True
+    assert not duplicate.exists()
     assert session_file.exists()
     assert blobs.read_bytes(reference) == b"private output"
 

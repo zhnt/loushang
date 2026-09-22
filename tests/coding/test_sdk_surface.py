@@ -397,6 +397,7 @@ def test_coding_top_level_sdk_entry_signatures_are_stable() -> None:
         "no_tools",
         "composition_set",
         "services",
+        "output_capture_factory",
         "agent_factory",
         "session_start_event",
         "package_materializer",
@@ -468,20 +469,22 @@ def test_coding_top_level_sdk_entry_signatures_are_stable() -> None:
 
 def test_coding_top_level_sdk_smoke_covers_session_runtime_tools_and_diagnostics(
     tmp_path,
+    monkeypatch,
 ) -> None:
     import loushang.coding as coding
     from loushang.coding.session import AgentSession
     from loushang.harness.diagnostics import DiagnosticsQuery
 
     project_root = tmp_path / "project"
-    import_dir = tmp_path / "imports"
+    import_dir = tmp_path / "imports" / "sessions"
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform-home"))
     project_root.mkdir()
-    import_dir.mkdir()
+    import_dir.mkdir(parents=True)
 
     async def scenario() -> None:
         services = coding.create_services()
         session_manager = await coding.SessionManager.new(
-            session_dir=tmp_path / "direct-sessions",
+            session_dir=tmp_path / "direct" / "sessions",
             cwd=str(project_root),
             persist=True,
         )
@@ -552,8 +555,10 @@ def test_coding_top_level_sdk_smoke_covers_session_runtime_tools_and_diagnostics
                 for definition in all_defs.values()
             )
 
+            runtime_data = tmp_path / "runtime"
+            runtime_data.mkdir(mode=0o700)
             runtime = coding.create_agent_session_runtime(
-                session_dir=tmp_path / "runtime-sessions",
+                session_dir=runtime_data / "sessions",
                 model=_model(),
                 services=services,
                 persist=True,

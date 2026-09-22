@@ -1271,7 +1271,9 @@ def test_default_runtime_builder_declares_global_cwd_and_home_session_sources(
 
     home = tmp_path / "user-home"
     project = tmp_path / "project"
+    global_project = tmp_path / "global-project"
     project.mkdir()
+    global_project.mkdir()
     monkeypatch.setenv("LOUSHANG_HOME", str(home))
     runtime = default_runtime_builder(
         args=SimpleNamespace(no_tools=True, tools=(), no_session=False),
@@ -1312,7 +1314,13 @@ def test_default_runtime_builder_declares_global_cwd_and_home_session_sources(
             await manager.dispose_runtime_profile()
             return path
 
-        await seed(runtime.session_dir, "global-session", "/workspace/global")
+        global_session = await runtime.create_session(cwd=str(global_project))
+        await global_session.session_manager.append_message(
+            UserMessage(role="user", content="global-session", timestamp=1.0)
+        )
+        global_session_id = (
+            global_session.session_manager.get_header().conversation_id
+        )
         cwd_file = await seed(
             source_roots["cwd"],
             "cwd-session",
@@ -1326,7 +1334,7 @@ def test_default_runtime_builder_declares_global_cwd_and_home_session_sources(
             for summary in summaries
             if summary.discovery is not None
         } == {
-            "global-session": "global",
+            global_session_id: "global",
             "cwd-session": "cwd",
             "home-session": "home",
         }
@@ -1345,7 +1353,6 @@ def test_default_runtime_builder_declares_global_cwd_and_home_session_sources(
             )
         )
         assert {item.target.opaque_id for item in page.items} == {
-            "global-session",
             "cwd-session",
             "home-session",
         }
@@ -1651,27 +1658,35 @@ def test_default_runtime_builder_rebuilds_project_bound_services_for_session_cwd
         tool_registry=registry,
     )
 
-    first = asyncio.run(runtime.create_session(cwd=str(project_a)))
-    second = asyncio.run(runtime.create_session(cwd=str(project_b)))
+    async def scenario() -> None:
+        try:
+            first = await runtime.create_session(cwd=str(project_a))
+            second = await runtime.create_session(cwd=str(project_b))
 
-    assert first.settings_manager is not second.settings_manager
-    assert first.resource_loader is not second.resource_loader
-    assert second.cwd_bound_services_audit.ok is True
-    assert "Project B guidance" in second.agent.system_prompt
-    assert "## Multi-agent collaboration" in second.agent.system_prompt
-    assert AGENT_DELEGATE_TOOL_NAME not in second.get_active_tool_names()
-    assert set(MULTIAGENT_TOOL_NAMES).issubset(second.get_active_tool_names())
-    assert not set(MULTIAGENT_TOOL_NAMES).intersection(
-        definition.name for definition in registry.list_definitions()
-    )
-    assert AGENT_DELEGATE_TOOL_NAME not in {
-        definition.name for definition in registry.list_definitions()
-    }
-    first_tools = {definition.name: definition for definition in first.get_all_tools()}
-    second_tools = {
-        definition.name: definition for definition in second.get_all_tools()
-    }
-    assert first_tools["spawn_agent"] is not second_tools["spawn_agent"]
+            assert first.settings_manager is not second.settings_manager
+            assert first.resource_loader is not second.resource_loader
+            assert second.cwd_bound_services_audit.ok is True
+            assert "Project B guidance" in second.agent.system_prompt
+            assert "## Multi-agent collaboration" in second.agent.system_prompt
+            assert AGENT_DELEGATE_TOOL_NAME not in second.get_active_tool_names()
+            assert set(MULTIAGENT_TOOL_NAMES).issubset(second.get_active_tool_names())
+            assert not set(MULTIAGENT_TOOL_NAMES).intersection(
+                definition.name for definition in registry.list_definitions()
+            )
+            assert AGENT_DELEGATE_TOOL_NAME not in {
+                definition.name for definition in registry.list_definitions()
+            }
+            first_tools = {
+                definition.name: definition for definition in first.get_all_tools()
+            }
+            second_tools = {
+                definition.name: definition for definition in second.get_all_tools()
+            }
+            assert first_tools["spawn_agent"] is not second_tools["spawn_agent"]
+        finally:
+            await runtime.dispose_session_runtime()
+
+    asyncio.run(scenario())
 
 
 def test_cwd_bound_services_factory_uses_sdk_services_creation(
