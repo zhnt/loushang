@@ -129,7 +129,7 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
       snapshot: async () => ({
         ...snapshot,
         connection: "connected",
-        source: { kind: "live", serviceInstanceId: "service-live", muxSpaceId: "mux-live" },
+        source: { kind: "live", serviceInstanceId: "service-live", muxSpaceId: "mux-live", connectionEpoch: "1" },
         capabilities: snapshot.capabilities.map((capability) => ({
           ...capability,
           availability: capability.name === "tasks" || capability.name === "agents" ? "live" : "unavailable",

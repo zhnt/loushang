@@ -1,7 +1,6 @@
 # Real AppHost read-only integration
 
-Status: first B2 integration evidence, 2026-09-14. Not live GUI publication or
-production native adapter acceptance.
+Status: B2 read-only event and resynchronization evidence, updated 2026-09-22.
 
 Run from the repository root on Windows:
 
@@ -17,7 +16,11 @@ model streaming is explicitly forbidden and no work is submitted. It does not
 connect to an existing user application, read user settings, or start a TUI.
 
 The existing Rust connection probe authenticates to that actual server and
-reads a real execution snapshot and two event batches before detaching. A Python AppClient controls a
+reads a real execution snapshot and two event batches before detaching. The
+`event_probe` additionally observes a deterministic, model-local real Coding
+execution through the same native AppClient used by Tauri. It publishes only
+complete event rounds followed by authoritative snapshots and reaches a
+`turn_completed` event. A Python AppClient controls a
 different mux in the same application and remains usable afterwards. Another
 client's ownership of the selected GUI mux rejects the Rust contender; that
 owner can still read its snapshot, then detach and permit Rust to reconnect.
@@ -47,20 +50,22 @@ No server contract or runtime implementation was changed to accommodate GUI.
 
 ## Limits and next slice
 
-- This is native adapter evidence, not yet connected-window acceptance.
+- The native adapter and connected-window lifecycle are accepted for this
+  read-only slice; display scaling and mutation remain separate work.
 - It verifies idle snapshots and empty event batches, real controller arbitration, graceful client EOF
   cleanup and explicit deployment settlement. It does not prove hard process
   termination cleanup or every failed-snapshot/disconnect race in the real host.
 - Bounded membership rechecks and local attempt fencing now run in the probe.
   A native CLI continuous-idle-read case also verifies cooperative stop and
-  detach against the real AppHost. The desktop uses that same reader and can
-  publish the barriered initial snapshot; ongoing event publication, submission,
-  approval and takeover are not added.
+  detach against the real AppHost. The desktop uses that same reader to publish
+  the barriered initial snapshot and complete validated event rounds. On a
+  transport failure or rejected round it establishes a fresh connection epoch
+  and replaces state from a new authoritative snapshot. Submission, approval
+  and takeover are not added.
 - Model-free real Coding sessions do not establish live provider execution.
 - Nonempty contiguous event batches and invalid batches are covered by the scripted
   fixture; metadata/content watermark separation is additionally unit tested in Rust.
 - This remains an opt-in GUI integration check, not a TUI/Harness default gate.
 
-Next verify the native window against a real launched host, then publish complete
-validated event rounds with gap-triggered resynchronization. Keep live facts
-separate from offline fixtures.
+Next add accepted live mutation contracts independently. Keep live facts
+separate from offline fixtures and never infer mutation results across reconnect.

@@ -11,7 +11,9 @@ from pathlib import Path
 from secrets import token_hex
 
 from loushang.agent import synthetic_model_transport
+from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import Capabilities, Model
+from loushang.ai.types import AssistantMessage, TextPart, Usage
 from loushang.apphost import (
     AdmissionIdentityV1,
     AppHostAdmissionSubjectKind,
@@ -59,6 +61,7 @@ ROOT = Path(__file__).resolve().parents[2]
 CRATE = ROOT / "gui/contracts/rust"
 EXE = CRATE / "target/debug/connection_probe.exe"
 SNAPSHOT_EXE = CRATE / "target/debug/snapshot_probe.exe"
+EVENT_EXE = CRATE / "target/debug/event_probe.exe"
 
 
 class InstalledPin:
@@ -84,9 +87,31 @@ class InstalledSource:
 
 
 @synthetic_model_transport
-async def forbidden_stream(*args, **kwargs):
-    raise AssertionError("read-only integration must not invoke a model")
-    yield  # pragma: no cover -- preserve the streaming interface
+async def deterministic_stream(*args, **kwargs):
+    message = AssistantMessage(
+        role="assistant",
+        content=[TextPart(type="text", text="real AppHost event round")],
+        api="anthropic-messages",
+        endpoint="anthropic-messages",
+        provider="faux",
+        model="no-network",
+        response_id=None,
+        usage=Usage(
+            input=0,
+            output=0,
+            cache_read=0,
+            cache_write=0,
+            total_tokens=0,
+            cost={},
+        ),
+        stop_reason="stop",
+        error_message=None,
+        timestamp=0,
+    )
+    stream = AssistantMessageEventStream()
+    stream.push({"type": "start", "partial": message})
+    stream.push({"type": "done", "reason": "stop", "message": message})
+    return stream
 
 
 async def probe(root, *, succeeds, watch=False):
@@ -136,6 +161,42 @@ async def initial_snapshot(root):
     return snapshot
 
 
+async def event_round(root, trigger):
+    process = await asyncio.create_subprocess_exec(
+        str(EVENT_EXE),
+        str(root),
+        "5000",
+        "gui-fixture",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    assert process.stdout is not None
+    assert process.stderr is not None
+    try:
+        initial = json.loads(await asyncio.wait_for(process.stdout.readline(), 8))
+        assert initial["type"] == "initial"
+        await trigger()
+        rounds = []
+        async with asyncio.timeout(8):
+            while True:
+                round_value = json.loads(await process.stdout.readline())
+                assert round_value["type"] == "round"
+                rounds.append(round_value["payload"])
+                if any(
+                    event.get("source", {}).get("kind") == "turn_completed"
+                    for member in round_value["payload"]["members"]
+                    for event in member["events"]
+                ):
+                    break
+        stdout, stderr = await asyncio.wait_for(process.communicate(), 8)
+        assert process.returncode == 0 and not stdout and not stderr, (stdout, stderr)
+        return initial["payload"], rounds
+    finally:
+        if process.returncode is None:
+            process.kill()
+            await process.wait()
+
+
 async def run(root):
     launch = CodingHostedLaunchV1(
         root, root / "app", "gui.integration", root / "cwd", root / "home"
@@ -182,7 +243,7 @@ async def run(root):
                     input=("text",), context_window=128000, max_tokens=4096
                 ),
             ),
-            stream_fn=forbidden_stream,
+            stream_fn=deterministic_stream,
             tools=[],
         ),
         execution=execution,
@@ -260,6 +321,53 @@ async def run(root):
         )
         print(
             "Real AppHost: Rust snapshot/detach and independent mux passed", flush=True
+        )
+        async def trigger_turn():
+            application = app._application
+            service = application._service
+            assert service is not None and len(service._sessions) == 2
+            session = next(
+                value
+                for value in service._sessions.values()
+                if value.identity.session_id
+                == published["sessions"][0]["source"]["source"]["identity"]["sessionId"]
+            )
+            registry = service._execution_registry
+            assert registry is not None and session._execution is not None
+            record = registry.submit(
+                session._execution,
+                "publish one deterministic event round",
+                "gui-event-round",
+            )
+            await registry.wait(session._execution, record)
+
+        initial, rounds = await event_round(root / "connection", trigger_turn)
+        round_value = rounds[-1]
+        assert initial["connectionEpoch"] == "1"
+        assert all(value["connectionEpoch"] == "1" for value in rounds)
+        assert [value["sequence"] for value in rounds] == [
+            str(index) for index in range(1, len(rounds) + 1)
+        ]
+        assert round_value["serviceInstanceId"] == execution.service_instance_id
+        assert round_value["muxSpaceId"] == published["muxSpace"]["muxSpaceId"]
+        assert any(member["events"] for member in round_value["members"])
+        assert int(round_value["sessions"][0]["source"]["source"]["cursor"]) >= int(
+            initial["sessions"][0]["source"]["source"]["cursor"]
+        )
+        kinds = {
+            event["source"]["kind"]
+            for value in rounds
+            for member in value["members"]
+            for event in member["events"]
+            if "source" in event
+        }
+        assert "turn_started" in kinds and "turn_completed" in kinds
+        assert "attachmentId" not in json.dumps(round_value)
+        assert "controllerGeneration" not in json.dumps(round_value)
+        assert local.accepting
+        print(
+            "Real AppHost: validated event round and authoritative snapshot passed",
+            flush=True,
         )
         competing = LocalAppClientConnectionV1(directory, "workspace")
         connections.append(competing)
@@ -348,6 +456,8 @@ if __name__ == "__main__":
             "connection_probe",
             "--bin",
             "snapshot_probe",
+            "--bin",
+            "event_probe",
         ],
         check=True,
         cwd=ROOT,

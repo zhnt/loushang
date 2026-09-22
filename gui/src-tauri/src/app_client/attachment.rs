@@ -221,12 +221,28 @@ pub(crate) struct ReadSession {
     closed: bool,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct InitialSnapshot {
     pub(crate) mux_space: Value,
     pub(crate) sessions: Vec<Value>,
 }
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct MemberEvents {
+    pub(crate) member_id: String,
+    pub(crate) session_id: String,
+    pub(crate) events: Vec<Value>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PollRound {
+    pub(crate) members: Vec<MemberEvents>,
+    pub(crate) sessions: Vec<Value>,
+}
+
 impl ReadSession {
     pub(crate) fn attach<R: Read, W: Write>(
         channel: &mut Channel<R, W>,
@@ -264,45 +280,7 @@ impl ReadSession {
         }
         let result = (|| {
             attempt.apply(|| Ok(()))?;
-            let mut pending = Vec::new();
-            for session in &self.attachment.sessions {
-                let id = take_request_id(&mut self.next_id)?;
-                channel.send(
-                    &serde_json::to_vec(&Request {
-                        protocol_version: "loushang.execution/v1",
-                        request_id: &id,
-                        operation: "execution/snapshot",
-                        payload: SnapshotRequest {
-                            control: Control {
-                                attachment_id: &self.attachment.attachment_id,
-                                controller_generation: &self.attachment.controller_generation,
-                                member_id: &session.member.member_id,
-                            },
-                            expected_instance_id: &self.instance,
-                        },
-                    })
-                    .map_err(|_| ())?,
-                )?;
-                let bytes = channel.receive()?;
-                let snapshot =
-                    projection::bridge("snapshot", std::str::from_utf8(&bytes).map_err(|_| ())?)?;
-                let source = &snapshot["result"]["source"]["source"];
-                let before = projection::source_value(session.snapshot.get())?;
-                let old = before["cursor"].as_str().ok_or(())?;
-                let new = source["cursor"].as_str().ok_or(())?;
-                if snapshot["requestId"] != id
-                    || snapshot["result"]["serviceInstanceId"] != self.instance
-                    || source["identity"] != before["identity"]
-                    || new.len() < old.len()
-                    || (new.len() == old.len() && new < old)
-                {
-                    return Err(());
-                }
-                attempt.apply(|| {
-                    pending.push(snapshot);
-                    Ok(())
-                })?;
-            }
+            let pending = self.read_snapshots(channel, attempt)?;
             membership_barrier(
                 channel,
                 &self.attachment.mux_space,
@@ -338,16 +316,17 @@ impl ReadSession {
         channel: &mut Channel<R, W>,
         attempt: &super::connection_epoch::Attempt,
         stop: Option<&crate::read_stop::ReadStop>,
-    ) -> Result<bool, ()> {
+    ) -> Result<Option<PollRound>, ()> {
         if self.closed {
             return Err(());
         }
         let result = (|| {
             attempt.apply(|| Ok(()))?;
             let mut next = self.readers.as_ref().ok_or(())?.clone();
+            let mut members = Vec::with_capacity(next.len());
             for (session, reader) in self.attachment.sessions.iter().zip(&mut next) {
                 if stop.map(|s| s.requested()).transpose()?.unwrap_or(false) {
-                    return Ok(false);
+                    return Ok(None);
                 }
                 let id = take_request_id(&mut self.next_id)?;
                 channel.send(
@@ -373,10 +352,24 @@ impl ReadSession {
                     return Err(());
                 }
                 attempt.apply(|| reader.apply(&events))?;
+                members.push(MemberEvents {
+                    member_id: session.member.member_id.clone(),
+                    session_id: reader.session_id.as_str().ok_or(())?.to_owned(),
+                    events: events["result"]["events"].as_array().ok_or(())?.clone(),
+                });
             }
             if stop.map(|s| s.requested()).transpose()?.unwrap_or(false) {
-                return Ok(false);
+                return Ok(None);
             }
+            let has_events = members.iter().any(|member| !member.events.is_empty());
+            let sessions = if has_events {
+                self.read_snapshots(channel, attempt)?
+                    .iter()
+                    .map(|value| value["result"].clone())
+                    .collect()
+            } else {
+                Vec::new()
+            };
             membership_barrier(
                 channel,
                 &self.attachment.mux_space,
@@ -385,13 +378,60 @@ impl ReadSession {
             )?;
             attempt.apply(|| {
                 self.readers = Some(next);
-                Ok(true)
+                Ok(has_events.then_some(PollRound { members, sessions }))
             })
         })();
         if result.is_err() {
             self.fail(attempt);
         }
         result
+    }
+
+    fn read_snapshots<R: Read, W: Write>(
+        &mut self,
+        channel: &mut Channel<R, W>,
+        attempt: &super::connection_epoch::Attempt,
+    ) -> Result<Vec<Value>, ()> {
+        let mut pending = Vec::with_capacity(self.attachment.sessions.len());
+        for session in &self.attachment.sessions {
+            let id = take_request_id(&mut self.next_id)?;
+            channel.send(
+                &serde_json::to_vec(&Request {
+                    protocol_version: "loushang.execution/v1",
+                    request_id: &id,
+                    operation: "execution/snapshot",
+                    payload: SnapshotRequest {
+                        control: Control {
+                            attachment_id: &self.attachment.attachment_id,
+                            controller_generation: &self.attachment.controller_generation,
+                            member_id: &session.member.member_id,
+                        },
+                        expected_instance_id: &self.instance,
+                    },
+                })
+                .map_err(|_| ())?,
+            )?;
+            let bytes = channel.receive()?;
+            let snapshot =
+                projection::bridge("snapshot", std::str::from_utf8(&bytes).map_err(|_| ())?)?;
+            let source = &snapshot["result"]["source"]["source"];
+            let before = projection::source_value(session.snapshot.get())?;
+            let old = before["cursor"].as_str().ok_or(())?;
+            let new = source["cursor"].as_str().ok_or(())?;
+            if snapshot["requestId"] != id
+                || snapshot["result"]["serviceInstanceId"] != self.instance
+                || source["identity"] != before["identity"]
+                || new.len() < old.len()
+                || (new.len() == old.len() && new < old)
+            {
+                return Err(());
+            }
+            attempt.apply(|| {
+                pending.push(snapshot);
+                Ok(())
+            })?;
+        }
+        Ok(pending)
     }
 
     fn fail(&mut self, attempt: &super::connection_epoch::Attempt) {

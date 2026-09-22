@@ -111,10 +111,12 @@ silently sharing one mux.
    two rounds; the session does not own a loop or socket. Each poll commits all
    member watermarks only after its membership recheck. Request IDs fail closed
    at the existing signed-63-bit connection limit instead of wrapping.
-4. **Implemented first publication slice:** the Tauri host can start the shared
-   read-only adapter from native-only launch facts and publish one atomic initial
-   snapshot. React distinguishes live data from fixtures and disables mutation.
-   Native-window acceptance and ongoing event publication remain pending.
+4. **Implemented read-only publication slice:** the Tauri host starts the shared
+   adapter from native-only launch facts, publishes one atomic initial snapshot
+   and complete ongoing event rounds, and reconnects with a fresh epoch and
+   snapshot after transport loss or a rejected round. React distinguishes live
+   data from fixtures and disables mutation. Native-window lifecycle acceptance
+   covers listener/record rotation, reattachment and cooperative exit.
 
 Transport and attachment must pass their own evidence before enabling the GUI
 connection control. No live connection readiness is claimed by checkpoint 1.

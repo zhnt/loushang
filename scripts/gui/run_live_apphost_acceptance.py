@@ -25,7 +25,7 @@ from loushang.apphost import (
 from loushang.apphost.application import HostedApplicationActivationV1
 from loushang.apphost.continuity import HostedApplicationContinuityActivationV1
 from loushang.apphost.local import HostedLocalRuntimeV1
-from loushang.appserver.local import LocalAppClientConnectionV1
+from loushang.appserver.local import LocalAppClientConnectionV1, LocalAppServerV1
 from loushang.appserver.local_record import (
     LocalConnectionDirectoryV1,
     LocalRecordScopeV1,
@@ -101,7 +101,9 @@ class AcceptanceRuntime:
     attempt: object
     app: object
     local: HostedLocalRuntimeV1
+    transport: LocalAppServerV1
     directory: LocalConnectionDirectoryV1
+    scopes: tuple[LocalRecordScopeV1, ...]
     owner: LocalAppClientConnectionV1
     execution: object
     peer: object
@@ -170,12 +172,13 @@ async def create_runtime(root: Path) -> AcceptanceRuntime:
     )
     app = await attempt.open()
     directory = LocalConnectionDirectoryV1(root / "connection")
+    scopes = tuple(LocalRecordScopeV1(s.scope, s.fingerprint) for s in launch.scopes)
     local = HostedLocalRuntimeV1(
         app,
         directory,
         "workspace",
         session_execution=True,
-        scopes=tuple(LocalRecordScopeV1(s.scope, s.fingerprint) for s in launch.scopes),
+        scopes=scopes,
     )
     owner = LocalAppClientConnectionV1(directory, "workspace")
     try:
@@ -205,7 +208,17 @@ async def create_runtime(root: Path) -> AcceptanceRuntime:
                 )
             )
         peer = await owner.client.attach_mux(MuxAttachV1(MuxSelectorV1(name=PEER_MUX)))
-        return AcceptanceRuntime(attempt, app, local, directory, owner, execution, peer)
+        return AcceptanceRuntime(
+            attempt,
+            app,
+            local,
+            local._server,
+            directory,
+            scopes,
+            owner,
+            execution,
+            peer,
+        )
     except BaseException:
         await owner.close()
         await local.close()
@@ -215,6 +228,7 @@ async def create_runtime(root: Path) -> AcceptanceRuntime:
 
 async def close_runtime(runtime: AcceptanceRuntime) -> None:
     await runtime.owner.close()
+    await runtime.transport.close()
     await runtime.local.close()
     assert not runtime.local.cleanup_pending
     await runtime.attempt.close()
@@ -230,7 +244,69 @@ async def assert_peer_is_usable(runtime: AcceptanceRuntime) -> None:
         ),
         runtime.execution.service_instance_id,
     )
-    assert runtime.local.accepting
+    assert runtime.app.accepting
+
+
+def attachment_count(runtime: AcceptanceRuntime) -> int:
+    """Inspect the real service only from this acceptance-only process."""
+
+    service = runtime.app._application._service
+    assert service is not None
+    return len(service._attachments)
+
+
+async def wait_for_attachment_count(
+    runtime: AcceptanceRuntime, expected: int, *, at_least: bool = False
+) -> None:
+    async with asyncio.timeout(12):
+        while True:
+            current = attachment_count(runtime)
+            reached = current >= expected if at_least else current == expected
+            if reached:
+                return
+            await asyncio.sleep(0.05)
+
+
+async def exercise_transport_reconnect(runtime: AcceptanceRuntime) -> None:
+    """Break the local transport and prove the desktop reconnects by itself."""
+
+    await wait_for_attachment_count(runtime, 2, at_least=True)
+    await runtime.transport.close()
+    await runtime.owner.close()
+    await wait_for_attachment_count(runtime, 0)
+
+    replacement_local = LocalAppServerV1(
+        runtime.directory,
+        "workspace",
+        application_id=runtime.app.application_id,
+        product_id=runtime.app.product_id,
+        scopes=runtime.scopes,
+        scope_factory=runtime.app.open_client_scope,
+        request_stop=runtime.local._request_stop,
+        execution_scope_factory=runtime.app.open_client_scope,
+    )
+    replacement_owner = LocalAppClientConnectionV1(runtime.directory, "workspace")
+    try:
+        await replacement_local.start()
+        await replacement_owner.start()
+        replacement_peer = await replacement_owner.client.attach_mux(
+            MuxAttachV1(MuxSelectorV1(name=PEER_MUX))
+        )
+    except BaseException:
+        await replacement_owner.close()
+        await replacement_local.close()
+        raise
+
+    runtime.transport = replacement_local
+    runtime.owner = replacement_owner
+    runtime.peer = replacement_peer
+    await wait_for_attachment_count(runtime, 2, at_least=True)
+    await assert_peer_is_usable(runtime)
+    print(
+        "Automatic reconnect passed: GUI reread the connection record, "
+        "reattached, and accepted a fresh authoritative snapshot.",
+        flush=True,
+    )
 
 
 async def assert_gui_detached(runtime: AcceptanceRuntime) -> int:
@@ -309,6 +385,11 @@ async def run(args: argparse.Namespace, root: Path) -> None:
             GUI_MUX,
             cwd=str(ROOT),
         )
+        await exercise_transport_reconnect(runtime)
+        result.update(
+            transportReconnectObserved=True,
+            freshSnapshotReattached=True,
+        )
         return_code = await gui.wait()
         if return_code != 0:
             raise RuntimeError(f"HarnessGUI exited with code {return_code}")
@@ -318,7 +399,7 @@ async def run(args: argparse.Namespace, root: Path) -> None:
             status="passed",
             guiExitCode=return_code,
             detachedControllerGeneration=str(generation),
-            sharedAppHostStillAccepting=runtime.local.accepting,
+            sharedAppHostStillAccepting=runtime.app.accepting,
             peerSnapshotAfterGuiExit=True,
         )
         write_json(evidence / "result.json", result)

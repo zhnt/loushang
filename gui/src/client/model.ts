@@ -146,6 +146,7 @@ export type ClientSource =
       readonly kind: "live";
       readonly serviceInstanceId: string;
       readonly muxSpaceId: string;
+      readonly connectionEpoch: string;
     };
 
 export interface ClientSnapshot {
@@ -238,6 +239,9 @@ export interface PlaybackStep {
 export interface HarnessClientUiPort {
   snapshot(): Promise<ClientSnapshot>;
   subscribe(listener: (event: ClientEvent) => void): () => void;
+  subscribeSnapshots?(listener: (snapshot: ClientSnapshot) => void): () => void;
+  subscribeConnection?(listener: (connection: "disconnected" | "resync-required") => void): () => void;
+  requestResync?(): Promise<void>;
   submitText(input: SubmitTextInput): Promise<SubmitReceipt>;
   interrupt(sessionId: string): Promise<ControlReceipt>;
 }

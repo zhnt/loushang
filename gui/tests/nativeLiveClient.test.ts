@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { projectNativeInitialSnapshot } from "../src/client/nativeLiveClient";
+import { projectNativeEventRound, projectNativeInitialSnapshot } from "../src/client/nativeLiveClient";
 
 const identity = () => ({
   productId: "coding",
@@ -11,6 +11,7 @@ const identity = () => ({
 
 function nativeSnapshot() {
   return {
+    connectionEpoch: "1",
     serviceInstanceId: "service-1",
     muxSpace: {
       muxSpaceId: "mux-1",
@@ -55,6 +56,7 @@ describe("native live initial snapshot", () => {
       kind: "live",
       serviceInstanceId: "service-1",
       muxSpaceId: "mux-1",
+      connectionEpoch: "1",
     });
     expect(snapshot.workspaces).toEqual([]);
     expect(snapshot.sessions[0].messages.map((message) => message.content)).toEqual([
@@ -62,6 +64,48 @@ describe("native live initial snapshot", () => {
       "The state is stable.",
     ]);
     expect(snapshot.capabilities.every((capability) => capability.availability === "unavailable")).toBe(true);
+  });
+
+  it("installs a complete validated event round from its authoritative snapshots", () => {
+    const initial = nativeSnapshot();
+    const next = nativeSnapshot();
+    next.sessions[0].source.source.cursor = "9007199254741001";
+    next.sessions[0].source.source.records.push({ kind: "assistant", text: "A later event." });
+    const projected = projectNativeEventRound(initial, {
+      connectionEpoch: "1",
+      sequence: "1",
+      serviceInstanceId: "service-1",
+      muxSpaceId: "mux-1",
+      members: [{
+        memberId: "member-1",
+        sessionId: "session-1",
+        events: [{
+          source: {
+            sessionId: "session-1",
+            cursor: "9007199254741001",
+            kind: "assistant_message",
+            text: "A later event.",
+            interactionId: null,
+          },
+          executionId: "execution-1",
+        }],
+      }],
+      sessions: next.sessions,
+    });
+    expect(projected.sessions[0].cursor).toBe("9007199254741001");
+    expect(projected.sessions[0].messages[2]?.content).toBe("A later event.");
+  });
+
+  it("rejects a round gap before publishing its replacement snapshot", () => {
+    const initial = nativeSnapshot();
+    expect(() => projectNativeEventRound(initial, {
+      connectionEpoch: "1",
+      sequence: "2",
+      serviceInstanceId: "service-1",
+      muxSpaceId: "mux-1",
+      members: [{ memberId: "member-1", sessionId: "session-1", events: [] }],
+      sessions: initial.sessions,
+    })).toThrow();
   });
 
   it("rejects membership and service-instance mismatches", () => {
