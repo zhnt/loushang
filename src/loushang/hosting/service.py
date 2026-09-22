@@ -55,6 +55,7 @@ class LinuxServiceObserverV1:
     _identity: LinuxServiceIdentityV1
     _mutex: RLock
     _closing: Event
+    _close_unknown: bool
 
     def __init__(self) -> None:
         raise TypeError("use capture or reopen")
@@ -78,6 +79,7 @@ class LinuxServiceObserverV1:
         if type(pid) is not int or not 1 <= pid < 2**31:
             raise _error(HostingFailureCategory.INVALID_REQUEST)
         descriptor = None
+        primary: BaseException | None = None
         try:
             before = _observe(pid)
             if expected is not None and before != expected:
@@ -92,13 +94,18 @@ class LinuxServiceObserverV1:
             owner._identity = after
             owner._mutex = RLock()
             owner._closing = Event()
+            owner._close_unknown = False
             descriptor = None
             return owner
         except (OSError, UnicodeError):
-            raise _error(HostingFailureCategory.PREPARATION_FAILED) from None
+            primary = _error(HostingFailureCategory.PREPARATION_FAILED)
+            raise primary from None
+        except BaseException as error:
+            primary = error
+            raise
         finally:
             if descriptor is not None:
-                _close_fd(descriptor)
+                _close_fd(descriptor, primary=primary)
 
     @property
     def identity(self) -> LinuxServiceIdentityV1:
@@ -140,9 +147,13 @@ class LinuxServiceObserverV1:
         if not self._mutex.acquire(timeout=30):
             raise _error(HostingFailureCategory.CLEANUP_FAILED)
         try:
+            if self._close_unknown:
+                raise _error(HostingFailureCategory.CLEANUP_FAILED)
             descriptor, self._fd = self._fd, None
             if descriptor is not None:
+                self._close_unknown = True
                 _close_fd(descriptor)
+                self._close_unknown = False
         finally:
             self._mutex.release()
 
@@ -155,6 +166,7 @@ def _observe(pid: int) -> LinuxServiceIdentityV1:
     boot = _read_file("/proc/sys/kernel/random/boot_id", limit=64).strip().decode("ascii")
     namespace = os.stat("/proc/self/ns/pid")
     directory = os.open(f"/proc/{pid}", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    primary: BaseException | None = None
     try:
         if os.fstat(directory).st_uid != os.geteuid():
             raise _error(HostingFailureCategory.PREPARATION_REJECTED)
@@ -163,8 +175,11 @@ def _observe(pid: int) -> LinuxServiceIdentityV1:
             raise _error(HostingFailureCategory.PREPARATION_REJECTED)
         ticks = _parse_start_ticks(_read_file("stat", parent=directory), pid)
         return LinuxServiceIdentityV1(pid, ticks, boot, uid, namespace.st_dev, namespace.st_ino)
+    except BaseException as error:
+        primary = error
+        raise
     finally:
-        _close_fd(directory)
+        _close_fd(directory, primary=primary)
 
 
 def _parse_start_ticks(content: bytes, expected_pid: int) -> int:
@@ -235,6 +250,7 @@ def _open_pidfd(pid: int) -> int:
 
 def _read_file(path: str, *, parent: int | None = None, limit: int = _PROC_LIMIT) -> bytes:
     descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=parent)
+    primary: BaseException | None = None
     try:
         content = bytearray()
         while len(content) <= limit:
@@ -245,19 +261,23 @@ def _read_file(path: str, *, parent: int | None = None, limit: int = _PROC_LIMIT
         if len(content) > limit:
             raise _error(HostingFailureCategory.READ_BOUND_EXCEEDED)
         return bytes(content)
+    except BaseException as error:
+        primary = error
+        raise
     finally:
-        _close_fd(descriptor)
+        _close_fd(descriptor, primary=primary)
 
 
-def _close_fd(descriptor: int) -> None:
-    primary = sys.exception()
+def _close_fd(descriptor: int, *, primary: BaseException | None = None) -> None:
     try:
         os.close(descriptor)
-    except OSError:
+    except BaseException as error:
         if primary is not None:
             primary.add_note("service_observer_cleanup_incomplete")
-        else:
+        elif isinstance(error, Exception):
             raise _error(HostingFailureCategory.CLEANUP_FAILED) from None
+        else:
+            raise
 
 
 def _error(category: HostingFailureCategory) -> HostingError:

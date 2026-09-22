@@ -66,6 +66,7 @@ class _HandoffChannel:
         self._closing = Event()
         self._mutex = RLock()
         self._closed = False
+        self._close_started = False
 
     def _enter(self, timeout: float = 2.0, deadline: float | None = None) -> float:
         if type(timeout) not in (int, float) or not 0 <= timeout <= 30:
@@ -89,6 +90,11 @@ class _HandoffChannel:
             raise _error(HostingFailureCategory.CLEANUP_FAILED)
         try:
             if not self._closed:
+                if self._close_started:
+                    # The native close may already have relinquished the fd.
+                    # A later socket.close no-op is not cleanup evidence.
+                    raise _error(HostingFailureCategory.CLEANUP_FAILED)
+                self._close_started = True
                 try:
                     self._endpoint.close()
                 except OSError:

@@ -107,6 +107,31 @@ def test_second_spawn_is_refused(launched):
     assert caught.value.category is HostingFailureCategory.SPAWN_FAILED
 
 
+def test_endpoint_close_lost_receipt_never_becomes_clean(tmp_path, monkeypatch):
+    parent, child = socket.socketpair()
+    owner = LinuxServiceProcessV1(_request(tmp_path, child.fileno()), child)
+    native = socket.socket.close
+    calls = []
+
+    def lose_receipt(endpoint):
+        native(endpoint)
+        if endpoint is child:
+            calls.append(endpoint)
+            raise OSError("lost endpoint close receipt")
+
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(socket.socket, "close", lose_receipt)
+            for _ in range(2):
+                with pytest.raises(HostingError):
+                    owner.close()
+                assert not owner.handles_closed
+            assert calls == [child] and child.fileno() == -1
+    finally:
+        parent.close()
+        native(child)
+
+
 def test_close_before_spawn_fences_native_creation(tmp_path, monkeypatch):
     parent, child = socket.socketpair()
     owner = LinuxServiceProcessV1(_request(tmp_path, child.fileno()), child)
@@ -144,7 +169,9 @@ def test_failed_spawn_is_unknown_not_a_retry_or_settlement_receipt(tmp_path):
         owner.close()
 
 
-def test_failed_identity_capture_keeps_attached_process_owner(tmp_path, monkeypatch):
+@pytest.mark.parametrize("lost_cleanup", [False, True])
+def test_failed_identity_capture_keeps_attached_process_owner(tmp_path, monkeypatch, lost_cleanup):
+    import loushang.hosting.service as service
     import loushang.hosting.service_process as module
 
     parent, child = socket.socketpair()
@@ -154,7 +181,25 @@ def test_failed_identity_capture_keeps_attached_process_owner(tmp_path, monkeypa
     def fail(pid):
         raise HostingError(HostingFailureCategory.PREPARATION_FAILED, "injected")
 
-    monkeypatch.setattr(module.LinuxServiceObserverV1, "capture", fail)
+    if lost_cleanup:
+        original_set = os.set_inheritable
+        original_close = os.close
+        captured = []
+
+        def fail_after_allocation(fd, inheritable):
+            captured.append(fd)
+            original_set(fd, inheritable)
+            raise OSError("capture failed after allocation")
+
+        def lose_close(fd):
+            original_close(fd)
+            if fd in captured:
+                raise OSError("temporary pidfd close receipt lost")
+
+        monkeypatch.setattr(service.os, "set_inheritable", fail_after_allocation)
+        monkeypatch.setattr(service.os, "close", lose_close)
+    else:
+        monkeypatch.setattr(module.LinuxServiceObserverV1, "capture", fail)
     try:
         with pytest.raises(HostingError):
             owner.spawn()
@@ -164,7 +209,9 @@ def test_failed_identity_capture_keeps_attached_process_owner(tmp_path, monkeypa
         assert not owner.scope_exited()
     finally:
         parent.close()
-        owner.close()
+        with pytest.raises(HostingError):
+            owner.close()
+        assert child.fileno() == -1 and not owner.handles_closed
         assert owner.wait_scope(timeout=8)
 
 
@@ -269,6 +316,7 @@ def test_close_during_native_creation_retains_the_single_spawn(tmp_path, monkeyp
 
 
 def test_leader_exit_is_not_settlement_of_a_living_descendant(tmp_path):
+    from loushang.hosting.service_group import LinuxServiceGroupObservationV1
     parent, child = socket.socketpair()
     parent.settimeout(8)
     code = r'''
@@ -291,10 +339,13 @@ os._exit(0)
     try:
         owner.spawn()
         assert parent.recv(1) == b"R"
+        group = LinuxServiceGroupObservationV1(owner._observer)
+        group.admit()
         parent.sendall(b"G")
         assert parent.recv(1) == b"D"
         assert owner._process.wait(timeout=5) == 0
         assert owner.leader_exited()
+        assert not group.exited()
         assert not owner.scope_exited()
         owner.close()
         assert owner.handles_closed
@@ -348,6 +399,7 @@ def test_cancelled_spawn_and_failed_observer_close_still_release_socket(tmp_path
         def close(self):
             if self.fail:
                 self.fail = False
+                self.observer.close()
                 raise OSError("injected observer close failure")
             self.observer.close()
 
@@ -366,13 +418,15 @@ def test_cancelled_spawn_and_failed_observer_close_still_release_socket(tmp_path
             assert child.fileno() == -1
             assert owner._observer is not None
             assert not owner.handles_closed
-            owner.close()
-        assert owner._observer is None
-        assert owner.handles_closed
+            with pytest.raises(HostingError):
+                owner.close()
+        assert owner._observer is not None
+        assert not owner.handles_closed
         assert not owner.leader_exited()
     finally:
         parent.close()
-        owner.close()
+        with pytest.raises(HostingError):
+            owner.close()
         assert owner.wait_scope(timeout=8)
 
 

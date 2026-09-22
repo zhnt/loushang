@@ -31,6 +31,61 @@ def child():
         process.communicate(timeout=5)
 
 
+def test_close_lost_receipt_inside_outer_exception_retains_unknown(monkeypatch):
+    observer = LinuxServiceObserverV1.capture(os.getpid())
+    descriptor = observer._fd
+    native_close = os.close
+    calls = []
+    replacement = None
+
+    def close_then_raise(fd):
+        nonlocal replacement
+        assert fd == descriptor
+        calls.append(fd)
+        native_close(fd)
+        replacement = os.open("/dev/null", os.O_RDONLY)
+        if replacement != fd:
+            os.dup2(replacement, fd)
+            native_close(replacement)
+            replacement = fd
+        raise OSError("lost close receipt")
+
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(os, "close", close_then_raise)
+            try:
+                raise ValueError("unrelated outer exception")
+            except ValueError:
+                with pytest.raises(HostingError) as caught:
+                    observer.close()
+                assert caught.value.category is HostingFailureCategory.CLEANUP_FAILED
+            with pytest.raises(HostingError):
+                observer.close()
+        assert calls == [descriptor]
+        assert replacement == descriptor
+        os.fstat(replacement)
+    finally:
+        if replacement is not None:
+            native_close(replacement)
+
+
+def test_close_preserves_own_primary_when_native_cleanup_is_interrupted(monkeypatch):
+    from loushang.hosting.service import _close_fd
+
+    descriptor = os.open("/dev/null", os.O_RDONLY)
+    native = os.close
+    primary = ValueError("original operation")
+
+    def interrupted(fd):
+        native(fd)
+        raise KeyboardInterrupt()
+
+    with monkeypatch.context() as patch:
+        patch.setattr(os, "close", interrupted)
+        _close_fd(descriptor, primary=primary)
+    assert primary.__notes__ == ["service_observer_cleanup_incomplete"]
+
+
 def test_capture_reopen_and_exit_with_retained_native_identity(child):
     observer = LinuxServiceObserverV1.capture(child.pid)
     reopened = LinuxServiceObserverV1.reopen(observer.identity)

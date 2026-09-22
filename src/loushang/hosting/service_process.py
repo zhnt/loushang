@@ -82,6 +82,10 @@ class LinuxServiceProcessV1:
         self._identity: LinuxServiceIdentityV1 | None = None
         self._attempted = False
         self._handles_closed = False
+        self._observer_close_unknown = False
+        self._observer_adoption_unknown = False
+        self._endpoint_close_unknown = False
+        self._endpoint_closed = False
         self._closing = Event()
         self._mutex = RLock()
 
@@ -130,9 +134,11 @@ class LinuxServiceProcessV1:
                     pass_fds=(self._endpoint.fileno(),),
                 )
                 self._scope = _PosixProcess(_ServiceChild(self._process))
+                self._observer_adoption_unknown = True
                 self._observer = LinuxServiceObserverV1.capture(self._process.pid)
+                self._observer_adoption_unknown = False
                 self._identity = self._observer.identity
-                self._endpoint.close()  # No parent copy of the child's socket.
+                self._close_endpoint()  # No parent copy of the child's socket.
                 return self._identity
             except (OSError, subprocess.SubprocessError):
                 raise _error(HostingFailureCategory.SPAWN_FAILED) from None
@@ -196,15 +202,19 @@ class LinuxServiceProcessV1:
             if self._handles_closed:
                 return
             primary: BaseException | None = None
-            if self._observer is not None:
+            if self._observer_close_unknown or self._observer_adoption_unknown:
+                primary = _error(HostingFailureCategory.CLEANUP_FAILED)
+            elif self._observer is not None:
+                self._observer_close_unknown = True
                 try:
                     self._observer.close()
                 except BaseException as error:
                     primary = error
                 else:
                     self._observer = None
+                    self._observer_close_unknown = False
             try:
-                self._endpoint.close()
+                self._close_endpoint()
             except BaseException as error:
                 if primary is None:
                     primary = error
@@ -216,6 +226,15 @@ class LinuxServiceProcessV1:
             self._handles_closed = True
         finally:
             self._mutex.release()
+
+    def _close_endpoint(self) -> None:
+        if self._endpoint_close_unknown:
+            raise _error(HostingFailureCategory.CLEANUP_FAILED)
+        if not self._endpoint_closed:
+            self._endpoint_close_unknown = True
+            self._endpoint.close()
+            self._endpoint_closed = True
+            self._endpoint_close_unknown = False
 
 
 def _error(category: HostingFailureCategory) -> HostingError:

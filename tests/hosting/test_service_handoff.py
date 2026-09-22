@@ -165,6 +165,53 @@ def test_adopted_channels_do_not_leak_to_exec(channels):
         assert not os.get_inheritable(owner._endpoint.fileno())
 
 
+@pytest.mark.parametrize("channel_type", [ServiceParentHandoffV1, ServiceChildHandoffV1])
+def test_native_close_uncertainty_never_retries_reused_descriptor(tmp_path, monkeypatch, channel_type):
+    peer, endpoint = socket.socketpair()
+    owner = channel_type(endpoint, Port())
+    original = socket.socket._real_close
+    calls, replacements = [], []
+
+    def fail_after_release(self):
+        original(self)
+        if self is endpoint:
+            calls.append(1)
+            replacements.append(os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY))
+            raise OSError("uncertain native socket close")
+
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(socket.socket, "_real_close", fail_after_release)
+            for _ in range(2):
+                with pytest.raises(HostingError) as caught:
+                    owner.close()
+                assert caught.value.category is HostingFailureCategory.CLEANUP_FAILED
+        assert calls == [1] and not owner._closed and endpoint.fileno() == -1
+        os.fstat(replacements[0])
+    finally:
+        peer.close()
+        for fd in replacements:
+            os.close(fd)
+
+
+def test_close_mutex_failure_can_retry_before_native_close(channels, monkeypatch):
+    owner = channels[0]
+    original = owner._mutex
+
+    class Denied:
+        def acquire(self, **kwargs):
+            return False
+
+    with monkeypatch.context() as patch:
+        patch.setattr(owner, "_mutex", Denied())
+        with pytest.raises(HostingError):
+            owner.close()
+        assert not owner._close_started and owner._endpoint.fileno() >= 0
+    assert owner._mutex is original
+    owner.close()
+    assert owner._closed
+
+
 def test_failed_admission_leaves_socket_with_caller():
     endpoint = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
     try:
