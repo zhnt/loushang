@@ -1,7 +1,9 @@
 """Launch HarnessGUI against an isolated real AppHost for desktop acceptance.
 
-This is an opt-in, visible Windows acceptance helper. It does not invoke a
-model, install a gate, or reuse a developer's existing AppHost records.
+This is an opt-in, visible Windows acceptance helper. Its default mode uses a
+deterministic local model. ``--live-provider`` instead resolves the saved Coding
+default through the normal AI catalog and may incur provider usage. Neither mode
+installs a gate or reuses a developer's existing AppHost records.
 """
 
 from __future__ import annotations
@@ -46,6 +48,10 @@ from loushang.appserver.protocol import (
 from loushang.appservice.continuity_file import JsonFileApplicationContinuityStoreV1
 from loushang.appservice.discovery_ports import HostedSessionDiscoveryScopeV1
 from loushang.coding.bootstrap import create_services
+from loushang.coding.control.settings_store import (
+    default_global_settings_path,
+    default_project_settings_path,
+)
 from loushang.coding.hosted_application import (
     CODING_HOSTED_APPLICATION_PROFILE_ID,
     CodingForegroundHostedApplicationRequestV1,
@@ -132,9 +138,10 @@ class AcceptanceRuntime:
     execution: object
     peer: object
     gui_session_id: str
+    live_provider: bool
 
 
-async def create_runtime(root: Path) -> AcceptanceRuntime:
+async def create_runtime(root: Path, *, live_provider: bool) -> AcceptanceRuntime:
     launch = CodingHostedLaunchV1(
         root, root / "app", "gui.desktop.acceptance", root / "cwd", root / "home"
     )
@@ -164,25 +171,7 @@ async def create_runtime(root: Path) -> AcceptanceRuntime:
             HostedSessionDiscoveryScopeV1("coding", scope.scope, scope.fingerprint)
             for scope in launch.scopes
         ),
-        session_factory=CodingRealHostedSessionFactoryV1(
-            services_factory=lambda cwd: create_services(
-                settings_manager=SettingsManager(
-                    global_settings_path=root / "settings.json",
-                    project_settings_path=cwd / ".loushang/settings.json",
-                )
-            ),
-            model=Model(
-                id="no-network",
-                name="No network",
-                provider="faux",
-                endpoint="anthropic-messages",
-                capabilities=Capabilities(
-                    input=("text",), context_window=128000, max_tokens=4096
-                ),
-            ),
-            stream_fn=deterministic_stream,
-            tools=[],
-        ),
+        session_factory=_session_factory(root, live_provider=live_provider),
         execution=execution,
         shutdown_budget=AppHostShutdownBudgetV1(10, 5),
     )
@@ -247,12 +236,49 @@ async def create_runtime(root: Path) -> AcceptanceRuntime:
             execution,
             peer,
             gui_session_id,
+            live_provider,
         )
     except BaseException:
         await owner.close()
         await local.close()
         await attempt.close()
         raise
+
+
+def _session_factory(
+    root: Path, *, live_provider: bool
+) -> CodingRealHostedSessionFactoryV1:
+    if live_provider:
+        return CodingRealHostedSessionFactoryV1(
+            services_factory=lambda cwd: create_services(
+                settings_manager=SettingsManager(
+                    global_settings_path=default_global_settings_path(),
+                    project_settings_path=default_project_settings_path(cwd),
+                )
+            ),
+            model=None,
+            stream_fn=None,
+            tools=[],
+        )
+    return CodingRealHostedSessionFactoryV1(
+        services_factory=lambda cwd: create_services(
+            settings_manager=SettingsManager(
+                global_settings_path=root / "settings.json",
+                project_settings_path=cwd / ".loushang/settings.json",
+            )
+        ),
+        model=Model(
+            id="no-network",
+            name="No network",
+            provider="faux",
+            endpoint="anthropic-messages",
+            capabilities=Capabilities(
+                input=("text",), context_window=128000, max_tokens=4096
+            ),
+        ),
+        stream_fn=deterministic_stream,
+        tools=[],
+    )
 
 
 async def close_runtime(runtime: AcceptanceRuntime) -> None:
@@ -338,6 +364,20 @@ async def exercise_transport_reconnect(runtime: AcceptanceRuntime) -> None:
     )
 
 
+def selected_model_ref(runtime: AcceptanceRuntime) -> str:
+    service = runtime.app._application._service
+    assert service is not None
+    session = next(
+        value
+        for value in service._sessions.values()
+        if value.identity.session_id == runtime.gui_session_id
+    )
+    model = session._port._session.agent.model
+    if model is None:
+        raise RuntimeError("the saved Coding default model did not resolve")
+    return f"{model.provider_id}:{model.endpoint_id}:{model.id}"
+
+
 async def trigger_live_projection(runtime: AcceptanceRuntime) -> None:
     service = runtime.app._application._service
     assert service is not None
@@ -350,13 +390,26 @@ async def trigger_live_projection(runtime: AcceptanceRuntime) -> None:
     assert registry is not None and session._execution is not None
     record = registry.submit(
         session._execution,
-        "publish a deterministic desktop projection",
-        "gui-desktop-projection",
+        (
+            "Reply briefly with: GUI provider acceptance passed."
+            if runtime.live_provider
+            else "publish a deterministic desktop projection"
+        ),
+        (
+            "gui-live-provider-projection"
+            if runtime.live_provider
+            else "gui-desktop-projection"
+        ),
     )
-    await registry.wait(session._execution, record)
+    async with asyncio.timeout(120 if runtime.live_provider else 15):
+        await registry.wait(session._execution, record)
     await asyncio.sleep(0.5)
     print(
-        "Live projection passed: a real Coding execution reached the GUI event reader.",
+        (
+            "Live Provider passed: a real model response reached the GUI event reader."
+            if runtime.live_provider
+            else "Live projection passed: a real Coding execution reached the GUI event reader."
+        ),
         flush=True,
     )
 
@@ -390,14 +443,17 @@ def write_json(path: Path, payload: dict[str, object]) -> None:
 
 
 async def run(args: argparse.Namespace, root: Path) -> None:
-    runtime = await create_runtime(root)
+    runtime = await create_runtime(root, live_provider=args.live_provider)
     evidence = args.evidence_dir.resolve()
     gui = None
+    model_ref = selected_model_ref(runtime)
     result: dict[str, object] = {
         "status": "running",
         "muxName": GUI_MUX,
         "peerMuxName": PEER_MUX,
         "serviceInstanceId": runtime.execution.service_instance_id,
+        "model": model_ref,
+        "mode": "live-provider" if runtime.live_provider else "deterministic",
     }
     write_json(evidence / "launch.json", result)
     try:
@@ -412,16 +468,14 @@ async def run(args: argparse.Namespace, root: Path) -> None:
             flush=True,
         )
         print("  [ ] The real Coding Session projection loads", flush=True)
-        print(
-            "  [ ] The deterministic live transcript and Execution details appear",
-            flush=True,
-        )
+        print(f"  [ ] Active model is {model_ref}", flush=True)
+        print("  [ ] The live transcript and Execution details appear", flush=True)
         print(
             f"      (native mux selection: {GUI_MUX!r}; not exposed to the WebView)",
             flush=True,
         )
         print(
-            "  [ ] Type a prompt; Send is enabled and the deterministic assistant reply appears",
+            "  [ ] Type a prompt; Send is enabled and the assistant reply appears",
             flush=True,
         )
         print("  [ ] While running, the same control becomes Interrupt", flush=True)
@@ -490,6 +544,11 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=DEFAULT_GUI_EXE,
         help="release HarnessGUI executable to launch",
+    )
+    parser.add_argument(
+        "--live-provider",
+        action="store_true",
+        help="use the saved Coding default model and its existing credential",
     )
     parser.add_argument(
         "--evidence-dir",

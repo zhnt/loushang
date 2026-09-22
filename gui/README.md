@@ -104,6 +104,20 @@ independent peer Session is still snapshot-readable. Non-secret lifecycle eviden
 `gui/test-results/live-apphost-desktop/`; this opt-in helper is not part of the
 rapid GUI gate and does not invoke a model.
 
+To exercise the same isolated AppHost with the saved Coding default model and
+its existing credential, run the explicit provider acceptance instead:
+
+```text
+pnpm --dir gui run accept:live-provider
+```
+
+This command resolves the model through the normal layered AI ModelRegistry and
+Coding settings; the GUI does not parse `models.json` or receive credentials.
+It currently uses no tools, sends one short acceptance prompt, may incur provider
+usage, and then leaves the window open for manual conversation. Non-secret
+evidence is written under `gui/test-results/live-provider-desktop/`. It is never
+part of `check`, CI or another default gate.
+
 The first observed live desktop run is recorded in
 [Windows live AppHost acceptance](tests/playback/windows-live-apphost-acceptance.md).
 It records the initial projection, ongoing event integration,

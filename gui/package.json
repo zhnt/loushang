@@ -33,6 +33,7 @@
     "build": "node ../scripts/gui/run.mjs build-native",
     "build:fixture-native": "node ../scripts/gui/run.mjs build-fixture-native",
     "accept:live-native": "uv run python ../scripts/gui/run_live_apphost_acceptance.py",
+    "accept:live-provider": "uv run python ../scripts/gui/run_live_apphost_acceptance.py --live-provider --evidence-dir gui/test-results/live-provider-desktop",
     "preview": "vite preview",
     "tauri": "tauri"
   },

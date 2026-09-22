@@ -81,6 +81,16 @@ No server contract or runtime implementation was changed to accommodate GUI.
   fixture; metadata/content watermark separation is additionally unit tested in Rust.
 - This remains an opt-in GUI integration check, not a TUI/Harness default gate.
 
-Next add an opt-in provider-backed acceptance case and the separate New Session,
-approval and attachment contracts. Keep live facts separate from offline
-fixtures and never infer mutation results across reconnect.
+Next record a completed provider-backed desktop run, then add the separate New
+Session, approval and attachment contracts. Keep live facts separate from
+offline fixtures and never infer mutation results across reconnect.
+
+## Opt-in provider desktop acceptance
+
+`pnpm --dir gui run accept:live-provider` uses the same isolated AppHost and
+desktop control bridge but resolves the saved Coding `default_model` through the
+standard layered ModelRegistry and settings path. Credentials remain in the AI
+runtime; they are not serialized to Rust or the WebView. The helper disables
+tools, sends one bounded acceptance prompt, and records only the selected model
+identity and lifecycle facts under `gui/test-results/live-provider-desktop/`.
+It is intentionally interactive, network-using and outside every default gate.
