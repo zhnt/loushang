@@ -13,6 +13,7 @@ import os
 import re
 import stat
 import threading
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
@@ -58,6 +59,7 @@ DEFAULT_PACKAGE_WINDOWS_OFFLINE_RESTORE_MAX_BYTES = 16 * 1024 * 1024 * 1024
 DEFAULT_PACKAGE_WINDOWS_OFFLINE_RESTORE_MAX_DEPTH = 128
 
 _LOCK_NAME = ".offline-restore.lock"
+_LOCK_INITIALIZATION_TIMEOUT = 1.0
 _PAYLOAD_NAME = "payload"
 _RECEIPT_NAME = "receipt.json"
 _STATE_MANIFEST_NAME = "state-manifest.json"
@@ -505,6 +507,7 @@ class PackageWindowsOfflineRestoreMaterializer:
             lock_fd: int | None = None
             locked = False
             try:
+                created = False
                 try:
                     lock_fd = open_windows_regular_file_at(
                         root.descriptor,
@@ -520,6 +523,7 @@ class PackageWindowsOfflineRestoreMaterializer:
                             create_new=True,
                             write=True,
                         )
+                        created = True
                         _write_all(lock_fd, b"\0")
                         windows_flush_file(lock_fd)
                         windows_flush_directory(root.descriptor)
@@ -530,6 +534,10 @@ class PackageWindowsOfflineRestoreMaterializer:
                             create_new=False,
                             write=True,
                         )
+                if not created:
+                    deadline = time.monotonic() + _LOCK_INITIALIZATION_TIMEOUT
+                    while os.fstat(lock_fd).st_size == 0 and time.monotonic() < deadline:
+                        time.sleep(0.001)
                 if os.fstat(lock_fd).st_size != 1:
                     raise OSError("Windows restore lock file changed")
                 os.lseek(lock_fd, 0, os.SEEK_SET)

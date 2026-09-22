@@ -85,9 +85,10 @@ def test_windows_console_image_rejects_incomplete_native_queries(stage):
 
 
 class TreeApi:
-    def __init__(self, table, *, current=None, images=None):
+    def __init__(self, table, *, current=None, images=None, creation=None):
         self.tables = iter([table, table if current is None else current])
         self.images = images or {3: r"C:\Windows\System32\conhost.exe"}
+        self.creation = creation or {}
         self.opened, self.closed, self.dead = [], [], set()
 
     def entries(self):
@@ -102,6 +103,9 @@ class TreeApi:
 
     def ended(self, handle):
         return handle in self.dead
+
+    def created(self, handle):
+        return self.creation.get(handle, handle)
 
     def is_console_host(self, handle):
         assert handle in self.opened
@@ -121,6 +125,18 @@ def test_windows_tree_retains_console_sidecar_outside_fault_chain():
             _assert_exited(api, chain, sidecars, deadline=0)
         api.dead.add(3)
         _assert_exited(api, chain, sidecars, deadline=0)
+    assert sorted(api.closed) == [1, 2, 3, 4]
+
+
+def test_windows_tree_ignores_recycled_parent_identity():
+    api = TreeApi(
+        {1: 99, 2: 1, 3: 1, 4: 2},
+        creation={1: 10, 2: 11, 3: 5, 4: 12},
+    )
+    with ExitStack() as handles:
+        chain, sidecars = _pin_chain(api, 1, 99, handles)
+    assert chain == [(1, 1), (2, 2), (4, 4)]
+    assert sidecars == []
     assert sorted(api.closed) == [1, 2, 3, 4]
 
 
@@ -190,6 +206,9 @@ class Api:
         self.confirmed = []
         self.dead = set()
         self.close_error = False
+
+    def created(self, handle):
+        return handle
 
     def entries(self, *, threads=False):
         assert threads

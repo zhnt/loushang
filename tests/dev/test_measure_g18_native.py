@@ -606,6 +606,64 @@ def test_seed_diagnostic_cli_is_zero_sample_and_retains_final_pins(
     )
 
 
+@pytest.mark.parametrize("scenario", [
+    "first-reply", "admission-diagnostic", "delayed-final",
+    "interrupt-next-turn", "tool-approval", "tool-denial", "hangup-interrupt-next-turn",
+    "hangup-natural-completion", "history-warm", "history-restore",
+])
+def test_product_diagnostic_main_reaches_guarded_dispatch(tmp_path, monkeypatch, scenario):
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+
+    import loushang.coding
+    from tests.coding import _g18_native_probe as probe
+    from tests.coding import _lmux_history_restore as history_restore
+    from tests.coding import _lmux_product_probe as product
+
+    root = tmp_path / "workspace"
+    root.mkdir()
+    monkeypatch.chdir(root)
+    prefix = tmp_path / "install"
+    monkeypatch.setattr(probe, "sys", SimpleNamespace(platform="linux", prefix=str(prefix)))
+    monkeypatch.setattr(loushang.coding, "__file__", str(prefix / "lib/coding.py"))
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path / "home"))
+    monkeypatch.setattr(probe, "measured_entries", lambda _: nullcontext())
+    calls = []
+
+    def guarded(operation):
+        calls.append("enter")
+        operation()
+        calls.append("settled")
+
+    def first_reply(actual_root, report, **options):
+        assert actual_root == root and calls == ["enter"]
+        assert scenario != "history-restore"
+        assert options == {
+            "admission_diagnostic": scenario == "admission-diagnostic",
+            "delayed_final": scenario in {"delayed-final", "interrupt-next-turn", "hangup-interrupt-next-turn", "hangup-natural-completion"},
+            "interrupt_next_turn": scenario in {"interrupt-next-turn", "hangup-interrupt-next-turn"},
+            "transport_loss": scenario in {"hangup-interrupt-next-turn", "hangup-natural-completion"},
+            "natural_completion": scenario == "hangup-natural-completion",
+            "tool_approval": scenario == "tool-approval",
+            "tool_denial": scenario == "tool-denial",
+            "history": scenario == "history-warm",
+        }
+        calls.append("product")
+
+    monkeypatch.setattr(probe, "_guarded", guarded)
+    monkeypatch.setattr(product, "first_reply", first_reply)
+    def restored(actual_root, report):
+        assert actual_root == root and calls == ["enter"] and scenario == "history-restore"
+        calls.append("product")
+    monkeypatch.setattr(history_restore, "restore_history", restored)
+    receipt = tmp_path / "report.json"
+    probe.main(root, f"managed-product-{scenario}", receipt, prefix)
+    assert calls == ["enter", "product", "settled"]
+    report = json.loads(receipt.read_text())
+    assert report["status"] == "observed"
+    assert report["valid"] is False  # Only the outer owner may accept the sample.
+
+
 def test_diagnostic_observer_publication_failure_does_not_replace_owner_error(
     tmp_path, monkeypatch
 ):
@@ -736,7 +794,10 @@ def test_native_main_publishes_comparison_only_after_all_evidence_gates(
 ):
     from types import SimpleNamespace
 
+    from tests.dev import test_g18_comparison
     from tests.dev.test_g18_comparison import native_samples
+
+    comparison = test_g18_comparison.comparison
 
     source = dict(commit="baseline", lock_sha256="lock", wheel_sha256="wheel")
     manifest_calls = []
@@ -764,7 +825,9 @@ def test_native_main_publishes_comparison_only_after_all_evidence_gates(
         report = args[-2]
         assert report["comparison"]["verdict"] == "not-evaluated"
         report["samples"] = native_samples(
-            right=1.2 if outcome == "regression" else 1.0
+            right=(1.0 * (1 + float(comparison.REGRESSION_RATIO)) + 0.01)
+            if outcome == "regression"
+            else 1.0
         )
         if outcome == "inconclusive":
             for sample in report["samples"]:

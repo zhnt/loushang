@@ -18,6 +18,11 @@ runner = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(runner)
 
 
+def _regressed_duration():
+    """A duration exceeding the accepted ARD-004 regression ratio (baseline 1.0)."""
+    return 1.0 * (1 + float(runner.comparison_module().REGRESSION_RATIO)) + 0.01
+
+
 @pytest.fixture(autouse=True)
 def _synthetic_collector_load(monkeypatch):
     # Collector unit tests exercise synthetic receipts, not host performance.
@@ -433,7 +438,8 @@ def test_inert_main_reports_comparison_without_upgrading_collection_success(
         if phase == "ab" and side == "b":
             duration = 0.7 if outcome != "target-not-met" else 1.0
             if outcome == "regression" and Path(argv[0]).name == "loushang-plugin":
-                duration = 1.2
+                # Must exceed the accepted ratio; a fixed 20% is below it now.
+                duration = _regressed_duration()
         if outcome == "inconclusive" and cwd.name.startswith("b1-"):
             duration += 0.3
         if argv[-1] == "--version":

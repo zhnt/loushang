@@ -117,6 +117,8 @@ def test_G17_COMMAND_is_one_optional_product_composition_with_fixed_dependencies
         "loushang.appserver.protocol.connection_profile",
         "loushang.hosting.contracts", "loushang.hosting.runtime",
         "loushang.harnesstui.mux.shell", "loushang.harnesstui.mux.terminal",
+        # Hosted and Embedded clients share the same Markdown presentation.
+        "loushang.harnesstui.conversation.theme",
         "loushang.coding.hosted_bootstrap",
     }
     for entry in (

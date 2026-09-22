@@ -47,6 +47,7 @@ Standalone drafts:
 - [AppHost A0 Contract Baseline (promoted to canonical AppHost scope)](apphost-contract-baseline-a0.md)
 - [Hosted Product Runtime V1 Delivery Plan](hosted-product-runtime-v1-plan.md)
 - [Harnesstui Named Mux And Daemon Attach](harnesstui-named-mux-daemon-attach-design.md)
+- [lmux：命名多 Tab 与自动后台服务设计](lmux-managed-service-design.md)
 - [Loushang Runtime Architecture](loushang-runtime-architecture.md)
 - [Loushang Work / Method / Channel / Harness Architecture](loushang-work-method-channel-harness-architecture.md)
 - [Method / Ontology Action Driven Multi-Agent Collaboration Requirements](method-ontology-action-multi-agent-collaboration-requirements.md)

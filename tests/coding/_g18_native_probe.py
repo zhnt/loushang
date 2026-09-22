@@ -27,6 +27,15 @@ from unittest.mock import patch
 # support is admitted from the checkout; never put checkout/src on sys.path.
 ROOT = Path(__file__).resolve().parents[2]
 FAILURE_TREE_DIAGNOSTIC = False
+PRODUCT_DIAGNOSTIC_CASES = (
+    "managed-product-first-reply", "managed-product-admission-diagnostic",
+    "managed-product-delayed-final", "managed-product-interrupt-next-turn",
+    "managed-product-tool-approval", "managed-product-tool-denial",
+    "managed-product-hangup-interrupt-next-turn",
+    "managed-product-hangup-natural-completion",
+    "managed-product-history-warm",
+    "managed-product-history-restore",
+)
 sys.path.insert(0, str(ROOT))
 if __name__ == "__main__":
     if len(sys.argv) not in (6, 7) or (
@@ -267,9 +276,13 @@ def failure_tree_snapshot(pid, starttime, *, proc=Path("/proc"), clock=time.mono
 
 
 @contextmanager
-def observed_terminal(argv, root, environment, *, failure_report=None):
+def observed_terminal(argv, root, environment, *, failure_report=None, settlements=None,
+                      line_settlements=None):
     import pty
     import termios
+
+    if settlements is not None and line_settlements is not None:
+        raise ValueError("terminal receipt must select one presentation mode")
 
     openpty = pty.openpty
     terminals = []
@@ -317,8 +330,67 @@ def observed_terminal(argv, root, environment, *, failure_report=None):
         assert driver.diagnostics.termination is None, (
             "fixture fallback is not normal success"
         )
+        restored_at = time.perf_counter()
     assert not driver.diagnostics.reader_alive, "native reader did not settle"
     assert driver.diagnostics.termination is None
+    if line_settlements is not None:
+        assert driver.diagnostics.exit_status == 0, "line command did not exit successfully"
+        line_settlements.append({
+            "presentation": "line", "pid": driver.diagnostics.pid,
+            "argv": list(map(str, argv)), "cwd": str(root.resolve()),
+            "exit_status": 0, "termios_restored_at": restored_at,
+            "settled_at": time.perf_counter(), "reader_settled": True,
+            "fallback": False,
+        })
+    if settlements is not None:
+        assert driver.diagnostics.exit_status == 0, "terminal did not exit successfully"
+        output = driver.raw_output
+        assert output.rfind("\x1b[?25h") > output.rfind("\x1b[?25l"), "cursor not restored"
+        assert output.rfind("\x1b[?2004l") > output.rfind("\x1b[?2004h"), "bracketed paste not disabled"
+        settlements.append({
+            "pid": driver.diagnostics.pid, "argv": list(map(str, argv)),
+            "cwd": str(root.resolve()), "exit_status": 0,
+            "termios_restored_at": restored_at, "settled_at": time.perf_counter(),
+            "cursor_restored": True, "bracketed_paste_disabled": True,
+            "reader_settled": True, "fallback": False,
+        })
+
+
+@contextmanager
+def abrupt_terminal(argv, root, environment, *, failure_report=None):
+    """Original terminal owner, with transport loss instead of a detach receipt."""
+    import pty
+    import termios
+
+    from tests.tui.terminal_process_support.posix_pty import PosixPtyDriver
+
+    openpty = pty.openpty
+    terminals = []
+
+    def capture():
+        master, slave = openpty()
+        terminals.append((master, termios.tcgetattr(slave)))
+        return master, slave
+
+    with patch.object(pty, "openpty", capture), foreground_terminal(
+        argv, cwd=root, env=environment, columns=100, rows=30,
+    ) as driver:
+        assert isinstance(driver, PosixPtyDriver)
+        ((master, original),) = terminals
+        yield driver, master, original
+        assert driver._transport_state == "closed", "transport hangup must succeed"
+        assert not driver.is_alive() and not driver.diagnostics.reader_alive
+        assert driver.diagnostics.termination is None, "fallback is not a successful hangup"
+        exit_status = driver.diagnostics.exit_status
+        assert type(exit_status) is int and exit_status >= 0, "client did not exit on its own"
+    assert not driver.diagnostics.reader_alive and driver.diagnostics.termination is None
+    if failure_report is not None:
+        failure_report["terminal_transport"] = {
+            "stimulus": "pty-master-close", "client_settled": True,
+            "client_exit_status": exit_status,
+            "client_exit_clean": exit_status == 0,
+            "terminal_mode_restoration": "not-observable-after-hangup",
+        }
 
 
 def mark(report, name, started):
@@ -437,6 +509,243 @@ def _replay_embedded_output(output, *, screen=None):
                 raise ValueError(f"unsupported Embedded screen sequence: {token!r}")
         screen = screen.apply((operation,))
     return screen
+
+
+def managed_read_observation(environment, stage, *, name="perf", native_identity=None):
+    """Read exact authenticated members without taking a controller.
+
+    Reuse the original process-only runner: unresolved connection/native cleanup
+    is an observer failure retained by its outer evidence owner, never a result.
+    """
+    return _managed_observation(environment, stage, name=name, native_identity=native_identity)
+
+
+def managed_reply_observation(environment, expected_target, expected_reply, *, pending=False, interrupted_nonce=None, tool_approval=False, tool_denial=False, natural_nonce=None):
+    """After terminal settlement only: temporarily control and verify its reply."""
+    from tests.coding._lmux_product_snapshot import (
+        confirm_denied_tool_reply,
+        confirm_interrupted_reply,
+        confirm_natural_reply,
+        confirm_pending_reply,
+        confirm_reply,
+        confirm_tool_reply,
+    )
+
+    if sum((pending, interrupted_nonce is not None, tool_approval, tool_denial)) > 1:
+        raise ValueError("reply observation modes are distinct")
+    if natural_nonce is not None and (interrupted_nonce is not None or tool_approval or tool_denial):
+        raise ValueError("natural completion cannot use interrupt/tool observation")
+    confirmed_snapshot = None
+
+    async def verify(connection, mux, target, deadline):
+        nonlocal confirmed_snapshot
+        for key in ("instanceId", "serviceId", "muxId", "members"):
+            assert target[key] == expected_target[key], "reply observer target changed"
+        assert len(mux.members) == 1
+        member = mux.members[0]
+        confirm = (confirm_natural_reply if natural_nonce is not None
+                   else confirm_denied_tool_reply if tool_denial else confirm_tool_reply if tool_approval
+                   else confirm_interrupted_reply if interrupted_nonce is not None
+                   else confirm_pending_reply if pending else confirm_reply)
+        snapshot = await confirm(
+            connection.client, mux_id=mux.mux_space_id, member_id=member.member_id,
+            identity=member.session, expected=expected_reply, deadline=deadline,
+            **({"interrupted_nonce": interrupted_nonce} if interrupted_nonce is not None else {}),
+            **({"natural_nonce": natural_nonce, "pending": pending} if natural_nonce is not None else {}),
+        )
+        identity = snapshot.identity
+        confirmed_snapshot = {
+            "confirmed_at": time.perf_counter(), "running": snapshot.running,
+            "expected_reply": expected_reply,
+            "identity": {
+                "product_id": identity.product_id, "continuity_id": identity.continuity_id,
+                "session_id": identity.session_id, "scope": identity.scope.value,
+                "scope_fingerprint": identity.scope_fingerprint,
+            },
+            "records": [{"kind": record.kind.value, "text": record.text} for record in snapshot.records],
+        }
+
+    result = _managed_observation(environment, "detached", name="perf", verify=verify)
+    assert confirmed_snapshot is not None
+    return {**result, "pendingConfirmed" if pending else "replyConfirmed": True,
+            "snapshot": confirmed_snapshot}
+
+
+def managed_history_confirmation(environment, target, identity, *, native_identity=None):
+    from tests.coding._lmux_product_snapshot import confirm_history
+
+    confirmed = None
+
+    async def verify(connection, mux, result, deadline):
+        nonlocal confirmed
+        assert all(result[key] == target[key] for key in ("instanceId", "serviceId", "muxId", "members"))
+        assert len(mux.members) == 1
+        member = mux.members[0]
+        actual = member.session
+        observed_identity = {"product_id": actual.product_id, "continuity_id": actual.continuity_id,
+                             "session_id": actual.session_id, "scope": actual.scope.value,
+                             "scope_fingerprint": actual.scope_fingerprint}
+        assert observed_identity == identity, "warm history Session identity changed"
+        snapshot = await confirm_history(connection.client, mux_id=mux.mux_space_id,
+            member_id=member.member_id, identity=actual, deadline=deadline)
+        confirmed = {"confirmed_at": time.perf_counter(),
+                     "identity": observed_identity, "running": snapshot.running,
+                     "records": [{"kind": row.kind.value, "text": row.text} for row in snapshot.records]}
+
+    result = _managed_observation(environment, "detached", name="perf",
+                                  native_identity=native_identity, verify=verify)
+    assert confirmed is not None
+    return {**result, "history_snapshot": confirmed,
+            "connection_settled_at": time.perf_counter()}
+
+
+def managed_history_observation(environment, target):
+    from tests.coding._lmux_history_seed import seed_attached_history
+
+    evidence = identity = None
+
+    async def verify(connection, mux, result, deadline):
+        nonlocal evidence, identity
+        assert all(result[key] == target[key] for key in ("instanceId", "serviceId", "muxId", "members"))
+        assert len(mux.members) == 1
+        member = mux.members[0]
+        identity = {"product_id": member.session.product_id, "continuity_id": member.session.continuity_id,
+                    "session_id": member.session.session_id, "scope": member.session.scope.value,
+                    "scope_fingerprint": member.session.scope_fingerprint}
+        evidence = await seed_attached_history(connection.client, mux_id=mux.mux_space_id,
+            member_id=member.member_id, identity=member.session, deadline=deadline)
+
+    result = _managed_observation(environment, "detached", name="perf", verify=verify, verification_seconds=660)
+    assert evidence is not None
+    return {**result, "history_seed": evidence, "history_identity": identity,
+            "connection_settled_at": time.perf_counter()}  # Original owners closed.
+
+
+def _managed_observation(environment, stage, *, name, native_identity=None, verify=None, verification_seconds=0):
+    if verification_seconds not in (0, 660) or type(verification_seconds) is not int:
+        raise ValueError("unsupported managed verification budget")
+    if verification_seconds and verify is None:
+        raise ValueError("extended verification requires explicit callback")
+    from loushang.apphost.managed.connection import (
+        ManagedConnectionLeaseV1,
+        _settled_native,
+    )
+    from loushang.apphost.managed.defaults import resolve_managed_defaults
+    from loushang.apphost.managed.discovery import ManagedDiscoveryV1
+    from loushang.apphost.managed.lifecycle import ManagedServiceJournalV1
+    from loushang.apphost.managed.mux_management import ManagedMuxManagerV1
+    from loushang.apphost.managed.namespace_admission import ManagedNamespaceAdmissionV1
+    from loushang.apphost.managed.paths import resolve_managed_service_paths
+    from loushang.appserver.protocol import MuxReadV1, MuxSelectorV1
+    from loushang.coding.cli.mux import _execute
+    from loushang.coding.managed_process import APPLICATION_ID, ENDPOINT
+
+    if stage not in {"first-member", "second-member", "detached", "reattached"}:
+        raise ValueError("unknown managed observation stage")
+    defaults = resolve_managed_defaults(environ=environment)
+    runtime = str(defaults.platform.runtime)
+    namespace = ManagedNamespaceAdmissionV1(defaults.namespace, runtime_root=runtime)
+    journal = connection = result = None
+    operation_failure = None
+    native = None
+    deadline = time.monotonic() + 30
+
+    def pending():
+        if connection is not None and connection.cleanup_pending:
+            return True
+        try:
+            if journal is not None:
+                journal.close()
+            namespace.close()
+        except BaseException:
+            return True
+        return namespace.cleanup_pending
+
+    async def read():
+        nonlocal connection, result, native, operation_failure
+        connection = ManagedConnectionLeaseV1(
+            journal, defaults.namespace, item.service, item.instance,
+            runtime_root=runtime, endpoint=ENDPOINT,
+        )
+        try:
+            await connection.prepare(deadline=deadline)
+            assert connection.application_id == APPLICATION_ID
+            if time.monotonic() >= deadline:
+                raise TimeoutError("managed read deadline expired before dispatch")
+            async with asyncio.timeout(max(0, deadline - time.monotonic())):
+                mux = await connection.client.read_mux(MuxReadV1(MuxSelectorV1(mux_space_id=mux_id)))
+            if time.monotonic() >= deadline:
+                raise TimeoutError("managed read returned after deadline")
+            assert mux.mux_space_id == mux_id and mux.name == name
+            if native_identity is not None:
+                state = await _settled_native(lambda: journal.read(deadline=deadline, wait_for_lock=True))
+                assert state is not None and state.handoff.instance == connection.instance
+                assert state.native_identity is not None
+                native = state.native_identity
+            result = {
+                "stage": stage, "observed_at": time.perf_counter(),
+                "instanceId": connection.instance.instance_id, "serviceId": item.service.service_id,
+                "muxId": mux_id,
+                "members": [{"memberId": member.member_id, "sessionId": member.session.session_id}
+                            for member in mux.members],
+            }
+            if verify is not None:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("managed verification admission expired")
+                verification_started = time.monotonic()
+                verification_deadline = verification_started + verification_seconds if verification_seconds else deadline
+                await verify(connection, mux, result, verification_deadline)
+                if verification_seconds:
+                    verification_completed = time.monotonic()
+                    if verification_completed >= verification_deadline:
+                        raise TimeoutError("managed verification returned after deadline")
+                    result["verification"] = {"started_at": verification_started,
+                                              "deadline": verification_deadline,
+                                              "completed_at": verification_completed}
+        except BaseException as error:
+            operation_failure = error
+            raise
+        finally:
+            await connection.close()
+
+    try:
+        registry = namespace.open(deadline=deadline, wait_for_lock=True)
+        item = ManagedDiscoveryV1(registry, defaults.namespace).resolve(name, deadline=deadline, wait_for_lock=True)
+        assert item is not None and item.instance is not None
+        paths = resolve_managed_service_paths(defaults.namespace, item.service, runtime_root=runtime)
+        journal = ManagedServiceJournalV1(registry, defaults.namespace, item.service,
+                                          Path(paths.lifecycle), defer_open=True)
+        journal.open(deadline=deadline, wait_for_lock=True)
+        manager = ManagedMuxManagerV1(registry, journal, defaults.namespace, item.service,
+                                     item.instance, application_id=APPLICATION_ID)
+        mux_id = manager.inspect_mux(item.reservation, deadline=deadline, wait_for_lock=True).creation.mux_space_id
+        if _execute(read, pending) != 0 or result is None:
+            raise RuntimeError("managed authenticated read did not settle successfully") from operation_failure
+        if native_identity is not None:
+            assert native is not None
+            native_identity.append(native)
+        return result
+    finally:
+        if pending():
+            raise RuntimeError("managed authenticated observer retains cleanup debt")
+
+
+def managed_completion_frame(output, *, after, columns=100, rows=30):
+    """Witness /help in the current suggestion panel, not the static footer.
+
+    Called after writing /he in an empty managed composer. Only complete native
+    frames count; transcript/history or a prior frame cannot satisfy the probe.
+    """
+    end = output.rfind("\x1b[?2026l")
+    if end < after:
+        return False
+    screen = _replay_embedded_output(
+        output[:end + len("\x1b[?2026l")],
+        screen=FakeScreen.empty(TerminalSize(columns=columns, rows=rows)),
+    )
+    lines = tuple(line.strip() for line in screen.visible_lines)
+    # A standalone suggestion row is distinct from `main | /help /detach`.
+    return "> /he" in lines and "/help" in lines
 
 
 def ready(driver, embedded=False):
@@ -669,6 +978,148 @@ def home_isolation(root, report):
     assert after == before, "ambient HOME inventory or bytes changed"
     assert dict(os.environ) == parent_environment, "observer environment changed"
     report["isolation"].update(ambient_after=after, environment_unchanged=True)
+
+
+def managed_mux(root, report):
+    """Observe eight intervals; outer physical settlement supplies the ninth."""
+    executable = str(Path(report["measured_prefix"]) / "bin/lmux")
+    environment = _terminal_environment(root)
+    environment.pop("LOUSHANG_TMPDIR", None)
+    elsewhere = root / "elsewhere"
+    elsewhere.mkdir()
+    report["managed_actions"], report["managed_observations"] = {}, []
+    stopped = False
+    primary = None
+    native_identities = []
+
+    def command(*arguments):
+        completed = subprocess.run(
+            [executable, *arguments], cwd=root, env=environment,
+            capture_output=True, text=True, timeout=45,
+        )
+        assert completed.returncode == 0, (completed.stdout, completed.stderr)
+        return [json.loads(line) for line in completed.stdout.splitlines()]
+
+    def frame(driver, footer, *, after=0):
+        def witness(output):
+            end = output.rfind("\x1b[?2026l")
+            if end < after:
+                return False
+            screen = _replay_embedded_output(output[:end + len("\x1b[?2026l")])
+            lines = tuple(line.strip() for line in screen.visible_lines)
+            return (
+                footer in lines and ">" in lines
+                and not any("request_pending" in line or "member_pending" in line for line in lines)
+            )
+        driver.read_until(witness, timeout=40)
+
+    def action(name, started):
+        finished = time.perf_counter()
+        report["managed_actions"][name] = {"started_at": started, "finished_at": finished}
+        report["milestones"][name + "_seconds"] = finished - started
+        return finished
+
+    def observe(stage):
+        value = managed_read_observation(environment, stage, native_identity=native_identities) if stage == "reattached" else managed_read_observation(environment, stage)
+        previous = report["managed_observations"]
+        if previous:
+            assert all(value[key] == previous[0][key] for key in ("instanceId", "serviceId", "muxId")), (
+                "managed query changed the frozen target"
+            )
+            if stage in {"detached", "reattached"}:
+                assert value["members"] == previous[1]["members"], "managed query changed members"
+        members = value["members"]
+        assert len({member["memberId"] for member in members}) == len(members)
+        assert len({member["sessionId"] for member in members}) == len(members)
+        report["managed_observations"].append(value)
+        return value
+
+    try:
+        with observe_spawn(executable) as cold:
+            report["spawns"].append(cold)
+            with observed_terminal([executable, "new", "-s", "perf"], root, environment,
+                                   failure_report=report) as (driver, master, original):
+                frame(driver, "perf |  | /help /detach")
+                mark(report, "cold_frame_seconds", cold["start"])
+                assert_active_terminal(master, original)
+                offset, started = len(driver.raw_output), time.perf_counter()
+                driver.write("/he")
+                driver.read_until(lambda output: managed_completion_frame(output, after=offset), timeout=40)
+                action("first_completion", started)
+                driver.write("\x7f\x7f\x7f")
+                offset, started = len(driver.raw_output), time.perf_counter()
+                driver.write("/new user_home First\r")
+                frame(driver, "perf | *1 | /help /detach", after=offset)
+                first_end = action("first_member_ready", started)
+                report["milestones"]["cold_through_first_member_seconds"] = first_end - cold["start"]
+                first = observe("first-member")
+                assert len(first["members"]) == 1
+                report["authenticated_instance_id"] = first["instanceId"]
+                offset, started = len(driver.raw_output), time.perf_counter()
+                driver.write("/new user_home Second\r")
+                frame(driver, "perf | *1 2 | /help /detach", after=offset)
+                action("warm_member_ready", started)
+                second = observe("second-member")
+                assert len(second["members"]) == 2 and second["members"][:1] == first["members"]
+                detach = time.perf_counter()
+                driver.write("\x02d")
+                assert driver.wait(timeout=20) == 0, driver.diagnostics
+            action("detach_settlement", detach)
+        observe("detached")
+        with observe_spawn(executable) as warm:
+            report["spawns"].append(warm)
+            with observed_terminal([executable, "attach", "-t", "perf"], elsewhere, environment,
+                                   failure_report=report) as (driver, master, original):
+                frame(driver, "perf | *1 2 | /help /detach")
+                mark(report, "warm_attach_frame_seconds", warm["start"])
+                assert_active_terminal(master, original)
+                observe("reattached")
+                detach = time.perf_counter()
+                driver.write("\x02d")
+                assert driver.wait(timeout=20) == 0, driver.diagnostics
+            action("reattach_detach_settlement", detach)
+        assert not list(elsewhere.iterdir()), "reattach must not initialize its caller's cwd"
+        from tests.coding._lmux_adopted_process import AdoptedLeader, stop_command
+
+        assert len(native_identities) == 1
+        leader = AdoptedLeader(native_identities[0])
+        stop_error = None
+        try:
+            report["managed_stop"] = {"started_at": time.perf_counter(), "result": None}
+            completed = stop_command(
+                [executable, "stop", "--server", first["serviceId"], "--yes"],
+                cwd=root, env=environment, leader=leader,
+            )
+            results = [json.loads(line) for line in completed.stdout.splitlines()]
+        except BaseException as error:
+            stop_error = error
+            raise
+        finally:
+            try:
+                leader.close()
+            except BaseException as cleanup:
+                if stop_error is None:
+                    raise
+                stop_error.add_note("adopted leader close failed: " + type(cleanup).__name__)
+        assert len(results) == 2 and results[0]["action"] == "stop_preview"
+        assert results[-1] == {"status": "stopped", "instanceId": first["instanceId"]}
+        report["managed_stop"]["result"] = results[-1]
+        stopped = True
+    except BaseException as error:
+        primary = error
+        raise
+    finally:
+        if not stopped:
+            # Only this sample namespace. Recovery of a failed run never
+            # supplies its normal stop metric or changes its failed verdict.
+            try:
+                command("stop", "--all", "--yes")
+            except BaseException as cleanup:
+                code = type(cleanup).__name__[:128]
+                report["managed_cleanup_failure"] = {"type": code}
+                if primary is None:
+                    raise
+                primary.add_note("managed fallback cleanup failed: " + code)
 
 
 def local_mux(root, report):
@@ -1231,7 +1682,7 @@ def main(root, case, receipt, measured_prefix):
             "recovery-global",
         }:
             raise ValueError("unsupported recovery stage")
-    if sys.platform != "linux" or case not in (*CASES, "home-isolation"):
+    if sys.platform != "linux" or case not in (*CASES, "home-isolation", "managed-mux", "managed-product-first-use", *PRODUCT_DIAGNOSTIC_CASES):
         raise ValueError("unsupported native measurement case")
     import loushang.coding
 
@@ -1273,6 +1724,27 @@ def main(root, case, receipt, measured_prefix):
             foreground(root, report, embedded=case == "embedded")
         elif case == "local-mux":
             local_mux(root, report)
+        elif case == "managed-mux":
+            managed_mux(root, report)
+        elif case == "managed-product-first-use":
+            from tests.coding._lmux_product_probe import first_use
+            first_use(root, report)
+        elif case == "managed-product-history-restore":
+            from tests.coding._lmux_history_restore import restore_history
+            restore_history(root, report)
+        elif case in PRODUCT_DIAGNOSTIC_CASES:
+            # Diagnostic-only until the coordinator supplies strict receipt
+            # validation. Reuse the original guarded ownership scope below;
+            # this entry never publishes valid=True on its own.
+            from tests.coding._lmux_product_probe import first_reply
+            first_reply(root, report, admission_diagnostic=case == "managed-product-admission-diagnostic",
+                        delayed_final=case in {"managed-product-delayed-final", "managed-product-interrupt-next-turn", "managed-product-hangup-interrupt-next-turn", "managed-product-hangup-natural-completion"},
+                        interrupt_next_turn=case in {"managed-product-interrupt-next-turn", "managed-product-hangup-interrupt-next-turn"},
+                        transport_loss=case in {"managed-product-hangup-interrupt-next-turn", "managed-product-hangup-natural-completion"},
+                        natural_completion=case == "managed-product-hangup-natural-completion",
+                        tool_approval=case == "managed-product-tool-approval",
+                        tool_denial=case == "managed-product-tool-denial",
+                        history=case == "managed-product-history-warm")
         elif case == "g14-stdio":
             with (
                 stdio_observer_scope() as backend,

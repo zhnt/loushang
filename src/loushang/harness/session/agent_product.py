@@ -178,6 +178,7 @@ from loushang.harness.session.model_call import (
 )
 from loushang.harness.session.operations_runtime import SessionOperationsPorts
 from loushang.harness.session.output_artifacts import (
+    SessionOutputPersistingExecService,
     persist_session_command_outputs,
 )
 from loushang.harness.session.request_evidence import (
@@ -220,7 +221,7 @@ from loushang.harness.transcript import (
     CompactionResult,
     ProductTranscriptSession,
 )
-from loushang.harness.workspace.exec import ExecService
+from loushang.harness.workspace.exec import ExecCaptureFactory, ExecService
 from loushang.harness.workspace.process import AuthorizedProcessLauncher
 
 ResourceCatalogRefreshBootstrapFactory = Callable[
@@ -383,6 +384,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
         api_registry: APIRegistry | None = None,
         exec_service: ExecService | None = None,
         tool_exec_service: ExecService | None = None,
+        output_capture_factory: ExecCaptureFactory | None = None,
         approval_resolver: InteractiveApprovalResolver | None = None,
         tool_policy_evaluator: PolicyEvaluator | None = None,
         workspace_capability_binding: CapabilityBundleProviderBinding | None = None,
@@ -597,6 +599,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
             staged_side_question=self._staged_side_question_candidate,
             staged_transcript=self._staged_transcript_candidate,
             bind_provider=self._bind_selected_side_question_provider,
+            check_transcript_retirement=self._check_output_capture_retirement,
         )
         self._model_call_capability_binding = (
             build_session_model_call_capability_binding(
@@ -767,6 +770,10 @@ class AgentProductSession(AgentSessionAdapterMixin):
             session_id=session_manager.get_header().conversation_id,
             persist=session_manager.persist,
             temporary_root=session_temporary_root,
+            file_io=session_manager._lifecycle_session.blob_file_io,
+            operation_scope=session_manager._lifecycle_session.operation_scope,
+            initialization_scope=session_manager._lifecycle_session.sync_operation_scope,
+            capture_factory=output_capture_factory,
         )
         if not session_manager.persist:
             self._tool_exec_service = tool_exec_service
@@ -779,6 +786,10 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 session_id=session_manager.get_header().conversation_id,
                 persist=True,
                 temporary_root=session_temporary_root,
+                file_io=session_manager._lifecycle_session.blob_file_io,
+                operation_scope=session_manager._lifecycle_session.operation_scope,
+                initialization_scope=session_manager._lifecycle_session.sync_operation_scope,
+                capture_factory=output_capture_factory,
             )
         self.footer_data_provider = footer_data_provider
         self._base_prompt = (
@@ -1286,11 +1297,54 @@ class AgentProductSession(AgentSessionAdapterMixin):
         )
         await _await_cancellation_atomic(task)
 
+    async def _close_output_captures(self) -> None:
+        """Settle original output owners before releasing Session blob authority."""
+        seen: set[int] = set()
+        failures: list[Exception] = []
+        owners: list[SessionOutputPersistingExecService] = []
+        for executor in (getattr(self, "_exec_service", None), getattr(self, "_tool_exec_service", None)):
+            if not isinstance(executor, SessionOutputPersistingExecService) or id(executor) in seen:
+                continue
+            seen.add(id(executor))
+            owners.append(executor)
+        for executor in owners:
+            executor.fence()
+        for executor in owners:
+            try:
+                await executor.close()
+            except Exception as error:
+                failures.append(error)
+        if failures:
+            raise failures[0]
+
+    def _fence_output_captures(self) -> None:
+        for executor in (getattr(self, "_exec_service", None), getattr(self, "_tool_exec_service", None)):
+            if isinstance(executor, SessionOutputPersistingExecService):
+                executor.fence()
+
+    def _check_output_capture_retirement(self) -> None:
+        for executor in (getattr(self, "_exec_service", None), getattr(self, "_tool_exec_service", None)):
+            if isinstance(executor, SessionOutputPersistingExecService) and executor.cleanup_pending:
+                raise RuntimeError("Session output capture cleanup remains pending")
+
+    def _defer_output_capture_rollback(self) -> bool:
+        owners = tuple(executor for executor in (
+            getattr(self, "_exec_service", None), getattr(self, "_tool_exec_service", None),
+        ) if isinstance(executor, SessionOutputPersistingExecService))
+        if not any(owner.cleanup_pending for owner in owners):
+            return False
+        for owner in owners:
+            owner.fence()
+        self._execution_preparation_failed = True
+        return True
+
     async def _dispose_owned_model_call_runtime(
         self,
         *,
         base_dispose: Callable[[], Awaitable[None]],
     ) -> None:
+        # Stop new work, then cancel producers before waiting for output idle.
+        self._fence_output_captures()
         errors: list[BaseException] = []
         side_question_consumer = self._side_question_consumer
         if side_question_consumer is not None:
@@ -1298,6 +1352,9 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 await side_question_consumer.cancel_and_wait()
             except BaseException as exc:
                 errors.append(exc)
+        # Graph disposal can release the transcript writer too. Settle output
+        # before entering that path, without holding the model-call bind lock.
+        await self._close_output_captures()
         self._restore_agent_model_call_boundary()
         owner_cleanup_failed = False
         async with self._model_call_bind_lock:
@@ -1464,10 +1521,14 @@ class AgentProductSession(AgentSessionAdapterMixin):
     async def _ensure_session_graph_prepared(
         self,
     ) -> SessionModelCallCapabilityConsumer:
+        if not self.execution_available:
+            raise RuntimeError("failed execution preparation requires Session retirement")
         consumer = self._model_call_consumer
         if consumer is not None:
             return consumer
         async with self._model_call_bind_lock:
+            if not self.execution_available:
+                raise RuntimeError("failed execution preparation requires Session retirement")
             consumer = self._model_call_consumer
             if consumer is not None:
                 return consumer
@@ -1630,6 +1691,15 @@ class AgentProductSession(AgentSessionAdapterMixin):
                     commit_session_capability_owner_generations(owner_generations)
                     self._commit_session_owner_generation_evidence()
             except BaseException as error:
+                if self._defer_output_capture_rollback():
+                    # Keep the original staged owners for disposal outside the
+                    # bind lock. The Graph retains its own failed retirement.
+                    self._capability_owner_generations = owner_generations
+                    self._pending_capability_components = (
+                        *self._pending_capability_components, *prepared_components,
+                    )
+                    error.add_note("Session rollback retained for output capture cleanup")
+                    raise
                 owner_cleanup_failed = False
                 if owner_generations:
                     try:

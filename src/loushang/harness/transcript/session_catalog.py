@@ -29,6 +29,7 @@ from loushang.harness.conversation import (
     ConversationIndexSnapshot,
     ConversationJsonlHeaderCodec,
     ConversationJsonlRecordCodec,
+    ConversationKey,
     ConversationLocator,
     ConversationProviderBinding,
     ConversationRepository,
@@ -83,6 +84,10 @@ _PROFILE = AgentTranscriptProfile.default()
 _HEADER_CODEC = ConversationJsonlHeaderCodec()
 _RECORD_CODEC = ConversationJsonlRecordCodec(_PROFILE.payload_codecs)
 log = get_log(__name__).bind(component="AgentTranscriptSessionCatalog")
+
+
+class _SessionIdentityCollisionError(RuntimeError):
+    """A complete authority check established duplicate logical identities."""
 
 
 @dataclass(frozen=True)
@@ -493,7 +498,7 @@ class AgentTranscriptSessionCatalog:
         self._provider = ConversationProviderBinding(
             provider_id=(f"agent-conversation-jsonl:{resolved_session_dir.as_posix()}"),
             namespace=layout.namespace,
-            store=create_agent_transcript_file_store(layout),
+            store=create_agent_transcript_file_store(layout, read_only=True),
         )
         self._external_index: ConversationIndex[SessionSummary, SessionQuery] | None = (
             None
@@ -578,7 +583,7 @@ class AgentTranscriptSessionCatalog:
             if not budget.reserve(candidates=1, bytes_=header_charge):
                 break
             try:
-                header = load_agent_transcript_header(candidate.path)
+                header = load_agent_transcript_header(candidate.path, read_only=True)
                 if session_id_prefix is not None and not (
                     header.conversation_id.startswith(session_id_prefix)
                     or candidate.path.name == session_id_prefix
@@ -593,6 +598,7 @@ class AgentTranscriptSessionCatalog:
                     loaded_header, records = load_agent_transcript_file(
                         candidate.path,
                         max_bytes=_MAX_PATH_SUMMARY_FILE_BYTES,
+                        read_only=True,
                     )
                     if (
                         loaded_header.conversation_id != header.conversation_id
@@ -665,7 +671,7 @@ class AgentTranscriptSessionCatalog:
             ):
                 break
             try:
-                header = load_agent_transcript_header(candidate.path)
+                header = load_agent_transcript_header(candidate.path, read_only=True)
                 key = self._layout.key(header.conversation_id)
                 locator = ConversationLocator(self._provider.provider_id, key)
                 summary = _header_only_session_summary(
@@ -707,13 +713,21 @@ class AgentTranscriptSessionCatalog:
         before = self._validated_unique_authority_snapshot()
         if self.session_dir is not None:
             self.session_dir.mkdir(parents=True, exist_ok=True)
-        result = _run_catalog(self._catalog(indexed=True).refresh())
+        # Keep projection semantics, but retain this publication's receipt for
+        # post-scan validation instead of deleting an arbitrary pathname cache.
+        result = _run_catalog(self._catalog(indexed=True).scan())
+        index = self._projection_index()
+        receipt = None
+        if isinstance(index, JsonConversationIndex):
+            _, receipt = _run_catalog(index.replace_with_receipt(result.items))
+        else:
+            _run_catalog(index.replace(result.items))
         after, after_complete = self._bounded_candidates_with_completeness()
         if not after_complete or _bounded_candidate_identities(
             before
         ) != _bounded_candidate_identities(after):
-            if self.session_dir is not None:
-                self.index_path.unlink(missing_ok=True)
+            if receipt is not None and isinstance(index, JsonConversationIndex):
+                _run_catalog(index.invalidate_if_current(receipt))
             raise RuntimeError("session authority changed during index refresh")
         return _sort_summaries(item.projection for item in result.items)
 
@@ -735,33 +749,26 @@ class AgentTranscriptSessionCatalog:
         snapshot = _run_catalog(query_snapshot(SessionQuery()))
         if snapshot.index_state != "fresh":
             return self.refresh_index()
-        try:
-            index_modified = self.index_path.stat().st_mtime_ns
-            changed_paths = self._layout.transcript_paths_modified_after(index_modified)
-            replacement, changed = _run_catalog(
-                self._repair_local_index(
-                    snapshot.items,
-                    changed_paths,
-                )
-            )
-            before_publish, before_publish_complete = (
-                self._bounded_candidates_with_completeness()
-            )
-            if not before_publish_complete or _bounded_candidate_identities(
-                before
-            ) != _bounded_candidate_identities(before_publish):
-                raise RuntimeError("session authority changed during index repair")
-            repaired = (
-                _run_catalog(index.replace(replacement)) if changed else replacement
-            )
-            after, after_complete = self._bounded_candidates_with_completeness()
-            if not after_complete or _bounded_candidate_identities(
-                before
-            ) != _bounded_candidate_identities(after):
-                self.index_path.unlink(missing_ok=True)
-                raise RuntimeError("session authority changed during index repair")
-        except Exception:
-            return self.refresh_index()
+        index_modified = self.index_path.stat().st_mtime_ns
+        changed_paths = self._layout.transcript_paths_modified_after(index_modified)
+        replacement, changed = _run_catalog(
+            self._repair_local_index(snapshot.items, changed_paths)
+        )
+        before_publish = self._validated_unique_authority_snapshot()
+        if _bounded_candidate_identities(before) != _bounded_candidate_identities(before_publish):
+            raise RuntimeError("session authority changed during index repair")
+        receipt = None
+        repaired = replacement
+        if changed:
+            if isinstance(index, JsonConversationIndex):
+                repaired, receipt = _run_catalog(index.replace_with_receipt(replacement))
+            else:
+                repaired = _run_catalog(index.replace(replacement))
+        after, after_complete = self._bounded_candidates_with_completeness()
+        if not after_complete or _bounded_candidate_identities(before) != _bounded_candidate_identities(after):
+            if receipt is not None and isinstance(index, JsonConversationIndex):
+                _run_catalog(index.invalidate_if_current(receipt))
+            raise RuntimeError("session authority changed during index repair")
         return _sort_summaries(item.projection for item in repaired)
 
     def load_index(self) -> list[SessionSummary]:
@@ -952,14 +959,20 @@ class AgentTranscriptSessionCatalog:
             after
         ):
             raise RuntimeError("session authority changed during bounded index refresh")
-        published = _run_catalog(self._projection_index().replace(projected))
+        index = self._projection_index()
+        receipt = None
+        if isinstance(index, JsonConversationIndex):
+            published, receipt = _run_catalog(index.replace_with_receipt(projected))
+        else:
+            published = _run_catalog(index.replace(projected))
         after_publish, after_publish_complete = (
             self._bounded_candidates_with_completeness()
         )
         if not after_publish_complete or _bounded_candidate_identities(
             before
         ) != _bounded_candidate_identities(after_publish):
-            self.index_path.unlink(missing_ok=True)
+            if receipt is not None and isinstance(index, JsonConversationIndex):
+                _run_catalog(index.invalidate_if_current(receipt))
             raise RuntimeError(
                 "session authority changed during bounded index refresh"
             )
@@ -1027,8 +1040,39 @@ class AgentTranscriptSessionCatalog:
         if collision_budget.truncated:
             raise RuntimeError("session authority scan was truncated")
         if collisions:
-            raise RuntimeError("session authority contains duplicate identities")
+            raise _SessionIdentityCollisionError("session authority contains duplicate identities")
         return candidates
+
+    def publish_owned_summary(
+        self, *, publication: Callable[
+            [Path, JsonConversationIndex[SessionSummary, SessionQuery], Callable[[str], IndexedProjection[SessionSummary]]], bool
+        ], key: ConversationKey,
+        source_path: Path, header: ConversationHeader,
+        records: tuple[AgentTranscriptRecord, ...], leaf_id: str | None,
+    ) -> bool:
+        """Publish a frozen writer snapshot through its existing storage port.
+
+        The caller retains writer admission until native settlement. No scan,
+        repair, pathname invalidation or creation of an absent cache occurs.
+        """
+        if self.session_dir is None or key.namespace != str(self.session_dir):
+            raise ValueError("owned summary belongs to another transcript root")
+        if header.conversation_id != key.conversation_id:
+            raise ValueError("owned summary identity differs from its writer")
+        if source_path.parent != self.session_dir:
+            raise ValueError("owned summary must select a direct transcript child")
+        def project(before: str) -> IndexedProjection[SessionSummary]:
+            locator = ConversationLocator(self._provider.provider_id, key)
+            summary = project_agent_transcript_session_summary(
+                header, records, leaf_id, source_path, locator=locator,
+                include_all_messages_text=False,
+            )
+            return IndexedProjection(locator, len(records), replace(summary, authority_fingerprint=before))
+
+        index = self._projection_index()
+        if not isinstance(index, JsonConversationIndex):
+            raise ValueError("owned summary requires the local JSON cache")
+        return publication(self.index_path, index, project)
 
     async def upsert_summary(
         self,
@@ -1044,8 +1088,15 @@ class AgentTranscriptSessionCatalog:
             raise ValueError("local session summary has no transcript path")
         if source_revision != summary.entry_count:
             raise ValueError("session summary revision must equal its entry count")
+        index = self._projection_index()
+        observed = await index.observe_publication() if isinstance(index, JsonConversationIndex) else None
         try:
             before = self._validated_unique_authority_snapshot()
+        except _SessionIdentityCollisionError:
+            if observed is not None and isinstance(index, JsonConversationIndex):
+                await index.invalidate_if_current(observed)
+            raise
+        try:
             key = self._layout.bind_existing_path(summary.session_file)
             if key.conversation_id != summary.session_id:
                 raise ValueError(
@@ -1053,21 +1104,27 @@ class AgentTranscriptSessionCatalog:
                 )
             locator = ConversationLocator(self._provider.provider_id, key)
             indexed_summary = _summary_with_authority_fingerprint(summary)
-            changed = await self._projection_index().upsert(
-                IndexedProjection(
-                    locator=locator,
-                    source_revision=source_revision,
-                    projection=replace(indexed_summary, locator=locator),
-                )
+            item = IndexedProjection(
+                locator=locator,
+                source_revision=source_revision,
+                projection=replace(indexed_summary, locator=locator),
             )
+            receipt = None
+            if isinstance(index, JsonConversationIndex):
+                changed, receipt = await index.upsert_with_receipt(item)
+            else:
+                changed = await index.upsert(item)
             after, after_complete = self._bounded_candidates_with_completeness()
             if not after_complete or _bounded_candidate_identities(
                 before
             ) != _bounded_candidate_identities(after):
+                if receipt is not None and isinstance(index, JsonConversationIndex):
+                    await index.invalidate_if_current(receipt)
                 raise RuntimeError("session authority changed during index upsert")
             return changed
         except Exception:
-            self.index_path.unlink(missing_ok=True)
+            # Failure (including lock contention) grants no authority to delete
+            # another writer's cache. Readers revalidate source fingerprints.
             raise
 
     def load_authoritative_revision(self, locator: ConversationLocator) -> int:

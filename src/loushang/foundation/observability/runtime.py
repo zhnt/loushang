@@ -41,11 +41,19 @@ def observability_runtime_context(
     debug_path: str | Path | None = None,
     debug_scopes: frozenset[str] = frozenset(),
     trace_path: str | Path | None = None,
+    trace_sink: TraceSinkProtocol | None = None,
     trace_scopes: frozenset[str] = frozenset(),
     problem_sink: InMemoryProblemStore | None = None,
 ) -> Iterator[None]:
-    """Temporarily bind sinks and context, then restore the previous state."""
+    """Temporarily bind process-wide sinks and context, then restore state.
 
+    An injected trace sink is borrowed: this context neither drains nor closes
+    it. Hosts must settle its work before releasing its backing resources.
+    Sink binding is process-wide, not a per-task isolation mechanism.
+    """
+
+    if trace_path is not None and trace_sink is not None:
+        raise ValueError("trace_path and trace_sink are mutually exclusive")
     configure_kwargs: _ConfigureKwargs = {}
     if debug_path is not None:
         resolved_debug_path = Path(debug_path)
@@ -60,6 +68,9 @@ def observability_runtime_context(
             resolved_trace_path,
             latest_path=resolved_trace_path.parent / "latest",
         )
+        configure_kwargs["trace_scopes"] = trace_scopes
+    elif trace_sink is not None:
+        configure_kwargs["trace_sink"] = trace_sink
         configure_kwargs["trace_scopes"] = trace_scopes
     if problem_sink is not None:
         configure_kwargs["problem_sink"] = problem_sink

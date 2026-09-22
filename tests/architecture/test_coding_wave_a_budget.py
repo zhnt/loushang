@@ -20,6 +20,10 @@ G16_PRODUCT_SLICE = frozenset({"hosted_bootstrap.py", "hosted_local.py", "cli/mu
 G17_PRODUCT_SLICE = frozenset({"cli/hosted_client.py"})
 G18_FACADE_SLICE = frozenset({"__init__.py"})
 EXECUTION_PRODUCT_SLICE = frozenset({"hosted_execution.py", "_hosted_execution_work.py"})
+LMUX_PRODUCT_SLICE = frozenset({
+    "managed_process.py", "managed_local.py", "managed_bootstrap.py", "managed_catalog.py",
+    "cli/lmux.py", "cli/lmux_command.py", "cli/lmux_stop_all.py",
+})
 
 APPROVED_SLICES = {
     "g10": G10_PRODUCT_SLICE,
@@ -31,6 +35,7 @@ APPROVED_SLICES = {
     "g17": G17_PRODUCT_SLICE,
     "g18": G18_FACADE_SLICE,
     "execution": EXECUTION_PRODUCT_SLICE,
+    "lmux": LMUX_PRODUCT_SLICE,
 }
 
 
@@ -80,21 +85,51 @@ def test_coding_package_stays_within_wave_a_budget() -> None:
     # Linux screen adapter +17, canonical early route +98. Worker/terminal
     # ownership remains in HarnessTUI/TUI; no new Coding path is exempt.
     interactive_startup_allowance = 15 - 29 + 17 + 98
+    # Reviewed LMUX-M0 owned-factory binding in original owners (+42/+77),
+    # offset by moving the original theme to shared Harnesstui (-24).
+    # Keep these existing files in core, including its original 14-line margin.
+    lmux_owned_core_allowance = 42 + 77 - 24
+    # Reviewed capability composition versus the validated da820585 wheel:
+    # ui/mode.py +17 current-binding provider; ui/screen_input.py +50 Product
+    # declaration projection. Both remain core; preserve its six-line margin.
+    capability_projection_allowance = 17 + 50
+    # LMUX reviewed default-owned wiring: bootstrap +7, runtime +5,
+    # manager +1 versus da820585. Keep all three in core and its six-line margin.
+    lmux_default_owned_allowance = 7 + 5 + 1
     assert (
         sum(groups["core"].values())
-        <= 33_686 + g18_core_allowance + interactive_startup_allowance
+        <= 33_686 + g18_core_allowance + interactive_startup_allowance + lmux_owned_core_allowance
+        + capability_projection_allowance + lmux_default_owned_allowance
     ), groups["core"]
     assert sum(groups["g10"].values()) <= 1_800, groups["g10"]
     # Preserve main's optional execution projection allowance.
     assert sum(groups["g11"].values()) <= 420, groups["g11"]
-    assert sum(groups["g12"].values()) <= 800, groups["g12"]
+    # LMUX-M0: original Product/catalog cleanup and managed activation (+84).
+    assert sum(groups["g12"].values()) <= 800 + 84, groups["g12"]
     assert sum(groups["g13"].values()) <= 350, groups["g13"]
-    assert sum(groups["g14"].values()) <= 1_300, groups["g14"]
+    # LMUX-M0: original catalog ownership, readonly hooks and validation (+205).
+    assert sum(groups["g14"].values()) <= 1_300 + 205, groups["g14"]
     assert sum(groups["g16"].values()) <= 900, groups["g16"]
     assert sum(groups["g17"].values()) <= 450, groups["g17"]
     assert sum(groups["g18"].values()) <= 200, groups["g18"]
     assert sum(groups["execution"].values()) <= 400, groups["execution"]
     assert max(groups["execution"].values()) <= 250, groups["execution"]
+    # Exact reviewed optional Product composition baseline; not an exemption
+    # for any future managed/CLI module, nor a general core-budget increase.
+    # Reviewed single-candidate selection adds 13 lines to the same CLI owner.
+    # Reviewed capture/trace composition: process +23, local +20, bootstrap +3,
+    # parser +4; command probe/trace composition +108 minus obsolete selector 29.
+    # Authentication and candidate truth remain in AppHost, not this CLI slice.
+    managed_composition_allowance = 23 + 20 + 3 + 4 + 108 - 29
+    # Reviewed creation-receipt recovery: parser +14, command +75.
+    # The removed selector -29 is already counted above, not deducted twice.
+    creation_recovery_composition_allowance = 14 + 75
+    # Reviewed child-only backend import and ownership explanation: net +3.
+    child_import_boundary_allowance = 3
+    assert sum(groups["lmux"].values()) <= (
+        1_579 + 13 + managed_composition_allowance + creation_recovery_composition_allowance
+        + child_import_boundary_allowance
+    ), groups["lmux"]
 
 
 def test_unapproved_files_stay_in_core_and_every_file_is_counted_once() -> None:
@@ -105,6 +140,8 @@ def test_unapproved_files_stay_in_core_and_every_file_is_counted_once() -> None:
         "cli/__init__.py": 103,
         "nested/__init__.py": 107,
         "nested/new_feature.py": 109,
+        "managed_unreviewed.py": 113,
+        "cli/lmux_unreviewed.py": 127,
     }
     line_counts.update(unapproved)
 

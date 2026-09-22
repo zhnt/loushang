@@ -11,6 +11,16 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 from typing import TypeVar
 
+from loushang.appserver.managed_mux import (
+    ManagedMuxCreatedV1,
+    ManagedMuxCreateV1,
+    ManagedMuxCreationClientV1,
+)
+from loushang.appserver.managed_mux_close import (
+    ManagedMuxCloseClientV1,
+    ManagedMuxCloseStateV1,
+    ManagedMuxCloseV1,
+)
 from loushang.appserver.protocol import (
     AckV1,
     AppErrorCodeV1,
@@ -214,11 +224,48 @@ class AppClientScopeV1:
         return self._discovery
 
     def _require_open(self) -> None:
-        if self._closed or self._owner._closed or self._service._closed:
+        if self._closed or self._owner._closed or self._service._closed or self._service._managed_shutdown:
             raise AppServiceError(AppErrorCodeV1.SERVICE_CLOSED)
+
+    @property
+    def managed_mux_client(self) -> ManagedMuxCreationClientV1 | None:
+        self._require_open()
+        return self if self._service._managed_mux is not None else None
+
+    async def create_managed_mux(self, request: ManagedMuxCreateV1) -> ManagedMuxCreatedV1:
+        self._require_open()
+        self._service._require_request(request, ManagedMuxCreateV1)
+        if self._service._managed_mux is None:
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        # The existing application operation owner retains accepted creation
+        # across client EOF. It does not grant deployment admission itself.
+        return await self._owner._operations.execute(
+            lambda: self._service.create_managed_mux(request),
+        )
+
+    @property
+    def managed_mux_close_client(self) -> ManagedMuxCloseClientV1 | None:
+        self._require_open()
+        binding = self._service._managed_mux
+        return self if binding is not None and binding.closing is not None else None
+
+    async def close_managed_mux(self, request: ManagedMuxCloseV1) -> ManagedMuxCloseStateV1:
+        self._require_open()
+        self._service._require_request(request, ManagedMuxCloseV1)
+        if self.managed_mux_close_client is None:
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        return await self._owner._operations.execute(lambda: self._service.close_managed_mux(request))
+
+    async def read_managed_mux_close(self, request: ManagedMuxCloseV1) -> ManagedMuxCloseStateV1 | None:
+        self._require_open()
+        self._service._require_request(request, ManagedMuxCloseV1)
+        if self.managed_mux_close_client is None:
+            raise AppServiceError(AppErrorCodeV1.OPERATION_UNAVAILABLE)
+        return await self._owner._operations.execute(lambda: self._service.read_managed_mux_close(request), control=True)
 
     async def create_mux(self, request: MuxCreateV1) -> MuxSpaceV1:
         self._require_open()
+        self._service._require_legacy_mux_mutation()
         self._service._require_request(request, MuxCreateV1)
         owner = self._owner
         if len(self._service._mux_by_id) + owner._creating >= 32:
@@ -393,6 +440,7 @@ class AppClientScopeV1:
         )
 
     async def close_mux(self, request: MuxCloseV1) -> AckV1:
+        self._service._require_legacy_mux_mutation()
         self._service._require_request(request, MuxCloseV1)
         return await self._change(
             request.selector, lambda selector: self._service.close_mux(MuxCloseV1(selector)),

@@ -229,6 +229,19 @@ class ScopeTests(unittest.TestCase):
     def test_empty_changes_do_not_start_product_checks(self):
         self.assertEqual(self.selected(), {"docs"})
 
+    def test_workflow_plan_omits_diagnostic_reasons(self):
+        plan = selector.select(["src/loushang/coding/lsp/client.py"])
+
+        compact = selector.workflow_plan(plan)
+
+        self.assertEqual(
+            set(compact), {"version", "paths", "checks", "workflows"}
+        )
+        self.assertEqual(compact["paths"], plan["paths"])
+        self.assertEqual(compact["checks"], plan["checks"])
+        self.assertEqual(compact["workflows"], plan["workflows"])
+        self.assertNotIn("reasons", compact)
+
     def test_schedule_and_manual_dispatch_are_full(self):
         for event in ("schedule", "workflow_dispatch"):
             self.assertEqual(selector.event_paths(event, {}), ([], True))

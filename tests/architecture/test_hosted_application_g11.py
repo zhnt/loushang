@@ -68,6 +68,7 @@ def test_G11_DEPENDENCY_GRAPH_appserver_remains_contract_and_client_only() -> No
         assert not _imports_prefix(imports, forbidden)
     for path in (
         APPSERVER / "ports.py",
+        APPSERVER / "managed_mux_close.py",
         *sorted((APPSERVER / "protocol").glob("*.py")),
     ):
         for imported in _imports(path):
@@ -132,7 +133,16 @@ def test_G11_PRODUCT_ADAPTER_is_the_only_product_harness_bridge() -> None:
         Path("src/loushang/coding/hosted_catalog.py"),
         Path("src/loushang/coding/hosted_execution.py"),
         Path("src/loushang/coding/_hosted_execution_work.py"),
+        Path("src/loushang/apphost/managed/bootstrap.py"),
+        Path("src/loushang/apphost/managed/mux_creation.py"),
+        Path("src/loushang/apphost/managed/mux_management.py"),
+        Path("src/loushang/apphost/managed/mux_probe.py"),
+        Path("src/loushang/coding/managed_local.py"),
+        Path("src/loushang/coding/managed_bootstrap.py"),
+        Path("src/loushang/coding/managed_catalog.py"),
     }
+    assert {name for name in _imports(Path("src/loushang/apphost/managed/mux_probe.py"))
+            if name.startswith("loushang.appservice")} == {"loushang.appservice.continuity"}
     assert {name for name in _imports(Path("src/loushang/coding/hosted_catalog.py"))
             if name.startswith("loushang.appservice")} == {
         "loushang.appservice.discovery_ports",
@@ -235,6 +245,8 @@ def test_g11_package_budgets_keep_new_owners_reviewable() -> None:
             for name in ("__init__.py", "client.py", "ports.py", "runtime.py")
         ),
         "appservice-continuity": tuple(APPSERVICE.glob("continuity*.py")),
+        "appservice-managed-contract": (APPSERVICE / "managed_mux.py", APPSERVICE / "managed_mux_close.py"),
+        "appserver-close-values": (APPSERVER / "managed_mux_close.py",),
         "coding-adapter": (CODING_ADAPTER,),
         "harnesstui-mux": tuple(
             HARNESSTUI_MUX / name for name in
@@ -246,20 +258,32 @@ def test_g11_package_budgets_keep_new_owners_reviewable() -> None:
         # 271 lines to this exact group; all protocol modules still count.
         # See hosted-session-workflow-g17.md, Reviewability Budget Supplement.
         "appserver": 2_100,
-        "appservice-core": 1_500,
-        "appservice-continuity": 1_250,
+        # LMUX M0 §60 reviewed ManagedCreate adds 170 net lines for the same
+        # state lock/atomic continuity authority; all four core files still count.
+        # LMUX M0 §72 keeps close coordination on the same state/continuity
+        # owner; reviewed core is 1876 lines, including original core files.
+        "appservice-core": 1_900,
+        # LMUX M0 §71 reviewed v3 close history adds 59 net lines to the
+        # same continuity schema/recovery boundary; no owner split or activation.
+        # LMUX M0 §73 reviewed recovery stays on the original Attempt/lease;
+        # complete continuity group 1378 lines, two managed contracts 134.
+        "appservice-continuity": 1_400,
+        "appservice-managed-contract": 150,
+        "appserver-close-values": 80,
         # Optional execution adds omission metadata and a synchronous projection
         # seam; its two owners have a separate budget in the Wave A contract.
         "coding-adapter": 420,
-        "harnesstui-mux": 600,
+        # Reviewed neutral capability projection +41 versus da820585;
+        # retain the original 21-line margin and exact six-file group.
+        "harnesstui-mux": 600 + 41,
     }
     for name, paths in groups.items():
         lines = sum(len(_read(path).splitlines()) for path in paths)
         assert lines <= limits[name], (name, lines, limits[name])
-    # The G17 terminal owner has its own exact, separately tested 950-line
-    # budget; do not expand the G11 semantic controller budget or hide new files.
+    # The terminal owner has its own separately tested 1042-line budget;
+    # do not move shell code into this semantic group or hide new files.
     assert {path.name for path in HARNESSTUI_MUX.glob("*.py")} == {
         *(path.name for path in groups["harnesstui-mux"]),
         "shell.py", "terminal.py", "_shell_tasks.py", "_shell_screen.py",
-        "session_picker.py",
+        "session_picker.py", "conversation_binding.py",
     }

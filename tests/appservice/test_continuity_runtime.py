@@ -391,6 +391,108 @@ async def test_G13_ALL_OR_NOTHING_close_wins_race_before_publication() -> None:
 
 
 @_async_test
+async def test_G13_RECOVERY_double_cancel_retains_success_and_closes_once() -> None:
+    events: list[str] = []
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    class Resolver(_Resolver):
+        async def open_session(self, request):
+            entered.set()
+            await release.wait()
+            return await super().open_session(request)
+
+    lease = _MemoryLease(_record("session-1"))
+    attempt = create_appservice_recovery_attempt(
+        AppServiceRecoveryRequestV1("coding", Resolver(events), lease)
+    )
+    opening = asyncio.create_task(attempt.open())
+    await asyncio.wait_for(entered.wait(), 2)
+    opening.cancel()
+    closing = asyncio.create_task(attempt.close())
+    await asyncio.sleep(0)
+    closing.cancel()
+    release.set()
+    await asyncio.gather(opening, closing, return_exceptions=True)
+    await attempt.close()
+    assert events == ["close:session-1"]
+    assert not attempt.cleanup_pending
+    assert not lease.closed
+
+
+@_async_test
+async def test_G13_RECOVERY_concurrent_close_joins_original_cleanup() -> None:
+    events: list[str] = []
+    resolver = _Resolver(events)
+    attempt = create_appservice_recovery_attempt(AppServiceRecoveryRequestV1(
+        "coding", resolver, _MemoryLease(_record("session-1")),
+    ))
+    # Cancel only the waiting client: successful service has not been transferred.
+    gate = asyncio.Event()
+    resolver.gate = gate
+    opening = asyncio.create_task(attempt.open())
+    while not resolver.requests:
+        await asyncio.sleep(0)
+    opening.cancel()
+    gate.set()
+    with pytest.raises(asyncio.CancelledError):
+        await opening
+    entered, release = asyncio.Event(), asyncio.Event()
+    original = resolver.sessions[0].close
+    calls = 0
+
+    async def held():
+        nonlocal calls
+        calls += 1
+        entered.set()
+        await release.wait()
+        await original()
+
+    resolver.sessions[0].close = held
+    first = asyncio.create_task(attempt.close())
+    await asyncio.wait_for(entered.wait(), 2)
+    second = asyncio.create_task(attempt.close())
+    first.cancel()
+    await asyncio.sleep(0)
+    assert not second.done()
+    release.set()
+    await asyncio.gather(first, second, return_exceptions=True)
+    assert calls == 1 and events == ["close:session-1"]
+    assert not attempt.cleanup_pending
+
+
+@_async_test
+async def test_G13_RECOVERY_late_open_delivery_cannot_reown_closed_service(monkeypatch) -> None:
+    from loushang.appservice import continuity_runtime
+
+    events: list[str] = []
+    attempt = create_appservice_recovery_attempt(AppServiceRecoveryRequestV1(
+        "coding", _Resolver(events), _MemoryLease(_record("session-1")),
+    ))
+    delivered, release = asyncio.Event(), asyncio.Event()
+    original_join = continuity_runtime._join_owned
+    opening = None
+
+    async def delayed_join(task):
+        result = await original_join(task)
+        if asyncio.current_task() is opening:
+            delivered.set()
+            await release.wait()
+        return result
+
+    monkeypatch.setattr(continuity_runtime, "_join_owned", delayed_join)
+    opening = asyncio.create_task(attempt.open())
+    await asyncio.wait_for(delivered.wait(), 2)
+    await attempt.close()
+    assert events == ["close:session-1"] and not attempt.cleanup_pending
+    release.set()
+    with pytest.raises(AppServiceError) as caught:
+        await opening
+    assert caught.value.code is AppErrorCodeV1.SERVICE_CLOSED
+    await attempt.close()
+    assert events == ["close:session-1"] and not attempt.cleanup_pending
+
+
+@_async_test
 async def test_G13_ATOMIC_MUTATION_persists_all_mux_member_transitions() -> None:
     events: list[str] = []
     resolver = _Resolver(events)

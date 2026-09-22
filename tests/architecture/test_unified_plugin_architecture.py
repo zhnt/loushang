@@ -3,17 +3,29 @@ from __future__ import annotations
 import ast
 import inspect
 import json
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from dataclasses import fields
 from functools import cache
 from hashlib import sha256
 from pathlib import Path
 from typing import get_args
 
+import pytest
+
 import loushang.harness.capabilities as public_capabilities
 import loushang.harness.resources.plugins as public_plugins
 import loushang.harness.runtime as public_runtime
 from loushang.harness.runtime import RuntimeCapabilityScope
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _release_source_cache() -> Iterator[None]:
+    """Do not retain the repository text snapshot after this module finishes."""
+    try:
+        yield
+    finally:
+        _source_texts.cache_clear()
+
 
 ARCHITECTURE_PATH = Path("docs/internals/architecture/harness/plugin/architecture.md")
 AUTHORING_PLAN_PATH = Path(
@@ -40,9 +52,7 @@ PLC7_CONTRACT_PATH = Path(
 CODING_CAPABILITY_COMPOSER_PATH = Path(
     "src/loushang/coding/_capability_plugin_composition.py"
 )
-CODING_CAPABILITY_SPECS_PATH = Path(
-    "src/loushang/coding/_capability_plugin_specs.py"
-)
+CODING_CAPABILITY_SPECS_PATH = Path("src/loushang/coding/_capability_plugin_specs.py")
 CODING_BOOTSTRAP_PATH = Path("src/loushang/coding/bootstrap.py")
 CODING_LSP_COMPATIBILITY_PATH = Path("src/loushang/coding/lsp/_plugin_opt_in.py")
 PAP4_CONTRACT_PATH = Path(
@@ -293,6 +303,340 @@ EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_CALL_COUNTS = {
         "path_read",
     ): 1,
 }
+
+
+# PLC9B boundary inventory, reviewed by component rather than inferred from the
+# current scan. path_read is syntactic: archive.open, typed sink/journal.open
+# and pure receipt constructors are not grants of arbitrary filesystem access.
+# See docs/internals/architecture/harness/plugin/plugin-boundary-sinks-plc9b.md.
+PLC9B_BOUNDARY_SINKS = (
+    (
+        "cleanup.py",
+        "_assert_no_duplicate_json_keys",
+        "PackageQuarantineCleanupJournal",
+        {"json_decode": 1, "path_read": 1},
+    ),
+    (
+        "closure_journal.py",
+        "_assert_no_duplicate_json_keys",
+        "PackageClosureResolutionJournal",
+        {"json_decode": 1, "path_read": 1},
+    ),
+    (
+        "committed_sets.py",
+        "_assert_no_duplicate_json_keys",
+        "PackageCommittedSetJournal",
+        {"json_decode": 1, "path_read": 1},
+    ),
+    (
+        "epoch_fence.py",
+        "_assert_no_duplicate_json_keys",
+        "PackageEpochFenceJournal",
+        {"json_decode": 1, "path_read": 1},
+    ),
+    (
+        "journal.py",
+        "_assert_no_duplicate_json_keys",
+        "PackageLifecycleJournal",
+        {"json_decode": 1, "path_read": 1},
+    ),
+    (
+        "phase_evidence.py",
+        "_assert_no_duplicate_json_keys",
+        "PackageArtifactEvidenceJournal",
+        {"json_decode": 1, "path_read": 1},
+    ),
+    (
+        "retention_handoff.py",
+        "_assert_no_duplicate_json_keys",
+        "PackageRetentionHandoffJournal",
+        {"json_decode": 1, "path_read": 1},
+    ),
+    (
+        "staging.py",
+        "_assert_no_duplicate_json_keys",
+        "PackageArtifactStagingJournal",
+        {"json_decode": 1, "path_read": 1},
+    ),
+    (
+        "store_settlements.py",
+        "_assert_no_duplicate_json_keys",
+        "PackageStoreSettlementJournal",
+        {"json_decode": 1, "path_read": 1},
+    ),
+    (
+        "transaction_pins.py",
+        "_assert_no_duplicate_json_keys",
+        "PackageTransactionPinJournal",
+        {"json_decode": 1, "path_read": 1},
+    ),
+    (
+        "acquisition.py",
+        "_QuarantineAttempt._open_artifact_for_read",
+        "package-quarantine-native-boundary",
+        {"path_read": 1},
+    ),
+    (
+        "acquisition.py",
+        "_QuarantineAttempt._open_artifact_for_write",
+        "package-quarantine-native-boundary",
+        {"path_read": 1},
+    ),
+    (
+        "acquisition.py",
+        "_QuarantineAttempt._open_verified_tree_file",
+        "package-quarantine-native-boundary",
+        {"path_read": 1},
+    ),
+    (
+        "acquisition.py",
+        "_QuarantineTreeWriter._open_file",
+        "package-quarantine-native-boundary",
+        {"path_read": 1},
+    ),
+    (
+        "acquisition.py",
+        "_open_directory",
+        "package-quarantine-native-boundary",
+        {"path_read": 1},
+    ),
+    (
+        "acquisition.py",
+        "_open_regular_file_at",
+        "package-quarantine-native-boundary",
+        {"path_read": 1},
+    ),
+    (
+        "posix_materialization.py",
+        "_PosixRoleStore.__init__",
+        "package-posix-role-store",
+        {"path_read": 1},
+    ),
+    (
+        "posix_materialization.py",
+        "_PosixRoleStore.authorizes_root_identity",
+        "package-posix-role-store",
+        {"path_read": 1},
+    ),
+    (
+        "posix_materialization.py",
+        "_PosixRoleStore.open_sink",
+        "package-posix-role-store",
+        {"path_read": 1},
+    ),
+    (
+        "posix_materialization.py",
+        "_PosixRoleStore.validate_receipt",
+        "package-posix-role-store",
+        {"path_read": 1},
+    ),
+    (
+        "posix_materialization.py",
+        "_open_directory",
+        "package-posix-role-store",
+        {"path_read": 1},
+    ),
+    (
+        "posix_materialization.py",
+        "_open_regular_file",
+        "package-posix-role-store",
+        {"path_read": 1},
+    ),
+    (
+        "windows_materialization.py",
+        "_WindowsRoleStore.__init__",
+        "package-windows-role-store",
+        {"path_read": 1},
+    ),
+    (
+        "windows_materialization.py",
+        "_WindowsRoleStore.open_sink",
+        "package-windows-role-store",
+        {"path_read": 1},
+    ),
+    (
+        "windows_materialization.py",
+        "_WindowsRoleStore.validate_receipt",
+        "package-windows-role-store",
+        {"path_read": 1},
+    ),
+    (
+        "posix_epoch_cutover.py",
+        "PackagePosixEpochCutoverOwner.__init__",
+        "package-posix-epoch-cutover-owner",
+        {"path_read": 1},
+    ),
+    (
+        "posix_epoch_cutover.py",
+        "PackagePosixEpochCutoverOwner._open_pinned",
+        "package-posix-epoch-cutover-owner",
+        {"path_read": 1},
+    ),
+    (
+        "posix_epoch_cutover.py",
+        "_open_ancestor_chain",
+        "package-posix-epoch-cutover-owner",
+        {"path_read": 2},
+    ),
+    (
+        "posix_epoch_cutover.py",
+        "_open_directory_at",
+        "package-posix-epoch-cutover-owner",
+        {"path_read": 1},
+    ),
+    (
+        "windows_epoch_cutover.py",
+        "PackageWindowsEpochCutoverOwner.__init__",
+        "package-windows-epoch-cutover-owner",
+        {"path_read": 1},
+    ),
+    (
+        "windows_epoch_cutover.py",
+        "PackageWindowsEpochCutoverOwner._open_pinned",
+        "package-windows-epoch-cutover-owner",
+        {"path_read": 1},
+    ),
+    (
+        "posix_offline_restore.py",
+        "PackagePosixOfflineRestoreMaterializer.__init__",
+        "package-posix-offline-restore-materializer",
+        {"path_read": 3},
+    ),
+    (
+        "posix_offline_restore.py",
+        "PackagePosixOfflineRestoreMaterializer._exclusive_restore_root",
+        "package-posix-offline-restore-materializer",
+        {"path_read": 2},
+    ),
+    (
+        "posix_offline_restore.py",
+        "PackagePosixOfflineRestoreMaterializer.restore",
+        "package-posix-offline-restore-materializer",
+        {"path_read": 2},
+    ),
+    (
+        "posix_offline_restore.py",
+        "_open_directory",
+        "package-posix-offline-restore-materializer",
+        {"path_read": 1},
+    ),
+    (
+        "posix_offline_restore.py",
+        "_open_directory_at",
+        "package-posix-offline-restore-materializer",
+        {"path_read": 1},
+    ),
+    (
+        "posix_offline_restore.py",
+        "_open_regular_file",
+        "package-posix-offline-restore-materializer",
+        {"path_read": 1},
+    ),
+    (
+        "posix_offline_restore.py",
+        "_strict_json_object",
+        "package-posix-offline-restore-materializer",
+        {"json_decode": 1},
+    ),
+    (
+        "windows_offline_restore.py",
+        "PackageWindowsOfflineRestoreMaterializer.__init__",
+        "package-windows-offline-restore-materializer",
+        {"path_read": 1},
+    ),
+    (
+        "windows_offline_restore.py",
+        "PackageWindowsOfflineRestoreMaterializer._exclusive_restore_root",
+        "package-windows-offline-restore-materializer",
+        {"path_read": 1},
+    ),
+    (
+        "windows_offline_restore.py",
+        "PackageWindowsOfflineRestoreMaterializer.restore",
+        "package-windows-offline-restore-materializer",
+        {"path_read": 2},
+    ),
+    (
+        "windows_offline_restore.py",
+        "_strict_json_object",
+        "package-windows-offline-restore-materializer",
+        {"json_decode": 1},
+    ),
+    (
+        "wheel.py",
+        "_extract_verified_tree",
+        "package-safe-wheel-verifier",
+        {"path_read": 1},
+    ),
+    (
+        "wheel.py",
+        "_verify_archive_content",
+        "package-safe-wheel-verifier",
+        {"path_read": 1},
+    ),
+    (
+        "tree_transfer.py",
+        "PackageVerifiedTreeTransferOwner.transfer",
+        "package-verified-tree-transfer-owner",
+        {"verified_open_file:sink": 1},
+    ),
+    (
+        "retention_handoff.py",
+        "PackageRetentionHandoffJournal.open",
+        "package-retention-handoff-journal",
+        {"path_read": 1},
+    ),
+    (
+        "retention_handoff.py",
+        "PackageRetentionHandoffOwner.execute",
+        "package-retention-handoff-owner",
+        {"path_read": 1},
+    ),
+)
+PLC9B_BOUNDARY_OWNERS = {
+    "PackageArtifactEvidenceJournal",
+    "PackageArtifactStagingJournal",
+    "PackageClosureResolutionJournal",
+    "PackageCommittedSetJournal",
+    "PackageEpochFenceJournal",
+    "PackageLifecycleJournal",
+    "PackageQuarantineCleanupJournal",
+    "PackageRetentionHandoffJournal",
+    "PackageStoreSettlementJournal",
+    "PackageTransactionPinJournal",
+    "package-posix-epoch-cutover-owner",
+    "package-posix-offline-restore-materializer",
+    "package-posix-role-store",
+    "package-quarantine-native-boundary",
+    "package-retention-handoff-journal",
+    "package-retention-handoff-owner",
+    "package-safe-wheel-verifier",
+    "package-verified-tree-transfer-owner",
+    "package-windows-epoch-cutover-owner",
+    "package-windows-offline-restore-materializer",
+    "package-windows-role-store",
+}
+for _module, _qualified, _owner, _counts in PLC9B_BOUNDARY_SINKS:
+    _site = (
+        Path("src/loushang/harness/resources/packages/plugin_lifecycle") / _module,
+        _qualified,
+    )
+    assert _site not in EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS
+    EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS[_site] = _owner
+    for _operation, _count in _counts.items():
+        _key = (*_site, _operation)
+        assert _key not in EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_CALL_COUNTS
+        EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_CALL_COUNTS[_key] = _count
+_DISTRIBUTION_TOP_LEVEL_SITE = (
+    Path("src/loushang/harness/resources/plugins/distribution_evidence.py"),
+    "_declared_top_level_packages",
+)
+EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS[_DISTRIBUTION_TOP_LEVEL_SITE] = (
+    "installed-python-distribution-evidence-resolver"
+)
+EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_CALL_COUNTS[
+    (*_DISTRIBUTION_TOP_LEVEL_SITE, "path_read")
+] = 1
 
 
 def _contract_text_fields(document: str, *, heading: str) -> set[str]:
@@ -2771,7 +3115,9 @@ def test_current_plugin_package_boundary_sinks_have_qualified_owners() -> None:
     assert _plugin_package_boundary_sink_sites(sources) == set(
         EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS
     )
-    assert set(EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS.values()) == {
+    assert set(
+        EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS.values()
+    ) == PLC9B_BOUNDARY_OWNERS | {
         "package-catalog",
         "package-manifest-parser",
         "package-materializer",
@@ -3768,9 +4114,7 @@ def test_plc6e_catalog_session_has_no_peer_exact_tool_or_command_publisher() -> 
     coding_bootstrap = Path("src/loushang/coding/bootstrap.py").read_text(
         encoding="utf-8"
     )
-    tool_pack = Path("src/loushang/coding/tool_pack.py").read_text(
-        encoding="utf-8"
-    )
+    tool_pack = Path("src/loushang/coding/tool_pack.py").read_text(encoding="utf-8")
     agent_product = Path("src/loushang/harness/session/agent_product.py").read_text(
         encoding="utf-8"
     )

@@ -151,6 +151,7 @@ class AgentTranscriptUnitOfWork:
         profile: AgentTranscriptProfile | None = None,
         defer_materialization: bool = False,
         materialization_policy: MaterializationPolicy | None = None,
+        create_operation_id: str | None = None,
     ) -> AgentTranscriptUnitOfWork:
         _require_matching_identity(key, header)
         initial_records = tuple(records)
@@ -162,6 +163,8 @@ class AgentTranscriptUnitOfWork:
         )
         resolved_clock = clock or _utc_now
         if defer_materialization:
+            if create_operation_id is not None:
+                raise ValueError("a specific create operation requires immediate materialization")
             if initial_records:
                 raise ValueError(
                     "deferred transcript materialization requires no initial records"
@@ -187,29 +190,32 @@ class AgentTranscriptUnitOfWork:
             key,
             header,
             initial_records,
-            operation_id=_create_operation_id(key),
+            operation_id=_create_operation_id(key) if create_operation_id is None else create_operation_id,
         )
-        repository = ConversationRepository.from_snapshot(
-            snapshot,
-            record_id=lambda record: record.record_id,
-            parent_id=lambda record: record.parent_id,
-            leaf_id=leaf_id,
-        )
-        return cls(
-            backend=backend,
-            key=key,
-            repository=repository,
-            revision=snapshot.revision,
-            record_factory=record_factory
-            or AgentTranscriptRecordFactory(
+        try:
+            repository = ConversationRepository.from_snapshot(
+                snapshot,
+                record_id=lambda record: record.record_id,
+                parent_id=lambda record: record.parent_id,
+                leaf_id=leaf_id,
+            )
+            return cls(
+                backend=backend,
+                key=key,
+                repository=repository,
+                revision=snapshot.revision,
+                record_factory=record_factory
+                or AgentTranscriptRecordFactory(
+                    clock=resolved_clock,
+                    id_factory=id_factory,
+                ),
+                profile=resolved_profile,
+                diagnostics=repository.diagnostics,
+                materialization_policy=materialization_policy,
                 clock=resolved_clock,
-                id_factory=id_factory,
-            ),
-            profile=resolved_profile,
-            diagnostics=repository.diagnostics,
-            materialization_policy=materialization_policy,
-            clock=resolved_clock,
-        )
+            )
+        except BaseException as error:
+            raise StoreCommitOutcomeUnknown("transcript create returned but local construction failed") from error
 
     @classmethod
     async def load(
@@ -860,6 +866,7 @@ class AgentTranscriptUnitOfWork:
                 return AgentTranscriptCommit(record=record, receipt=None)
             return await self._materialize_locked(record, candidate)
         expected_revision = self._revision
+        commit_uncertainty: StoreCommitOutcomeUnknown | None = None
         try:
             commit_result = await self._backend.append(
                 self._key,
@@ -867,22 +874,27 @@ class AgentTranscriptUnitOfWork:
                 expected_revision=expected_revision,
                 operation_id=record.record_id,
             )
-        except StoreCommitOutcomeUnknown:
-            commit_result = await self._backend.append(
-                self._key,
-                record,
-                expected_revision=expected_revision,
-                operation_id=record.record_id,
-            )
+        except StoreCommitOutcomeUnknown as uncertain:
+            commit_uncertainty = uncertain
+            try:
+                commit_result = await self._backend.append(
+                    self._key,
+                    record,
+                    expected_revision=expected_revision,
+                    operation_id=record.record_id,
+                )
+            except (Exception, asyncio.CancelledError) as recovery_error:
+                # A rejected retry cannot prove the first attempt did not write.
+                raise uncertain from recovery_error
         receipt = commit_result.receipt
         next_revision = expected_revision + 1
         if receipt.revision != next_revision:
-            raise RuntimeError(
+            raise commit_uncertainty or StoreCommitOutcomeUnknown(
                 "conversation backend returned an invalid append revision: "
                 f"expected {next_revision}, got {receipt.revision}"
             )
         if receipt.record_id not in {None, record.record_id}:
-            raise RuntimeError(
+            raise commit_uncertainty or StoreCommitOutcomeUnknown(
                 "conversation backend returned a different committed record id"
             )
         self._repository = candidate
@@ -923,6 +935,7 @@ class AgentTranscriptUnitOfWork:
         )
         expected_revision = self._revision
         operation_ids = tuple(record.record_id for record in records)
+        commit_uncertainty: StoreCommitOutcomeUnknown | None = None
         try:
             result = await self._backend.append_batch(
                 self._key,
@@ -930,15 +943,21 @@ class AgentTranscriptUnitOfWork:
                 expected_revision=expected_revision,
                 operation_ids=operation_ids,
             )
-        except StoreCommitOutcomeUnknown:
-            result = await self._backend.append_batch(
-                self._key,
-                records,
-                expected_revision=expected_revision,
-                operation_ids=operation_ids,
-            )
+        except StoreCommitOutcomeUnknown as uncertain:
+            commit_uncertainty = uncertain
+            try:
+                result = await self._backend.append_batch(
+                    self._key,
+                    records,
+                    expected_revision=expected_revision,
+                    operation_ids=operation_ids,
+                )
+            except (Exception, asyncio.CancelledError) as recovery_error:
+                raise uncertain from recovery_error
         if len(result.receipts) != len(records):
-            raise RuntimeError("conversation backend returned an invalid batch size")
+            raise commit_uncertainty or StoreCommitOutcomeUnknown(
+                "conversation backend returned an invalid batch size"
+            )
         batch_commits: list[AgentTranscriptCommit] = []
         for index, (record, receipt) in enumerate(
             zip(records, result.receipts, strict=True),
@@ -946,11 +965,11 @@ class AgentTranscriptUnitOfWork:
         ):
             expected_receipt_revision = expected_revision + index
             if receipt.revision != expected_receipt_revision:
-                raise RuntimeError(
+                raise commit_uncertainty or StoreCommitOutcomeUnknown(
                     "conversation backend returned an invalid batch revision"
                 )
             if receipt.record_id not in {None, record.record_id}:
-                raise RuntimeError(
+                raise commit_uncertainty or StoreCommitOutcomeUnknown(
                     "conversation backend returned a different batch record id"
                 )
             batch_commits.append(
@@ -1043,6 +1062,7 @@ class AgentTranscriptUnitOfWork:
         ],
     ) -> AgentTranscriptCommit:
         diagnostics: tuple[ConversationSourceDiagnostic, ...] = ()
+        commit_uncertainty: StoreCommitOutcomeUnknown | None = None
         try:
             snapshot = await self._backend.create(
                 self._key,
@@ -1051,10 +1071,11 @@ class AgentTranscriptUnitOfWork:
                 operation_id=_create_operation_id(self._key),
             )
         except StoreCommitOutcomeUnknown as error:
+            commit_uncertainty = error
             try:
                 loaded = await self._backend.load(self._key)
-            except Exception:
-                raise error
+            except (Exception, asyncio.CancelledError) as recovery_error:
+                raise error from recovery_error
             snapshot = loaded.snapshot
             diagnostics = loaded.diagnostics
             if snapshot.header != self.header or snapshot.records != candidate.records:
@@ -1064,7 +1085,7 @@ class AgentTranscriptUnitOfWork:
             or snapshot.records != candidate.records
             or snapshot.revision != len(candidate.records)
         ):
-            raise RuntimeError(
+            raise commit_uncertainty or StoreCommitOutcomeUnknown(
                 "conversation backend returned an invalid materialized snapshot"
             )
         receipt = CommitReceipt(

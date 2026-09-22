@@ -266,21 +266,29 @@ def test_runtime_uses_latest_settings_for_new_sessions(tmp_path) -> None:
     runtime = create_agent_session_runtime(
         session_dir=tmp_path, services=services, persist=False
     )
-    first = asyncio.run(runtime.create_session(cwd=str(project_a)))
+    async def scenario() -> None:
+        try:
+            first = await runtime.create_session(cwd=str(project_a))
 
-    services.settings_manager.set_default_model(
-        ModelSelection(endpoint_id="responses", provider="faux", model_id="beta")
-    )
-    services.settings_manager.update_settings(thinking_level="minimal")
-    second = asyncio.run(runtime.create_session(cwd=str(project_b)))
+            services.settings_manager.set_default_model(
+                ModelSelection(
+                    endpoint_id="responses", provider="faux", model_id="beta"
+                )
+            )
+            services.settings_manager.update_settings(thinking_level="minimal")
+            second = await runtime.create_session(cwd=str(project_b))
 
-    assert first.get_model_selection() == ModelSelection(
-        endpoint_id="anthropic-messages", provider="faux", model_id="alpha"
-    )
-    assert second.get_model_selection() == ModelSelection(
-        endpoint_id="responses", provider="faux", model_id="beta"
-    )
-    assert second.agent.thinking_level == "minimal"
+            assert first.get_model_selection() == ModelSelection(
+                endpoint_id="anthropic-messages", provider="faux", model_id="alpha"
+            )
+            assert second.get_model_selection() == ModelSelection(
+                endpoint_id="responses", provider="faux", model_id="beta"
+            )
+            assert second.agent.thinking_level == "minimal"
+        finally:
+            await runtime.dispose_session_runtime()
+
+    asyncio.run(scenario())
 
 
 def test_create_services_can_use_preloaded_persistent_settings_manager(

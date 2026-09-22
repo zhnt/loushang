@@ -964,7 +964,7 @@ def test_g9_restart_retains_durable_kill_switch_generation(_case: str) -> None:
 def test_g9_entrypoint_inventory_is_exact_and_source_backed(_case: str) -> None:
     inventory = json.loads(_INVENTORY.read_text(encoding="utf-8"))
     assert set(inventory) == {"inventoryVersion", "decision", "entries"}
-    assert inventory["inventoryVersion"] == 6
+    assert inventory["inventoryVersion"] == 7
     assert inventory["decision"] == "RETAIN"
     entries = {entry["entrypointId"]: entry for entry in inventory["entries"]}
     assert set(entries) == {
@@ -977,6 +977,7 @@ def test_g9_entrypoint_inventory_is_exact_and_source_backed(_case: str) -> None:
         "coding.cli",
         "coding.hosted.command",
         "coding.hosted-tui.command",
+        "coding.lmux.command",
         "coding.mux.command",
         "coding.sdk",
         "coding.tui",
@@ -1027,6 +1028,7 @@ def test_g9_entrypoint_inventory_is_exact_and_source_backed(_case: str) -> None:
         ),
         "coding.hosted.command": ("hosted", "installed", "explicit-foreground-stdio"),
         "coding.hosted-tui.command": ("hosted", "installed", "explicit-owned-foreground-tui"),
+        "coding.lmux.command": ("mux", "installed-preview", "explicit-managed-linux-preview"),
         "coding.mux.command": ("mux", "installed", "explicit-detachable-local"),
         "coding.arch.module-cli": ("cli", "supported-module", "non-product-tool"),
         "harnesstui.named-mux": (
@@ -1039,6 +1041,7 @@ def test_g9_entrypoint_inventory_is_exact_and_source_backed(_case: str) -> None:
 
     project = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
     assert project["project"]["scripts"] == {
+        "lmux": "loushang.coding.cli.lmux:main",
         "loushang": "loushang.coding.cli.__main__:main",
         "loushang-hosted": "loushang.coding.cli.hosted:main",
         "loushang-hosted-tui": "loushang.coding.cli.hosted_client:main",
@@ -1051,6 +1054,7 @@ def test_g9_entrypoint_inventory_is_exact_and_source_backed(_case: str) -> None:
         for row in entries.values()
         if row["packagingBinding"] is not None
     } == {
+        "project.scripts.lmux",
         "project.scripts.loushang",
         "project.scripts.loushang-hosted",
         "project.scripts.loushang-hosted-tui",

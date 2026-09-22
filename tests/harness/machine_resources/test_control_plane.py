@@ -21,12 +21,12 @@ from loushang.harness.machine_resources import (
     inspect_machine_resources,
     migrate_machine_resources,
     plan_machine_resource_migration,
+    prepare_private_directory_chain,
     resolve_machine_resource_layout,
 )
 from loushang.harness.machine_resources import control_plane as control_plane_module
 from loushang.harness.transcript import AGENT_MESSAGE_KIND, SessionImagePart
 from loushang.harness.transcript.jsonl_file import write_agent_transcript_export
-from loushang.harness.transcript.lifecycle import delete_agent_transcript_jsonl
 
 
 def _paths(tmp_path: Path) -> PlatformPaths:
@@ -156,9 +156,11 @@ def test_clean_preview_is_non_mutating_and_apply_removes_only_managed_archives(
 def test_orphan_asset_cleanup_preserves_every_transcript_claimed_authority(
     tmp_path: Path,
 ) -> None:
+    from tests.harness.transcript._maintenance import delete_with_maintenance
+
     paths = _paths(tmp_path)
     sessions = paths.data / "sessions"
-    sessions.mkdir(parents=True)
+    prepare_private_directory_chain(sessions)
     write_agent_transcript_export(
         sessions / "live.jsonl",
         _header("live"),
@@ -184,7 +186,7 @@ def test_orphan_asset_cleanup_preserves_every_transcript_claimed_authority(
         _header("orphan"),
         [],
     )
-    assert asyncio.run(delete_agent_transcript_jsonl(orphan_transcript)) is True
+    assert asyncio.run(delete_with_maintenance(orphan_transcript)) is True
     layout = resolve_machine_resource_layout(platform_paths=paths, cwd=tmp_path)
 
     result = clean_machine_resources(
@@ -441,3 +443,29 @@ def test_migration_coordinates_cancellation_before_returning(
         assert plan.candidates[0].destination.exists()
 
     asyncio.run(scenario())
+
+
+def test_prepare_private_directory_chain_fixes_entry_contract(tmp_path: Path) -> None:
+    """The wrapper owns only its entry contract; the primitive owns the rule.
+
+    Creation mode, symlink refusal and race handling are covered by
+    tests/harness/test_private_directory.py. Here the wrapper must reject a
+    relative target, expand ``~`` and return the expanded target unchanged.
+    """
+
+    with pytest.raises(ValueError):
+        prepare_private_directory_chain("relative/child")
+
+    target = tmp_path / "one" / "two"
+    assert prepare_private_directory_chain(target) == target
+    assert target.is_dir()
+
+
+def test_prepare_private_directory_chain_expands_user_home(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    result = prepare_private_directory_chain("~/expanded/child")
+    assert result == tmp_path / "expanded" / "child"
+    assert result.is_dir()

@@ -68,6 +68,8 @@ async def scripted_stream(model, context, options=None):
     )
     user_text = latest_text if latest.role == "user" else ""
     text = "waiting" if user_text == "hold" else "真实跨进程回复\nG14"
+    if user_text == "markdown":
+        text = "## Render witness\n\nUse **bold witness**.\n\n```python\nprint('code witness')\n```"
     emit("model_input", roles=[message.role for message in context.messages[-8:]],
          message_count=len(context.messages), latest=text_shape(latest_text),
          latest_role=latest.role)

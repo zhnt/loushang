@@ -25,6 +25,7 @@ from loushang.harness.events.runtime_projection import project_session_runtime_e
 from loushang.harness.session import SessionControlPort
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.workspace import workspace_tool_runtime_settings
+from loushang.harness.workspace.exec.capture_lease import ExecCaptureFactory
 
 from .appservice_adapter import (
     CodingHostedEventProjectionV1,
@@ -231,11 +232,13 @@ class CodingRealHostedSessionFactoryV1:
         model: Model | ModelSelection | None = None,
         stream_fn: StreamFn | None = None,
         tools: list[ToolDefinition] | None = None,
+        output_capture_factory: ExecCaptureFactory | None = None,
     ) -> None:
         self._services_factory = services_factory
         self._model = model
         self._stream_fn = stream_fn
         self._tools = tools
+        self._output_capture_factory = output_capture_factory
 
     async def create_session(
         self,
@@ -263,6 +266,7 @@ class CodingRealHostedSessionFactoryV1:
                 tools=self._tools,
                 approval_resolver=approval,
                 tool_policy_evaluator=policy.policy_engine,
+                output_capture_factory=self._output_capture_factory,
             )
             opaque_session_binding.retain_constructed_owner(session.dispose)
             binding = CodingRealHostedSessionV1(session, identity, approval)

@@ -53,7 +53,7 @@ class ScreenFramePresentation:
             permission_profile=state.permission_profile,
             pending_followups=len(state.pending_followups),
             pending_steers=len(state.pending_steers),
-            status_message=state.status_message,
+            status_message=state.presentation_status_message,
             context_usage=state.context_usage,
         )
 

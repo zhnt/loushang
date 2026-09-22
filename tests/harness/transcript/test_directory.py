@@ -21,7 +21,6 @@ from loushang.harness.transcript import (
     SessionDiscoverySource,
     SessionQuery,
     SessionSummary,
-    delete_agent_transcript_jsonl,
     write_agent_transcript_export,
 )
 
@@ -614,8 +613,8 @@ def test_canonical_delete_tombstone_prevents_compatibility_resurrection(
 ) -> None:
     canonical_dir = tmp_path / "canonical"
     compatibility_dir = tmp_path / "compatibility"
-    canonical_dir.mkdir()
-    compatibility_dir.mkdir()
+    canonical_dir.mkdir(mode=0o700)
+    compatibility_dir.mkdir(mode=0o700)
     canonical = canonical_dir / "canonical.jsonl"
     compatibility = compatibility_dir / "legacy.jsonl"
     write_agent_transcript_export(
@@ -630,7 +629,8 @@ def test_canonical_delete_tombstone_prevents_compatibility_resurrection(
         summary.session_id for summary in runtime.list_discovered_session_summaries()
     ] == ["deleted"]
 
-    assert asyncio.run(delete_agent_transcript_jsonl(canonical)) is True
+    from ._maintenance import delete_with_maintenance
+    assert asyncio.run(delete_with_maintenance(canonical)) is True
 
     assert runtime.session_catalog.is_tombstoned("deleted") is True
     assert runtime.list_discovered_session_summaries() == []
@@ -642,8 +642,8 @@ def test_invalid_canonical_tombstone_fails_closed_with_discovery_issue(
 ) -> None:
     canonical_dir = tmp_path / "canonical"
     compatibility_dir = tmp_path / "compatibility"
-    canonical_dir.mkdir()
-    compatibility_dir.mkdir()
+    canonical_dir.mkdir(mode=0o700)
+    compatibility_dir.mkdir(mode=0o700)
     canonical = canonical_dir / "canonical.jsonl"
     write_agent_transcript_export(
         canonical,
@@ -653,7 +653,8 @@ def test_invalid_canonical_tombstone_fails_closed_with_discovery_issue(
     (compatibility_dir / "legacy.jsonl").write_bytes(canonical.read_bytes())
     runtime = AgentTranscriptDirectoryRuntime(session_dir=canonical_dir)
     runtime.add_session_discovery_dir(compatibility_dir)
-    assert asyncio.run(delete_agent_transcript_jsonl(canonical)) is True
+    from ._maintenance import delete_with_maintenance
+    assert asyncio.run(delete_with_maintenance(canonical)) is True
     runtime.session_catalog.tombstone_path("deleted").write_text(
         "not-json\n",
         encoding="utf-8",
@@ -729,7 +730,8 @@ def test_duplicate_canonical_identity_is_conflicted_and_tombstone_hides_residual
     assert page.items[0].item.projection.discovery is not None
     assert page.items[0].item.projection.discovery.health == "conflict"
 
-    assert asyncio.run(delete_agent_transcript_jsonl(first)) is True
+    from ._maintenance import delete_with_maintenance
+    assert asyncio.run(delete_with_maintenance(first)) is True
     assert second.exists()
     assert runtime.list_discovered_session_summaries() == []
 
@@ -761,7 +763,8 @@ def test_canonical_only_index_applies_provenance_and_tombstones_before_filtering
         _header("canonical", cwd="/workspace/project"),
         [_record("removed", "removed", timestamp=2.0)],
     )
-    assert asyncio.run(delete_agent_transcript_jsonl(removed_duplicate)) is True
+    from ._maintenance import delete_with_maintenance
+    assert asyncio.run(delete_with_maintenance(removed_duplicate)) is True
 
     assert runtime.try_query_session_index_page(limit=10).items == ()
 

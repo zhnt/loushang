@@ -2,7 +2,26 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 from functools import wraps
+
+
+async def _delete_session_with_owner(session_file, *, current_session_file=None):
+    """Keep the Linux maintenance authority for the entire test operation."""
+    from loushang.coding.session_manager import (
+        SessionManager,
+        _create_owned_session_factory,
+    )
+
+    if sys.platform != "linux":
+        return await SessionManager.delete_session(session_file, current_session_file=current_session_file)
+    maintenance = _create_owned_session_factory()
+    try:
+        return await SessionManager.delete_session(
+            session_file, current_session_file=current_session_file, maintenance_owner=maintenance,
+        )
+    finally:
+        await maintenance.close()
 
 
 def _async_test(test):
@@ -766,14 +785,26 @@ async def test_session_manager_delete_session_file_preserves_stable_lock(
     await SessionManager.load(session_file)
     assert lock_file.exists()
 
-    assert await SessionManager.delete_session(session_file) is True
-    assert session_file.exists() is False
-    assert lock_file.exists() is True
-    assert await SessionManager.delete_session(session_file) is False
+    if sys.platform == "linux":
+        from loushang.coding.session_manager import _create_owned_session_factory
+
+        maintenance = _create_owned_session_factory()
+        try:
+            assert await SessionManager.delete_session(session_file, maintenance_owner=maintenance) is True
+            assert session_file.exists() is False
+            assert lock_file.exists() is True
+            assert await SessionManager.delete_session(session_file, maintenance_owner=maintenance) is False
+        finally:
+            await maintenance.close()
+    else:
+        assert await SessionManager.delete_session(session_file) is True
+        assert session_file.exists() is False
+        assert lock_file.exists() is True
+        assert await SessionManager.delete_session(session_file) is False
 
 
 @_async_test
-async def test_session_manager_delete_removes_owned_blobs_after_transcript(
+async def test_session_manager_delete_preserves_platform_blob_cleanup_policy(
     tmp_path,
 ) -> None:
     from loushang.ai.types import UserMessage
@@ -782,6 +813,8 @@ async def test_session_manager_delete_removes_owned_blobs_after_transcript(
     from loushang.harness.conversation import CommandExecutionRecord
 
     session_dir = tmp_path / "data" / "sessions"
+    session_dir.parent.mkdir(mode=0o700)
+    session_dir.mkdir(mode=0o700)
     manager = await SessionManager.new(
         session_dir=session_dir,
         cwd="/tmp/project",
@@ -810,13 +843,16 @@ async def test_session_manager_delete_removes_owned_blobs_after_transcript(
     session_file = manager.get_session_file()
     assert session_file is not None
 
-    assert await SessionManager.delete_session(session_file) is True
+    assert await _delete_session_with_owner(session_file) is True
     assert not session_file.exists()
-    assert not blobs.root.exists()
+    if sys.platform == "linux":
+        assert blobs.read_bytes(reference) == b"complete output"
+    else:
+        assert not blobs.root.exists()
 
 
 @_async_test
-async def test_session_delete_does_not_accept_a_duplicate_transcript_as_blob_owner(
+async def test_session_delete_duplicate_transcript_preserves_shared_blob_owner(
     tmp_path,
 ) -> None:
     import shutil
@@ -855,8 +891,11 @@ async def test_session_delete_does_not_accept_a_duplicate_transcript_as_blob_own
     assert session_file is not None
     duplicate = session_dir / "forged-duplicate.jsonl"
     shutil.copyfile(session_file, duplicate)
+    session_dir.chmod(0o700)
+    duplicate.chmod(0o600)
 
-    assert await SessionManager.delete_session(duplicate) is True
+    assert await _delete_session_with_owner(duplicate) is True
+    assert not duplicate.exists()
     assert session_file.exists()
     assert blobs.read_bytes(reference) == b"private output"
 
@@ -1060,7 +1099,7 @@ async def test_session_delete_cleanup_failure_does_not_resurrect_transcript(
         fail_cleanup,
     )
 
-    assert await SessionManager.delete_session(session_file) is True
+    assert await _delete_session_with_owner(session_file) is True
     assert not session_file.exists()
 
 
@@ -1198,7 +1237,7 @@ async def test_session_manager_rename_and_delete_refresh_existing_index(
 
     await SessionManager.rename_session(first_file, "Indexed Name")
     renamed_index = SessionManager.list_indexed_summaries(tmp_path)
-    await SessionManager.delete_session(second_file)
+    await _delete_session_with_owner(second_file)
     deleted_index = SessionManager.list_indexed_summaries(tmp_path)
 
     assert (
@@ -1327,7 +1366,7 @@ async def test_session_manager_rename_and_delete_survive_index_refresh_failure(
     )
 
     renamed = await SessionManager.rename_session(first_file, "Renamed Anyway")
-    deleted = await SessionManager.delete_session(second_file)
+    deleted = await _delete_session_with_owner(second_file)
 
     assert renamed.name == "Renamed Anyway"
     assert deleted is True
@@ -1360,7 +1399,7 @@ async def test_session_manager_delete_session_file_refuses_current_session_alias
     aliased_file = alias_dir / session_file.name
 
     with pytest.raises(ValueError, match="currently active session"):
-        await SessionManager.delete_session(
+        await _delete_session_with_owner(
             aliased_file, current_session_file=session_file
         )
 
@@ -1763,7 +1802,7 @@ async def test_session_manager_falls_back_before_bounded_invalid_index_rebuild(
 
 
 @_async_test
-async def test_session_manager_preserves_corrupt_index_for_diagnostics(
+async def test_session_manager_read_fallback_preserves_corrupt_index_in_place(
     tmp_path,
 ) -> None:
     from loushang.ai.types import TextPart, UserMessage
@@ -1788,8 +1827,8 @@ async def test_session_manager_preserves_corrupt_index_for_diagnostics(
         session.get_header().conversation_id
     ]
     corrupt_files = sorted(tmp_path.glob(".session-index.json.corrupt-*"))
-    assert len(corrupt_files) == 1
-    assert corrupt_files[0].read_text(encoding="utf-8") == "not-json\n"
+    assert corrupt_files == []
+    assert index_file.read_text(encoding="utf-8") == "not-json\n"
 
 
 @_async_test
