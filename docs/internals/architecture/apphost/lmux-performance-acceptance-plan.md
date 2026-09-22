@@ -1,8 +1,10 @@
 # LMUX M4 Linux 性能验收增量
 
-状态：部分子项已局部评审并开展诊断采集；正式配对验收和完整三视角
-评审尚未完成，不构成性能结论。实际通过项、失败样本和待办见
-[推进记录](lmux-managed-output-capture.md)，下文候选指标不等于验收通过。
+状态：accepted（2026-09-22）。`managed-mux`、首次 Product 使用、长历史
+warm 与换代 restore 的正式 A/A 证据均已取得有效 pass，完整三视角评审无
+未解决 P0/P1/P2。该结论关闭 M4 测量与回归资格门禁，不宣称性能提升；
+ARD-004 的 30% 以下回归不可检出限制继续适用。历史失败、诊断和实施过程见
+[推进记录](lmux-managed-output-capture.md)。
 
 ## 已取得冻结安装功能诊断：运行中真实 PTY 突然断连
 
@@ -414,3 +416,28 @@ outer预算必须按串行阶段上界核算，覆盖原600秒seed、认证、�
 seed/连接结算、旧canonical未完成即重启、start关闭失败、错误服务/同代身份、
 新旧摘要不一致、跨代回执串用、错误累计起点及任意stop/outer失败，均不得
 晋级正式样本或checkpoint。仍沿用原20对与失败保留规则。
+
+## 最终 M4 验收记录（2026-09-22）
+
+冻结提交 `16c482e551859db89346b49c9a548adb128535c3` 和 wheel SHA-256
+`ca27bba3f76c46ff1825c2c9419617bf2d4807ebe431c6f3e2c39f2654cf90f3`
+完成两个新的不间断 A/A campaign：
+
+- `managed-product-first-use`：44/44 valid（4 warmup + 40 measured），
+  comparison pass；八个冻结指标、三个 fresh 子场景、至少四个真实终端、
+  唯一工具效果、producer 结算和 exact stop 均通过 validator。
+- `managed-product-history-restore`：44/44 valid（4 warmup + 40 measured），
+  comparison pass；每个样本均验证 128 轮/256 消息历史、旧代停止、不同
+  native identity 的新代启动、完整恢复帧和新代停止。
+
+原 `managed-mux` 与 `managed-product-history-warm` campaign 由 ARD-004
+只读工具重评为 pass；重评文件绑定原 report SHA-256，不改原数据，并声明
+其不是新测量或独立性能验收。全部 verdict 的含义均是“在接受的统计合同下
+未检出超过 30% 的回归”。它们不支持“没有回归”、低于该阈值的量化结论或
+相对其他版本的提速声明。
+
+先前 restore 的 `startup_failed` 报告保持原样。产品根因是共享 registry
+目录描述符的瞬时关闭窗口与启动 fence 争用；窄修复只允许原 owner 在原
+deadline 内让出一次最多 10 ms，持续/未知清理债仍失败。修复后的正式采集
+跨过原固定失败点并完成全部样本。最终测试与三视角结果见
+[M0 合同 §97](lmux-contract-m0.md#97-m0m4-正式验收收口2026-09-22)。

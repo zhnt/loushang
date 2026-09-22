@@ -584,6 +584,82 @@ def test_startup_retries_clean_read_contention_on_original_owner(owners, monkeyp
     asyncio.run(scenario())
 
 
+@pytest.mark.parametrize("boundary", ["fence", "database"])
+def test_startup_contention_allows_transient_database_close_to_settle(owners, monkeypatch, boundary):
+    async def scenario():
+        manager = successor(owners)
+        target = owners[1]._fence if boundary == "fence" else owners[0]._database
+        method = "lock" if boundary == "fence" else "transaction"
+        database_directory = owners[0]._database._directory
+        original = getattr(target, method)
+        calls = 0
+        transient_descriptor = -1
+
+        @contextmanager
+        def contended(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                database_directory._uncertain_closes.add(transient_descriptor)
+                raise ManagedStorageError("busy")
+            with original(*args, **kwargs) as result:
+                yield result
+
+        async def settle_unrelated_close(_):
+            database_directory._uncertain_closes.discard(transient_descriptor)
+
+        monkeypatch.setattr(target, method, contended)
+        monkeypatch.setattr(asyncio, "sleep", settle_unrelated_close)
+        service = None
+        attempt = recovery(manager, _MemoryLease())
+        try:
+            service = await attempt.open()
+            assert calls == 2
+            assert manager._recovery_admitted
+        finally:
+            database_directory._uncertain_closes.discard(transient_descriptor)
+            if service is not None:
+                await service.close()
+            await attempt.close()
+
+    asyncio.run(scenario())
+
+
+def test_startup_contention_does_not_wait_through_persistent_database_cleanup(owners, monkeypatch):
+    async def scenario():
+        manager = successor(owners)
+        database = owners[0]._database
+        directory = database._directory
+        transient_descriptor = -1
+        calls = 0
+        delays = []
+
+        @contextmanager
+        def busy(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            directory._uncertain_closes.add(transient_descriptor)
+            raise ManagedStorageError("busy")
+            yield  # pragma: no cover
+
+        async def retain_cleanup(delay):
+            delays.append(delay)
+
+        monkeypatch.setattr(database, "transaction", busy)
+        monkeypatch.setattr(asyncio, "sleep", retain_cleanup)
+        attempt = recovery(manager, _MemoryLease())
+        try:
+            with pytest.raises(AppServiceError):
+                await attempt.open()
+            assert calls == 1 and delays == [0.01]
+            assert not manager._recovery_admitted
+        finally:
+            directory._uncertain_closes.discard(transient_descriptor)
+            await attempt.close()
+
+    asyncio.run(scenario())
+
+
 async def _permission_case(owners, mode):
     if mode == "recovery":
         manager = successor(owners)

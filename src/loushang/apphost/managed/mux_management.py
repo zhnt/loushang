@@ -629,7 +629,7 @@ class _ManagedMuxFence:
                 return
             except ManagedStorageError as error:
                 if (error.code != "busy" or self._exit_attempted
-                        or journal._fence.cleanup_pending or journal._database.cleanup_pending):
+                        or journal._fence.cleanup_pending):
                     raise
                 # No check_*/ADMIT/CAS/Session effect has occurred. Release
                 # this exact read context; never retry an uncertain release.
@@ -638,11 +638,22 @@ class _ManagedMuxFence:
                     self._exit_attempted = True
                     self._context.__exit__(None, None, None)
                     self._entered = False
-                if journal._fence.cleanup_pending or journal._database.cleanup_pending:
+                if journal._fence.cleanup_pending:
                     raise ManagedStorageError("unavailable") from None
                 self._context = None
                 self._discard_permission()
                 self._exit_attempted = False  # Prior read's release is confirmed.
+                if journal._database.cleanup_pending:
+                    # Another native operation may be between retaining and
+                    # confirming one descriptor close. Yield once, but never
+                    # wait through persistent or unknown database cleanup debt.
+                    await asyncio.sleep(min(0.01, max(0.0, deadline - monotonic())))
+                    _check_deadline(deadline)
+                    if self._closed or self._exit_attempted:
+                        raise ManagedStorageError("closed")
+                    if journal._fence.cleanup_pending or journal._database.cleanup_pending:
+                        raise
+                    continue
                 _check_deadline(deadline)
                 await asyncio.sleep(min(0.01, max(0.0, deadline - monotonic())))
 

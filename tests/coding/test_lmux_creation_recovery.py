@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sys
 from io import StringIO
+from time import monotonic, sleep
 
 import pytest
 
@@ -21,6 +22,19 @@ def _tree(root):
                                          path.lstat().st_mtime_ns,
                                          path.read_bytes() if path.is_file() else None)
             for path in (root, *sorted(root.rglob("*")))}
+
+
+def _wait_for_lifecycle_event(root, event):
+    expected = f'"event":"{event}"'.encode()
+    deadline = monotonic() + 5
+    while monotonic() < deadline:
+        if any(
+            expected in path.read_bytes()
+            for path in root.rglob("lifecycle-*.jsonl")
+        ):
+            return
+        sleep(0.01)
+    raise AssertionError(f"managed lifecycle event did not settle: {event}")
 
 
 @pytest.mark.parametrize("fault", ["reservation_ack", "permit_ack", "before_rpc", "after_rpc", "record_ack"])
@@ -85,6 +99,16 @@ def test_real_creation_recovery_uses_original_operation_without_query_replay(
     other.mkdir()
     monkeypatch.chdir(other)
     before_calls = len(calls)
+    creation = commands[0].creation
+    if (
+        creation is not None
+        and creation._coordinator._starter._process is not None
+    ):
+        # Service readiness is already authoritative before the failed RPC,
+        # while its best-effort diagnostic is intentionally written later.
+        # Let that pre-existing writer settle before proving these queries do
+        # not mutate any file in the managed tree.
+        _wait_for_lifecycle_event(tmp_path, "ready")
     # Read-only query neither connects/starts nor issues a permit, including
     # the case where no service-admission record has ever been created.
     before = _tree(tmp_path)
