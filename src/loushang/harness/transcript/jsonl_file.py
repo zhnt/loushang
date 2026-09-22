@@ -12,11 +12,12 @@ import json
 import os
 import stat as stat_module
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
-from dataclasses import dataclass, field
+from contextlib import AbstractContextManager, contextmanager, nullcontext
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
+from functools import partial
 from pathlib import Path
-from typing import Any, NoReturn, cast
+from typing import TYPE_CHECKING, Any, NoReturn, TypeVar, cast
 
 from loushang.foundation.json import validate_json_value
 from loushang.harness.conversation import (
@@ -26,7 +27,10 @@ from loushang.harness.conversation import (
     ConversationKey,
     ConversationRepository,
     FileConversationStore,
+    IndexedProjection,
 )
+from loushang.harness.conversation.indexes.json_file import JsonConversationIndex
+from loushang.harness.conversation.store import ConversationOperationScope
 from loushang.harness.journal import (
     DEFAULT_JSONL_FORMAT,
     DURABLE_LOCKED_JOURNAL,
@@ -38,6 +42,7 @@ from loushang.harness.journal import (
     LockMode,
     decode_jsonl,
     journal_file_lock,
+    load_jsonl,
 )
 from loushang.harness.transcript.model_input_v2_index_file import (
     delete_agent_transcript_index,
@@ -49,6 +54,49 @@ from loushang.harness.transcript.model_input_v2_types import (
 )
 from loushang.harness.transcript.profile import AgentTranscriptProfile
 from loushang.harness.transcript.types import AgentTranscriptRecord
+
+if TYPE_CHECKING:
+    from loushang.harness.journal._rooted_io import RootedFileIO
+
+_Projection = TypeVar("_Projection")
+_Query = TypeVar("_Query")
+
+
+def publish_owned_transcript_projection(
+    index_path: Path,
+    index: JsonConversationIndex[_Projection, _Query],
+    project: Callable[[str], IndexedProjection[_Projection]],
+    *, file_io: RootedFileIO, root: Path, key: ConversationKey,
+    source_path: Path, header: ConversationHeader,
+    records: tuple[AgentTranscriptRecord, ...], max_bytes: int,
+    fingerprint: Callable[[os.stat_result], str],
+) -> bool:
+    """Borrow the original writer IO for one synchronous publication.
+
+    The source stays bound through index publication. This creates no owner,
+    scans no directory and never creates an absent projection cache.
+    """
+    if root != file_io.root or key.namespace != str(file_io.root):
+        raise ValueError("owned summary belongs to another transcript root")
+    if header.conversation_id != key.conversation_id:
+        raise ValueError("owned summary identity differs from its writer")
+    if source_path.parent != file_io.root or index_path.parent != file_io.root:
+        raise ValueError("owned summary must select direct transcript children")
+    try:
+        file_io.stat(index_path)
+    except FileNotFoundError:
+        return False
+    with file_io.bind(source_path) as source:
+        before = fingerprint(source.stat())
+        content = source.read_bytes(max_bytes=max_bytes)
+        disk_header, disk_records = decode_agent_transcript_bytes(content, source_path=source_path)
+        if disk_header != header or tuple(disk_records) != records:
+            return False
+        if fingerprint(source.stat()) != before:
+            return False
+        item = project(before)
+        with file_io.bind(index_path) as target:
+            return index.upsert_rooted(item, target)
 
 
 class AgentTranscriptFileError(ValueError):
@@ -113,6 +161,7 @@ def agent_transcript_journal(
     path: Path,
     *,
     repair_partial_tail: bool = False,
+    file_io: RootedFileIO | None = None,
 ) -> JsonlJournal[ConversationHeader, AgentTranscriptRecord]:
     """Open one Conversation JSONL transcript journal."""
 
@@ -125,7 +174,8 @@ def agent_transcript_journal(
         load_policy=(
             _WRITABLE_LOAD_POLICY if repair_partial_tail else _READ_LOAD_POLICY
         ),
-        lock_factory=agent_transcript_file_lock,
+        lock_factory=agent_transcript_file_lock if file_io is None else None,
+        file_io=file_io,
     )
 
 
@@ -178,12 +228,15 @@ def load_agent_transcript_file(
     path: Path,
     *,
     max_bytes: int | None = None,
+    read_only: bool = False,
 ) -> tuple[ConversationHeader, list[AgentTranscriptRecord]]:
     target = Path(path)
+    if type(read_only) is not bool:
+        raise TypeError("read_only must be a built-in bool")
     if max_bytes is not None and (type(max_bytes) is not int or max_bytes < 1):
         raise ValueError("transcript read limit must be positive")
     try:
-        with agent_transcript_file_lock(target, "shared"):
+        with nullcontext() if read_only else agent_transcript_file_lock(target, "shared"):
             content = _read_stable_regular_file(target, max_bytes=max_bytes)
     except OSError as exc:
         raise AgentTranscriptFileError(
@@ -231,23 +284,29 @@ def decode_agent_transcript_bytes(
 
 def load_agent_transcript_header(
     path: Path, *, blocking: bool = True, create_lock: bool = True,
+    read_only: bool = False,
+    file_io: RootedFileIO | None = None,
 ) -> ConversationHeader:
-    """Read only the Conversation JSONL header without scanning the transcript."""
+    """Read a header; read_only uses a stable snapshot without creating locks."""
 
+    if type(read_only) is not bool:
+        raise TypeError("read_only must be a built-in bool")
+    if file_io is not None and not read_only:
+        raise ValueError("managed header reads require the read-only projection")
     target = Path(path)
     try:
-        lock = (
-            agent_transcript_file_lock(target, "shared")
-            if blocking is True and create_lock is True
-            else agent_transcript_file_lock(
+        lock: AbstractContextManager[None]
+        if read_only:
+            lock = nullcontext()
+        elif blocking is True and create_lock is True:
+            lock = agent_transcript_file_lock(target, "shared")
+        else:
+            lock = agent_transcript_file_lock(
                 target, "shared", blocking=blocking, create_lock=create_lock,
             )
-        )
         with lock:
-            prefix = _read_stable_regular_prefix(
-                target,
-                max_bytes=_MAX_HEADER_BYTES,
-            )
+            prefix = (file_io.read_prefix(target, _MAX_HEADER_BYTES) if file_io is not None
+                      else _read_stable_regular_prefix(target, max_bytes=_MAX_HEADER_BYTES))
             line_bytes = next(
                 (line for line in prefix.splitlines() if line.strip()),
                 b"",
@@ -318,9 +377,13 @@ class AgentTranscriptFileLayout:
     root: Path
     filename_for_key: FilenameForKey | None = None
     _known_paths: dict[ConversationKey, Path] = field(default_factory=dict)
+    file_io: RootedFileIO | None = None
 
     def __post_init__(self) -> None:
-        self.root = _absolute_path_preserving_leaf(self.root)
+        if self.file_io is None:
+            self.root = _absolute_path_preserving_leaf(self.root)
+        elif self.root != self.file_io.root:
+            raise ValueError("managed transcript layout must use its borrowed root")
 
     @property
     def namespace(self) -> str:
@@ -334,11 +397,29 @@ class AgentTranscriptFileLayout:
 
     def bind_path(self, key: ConversationKey, path: str | Path) -> None:
         self._require_namespace(key)
-        self._known_paths[key] = _absolute_path_preserving_leaf(path)
+        self._known_paths[key] = self._layout_path(path)
+
+    def _layout_path(self, path: str | Path) -> Path:
+        if self.file_io is None:
+            return _absolute_path_preserving_leaf(path)
+        result = Path(path)
+        if result.parent != self.root or result.name in {".", ".."}:
+            raise ValueError("managed transcript path must be a direct child")
+        return result
+
+    def _is_file(self, path: Path) -> bool:
+        if self.file_io is None:
+            return _is_regular_file_no_follow(path)
+        try:
+            self.file_io.stat(path)
+        except OSError:
+            return False
+        return True
 
     def create_path(self, key: ConversationKey) -> Path:
         self._require_namespace(key)
-        self.root.mkdir(parents=True, exist_ok=True)
+        if self.file_io is None:
+            self.root.mkdir(parents=True, exist_ok=True)
         known = self._known_paths.get(key)
         if known is not None:
             return known
@@ -347,14 +428,14 @@ class AgentTranscriptFileLayout:
             if self.filename_for_key is not None
             else _default_filename(key)
         )
-        path = self.root / filename
+        path = self._layout_path(self.root / filename)
         self._known_paths[key] = path
         return path
 
     def resolve_path(self, key: ConversationKey) -> Path | None:
         self._require_namespace(key)
         known = self._known_paths.get(key)
-        if known is not None and _is_regular_file_no_follow(known):
+        if known is not None and self._is_file(known):
             return known
         for path in self.scan_paths(key.namespace):
             try:
@@ -369,7 +450,7 @@ class AgentTranscriptFileLayout:
         return tuple(
             path
             for path in self.scan_candidate_paths(namespace)
-            if _is_conversation_jsonl_candidate(path)
+            if _is_conversation_jsonl_candidate(path, file_io=self.file_io)
         )
 
     def scan_candidate_paths(self, namespace: str) -> tuple[Path, ...]:
@@ -389,7 +470,7 @@ class AgentTranscriptFileLayout:
 
         if should_stop is not None and should_stop():
             return AgentTranscriptCandidateScan((), complete=False)
-        if namespace != self.namespace or not _is_directory_no_follow(self.root):
+        if namespace != self.namespace or (self.file_io is None and not _is_directory_no_follow(self.root)):
             return AgentTranscriptCandidateScan((), complete=True)
         if max_candidates is not None and (
             type(max_candidates) is not int or max_candidates < 0
@@ -405,6 +486,19 @@ class AgentTranscriptFileLayout:
             return AgentTranscriptCandidateScan((), complete=False)
         candidates: list[Path] = []
         complete = True
+        if self.file_io is not None:
+            names, complete = self.file_io.scan_names(limit=_MAX_DISCOVERY_DIRECTORY_ENTRIES)
+            for name in names:
+                if should_stop is not None and should_stop():
+                    complete = False
+                    break
+                path = self.root / name
+                if path.suffix == ".jsonl" and not path.name.endswith("-export.jsonl") and self._is_file(path):
+                    if len(candidates) == candidate_limit:
+                        complete = False
+                        break
+                    candidates.append(path)
+            return AgentTranscriptCandidateScan(tuple(sorted(candidates)), complete)
         try:
             with os.scandir(self.root) as entries:
                 for inspected, entry in enumerate(entries, start=1):
@@ -443,7 +537,7 @@ class AgentTranscriptFileLayout:
         scan = self.scan_candidate_path_snapshot(self.namespace)
         for path in scan.paths:
             try:
-                status = path.lstat()
+                status = path.lstat() if self.file_io is None else self.file_io.stat(path)
                 if (
                     _status_is_regular_no_follow(status)
                     and (
@@ -459,12 +553,12 @@ class AgentTranscriptFileLayout:
     def key_for_path(self, namespace: str, path: Path) -> ConversationKey:
         if namespace != self.namespace:
             raise ValueError("conversation key does not belong to this layout")
-        key = self.key(load_agent_transcript_header(path).conversation_id)
+        key = self.key(load_agent_transcript_header(path, read_only=True, file_io=self.file_io).conversation_id)
         self.bind_path(key, path)
         return key
 
     def bind_existing_path(self, path: str | Path) -> ConversationKey:
-        resolved = _absolute_path_preserving_leaf(path)
+        resolved = self._layout_path(path)
         return self.key_for_path(self.namespace, resolved)
 
     def bind_create_path(self, key: ConversationKey, path: str | Path) -> None:
@@ -486,37 +580,95 @@ class AgentTranscriptFileLayout:
 
 def create_agent_transcript_file_store(
     layout: AgentTranscriptFileLayout,
+    *,
+    read_only: bool = False,
+    operation_scope: ConversationOperationScope | None = None,
 ) -> FileConversationStore[ConversationHeader, AgentTranscriptRecord]:
     """Build the Conversation JSONL provider for an Agent transcript profile."""
+
+    snapshot_loader: Callable[[Path], JsonlSnapshot[ConversationHeader, AgentTranscriptRecord]]
+    snapshot_loader = partial(_load_agent_transcript_store_snapshot, file_io=layout.file_io)
+    if read_only:
+        snapshot_loader = partial(_load_agent_transcript_readonly_snapshot, file_io=layout.file_io)
+    elif operation_scope is not None:
+        snapshot_loader = partial(_load_agent_transcript_store_snapshot, retain_raw=True, file_io=layout.file_io)
 
     return FileConversationStore(
         create_path=layout.create_path,
         resolve_path=layout.resolve_path,
         scan_paths=layout.scan_paths,
         key_for_path=layout.key_for_path,
-        journal_factory=agent_transcript_journal,
+        journal_factory=partial(agent_transcript_journal, file_io=layout.file_io),
         write_journal_factory=lambda path: agent_transcript_journal(
             path,
             repair_partial_tail=True,
+            file_io=layout.file_io,
         ),
         record_id=lambda record: record.record_id,
         tombstone_path=layout.tombstone_path,
         head_compatibility_token=_STORE_HEAD_COMPATIBILITY_TOKEN,
-        snapshot_loader=_load_agent_transcript_store_snapshot,
-        delete_artifacts=delete_agent_transcript_index,
+        snapshot_loader=snapshot_loader,
+        scan_snapshot_loader=partial(_load_agent_transcript_readonly_snapshot, file_io=layout.file_io),
+        delete_artifacts=partial(delete_agent_transcript_index, file_io=layout.file_io),
+        read_only=read_only,
+        operation_scope=operation_scope,
+        file_io=layout.file_io,
     )
 
 
 def _load_agent_transcript_store_snapshot(
     path: Path,
+    *,
+    retain_raw: bool = False,
+    file_io: RootedFileIO | None = None,
 ) -> JsonlSnapshot[ConversationHeader, AgentTranscriptRecord]:
+    if file_io is not None:
+        with file_io.bind(path) as rooted:
+            rooted.acquire_lock(exclusive=False, suffix=DURABLE_LOCKED_JOURNAL.lock_suffix)
+            return load_agent_transcript_snapshot_with_index(
+                path,
+                strict_loader=lambda: load_jsonl(
+                    path, record_codec=_RECORD_CODEC, header_codec=_HEADER_CODEC,
+                    durability=replace(DURABLE_LOCKED_JOURNAL, locking=False),
+                    load_policy=_READ_LOAD_POLICY, bound_file=rooted,
+                ),
+                header_codec=_HEADER_CODEC,
+                record_codec=cast(ConversationJsonlRecordCodec, _RECORD_CODEC),
+                lock_factory=lambda _path, _mode: nullcontext(),
+                compatibility_token=_LOAD_INDEX_COMPATIBILITY_TOKEN,
+                retain_raw=True, read_bytes=rooted.read_bytes,
+                read_cache=lambda cache: rooted.sibling(cache.name).read_bytes(),
+                write_cache=lambda cache, payload: rooted.sibling(cache.name).atomic_write(payload),
+            )
     return load_agent_transcript_snapshot_with_index(
         path,
-        strict_loader=lambda: agent_transcript_journal(path).load(),
+        strict_loader=lambda: agent_transcript_journal(path, file_io=file_io).load(),
         header_codec=_HEADER_CODEC,
         record_codec=cast(ConversationJsonlRecordCodec, _RECORD_CODEC),
         lock_factory=agent_transcript_file_lock,
         compatibility_token=_LOAD_INDEX_COMPATIBILITY_TOKEN,
+        retain_raw=retain_raw,
+    )
+
+
+def _load_agent_transcript_readonly_snapshot(
+    path: Path, *, file_io: RootedFileIO | None = None,
+) -> JsonlSnapshot[ConversationHeader, AgentTranscriptRecord]:
+    reader = _read_stable_regular_file if file_io is None else file_io.read_bytes
+    def strict() -> JsonlSnapshot[ConversationHeader, AgentTranscriptRecord]:
+        raw = reader(path).decode(DEFAULT_JSONL_FORMAT.encoding)
+        return decode_jsonl(
+            raw, target=path, record_codec=_RECORD_CODEC,
+            header_codec=_HEADER_CODEC, load_policy=_READ_LOAD_POLICY,
+        )
+
+    return load_agent_transcript_snapshot_with_index(
+        path, strict_loader=strict, header_codec=_HEADER_CODEC,
+        record_codec=cast(ConversationJsonlRecordCodec, _RECORD_CODEC),
+        lock_factory=lambda _path, _mode: nullcontext(),
+        compatibility_token=_LOAD_INDEX_COMPATIBILITY_TOKEN,
+        write_index=False, read_bytes=lambda: reader(path),
+        read_cache=reader,
     )
 
 
@@ -554,13 +706,14 @@ def _agent_transcript_file_error(error: JournalFileError) -> AgentTranscriptFile
     return AgentTranscriptFileError(message, path=error.path, code=code)
 
 
-def _is_conversation_jsonl_candidate(path: Path) -> bool:
+def _is_conversation_jsonl_candidate(path: Path, *, file_io: RootedFileIO | None = None) -> bool:
     """Exclude other JSONL families; malformed Conversation files stay visible."""
 
-    if not _is_regular_file_no_follow(path):
+    if file_io is None and not _is_regular_file_no_follow(path):
         return False
     try:
-        prefix = _read_stable_regular_prefix(path, max_bytes=_MAX_HEADER_BYTES)
+        prefix = (file_io.read_prefix(path, _MAX_HEADER_BYTES) if file_io is not None
+                  else _read_stable_regular_prefix(path, max_bytes=_MAX_HEADER_BYTES))
         line = next((line for line in prefix.splitlines() if line.strip()), b"")
         value = json.loads(line.decode(DEFAULT_JSONL_FORMAT.encoding))
     except Exception:
@@ -608,8 +761,15 @@ def _read_stable_regular_file(
     path: Path,
     *,
     max_bytes: int | None = None,
+    expected_source_fingerprint: str | None = None,
 ) -> bytes:
     before = path.lstat()
+    fingerprint = (
+        f"stat-v1:{before.st_dev}:{before.st_ino}:{before.st_size}:"
+        f"{before.st_mtime_ns}:{before.st_ctime_ns}"
+    )
+    if expected_source_fingerprint is not None and fingerprint != expected_source_fingerprint:
+        raise OSError("transcript source identity changed before import")
     if not _status_is_regular_no_follow(before):
         raise OSError("transcript source must be a regular file")
     if max_bytes is not None and before.st_size > max_bytes:
@@ -621,6 +781,7 @@ def _read_stable_regular_file(
     flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
     flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
     descriptor, parent_descriptor = _open_file_no_follow(path, flags=flags)
+    read_error: BaseException | None = None
     try:
         opened = os.fstat(descriptor)
         if not _same_file_status(before, opened):
@@ -634,10 +795,11 @@ def _read_stable_regular_file(
             chunks.append(chunk)
             remaining -= len(chunk)
         after = os.fstat(descriptor)
+    except BaseException as exc:
+        read_error = exc
+        raise
     finally:
-        os.close(descriptor)
-        if parent_descriptor >= 0:
-            os.close(parent_descriptor)
+        _close_read_descriptors(descriptor, parent_descriptor, primary=read_error)
     current = path.lstat()
     if not _same_file_status(before, after) or not _same_file_status(before, current):
         raise OSError("transcript source changed while reading")
@@ -651,6 +813,7 @@ def _read_stable_regular_prefix(path: Path, *, max_bytes: int) -> bytes:
     flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
     flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
     descriptor, parent_descriptor = _open_file_no_follow(path, flags=flags)
+    read_error: BaseException | None = None
     try:
         opened = os.fstat(descriptor)
         if not _same_file_status(before, opened):
@@ -680,10 +843,30 @@ def _read_stable_regular_prefix(path: Path, *, max_bytes: int) -> bytes:
         ):
             raise OSError("transcript source changed while reading")
         return content
+    except BaseException as exc:
+        read_error = exc
+        raise
     finally:
-        os.close(descriptor)
-        if parent_descriptor >= 0:
-            os.close(parent_descriptor)
+        _close_read_descriptors(descriptor, parent_descriptor, primary=read_error)
+
+
+def _close_read_descriptors(descriptor: int, parent_descriptor: int, *, primary: BaseException | None = None) -> None:
+    """Attempt both closes once, preserving a pre-existing read exception."""
+    errors: list[BaseException] = []
+    for candidate in (descriptor, parent_descriptor):
+        if candidate < 0:
+            continue
+        try:
+            os.close(candidate)
+        except BaseException as exc:
+            errors.append(exc)
+    if errors:
+        if primary is not None:
+            primary.add_note("transcript reader descriptor cleanup failed")
+        else:
+            if len(errors) > 1:
+                errors[0].add_note("another transcript reader descriptor cleanup failed")
+            raise errors[0]
 
 
 def _has_complete_nonblank_line(content: bytes) -> bool:
@@ -694,6 +877,8 @@ def _has_complete_nonblank_line(content: bytes) -> bool:
 
 
 def _open_file_no_follow(path: Path, *, flags: int) -> tuple[int, int]:
+    # A regular-file lstat can race a FIFO replacement before open.
+    flags |= getattr(os, "O_NONBLOCK", 0)
     directory_flag = getattr(os, "O_DIRECTORY", 0)
     if os.name != "nt" and directory_flag:
         parent_flags = os.O_RDONLY | directory_flag
@@ -701,8 +886,8 @@ def _open_file_no_follow(path: Path, *, flags: int) -> tuple[int, int]:
         parent = os.open(path.parent, parent_flags)
         try:
             return os.open(path.name, flags, dir_fd=parent), parent
-        except BaseException:
-            os.close(parent)
+        except BaseException as exc:
+            _close_read_descriptors(-1, parent, primary=exc)
             raise
     return os.open(path, flags), -1
 

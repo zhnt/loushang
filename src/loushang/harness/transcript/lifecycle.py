@@ -9,19 +9,32 @@ from __future__ import annotations
 
 import asyncio
 import os
-from collections.abc import Awaitable, Callable, Sequence
+import sys
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Sequence
+from contextlib import (
+    AbstractAsyncContextManager,
+    AbstractContextManager,
+    asynccontextmanager,
+    contextmanager,
+)
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Generic, TypeVar
+from threading import Event
+from typing import TYPE_CHECKING, Generic, Protocol, TypeVar
 from uuid import uuid4
 
-from loushang.harness.artifacts import SessionBlobHealth, session_blob_authority_id
+from loushang.harness.artifacts import (
+    SessionBlobHealth,
+    SessionBlobRef,
+    session_blob_authority_id,
+)
 from loushang.harness.conversation import (
     ConversationHeader,
     ConversationKey,
     ConversationStore,
     StoreNotFoundError,
 )
+from loushang.harness.conversation.store import ConversationOperationScope
 from loushang.harness.transcript.jsonl_file import (
     AgentTranscriptFileLayout,
     create_agent_transcript_file_store,
@@ -41,16 +54,54 @@ from loushang.harness.transcript.types import AgentTranscriptRecord
 from loushang.harness.transcript.unit_of_work import AgentTranscriptUnitOfWork
 
 if TYPE_CHECKING:
+    from loushang.harness.journal._rooted_io import RootedFileIO
     from loushang.harness.runtime import RuntimeProfileSnapshot
     from loushang.harness.transcript.compaction import (
         AgentTranscriptCompactionCapability,
     )
+    from loushang.harness.transcript.writer_lease import TranscriptWriterLease
+    from loushang.harness.transcript.writer_lifecycle import TranscriptWriterPreparation
 
 BindingInputT = TypeVar("BindingInputT")
 ProductBindingT = TypeVar("ProductBindingT")
 
 IdFactory = Callable[[], str]
 AsyncDisposer = Callable[[], Awaitable[None]]
+
+
+@dataclass(frozen=True)
+class AgentTranscriptBindingOwner:
+    """Binding-time projections of an existing owner, not another lifetime."""
+
+    retain_disposer: Callable[[AsyncDisposer], None]
+    operation_scope: ConversationOperationScope
+    file_io: RootedFileIO | None = None
+
+    def __call__(self, disposer: AsyncDisposer) -> None:
+        self.retain_disposer(disposer)
+
+
+class _WriterLifecycleOwner(Protocol):
+    def _mark_import_delivered(self) -> None: ...
+
+    @property
+    def blob_file_io(self) -> RootedFileIO | None: ...
+
+    @property
+    def transcript_file_io(self) -> RootedFileIO | None: ...
+
+    @property
+    def closing(self) -> bool: ...
+
+    def _operation_scope(
+        self, target: ConversationKey | str,
+    ) -> AbstractAsyncContextManager[None]: ...
+
+    def _sync_operation_scope(
+        self, target: ConversationKey | str,
+    ) -> AbstractContextManager[None]: ...
+
+    async def _dispose_bound_resources(self) -> None: ...
 
 
 @dataclass(frozen=True)
@@ -101,6 +152,7 @@ class AgentTranscriptLifecycleSession(Generic[ProductBindingT]):
     label_timestamps_by_target_id: dict[str, str]
     session_blob_health: tuple[SessionBlobHealth, ...] = ()
     _disposed: bool = field(default=False, init=False, repr=False)
+    _writer_owner: _WriterLifecycleOwner | None = field(default=None, init=False, repr=False)
     _ownership_state: str = field(default="root_owned", init=False, repr=False)
     _dispose_lock: asyncio.Lock = field(
         default_factory=asyncio.Lock, init=False, repr=False
@@ -110,12 +162,49 @@ class AgentTranscriptLifecycleSession(Generic[ProductBindingT]):
     def product_binding(self) -> ProductBindingT:
         return self.runtime_binding.product_binding
 
+    def _mark_import_delivered(self) -> None:
+        if self._writer_owner is not None:
+            self._writer_owner._mark_import_delivered()
+
     @property
     def ownership_state(self) -> str:
         return self._ownership_state
 
+    @property
+    def blob_file_io(self) -> RootedFileIO | None:
+        """Borrowed storage projection; callers must enter operation_scope."""
+        return self._writer_owner.blob_file_io if self._writer_owner is not None else None
+
+    @property
+    def transcript_file_io(self) -> RootedFileIO | None:
+        """Borrow the original transcript port inside operation_scope only."""
+        return self._writer_owner.transcript_file_io if self._writer_owner is not None else None
+
+    @asynccontextmanager
+    async def operation_scope(self) -> AsyncIterator[None]:
+        """Keep Product-side effects inside the existing writer lifetime.
+
+        This is admission/drain, not authorization of additional storage roots.
+        Legacy unowned bindings retain their existing behavior. Nested Store
+        calls must still acquire their own admission and respect closing.
+        """
+        if self._writer_owner is None:
+            yield
+        else:
+            async with self._writer_owner._operation_scope(self.runtime_binding.key):
+                yield
+
+    @contextmanager
+    def sync_operation_scope(self) -> Iterator[None]:
+        """Borrow the same admission for synchronous, owning-loop consumers."""
+        if self._writer_owner is None:
+            yield
+        else:
+            with self._writer_owner._sync_operation_scope(self.runtime_binding.key):
+                yield
+
     def _begin_graph_construction(self) -> None:
-        if self._ownership_state != "root_owned":
+        if self._ownership_state != "root_owned" or (self._writer_owner is not None and self._writer_owner.closing):
             raise RuntimeError("transcript candidate is not root-owned")
         self._ownership_state = "graph_constructing"
 
@@ -156,13 +245,20 @@ class AgentTranscriptLifecycleSession(Generic[ProductBindingT]):
                 raise RuntimeError(
                     "transcript candidate ownership changed during disposal"
                 )
-            await self.runtime_binding.dispose()
+            if self._writer_owner is None:
+                await self.runtime_binding.dispose()
+            else:
+                await self._writer_owner._dispose_bound_resources()
             self._ownership_state = "disposed"
             self._disposed = True
 
 
 RuntimeBinder = Callable[
     [AgentTranscriptLifecycleContext, BindingInputT],
+    Awaitable[AgentTranscriptRuntimeBinding[ProductBindingT]],
+]
+OwnedRuntimeBinder = Callable[
+    [AgentTranscriptLifecycleContext, BindingInputT, AgentTranscriptBindingOwner],
     Awaitable[AgentTranscriptRuntimeBinding[ProductBindingT]],
 ]
 HeaderLoader = Callable[[Path], ConversationHeader]
@@ -184,14 +280,78 @@ class AgentTranscriptLifecycle(Generic[BindingInputT, ProductBindingT]):
         self,
         *,
         bind_runtime: RuntimeBinder[BindingInputT, ProductBindingT],
+        bind_runtime_owned: OwnedRuntimeBinder[BindingInputT, ProductBindingT] | None = None,
         header_loader: HeaderLoader = load_agent_transcript_header,
         snapshot_loader: SnapshotLoader = load_agent_transcript_file,
         id_factory: IdFactory | None = None,
     ) -> None:
         self._bind_runtime = bind_runtime
+        self._bind_runtime_owned = bind_runtime_owned
         self._header_loader = header_loader
         self._snapshot_loader = snapshot_loader
         self._id_factory = id_factory or _default_id
+
+    def prepare_owned_writer(
+        self, context: AgentTranscriptLifecycleContext, binding_input: BindingInputT, *,
+        product_id: str, records: Sequence[AgentTranscriptRecord] = (),
+        leaf_id: str | None = None, defer_materialization: bool = True,
+        manage_blobs: bool = False,
+        initial_blobs: Sequence[tuple[SessionBlobRef, bytes]] = (),
+        create_root: bool = False,
+        expected_root_identity: tuple[int, int] | None = None,
+        expected_parent_identity: tuple[int, int] | None = None,
+        store_state_root: Path | None = None,
+        initialize_store: bool = False,
+        store_root_observed: Event | None = None,
+    ) -> TranscriptWriterPreparation[BindingInputT, ProductBindingT]:
+        """Purely prepare acquisition; callers retain this before the first await.
+
+        The same preparation owns even a failed acquire before claim. Its
+        retained driver, not the factory, performs acquire/borrow/claim.
+        Optional root creation is create-only and chooses no default paths.
+        """
+        from loushang.harness.transcript.writer_lifecycle import (
+            TranscriptWriterPreparation,
+        )
+
+        return TranscriptWriterPreparation(
+            self, context, binding_input, writer=None, product_id=product_id,
+            records=records, leaf_id=leaf_id, defer_materialization=defer_materialization,
+            manage_blobs=manage_blobs,
+            initial_blobs=initial_blobs,
+            create_root=create_root,
+            expected_root_identity=expected_root_identity, expected_parent_identity=expected_parent_identity,
+            store_state_root=store_state_root, initialize_store=initialize_store,
+            store_root_observed=store_root_observed,
+        )
+
+    def prepare_writer(
+        self, context: AgentTranscriptLifecycleContext, binding_input: BindingInputT, *,
+        writer: TranscriptWriterLease, product_id: str,
+        records: Sequence[AgentTranscriptRecord] = (), leaf_id: str | None = None,
+        defer_materialization: bool = True,
+        manage_blobs: bool = False,
+    ) -> TranscriptWriterPreparation[BindingInputT, ProductBindingT]:
+        """Claim an already held writer for an explicit, retained construction.
+
+        Only direct-root persistent contexts and pure binding inputs are valid.
+        The trusted binder must map this key to the claimed physical root.
+        ``manage_blobs`` adds a second lifetime writer for the shared data root;
+        it does not automatically wire existing pathname-based blob consumers.
+        Default create/restore and Product factories are not activated here.
+        """
+        from loushang.harness.transcript.writer_lifecycle import (
+            TranscriptWriterPreparation,
+        )
+
+        owner = TranscriptWriterPreparation(
+            self, context, binding_input, writer=writer, product_id=product_id,
+            records=records, leaf_id=leaf_id, defer_materialization=defer_materialization,
+            manage_blobs=manage_blobs,
+        )
+        writer._claim(owner, root=context.session_dir, product_id=product_id,
+                      conversation_id=context.header.conversation_id)
+        return owner
 
     def new_context(
         self,
@@ -342,12 +502,28 @@ class AgentTranscriptLifecycle(Generic[BindingInputT, ProductBindingT]):
         )
 
 
+class TranscriptDeletionOwner(Protocol):
+    """Caller-retained maintenance authority, including failed cleanup debt."""
+
+    async def delete_transcript(
+        self, session_file: str | Path, *, current_session_file: str | Path | None = None,
+    ) -> bool: ...
+
+
 async def delete_agent_transcript_jsonl(
     session_file: str | Path,
     *,
     current_session_file: str | Path | None = None,
+    maintenance_owner: TranscriptDeletionOwner | None = None,
 ) -> bool:
-    """Delete one Conversation JSONL file after protecting the active transcript."""
+    """Delete through retained maintenance; Linux requires explicit ownership."""
+
+    if maintenance_owner is not None:
+        return await maintenance_owner.delete_transcript(
+            session_file, current_session_file=current_session_file,
+        )
+    if sys.platform == "linux":
+        raise ValueError("Linux transcript deletion requires a retained maintenance_owner")
 
     target = Path(session_file).expanduser()
     if current_session_file is not None and same_agent_transcript_session_path(
@@ -375,6 +551,8 @@ def _lifecycle_session(
     context: AgentTranscriptLifecycleContext,
     transcript: AgentTranscriptUnitOfWork,
     runtime_binding: AgentTranscriptRuntimeBinding[ProductBindingT],
+    *,
+    blob_file_io: RootedFileIO | None = None,
 ) -> AgentTranscriptLifecycleSession[ProductBindingT]:
     labels_by_target_id, label_timestamps_by_target_id = (
         build_agent_transcript_label_indexes(transcript.records)
@@ -389,6 +567,8 @@ def _lifecycle_session(
             session_dir=context.session_dir,
             session_id=context.header.conversation_id,
             records=transcript.records,
+            file_io=blob_file_io,
+            read_only=not context.persist,
         ),
     )
 

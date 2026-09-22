@@ -5,7 +5,8 @@ from __future__ import annotations
 import base64
 import binascii
 import hashlib
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 from typing import cast
 
@@ -43,17 +44,28 @@ class SessionModelInputBlobCodec:
         store: SessionBlobStore,
         *,
         references: Sequence[SessionBlobRef] | None = None,
+        operation_scope: Callable[[], AbstractContextManager[None]] | None = None,
     ) -> None:
         if not isinstance(store, SessionBlobStore):
             raise TypeError("Model Input blob codec requires SessionBlobStore")
         self._store = store
         self._references = tuple(references) if references is not None else None
+        self._operation_scope = nullcontext if operation_scope is None else operation_scope
 
     def externalize_mapping(
         self,
         value: Mapping[str, JSONValue],
         *,
         binary_fields: Sequence[PreparedRequestBinaryField] | None = None,
+    ) -> ProjectedModelInputMapping:
+        with self._operation_scope():
+            return self._externalize_mapping(value, binary_fields=binary_fields)
+
+    def _externalize_mapping(
+        self,
+        value: Mapping[str, JSONValue],
+        *,
+        binary_fields: Sequence[PreparedRequestBinaryField] | None,
     ) -> ProjectedModelInputMapping:
         references = self._image_references()
         prepared_fields = (
@@ -82,12 +94,13 @@ class SessionModelInputBlobCodec:
         self,
         value: Mapping[str, JSONValue],
     ) -> dict[str, JSONValue]:
-        hydrated = _hydrate_value(dict(value), self._store)
-        if not isinstance(hydrated, dict):  # pragma: no cover - root is a mapping
-            raise ModelInputBinaryProjectionError(
-                "projected Model Input root changed shape"
-            )
-        return cast(dict[str, JSONValue], hydrated)
+        with self._operation_scope():
+            hydrated = _hydrate_value(dict(value), self._store)
+            if not isinstance(hydrated, dict):  # pragma: no cover - root is a mapping
+                raise ModelInputBinaryProjectionError(
+                    "projected Model Input root changed shape"
+                )
+            return cast(dict[str, JSONValue], hydrated)
 
     def _image_references(self) -> dict[str, tuple[SessionBlobRef, ...]]:
         """Index image metadata by digest without materializing their bytes."""
@@ -354,6 +367,8 @@ def _hydrate_blob_marker(value: JSONValue, store: SessionBlobStore) -> str:
         )
     try:
         payload = store.read_bytes(matches[0])
+    except BlockingIOError:
+        raise  # Contention is not an integrity failure.
     except (OSError, ValueError) as error:
         raise ModelInputBinaryProjectionError(
             "Model Input image blob failed integrity verification"

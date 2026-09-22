@@ -22,6 +22,7 @@ from loushang.harness.artifacts import (
     SessionBlobRef,
     SessionBlobStore,
 )
+from loushang.harness.conversation import StoreCommitOutcomeUnknown
 from loushang.harness.transcript.types import ApplicationMessage, SessionImagePart
 
 DEFAULT_SESSION_IMAGE_CONTEXT_BYTES = 64 * 1024 * 1024
@@ -172,6 +173,9 @@ def hydrate_session_message_images(
                     text=f"[Image omitted: context budget exceeded: {part.blob.logical_name}]",
                 )
             )
+        except BlockingIOError:
+            # A contended retained authority is not a missing/corrupt image.
+            raise
         except (OSError, ValueError):
             hydrated.append(
                 TextPart(
@@ -187,9 +191,17 @@ def hydrate_session_message_images(
 def rollback_externalized_session_images(
     externalized: ExternalizedSessionImages,
     error: BaseException,
+    *,
+    transcript_changed: bool = False,
 ) -> None:
     publication = externalized.publication
     if publication is None:
+        return
+    if transcript_changed or isinstance(error, StoreCommitOutcomeUnknown):
+        # Retaining possibly referenced bytes is safer than making a durable
+        # transcript unreadable. A failed observer is not a failed commit, and a
+        # failed retry cannot establish that the original write did not happen.
+        error.add_note("session images retained: transcript commit may have completed")
         return
     try:
         publication.rollback()
