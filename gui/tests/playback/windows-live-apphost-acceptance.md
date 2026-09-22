@@ -20,7 +20,9 @@ pnpm --dir gui run accept:live-native
 The launcher created separate `gui-desktop-acceptance` and
 `desktop-acceptance-peer` muxes with real Coding Sessions. The GUI received the
 connection-record root and GUI mux name only as native process arguments. The
-model transport was a fail-fast synthetic transport and was not invoked.
+model transport is a deterministic process-local synthetic stream. It emits one
+fixed assistant response for presentation acceptance and performs no network or
+provider call.
 
 ## Observed window
 
@@ -74,8 +76,21 @@ listener that publishes a new private connection record. It then verifies that:
 - normal window close releases the replacement attachment.
 
 The result evidence records `transportReconnectObserved` and
-`freshSnapshotReattached` as true. No send, approval or other mutation is
-automatically replayed.
+`freshSnapshotReattached` as true. The updated run additionally records
+`liveProjectionTriggered` after one deterministic real Coding execution. No
+send, approval or other mutation is automatically replayed.
+
+## Live presentation projection
+
+Validated authoritative snapshots are projected into transcript records, one
+bounded streaming draft, Session status and a separate expandable execution
+summary. The summary exposes only execution-contract facts: identity, state,
+revision, interrupt request, source observation, final cursor and transcript
+truncation. It is not presented as a Task. Inactive Session snapshot advances
+set an unread marker, while disconnected Sessions display their last state as
+stale without continuing the running animation. Tests cover streaming-to-final
+replacement, two-member rounds, inactive-Session unread state and malformed
+transcript/execution rejection.
 
 ## Still pending
 

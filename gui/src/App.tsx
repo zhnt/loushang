@@ -319,6 +319,7 @@ export function HarnessGui({ client }: HarnessGuiProps) {
                     <p>{message.content || "Waiting for output…"}</p>
                   </article>
                 ))}
+                {selected.execution ? <ExecutionDetail execution={selected.execution} /> : null}
                 {selected.run && tasksAvailable ? (
                   <RunActivity
                     run={selected.run}
@@ -474,7 +475,7 @@ function Sidebar({ state, bridgeProbe, onSelect, onToggleWorkspace, onUnavailabl
         {!hasCapability(state, "workspace") ? <>
           <UnavailablePanel label="workspace capability (missing, unavailable or incompatible)" />
           {state.remote.sessionOrder.map((id) => <SessionButton key={id} session={state.remote.sessions[id]}
-            selected={id === state.local.selectedSessionId} unread={Boolean(state.local.unread[id])} onSelect={() => onSelect(id)} />)}
+            stale={isStale(state)} selected={id === state.local.selectedSessionId} unread={Boolean(state.local.unread[id])} onSelect={() => onSelect(id)} />)}
         </> : state.remote.workspaceOrder.map((workspaceId) => {
           const workspace = state.remote.workspaces[workspaceId];
           const sessions = state.remote.sessionOrder
@@ -500,6 +501,7 @@ function Sidebar({ state, bridgeProbe, onSelect, onToggleWorkspace, onUnavailabl
                     <SessionButton
                       key={session.id}
                       session={session}
+                      stale={isStale(state)}
                       selected={session.id === state.local.selectedSessionId}
                       unread={Boolean(state.local.unread[session.id])}
                       onSelect={() => onSelect(session.id)}
@@ -517,7 +519,7 @@ function Sidebar({ state, bridgeProbe, onSelect, onToggleWorkspace, onUnavailabl
             const session = state.remote.sessions[sessionId];
             return session ? (
               <button className="recent-session" type="button" key={sessionId} onClick={() => onSelect(sessionId)}>
-                <span>{session.title}</span><StatusMark status={session.status} />
+                <span>{session.title}</span><StatusMark status={session.status} stale={isStale(state)} />
               </button>
             ) : null;
           })}
@@ -538,33 +540,64 @@ function VcsBadge({ workspace }: { readonly workspace: WorkspaceSummary }) {
   return <span className={`vcs-badge ${workspace.vcs.kind}`}>{workspace.vcs.kind} · {workspace.vcs.label}</span>;
 }
 
-function SessionButton({ session, selected, unread, onSelect }: {
+function SessionButton({ session, selected, unread, stale, onSelect }: {
   readonly session: SessionSnapshot;
   readonly selected: boolean;
   readonly unread: boolean;
+  readonly stale: boolean;
   readonly onSelect: () => void;
 }) {
+  const label = stale ? `Stale · was ${statusLabel(session.status)}` : statusLabel(session.status);
   return (
     <button
       className={`session-item${selected ? " selected" : ""}`}
       type="button"
       aria-current={selected ? "page" : undefined}
-      aria-label={`${session.title} · ${statusLabel(session.status)}`}
+      aria-label={`${session.title} · ${label}`}
       onClick={onSelect}
     >
       <span className="session-title">{session.title}</span>
-      <StatusMark status={session.status} />
+      <StatusMark status={session.status} stale={stale} />
       {unread ? <span className="unread-dot" aria-label="Unread updates" /> : null}
     </button>
   );
 }
 
-function StatusMark({ status }: { readonly status: SessionSnapshot["status"] }) {
+function StatusMark({ status, stale = false }: {
+  readonly status: SessionSnapshot["status"];
+  readonly stale?: boolean;
+}) {
+  const label = stale ? `Stale · was ${statusLabel(status)}` : statusLabel(status);
   return (
-    <span className={`status-mark ${status}`} title={statusLabel(status)}>
-      <span className="status-glyph" aria-hidden="true">{status === "running" ? "◌" : status === "waiting" ? "!" : status === "failed" ? "×" : ""}</span>
-      <span className="sr-only">{statusLabel(status)}</span>
+    <span className={`status-mark ${status}${stale ? " stale" : ""}`} title={label}>
+      <span className="status-glyph" aria-hidden="true">{stale ? "–" : status === "running" ? "◌" : status === "waiting" ? "!" : status === "failed" ? "×" : ""}</span>
+      <span className="sr-only">{label}</span>
     </span>
+  );
+}
+
+function isStale(state: GuiState): boolean {
+  return state.remote.connection === "disconnected" || state.remote.connection === "resync-required";
+}
+
+function ExecutionDetail({ execution }: {
+  readonly execution: NonNullable<SessionSnapshot["execution"]>;
+}) {
+  return (
+    <details className="execution-detail" aria-label="Live execution details">
+      <summary>
+        <span className={`run-indicator ${execution.status}`} aria-hidden="true">◌</span>
+        <strong>Execution {execution.status}</strong>
+        <span>revision {execution.revision}</span>
+      </summary>
+      <dl>
+        <dt>Execution</dt><dd><code>{execution.id}</code></dd>
+        <dt>Source</dt><dd>{execution.sourceStatus ?? "not observed"}</dd>
+        <dt>Final cursor</dt><dd>{execution.finalCursor ?? "not terminal"}</dd>
+        <dt>Interrupt</dt><dd>{execution.interruptRequested ? "requested" : "not requested"}</dd>
+        <dt>Transcript</dt><dd>{execution.truncated ? "truncated" : "complete snapshot"}</dd>
+      </dl>
+    </details>
   );
 }
 

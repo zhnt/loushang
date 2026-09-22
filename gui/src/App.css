@@ -91,6 +91,7 @@ button:focus-visible, textarea:focus-visible { outline: 2px solid rgba(117, 85, 
 .session-title { overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
 .status-mark { min-width: 16px; display: inline-grid; place-items: center; color: #888b8e; font-size: 13px; }
 .status-mark.running .status-glyph { color: var(--accent); animation: spin 1.25s linear infinite; }
+.status-mark.stale .status-glyph { color: var(--muted); animation: none; }
 .status-mark.waiting .status-glyph { color: #ba7b18; font-weight: 800; }
 .status-mark.failed .status-glyph { color: var(--red); }
 .unread-dot { position: absolute; top: 7px; right: 2px; width: 5px; height: 5px; border-radius: 50%; background: var(--blue); }
@@ -135,6 +136,12 @@ button:focus-visible, textarea:focus-visible { outline: 2px solid rgba(117, 85, 
 .activity-summary strong { overflow: hidden; color: #5e6266; font-size: 13px; font-weight: 570; text-overflow: ellipsis; white-space: nowrap; }
 .activity-summary small { margin-top: 3px; color: #a0a2a4; font-size: 12px; }
 .run-indicator.running { color: var(--accent); animation: spin 1.25s linear infinite; }
+.execution-detail { margin: 10px 0; border-block: 1px solid var(--border); padding: 10px 0; color: var(--text); }
+.execution-detail summary { display: grid; grid-template-columns: 18px 1fr auto; align-items: center; gap: 8px; cursor: pointer; }
+.execution-detail summary span:last-child { color: var(--muted); font-size: 11px; }
+.execution-detail dl { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 7px 12px; margin: 12px 26px 2px; font-size: 12px; }
+.execution-detail dt { color: var(--muted); }
+.execution-detail dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .activity-list { display: grid; gap: 9px; margin: 0; padding: 0 1px 12px 28px; list-style: none; }
 .activity-list li { display: grid; grid-template-columns: 23px minmax(0, 1fr) auto; align-items: start; gap: 5px; color: #a0a2a4; font-size: 12px; }
 .activity-list li > div { min-width: 0; display: grid; gap: 3px; }

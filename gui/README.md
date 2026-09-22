@@ -172,6 +172,18 @@ The same fail-closed reducer behavior is now connected to the live adapter. The
 fixture keeps an explicit manual recovery control; the native live path requests
 a new connection epoch and authoritative snapshot automatically.
 
+Accepted live snapshots now project transcript records, bounded assistant draft,
+Session running/failed/interrupted status and the current execution identity,
+revision, source observation, interrupt flag and truncation state. Execution
+details are expandable in the central transcript. A final authoritative snapshot
+replaces the draft rather than appending a duplicate message. Snapshot advances
+for an inactive Session set its unread marker; selecting that Session clears it.
+Disconnected and resync-required Sessions retain the last evidence but display it
+as stale and stop the running animation. `ExecutionProjection` is deliberately
+separate from `RunProjection`: the current execution contract does not contain
+Task, Activity or AgentRun facts, so their live capabilities remain unavailable
+instead of being inferred from transcript text.
+
 Dock tab, open/closed state, Task selection, AgentRun selection and transcript
 scroll offset are retained
 per Session context during navigation and same-context snapshot replacement.

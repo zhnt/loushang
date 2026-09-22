@@ -111,7 +111,9 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     }} />);
     await screen.findByRole("heading", { name: "GUI development" });
     expect(screen.getByRole("button", { name: "Interrupt" })).toBeDisabled();
-    await user.click(screen.getByRole("button", { name: "Operational ontology · Idle" }));
+    expect(screen.queryByRole("button", { name: "GUI development · Running" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "GUI development · Stale · was Running" })).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Operational ontology · Stale · was Idle" }));
     const input = screen.getByRole("textbox", { name: "Message for Operational ontology" });
     await user.type(input, "Keep this draft");
     await user.keyboard("{Control>}{Enter}{/Control}");
@@ -123,6 +125,7 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
   });
 
   it("keeps a live snapshot visibly read-only and hides fixture controls", async () => {
+    const user = userEvent.setup();
     const fixture = createMockAppClient();
     const snapshot = await fixture.snapshot();
     render(<HarnessGui client={{
@@ -132,14 +135,24 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
         source: { kind: "live", serviceInstanceId: "service-live", muxSpaceId: "mux-live", connectionEpoch: "1" },
         capabilities: snapshot.capabilities.map((capability) => ({
           ...capability,
-          availability: capability.name === "tasks" || capability.name === "agents" ? "live" : "unavailable",
-          version: capability.name === "tasks" || capability.name === "agents" ? "loushang.execution/v1" : null,
+          availability: "unavailable",
+          version: null,
         })),
-        sessions: snapshot.sessions.map((session) => ({
+        sessions: snapshot.sessions.map((session, index) => ({
           ...session,
           context: { ...session.context, source: "live" },
           changeSet: null,
           documents: [],
+          run: null,
+          execution: index === 0 ? {
+            id: "execution-live-1",
+            status: "running" as const,
+            revision: 3,
+            interruptRequested: false,
+            sourceStatus: "running" as const,
+            finalCursor: null,
+            truncated: false,
+          } : null,
         })),
       }),
       subscribe: () => () => undefined,
@@ -150,6 +163,9 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(screen.queryByLabelText("Fixture playback controls")).not.toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Message for GUI development" })).toBeDisabled();
     expect(screen.getByText("Live · read-only")).toBeVisible();
+    await user.click(screen.getByText("Execution running"));
+    expect(screen.getByText("execution-live-1")).toBeVisible();
+    expect(screen.queryByRole("button", { name: /Step 1/ })).not.toBeInTheDocument();
   });
 
   it("navigates three Workspace kinds and preserves per-Session drafts", async () => {
