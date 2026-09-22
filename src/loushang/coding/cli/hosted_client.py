@@ -160,6 +160,7 @@ class CodingHostedTuiCommandV1:
             MuxReadV1,
             MuxSelectorV1,
         )
+        from loushang.harnesstui.conversation.theme import terminal_transcript_theme
         from loushang.harnesstui.mux.shell import HostedMuxShellV1
 
         self._admit_next()
@@ -185,6 +186,7 @@ class CodingHostedTuiCommandV1:
             scopes=tuple((scope.scope, scope.fingerprint) for scope in self._launch.scopes),
             discovery_client=discovery, close_timeout=20,
             exit_ends_application=True,
+            transcript_theme=terminal_transcript_theme(),
         )
 
     async def run(self, *, stdin: TextIO, stdout: TextIO) -> int:

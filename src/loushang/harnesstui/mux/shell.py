@@ -10,6 +10,7 @@ from typing import TypeVar
 
 from loushang.appserver.client import AppClientV1, SessionDiscoveryClientV1
 from loushang.appserver.protocol import (
+    AckV1,
     AppErrorCodeV1,
     AppServiceError,
     InteractionOutcomeV1,
@@ -18,16 +19,20 @@ from loushang.appserver.protocol import (
     MuxSelectorV1,
     SessionOpenSpecV1,
     SessionScopeV1,
-    TurnInterruptV1,
-    TurnTextV1,
 )
 from loushang.tui import Composer
-from loushang.tui.input import InputEvent, InputRouter
+from loushang.tui.completion import SlashCommand, SlashCommandCompletionProvider
+from loushang.tui.input import InputEvent
+from loushang.tui.theme import ThemeResolver
 
+from ..conversation.input import ConversationInputRouter
+from ..conversation.input_policy import ConversationCapabilities, ConversationOperation
 from ._shell_screen import HostedMuxScreenV1, safe_text
 from ._shell_tasks import ShellActions, join, owned_task
 from .controller import HostedMuxControllerV1
+from .conversation_binding import ConversationMode, submit_hosted_conversation_action
 from .model import HarnessWindowState, HostedMuxState
+from .projection import project_capabilities
 from .reducer import select_next, select_previous, select_window, set_active_draft
 from .session_picker import SessionPickerV1
 
@@ -53,6 +58,7 @@ class HostedMuxShellV1:
         close_timeout: float = 5.0,
         discovery_client: SessionDiscoveryClientV1 | None = None,
         exit_ends_application: bool = False,
+        transcript_theme: ThemeResolver | None = None,
     ) -> None:
         if (
             type(exit_ends_application) is not bool
@@ -71,6 +77,11 @@ class HostedMuxShellV1:
         self._controller = HostedMuxControllerV1(client, selector=selector)
         self._actions = ShellActions(self._failed)
         self._editors: dict[tuple[str, str, str], Composer] = {}
+        self._completion = SlashCommandCompletionProvider(tuple(SlashCommand(name) for name in (
+            "help", "question", "refresh", "sessions", "resume", "new", "close",
+            "steer", "followup", "approve", "deny", "interrupt", "detach", "exit",
+        )))
+        self._completion_capabilities: ConversationCapabilities | None = None
         self.picker = SessionPickerV1(
             discovery_client,
             actions=self._actions,
@@ -86,11 +97,16 @@ class HostedMuxShellV1:
         self._timeout = close_timeout
         self._closing = self._settled = self._membership_pending = False
         self._prefix = False
+        self._request_serial = 0
         self.notice = "cwd / user_home: /new <scope>; /help"
         self.exit_requested = False
         self.exit_code = 0
-        self.screen = HostedMuxScreenV1(self)
-        self._router = InputRouter(composer=self.screen.composer)
+        self.screen = HostedMuxScreenV1(self, transcript_theme=transcript_theme)
+        self._router = ConversationInputRouter(
+            app=self.screen, should_exit=lambda _: False,
+            is_local_command=lambda text: text.startswith("/") and not text.startswith("//"),
+            submission_presentation="deferred",
+        )
 
     @property
     def state(self) -> HostedMuxState:
@@ -130,6 +146,7 @@ class HostedMuxShellV1:
         if self._closing or self.exit_requested or event.event_type == "release":
             return
         try:
+            self.refresh_capability_completions()
             self._handle(event)
         except AppServiceError as error:
             self.notice = error.code.value
@@ -177,6 +194,8 @@ class HostedMuxShellV1:
                 select_window(self.state, int(choice) - 1)
                 self._sync_editor()
             return
+        if self.picker.handle(event) or self.screen.handle_details(event):
+            return
         if key == "ctrl+d" and not self.screen.composer.value:
             self.exit_requested = True
             return
@@ -196,15 +215,8 @@ class HostedMuxShellV1:
             self.picker.dismiss()
             self.screen.show_approval()
             return
-        if key == "ctrl+c":
-            self._command("/interrupt")
-            return
-        if self.picker.handle(event):
-            return
         if key in {"tab", "shift+tab"} and not self.screen.composer.has_completions:
             self._select(key == "tab")
-            return
-        if self.screen.handle_details(event):
             return
         if key in {"pageUp", "pageDown"}:
             window = self.state.active_window
@@ -219,17 +231,6 @@ class HostedMuxShellV1:
                 )
                 window.scroll_anchor = None if end == len(window.records) else end
             return
-        if key == "enter":
-            text = self.screen.composer.value
-            if not text:
-                return
-            if text.startswith("/") and not text.startswith("//"):
-                self._command(text)
-            else:
-                self._turn(text[1:] if text.startswith("//") else text)
-            self._set_draft("")
-            self.screen.composer.clear()
-            return
         if self._membership_pending and self.state.active_window is None:
             self.notice = "member_pending: wait for the first Session"
             return
@@ -238,12 +239,28 @@ class HostedMuxShellV1:
             text = safe_text(event.text)
             self._check_draft(before + text)
             event = InputEvent(kind=event.kind, text=text)
-        self._router.route(event)
+        window = self.state.active_window
+        # Rendering is not an authority barrier; route against the current
+        # remote run fact even when no frame has been drawn since it changed.
+        self.screen.state.active_started_at = 0.0 if window is not None and window.running else None
+        result = self._router.handle(event)
         try:
             self._set_draft(self.screen.composer.value)
         except ValueError:
             self.screen.composer.set_text(before)
             raise
+        if result.kind == "local":
+            self._command(result.text)
+        elif result.kind == "prompt" or result.kind == "steer" or result.kind == "follow_up":
+            text = result.text
+            self._turn(text[1:] if text.startswith("//") else text,
+                       mode="start" if result.kind == "prompt" else "steer" if result.kind == "steer" else "followup")
+        elif result.kind == "abort":
+            self._command("/interrupt")
+        if result.kind in {"local", "prompt", "steer", "follow_up"}:
+            self.screen.composer.add_history(self.screen.composer.value)
+            self.screen.composer.clear()
+            self._set_draft("")
 
     def _check_draft(self, text: str) -> None:
         size = len(text.encode("utf-8"))
@@ -265,7 +282,10 @@ class HostedMuxShellV1:
         self._sync_editor()
 
     def _sync_editor(self) -> None:
-        self.screen.dismiss_details()
+        # A -> B -> A is still a new presentation binding. Accepted remote
+        # actions keep running, but their old global notices cannot follow it.
+        self._request_serial += 1
+        self.screen.invalidate_binding()
         self.picker.dismiss()
         keys = {
             (self.state.mux_space_id, item.member_id, item.session_id)
@@ -283,6 +303,7 @@ class HostedMuxShellV1:
         editor = self._editors.get(key) if key else None
         if editor is None:
             editor = Composer(max_undo_depth=16)
+            editor.set_completion_provider(self._completion)
             if key is not None:
                 self._editors[key] = editor
         draft = window.draft if window else ""
@@ -290,13 +311,11 @@ class HostedMuxShellV1:
             editor.set_text(draft)
         if editor is not self.screen.composer:
             self.screen.bind_editor(editor)
-            self._router = InputRouter(
-                composer=editor,
-                surface_host=self._router.surface_host,
-                width=self._router.width,
-                height=self._router.height,
-                keybindings=self._router.keybindings,
-            )
+        self.refresh_capability_completions(force=True)
+        # Explicit refresh retains local cursor/undo, never a stale completion
+        # or prefix. Remote actions separately capture the full authority key.
+        editor.clear_completion_items()
+        self._router.replace_app(self.screen)
 
     def _resume_selected(self, spec: SessionOpenSpecV1) -> None:
         if self.state.snapshot_required:
@@ -312,6 +331,30 @@ class HostedMuxShellV1:
 
         self._membership(resume)
 
+    def current_capabilities(self) -> ConversationCapabilities:
+        return project_capabilities(self.state, closing=self._closing,
+            membership_pending=self._membership_pending,
+            approval_presented=self.screen.approval_presented())
+
+    def refresh_capability_completions(self, *, force: bool = False) -> None:
+        capabilities = self.current_capabilities()
+        if not force and capabilities == self._completion_capabilities:
+            return
+        operations: dict[str, ConversationOperation] = {
+            "question": "approval_details", "steer": "steer", "followup": "follow_up",
+            "approve": "approve", "deny": "deny", "interrupt": "interrupt",
+        }
+        commands = [SlashCommand(name) for name in (
+            "help", "refresh", "sessions", "resume", "new", "close", "detach", "exit",
+        )]
+        for name, operation in operations.items():
+            entry = capabilities.get(operation, binding_key=capabilities.binding_key)
+            if entry.availability != "unavailable":
+                commands.append(SlashCommand(name, description=entry.reason))
+        self._completion = SlashCommandCompletionProvider(tuple(commands))
+        self._completion_capabilities = capabilities
+        self.screen.composer.set_completion_provider(self._completion)
+
     def _target(self) -> tuple[HostedMuxState, HarnessWindowState]:
         state = self.state
         if state.snapshot_required or self._membership_pending:
@@ -321,18 +364,15 @@ class HostedMuxShellV1:
             raise ValueError("no active member")
         return state, window
 
-    def _turn(self, text: str, *, mode: str = "start") -> None:
+    def _turn(self, text: str, *, mode: ConversationMode = "start") -> None:
         state, window = self._target()
-        request = TurnTextV1(
-            state.attachment_id, state.controller_generation, window.member_id, text
+        request_id = self._request_serial + 1
+        submit_hosted_conversation_action(
+            self._client, self._actions, state, window,
+            current=lambda: None if self._closing else self.state,
+            request_id=request_id, text=text, mode=mode,
         )
-        operation = {
-            "start": self._client.start_turn,
-            "steer": self._client.steer_turn,
-            "followup": self._client.follow_up_turn,
-        }[mode]
-        self._actions.submit(lambda: operation(request))
-        self.notice = "request_pending; lost replies are not retried"
+        self._request_serial = request_id
 
     def _command(self, text: str) -> None:
         parts = shlex.split(text)
@@ -375,16 +415,11 @@ class HostedMuxShellV1:
 
             self._membership(close_member)
         elif command in {"/steer", "/followup"} and args:
-            self._turn(" ".join(args), mode=command[1:])
+            self._turn(" ".join(args), mode="steer" if command == "/steer" else "followup")
         elif command in {"/approve", "/deny", "/interrupt"} and not args:
             state, window = self._target()
             if command == "/interrupt":
-                interrupt = TurnInterruptV1(
-                    state.attachment_id, state.controller_generation, window.member_id
-                )
-                self._actions.submit(
-                    lambda: self._client.interrupt_turn(interrupt), control=True
-                )
+                self._turn("", mode="interrupt")
             else:
                 if window.pending_interaction_id is None:
                     raise ValueError("no active interaction")
@@ -401,11 +436,45 @@ class HostedMuxShellV1:
                     if command == "/approve"
                     else InteractionOutcomeV1.DENY,
                 )
-                self._actions.submit(
-                    lambda: self._client.respond_interaction(response), control=True
-                )
+                self._respond_interaction(state, window, response)
         else:
             raise ValueError("unsupported action")
+
+    def _respond_interaction(
+        self, state: HostedMuxState, window: HarnessWindowState, response: InteractionRespondV1,
+    ) -> None:
+        request_id = self._request_serial + 1
+
+        def target_key() -> tuple[object, ...]:
+            return (
+                state.mux_space_id, state.attachment_id, state.controller_generation,
+                window.member_id, window.session_id,
+                window.pending_interaction_id, window.pending_interaction_text,
+            )
+
+        key = target_key()
+
+        async def respond() -> None:
+            try:
+                result = await self._client.respond_interaction(response)
+                if type(result) is not AckV1:
+                    raise ValueError("invalid request acknowledgement")
+            except Exception as error:
+                # ShellActions' fallback is deliberately global. Consume this
+                # target-specific failure here even when its view has expired.
+                # CancelledError still propagates to the original waiter owner;
+                # no cancellation or replay is sent to accepted remote work.
+                if (
+                    not self._closing and not self._membership_pending
+                    and self.state is state and not state.snapshot_required
+                    and state.active_window is window
+                    and self._request_serial == request_id and target_key() == key
+                ):
+                    self._failed(error)
+
+        self._actions.submit(respond, control=True)
+        # Failed publication leaves the prior request and draft untouched.
+        self._request_serial = request_id
 
     def _membership(
         self, operation: Callable[[], Coroutine[object, object, HostedMuxState]]
@@ -424,12 +493,15 @@ class HostedMuxShellV1:
 
         self._actions.submit(apply)
         self._membership_pending = True
+        self._request_serial += 1
+        self.screen.invalidate_binding()
 
     async def poll(self) -> None:
         if self._closing or self._membership_pending:
             return
         try:
             await self._controller.poll()
+            self.screen.approval_presented()  # Revoke receipts on observed invalidation, even with details closed.
             if self.state.snapshot_required:
                 self.notice = "snapshot_required: /refresh"
             # Presentation retention does not delete canonical history.
@@ -491,8 +563,8 @@ class HostedMuxShellV1:
             self._detach_task = owned_task(self._controller.close)
         await join(self._detach_task, self._deadline)
         self._editors.clear()
+        self._router.dispose()
         self.screen.bind_editor(Composer(max_undo_depth=16))
-        self._router = InputRouter(composer=self.screen.composer)
         self._settled = True
 
 
