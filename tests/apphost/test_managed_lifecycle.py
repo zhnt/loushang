@@ -228,7 +228,7 @@ finally:
     assert journal.read() == prepared
 
 
-@pytest.mark.parametrize("version", [1, 2])
+@pytest.mark.parametrize("version", [1, 2, 3, 4, 5])
 def test_unactivated_old_registry_requires_explicit_upgrade_not_silent_migration(owners, tmp_path, version):
     _, _, namespace, _ = owners
     with sqlite3.connect(tmp_path / "registry" / DATABASE_NAME) as connection:

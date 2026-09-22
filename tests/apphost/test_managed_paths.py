@@ -11,7 +11,10 @@ from loushang.apphost.managed.contracts import (
     ManagedNamespaceV1,
     ManagedServiceKeyV1,
 )
-from loushang.apphost.managed.paths import resolve_managed_paths
+from loushang.apphost.managed.paths import (
+    resolve_managed_admission_root,
+    resolve_managed_paths,
+)
 
 
 def _values(home="/private/home", workspace="/workspace"):
@@ -82,7 +85,27 @@ def test_reference_mismatch_never_produces_paths():
     ("/run/user/1000", "/private/home/lmux"),
     ("/run/user/1000", "/run/user/1000"),
     ("/run/user/1000", "relative"),
+    ("/private/home/state/session-stores", None),
+    ("/private/home/state", None),
+    ("/run/user/1000", "/private/home/state/session-stores"),
+    ("/run/user/1000", "/private/home/state"),
 ])
 def test_reject_lexical_overlap_before_any_native_admission(runtime, temporary):
     with pytest.raises(ManagedContractError):
         resolve_managed_paths(*_values(), runtime_root=runtime, temporary_override=temporary)
+
+
+@pytest.mark.parametrize("kind", ["runtime", "temporary"])
+@pytest.mark.parametrize("location", ["namespace", "child", "shared_root", "other_namespace"])
+def test_admission_witness_domain_is_not_runtime_or_scratch(kind, location):
+    values = _values()
+    root = resolve_managed_admission_root(values[0])
+    selected = {
+        "namespace": root, "child": root / "child", "shared_root": root.parent,
+        "other_namespace": root.parent / ("c" * 64),
+    }[location]
+    with pytest.raises(ManagedContractError):
+        resolve_managed_paths(
+            *values, runtime_root=str(selected) if kind == "runtime" else "/run/user/1000",
+            temporary_override=str(selected) if kind == "temporary" else None,
+        )

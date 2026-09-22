@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import selectors
 import subprocess
 import sys
 from pathlib import Path
@@ -30,6 +31,242 @@ def test_lookup_missing_root_is_read_only(tmp_path):
     with pytest.raises(ManagedStorageError, match="not_found"):
         PrivateManagedDirectory(tmp_path / "missing")
     assert tuple(tmp_path.iterdir()) == ()
+
+
+@pytest.mark.parametrize("parents", [False, True])
+def test_exclusive_directory_creation_never_adopts_existing_leaf(tmp_path, parents):
+    root = tmp_path / "new"
+    first = PrivateManagedDirectory(root, create=True, create_parents=parents, exclusive_create=True)
+    first.close()
+    before = root.stat()
+    contender = PrivateManagedDirectory(root, create=True, create_parents=parents,
+                                        exclusive_create=True, defer_open=True)
+    try:
+        with pytest.raises(ManagedStorageError, match="conflict"):
+            contender.open()
+        assert not contender._opened
+        with pytest.raises(ManagedStorageError, match="closed"):
+            contender.open()
+    finally:
+        contender.close()
+    assert root.stat() == before and not tuple(root.iterdir())
+
+
+@pytest.mark.parametrize("value", [True, 1, "yes"])
+def test_exclusive_creation_requires_explicit_create_without_io(tmp_path, value):
+    with pytest.raises(ManagedStorageError):
+        PrivateManagedDirectory(tmp_path / "new", exclusive_create=value)
+    assert not tuple(tmp_path.iterdir())
+
+
+def test_exclusive_lock_creation_preserves_existing_lock(directory):
+    root, owner = directory
+    with owner.lock("first.lock", create=True, exclusive_create=True):
+        original = (root / "first.lock").stat()
+    with owner.lock("first.lock"):
+        assert (root / "first.lock").stat() == original
+    with pytest.raises(ManagedStorageError, match="conflict"):
+        with owner.lock("first.lock", create=True, exclusive_create=True):
+            pytest.fail("existing lock was adopted")
+    assert (root / "first.lock").stat() == original
+    assert owner.cleanup_pending
+    owner.close()
+    assert not owner.cleanup_pending and (root / "first.lock").exists()
+
+
+@pytest.mark.parametrize("kind", ["directory", "lock"])
+def test_exclusive_creation_lost_mkdir_or_open_receipt_never_replays(tmp_path, monkeypatch, kind):
+    root = tmp_path / "private"
+    owner = PrivateManagedDirectory(root, create=True, exclusive_create=True, defer_open=True)
+    if kind == "lock":
+        owner.open()
+    native_call = os.mkdir if kind == "directory" else os.open
+    calls = []
+
+    def lose_receipt(name, *args, **kwargs):
+        result = native_call(name, *args, **kwargs)
+        if name == (root.name if kind == "directory" else "first.lock"):
+            calls.append(name)
+            if kind == "lock":
+                # Model a syscall wrapper that settles its descriptor but
+                # loses publication of the successful file creation.
+                os.close(result)
+            raise OSError("lost creation receipt")
+        return result
+
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(os, "mkdir" if kind == "directory" else "open", lose_receipt)
+            with pytest.raises(ManagedStorageError, match="unavailable"):
+                if kind == "directory":
+                    owner.open()
+                else:
+                    with owner.lock("first.lock", create=True, exclusive_create=True):
+                        pytest.fail("lost receipt was delivered")
+        assert owner.cleanup_pending
+        target = root if kind == "directory" else root / "first.lock"
+        original = target.stat()
+        owner.close()
+        assert not owner.cleanup_pending and target.stat() == original
+        assert calls == [target.name]
+    finally:
+        owner.close()
+
+
+@pytest.mark.parametrize("kind", ["directory", "lock"])
+def test_exclusive_creation_failed_sync_retains_original_parent(tmp_path, monkeypatch, kind):
+    root = tmp_path / "private"
+    owner = PrivateManagedDirectory(root, create=True, exclusive_create=True, defer_open=True)
+    if kind == "lock":
+        owner.open()
+    fsync = os.fsync
+    retained = []
+
+    def fail(fd):
+        retained.append(fd)
+        raise OSError("sync unavailable")
+
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(os, "fsync", fail)
+            with pytest.raises(ManagedStorageError, match="unavailable"):
+                if kind == "directory":
+                    owner.open()
+                else:
+                    with owner.lock("first.lock", create=True, exclusive_create=True):
+                        pytest.fail("unsynced lock delivered")
+            assert owner.cleanup_pending
+            with pytest.raises(ManagedStorageError, match="unavailable"):
+                owner.close()
+            assert retained[0] == retained[-1]
+        synced = []
+
+        def sync(fd):
+            synced.append(fd)
+            return fsync(fd)
+
+        with monkeypatch.context() as patch:
+            patch.setattr(os, "fsync", sync)
+            owner.close()
+        assert synced == [retained[0]] and not owner.cleanup_pending
+        assert root.exists()
+        if kind == "lock":
+            assert (root / "first.lock").exists()
+    finally:
+        owner.close()
+
+
+@pytest.mark.parametrize("kind", ["directory", "lock"])
+def test_two_real_processes_cannot_both_claim_exclusive_creation(tmp_path, kind):
+    root = tmp_path / "private"
+    if kind == "lock":
+        root.mkdir(mode=0o700)
+    script = """
+import os
+import sys
+from pathlib import Path
+from loushang.apphost.managed._files import PrivateManagedDirectory, ManagedStorageError
+root, kind, gate = Path(sys.argv[1]), sys.argv[2], int(sys.argv[3])
+owner = PrivateManagedDirectory(root, create=kind == 'directory',
+                                exclusive_create=kind == 'directory', defer_open=True)
+print('ready', flush=True)
+try:
+    assert os.read(gate, 1) == b'x'
+    os.close(gate)
+    owner.open()
+    if kind == 'lock':
+        with owner.lock('first.lock', create=True, exclusive_create=True):
+            pass
+    print('created', flush=True)
+except ManagedStorageError as error:
+    print(error.code, flush=True)
+finally:
+    owner.close()
+"""
+    env = dict(os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[2] / "src"))
+    read_gate, write_gate = os.pipe()
+    children = []
+    try:
+        for _ in range(2):
+            children.append(subprocess.Popen(
+                [sys.executable, "-c", script, str(root), kind, str(read_gate)],
+                env=env, pass_fds=(read_gate,), stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE, text=True,
+            ))
+        for child in children:
+            with selectors.DefaultSelector() as selector:
+                selector.register(child.stdout, selectors.EVENT_READ)
+                assert selector.select(timeout=10), "child did not reach creation gate"
+            assert child.stdout.readline().strip() == "ready"
+        assert os.write(write_gate, b"xx") == 2
+        results = []
+        for child in children:
+            stdout, stderr = child.communicate(timeout=10)
+            assert child.returncode == 0, stderr
+            results.append(stdout.strip())
+        assert sorted(results) == ["conflict", "created"]
+        target = root if kind == "directory" else root / "first.lock"
+        assert target.exists()
+        # Even after both contenders exit, a new exclusive claimant cannot
+        # adopt the durable object; ordinary reopening remains compatible.
+        if kind == "directory":
+            with pytest.raises(ManagedStorageError, match="conflict"):
+                PrivateManagedDirectory(root, create=True, exclusive_create=True)
+        reopened = PrivateManagedDirectory(root)
+        try:
+            if kind == "lock":
+                with reopened.lock("first.lock"):
+                    pass
+                with pytest.raises(ManagedStorageError, match="conflict"):
+                    with reopened.lock("first.lock", create=True, exclusive_create=True):
+                        pytest.fail("post-exit exclusive claimant adopted lock")
+        finally:
+            reopened.close()
+    finally:
+        os.close(read_gate)
+        os.close(write_gate)
+        for child in children:
+            if child.poll() is None:
+                child.kill()
+            child.communicate(timeout=10)
+
+
+@pytest.mark.parametrize("kind", ["directory", "lock"])
+def test_exclusive_creation_rechecks_identity_after_sync(tmp_path, monkeypatch, kind):
+    root = tmp_path / "private"
+    owner = PrivateManagedDirectory(root, create=True, exclusive_create=True, defer_open=True)
+    if kind == "lock":
+        owner.open()
+    target = root if kind == "directory" else root / "first.lock"
+    moved = target.with_name("displaced")
+    fsync = os.fsync
+    swapped = False
+
+    def replace_after_sync(fd):
+        nonlocal swapped
+        fsync(fd)
+        if not swapped:
+            swapped = True
+            target.rename(moved)
+            if kind == "directory":
+                target.mkdir(mode=0o700)
+            else:
+                target.touch(mode=0o600)
+
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(os, "fsync", replace_after_sync)
+            with pytest.raises(ManagedStorageError, match="conflict"):
+                if kind == "directory":
+                    owner.open()
+                else:
+                    with owner.lock("first.lock", create=True, exclusive_create=True):
+                        pytest.fail("replacement lock was delivered")
+        assert swapped
+    finally:
+        owner.close()
+    assert target.exists() and moved.exists()
+    assert target.stat().st_ino != moved.stat().st_ino
 
 
 def test_private_modes_bounded_cas_and_stable_lock(directory):
@@ -290,8 +527,11 @@ def test_fsync_failure_has_explicit_pre_or_post_publication_outcome(directory, m
             with pytest.raises(ManagedStorageError, match="^managed_storage_unavailable$"):
                 owner.write("record", b"new", expected=before)
         assert (root / "record").read_bytes() == (b"new" if stage == 3 else b"original")
-        assert not owner.cleanup_pending
+        assert owner.cleanup_pending is (stage == 3)
         assert sorted(p.name for p in root.iterdir()) == ["control.lock", "record"]
+    owner.close()
+    assert not owner.cleanup_pending
+    assert (root / "record").read_bytes() == (b"new" if stage == 3 else b"original")
 
 
 def test_replace_failure_cleans_temporary_and_preserves_record(directory, monkeypatch):
@@ -311,8 +551,9 @@ def test_replace_failure_cleans_temporary_and_preserves_record(directory, monkey
         assert sorted(p.name for p in root.iterdir()) == ["control.lock", "record"]
 
 
-def test_cancel_and_close_failure_preserve_cancel_and_attempt_unlink(directory, monkeypatch):
-    root, owner = directory
+def test_cancel_and_close_failure_preserve_cancel_and_attempt_unlink(tmp_path, monkeypatch):
+    root = tmp_path / "private"
+    owner = PrivateManagedDirectory(root, create=True)
     with owner.lock("control.lock", create=True):
         original_close = os.close
         temporary_fd = None
@@ -335,8 +576,11 @@ def test_cancel_and_close_failure_preserve_cancel_and_attempt_unlink(directory, 
                 owner.write("record", b"new", expected=None)
         assert caught.value is cancellation
         assert "managed_record_cleanup_incomplete" in caught.value.__notes__
-        assert not owner.cleanup_pending
+        assert owner.cleanup_pending and not owner._pending
         assert sorted(p.name for p in root.iterdir()) == ["control.lock"]
+    for _ in range(2):
+        with pytest.raises(ManagedStorageError, match="unavailable"):
+            owner.close()
 
 
 def test_failed_cleanup_retains_owned_debt_until_close(directory, monkeypatch):

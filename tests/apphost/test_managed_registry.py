@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -79,6 +80,74 @@ def test_reservations_reuse_service_but_not_names_or_operations(registry, tmp_pa
         assert connection.execute("SELECT count(*) FROM muxes").fetchone() == (2,)
 
 
+def test_released_intent_is_retained_but_never_reactivated(registry):
+    first = intent()
+    registry.reserve_mux(first)
+    # Storage-level fixture only: actual release requires manager closed CAS.
+    with registry._database.transaction(write=True) as connection:
+        connection.execute("INSERT INTO mux_authorities VALUES (?, ?, ?, ?, ?, ?)",
+                           (first.operation_id, "c" * 32, "c" * 32, "d" * 64, "c" * 32, "mux-old"))
+        connection.execute("DELETE FROM muxes WHERE operation_id=?", (first.operation_id,))
+    assert registry.resolve(first.name) is None and not registry.list_muxes()
+    for request in (first, intent("other")):
+        with pytest.raises(ManagedStorageError, match="conflict"):
+            registry.reserve_mux(request)
+    second = intent(operation="e" * 32, workspace="/new-workspace")
+    registry.reserve_mux(second)
+    with pytest.raises(ManagedStorageError, match="conflict"):
+        registry.reserve_mux(first)
+    assert registry.resolve("dev") == second and registry.list_muxes() == (second,)
+    with registry._database.transaction() as connection:
+        assert connection.execute("SELECT count(*) FROM mux_intents").fetchone() == (2,)
+        assert connection.execute("SELECT mux_space_id FROM mux_authorities WHERE operation_id=?",
+                                  (first.operation_id,)).fetchone() == ("mux-old",)
+
+
+def test_history_capacity_does_not_reopen_after_active_reference_is_released(registry, monkeypatch):
+    first = intent()
+    registry.reserve_mux(first)
+    monkeypatch.setattr("loushang.apphost.managed.registry.MAX_MUXES", 1)
+    assert registry.reserve_mux(first) == first  # Exact active retry at capacity.
+    with registry._database.transaction(write=True) as connection:
+        connection.execute("DELETE FROM muxes WHERE operation_id=?", (first.operation_id,))
+    with pytest.raises(ManagedStorageError, match="capacity"):
+        registry.reserve_mux(intent(operation="e" * 32, workspace="/new-workspace"))
+    assert registry.list_muxes() == ()
+    with registry._database.transaction() as connection:
+        assert connection.execute("SELECT count(*) FROM mux_intents").fetchone() == (1,)
+        assert connection.execute("SELECT count(*) FROM services").fetchone() == (1,)
+
+
+@pytest.mark.parametrize("field", ["name", "service_id", "operation_id"])
+def test_active_reference_must_match_full_historical_intent(registry, tmp_path, field):
+    first, other = intent(), intent("other", "e" * 32, "/other")
+    registry.reserve_mux(first)
+    registry.reserve_mux(other)
+    replacement = {"name": "renamed", "service_id": other.service.service_id, "operation_id": "f" * 32}[field]
+    with sqlite3.connect(tmp_path / "registry" / DATABASE_NAME) as connection:
+        connection.execute("PRAGMA foreign_keys=ON")
+        with pytest.raises(sqlite3.IntegrityError):
+            connection.execute(f"UPDATE muxes SET {field}=? WHERE name=?", (replacement, first.name))
+    # Deliberate disk corruption must be detected by public reads, not hidden by joins.
+    with sqlite3.connect(tmp_path / "registry" / DATABASE_NAME) as connection:
+        connection.execute(f"UPDATE muxes SET {field}=? WHERE name=?", (replacement, first.name))
+    with pytest.raises(ManagedStorageError, match="invalid_record"):
+        registry.list_muxes()
+
+
+@pytest.mark.parametrize("version", [6, 7, 8, 9, 10, 11, 12, 13])
+def test_previous_schema_is_rejected_without_migration(registry, tmp_path, namespace, version):
+    registry.reserve_mux(intent())
+    registry.close()
+    path = tmp_path / "registry" / DATABASE_NAME
+    with sqlite3.connect(path) as connection:
+        connection.execute(f"PRAGMA user_version={version}")
+    before = (path.read_bytes(), path.stat().st_mtime_ns)
+    with pytest.raises(ManagedStorageError, match="invalid_record"):
+        ManagedRegistryV1(path.parent, namespace, create=True)
+    assert (path.read_bytes(), path.stat().st_mtime_ns) == before
+
+
 def test_pagination_is_bounded_and_case_sensitive(registry):
     for index, name in enumerate(("dev", "Dev", "review")):
         registry.reserve_mux(intent(name, f"{index:032x}"))
@@ -116,6 +185,53 @@ def test_namespace_mismatch_and_unknown_schema_are_not_migrated(registry, tmp_pa
     with pytest.raises(ManagedStorageError, match="invalid_record"):
         ManagedRegistryV1(root, namespace, create=True)
     assert (root / DATABASE_NAME).read_bytes() == before
+
+
+def test_deployment_nonce_is_persistent_and_cannot_be_rebound(tmp_path, namespace):
+    root = tmp_path / "registry"
+    owner = ManagedRegistryV1(root, namespace, create=True, exclusive_create=True,
+                              deployment_id="d" * 32)
+    try:
+        assert owner._database.deployment_id == "d" * 32
+        owner.reserve_mux(intent())
+    finally:
+        owner.close()
+    before = {path.name: path.read_bytes() for path in root.iterdir()}
+    reopened = ManagedRegistryV1(root, namespace, deployment_id="d" * 32)
+    try:
+        assert reopened.resolve("dev") == intent()
+    finally:
+        reopened.close()
+    with pytest.raises(ManagedStorageError, match="conflict"):
+        ManagedRegistryV1(root, namespace, deployment_id="e" * 32)
+    assert before == {path.name: path.read_bytes() for path in root.iterdir()}
+
+
+def test_exclusive_registry_creation_does_not_adopt_empty_directory(tmp_path, namespace):
+    root = tmp_path / "registry"
+    root.mkdir(mode=0o700)
+    with pytest.raises(ManagedStorageError, match="conflict"):
+        ManagedRegistryV1(root, namespace, create=True, exclusive_create=True)
+    assert not tuple(root.iterdir())
+
+
+def test_nonce_mutation_is_rejected_by_original_registry(registry, tmp_path):
+    with sqlite3.connect(tmp_path / "registry" / DATABASE_NAME) as connection:
+        connection.execute("UPDATE identity SET deployment=?", ("f" * 32,))
+    with pytest.raises(ManagedStorageError, match="conflict"):
+        registry.list_muxes()
+
+
+@pytest.mark.parametrize("name", [DATABASE_NAME, "registry.lock"])
+def test_open_registry_rejects_identical_bytes_with_new_file_identity(registry, tmp_path, name):
+    target = tmp_path / "registry" / name
+    replacement = tmp_path / "replacement"
+    shutil.copy2(target, replacement)
+    replacement.replace(target)
+    before = target.read_bytes()
+    with pytest.raises(ManagedStorageError, match="conflict"):
+        registry.list_muxes()
+    assert target.read_bytes() == before
 
 
 @pytest.mark.parametrize("change", ["CREATE TABLE unknown (x)", "CREATE INDEX extra ON muxes(service_id)"])
@@ -164,6 +280,49 @@ def test_native_transaction_rollback_preserves_database(registry):
         assert connection.execute("SELECT count(*) FROM services").fetchone() == (0,)
 
 
+@pytest.mark.parametrize("fail_after", ["mux_intents", "muxes"])
+def test_process_exit_between_reservation_writes_does_not_leave_partial_intent(
+    registry, tmp_path, namespace, fail_after,
+):
+    registry.reserve_mux(intent())
+    script = """
+import os, sqlite3, sys
+from pathlib import Path
+from loushang.apphost.managed.registry import ManagedRegistryV1, ManagedMuxReservationV1
+from loushang.apphost.managed.contracts import ManagedNamespaceV1, ManagedServiceKeyV1
+root, platform, stage = sys.argv[1:]
+owner = ManagedRegistryV1(Path(root), ManagedNamespaceV1(platform, os.geteuid(), 'a'*32))
+original = sqlite3.connect
+class CrashAfterInsert(sqlite3.Connection):
+    def execute(self, sql, parameters=()):
+        result = super().execute(sql, parameters)
+        if sql.startswith('INSERT INTO ' + stage + ' '):
+            os._exit(23)
+        return result
+def connect(*args, **kwargs):
+    return original(*args, factory=CrashAfterInsert, **kwargs)
+sqlite3.connect = connect
+owner.reserve_mux(ManagedMuxReservationV1('new', ManagedServiceKeyV1('coding', '/new'), 'c'*32))
+os._exit(24)
+"""
+    env = dict(os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[2] / "src"))
+    root = tmp_path / "registry"
+    process = subprocess.run([sys.executable, "-c", script, str(root), namespace.platform_home, fail_after],
+                             env=env, capture_output=True, timeout=10)
+    assert process.returncode == 23, process.stderr
+    registry.close()
+    # Explicit writable recovery, not an implicit mutation by discovery.
+    recovered = ManagedRegistryV1(root, namespace, create=True)
+    try:
+        assert recovered.list_muxes() == (intent(),)
+        with recovered._database.transaction() as connection:
+            assert connection.execute("SELECT count(*) FROM services").fetchone() == (1,)
+            assert connection.execute("SELECT count(*) FROM mux_intents").fetchone() == (1,)
+            assert connection.execute("SELECT count(*) FROM muxes").fetchone() == (1,)
+    finally:
+        recovered.close()
+
+
 def test_real_process_death_rolls_back_without_releasing_committed_name(registry, tmp_path, namespace):
     registry.reserve_mux(intent())
     for index in range(20):
@@ -181,6 +340,7 @@ with owner._database.transaction(write=True) as connection:
     connection.execute('PRAGMA cache_size=1')
     connection.execute('PRAGMA cache_spill=1')
     connection.execute('DELETE FROM muxes')
+    connection.execute('DELETE FROM mux_intents')
     connection.execute('DELETE FROM services')
     os._exit(23)
 """
@@ -205,6 +365,8 @@ with owner._database.transaction(write=True) as connection:
     try:
         assert recovery.resolve("dev") == intent()
         assert len(recovery.list_muxes()) == 21
+        with recovery._database.transaction() as connection:
+            assert connection.execute("SELECT count(*) FROM mux_intents").fetchone() == (21,)
         assert database.read_bytes() == committed
         assert not journal.exists()
     finally:
@@ -346,14 +508,16 @@ def test_concurrent_close_cannot_lose_new_connection_debt(registry, monkeypatch)
     assert not registry.cleanup_pending
 
 
-def test_name_insert_failure_rolls_back_new_service_too(registry, monkeypatch):
+@pytest.mark.parametrize("fail_after", ["mux_intents", "muxes"])
+def test_name_insert_failure_rolls_back_new_service_too(registry, monkeypatch, fail_after):
     original_connect = sqlite3.connect
 
     class FailMuxInsert(sqlite3.Connection):
         def execute(self, sql, parameters=()):
-            if sql.startswith("INSERT INTO muxes"):
+            result = super().execute(sql, parameters)
+            if sql.startswith(f"INSERT INTO {fail_after} "):
                 raise sqlite3.OperationalError("injected insertion failure")
-            return super().execute(sql, parameters)
+            return result
 
     def connect(*args, **kwargs):
         return original_connect(*args, factory=FailMuxInsert, **kwargs)
@@ -365,6 +529,7 @@ def test_name_insert_failure_rolls_back_new_service_too(registry, monkeypatch):
     with registry._database.transaction() as connection:
         assert connection.execute("SELECT count(*) FROM services").fetchone() == (0,)
         assert connection.execute("SELECT count(*) FROM muxes").fetchone() == (0,)
+        assert connection.execute("SELECT count(*) FROM mux_intents").fetchone() == (0,)
 
 
 def test_corrupt_orphan_is_not_hidden_by_join(registry, tmp_path):

@@ -35,6 +35,14 @@ def require_mux_name(value: str) -> str:
     return value
 
 
+def require_service_alias(value: str) -> str:
+    """A separate namespace of display names, never an ambiguous service ID."""
+    require_mux_name(value)
+    if _HEX64.fullmatch(value.lower()) is not None:
+        raise ManagedContractError()
+    return value
+
+
 @dataclass(frozen=True, slots=True)
 class ManagedNamespaceV1:
     """Injected local identity; home is lexical, not yet filesystem-admitted."""
@@ -203,4 +211,5 @@ __all__ = [
     "ManagedServiceKeyV1",
     "ManagedStopEvidenceV1",
     "require_mux_name",
+    "require_service_alias",
 ]
