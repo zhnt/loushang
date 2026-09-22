@@ -17,8 +17,20 @@ use std::time::Duration;
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct LiveInitialSnapshot {
+    pub(crate) connection_epoch: String,
     pub(crate) service_instance_id: String,
     pub(crate) mux_space: serde_json::Value,
+    pub(crate) sessions: Vec<serde_json::Value>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct LiveEventRound {
+    pub(crate) connection_epoch: String,
+    pub(crate) sequence: String,
+    pub(crate) service_instance_id: String,
+    pub(crate) mux_space_id: serde_json::Value,
+    pub(crate) members: Vec<attachment::MemberEvents>,
     pub(crate) sessions: Vec<serde_json::Value>,
 }
 
@@ -84,7 +96,10 @@ pub(crate) struct ConnectionOptions<'a> {
 fn run_attempt(
     owner: &connection_epoch::ConnectionOwner,
     options: ConnectionOptions<'_>,
-    publish: &mut dyn FnMut(LiveInitialSnapshot) -> Result<(), ()>,
+    connection_epoch: u64,
+    publish_initial: &mut dyn FnMut(LiveInitialSnapshot) -> Result<(), ()>,
+    publish_round: &mut dyn FnMut(LiveEventRound) -> Result<(), ()>,
+    continue_reading: &mut dyn FnMut() -> Result<bool, ()>,
 ) -> Result<String, ()> {
     let ConnectionOptions {
         root,
@@ -171,17 +186,40 @@ fn run_attempt(
             attachment::ReadSession::attach(&mut channel, instance, mux_name, &attempt)?;
         let outcome = (|| {
             let initial = session.initialize(&mut channel, &attempt)?;
+            let mux_space_id = initial.mux_space["muxSpaceId"].clone();
             attempt.apply(|| {
-                publish(LiveInitialSnapshot {
+                publish_initial(LiveInitialSnapshot {
+                    connection_epoch: connection_epoch.to_string(),
                     service_instance_id: hello.service_instance_id.clone(),
                     mux_space: initial.mux_space,
                     sessions: initial.sessions,
                 })
             })?;
             deadline.enter_session()?;
+            let mut sequence = 0_u64;
             if let Some(stop) = stop.as_ref() {
-                while !stop.requested()? {
-                    if !session.poll(&mut channel, &attempt, Some(stop))? {
+                while !stop.requested()? && continue_reading()? {
+                    let Some(round) = session.poll(&mut channel, &attempt, Some(stop))? else {
+                        if stop.requested()? {
+                            break;
+                        }
+                        if stop.wait(Duration::from_millis(100))? {
+                            break;
+                        }
+                        continue;
+                    };
+                    sequence = sequence.checked_add(1).ok_or(())?;
+                    attempt.apply(|| {
+                        publish_round(LiveEventRound {
+                            connection_epoch: connection_epoch.to_string(),
+                            sequence: sequence.to_string(),
+                            service_instance_id: hello.service_instance_id.clone(),
+                            mux_space_id: mux_space_id.clone(),
+                            members: round.members,
+                            sessions: round.sessions,
+                        })
+                    })?;
+                    if !continue_reading()? {
                         break;
                     }
                     if stop.wait(Duration::from_millis(100))? {
@@ -190,7 +228,7 @@ fn run_attempt(
                 }
             } else {
                 for _ in 0..2 {
-                    session.poll(&mut channel, &attempt, None)?;
+                    let _ = session.poll(&mut channel, &attempt, None)?;
                 }
             }
             Ok(())
@@ -207,12 +245,39 @@ fn run_attempt(
 pub(crate) struct AppClient(connection_epoch::ConnectionOwner);
 
 impl AppClient {
+    #[allow(dead_code)] // One-shot contract probes do not use reconnect streaming.
     pub(crate) fn run(
         &self,
         options: ConnectionOptions<'_>,
         publish: &mut dyn FnMut(LiveInitialSnapshot) -> Result<(), ()>,
     ) -> Result<String, ()> {
-        run_attempt(&self.0, options, publish)
+        run_attempt(
+            &self.0,
+            options,
+            1,
+            publish,
+            &mut |_| unreachable!(),
+            &mut || Ok(true),
+        )
+    }
+
+    #[allow(dead_code)] // One-shot contract probes do not use reconnect streaming.
+    pub(crate) fn run_stream(
+        &self,
+        options: ConnectionOptions<'_>,
+        connection_epoch: u64,
+        publish_initial: &mut dyn FnMut(LiveInitialSnapshot) -> Result<(), ()>,
+        publish_round: &mut dyn FnMut(LiveEventRound) -> Result<(), ()>,
+        continue_reading: &mut dyn FnMut() -> Result<bool, ()>,
+    ) -> Result<String, ()> {
+        run_attempt(
+            &self.0,
+            options,
+            connection_epoch,
+            publish_initial,
+            publish_round,
+            continue_reading,
+        )
     }
 }
 
@@ -223,6 +288,7 @@ mod tests {
     #[test]
     fn initial_snapshot_never_serializes_attachment_authority() {
         let value = serde_json::to_value(LiveInitialSnapshot {
+            connection_epoch: "1".into(),
             service_instance_id: "service-1".into(),
             mux_space: serde_json::json!({"muxSpaceId":"mux-1","members":[]}),
             sessions: vec![],

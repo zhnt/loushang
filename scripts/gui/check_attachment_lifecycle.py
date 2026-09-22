@@ -225,6 +225,39 @@ async def scenario(root: Path, mode: str) -> None:
                     raw = json.dumps(value).encode()
                 await channel.send(raw)
 
+            async def refreshed_snapshots(round_number: int):
+                nonlocal next_id
+                for index, session in enumerate(attachment.sessions):
+                    call = decode_call(await channel.receive())
+                    assert call.operation is em.ExecutionOperationV1.SNAPSHOT
+                    assert call.request_id == str(next_id)
+                    next_id += 1
+                    assert call.control.attachment_id == "attachment"
+                    assert call.control.controller_generation == GENERATION
+                    assert call.control.member_id == session.member.member_id
+                    assert call.expected_instance_id == "service-fixture"
+                    seen.append(f"refresh-snapshot-{index}")
+                    source = session.snapshot
+                    refreshed_source = pm.SessionSnapshotV1(
+                        source.identity,
+                        source.title,
+                        source.cursor + round_number + 1,
+                        source.revision,
+                        source.running,
+                        source.records,
+                    )
+                    idle = em.ExecutionObservationV1()
+                    snapshot = em.ExecutionSessionSnapshotV1(
+                        "service-fixture",
+                        em.ExecutionSourceSnapshotV1(refreshed_source, idle),
+                        em.ExecutionSessionViewV1(session.member.session, 0, idle),
+                    )
+                    await channel.send(
+                        execution_response(
+                            em.ExecutionResponseV1(call.request_id, snapshot)
+                        )
+                    )
+
             if mode.startswith("member-"):
                 await barrier()
             if mode in {
@@ -297,6 +330,7 @@ async def scenario(root: Path, mode: str) -> None:
                     ):
                         break
                     if index == len(attachment.sessions) - 1:
+                        await refreshed_snapshots(round_number)
                         await barrier()
                         if mode == "late-member-change":
                             break
@@ -381,11 +415,34 @@ async def scenario(root: Path, mode: str) -> None:
             + (
                 ["barrier", "events-0"]
                 if mode.startswith("event-")
-                else ["barrier", "events-0", "events-1", "barrier", "events-0"]
+                else [
+                    "barrier",
+                    "events-0",
+                    "events-1",
+                    "refresh-snapshot-0",
+                    "refresh-snapshot-1",
+                    "barrier",
+                    "events-0",
+                ]
                 if mode == "second-batch-replay"
-                else ["barrier", "events-0", "events-1", "barrier"]
+                else [
+                    "barrier",
+                    "events-0",
+                    "events-1",
+                    "refresh-snapshot-0",
+                    "refresh-snapshot-1",
+                    "barrier",
+                ]
                 if mode == "late-member-change"
-                else ["barrier"] + ["events-0", "events-1", "barrier"] * 2
+                else ["barrier"]
+                + [
+                    "events-0",
+                    "events-1",
+                    "refresh-snapshot-0",
+                    "refresh-snapshot-1",
+                    "barrier",
+                ]
+                * 2
                 if mode in {"valid", "detach-failed", "per-request-budget"}
                 else ["barrier"]
                 if mode.startswith("member-")

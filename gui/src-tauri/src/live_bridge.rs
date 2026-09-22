@@ -1,14 +1,17 @@
-//! Tauri handoff for the first read-only snapshot. Launch facts stay native.
-use crate::app_client::{AppClient, ConnectionOptions, LiveInitialSnapshot};
-use crate::connection_lifecycle::ConnectionLifecycle;
-use crate::connection_lifecycle::ExitAction;
+//! Tauri handoff for reconnecting read-only snapshots and validated event rounds.
+use crate::app_client::{AppClient, ConnectionOptions, LiveEventRound, LiveInitialSnapshot};
+use crate::connection_lifecycle::{ConnectionLifecycle, ExitAction};
+use serde::Serialize;
 use std::ffi::OsString;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{mpsc, Arc};
 use std::time::Duration;
 use tauri::{Emitter, Manager};
 
 const INITIAL_EVENT: &str = "gui://live-initial-snapshot";
+const ROUND_EVENT: &str = "gui://live-event-round";
+const STATE_EVENT: &str = "gui://live-connection-state";
 const FAILURE_EVENT: &str = "gui://live-connection-failed";
 
 #[derive(Clone)]
@@ -17,17 +20,36 @@ struct LiveLaunch {
     mux_name: String,
 }
 
-pub(crate) struct LiveLaunchState(Result<Option<LiveLaunch>, ()>);
+pub(crate) struct LiveLaunchState {
+    launch: Result<Option<LiveLaunch>, ()>,
+    resync: Arc<AtomicU64>,
+}
 
 impl LiveLaunchState {
     pub(crate) fn from_process() -> Self {
-        Self(parse_launch(std::env::args_os().skip(1)))
+        Self {
+            launch: parse_launch(std::env::args_os().skip(1)),
+            resync: Arc::new(AtomicU64::new(0)),
+        }
     }
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ConnectionState {
+    state: &'static str,
+    connection_epoch: String,
+}
+
+enum Publication {
+    Initial(LiveInitialSnapshot),
+    Round(LiveEventRound),
+    State(ConnectionState),
 }
 
 #[tauri::command]
 pub(crate) fn live_readonly_available(app: tauri::AppHandle) -> bool {
-    matches!(app.state::<LiveLaunchState>().0, Ok(Some(_)))
+    matches!(app.state::<LiveLaunchState>().launch, Ok(Some(_)))
 }
 
 fn parse_launch(arguments: impl IntoIterator<Item = OsString>) -> Result<Option<LiveLaunch>, ()> {
@@ -62,51 +84,95 @@ fn parse_launch(arguments: impl IntoIterator<Item = OsString>) -> Result<Option<
 
 #[tauri::command]
 pub(crate) fn start_live_readonly(app: tauri::AppHandle) -> Result<(), String> {
-    let launch = app
-        .state::<LiveLaunchState>()
-        .0
+    let state = app.state::<LiveLaunchState>();
+    let launch = state
+        .launch
         .as_ref()
         .map_err(|_| "invalid native launch configuration".to_owned())?
         .clone()
         .ok_or_else(|| "live AppHost launch configuration is unavailable".to_owned())?;
+    let resync = state.resync.clone();
     let owner = app.state::<Arc<ConnectionLifecycle>>().inner().clone();
-    let (publish, receive) = mpsc::channel::<Result<LiveInitialSnapshot, ()>>();
+    let (publish, receive) = mpsc::channel::<Publication>();
     owner
         .start(move |stop| {
-            let mut sent = false;
-            let outcome = AppClient::default().run(
-                ConnectionOptions {
-                    root: &launch.record_root,
-                    timeout: Duration::from_secs(5),
-                    cancel: None,
-                    attach: true,
-                    mux_name: &launch.mux_name,
-                    stop: Some(stop),
-                },
-                &mut |snapshot| {
-                    publish.send(Ok(snapshot)).map_err(|_| ())?;
-                    sent = true;
-                    Ok(())
-                },
-            );
-            if outcome.is_err() && !sent {
-                let _ = publish.send(Err(()));
+            let client = AppClient::default();
+            let mut epoch = 0_u64;
+            let mut backoff = Duration::from_millis(250);
+            while !stop.requested()? {
+                epoch = epoch.checked_add(1).ok_or(())?;
+                let token = resync.load(Ordering::Acquire);
+                publish
+                    .send(Publication::State(ConnectionState {
+                        state: "connecting",
+                        connection_epoch: epoch.to_string(),
+                    }))
+                    .map_err(|_| ())?;
+                let mut installed = false;
+                let outcome = client.run_stream(
+                    ConnectionOptions {
+                        root: &launch.record_root,
+                        timeout: Duration::from_secs(5),
+                        cancel: None,
+                        attach: true,
+                        mux_name: &launch.mux_name,
+                        stop: Some(stop.clone()),
+                    },
+                    epoch,
+                    &mut |snapshot| {
+                        installed = true;
+                        publish.send(Publication::Initial(snapshot)).map_err(|_| ())
+                    },
+                    &mut |round| publish.send(Publication::Round(round)).map_err(|_| ()),
+                    &mut || Ok(resync.load(Ordering::Acquire) == token),
+                );
+                if stop.requested()? {
+                    break;
+                }
+                publish
+                    .send(Publication::State(ConnectionState {
+                        state: "disconnected",
+                        connection_epoch: epoch.to_string(),
+                    }))
+                    .map_err(|_| ())?;
+                if outcome.is_ok() || installed || resync.load(Ordering::Acquire) != token {
+                    backoff = Duration::from_millis(250);
+                } else {
+                    backoff = (backoff * 2).min(Duration::from_secs(2));
+                }
+                if stop.wait(backoff)? {
+                    break;
+                }
             }
-            outcome.map(|_| ())
+            Ok(())
         })
         .map_err(|_| "live connection is already running or closing".to_owned())?;
 
     tauri::async_runtime::spawn_blocking(move || {
-        match receive.recv_timeout(Duration::from_secs(6)) {
-            Ok(Ok(snapshot)) => {
-                let _ = app.emit(INITIAL_EVENT, snapshot);
-            }
-            Ok(Err(())) | Err(_) => {
+        while let Ok(publication) = receive.recv() {
+            let emitted = match publication {
+                Publication::Initial(snapshot) => app.emit(INITIAL_EVENT, snapshot),
+                Publication::Round(round) => app.emit(ROUND_EVENT, round),
+                Publication::State(state) => app.emit(STATE_EVENT, state),
+            };
+            if emitted.is_err() {
                 let _ = app.emit(FAILURE_EVENT, ());
+                break;
             }
         }
     });
     Ok(())
+}
+
+#[tauri::command]
+pub(crate) fn resync_live_readonly(app: tauri::AppHandle) -> Result<(), String> {
+    app.state::<LiveLaunchState>()
+        .resync
+        .fetch_update(Ordering::AcqRel, Ordering::Acquire, |value| {
+            value.checked_add(1)
+        })
+        .map(|_| ())
+        .map_err(|_| "live resynchronization counter exhausted".to_owned())
 }
 
 #[tauri::command]

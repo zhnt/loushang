@@ -82,6 +82,7 @@ export interface GuiState {
 
 export type GuiAction =
   | { readonly type: "sync.failed"; readonly message: string }
+  | { readonly type: "connection.changed"; readonly connection: "disconnected" | "resync-required"; readonly message: string }
   | { readonly type: "transcript.scrolled"; readonly sessionId: string; readonly scrollTop: number }
   | { readonly type: "snapshot.installed"; readonly snapshot: ClientSnapshot }
   | { readonly type: "session.selected"; readonly sessionId: string }
@@ -143,6 +144,12 @@ export function guiReducer(state: GuiState, action: GuiAction): GuiState {
   switch (action.type) {
     case "sync.failed":
       return requireResync(state, action.message);
+    case "connection.changed":
+      return {
+        ...state,
+        remote: { ...state.remote, connection: action.connection },
+        diagnostic: action.message,
+      };
     case "transcript.scrolled":
       if (action.sessionId !== state.local.selectedSessionId || !Number.isFinite(action.scrollTop)) return state;
       return { ...state, local: { ...state.local, transcriptScrollTop: Math.max(0, action.scrollTop) } };

@@ -13,9 +13,11 @@ Activity details, distinct root/subagent AgentRuns, and read-only ChangeSet
 review through a central Quick Look and the Work Dock. Every sample value is
 labelled as fixture data. It does not read a repository, start a Python backend,
 or request a model. An opt-in B2 Windows launch can attach read-only to an
-existing AppHost, install one barriered initial Session snapshot, and retain the
-connection until desktop exit; it does not publish later events or enable any
-mutation. Further cross-language and real-service work remains in C1/B2 as described in the
+existing AppHost, install one barriered initial Session snapshot, publish
+validated ongoing event rounds with authoritative replacement snapshots, and
+reconnect through a fresh snapshot after transport loss or an event gap. It
+does not enable any mutation. Further cross-language and real-service work
+remains in C1/B2 as described in the
 [engineering plan](../docs/internals/architecture/drafts/gui-engineering-bootstrap-plan.md).
 
 ## Toolchain
@@ -73,7 +75,11 @@ attachment ID, controller generation or authentication key. Live snapshots are
 visibly labelled read-only; fixture playback, Send, Interrupt, Workspace,
 ChangeSet, Tasks and Subagents remain unavailable until their own accepted live
 contracts are implemented. Closing the window cooperatively detaches and joins
-the reader without stopping the shared AppHost.
+the reader without stopping the shared AppHost. Each connection attempt has a
+new epoch. A failed transport or invalid round marks live facts
+disconnected/resync-required; the native adapter rereads the private record,
+authenticates and attaches again, and the WebView resumes only after a complete
+fresh snapshot and membership barrier. Unknown mutations are never replayed.
 
 For an opt-in desktop acceptance run, first build the release executable and
 then launch an isolated real AppHost plus two real mux/session projections:
@@ -84,18 +90,21 @@ pnpm --dir gui run accept:live-native
 ```
 
 The second command opens a visible HarnessGUI window and keeps the shared
-AppHost alive until that window is closed. Inspect the live/read-only labels,
+AppHost alive until that window is closed. It also rotates the real local
+listener and connection record, and waits for the GUI to reconnect and accept a
+fresh authoritative snapshot. Inspect the final connected/read-only labels,
 real Session projection, disabled mutation controls and normal/maximized layout,
-then close the window. The launcher verifies that the GUI released its mux
-controller, the AppHost is still accepting, and an independent peer Session is
-still snapshot-readable. Non-secret lifecycle evidence is written under
+then close the window. The launcher verifies the reconnect, that the GUI
+released its mux controller, that the AppHost is still accepting, and that an
+independent peer Session is still snapshot-readable. Non-secret lifecycle evidence is written under
 `gui/test-results/live-apphost-desktop/`; this opt-in helper is not part of the
 rapid GUI gate and does not invoke a model.
 
 The first observed live desktop run is recorded in
 [Windows live AppHost acceptance](tests/playback/windows-live-apphost-acceptance.md).
-It proves the initial read-only projection and cooperative desktop-exit
-lifecycle, not ongoing event publication, mutation, or Windows scaling.
+It records the initial read-only projection, ongoing event integration,
+disconnect/resynchronization and cooperative desktop-exit lifecycle. Mutation
+and Windows display scaling remain outside this slice.
 
 For a standalone offline executable, use `pnpm --dir gui run build:fixture-native`
 from the repository root. Do not substitute a plain `cargo build`: that bypasses
@@ -159,8 +168,9 @@ Disconnected or resync-required projections reject incremental events until a
 fresh snapshot is installed; Send, Interrupt and fixture playback are disabled
 while drafts remain editable. A `Resynchronize fixture` control appears on
 disconnect, an event gap or snapshot failure, including initial-load failure.
-Recovery is offline fixture behavior, not a reconnect workflow against a real
-service.
+The same fail-closed reducer behavior is now connected to the live adapter. The
+fixture keeps an explicit manual recovery control; the native live path requests
+a new connection epoch and authoritative snapshot automatically.
 
 Dock tab, open/closed state, Task selection, AgentRun selection and transcript
 scroll offset are retained

@@ -1,12 +1,13 @@
 # Windows live AppHost desktop acceptance
 
-Date: 2026-09-21. Status: **initial read-only desktop slice passed**.
+Date: 2026-09-22. Status: **read-only events and reconnect desktop slice passed**.
 
 This record is narrower than the B1 fixture checklist in
 [windows-acceptance.md](windows-acceptance.md). It covers one visible Windows
 launch against an isolated, real AppHost and the cleanup observed after a normal
-window close. It does not accept ongoing events, mutations, Windows display
-scaling or the complete fixture workflow.
+window close, plus the native connection behavior under a rotated local listener
+and connection record. It does not accept mutations, Windows display scaling or
+the complete fixture workflow.
 
 ## Launch
 
@@ -54,11 +55,32 @@ The generated, non-secret run result is written to
 `gui/test-results/live-apphost-desktop/result.json` and is intentionally ignored
 by Git. The launcher shuts down the isolated AppHost only after these assertions.
 
+## Ongoing events and reconnect evidence
+
+The GUI lane integration check drives a deterministic local Coding execution
+through the real AppHost. The Rust adapter observes nonempty contiguous event
+rounds, refreshes every member snapshot, rechecks mux membership, and publishes
+the round atomically. The frontend rejects an epoch, sequence, member, cursor,
+revision or snapshot-watermark mismatch without applying a partial round.
+
+During the visible desktop acceptance the launcher closes only the real local
+AppServer listener, waits for its attachments to settle, and starts a replacement
+listener that publishes a new private connection record. It then verifies that:
+
+- the GUI rereads the record and authenticates to the replacement listener;
+- a new GUI attachment appears without restarting the shared AppHost;
+- the GUI accepts a fresh authoritative snapshot before reporting connected;
+- the independent peer Session remains snapshot-readable; and
+- normal window close releases the replacement attachment.
+
+The result evidence records `transportReconnectObserved` and
+`freshSnapshotReattached` as true. No send, approval or other mutation is
+automatically replayed.
+
 ## Still pending
 
 - Native interaction at Windows 125% and 150% display scaling.
 - Normal/maximized/restore and sidebar-drag interaction coverage beyond the
   single observed wide window.
-- Publication of validated ongoing event rounds and reconnect/resynchronization.
 - Accepted live contracts for Workspace, Changes, Tasks, Subagents and all
   mutation controls.

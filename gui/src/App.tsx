@@ -123,6 +123,23 @@ export function HarnessGui({ client }: HarnessGuiProps) {
       } else dispatch({ type: "event.received", event });
       setRemainingSteps(fixture?.remainingFixtureSteps() ?? 0);
     });
+    const unsubscribeSnapshots = client.subscribeSnapshots?.((snapshot) => {
+      if (!active) return;
+      dispatch({ type: "snapshot.installed", snapshot });
+      setNotice("Read-only live event round installed.");
+      setSyncing(false);
+    }) ?? (() => undefined);
+    const unsubscribeConnection = client.subscribeConnection?.((connection) => {
+      if (!active) return;
+      dispatch({
+        type: "connection.changed",
+        connection,
+        message: connection === "disconnected"
+          ? "Live AppHost disconnected. Reconnecting from a fresh snapshot."
+          : "Live event continuity was lost. Requesting a fresh snapshot.",
+      });
+      setSyncing(true);
+    }) ?? (() => undefined);
     void refresh();
     if (fixture) void probeFixtureBridge().then((probe) => {
       if (active) setBridgeProbe(probe);
@@ -131,8 +148,27 @@ export function HarnessGui({ client }: HarnessGuiProps) {
       active = false;
       refreshRef.current = null;
       unsubscribe();
+      unsubscribeSnapshots();
+      unsubscribeConnection();
     };
   }, [client, fixture]);
+
+  const resyncRequestedRef = useRef(false);
+  useEffect(() => {
+    if (state.remote.connection !== "resync-required") {
+      resyncRequestedRef.current = false;
+      return;
+    }
+    if (!client.requestResync || resyncRequestedRef.current) return;
+    resyncRequestedRef.current = true;
+    void client.requestResync().catch(() => {
+      dispatch({
+        type: "connection.changed",
+        connection: "disconnected",
+        message: "Unable to request live resynchronization.",
+      });
+    });
+  }, [client, state.remote.connection]);
 
   useEffect(() => {
     if (!state.local.quickLookDocumentId && restoreQuickLookFocusRef.current) {
