@@ -89,6 +89,22 @@ reaches the real Coding `AgentSession` and its deterministic response streams
 back. The original human-observed run above remains read-only evidence; a new
 visible run is still required before marking the composer interaction accepted.
 
+## New Session control
+
+The live sidebar now enables **New Session** only while the native AppHost
+connection is authoritative. The command stays in native Rust and sends
+`mux/member/open` through the controller attachment; the WebView receives only
+the created Session identity. The first slice inherits the selected Session's
+product, discovery scope and scope fingerprint and uses a newly generated
+continuity identity.
+
+Opening a member changes the mux projection, so the adapter treats the old
+attachment as invalid, reconnects, installs a replacement snapshot and selects
+the new Session only after that snapshot contains its identity. The real-AppHost
+integration check creates the Session through the production Rust adapter and
+then independently verifies the two-Session authoritative snapshot. A visible
+button-click run remains pending.
+
 ## Live presentation projection
 
 Validated authoritative snapshots are projected into transcript records, one
@@ -107,5 +123,7 @@ transcript/execution rejection.
 - Normal/maximized/restore and sidebar-drag interaction coverage beyond the
   single observed wide window.
 - Visible Send/Interrupt interaction against the deterministic AppHost launcher.
-- Accepted live contracts for Workspace, Changes, Tasks, Subagents, New Session,
-  approvals and attachments.
+- Initial model/reasoning selection and first-message submission as part of the
+  New Session creation flow.
+- Accepted live contracts for Workspace, Changes, Tasks, Subagents, approvals
+  and attachments.

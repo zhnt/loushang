@@ -218,6 +218,10 @@ export function createNativeLiveClient(): HarnessClientUiPort {
       });
       return { accepted: receipt.accepted, reason: receipt.reason ?? undefined };
     },
+    async createSession(input) {
+      const value = object(await invoke("live_create_session", { input }));
+      return { sessionId: identifier(value.sessionId) };
+    },
     async sessionModels(sessionId) {
       return validateSessionModels(await invoke("live_session_models", { input: { sessionId } }));
     },

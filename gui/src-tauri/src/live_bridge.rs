@@ -1,7 +1,7 @@
 //! Tauri handoff for reconnecting snapshots, validated event rounds and bounded control.
 use crate::app_client::{
-    AppClient, ConnectionOptions, ControlCommand, ControlResult, LiveEventRound,
-    LiveInitialSnapshot, ModelControlResult,
+    AppClient, ConnectionOptions, ControlCommand, ControlResult, CreateSessionResult,
+    LiveEventRound, LiveInitialSnapshot, ModelControlResult,
 };
 use crate::connection_lifecycle::{ConnectionLifecycle, ExitAction};
 use serde::{Deserialize, Serialize};
@@ -78,6 +78,19 @@ pub(crate) struct LiveModelsInput {
 pub(crate) struct LiveSelectModelInput {
     session_id: String,
     model_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct LiveCreateSessionInput {
+    source_session_id: String,
+    title: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct LiveCreateSessionReceipt {
+    session_id: String,
 }
 
 #[derive(Serialize)]
@@ -292,6 +305,48 @@ pub(crate) async fn live_interrupt(
     })
     .await
     .map_err(|_| "live interrupt worker failed".to_owned())?
+}
+
+#[tauri::command]
+pub(crate) async fn live_create_session(
+    state: tauri::State<'_, LiveLaunchState>,
+    input: LiveCreateSessionInput,
+) -> Result<LiveCreateSessionReceipt, String> {
+    let control = current_control(&state)?;
+    let continuity_id = random_id()?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let (reply, receive) = mpsc::sync_channel(1);
+        control
+            .sender
+            .send(ControlCommand::CreateSession {
+                source_session_id: input.source_session_id,
+                continuity_id,
+                title: input.title,
+                reply,
+            })
+            .map_err(|_| "live control connection changed".to_owned())?;
+        match receive
+            .recv_timeout(Duration::from_secs(15))
+            .map_err(|_| "session creation timed out".to_owned())?
+            .map_err(|_| "session creation connection failed".to_owned())?
+        {
+            CreateSessionResult::Accepted(session_id) => {
+                Ok(LiveCreateSessionReceipt { session_id })
+            }
+            CreateSessionResult::Rejected(code) => {
+                Err(format!("session creation rejected: {code}"))
+            }
+        }
+    })
+    .await
+    .map_err(|_| "session creation worker failed".to_owned())?
+}
+
+fn random_id() -> Result<String, String> {
+    let mut bytes = [0_u8; 16];
+    getrandom::getrandom(&mut bytes)
+        .map_err(|_| "secure session identity unavailable".to_owned())?;
+    Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
 }
 
 #[tauri::command]

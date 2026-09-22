@@ -63,6 +63,7 @@ EXE = CRATE / "target/debug/connection_probe.exe"
 SNAPSHOT_EXE = CRATE / "target/debug/snapshot_probe.exe"
 EVENT_EXE = CRATE / "target/debug/event_probe.exe"
 CONTROL_EXE = CRATE / "target/debug/control_probe.exe"
+CREATE_SESSION_EXE = CRATE / "target/debug/create_session_probe.exe"
 
 
 class InstalledPin:
@@ -240,6 +241,27 @@ async def control_round(root, session_id):
             await process.wait()
 
 
+async def create_session(root, source_session_id):
+    continuity_id = token_hex(16)
+    process = await asyncio.create_subprocess_exec(
+        str(CREATE_SESSION_EXE),
+        str(root),
+        "5000",
+        "gui-fixture",
+        source_session_id,
+        continuity_id,
+        "New Session",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await asyncio.wait_for(process.communicate(), 12)
+    assert process.returncode == 0 and not stderr, (stdout, stderr)
+    result = json.loads(stdout)
+    assert result["type"] == "created"
+    assert result["sessionId"] != source_session_id
+    return result["sessionId"]
+
+
 async def run(root):
     launch = CodingHostedLaunchV1(
         root, root / "app", "gui.integration", root / "cwd", root / "home"
@@ -351,6 +373,20 @@ async def run(root):
             published["sessions"][0]["source"]["source"]["identity"]["sessionId"]
             == published["muxSpace"]["members"][0]["session"]["sessionId"]
         )
+        gui_session_id = published["sessions"][0]["source"]["source"]["identity"][
+            "sessionId"
+        ]
+        created_session_id = await create_session(root / "connection", gui_session_id)
+        published = await initial_snapshot(root / "connection")
+        assert len(published["sessions"]) == 2
+        assert created_session_id in {
+            session["source"]["source"]["identity"]["sessionId"]
+            for session in published["sessions"]
+        }
+        print(
+            "Real AppHost: native Session creation invalidated and reattached cleanly",
+            flush=True,
+        )
         assert local.accepting
         # A distinct mux controller remains usable after Rust detached/closed.
         assert owner.execution_client is not None
@@ -368,7 +404,7 @@ async def run(root):
         async def trigger_turn():
             application = app._application
             service = application._service
-            assert service is not None and len(service._sessions) == 2
+            assert service is not None and len(service._sessions) == 3
             session = next(
                 value
                 for value in service._sessions.values()
@@ -412,9 +448,6 @@ async def run(root):
             "Real AppHost: validated event round and authoritative snapshot passed",
             flush=True,
         )
-        gui_session_id = published["sessions"][0]["source"]["source"]["identity"][
-            "sessionId"
-        ]
         controlled = await control_round(root / "connection", gui_session_id)
         controlled_kinds = {
             event["source"]["kind"]
@@ -519,6 +552,8 @@ if __name__ == "__main__":
             "event_probe",
             "--bin",
             "control_probe",
+            "--bin",
+            "create_session_probe",
         ],
         check=True,
         cwd=ROOT,
