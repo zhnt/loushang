@@ -245,11 +245,13 @@ def test_g11_package_budgets_keep_new_owners_reviewable() -> None:
         # 271 lines to this exact group; all protocol modules still count.
         # See hosted-session-workflow-g17.md, Reviewability Budget Supplement.
         "appserver": 2_100,
-        "appservice-core": 1_500,
+        # Attachment-scoped model discovery and selection extend the existing
+        # AppService authority boundary without exposing provider credentials.
+        "appservice-core": 1_550,
         "appservice-continuity": 1_250,
-        # Optional execution adds omission metadata and a synchronous projection
-        # seam; its two owners have a separate budget in the Wave A contract.
-        "coding-adapter": 420,
+        # Optional execution plus the redacted, session-local model control
+        # bridge remain isolated in the Coding AppService adapter.
+        "coding-adapter": 470,
         "harnesstui-mux": 600,
     }
     for name, paths in groups.items():

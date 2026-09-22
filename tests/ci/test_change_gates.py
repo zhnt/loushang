@@ -30,6 +30,42 @@ runner = load_script("run_checks")
 
 
 class ScopeTests(unittest.TestCase):
+    def test_app_protocol_schema_selects_only_direct_consumers(self):
+        path = "docs/internals/architecture/appserver/app-protocol-v1.schema.json"
+        actual = self.selected(path)
+
+        self.assertEqual(
+            actual,
+            {
+                "docs",
+                "gui",
+                "architecture",
+                "coding",
+                "apphost",
+                "appservice",
+                "host_runtime",
+            },
+        )
+        self.assertFalse(
+            {
+                "ai",
+                "agent",
+                "harness",
+                "harness_native",
+                "harnesstui",
+                "coding_ui",
+                "tui_unit",
+                "tui_playback",
+                "tui_native",
+                "hosting",
+                "windows_shell",
+                "install",
+                "lsp",
+                "foundation",
+            }
+            & actual
+        )
+
     def test_gui_code_and_tooling_select_only_gui_and_docs(self):
         for path in ("gui/src/App.tsx", "gui/src-tauri/Cargo.lock", "gui/pnpm-lock.yaml", "scripts/gui/run.mjs"):
             with self.subTest(path=path):
