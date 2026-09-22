@@ -1,7 +1,7 @@
 //! Tauri handoff for reconnecting snapshots, validated event rounds and bounded control.
 use crate::app_client::{
     AppClient, ConnectionOptions, ControlCommand, ControlResult, LiveEventRound,
-    LiveInitialSnapshot,
+    LiveInitialSnapshot, ModelControlResult,
 };
 use crate::connection_lifecycle::{ConnectionLifecycle, ExitAction};
 use serde::{Deserialize, Serialize};
@@ -65,6 +65,19 @@ pub(crate) struct LiveSubmitInput {
 pub(crate) struct LiveInterruptInput {
     session_id: String,
     execution_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct LiveModelsInput {
+    session_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct LiveSelectModelInput {
+    session_id: String,
+    model_id: String,
 }
 
 #[derive(Serialize)]
@@ -279,6 +292,63 @@ pub(crate) async fn live_interrupt(
     })
     .await
     .map_err(|_| "live interrupt worker failed".to_owned())?
+}
+
+#[tauri::command]
+pub(crate) async fn live_session_models(
+    state: tauri::State<'_, LiveLaunchState>,
+    input: LiveModelsInput,
+) -> Result<serde_json::Value, String> {
+    let control = current_control(&state)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let (reply, receive) = mpsc::sync_channel(1);
+        control
+            .sender
+            .send(ControlCommand::ListModels {
+                session_id: input.session_id,
+                reply,
+            })
+            .map_err(|_| "live control connection changed".to_owned())?;
+        match receive
+            .recv_timeout(Duration::from_secs(6))
+            .map_err(|_| "model listing timed out".to_owned())?
+            .map_err(|_| "model listing connection failed".to_owned())?
+        {
+            ModelControlResult::Accepted(value) => Ok(value),
+            ModelControlResult::Rejected(code) => Err(format!("model listing rejected: {code}")),
+        }
+    })
+    .await
+    .map_err(|_| "model listing worker failed".to_owned())?
+}
+
+#[tauri::command]
+pub(crate) async fn live_select_model(
+    state: tauri::State<'_, LiveLaunchState>,
+    input: LiveSelectModelInput,
+) -> Result<serde_json::Value, String> {
+    let control = current_control(&state)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let (reply, receive) = mpsc::sync_channel(1);
+        control
+            .sender
+            .send(ControlCommand::SelectModel {
+                session_id: input.session_id,
+                model_id: input.model_id,
+                reply,
+            })
+            .map_err(|_| "live control connection changed".to_owned())?;
+        match receive
+            .recv_timeout(Duration::from_secs(6))
+            .map_err(|_| "model selection timed out".to_owned())?
+            .map_err(|_| "model selection connection failed".to_owned())?
+        {
+            ModelControlResult::Accepted(value) => Ok(value),
+            ModelControlResult::Rejected(code) => Err(format!("model selection rejected: {code}")),
+        }
+    })
+    .await
+    .map_err(|_| "model selection worker failed".to_owned())?
 }
 
 fn current_control(state: &LiveLaunchState) -> Result<LiveControl, String> {

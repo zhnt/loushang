@@ -302,6 +302,33 @@ async def assert_peer_is_usable(runtime: AcceptanceRuntime) -> None:
     assert runtime.app.accepting
 
 
+async def assert_model_catalog(runtime: AcceptanceRuntime, expected: str) -> None:
+    """Exercise the same attachment-scoped model contract used by the GUI."""
+
+    observer = runtime.app.open_client_scope()
+    attachment = None
+    try:
+        attachment = await observer.attach_mux(MuxAttachV1(MuxSelectorV1(name=GUI_MUX)))
+        member = attachment.mux_space.members[0]
+        models = await observer.list_session_models(
+            SessionSnapshotRequestV1(
+                attachment.attachment_id,
+                attachment.controller_generation,
+                member.member_id,
+            )
+        )
+        if models.current_id != expected or not models.models:
+            raise RuntimeError("the GUI model catalog did not expose the active model")
+    finally:
+        if attachment is not None:
+            await observer.detach_mux(
+                MuxDetachV1(
+                    attachment.attachment_id, attachment.controller_generation
+                )
+            )
+        await observer.close()
+
+
 def attachment_count(runtime: AcceptanceRuntime) -> int:
     """Inspect the real service only from this acceptance-only process."""
 
@@ -458,6 +485,7 @@ async def run(args: argparse.Namespace, root: Path) -> None:
     write_json(evidence / "launch.json", result)
     try:
         await assert_peer_is_usable(runtime)
+        await assert_model_catalog(runtime, model_ref)
         print(
             "\nReal AppHost is ready. Starting the visible HarnessGUI window.",
             flush=True,

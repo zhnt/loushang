@@ -14,6 +14,7 @@ import type {
   ReadonlyDocument,
   RunProjection,
   SessionSnapshot,
+  SessionModels,
   TaskProjection,
   WorkspaceSummary,
 } from "./client/model";
@@ -66,6 +67,8 @@ export function HarnessGui({ client }: HarnessGuiProps) {
   const syncPendingRef = useRef(true);
   const [remainingSteps, setRemainingSteps] = useState(fixture?.remainingFixtureSteps() ?? 0);
   const [controlPending, setControlPending] = useState<"submit" | "interrupt" | null>(null);
+  const [sessionModels, setSessionModels] = useState<SessionModels | null>(null);
+  const [modelPending, setModelPending] = useState(false);
   const controlPendingRef = useRef(false);
   const [awaitingPublication, setAwaitingPublication] = useState<{
     readonly sessionId: string;
@@ -194,6 +197,17 @@ export function HarnessGui({ client }: HarnessGuiProps) {
   const changesAvailable = hasCapability(state, "changes");
   const selected = selectedId ? state.remote.sessions[selectedId] : undefined;
   useEffect(() => {
+    let active = true;
+    setSessionModels(null);
+    if (!selectedId || state.remote.connection !== "connected" || !client.sessionModels) return () => { active = false; };
+    void client.sessionModels(selectedId).then((models) => {
+      if (active) setSessionModels(models);
+    }).catch(() => {
+      if (active) setNotice("The AppHost model catalog is unavailable.");
+    });
+    return () => { active = false; };
+  }, [client, selectedId, state.remote.connection]);
+  useEffect(() => {
     if (!awaitingPublication) return;
     const session = state.remote.sessions[awaitingPublication.sessionId];
     if (state.remote.connection !== "connected" || !session || session.cursor !== awaitingPublication.cursor) {
@@ -289,6 +303,21 @@ export function HarnessGui({ client }: HarnessGuiProps) {
     } finally {
       controlPendingRef.current = false;
       setControlPending(null);
+    }
+  }
+
+  async function selectModel(modelId: string): Promise<void> {
+    if (!selected || !client.selectModel || selected.status === "running" || modelPending) return;
+    setModelPending(true);
+    try {
+      const models = await client.selectModel(selected.id, modelId);
+      setSessionModels(models);
+      const choice = models.models.find((model) => model.id === models.currentId);
+      setNotice(`Session model changed to ${choice?.label ?? modelId}.`);
+    } catch {
+      setNotice("Model change was rejected. The Session kept its previous model.");
+    } finally {
+      setModelPending(false);
     }
   }
 
@@ -438,7 +467,21 @@ export function HarnessGui({ client }: HarnessGuiProps) {
                     <button type="button" className="icon-button" aria-label="Attach file unavailable" title="Attachments are unavailable" disabled>＋</button>
                     <span className="permission-label">◉ {state.remote.source.kind === "fixture" ? "Fixture access" : "AppHost control"}</span>
                     <p className="visually-hidden" role="status">{notice}</p>
-                    <button type="button" className="effort-selector" title="Model and effort selection require a backend" disabled>No model · Effort unavailable ⌄</button>
+                    <select
+                      className="effort-selector"
+                      aria-label="Session model"
+                      title={sessionModels ? "Change the model for this Session" : "Model catalog unavailable"}
+                      value={sessionModels?.currentId ?? ""}
+                      disabled={!sessionModels?.models.length || modelPending || selected.status === "running"}
+                      onChange={(event) => void selectModel(event.currentTarget.value)}
+                    >
+                      {!sessionModels?.currentId ? <option value="">No model · Effort unavailable</option> : null}
+                      {sessionModels?.models.map((model) => (
+                        <option key={model.id} value={model.id} title={`Endpoint: ${model.endpointId}`}>
+                          {model.provider} · {model.modelId}{model.supportsThinking ? " · Reasoning" : ""}
+                        </option>
+                      ))}
+                    </select>
                     <button
                       className="composer-submit"
                       type={selected.status === "running" ? "button" : "submit"}

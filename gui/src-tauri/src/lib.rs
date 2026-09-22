@@ -52,6 +52,8 @@ pub fn run() {
         live_bridge::live_readonly_available,
         live_bridge::live_submit_text,
         live_bridge::live_interrupt,
+        live_bridge::live_session_models,
+        live_bridge::live_select_model,
         live_bridge::resync_live_readonly,
         live_bridge::start_live_readonly,
         live_bridge::stop_live_readonly
@@ -61,6 +63,8 @@ pub fn run() {
         live_bridge::live_readonly_available,
         live_bridge::live_submit_text,
         live_bridge::live_interrupt,
+        live_bridge::live_session_models,
+        live_bridge::live_select_model,
         live_bridge::resync_live_readonly,
         live_bridge::start_live_readonly,
         live_bridge::stop_live_readonly

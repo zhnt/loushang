@@ -235,6 +235,11 @@ pub(crate) enum ControlResult {
     Rejected(String),
 }
 
+pub(crate) enum ModelControlResult {
+    Accepted(Value),
+    Rejected(String),
+}
+
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct InitialSnapshot {
@@ -520,6 +525,61 @@ impl ReadSession {
 }
 
 impl ControlAuthority {
+    fn app_payload(&self, session_id: &str) -> Result<Value, ()> {
+        let member_id = self.members.get(session_id).ok_or(())?;
+        let generation: Value =
+            serde_json::from_str(&self.controller_generation).map_err(|_| ())?;
+        Ok(json!({
+            "attachmentId": self.attachment_id,
+            "controllerGeneration": generation,
+            "memberId": member_id,
+        }))
+    }
+
+    pub(crate) fn models<R: Read, W: Write>(
+        &self,
+        channel: &mut Channel<R, W>,
+        session_id: &str,
+        request_id: &str,
+    ) -> Result<ModelControlResult, ()> {
+        self.model_request(channel, "session/models", session_id, None, request_id)
+    }
+
+    pub(crate) fn select_model<R: Read, W: Write>(
+        &self,
+        channel: &mut Channel<R, W>,
+        session_id: &str,
+        model_id: &str,
+        request_id: &str,
+    ) -> Result<ModelControlResult, ()> {
+        if model_id.trim().is_empty() || model_id.chars().count() > 512 {
+            return Err(());
+        }
+        self.model_request(
+            channel,
+            "session/model/select",
+            session_id,
+            Some(model_id),
+            request_id,
+        )
+    }
+
+    fn model_request<R: Read, W: Write>(
+        &self,
+        channel: &mut Channel<R, W>,
+        operation: &str,
+        session_id: &str,
+        model_id: Option<&str>,
+        request_id: &str,
+    ) -> Result<ModelControlResult, ()> {
+        let mut payload = self.app_payload(session_id)?;
+        if let Some(model_id) = model_id {
+            payload["modelId"] = Value::String(model_id.to_owned());
+        }
+        let response = request(channel, operation, request_id, payload)?;
+        decode_model_result(&response.result_type, &response.result)
+    }
+
     fn payload(&self, session_id: &str) -> Result<Value, ()> {
         let member_id = self.members.get(session_id).ok_or(())?;
         let generation: Value =
@@ -621,6 +681,31 @@ impl ControlAuthority {
         }
         Ok(ControlResult::Accepted)
     }
+}
+
+fn decode_model_result(result_type: &str, result: &RawValue) -> Result<ModelControlResult, ()> {
+    if result_type == "error" {
+        let error: Value = serde_json::from_str(result.get()).map_err(|_| ())?;
+        let code = error.get("code").and_then(Value::as_str).ok_or(())?;
+        if !identifier(code, 128) {
+            return Err(());
+        }
+        return Ok(ModelControlResult::Rejected(code.to_owned()));
+    }
+    if result_type != "sessionModels" {
+        return Err(());
+    }
+    let value: Value = serde_json::from_str(result.get()).map_err(|_| ())?;
+    let root = value.as_object().ok_or(())?;
+    if root.len() != 2 || !root.contains_key("currentId") || !root.contains_key("models") {
+        return Err(());
+    }
+    if !root["models"].is_array()
+        || (!root["currentId"].is_null() && !root["currentId"].is_string())
+    {
+        return Err(());
+    }
+    Ok(ModelControlResult::Accepted(value))
 }
 
 fn execution_request<R: Read, W: Write>(
@@ -726,6 +811,16 @@ impl EventReader {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn model_capability_rejection_is_semantic_not_transport_failure() {
+        let raw = RawValue::from_string(r#"{"code":"operation_unavailable"}"#.to_owned()).unwrap();
+        match decode_model_result("error", &raw).unwrap() {
+            ModelControlResult::Rejected(code) => assert_eq!(code, "operation_unavailable"),
+            ModelControlResult::Accepted(_) => panic!("error response was accepted"),
+        }
+        assert!(decode_model_result("unexpected", &raw).is_err());
+    }
+
     #[test]
     fn request_numbers_fail_closed_without_wrapping() {
         let mut next = i64::MAX as u64;

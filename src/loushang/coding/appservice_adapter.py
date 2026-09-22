@@ -15,6 +15,8 @@ from loushang.appserver.protocol import (
     SessionEventKindV1,
     SessionEventV1,
     SessionIdentityV1,
+    SessionModelChoiceV1,
+    SessionModelsV1,
     SessionOpenSpecV1,
     SessionScopeV1,
     SessionSnapshotV1,
@@ -26,6 +28,12 @@ from loushang.harness.session import (
     SessionControlPort,
     SessionOperationRuntime,
     SessionPromptRequest,
+)
+from loushang.harness.session.model_selection import (
+    apply_session_model_selection,
+    get_session_model_identity,
+    iter_available_model_details,
+    model_choice_data_from_details,
 )
 
 from .product_plan import CODING_PRODUCT_ID
@@ -216,6 +224,48 @@ class CodingHostedSessionV1:
         except BaseException:
             raise RuntimeError("coding_hosted_interaction_unavailable") from None
         return result is True
+
+    async def list_models(self) -> SessionModelsV1:
+        self._require_open()
+        control = self._binding.control
+        identity = await get_session_model_identity(control)
+        choices = model_choice_data_from_details(
+            await iter_available_model_details(control)
+        )
+        models = tuple(
+            SessionModelChoiceV1(
+                id=choice.value,
+                provider=choice.value.split(":", 1)[0],
+                endpoint_id=choice.endpoint_id,
+                model_id=choice.value.rsplit(":", 1)[-1],
+                label=choice.label,
+                supports_thinking=bool(
+                    getattr(choice.selection, "supports_thinking", False)
+                    or getattr(choice.selection, "reasoning", False)
+                ),
+            )
+            for choice in choices
+        )
+        current = identity.value
+        if current is not None and current not in {model.id for model in models}:
+            current = None
+        return SessionModelsV1(current, models)
+
+    async def select_model(self, model_id: str) -> SessionModelsV1:
+        self._require_open()
+        control = self._binding.control
+        if getattr(control, "is_streaming", False):
+            raise RuntimeError("coding_model_change_while_running")
+        choices = model_choice_data_from_details(
+            await iter_available_model_details(control)
+        )
+        selected = next(
+            (choice.selection for choice in choices if choice.value == model_id), None
+        )
+        if selected is None:
+            raise ValueError("coding_model_unavailable")
+        await apply_session_model_selection(control, selected)
+        return await self.list_models()
 
     async def close(self) -> None:
         async with self._close_lock:

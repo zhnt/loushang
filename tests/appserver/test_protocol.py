@@ -35,6 +35,9 @@ from loushang.appserver.protocol import (
     SessionEventKindV1,
     SessionEventV1,
     SessionIdentityV1,
+    SessionModelChoiceV1,
+    SessionModelSelectV1,
+    SessionModelsV1,
     SessionOpenSpecV1,
     SessionScopeV1,
     SessionSnapshotRequestV1,
@@ -138,6 +141,16 @@ def _attachment() -> MuxAttachmentV1:
             SessionSnapshotRequestV1("attachment-1", 2, "member-1"),
         ),
         (
+            AppOperationV1.SESSION_MODELS,
+            SessionSnapshotRequestV1("attachment-1", 2, "member-1"),
+        ),
+        (
+            AppOperationV1.SESSION_MODEL_SELECT,
+            SessionModelSelectV1(
+                "attachment-1", 2, "member-1", "provider:endpoint:model"
+            ),
+        ),
+        (
             AppOperationV1.TURN_START,
             TurnTextV1("attachment-1", 2, "member-1", "hello"),
         ),
@@ -184,6 +197,19 @@ def test_G11_CONTRACT_STRICT_request_round_trip(
         MuxListResultV1((_mux(),)),
         _attachment(),
         _snapshot(),
+        SessionModelsV1(
+            "provider:endpoint:model",
+            (
+                SessionModelChoiceV1(
+                    "provider:endpoint:model",
+                    "provider",
+                    "endpoint",
+                    "model",
+                    "provider:endpoint:model",
+                    True,
+                ),
+            ),
+        ),
     ),
 )
 def test_G11_CONTRACT_STRICT_response_round_trip(result: object) -> None:

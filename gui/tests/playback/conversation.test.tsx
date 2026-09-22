@@ -172,6 +172,45 @@ describe("GUI-B1 Workspace / Task / Review fixture", () => {
     expect(screen.queryByRole("button", { name: /Step 1/ })).not.toBeInTheDocument();
   });
 
+  it("lists and changes the live Session model without reconnecting", async () => {
+    const user = userEvent.setup();
+    const fixture = createMockAppClient();
+    const snapshot = await fixture.snapshot();
+    const models = {
+      currentId: "provider-a:endpoint-a:shared-model",
+      models: [
+        { id: "provider-a:endpoint-a:shared-model", provider: "provider-a", endpointId: "endpoint-a", modelId: "shared-model", label: "Provider A", supportsThinking: true },
+        { id: "provider-b:endpoint-b:shared-model", provider: "provider-b", endpointId: "endpoint-b", modelId: "shared-model", label: "Provider B", supportsThinking: false },
+      ],
+    } as const;
+    const selectModel = vi.fn(async (_sessionId: string, modelId: string) => ({
+      ...models,
+      currentId: modelId,
+    }));
+    render(<HarnessGui client={{
+      snapshot: async () => ({
+        ...snapshot,
+        connection: "connected",
+        source: { kind: "live", serviceInstanceId: "service-live", muxSpaceId: "mux-live", connectionEpoch: "1" },
+        sessions: snapshot.sessions.map((session) => ({ ...session, status: "idle" as const })),
+      }),
+      subscribe: () => () => undefined,
+      submitText: async (input) => ({ submissionId: input.submissionId, accepted: true }),
+      interrupt: async () => ({ accepted: false }),
+      sessionModels: async () => models,
+      selectModel,
+    }} />);
+
+    const selector = await screen.findByRole("combobox", { name: "Session model" });
+    await screen.findByRole("option", { name: "provider-a · shared-model · Reasoning" });
+    expect(selector).toHaveValue("provider-a:endpoint-a:shared-model");
+    expect(screen.getByRole("option", { name: "provider-a · shared-model · Reasoning" })).toBeVisible();
+    expect(screen.getByRole("option", { name: "provider-b · shared-model" })).toBeVisible();
+    await user.selectOptions(selector, "provider-b:endpoint-b:shared-model");
+    expect(selectModel).toHaveBeenCalledWith("session-gui", "provider-b:endpoint-b:shared-model");
+    expect(selector).toHaveValue("provider-b:endpoint-b:shared-model");
+  });
+
   it("navigates three Workspace kinds and preserves per-Session drafts", async () => {
     const user = userEvent.setup();
     render(<HarnessGui client={createMockAppClient()} />);

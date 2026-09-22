@@ -89,6 +89,8 @@ class AppOperationV1(str, Enum):
     MEMBER_OPEN = "mux/member/open"
     MEMBER_CLOSE = "mux/member/close"
     SESSION_SNAPSHOT = "session/snapshot"
+    SESSION_MODELS = "session/models"
+    SESSION_MODEL_SELECT = "session/model/select"
     TURN_START = "turn/start"
     TURN_STEER = "turn/steer"
     TURN_FOLLOW_UP = "turn/follow_up"
@@ -535,6 +537,56 @@ class SessionSnapshotRequestV1:
 
 
 @dataclass(frozen=True, slots=True)
+class SessionModelChoiceV1:
+    id: str
+    provider: str
+    endpoint_id: str
+    model_id: str
+    label: str
+    supports_thinking: bool = False
+
+    def __post_init__(self) -> None:
+        _require_text(self.id, field="model id", maximum=512, empty=False)
+        _require_stable_id(self.provider, field="model provider")
+        _require_stable_id(self.endpoint_id, field="model endpoint")
+        _require_text(self.model_id, field="model name", maximum=256, empty=False)
+        _require_text(self.label, field="model label", maximum=512, empty=False)
+        if type(self.supports_thinking) is not bool:
+            raise TypeError("invalid model thinking support")
+
+
+@dataclass(frozen=True, slots=True)
+class SessionModelsV1:
+    current_id: str | None
+    models: tuple[SessionModelChoiceV1, ...]
+
+    def __post_init__(self) -> None:
+        if self.current_id is not None:
+            _require_text(self.current_id, field="current model id", maximum=512, empty=False)
+        if type(self.models) is not tuple or len(self.models) > 256 or any(
+            type(item) is not SessionModelChoiceV1 for item in self.models
+        ):
+            raise ValueError("invalid session models")
+        ids = {item.id for item in self.models}
+        if len(ids) != len(self.models) or (self.current_id is not None and self.current_id not in ids):
+            raise ValueError("invalid current session model")
+
+
+@dataclass(frozen=True, slots=True)
+class SessionModelSelectV1:
+    attachment_id: str
+    controller_generation: int
+    member_id: str
+    model_id: str
+
+    def __post_init__(self) -> None:
+        SessionSnapshotRequestV1(
+            self.attachment_id, self.controller_generation, self.member_id
+        )
+        _require_text(self.model_id, field="model id", maximum=512, empty=False)
+
+
+@dataclass(frozen=True, slots=True)
 class TurnTextV1:
     attachment_id: str
     controller_generation: int
@@ -613,6 +665,7 @@ AppRequestPayloadV1: TypeAlias = (
     | MuxMemberOpenV1
     | MuxMemberCloseV1
     | SessionSnapshotRequestV1
+    | SessionModelSelectV1
     | TurnTextV1
     | TurnInterruptV1
     | InteractionRespondV1
@@ -631,6 +684,8 @@ _PAYLOAD_TYPES: dict[AppOperationV1, type[object]] = {
     AppOperationV1.MEMBER_OPEN: MuxMemberOpenV1,
     AppOperationV1.MEMBER_CLOSE: MuxMemberCloseV1,
     AppOperationV1.SESSION_SNAPSHOT: SessionSnapshotRequestV1,
+    AppOperationV1.SESSION_MODELS: SessionSnapshotRequestV1,
+    AppOperationV1.SESSION_MODEL_SELECT: SessionModelSelectV1,
     AppOperationV1.TURN_START: TurnTextV1,
     AppOperationV1.TURN_STEER: TurnTextV1,
     AppOperationV1.TURN_FOLLOW_UP: TurnTextV1,
@@ -683,6 +738,7 @@ AppResultPayloadV1: TypeAlias = (
     | MuxListResultV1
     | MuxAttachmentV1
     | SessionSnapshotV1
+    | SessionModelsV1
     | AttachmentEventsV1
     | SessionListResultV1
 )
@@ -705,6 +761,7 @@ class AppResponseV1:
             MuxListResultV1,
             MuxAttachmentV1,
             SessionSnapshotV1,
+            SessionModelsV1,
             AttachmentEventsV1,
             SessionListResultV1,
         }:
@@ -754,6 +811,9 @@ __all__ = [
     "SessionScopeV1",
     "SessionSnapshotRequestV1",
     "SessionSnapshotV1",
+    "SessionModelChoiceV1",
+    "SessionModelSelectV1",
+    "SessionModelsV1",
     "TranscriptRecordKindV1",
     "TranscriptRecordV1",
     "TurnInterruptV1",

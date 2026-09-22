@@ -24,6 +24,9 @@ from loushang.appserver.protocol import (
     SessionEventKindV1,
     SessionEventV1,
     SessionIdentityV1,
+    SessionModelChoiceV1,
+    SessionModelSelectV1,
+    SessionModelsV1,
     SessionOpenSpecV1,
     SessionScopeV1,
     SessionSnapshotRequestV1,
@@ -72,6 +75,8 @@ class _FakeSession:
         self.close_release: asyncio.Event | None = None
         self.calls: list[tuple[str, object]] = []
         self.closed = 0
+        self.running = False
+        self.model_id = "provider:endpoint:model-a"
 
     @property
     def identity(self) -> SessionIdentityV1:
@@ -90,7 +95,7 @@ class _FakeSession:
             title=self.title,
             cursor=cursor,
             revision=revision,
-            running=False,
+            running=self.running,
             records=records,
         )
 
@@ -148,6 +153,27 @@ class _FakeSession:
     ) -> bool:
         self.calls.append(("interaction", (interaction_id, outcome)))
         return True
+
+    async def list_models(self) -> SessionModelsV1:
+        return SessionModelsV1(
+            self.model_id,
+            tuple(
+                SessionModelChoiceV1(
+                    f"provider:endpoint:model-{suffix}",
+                    "provider",
+                    "endpoint",
+                    f"model-{suffix}",
+                    f"Model {suffix.upper()}",
+                )
+                for suffix in ("a", "b")
+            ),
+        )
+
+    async def select_model(self, model_id: str) -> SessionModelsV1:
+        if model_id not in {"provider:endpoint:model-a", "provider:endpoint:model-b"}:
+            raise ValueError("unknown model")
+        self.model_id = model_id
+        return await self.list_models()
 
     async def close(self) -> None:
         self.closed += 1
@@ -235,6 +261,42 @@ async def test_G11_MUX_IDENTITY_create_list_open_and_unique_name() -> None:
         await client.create_mux(MuxCreateV1("dev"))
     assert duplicate.value.code is AppErrorCodeV1.ALREADY_EXISTS
     assert resolver.requests == [_spec()]
+    await service.close()
+
+
+@_async_test
+async def test_session_model_selection_uses_attachment_authority_and_idle_session() -> None:
+    service, client, resolver = await _service()
+    await _mux_with_member(client)
+    attachment = await client.attach_mux(MuxAttachV1(MuxSelectorV1(name="dev")))
+    control = SessionSnapshotRequestV1(
+        attachment.attachment_id,
+        attachment.controller_generation,
+        attachment.mux_space.members[0].member_id,
+    )
+
+    assert (await client.list_session_models(control)).current_id.endswith("model-a")
+    selected = await client.select_session_model(
+        SessionModelSelectV1(
+            control.attachment_id,
+            control.controller_generation,
+            control.member_id,
+            "provider:endpoint:model-b",
+        )
+    )
+    assert selected.current_id == "provider:endpoint:model-b"
+
+    resolver.sessions[0].running = True
+    with pytest.raises(AppServiceError) as running:
+        await client.select_session_model(
+            SessionModelSelectV1(
+                control.attachment_id,
+                control.controller_generation,
+                control.member_id,
+                "provider:endpoint:model-a",
+            )
+        )
+    assert running.value.code is AppErrorCodeV1.OPERATION_UNAVAILABLE
     await service.close()
 
 

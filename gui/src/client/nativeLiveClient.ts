@@ -15,6 +15,7 @@ import type {
   ExecutionProjection,
   HarnessClientUiPort,
   SessionSnapshot,
+  SessionModels,
 } from "./model";
 
 interface NativeInitialSnapshot {
@@ -217,7 +218,33 @@ export function createNativeLiveClient(): HarnessClientUiPort {
       });
       return { accepted: receipt.accepted, reason: receipt.reason ?? undefined };
     },
+    async sessionModels(sessionId) {
+      return validateSessionModels(await invoke("live_session_models", { input: { sessionId } }));
+    },
+    async selectModel(sessionId, modelId) {
+      return validateSessionModels(await invoke("live_select_model", { input: { sessionId, modelId } }));
+    },
   };
+}
+
+function validateSessionModels(value: unknown): SessionModels {
+  const root = object(value);
+  if (!Array.isArray(root.models) || (root.currentId !== null && typeof root.currentId !== "string")) {
+    throw new Error("session models");
+  }
+  const models = root.models.map((raw) => {
+    const item = object(raw);
+    if (typeof item.id !== "string" || typeof item.provider !== "string"
+      || typeof item.endpointId !== "string" || typeof item.modelId !== "string"
+      || typeof item.label !== "string" || typeof item.supportsThinking !== "boolean") {
+      throw new Error("session model");
+    }
+    return item as unknown as SessionModels["models"][number];
+  });
+  if (root.currentId !== null && !models.some((model) => model.id === root.currentId)) {
+    throw new Error("current session model");
+  }
+  return { currentId: root.currentId as string | null, models };
 }
 
 function validateInitialSnapshot(value: unknown): NativeInitialSnapshot {

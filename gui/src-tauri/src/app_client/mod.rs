@@ -4,7 +4,7 @@ mod connection_epoch;
 mod record_native;
 mod request_deadline;
 mod transport_auth;
-pub(crate) use attachment::{ControlAuthority, ControlResult};
+pub(crate) use attachment::{ControlAuthority, ControlResult, ModelControlResult};
 
 use request_deadline::RequestDeadline;
 use serde::{Deserialize, Serialize};
@@ -51,6 +51,15 @@ pub(crate) enum ControlCommand {
         session_id: String,
         execution_id: String,
         reply: SyncSender<Result<ControlResult, ()>>,
+    },
+    ListModels {
+        session_id: String,
+        reply: SyncSender<Result<ModelControlResult, ()>>,
+    },
+    SelectModel {
+        session_id: String,
+        model_id: String,
+        reply: SyncSender<Result<ModelControlResult, ()>>,
     },
 }
 
@@ -331,7 +340,7 @@ fn process_controls<R: Read, W: Write>(
             Err(TryRecvError::Disconnected) => return Err(()),
         };
         let request_id = session.next_control_request_id()?;
-        let (reply, result) = match command {
+        let failed = match command {
             ControlCommand::Submit {
                 session_id,
                 submission_id,
@@ -340,7 +349,9 @@ fn process_controls<R: Read, W: Write>(
             } => {
                 let result =
                     authority.submit(channel, &session_id, &submission_id, &text, &request_id);
-                (reply, result)
+                let failed = result.is_err();
+                let _ = reply.send(result);
+                failed
             }
             ControlCommand::FindSubmission {
                 session_id,
@@ -349,7 +360,9 @@ fn process_controls<R: Read, W: Write>(
             } => {
                 let result =
                     authority.find_submission(channel, &session_id, &submission_id, &request_id);
-                (reply, result)
+                let failed = result.is_err();
+                let _ = reply.send(result);
+                failed
             }
             ControlCommand::Interrupt {
                 session_id,
@@ -357,11 +370,27 @@ fn process_controls<R: Read, W: Write>(
                 reply,
             } => {
                 let result = authority.interrupt(channel, &session_id, &execution_id, &request_id);
-                (reply, result)
+                let failed = result.is_err();
+                let _ = reply.send(result);
+                failed
+            }
+            ControlCommand::ListModels { session_id, reply } => {
+                let result = authority.models(channel, &session_id, &request_id);
+                let failed = result.is_err();
+                let _ = reply.send(result);
+                failed
+            }
+            ControlCommand::SelectModel {
+                session_id,
+                model_id,
+                reply,
+            } => {
+                let result = authority.select_model(channel, &session_id, &model_id, &request_id);
+                let failed = result.is_err();
+                let _ = reply.send(result);
+                failed
             }
         };
-        let failed = result.is_err();
-        let _ = reply.send(result);
         if failed {
             return Err(());
         }

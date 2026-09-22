@@ -243,6 +243,20 @@ export interface ControlReceipt {
   readonly reason?: string;
 }
 
+export interface ModelChoice {
+  readonly id: string;
+  readonly provider: string;
+  readonly endpointId: string;
+  readonly modelId: string;
+  readonly label: string;
+  readonly supportsThinking: boolean;
+}
+
+export interface SessionModels {
+  readonly currentId: string | null;
+  readonly models: readonly ModelChoice[];
+}
+
 export interface PlaybackStep {
   readonly label: string;
   readonly remaining: number;
@@ -256,6 +270,8 @@ export interface HarnessClientUiPort {
   requestResync?(): Promise<void>;
   submitText(input: SubmitTextInput): Promise<SubmitReceipt>;
   interrupt(sessionId: string): Promise<ControlReceipt>;
+  sessionModels?(sessionId: string): Promise<SessionModels>;
+  selectModel?(sessionId: string, modelId: string): Promise<SessionModels>;
 }
 
 export interface FixturePlaybackPort extends HarnessClientUiPort {
