@@ -136,7 +136,10 @@ os._exit(0)
     async def scenario():
         directory = LocalConnectionDirectoryV1(root)
         old = directory.read("workspace") if stale else None
-        server, scopes = _server(directory)
+        # The non-serving connection probes below may consume their full native
+        # timeout on platforms that queue connect() before start_serving().
+        # Keep that observation budget distinct from the server startup budget.
+        server, scopes = _server(directory, close_timeout=4)
         client = LocalAppClientConnectionV1(directory, "workspace")
         try:
             await server.prepare()
