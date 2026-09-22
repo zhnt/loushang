@@ -154,7 +154,10 @@ class SessionManager(
         return self._lifecycle_session.product_binding.value(slot)
 
 
-def _create_owned_session_factory(*, store_state_root: Path | None = None) -> AgentTranscriptSessionFactory[
+def _create_owned_session_factory(
+    *, store_state_root: Path | None = None,
+    enroll_legacy_shared_store: bool = False,
+) -> AgentTranscriptSessionFactory[
     ResolvedRuntimeProfile, RuntimeProfileBinding,
 ]:
     """Create an application-owned factory; never replace the legacy singleton."""
@@ -170,6 +173,7 @@ def _create_owned_session_factory(*, store_state_root: Path | None = None) -> Ag
         session_file_factory=lifecycle.default_jsonl_session_file,
         owned_product_id=CODING_PRODUCT_ID,
         store_state_root=store_state_root,
+        enroll_legacy_shared_store=enroll_legacy_shared_store,
     )
 
 

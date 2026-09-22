@@ -1927,6 +1927,11 @@ def _create_agent_session_runtime(
             owned_transcripts=sys.platform == "linux",
             store_state_root=(resolve_platform_home() / "state/session-stores"
                               if sys.platform == "linux" else None),
+            enroll_legacy_shared_store=(
+                sys.platform == "linux"
+                and Path(session_dir).expanduser().resolve(strict=False)
+                == (resolve_platform_home() / "data/sessions").resolve(strict=False)
+            ),
         ),
         fixed_services=fixed_services,
         build_session=lambda session_manager, session_services, start_event: (

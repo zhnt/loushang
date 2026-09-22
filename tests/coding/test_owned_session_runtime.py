@@ -94,6 +94,67 @@ def test_default_runtime_creates_new_workspace_beside_unrelated_v1(tmp_path, mon
         restored.close()
 
 
+def test_default_runtime_enrolls_canonical_legacy_store_with_shared_assets(
+    tmp_path, monkeypatch,
+):
+    platform = tmp_path / "platform"
+    monkeypatch.setenv("LOUSHANG_HOME", str(platform))
+    tmp_path.chmod(0o700)
+    platform.mkdir(mode=0o700)
+    (platform / "data").mkdir(mode=0o700)
+    session_root = platform / "data/sessions"
+    session_root.mkdir(mode=0o700)
+    assets = platform / "data/session-assets"
+    assets.mkdir(mode=0o700)
+    legacy_asset = assets / "legacy-asset"
+    legacy_asset.write_bytes(b"preserve me")
+    (platform / "state").mkdir(mode=0o700)
+    stores = platform / "state/session-stores"
+    stores.mkdir(mode=0o700)
+    (stores / "unrelated-incomplete").mkdir(mode=0o700)
+
+    async def scenario():
+        selected = create_agent_session_runtime(
+            session_dir=session_root,
+            model=_model(),
+            persist=True,
+            no_tools=True,
+        )
+        try:
+            session = await selected.create_session(cwd=str(tmp_path))
+            await session.session_manager.append_message(
+                UserMessage(role="user", content="upgraded store", timestamp=1),
+            )
+            assert session.session_manager.session_file.parent == session_root
+            assert legacy_asset.read_bytes() == b"preserve me"
+        finally:
+            await selected.dispose_session_runtime()
+
+    asyncio.run(scenario())
+
+
+def test_default_runtime_does_not_enroll_custom_legacy_store(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "platform"))
+    session_root = tmp_path / "custom-data/sessions"
+    session_root.mkdir(parents=True, mode=0o700)
+    (session_root.parent / "session-assets").mkdir(mode=0o700)
+
+    async def scenario():
+        selected = create_agent_session_runtime(
+            session_dir=session_root,
+            model=_model(),
+            persist=True,
+            no_tools=True,
+        )
+        try:
+            with pytest.raises(TranscriptWriterError, match="conflict"):
+                await selected.create_session(cwd=str(tmp_path))
+        finally:
+            await selected.dispose_session_runtime()
+
+    asyncio.run(scenario())
+
+
 def test_graph_index_unknown_close_keeps_writer_until_original_cleanup_settles(tmp_path, monkeypatch):
     from loushang.harness.journal._rooted_io import RootedFile
 
