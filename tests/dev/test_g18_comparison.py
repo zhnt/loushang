@@ -71,9 +71,11 @@ def test_native_policy_checks_all_41_metrics_without_mutating_inputs(cache_mode,
 )
 def test_any_native_metric_regression_is_not_hidden_by_gains_elsewhere(case, metric):
     data = native_samples(right=0.5)
+    # Must exceed the accepted regression ratio against the 1.0 baseline.
+    regressed = 1.0 * (1 + float(comparison.REGRESSION_RATIO)) + 0.01
     for sample in data:
         if sample["case"] == case and sample["side"] == "b":
-            sample["milestones"][metric] = math.nextafter(1.1, math.inf)
+            sample["milestones"][metric] = regressed
     result = comparison.compare_native(data, cache_mode="warm")
     assert result["verdict"] == "regression"
     assert result["cases"][case][metric]["verdict"] == "regression"
@@ -188,7 +190,7 @@ def test_large_real_gain_is_not_misclassified_as_cross_variant_instability():
     [
         ("cli-help", 8.0, "target-not-met"),
         ("hosted-tui-help", 7.0, "pass"),
-        ("import-coding", 11.1, "regression"),
+        ("import-coding", 10.0 * (1 + float(comparison.REGRESSION_RATIO)) + 1e-9, "regression"),
         ("mux-help", 10.5, "pass"),
     ],
 )
@@ -249,16 +251,21 @@ def test_unfrozen_case_or_metric_is_not_silently_given_a_policy(case, metric):
 
 
 @pytest.mark.parametrize(
-    "case,left,boundary,rejected",
+    "case,left,ratio,rejected",
     [
-        ("cli-help", 3.0, 2.1, "target-not-met"),
-        ("import-coding", 0.3, 0.33, "regression"),
-        ("import-harness", 0.1, 0.12, "regression"),
+        # cli-help keeps the unchanged priority required-gain boundary; this
+        # ARD changed the regression ratio only.
+        ("cli-help", 3.0, None, "target-not-met"),
+        ("import-coding", 0.3, comparison.REGRESSION_RATIO, "regression"),
+        ("import-harness", 0.1, comparison.REGRESSION_RATIO, "regression"),
     ],
 )
 def test_exact_gain_and_regression_boundary_and_next_float(
-    case, left, boundary, rejected
+    case, left, ratio, rejected
 ):
+    # The regression boundary is the accepted ratio, not a frozen 10%. The
+    # required-gain case keeps its own unchanged 3/10 policy boundary.
+    boundary = 2.1 if ratio is None else left * (1 + float(ratio))
     assert (
         comparison.compare_case(
             samples(case=case, left=left, right=boundary), case=case
@@ -274,9 +281,11 @@ def test_exact_gain_and_regression_boundary_and_next_float(
     )
 
 
-@pytest.mark.parametrize("minimum,boundary", [(0.3, 0.33), (0.1, 0.12)])
+@pytest.mark.parametrize("minimum", [0.3, 0.1])
 @pytest.mark.parametrize("outside", [False, True])
-def test_stability_span_boundary_is_exact(minimum, boundary, outside):
+def test_stability_span_boundary_is_exact(minimum, outside):
+    # Boundary follows the accepted stability ratio, including its 1/50 floor.
+    boundary = minimum + max(minimum * float(comparison.STABILITY_RATIO), 1 / 50)
     data = samples(case="import-harness", left=minimum, right=minimum)
     for sample in data:
         if sample["block"] == 1:
@@ -292,9 +301,14 @@ def test_preflight_cannot_be_reported_as_full_comparison():
         comparison.compare_case(samples(), case="cli-help", blocks=1, pairs_per_block=1)
 
 
-@pytest.mark.parametrize("low,high", [(0.9, 1.1), (0.09, 0.11)])
+@pytest.mark.parametrize("low", [0.9, 0.09, 0.02])
 @pytest.mark.parametrize("outside", [False, True])
-def test_mad_relative_and_absolute_boundaries(low, high, outside):
+def test_mad_relative_and_absolute_boundaries(low, outside):
+    # At the boundary MAD == max(median * STABILITY_RATIO, 1/100) exactly; the
+    # small-`low` case exercises the absolute floor branch.
+    ratio = float(comparison.STABILITY_RATIO)
+    relative = low * (1 + ratio) / (1 - ratio)
+    high = relative if (low + relative) / 2 * ratio >= 1 / 100 else low + 1 / 50
     data = samples(case="import-harness")
     for sample in data:
         sample["elapsed_seconds"] = (
