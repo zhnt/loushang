@@ -15,7 +15,7 @@ from contextlib import suppress
 from enum import Enum
 from threading import Event, RLock
 from time import monotonic
-from typing import Protocol
+from typing import Any, Protocol
 
 from .errors import HostingError, HostingFailureCategory
 
@@ -48,6 +48,13 @@ class ServiceHandoffPortV1(Protocol):
 
 class _HandoffChannel:
     """Own a supplied stream socket; no timeout can erase a durable decision."""
+
+    _endpoint: socket.socket
+    _port: ServiceHandoffPortV1
+    _closing: Event
+    _mutex: Any
+    _closed: bool
+    _close_started: bool
 
     def __init__(self, endpoint: socket.socket, port: ServiceHandoffPortV1) -> None:
         if sys.platform != "linux":
@@ -117,6 +124,8 @@ class _HandoffChannel:
 class ServiceChildHandoffV1(_HandoffChannel):
     """A child checks parent loss while preparing, then proposes durable commit."""
 
+    _ack_attempted: bool
+
     def __init__(self, endpoint: socket.socket, port: ServiceHandoffPortV1) -> None:
         super().__init__(endpoint, port)
         self._ack_attempted = False
@@ -174,10 +183,10 @@ class ServiceParentHandoffV1(_HandoffChannel):
             if phase in (ServiceHandoffPhaseV1.COMMITTED, ServiceHandoffPhaseV1.ABORTING):
                 return phase
             try:
-                poller = select.poll()
-                poller.register(self._endpoint, select.POLLIN)
-                events = poller.poll(int(max(0, deadline - monotonic()) * 1000))
-                if events:
+                readable, _, _ = select.select(
+                    (self._endpoint,), (), (), max(0, deadline - monotonic())
+                )
+                if readable:
                     self._endpoint.recv(1)  # Consume a hint, never trust its value.
             except OSError:
                 pass

@@ -465,6 +465,7 @@ def test_prepare_private_directory_chain_expands_user_home(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
     result = prepare_private_directory_chain("~/expanded/child")
     assert result == tmp_path / "expanded" / "child"
     assert result.is_dir()

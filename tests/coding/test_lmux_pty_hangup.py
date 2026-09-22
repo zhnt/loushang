@@ -8,9 +8,10 @@ import threading
 
 import pytest
 
-from tests.tui.terminal_process_support.posix_pty import PosixPtyDriver
+if sys.platform != "linux":
+    pytest.skip("Linux PTY hangup", allow_module_level=True)
 
-pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux PTY hangup")
+from tests.tui.terminal_process_support.posix_pty import PosixPtyDriver  # noqa: I001
 
 
 EOF_READER = """

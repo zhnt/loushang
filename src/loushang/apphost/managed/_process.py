@@ -145,14 +145,22 @@ class _ChildProcess:
     def _protect_maintenance(self) -> None:
         for kind in _SIGNALS:
             try:
-                signal.signal(kind, signal.SIG_IGN if kind == signal.SIGHUP else self._signal)
+                signal.signal(
+                    kind,
+                    signal.SIG_IGN if kind == _SIGHUP else self._signal,
+                )
             except BaseException:
                 # No unconditional residency guarantee if the OS refuses the
                 # protective disposition itself. Still never return a clean code.
                 self._protection_unknown = True
 
 
-_SIGNALS = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
+_SIGHUP = getattr(signal, "SIGHUP", None)
+_SIGNALS = tuple(
+    kind
+    for kind in (signal.SIGINT, signal.SIGTERM, _SIGHUP)
+    if kind is not None
+)
 
 
 def _park() -> None:

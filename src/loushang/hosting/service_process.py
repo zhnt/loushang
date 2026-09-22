@@ -14,6 +14,7 @@ import subprocess
 import sys
 from threading import Event, RLock
 from time import monotonic
+from typing import Any
 
 from ._posix_process import _PosixProcess
 from .contracts import (
@@ -55,6 +56,21 @@ class LinuxServiceProcessV1:
     Synchronous native creation/IO cannot be preempted by a Python timeout; the
     consumer retains this owner and the durable fence across uncertain returns.
     """
+
+    _request: ProcessLaunchRequest | None
+    _endpoint: socket.socket
+    _process: subprocess.Popen[bytes] | None
+    _scope: _PosixProcess | None
+    _observer: LinuxServiceObserverV1 | None
+    _identity: LinuxServiceIdentityV1 | None
+    _attempted: bool
+    _handles_closed: bool
+    _observer_close_unknown: bool
+    _observer_adoption_unknown: bool
+    _endpoint_close_unknown: bool
+    _endpoint_closed: bool
+    _closing: Event
+    _mutex: Any
 
     def __init__(self, request: ProcessLaunchRequest, child_endpoint: socket.socket) -> None:
         if sys.platform != "linux":

@@ -195,6 +195,8 @@ class RootedFileIO:
     cleanup() is called by that existing owner only after all calls have drained.
     """
 
+    root: Path
+
     def __init__(self, root: Path, directory_fd: int, *, directory_bindings: tuple[DirectoryBinding, ...] = ()) -> None:
         root = Path(root)
         if sys.platform != "linux":
