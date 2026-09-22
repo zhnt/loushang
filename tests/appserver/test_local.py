@@ -187,7 +187,9 @@ os._exit(0)
 def test_managed_prepare_activate_call_order_never_restarts_or_republishes(tmp_path):
     async def scenario():
         directory = LocalConnectionDirectoryV1(tmp_path / "runtime")
-        server, _ = _server(directory)
+        # This test exercises call ordering, not the one-second startup budget.
+        # Loaded Windows runners may resume activation after that budget expires.
+        server, _ = _server(directory, close_timeout=4)
         try:
             with pytest.raises(AppServiceError):
                 await server.activate()
@@ -681,7 +683,8 @@ def test_G16_LOCAL_READY_settlement_before_start_delivery_cannot_announce_ready(
     async def scenario():
         directory = LocalConnectionDirectoryV1(tmp_path / "runtime")
         stops = []
-        server, scopes = _server(directory, request_stop=stops.append)
+        # Keep scheduler latency separate from the settlement-order contract.
+        server, scopes = _server(directory, close_timeout=4, request_stop=stops.append)
         client = LocalAppClientConnectionV1(directory, "workspace")
         owner = client if kind == "client" else server
         join = local._join_close
