@@ -159,10 +159,6 @@ from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover im
     PackagePosixEpochCutoverRequestV1,
     PackagePosixEpochCutoverResultV1,
 )
-from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_snapshot import (
-    PackagePosixEpochSnapshotOwner,
-    PackagePosixSnapshotSharedMemberV1,
-)
 from loushang.harness.resources.packages.plugin_lifecycle.posix_materialization import (
     PosixPackageDependencyMaterializationStore,
     PosixPackagePluginRootMaterializationStore,
@@ -4220,13 +4216,9 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     )
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.package_epoch_layout import (
-        resolve_coding_lifecycle_pre_b_members,
-        resolve_coding_package_epoch_layout,
-        resolve_coding_package_pre_b_store_members,
-    )
-    from loushang.coding.package_source_snapshot import (
-        hold_coding_pre_b_source_configuration,
+    from loushang.coding.package_epoch_layout import resolve_coding_package_epoch_layout
+    from loushang.coding.package_pre_b_snapshot import (
+        hold_coding_pre_b_snapshot_owner,
     )
     from loushang.coding.session_manager import SessionManager
     from loushang.harness.cli.package_lifecycle import (
@@ -4342,60 +4334,20 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     project_settings.write_text(
         json.dumps({"package_roots": [str(legacy_root)]}), encoding="utf-8"
     )
-    source_hold = ExitStack()
-    request.addfinalizer(source_hold.close)
-    source_configuration_root = source_hold.enter_context(
-        hold_coding_pre_b_source_configuration(
+    snapshot_hold = ExitStack()
+    request.addfinalizer(snapshot_hold.close)
+    snapshot_preparation = snapshot_hold.enter_context(
+        hold_coding_pre_b_snapshot_owner(
+            legacy_layout,
             SettingsManager(
                 global_settings_path=global_settings,
                 project_settings_path=project_settings,
             ),
-            global_settings_path=global_settings,
-            project_settings_path=project_settings,
             projection_parent=source_root,
         )
     )
-    package_members = resolve_coding_package_pre_b_store_members(legacy_layout)
-    lifecycle_members = resolve_coding_lifecycle_pre_b_members(legacy_layout)
-    domain_roots = {
-        "store_bytes": legacy_root,
-        "binding_history": legacy_root,
-        "lock_history": legacy_root,
-        "desired_state": legacy_layout.root,
-        "enablement_state": legacy_layout.root,
-        "instance_state": legacy_layout.root,
-        "fence_record": control_root,
-        "source_configuration": source_configuration_root,
-    }
-    for domain in PACKAGE_PRE_B_SNAPSHOT_DOMAINS:
-        if domain in domain_roots:
-            continue
-        domain_root = source_root / domain
-        domain_root.mkdir(mode=0o700)
-        domain_roots[domain] = domain_root
-    selected_members: dict[str, tuple[str, ...] | None] = {
-        domain: None for domain in PACKAGE_PRE_B_SNAPSHOT_DOMAINS
-    }
-    selected_members.update(package_members.domain_members())
-    selected_members.update(lifecycle_members.domain_members())
-    snapshots = PackagePosixEpochSnapshotOwner(
-        snapshot_root,
-        store_id=store_id,
-        domain_roots=domain_roots,
-        domain_members=selected_members,
-        legacy_root_pointer_name=epoch_layout.legacy_root_name,
-        shared_members=(
-            (
-                PackagePosixSnapshotSharedMemberV1(
-                    source_root=package_members.source_root,
-                    member_name="package-lock.json",
-                    domains=("binding_history", "lock_history"),
-                ),
-            )
-            if package_members.binding_history
-            else ()
-        ),
-    )
+    source_configuration_root = snapshot_preparation.source_configuration_root
+    snapshots = snapshot_preparation.owner
     pre_fence = PackagePosixPreFenceRegistrationOwner(
         authority, store_id=store_id, fences=fences
     )
@@ -4435,7 +4387,7 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     finally:
         cutover_io.cleanup()
         os.close(cutover_root_fd)
-        source_hold.close()
+        snapshot_hold.close()
     assert cutover_result.disposition == "fenced"
     fence = cutover_result.fence
     assert fence is not None

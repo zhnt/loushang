@@ -370,7 +370,10 @@ Neither may silently override a narrower implemented owner contract.
   JSON file is explicitly copied into both history domains. The real Coding
   lifecycle root is now partitioned into Desired, enablement, and Instance
   domains, including known journal locks and old lease directories. Both
-  mappings reject unknown top-level members. The native fixture snapshots the
+  mappings reject unknown top-level members. A Coding-owned preparation context
+  now composes these mappings and holds the Source settings locks through
+  cutover; a Product-facing owner contains native snapshot publication, and the
+  native fixture exercises both entries. It snapshots the
   real pre-fence control root as `fence_record`; the new B fence appears only
   after that snapshot. For `legacy_root_pointer`, the snapshot owner requires an
   empty source domain and records the verified old Store identity with the
