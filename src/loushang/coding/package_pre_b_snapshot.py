@@ -19,6 +19,7 @@ from loushang.coding.package_source_snapshot import (
 )
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.resources.packages.product_pre_b_snapshot import (
+    PackageProductPosixCutoverAttemptV1,
     PackageProductPreBSnapshotOwner,
     PackageProductPreBSnapshotSharedMemberV1,
 )
@@ -30,6 +31,42 @@ class CodingPreBSnapshotPreparation:
 
     owner: PackageProductPreBSnapshotOwner
     source_configuration_root: Path
+
+
+@dataclass(frozen=True, slots=True)
+class CodingPackagePreBCutover:
+    attempt: PackageProductPosixCutoverAttemptV1
+    snapshots: PackageProductPreBSnapshotOwner
+
+
+def cutover_coding_package_store_from_legacy(
+    lifecycle: CodingPluginLifecycleStateLayout,
+    settings_manager: SettingsManager,
+    *,
+    projection_parent: Path,
+    namespace_id: str,
+    minimum_runtime_version: str,
+    minimum_runtime_protocol_epoch: int,
+) -> CodingPackagePreBCutover:
+    """Hold real Coding Source state until Product finishes the first B fence."""
+
+    epoch = resolve_coding_package_epoch_layout(lifecycle)
+    with hold_coding_pre_b_snapshot_owner(
+        lifecycle, settings_manager, projection_parent=projection_parent
+    ) as prepared:
+        attempt = prepared.owner.cutover_from_legacy(
+            authority_root=epoch.authority_root,
+            control_root=epoch.control_root,
+            legacy_root_name=epoch.legacy_root_name,
+            epochs_root_name=epoch.epochs_root_name,
+            namespace_id=namespace_id,
+            minimum_runtime_version=minimum_runtime_version,
+            minimum_runtime_protocol_epoch=minimum_runtime_protocol_epoch,
+        )
+        return CodingPackagePreBCutover(
+            attempt=attempt,
+            snapshots=prepared.owner,
+        )
 
 
 @contextmanager
@@ -102,4 +139,9 @@ def hold_coding_pre_b_snapshot_owner(
             )
 
 
-__all__ = ["CodingPreBSnapshotPreparation", "hold_coding_pre_b_snapshot_owner"]
+__all__ = [
+    "CodingPackagePreBCutover",
+    "CodingPreBSnapshotPreparation",
+    "cutover_coding_package_store_from_legacy",
+    "hold_coding_pre_b_snapshot_owner",
+]

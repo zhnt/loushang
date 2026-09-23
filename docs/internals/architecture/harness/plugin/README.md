@@ -373,7 +373,12 @@ Neither may silently override a narrower implemented owner contract.
   mappings reject unknown top-level members. A Coding-owned preparation context
   now composes these mappings and holds the Source settings locks through
   cutover; a Product-facing owner contains native snapshot publication, and the
-  native fixture exercises both entries. It snapshots the
+  native fixture exercises both entries. The same Product owner now composes
+  the native pre-fence, runtime-lease, and cutover authorities for the first B
+  fence. A live old runtime refuses before publication; exact replay reads the
+  persisted old-root identity, and a changed namespace refuses. Coding has one
+  explicit call that holds the Source locks through this Product cutover; the
+  default bootstrap has not selected it. The cutover snapshots the
   real pre-fence control root as `fence_record`; the new B fence appears only
   after that snapshot. For `legacy_root_pointer`, the snapshot owner requires an
   empty source domain and records the verified old Store identity with the

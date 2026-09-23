@@ -16,7 +16,7 @@ import sys
 import zipfile
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import ExitStack, contextmanager
+from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from hashlib import sha256
 from pathlib import Path
@@ -155,6 +155,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_coordinati
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
     PackageEpochCutoverQuiescenceReceiptV1,
     PackageEpochCutoverSnapshotReceiptV1,
+    PackagePosixEpochCutoverError,
     PackagePosixEpochCutoverOwner,
     PackagePosixEpochCutoverRequestV1,
     PackagePosixEpochCutoverResultV1,
@@ -4203,7 +4204,6 @@ def test_product_transaction_commits_configured_local_dependency(
 )
 def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     tmp_path: Path,
-    request: pytest.FixtureRequest,
     with_dependency: bool,
     entrypoint: str,
 ) -> None:
@@ -4218,7 +4218,7 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     from loushang.coding.control import ControlConfig, SettingsManager
     from loushang.coding.package_epoch_layout import resolve_coding_package_epoch_layout
     from loushang.coding.package_pre_b_snapshot import (
-        hold_coding_pre_b_snapshot_owner,
+        cutover_coding_package_store_from_legacy,
     )
     from loushang.coding.session_manager import SessionManager
     from loushang.harness.cli.package_lifecycle import (
@@ -4334,63 +4334,50 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     project_settings.write_text(
         json.dumps({"package_roots": [str(legacy_root)]}), encoding="utf-8"
     )
-    snapshot_hold = ExitStack()
-    request.addfinalizer(snapshot_hold.close)
-    snapshot_preparation = snapshot_hold.enter_context(
-        hold_coding_pre_b_snapshot_owner(
-            legacy_layout,
-            SettingsManager(
-                global_settings_path=global_settings,
-                project_settings_path=project_settings,
-            ),
-            projection_parent=source_root,
-        )
+    settings_manager = SettingsManager(
+        global_settings_path=global_settings,
+        project_settings_path=project_settings,
     )
-    source_configuration_root = snapshot_preparation.source_configuration_root
-    snapshots = snapshot_preparation.owner
     pre_fence = PackagePosixPreFenceRegistrationOwner(
         authority, store_id=store_id, fences=fences
     )
-    cutover_root_fd = os.open(
-        control_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
-    )
-    cutover_io = RootedFileIO(control_root, cutover_root_fd)
-    try:
-        cutover_registry = PackageEpochRuntimeLeaseRegistry(
-            path=control_root / "runtime-leases.jsonl",
-            coordination_lock=control_root / "coordination",
-            file_io=cutover_io,
-            fences=fences,
-            store_id=store_id,
-        )
-        cutover_owner = PackagePosixEpochCutoverOwner(
-            authority,
-            store_id=store_id,
-            epoch_journal=fences,
-            legacy_root_name=epoch_layout.legacy_root_name,
-            epochs_root_name=epoch_layout.epochs_root_name,
-            coordination=PackagePosixEpochCutoverCoordination(
-                leases=cutover_registry,
-                pre_fence=pre_fence,
-            ),
-            snapshots=snapshots,
-        )
-        cutover_request = PackagePosixEpochCutoverRequestV1.create(
-            store_id=store_id,
-            prior_fence=None,
-            expected_legacy_root_identity=cutover_owner.current_root_identity(),
-            namespace_id="2" * 64,
+
+    def attempt_cutover(namespace_id: str = "2" * 64):
+        return cutover_coding_package_store_from_legacy(
+            legacy_layout,
+            settings_manager,
+            projection_parent=source_root,
+            namespace_id=namespace_id,
             minimum_runtime_version="2.0.0",
             minimum_runtime_protocol_epoch=2,
         )
-        cutover_result = cutover_owner.cutover(cutover_request)
-    finally:
-        cutover_io.cleanup()
-        os.close(cutover_root_fd)
-        snapshot_hold.close()
+
+    if entrypoint == "session" and not with_dependency:
+        live_old_runtime = pre_fence.register(startup_id="legacy:live")
+        try:
+            denied = attempt_cutover().attempt.result
+            assert denied.disposition == "rejected"
+            assert denied.code == "package_runtime_epoch_unsupported"
+            assert denied.failure is not None
+            assert denied.failure.barrier == "pre_fence"
+            assert fences.current(store_id) is None
+            assert not tuple(snapshot_root.glob("*.evidence.json"))
+        finally:
+            live_old_runtime.release()
+    cutover_binding = attempt_cutover()
+    cutover_attempt = cutover_binding.attempt
+    snapshots = cutover_binding.snapshots
+    cutover_request = cutover_attempt.request
+    cutover_result = cutover_attempt.result
     assert cutover_result.disposition == "fenced"
+    if entrypoint == "session" and not with_dependency:
+        assert attempt_cutover().attempt == cutover_attempt
+        with pytest.raises(PackagePosixEpochCutoverError) as stale_cutover:
+            attempt_cutover("3" * 64)
+        assert stale_cutover.value.code == "package_epoch_fence_stale"
     fence = cutover_result.fence
     assert fence is not None
+    assert fences.current(store_id) == fence
     with pytest.raises(PackagePosixPreFenceRegistrationError) as old_launch:
         pre_fence.register(startup_id="legacy:after-cutover")
     assert old_launch.value.code == "package_runtime_epoch_unsupported"
@@ -4470,7 +4457,7 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
             "storeId": store_id,
         }
     )
-    assert not source_configuration_root.exists()
+    assert not tuple(source_root.iterdir())
     projected_sources = json.loads(
         (
             snapshot_root

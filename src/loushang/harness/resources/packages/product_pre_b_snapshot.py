@@ -2,19 +2,36 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from loushang.harness.journal._rooted_io import RootedFileIO
+from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
+    PackageEpochFenceJournal,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.lease_registry import (
+    PackageEpochRuntimeLeaseRegistry,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.offline_restore import (
     PackageOfflineRestoreSnapshotEvidenceV1,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_coordination import (
+    PackagePosixEpochCutoverCoordination,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
     PackageEpochCutoverSnapshotReceiptV1,
+    PackagePosixEpochCutoverOwner,
+    PackagePosixEpochCutoverRequestV1,
+    PackagePosixEpochCutoverResultV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_snapshot import (
     PackagePosixEpochSnapshotOwner,
     PackagePosixSnapshotSharedMemberV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.posix_pre_fence_registration import (
+    PackagePosixPreFenceRegistrationOwner,
 )
 
 
@@ -23,6 +40,12 @@ class PackageProductPreBSnapshotSharedMemberV1:
     source_root: Path
     member_name: str
     domains: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class PackageProductPosixCutoverAttemptV1:
+    request: PackagePosixEpochCutoverRequestV1
+    result: PackagePosixEpochCutoverResultV1
 
 
 class PackageProductPreBSnapshotOwner:
@@ -38,6 +61,7 @@ class PackageProductPreBSnapshotOwner:
         legacy_root_pointer_name: str,
         shared_members: tuple[PackageProductPreBSnapshotSharedMemberV1, ...] = (),
     ) -> None:
+        self._store_id = store_id
         self._owner = PackagePosixEpochSnapshotOwner(
             snapshot_root,
             store_id=store_id,
@@ -72,8 +96,85 @@ class PackageProductPreBSnapshotOwner:
     ) -> PackageOfflineRestoreSnapshotEvidenceV1 | None:
         return self._owner.snapshot(snapshot_receipt_id)
 
+    def cutover_from_legacy(
+        self,
+        *,
+        authority_root: Path,
+        control_root: Path,
+        legacy_root_name: str,
+        epochs_root_name: str,
+        namespace_id: str,
+        minimum_runtime_version: str,
+        minimum_runtime_protocol_epoch: int,
+    ) -> PackageProductPosixCutoverAttemptV1:
+        """Fence a quiescent legacy Store against this exact snapshot owner."""
+
+        if os.name != "posix" or any(
+            not hasattr(os, name) for name in ("O_DIRECTORY", "O_NOFOLLOW", "O_CLOEXEC")
+        ):
+            raise RuntimeError("POSIX Package Product cutover is required")
+        if any(
+            not isinstance(path, Path)
+            or not path.is_absolute()
+            or ".." in path.parts
+            for path in (authority_root, control_root)
+        ):
+            raise ValueError("Package Product cutover roots must be absolute")
+        fences = PackageEpochFenceJournal(control_root / "epoch.jsonl")
+        pre_fence = PackagePosixPreFenceRegistrationOwner(
+            authority_root, store_id=self._store_id, fences=fences
+        )
+        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+        descriptor = os.open(control_root, flags)
+        file_io = None
+        try:
+            file_io = RootedFileIO(control_root, descriptor)
+            leases = PackageEpochRuntimeLeaseRegistry(
+                path=control_root / "runtime-leases.jsonl",
+                coordination_lock=control_root / "coordination",
+                file_io=file_io,
+                fences=fences,
+                store_id=self._store_id,
+            )
+            owner = PackagePosixEpochCutoverOwner(
+                authority_root,
+                store_id=self._store_id,
+                epoch_journal=fences,
+                legacy_root_name=legacy_root_name,
+                epochs_root_name=epochs_root_name,
+                coordination=PackagePosixEpochCutoverCoordination(
+                    leases=leases,
+                    pre_fence=pre_fence,
+                ),
+                snapshots=self,
+            )
+            current = fences.current(self._store_id)
+            request = PackagePosixEpochCutoverRequestV1.create(
+                store_id=self._store_id,
+                prior_fence=None,
+                expected_legacy_root_identity=(
+                    owner.current_root_identity()
+                    if current is None
+                    else current.request.legacy_root_identity
+                ),
+                namespace_id=namespace_id,
+                minimum_runtime_version=minimum_runtime_version,
+                minimum_runtime_protocol_epoch=minimum_runtime_protocol_epoch,
+            )
+            return PackageProductPosixCutoverAttemptV1(
+                request=request,
+                result=owner.cutover(request),
+            )
+        finally:
+            try:
+                if file_io is not None:
+                    file_io.cleanup()
+            finally:
+                os.close(descriptor)
+
 
 __all__ = [
     "PackageProductPreBSnapshotOwner",
     "PackageProductPreBSnapshotSharedMemberV1",
+    "PackageProductPosixCutoverAttemptV1",
 ]
