@@ -1,9 +1,9 @@
 """Rooted pre-B snapshots shared by POSIX cutover and offline restore.
 
-The Product supplies one disjoint private directory for each required pre-B
-domain. This owner copies and durably publishes those exact directories;
-deciding which Product paths constitute each domain remains the Product's
-responsibility.
+The Product supplies one private source for each required pre-B domain.
+Whole-tree sources must be disjoint. Explicit top-level member selections may
+share one directory only when their union covers it exactly; Product policy
+still decides which state belongs to each domain.
 """
 
 from __future__ import annotations
@@ -44,6 +44,7 @@ from loushang.harness.resources.packages.plugin_lifecycle.posix_offline_restore 
     _rename_directory_noreplace,
     _strict_json_object,
     _supports_posix_rooted_io,
+    _validate_entry_name,
     _validated_limit,
     _validated_root_path,
     _validated_snapshot_bundle,
@@ -148,6 +149,7 @@ class PackagePosixEpochSnapshotOwner(PackagePosixEpochSnapshotEvidenceStore):
         *,
         store_id: str,
         domain_roots: Mapping[str, str | Path],
+        domain_members: Mapping[str, tuple[str, ...] | None] | None = None,
         maximum_entries: int = DEFAULT_PACKAGE_POSIX_OFFLINE_RESTORE_MAX_ENTRIES,
         maximum_bytes: int = DEFAULT_PACKAGE_POSIX_OFFLINE_RESTORE_MAX_BYTES,
         maximum_depth: int = DEFAULT_PACKAGE_POSIX_OFFLINE_RESTORE_MAX_DEPTH,
@@ -165,16 +167,37 @@ class PackagePosixEpochSnapshotOwner(PackagePosixEpochSnapshotEvidenceStore):
             domain: _validated_root_path(domain_roots[domain], name=domain)
             for domain in PACKAGE_PRE_B_SNAPSHOT_DOMAINS
         }
+        if domain_members is not None and set(domain_members) != set(
+            PACKAGE_PRE_B_SNAPSHOT_DOMAINS
+        ):
+            raise ValueError("Package snapshot member mapping requires every domain")
+        self._domain_members: dict[str, tuple[str, ...] | None] = {}
+        for domain in PACKAGE_PRE_B_SNAPSHOT_DOMAINS:
+            members = None if domain_members is None else domain_members[domain]
+            if members is not None:
+                if type(members) is not tuple or any(
+                    type(name) is not str for name in members
+                ) or members != tuple(sorted(set(members))):
+                    raise ValueError("Package snapshot domain members are invalid")
+                try:
+                    for name in members:
+                        _validate_entry_name(name)
+                except (OSError, UnicodeError) as exc:
+                    raise ValueError(
+                        "Package snapshot domain members are invalid"
+                    ) from exc
+            self._domain_members[domain] = members
         if any(
             _paths_overlap(self._snapshot_root, source)
             for source in self._domain_roots.values()
         ):
             raise ValueError("Package snapshot authority overlaps source state")
-        domain_paths = tuple(self._domain_roots.values())
+        domains = tuple(PACKAGE_PRE_B_SNAPSHOT_DOMAINS)
         if any(
-            _paths_overlap(left, right)
-            for index, left in enumerate(domain_paths)
-            for right in domain_paths[index + 1 :]
+            _paths_overlap(self._domain_roots[left], self._domain_roots[right])
+            and not self._shared_selected_source(left, right)
+            for index, left in enumerate(domains)
+            for right in domains[index + 1 :]
         ):
             raise ValueError("Package snapshot domain roots overlap")
         snapshot = _PinnedRoot.open(
@@ -183,19 +206,50 @@ class PackagePosixEpochSnapshotOwner(PackagePosixEpochSnapshotEvidenceStore):
         try:
             domain_identities = {}
             with ExitStack() as opened:
-                sources: list[_PinnedRoot] = []
+                sources: list[tuple[str, _PinnedRoot]] = []
                 for domain, path in self._domain_roots.items():
                     source = _PinnedRoot.open(path)
                     opened.callback(source.close)
                     if _pinned_roots_overlap(source, snapshot):
                         raise ValueError("Package snapshot source overlaps authority")
-                    if any(_pinned_roots_overlap(source, prior) for prior in sources):
+                    if any(
+                        _pinned_roots_overlap(source, prior)
+                        and not self._shared_selected_source(domain, prior_domain)
+                        for prior_domain, prior in sources
+                    ):
                         raise ValueError("Package snapshot domain roots overlap")
                     domain_identities[domain] = source.identities
-                    sources.append(source)
+                    sources.append((domain, source))
             self._domain_identities = domain_identities
         finally:
             snapshot.close()
+
+    def _shared_selected_source(self, left: str, right: str) -> bool:
+        return (
+            self._domain_roots[left] == self._domain_roots[right]
+            and self._domain_members[left] is not None
+            and self._domain_members[right] is not None
+        )
+
+    def _selected_names(self, domain: str) -> frozenset[str] | None:
+        members = self._domain_members[domain]
+        return None if members is None else frozenset(members)
+
+    def _require_member_coverage(self, sources: Mapping[str, _PinnedRoot]) -> None:
+        grouped: dict[Path, list[str]] = {}
+        for domain, path in self._domain_roots.items():
+            grouped.setdefault(path, []).append(domain)
+        for domains in grouped.values():
+            if len(domains) == 1 and self._domain_members[domains[0]] is None:
+                continue
+            selected = tuple(
+                name
+                for domain in domains
+                for name in (self._domain_members[domain] or ())
+            )
+            observed = set(os.listdir(sources[domains[0]].descriptor))
+            if len(set(selected)) != len(selected) or set(selected) != observed:
+                raise ValueError("Package snapshot source member coverage is incomplete")
 
     def capture(
         self,
@@ -232,6 +286,7 @@ class PackagePosixEpochSnapshotOwner(PackagePosixEpochSnapshotEvidenceStore):
                 sources[domain] = _PinnedRoot.open(
                     path, expected_identities=self._domain_identities[domain]
                 )
+            self._require_member_coverage(sources)
             if _directory_identity(sources["store_bytes"].descriptor) != legacy_root_identity:
                 raise ValueError("Package snapshot legacy root changed")
             inspections = {
@@ -240,6 +295,7 @@ class PackagePosixEpochSnapshotOwner(PackagePosixEpochSnapshotEvidenceStore):
                     maximum_entries=self._maximum_entries,
                     maximum_bytes=self._maximum_bytes,
                     maximum_depth=self._maximum_depth - 1,
+                    top_level_names=self._selected_names(domain),
                 )
                 for domain, source in sources.items()
             }
@@ -289,6 +345,7 @@ class PackagePosixEpochSnapshotOwner(PackagePosixEpochSnapshotEvidenceStore):
                         maximum_depth=self._maximum_depth,
                     )
                     _require_domains(payload_fd)
+                    self._require_member_coverage(sources)
                     for domain, source in sources.items():
                         source.assert_visible()
                         after = _inspect_tree(
@@ -296,6 +353,7 @@ class PackagePosixEpochSnapshotOwner(PackagePosixEpochSnapshotEvidenceStore):
                             maximum_entries=self._maximum_entries,
                             maximum_bytes=self._maximum_bytes,
                             maximum_depth=self._maximum_depth - 1,
+                            top_level_names=self._selected_names(domain),
                         )
                         if after.entries != inspections[domain].entries:
                             raise OSError("Package snapshot source changed during copy")

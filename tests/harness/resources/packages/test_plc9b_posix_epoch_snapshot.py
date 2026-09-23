@@ -97,6 +97,71 @@ def test_snapshot_refuses_overlapping_pre_b_domain_roots(
         )
 
 
+@pytest.mark.parametrize(
+    "coverage", ("complete", "missing", "duplicate", "added_after_owner")
+)
+def test_snapshot_partitions_colocated_domain_members_exactly(
+    tmp_path: Path, coverage: str
+) -> None:
+    snapshot_root = tmp_path / "snapshots"
+    source_root = tmp_path / "sources"
+    snapshot_root.mkdir(mode=0o700)
+    source_root.mkdir(mode=0o700)
+    domains = {}
+    for domain in PACKAGE_PRE_B_SNAPSHOT_DOMAINS:
+        path = source_root / domain
+        path.mkdir(mode=0o700)
+        domains[domain] = path
+    shared = domains["desired_state"]
+    (shared / "desired.jsonl").write_bytes(b"desired\n")
+    (shared / "instance.jsonl").write_bytes(b"instance\n")
+    domains["instance_state"] = shared
+    members: dict[str, tuple[str, ...] | None] = {
+        domain: None for domain in PACKAGE_PRE_B_SNAPSHOT_DOMAINS
+    }
+    members["desired_state"] = ("desired.jsonl",)
+    members["instance_state"] = {
+        "complete": ("instance.jsonl",),
+        "missing": (),
+        "duplicate": ("desired.jsonl",),
+        "added_after_owner": ("instance.jsonl",),
+    }[coverage]
+    owner = PackagePosixEpochSnapshotOwner(
+        snapshot_root,
+        store_id=_STORE_ID,
+        domain_roots=domains,
+        domain_members=members,
+    )
+    if coverage == "added_after_owner":
+        (shared / "unexpected.jsonl").write_bytes(b"late\n")
+    if coverage != "complete":
+        with pytest.raises(ValueError, match="coverage"):
+            owner.capture(
+                store_id=_STORE_ID,
+                legacy_root_identity=_directory_identity(domains["store_bytes"]),
+                quiescence_receipt_id=_QUIESCENCE_ID,
+            )
+        assert not list(snapshot_root.glob("*.evidence.json"))
+        return
+    receipt = owner.capture(
+        store_id=_STORE_ID,
+        legacy_root_identity=_directory_identity(domains["store_bytes"]),
+        quiescence_receipt_id=_QUIESCENCE_ID,
+    )
+    assert owner.snapshot(receipt.receipt_id) is not None
+    payload = snapshot_root / receipt.snapshot_id / "payload"
+    assert (payload / "desired_state" / "desired.jsonl").read_bytes() == b"desired\n"
+    assert (payload / "instance_state" / "instance.jsonl").read_bytes() == b"instance\n"
+    assert not (payload / "desired_state" / "instance.jsonl").exists()
+    shutil.rmtree(source_root)
+    assert (
+        PackagePosixEpochSnapshotEvidenceStore(
+            snapshot_root, store_id=_STORE_ID
+        ).snapshot(receipt.receipt_id)
+        is not None
+    )
+
+
 def test_snapshot_is_durable_and_reopen_validates_complete_domains(
     tmp_path: Path,
 ) -> None:
