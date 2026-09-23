@@ -1573,12 +1573,9 @@ def _legacy_process_startup_scope(
         from loushang.coding.package_epoch_layout import (
             resolve_coding_package_epoch_layout,
         )
-        from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
-            PackageEpochFenceJournal,
-        )
-        from loushang.harness.resources.packages.plugin_lifecycle.posix_pre_fence_registration import (
-            PackagePosixPreFenceRegistrationError,
-            PackagePosixPreFenceRegistrationOwner,
+        from loushang.harness.resources.packages.product_epoch_guard import (
+            PackageProductLegacyPreFenceAdmissionError,
+            register_package_product_legacy_runtime,
         )
 
         epoch = resolve_coding_package_epoch_layout(layout)
@@ -1593,15 +1590,14 @@ def _legacy_process_startup_scope(
             label="state",
         )
         try:
-            registration = PackagePosixPreFenceRegistrationOwner(
+            registration = register_package_product_legacy_runtime(
                 epoch.authority_root,
+                control_root=epoch.control_root,
                 store_id=epoch.store_id,
-                fences=PackageEpochFenceJournal(epoch.control_root / "epoch.jsonl"),
-            ).register(
                 startup_id="coding:"
-                + hashlib.sha256(startup_id.encode("utf-8")).hexdigest()
+                + hashlib.sha256(startup_id.encode("utf-8")).hexdigest(),
             )
-        except PackagePosixPreFenceRegistrationError as exc:
+        except PackageProductLegacyPreFenceAdmissionError as exc:
             raise CodingPluginLifecycleError(str(exc), code=exc.code) from exc
     try:
         _prepare_private_state_layout(layout)

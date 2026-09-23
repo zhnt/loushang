@@ -51,6 +51,7 @@ from loushang.harness.resources.packages.product_composition import (
 )
 from loushang.harness.resources.packages.product_contract import (
     PackageProductLifecycleEvidenceV1,
+    PackageProductLifecycleMode,
     PackageProductUpdateCheckRequestV1,
     PackageProductUpdateCheckV1,
     PackageProductUpdateManifestReceiptV1,
@@ -1075,6 +1076,7 @@ def _operations(
     *,
     inventory_sources: tuple[str, ...] = (),
     inventory: _Inventory | None = None,
+    mode: PackageProductLifecycleMode = "enforced",
 ) -> PackageOperationsRuntime:
     def mutation(source: str, scope: str) -> PackageSourceSettingsMutation:
         raise AssertionError(f"settings mutation must not run: {scope}:{source}")
@@ -1090,7 +1092,7 @@ def _operations(
             if inventory is not None
             else _Inventory(activation.binding_id, inventory_sources)
         ),
-        product_lifecycle_mode="enforced",
+        product_lifecycle_mode=mode,
     )
 
 
@@ -1141,13 +1143,13 @@ def test_plugin_remove_and_uninstall_never_reach_legacy_delete(
     assert transaction.calls == ["operations"]
 
 
-def test_operations_preserves_only_explicit_non_plugin_behavior(tmp_path: Path) -> None:
+def test_dark_operations_preserve_explicit_non_plugin_behavior(tmp_path: Path) -> None:
     activation, _transaction = _activation(tmp_path, decision="non_plugin")
     activation.activate()
     materializer = _Materializer(tmp_path)
 
     record = asyncio.run(
-        _operations(materializer, activation).materialize(
+        _operations(materializer, activation, mode="dark").materialize(
             "https://example.test/legacy.git",
             operation_id="operation:legacy",
         )
@@ -1155,6 +1157,99 @@ def test_operations_preserves_only_explicit_non_plugin_behavior(tmp_path: Path) 
 
     assert record.name == "legacy"
     assert materializer.materialize_calls == ["https://example.test/legacy.git"]
+
+
+def test_enforced_non_plugin_cannot_fall_to_supplied_materializer(
+    tmp_path: Path,
+) -> None:
+    activation, _transaction = _activation(tmp_path, decision="non_plugin")
+    activation.activate()
+    materializer = _Materializer(tmp_path)
+
+    with pytest.raises(RuntimeError, match="no accepted non-Plugin owner"):
+        asyncio.run(
+            _operations(materializer, activation).materialize(
+                "https://example.test/non-plugin.whl",
+                operation_id="operation:enforced-non-plugin",
+            )
+        )
+    assert materializer.materialize_calls == []
+
+
+def test_enforced_startup_non_plugin_cannot_fall_to_supplied_materializer(
+    tmp_path: Path,
+) -> None:
+    source = "https://example.test/non-plugin.whl"
+    activation, _transaction = _activation(tmp_path, decision="non_plugin")
+    activation.activate()
+    materializer_calls: list[str] = []
+
+    class Settings:
+        def get_project_settings(self) -> dict[str, object]:
+            return {"packages": [source]}
+
+        def get_global_settings(self) -> dict[str, object]:
+            return {}
+
+        def get_session_settings(self) -> dict[str, object]:
+            return {}
+
+    class Materializer:
+        def materialize_remote_source_sync(self, value: str) -> object:
+            materializer_calls.append(value)
+            raise AssertionError("enforced startup reached the old materializer")
+
+    with pytest.raises(RuntimeError, match="no accepted non-Plugin owner"):
+        PackageSourceResolver(
+            settings_manager=Settings(),
+            materializer=Materializer(),  # type: ignore[arg-type]
+            product_lifecycle=activation,
+            product_lifecycle_mode="enforced",
+        ).resolve_configured_sources_sync()
+    assert materializer_calls == []
+
+
+def test_enforced_preparation_cannot_enter_legacy_source_resolver(
+    tmp_path: Path,
+) -> None:
+    source = "https://example.test/non-plugin.whl"
+    activation, _transaction = _activation(tmp_path, decision="non_plugin")
+    activation.activate()
+
+    class Settings:
+        def get_project_settings(self) -> dict[str, object]:
+            return {"packages": [source]}
+
+        def get_global_settings(self) -> dict[str, object]:
+            return {}
+
+        def get_session_settings(self) -> dict[str, object]:
+            return {}
+
+    def forbidden_materializer() -> object:
+        raise AssertionError("enforced preparation queried the old materializer")
+
+    with pytest.raises(RuntimeError, match="no accepted non-Plugin owner"):
+        PackageSourceResolver(
+            settings_manager=Settings(),
+            materializer=object(),  # type: ignore[arg-type]
+            product_lifecycle=activation,
+            product_lifecycle_mode="enforced",
+        ).prepare_configured_remote_records()
+
+    controller = SessionPackageController(
+        get_session_id=lambda: "session:test",
+        get_cwd=lambda: str(tmp_path),
+        get_settings_manager=Settings,  # type: ignore[arg-type]
+        get_package_materializer=forbidden_materializer,  # type: ignore[arg-type]
+        get_resource_loader=lambda: None,
+        get_diagnostics_service=lambda: None,
+        refresh_resources=lambda: None,
+        product_lifecycle=activation,
+        product_lifecycle_mode="enforced",
+    )
+    with pytest.raises(RuntimeError, match="no accepted non-Plugin owner"):
+        asyncio.run(controller.prepare_configured_remote_package_records())
 
 
 @pytest.mark.parametrize("action", ("remove", "uninstall", "uninstall_sync"))
@@ -1243,7 +1338,7 @@ def test_non_plugin_global_scope_reaches_global_legacy_settings(
         get_diagnostics_service=lambda: None,
         refresh_resources=lambda: None,
         product_lifecycle=activation,
-        product_lifecycle_mode="enforced",
+        product_lifecycle_mode="dark",
     )
 
     if transport == "cli":

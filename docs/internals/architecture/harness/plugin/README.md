@@ -366,14 +366,20 @@ Neither may silently override a narrower implemented owner contract.
   Product mapping of their real Coding state remains required. On Linux, the
   Coding lifecycle and management-application builders now hold process-level
   pre-fence registrations before preparing their legacy state; default base
-  materializer construction follows that admission. Configured Continuity now
-  registers before compatibility reconciliation and materializer construction;
+  materializer construction follows that admission. Coding reaches the internal
+  Linux registration owner only through a Product-facing Package adapter.
+  Configured Continuity registers before compatibility reconciliation and
+  materializer construction;
   a bound compatibility writer retains that registration after an empty bind.
   Continuity without a settings owner or Plugin Source remains a non-Plugin
   path. Generic Session Package materialization and remaining CLI/RPC/supervisor
   launch coverage still need a one-time switch.
   Default Coding does not select that factory; this is not a
   completed Product cutover, Windows composition, or PLC9D execution claim.
+  An enforced Product route now refuses an unhandled non-Plugin outcome even
+  when a legacy materializer was supplied, including startup Source resolution
+  and direct configured-Source preparation. Dark mode retains its compatibility
+  behavior. A separately accepted non-Plugin owner remains an activation gate.
   The composition now returns one enforced lifecycle/inventory runtime binding.
   Its Product-owned local-Wheel inventory reads the same desired and
   committed-set journals, binds bulk-update targets durably, and reports

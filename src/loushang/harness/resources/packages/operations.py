@@ -572,10 +572,7 @@ class PackageOperationsRuntime:
         )
         outcome = lifecycle.route(intent, entrypoint=entrypoint)
         if not outcome.handled:
-            if (
-                self.product_lifecycle_mode == "enforced"
-                and self.get_materializer() is None
-            ):
+            if self.product_lifecycle_mode == "enforced":
                 raise RuntimeError(
                     "Package Product route has no accepted non-Plugin owner"
                 )
