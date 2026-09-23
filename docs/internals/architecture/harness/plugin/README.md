@@ -363,8 +363,12 @@ Neither may silently override a narrower implemented owner contract.
   The cutover fixture now uses Coding's existing legacy Package directory as
   the POSIX legacy root, with a sibling epoch namespace, and snapshots its
   actual lifecycle state root. Other pre-B domains still use fixture roots;
-  Product mapping of their real Coding state and registration of every legacy
-  CLI/RPC/Session/supervisor launch remain required.
+  Product mapping of their real Coding state remains required. On Linux, the
+  Coding lifecycle and management-application builders now hold process-level
+  pre-fence registrations before preparing their legacy state; default base
+  materializer construction follows that admission. Generic Session Package
+  materialization, Continuity preparation before the common lifecycle, and
+  remaining CLI/RPC/supervisor launch coverage still need a one-time switch.
   Default Coding does not select that factory; this is not a
   completed Product cutover, Windows composition, or PLC9D execution claim.
   The composition now returns one enforced lifecycle/inventory runtime binding.

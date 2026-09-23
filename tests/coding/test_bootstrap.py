@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import subprocess
+import sys
 from dataclasses import replace
 from datetime import date
 from pathlib import Path
@@ -899,6 +900,76 @@ def test_base_assembly_failure_releases_ephemeral_startup_lease_and_root(
         assert (
             len(plugin_lifecycle_module._PROCESS_STARTUP_LEASES) == original_lease_count
         )
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"), reason="Linux pre-fence owner"
+)
+def test_default_base_materializer_is_not_constructed_after_package_fence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import loushang.coding.bootstrap as coding_bootstrap
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.package_epoch_layout import resolve_coding_package_epoch_layout
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
+        PackageEpochFenceJournal,
+        PackageEpochFenceRequestV1,
+    )
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    layout = plugin_lifecycle_module.resolve_coding_plugin_lifecycle_state_layout(
+        workspace
+    )
+    lifecycle = plugin_lifecycle_module.build_coding_plugin_lifecycle(layout)
+    lifecycle.release_owned_process_startup_lease()
+    epoch = resolve_coding_package_epoch_layout(layout)
+    PackageEpochFenceJournal(epoch.control_root / "epoch.jsonl").publish(
+        PackageEpochFenceRequestV1.create(
+            store_id=epoch.store_id,
+            prior_fence=None,
+            legacy_root_identity="a" * 64,
+            fenced_root_identity="b" * 64,
+            namespace_id="c" * 64,
+            minimum_runtime_version="2.0.0",
+            minimum_runtime_protocol_epoch=2,
+            quiescence_receipt_id="d" * 64,
+            snapshot_receipt_id="e" * 64,
+            root_switch_receipt_id="f" * 64,
+        )
+    )
+    default_base_materializers: list[Path] = []
+    original_materializer = coding_bootstrap.PackageMaterializer
+
+    def materializer_spy(**kwargs):
+        if Path(kwargs["install_root"]) == layout.package_install_root:
+            default_base_materializers.append(Path(kwargs["install_root"]))
+        return original_materializer(**kwargs)
+
+    monkeypatch.setattr(coding_bootstrap, "PackageMaterializer", materializer_spy)
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(workspace),
+            persist=True,
+        )
+    )
+    with pytest.raises(plugin_lifecycle_module.CodingPluginLifecycleError) as refused:
+        create_agent_session(
+            session_manager=manager,
+            model=_model(),
+            services=create_services(
+                settings_manager=SettingsManager(
+                    ControlConfig(capabilities={"coding.lsp": "disabled"})
+                )
+            ),
+        )
+    assert refused.value.code == "package_runtime_epoch_unsupported"
+    assert default_base_materializers == []
 
 
 def test_catalog_default_publishes_base_tools_and_commands_as_owner_generations(

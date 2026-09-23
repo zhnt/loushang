@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import hashlib
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
 from loushang.coding._plugin_lifecycle import (
+    _CODING_PLUGIN_RUNTIME_BOOT_ID,
+    _hold_process_startup_lease,
+    _release_process_startup_lease,
     build_coding_plugin_management_application,
     resolve_coding_plugin_lifecycle_state_layout,
 )
@@ -148,29 +152,42 @@ def build_coding_plugin_management_cli_binding(
 ) -> PluginManagementCliBinding:
     workspace_root = Path(cwd).expanduser().resolve(strict=False)
     layout = resolve_coding_plugin_lifecycle_state_layout(workspace_root)
-    source = CodingConfiguredPluginSourceProjection(
-        settings_manager=settings_manager,
-        scope_id=layout.scope_id,
-        workspace_root=workspace_root,
-    )
-    ports = build_coding_plugin_management_application(layout, source=source)
-    compatibility = bind_coding_plugin_enablement_compatibility(
+    owns_process_startup_lease = sys.platform.startswith(
+        "linux"
+    ) and _hold_process_startup_lease(
         layout,
-        settings_manager,
+        startup_id=_CODING_PLUGIN_RUNTIME_BOOT_ID,
     )
-    if compatibility is not None:
-        compatibility.reconcile()
-    return PluginManagementCliBinding(
-        ports=ports,
-        product_id=CODING_PRODUCT_ID,
-        installation_scope="workspace",
-        scope_id=layout.scope_id,
-        actor_id=_CLI_ACTOR_ID,
-        policy_revision=_CLI_POLICY_REVISION,
-        publish_compatibility_projection=(
-            None if compatibility is None else compatibility.reconcile
-        ),
-    )
+    try:
+        source = CodingConfiguredPluginSourceProjection(
+            settings_manager=settings_manager,
+            scope_id=layout.scope_id,
+            workspace_root=workspace_root,
+        )
+        ports = build_coding_plugin_management_application(layout, source=source)
+        compatibility = bind_coding_plugin_enablement_compatibility(
+            layout,
+            settings_manager,
+        )
+        if compatibility is not None:
+            compatibility.reconcile()
+        return PluginManagementCliBinding(
+            ports=ports,
+            product_id=CODING_PRODUCT_ID,
+            installation_scope="workspace",
+            scope_id=layout.scope_id,
+            actor_id=_CLI_ACTOR_ID,
+            policy_revision=_CLI_POLICY_REVISION,
+            publish_compatibility_projection=(
+                None if compatibility is None else compatibility.reconcile
+            ),
+        )
+    except BaseException:
+        if owns_process_startup_lease:
+            _release_process_startup_lease(
+                layout, startup_id=_CODING_PLUGIN_RUNTIME_BOOT_ID
+            )
+        raise
 
 
 __all__ = [

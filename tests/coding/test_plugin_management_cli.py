@@ -13,6 +13,7 @@ from types import SimpleNamespace
 import pytest
 
 import loushang.coding._plugin_lifecycle as lifecycle_module
+import loushang.coding.plugin_management_cli as cli_module
 from loushang.coding._plugin_lifecycle import (
     CodingPluginLifecycleError,
     build_coding_plugin_lifecycle,
@@ -100,6 +101,32 @@ class _FailingCompatibilitySettingsManager(_SettingsManager):
             self.set_disabled_plugins(names, scope="project")
 
         return publish
+
+
+def test_management_cli_failure_releases_its_process_registration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    layout = resolve_coding_plugin_lifecycle_state_layout(workspace)
+    lease_path = lifecycle_module._startup_lease_path(
+        layout, startup_id=lifecycle_module._CODING_PLUGIN_RUNTIME_BOOT_ID
+    )
+
+    def fail_compatibility(*_args: object) -> None:
+        raise RuntimeError("injected compatibility failure")
+
+    monkeypatch.setattr(
+        cli_module, "bind_coding_plugin_enablement_compatibility", fail_compatibility
+    )
+    with pytest.raises(RuntimeError, match="injected compatibility failure"):
+        build_coding_plugin_management_cli_binding(
+            workspace, _SettingsManager(_Settings())
+        )
+    with lifecycle_module._PROCESS_STARTUP_LEASES_LOCK:
+        assert lease_path not in lifecycle_module._PROCESS_STARTUP_LEASES
 
 
 def test_coding_management_cli_projects_relative_sources_from_workspace(
