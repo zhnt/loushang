@@ -367,13 +367,16 @@ Neither may silently override a narrower implemented owner contract.
   actual lifecycle state root. Its Package-root mapping now partitions deployed
   `installed` and `plugin-revisions` Store data from `package-lock.json` binding
   and lock history, and refuses any unaccounted top-level member. The combined
-  JSON file is explicitly copied into both history domains. Beyond the actual
-  lifecycle state root, remaining pre-B domains still use fixture roots;
-  Product mapping of their real Coding state remains
-  required. The snapshot owner rejects overlapping whole-tree roots and accepts
+  JSON file is explicitly copied into both history domains. The real Coding
+  lifecycle root is now partitioned into Desired, enablement, and Instance
+  domains, including known journal locks and old lease directories. Both
+  mappings reject unknown top-level members. `fence_record`,
+  `legacy_root_pointer`, and `source_configuration` still use fixture roots;
+  Product mapping of their real Coding state remains required. The snapshot
+  owner rejects overlapping whole-tree roots and accepts
   colocated roots only with exact top-level member coverage, including declared
-  shared members. Coding still needs a versioned, complete mapping for settings
-  Sources and other old state before a real default cutover.
+  shared members. Coding still needs a complete mapping for these remaining
+  domains before a real default cutover.
   On Linux, the
   Coding lifecycle and management-application builders now hold process-level
   pre-fence registrations before preparing their legacy state; default base

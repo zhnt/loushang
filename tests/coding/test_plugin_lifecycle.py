@@ -32,6 +32,7 @@ from loushang.coding._plugin_lifecycle import (
 )
 from loushang.coding.composition_sets import resolve_coding_composition_set
 from loushang.coding.package_epoch_layout import (
+    resolve_coding_lifecycle_pre_b_members,
     resolve_coding_package_epoch_layout,
     resolve_coding_package_pre_b_store_members,
 )
@@ -115,6 +116,34 @@ def test_coding_pre_b_package_mapping_rejects_unmapped_member(
     (layout.package_root / "unknown-state").write_bytes(b"unaccounted")
     with pytest.raises(ValueError, match="unmapped members"):
         resolve_coding_package_pre_b_store_members(layout)
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"), reason="Linux pre-fence lifecycle"
+)
+def test_coding_pre_b_lifecycle_mapping_covers_real_owner_state(
+    tmp_path: Path,
+) -> None:
+    layout = resolve_ephemeral_coding_plugin_lifecycle_state_layout(
+        tmp_path / "session", cwd=tmp_path / "workspace"
+    )
+    lifecycle = build_coding_plugin_lifecycle(layout, startup_id="pre-b-inventory")
+    try:
+        lifecycle.reconcile_retirements()
+        lifecycle.complete_startup_recovery()
+    finally:
+        lifecycle.release_owned_process_startup_lease()
+    mapping = resolve_coding_lifecycle_pre_b_members(layout)
+    domains = mapping.domain_members()
+    assert set(domains) == {"desired_state", "enablement_state", "instance_state"}
+    assert {name for members in domains.values() for name in members} == {
+        path.name for path in layout.root.iterdir()
+    }
+    assert "desired-state.jsonl.lock" in domains["desired_state"]
+    assert "process-startups" in domains["instance_state"]
+    (layout.root / "unmapped-state.jsonl").write_bytes(b"unexpected")
+    with pytest.raises(ValueError, match="unmapped members"):
+        resolve_coding_lifecycle_pre_b_members(layout)
 
 
 @pytest.mark.skipif(

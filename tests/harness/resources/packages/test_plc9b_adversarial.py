@@ -4220,6 +4220,7 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import ControlConfig, SettingsManager
     from loushang.coding.package_epoch_layout import (
+        resolve_coding_lifecycle_pre_b_members,
         resolve_coding_package_epoch_layout,
         resolve_coding_package_pre_b_store_members,
     )
@@ -4309,6 +4310,10 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     )
     (legacy_root / "package-lock.json.lock").write_bytes(b"")
     (legacy_layout.root / "desired-state.jsonl").write_bytes(b"")
+    (legacy_layout.root / "enablement-migration.jsonl").write_bytes(b"")
+    (legacy_layout.root / "instance-runtime.jsonl").write_bytes(b"")
+    (legacy_layout.root / "process-startups").mkdir(mode=0o700)
+    (legacy_layout.root / "session-owners").mkdir(mode=0o700)
     gate = PluginPackageGcReservationJournal(tmp_path / "product-gc-gate.jsonl")
     desired = PluginDesiredStateLedger(
         tmp_path / "product-desired.jsonl", gc_gate=gate
@@ -4323,11 +4328,14 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     source_root = tmp_path / "pre-b-domains"
     source_root.mkdir(mode=0o700)
     package_members = resolve_coding_package_pre_b_store_members(legacy_layout)
+    lifecycle_members = resolve_coding_lifecycle_pre_b_members(legacy_layout)
     domain_roots = {
         "store_bytes": legacy_root,
         "binding_history": legacy_root,
         "lock_history": legacy_root,
         "desired_state": legacy_layout.root,
+        "enablement_state": legacy_layout.root,
+        "instance_state": legacy_layout.root,
     }
     for domain in PACKAGE_PRE_B_SNAPSHOT_DOMAINS:
         if domain in domain_roots:
@@ -4335,14 +4343,16 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         domain_root = source_root / domain
         domain_root.mkdir(mode=0o700)
         domain_roots[domain] = domain_root
+    selected_members: dict[str, tuple[str, ...] | None] = {
+        domain: None for domain in PACKAGE_PRE_B_SNAPSHOT_DOMAINS
+    }
+    selected_members.update(package_members.domain_members())
+    selected_members.update(lifecycle_members.domain_members())
     snapshots = PackagePosixEpochSnapshotOwner(
         snapshot_root,
         store_id=store_id,
         domain_roots=domain_roots,
-        domain_members={
-            domain: package_members.domain_members().get(domain)
-            for domain in PACKAGE_PRE_B_SNAPSHOT_DOMAINS
-        },
+        domain_members=selected_members,
         shared_members=(
             (
                 PackagePosixSnapshotSharedMemberV1(
@@ -4428,6 +4438,25 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         / "lock_history"
         / "package-lock.json.lock"
     ).read_bytes() == b""
+    for domain, name in (
+        ("desired_state", "desired-state.jsonl"),
+        ("enablement_state", "enablement-migration.jsonl"),
+        ("instance_state", "instance-runtime.jsonl"),
+    ):
+        assert (
+            snapshot_root
+            / snapshot_evidence.snapshot.snapshot_id
+            / "payload"
+            / domain
+            / name
+        ).read_bytes() == b""
+    assert (
+        snapshot_root
+        / snapshot_evidence.snapshot.snapshot_id
+        / "payload"
+        / "instance_state"
+        / "process-startups"
+    ).is_dir()
     plugin_root = epoch_layout.epoch_root(cutover_request.namespace_id)
     root_fd = os.open(
         control_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
