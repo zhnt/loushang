@@ -4248,9 +4248,8 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         authority_id="coding-local-source:runtime",
     )
     state_root = tmp_path / "package-state"
-    plugin_root = tmp_path / "plugin-store"
     control_root = tmp_path / "epoch-control"
-    for directory in (state_root, plugin_root, control_root):
+    for directory in (state_root, control_root):
         directory.mkdir(mode=0o700)
     gate = PluginPackageGcReservationJournal(tmp_path / "product-gc-gate.jsonl")
     desired = PluginDesiredStateLedger(
@@ -4263,20 +4262,32 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     bindings = PluginPackageGcBindingJournal(tmp_path / "product-bindings.jsonl")
     store_id = "package-store:product-runtime"
     fences = PackageEpochFenceJournal(control_root / "epoch.jsonl")
-    fence = fences.publish(
-        PackageEpochFenceRequestV1.create(
-            store_id=store_id,
-            prior_fence=None,
-            legacy_root_identity="1" * 64,
-            fenced_root_identity=_manifest_directory_identity(plugin_root),
-            namespace_id="2" * 64,
-            minimum_runtime_version="2.0.0",
-            minimum_runtime_protocol_epoch=2,
-            quiescence_receipt_id="3" * 64,
-            snapshot_receipt_id="4" * 64,
-            root_switch_receipt_id="5" * 64,
-        )
+    authority = tmp_path / "package-epoch-authority"
+    legacy_root = authority / "legacy"
+    epochs_root = authority / "epochs"
+    for directory in (authority, legacy_root, epochs_root):
+        directory.mkdir(mode=0o700)
+    (legacy_root / "state.json").write_bytes(b'{"legacy":1}\n')
+    cutover_owner = PackagePosixEpochCutoverOwner(
+        authority,
+        store_id=store_id,
+        epoch_journal=fences,
+        coordination=_ManifestEpochCutoverCoordination(),
+        snapshots=_ManifestEpochCutoverSnapshots(),
     )
+    cutover_request = PackagePosixEpochCutoverRequestV1.create(
+        store_id=store_id,
+        prior_fence=None,
+        expected_legacy_root_identity=cutover_owner.current_root_identity(),
+        namespace_id="2" * 64,
+        minimum_runtime_version="2.0.0",
+        minimum_runtime_protocol_epoch=2,
+    )
+    cutover_result = cutover_owner.cutover(cutover_request)
+    assert cutover_result.disposition == "fenced"
+    fence = cutover_result.fence
+    assert fence is not None
+    plugin_root = epochs_root / cutover_request.namespace_id
     root_fd = os.open(
         control_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
     )
@@ -4365,6 +4376,7 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
                     dependency_store_identity="product-runtime-dependency-store",
                     registry=registry,
                     admission_request=admission_request,
+                    cutover_result=cutover_result,
                     management=management,
                     desired_state=desired,
                     gc_bindings=bindings,
@@ -4373,6 +4385,8 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
                     desired_policy_revision="product-policy:1",
                     recovery_identity="product-runtime-recovery",
                 )
+                with pytest.raises(ValueError, match="completed POSIX cutover"):
+                    replace(factory, cutover_result=None)  # type: ignore[arg-type]
                 for rejected_request in (
                     PackageProductRuntimeRequestV1(
                         product_id="other",

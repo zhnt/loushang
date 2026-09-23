@@ -350,7 +350,10 @@ Neither may silently override a narrower implemented owner contract.
   An explicit minimal Coding Session now exercises this real binding through
   the Product factory Port and commits a local Wheel without a legacy
   materializer. The concrete POSIX factory pins Product, Session, and
-  workspace identity before composing the supplied fenced Store owners.
+  workspace identity, and now requires a native cutover result matching the
+  current fence, namespace, and Store root before composing those owners. Its
+  integration fixture runs the native cutover owner with test quiescence and
+  snapshot providers; production providers remain required.
   Default Coding does not select that factory; this is not a
   completed Product cutover, Windows composition, or PLC9D execution claim.
   The composition now returns one enforced lifecycle/inventory runtime binding.

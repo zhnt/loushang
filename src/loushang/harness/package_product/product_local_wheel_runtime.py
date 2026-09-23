@@ -74,6 +74,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.owner import (
 from loushang.harness.resources.packages.plugin_lifecycle.phase_evidence import (
     PackageArtifactEvidenceJournal,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
+    PackagePosixEpochCutoverResultV1,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.posix_materialization import (
     PosixPackageDependencyMaterializationStore,
     PosixPackagePluginRootMaterializationStore,
@@ -450,6 +453,7 @@ class PosixLocalWheelProductRuntimeFactory:
     dependency_store_identity: str
     registry: PackageEpochRuntimeLeaseRegistry
     admission_request: PackageEpochRuntimeAdmissionRequestV1
+    cutover_result: PackagePosixEpochCutoverResultV1
     management: PluginManagementService
     desired_state: PluginDesiredStateLedger
     gc_bindings: PluginPackageGcBindingJournal
@@ -462,6 +466,13 @@ class PosixLocalWheelProductRuntimeFactory:
     def __post_init__(self) -> None:
         if not isinstance(self.expected_session_id, str) or not self.expected_session_id:
             raise ValueError("Package Product Session identity is required")
+        if (
+            not isinstance(self.cutover_result, PackagePosixEpochCutoverResultV1)
+            or self.cutover_result.disposition != "fenced"
+            or self.cutover_result.fence is None
+            or self.cutover_result.switch_receipt is None
+        ):
+            raise ValueError("Package Product requires completed POSIX cutover")
         cwd = self.expected_cwd
         if not isinstance(cwd, Path) or not cwd.is_absolute() or ".." in cwd.parts:
             raise ValueError("Package Product workspace must be absolute")
@@ -484,6 +495,30 @@ class PosixLocalWheelProductRuntimeFactory:
             or self._current_cwd_identity() != self._cwd_identity
         ):
             raise ValueError("Package Product Session or workspace identity changed")
+        cutover = self.cutover_result
+        fence = cutover.fence
+        switch = cutover.switch_receipt
+        if fence is None or switch is None:
+            raise ValueError("Package Product requires completed POSIX cutover")
+        if (
+            self.registry.fences.current(self.registry.store_id) != fence
+            or switch.store_id != self.registry.store_id
+            or fence.request.store_id != switch.store_id
+            or fence.request.prior_epoch != switch.prior_epoch
+            or fence.request.next_epoch != switch.next_epoch
+            or fence.request.legacy_root_identity != switch.legacy_root_identity
+            or fence.request.fenced_root_identity != switch.fenced_root_identity
+            or fence.request.namespace_id != switch.namespace_id
+            or fence.request.quiescence_receipt_id != switch.quiescence_receipt_id
+            or fence.request.snapshot_receipt_id != switch.snapshot_receipt_id
+            or self.plugin_store_root.name != switch.namespace_id
+            or _directory_identity(self.plugin_store_root)
+            != switch.fenced_root_identity
+            or self.admission_request.fence_id != fence.fence_id
+            or self.admission_request.store_root_identity
+            != switch.fenced_root_identity
+        ):
+            raise ValueError("Package Product POSIX cutover evidence changed")
         binding = compose_posix_local_wheel_product(
             state_root=self.state_root,
             plugin_store_root=self.plugin_store_root,
