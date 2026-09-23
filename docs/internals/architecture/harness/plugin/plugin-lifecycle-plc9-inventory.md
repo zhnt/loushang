@@ -31,7 +31,9 @@
   [Exact Root GC Target Resolution](plugin-lifecycle-plc9d3c-contract.md)
   joins a durable precommit claim, confirmed Product handoff, committed set,
   and exact Store settlement only when identities and aliases are proven. It
-  is a read-only checker, not an atomic capture or deletion authority.
+  is a read-only checker, not an atomic capture or deletion authority. The
+  internal claim audit distinguishes pending, failed, and missing-binding
+  debt but has no release capability.
 - PLC9D3d refinement:
   [Committed-Set Root Ref Fence](plugin-lifecycle-plc9d3d-contract.md)
   adds a Package-owner tombstone for one exact committed set/root ref and

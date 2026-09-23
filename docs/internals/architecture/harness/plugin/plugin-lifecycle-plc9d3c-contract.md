@@ -48,3 +48,12 @@ the binding. A failed command can leave a conservative claim, which requires
 an independently proven repair path before GC can proceed. Direct management
 commands outside this adapter are not covered, and Product still has no PLC9B
 transaction caller. This is not an end-to-end acceptance claim.
+
+An internal, read-only claim audit captures the binding, management operation,
+and desired transition histories under their shared gate. It distinguishes an
+unsubmitted claim, in-flight operation, terminal failure without a transition,
+successful desired transition missing its confirmed binding, confirmed claim,
+and contradictory evidence. `failed_unproven` is diagnostic debt, not
+permission to release the claim: the claim record does not yet identify the
+exact durable management and desired journals whose negative evidence would
+be needed for a safe repair. No release marker or GC unblock is added.

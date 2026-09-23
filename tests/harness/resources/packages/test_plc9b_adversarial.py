@@ -27,6 +27,9 @@ from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
 from loushang.harness.plugin_management.package_gc_binding import (
     PluginPackageGcBindingJournal,
 )
+from loushang.harness.plugin_management.package_gc_claim_audit import (
+    PluginPackageGcClaimAudit,
+)
 from loushang.harness.plugin_management.package_gc_reservation import (
     PluginPackageGcReservationJournal,
 )
@@ -2271,6 +2274,12 @@ def test_plc9a2_desired_adapter_commits_exact_disabled_revision_and_reports_cas(
         operation_journal_path=tmp_path / "product-operations.jsonl",
     )
     gc_bindings = PluginPackageGcBindingJournal(tmp_path / "gc-bindings.jsonl")
+    audit = PluginPackageGcClaimAudit(
+        bindings=gc_bindings,
+        management=service,
+        desired=ledger,
+        gate=gc_gate,
+    )
     adapter = PluginManagementPackageDesiredStateAdapter(
         management=service,
         revisions=_ManifestDesiredRevisionProjection(ledger),
@@ -2280,6 +2289,12 @@ def test_plc9a2_desired_adapter_commits_exact_disabled_revision_and_reports_cas(
         gc_bindings=gc_bindings,
         gc_gate=gc_gate,
     )
+    with gc_gate.guard():
+        gc_bindings.prepare(
+            fixture.request.desired_request,
+            adapter.revisions.project(fixture.request.desired_request),
+        )
+    assert tuple(row.state for row in audit.snapshot()) == ("unsubmitted",)
 
     result = adapter.commit(fixture.request.desired_request)
 
@@ -2297,6 +2312,7 @@ def test_plc9a2_desired_adapter_commits_exact_disabled_revision_and_reports_cas(
     claims = gc_bindings.claims()
     assert len(claims) == 1
     assert claims[0].request == fixture.request.desired_request
+    assert tuple(row.state for row in audit.snapshot()) == ("confirmed",)
     assert bindings[0].request == fixture.request.desired_request
     assert bindings[0].desired_transition_revision == 1
     repeated = adapter.commit(fixture.request.desired_request)
@@ -2315,6 +2331,10 @@ def test_plc9a2_desired_adapter_commits_exact_disabled_revision_and_reports_cas(
     assert conflict.failure is not None
     assert conflict.failure.observed_inventory_revision == 1
     assert len(gc_bindings.claims()) == 2
+    assert tuple(row.state for row in audit.snapshot()) == (
+        "confirmed",
+        "failed_unproven",
+    )
 
 
 def test_plc9b_gc_claim_survives_crash_before_committed_crosswalk(
@@ -2339,6 +2359,12 @@ def test_plc9b_gc_claim_survives_crash_before_committed_crosswalk(
         gc_bindings=bindings,
         gc_gate=gate,
     )
+    audit = PluginPackageGcClaimAudit(
+        bindings=bindings,
+        management=service,
+        desired=ledger,
+        gate=gate,
+    )
     record = bindings.record
 
     def interrupt(*_args: object) -> None:
@@ -2350,11 +2376,13 @@ def test_plc9b_gc_claim_survives_crash_before_committed_crosswalk(
     assert ledger.snapshot().inventory_revision == 1
     assert len(PluginPackageGcBindingJournal(bindings.path).claims()) == 1
     assert bindings.records() == ()
+    assert tuple(row.state for row in audit.snapshot()) == ("binding_missing",)
 
     monkeypatch.setattr(bindings, "record", record)
     assert adapter.commit(fixture.request.desired_request).disposition == "committed"
     assert len(bindings.claims()) == 1
     assert len(bindings.records()) == 1
+    assert tuple(row.state for row in audit.snapshot()) == ("confirmed",)
 
 
 def test_plc9b_desired_adapter_blocks_a_reserved_root_alias_before_commit(
