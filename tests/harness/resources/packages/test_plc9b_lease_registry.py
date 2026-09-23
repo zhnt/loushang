@@ -136,6 +136,36 @@ def test_rooted_product_guard_pairs_with_lease_registration_and_cutover(
         handle.release()
 
 
+def test_exclusive_runtime_quiescence_blocks_new_runtime_and_product_effects(
+    registry: PackageEpochRuntimeLeaseRegistry,
+) -> None:
+    handle = registry.register(runtime_id="runtime:first", runtime_protocol_epoch=2)
+    guard = PackageProductFileEpochTransactionGuard(
+        store_id=registry.store_id,
+        coordination_lock=registry.coordination_lock,
+        file_io=registry._io,
+    )
+    try:
+        with registry.exclusive_runtime_quiescence(
+            store_id=registry.store_id
+        ) as quiescence:
+            assert quiescence.store_id == registry.store_id
+            assert quiescence.active_runtime_lease_ids == (handle.lease.lease_id,)
+            with pytest.raises(PackageEpochRuntimeLeaseRegistryError) as busy:
+                registry.register(runtime_id="runtime:second", runtime_protocol_epoch=2)
+            assert busy.value.code == "package_epoch_lease_busy"
+            with pytest.raises(BlockingIOError):
+                with guard.shared_runtime(store_id=registry.store_id):
+                    pytest.fail("Product effects entered during cutover quiescence")
+    finally:
+        handle.release()
+    with registry.exclusive_runtime_quiescence(
+        store_id=registry.store_id
+    ) as empty:
+        assert empty.active_runtime_lease_ids == ()
+        assert empty.owner_revision > quiescence.owner_revision
+
+
 def test_registry_refuses_stale_fence_and_changed_store(
     registry: PackageEpochRuntimeLeaseRegistry,
 ) -> None:
@@ -157,6 +187,21 @@ def test_registry_refuses_stale_fence_and_changed_store(
     )
     with pytest.raises(PackageEpochRuntimeLeaseRegistryError, match="protocol"):
         registry.register(runtime_id="runtime:stale", runtime_protocol_epoch=2)
+
+
+def test_registry_rejects_epoch_fence_from_another_root(
+    registry: PackageEpochRuntimeLeaseRegistry, tmp_path: Path
+) -> None:
+    foreign = tmp_path / "foreign"
+    foreign.mkdir(mode=0o700)
+    with pytest.raises(ValueError, match="share a root"):
+        PackageEpochRuntimeLeaseRegistry(
+            path=registry.path,
+            coordination_lock=registry.coordination_lock,
+            file_io=registry._io,
+            fences=PackageEpochFenceJournal(foreign / "epoch-fence.jsonl"),
+            store_id=registry.store_id,
+        )
 
 
 def test_crashed_runtime_requires_proven_orphan_repair(
@@ -196,6 +241,10 @@ os._exit(0)
     with pytest.raises(PackageEpochRuntimeLeaseRegistryError) as raised:
         registry.snapshot(store_id="package-store:test")
     assert raised.value.code == "package_epoch_lease_orphaned"
+    with pytest.raises(PackageEpochRuntimeLeaseRegistryError) as quiescence:
+        with registry.exclusive_runtime_quiescence(store_id=registry.store_id):
+            pytest.fail("orphaned runtime was treated as quiescent")
+    assert quiescence.value.code == "package_epoch_lease_orphaned"
     registry.repair_orphan(lease_id)
     with pytest.raises(PackageEpochRuntimeLeaseRegistryError) as absent:
         registry.snapshot(store_id="package-store:test")

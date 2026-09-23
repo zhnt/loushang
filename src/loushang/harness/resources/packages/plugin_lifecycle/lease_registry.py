@@ -40,6 +40,33 @@ class PackageEpochRuntimeLeaseRegistryError(RuntimeError):
 
 
 @dataclass(frozen=True, slots=True)
+class PackageEpochRuntimeQuiescenceV1:
+    """Complete runtime set retained under the registry's exclusive epoch lock."""
+
+    store_id: str
+    owner_revision: int
+    active_runtime_lease_ids: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.store_id, str) or not self.store_id:
+            raise ValueError("Package runtime quiescence store is invalid")
+        if type(self.owner_revision) is not int or self.owner_revision < 1:
+            raise ValueError("Package runtime quiescence revision is invalid")
+        ids = self.active_runtime_lease_ids
+        if (
+            type(ids) is not tuple
+            or ids != tuple(sorted(set(ids)))
+            or any(
+                type(lease_id) is not str
+                or len(lease_id) != 64
+                or any(char not in "0123456789abcdef" for char in lease_id)
+                for lease_id in ids
+            )
+        ):
+            raise ValueError("Package runtime quiescence leases are invalid")
+
+
+@dataclass(frozen=True, slots=True)
 class PackageEpochRuntimeLeaseRecordV1:
     record_revision: int
     store_id: str
@@ -159,6 +186,8 @@ class PackageEpochRuntimeLeaseRegistry:
             raise ValueError("Package runtime lease store is required")
         if path == coordination_lock or path.parent != coordination_lock.parent:
             raise ValueError("Package lease journal and coordination must share a root")
+        if fences.path.parent != path.parent or fences.path in {path, coordination_lock}:
+            raise ValueError("Package epoch fence and runtime lease must share a root")
         self.path = path
         self.coordination_lock = coordination_lock
         self.fences = fences
@@ -230,6 +259,27 @@ class PackageEpochRuntimeLeaseRegistry:
                 store_id=self.store_id,
                 owner_revision=len(records),
                 active_leases=tuple(active.values()),
+            )
+
+    @contextmanager
+    def exclusive_runtime_quiescence(
+        self, *, store_id: str
+    ) -> Iterator[PackageEpochRuntimeQuiescenceV1]:
+        """Keep the complete live set stable through a caller's cutover attempt.
+
+        The cutover coordinator must additionally prove all pre-fence process
+        registrations quiescent before it can construct a final receipt.
+        """
+
+        if store_id != self.store_id:
+            raise self._error("Package runtime lease store changed", "package_epoch_lease_store_changed")
+        with self._coordination("exclusive"):
+            records, active = self._load_unlocked()
+            self._require_live(active)
+            yield PackageEpochRuntimeQuiescenceV1(
+                store_id=self.store_id,
+                owner_revision=len(records) + 1,
+                active_runtime_lease_ids=tuple(sorted(active)),
             )
 
     def repair_orphan(self, lease_id: str) -> None:
@@ -387,4 +437,5 @@ __all__ = [
     "PackageEpochRuntimeLeaseRecordV1",
     "PackageEpochRuntimeLeaseRegistry",
     "PackageEpochRuntimeLeaseRegistryError",
+    "PackageEpochRuntimeQuiescenceV1",
 ]
