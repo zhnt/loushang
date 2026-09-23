@@ -1,8 +1,9 @@
 """Rooted pre-B snapshots shared by POSIX cutover and offline restore.
 
-The Product supplies one private directory for each required pre-B domain.
-This owner copies and durably publishes those exact directories; deciding which
-Product paths constitute each domain remains the Product's responsibility.
+The Product supplies one disjoint private directory for each required pre-B
+domain. This owner copies and durably publishes those exact directories;
+deciding which Product paths constitute each domain remains the Product's
+responsibility.
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ import os
 import secrets
 import stat
 from collections.abc import Mapping
+from contextlib import ExitStack
 from hashlib import sha256
 from pathlib import Path
 
@@ -168,19 +170,29 @@ class PackagePosixEpochSnapshotOwner(PackagePosixEpochSnapshotEvidenceStore):
             for source in self._domain_roots.values()
         ):
             raise ValueError("Package snapshot authority overlaps source state")
+        domain_paths = tuple(self._domain_roots.values())
+        if any(
+            _paths_overlap(left, right)
+            for index, left in enumerate(domain_paths)
+            for right in domain_paths[index + 1 :]
+        ):
+            raise ValueError("Package snapshot domain roots overlap")
         snapshot = _PinnedRoot.open(
             self._snapshot_root, expected_identities=self._snapshot_identities
         )
         try:
             domain_identities = {}
-            for domain, path in self._domain_roots.items():
-                source = _PinnedRoot.open(path)
-                try:
+            with ExitStack() as opened:
+                sources: list[_PinnedRoot] = []
+                for domain, path in self._domain_roots.items():
+                    source = _PinnedRoot.open(path)
+                    opened.callback(source.close)
                     if _pinned_roots_overlap(source, snapshot):
                         raise ValueError("Package snapshot source overlaps authority")
+                    if any(_pinned_roots_overlap(source, prior) for prior in sources):
+                        raise ValueError("Package snapshot domain roots overlap")
                     domain_identities[domain] = source.identities
-                finally:
-                    source.close()
+                    sources.append(source)
             self._domain_identities = domain_identities
         finally:
             snapshot.close()

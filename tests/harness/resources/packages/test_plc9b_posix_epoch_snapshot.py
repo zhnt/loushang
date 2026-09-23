@@ -72,6 +72,31 @@ def _snapshot_fixture(
     return owner, snapshot_root, domains["store_bytes"], domains
 
 
+@pytest.mark.parametrize("overlap", ("same", "nested"))
+def test_snapshot_refuses_overlapping_pre_b_domain_roots(
+    tmp_path: Path, overlap: str
+) -> None:
+    snapshot_root = tmp_path / "snapshots"
+    source_root = tmp_path / "sources"
+    snapshot_root.mkdir(mode=0o700)
+    source_root.mkdir(mode=0o700)
+    domains = {}
+    for domain in PACKAGE_PRE_B_SNAPSHOT_DOMAINS:
+        path = source_root / domain
+        path.mkdir(mode=0o700)
+        domains[domain] = path
+    shared = domains["binding_history"]
+    if overlap == "nested":
+        shared = shared / "lock-history"
+        shared.mkdir(mode=0o700)
+    domains["lock_history"] = shared
+
+    with pytest.raises(ValueError, match="overlap"):
+        PackagePosixEpochSnapshotOwner(
+            snapshot_root, store_id=_STORE_ID, domain_roots=domains
+        )
+
+
 def test_snapshot_is_durable_and_reopen_validates_complete_domains(
     tmp_path: Path,
 ) -> None:

@@ -365,7 +365,10 @@ Neither may silently override a narrower implemented owner contract.
   The cutover fixture now uses Coding's existing legacy Package directory as
   the POSIX legacy root, with a sibling epoch namespace, and snapshots its
   actual lifecycle state root. Other pre-B domains still use fixture roots;
-  Product mapping of their real Coding state remains required. On Linux, the
+  Product mapping of their real Coding state remains required. The snapshot
+  owner now rejects overlapping logical domain roots, so Coding's colocated
+  state files require a complete partitioned source mapping before a real
+  default cutover. On Linux, the
   Coding lifecycle and management-application builders now hold process-level
   pre-fence registrations before preparing their legacy state; default base
   materializer construction follows that admission. Coding reaches the internal
