@@ -420,9 +420,12 @@
   the rooted Product guard shares its epoch coordination lock. An exclusive
   runtime-quiescence scope keeps the complete live set stable through a cutover
   attempt and refuses orphaned evidence, but does not claim pre-fence process
-  quiescence. Coding runtime registration, Product factory ownership of the
-  admitted root/guard, pre-fence legacy-runtime quiescence, and a Windows-native
-  lease owner remain pending.
+  quiescence. A POSIX cutover coordination candidate now combines that scope
+  with a mandatory Product-owned pre-fence launch barrier; a native cutover
+  refuses an active old-process registration before asking for a snapshot.
+  The concrete pre-fence owner, real backup snapshot owner, Coding runtime
+  registration, Product factory ownership of the admitted root/guard, and a
+  Windows-native lease owner remain pending.
   A direct-materializer route and a changed execution
   identity reach neither Source nor Store. This is not a Coding production
   cutover: no Windows native transaction acceptance exists, and the legacy

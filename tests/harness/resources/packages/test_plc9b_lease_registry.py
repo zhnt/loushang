@@ -5,6 +5,9 @@ import os
 import subprocess
 import sys
 from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass
+from hashlib import sha256
 from pathlib import Path
 
 import pytest
@@ -20,11 +23,50 @@ from loushang.harness.resources.packages.plugin_lifecycle.lease_registry import 
     PackageEpochRuntimeLeaseRegistry,
     PackageEpochRuntimeLeaseRegistryError,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.records import (
+    canonical_json_bytes,
+)
 from loushang.harness.resources.packages.product_epoch_guard import (
     PackageProductFileEpochTransactionGuard,
 )
 
 pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux rooted lease journal")
+
+
+@dataclass
+class _PreFenceScope:
+    active_registration_ids: tuple[str, ...] = ()
+    entered: bool = False
+
+    @contextmanager
+    def exclusive_quiescence(self, *, store_id: str):
+        from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_coordination import (
+            PackagePreFenceRegistrationSnapshotV1,
+        )
+
+        self.entered = True
+        try:
+            yield PackagePreFenceRegistrationSnapshotV1(
+                store_id=store_id,
+                owner_revision=1,
+                active_registration_ids=self.active_registration_ids,
+            )
+        finally:
+            self.entered = False
+
+
+def _directory_identity(path: Path) -> str:
+    metadata = path.stat()
+    return sha256(
+        canonical_json_bytes(
+            {
+                "device": metadata.st_dev,
+                "fileType": "directory",
+                "identityVersion": 1,
+                "inode": metadata.st_ino,
+            }
+        )
+    ).hexdigest()
 
 
 @pytest.fixture
@@ -164,6 +206,183 @@ def test_exclusive_runtime_quiescence_blocks_new_runtime_and_product_effects(
     ) as empty:
         assert empty.active_runtime_lease_ids == ()
         assert empty.owner_revision > quiescence.owner_revision
+
+
+def test_cutover_coordination_composes_runtime_and_prefence_scopes(
+    registry: PackageEpochRuntimeLeaseRegistry,
+) -> None:
+    from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_coordination import (
+        PackagePosixEpochCutoverCoordination,
+    )
+
+    pre_fence = _PreFenceScope()
+    coordination = PackagePosixEpochCutoverCoordination(
+        leases=registry, pre_fence=pre_fence
+    )
+    handle = registry.register(runtime_id="runtime:first", runtime_protocol_epoch=2)
+    try:
+        with coordination.exclusive_quiescence(store_id=registry.store_id) as proof:
+            assert pre_fence.entered
+            assert proof.active_runtime_lease_ids == (handle.lease.lease_id,)
+            assert proof.active_pre_fence_registration_ids == ()
+            assert not proof.is_quiescent
+            with pytest.raises(PackageEpochRuntimeLeaseRegistryError) as busy:
+                registry.register(runtime_id="runtime:second", runtime_protocol_epoch=2)
+            assert busy.value.code == "package_epoch_lease_busy"
+    finally:
+        handle.release()
+    assert not pre_fence.entered
+
+    pre_fence.active_registration_ids = ("a" * 64,)
+    with coordination.exclusive_quiescence(store_id=registry.store_id) as proof:
+        assert proof.active_runtime_lease_ids == ()
+        assert proof.active_pre_fence_registration_ids == ("a" * 64,)
+        assert not proof.is_quiescent
+
+
+def test_cutover_coordination_requires_pre_fence_authority(
+    registry: PackageEpochRuntimeLeaseRegistry,
+) -> None:
+    from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_coordination import (
+        PackagePosixEpochCutoverCoordination,
+    )
+
+    with pytest.raises(TypeError, match="Pre-fence"):
+        PackagePosixEpochCutoverCoordination(
+            leases=registry, pre_fence=object()  # type: ignore[arg-type]
+        )
+
+
+def test_native_cutover_refuses_pre_fence_process_before_snapshot(
+    registry: PackageEpochRuntimeLeaseRegistry, tmp_path: Path
+) -> None:
+    from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_coordination import (
+        PackagePosixEpochCutoverCoordination,
+    )
+    from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
+        PackagePosixEpochCutoverOwner,
+        PackagePosixEpochCutoverRequestV1,
+    )
+
+    authority = tmp_path / "cutover-authority"
+    authority.mkdir(mode=0o700)
+    (authority / "legacy").mkdir(mode=0o700)
+    (authority / "epochs").mkdir(mode=0o700)
+    fences = PackageEpochFenceJournal(tmp_path / "genesis-fence.jsonl")
+    leases = PackageEpochRuntimeLeaseRegistry(
+        path=tmp_path / "genesis-leases.jsonl",
+        coordination_lock=registry.coordination_lock,
+        file_io=registry._io,
+        fences=fences,
+        store_id=registry.store_id,
+    )
+
+    class NoSnapshot:
+        def capture(self, **_kwargs: object) -> object:
+            pytest.fail("pre-fence process reached snapshot capture")
+
+    owner = PackagePosixEpochCutoverOwner(
+        authority,
+        store_id=registry.store_id,
+        epoch_journal=fences,
+        coordination=PackagePosixEpochCutoverCoordination(
+            leases=leases,
+            pre_fence=_PreFenceScope(active_registration_ids=("a" * 64,)),
+        ),
+        snapshots=NoSnapshot(),
+    )
+    request = PackagePosixEpochCutoverRequestV1.create(
+        store_id=registry.store_id,
+        prior_fence=None,
+        expected_legacy_root_identity=owner.current_root_identity(),
+        namespace_id="b" * 64,
+        minimum_runtime_version="2.0.0",
+        minimum_runtime_protocol_epoch=2,
+    )
+
+    result = owner.cutover(request)
+    assert result.disposition == "rejected"
+    assert result.failure is not None
+    assert result.failure.barrier == "pre_fence"
+    assert fences.current(registry.store_id) is None
+    assert not (authority / "epochs" / request.namespace_id).exists()
+
+
+def test_native_cutover_refuses_live_fence_aware_runtime_before_snapshot(
+    registry: PackageEpochRuntimeLeaseRegistry, tmp_path: Path
+) -> None:
+    from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_coordination import (
+        PackagePosixEpochCutoverCoordination,
+    )
+    from loushang.harness.resources.packages.plugin_lifecycle.posix_epoch_cutover import (
+        PackagePosixEpochCutoverOwner,
+        PackagePosixEpochCutoverRequestV1,
+    )
+
+    authority = tmp_path / "successor-authority"
+    authority.mkdir(mode=0o700)
+    legacy = authority / "legacy"
+    epochs = authority / "epochs"
+    legacy.mkdir(mode=0o700)
+    epochs.mkdir(mode=0o700)
+    current_namespace = "c" * 64
+    current_root = epochs / current_namespace
+    current_root.mkdir(mode=0o700)
+    fences = PackageEpochFenceJournal(tmp_path / "successor-fence.jsonl")
+    fence = fences.publish(
+        PackageEpochFenceRequestV1.create(
+            store_id=registry.store_id,
+            prior_fence=None,
+            legacy_root_identity=_directory_identity(legacy),
+            fenced_root_identity=_directory_identity(current_root),
+            namespace_id=current_namespace,
+            minimum_runtime_version="2.0.0",
+            minimum_runtime_protocol_epoch=2,
+            quiescence_receipt_id="1" * 64,
+            snapshot_receipt_id="2" * 64,
+            root_switch_receipt_id="3" * 64,
+        )
+    )
+    leases = PackageEpochRuntimeLeaseRegistry(
+        path=tmp_path / "successor-leases.jsonl",
+        coordination_lock=registry.coordination_lock,
+        file_io=registry._io,
+        fences=fences,
+        store_id=registry.store_id,
+    )
+
+    class NoSnapshot:
+        def capture(self, **_kwargs: object) -> object:
+            pytest.fail("live runtime reached snapshot capture")
+
+    owner = PackagePosixEpochCutoverOwner(
+        authority,
+        store_id=registry.store_id,
+        epoch_journal=fences,
+        coordination=PackagePosixEpochCutoverCoordination(
+            leases=leases, pre_fence=_PreFenceScope()
+        ),
+        snapshots=NoSnapshot(),
+    )
+    request = PackagePosixEpochCutoverRequestV1.create(
+        store_id=registry.store_id,
+        prior_fence=fence,
+        expected_legacy_root_identity=_directory_identity(current_root),
+        namespace_id="d" * 64,
+        minimum_runtime_version="3.0.0",
+        minimum_runtime_protocol_epoch=3,
+    )
+
+    handle = leases.register(runtime_id="runtime:active", runtime_protocol_epoch=2)
+    try:
+        result = owner.cutover(request)
+        assert result.disposition == "rejected"
+        assert result.failure is not None
+        assert result.failure.barrier == "pre_fence"
+        assert fences.current(registry.store_id) == fence
+        assert not (epochs / request.namespace_id).exists()
+    finally:
+        handle.release()
 
 
 def test_registry_refuses_stale_fence_and_changed_store(
