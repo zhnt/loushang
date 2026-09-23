@@ -1209,6 +1209,62 @@ def test_enforced_startup_non_plugin_cannot_fall_to_supplied_materializer(
     assert materializer_calls == []
 
 
+def test_enforced_startup_routes_configured_local_wheel_through_product(
+    tmp_path: Path,
+) -> None:
+    source = str(tmp_path / "acme-1.0-py3-none-any.whl")
+    activation, transaction = _activation(tmp_path)
+    activation.activate()
+
+    class Settings:
+        def get_project_settings(self) -> dict[str, object]:
+            return {"packages": [source]}
+
+        def get_global_settings(self) -> dict[str, object]:
+            return {}
+
+        def get_session_settings(self) -> dict[str, object]:
+            return {}
+
+    resolved = PackageSourceResolver(
+        settings_manager=Settings(),
+        materializer=None,
+        product_lifecycle=activation,
+        product_lifecycle_mode="enforced",
+    ).resolve_configured_sources_sync()
+
+    assert len(resolved.records) == 1
+    assert resolved.records[0].lifecycle == "installed"
+    assert transaction.calls == ["startup"]
+
+
+def test_enforced_startup_local_non_plugin_cannot_be_silently_skipped(
+    tmp_path: Path,
+) -> None:
+    source = str(tmp_path / "unowned-1.0-py3-none-any.whl")
+    activation, transaction = _activation(tmp_path, decision="non_plugin")
+    activation.activate()
+
+    class Settings:
+        def get_project_settings(self) -> dict[str, object]:
+            return {"packages": [source]}
+
+        def get_global_settings(self) -> dict[str, object]:
+            return {}
+
+        def get_session_settings(self) -> dict[str, object]:
+            return {}
+
+    with pytest.raises(RuntimeError, match="no accepted non-Plugin owner"):
+        PackageSourceResolver(
+            settings_manager=Settings(),
+            materializer=None,
+            product_lifecycle=activation,
+            product_lifecycle_mode="enforced",
+        ).resolve_configured_sources_sync()
+    assert transaction.calls == []
+
+
 def test_enforced_preparation_cannot_enter_legacy_source_resolver(
     tmp_path: Path,
 ) -> None:

@@ -34,7 +34,7 @@ PackageSourceScope = Literal["user", "project", "session", "merged"]
 
 @dataclass(frozen=True)
 class PackageResolveResult:
-    """Result of resolving configured remote package sources."""
+    """Result of resolving configured package sources."""
 
     records: tuple[
         PackageMaterializationRecord | PackageProductLifecycleRecordV1, ...
@@ -95,7 +95,10 @@ class PackageSourceResolver:
         scopes = package_source_scopes(self.settings_manager)
         for package_source in configured_package_sources(self.settings_manager):
             source = package_source.source
-            if not is_remote_package_source(source):
+            if (
+                not is_remote_package_source(source)
+                and self.product_lifecycle_mode != "enforced"
+            ):
                 continue
             existing_record = (
                 self.materializer.get_record(source)
@@ -156,7 +159,11 @@ class PackageSourceResolver:
         outcome = lifecycle.route(
             PackageProductLifecycleIntentV1(
                 operation_id=operation_id,
-                action="materialize",
+                action=(
+                    "install"
+                    if self.product_lifecycle_mode == "enforced"
+                    else "materialize"
+                ),
                 source=source,
                 scope=scope,
             ),

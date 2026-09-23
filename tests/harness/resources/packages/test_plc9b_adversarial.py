@@ -273,6 +273,7 @@ from loushang.harness.resources.packages.product_transaction import (
     PackageProductLifecycleTransaction,
     PackageProductWheelExecutionFactory,
 )
+from loushang.harness.resources.packages.source_resolver import PackageSourceResolver
 from loushang.harness.resources.plugins.dependencies import (
     PluginDependencyClosureLock,
 )
@@ -4200,7 +4201,7 @@ def test_product_transaction_commits_configured_local_dependency(
 
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux rooted runtime")
 @pytest.mark.parametrize("with_dependency", (False, True))
-@pytest.mark.parametrize("entrypoint", ("cli", "session"))
+@pytest.mark.parametrize("entrypoint", ("cli", "session", "startup"))
 def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     tmp_path: Path,
     with_dependency: bool,
@@ -4428,6 +4429,7 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
                     recovery_identity="product-runtime-recovery",
                 )
 
+            committed_operation_id = "operation:product-runtime"
             if entrypoint == "session":
                 from loushang.harness.resources.packages.product_runtime import (
                     PackageProductRuntimeRequestV1,
@@ -4567,6 +4569,33 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
                 assert refused_by_session["lifecycle"] == "failed"
                 assert refused_by_session["path"] == ""
                 assert desired.snapshot().inventory_revision == 1
+            elif entrypoint == "startup":
+                runtime = compose()
+                activation = runtime.lifecycle
+                runtime.activate()
+
+                class Settings:
+                    def get_project_settings(self) -> dict[str, object]:
+                        return {"packages": [str(source)]}
+
+                    def get_global_settings(self) -> dict[str, object]:
+                        return {}
+
+                    def get_session_settings(self) -> dict[str, object]:
+                        return {}
+
+                committed_operation_id = sha256(
+                    f"startup:product-runtime:project:{source}".encode()
+                ).hexdigest()
+                resolved = PackageSourceResolver(
+                    settings_manager=Settings(),
+                    materializer=None,
+                    session_id="product-runtime",
+                    product_lifecycle=activation,
+                    product_lifecycle_mode="enforced",
+                ).resolve_configured_sources_sync()
+                assert len(resolved.records) == 1
+                assert resolved.records[0].lifecycle == "installed"
             else:
                 runtime = compose()
                 activation = runtime.lifecycle
@@ -4586,7 +4615,7 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
             assert desired.snapshot().inventory_revision == 1
             committed_set = PackageCommittedSetJournal(
                 state_root / "committed-sets.jsonl"
-            ).current("operation:product-runtime")
+            ).current(committed_operation_id)
             assert committed_set is not None
             assert len(committed_set.committed_set.dependency_refs) == int(
                 with_dependency

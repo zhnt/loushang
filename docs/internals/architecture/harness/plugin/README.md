@@ -379,7 +379,10 @@ Neither may silently override a narrower implemented owner contract.
   An enforced Product route now refuses an unhandled non-Plugin outcome even
   when a legacy materializer was supplied, including startup Source resolution
   and direct configured-Source preparation. Dark mode retains its compatibility
-  behavior. A separately accepted non-Plugin owner remains an activation gate.
+  behavior. Enforced startup now routes configured local Wheels as Product
+  `install` intents; a real POSIX Store/Product fixture commits both root-only
+  and dependency-Wheel cases through that resolver. A separately accepted
+  non-Plugin owner remains an activation gate.
   The composition now returns one enforced lifecycle/inventory runtime binding.
   Its Product-owned local-Wheel inventory reads the same desired and
   committed-set journals, binds bulk-update targets durably, and reports
