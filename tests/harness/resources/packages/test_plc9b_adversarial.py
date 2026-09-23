@@ -23,6 +23,7 @@ from threading import Lock
 
 import pytest
 
+from loushang.harness.journal._rooted_io import RootedFileIO
 from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
 from loushang.harness.plugin_management.package_gc_binding import (
     PluginPackageGcBindingJournal,
@@ -124,6 +125,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.epoch_fence import (
     PackageEpochRuntimeAdmissionResultV1,
     PackageEpochRuntimeLeaseV1,
 )
+from loushang.harness.resources.packages.plugin_lifecycle.lease_registry import (
+    PackageEpochRuntimeLeaseRegistry,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.local_source import (
     PackagePinnedLocalWheelSourceAuthority,
 )
@@ -216,6 +220,9 @@ from loushang.harness.resources.packages.plugin_lifecycle.windows_materializatio
 from loushang.harness.resources.packages.plugin_lifecycle.windows_offline_restore import (
     PackageWindowsOfflineRestoreMaterializer,
 )
+from loushang.harness.resources.packages.product_activation import (
+    PackageProductActivationError,
+)
 from loushang.harness.resources.packages.product_composition import (
     PackageCommittedProductHandoffRecovery,
     PackageRetentionHandoffRecovery,
@@ -238,6 +245,9 @@ from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWheelBindingV1,
     PackageProductLocalWheelDependencyV1,
     PackageProductLocalWheelPolicy,
+)
+from loushang.harness.resources.packages.product_local_wheel_runtime import (
+    compose_posix_local_wheel_product,
 )
 from loushang.harness.resources.packages.product_root_target import (
     PackageProductRootTargetAuthority,
@@ -4169,6 +4179,213 @@ def test_product_transaction_commits_configured_local_dependency(
         "released",
     )
     assert product.desired.snapshot().inventory_revision == 1
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux rooted runtime")
+@pytest.mark.parametrize("with_dependency", (False, True))
+def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
+    tmp_path: Path,
+    with_dependency: bool,
+) -> None:
+    source_root = tmp_path / "sources"
+    source_root.mkdir(mode=0o700)
+    source = source_root / WHEEL_FILENAME
+    payload = _package_wheel_bytes(
+        "acme-plugin",
+        "1.0",
+        requires_dist=("dependency==2.0",) if with_dependency else (),
+    )
+    source.write_bytes(payload)
+    dependency_source = source_root / "dependency-2.0-py3-none-any.whl"
+    dependency_payload = _package_wheel_bytes("dependency", "2.0")
+    if with_dependency:
+        dependency_source.write_bytes(dependency_payload)
+    environment = _closure_environment()
+    policy = PackageProductLocalWheelPolicy(
+        product_id="coding",
+        project_scope_id="workspace:manifest",
+        source_root=source_root,
+        bindings=(
+            PackageProductLocalWheelBindingV1(
+                source_identity=str(source),
+                requested_package="acme-plugin==1.0",
+                plugin_id="acme.plugin",
+                artifact_digest=sha256(payload).hexdigest(),
+            ),
+        ),
+        dependencies=(
+            (
+                PackageProductLocalWheelDependencyV1(
+                    source_identity=str(dependency_source),
+                    project_name="dependency",
+                    version="2.0",
+                    artifact_digest=sha256(dependency_payload).hexdigest(),
+                ),
+            )
+            if with_dependency
+            else ()
+        ),
+        policy_revision="package-policy:1",
+        quota_profile_revision="quota:1",
+        resolution_environment_fingerprint=environment.fingerprint,
+        authority_id="coding-local-source:runtime",
+    )
+    state_root = tmp_path / "package-state"
+    plugin_root = tmp_path / "plugin-store"
+    control_root = tmp_path / "epoch-control"
+    for directory in (state_root, plugin_root, control_root):
+        directory.mkdir(mode=0o700)
+    gate = PluginPackageGcReservationJournal(tmp_path / "product-gc-gate.jsonl")
+    desired = PluginDesiredStateLedger(
+        tmp_path / "product-desired.jsonl", gc_gate=gate
+    )
+    management = PluginManagementService(
+        desired_state=desired,
+        operation_journal_path=tmp_path / "product-management.jsonl",
+    )
+    bindings = PluginPackageGcBindingJournal(tmp_path / "product-bindings.jsonl")
+    store_id = "package-store:product-runtime"
+    fences = PackageEpochFenceJournal(control_root / "epoch.jsonl")
+    fence = fences.publish(
+        PackageEpochFenceRequestV1.create(
+            store_id=store_id,
+            prior_fence=None,
+            legacy_root_identity="1" * 64,
+            fenced_root_identity=_manifest_directory_identity(plugin_root),
+            namespace_id="2" * 64,
+            minimum_runtime_version="2.0.0",
+            minimum_runtime_protocol_epoch=2,
+            quiescence_receipt_id="3" * 64,
+            snapshot_receipt_id="4" * 64,
+            root_switch_receipt_id="5" * 64,
+        )
+    )
+    root_fd = os.open(
+        control_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    )
+    file_io = RootedFileIO(control_root, root_fd)
+    try:
+        registry = PackageEpochRuntimeLeaseRegistry(
+            path=control_root / "runtime-leases.jsonl",
+            coordination_lock=control_root / "coordination",
+            file_io=file_io,
+            fences=fences,
+            store_id=store_id,
+        )
+        handle = registry.register(runtime_id="runtime:product", runtime_protocol_epoch=2)
+        try:
+            admission_request = PackageEpochRuntimeAdmissionRequestV1.create(
+                fence=fence,
+                runtime_id=handle.lease.runtime_id,
+                runtime_version="2.0.0",
+                runtime_protocol_epoch=2,
+                runtime_epoch=handle.lease.runtime_epoch,
+                store_root_identity=handle.lease.store_root_identity,
+                lease_id=handle.lease.lease_id,
+            )
+            def compose(
+                selected_desired: PluginDesiredStateLedger = desired,
+            ):
+                return compose_posix_local_wheel_product(
+                    state_root=state_root,
+                    plugin_store_root=plugin_root,
+                    policy=policy,
+                    environment=environment,
+                    acquisition_budgets=PackageAcquisitionBudgetV1(
+                        max_transport_bytes=256 * 1024,
+                        max_requests=1,
+                        max_redirects=0,
+                        max_wall_time_ms=1000,
+                    ),
+                    inspection_budgets=PackageInspectionBudgetV1(),
+                    closure_budgets=PackageClosureBudgetV1(),
+                    root_store_identity="product-runtime-root-store",
+                    dependency_store_identity="product-runtime-dependency-store",
+                    registry=registry,
+                    admission_request=admission_request,
+                    management=management,
+                    desired_state=selected_desired,
+                    gc_bindings=bindings,
+                    gc_gate=gate,
+                    actor_id="product-runtime",
+                    desired_policy_revision="product-policy:1",
+                    recovery_identity="product-runtime-recovery",
+                )
+
+            activation = compose()
+            activation.activate()
+            outcome = activation.route(
+                PackageProductLifecycleIntentV1(
+                    operation_id="operation:product-runtime",
+                    action="install",
+                    source=str(source),
+                    scope="project",
+                ),
+                entrypoint="cli",
+            )
+            assert outcome.handled
+            assert outcome.record is not None
+            assert outcome.record.lifecycle == "installed"
+            assert desired.snapshot().inventory_revision == 1
+            committed_set = PackageCommittedSetJournal(
+                state_root / "committed-sets.jsonl"
+            ).current("operation:product-runtime")
+            assert committed_set is not None
+            assert len(committed_set.committed_set.dependency_refs) == int(
+                with_dependency
+            )
+            lifecycle_journal = PackageLifecycleJournal(
+                state_root / "lifecycle.jsonl"
+            )
+            before_restart = lifecycle_journal.records()
+            restarted = compose()
+            restarted.activate()
+            assert lifecycle_journal.records() == before_restart
+            assert desired.snapshot().inventory_revision == 1
+            foreign_desired = PluginDesiredStateLedger(
+                tmp_path / "foreign-product-desired.jsonl", gc_gate=gate
+            )
+            with pytest.raises(ValueError, match="Product owner"):
+                compose(foreign_desired)
+            assert lifecycle_journal.records() == before_restart
+            for entrypoint, source_value in (
+                ("rpc", "https://packages.example.test/unknown.whl"),
+                ("direct_materializer", str(source)),
+            ):
+                refused = activation.route(
+                    PackageProductLifecycleIntentV1(
+                        operation_id=f"operation:refused:{entrypoint}",
+                        action="install",
+                        source=source_value,
+                        scope="project",
+                    ),
+                    entrypoint=entrypoint,
+                )
+                assert refused.handled
+                assert refused.record is not None
+                assert refused.record.lifecycle == "failed"
+            assert desired.snapshot().inventory_revision == 1
+            before_swap = lifecycle_journal.records()
+            plugin_root.rename(tmp_path / "moved-plugin-store")
+            plugin_root.mkdir(mode=0o700)
+            with pytest.raises(PackageProductActivationError) as changed_root:
+                activation.route(
+                    PackageProductLifecycleIntentV1(
+                        operation_id="operation:changed-root",
+                        action="install",
+                        source=str(source),
+                        scope="project",
+                    ),
+                    entrypoint="startup",
+                )
+            assert changed_root.value.code == "package_runtime_epoch_unsupported"
+            assert lifecycle_journal.records() == before_swap
+            assert desired.snapshot().inventory_revision == 1
+        finally:
+            handle.release()
+    finally:
+        file_io.cleanup()
+        os.close(root_fd)
 
 
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux-native Store fixture")
