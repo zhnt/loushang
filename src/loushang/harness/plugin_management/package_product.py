@@ -15,6 +15,7 @@ from loushang.harness.plugin_management.operations import (
 )
 from loushang.harness.plugin_management.package_gc_binding import (
     PluginPackageGcBindingV1,
+    PluginPackageGcClaimV1,
 )
 from loushang.harness.plugin_management.records import (
     PluginDesiredStateMutationV1,
@@ -57,6 +58,14 @@ class PackageProductDesiredRevisionProjectionPort(Protocol):
 class PackageProductGcBindingPort(Protocol):
     def records(self) -> tuple[PluginPackageGcBindingV1, ...]: ...
 
+    def claims(self) -> tuple[PluginPackageGcClaimV1, ...]: ...
+
+    def prepare(
+        self,
+        request: PackageDesiredStateCommitRequestV1,
+        package_revision: PluginPackageRevisionRefV1,
+    ) -> PluginPackageGcClaimV1: ...
+
     def record(
         self,
         request: PackageDesiredStateCommitRequestV1,
@@ -95,7 +104,7 @@ class PluginManagementPackageDesiredStateAdapter:
         if self.gc_bindings is not None:
             if not all(
                 callable(getattr(self.gc_bindings, method, None))
-                for method in ("records", "record")
+                for method in ("records", "claims", "prepare", "record")
             ):
                 raise TypeError("Package GC binding journal is required")
             if not callable(getattr(self.gc_gate, "guard", None)):
@@ -150,10 +159,17 @@ class PluginManagementPackageDesiredStateAdapter:
                 and binding.request.root_ref.ref_id == request.root_ref.ref_id
                 for binding in self.gc_bindings.records()
             )
+            or any(
+                claim.package_revision in reserved
+                and claim.request.root_ref.ref_id == request.root_ref.ref_id
+                for claim in self.gc_bindings.claims()
+            )
         ):
             raise PackageProductGcAdmissionError(
                 "Package root is reserved for GC"
             )
+        if self.gc_bindings is not None:
+            self.gc_bindings.prepare(request, package_revision)
         command = PluginManagementCommandV1(
             action="install",
             mutation=PluginDesiredStateMutationV1(

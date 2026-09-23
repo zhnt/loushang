@@ -14,6 +14,7 @@ import pytest
 import loushang.harness.resources.packages.plugin_lifecycle.posix_materialization as posix_materialization
 from loushang.harness.plugin_management.package_gc_binding import (
     PluginPackageGcBindingV1,
+    PluginPackageGcClaimV1,
     _binding_id,
 )
 from loushang.harness.plugin_management.package_gc_reservation import (
@@ -197,18 +198,26 @@ def test_gc_root_target_requires_exact_handoff_set_and_physical_settlement(
         package_revision=package_revision,
         desired_transition_revision=1,
     )
+    claim = PluginPackageGcClaimV1.create(
+        record_revision=1,
+        request=desired_request,
+        package_revision=package_revision,
+    )
     sets = committed_sets.records()
     settlements = root_settlements.records()
     target = resolve_plugin_package_gc_root_target(
         package_revision,
         bindings=(binding,),
+        claims=(claim,),
         committed_sets=sets,
         settlements=settlements,
     )
     assert target.settlement_id == settlements[0].settlement_id
+    assert target.claim == claim
 
     for evidence, expected_code in (
         ({"bindings": ()}, "plugin_package_gc_binding_unavailable"),
+        ({"claims": ()}, "plugin_package_gc_claim_unavailable"),
         ({"committed_sets": ()}, "plugin_package_gc_set_unavailable"),
         ({"settlements": ()}, "plugin_package_gc_settlement_unavailable"),
         (
@@ -220,6 +229,7 @@ def test_gc_root_target_requires_exact_handoff_set_and_physical_settlement(
             resolve_plugin_package_gc_root_target(
                 package_revision,
                 bindings=evidence.get("bindings", (binding,)),
+                claims=evidence.get("claims", (claim,)),
                 committed_sets=evidence.get("committed_sets", sets),
                 settlements=evidence.get("settlements", settlements),
             )
@@ -237,14 +247,59 @@ def test_gc_root_target_requires_exact_handoff_set_and_physical_settlement(
         resolve_plugin_package_gc_root_target(
             package_revision,
             bindings=(binding, alias),
+            claims=(claim,),
             committed_sets=sets,
             settlements=settlements,
         )
     assert aliased.value.code == "plugin_package_gc_root_aliased"
+    alias_command_id = "gc-target-pending-alias"
+    alias_fingerprint = sha256(alias_command_id.encode()).hexdigest()
+    alias_identity = _desired_request_identity(
+        command_id=alias_command_id,
+        command_fingerprint=alias_fingerprint,
+        expected_inventory_revision=1,
+        operation_id=request.operation_id,
+        operation_fingerprint=operation_fingerprint,
+        request_fingerprint=REQUEST_FINGERPRINT,
+        attempt_epoch=request.attempt_epoch,
+        product_id="coding",
+        scope_id="workspace:test",
+        installation_id="installation-test",
+        plugin_id="plugin-test",
+        committed_set_id=committed.set_id,
+        root_ref=root_ref,
+        request_version=1,
+    )
+    pending_request = replace(
+        desired_request,
+        desired_request_id=_fingerprint(alias_identity),
+        command_id=alias_command_id,
+        command_fingerprint=alias_fingerprint,
+        expected_inventory_revision=1,
+    )
+    pending_claim = PluginPackageGcClaimV1.create(
+        record_revision=2,
+        request=pending_request,
+        package_revision=mismatched,
+    )
+    with pytest.raises(PluginPackageGcTargetError) as pending_alias:
+        resolve_plugin_package_gc_root_target(
+            package_revision,
+            bindings=(binding,),
+            claims=(claim, pending_claim),
+            committed_sets=sets,
+            settlements=settlements,
+        )
+    assert pending_alias.value.code == "plugin_package_gc_root_aliased"
     with pytest.raises(PluginPackageGcTargetError) as source_changed:
         resolve_plugin_package_gc_root_target(
             mismatched,
             bindings=(alias,),
+            claims=(PluginPackageGcClaimV1.create(
+                record_revision=1,
+                request=desired_request,
+                package_revision=mismatched,
+            ),),
             committed_sets=sets,
             settlements=settlements,
         )

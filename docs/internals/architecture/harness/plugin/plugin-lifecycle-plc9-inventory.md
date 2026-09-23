@@ -29,9 +29,9 @@
   or settled result/debt receipt exists.
 - PLC9D3c refinement:
   [Exact Root GC Target Resolution](plugin-lifecycle-plc9d3c-contract.md)
-  joins the Product handoff, committed set, and exact Store settlement only
-  when all identities and aliases are proven. It is a read-only checker, not
-  an atomic capture or deletion authority.
+  joins a durable precommit claim, confirmed Product handoff, committed set,
+  and exact Store settlement only when identities and aliases are proven. It
+  is a read-only checker, not an atomic capture or deletion authority.
 - PLC9D3d refinement:
   [Committed-Set Root Ref Fence](plugin-lifecycle-plc9d3d-contract.md)
   adds a Package-owner tombstone for one exact committed set/root ref and
@@ -39,8 +39,9 @@
   Product deletion start and before the Store tombstone.
 - PLC9D3e refinement:
   [Durable GC Result And Retry Debt](plugin-lifecycle-plc9d3e-contract.md)
-  adds a journal for exact-start Store results and retryable errors; no
-  coordinator has yet proven that a result follows actual Store mutation.
+  adds a journal for exact-start Store results and retryable errors, with
+  exact-settlement result matching; no coordinator has yet proven that a
+  result follows actual Store mutation.
 - PLC9B1 refinement: the dark internal Owner Kernel now supplies versioned
   inert records, classification, journal CAS, retry/cancel/status, and disabled
   refusal. It has no production composition or artifact capability; all

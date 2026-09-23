@@ -9,10 +9,13 @@
 ## Resolution Rule
 
 `resolve_plugin_package_gc_root_target()` consumes typed snapshots from the
-Product GC binding, PLC9B committed-set, and Store settlement owners. It
+Product GC precommit claims and confirmed bindings, PLC9B committed-set, and
+Store settlement owners. It
 returns one exact root settlement only when:
 
 - the logical Package revision has exactly one successful desired handoff;
+- that handoff has exactly one prior durable precommit root claim, with no
+  other pending or committed claim for the same physical root ref;
 - the handoff's Product/scope/installation, operation, attempt, request,
   committed-set ID, and root ref match the committed set;
 - the logical dependency lock digest and canonical source identity match the
@@ -35,11 +38,13 @@ published root/dependency Store refs and a committed set, then proves exact
 resolution and missing/ambiguous/alias refusal. Product-wide composition and
 a durable result/debt coordinator remain open.
 
-The PLC9B desired handoff adapter now holds the same reference gate as its
+The PLC9B desired handoff adapter holds the same reference gate as its
 management owner from projection through the committed crosswalk append. It
-rejects a second logical revision for a physical root whose existing binding
-is reserved. This closes the live alias race for that adapter only. A crash
-after the management desired commit but before the crosswalk append can still
-leave an unrecorded root claim; a durable precommit claim and conservative
-recovery check are required before any Product GC execution. Product still has
-no PLC9B transaction caller, so this is not an end-to-end acceptance claim.
+rejects a second logical revision for a reserved physical root. Before the
+desired command, it durably appends a claim to the binding journal's separate
+claim ledger. A crash after desired commit but before confirmed binding leaves
+that claim visible to the target resolver; idempotent handoff replay can finish
+the binding. A failed command can leave a conservative claim, which requires
+an independently proven repair path before GC can proceed. Direct management
+commands outside this adapter are not covered, and Product still has no PLC9B
+transaction caller. This is not an end-to-end acceptance claim.

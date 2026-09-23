@@ -2294,11 +2294,15 @@ def test_plc9a2_desired_adapter_commits_exact_disabled_revision_and_reports_cas(
     )
     bindings = gc_bindings.for_revision(state.selection.package_revision)
     assert len(bindings) == 1
+    claims = gc_bindings.claims()
+    assert len(claims) == 1
+    assert claims[0].request == fixture.request.desired_request
     assert bindings[0].request == fixture.request.desired_request
     assert bindings[0].desired_transition_revision == 1
     repeated = adapter.commit(fixture.request.desired_request)
     assert repeated == result
     assert gc_bindings.for_revision(state.selection.package_revision) == bindings
+    assert gc_bindings.claims() == claims
 
     conflicting_request = PackageDesiredStateCommitRequestV1.create(
         fixture.request.admission_request,
@@ -2310,6 +2314,47 @@ def test_plc9a2_desired_adapter_commits_exact_disabled_revision_and_reports_cas(
     assert conflict.disposition == "rejected"
     assert conflict.failure is not None
     assert conflict.failure.observed_inventory_revision == 1
+    assert len(gc_bindings.claims()) == 2
+
+
+def test_plc9b_gc_claim_survives_crash_before_committed_crosswalk(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = _manifest_retention_handoff_fixture(tmp_path)
+    gate = PluginPackageGcReservationJournal(tmp_path / "gc-reservations.jsonl")
+    ledger = PluginDesiredStateLedger(
+        tmp_path / "product-desired.jsonl", gc_gate=gate
+    )
+    service = PluginManagementService(
+        desired_state=ledger,
+        operation_journal_path=tmp_path / "product-operations.jsonl",
+    )
+    bindings = PluginPackageGcBindingJournal(tmp_path / "gc-bindings.jsonl")
+    adapter = PluginManagementPackageDesiredStateAdapter(
+        management=service,
+        revisions=_ManifestDesiredRevisionProjection(ledger),
+        installation_scope="workspace",
+        actor_id="product-runtime",
+        policy_revision="product-policy:1",
+        gc_bindings=bindings,
+        gc_gate=gate,
+    )
+    record = bindings.record
+
+    def interrupt(*_args: object) -> None:
+        raise RuntimeError("simulated crash after desired commit")
+
+    monkeypatch.setattr(bindings, "record", interrupt)
+    with pytest.raises(RuntimeError, match="simulated crash"):
+        adapter.commit(fixture.request.desired_request)
+    assert ledger.snapshot().inventory_revision == 1
+    assert len(PluginPackageGcBindingJournal(bindings.path).claims()) == 1
+    assert bindings.records() == ()
+
+    monkeypatch.setattr(bindings, "record", record)
+    assert adapter.commit(fixture.request.desired_request).disposition == "committed"
+    assert len(bindings.claims()) == 1
+    assert len(bindings.records()) == 1
 
 
 def test_plc9b_desired_adapter_blocks_a_reserved_root_alias_before_commit(
