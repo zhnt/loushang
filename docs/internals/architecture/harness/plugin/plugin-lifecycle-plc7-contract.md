@@ -6,8 +6,9 @@
   the accepted Capability dependency/mount lifecycle.
 - Baseline: PLC6 production validation on `main` at `7c542e59` plus the owner-
   accepted Plugin architecture baseline at `a76eb658`.
-- Delivery status: implementation candidate complete under issue `#507`;
-  terminal three-view review is pending.
+- Delivery status: implemented, terminally reviewed from architecture,
+  correctness/security, and Product/test perspectives, and merged under issue
+  `#507` before the PLC8 entry gate opened.
 - Scope: the first-party `coding.arch.default` Provider, its sibling Tool pack,
   private indexed state, and Coding Product composition. This contract does not
   publish the PLC8 author SDK or add a second Graph, Plugin, Tool, or state
