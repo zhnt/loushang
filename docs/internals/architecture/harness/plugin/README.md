@@ -13,9 +13,11 @@
   Coding Worker canaries. PLC9D1/D2 add a Package GC operator projection and
   dark reservation; D3a--D3e add writer and Store/committed-set fences, a
   private deletion primitive, read-only root target resolution, and a dark
-  result/debt journal.
-  Executable artifact GC remains absent. The remaining gaps are summarized by `architecture.md` and
-  tracked in the lifecycle plan.
+  result/debt journal. D3f connects those owners in an internal POSIX-tested
+  root-GC executor; Product ingress, Windows execution evidence, shared
+  dependency GC, private-data confirmation, and backup projection remain open.
+  The remaining gaps are summarized by `architecture.md` and tracked in the
+  lifecycle plan.
 - Owner: `loushang.harness` Plugin architecture scope; contribution runtime
   authority remains with each exact domain owner.
 
@@ -73,6 +75,9 @@ Neither may silently override a narrower implemented owner contract.
   refuses a newly committed alias after one root ref enters GC.
 - [PLC9D3e Durable GC Result And Retry Debt](plugin-lifecycle-plc9d3e-contract.md)
   journals Store result or retryable debt without enabling a Product GC route.
+- [PLC9D3f Internal Root GC Execution](plugin-lifecycle-plc9d3f-contract.md)
+  connects reservation, exact root deletion, and durable result in a
+  POSIX-tested internal coordinator; Product ingress remains closed.
 
 ## Frozen Contracts
 

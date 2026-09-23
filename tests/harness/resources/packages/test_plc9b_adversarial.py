@@ -4202,7 +4202,20 @@ def test_product_transaction_commits_configured_local_dependency(
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux rooted runtime")
 @pytest.mark.parametrize("with_dependency", (False, True))
 @pytest.mark.parametrize(
-    "entrypoint", ("cli", "session", "cli_transport", "rpc_transport", "startup")
+    "entrypoint",
+    (
+        "cli",
+        "session",
+        "cli_transport",
+        "rpc_transport",
+        "startup",
+        "gc",
+        "gc_crash",
+        "gc_tamper",
+        "gc_collision",
+        "gc_invalid_id",
+        "gc_prior_result",
+    ),
 )
 def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     tmp_path: Path,
@@ -4928,8 +4941,19 @@ while True:
                 )
 
             committed_operation_id = "operation:product-runtime"
-            if entrypoint in {"session", "cli_transport", "rpc_transport"}:
+            if entrypoint in {
+                "session",
+                "cli_transport",
+                "rpc_transport",
+                "gc",
+                "gc_crash",
+                "gc_tamper",
+                "gc_collision",
+                "gc_invalid_id",
+                "gc_prior_result",
+            }:
                 from loushang.harness.package_product.product_runtime import (
+
                     PackageProductRuntimeRequestV1,
                 )
 
@@ -5413,6 +5437,31 @@ while True:
                 assert refused.record is not None
                 assert refused.record.lifecycle == "failed"
             assert desired.snapshot().inventory_revision == 1
+            if entrypoint in {
+                "gc",
+                "gc_crash",
+                "gc_tamper",
+                "gc_collision",
+                "gc_invalid_id",
+                "gc_prior_result",
+            }:
+                _assert_product_root_gc_after_install(
+                    tmp_path=tmp_path,
+                    state_root=state_root,
+                    plugin_root=plugin_root,
+                    store_id=store_id,
+                    management=management,
+                    desired=desired,
+                    bindings=bindings,
+                    gate=gate,
+                    with_dependency=with_dependency,
+                    crash_after_delete=entrypoint == "gc_crash",
+                    drop_store_tombstone=entrypoint == "gc_tamper",
+                    collide_before_delete=entrypoint == "gc_collision",
+                    invalid_attempt_id=entrypoint == "gc_invalid_id",
+                    prior_result_conflict=entrypoint == "gc_prior_result",
+                )
+                return
             expected_inventory_revision = 1
             if entrypoint == "session" and not with_dependency:
                 from loushang.harness.plugin_management.operations import (
@@ -7956,6 +8005,7 @@ while True:
             assert reopened_state.state_root == state_root
             assert reopened_state.desired_state.snapshot() == desired.snapshot()
             assert reopened_state.gc_bindings.records() == bindings.records()
+
             before_swap = lifecycle_journal.records()
             plugin_root.rename(tmp_path / "moved-plugin-store")
             plugin_root.mkdir(mode=0o700)
@@ -7971,6 +8021,7 @@ while True:
                 assert swapped.value.code == "package_publication_root_untrusted"
             if entrypoint == "session":
                 with pytest.raises(ValueError, match="POSIX cutover evidence changed"):
+
                     factory.create(
                         PackageProductRuntimeRequestV1(
                             product_id="coding",
@@ -8032,6 +8083,302 @@ while True:
         if application_owner is not None:
             application_owner.close()
         epoch_runtime.close()
+
+
+def _assert_product_root_gc_after_install(
+    *,
+    tmp_path: Path,
+    state_root: Path,
+    plugin_root: Path,
+    store_id: str,
+    management: PluginManagementService,
+    desired: PluginDesiredStateLedger,
+    bindings: PluginPackageGcBindingJournal,
+    gate: PluginPackageGcReservationJournal,
+    with_dependency: bool,
+    crash_after_delete: bool,
+    drop_store_tombstone: bool,
+    collide_before_delete: bool,
+    invalid_attempt_id: bool,
+    prior_result_conflict: bool,
+) -> None:
+    from loushang.harness.plugin_management.continuity_adapter import (
+        PluginContinuitySecurityRetirementJournal,
+    )
+    from loushang.harness.plugin_management.instance_runtime import (
+        PluginInstanceRuntimeLedger,
+    )
+    from loushang.harness.plugin_management.operations import PluginManagementCommandV1
+    from loushang.harness.plugin_management.package_gc_reservation import (
+        PluginPackageGcDeletionStartV2,
+    )
+    from loushang.harness.plugin_management.package_gc_results import (
+        PluginPackageGcResultError,
+        PluginPackageGcResultJournal,
+    )
+    from loushang.harness.plugin_management.package_lifecycle import (
+        PluginPackageLifecycleLedger,
+    )
+    from loushang.harness.plugin_management.records import (
+        PluginDesiredStateMutationV1,
+    )
+    from loushang.harness.plugin_management.retirement import (
+        PluginRetirementIntentLedger,
+    )
+    from loushang.harness.plugin_management.retirement_sets import (
+        PluginRetirementSetLedger,
+    )
+    from loushang.harness.package_product.product_gc_executor import (
+        PackageProductGcExecutionError,
+        PackageProductRootGcExecutor,
+    )
+
+    selected = desired.snapshot().installations[0]
+    package_revision = selected.selection.package_revision
+    assert package_revision is not None
+    assert bindings.for_revision(package_revision)
+    removed = management.submit(
+        PluginManagementCommandV1(
+            action="remove",
+            mutation=PluginDesiredStateMutationV1(
+                operation_id="operation:gc-remove",
+                idempotency_key="request:gc-remove",
+                expected_inventory_revision=1,
+                installation_key=selected.installation_key,
+                desired_state="absent",
+                package_revision=None,
+                actor_id="product-runtime",
+                policy_revision="product-policy:1",
+            ),
+        )
+    )
+    assert removed.status == "terminal"
+    runtime_path = tmp_path / "gc-instance-runtime.jsonl"
+    intents = PluginRetirementIntentLedger(management.retirement_intent_journal_path)
+    retirement_sets = PluginRetirementSetLedger(
+        management.retirement_set_journal_path,
+        retirement_intents=intents,
+    )
+    instances = PluginInstanceRuntimeLedger(
+        runtime_path,
+        management_operation_journal_path=management.operation_journal_path,
+        desired_state=desired,
+        retirement_intents=intents,
+        retirement_sets=retirement_sets,
+        security_acceptances=(
+            PluginContinuitySecurityRetirementJournal.for_instance_runtime(
+                runtime_path
+            )
+        ),
+        gc_gate=gate,
+    )
+    packages = PluginPackageLifecycleLedger(
+        tmp_path / "gc-packages.jsonl",
+        startup_id="startup:gc-product",
+        desired_state=desired,
+        instance_runtime=instances,
+        retirement_sets=retirement_sets,
+        gc_gate=gate,
+    )
+    packages.complete_startup_recovery(
+        operation_id="operation:gc-recover",
+        idempotency_key="request:gc-recover",
+        recovery_reference="recovery:gc-product",
+    )
+    (candidate,) = packages.gc_candidates()
+    assert candidate.package_revision == package_revision
+    reservation = gate.reserve(
+        candidate,
+        lifecycle=packages,
+        operation_id="operation:gc-reserve",
+        idempotency_key="request:gc-reserve",
+    )
+    for owner in (desired, instances, packages):
+        owner.seal_gc_writer_epoch()
+
+    root_settlements = PackageStoreSettlementJournal(
+        state_root / "root-settlements.jsonl"
+    )
+    (settlement,) = root_settlements.records()
+    assert (plugin_root / settlement.final_name).is_dir()
+    root_store = PosixPackagePluginRootMaterializationStore(
+        plugin_root,
+        store_identity="product-runtime-root-store",
+        package_store_id=store_id,
+        settlement_journal=root_settlements,
+    )
+    results = PluginPackageGcResultJournal(tmp_path / "gc-results.jsonl")
+    executor = PackageProductRootGcExecutor(
+        gate=gate,
+        lifecycle=packages,
+        bindings=bindings,
+        committed_sets=PackageCommittedSetJournal(
+            state_root / "committed-sets.jsonl"
+        ),
+        root_settlements=root_settlements,
+        root_store=root_store._store,
+        results=results,
+    )
+    if prior_result_conflict:
+        prior_start = PluginPackageGcDeletionStartV2(
+            journal_revision=1,
+            reservation_id="f" * 64,
+            operation_id="operation:prior-gc-start",
+            idempotency_key="request:prior-gc-start",
+            target_settlement_ids=(settlement.settlement_id,),
+        )
+        results.record(
+            prior_start,
+            settlement=settlement,
+            operation_id="operation:prior-gc-attempt",
+            idempotency_key="request:prior-gc-attempt",
+            error_code="prior.result.conflict",
+        )
+        with pytest.raises(PluginPackageGcResultError) as conflict:
+            executor.execute(
+                reservation.reservation_id,
+                operation_id="operation:gc-delete",
+                idempotency_key="request:gc-delete",
+            )
+        assert conflict.value.code == "plugin_package_gc_result_conflict"
+        assert gate.deletion_start(reservation.reservation_id) is not None
+        assert (plugin_root / settlement.final_name).is_dir()
+        assert not root_settlements.is_tombstoned(
+            settlement.receipt.stable_ref.ref_id
+        )
+        assert not executor.committed_sets.is_tombstoned(
+            settlement.receipt.stable_ref.ref_id
+        )
+        return
+    if invalid_attempt_id:
+        with pytest.raises(ValueError, match="attempt identity"):
+            executor.execute(
+                reservation.reservation_id,
+                operation_id=123,  # type: ignore[arg-type]
+                idempotency_key="request:gc-delete",
+            )
+        assert gate.deletion_start(reservation.reservation_id) is None
+        assert (plugin_root / settlement.final_name).is_dir()
+        assert not root_settlements.is_tombstoned(
+            settlement.receipt.stable_ref.ref_id
+        )
+        assert not executor.committed_sets.is_tombstoned(
+            settlement.receipt.stable_ref.ref_id
+        )
+        assert not results.path.exists()
+        return
+    if collide_before_delete:
+        outside = tmp_path / "outside-gc.txt"
+        outside.write_bytes(b"preserve")
+        victim = (
+            plugin_root
+            / settlement.final_name
+            / settlement.file_identities[0].logical_path
+        )
+        victim.unlink()
+        victim.symlink_to(outside)
+        failed = executor.execute(
+            reservation.reservation_id,
+            operation_id="operation:gc-delete",
+            idempotency_key="request:gc-delete",
+        )
+        assert failed.disposition == "terminal_failure"
+        assert failed.store_result is None
+        assert failed.error_code is not None
+        assert outside.read_bytes() == b"preserve"
+        assert (plugin_root / settlement.final_name).is_dir()
+        assert root_settlements.is_tombstoned(settlement.receipt.stable_ref.ref_id)
+        assert executor.committed_sets.is_tombstoned(
+            settlement.receipt.stable_ref.ref_id
+        )
+        start = gate.deletion_start(reservation.reservation_id)
+        assert start is not None
+        assert PluginPackageGcResultJournal(results.path).attempts(start) == (failed,)
+        assert executor.execute(
+            reservation.reservation_id,
+            operation_id="operation:gc-retry",
+            idempotency_key="request:gc-retry",
+        ) == failed
+        return
+    if crash_after_delete:
+        class InterruptingResults:
+            def attempts(self, start):
+                return results.attempts(start)
+
+            def preflight(self, start, **kwargs):
+                return results.preflight(start, **kwargs)
+
+            def record(self, *_args, **_kwargs):
+                raise RuntimeError("injected crash after physical Store deletion")
+
+        with pytest.raises(RuntimeError, match="injected crash"):
+            replace(executor, results=InterruptingResults()).execute(  # type: ignore[arg-type]
+                reservation.reservation_id,
+                operation_id="operation:gc-delete",
+                idempotency_key="request:gc-delete",
+            )
+        start = gate.deletion_start(reservation.reservation_id)
+        assert start is not None
+        assert results.attempts(start) == ()
+        assert not (plugin_root / settlement.final_name).exists()
+        restarted_store = PosixPackagePluginRootMaterializationStore(
+            plugin_root,
+            store_identity="product-runtime-root-store",
+            package_store_id=store_id,
+            settlement_journal=PackageStoreSettlementJournal(root_settlements.path),
+        )
+        executor = replace(
+            executor,
+            root_store=restarted_store._store,
+            results=PluginPackageGcResultJournal(results.path),
+        )
+        attempt = executor.execute(
+            reservation.reservation_id,
+            operation_id="operation:gc-retry",
+            idempotency_key="request:gc-retry",
+        )
+    else:
+        attempt = executor.execute(
+            reservation.reservation_id,
+            operation_id="operation:gc-delete",
+            idempotency_key="request:gc-delete",
+        )
+    assert attempt.disposition == "succeeded"
+    assert attempt.store_result is not None
+    assert attempt.store_result.disposition == (
+        "already_absent" if crash_after_delete else "deleted"
+    )
+    assert not (plugin_root / settlement.final_name).exists()
+    assert root_settlements.is_tombstoned(settlement.receipt.stable_ref.ref_id)
+    assert executor.committed_sets.is_tombstoned(
+        settlement.receipt.stable_ref.ref_id
+    )
+    start = gate.deletion_start(reservation.reservation_id)
+    assert start is not None
+    assert start.target_settlement_ids == (settlement.settlement_id,)
+    assert PluginPackageGcResultJournal(results.path).attempts(start) == (attempt,)
+    assert executor.execute(
+        reservation.reservation_id,
+        operation_id=attempt.operation_id,
+        idempotency_key=attempt.idempotency_key,
+    ) == attempt
+    dependency_settlements = PackageStoreSettlementJournal(
+        state_root / "dependency-settlements.jsonl"
+    ).records()
+    assert len(dependency_settlements) == int(with_dependency)
+    for dependency in dependency_settlements:
+        assert (state_root / "dependency-store" / dependency.final_name).is_dir()
+    if drop_store_tombstone:
+        lines = root_settlements.path.read_text(encoding="utf-8").splitlines()
+        assert json.loads(lines[-1])["recordKind"] == "store_gc_tombstone"
+        root_settlements.path.write_text("\n".join(lines[:-1]) + "\n", encoding="utf-8")
+        with pytest.raises(PackageProductGcExecutionError) as missing_fence:
+            executor.execute(
+                reservation.reservation_id,
+                operation_id=attempt.operation_id,
+                idempotency_key=attempt.idempotency_key,
+            )
+        assert missing_fence.value.code == "plugin_package_gc_fence_missing"
 
 
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux-native Store fixture")

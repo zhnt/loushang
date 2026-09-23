@@ -2242,6 +2242,9 @@ def test_plc9b1_owner_kernel_stays_internal_dark_and_capability_free() -> None:
         # Product-facing Linux old-runtime admission keeps Coding away from
         # the internal pre-fence owner and grants no Package publication.
         Path("src/loushang/harness/resources/packages/product_epoch_guard.py"),
+        # Internal root-GC coordinator consumes exact Store settlement evidence;
+        # it exposes no Plugin author or transport deletion surface.
+        Path("src/loushang/harness/package_product/product_gc_executor.py"),
         Path("src/loushang/harness/resources/packages/product_handoff.py"),
         # Product-owned local Wheel ingress/facts consume the internal records
         # and Source Port without granting a materialization capability.
