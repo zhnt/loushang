@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Literal, Protocol
 
 from loushang.harness.plugin_management.package_gc_binding import (
     PluginPackageGcBindingJournal,
+    PluginPackageGcBindingV1,
+    PluginPackageGcClaimV1,
 )
 from loushang.harness.plugin_management.package_gc_reservation import (
+    PluginPackageGcDeletionStartV2,
+    PluginPackageGcReservationEventV1,
     PluginPackageGcReservationJournal,
 )
 from loushang.harness.plugin_management.package_gc_results import (
@@ -17,6 +21,7 @@ from loushang.harness.plugin_management.package_gc_results import (
 )
 from loushang.harness.plugin_management.package_gc_target import (
     PluginPackageGcRootTargetV1,
+    PluginPackageGcTargetError,
     resolve_plugin_package_gc_root_target,
 )
 from loushang.harness.plugin_management.package_lifecycle import (
@@ -25,6 +30,7 @@ from loushang.harness.plugin_management.package_lifecycle import (
 )
 from loushang.harness.resources.packages.plugin_lifecycle.committed_sets import (
     PackageCommittedSetJournal,
+    PackageCommittedSetRecordV1,
 )
 from loushang.harness.resources.packages.plugin_lifecycle.store_gc import (
     PackageStoreGcResultV1,
@@ -243,10 +249,208 @@ class PackageProductRootGcApplication:
             )
 
 
+PackageProductRootGcState = Literal[
+    "reserved",
+    "deletion_started",
+    "retryable_failure",
+    "terminal_failure",
+    "succeeded",
+    "evidence_conflict",
+]
+
+
+@dataclass(frozen=True, slots=True)
+class PackageProductRootGcStatusV1:
+    """Read-only status; success requires its durable Product and Store fences."""
+
+    reservation: PluginPackageGcReservationEventV1
+    deletion_start: PluginPackageGcDeletionStartV2 | None
+    latest_attempt: PluginPackageGcAttemptV1 | None
+    settlement_id: str | None
+    state: PackageProductRootGcState
+    reason_code: str | None = None
+    status_version: int = 1
+
+    def __post_init__(self) -> None:
+        if (
+            self.status_version != 1
+            or self.state not in {
+                "reserved",
+                "deletion_started",
+                "retryable_failure",
+                "terminal_failure",
+                "succeeded",
+                "evidence_conflict",
+            }
+            or self.reservation.kind != "reserved"
+            or self.reservation.candidate is None
+        ):
+            raise ValueError("Package GC operator status is invalid")
+
+    def to_dict(self) -> dict[str, object]:
+        candidate = self.reservation.candidate
+        return {
+            "candidateId": None if candidate is None else candidate.candidate_id,
+            "deletionStartOperationId": (
+                None if self.deletion_start is None else self.deletion_start.operation_id
+            ),
+            "latestAttemptId": (
+                None if self.latest_attempt is None else self.latest_attempt.attempt_id
+            ),
+            "reasonCode": self.reason_code,
+            "reservationId": self.reservation.reservation_id,
+            "settlementId": self.settlement_id,
+            "state": self.state,
+            "statusVersion": self.status_version,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class PackageProductRootGcReadModel:
+    """Join exact owner evidence without granting a deletion capability."""
+
+    executor: PackageProductRootGcExecutor
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.executor, PackageProductRootGcExecutor):
+            raise TypeError("Package GC Product executor is required")
+
+    def snapshot(self) -> tuple[PackageProductRootGcStatusV1, ...]:
+        owner = self.executor
+        with owner.gate.guard():
+            reservations = owner.gate.snapshot().active
+            attempts = owner.results.records()
+            bindings = owner.bindings.records()
+            claims = owner.bindings.claims()
+            committed_sets = owner.committed_sets.records()
+            settlements = owner.root_settlements.records()
+            return tuple(
+                _project_root_gc_status(
+                    owner,
+                    reservation,
+                    start=owner.gate.deletion_start(reservation.reservation_id),
+                    attempts=attempts,
+                    bindings=bindings,
+                    claims=claims,
+                    committed_sets=committed_sets,
+                    settlements=settlements,
+                )
+                for reservation in reservations
+            )
+
+
+def _project_root_gc_status(
+    owner: PackageProductRootGcExecutor,
+    reservation: PluginPackageGcReservationEventV1,
+    *,
+    start: PluginPackageGcDeletionStartV2 | None,
+    attempts: tuple[PluginPackageGcAttemptV1, ...],
+    bindings: tuple[PluginPackageGcBindingV1, ...],
+    claims: tuple[PluginPackageGcClaimV1, ...],
+    committed_sets: tuple[PackageCommittedSetRecordV1, ...],
+    settlements: tuple[PackageStoreSettlementRecordV1, ...],
+) -> PackageProductRootGcStatusV1:
+    candidate = reservation.candidate
+    if candidate is None:
+        raise PackageProductGcExecutionError(
+            "Active GC reservation has no candidate",
+            code="plugin_package_gc_journal_corrupt",
+        )
+    owned_attempts = tuple(
+        item for item in attempts if item.reservation_id == reservation.reservation_id
+    )
+    latest = owned_attempts[-1] if owned_attempts else None
+
+    def row(
+        state: PackageProductRootGcState,
+        settlement_id: str | None,
+        reason_code: str | None = None,
+    ) -> PackageProductRootGcStatusV1:
+        return PackageProductRootGcStatusV1(
+            reservation=reservation,
+            deletion_start=start,
+            latest_attempt=latest,
+            settlement_id=settlement_id,
+            state=state,
+            reason_code=reason_code,
+        )
+
+    try:
+        target = resolve_plugin_package_gc_root_target(
+            candidate.package_revision,
+            bindings=bindings,
+            claims=claims,
+            committed_sets=committed_sets,
+            settlements=settlements,
+        )
+    except PluginPackageGcTargetError as exc:
+        return row("evidence_conflict", None, exc.code)
+    settlement_id = target.settlement_id
+    if start is None:
+        if owned_attempts or any(
+            item.settlement_id == settlement_id for item in attempts
+        ):
+            return row(
+                "evidence_conflict",
+                settlement_id,
+                "plugin_package_gc_result_conflict",
+            )
+        return row("reserved", settlement_id)
+    if (
+        start.target_settlement_ids != (settlement_id,)
+        or any(
+            item.settlement_id == settlement_id
+            and item.reservation_id != reservation.reservation_id
+            for item in attempts
+        )
+        or any(
+            item.settlement_id != settlement_id
+            or item.deletion_start_operation_id != start.operation_id
+            for item in owned_attempts
+        )
+    ):
+        return row(
+            "evidence_conflict",
+            settlement_id,
+            "plugin_package_gc_result_conflict",
+        )
+    if latest is None:
+        return row("deletion_started", settlement_id)
+    if latest.disposition != "succeeded":
+        return row(latest.disposition, settlement_id, latest.error_code)
+    result = latest.store_result
+    if (
+        result is None
+        or result
+        != PackageStoreGcResultV1.create(
+            target.settlement, disposition=result.disposition
+        )
+    ):
+        return row(
+            "evidence_conflict",
+            settlement_id,
+            "plugin_package_gc_result_mismatch",
+        )
+    root_ref_id = target.settlement.receipt.stable_ref.ref_id
+    if not (
+        owner.committed_sets.is_tombstoned(root_ref_id)
+        and owner.root_settlements.is_tombstoned(root_ref_id)
+    ):
+        return row(
+            "evidence_conflict",
+            settlement_id,
+            "plugin_package_gc_fence_missing",
+        )
+    return row("succeeded", settlement_id)
+
+
 __all__ = [
     "PackageProductGcExecutionError",
     "PackageProductGcRootStorePort",
     "PackageProductRootGcApplication",
     "PackageProductRootGcCommandV1",
     "PackageProductRootGcExecutor",
+    "PackageProductRootGcReadModel",
+    "PackageProductRootGcState",
+    "PackageProductRootGcStatusV1",
 ]

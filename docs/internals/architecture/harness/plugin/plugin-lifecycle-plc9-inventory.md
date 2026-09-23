@@ -50,6 +50,10 @@
   join the exact candidate, reservation, root Store deletion, and durable
   result in a POSIX-tested Product owner graph. The command is explicitly
   composed; no default management or transport route selects it.
+- PLC9D3h refinement:
+  [Root GC Result Projection](plugin-lifecycle-plc9d3h-contract.md) joins
+  active reservations, exact Store settlements, result attempts, and both
+  root tombstones. It refuses to project success if their evidence diverges.
 - PLC9B1 refinement: the dark internal Owner Kernel now supplies versioned
   inert records, classification, journal CAS, retry/cancel/status, and disabled
   refusal. It has no production composition or artifact capability; all
@@ -921,7 +925,7 @@ publication outside those exact canaries.
 | Current seam | Exact source owner or symbol | Current fact | PLC9 disposition and gate |
 | --- | --- | --- | --- |
 | Cleanup attempts and repair | `src/loushang/harness/plugin_management/package_lifecycle.py::PluginPackageLifecycleLedger` | Derives `pending`, `retryable_failure`, `terminal_failure`, `retry_permitted`, `succeeded`, and `safe_abandoned` from durable attempts/decisions | Retain; PLC9D1 projects this evidence, while later deletion execution must not release debt implicitly |
-| Package GC operator projection | `src/loushang/harness/plugin_management/package_gc.py::PluginPackageGcReadModel` | PLC9D1 projects every known revision, exact candidate or blocker codes, and durable cleanup/repair state; D3f/D3g add explicit POSIX-tested Product execution, but this projection does not yet join GC result/debt | Retain as internal read-only evidence; default Product/transport selection, operator result/repair, and Windows native execution remain open |
+| Package GC operator projection | `src/loushang/harness/plugin_management/package_gc.py::PluginPackageGcReadModel` and `src/loushang/harness/resources/packages/product_gc_executor.py::PackageProductRootGcReadModel` | D1 projects every known revision and cleanup blocker; D3h projects active root-GC reservations and durable result/debt, verifying both root fences before success | Retain as internal read-only evidence; default Product/transport selection, operator repair, and Windows native execution remain open |
 | GC candidate | `src/loushang/harness/plugin_management/package_lifecycle.py::PluginPackageGcCandidateV1` | Binds desired, Instance, package-journal, and recovery-barrier revisions | Retain; later executable GC must reserve against new references and recheck under the owner fence before exact revision deletion; desired absence alone is insufficient |
 | Coding private roots | `src/loushang/coding/_plugin_lifecycle.py::CodingPluginLifecycleStateLayout` | Separates private lifecycle state and package data bases and prepares private directory permissions | Retain path containment; path ownership is not deletion authorization |
 | Continuity deletion authorization | `src/loushang/harness/plugin_management/continuity_mutation.py::PluginContinuityDeletionAuthority` | Serializes one exact deletion, durably authorizes it, and settles terminal receipt/cancel evidence; it does not perform the source mutation | Retain as Product authorization/settlement precedent; never elevate it into a generic destructive executor |
@@ -966,7 +970,7 @@ PLC9A1 contract:
   documents and guards these absences but implements none of them;
 - `remote_service` topology contract and client;
 - default Product/transport selection of the explicit D3g artifact-GC command,
-  operator result/debt repair, and Windows native Product execution evidence;
+  operator repair for GC debt, and Windows native Product execution evidence;
 - generic Plugin-private data deletion command/receipt; and
 - correlated backup-retention projection.
 

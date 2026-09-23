@@ -15,7 +15,8 @@
   private deletion primitive, read-only root target resolution, and a dark
   result/debt journal. D3f connects those owners in an internal POSIX-tested
   root-GC executor. D3g adds an explicit Product command over an exact GC
-  candidate and an explicit root Store method; default Product/transport
+  candidate and an explicit root Store method. D3h joins reservation, result,
+  and root fences in a read-only operator view; default Product/transport
   composition, Windows execution evidence, shared dependency GC, private-data
   confirmation, and backup projection remain open.
   The remaining gaps are summarized by `architecture.md` and tracked in the
@@ -83,6 +84,9 @@ Neither may silently override a narrower implemented owner contract.
 - [PLC9D3g Explicit Product Root GC Command](plugin-lifecycle-plc9d3g-contract.md)
   reserves an exact candidate and executes its root settlement under one
   Product gate; default management and transport routes remain closed.
+- [PLC9D3h Root GC Result Projection](plugin-lifecycle-plc9d3h-contract.md)
+  shows reserved, started, debt, success, or evidence conflict from durable
+  owners without granting deletion or asserting private-data/backup effects.
 
 ## Frozen Contracts
 

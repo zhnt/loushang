@@ -217,6 +217,12 @@ class PluginPackageGcResultJournal:
                 if item.reservation_id == start.reservation_id
             )
 
+    def records(self) -> tuple[PluginPackageGcAttemptV1, ...]:
+        """Read the validated result chain for Product operator projection."""
+
+        with journal_file_lock(self._path, "exclusive"):
+            return self._load_unlocked()
+
     def preflight(
         self,
         start: PluginPackageGcDeletionStartV2,

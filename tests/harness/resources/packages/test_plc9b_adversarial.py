@@ -8184,6 +8184,7 @@ def _assert_product_root_gc_after_install(
         PackageProductRootGcApplication,
         PackageProductRootGcCommandV1,
         PackageProductRootGcExecutor,
+        PackageProductRootGcReadModel,
     )
 
     selected = desired.snapshot().installations[0]
@@ -8275,6 +8276,10 @@ def _assert_product_root_gc_after_install(
         root_store=root_store,
         results=results,
     )
+    read_model = PackageProductRootGcReadModel(executor)
+    assert tuple(row.state for row in read_model.snapshot()) == (
+        () if via_product_command else ("reserved",)
+    )
     if via_product_command:
         with pytest.raises(ValueError, match="one bound owner graph"):
             PackageProductRootGcApplication(
@@ -8305,6 +8310,7 @@ def _assert_product_root_gc_after_install(
                 application.execute(command)
             assert unsealed.value.code == "plugin_package_gc_writer_epoch_unsealed"
             assert gate.snapshot().active == ()
+            assert read_model.snapshot() == ()
             assert (plugin_root / settlement.final_name).is_dir()
             assert not results.path.exists()
             return
@@ -8312,6 +8318,7 @@ def _assert_product_root_gc_after_install(
             with pytest.raises(PluginPackageLifecycleError):
                 application.execute(command)
             assert gate.snapshot().active == ()
+            assert read_model.snapshot() == ()
             assert (plugin_root / settlement.final_name).is_dir()
             assert not root_settlements.is_tombstoned(
                 settlement.receipt.stable_ref.ref_id
@@ -8324,6 +8331,7 @@ def _assert_product_root_gc_after_install(
         attempt = application.execute(command)
         assert application.execute(command) == attempt
         (reservation,) = gate.snapshot().active
+        assert tuple(row.state for row in read_model.snapshot()) == ("succeeded",)
     assert reservation is not None
     if prior_result_conflict:
         prior_start = PluginPackageGcDeletionStartV2(
@@ -8348,6 +8356,9 @@ def _assert_product_root_gc_after_install(
             )
         assert conflict.value.code == "plugin_package_gc_result_conflict"
         assert gate.deletion_start(reservation.reservation_id) is not None
+        (status,) = read_model.snapshot()
+        assert status.state == "evidence_conflict"
+        assert status.reason_code == "plugin_package_gc_result_conflict"
         assert (plugin_root / settlement.final_name).is_dir()
         assert not root_settlements.is_tombstoned(
             settlement.receipt.stable_ref.ref_id
@@ -8364,6 +8375,7 @@ def _assert_product_root_gc_after_install(
                 idempotency_key="request:gc-delete",
             )
         assert gate.deletion_start(reservation.reservation_id) is None
+        assert tuple(row.state for row in read_model.snapshot()) == ("reserved",)
         assert (plugin_root / settlement.final_name).is_dir()
         assert not root_settlements.is_tombstoned(
             settlement.receipt.stable_ref.ref_id
@@ -8391,6 +8403,9 @@ def _assert_product_root_gc_after_install(
         assert failed.disposition == "terminal_failure"
         assert failed.store_result is None
         assert failed.error_code is not None
+        (status,) = read_model.snapshot()
+        assert status.state == "terminal_failure"
+        assert status.reason_code == failed.error_code
         assert outside.read_bytes() == b"preserve"
         assert (plugin_root / settlement.final_name).is_dir()
         assert root_settlements.is_tombstoned(settlement.receipt.stable_ref.ref_id)
@@ -8426,6 +8441,9 @@ def _assert_product_root_gc_after_install(
         start = gate.deletion_start(reservation.reservation_id)
         assert start is not None
         assert results.attempts(start) == ()
+        assert tuple(row.state for row in read_model.snapshot()) == (
+            "deletion_started",
+        )
         assert not (plugin_root / settlement.final_name).exists()
         restarted_store = PosixPackagePluginRootMaterializationStore(
             plugin_root,
@@ -8454,6 +8472,10 @@ def _assert_product_root_gc_after_install(
     assert attempt.store_result.disposition == (
         "already_absent" if crash_after_delete else "deleted"
     )
+    (status,) = read_model.snapshot()
+    assert status.state == "succeeded"
+    assert status.latest_attempt == attempt
+    assert status.to_dict()["statusVersion"] == 1
     assert not (plugin_root / settlement.final_name).exists()
     assert root_settlements.is_tombstoned(settlement.receipt.stable_ref.ref_id)
     assert executor.committed_sets.is_tombstoned(
@@ -8485,6 +8507,9 @@ def _assert_product_root_gc_after_install(
                 idempotency_key=attempt.idempotency_key,
             )
         assert missing_fence.value.code == "plugin_package_gc_fence_missing"
+        (status,) = read_model.snapshot()
+        assert status.state == "evidence_conflict"
+        assert status.reason_code == "plugin_package_gc_fence_missing"
 
 
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux-native Store fixture")

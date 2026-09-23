@@ -29,7 +29,10 @@ reports backup retention and private-data state as unsupported, never expired
 or deleted by inference.
 
 Default Product composition and transport selection of this command, operator
-result/debt projection and repair, Windows native execution, and legacy
+repair, Windows native execution, and legacy
 revision crosswalk are still absent. Shared dependency GC needs separate
 reference accounting. Private-data deletion and backup retention remain
 separate domain-owned operations.
+
+D3h adds a separate read-only result/debt projection over this command's
+durable owner evidence; D3g itself grants no query or repair authority.
