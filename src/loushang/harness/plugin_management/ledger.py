@@ -21,6 +21,13 @@ from loushang.harness.plugin_management.gc_fence import (
     PluginPackageGcReferenceGatePort,
     gc_reference_guard,
 )
+from loushang.harness.plugin_management.gc_writer_epoch import (
+    PluginGcWriterEpochError,
+    PluginGcWriterEpochRecords,
+    PluginGcWriterEpochSealV1,
+    gc_writer_epoch_codec,
+    split_gc_writer_epoch_records,
+)
 from loushang.harness.plugin_management.journal_codecs import (
     PLUGIN_DESIRED_STATE_JOURNAL_CODEC,
     PluginDesiredStateJournalTransition,
@@ -128,6 +135,49 @@ class PluginDesiredStateLedger:
     @property
     def gc_gate(self) -> PluginPackageGcReferenceGatePort | None:
         return self._gc_gate
+
+    def seal_gc_writer_epoch(self) -> None:
+        """Exclude older and unbound writers before executable GC is enabled."""
+
+        if self._gc_gate is None:
+            raise PluginLifecycleError(
+                "GC writer epoch requires a reservation gate",
+                code="plugin_package_gc_writer_epoch_unsupported",
+                path=self._path,
+            )
+        with ExitStack() as locks:
+            locks.enter_context(gc_reference_guard(self._gc_gate))
+            locks.enter_context(
+                journal_file_lock(
+                    self._path,
+                    "exclusive",
+                    lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+                )
+            )
+            records = self._load_epoch_records_unlocked()
+            _replay(records.records, path=self._path)
+            if not records.sealed:
+                append_jsonl_record(
+                    self._path,
+                    PluginGcWriterEpochSealV1.create(
+                        journal_kind="desired",
+                        owner_path=self._path,
+                        gate=self._gc_gate,
+                    ),
+                    record_codec=gc_writer_epoch_codec(
+                        PLUGIN_DESIRED_STATE_JOURNAL_CODEC
+                    ),
+                    format_profile=SORTED_UNICODE_JSONL_FORMAT,
+                    durability=self._unlocked_durability,
+                )
+
+    def gc_writer_epoch_sealed(self) -> bool:
+        with journal_file_lock(
+            self._path,
+            "exclusive",
+            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+        ):
+            return self._load_epoch_records_unlocked().sealed
 
     def snapshot(self) -> PluginDesiredStateSnapshotV1:
         with journal_file_lock(
@@ -327,18 +377,33 @@ class PluginDesiredStateLedger:
             return transition
 
     def _load_and_replay_unlocked(self) -> _ReplayedLedger:
+        return _replay(self._load_epoch_records_unlocked().records, path=self._path)
+
+    def _load_epoch_records_unlocked(
+        self,
+    ) -> PluginGcWriterEpochRecords[PluginDesiredStateJournalTransition]:
         if not self._path.exists():
-            return _empty_replay()
+            return PluginGcWriterEpochRecords(records=(), sealed=False)
         try:
-            snapshot: JsonlSnapshot[None, PluginDesiredStateJournalTransition] = (
-                load_jsonl(
-                    self._path,
-                    record_codec=PLUGIN_DESIRED_STATE_JOURNAL_CODEC,
-                    format_profile=SORTED_UNICODE_JSONL_FORMAT,
-                    durability=self._unlocked_durability,
-                    load_policy=self._load_policy,
-                )
+            snapshot: JsonlSnapshot[
+                None, PluginDesiredStateJournalTransition | PluginGcWriterEpochSealV1
+            ] = load_jsonl(
+                self._path,
+                record_codec=gc_writer_epoch_codec(PLUGIN_DESIRED_STATE_JOURNAL_CODEC),
+                format_profile=SORTED_UNICODE_JSONL_FORMAT,
+                durability=self._unlocked_durability,
+                load_policy=self._load_policy,
             )
+            return split_gc_writer_epoch_records(
+                snapshot.records,
+                journal_kind="desired",
+                owner_path=self._path,
+                gate=self._gc_gate,
+            )
+        except PluginGcWriterEpochError as exc:
+            raise PluginLifecycleError(
+                str(exc), code=exc.code, path=self._path
+            ) from exc
         except JournalFileError as exc:
             code = (
                 exc.code
@@ -354,7 +419,6 @@ class PluginDesiredStateLedger:
                 code=code,
                 path=self._path,
             ) from exc
-        return _replay(snapshot.records, path=self._path)
 
     def _repeat_result(
         self,
@@ -694,22 +758,33 @@ def decode_plugin_desired_state_snapshot(
     raw: str,
     *,
     path: str | Path,
+    gc_gate: PluginPackageGcReferenceGatePort | None = None,
 ) -> PluginDesiredStateSnapshotV1:
     """Project an already-authorized desired-state journal snapshot."""
 
     target = Path(path)
     try:
-        decoded: JsonlSnapshot[None, PluginDesiredStateJournalTransition] = (
-            decode_jsonl(
-                raw,
-                target=target,
-                record_codec=PLUGIN_DESIRED_STATE_JOURNAL_CODEC,
-                # Compatibility projection is read-only.  The owner repairs
-                # an incomplete crash tail on its next load; meanwhile only
-                # newline-terminated committed records are visible here.
-                load_policy=JournalLoadPolicy(partial_tail="skip"),
+        decoded: JsonlSnapshot[
+            None, PluginDesiredStateJournalTransition | PluginGcWriterEpochSealV1
+        ] = decode_jsonl(
+            raw,
+            target=target,
+            record_codec=gc_writer_epoch_codec(PLUGIN_DESIRED_STATE_JOURNAL_CODEC),
+            # Compatibility projection is read-only.  The owner repairs
+            # an incomplete crash tail on its next load; meanwhile only
+            # newline-terminated committed records are visible here.
+            load_policy=JournalLoadPolicy(partial_tail="skip"),
+        )
+        records: PluginGcWriterEpochRecords[PluginDesiredStateJournalTransition] = (
+            split_gc_writer_epoch_records(
+                decoded.records,
+                journal_kind="desired",
+                owner_path=target,
+                gate=gc_gate,
             )
         )
+    except PluginGcWriterEpochError as exc:
+        raise PluginLifecycleError(str(exc), code=exc.code, path=target) from exc
     except JournalFileError as exc:
         code = (
             exc.code
@@ -725,7 +800,7 @@ def decode_plugin_desired_state_snapshot(
             code=code,
             path=target,
         ) from exc
-    return _snapshot(_replay(decoded.records, path=target))
+    return _snapshot(_replay(records.records, path=target))
 
 
 def _new_instance_id() -> str:

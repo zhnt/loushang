@@ -71,6 +71,9 @@
   or delete an artifact. [PLC9D2](plugin-lifecycle-plc9d2-contract.md) adds a
   dark, opt-in durable reservation and reference-writer fence; it has no
   Product/Store deletion route and does not close PLC9D.
+  [PLC9D3a](plugin-lifecycle-plc9d3a-contract.md) adds a Product-bound writer
+  seal, exact Store deletion primitive, and durable handoff crosswalk. It has
+  no executable Product GC command or durable deletion result/debt receipt.
 - Scope: one delivery order for the common Plugin lifecycle, ordinary
   Definition / Provider / Consumer authoring primitives, `coding.lsp`,
   `coding.base`, `coding.arch`, management control, pre-LSP internal Resource/

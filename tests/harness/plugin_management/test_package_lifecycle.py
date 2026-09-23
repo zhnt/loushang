@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import asyncio
 import json
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -24,6 +25,7 @@ from loushang.harness.plugin_management.continuity_adapter import (
     PluginInstanceLedgerContinuitySecurityRetirementAuthority,
 )
 from loushang.harness.plugin_management.instance_records import (
+    PLUGIN_INSTANCE_RUNTIME_EVENT_CODEC,
     PluginInstanceLeaseFamilyReleaseV1,
     PluginInstanceLeaseFamilyV1,
     PluginInstanceRetirementCompletionV1,
@@ -33,6 +35,9 @@ from loushang.harness.plugin_management.instance_runtime import (
     PluginInstanceRuntimeError,
     PluginInstanceRuntimeLedger,
     PluginInstanceRuntimeSnapshotV1,
+)
+from loushang.harness.plugin_management.journal_codecs import (
+    PLUGIN_DESIRED_STATE_JOURNAL_CODEC,
 )
 from loushang.harness.plugin_management.ledger import (
     PluginDesiredStateLedger,
@@ -53,6 +58,7 @@ from loushang.harness.plugin_management.package_lifecycle import (
     PluginPackageLifecycleLedger,
 )
 from loushang.harness.plugin_management.package_records import (
+    PLUGIN_PACKAGE_LIFECYCLE_EVENT_CODEC,
     PluginCleanupAttemptV1,
     PluginCleanupDisposition,
     PluginCleanupRepairDecisionV1,
@@ -81,6 +87,146 @@ from loushang.harness.plugin_management.retirement_sets import (
 )
 from loushang.harness.plugin_management.service import PluginManagementService
 from loushang.harness.resources.plugins.selection import PluginInstanceRevisionRef
+
+
+def test_gc_gate_reenters_through_another_product_binding(tmp_path: Path) -> None:
+    path = tmp_path / "gc-reservations.jsonl"
+    runtime_gate = PluginPackageGcReservationJournal(path)
+    command_gate = PluginPackageGcReservationJournal(path)
+    completed = threading.Event()
+
+    def nested_command() -> None:
+        with runtime_gate.guard():
+            with command_gate.guard():
+                completed.set()
+
+    worker = threading.Thread(target=nested_command, daemon=True)
+    worker.start()
+    worker.join(timeout=3)
+    assert completed.is_set()
+
+
+def test_gc_writer_epoch_excludes_unbound_and_previous_codecs(
+    tmp_path: Path,
+) -> None:
+    gate = PluginPackageGcReservationJournal(tmp_path / "gc-reservations.jsonl")
+    context = _context(tmp_path, gc_gate=gate)
+    for owner in (context.desired, context.runtime, context.packages):
+        owner.seal_gc_writer_epoch()
+        owner.seal_gc_writer_epoch()
+        assert owner.gc_writer_epoch_sealed()
+        owner.snapshot()
+
+    previous_codecs = (
+        (context.desired.path, PLUGIN_DESIRED_STATE_JOURNAL_CODEC),
+        (context.runtime.path, PLUGIN_INSTANCE_RUNTIME_EVENT_CODEC),
+        (context.packages.path, PLUGIN_PACKAGE_LIFECYCLE_EVENT_CODEC),
+    )
+    for path, codec in previous_codecs:
+        marker = json.loads(path.read_text(encoding="utf-8").splitlines()[-1])
+        with pytest.raises(ValueError):
+            codec.decode_record(marker)
+
+    key = PluginInstallationKeyV1(
+        product_id="coding",
+        installation_scope="workspace",
+        scope_id="workspace:test",
+        plugin_id="coding.epoch",
+    )
+    context.desired.commit(_mutation(key, "install", revision=0, operation=900))
+    context.packages.acquire_pin(
+        _package("coding.epoch", "a"),
+        pin_kind="forensic_retention",
+        operation_id="epoch-pin",
+        idempotency_key="epoch-pin",
+        holder_reference="forensic:epoch",
+    )
+
+    unbound = _context(tmp_path)
+    unbound_runtime = PluginInstanceRuntimeLedger(
+        context.runtime.path,
+        management_operation_journal_path=tmp_path / "operations.jsonl",
+        desired_state=context.desired,
+        retirement_intents=context.intents,
+        retirement_sets=context.sets,
+        security_acceptances=context.security_acceptances,
+    )
+    unbound_packages = PluginPackageLifecycleLedger(
+        context.packages.path,
+        startup_id="unbound-gc-writer",
+        desired_state=context.desired,
+        instance_runtime=context.runtime,
+        retirement_sets=context.sets,
+    )
+    for owner, error_type in (
+        (unbound.desired, PluginLifecycleError),
+        (unbound_runtime, PluginInstanceRuntimeError),
+        (unbound_packages, PluginPackageLifecycleError),
+    ):
+        with pytest.raises(error_type) as caught:
+            owner.snapshot()
+        assert caught.value.code == "plugin_package_gc_writer_epoch_unsupported"
+
+
+def test_gc_deletion_start_requires_sealed_writers_and_forbids_cancel(
+    tmp_path: Path,
+) -> None:
+    gate = PluginPackageGcReservationJournal(tmp_path / "gc-reservations.jsonl")
+    context = _context(tmp_path, gc_gate=gate)
+    key = _key("plugin.a")
+    context.service.submit(_command(key, "install", revision=0, operation=1))
+    context.service.submit(_command(key, "remove", revision=1, operation=2))
+    context.packages.complete_startup_recovery(
+        operation_id="recover-gc",
+        idempotency_key="recover-gc-request",
+        recovery_reference="recovery:gc",
+    )
+    candidate = context.packages.gc_candidates()[0]
+    reservation = gate.reserve(
+        candidate,
+        lifecycle=context.packages,
+        operation_id="reserve-gc",
+        idempotency_key="reserve-gc-request",
+    )
+    target = ("a" * 64,)
+    with pytest.raises(PluginPackageGcReservationError) as unsealed:
+        gate.begin_delete(
+            reservation.reservation_id,
+            lifecycle=context.packages,
+            target_settlement_ids=target,
+            operation_id="delete-gc",
+            idempotency_key="delete-gc-request",
+        )
+    assert unsealed.value.code == "plugin_package_gc_writer_epoch_unsealed"
+
+    for owner in (context.desired, context.runtime, context.packages):
+        owner.seal_gc_writer_epoch()
+    started = gate.begin_delete(
+        reservation.reservation_id,
+        lifecycle=context.packages,
+        target_settlement_ids=target,
+        operation_id="delete-gc",
+        idempotency_key="delete-gc-request",
+    )
+    assert gate.deletion_start(reservation.reservation_id) == started
+    reopened = PluginPackageGcReservationJournal(gate.path)
+    assert reopened.deletion_start(reservation.reservation_id) == started
+    assert gate.begin_delete(
+        reservation.reservation_id,
+        lifecycle=context.packages,
+        target_settlement_ids=target,
+        operation_id="delete-gc",
+        idempotency_key="delete-gc-request",
+    ) == started
+    with pytest.raises(PluginPackageGcReservationError) as cancelled:
+        gate.cancel(
+            reservation.reservation_id,
+            operation_id="cancel-gc",
+            idempotency_key="cancel-gc-request",
+            reason_code="operator.request",
+        )
+    assert cancelled.value.code == "plugin_package_gc_deletion_started"
+    assert gate.snapshot().active == (reservation,)
 
 
 def test_plc9d1_gc_projection_cannot_import_store_or_deletion_authority() -> None:

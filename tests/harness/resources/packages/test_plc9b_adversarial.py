@@ -24,6 +24,9 @@ from threading import Lock
 import pytest
 
 from loushang.harness.plugin_management.ledger import PluginDesiredStateLedger
+from loushang.harness.plugin_management.package_gc_binding import (
+    PluginPackageGcBindingJournal,
+)
 from loushang.harness.plugin_management.package_product import (
     PluginManagementPackageDesiredStateAdapter,
 )
@@ -2228,12 +2231,14 @@ def test_plc9a2_desired_adapter_commits_exact_disabled_revision_and_reports_cas(
         desired_state=ledger,
         operation_journal_path=tmp_path / "product-operations.jsonl",
     )
+    gc_bindings = PluginPackageGcBindingJournal(tmp_path / "gc-bindings.jsonl")
     adapter = PluginManagementPackageDesiredStateAdapter(
         management=service,
         revisions=_ManifestDesiredRevisionProjection(ledger),
         installation_scope="workspace",
         actor_id="product-runtime",
         policy_revision="product-policy:1",
+        gc_bindings=gc_bindings,
     )
 
     result = adapter.commit(fixture.request.desired_request)
@@ -2247,8 +2252,13 @@ def test_plc9a2_desired_adapter_commits_exact_disabled_revision_and_reports_cas(
         state.selection.package_revision.package_content_digest
         == fixture.request.desired_request.root_ref.artifact_digest
     )
+    bindings = gc_bindings.for_revision(state.selection.package_revision)
+    assert len(bindings) == 1
+    assert bindings[0].request == fixture.request.desired_request
+    assert bindings[0].desired_transition_revision == 1
     repeated = adapter.commit(fixture.request.desired_request)
     assert repeated == result
+    assert gc_bindings.for_revision(state.selection.package_revision) == bindings
 
     conflicting_request = PackageDesiredStateCommitRequestV1.create(
         fixture.request.admission_request,

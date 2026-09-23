@@ -55,6 +55,92 @@ CLASSIFICATION_FINGERPRINT = "8" * 64
 ENVIRONMENT_FINGERPRINT = "7" * 64
 
 
+def test_posix_store_gc_deletes_only_recorded_root_and_replays_absence(
+    tmp_path: Path,
+) -> None:
+    _, _, request, candidate, _, _ = _requests_and_candidates()
+    root = tmp_path / "store"
+    root.mkdir(mode=0o700)
+    settlements = PackageStoreSettlementJournal(tmp_path / "settlements.jsonl")
+    store = PosixPackagePluginRootMaterializationStore(
+        root,
+        store_identity="plugin-revision-store",
+        settlement_journal=settlements,
+    )
+    receipt = store.stage_root(request, candidate)
+    (settlement,) = settlements.records()
+    assert settlement.receipt == receipt
+
+    result = store._store.delete_settlement(settlement)
+    assert result.disposition == "deleted"
+    assert result.stable_ref_id == receipt.stable_ref.ref_id
+    assert not (root / settlement.final_name).exists()
+    replay = store._store.delete_settlement(settlement)
+    assert replay.disposition == "already_absent"
+
+
+def test_posix_store_gc_refuses_replaced_tree_without_touching_outside(
+    tmp_path: Path,
+) -> None:
+    _, _, request, candidate, _, _ = _requests_and_candidates()
+    root = tmp_path / "store"
+    root.mkdir(mode=0o700)
+    settlements = PackageStoreSettlementJournal(tmp_path / "settlements.jsonl")
+    store = PosixPackagePluginRootMaterializationStore(
+        root,
+        store_identity="plugin-revision-store",
+        settlement_journal=settlements,
+    )
+    store.stage_root(request, candidate)
+    (settlement,) = settlements.records()
+    published = root / settlement.final_name
+    outside = tmp_path / "outside.txt"
+    outside.write_bytes(b"preserve")
+    published.chmod(0o700)
+    victim = published / settlement.file_identities[0].logical_path
+    victim.unlink()
+    victim.symlink_to(outside)
+
+    with pytest.raises(PackagePhysicalStagingError):
+        store._store.delete_settlement(settlement)
+    assert outside.read_bytes() == b"preserve"
+    assert published.is_dir()
+
+
+def test_posix_store_gc_retries_after_partial_file_removal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, _, request, candidate, _, _ = _requests_and_candidates()
+    root = tmp_path / "store"
+    root.mkdir(mode=0o700)
+    settlements = PackageStoreSettlementJournal(tmp_path / "settlements.jsonl")
+    store = PosixPackagePluginRootMaterializationStore(
+        root,
+        store_identity="plugin-revision-store",
+        settlement_journal=settlements,
+    )
+    store.stage_root(request, candidate)
+    (settlement,) = settlements.records()
+    unlink = posix_materialization.os.unlink
+    failed = False
+
+    def fail_after_one_unlink(path: str, *, dir_fd: int) -> None:
+        nonlocal failed
+        unlink(path, dir_fd=dir_fd)
+        if not failed:
+            failed = True
+            raise OSError("injected partial deletion")
+
+    monkeypatch.setattr(posix_materialization.os, "unlink", fail_after_one_unlink)
+    with pytest.raises(PackagePhysicalStagingError):
+        store._store.delete_settlement(settlement)
+    monkeypatch.setattr(posix_materialization.os, "unlink", unlink)
+    assert failed
+    assert store._store.delete_settlement(settlement).disposition == "deleted"
+    assert not (root / settlement.final_name).exists()
+
+
 @dataclass
 class _MemoryAcquired:
     payloads: dict[str, bytes]
