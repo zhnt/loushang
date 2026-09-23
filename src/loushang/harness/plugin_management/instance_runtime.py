@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import ExitStack
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Protocol
@@ -13,6 +14,10 @@ from loushang.harness.journal import (
     append_jsonl_record,
     journal_file_lock,
     load_jsonl,
+)
+from loushang.harness.plugin_management.gc_fence import (
+    PluginPackageGcReferenceGatePort,
+    gc_reference_guard,
 )
 from loushang.harness.plugin_management.instance_records import (
     PLUGIN_INSTANCE_RUNTIME_EVENT_CODEC,
@@ -277,6 +282,7 @@ class PluginInstanceRuntimeLedger:
         retirement_intents: PluginInstanceRetirementIntentSourcePort,
         retirement_sets: PluginInstanceRetirementSetSourcePort,
         security_acceptances: PluginInstanceSecurityAcceptanceSourcePort,
+        gc_gate: PluginPackageGcReferenceGatePort | None = None,
     ) -> None:
         # Lock sidecars are derived from these stored paths, so normalize once
         # before any equality check or cross-process operation gate is used.
@@ -287,6 +293,7 @@ class PluginInstanceRuntimeLedger:
         self._retirement_sets = retirement_sets
         self._validate_security_acceptance_source(security_acceptances)
         self._security_acceptances = security_acceptances
+        self._gc_gate = gc_gate
         journal_paths = {
             self._path.resolve(),
             self._operation_path.resolve(),
@@ -303,6 +310,10 @@ class PluginInstanceRuntimeLedger:
     @property
     def path(self) -> Path:
         return self._path
+
+    @property
+    def gc_gate(self) -> PluginPackageGcReferenceGatePort | None:
+        return self._gc_gate
 
     @property
     def management_operation_journal_path(self) -> Path:
@@ -352,11 +363,15 @@ class PluginInstanceRuntimeLedger:
         _require_nonempty(operation_id, name="activation operation id")
         _require_nonempty(idempotency_key, name="activation idempotency key")
         _require_nonempty(direct_host_reference, name="direct host reference")
-        with journal_file_lock(
-            self._operation_path,
-            "exclusive",
-            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
-        ):
+        with ExitStack() as locks:
+            reserved = locks.enter_context(gc_reference_guard(self._gc_gate))
+            locks.enter_context(
+                journal_file_lock(
+                    self._operation_path,
+                    "exclusive",
+                    lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+                )
+            )
             sources = self._load_sources()
             with journal_file_lock(
                 self._path,
@@ -398,6 +413,12 @@ class PluginInstanceRuntimeLedger:
                     raise _unavailable(
                         self._path,
                         "Plugin Installation has no current enabled Instance",
+                    )
+                if selection.package_revision in reserved:
+                    raise PluginInstanceRuntimeError(
+                        "Plugin Package Revision is reserved for GC",
+                        code="plugin_package_gc_reserved",
+                        path=self._path,
                     )
                 self._require_not_security_accepted((selection.instance_revision_ref,))
                 if selection.instance_revision_ref in replayed.instances:
@@ -452,11 +473,15 @@ class PluginInstanceRuntimeLedger:
             (holder_reference, "lease holder reference"),
         ):
             _require_nonempty(value, name=name)
-        with journal_file_lock(
-            self._operation_path,
-            "exclusive",
-            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
-        ):
+        with ExitStack() as locks:
+            reserved = locks.enter_context(gc_reference_guard(self._gc_gate))
+            locks.enter_context(
+                journal_file_lock(
+                    self._operation_path,
+                    "exclusive",
+                    lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+                )
+            )
             sources = self._load_sources()
             with journal_file_lock(
                 self._path,
@@ -501,6 +526,12 @@ class PluginInstanceRuntimeLedger:
                     )
                     for installation_key in keys
                 )
+                if any(package in reserved for _, _, package in subjects):
+                    raise PluginInstanceRuntimeError(
+                        "Plugin Package Revision is reserved for GC",
+                        code="plugin_package_gc_reserved",
+                        path=self._path,
+                    )
                 family = PluginInstanceLeaseFamilyV1.create(
                     lease_kind=lease_kind,
                     operation_id=operation_id,
@@ -537,11 +568,15 @@ class PluginInstanceRuntimeLedger:
             (holder_reference, "lease holder reference"),
         ):
             _require_nonempty(value, name=name)
-        with journal_file_lock(
-            self._operation_path,
-            "exclusive",
-            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
-        ):
+        with ExitStack() as locks:
+            reserved = locks.enter_context(gc_reference_guard(self._gc_gate))
+            locks.enter_context(
+                journal_file_lock(
+                    self._operation_path,
+                    "exclusive",
+                    lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+                )
+            )
             sources = self._load_sources()
             with journal_file_lock(
                 self._path,
@@ -600,6 +635,12 @@ class PluginInstanceRuntimeLedger:
                     )
                     for member in parent.family.members
                 )
+                if any(package in reserved for _, _, package in subjects):
+                    raise PluginInstanceRuntimeError(
+                        "Plugin Package Revision is reserved for GC",
+                        code="plugin_package_gc_reserved",
+                        path=self._path,
+                    )
                 if any(
                     replayed.instances[instance_ref].state not in {"ACTIVE", "DRAINING"}
                     for _, instance_ref, _ in subjects

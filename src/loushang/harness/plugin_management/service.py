@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import ExitStack
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Protocol
@@ -14,6 +15,7 @@ from loushang.harness.journal import (
     journal_file_lock,
     load_jsonl,
 )
+from loushang.harness.plugin_management.gc_fence import gc_reference_guard
 from loushang.harness.plugin_management.journal_codecs import (
     PLUGIN_MANAGEMENT_OPERATION_JOURNAL_CODEC,
     PluginDesiredStateJournalTransition,
@@ -187,11 +189,17 @@ class PluginManagementService:
             command, (PluginManagementCommandV1, PluginManagementUpdateCommandV2)
         ):
             raise TypeError("Plugin management command is required")
-        with journal_file_lock(
-            self._path,
-            "exclusive",
-            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
-        ):
+        with ExitStack() as locks:
+            locks.enter_context(
+                gc_reference_guard(getattr(self._desired_state, "gc_gate", None))
+            )
+            locks.enter_context(
+                journal_file_lock(
+                    self._path,
+                    "exclusive",
+                    lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+                )
+            )
             replayed = self._load_and_replay_unlocked()
             existing = self._existing_operation(replayed, command)
             if existing is not None:
@@ -226,11 +234,17 @@ class PluginManagementService:
     def recover(self) -> tuple[PluginManagementOperationEvent, ...]:
         """Recover accepted/running operations in original acceptance order."""
 
-        with journal_file_lock(
-            self._path,
-            "exclusive",
-            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
-        ):
+        with ExitStack() as locks:
+            locks.enter_context(
+                gc_reference_guard(getattr(self._desired_state, "gc_gate", None))
+            )
+            locks.enter_context(
+                journal_file_lock(
+                    self._path,
+                    "exclusive",
+                    lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+                )
+            )
             replayed = self._load_and_replay_unlocked()
             pending = tuple(
                 sorted(
@@ -389,9 +403,7 @@ class PluginManagementService:
 
         mutation, preparation_error = self._prepare_update_mutation(command, fence)
         if preparation_error is not None:
-            result = PluginUpdateOperationResultV2.failed(
-                error_code=preparation_error
-            )
+            result = PluginUpdateOperationResultV2.failed(error_code=preparation_error)
         else:
             if mutation is None:
                 raise AssertionError("Prepared Plugin update mutation is missing")
@@ -526,8 +538,7 @@ class PluginManagementService:
         key: PluginInstallationKeyV1,
     ) -> None:
         if any(
-            event.status != "terminal"
-            and _installation_key(event.command) == key
+            event.status != "terminal" and _installation_key(event.command) == key
             for event in replayed.latest_by_operation.values()
         ):
             raise PluginManagementError(
@@ -540,14 +551,12 @@ class PluginManagementService:
         if not self._path.exists():
             return _empty_replay()
         try:
-            snapshot: JsonlSnapshot[None, PluginManagementOperationEvent] = (
-                load_jsonl(
-                    self._path,
-                    record_codec=PLUGIN_MANAGEMENT_OPERATION_JOURNAL_CODEC,
-                    format_profile=SORTED_UNICODE_JSONL_FORMAT,
-                    durability=self._unlocked_durability,
-                    load_policy=self._load_policy,
-                )
+            snapshot: JsonlSnapshot[None, PluginManagementOperationEvent] = load_jsonl(
+                self._path,
+                record_codec=PLUGIN_MANAGEMENT_OPERATION_JOURNAL_CODEC,
+                format_profile=SORTED_UNICODE_JSONL_FORMAT,
+                durability=self._unlocked_durability,
+                load_policy=self._load_policy,
             )
         except JournalFileError as exc:
             code = (
@@ -584,12 +593,10 @@ class PluginManagementService:
         }
         retirement_snapshot = self._retirement_intents.snapshot()
         retirement_by_operation = {
-            intent.source_operation_id: intent
-            for intent in retirement_snapshot.intents
+            intent.source_operation_id: intent for intent in retirement_snapshot.intents
         }
         retirement_by_id = {
-            intent.retirement_id: intent
-            for intent in retirement_snapshot.intents
+            intent.retirement_id: intent for intent in retirement_snapshot.intents
         }
         for operation_id, intent in retirement_by_operation.items():
             if desired_by_operation.get(operation_id) != intent.source_transition:
@@ -621,9 +628,7 @@ class PluginManagementService:
             expected_retirement = (
                 None if desired is None else retirement_intent_for_transition(desired)
             )
-            actual_retirement = retirement_by_operation.get(
-                event.command.operation_id
-            )
+            actual_retirement = retirement_by_operation.get(event.command.operation_id)
             if committed and actual_retirement != expected_retirement:
                 raise _retirement_corrupt(
                     self._retirement_intents.path,
@@ -637,8 +642,7 @@ class PluginManagementService:
 
         retirement_set_snapshot = self._retirement_sets.snapshot()
         retirement_sets = {
-            item.intent.retirement_id: item
-            for item in retirement_set_snapshot.sets
+            item.intent.retirement_id: item for item in retirement_set_snapshot.sets
         }
         for retirement_id, retirement_set in retirement_sets.items():
             if retirement_by_id.get(retirement_id) != retirement_set.intent:

@@ -13,6 +13,10 @@
   [Package GC Operator Projection Contract](plugin-lifecycle-plc9d1-contract.md)
   adds an internal all-revision read model over existing retention evidence.
   It grants no Store deletion or GC reservation authority.
+- PLC9D2 refinement:
+  [Dark Package GC Reservation Contract](plugin-lifecycle-plc9d2-contract.md)
+  adds a durable, opt-in reference-writer fence. It is not composed by a
+  Product and grants no Store deletion authority.
 - PLC9B1 refinement: the dark internal Owner Kernel now supplies versioned
   inert records, classification, journal CAS, retry/cancel/status, and disabled
   refusal. It has no production composition or artifact capability; all
@@ -389,6 +393,7 @@ implemented.
 | Instance runtime | `src/loushang/harness/plugin_management/instance_runtime.py::PluginInstanceRuntimeLedger` | Durable Instance activation, lease-family, drain, revocation, and retirement state | Retain; do not replace with Worker/process state |
 | Security retirement acceptance | `src/loushang/harness/plugin_management/security_acceptance.py::PluginInstanceSecurityRetirementJournal` | Durable acceptance evidence for security retirement | Retain; keep distinct from graceful retirement and generic management auth |
 | Package retention and cleanup | `src/loushang/harness/plugin_management/package_lifecycle.py::PluginPackageLifecycleLedger` | Durable pins, cleanup leases/attempts/repair decisions, recovery barrier, retention snapshots, and GC candidates | Retain as lifecycle evidence; PLC9D must add deletion execution/result without weakening candidate recheck |
+| Dark GC reservation and reference fence | `src/loushang/harness/plugin_management/package_gc_reservation.py::PluginPackageGcReservationJournal` and `src/loushang/harness/plugin_management/gc_fence.py::PluginPackageGcReferenceGatePort` | PLC9D2 journals exact reservation/cancellation, replays active fences, and guards opt-in desired/Instance/Package reference writers in one lock order | Retain dark; D3 needs Product-wide writer binding and downgrade exclusion before Store-owned rooted deletion; a reservation alone is not authorization |
 | Coding Product composition | `src/loushang/coding/_plugin_lifecycle.py::CodingPluginLifecycle` | Product adapter composes the generic ledgers under one workspace identity and coordination lock | Retain as an outer Product adapter until common application ports replace Product-specific call sites; it must not become a second generic owner |
 | Management application command adapter | `src/loushang/harness/plugin_management/application.py::PluginManagementCommandApplication` | A1-1 preserves correlation around the durable operation identity and delegates every mutation to `PluginManagementService` | Retain as the transport-neutral command boundary; transports cannot import the service or desired-state ledger directly |
 | Management query projector | `src/loushang/harness/plugin_management/application.py::PluginManagementReadModelProjector` | A1-1 joins independently revisioned desired, operation, migration, Source, Instance, Package, and retirement snapshots without persisting another clock | Retain as the common read boundary; optional owners remain explicitly unsupported/unknown and forward/reverse skew remains observable |
@@ -884,8 +889,8 @@ PLC9A1 contract:
   domain generation publication, and recovery/rollback composition; C5.0
   documents and guards these absences but implements none of them;
 - `remote_service` topology contract and client;
-- executable artifact-GC owner/reservation/result receipt (PLC9D1 adds only the
-  internal operator projection);
+- executable artifact-GC owner and Store result/debt receipt (PLC9D1/D2 add
+  only the operator projection and dark reservation/fence mechanics);
 - generic Plugin-private data deletion command/receipt; and
 - correlated backup-retention projection.
 

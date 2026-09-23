@@ -68,7 +68,9 @@
   default-dark; Current remains the default and unlisted routes remain closed.
   [PLC9D1](plugin-lifecycle-plc9d1-contract.md) is a local candidate for an
   internal, read-only Package GC/cleanup-debt projection. It does not reserve
-  or delete an artifact and does not close PLC9D.
+  or delete an artifact. [PLC9D2](plugin-lifecycle-plc9d2-contract.md) adds a
+  dark, opt-in durable reservation and reference-writer fence; it has no
+  Product/Store deletion route and does not close PLC9D.
 - Scope: one delivery order for the common Plugin lifecycle, ordinary
   Definition / Provider / Consumer authoring primitives, `coding.lsp`,
   `coding.base`, `coding.arch`, management control, pre-LSP internal Resource/

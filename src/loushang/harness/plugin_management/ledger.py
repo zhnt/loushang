@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import secrets
 from collections.abc import Callable
+from contextlib import ExitStack
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -15,6 +16,10 @@ from loushang.harness.journal import (
     decode_jsonl,
     journal_file_lock,
     load_jsonl,
+)
+from loushang.harness.plugin_management.gc_fence import (
+    PluginPackageGcReferenceGatePort,
+    gc_reference_guard,
 )
 from loushang.harness.plugin_management.journal_codecs import (
     PLUGIN_DESIRED_STATE_JOURNAL_CODEC,
@@ -96,8 +101,8 @@ class PluginDesiredStateLedger:
     """Durable, inert desired-selection and staged-cutover authority for PLC2.
 
     This ledger owns only management intent and Instance Revision identity. It
-    has no live Plugin, Product Session, Graph, registration, or package-GC
-    dependency.
+    has no live Plugin, Product Session, Graph, registration, or executable-GC
+    authority. An optional neutral guard can fence new references during GC.
     """
 
     def __init__(
@@ -105,9 +110,11 @@ class PluginDesiredStateLedger:
         path: str | Path,
         *,
         instance_id_factory: PluginInstanceIdFactory | None = None,
+        gc_gate: PluginPackageGcReferenceGatePort | None = None,
     ) -> None:
         self._path = Path(path)
         self._instance_id_factory = instance_id_factory or _new_instance_id
+        self._gc_gate = gc_gate
         self._unlocked_durability = replace(
             DURABLE_LOCKED_JOURNAL,
             locking=False,
@@ -117,6 +124,10 @@ class PluginDesiredStateLedger:
     @property
     def path(self) -> Path:
         return self._path
+
+    @property
+    def gc_gate(self) -> PluginPackageGcReferenceGatePort | None:
+        return self._gc_gate
 
     def snapshot(self) -> PluginDesiredStateSnapshotV1:
         with journal_file_lock(
@@ -157,11 +168,15 @@ class PluginDesiredStateLedger:
     ) -> PluginDesiredStateTransitionV1:
         if not isinstance(mutation, PluginDesiredStateMutationV1):
             raise TypeError("Plugin desired-state mutation is required")
-        with journal_file_lock(
-            self._path,
-            "exclusive",
-            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
-        ):
+        with ExitStack() as locks:
+            reserved = locks.enter_context(gc_reference_guard(self._gc_gate))
+            locks.enter_context(
+                journal_file_lock(
+                    self._path,
+                    "exclusive",
+                    lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+                )
+            )
             replayed = self._load_and_replay_unlocked()
             repeated = self._repeat_result(replayed, mutation)
             if repeated is not None:
@@ -208,6 +223,12 @@ class PluginDesiredStateLedger:
                     code="invalid_plugin_lifecycle_transition",
                     path=self._path,
                 ) from exc
+            if committed.selection.package_revision in reserved:
+                raise PluginLifecycleError(
+                    "Plugin Package Revision is reserved for GC",
+                    code="plugin_package_gc_reserved",
+                    path=self._path,
+                )
             if fresh_instance_id is not None:
                 owner = replayed.instance_owners.get(fresh_instance_id)
                 if owner is not None:
@@ -239,11 +260,15 @@ class PluginDesiredStateLedger:
     ) -> PluginDesiredStateUpdateTransitionV2:
         if not isinstance(mutation, PluginDesiredStateUpdateMutationV1):
             raise TypeError("Plugin desired-state update mutation is required")
-        with journal_file_lock(
-            self._path,
-            "exclusive",
-            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
-        ):
+        with ExitStack() as locks:
+            reserved = locks.enter_context(gc_reference_guard(self._gc_gate))
+            locks.enter_context(
+                journal_file_lock(
+                    self._path,
+                    "exclusive",
+                    lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+                )
+            )
             replayed = self._load_and_replay_unlocked()
             repeated = self._repeat_result(replayed, mutation)
             if repeated is not None:
@@ -279,6 +304,12 @@ class PluginDesiredStateLedger:
                     code="invalid_plugin_lifecycle_transition",
                     path=self._path,
                 ) from exc
+            if committed.selection.package_revision in reserved:
+                raise PluginLifecycleError(
+                    "Plugin Package Revision is reserved for GC",
+                    code="plugin_package_gc_reserved",
+                    path=self._path,
+                )
 
             transition = PluginDesiredStateUpdateTransitionV2(
                 inventory_revision=head + 1,
