@@ -4583,6 +4583,11 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
                     assert response["success"] is True
                     outcome = response["data"]["record"]
                     committed_operation_id = str(outcome["operationId"])
+                elif entrypoint == "session":
+                    outcome = asyncio.run(
+                        session.install_package(str(source), scope="project")
+                    )
+                    committed_operation_id = str(outcome["operationId"])
                 else:
                     outcome = asyncio.run(
                         session.execute_package_lifecycle(
@@ -4595,6 +4600,19 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
                     )
                 assert outcome["lifecycle"] == "installed"
                 assert outcome["path"] == ""
+                if entrypoint == "session":
+                    rejected = (
+                        asyncio.run(session.materialize_package(str(source))),
+                        asyncio.run(session.update_package(str(source))),
+                        session.remove_package(str(source)),
+                        asyncio.run(
+                            session.uninstall_package_async(
+                                str(source), scope="project"
+                            )
+                        ),
+                    )
+                    assert all(item["lifecycle"] == "failed" for item in rejected)
+                    assert all(item["path"] == "" for item in rejected)
                 refused_by_session = asyncio.run(
                     session.execute_package_lifecycle(
                         "install",

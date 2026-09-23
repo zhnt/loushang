@@ -374,7 +374,11 @@ Neither may silently override a narrower implemented owner contract.
   materializer construction;
   a bound compatibility writer retains that registration after an empty bind.
   Continuity without a settings owner or Plugin Source remains a non-Plugin
-  path. Generic Session Package materialization and remaining CLI/RPC/supervisor
+  path. The explicit minimal Product-bound Session now proves its public
+  `install_package` call commits through the transaction, while its public
+  `materialize_package`, `update_package`, `remove_package`, and
+  `uninstall_package_async` calls refuse Plugin-bound targets without a legacy
+  materializer. Default Session composition and remaining CLI/RPC/supervisor
   launch coverage still need a one-time switch.
   Default Coding does not select that factory; this is not a
   completed Product cutover, Windows composition, or PLC9D execution claim.
