@@ -223,6 +223,9 @@ from loushang.harness.resources.packages.product_lifecycle import (
     PackageProductRouteContractError,
     PackageProductRouteRequestV1,
 )
+from loushang.harness.resources.packages.product_root_target import (
+    PackageProductRootTargetAuthority,
+)
 from loushang.harness.resources.packages.product_transaction import (
     PackageProductLifecycleTransaction,
     PackageProductWheelExecutionFactory,
@@ -3358,6 +3361,7 @@ def _manifest_native_adoption_fixture(
         _StableClassificationRecheck | _ChangedClassificationRecheck | None
     ) = None,
     product_ingress: PackageLifecycleIngressRequestV2 | None = None,
+    product_root_target: bool = False,
 ) -> _ManifestNativeAdoptionFixture:
     store_id = "package-store:manifest-adoption"
     environment = _closure_environment()
@@ -3487,6 +3491,16 @@ def _manifest_native_adoption_fixture(
         )
     )
     root_targets = _ManifestRootTargetAuthority()
+    staging_root_targets = (
+        PackageProductRootTargetAuthority(
+            product_id="coding",
+            installation_scope="workspace",
+            authority_id="manifest-product-root-target",
+            authority_revision="manifest-product-root-target:1",
+        )
+        if product_root_target
+        else root_targets
+    )
     staging_journal = PackageArtifactStagingJournal(
         tmp_path / "manifest-adoption-staging.jsonl"
     )
@@ -3500,7 +3514,7 @@ def _manifest_native_adoption_fixture(
         ),
         closure_plans=resolution_journal,
         pin_journal=pin_journal,
-        root_targets=root_targets,
+        root_targets=staging_root_targets,
         dependency_staging=PosixPackageDependencyMaterializationStore(
             dependency_root,
             store_identity="manifest-dependency-store",
@@ -3737,6 +3751,39 @@ def _restart_manifest_native_adoption_fixture(
     )
 
 
+def test_product_root_target_requires_exact_classification(tmp_path: Path) -> None:
+    owner, _journal = _owner(
+        tmp_path, facts=_facts("explicit_plugin_intent")
+    )
+    status = owner.submit(_request())
+    request = owner.journal.request(status.operation_id)
+    classification = status.classification
+    assert request is not None and classification is not None
+    targets = PackageProductRootTargetAuthority(
+        product_id="coding",
+        installation_scope="workspace",
+        authority_id="manifest-product-root-target",
+        authority_revision="manifest-product-root-target:1",
+    )
+
+    target = targets.issue_target(request, classification)
+    assert targets.issue_target(request, classification) == target
+    assert target.plugin_id == "acme.plugin"
+    assert target.installation_id.startswith("installation:")
+    with pytest.raises(ValueError, match="classification"):
+        targets.issue_target(
+            request,
+            replace(classification, request_fingerprint="0" * 64),
+        )
+    with pytest.raises(ValueError, match="Product"):
+        PackageProductRootTargetAuthority(
+            product_id="other",
+            installation_scope="workspace",
+            authority_id="manifest-product-root-target",
+            authority_revision="manifest-product-root-target:1",
+        ).issue_target(request, classification)
+
+
 @pytest.mark.parametrize("entrypoint", ("cli", "rpc", "session", "startup", "operations"))
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux-native Store fixture")
 def test_product_transaction_uses_real_store_and_durable_owner(
@@ -3755,7 +3802,8 @@ def test_product_transaction_uses_real_store_and_durable_owner(
         runtime_admission_request_id=admission.request.admission_request_id,
     )
     fixture = _manifest_native_adoption_fixture(
-        tmp_path, secret=secret, product_ingress=ingress
+        tmp_path, secret=secret, product_ingress=ingress,
+        product_root_target=True,
     )
     product = _native_product_handoff(fixture, tmp_path)
     transaction = PackageProductLifecycleTransaction(
@@ -3787,6 +3835,17 @@ def test_product_transaction_uses_real_store_and_durable_owner(
     assert fixture.root_settlements.records()
     assert fixture.committed_sets.records()
     assert fixture.source_authority.authorize_calls == 1
+    durable_request = fixture.kernel.journal.request(committed.operation_id)
+    committed_set = fixture.committed_sets.current(committed.operation_id)
+    assert durable_request is not None and committed.classification is not None
+    assert committed_set is not None
+    expected_target = PackageProductRootTargetAuthority(
+        product_id="coding",
+        installation_scope="workspace",
+        authority_id="manifest-product-root-target",
+        authority_revision="manifest-product-root-target:1",
+    ).issue_target(durable_request, committed.classification)
+    assert committed_set.committed_set.installation_id == expected_target.installation_id
     desired = product.desired.snapshot()
     assert desired.inventory_revision == 1
     assert desired.installations[0].selection.desired_state == "installed_disabled"
@@ -3843,7 +3902,8 @@ def test_product_committed_replay_recovers_before_handoff_open(tmp_path: Path) -
         runtime_admission_request_id=admission.request.admission_request_id,
     )
     fixture = _manifest_native_adoption_fixture(
-        tmp_path, secret=secret, product_ingress=ingress
+        tmp_path, secret=secret, product_ingress=ingress,
+        product_root_target=True,
     )
     product = _native_product_handoff(fixture, tmp_path)
     handoff = _FailOnceProductHandoff(product.finalizer)
@@ -3900,7 +3960,7 @@ def test_product_transaction_refuses_non_wheel_source_without_store_fallback(
         runtime_admission_request_id=admission.request.admission_request_id,
     )
     fixture = _manifest_native_adoption_fixture(
-        tmp_path, product_ingress=ingress
+        tmp_path, product_ingress=ingress, product_root_target=True
     )
     product = _native_product_handoff(fixture, tmp_path)
     transaction = PackageProductLifecycleTransaction(
@@ -3955,7 +4015,8 @@ def test_product_direct_materializer_refusal_never_reaches_real_store(
         runtime_admission_request_id=admission.request.admission_request_id,
     )
     fixture = _manifest_native_adoption_fixture(
-        tmp_path, secret=secret, product_ingress=ingress
+        tmp_path, secret=secret, product_ingress=ingress,
+        product_root_target=True,
     )
     product = _native_product_handoff(fixture, tmp_path)
 
@@ -4013,7 +4074,8 @@ def test_product_transaction_refuses_changed_execution_before_source(
         runtime_admission_request_id=admission.request.admission_request_id,
     )
     fixture = _manifest_native_adoption_fixture(
-        tmp_path, secret=secret, product_ingress=ingress
+        tmp_path, secret=secret, product_ingress=ingress,
+        product_root_target=True,
     )
     product = _native_product_handoff(fixture, tmp_path)
     changed = replace(

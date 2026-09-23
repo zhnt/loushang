@@ -403,7 +403,9 @@
   state ledger. A route-bound wheel execution factory derives operation,
   attempt, filename, and environment evidence for each request; unsupported
   non-wheel Sources receive a durable refusal before Source or Store access.
-  Product projects the installable revision from the exact
+  Product issues the designated root target from exact classification and a
+  stable Product/scope/Plugin Installation identity, then projects the
+  installable revision from the exact
   committed-set root and refuses a handoff with a changed scope. The Product
   router requires a committed-handoff capability at
   composition, and committed replay completes a handoff interrupted before its
