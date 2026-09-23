@@ -216,7 +216,11 @@ from loushang.harness.resources.packages.product_lifecycle import (
     PackageProductLifecycleExecutionBinding,
     PackageProductLifecycleRouter,
     PackageProductPublishAttemptV1,
+    PackageProductRouteContractError,
     PackageProductRouteRequestV1,
+)
+from loushang.harness.resources.packages.product_transaction import (
+    PackageProductLifecycleTransaction,
 )
 from loushang.harness.resources.plugins.dependencies import (
     PluginDependencyClosureLock,
@@ -3158,6 +3162,9 @@ class _ManifestNativeAdoptionFixture:
     product_projection_before: tuple[tuple[str, int, bytes], ...]
     coordination: _ManifestAdoptionCoordination
     commit: PackageCommitLifecycleOwner | _ManifestCrashAfterCommittedCommitOwner
+    closure_owner: PackageClosureLifecycleOwner
+    pin_owner: PackageTransactionPinLifecycleOwner
+    staging_owner: PackageStagingSetLifecycleOwner
     secret: str
 
 
@@ -3252,6 +3259,7 @@ def _manifest_native_adoption_fixture(
     staging_classification_recheck: (
         _StableClassificationRecheck | _ChangedClassificationRecheck | None
     ) = None,
+    product_ingress: PackageLifecycleIngressRequestV2 | None = None,
 ) -> _ManifestNativeAdoptionFixture:
     store_id = "package-store:manifest-adoption"
     environment = _closure_environment()
@@ -3274,7 +3282,7 @@ def _manifest_native_adoption_fixture(
         root_payload=root_payload,
     )
     classified = kernel.submit(
-        _request(
+        product_ingress or _request(
             source=(
                 f"https://user:{secret}@packages.example.test/{WHEEL_FILENAME}"
                 f"?token={secret}#{secret}"
@@ -3459,6 +3467,9 @@ def _manifest_native_adoption_fixture(
         product_projection_before=product_projection_before,
         coordination=coordination,
         commit=commit,
+        closure_owner=closure_owner,
+        pin_owner=pin_owner,
+        staging_owner=staging_owner,
         secret=secret,
     )
 
@@ -3621,8 +3632,169 @@ def _restart_manifest_native_adoption_fixture(
         product_projection_before=fixture.product_projection_before,
         coordination=coordination,
         commit=commit,
+        closure_owner=closure_owner,
+        pin_owner=pin_owner,
+        staging_owner=staging_owner,
         secret=fixture.secret,
     )
+
+
+@pytest.mark.parametrize("entrypoint", ("cli", "rpc", "session", "startup", "operations"))
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux-native Store fixture")
+def test_product_transaction_uses_real_store_and_durable_owner(
+    tmp_path: Path, entrypoint: PackageProductEntrypoint,
+) -> None:
+    admission = _manifest_product_admission()
+    secret = "manifest-product-transaction-secret"
+    ingress = PackageLifecycleIngressRequestV2.bind_runtime_admission(
+        _request(
+            source=(
+                f"https://user:{secret}@packages.example.test/{WHEEL_FILENAME}"
+                f"?token={secret}#{secret}"
+            ),
+            environment_fingerprint=_closure_environment().fingerprint,
+        ),
+        runtime_admission_request_id=admission.request.admission_request_id,
+    )
+    fixture = _manifest_native_adoption_fixture(
+        tmp_path, secret=secret, product_ingress=ingress
+    )
+    transaction = PackageProductLifecycleTransaction(
+        kernel=fixture.kernel,
+        execution=lambda _request, _current: fixture.execution,
+        recovery_identity="manifest-product-transaction-recovery",
+        closure=fixture.closure_owner,
+        pins=fixture.pin_owner,
+        staging=fixture.staging_owner,
+        commit=fixture.commit,
+    )
+    router = PackageProductLifecycleRouter(
+        execution=PackageProductLifecycleExecutionBinding(
+            owner=fixture.kernel,
+            transaction=transaction,
+        )
+    )
+    route = PackageProductRouteRequestV1(
+        entrypoint=entrypoint, ingress=ingress, admission=admission
+    )
+
+    committed = router.route(route)
+    before = fixture.lifecycle_journal.records()
+    assert (committed.phase, committed.disposition) == ("committed", "committed")
+    assert fixture.root_settlements.records()
+    assert fixture.committed_sets.records()
+    assert fixture.source_authority.authorize_calls == 1
+    assert router.route(route) == committed
+    assert fixture.lifecycle_journal.records() == before
+    assert fixture.source_authority.authorize_calls == 1
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux-native Store fixture")
+def test_product_direct_materializer_refusal_never_reaches_real_store(
+    tmp_path: Path,
+) -> None:
+    admission = _manifest_product_admission()
+    secret = "manifest-product-direct-refusal"
+    ingress = PackageLifecycleIngressRequestV2.bind_runtime_admission(
+        _request(
+            source=(
+                f"https://user:{secret}@packages.example.test/{WHEEL_FILENAME}"
+                f"?token={secret}#{secret}"
+            ),
+            environment_fingerprint=_closure_environment().fingerprint,
+        ),
+        runtime_admission_request_id=admission.request.admission_request_id,
+    )
+    fixture = _manifest_native_adoption_fixture(
+        tmp_path, secret=secret, product_ingress=ingress
+    )
+
+    def unexpected_execution(
+        _request: PackageProductRouteRequestV1,
+        _current: PackageLifecycleStatusV1,
+    ) -> PackageClosureExecutionRequestV2:
+        raise AssertionError("Direct materializer reached the Package transaction")
+
+    transaction = PackageProductLifecycleTransaction(
+        kernel=fixture.kernel,
+        execution=unexpected_execution,
+        recovery_identity="manifest-product-direct-refusal-recovery",
+        closure=fixture.closure_owner,
+        pins=fixture.pin_owner,
+        staging=fixture.staging_owner,
+        commit=fixture.commit,
+    )
+    router = PackageProductLifecycleRouter(
+        execution=PackageProductLifecycleExecutionBinding(
+            owner=fixture.kernel,
+            transaction=transaction,
+        )
+    )
+    direct = PackageProductRouteRequestV1(
+        entrypoint="direct_materializer", ingress=ingress, admission=admission
+    )
+    current = fixture.kernel.status(ingress.operation_id)
+    assert current is not None
+    with pytest.raises(PackageProductRouteContractError):
+        transaction.execute(direct, current=current)
+    refused = router.route(direct)
+    assert (refused.phase, refused.disposition) == ("classified", "rejected")
+    assert fixture.source_authority.authorize_calls == 0
+    assert fixture.root_staging.calls == 0
+    assert fixture.root_settlements.records() == ()
+    assert fixture.committed_sets.records() == ()
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux-native Store fixture")
+def test_product_transaction_refuses_changed_execution_before_source(
+    tmp_path: Path,
+) -> None:
+    admission = _manifest_product_admission()
+    secret = "manifest-product-identity-refusal"
+    ingress = PackageLifecycleIngressRequestV2.bind_runtime_admission(
+        _request(
+            source=(
+                f"https://user:{secret}@packages.example.test/{WHEEL_FILENAME}"
+                f"?token={secret}#{secret}"
+            ),
+            environment_fingerprint=_closure_environment().fingerprint,
+        ),
+        runtime_admission_request_id=admission.request.admission_request_id,
+    )
+    fixture = _manifest_native_adoption_fixture(
+        tmp_path, secret=secret, product_ingress=ingress
+    )
+    changed = replace(
+        fixture.execution,
+        artifact=replace(fixture.execution.artifact, request_fingerprint="0" * 64),
+    )
+    transaction = PackageProductLifecycleTransaction(
+        kernel=fixture.kernel,
+        execution=lambda _request, _current: changed,
+        recovery_identity="manifest-product-identity-refusal-recovery",
+        closure=fixture.closure_owner,
+        pins=fixture.pin_owner,
+        staging=fixture.staging_owner,
+        commit=fixture.commit,
+    )
+    router = PackageProductLifecycleRouter(
+        execution=PackageProductLifecycleExecutionBinding(
+            owner=fixture.kernel,
+            transaction=transaction,
+        )
+    )
+    refused = router.route(
+        PackageProductRouteRequestV1(
+            entrypoint="cli", ingress=ingress, admission=admission
+        )
+    )
+    assert (refused.phase, refused.disposition) == ("classified", "rejected")
+    assert refused.failure is not None
+    assert refused.failure.code == "package_operation_identity_conflict"
+    assert fixture.source_authority.authorize_calls == 0
+    assert fixture.root_staging.calls == 0
+    assert fixture.root_settlements.records() == ()
+    assert fixture.committed_sets.records() == ()
 
 
 @pytest.mark.parametrize(

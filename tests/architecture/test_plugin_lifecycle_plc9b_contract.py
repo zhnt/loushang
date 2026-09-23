@@ -2239,6 +2239,7 @@ def test_plc9b1_owner_kernel_stays_internal_dark_and_capability_free() -> None:
         Path("src/loushang/harness/plugin_management/package_product.py"),
         Path("src/loushang/harness/resources/packages/product_activation.py"),
         Path("src/loushang/harness/resources/packages/product_composition.py"),
+        Path("src/loushang/harness/resources/packages/product_transaction.py"),
         LINUX_LEGACY_RUNTIME,
         PRODUCT_LIFECYCLE,
         WINDOWS_LEGACY_RUNTIME,
@@ -2295,6 +2296,32 @@ def test_plc9b5_product_router_is_capability_poor_and_internal() -> None:
     assert "Harness Quality run `33709473590`" in normalized
     assert "122 tests total" in normalized
     assert "all 23 PR checks passed" in normalized
+
+
+def test_product_transaction_has_no_legacy_materializer_or_revision_store() -> None:
+    path = PACKAGE_ROOT / "product_transaction.py"
+    tree = ast.parse(_source(path), filename=str(path))
+    imported = {
+        node.module or ""
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+    }
+    imported.update(
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    )
+    for forbidden in (
+        "loushang.harness.resources.packages.materializer",
+        "loushang.harness.resources.plugins.revisions",
+        "loushang.harness.resources.packages.source_resolver",
+        "loushang.coding",
+    ):
+        assert not any(
+            module == forbidden or module.startswith(f"{forbidden}.")
+            for module in imported
+        )
 
 
 def test_plc9b2a_acquisition_is_unbound_bounded_and_pathless() -> None:

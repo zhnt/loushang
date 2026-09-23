@@ -395,6 +395,15 @@
   guards, while Windows run `33709473605`/artifact `9876434660` executed 34
   native component tests and all 15 Windows manifest nodes. Every retained
   PLC9B report recorded zero skips, failures, and errors.
+- PLC9B Product transaction candidate:
+  `resources/packages/product_transaction.py` composes the existing closure,
+  transaction-pin, staging-set, and commit owners behind the B5 router. Local
+  Linux-native tests send each of the five transport provenances through a
+  real rooted Store and durable Package owner; a direct-materializer route and
+  a changed execution identity reach neither Source nor Store. This is not a
+  Coding production cutover: no Product desired-state handoff is composed,
+  no Windows native transaction acceptance exists, and the legacy
+  materializer callers listed below remain live.
 - PLC9C1--PLC9C4 implementation candidate:
   [Local Worker Boundary](plugin-lifecycle-plc9c0-baseline.md) retains the
   accepted threat model and implements the additive declaration topology,
