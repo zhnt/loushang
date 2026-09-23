@@ -16,7 +16,7 @@ import sys
 import zipfile
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field, replace
 from hashlib import sha256
 from pathlib import Path
@@ -4207,6 +4207,7 @@ def test_product_transaction_commits_configured_local_dependency(
 )
 def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     tmp_path: Path,
+    request: pytest.FixtureRequest,
     with_dependency: bool,
     entrypoint: str,
 ) -> None:
@@ -4223,6 +4224,9 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         resolve_coding_lifecycle_pre_b_members,
         resolve_coding_package_epoch_layout,
         resolve_coding_package_pre_b_store_members,
+    )
+    from loushang.coding.package_source_snapshot import (
+        hold_coding_pre_b_source_configuration,
     )
     from loushang.coding.session_manager import SessionManager
     from loushang.harness.cli.package_lifecycle import (
@@ -4327,6 +4331,30 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     fences = PackageEpochFenceJournal(control_root / "epoch.jsonl")
     source_root = tmp_path / "pre-b-domains"
     source_root.mkdir(mode=0o700)
+    global_settings = tmp_path / "global-settings" / "settings.json"
+    global_settings.parent.mkdir(mode=0o700)
+    global_settings.write_text(
+        json.dumps({"plugin_sources": [str(workspace / "legacy-plugin")]}),
+        encoding="utf-8",
+    )
+    project_settings = workspace / ".loushang" / "settings.json"
+    project_settings.parent.mkdir(mode=0o700)
+    project_settings.write_text(
+        json.dumps({"package_roots": [str(legacy_root)]}), encoding="utf-8"
+    )
+    source_hold = ExitStack()
+    request.addfinalizer(source_hold.close)
+    source_configuration_root = source_hold.enter_context(
+        hold_coding_pre_b_source_configuration(
+            SettingsManager(
+                global_settings_path=global_settings,
+                project_settings_path=project_settings,
+            ),
+            global_settings_path=global_settings,
+            project_settings_path=project_settings,
+            projection_parent=source_root,
+        )
+    )
     package_members = resolve_coding_package_pre_b_store_members(legacy_layout)
     lifecycle_members = resolve_coding_lifecycle_pre_b_members(legacy_layout)
     domain_roots = {
@@ -4337,6 +4365,7 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         "enablement_state": legacy_layout.root,
         "instance_state": legacy_layout.root,
         "fence_record": control_root,
+        "source_configuration": source_configuration_root,
     }
     for domain in PACKAGE_PRE_B_SNAPSHOT_DOMAINS:
         if domain in domain_roots:
@@ -4406,6 +4435,7 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
     finally:
         cutover_io.cleanup()
         os.close(cutover_root_fd)
+        source_hold.close()
     assert cutover_result.disposition == "fenced"
     fence = cutover_result.fence
     assert fence is not None
@@ -4488,6 +4518,22 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
             "storeId": store_id,
         }
     )
+    assert not source_configuration_root.exists()
+    projected_sources = json.loads(
+        (
+            snapshot_root
+            / snapshot_evidence.snapshot.snapshot_id
+            / "payload"
+            / "source_configuration"
+            / "coding-source-configuration.json"
+        ).read_bytes()
+    )
+    assert projected_sources["scopes"]["global"]["sourcePatch"] == {
+        "plugin_sources": [str(workspace / "legacy-plugin")]
+    }
+    assert projected_sources["scopes"]["project"]["sourcePatch"] == {
+        "package_roots": [str(legacy_root)]
+    }
     plugin_root = epoch_layout.epoch_root(cutover_request.namespace_id)
     root_fd = os.open(
         control_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC

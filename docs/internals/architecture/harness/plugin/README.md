@@ -374,12 +374,15 @@ Neither may silently override a narrower implemented owner contract.
   real pre-fence control root as `fence_record`; the new B fence appears only
   after that snapshot. For `legacy_root_pointer`, the snapshot owner requires an
   empty source domain and records the verified old Store identity with the
-  Product-declared root name. `source_configuration` still uses fixture data;
-  Product mapping of its real Coding settings remains required. The snapshot
-  owner rejects overlapping whole-tree roots and accepts
+  Product-declared root name. The native fixture now holds real Coding global
+  and project settings transaction locks through cutover, verifies their file
+  bytes against the loaded settings layers, and snapshots a private Source-only
+  projection; transient session Source overrides and unmapped Source keys
+  refuse. The independent reader verifies it after the projection source is
+  deleted. The snapshot owner rejects overlapping whole-tree roots and accepts
   colocated roots only with exact top-level member coverage, including declared
-  shared members. Coding still needs a complete Source configuration mapping
-  before a real default cutover.
+  shared members. This completes the nine-domain native fixture geometry, not
+  a default Coding cutover or Plugin entry switch.
   On Linux, the
   Coding lifecycle and management-application builders now hold process-level
   pre-fence registrations before preparing their legacy state; default base
