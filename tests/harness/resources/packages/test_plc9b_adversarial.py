@@ -5454,6 +5454,16 @@ while True:
                 "gc_command_stale",
                 "gc_command_unsealed",
             }:
+                from loushang.harness.plugin_management.application import (
+                    PluginManagementQueryV1,
+                    PluginManagementReadModelProjector,
+                )
+
+                private_data = state_root / "plugin-private-data"
+                private_data.mkdir(mode=0o700)
+                private_marker = private_data / "user-state.txt"
+                private_marker.write_bytes(b"must survive Package removal and GC")
+                installation_key = desired.snapshot().installations[0].installation_key
                 _assert_product_root_gc_after_install(
                     tmp_path=tmp_path,
                     state_root=state_root,
@@ -5477,6 +5487,26 @@ while True:
                     stale_product_command=entrypoint == "gc_command_stale",
                     unsealed_product_command=entrypoint == "gc_command_unsealed",
                 )
+                assert private_marker.read_bytes() == (
+                    b"must survive Package removal and GC"
+                )
+                projection = PluginManagementReadModelProjector(
+                    desired_state=desired,
+                    operations=management,
+                ).snapshot(
+                    PluginManagementQueryV1(
+                        correlation_id="gc-separate-data-and-backup",
+                        product_id=installation_key.product_id,
+                        installation_scope=installation_key.installation_scope,
+                        scope_id=installation_key.scope_id,
+                        plugin_ids=(installation_key.plugin_id,),
+                    )
+                )
+                assert {"backup_retention", "private_data"} <= set(
+                    projection.owner_revisions.unsupported_dimensions
+                )
+                assert len(projection.installations) == 1
+                assert projection.installations[0].desired_state == "absent"
                 return
             expected_inventory_revision = 1
             if entrypoint == "session" and not with_dependency:

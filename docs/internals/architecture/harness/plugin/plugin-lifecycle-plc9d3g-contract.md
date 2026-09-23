@@ -24,6 +24,9 @@ from the retired Package lifecycle through reservation, `deletion_started`,
 root deletion, and a durable result. Repeating the same command returns the
 same result. A stale candidate and an unsealed writer epoch are refused before
 reservation or any root fence, and a shared dependency tree remains intact.
+The same remove/GC fixture keeps a separate Product private-data marker and
+reports backup retention and private-data state as unsupported, never expired
+or deleted by inference.
 
 Default Product composition and transport selection of this command, operator
 result/debt projection and repair, Windows native execution, and legacy
