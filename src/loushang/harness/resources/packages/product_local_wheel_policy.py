@@ -1,4 +1,4 @@
-"""Product-owned ingress and classification for explicitly pinned local Wheels.
+"""Product-owned ingress, dependency selection, and Source for pinned Wheels.
 
 Unknown Sources remain indeterminate. This policy has no non-Plugin authority
 and never grants a materializer fallback from an unrecognized input.
@@ -11,6 +11,13 @@ from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 
+from packaging.version import InvalidVersion, Version
+
+from loushang.harness.resources.packages.plugin_lifecycle.closure_owner import (
+    PackageDependencyResolutionError,
+    PackageDependencySelectionRequestV1,
+    PackageDependencySelectionV1,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.local_source import (
     PackagePinnedLocalWheelSourceAuthority,
 )
@@ -30,6 +37,7 @@ from loushang.harness.resources.packages.product_contract import (
 
 _SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z")
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
+_PROJECT_NAME = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
 _LOCAL_WHEEL_ACTIONS = frozenset({"materialize", "install", "update"})
 _FACT_KINDS: tuple[PackageClassificationBasisKind, ...] = (
     "explicit_plugin_intent",
@@ -49,14 +57,7 @@ class PackageProductLocalWheelBindingV1:
     artifact_digest: str
 
     def __post_init__(self) -> None:
-        source = self.source_identity
-        if (
-            not isinstance(source, str)
-            or canonicalize_source_identity(source) != source
-            or not Path(source).is_absolute()
-            or Path(source).suffix != ".whl"
-        ):
-            raise ValueError("Product local Wheel Source must be canonical")
+        _require_local_wheel_source(self.source_identity)
         if (
             not isinstance(self.requested_package, str)
             or not self.requested_package
@@ -74,8 +75,38 @@ class PackageProductLocalWheelBindingV1:
 
 
 @dataclass(frozen=True, slots=True)
+class PackageProductLocalWheelDependencyV1:
+    """One deterministic Product-approved dependency version and Source."""
+
+    source_identity: str
+    project_name: str
+    version: str
+    artifact_digest: str
+
+    def __post_init__(self) -> None:
+        _require_local_wheel_source(self.source_identity)
+        if (
+            not isinstance(self.project_name, str)
+            or _PROJECT_NAME.fullmatch(self.project_name) is None
+        ):
+            raise ValueError("Product dependency project name is not canonical")
+        if not isinstance(self.version, str) or not self.version:
+            raise ValueError("Product dependency version is invalid")
+        try:
+            if str(Version(self.version)) != self.version:
+                raise ValueError("Product dependency version is not canonical")
+        except InvalidVersion as exc:
+            raise ValueError("Product dependency version is invalid") from exc
+        if (
+            not isinstance(self.artifact_digest, str)
+            or _SHA256.fullmatch(self.artifact_digest) is None
+        ):
+            raise ValueError("Product dependency Wheel digest is invalid")
+
+
+@dataclass(frozen=True, slots=True)
 class PackageProductLocalWheelPolicy:
-    """One immutable Product authority for ingress, facts, recheck, and Source."""
+    """One immutable Product authority for classification, resolution, and Source."""
 
     product_id: str
     project_scope_id: str
@@ -85,6 +116,7 @@ class PackageProductLocalWheelPolicy:
     quota_profile_revision: str
     resolution_environment_fingerprint: str
     authority_id: str
+    dependencies: tuple[PackageProductLocalWheelDependencyV1, ...] = ()
     classifier_epoch: int = 1
 
     def __post_init__(self) -> None:
@@ -116,6 +148,23 @@ class PackageProductLocalWheelPolicy:
         if identities != tuple(sorted(set(identities))):
             raise ValueError("Product local Wheel bindings must be uniquely ordered")
         if (
+            type(self.dependencies) is not tuple
+            or len(self.dependencies) > 128
+            or any(
+                not isinstance(dependency, PackageProductLocalWheelDependencyV1)
+                for dependency in self.dependencies
+            )
+        ):
+            raise ValueError("Product local Wheel dependencies are invalid")
+        projects = tuple(item.project_name for item in self.dependencies)
+        if projects != tuple(sorted(set(projects))):
+            raise ValueError("Product dependency projects must be uniquely ordered")
+        all_sources = identities + tuple(
+            item.source_identity for item in self.dependencies
+        )
+        if len(all_sources) != len(set(all_sources)):
+            raise ValueError("Product local Wheel Source roles must be distinct")
+        if (
             not isinstance(self.resolution_environment_fingerprint, str)
             or _SHA256.fullmatch(self.resolution_environment_fingerprint) is None
         ):
@@ -139,9 +188,22 @@ class PackageProductLocalWheelPolicy:
                 for item in self.bindings
             ],
             "classifierEpoch": self.classifier_epoch,
+            "dependencies": [
+                {
+                    "artifactDigest": item.artifact_digest,
+                    "projectName": item.project_name,
+                    "sourceIdentity": item.source_identity,
+                    "version": item.version,
+                }
+                for item in self.dependencies
+            ],
             "policyRevision": self.policy_revision,
             "productId": self.product_id,
             "projectScopeId": self.project_scope_id,
+            "quotaProfileRevision": self.quota_profile_revision,
+            "resolutionEnvironmentFingerprint": (
+                self.resolution_environment_fingerprint
+            ),
             "sourceRoot": str(self.source_root),
         }
         return sha256(canonical_json_bytes(values)).hexdigest()
@@ -152,11 +214,61 @@ class PackageProductLocalWheelPolicy:
         return PackagePinnedLocalWheelSourceAuthority(
             source_root=self.source_root,
             allowed_digests={
-                item.source_identity: item.artifact_digest for item in self.bindings
+                **{
+                    item.source_identity: item.artifact_digest
+                    for item in self.bindings
+                },
+                **{
+                    item.source_identity: item.artifact_digest
+                    for item in self.dependencies
+                },
             },
             policy_revision=self.policy_revision,
             authority_id=self.authority_id,
             capture_epoch=self.classifier_epoch,
+        )
+
+    def resolve(
+        self, request: PackageDependencySelectionRequestV1
+    ) -> PackageDependencySelectionV1:
+        """Select only the configured version that satisfies this requirement."""
+
+        if not isinstance(request, PackageDependencySelectionRequestV1):
+            raise TypeError("Package dependency selection request is required")
+        selected = next(
+            (
+                item
+                for item in self.dependencies
+                if item.project_name == request.requirement.project_name
+            ),
+            None,
+        )
+        if (
+            selected is None
+            or request.resolution_environment_fingerprint
+            != self.resolution_environment_fingerprint
+            or not request.requirement.matches_version(selected.version)
+        ):
+            raise PackageDependencyResolutionError(
+                "Product has no matching pinned local Wheel dependency",
+                code="package_closure_conflict",
+            )
+        return PackageDependencySelectionV1(
+            operation_id=request.operation_id,
+            attempt_epoch=request.attempt_epoch,
+            parent_node_id=request.parent_node_id,
+            request_fingerprint=request.request_fingerprint,
+            resolution_environment_fingerprint=(
+                request.resolution_environment_fingerprint
+            ),
+            requirement_fingerprint=request.requirement_fingerprint,
+            project_name=selected.project_name,
+            version=selected.version,
+            canonical_source_identity=selected.source_identity,
+            wheel_filename=Path(selected.source_identity).name,
+            expected_artifact_digest=selected.artifact_digest,
+            resolver_id=self.authority_id,
+            resolver_revision=self.authority_revision,
         )
 
     def scope_id(self, intent: PackageProductLifecycleIntentV1) -> str:
@@ -270,7 +382,18 @@ class PackageProductLocalWheelPolicy:
         )
 
 
+def _require_local_wheel_source(source: str) -> None:
+    if (
+        not isinstance(source, str)
+        or canonicalize_source_identity(source) != source
+        or not Path(source).is_absolute()
+        or Path(source).suffix != ".whl"
+    ):
+        raise ValueError("Product local Wheel Source must be canonical")
+
+
 __all__ = [
     "PackageProductLocalWheelBindingV1",
+    "PackageProductLocalWheelDependencyV1",
     "PackageProductLocalWheelPolicy",
 ]

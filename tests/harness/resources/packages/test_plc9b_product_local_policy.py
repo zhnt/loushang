@@ -4,6 +4,18 @@ from dataclasses import replace
 from hashlib import sha256
 from pathlib import Path
 
+import pytest
+
+from loushang.harness.resources.packages.plugin_lifecycle.acquisition import (
+    PackageAcquisitionRequestV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.closure import (
+    NormalizedPackageRequirementV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.closure_owner import (
+    PackageDependencyResolutionError,
+    PackageDependencySelectionRequestV1,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.journal import (
     PackageLifecycleJournal,
 )
@@ -149,3 +161,76 @@ def test_local_wheel_binding_does_not_authorize_removal(tmp_path: Path) -> None:
         assert status.classification is not None
         assert status.classification.decision == "indeterminate"
         assert status.disposition == "rejected"
+
+
+def test_local_wheel_dependency_selection_uses_same_product_source_policy(
+    tmp_path: Path,
+) -> None:
+    from loushang.harness.resources.packages.product_local_wheel_policy import (
+        PackageProductLocalWheelDependencyV1,
+    )
+
+    root_policy = _policy(tmp_path)
+    source = root_policy.source_root / "dependency-2.0-py3-none-any.whl"
+    source.write_bytes(b"dependency-wheel-bytes")
+    policy = replace(
+        root_policy,
+        dependencies=(
+            PackageProductLocalWheelDependencyV1(
+                source_identity=str(source),
+                project_name="dependency",
+                version="2.0",
+                artifact_digest=sha256(source.read_bytes()).hexdigest(),
+            ),
+        ),
+    )
+    request = PackageDependencySelectionRequestV1(
+        operation_id="operation:dependency",
+        attempt_epoch=1,
+        parent_node_id="root",
+        request_fingerprint="b" * 64,
+        resolution_environment_fingerprint=(
+            policy.resolution_environment_fingerprint
+        ),
+        requirement=NormalizedPackageRequirementV1.parse("dependency>=2.0"),
+    )
+
+    selected = policy.resolve(request)
+    assert selected.matches(request)
+    assert selected.canonical_source_identity == str(source)
+    assert selected.expected_artifact_digest == policy.dependencies[0].artifact_digest
+    assert selected.resolver_revision == policy.authority_revision
+    acquisition = PackageAcquisitionRequestV1(
+        operation_id=request.operation_id,
+        attempt_epoch=request.attempt_epoch,
+        node_id=selected.node_id,
+        canonical_source_identity=selected.canonical_source_identity,
+        request_fingerprint=request.request_fingerprint,
+        requested_locator_digest=sha256(str(source).encode()).hexdigest(),
+        policy_revision=policy.policy_revision,
+    )
+    assert (
+        policy.source_authority()
+        .authorize(acquisition)
+        .envelope.expected_artifact_digest
+        == selected.expected_artifact_digest
+    )
+
+    for refused in (
+        replace(request, requirement=NormalizedPackageRequirementV1.parse("other>=1")),
+        replace(request, requirement=NormalizedPackageRequirementV1.parse("dependency<2")),
+        replace(request, resolution_environment_fingerprint="c" * 64),
+    ):
+        with pytest.raises(PackageDependencyResolutionError):
+            policy.resolve(refused)
+
+    with pytest.raises(ValueError, match="Source roles"):
+        replace(
+            root_policy,
+            dependencies=(
+                replace(
+                    policy.dependencies[0],
+                    source_identity=root_policy.bindings[0].source_identity,
+                ),
+            ),
+        )

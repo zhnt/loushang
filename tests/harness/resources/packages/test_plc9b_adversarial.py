@@ -236,6 +236,7 @@ from loushang.harness.resources.packages.product_lifecycle import (
 )
 from loushang.harness.resources.packages.product_local_wheel_policy import (
     PackageProductLocalWheelBindingV1,
+    PackageProductLocalWheelDependencyV1,
     PackageProductLocalWheelPolicy,
 )
 from loushang.harness.resources.packages.product_root_target import (
@@ -1706,7 +1707,9 @@ def _b3d_owner(
     secret: str,
     root_payload: bytes | None = None,
     payloads: dict[str, bytes] | None = None,
-    resolver: _NoDependencyResolver | _ManifestResolver | None = None,
+    resolver: (
+        _NoDependencyResolver | _ManifestResolver | PackageProductLocalWheelPolicy | None
+    ) = None,
     closure_builder: _LegacyClosureBuilder | None = None,
     crash_after_phase: PackageLifecyclePhase | None = None,
     configured_source_authority: _PinnedLocalSourceAuthority | None = None,
@@ -3409,6 +3412,7 @@ def _manifest_native_adoption_fixture(
     configured_source_authority: _PinnedLocalSourceAuthority | None = None,
     journaled_transaction_retention: bool = False,
     classification_authority: PackageProductLocalWheelPolicy | None = None,
+    configured_resolver: PackageProductLocalWheelPolicy | None = None,
 ) -> _ManifestNativeAdoptionFixture:
     store_id = "package-store:manifest-adoption"
     environment = _closure_environment()
@@ -3431,6 +3435,7 @@ def _manifest_native_adoption_fixture(
         root_payload=root_payload,
         configured_source_authority=configured_source_authority,
         classification_authority=classification_authority,
+        resolver=configured_resolver,
     )
     classified = kernel.submit(
         product_ingress or _request(
@@ -4051,6 +4056,119 @@ def test_product_transaction_uses_pinned_local_source_and_real_store(
         source_evidence.evidence, PackageAuthenticatedSourceEvidenceV1
     )
     assert source_evidence.evidence.envelope.origin_kind == "local"
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux-native Store fixture")
+@pytest.mark.parametrize("dependency_tampered", (False, True))
+def test_product_transaction_commits_configured_local_dependency(
+    tmp_path: Path,
+    dependency_tampered: bool,
+) -> None:
+    source_root = tmp_path / "sources"
+    source_root.mkdir(mode=0o700)
+    root_source = source_root / WHEEL_FILENAME
+    dependency_source = source_root / "dependency-2.0-py3-none-any.whl"
+    root_payload = _package_wheel_bytes(
+        "acme-plugin", "1.0", requires_dist=("dependency==2.0",)
+    )
+    dependency_payload = _package_wheel_bytes("dependency", "2.0")
+    root_source.write_bytes(root_payload)
+    dependency_source.write_bytes(dependency_payload)
+    environment = _closure_environment()
+    policy = PackageProductLocalWheelPolicy(
+        product_id="coding",
+        project_scope_id="workspace:manifest",
+        source_root=source_root,
+        bindings=(
+            PackageProductLocalWheelBindingV1(
+                source_identity=str(root_source),
+                requested_package="acme-plugin==1.0",
+                plugin_id="acme.plugin",
+                artifact_digest=sha256(root_payload).hexdigest(),
+            ),
+        ),
+        dependencies=(
+            PackageProductLocalWheelDependencyV1(
+                source_identity=str(dependency_source),
+                project_name="dependency",
+                version="2.0",
+                artifact_digest=sha256(dependency_payload).hexdigest(),
+            ),
+        ),
+        policy_revision="package-policy:1",
+        quota_profile_revision="quota:1",
+        resolution_environment_fingerprint=environment.fingerprint,
+        authority_id="coding-local-source:manifest",
+    )
+    admission = _manifest_product_admission()
+    ingress = PackageLifecycleIngressRequestV2.bind_runtime_admission(
+        policy.create(
+            PackageProductLifecycleIntentV1(
+                operation_id="manifest-operation",
+                action="install",
+                source=str(root_source),
+                scope="project",
+            )
+        ),
+        runtime_admission_request_id=admission.request.admission_request_id,
+    )
+    local_source = _PinnedLocalSourceAuthority(policy.source_authority())
+    fixture = _manifest_native_adoption_fixture(
+        tmp_path,
+        product_ingress=ingress,
+        product_root_target=True,
+        configured_source_authority=local_source,
+        journaled_transaction_retention=True,
+        classification_authority=policy,
+        configured_resolver=policy,
+    )
+    product = _native_product_handoff(fixture, tmp_path)
+    transaction = PackageProductLifecycleTransaction(
+        kernel=fixture.kernel,
+        execution=PackageProductWheelExecutionFactory(
+            environment=environment, budgets=PackageClosureBudgetV1()
+        ),
+        recovery_identity="manifest-local-dependency-recovery",
+        closure=fixture.closure_owner,
+        pins=fixture.pin_owner,
+        staging=fixture.staging_owner,
+        commit=fixture.commit,
+        handoff=product.finalizer,
+    )
+    router = PackageProductLifecycleRouter(
+        execution=PackageProductLifecycleExecutionBinding(
+            owner=fixture.kernel, transaction=transaction
+        )
+    )
+    if dependency_tampered:
+        dependency_source.write_bytes(b"changed-after-Product-approval")
+
+    committed = router.route(
+        PackageProductRouteRequestV1(
+            entrypoint="cli", ingress=ingress, admission=admission
+        )
+    )
+
+    if dependency_tampered:
+        assert committed.disposition == "rejected"
+        assert committed.failure is not None
+        assert committed.failure.code == "package_closure_artifact_invalid"
+        assert fixture.committed_sets.records() == ()
+        assert product.desired.snapshot().inventory_revision == 0
+        return
+    assert (committed.phase, committed.disposition) == ("committed", "committed")
+    committed_set = fixture.committed_sets.current(committed.operation_id)
+    assert committed_set is not None
+    assert tuple(
+        ref.artifact_digest for ref in committed_set.committed_set.dependency_refs
+    ) == (sha256(dependency_payload).hexdigest(),)
+    assert local_source.authorize_calls == 2
+    assert fixture.resolution_journal.records()
+    assert tuple(record.receipt.state for record in fixture.pin_journal.records()) == (
+        "acquired",
+        "released",
+    )
+    assert product.desired.snapshot().inventory_revision == 1
 
 
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux-native Store fixture")
