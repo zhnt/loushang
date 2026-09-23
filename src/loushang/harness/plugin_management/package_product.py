@@ -15,6 +15,7 @@ from loushang.harness.plugin_management.operations import (
     PluginManagementOperationEventV1,
 )
 from loushang.harness.plugin_management.package_gc_binding import (
+    PluginPackageGcBindingJournal,
     PluginPackageGcBindingV1,
     PluginPackageGcClaimV1,
 )
@@ -25,6 +26,9 @@ from loushang.harness.plugin_management.records import (
     PluginInstallationScope,
     PluginPackageRevisionRefV1,
 )
+from loushang.harness.plugin_management.updates import (
+    PluginDesiredStateUpdateTransitionV2,
+)
 from loushang.harness.resources.packages.plugin_lifecycle.commit_records import (
     PluginRevisionRefV1,
 )
@@ -34,6 +38,10 @@ from loushang.harness.resources.packages.plugin_lifecycle.committed_sets import 
 from loushang.harness.resources.packages.plugin_lifecycle.retention_handoff import (
     PackageDesiredStateCommitRequestV1,
     PackageDesiredStateCommitResultV1,
+)
+from loushang.harness.resources.packages.plugin_lifecycle.store_settlements import (
+    PackageStoreSettlementJournal,
+    PackageStoreSettlementRecordV1,
 )
 
 PACKAGE_PRODUCT_DESIRED_ADAPTER_VERSION = 1
@@ -290,6 +298,174 @@ class PluginManagementPackageDesiredStateAdapter:
         )
 
 
+class PackageProductRuntimeReadError(RuntimeError):
+    def __init__(self, message: str, *, code: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
+class PackageProductRootStoreReadPort(Protocol):
+    def read_root_file(
+        self,
+        settlement: PackageStoreSettlementRecordV1,
+        logical_path: str,
+        *,
+        max_bytes: int,
+    ) -> bytes: ...
+
+
+@dataclass(frozen=True, slots=True)
+class PackageProductSelectedRootReader:
+    """Join a live Product selection to one exact, Store-verified root member.
+
+    The GC gate is held through the physical read so a concurrent writer cannot
+    remove the selected revision between logical admission and byte delivery.
+    This owner returns data only; it grants no execution or runtime lease.
+    """
+
+    product_id: str
+    scope_id: str
+    installation_scope: PluginInstallationScope
+    desired_state: PluginDesiredStateLedger
+    bindings: PluginPackageGcBindingJournal
+    committed_sets: PackageCommittedSetJournal
+    root_settlements: PackageStoreSettlementJournal
+    root_store: PackageProductRootStoreReadPort
+    gc_gate: PluginPackageGcReferenceGatePort
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.product_id, str)
+            or not self.product_id
+            or not isinstance(self.scope_id, str)
+            or not self.scope_id
+            or self.installation_scope not in {"process", "tenant", "workspace"}
+        ):
+            raise ValueError("Product selected-root scope is invalid")
+        for value, expected, name in (
+            (self.desired_state, PluginDesiredStateLedger, "desired-state ledger"),
+            (self.bindings, PluginPackageGcBindingJournal, "Package crosswalk"),
+            (self.committed_sets, PackageCommittedSetJournal, "committed sets"),
+            (self.root_settlements, PackageStoreSettlementJournal, "root settlements"),
+        ):
+            if not isinstance(value, expected):
+                raise TypeError(f"Product {name} is required")
+        if not callable(getattr(self.root_store, "read_root_file", None)):
+            raise TypeError("Product root Store read owner is required")
+        if self.desired_state.gc_gate is not self.gc_gate or not callable(
+            getattr(self.gc_gate, "guard", None)
+        ):
+            raise ValueError("Product root reader requires the desired-state GC gate")
+
+    def read_selected_file(
+        self,
+        installation_key: PluginInstallationKeyV1,
+        logical_path: str,
+        *,
+        max_bytes: int,
+    ) -> bytes:
+        if not isinstance(installation_key, PluginInstallationKeyV1):
+            raise TypeError("Exact Product installation key is required")
+        if (
+            installation_key.product_id != self.product_id
+            or installation_key.scope_id != self.scope_id
+            or installation_key.installation_scope != self.installation_scope
+        ):
+            raise self._error("Product Plugin scope changed", "package_product_root_scope_changed")
+        with self.gc_gate.guard() as reserved:
+            snapshot, transitions = self.desired_state.capture()
+            selection = snapshot.installation(installation_key).selection
+            package_revision = selection.package_revision
+            if (
+                selection.desired_state != "installed_enabled"
+                or package_revision is None
+                or selection.instance_revision_ref is None
+                or package_revision in reserved
+            ):
+                raise self._error("Product Plugin is not selected", "package_product_root_not_selected")
+            provenance = tuple(
+                transition
+                for transition in transitions
+                if transition.committed_state.installation_key == installation_key
+                and (
+                    isinstance(transition, PluginDesiredStateUpdateTransitionV2)
+                    or (
+                        isinstance(transition, PluginDesiredStateTransitionV1)
+                        and transition.transition_kind == "install"
+                    )
+                )
+            )
+            if not provenance:
+                raise self._error(
+                    "Selected root has no Product commit", "package_product_root_unbound"
+                )
+            selected_commit = provenance[-1]
+            if not isinstance(selected_commit, PluginDesiredStateTransitionV1):
+                raise self._error(
+                    "Selected update lacks a PLC9B Product binding",
+                    "package_product_root_unbound",
+                )
+            matches = tuple(
+                binding
+                for binding in self.bindings.records()
+                if binding.desired_transition_revision
+                == selected_commit.inventory_revision
+                and binding.package_revision == package_revision
+                and binding.request.command_id
+                == selected_commit.mutation.operation_id
+                and binding.request.desired_request_id
+                == selected_commit.mutation.idempotency_key
+                and binding.request.product_id == installation_key.product_id
+                and binding.request.scope_id == installation_key.scope_id
+                and binding.request.plugin_id == installation_key.plugin_id
+            )
+            if len(matches) != 1:
+                raise self._error(
+                    "Selected root lacks an exact Product binding",
+                    "package_product_root_unbound",
+                )
+            binding = matches[0]
+            request = binding.request
+            try:
+                projected = CommittedSetPackageRevisionProjection(
+                    self.desired_state, self.committed_sets
+                ).project(request)
+            except ValueError:
+                raise self._error(
+                    "Selected committed set changed", "package_product_root_stale"
+                ) from None
+            committed_record = self.committed_sets.current(request.operation_id)
+            if (
+                projected != package_revision
+                or committed_record is None
+                or committed_record.committed_set.set_id != request.committed_set_id
+                or committed_record.committed_set.root_ref != request.root_ref
+                or selected_commit.committed_state.selection.package_revision
+                != package_revision
+            ):
+                raise self._error(
+                    "Selected committed set changed", "package_product_root_stale"
+                )
+            settlements = tuple(
+                settlement
+                for settlement in self.root_settlements.records()
+                if settlement.receipt.stable_ref == request.root_ref
+                and settlement.receipt.operation_id == request.operation_id
+            )
+            if len(settlements) != 1:
+                raise self._error(
+                    "Selected Store root is unavailable",
+                    "package_product_root_unavailable",
+                )
+            return self.root_store.read_root_file(
+                settlements[0], logical_path, max_bytes=max_bytes
+            )
+
+    @staticmethod
+    def _error(message: str, code: str) -> PackageProductRuntimeReadError:
+        return PackageProductRuntimeReadError(message, code=code)
+
+
 def _observed_inventory_revision(
     revisions: PackageProductDesiredRevisionProjectionPort,
     request: PackageDesiredStateCommitRequestV1,
@@ -308,6 +484,9 @@ __all__ = [
     "PackageProductGcBindingPort",
     "PackageProductGcAdmissionError",
     "PackageProductDesiredRevisionProjectionPort",
+    "PackageProductRuntimeReadError",
+    "PackageProductRootStoreReadPort",
+    "PackageProductSelectedRootReader",
     "PluginManagementCommandSubmitPort",
     "PluginManagementPackageDesiredStateAdapter",
 ]

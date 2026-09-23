@@ -5125,9 +5125,120 @@ while True:
                 assert refused.record is not None
                 assert refused.record.lifecycle == "failed"
             assert desired.snapshot().inventory_revision == 1
+            expected_inventory_revision = 1
+            if entrypoint == "session" and not with_dependency:
+                from loushang.harness.plugin_management.operations import (
+                    PluginManagementCommandV1,
+                )
+                from loushang.harness.plugin_management.package_product import (
+                    PackageProductRuntimeReadError,
+                    PackageProductSelectedRootReader,
+                )
+                from loushang.harness.plugin_management.records import (
+                    PluginDesiredStateMutationV1,
+                    PluginInstallationKeyV1,
+                )
+
+                (selected,) = desired.snapshot().installations
+                key = selected.installation_key
+                root_settlements = PackageStoreSettlementJournal(
+                    state_root / "root-settlements.jsonl"
+                )
+                root_store = PosixPackagePluginRootMaterializationStore(
+                    plugin_root,
+                    store_identity="product-runtime-root-store",
+                    package_store_id=store_id,
+                    settlement_journal=root_settlements,
+                )
+                with pytest.raises(PackageProductRuntimeReadError) as disabled:
+                    runtime.read_selected_plugin_file(
+                        key, "acme_plugin/__init__.py", max_bytes=4096
+                    )
+                assert disabled.value.code == "package_product_root_not_selected"
+                enabled = management.submit(
+                    PluginManagementCommandV1(
+                        action="enable",
+                        mutation=PluginDesiredStateMutationV1(
+                            operation_id="operation:product-read-enable",
+                            idempotency_key="request:product-read-enable",
+                            expected_inventory_revision=1,
+                            installation_key=key,
+                            desired_state="installed_enabled",
+                            package_revision=None,
+                            actor_id="product-runtime",
+                            policy_revision="product-policy:1",
+                        ),
+                    )
+                )
+                assert enabled.result is not None
+                assert enabled.result.disposition == "succeeded"
+                expected_inventory_revision = 2
+                assert runtime.read_selected_plugin_file(
+                    key, "acme_plugin/__init__.py", max_bytes=4096
+                ) == b"VALUE = 1\n"
+                reopened = PackageProductSelectedRootReader(
+                    product_id=policy.product_id,
+                    scope_id=policy.project_scope_id,
+                    installation_scope="workspace",
+                    desired_state=PluginDesiredStateLedger(
+                        desired.path, gc_gate=gate
+                    ),
+                    bindings=PluginPackageGcBindingJournal(bindings.path),
+                    committed_sets=PackageCommittedSetJournal(
+                        state_root / "committed-sets.jsonl"
+                    ),
+                    root_settlements=PackageStoreSettlementJournal(
+                        root_settlements.path
+                    ),
+                    root_store=root_store,
+                    gc_gate=gate,
+                )
+                assert reopened.read_selected_file(
+                    key, "acme_plugin/__init__.py", max_bytes=4096
+                ) == b"VALUE = 1\n"
+                foreign_key = PluginInstallationKeyV1(
+                    product_id=key.product_id,
+                    installation_scope=key.installation_scope,
+                    scope_id="workspace:foreign",
+                    plugin_id=key.plugin_id,
+                )
+                with pytest.raises(PackageProductRuntimeReadError) as foreign:
+                    runtime.read_selected_plugin_file(
+                        foreign_key, "acme_plugin/__init__.py", max_bytes=4096
+                    )
+                assert foreign.value.code == "package_product_root_scope_changed"
+                with pytest.raises(PackageProductRuntimeReadError) as no_crosswalk:
+                    PackageProductSelectedRootReader(
+                        product_id=policy.product_id,
+                        scope_id=policy.project_scope_id,
+                        installation_scope="workspace",
+                        desired_state=desired,
+                        bindings=PluginPackageGcBindingJournal(
+                            tmp_path / "missing-product-crosswalk.jsonl"
+                        ),
+                        committed_sets=PackageCommittedSetJournal(
+                            state_root / "committed-sets.jsonl"
+                        ),
+                        root_settlements=root_settlements,
+                        root_store=root_store,
+                        gc_gate=gate,
+                    ).read_selected_file(
+                        key, "acme_plugin/__init__.py", max_bytes=4096
+                    )
+                assert no_crosswalk.value.code == "package_product_root_unbound"
             before_swap = lifecycle_journal.records()
             plugin_root.rename(tmp_path / "moved-plugin-store")
             plugin_root.mkdir(mode=0o700)
+            if entrypoint == "session" and not with_dependency:
+                from loushang.harness.resources.packages.plugin_lifecycle.tree_transfer import (
+                    PackagePhysicalStagingError,
+                )
+
+                with pytest.raises(PackagePhysicalStagingError) as swapped:
+                    runtime.read_selected_plugin_file(
+                        key, "acme_plugin/__init__.py", max_bytes=4096
+                    )
+                assert swapped.value.code == "package_publication_root_untrusted"
             if entrypoint == "session":
                 with pytest.raises(ValueError, match="Store identity changed"):
                     factory.create(
@@ -5149,10 +5260,20 @@ while True:
                 )
             assert changed_root.value.code == "package_runtime_epoch_unsupported"
             assert lifecycle_journal.records() == before_swap
-            assert desired.snapshot().inventory_revision == 1
+            assert desired.snapshot().inventory_revision == expected_inventory_revision
         finally:
             if session is not None:
                 asyncio.run(session.dispose())
+                if entrypoint == "session" and not with_dependency:
+                    from loushang.harness.resources.packages.product_runtime import (
+                        PackageProductRuntimeActivationError,
+                    )
+
+                    with pytest.raises(PackageProductRuntimeActivationError) as closed:
+                        runtime.read_selected_plugin_file(
+                            key, "acme_plugin/__init__.py", max_bytes=4096
+                        )
+                    assert closed.value.code == "package_product_runtime_inactive"
                 with pytest.raises(PackageEpochRuntimeLeaseRegistryError) as released:
                     registry.snapshot(store_id=store_id)
                 assert released.value.code == "package_epoch_lease_absent"

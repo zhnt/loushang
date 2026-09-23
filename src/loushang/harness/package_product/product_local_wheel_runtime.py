@@ -27,6 +27,7 @@ from loushang.harness.plugin_management.package_gc_reservation import (
 )
 from loushang.harness.plugin_management.package_product import (
     CommittedSetPackageRevisionProjection,
+    PackageProductSelectedRootReader,
     PluginManagementCommandSubmitPort,
     PluginManagementPackageDesiredStateAdapter,
 )
@@ -316,6 +317,15 @@ def compose_posix_local_wheel_product(
         pin_journal=pin_journal,
     )
     committed_sets = PackageCommittedSetJournal(state_root / "committed-sets.jsonl")
+    root_settlements = PackageStoreSettlementJournal(
+        state_root / "root-settlements.jsonl"
+    )
+    root_store = PosixPackagePluginRootMaterializationStore(
+        plugin_store_root,
+        store_identity=root_store_identity,
+        package_store_id=registry.store_id,
+        settlement_journal=root_settlements,
+    )
     staging = PackageStagingSetLifecycleOwner(
         kernel=kernel,
         classification_recheck=policy,
@@ -334,14 +344,7 @@ def compose_posix_local_wheel_product(
                 state_root / "dependency-settlements.jsonl"
             ),
         ),
-        root_staging=PosixPackagePluginRootMaterializationStore(
-            plugin_store_root,
-            store_identity=root_store_identity,
-            package_store_id=registry.store_id,
-            settlement_journal=PackageStoreSettlementJournal(
-                state_root / "root-settlements.jsonl"
-            ),
-        ),
+        root_staging=root_store,
         staging_journal=PackageArtifactStagingJournal(state_root / "staging.jsonl"),
         committed_sets=committed_sets,
     )
@@ -435,6 +438,17 @@ def compose_posix_local_wheel_product(
         lifecycle=lifecycle,
         inventory=inventory,
         mode="enforced",
+        _selected_root_reader=PackageProductSelectedRootReader(
+            product_id=policy.product_id,
+            scope_id=policy.project_scope_id,
+            installation_scope="workspace",
+            desired_state=desired_state,
+            bindings=gc_bindings,
+            committed_sets=committed_sets,
+            root_settlements=root_settlements,
+            root_store=root_store,
+            gc_gate=gc_gate,
+        ),
     )
 
 

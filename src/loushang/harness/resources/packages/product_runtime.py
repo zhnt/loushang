@@ -6,13 +6,16 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from threading import Lock
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from loushang.harness.resources.packages.product_contract import (
     PackageProductLifecycleInventoryPort,
     PackageProductLifecycleMode,
     PackageProductLifecycleOperationPort,
 )
+
+if TYPE_CHECKING:
+    from loushang.harness.plugin_management.records import PluginInstallationKeyV1
 
 PACKAGE_PRODUCT_RUNTIME_REQUEST_VERSION = 1
 PACKAGE_PRODUCT_RUNTIME_BINDING_VERSION = 1
@@ -24,6 +27,18 @@ class PackageProductRuntimeActivationError(RuntimeError):
     def __init__(self, message: str, *, code: str) -> None:
         super().__init__(message)
         self.code = code
+
+
+class PackageProductSelectedRootReadPort(Protocol):
+    """Read one selected Plugin member without granting a pathname or execution."""
+
+    def read_selected_file(
+        self,
+        installation_key: PluginInstallationKeyV1,
+        logical_path: str,
+        *,
+        max_bytes: int,
+    ) -> bytes: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,6 +75,9 @@ class PackageProductRuntimeBindingV1:
     inventory: PackageProductLifecycleInventoryPort
     mode: PackageProductLifecycleMode
     binding_version: int = PACKAGE_PRODUCT_RUNTIME_BINDING_VERSION
+    _selected_root_reader: PackageProductSelectedRootReadPort | None = field(
+        default=None, kw_only=True, repr=False, compare=False
+    )
     on_dispose: Callable[[], None] | None = field(
         default=None, kw_only=True, repr=False, compare=False
     )
@@ -87,10 +105,38 @@ class PackageProductRuntimeBindingV1:
             raise ValueError("Unsupported Package Product runtime binding")
         if self.on_dispose is not None and not callable(self.on_dispose):
             raise TypeError("Package Product runtime disposal must be callable")
+        if self._selected_root_reader is not None and not callable(
+            getattr(self._selected_root_reader, "read_selected_file", None)
+        ):
+            raise TypeError("Package Product selected-root reader is invalid")
 
     @property
     def binding_id(self) -> str:
         return self.lifecycle.binding_id
+
+    def read_selected_plugin_file(
+        self,
+        installation_key: PluginInstallationKeyV1,
+        logical_path: str,
+        *,
+        max_bytes: int,
+    ) -> bytes:
+        """Read data only while this activated Session binding remains live."""
+
+        with self._dispose_lock:
+            if self._disposed or not self.lifecycle.active:
+                raise PackageProductRuntimeActivationError(
+                    "Package Product runtime is inactive",
+                    code="package_product_runtime_inactive",
+                )
+            if self._selected_root_reader is None:
+                raise PackageProductRuntimeActivationError(
+                    "Package Product selected-root reader is unavailable",
+                    code="package_product_root_reader_unavailable",
+                )
+            return self._selected_root_reader.read_selected_file(
+                installation_key, logical_path, max_bytes=max_bytes
+            )
 
     def dispose_runtime(self) -> None:
         """Release the Product-owned runtime authority at most once."""
@@ -203,5 +249,6 @@ __all__ = [
     "PackageProductRuntimeBindingV1",
     "PackageProductRuntimeFactoryPort",
     "PackageProductRuntimeRequestV1",
+    "PackageProductSelectedRootReadPort",
     "activate_package_product_runtime",
 ]
