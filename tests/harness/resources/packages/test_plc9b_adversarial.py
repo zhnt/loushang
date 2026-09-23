@@ -4336,6 +4336,7 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         "desired_state": legacy_layout.root,
         "enablement_state": legacy_layout.root,
         "instance_state": legacy_layout.root,
+        "fence_record": control_root,
     }
     for domain in PACKAGE_PRE_B_SNAPSHOT_DOMAINS:
         if domain in domain_roots:
@@ -4457,6 +4458,21 @@ def test_posix_local_wheel_product_composition_uses_live_epoch_and_owners(
         / "instance_state"
         / "process-startups"
     ).is_dir()
+    assert (
+        snapshot_root
+        / snapshot_evidence.snapshot.snapshot_id
+        / "payload"
+        / "fence_record"
+        / "epoch.jsonl.lock"
+    ).is_file()
+    assert not (
+        snapshot_root
+        / snapshot_evidence.snapshot.snapshot_id
+        / "payload"
+        / "fence_record"
+        / "epoch.jsonl"
+    ).exists()
+    assert (control_root / "epoch.jsonl").is_file()
     plugin_root = epoch_layout.epoch_root(cutover_request.namespace_id)
     root_fd = os.open(
         control_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
