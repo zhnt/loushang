@@ -354,6 +354,10 @@ Neither may silently override a narrower implemented owner contract.
   `coding.base` files also pass the PLC9B Wheel verifier when
   assembled into a test Wheel; Product Store publication, verified runtime
   reopening, and default selection of that package remain unimplemented. The
+  POSIX root Store now exposes a bounded, exact-member read from a live,
+  untombstoned settlement after verifying the full tree and native identities.
+  This physical read does not establish committed-set or desired-state runtime
+  admission; Product-owned reopening and the default cutover remain open. The
   concrete POSIX factory pins Product, Session, and
   workspace identity, and now requires a native cutover result matching the
   current fence, namespace, and Store root before composing those owners. Its

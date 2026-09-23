@@ -145,6 +145,19 @@ class PosixPackagePluginRootMaterializationStore:
     ) -> PackageArtifactStagingReceiptV1:
         return self._store.validate_receipt(receipt)
 
+    def read_root_file(
+        self,
+        settlement: PackageStoreSettlementRecordV1,
+        logical_path: str,
+        *,
+        max_bytes: int,
+    ) -> bytes:
+        """Read one verified member without exposing a Store pathname."""
+
+        return self._store.read_settlement_file(
+            settlement, logical_path, max_bytes=max_bytes
+        )
+
     def authorize_adoption(
         self,
         *,
@@ -270,6 +283,59 @@ class _PosixRoleStore:
                 durable_owner_lock.__exit__(None, None, None)
             finally:
                 self._lock.release()
+
+    def read_settlement_file(
+        self,
+        settlement: PackageStoreSettlementRecordV1,
+        logical_path: str,
+        *,
+        max_bytes: int,
+    ) -> bytes:
+        if self._role != "root" or (
+            not isinstance(settlement, PackageStoreSettlementRecordV1)
+            or settlement.store_role != self._role
+            or settlement.store_identity != self._store_identity
+        ):
+            raise _collision()
+        if not isinstance(logical_path, str):
+            raise TypeError("Package Store logical path is required")
+        if type(max_bytes) is not int or max_bytes < 0:
+            raise ValueError("Package Store read budget is invalid")
+        entry = next(
+            (
+                item
+                for item in settlement.manifest.entries
+                if item.logical_path == logical_path
+            ),
+            None,
+        )
+        if entry is None or entry.byte_count > max_bytes:
+            raise _collision()
+        try:
+            with self._lock, self._settlement_journal.owner_lock():
+                root = _PinnedPosixRoot.open(
+                    self._root, expected_identities=self._root_identities
+                )
+                try:
+                    if (
+                        tuple(
+                            identity.to_native()
+                            for identity in settlement.root_identities
+                        )
+                        != root.identities
+                        or settlement not in self._settlement_journal.records()
+                        or self._settlement_journal.is_tombstoned(
+                            settlement.receipt.stable_ref.ref_id
+                        )
+                    ):
+                        raise _collision()
+                    return _read_existing_tree_file(root, settlement, entry)
+                finally:
+                    root.close()
+        except PackagePhysicalStagingError:
+            raise
+        except (OSError, PackageStoreSettlementJournalError):
+            raise _root_untrusted() from None
 
     def delete_settlement(
         self, settlement: PackageStoreSettlementRecordV1
@@ -1264,6 +1330,90 @@ def _validate_existing_tree(
     except Exception:
         raise _root_untrusted() from None
     return tree_identity, observed_directories, observed_files
+
+
+def _read_existing_tree_file(
+    root: _PinnedPosixRoot,
+    settlement: PackageStoreSettlementRecordV1,
+    entry: PackageVerifiedTreeEntryV1,
+) -> bytes:
+    directories = {
+        tuple(item.logical_path.split("/")): item.native_identity.to_native()
+        for item in settlement.directory_identities
+    }
+    files = {
+        tuple(item.logical_path.split("/")): item.native_identity.to_native()
+        for item in settlement.file_identities
+    }
+    tree_identity = settlement.tree_identity.to_native()
+    _validate_existing_tree(
+        root,
+        settlement.final_name,
+        settlement.manifest,
+        expected_tree_identity=tree_identity,
+        directory_identities=directories,
+        file_identities=files,
+    )
+    try:
+        tree_fd = _open_directory(settlement.final_name, dir_fd=root.descriptor)
+        try:
+            if _identity(os.fstat(tree_fd)) != tree_identity:
+                raise OSError("Published Package tree identity changed")
+            parts = tuple(entry.logical_path.split("/"))
+            parent_fd = _open_relative_directory(tree_fd, parts[:-1])
+            try:
+                expected_parent = (
+                    directories.get(parts[:-1]) if len(parts) > 1 else tree_identity
+                )
+                if _identity(os.fstat(parent_fd)) != expected_parent:
+                    raise OSError("Published Package directory identity changed")
+                file_fd = os.open(
+                    parts[-1],
+                    os.O_RDONLY
+                    | os.O_NONBLOCK
+                    | os.O_NOFOLLOW
+                    | getattr(os, "O_CLOEXEC", 0),
+                    dir_fd=parent_fd,
+                )
+                try:
+                    metadata = os.fstat(file_fd)
+                    if (
+                        not stat.S_ISREG(metadata.st_mode)
+                        or metadata.st_nlink != 1
+                        or _identity(metadata) != files.get(parts)
+                        or metadata.st_size != entry.byte_count
+                    ):
+                        raise OSError("Published Package file identity changed")
+                    data = bytearray()
+                    while chunk := os.read(
+                        file_fd, min(64 * 1024, entry.byte_count + 1 - len(data))
+                    ):
+                        data.extend(chunk)
+                        if len(data) > entry.byte_count:
+                            raise OSError("Published Package file exceeds verified size")
+                    if (
+                        _identity(os.fstat(file_fd)) != files[parts]
+                        or len(data) != entry.byte_count
+                        or sha256(data).hexdigest() != entry.content_digest
+                    ):
+                        raise OSError("Published Package file content changed")
+                finally:
+                    os.close(file_fd)
+            finally:
+                os.close(parent_fd)
+        finally:
+            os.close(tree_fd)
+        root.validate_visible()
+        visible = os.stat(
+            settlement.final_name,
+            dir_fd=root.descriptor,
+            follow_symlinks=False,
+        )
+        if _identity(visible) != tree_identity:
+            raise OSError("Published Package tree visibility changed")
+        return bytes(data)
+    except Exception:
+        raise _collision() from None
 
 
 def _validate_owned_tree(
